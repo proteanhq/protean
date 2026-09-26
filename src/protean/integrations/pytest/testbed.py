@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from protean.domain import Domain
+from protean.domain.context import DomainContext, _domain_ctx_stack
 
 
 class DomainFixture:
@@ -57,6 +58,11 @@ class DomainFixture:
         domain inside the test.  On exit, resets all data in this fixture's
         domain (its providers, brokers, and event store), then pops the
         context.  The context is popped even when a reset raises.
+
+        A test that leaves another domain's context pushed still fails with
+        ``AssertionError: Popped wrong domain context``.  Before that error
+        is raised, the leaked contexts and this fixture's context are popped,
+        so later tests start from the stack this fixture found.
         """
         ctx = self.domain.domain_context()
         ctx.push()
@@ -73,4 +79,23 @@ class DomainFixture:
 
                 self.domain._require_event_store()._data_reset()
             finally:
-                ctx.pop()
+                try:
+                    ctx.pop()
+                except AssertionError:
+                    _pop_through(ctx)
+                    raise
+
+
+def _pop_through(ctx: DomainContext) -> None:
+    """Pop contexts off the stack down to and including ``ctx``.
+
+    Leaves the stack unchanged when ``ctx`` is not on it.
+    """
+    popped: list[DomainContext] = []
+    while (top := _domain_ctx_stack.pop()) is not None:
+        if top is ctx:
+            return
+        popped.append(top)
+
+    for other in reversed(popped):
+        _domain_ctx_stack.push(other)

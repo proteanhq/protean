@@ -4,8 +4,10 @@ from unittest import mock
 
 import pytest
 
+from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.domain.context import _domain_ctx_stack
+from protean.fields import String
 from protean.integrations.pytest import DomainFixture
 
 
@@ -168,12 +170,34 @@ def _mock_stores(domain):
 
 def _restore_ctx_stack(top):
     """Pop contexts off the global stack until ``top`` is on top again."""
-    while _domain_ctx_stack.top is not top:
+    while _domain_ctx_stack.top is not None and _domain_ctx_stack.top is not top:
         _domain_ctx_stack.pop()
+    assert _domain_ctx_stack.top is top
+
+
+class _ItemA(BaseAggregate):
+    name = String(max_length=50)
+
+
+class _ItemB(BaseAggregate):
+    name = String(max_length=50)
+
+
+def _memory_domain(name, aggregate_cls):
+    domain = Domain(name=name)
+    domain.config["databases"]["default"] = {"provider": "memory"}
+    domain.register(aggregate_cls)
+    domain.init(traverse=False)
+    return domain
+
+
+def _count(domain, aggregate_cls):
+    with domain.domain_context():
+        return domain.repository_for(aggregate_cls)._dao.query.all().total
 
 
 class TestDomainContextIsolation:
-    """domain_context() cleans up its own domain, whatever else is pushed."""
+    """domain_context() resets its own domain's data, whatever else is pushed."""
 
     def test_leaked_context_resets_only_the_fixture_domain(self):
         domain_a = Domain(name="domain_a")
@@ -190,6 +214,9 @@ class TestDomainContextIsolation:
             ):
                 # Leave domain B's context pushed when the test body ends
                 domain_b.domain_context().push()
+
+            # The leaked context and the fixture's own context are both gone
+            assert _domain_ctx_stack.top is top_before
         finally:
             _restore_ctx_stack(top_before)
 
@@ -200,10 +227,72 @@ class TestDomainContextIsolation:
         broker_b._data_reset.assert_not_called()
         store_b._data_reset.assert_not_called()
 
+    @pytest.mark.no_test_domain
+    def test_leaked_context_keeps_the_other_domain_data(self):
+        domain_a = _memory_domain("domain_a", _ItemA)
+        domain_b = _memory_domain("domain_b", _ItemB)
+        bed_a = DomainFixture(domain_a)
+
+        with domain_b.domain_context():
+            domain_b.repository_for(_ItemB).add(_ItemB(name="b"))
+
+        top_before = _domain_ctx_stack.top
+        try:
+            with (
+                pytest.raises(AssertionError, match="Popped wrong domain context"),
+                bed_a.domain_context(),
+            ):
+                domain_a.repository_for(_ItemA).add(_ItemA(name="a"))
+                assert _count(domain_a, _ItemA) == 1
+
+                domain_b.domain_context().push()
+        finally:
+            _restore_ctx_stack(top_before)
+
+        assert _count(domain_a, _ItemA) == 0
+        assert _count(domain_b, _ItemB) == 1
+
+    def test_leaked_context_leaves_stack_below_untouched(self, domain):
+        _mock_stores(domain)
+        bed = DomainFixture(domain)
+        outer = Domain(name="outer").domain_context()
+        outer.push()
+
+        try:
+            with pytest.raises(AssertionError, match="Popped wrong domain context"):
+                with bed.domain_context():
+                    Domain(name="leaked").domain_context().push()
+                    Domain(name="leaked_too").domain_context().push()
+
+            assert _domain_ctx_stack.top is outer
+        finally:
+            outer.pop()
+
+    def test_stack_is_unchanged_when_the_fixture_context_is_already_gone(self, domain):
+        _mock_stores(domain)
+        bed = DomainFixture(domain)
+        top_before = _domain_ctx_stack.top
+
+        try:
+            with pytest.raises(AssertionError, match="Popped wrong domain context"):
+                with bed.domain_context():
+                    # Pop the fixture's own context, then push two others
+                    _domain_ctx_stack.pop()
+                    first = Domain(name="first").domain_context()
+                    first.push()
+                    Domain(name="second").domain_context().push()
+
+            # Only the top context was popped; ``first`` is still there
+            assert _domain_ctx_stack.top is first
+        finally:
+            _restore_ctx_stack(top_before)
+
     def test_context_is_popped_when_a_reset_raises(self, domain):
         provider, _broker, _store = _mock_stores(domain)
         provider._data_reset.side_effect = RuntimeError("reset failed")
         bed = DomainFixture(domain)
+        teardown = mock.Mock()
+        domain.teardown_domain_context(teardown)
 
         top_before = _domain_ctx_stack.top
         try:
@@ -212,6 +301,7 @@ class TestDomainContextIsolation:
                     pass
 
             assert _domain_ctx_stack.top is top_before
+            teardown.assert_called_once()
         finally:
             _restore_ctx_stack(top_before)
 
