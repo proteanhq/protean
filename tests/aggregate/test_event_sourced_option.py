@@ -8,6 +8,7 @@ is retained as a deprecated alias that maps to the same internal
 from ``domain.check()``.
 """
 
+import inspect
 import warnings
 
 import pytest
@@ -123,6 +124,56 @@ class TestIsEventSourcedAlias:
             name: String()
 
         assert Person.meta_.is_event_sourced is False
+
+
+def _only_removal_warning(caught):
+    matching = [w for w in caught if issubclass(w.category, RemovedInProtean10Warning)]
+    assert len(matching) == 1
+    return matching[0]
+
+
+class TestAliasWarningNamesTheUserLine:
+    """The alias warning points at the user's registration line, whichever
+    entry point they used."""
+
+    def test_decorator_on_class(self, test_domain):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            expected_line = inspect.currentframe().f_lineno + 2
+
+            @test_domain.aggregate(is_event_sourced=True)
+            class Person(BaseAggregate):
+                name: String()
+
+        warning = _only_removal_warning(caught)
+        assert warning.filename == __file__
+        assert warning.lineno == expected_line
+
+    def test_register_call(self, test_domain):
+        class Person(BaseAggregate):
+            name: String()
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            expected_line = inspect.currentframe().f_lineno + 1
+            test_domain.register(Person, is_event_sourced=True)
+
+        warning = _only_removal_warning(caught)
+        assert warning.filename == __file__
+        assert warning.lineno == expected_line
+
+    def test_direct_aggregate_call(self, test_domain):
+        class Person(BaseAggregate):
+            name: String()
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            expected_line = inspect.currentframe().f_lineno + 1
+            test_domain.aggregate(Person, is_event_sourced=True)
+
+        warning = _only_removal_warning(caught)
+        assert warning.filename == __file__
+        assert warning.lineno == expected_line
 
 
 class TestDeprecatedOptionDiagnostic:

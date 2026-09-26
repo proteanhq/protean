@@ -81,7 +81,11 @@ if TYPE_CHECKING:
 
 from inflection import parameterize, titleize, transliterate, underscore
 
-from protean._deprecation import deprecated_from_registry, warn_from_registry
+from protean._deprecation import (
+    deprecated_from_registry,
+    external_stacklevel,
+    warn_from_registry,
+)
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
 from protean.core.aggregate import aggregate_factory
@@ -1058,7 +1062,11 @@ class Domain:
         # here covers every registration path. Framework code registers no
         # email elements, so this only fires on user code.
         if element_type == DomainObjects.EMAIL:
-            warn_from_registry("email_element", "The email element")
+            warn_from_registry(
+                "email_element",
+                "The email element",
+                stacklevel=external_stacklevel(),
+            )
 
         # Check if `element_cls` is already a subclass of the Element Type
         #   which would be the case in an explicit declaration like `class Account(BaseEntity):`
