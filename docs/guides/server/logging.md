@@ -132,16 +132,24 @@ protean --log-format json server
 protean --log-config ./logging.json server      # full dictConfig JSON
 ```
 
-`--log-config` bypasses the environment-aware setup and applies the supplied
-JSON via `logging.config.dictConfig()`. The correlation filter is still
-installed on the root logger afterwards.
+`--log-level` and `--log-format` override only the level and the format. The
+rest of `[logging]` still applies, so redaction, `per_logger` levels, and the
+correlation filter stay in place while you raise the verbosity.
+
+`--log-config` applies the supplied JSON via `logging.config.dictConfig()`,
+and `server` and `observatory` then skip the domain's `[logging]` section. The
+correlation filter is still installed on the root logger. Add the redaction
+filter to your `dictConfig` yourself if you need it. If your `dictConfig`
+leaves the root logger without handlers, `Domain.init()` applies `[logging]`
+anyway.
 
 The `--debug` flag on `protean server` and `protean observatory` was removed in
 v0.17.0. Use `protean --log-level DEBUG server` instead for the single-process
 server. For multi-worker (`--workers N`) or `--reload` runs, set
 `PROTEAN_LOG_LEVEL=DEBUG` instead: it is honored by both the supervisor (so the
 worker log listener passes DEBUG records through) and each spawned worker (which
-configures its own logging on startup).
+configures its own logging on startup). `--log-level` and `--log-format` do not
+reach those worker processes yet.
 
 ---
 
@@ -312,6 +320,11 @@ own logging (Django, a custom server, an OS-level journald shim), set
 ```bash
 export PROTEAN_NO_AUTO_LOGGING=1
 ```
+
+Single-worker `protean server` and `protean observatory` honor it too: they
+leave any logging your domain module sets up on import in place. The worker
+processes of a multi-worker or `--reload` run do not read it, and always apply
+`[logging]`.
 
 You can then wire whichever parts of Protean's integration you want
 manually:

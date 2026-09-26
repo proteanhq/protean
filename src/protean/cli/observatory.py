@@ -8,6 +8,7 @@ import typer
 from protean.cli._helpers import (
     CTX_LOG_CONFIGURED,
     abort_for_missing_dependency,
+    apply_domain_logging,
     handle_cli_exceptions,
 )
 from protean.exceptions import NoDomainException
@@ -19,6 +20,7 @@ logger = get_logger(__name__)
 
 @handle_cli_exceptions("observatory")
 def observatory(
+    ctx: typer.Context,
     domain: Annotated[
         list[str],
         typer.Option(help="Domain module path(s) to monitor"),
@@ -47,18 +49,10 @@ def observatory(
     except ImportError as exc:
         abort_for_missing_dependency("server", "'protean observatory'", exc)
 
-    # click ships with the server extra (via uvicorn), not with core, so import it
-    # lazily inside the command that needs the server extra anyway. A top-level
-    # import would break every `protean` CLI invocation on a core-only install.
-    import click  # noqa: PLC0415
-
-    # Check parent context for CLI-level logging configuration.
-    # click.get_current_context may fail when called directly (not via CLI).
-    ctx = click.get_current_context(silent=True)
-    parent_obj = getattr(ctx, "obj", None) or {} if ctx else {}
+    parent_obj = getattr(ctx, "obj", None) or {}
     if not parent_obj.get(CTX_LOG_CONFIGURED):
-        # Honor PROTEAN_LOG_LEVEL so `PROTEAN_LOG_LEVEL=DEBUG protean
-        # observatory` replaces the removed `--debug` flag.
+        # Bootstrap handlers so errors raised while the domains load reach the
+        # console. The first domain's [logging] replaces them once all load.
         configure_logging(level=os.getenv("PROTEAN_LOG_LEVEL", "INFO"))
 
     if not domain:
@@ -76,8 +70,14 @@ def observatory(
             raise typer.Abort() from exc
 
         assert derived is not None
-        derived.init()
         domains.append(derived)
+
+    # Logging is process-wide, so the first domain's [logging] wins. Apply it
+    # after every domain loads, so a load failure in a later domain still
+    # reports through the bootstrap handlers.
+    apply_domain_logging(domains[0], parent_obj)
+    for derived in domains:
+        derived.init()
 
     obs = Observatory(domains=domains, title=title)
     obs.run(host=host, port=port)

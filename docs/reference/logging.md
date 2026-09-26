@@ -161,8 +161,23 @@ The `--debug` flag on `protean server` and `protean observatory` was removed in
 v0.17.0. Use the global `--log-level DEBUG` flag instead (for example,
 `protean --log-level DEBUG server`).
 
-When any of these flags are used, CLI commands skip the later `Domain.init()`
-auto-configuration to avoid clobbering the explicit setup.
+`protean server` and `protean observatory` call `Domain.configure_logging()`
+once the domain loads. `--log-level` and `--log-format` are passed to it as
+overrides, so the rest of `[logging]` (`redact`, `per_logger`, sampling, and the
+correlation and OpenTelemetry processors) still applies. With `--log-config`,
+or with `PROTEAN_NO_AUTO_LOGGING` set, the two commands skip that call.
+`Domain.init()` still auto-configures from `[logging]` when the root logger has
+no handlers, so a `dictConfig` that leaves the root logger without handlers
+gets the `[logging]` setup on top.
+
+Other commands, such as `protean shell`, do not call
+`Domain.configure_logging()`. When one of these flags is used, the root logger
+has handlers, so `Domain.init()` skips its auto-configuration and `[logging]` is
+not applied.
+
+In multi-worker (`--workers N`) and `--reload` runs, `--log-level` and
+`--log-format` do not reach the worker processes yet. Each worker applies the
+domain's `[logging]` section and `PROTEAN_LOG_LEVEL`.
 
 ---
 
@@ -172,7 +187,7 @@ auto-configuration to avoid clobbering the explicit setup.
 |----------|---------|-----------------|
 | `PROTEAN_ENV` | Deployment environment; drives default level and format. | `development`, `staging`, `production`, `test` (case-insensitive). Falls back to `ENV`, then `ENVIRONMENT`. Default: `development`. |
 | `PROTEAN_LOG_LEVEL` | Overrides the resolved level (but not an explicit `level` kwarg). | Same as `--log-level`. |
-| `PROTEAN_NO_AUTO_LOGGING` | Disables `Domain.init()` auto-configuration. | `1` or `true` (case-insensitive). Anything else is ignored. |
+| `PROTEAN_NO_AUTO_LOGGING` | Disables `Domain.init()` auto-configuration. `protean server` and `protean observatory` also skip their `Domain.configure_logging()` call, so logging you set up yourself stays in place. Multi-worker and `--reload` worker processes do not read it. | `1` or `true` (case-insensitive). Anything else is ignored. |
 
 ---
 

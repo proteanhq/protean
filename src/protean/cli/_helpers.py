@@ -6,6 +6,7 @@ imports every subcommand module, so subcommand modules cannot import from
 """
 
 import functools
+import os
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -31,9 +32,37 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Key used to store CLI logging state in the Typer context.
-# Shared between cli/__init__.py (callback) and subcommands that have their
-# own logging setup (server, observatory) to avoid double-configuration.
+# Set by the root callback when a logging flag was given. Subcommands read it
+# to skip their own bootstrap logging setup.
 CTX_LOG_CONFIGURED = "_protean_log_configured"
+
+# Keys holding the root callback's logging flags, so ``server`` and
+# ``observatory`` can pass them to ``Domain.configure_logging()`` as overrides.
+CTX_LOG_LEVEL = "_protean_log_level"
+CTX_LOG_FORMAT = "_protean_log_format"
+CTX_LOG_DICT_CONFIG = "_protean_log_dict_config"
+
+
+def apply_domain_logging(domain: "Domain", parent_obj: dict[str, Any]) -> None:
+    """Apply the domain's ``[logging]`` configuration for a long-running command.
+
+    ``--log-level`` and ``--log-format`` from the root callback override the
+    level and format; the rest of ``[logging]`` still applies. Nothing is
+    applied when a ``--log-config`` file was given, or when
+    ``PROTEAN_NO_AUTO_LOGGING`` is ``1`` or ``true``, so logging the user set
+    up themselves stays in place.
+    """
+    if parent_obj.get(CTX_LOG_DICT_CONFIG):
+        return
+    if os.environ.get("PROTEAN_NO_AUTO_LOGGING", "").lower() in ("1", "true"):
+        return
+
+    kwargs: dict[str, Any] = {}
+    if parent_obj.get(CTX_LOG_LEVEL) is not None:
+        kwargs["level"] = parent_obj[CTX_LOG_LEVEL]
+    if parent_obj.get(CTX_LOG_FORMAT) is not None:
+        kwargs["format"] = parent_obj[CTX_LOG_FORMAT]
+    domain.configure_logging(**kwargs)
 
 
 @contextmanager

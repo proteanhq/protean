@@ -23,12 +23,11 @@ OBSERVATORY_CLS = "protean.server.observatory.Observatory"
 
 
 @pytest.mark.no_test_domain
-def test_click_is_imported_lazily_not_at_module_top() -> None:
-    """observatory imports click inside the command, so a core-only install can
-    still run the CLI. click ships with the server extra (via uvicorn), not core,
-    so a top-level import would break every `protean` CLI invocation without that
-    extra. A function-local import binds click in the function scope, never the
-    module globals, so this stays empty regardless of test order."""
+def test_click_is_not_imported_at_module_top() -> None:
+    """The observatory module does not import click at the top, so a core-only
+    install can still run the CLI. click ships with the server extra (via
+    uvicorn), not core, so a top-level import would break every `protean` CLI
+    invocation without that extra."""
     import protean.cli.observatory as observatory_module
 
     assert "click" not in vars(observatory_module)
@@ -135,7 +134,7 @@ class TestObservatoryCommand:
         from protean.cli.observatory import observatory as obs_fn
 
         with patch(OBSERVATORY_CLS), pytest.raises(typer.Abort):
-            obs_fn(domain=[], host="0.0.0.0", port=9000, title="T")
+            obs_fn(MagicMock(obj=None), domain=[], host="0.0.0.0", port=9000, title="T")
 
     def test_observatory_custom_host(self):
         """Test that observatory accepts a custom host."""
