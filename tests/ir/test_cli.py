@@ -253,3 +253,24 @@ class TestIRShowErrors:
         change_working_directory_to("test7")
         result = runner.invoke(app, ["ir", "show", "-d", "nonexistent_domain.py"])
         assert result.exit_code != 0
+
+
+@pytest.mark.no_test_domain
+class TestIRShowBadLintConfig:
+    def test_error_message_keeps_the_lint_table_name(self, tmp_path, monkeypatch):
+        (tmp_path / "domain.toml").write_text("[lint]\nrules = 5\n")
+        (tmp_path / "bad_lint_ir.py").write_text(
+            "from protean import Domain\n\ndomain = Domain(name='BadLintIR')\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        result = runner.invoke(app, ["ir", "show", "-d", "bad_lint_ir.py:domain"])
+
+        assert result.exit_code == 1, result.output
+        # The log line repeats the message, so read only the printed error.
+        # Rich wraps it to the terminal width; join the words back up.
+        printed = " ".join(result.output.split("\nError: ", 1)[1].split())
+        assert printed.startswith(
+            "Error generating IR from Protean domain: [lint].rules must be a list"
+        ), printed

@@ -334,9 +334,9 @@ directly on the `[databases.<name>]` block:
 | `max_overflow` | `10` | Additional temporary connections beyond `pool_size` |
 | `pool_recycle` | unset | Recycle connections older than N seconds |
 
-Setting `pool_size` below `5` triggers a `LOW_POOL_SIZE` warning from
-`protean check` (suppressed when `PROTEAN_ENV` is `development` or
-`testing`).
+Setting `pool_size` below `5` makes `Domain.init()` log a `LOW_POOL_SIZE`
+warning (suppressed when `PROTEAN_ENV` is `development` or `testing`).
+`protean check` does not report it.
 
 Read more in [Adapters → Database](../adapters/database/index.md) or the
 full catalogue in [Server Hardening reference](../server/hardening.md#connection-pools).
@@ -735,7 +735,7 @@ UNHANDLED_EVENT = 3                    # grandfather the first 3 findings
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `level` | str | `"warn"` | Exit-code severity floor for `protean check`. `"error"` fails only on errors; `"warn"` fails on errors and warnings; `"info"` fails on any error, warning, or info finding. Errors always exit `1`; a gating non-error finding exits `2`. |
+| `level` | str | `"warn"` | Exit-code severity floor for `protean check` and the check stage of `protean verify`. `"error"` fails only on errors; `"warn"` fails on errors and warnings; `"info"` fails on any error, warning, or info finding. A gating finding makes `protean check` exit `1` and `protean verify` exit `4`. |
 | `aggregate_size_limit` | int | `5` | Entity count above which an aggregate emits `AGGREGATE_TOO_LARGE`. |
 | `handler_breadth_limit` | int | `5` | Message-type count above which a handler emits `HANDLER_TOO_BROAD`. |
 | `check_infra_imports` | bool | `false` | When `true`, `protean check` AST-parses each resolvable domain element's source module (skipping elements with no file-backed module and imports guarded by `TYPE_CHECKING`, `try`/`except`, or a function body) and emits `INFRA_IMPORT_IN_DOMAIN` for any top-level import from `protean.adapters`. Off by default because it reads source files. |
@@ -746,10 +746,35 @@ UNHANDLED_EVENT = 3                    # grandfather the first 3 findings
 `level` sets the CI failure floor without hiding findings; the `--level` CLI
 flag only filters what is displayed and never changes the exit code.
 
+A bad value in `[lint]` (for example `level = 5`, `rules = 5` or
+`aggregate_size_limit = "5"`) is an error. `protean check` exits `2` and
+`protean verify` exits `4`. Building the IR raises `ConfigurationError` for
+the same values, except `level`: the IR builder does not read `level`.
+
+The limits and the `check_*` flags need literal TOML integers and booleans.
+Env-var interpolation always yields a string, so
+`aggregate_size_limit = "${AGG_LIMIT|8}"` or
+`check_infra_imports = "${INFRA|true}"` is rejected as a bad value.
+
 Individual elements can silence specific codes for themselves with the
 `suppress_checks` decorator option (for example
 `@domain.aggregate(suppress_checks=["AGGREGATE_TOO_LARGE"])`), which takes
 precedence over the `[lint.suppressions]` allow-list.
+
+### `observatory`
+
+This section configures the Observatory's trace history.
+
+```toml
+[observatory]
+trace_retention_days = 7   # days of trace history kept in Redis; 0 disables it
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `trace_retention_days` | int | `7` | Days of trace events kept in the `protean:traces` Redis Stream. `0` or a negative number turns persistence off; live broadcasting still works. The value goes through Python's `int()`, so `3.9` becomes 3. An `[observatory]` that is not a table, or a value `int()` cannot convert, falls back to 7. |
+
+Read more in [Observability](../server/observability.md#trace-persistence-and-retention).
 
 ### `[server.partitioning]`
 

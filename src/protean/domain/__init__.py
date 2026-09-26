@@ -144,7 +144,11 @@ from protean.integrations.logging import (
     protean_correlation_processor,
     protean_otel_processor,
 )
-from protean.ir.builder import IRBuilder
+from protean.ir.builder import (
+    IRBuilder,
+    validate_lint_suppressions,
+    validate_lint_table,
+)
 from protean.ir.diagnostics import DiagnosticCode
 from protean.port.event_store import CausationNode
 from protean.server.tracing import TraceEmitter
@@ -516,7 +520,9 @@ class Domain:
                 trace_retention_days = int(
                     observatory_config.get("trace_retention_days", 7)
                 )
-            except (TypeError, ValueError):
+            except (AttributeError, OverflowError, TypeError, ValueError):
+                # ``AttributeError``: ``observatory`` is not a table.
+                # ``OverflowError``: the retention is ``inf``.
                 trace_retention_days = 7
             self._trace_emitter = TraceEmitter(
                 self, trace_retention_days=trace_retention_days
@@ -754,6 +760,12 @@ class Domain:
 
         Diagnostics have a ``level`` field (``"warning"`` or ``"info"``)
         used to compute the ``counts`` and determine the overall ``status``.
+
+        Raises:
+            ConfigurationError: If the ``[lint]`` table holds a value the IR
+                builder rejects, such as ``rules = 5``. This holds even when
+                validation errors skip the IR build. Any other IR build
+                failure leaves ``diagnostics`` empty.
         """
         self._prepare(traverse=traverse, validate=False)
 
@@ -762,6 +774,15 @@ class Domain:
 
         errors = self._validator.errors
         diagnostics: list[dict[str, str]] = []
+
+        # Check ``[lint]`` before the IR short-circuit below, so a malformed
+        # value raises even when validation errors skip the IR build.
+        lint_config = self.config.get("lint", {})
+        lint_error = validate_lint_table(lint_config) or validate_lint_suppressions(
+            lint_config.get("suppressions", {})
+        )
+        if lint_error:
+            raise ConfigurationError(lint_error)
 
         # Build IR for additional diagnostics only if no fatal errors
         if not errors:

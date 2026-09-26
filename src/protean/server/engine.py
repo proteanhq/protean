@@ -329,7 +329,7 @@ class Engine:
             trace_retention_days = int(
                 observatory_config.get("trace_retention_days", 7)
             )
-        except (AttributeError, TypeError, ValueError):
+        except (AttributeError, OverflowError, TypeError, ValueError):
             trace_retention_days = 7
         self.emitter = TraceEmitter(domain, trace_retention_days=trace_retention_days)
 

@@ -187,7 +187,12 @@ def validate_lint_suppressions(suppressions: Any) -> str | None:
 
 
 def validate_lint_table(lint_config: Any) -> str | None:
-    """Return an error message if ``[lint]`` itself is not a table, else ``None``.
+    """Return an error message if ``[lint]`` or one of its options is malformed.
+
+    Returns ``None`` when ``[lint]`` is a table and ``rules``,
+    ``aggregate_size_limit``, ``handler_breadth_limit``, ``check_infra_imports``
+    and ``check_adapter_calls`` have the right types. ``level`` and
+    ``suppressions`` are checked elsewhere.
 
     Every ``[lint]``-scoped setting (``level``, ``suppressions``,
     ``aggregate_size_limit``, ``handler_breadth_limit``, ``rules``, ...) is read
@@ -196,9 +201,32 @@ def validate_lint_table(lint_config: Any) -> str | None:
     raises a bare ``AttributeError`` before any of those individual reads —
     including :func:`validate_lint_suppressions` — get a chance to run. Callers
     must check this *before* reading any ``[lint]`` key.
+
+    It also checks the types of the options the IR builder reads. Without the
+    check, a wrong type fails in one of several ways: ``rules = 5`` or
+    ``aggregate_size_limit = "5"`` raises a ``TypeError`` inside the build,
+    ``rules = "my.module"`` is iterated one character at a time, so each
+    character is logged and skipped as a rule path, and ``check_infra_imports =
+    "no"`` is truthy and turns the scan on.
     """
     if not isinstance(lint_config, dict):
         return f"[lint] must be a table, got {type(lint_config).__name__}."
+
+    rules = lint_config.get("rules", [])
+    if not isinstance(rules, list) or not all(isinstance(r, str) for r in rules):
+        return f"[lint].rules must be a list of dotted paths, got {rules!r}."
+
+    for key in ("aggregate_size_limit", "handler_breadth_limit"):
+        limit = lint_config.get(key, 5)
+        # ``bool`` is an ``int`` subclass, so ``true`` would read as ``1``.
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 0:
+            return f"[lint].{key} must be a non-negative integer, got {limit!r}."
+
+    for key in ("check_infra_imports", "check_adapter_calls"):
+        flag = lint_config.get(key, False)
+        if not isinstance(flag, bool):
+            return f"[lint].{key} must be true or false, got {flag!r}."
+
     return None
 
 

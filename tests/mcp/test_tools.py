@@ -119,6 +119,20 @@ class TestReadTools:
         with pytest.raises(tools.McpToolError, match="Error checking Protean domain"):
             tools.check(CLEAN_DOMAIN)
 
+    @pytest.mark.parametrize("tool", [tools.check, tools.validate])
+    def test_a_bad_lint_option_is_an_error(self, tool, tmp_path, monkeypatch):
+        # A bad ``[lint]`` option must not read as a clean pass.
+        (tmp_path / "domain.toml").write_text("[lint]\nrules = 5\n")
+        module = tmp_path / f"mcp_bad_lint_{tool.__name__}.py"
+        module.write_text(
+            "from protean import Domain\n\ndomain = Domain(name='McpBadLint')\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        with pytest.raises(tools.McpToolError, match=r"\[lint\]\.rules must be a list"):
+            tool(f"{module.name}:domain")
+
     def test_introspect_translates_an_init_failure(self, monkeypatch):
         def boom(self, *args, **kwargs):
             raise RuntimeError("init blew up")

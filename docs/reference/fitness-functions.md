@@ -560,7 +560,8 @@ for the recognized query surfaces and the resolution rules.
 | **Level** | `warning` |
 
 Fires when a database provider declares `pool_size` below `5`. The `memory`
-provider is skipped, since it holds no connections.
+provider is skipped, since it holds no connections. `Domain.init()` logs this
+warning at startup. `protean check` does not report it.
 
 **Why.** A connection pool smaller than the production default starves
 concurrent requests under load, so operations queue or fail while waiting for a
