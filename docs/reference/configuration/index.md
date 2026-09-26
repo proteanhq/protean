@@ -735,7 +735,7 @@ UNHANDLED_EVENT = 3                    # grandfather the first 3 findings
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `level` | str | `"warn"` | Exit-code severity floor for `protean check`. `"error"` fails only on errors; `"warn"` fails on errors and warnings; `"info"` fails on any error, warning, or info finding. Errors always exit `1`; a gating non-error finding exits `2`. |
+| `level` | str | `"warn"` | Exit-code severity floor for `protean check`. `"error"` fails only on errors; `"warn"` fails on errors and warnings; `"info"` fails on any error, warning, or info finding. Any gating finding exits `1`. |
 | `aggregate_size_limit` | int | `5` | Entity count above which an aggregate emits `AGGREGATE_TOO_LARGE`. |
 | `handler_breadth_limit` | int | `5` | Message-type count above which a handler emits `HANDLER_TOO_BROAD`. |
 | `check_infra_imports` | bool | `false` | When `true`, `protean check` AST-parses each resolvable domain element's source module (skipping elements with no file-backed module and imports guarded by `TYPE_CHECKING`, `try`/`except`, or a function body) and emits `INFRA_IMPORT_IN_DOMAIN` for any top-level import from `protean.adapters`. Off by default because it reads source files. |
