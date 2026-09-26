@@ -260,6 +260,7 @@ class UnitOfWork:
         from protean.utils.outbox import (  # noqa: PLC0415
             DEFAULT_TARGET_BROKER,
             Outbox,
+            OutboxRepository,
         )
 
         # Gather all events from identity map using helper method
@@ -303,13 +304,15 @@ class UnitOfWork:
         # This is set by domain.process() or by a processing_priority() context manager.
         priority = current_priority()
 
-        # Store events in the outbox as part of the transaction.
+        # Build the outbox rows for this transaction. They are built here and
+        # saved after the event-store append below.
         #
         # Iterate over providers that have events (not over sessions) because
         # event-sourced aggregates are added to the identity map without
         # opening a database session — their state lives in the event store,
         # not in a relational table.  We still need a session for the outbox
         # INSERT, so one is lazily initialised here when missing.
+        outbox_rows: list[tuple[OutboxRepository, Outbox]] = []
         if self.domain.has_outbox:
             outbox_config = self.domain.config.get("outbox", {})
             internal_broker = outbox_config.get("broker", DEFAULT_TARGET_BROKER)
@@ -374,7 +377,7 @@ class UnitOfWork:
                         target_broker=internal_broker,
                         partition_key=partition_key,
                     )
-                    outbox_repo._dao.save(outbox_message)
+                    outbox_rows.append((outbox_repo, outbox_message))
 
                     # External outbox rows for published events — one per
                     # external broker.  Each row is processed independently
@@ -395,7 +398,7 @@ class UnitOfWork:
                                 target_broker=ext_broker,
                                 partition_key=partition_key,
                             )
-                            outbox_repo._dao.save(ext_outbox)
+                            outbox_rows.append((outbox_repo, ext_outbox))
 
         # Record final session count after all lazy sessions have been initialised
         span.set_attribute("protean.uow.session_count", len(self._sessions))
@@ -417,11 +420,23 @@ class UnitOfWork:
             # directly. A genuine optimistic-concurrency conflict still raises and
             # is re-driven by the handler-level version retry, which reloads the
             # aggregate cleanly.
+            #
+            # The append also runs before the outbox rows are saved. Outbox rows
+            # carry the event's message id, which for an event-sourced aggregate
+            # is keyed on the stream and version. A stale writer reuses the
+            # winner's ids, so saving its rows first would hit the outbox unique
+            # check (on autoflush, or in the in-memory provider) before the
+            # append could report the real conflict as ExpectedVersionError.
             event_store = current_domain.event_store.store
             assert event_store is not None
             for events in all_events.values():
                 for event in events:
                     event_store.append(event)
+
+            # Save the outbox rows while this UnitOfWork is still the active
+            # context, so they enlist in its sessions and commit with them.
+            for outbox_repo, outbox_row in outbox_rows:
+                outbox_repo._dao.save(outbox_row)
 
             # Exit the UnitOfWork context: the relational commit below (and any
             # further operations) are no longer part of this transaction. Guard
