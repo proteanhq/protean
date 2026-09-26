@@ -18,6 +18,7 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
+from protean.cli._helpers import CTX_LOG_DICT_CONFIG, apply_domain_logging
 from protean.integrations.logging import (
     ProteanCorrelationFilter,
     ProteanRedactionFilter,
@@ -178,6 +179,25 @@ class TestSingleWorkerServer:
         assert _root_filters(ProteanRedactionFilter) == []
 
 
+class TestApplyDomainLoggingWithStoredDictConfig:
+    """The root callback stores the parsed ``--log-config`` dict, not a flag."""
+
+    @pytest.mark.parametrize("stored", [{"version": 1}, {}])
+    def test_a_stored_dict_skips_the_logging_table(self, stored):
+        domain = MagicMock()
+
+        apply_domain_logging(domain, {CTX_LOG_DICT_CONFIG: stored})
+
+        domain.configure_logging.assert_not_called()
+
+    def test_no_stored_dict_applies_the_logging_table(self):
+        domain = MagicMock()
+
+        apply_domain_logging(domain, {})
+
+        domain.configure_logging.assert_called_once_with()
+
+
 class TestNoAutoLoggingOptOut:
     def test_server_keeps_logging_set_up_on_import(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROTEAN_NO_AUTO_LOGGING", "1")
@@ -257,6 +277,109 @@ class TestMultiWorkerServer:
         handler_levels = levels_when_built[0]
         assert handler_levels
         assert handler_levels == [logging.DEBUG] * len(handler_levels)
+
+
+def _spawned_worker_kwargs(*args: str) -> list[dict[str, object]]:
+    """Run ``protean`` with the spawn context mocked; return each worker's kwargs.
+
+    No process starts. The Supervisor's monitor loop and the Reloader's file
+    watch are patched out so the command returns once the workers are spawned.
+    """
+    mock_ctx = MagicMock()
+    mock_process = mock_ctx.Process.return_value
+    mock_process.pid = 1
+    mock_process.is_alive.return_value = False
+    mock_process.exitcode = 0
+    with (
+        patch("multiprocessing.get_context", return_value=mock_ctx),
+        patch("protean.server.supervisor._build_queue_listener"),
+        patch("protean.server.supervisor.Supervisor._install_signal_handlers"),
+        patch("protean.server.supervisor.Supervisor._monitor"),
+        patch("protean.server.reloader.Reloader._install_signal_handlers"),
+        patch("protean.server.reloader.watch", return_value=iter([])),
+    ):
+        result = runner.invoke(app, list(args))
+    assert result.exit_code == 0, result.output
+    calls = mock_ctx.Process.call_args_list
+    assert calls
+    return [call.kwargs["kwargs"] for call in calls]
+
+
+MULTI_WORKER = ("--workers", "2", "--allow-event-store-multiworker")
+
+
+class TestFlagsReachWorkerProcesses:
+    def test_log_level_reaches_every_multi_worker_process(self, tmp_path):
+        domain = _write_domain(tmp_path, '[logging]\nlevel = "INFO"\n')
+
+        spawned = _spawned_worker_kwargs(
+            "--log-level", "DEBUG", "server", "--domain", domain, *MULTI_WORKER
+        )
+
+        assert len(spawned) == 2
+        assert [kwargs["log_level"] for kwargs in spawned] == ["DEBUG", "DEBUG"]
+        assert [kwargs["log_format"] for kwargs in spawned] == [None, None]
+        assert [kwargs["log_config"] for kwargs in spawned] == [None, None]
+
+    def test_log_format_reaches_every_multi_worker_process(self, tmp_path):
+        domain = _write_domain(tmp_path, '[logging]\nformat = "console"\n')
+
+        spawned = _spawned_worker_kwargs(
+            "--log-format", "json", "server", "--domain", domain, *MULTI_WORKER
+        )
+
+        assert len(spawned) == 2
+        assert [kwargs["log_format"] for kwargs in spawned] == ["json", "json"]
+        assert [kwargs["log_level"] for kwargs in spawned] == [None, None]
+
+    def test_log_config_dict_reaches_every_multi_worker_process(self, tmp_path):
+        domain = _write_domain(tmp_path, '[logging]\nlevel = "ERROR"\n')
+        payload = {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "handlers": {"console": {"class": "logging.StreamHandler"}},
+            "root": {"level": "WARNING", "handlers": ["console"]},
+        }
+        config = tmp_path / "logging.json"
+        config.write_text(json.dumps(payload))
+
+        spawned = _spawned_worker_kwargs(
+            "--log-config", str(config), "server", "--domain", domain, *MULTI_WORKER
+        )
+
+        assert len(spawned) == 2
+        assert [kwargs["log_config"] for kwargs in spawned] == [payload, payload]
+
+    def test_log_level_reaches_the_reload_worker(self, tmp_path):
+        domain = _write_domain(tmp_path, '[logging]\nlevel = "INFO"\n')
+
+        spawned = _spawned_worker_kwargs(
+            "--log-level", "DEBUG", "server", "--domain", domain, "--reload"
+        )
+
+        assert spawned == [
+            {"log_level": "DEBUG", "log_format": None, "log_config": None}
+        ]
+
+    def test_log_format_reaches_the_reload_worker(self, tmp_path):
+        domain = _write_domain(tmp_path, '[logging]\nlevel = "INFO"\n')
+
+        spawned = _spawned_worker_kwargs(
+            "--log-format", "json", "server", "--domain", domain, "--reload"
+        )
+
+        assert spawned == [
+            {"log_level": None, "log_format": "json", "log_config": None}
+        ]
+
+    def test_no_flags_send_no_overrides(self, tmp_path):
+        domain = _write_domain(tmp_path, '[logging]\nlevel = "INFO"\n')
+
+        spawned = _spawned_worker_kwargs("server", "--domain", domain, *MULTI_WORKER)
+
+        assert (
+            spawned == [{"log_level": None, "log_format": None, "log_config": None}] * 2
+        )
 
 
 class TestObservatory:

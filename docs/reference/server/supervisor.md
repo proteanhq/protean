@@ -158,12 +158,21 @@ supervisor = Supervisor(
     domain_path="my_package.domain",
     num_workers=4,
     test_mode=False,
-    debug=False,
+    log_level="INFO",
 )
 supervisor.run()  # Blocks until all workers exit
 
 print(f"Exit code: {supervisor.exit_code}")
 ```
+
+`log_level`, `log_format` and `log_config` do what the CLI's `--log-level`,
+`--log-format` and `--log-config` flags do. Each worker applies them when it
+loads the domain. `log_config` takes the `dictConfig` dict itself, not a file
+path.
+
+The `debug` argument is deprecated and is removed in 0.20.0. Pass
+`log_level="DEBUG"` instead. `Reloader` takes the same arguments and has the
+same deprecation.
 
 ## Production Deployment
 

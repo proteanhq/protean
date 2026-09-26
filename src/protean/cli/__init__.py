@@ -155,7 +155,7 @@ def main(
             raise typer.Exit(code=2) from exc
         configure_logging(dict_config=payload)
         ctx.obj[CTX_LOG_CONFIGURED] = True
-        ctx.obj[CTX_LOG_DICT_CONFIG] = True
+        ctx.obj[CTX_LOG_DICT_CONFIG] = payload
     elif log_level is not None or log_format is not None:
         kwargs: dict[str, Any] = {}
         if log_level is not None:
@@ -250,6 +250,9 @@ def server(
             reloader = Reloader(
                 domain_path=domain,
                 test_mode=test_mode,
+                log_level=parent_obj.get(CTX_LOG_LEVEL),
+                log_format=parent_obj.get(CTX_LOG_FORMAT),
+                log_config=parent_obj.get(CTX_LOG_DICT_CONFIG),
             )
             reloader.run()
 
@@ -325,6 +328,9 @@ def server(
                 num_workers=workers,
                 test_mode=test_mode,
                 acknowledge_event_store_risk=allow_event_store_multiworker,
+                log_level=parent_obj.get(CTX_LOG_LEVEL),
+                log_format=parent_obj.get(CTX_LOG_FORMAT),
+                log_config=parent_obj.get(CTX_LOG_DICT_CONFIG),
             )
             supervisor.run()
 

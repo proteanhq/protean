@@ -190,6 +190,9 @@ class TestServerCommand:
                 num_workers=2,
                 test_mode=False,
                 acknowledge_event_store_risk=False,
+                log_level=None,
+                log_format=None,
+                log_config=None,
             )
             mock_supervisor.run.assert_called_once()
 
@@ -246,6 +249,9 @@ class TestServerCommand:
                 num_workers=2,
                 test_mode=False,
                 acknowledge_event_store_risk=True,
+                log_level=None,
+                log_format=None,
+                log_config=None,
             )
             mock_supervisor.run.assert_called_once()
 
@@ -268,6 +274,9 @@ class TestServerCommand:
                 num_workers=2,
                 test_mode=False,
                 acknowledge_event_store_risk=False,
+                log_level=None,
+                log_format=None,
+                log_config=None,
             )
             mock_supervisor.run.assert_called_once()
 
@@ -290,6 +299,9 @@ class TestServerCommand:
                     num_workers=2,
                     test_mode=False,
                     acknowledge_event_store_risk=False,
+                    log_level=None,
+                    log_format=None,
+                    log_config=None,
                 )
                 mock_supervisor.run.assert_called_once()
                 mock_domain.close.assert_not_called()
@@ -320,6 +332,9 @@ class TestServerCommand:
             MockReloader.assert_called_once_with(
                 domain_path="publishing7.py",
                 test_mode=False,
+                log_level=None,
+                log_format=None,
+                log_config=None,
             )
             mock_reloader.run.assert_called_once()
 
@@ -357,6 +372,9 @@ class TestServerCommand:
             MockReloader.assert_called_once_with(
                 domain_path="publishing7.py",
                 test_mode=True,
+                log_level=None,
+                log_format=None,
+                log_config=None,
             )
 
     def test_server_reload_rejects_debug_flag(self):
@@ -493,7 +511,6 @@ class TestServerCommand:
                 _worker_entry(
                     "drain_domain.py",
                     test_mode=True,
-                    debug=False,
                     worker_id=0,
                 )
 

@@ -17,6 +17,7 @@ import protean.exceptions
 from protean._deprecation import (
     ProteanDeprecationWarning,
     RemovedInProtean017Warning,
+    RemovedInProtean020Warning,
     RemovedInProtean10Warning,
     deprecated,
     external_stacklevel,
@@ -63,6 +64,7 @@ class TestWarningHierarchy:
         "cls",
         [
             RemovedInProtean017Warning,
+            RemovedInProtean020Warning,
             RemovedInProtean10Warning,
         ],
     )
@@ -89,6 +91,7 @@ class TestWarnDeprecated:
         "removal, expected_cls",
         [
             ("0.17.0", RemovedInProtean017Warning),
+            ("0.20.0", RemovedInProtean020Warning),
             ("1.0.0", RemovedInProtean10Warning),
         ],
     )
@@ -225,7 +228,7 @@ class TestDeprecatedDecorator:
             def _f():  # pragma: no cover - never defined; decoration raises
                 return None
 
-        for known in ("0.17.0", "1.0.0"):
+        for known in ("0.17.0", "0.20.0", "1.0.0"):
             assert known in str(exc.value)
         assert "0.18.0" not in str(exc.value)
 

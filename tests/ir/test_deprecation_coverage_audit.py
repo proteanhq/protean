@@ -31,6 +31,8 @@ from protean._deprecation import (
 )
 from protean.fields import List, String
 from protean.ir.builder import IRBuilder
+from protean.server.reloader import Reloader
+from protean.server.supervisor import Supervisor
 from tests.ir.support import deprecated_usage_domain, infra_import_domain
 
 # Every test here builds the domains it needs. Skip the autouse ``test_domain``
@@ -89,8 +91,8 @@ def _deprecation_diagnostics(ir: dict) -> list[dict]:
 
 
 class TestRegistryCompleteness:
-    def test_registry_holds_twelve_active_deprecations(self) -> None:
-        assert len(DEPRECATIONS) == 12
+    def test_registry_holds_fourteen_active_deprecations(self) -> None:
+        assert len(DEPRECATIONS) == 14
 
     def test_every_entry_is_well_formed(self) -> None:
         for slug, entry in DEPRECATIONS.items():
@@ -396,6 +398,14 @@ def _trigger_queryset_update() -> None:
         dao.query.filter(name="before").update(name="after")
 
 
+def _trigger_supervisor_debug() -> None:
+    Supervisor(domain_path="d", num_workers=1, debug=True)
+
+
+def _trigger_reloader_debug() -> None:
+    Reloader(domain_path="d", debug=True)
+
+
 # Each runtime deprecation's slug → a callable that exercises its deprecated
 # path. Keyed by slug so the completeness test below can prove the map and the
 # registry's runtime arm stay in lock-step: adding a runtime entry without a
@@ -405,6 +415,8 @@ _RUNTIME_TRIGGERS: dict[str, Callable[[], None]] = {
     "send_email": _trigger_send_email,
     "dao_update": _trigger_dao_update,
     "queryset_update": _trigger_queryset_update,
+    "supervisor_debug": _trigger_supervisor_debug,
+    "reloader_debug": _trigger_reloader_debug,
 }
 
 

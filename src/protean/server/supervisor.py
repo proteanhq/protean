@@ -19,7 +19,7 @@ Usage:
     protean server --domain my.domain --workers 4
 
     # Programmatic
-    supervisor = Supervisor("my.domain", num_workers=4)
+    supervisor = Supervisor("my.domain", num_workers=4, log_level="DEBUG")
     supervisor.run()
 """
 
@@ -33,7 +33,9 @@ import sys
 import time
 from multiprocessing.process import BaseProcess
 from types import FrameType
-from typing import Optional
+from typing import Any, Optional
+
+from protean._deprecation import warn_from_registry
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,9 @@ class Supervisor:
         test_mode: bool = False,
         debug: bool = False,
         acknowledge_event_store_risk: bool = False,
+        log_level: str | None = None,
+        log_format: str | None = None,
+        log_config: dict[str, Any] | None = None,
     ) -> None:
         """Initialize the Supervisor.
 
@@ -72,11 +77,18 @@ class Supervisor:
             num_workers: Number of worker processes to spawn.
             test_mode: If True, each worker Engine runs in test mode
                 (limited cycles, then exit).
-            debug: If True, workers run with DEBUG-level logging.
+            debug: Deprecated, removed in v0.20.0. ``True`` is the same as
+                ``log_level="DEBUG"``; an explicit ``log_level`` wins.
             acknowledge_event_store_risk: If True, skip the single-writer guard
                 and spawn multiple workers even when the domain has event-store
                 subscriptions, accepting that their events will be
                 double-processed.
+            log_level: Log level each worker passes to
+                ``Domain.configure_logging()`` in place of ``[logging].level``.
+            log_format: Log format each worker passes to
+                ``Domain.configure_logging()`` in place of ``[logging].format``.
+            log_config: A ``logging.config.dictConfig`` dict. Each worker
+                applies it and skips ``Domain.configure_logging()``.
         """
         if num_workers < 1:
             raise ValueError("num_workers must be >= 1")
@@ -84,8 +96,14 @@ class Supervisor:
         self.domain_path = domain_path
         self.num_workers = num_workers
         self.test_mode = test_mode
-        self.debug = debug
+        if debug:
+            warn_from_registry("supervisor_debug", "Supervisor(debug=...)")
+            if log_level is None:
+                log_level = "DEBUG"
         self.acknowledge_event_store_risk = acknowledge_event_store_risk
+        self.log_level = log_level
+        self.log_format = log_format
+        self.log_config = log_config
 
         self.workers: list[BaseProcess] = []
         self.exit_code: int = 0
@@ -143,10 +161,14 @@ class Supervisor:
                 args=(
                     self.domain_path,
                     self.test_mode,
-                    self.debug,
                     worker_id,
                     self._log_queue,
                 ),
+                kwargs={
+                    "log_level": self.log_level,
+                    "log_format": self.log_format,
+                    "log_config": self.log_config,
+                },
                 name=f"protean-worker-{worker_id}",
             )
             process.start()
@@ -353,9 +375,12 @@ def _install_worker_log_queue(
 def _worker_entry(
     domain_path: str,
     test_mode: bool,
-    debug: bool,
     worker_id: int,
     log_queue: Optional["multiprocessing.Queue[logging.LogRecord]"] = None,
+    *,
+    log_level: str | None = None,
+    log_format: str | None = None,
+    log_config: dict[str, Any] | None = None,
 ) -> None:
     """Entry point for each spawned worker process.
 
@@ -370,12 +395,18 @@ def _worker_entry(
     Args:
         domain_path: A ``derive_domain``-compatible string.
         test_mode: Run Engine in test mode.
-        debug: Run Engine with DEBUG-level logging.
         worker_id: Numeric identifier for this worker (for logging).
         log_queue: Optional ``multiprocessing.Queue`` for forwarding log
             records to the supervisor's ``QueueListener``.  When ``None``
             (single-worker mode) the worker uses direct handlers from
             ``configure_logging()``.
+        log_level: Passed to ``Domain.configure_logging()`` in place of
+            ``[logging].level``, as the CLI's ``--log-level`` does.
+        log_format: Passed to ``Domain.configure_logging()`` in place of
+            ``[logging].format``, as the CLI's ``--log-format`` does.
+        log_config: A ``dictConfig`` dict, as the CLI's ``--log-config``
+            loads. When given, the worker applies it and skips
+            ``Domain.configure_logging()``.
     """
     from protean.server.engine import Engine  # noqa: PLC0415
     from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
@@ -385,7 +416,7 @@ def _worker_entry(
     # This is replaced below by the domain's own configuration (which carries
     # ``[logging].redact``, per-logger overrides, etc.) once the domain is
     # available.
-    configure_logging(level="DEBUG" if debug else "INFO")
+    configure_logging(level=log_level or "INFO")
 
     worker_logger = logging.getLogger(f"protean.server.worker-{worker_id}")
     worker_logger.info(f"Worker {worker_id} (PID {os.getpid()}) starting...")
@@ -403,10 +434,17 @@ def _worker_entry(
         # run BEFORE installing the QueueHandler so we know which handlers the
         # listener should mirror, and so filters attached to root by
         # ``Domain.configure_logging`` survive into the queue path.
-        log_overrides: dict[str, str] = {}
-        if debug:
-            log_overrides["level"] = "DEBUG"
-        domain.configure_logging(**log_overrides)
+        # A dictConfig from ``--log-config`` replaces ``[logging]`` entirely,
+        # as it does in the parent process.
+        if log_config is not None:
+            configure_logging(dict_config=log_config)
+        else:
+            log_overrides: dict[str, str] = {}
+            if log_level is not None:
+                log_overrides["level"] = log_level
+            if log_format is not None:
+                log_overrides["format"] = log_format
+            domain.configure_logging(**log_overrides)
 
         # Multi-worker mode: replace direct handlers with a QueueHandler so
         # records are serialized through the supervisor's listener. Done after
@@ -418,7 +456,7 @@ def _worker_entry(
         domain.init()
 
         with domain.domain_context():
-            engine = Engine(domain, test_mode=test_mode, debug=debug)
+            engine = Engine(domain, test_mode=test_mode)
             engine.run()
 
         sys.exit(engine.exit_code)

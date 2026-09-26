@@ -8,11 +8,13 @@ triggering real filesystem events.
 
 import os
 import signal
+import warnings
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from protean._deprecation import RemovedInProtean020Warning
 from protean.server.reloader import (
     _DRAIN_MARGIN_SECONDS,
     _EXTRA_IGNORE_DIRS,
@@ -29,7 +31,9 @@ class TestReloaderInit:
 
         assert reloader.domain_path == "my.domain"
         assert reloader.test_mode is False
-        assert reloader.debug is False
+        assert reloader.log_level is None
+        assert reloader.log_format is None
+        assert reloader.log_config is None
         assert reloader.reload_dirs == [Path.cwd().resolve()]
         assert reloader.exit_code == 0
         assert reloader.process is None
@@ -44,12 +48,16 @@ class TestReloaderInit:
             domain_path="svc.domain",
             reload_dirs=[str(sub)],
             test_mode=True,
-            debug=True,
+            log_level="DEBUG",
+            log_format="json",
+            log_config={"version": 1},
         )
 
         assert reloader.domain_path == "svc.domain"
         assert reloader.test_mode is True
-        assert reloader.debug is True
+        assert reloader.log_level == "DEBUG"
+        assert reloader.log_format == "json"
+        assert reloader.log_config == {"version": 1}
         assert reloader.reload_dirs == [sub.resolve()]
 
     def test_reload_dirs_accepts_path_objects(self, tmp_path):
@@ -71,7 +79,7 @@ class TestReloaderInit:
 
 class TestReloaderProcessLifecycle:
     def test_start_process_spawns_worker_with_correct_args(self):
-        reloader = Reloader(domain_path="my.domain", test_mode=True, debug=False)
+        reloader = Reloader(domain_path="my.domain", test_mode=True, log_level="DEBUG")
 
         mock_process = MagicMock()
         mock_process.pid = 4242
@@ -82,7 +90,8 @@ class TestReloaderProcessLifecycle:
 
         reloader._ctx.Process.assert_called_once_with(
             target=_worker_entry,
-            args=("my.domain", True, False, 0, None),
+            args=("my.domain", True, 0, None),
+            kwargs={"log_level": "DEBUG", "log_format": None, "log_config": None},
             name="protean-reload-worker",
         )
         mock_process.start.assert_called_once()
@@ -526,3 +535,74 @@ class TestDisplayPath:
         # Either relative (if cwd happens to contain /etc/hosts, which it
         # doesn't in practice) or an absolute string wrapped in quotes.
         assert rendered.startswith("'") and rendered.endswith("'")
+
+
+def _spawned_kwargs(reloader: Reloader) -> dict[str, object]:
+    """Start the reloader's worker on a mocked spawn context; return its kwargs."""
+    reloader._ctx = MagicMock()
+    reloader._ctx.Process.return_value.pid = 1
+    reloader._start_process()
+    return reloader._ctx.Process.call_args.kwargs["kwargs"]
+
+
+class TestReloaderLoggingArguments:
+    def test_logging_arguments_reach_the_worker(self):
+        reloader = Reloader(
+            domain_path="d",
+            log_level="DEBUG",
+            log_format="json",
+            log_config={"version": 1},
+        )
+
+        assert _spawned_kwargs(reloader) == {
+            "log_level": "DEBUG",
+            "log_format": "json",
+            "log_config": {"version": 1},
+        }
+
+    def test_logging_arguments_survive_a_restart(self):
+        reloader = Reloader(domain_path="d", log_format="json")
+        reloader._ctx = MagicMock()
+        reloader._ctx.Process.return_value.is_alive.return_value = False
+        reloader._ctx.Process.return_value.exitcode = 0
+
+        reloader._start_process()
+        reloader._restart_process()
+
+        calls = reloader._ctx.Process.call_args_list
+        assert len(calls) == 2
+        for call in calls:
+            assert call.kwargs["kwargs"]["log_format"] == "json"
+
+
+class TestReloaderDebugDeprecation:
+    def test_debug_true_warns_and_maps_to_debug_level(self):
+        with pytest.warns(RemovedInProtean020Warning, match="v0.20.0") as record:
+            reloader = Reloader(domain_path="d", debug=True)
+
+        assert len(record) == 1
+        assert "Reloader(debug=...)" in str(record[0].message)
+        assert 'log_level="DEBUG"' in str(record[0].message)
+        assert record[0].filename == __file__
+        assert _spawned_kwargs(reloader)["log_level"] == "DEBUG"
+
+    def test_explicit_log_level_wins_over_debug(self):
+        with pytest.warns(RemovedInProtean020Warning):
+            reloader = Reloader(domain_path="d", debug=True, log_level="WARNING")
+
+        assert _spawned_kwargs(reloader)["log_level"] == "WARNING"
+
+    def test_debug_false_does_not_warn(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            reloader = Reloader(domain_path="d", debug=False)
+
+        assert caught == []
+        assert reloader.log_level is None
+
+    def test_omitted_debug_does_not_warn(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            Reloader(domain_path="d")
+
+        assert caught == []

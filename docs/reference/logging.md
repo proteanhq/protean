@@ -175,9 +175,11 @@ Other commands, such as `protean shell`, do not call
 has handlers, so `Domain.init()` skips its auto-configuration and `[logging]` is
 not applied.
 
-In multi-worker (`--workers N`) and `--reload` runs, `--log-level` and
-`--log-format` do not reach the worker processes yet. Each worker applies the
-domain's `[logging]` section and `PROTEAN_LOG_LEVEL`.
+In multi-worker (`--workers N`) and `--reload` runs, the three flags also reach
+every worker process. Each worker applies them the same way the parent does:
+`--log-level` and `--log-format` override the level and the format of
+`[logging]`, and `--log-config` replaces `[logging]`. A worker started after a
+reload gets the same flags.
 
 ---
 

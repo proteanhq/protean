@@ -4,15 +4,20 @@ The Supervisor spawns child processes, so these tests exercise initialization,
 validation, signal handling, and shutdown logic without spawning real workers.
 """
 
+import logging
 import os
 import signal
 import sys
+import warnings
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from protean._deprecation import RemovedInProtean020Warning
+from protean.domain import Domain
 from protean.exceptions import ConfigurationError
+from protean.integrations.logging import ProteanRedactionFilter
 from protean.server.supervisor import Supervisor, _worker_entry
 from tests.shared import change_working_directory_to
 
@@ -20,12 +25,19 @@ from tests.shared import change_working_directory_to
 class TestSupervisorInit:
     def test_initialization_with_valid_args(self):
         supervisor = Supervisor(
-            domain_path="my.domain", num_workers=4, test_mode=True, debug=True
+            domain_path="my.domain",
+            num_workers=4,
+            test_mode=True,
+            log_level="DEBUG",
+            log_format="json",
+            log_config={"version": 1},
         )
         assert supervisor.domain_path == "my.domain"
         assert supervisor.num_workers == 4
         assert supervisor.test_mode is True
-        assert supervisor.debug is True
+        assert supervisor.log_level == "DEBUG"
+        assert supervisor.log_format == "json"
+        assert supervisor.log_config == {"version": 1}
         assert supervisor.workers == []
         assert supervisor.exit_code == 0
         assert supervisor._shutting_down is False
@@ -41,7 +53,9 @@ class TestSupervisorInit:
     def test_defaults(self):
         supervisor = Supervisor(domain_path="d", num_workers=1)
         assert supervisor.test_mode is False
-        assert supervisor.debug is False
+        assert supervisor.log_level is None
+        assert supervisor.log_format is None
+        assert supervisor.log_config is None
 
 
 class TestSupervisorSignalHandling:
@@ -334,7 +348,11 @@ class TestSupervisorRun:
     def test_run_passes_correct_args_to_worker_entry(self):
         """run() passes correct arguments to _worker_entry."""
         supervisor = Supervisor(
-            domain_path="my.domain", num_workers=1, test_mode=True, debug=True
+            domain_path="my.domain",
+            num_workers=1,
+            test_mode=True,
+            log_level="DEBUG",
+            log_format="json",
         )
 
         mock_process = MagicMock()
@@ -349,7 +367,8 @@ class TestSupervisorRun:
 
             mock_ctx.Process.assert_called_once_with(
                 target=_worker_entry,
-                args=("my.domain", True, True, 0, None),
+                args=("my.domain", True, 0, None),
+                kwargs={"log_level": "DEBUG", "log_format": "json", "log_config": None},
                 name="protean-worker-0",
             )
 
@@ -372,7 +391,7 @@ class TestWorkerEntry:
             patch("protean.utils.logging.configure_logging"),
             pytest.raises(SystemExit, match="0"),
         ):
-            _worker_entry("my.domain", test_mode=True, debug=False, worker_id=0)
+            _worker_entry("my.domain", test_mode=True, worker_id=0)
 
         mock_domain.init.assert_called_once()
         # Domain-level logging config is applied so worker picks up
@@ -380,8 +399,8 @@ class TestWorkerEntry:
         mock_domain.configure_logging.assert_called_once_with()
         mock_engine.run.assert_called_once()
 
-    def test_worker_entry_debug_propagates_to_domain_config(self):
-        """`debug=True` forwards `level="DEBUG"` to domain.configure_logging."""
+    def test_worker_entry_log_level_propagates_to_domain_config(self):
+        """`log_level` alone forwards only `level` to domain.configure_logging."""
         mock_domain = MagicMock()
         mock_domain.domain_context.return_value.__enter__ = MagicMock()
         mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
@@ -397,7 +416,7 @@ class TestWorkerEntry:
             patch("protean.utils.logging.configure_logging"),
             pytest.raises(SystemExit, match="0"),
         ):
-            _worker_entry("my.domain", test_mode=True, debug=True, worker_id=0)
+            _worker_entry("my.domain", test_mode=True, worker_id=0, log_level="DEBUG")
 
         mock_domain.configure_logging.assert_called_once_with(level="DEBUG")
 
@@ -408,7 +427,7 @@ class TestWorkerEntry:
             patch("protean.utils.logging.configure_logging"),
             pytest.raises(SystemExit, match="1"),
         ):
-            _worker_entry("bad.domain", test_mode=False, debug=False, worker_id=0)
+            _worker_entry("bad.domain", test_mode=False, worker_id=0)
 
     def test_worker_entry_exception_exits_with_code_1(self):
         """_worker_entry exits with code 1 on unexpected exception."""
@@ -420,18 +439,28 @@ class TestWorkerEntry:
             patch("protean.utils.logging.configure_logging"),
             pytest.raises(SystemExit, match="1"),
         ):
-            _worker_entry("my.domain", test_mode=False, debug=False, worker_id=0)
+            _worker_entry("my.domain", test_mode=False, worker_id=0)
 
-    def test_worker_entry_debug_mode_configures_debug_logging(self):
-        """_worker_entry configures DEBUG logging when debug=True."""
+    def test_worker_entry_bootstraps_at_the_given_log_level(self):
+        """The bootstrap logging before the domain loads uses `log_level`."""
         with (
             patch("protean.utils.domain_discovery.derive_domain", return_value=None),
             patch("protean.utils.logging.configure_logging") as mock_configure,
             pytest.raises(SystemExit),
         ):
-            _worker_entry("d", test_mode=False, debug=True, worker_id=0)
+            _worker_entry("d", test_mode=False, worker_id=0, log_level="DEBUG")
 
         mock_configure.assert_called_once_with(level="DEBUG")
+
+    def test_worker_entry_bootstraps_at_info_without_a_log_level(self):
+        with (
+            patch("protean.utils.domain_discovery.derive_domain", return_value=None),
+            patch("protean.utils.logging.configure_logging") as mock_configure,
+            pytest.raises(SystemExit),
+        ):
+            _worker_entry("d", test_mode=False, worker_id=0)
+
+        mock_configure.assert_called_once_with(level="INFO")
 
 
 class TestSupervisorEventStoreGuard:
@@ -593,3 +622,175 @@ class TestSupervisorEventStoreGuard:
         ):
             # Must not raise — the failure surfaces per-worker.
             supervisor._guard_event_store_single_writer()
+
+
+def _mock_domain() -> MagicMock:
+    domain = MagicMock()
+    domain.domain_context.return_value.__enter__ = MagicMock()
+    domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+    return domain
+
+
+def _run_worker_entry(domain: object, **kwargs: object) -> None:
+    """Run ``_worker_entry`` in-process against ``domain`` with Engine patched."""
+    mock_engine = MagicMock()
+    mock_engine.exit_code = 0
+    with (
+        patch("protean.utils.domain_discovery.derive_domain", return_value=domain),
+        patch("protean.server.engine.Engine", return_value=mock_engine),
+        pytest.raises(SystemExit, match="0"),
+    ):
+        _worker_entry("my.domain", test_mode=True, worker_id=0, **kwargs)
+
+
+class TestWorkerEntryLoggingFlags:
+    """The worker applies the CLI logging flags the way the parent does."""
+
+    def test_log_level_overrides_logging_table_and_keeps_redaction(self):
+        domain = Domain(
+            name="WorkerLogLevel",
+            config={"logging": {"level": "INFO", "redact": ["secret"]}},
+        )
+
+        with patch.object(domain, "init"):
+            _run_worker_entry(domain, log_level="DEBUG")
+
+        root = logging.getLogger()
+        assert root.level == logging.DEBUG
+        redaction = [f for f in root.filters if isinstance(f, ProteanRedactionFilter)]
+        assert len(redaction) == 1
+        assert "secret" in redaction[0]._keys
+
+    def test_log_format_is_passed_as_an_override(self):
+        domain = _mock_domain()
+
+        with patch("protean.utils.logging.configure_logging"):
+            _run_worker_entry(domain, log_format="json")
+
+        domain.configure_logging.assert_called_once_with(format="json")
+
+    def test_log_level_and_log_format_are_passed_together(self):
+        domain = _mock_domain()
+
+        with patch("protean.utils.logging.configure_logging"):
+            _run_worker_entry(domain, log_level="WARNING", log_format="json")
+
+        domain.configure_logging.assert_called_once_with(level="WARNING", format="json")
+
+    def test_log_config_is_applied_and_logging_table_is_skipped(self):
+        domain = _mock_domain()
+        log_config = {"version": 1, "root": {"level": "WARNING"}}
+
+        _run_worker_entry(domain, log_config=log_config)
+
+        assert logging.getLogger().level == logging.WARNING
+        domain.configure_logging.assert_not_called()
+
+    def test_empty_log_config_still_skips_logging_table(self):
+        domain = _mock_domain()
+
+        with patch("protean.utils.logging.configure_logging") as mock_configure:
+            _run_worker_entry(domain, log_config={})
+
+        domain.configure_logging.assert_not_called()
+        mock_configure.assert_called_with(dict_config={})
+
+    def test_log_config_still_installs_the_queue_handler(self):
+        domain = _mock_domain()
+        log_queue = MagicMock()
+
+        with (
+            patch("protean.utils.logging.configure_logging"),
+            patch("protean.server.supervisor._install_worker_log_queue") as install,
+        ):
+            _run_worker_entry(domain, log_queue=log_queue, log_config={"version": 1})
+
+        install.assert_called_once_with(log_queue)
+
+    def test_engine_is_built_without_debug(self):
+        domain = _mock_domain()
+        mock_engine = MagicMock()
+        mock_engine.exit_code = 0
+
+        with (
+            patch("protean.utils.domain_discovery.derive_domain", return_value=domain),
+            patch("protean.server.engine.Engine", return_value=mock_engine) as engine,
+            patch("protean.utils.logging.configure_logging"),
+            pytest.raises(SystemExit),
+        ):
+            _worker_entry("my.domain", test_mode=True, worker_id=0, log_level="DEBUG")
+
+        engine.assert_called_once_with(domain, test_mode=True)
+
+
+def _spawned_kwargs(supervisor: Supervisor) -> list[dict[str, object]]:
+    """Run the supervisor with a mocked spawn context; return each Process kwargs."""
+    mock_ctx = MagicMock()
+    mock_ctx.Process.return_value.pid = 1
+    with (
+        patch("multiprocessing.get_context", return_value=mock_ctx),
+        patch("protean.server.supervisor._build_queue_listener"),
+        patch.object(supervisor, "_install_signal_handlers"),
+        patch.object(supervisor, "_monitor"),
+    ):
+        supervisor.run()
+    calls = mock_ctx.Process.call_args_list
+    assert calls
+    return [call.kwargs["kwargs"] for call in calls]
+
+
+class TestSupervisorLoggingArguments:
+    def test_logging_arguments_reach_every_worker(self):
+        supervisor = Supervisor(
+            domain_path="d",
+            num_workers=2,
+            log_level="DEBUG",
+            log_format="json",
+            log_config={"version": 1},
+            acknowledge_event_store_risk=True,
+        )
+
+        spawned = _spawned_kwargs(supervisor)
+
+        assert len(spawned) == 2
+        for kwargs in spawned:
+            assert kwargs == {
+                "log_level": "DEBUG",
+                "log_format": "json",
+                "log_config": {"version": 1},
+            }
+
+
+class TestSupervisorDebugDeprecation:
+    def test_debug_true_warns_and_maps_to_debug_level(self):
+        with pytest.warns(RemovedInProtean020Warning, match="v0.20.0") as record:
+            supervisor = Supervisor(domain_path="d", num_workers=1, debug=True)
+
+        assert len(record) == 1
+        assert "Supervisor(debug=...)" in str(record[0].message)
+        assert 'log_level="DEBUG"' in str(record[0].message)
+        assert record[0].filename == __file__
+        assert _spawned_kwargs(supervisor)[0]["log_level"] == "DEBUG"
+
+    def test_explicit_log_level_wins_over_debug(self):
+        with pytest.warns(RemovedInProtean020Warning):
+            supervisor = Supervisor(
+                domain_path="d", num_workers=1, debug=True, log_level="WARNING"
+            )
+
+        assert _spawned_kwargs(supervisor)[0]["log_level"] == "WARNING"
+
+    def test_debug_false_does_not_warn(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            supervisor = Supervisor(domain_path="d", num_workers=1, debug=False)
+
+        assert caught == []
+        assert supervisor.log_level is None
+
+    def test_omitted_debug_does_not_warn(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            Supervisor(domain_path="d", num_workers=1)
+
+        assert caught == []
