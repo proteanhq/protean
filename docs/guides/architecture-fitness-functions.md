@@ -201,7 +201,7 @@ level = "warn"        # errors + warnings gate CI (default)
 | `info` | there is an error, warning, or info finding. |
 
 Exit codes: `1` on any validator error (always) and on any finding at or above
-the floor, `0` otherwise. Set `level = "error"` while you burn down
+the floor, `2` on a malformed `[lint]` table, `0` otherwise. Set `level = "error"` while you burn down
 warnings, then tighten to `warn` once the domain is clean.
 
 ---

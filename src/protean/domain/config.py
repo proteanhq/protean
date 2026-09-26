@@ -286,7 +286,8 @@ def _default_config() -> dict[str, Any]:
             "resource_attributes": {},
         },
         # Lint settings (such as `level`, `suppressions` and `rules`) read by
-        # `protean check`, `protean verify` and the IR builder.
+        # `protean check` and `protean verify`. The IR builder reads every
+        # setting except `level`.
         "lint": {},
         # Observatory settings, such as `trace_retention_days`.
         "observatory": {},

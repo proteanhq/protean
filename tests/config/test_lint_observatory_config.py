@@ -84,6 +84,35 @@ class TestLintTableLoads:
 
         assert config["lint"]["level"] == "error"
 
+    @pytest.mark.parametrize(
+        "filename, prefix",
+        [("domain.toml", ""), ("pyproject.toml", "tool.protean.")],
+    )
+    def test_env_overlay_merges_over_base_table(
+        self, tmp_path, monkeypatch, filename, prefix
+    ):
+        _write(
+            tmp_path / filename,
+            f"""
+            [{prefix}lint]
+            level = "warn"
+
+            [{prefix}lint.suppressions]
+            UNHANDLED_EVENT = 3
+
+            [{prefix}test.lint]
+            level = "error"
+            """,
+        )
+        monkeypatch.setenv("PROTEAN_ENV", "test")
+
+        config = Config2.load_from_path(str(tmp_path))
+
+        assert config["lint"] == {
+            "level": "error",
+            "suppressions": {"UNHANDLED_EVENT": 3},
+        }
+
     def test_base_table_applies_without_env(self, tmp_path):
         _write(
             tmp_path / "domain.toml",
@@ -133,6 +162,13 @@ class TestObservatoryTableLoads:
         domain = Domain(root_path=str(tmp_path), name="ObservatoryToml")
 
         assert domain.trace_emitter._retention_ms == 3 * 86_400_000
+
+    def test_trace_emitter_falls_back_when_retention_is_inf(self, tmp_path):
+        _write(tmp_path / "domain.toml", "[observatory]\ntrace_retention_days = inf\n")
+
+        domain = Domain(root_path=str(tmp_path), name="ObservatoryInf")
+
+        assert domain.trace_emitter._retention_ms == 7 * 86_400_000
 
     def test_trace_emitter_falls_back_when_observatory_is_not_a_table(self, tmp_path):
         _write(tmp_path / "domain.toml", 'observatory = "on"\n')
@@ -243,6 +279,10 @@ class TestCheckReadsLintTableFromDomainToml:
         )
 
         assert result.exit_code == 0, result.output
+        lines = result.output.splitlines()
+        payload = json.loads("\n".join(lines[lines.index("{") :]))
+        assert payload["status"] == "pass"
+        assert "EVENT_WITHOUT_DATA" in {d["code"] for d in payload["diagnostics"]}
 
     def test_bad_lint_option_is_a_usage_error(self, tmp_path, monkeypatch):
         result = self._run_check(

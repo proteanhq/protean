@@ -43,9 +43,7 @@ class TestLintTableConfigValidation:
 
 
 class TestLintOptionTypeValidation:
-    """A wrong type for a ``[lint]`` option raises ``ConfigurationError``. Left
-    alone it would raise a ``TypeError`` inside the build, which
-    ``Domain.check()`` swallows, so the check would pass with no findings."""
+    """A wrong type for a ``[lint]`` option raises ``ConfigurationError``."""
 
     @pytest.mark.parametrize(
         "lint, message",
@@ -108,3 +106,34 @@ class TestLintOptionTypeValidation:
         codes = [d["code"] for d in ir["diagnostics"]]
         assert "AGGREGATE_TOO_LARGE" not in codes
         assert len(ir["clusters"]) == 1
+
+    def test_bad_level_builds(self):
+        # The IR builder does not read ``level``; only ``protean check`` and
+        # ``protean verify`` reject a bad one.
+        domain = Domain(name="BadLintLevel", root_path=".")
+        domain.config["lint"] = {"level": 5}
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert len(ir["clusters"]) == 1
+
+
+class TestDomainCheckRaisesOnBadLintOption:
+    def test_bad_option_raises_from_check(self):
+        domain = Domain(name="CheckBadLintOption", root_path=".")
+        domain.config["lint"] = {"aggregate_size_limit": "0"}
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        with pytest.raises(
+            ConfigurationError,
+            match=r"\[lint\]\.aggregate_size_limit must be a non-negative integer",
+        ):
+            domain.check(traverse=False)

@@ -187,7 +187,11 @@ def validate_lint_suppressions(suppressions: Any) -> str | None:
 
 
 def validate_lint_table(lint_config: Any) -> str | None:
-    """Return an error message if ``[lint]`` itself is not a table, else ``None``.
+    """Return an error message if ``[lint]`` or one of its options is malformed.
+
+    Returns ``None`` when ``[lint]`` is a table and ``rules``, the two limits
+    and the two ``check_*`` flags have the right types. ``level`` and
+    ``suppressions`` are checked elsewhere.
 
     Every ``[lint]``-scoped setting (``level``, ``suppressions``,
     ``aggregate_size_limit``, ``handler_breadth_limit``, ``rules``, ...) is read
@@ -197,10 +201,11 @@ def validate_lint_table(lint_config: Any) -> str | None:
     including :func:`validate_lint_suppressions` — get a chance to run. Callers
     must check this *before* reading any ``[lint]`` key.
 
-    It also checks the types of the options the IR builder reads. A wrong type
-    there (``rules = 5``, ``aggregate_size_limit = "5"``) would otherwise raise
-    a ``TypeError`` inside the build, which :meth:`Domain.check` swallows, so
-    the check would pass with no findings at all.
+    It also checks the types of the options the IR builder reads. Without the
+    check, a wrong type fails in one of several ways: ``rules = 5`` or
+    ``aggregate_size_limit = "5"`` raises a ``TypeError`` inside the build,
+    ``rules = "my.module"`` is logged and skipped, and ``check_infra_imports =
+    "no"`` is truthy and turns the scan on.
     """
     if not isinstance(lint_config, dict):
         return f"[lint] must be a table, got {type(lint_config).__name__}."

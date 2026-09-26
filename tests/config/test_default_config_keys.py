@@ -34,10 +34,13 @@ def _scan() -> dict[str, list[str]]:
     for path in sorted(_SRC.rglob("*.py")):
         if path.is_relative_to(_EXCLUDED):
             continue
-        for lineno, line in enumerate(path.read_text().splitlines(), start=1):
-            for key in _READ.findall(line):
-                site = f"{path.relative_to(_SRC.parent)}:{lineno}"
-                found.setdefault(key, []).append(site)
+        # Match over the whole file, so a read the formatter wraps across lines
+        # (``config.get(\n    "lint", {}\n)``) is still found.
+        text = path.read_text()
+        for match in _READ.finditer(text):
+            lineno = text.count("\n", 0, match.start()) + 1
+            site = f"{path.relative_to(_SRC.parent)}:{lineno}"
+            found.setdefault(match.group(1), []).append(site)
     return found
 
 
@@ -56,3 +59,11 @@ def test_every_read_key_is_a_default_key():
         "_default_config(), so the loader drops them: "
         + "; ".join(f"{key!r} at {', '.join(sites)}" for key, sites in missing.items())
     )
+
+
+def test_scan_finds_a_read_wrapped_across_lines(tmp_path, monkeypatch):
+    module = tmp_path / "wrapped.py"
+    module.write_text('value = domain.config.get(\n    "wrapped_key", {}\n)\n')
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {"wrapped_key": [f"{tmp_path.name}/wrapped.py:1"]}

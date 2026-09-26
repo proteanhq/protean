@@ -516,8 +516,9 @@ class Domain:
                 trace_retention_days = int(
                     observatory_config.get("trace_retention_days", 7)
                 )
-            except (AttributeError, TypeError, ValueError):
+            except (AttributeError, OverflowError, TypeError, ValueError):
                 # ``AttributeError``: ``observatory`` is not a table.
+                # ``OverflowError``: the retention is ``inf``.
                 trace_retention_days = 7
             self._trace_emitter = TraceEmitter(
                 self, trace_retention_days=trace_retention_days
@@ -755,6 +756,11 @@ class Domain:
 
         Diagnostics have a ``level`` field (``"warning"`` or ``"info"``)
         used to compute the ``counts`` and determine the overall ``status``.
+
+        Raises:
+            ConfigurationError: If the ``[lint]`` table holds a value the IR
+                builder rejects, such as ``rules = 5``. Any other IR build
+                failure leaves ``diagnostics`` empty.
         """
         self._prepare(traverse=traverse, validate=False)
 
@@ -769,6 +775,10 @@ class Domain:
             try:
                 ir = self.to_ir()
                 diagnostics = ir.get("diagnostics", [])
+            except ConfigurationError:
+                # A malformed ``[lint]`` value. Swallowing it would report a
+                # pass with no findings, so let the caller see it.
+                raise
             except Exception:
                 pass
 
