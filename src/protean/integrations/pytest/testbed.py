@@ -4,7 +4,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from protean.domain import Domain
-from protean.utils.globals import current_domain
 
 
 class DomainFixture:
@@ -55,8 +54,9 @@ class DomainFixture:
         """Per-test context manager: push domain, yield, reset stores, pop.
 
         Activates the domain context so ``current_domain`` resolves to this
-        domain inside the test.  On exit, resets all data in providers,
-        brokers, and the event store, then pops the context.
+        domain inside the test.  On exit, resets all data in this fixture's
+        domain (its providers, brokers, and event store), then pops the
+        context.  The context is popped even when a reset raises.
         """
         ctx = self.domain.domain_context()
         ctx.push()
@@ -64,12 +64,13 @@ class DomainFixture:
         try:
             yield self.domain
         finally:
-            for provider in current_domain.providers.values():
-                provider._data_reset()
+            try:
+                for provider in self.domain.providers.values():
+                    provider._data_reset()
 
-            for broker in current_domain.brokers.values():
-                broker._data_reset()
+                for broker in self.domain.brokers.values():
+                    broker._data_reset()
 
-            current_domain._require_event_store()._data_reset()
-
-            ctx.pop()
+                self.domain._require_event_store()._data_reset()
+            finally:
+                ctx.pop()

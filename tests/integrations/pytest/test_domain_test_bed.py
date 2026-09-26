@@ -5,6 +5,7 @@ from unittest import mock
 import pytest
 
 from protean.domain import Domain
+from protean.domain.context import _domain_ctx_stack
 from protean.integrations.pytest import DomainFixture
 
 
@@ -151,6 +152,68 @@ class TestDomainContext:
 
         with bed.domain_context():
             assert current_domain.name == "testbed_domain"
+
+
+def _mock_stores(domain):
+    """Replace the domain's stores with mocks and return them."""
+    domain.providers = {"default": mock.MagicMock()}
+    domain.brokers = {"default": mock.MagicMock()}
+    domain.event_store = mock.MagicMock()
+    return (
+        domain.providers["default"],
+        domain.brokers["default"],
+        domain.event_store.store,
+    )
+
+
+def _restore_ctx_stack(top):
+    """Pop contexts off the global stack until ``top`` is on top again."""
+    while _domain_ctx_stack.top is not top:
+        _domain_ctx_stack.pop()
+
+
+class TestDomainContextIsolation:
+    """domain_context() cleans up its own domain, whatever else is pushed."""
+
+    def test_leaked_context_resets_only_the_fixture_domain(self):
+        domain_a = Domain(name="domain_a")
+        domain_b = Domain(name="domain_b")
+        provider_a, broker_a, store_a = _mock_stores(domain_a)
+        provider_b, broker_b, store_b = _mock_stores(domain_b)
+        bed_a = DomainFixture(domain_a)
+
+        top_before = _domain_ctx_stack.top
+        try:
+            with (
+                pytest.raises(AssertionError, match="Popped wrong domain context"),
+                bed_a.domain_context(),
+            ):
+                # Leave domain B's context pushed when the test body ends
+                domain_b.domain_context().push()
+        finally:
+            _restore_ctx_stack(top_before)
+
+        provider_a._data_reset.assert_called_once()
+        broker_a._data_reset.assert_called_once()
+        store_a._data_reset.assert_called_once()
+        provider_b._data_reset.assert_not_called()
+        broker_b._data_reset.assert_not_called()
+        store_b._data_reset.assert_not_called()
+
+    def test_context_is_popped_when_a_reset_raises(self, domain):
+        provider, _broker, _store = _mock_stores(domain)
+        provider._data_reset.side_effect = RuntimeError("reset failed")
+        bed = DomainFixture(domain)
+
+        top_before = _domain_ctx_stack.top
+        try:
+            with pytest.raises(RuntimeError, match="reset failed"):
+                with bed.domain_context():
+                    pass
+
+            assert _domain_ctx_stack.top is top_before
+        finally:
+            _restore_ctx_stack(top_before)
 
 
 class TestSetupDelegatesToPublicAPI:
