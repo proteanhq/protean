@@ -746,6 +746,10 @@ UNHANDLED_EVENT = 3                    # grandfather the first 3 findings
 `level` sets the CI failure floor without hiding findings; the `--level` CLI
 flag only filters what is displayed and never changes the exit code.
 
+A value of the wrong type in `[lint]` (for example `rules = 5` or
+`aggregate_size_limit = "5"`) is an error. `protean check` exits `2`,
+`protean verify` exits `4`, and building the IR raises `ConfigurationError`.
+
 Individual elements can silence specific codes for themselves with the
 `suppress_checks` decorator option (for example
 `@domain.aggregate(suppress_checks=["AGGREGATE_TOO_LARGE"])`), which takes

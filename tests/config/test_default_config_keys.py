@@ -2,8 +2,8 @@
 
 ``Config2._normalize_config`` keeps only the top-level keys listed in
 ``_default_config()`` and drops the rest without a warning. A key read by the
-framework but missing from the defaults can never be set from ``domain.toml``,
-``pyproject.toml`` or a ``config=`` dict. This test scans ``src/protean`` for
+framework but missing from the defaults cannot be set at the top level of
+``domain.toml``, ``pyproject.toml`` or a ``config=`` dict. This test scans ``src/protean`` for
 reads on a domain's config and checks each key against the defaults.
 """
 

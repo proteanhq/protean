@@ -516,7 +516,8 @@ class Domain:
                 trace_retention_days = int(
                     observatory_config.get("trace_retention_days", 7)
                 )
-            except (TypeError, ValueError):
+            except (AttributeError, TypeError, ValueError):
+                # ``AttributeError``: ``observatory`` is not a table.
                 trace_retention_days = 7
             self._trace_emitter = TraceEmitter(
                 self, trace_retention_days=trace_retention_days

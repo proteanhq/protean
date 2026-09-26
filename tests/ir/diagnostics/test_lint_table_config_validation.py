@@ -40,3 +40,71 @@ class TestLintTableConfigValidation:
         domain.init(traverse=False)
         with pytest.raises(ConfigurationError, match=r"\[lint\] must be a table"):
             IRBuilder(domain).build()
+
+
+class TestLintOptionTypeValidation:
+    """A wrong type for a ``[lint]`` option raises ``ConfigurationError``. Left
+    alone it would raise a ``TypeError`` inside the build, which
+    ``Domain.check()`` swallows, so the check would pass with no findings."""
+
+    @pytest.mark.parametrize(
+        "lint, message",
+        [
+            ({"rules": 5}, r"\[lint\]\.rules must be a list"),
+            ({"rules": "my.module"}, r"\[lint\]\.rules must be a list"),
+            ({"rules": ["ok.rule", 3]}, r"\[lint\]\.rules must be a list"),
+            (
+                {"aggregate_size_limit": "5"},
+                r"\[lint\]\.aggregate_size_limit must be a non-negative integer",
+            ),
+            (
+                {"aggregate_size_limit": True},
+                r"\[lint\]\.aggregate_size_limit must be a non-negative integer",
+            ),
+            (
+                {"handler_breadth_limit": -1},
+                r"\[lint\]\.handler_breadth_limit must be a non-negative integer",
+            ),
+            (
+                {"check_infra_imports": "yes"},
+                r"\[lint\]\.check_infra_imports must be true or false",
+            ),
+            (
+                {"check_adapter_calls": 1},
+                r"\[lint\]\.check_adapter_calls must be true or false",
+            ),
+        ],
+    )
+    def test_bad_option_type_raises(self, lint, message):
+        domain = Domain(name="BadLintOption", root_path=".")
+        domain.config["lint"] = lint
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        with pytest.raises(ConfigurationError, match=message):
+            IRBuilder(domain).build()
+
+    def test_valid_options_build(self):
+        domain = Domain(name="GoodLintOptions", root_path=".")
+        domain.config["lint"] = {
+            "rules": [],
+            "aggregate_size_limit": 0,
+            "handler_breadth_limit": 10,
+            "check_infra_imports": True,
+            "check_adapter_calls": False,
+        }
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        # Order has no entities, so a limit of 0 is not exceeded.
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "AGGREGATE_TOO_LARGE" not in codes
+        assert len(ir["clusters"]) == 1

@@ -200,8 +200,8 @@ level = "warn"        # errors + warnings gate CI (default)
 | `warn` (default) | there is an error or a warning. |
 | `info` | there is an error, warning, or info finding. |
 
-Exit codes: `1` on any validator error (always), `2` on a gating finding at or
-above the floor, `0` otherwise. Set `level = "error"` while you burn down
+Exit codes: `1` on any validator error (always) and on any finding at or above
+the floor, `0` otherwise. Set `level = "error"` while you burn down
 warnings, then tighten to `warn` once the domain is clean.
 
 ---

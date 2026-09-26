@@ -71,8 +71,8 @@ $ protean check --domain=my_domain
       default is 5). Consider raising it for production workloads.
 ```
 
-`protean check` exits with code `2` on warnings, so CI pipelines that
-enforce `--strict` will fail. Raise `pool_size` or set `PROTEAN_ENV` to
+`protean check` exits with code `1` on warnings, so a CI pipeline that runs
+it will fail. Raise `pool_size` or set `PROTEAN_ENV` to
 `development`/`testing` to silence the warning.
 
 ## Health checks
