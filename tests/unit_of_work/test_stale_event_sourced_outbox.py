@@ -6,6 +6,11 @@ Outbox rows carry the event's message id, keyed on the stream and version, so a
 stale writer's rows reuse the winner's ids. The commit appends to the event
 store before it saves the outbox rows, so the append reports the conflict
 first.
+
+The outbox rows' pre-persist hooks still run before the append, so a raising
+aggregate enricher fails the commit with nothing written. An outbox save that
+fails after the append is reported as ``TransactionError``, never as a version
+conflict.
 """
 
 from uuid import uuid4
@@ -16,8 +21,13 @@ from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.domain import Domain
-from protean.exceptions import ExpectedVersionError, ValidationError
+from protean.exceptions import (
+    ExpectedVersionError,
+    TransactionError,
+    ValidationError,
+)
 from protean.fields import Identifier, Integer
+from protean.utils.globals import current_uow
 from tests.shared import MESSAGE_DB_URI, POSTGRES_URI
 
 
@@ -180,11 +190,16 @@ class TestStaleWriteWithOutbox:
         stream_before = _stream(domain, winner.account_id)
         assert len(stream_before) == 2  # Opened + the winner's Deposited
 
+        # The winner's rows are in the outbox before the loser commits.
+        winner_id = stream_before[-1].metadata.headers.id
+        assert (winner_id, "default") in outbox_before
+        if external_brokers:
+            assert (winner_id, "ext") in outbox_before
+
         with pytest.raises(ExpectedVersionError):
             _commit_deposits(domain, loser, *stale_amounts)
 
-        # The loser added no outbox rows and moved the stream neither in
-        # length nor in its last version.
+        # The loser added no outbox rows and did not change the stream.
         assert _outbox_ids(domain) == outbox_before
         stream_after = _stream(domain, winner.account_id)
         assert [m.metadata.headers.id for m in stream_after] == [
@@ -217,17 +232,11 @@ class TestStaleWriteWithOutbox:
         )
         assert _outbox_ids(domain) == expected
 
-
-@pytest.mark.no_test_domain
-def test_bad_partition_key_appends_no_event(tmp_path):
-    """A partition key rejected on commit fails before the event-store append."""
-    domain = _make_domain()
-    with domain.domain_context():
-        account_id = str(uuid4())
-        with UnitOfWork():
-            domain.repository_for(Account).add(Account.open(account_id))
-        account = domain.repository_for(Account).get(account_id)
-        stream_before = _stream(domain, account_id)
+    def test_bad_partition_key_appends_no_event(self, make_domain):
+        """A partition key rejected on commit fails before the event-store append."""
+        domain = make_domain()
+        account, _ = _open_and_load_twice(domain)
+        stream_before = _stream(domain, account.account_id)
         outbox_before = _outbox_ids(domain)
 
         # Opt the account category into partition-per-key routing on a field
@@ -237,5 +246,84 @@ def test_bad_partition_key_appends_no_event(tmp_path):
         with pytest.raises(ValidationError):
             _commit_deposits(domain, account, 10)
 
-        assert len(_stream(domain, account_id)) == len(stream_before)
+        assert len(_stream(domain, account.account_id)) == len(stream_before)
         assert _outbox_ids(domain) == outbox_before
+
+    @pytest.mark.parametrize("error_cls", [ValueError, RuntimeError])
+    def test_raising_enricher_appends_no_event(self, make_domain, error_cls):
+        """Aggregate enrichers run on outbox rows before the append, so one that
+        raises fails the commit with its own error and nothing written."""
+        domain = make_domain()
+        account, _ = _open_and_load_twice(domain)
+        stream_before = _stream(domain, account.account_id)
+        outbox_before = _outbox_ids(domain)
+
+        def failing_enricher(aggregate):
+            raise error_cls("enricher failed")
+
+        domain.register_aggregate_enricher(failing_enricher)
+
+        with pytest.raises(error_cls, match="enricher failed"):
+            _commit_deposits(domain, account, 10)
+
+        assert len(_stream(domain, account.account_id)) == len(stream_before)
+        assert _outbox_ids(domain) == outbox_before
+
+    def test_outbox_save_value_error_is_not_a_version_conflict(
+        self, make_domain, monkeypatch
+    ):
+        """A ValueError from an outbox save after the append is reported as
+        TransactionError, so the handler's version retry does not run the
+        command again."""
+        domain = make_domain()
+        account, _ = _open_and_load_twice(domain)
+        stream_before = _stream(domain, account.account_id)
+        outbox_before = _outbox_ids(domain)
+
+        def failing_create(model_obj):
+            raise ValueError("outbox insert failed")
+
+        monkeypatch.setattr(
+            domain._get_outbox_repo("default")._dao, "_create", failing_create
+        )
+
+        with pytest.raises(TransactionError) as exc_info:
+            _commit_deposits(domain, account, 10)
+
+        assert exc_info.value.extra_info["original_exception"] == "ValueError"
+        assert _outbox_ids(domain) == outbox_before
+        stream_after = _stream(domain, account.account_id)
+        if domain.event_store.store.__class__.__name__ == "MemoryEventStore":
+            # The in-memory store's append joins the unit of work and rolls
+            # back with it.
+            assert len(stream_after) == len(stream_before)
+        else:
+            # Message DB writes directly: the event is durable without its
+            # outbox row, as after a crash before the relational commit.
+            assert len(stream_after) == len(stream_before) + 1
+
+    def test_outbox_rows_are_saved_inside_the_unit_of_work(
+        self, make_domain, monkeypatch
+    ):
+        """Every outbox insert runs while the committing unit of work is the
+        active context, so the rows enlist in its sessions and commit with it."""
+        domain = make_domain(external_brokers=["ext"])
+        account, _ = _open_and_load_twice(domain)
+
+        dao = domain._get_outbox_repo("default")._dao
+        real_create = dao._create
+        seen_uows = []
+
+        def recording_create(model_obj):
+            seen_uows.append(current_uow._get_current_object())
+            return real_create(model_obj)
+
+        monkeypatch.setattr(dao, "_create", recording_create)
+
+        with UnitOfWork() as uow:
+            account.deposit(10)
+            domain.repository_for(Account).add(account)
+
+        # One internal row and one external row for the published event.
+        assert len(seen_uows) == 2
+        assert all(seen is uow for seen in seen_uows)

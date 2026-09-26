@@ -756,6 +756,24 @@ class BaseDAO(metaclass=ABCMeta):
 
         return expected_version
 
+    def _apply_pre_persist_hooks(self, entity_obj: Any) -> None:
+        """Stamp ``auto_now``/``auto_now_add`` fields, then run aggregate enrichers.
+
+        ``save`` calls this unless ``apply_hooks=False``. A caller that must run
+        the hooks earlier than the write (so a raising enricher fails before any
+        other store is touched) calls it directly and then saves with
+        ``apply_hooks=False``.
+        """
+        is_create = not entity_obj.state_.is_persisted
+        _stamp_lifecycle_timestamps(entity_obj, is_create=is_create)
+        if (
+            entity_obj.element_type == DomainObjects.AGGREGATE
+            and current_domain
+            and current_domain._aggregate_enrichers
+        ):
+            for enricher in current_domain._aggregate_enrichers:
+                enricher(entity_obj)
+
     def save(self, entity_obj: Any, *, apply_hooks: bool = True) -> Any:
         """Create or update an entity in the data store, depending on its state. An identity for entity record is
         generated, if not already present.
@@ -790,15 +808,7 @@ class BaseDAO(metaclass=ABCMeta):
             # enricher aborts the save (the version advance is rolled back for an
             # update in the ``except`` below).
             if apply_hooks:
-                is_create = not entity_obj.state_.is_persisted
-                _stamp_lifecycle_timestamps(entity_obj, is_create=is_create)
-                if (
-                    entity_obj.element_type == DomainObjects.AGGREGATE
-                    and current_domain
-                    and current_domain._aggregate_enrichers
-                ):
-                    for enricher in current_domain._aggregate_enrichers:
-                        enricher(entity_obj)
+                self._apply_pre_persist_hooks(entity_obj)
 
             # Build the model object and create it
             if entity_obj.state_.is_persisted:
