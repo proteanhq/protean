@@ -1,8 +1,8 @@
 """Tests for the reusable deprecation machinery in ``protean._deprecation``.
 
 Covers the warning-class hierarchy, the ``warn_deprecated`` helper, the
-``@deprecated`` decorator, and the fail-loud behaviour on an unknown removal
-version.
+``@deprecated`` decorator, the ``external_stacklevel`` helper, and the
+fail-loud behaviour on an unknown removal version.
 """
 
 import inspect
@@ -279,6 +279,27 @@ class TestExternalStacklevel:
             module_name, "def inner():\n    return external_stacklevel()\n", "inner"
         )
         assert inner() == 1
+
+    @pytest.mark.parametrize("namespace", [{}, {"__name__": 42}])
+    def test_frame_without_a_str_module_name_counts_as_user_code(self, namespace):
+        namespace = {**namespace, "external_stacklevel": external_stacklevel}
+        exec(
+            compile("def inner():\n    return external_stacklevel()\n", "<x>", "exec"),
+            namespace,
+        )
+        assert namespace["inner"]() == 1
+
+    def test_all_protean_stack_points_past_the_top(self, monkeypatch):
+        monkeypatch.setattr(
+            protean._deprecation, "_is_protean_module", lambda name: True
+        )
+        frame = inspect.currentframe()
+        depth = 0
+        while frame is not None:
+            depth += 1
+            frame = frame.f_back
+
+        assert external_stacklevel() == depth + 1
 
     def test_warning_lands_on_the_first_line_outside_protean(self):
         warn_site = _module_function(

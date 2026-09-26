@@ -157,6 +157,19 @@ class TestDeprecatedCommandOptions:
         assert warning.filename == __file__
         assert warning.lineno == expected_line
 
+    def test_direct_call_warning_names_the_user_line(self, test_domain):
+        class Revoke(BaseCommand):
+            user_id: Identifier(identifier=True)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            expected_line = inspect.currentframe().f_lineno + 1
+            test_domain.command(Revoke, part_of=User, published=True)
+
+        warning = self._only_deprecation_warning(caught)
+        assert warning.filename == __file__
+        assert warning.lineno == expected_line
+
     def test_published_option_warns_on_register_path(self, test_domain):
         class Suspend(BaseCommand):
             user_id: Identifier(identifier=True)

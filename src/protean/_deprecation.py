@@ -13,7 +13,7 @@ single place that machinery lives, so the policy cannot drift site by site:
   deprecated code path (e.g. a conditional branch).
 - :func:`deprecated` — a decorator for a whole function/method that is going
   away; it warns on every call and otherwise delegates unchanged.
-- :func:`external_stacklevel` — compute the ``stacklevel`` that attributes a
+- :func:`external_stacklevel`: compute the ``stacklevel`` that attributes a
   warning to the first frame outside Protean, for warn sites reached through a
   variable number of framework frames (e.g. element registration).
 
@@ -143,9 +143,9 @@ def external_stacklevel() -> int:
 
     A fixed ``stacklevel`` only works when every entry point reaches the warn
     site through the same number of framework frames. Registration does not:
-    ``@domain.aggregate`` on a class, ``domain.aggregate(Cls)`` and
-    ``domain.register(Cls)`` each pass through a different number of Protean
-    frames. Walking the stack lands on the user's line in every case.
+    the direct call ``domain.aggregate(Cls)`` passes through more Protean frames
+    than ``@domain.aggregate`` on a class or ``domain.register(Cls)``. Walking
+    the stack lands on the user's line in every case.
 
     A frame counts as Protean when its module is ``protean`` or sits under
     ``protean.``, so a user package such as ``protean_app`` counts as user code.

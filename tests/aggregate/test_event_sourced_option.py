@@ -134,7 +134,7 @@ def _only_removal_warning(caught):
 
 class TestAliasWarningNamesTheUserLine:
     """The alias warning points at the user's registration line, whichever
-    entry point they used, not at a Protean frame."""
+    entry point they used."""
 
     def test_decorator_on_class(self, test_domain):
         with warnings.catch_warnings(record=True) as caught:

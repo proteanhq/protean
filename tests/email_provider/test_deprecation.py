@@ -11,6 +11,7 @@ Each positive test also asserts the machinery still works after warning
 (default) config stays silent so the framework does not warn on every domain.
 """
 
+import inspect
 import warnings
 from typing import Any
 
@@ -68,6 +69,40 @@ class TestEmailRegistrationDeprecated:
             test_domain.register(WelcomeEmail)
 
         assert fully_qualified_name(WelcomeEmail) in test_domain.registry.emails
+
+
+class TestEmailRegistrationWarningNamesTheUserLine:
+    """The registration warning points at the user's registration line."""
+
+    def _only_removal_warning(self, caught):
+        matching = [
+            w for w in caught if issubclass(w.category, RemovedInProtean10Warning)
+        ]
+        assert len(matching) == 1
+        return matching[0]
+
+    def test_decorator_on_class(self, test_domain):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            expected_line = inspect.currentframe().f_lineno + 2
+
+            @test_domain.email
+            class AnnotatedEmail:
+                pass
+
+        warning = self._only_removal_warning(caught)
+        assert warning.filename == __file__
+        assert warning.lineno == expected_line
+
+    def test_register_call(self, test_domain):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            expected_line = inspect.currentframe().f_lineno + 1
+            test_domain.register(WelcomeEmail)
+
+        warning = self._only_removal_warning(caught)
+        assert warning.filename == __file__
+        assert warning.lineno == expected_line
 
 
 class TestEmailOperationsDeprecated:
