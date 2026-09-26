@@ -5,6 +5,7 @@ Covers the warning-class hierarchy, the ``warn_deprecated`` helper, the
 version.
 """
 
+import inspect
 import pathlib
 import re
 import warnings
@@ -18,7 +19,9 @@ from protean._deprecation import (
     RemovedInProtean017Warning,
     RemovedInProtean10Warning,
     deprecated,
+    external_stacklevel,
     warn_deprecated,
+    warn_from_registry,
 )
 
 
@@ -237,3 +240,64 @@ class TestDeprecatedDecorator:
             @deprecated(removal="0.18.0")
             def _f():  # pragma: no cover - never defined; decoration raises
                 return None
+
+
+def _module_function(module_name: str, source: str, name: str):
+    """Build a function whose frame reports ``module_name`` as its module.
+
+    ``external_stacklevel`` decides by the frame's ``__name__`` global, so this
+    stands in for a function defined in that module.
+    """
+    namespace = {
+        "__name__": module_name,
+        "external_stacklevel": external_stacklevel,
+        "warn_from_registry": warn_from_registry,
+    }
+    exec(compile(source, f"<{module_name}>", "exec"), namespace)
+    return namespace[name]
+
+
+class TestExternalStacklevel:
+    def test_caller_outside_protean_gets_one(self):
+        # The test module is ``tests.*``, so the caller is already user code.
+        assert external_stacklevel() == 1
+
+    @pytest.mark.parametrize("module_name", ["protean", "protean.core.fake"])
+    def test_protean_frames_are_skipped(self, module_name):
+        inner = _module_function(
+            module_name, "def inner():\n    return external_stacklevel()\n", "inner"
+        )
+        outer = _module_function(
+            module_name, "def outer(f):\n    return f()\n", "outer"
+        )
+        assert inner() == 2
+        assert outer(inner) == 3
+
+    @pytest.mark.parametrize("module_name", ["proteanx", "protean_app"])
+    def test_lookalike_module_counts_as_user_code(self, module_name):
+        inner = _module_function(
+            module_name, "def inner():\n    return external_stacklevel()\n", "inner"
+        )
+        assert inner() == 1
+
+    def test_warning_lands_on_the_first_line_outside_protean(self):
+        warn_site = _module_function(
+            "protean.core.fake",
+            "def warn_site():\n"
+            "    warn_from_registry(\n"
+            "        'is_event_sourced_alias', 'x', stacklevel=external_stacklevel()\n"
+            "    )\n",
+            "warn_site",
+        )
+        entry = _module_function(
+            "protean.domain.fake", "def entry(f):\n    f()\n", "entry"
+        )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            expected_line = inspect.currentframe().f_lineno + 1
+            entry(warn_site)
+
+        assert len(caught) == 1
+        assert caught[0].category is RemovedInProtean10Warning
+        assert caught[0].filename == __file__
+        assert caught[0].lineno == expected_line

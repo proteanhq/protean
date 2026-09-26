@@ -13,7 +13,11 @@ from pydantic import Field as PydanticField
 from pydantic import PrivateAttr
 from pydantic_core import PydanticUndefined
 
-from protean._deprecation import warn_deprecated, warn_from_registry
+from protean._deprecation import (
+    external_stacklevel,
+    warn_deprecated,
+    warn_from_registry,
+)
 from protean.core.entity import BaseEntity, _EntityState
 from protean.core.event import BaseEvent
 from protean.core.value_object import value_object_from_entity
@@ -738,7 +742,7 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
         warn_from_registry(
             "is_event_sourced_alias",
             "`is_event_sourced`",
-            stacklevel=3,
+            stacklevel=external_stacklevel(),
         )
     if "event_sourced" in opts:
         # Canonical wins if both are supplied.

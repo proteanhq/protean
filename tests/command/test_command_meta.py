@@ -1,3 +1,4 @@
+import inspect
 import warnings
 from uuid import uuid4
 
@@ -122,6 +123,39 @@ class TestDeprecatedCommandOptions:
 
         messages = self._deprecation_messages(record)
         assert any("published" in m and "v1.0.0" in m for m in messages)
+
+    def _only_deprecation_warning(self, caught):
+        matching = [
+            w for w in caught if issubclass(w.category, RemovedInProtean10Warning)
+        ]
+        assert len(matching) == 1
+        return matching[0]
+
+    def test_decorator_warning_names_the_user_line(self, test_domain):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            expected_line = inspect.currentframe().f_lineno + 2
+
+            @test_domain.command(part_of=User, published=True)
+            class Approve(BaseCommand):
+                user_id: Identifier(identifier=True)
+
+        warning = self._only_deprecation_warning(caught)
+        assert warning.filename == __file__
+        assert warning.lineno == expected_line
+
+    def test_register_warning_names_the_user_line(self, test_domain):
+        class Suspend(BaseCommand):
+            user_id: Identifier(identifier=True)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            expected_line = inspect.currentframe().f_lineno + 1
+            test_domain.register(Suspend, part_of=User, published=True)
+
+        warning = self._only_deprecation_warning(caught)
+        assert warning.filename == __file__
+        assert warning.lineno == expected_line
 
     def test_published_option_warns_on_register_path(self, test_domain):
         class Suspend(BaseCommand):
