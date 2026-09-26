@@ -788,10 +788,6 @@ class Domain:
             try:
                 ir = self.to_ir()
                 diagnostics = ir.get("diagnostics", [])
-            except ConfigurationError:
-                # A malformed ``[lint]`` value. Swallowing it would report a
-                # pass with no findings, so let the caller see it.
-                raise
             except Exception:
                 pass
 

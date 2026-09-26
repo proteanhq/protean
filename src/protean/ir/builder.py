@@ -189,9 +189,9 @@ def validate_lint_suppressions(suppressions: Any) -> str | None:
 def validate_lint_table(lint_config: Any) -> str | None:
     """Return an error message if ``[lint]`` or one of its options is malformed.
 
-    Returns ``None`` when ``[lint]`` is a table and ``rules``, the two limits
-    and the two ``check_*`` flags have the right types. ``level`` and
-    ``suppressions`` are checked elsewhere.
+    Returns ``None`` when ``[lint]`` is a table and ``rules``, the size and
+    breadth limits and the ``check_*`` flags have the right types. ``level``
+    and ``suppressions`` are checked elsewhere.
 
     Every ``[lint]``-scoped setting (``level``, ``suppressions``,
     ``aggregate_size_limit``, ``handler_breadth_limit``, ``rules``, ...) is read
