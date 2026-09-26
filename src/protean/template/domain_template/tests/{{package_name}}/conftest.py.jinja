@@ -55,11 +55,15 @@ def run_around_tests():
     """Fixture to automatically cleanup infrastructure after every test"""
     yield
 
-    from protean import current_domain
+    from {{ package_name }}.domain import {{ domain_name }} as domain
 
     # Clear all databases
-    for _, provider in current_domain.providers.items():
+    for provider in domain.providers.values():
         provider._data_reset()
 
+    # Clear all brokers
+    for broker in domain.brokers.values():
+        broker._data_reset()
+
     # Drain event stores
-    current_domain.event_store.store._data_reset()
+    domain.event_store.store._data_reset()
