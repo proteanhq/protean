@@ -44,6 +44,10 @@ class RemovedInProtean017Warning(ProteanDeprecationWarning):
     """Marks API scheduled for removal in v0.17.0."""
 
 
+class RemovedInProtean020Warning(ProteanDeprecationWarning):
+    """Marks API scheduled for removal in v0.20.0."""
+
+
 class RemovedInProtean10Warning(ProteanDeprecationWarning):
     """Marks API deprecated during the 0.x series and removed at v1.0.0."""
 
@@ -53,6 +57,7 @@ class RemovedInProtean10Warning(ProteanDeprecationWarning):
 # adding a subclass here so ``-W`` filtering keeps working per-window.
 _REMOVAL_WARNINGS: dict[str, type[ProteanDeprecationWarning]] = {
     "0.17.0": RemovedInProtean017Warning,
+    "0.20.0": RemovedInProtean020Warning,
     "1.0.0": RemovedInProtean10Warning,
 }
 
@@ -446,6 +451,32 @@ DEPRECATIONS: dict[str, Deprecation] = {
                 "An imperative method call has no static declaration site for a "
                 "rule to read off a built domain; the per-call "
                 "RemovedInProtean10Warning is the only detector."
+            ),
+        ),
+        Deprecation(
+            slug="supervisor_debug",
+            name="`debug=` argument on `Supervisor`",
+            since="0.18.0",
+            removal="0.20.0",
+            detection="runtime",
+            alternative='Pass `log_level="DEBUG"` instead.',
+            reason=(
+                "A constructor argument passed at runtime has no static "
+                "declaration site for a rule to read off a built domain; the "
+                "per-call RemovedInProtean020Warning is the only detector."
+            ),
+        ),
+        Deprecation(
+            slug="reloader_debug",
+            name="`debug=` argument on `Reloader`",
+            since="0.18.0",
+            removal="0.20.0",
+            detection="runtime",
+            alternative='Pass `log_level="DEBUG"` instead.',
+            reason=(
+                "A constructor argument passed at runtime has no static "
+                "declaration site for a rule to read off a built domain; the "
+                "per-call RemovedInProtean020Warning is the only detector."
             ),
         ),
     )

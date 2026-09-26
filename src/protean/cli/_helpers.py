@@ -38,6 +38,8 @@ CTX_LOG_CONFIGURED = "_protean_log_configured"
 
 # Keys holding the root callback's logging flags, so ``server`` and
 # ``observatory`` can pass them to ``Domain.configure_logging()`` as overrides.
+# ``CTX_LOG_DICT_CONFIG`` holds the parsed ``--log-config`` dict, which
+# ``server`` also hands to its worker processes.
 CTX_LOG_LEVEL = "_protean_log_level"
 CTX_LOG_FORMAT = "_protean_log_format"
 CTX_LOG_DICT_CONFIG = "_protean_log_dict_config"
@@ -52,7 +54,7 @@ def apply_domain_logging(domain: "Domain", parent_obj: dict[str, Any]) -> None:
     ``PROTEAN_NO_AUTO_LOGGING`` is ``1`` or ``true``, so logging the user set
     up themselves stays in place.
     """
-    if parent_obj.get(CTX_LOG_DICT_CONFIG):
+    if parent_obj.get(CTX_LOG_DICT_CONFIG) is not None:
         return
     if os.environ.get("PROTEAN_NO_AUTO_LOGGING", "").lower() in ("1", "true"):
         return

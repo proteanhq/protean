@@ -144,12 +144,10 @@ leaves the root logger without handlers, `Domain.init()` applies `[logging]`
 anyway.
 
 The `--debug` flag on `protean server` and `protean observatory` was removed in
-v0.17.0. Use `protean --log-level DEBUG server` instead for the single-process
-server. For multi-worker (`--workers N`) or `--reload` runs, set
-`PROTEAN_LOG_LEVEL=DEBUG` instead: it is honored by both the supervisor (so the
-worker log listener passes DEBUG records through) and each spawned worker (which
-configures its own logging on startup). `--log-level` and `--log-format` do not
-reach those worker processes yet.
+v0.17.0. Use `protean --log-level DEBUG server` instead. The flag works the same
+way for multi-worker (`--workers N`) and `--reload` runs: `--log-level`,
+`--log-format` and `--log-config` reach every worker process, and each worker
+applies them the way the parent does.
 
 ---
 
@@ -323,8 +321,8 @@ export PROTEAN_NO_AUTO_LOGGING=1
 
 Single-worker `protean server` and `protean observatory` honor it too: they
 leave any logging your domain module sets up on import in place. The worker
-processes of a multi-worker or `--reload` run do not read it, and always apply
-`[logging]`.
+processes of a multi-worker or `--reload` run do not read it. They apply
+`[logging]`, or the `--log-config` file when you pass one.
 
 You can then wire whichever parts of Protean's integration you want
 manually:

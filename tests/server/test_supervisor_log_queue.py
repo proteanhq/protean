@@ -196,7 +196,7 @@ class TestWorkerEntryWithLogQueue:
             ) as mock_install,
             pytest.raises(SystemExit),
         ):
-            _worker_entry("my.domain", True, False, 0, q)
+            _worker_entry("my.domain", True, 0, q)
 
         mock_install.assert_called_once_with(q)
 

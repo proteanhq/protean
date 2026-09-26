@@ -41,10 +41,12 @@ import warnings
 from collections.abc import Sequence
 from multiprocessing.process import BaseProcess
 from pathlib import Path
+from typing import Any
 
 from watchfiles import PythonFilter, watch
 
-from protean.server.supervisor import _worker_entry
+from protean._deprecation import warn_from_registry
+from protean.server.supervisor import _check_log_arguments, _worker_entry
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +79,9 @@ class Reloader:
         reload_dirs: Sequence[str | Path] | None = None,
         test_mode: bool = False,
         debug: bool = False,
+        log_level: str | None = None,
+        log_format: str | None = None,
+        log_config: dict[str, Any] | None = None,
     ) -> None:
         """Initialize the Reloader.
 
@@ -88,12 +93,25 @@ class Reloader:
             test_mode: If ``True``, the inner Engine runs in test mode
                 (limited cycles, then exits). Used to keep reloader smoke
                 tests deterministic.
-            debug: If ``True``, the inner Engine runs with DEBUG-level
-                logging.
+            debug: Deprecated, removed in v0.20.0. ``True`` is the same as
+                ``log_level="DEBUG"``; an explicit ``log_level`` wins.
+            log_level: Log level the inner worker passes to
+                ``Domain.configure_logging()`` in place of ``[logging].level``.
+            log_format: Log format the inner worker passes to
+                ``Domain.configure_logging()`` in place of ``[logging].format``.
+            log_config: A ``logging.config.dictConfig`` dict. The inner worker
+                applies it and skips ``Domain.configure_logging()``.
         """
+        log_level, log_format = _check_log_arguments(log_level, log_format)
+        if debug:
+            warn_from_registry("reloader_debug", "Reloader(debug=...)")
+            if log_level is None:
+                log_level = "DEBUG"
         self.domain_path = domain_path
         self.test_mode = test_mode
-        self.debug = debug
+        self.log_level = log_level
+        self.log_format = log_format
+        self.log_config = log_config
 
         resolved = list(reload_dirs) if reload_dirs else [Path.cwd()]
         self.reload_dirs: list[Path] = [Path(d).resolve() for d in resolved]
@@ -164,7 +182,12 @@ class Reloader:
 
         process = self._ctx.Process(
             target=_worker_entry,
-            args=(self.domain_path, self.test_mode, self.debug, 0, None),
+            args=(self.domain_path, self.test_mode, 0, None),
+            kwargs={
+                "log_level": self.log_level,
+                "log_format": self.log_format,
+                "log_config": self.log_config,
+            },
             name="protean-reload-worker",
         )
         process.start()
