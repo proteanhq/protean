@@ -140,6 +140,8 @@ def main(
     #   3. `server` and `observatory` then call Domain.configure_logging() on the
     #      loaded domain, passing --log-level / --log-format as overrides so the
     #      rest of [logging] still applies. --log-config skips that call.
+    #   4. Other commands: a flag puts handlers on the root, so Domain.init()
+    #      skips its auto-configuration. Without a flag, it defers to it.
     ctx.ensure_object(dict)
 
     if log_config is not None:
@@ -271,7 +273,7 @@ def server(
         apply_domain_logging(derived_domain, parent_obj)
 
         if workers == 1:
-            # Single-worker path: identical to previous behavior, zero overhead.
+            # Single-worker path: no supervisor, zero overhead.
             # Traverse and initialize domain — loads all aggregates, entities,
             # services, and other domain elements.
             derived_domain.init()

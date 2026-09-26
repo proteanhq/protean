@@ -136,10 +136,12 @@ protean --log-config ./logging.json server      # full dictConfig JSON
 rest of `[logging]` still applies, so redaction, `per_logger` levels, and the
 correlation filter stay in place while you raise the verbosity.
 
-`--log-config` replaces everything. It applies the supplied JSON via
-`logging.config.dictConfig()`, and `server` and `observatory` then skip the
-domain's `[logging]` section entirely. Add the correlation and redaction
-filters to your `dictConfig` yourself if you need them.
+`--log-config` applies the supplied JSON via `logging.config.dictConfig()`,
+and `server` and `observatory` then skip the domain's `[logging]` section. The
+correlation filter is still installed on the root logger. Add the redaction
+filter to your `dictConfig` yourself if you need it. If your `dictConfig`
+leaves the root logger without handlers, `Domain.init()` applies `[logging]`
+anyway.
 
 The `--debug` flag on `protean server` and `protean observatory` was removed in
 v0.17.0. Use `protean --log-level DEBUG server` instead for the single-process
@@ -318,6 +320,11 @@ own logging (Django, a custom server, an OS-level journald shim), set
 ```bash
 export PROTEAN_NO_AUTO_LOGGING=1
 ```
+
+Single-worker `protean server` and `protean observatory` honor it too: they
+leave any logging your domain module sets up on import in place. The worker
+processes of a multi-worker or `--reload` run do not read it, and always apply
+`[logging]`.
 
 You can then wire whichever parts of Protean's integration you want
 manually:

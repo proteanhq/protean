@@ -73,7 +73,8 @@ def observatory(
         domains.append(derived)
 
     # Logging is process-wide, so the first domain's [logging] wins. Apply it
-    # before init() so the domain's own auto-configuration does not run first.
+    # after every domain loads, so a load failure in a later domain still
+    # reports through the bootstrap handlers.
     apply_domain_logging(domains[0], parent_obj)
     for derived in domains:
         derived.init()
