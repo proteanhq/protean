@@ -86,4 +86,8 @@ protean --log-level DEBUG server --domain auth
 Once the domain loads, the server applies the domain's `[logging]` section from
 `domain.toml`. `--log-level` and `--log-format` override its level and format;
 the rest of the section still applies. `--log-config` and
-`PROTEAN_NO_AUTO_LOGGING` skip the section. See [Logging](../../logging.md#cli-flags) for the precedence rules.
+`PROTEAN_NO_AUTO_LOGGING` skip the section. In multi-worker (`--workers N`) and
+`--reload` runs, the worker processes do not see `--log-level`, `--log-format`,
+or `PROTEAN_NO_AUTO_LOGGING`. Each worker applies `[logging]` and
+`PROTEAN_LOG_LEVEL`. See
+[Logging](../../logging.md#cli-flags) for the precedence rules.
