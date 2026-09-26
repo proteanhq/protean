@@ -191,6 +191,26 @@ class TestTraceEmitterPersistence:
         stream_len = redis_conn.xlen(TRACE_STREAM)
         assert stream_len == 10
 
+    def test_emit_writes_when_retention_reaches_before_the_epoch(
+        self, test_domain, redis_conn
+    ):
+        """A retention longer than the epoch still writes: MINID is clamped at 0."""
+        emitter = TraceEmitter(test_domain, trace_retention_days=36500)
+        emitter.emit(
+            event="handler.completed",
+            stream="test::entity",
+            message_id="msg-forever",
+            message_type="TestEvent",
+        )
+
+        entries = redis_conn.xrange(TRACE_STREAM)
+        assert len(entries) == 1
+        _, fields = entries[0]
+        data_raw = fields.get(b"data") or fields.get("data")
+        if isinstance(data_raw, bytes):
+            data_raw = data_raw.decode("utf-8")
+        assert json.loads(data_raw)["message_id"] == "msg-forever"
+
     def test_emit_does_not_write_when_persistence_disabled(
         self, test_domain, redis_conn
     ):

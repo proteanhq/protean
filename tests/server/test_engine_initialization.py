@@ -53,6 +53,16 @@ class TestEngineObservatoryConfigFallback:
             assert engine.emitter._retention_ms == 7 * 86_400_000
 
     @pytest.mark.no_test_domain
+    def test_fallback_when_trace_retention_is_inf(self):
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        domain.config["observatory"] = {"trace_retention_days": float("inf")}
+
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            assert engine.emitter._retention_ms == 7 * 86_400_000
+
+    @pytest.mark.no_test_domain
     def test_fallback_when_config_get_raises_attribute_error(self):
         """Engine uses default retention when config.get raises AttributeError."""
         from unittest.mock import PropertyMock, patch

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 import typer
 from rich import print
+from rich.markup import escape
 
 from protean.cli.result import emit_usage_error
 from protean.exceptions import NoDomainException
@@ -40,7 +41,8 @@ def _abort_load(
     logger.error(message)
     if as_json:
         emit_usage_error(as_json=True, message=message)
-    print(f"[red]Error:[/red] {message}")
+    # Escape the message so a literal ``[lint]`` is not read as a markup tag.
+    print(f"[red]Error:[/red] {escape(message)}")
     raise typer.Abort() from exc
 
 

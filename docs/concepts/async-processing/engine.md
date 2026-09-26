@@ -188,8 +188,11 @@ The TraceEmitter writes to two Redis channels:
 
 The Engine reads `trace_retention_days` from the domain's `[observatory]`
 configuration (default: 7 days). When set to `0`, Stream persistence is
-disabled and only Pub/Sub broadcasting is available. If the configuration value
-is missing or invalid, the Engine falls back to the 7-day default.
+disabled and only Pub/Sub broadcasting is available. The value goes through
+Python's `int()`: `3.9` becomes 3 days, and a negative number also disables
+persistence. If `[observatory]` is missing or not a table, or `int()` cannot
+convert the value (such as `"abc"` or `inf`), the Engine falls back to the
+7-day default.
 
 The emitter adds zero overhead when no monitoring tools are subscribed and
 persistence is disabled, see

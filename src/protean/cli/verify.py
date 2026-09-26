@@ -319,7 +319,7 @@ def verify(
 def _validate_lint_level(lint_config: dict[str, Any]) -> str | None:
     """Return an error message if ``[lint].level`` is not a valid floor, else ``None``."""
     level = lint_config.get("level", "warn")
-    if level not in _LINT_LEVELS:
+    if not isinstance(level, str) or level not in _LINT_LEVELS:
         return f"[lint].level: {level!r} is invalid. Use 'error', 'warn', or 'info'."
     return None
 
@@ -353,12 +353,12 @@ def _run_check(domain: Any) -> tuple[bool, dict[str, Any]]:
     """Validate the ``[lint]`` config, run ``Domain.check``, and decide whether
     check gates. Returns ``(check_failed, stage_dict)``.
 
-    ``verify`` calls ``Domain.check()`` directly, which — unlike ``protean check``
-    — skips the ``[lint]`` config validation and wraps its IR build in a bare
-    ``except Exception: pass``. So a malformed ``[lint]`` block (a bad
-    ``suppressions`` count, a non-table ``[lint]``, an invalid ``level``) is
-    swallowed and reads as a false green. Run the same validation ``check`` runs,
-    up front, and surface any failure as a check-stage error (exit 4).
+    ``Domain.check()`` does not validate ``[lint].level``, and it reports a
+    malformed ``[lint]`` value only by raising ``ConfigurationError``. Run the
+    same validation ``protean check`` runs, up front, so every
+    bad ``[lint]`` value (a non-table ``[lint]``, an invalid ``level``, a bad
+    ``suppressions`` count) surfaces as an ``INVALID_LINT_CONFIG`` check-stage
+    error (exit 4).
     """
     # Imported locally to keep ``protean --help`` from eagerly pulling in the
     # heavy IR builder subsystem (mirrors ``check.py``).

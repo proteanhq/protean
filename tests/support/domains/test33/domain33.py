@@ -1,7 +1,7 @@
 """Test domain with only INFO diagnostics, gating on info via [lint].level.
 
 Same shape as test27 (EVENT_WITHOUT_DATA info only, no warnings) but sets
-``[lint].level = "info"`` so ``protean check`` exits 2 on the info finding.
+``[lint].level = "info"`` so ``protean check`` exits 1 on the info finding.
 """
 
 from protean import Domain

@@ -53,27 +53,19 @@ max_connections = 20
 
 ### LOW_POOL_SIZE warning
 
-`Domain.check()` emits a `LOW_POOL_SIZE` warning for any SQLAlchemy database
+`Domain.init()` logs a `LOW_POOL_SIZE` warning for any SQLAlchemy database
 with `pool_size < 5` unless `PROTEAN_ENV` is `development` or `testing`. Memory
 providers are skipped. The warning is advisory. It does not block startup.
 
-Sample output from `protean check` when `pool_size = 2` on a
-PostgreSQL provider:
+With `pool_size = 2` on a PostgreSQL provider, startup logs:
 
 ```
-$ protean check --domain=my_domain
-
-  Domain: my_domain  WARN
-  1 warning(s)
-
-  Warnings (1):
-    ! LOW_POOL_SIZE: Database 'default' has pool_size=2 (production
-      default is 5). Consider raising it for production workloads.
+Database 'default' has pool_size=2 (production default is 5). Consider raising it for production workloads.
 ```
 
-`protean check` exits with code `2` on warnings, so CI pipelines that
-enforce `--strict` will fail. Raise `pool_size` or set `PROTEAN_ENV` to
-`development`/`testing` to silence the warning.
+`protean check` does not report this warning, so it does not change the exit
+code. Raise `pool_size` or set `PROTEAN_ENV` to `development`/`testing` to
+silence the warning.
 
 ## Health checks
 

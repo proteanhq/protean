@@ -167,7 +167,7 @@ def check(
         _fail_usage(format, f"Invalid config: {lint_table_error}")
 
     lint_level = lint_config.get("level", "warn")
-    if lint_level not in _LINT_LEVELS:
+    if not isinstance(lint_level, str) or lint_level not in _LINT_LEVELS:
         _fail_usage(
             format,
             f"Invalid [lint].level: {lint_level!r}. Use 'error', 'warn', or 'info'.",
