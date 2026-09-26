@@ -124,6 +124,7 @@ def make_domain(request, tmp_path):
             provider = domain.providers["default"]
             provider._metadata.drop_all(provider._engine)
             provider._engine.dispose()
+            domain.event_store.store.close()
         ctx.pop()
 
 
