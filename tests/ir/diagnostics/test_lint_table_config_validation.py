@@ -137,3 +137,18 @@ class TestDomainCheckRaisesOnBadLintOption:
             match=r"\[lint\]\.aggregate_size_limit must be a non-negative integer",
         ):
             domain.check(traverse=False)
+
+    def test_bad_option_raises_when_validation_errors_skip_the_ir_build(self):
+        domain = Domain(name="CheckBadLintWithErrors", root_path=".")
+        domain.config["identity_strategy"] = "function"
+        domain.config["lint"] = {"suppressions": {"UNHANDLED_EVENT": "x"}}
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        with pytest.raises(
+            ConfigurationError,
+            match=r"\[lint\]\.suppressions\.UNHANDLED_EVENT must be a non-negative",
+        ):
+            domain.check(traverse=False)

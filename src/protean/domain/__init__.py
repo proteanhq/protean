@@ -144,7 +144,11 @@ from protean.integrations.logging import (
     protean_correlation_processor,
     protean_otel_processor,
 )
-from protean.ir.builder import IRBuilder
+from protean.ir.builder import (
+    IRBuilder,
+    validate_lint_suppressions,
+    validate_lint_table,
+)
 from protean.ir.diagnostics import DiagnosticCode
 from protean.port.event_store import CausationNode
 from protean.server.tracing import TraceEmitter
@@ -769,6 +773,15 @@ class Domain:
 
         errors = self._validator.errors
         diagnostics: list[dict[str, str]] = []
+
+        # Check ``[lint]`` before the IR short-circuit below, so a malformed
+        # value raises even when validation errors skip the IR build.
+        lint_config = self.config.get("lint", {})
+        lint_error = validate_lint_table(lint_config) or validate_lint_suppressions(
+            lint_config.get("suppressions", {})
+        )
+        if lint_error:
+            raise ConfigurationError(lint_error)
 
         # Build IR for additional diagnostics only if no fatal errors
         if not errors:
