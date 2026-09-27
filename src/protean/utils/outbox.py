@@ -12,7 +12,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index
 from protean.core.repository import BaseRepository
 from protean.fields import Auto
-from protean.utils import ensure_utc_aware, outbox_trace
+from protean.utils import DomainObjects, ensure_utc_aware, outbox_trace
 from protean.utils.eventing import Metadata
 from protean.utils.globals import _domain_now
 from protean.utils.query import F, Q
@@ -1019,6 +1019,51 @@ class OutboxRepository(BaseRepository):
         }
 
 
+def backfill_suffix_from_config(config: Any) -> str:
+    """Return the configured ``[server.priority_lanes].backfill_suffix``.
+
+    A partition key must not equal this suffix (ADR-0028 decision 3). The unit
+    of work and outbox reconciliation both validate keys against it, so both
+    read it through this helper and share one default.
+    """
+    suffix: str = (
+        config.get("server", {})
+        .get("priority_lanes", {})
+        .get("backfill_suffix", "backfill")
+    )
+    return suffix
+
+
+def _is_outboxed_event(domain: Any, message: Any) -> bool:
+    """Whether the unit of work writes an outbox row for *message* in *domain*.
+
+    Only events raised by this domain's aggregates get outbox rows. A stored
+    message qualifies when its type string resolves in the domain's own type
+    registry to an event that is ``part_of`` an aggregate. That excludes:
+
+    - another domain's events in a shared store (their type string carries the
+      other domain's name, so it does not resolve here),
+    - commands, which ``domain.process`` appends but never outboxes,
+    - process manager transition events, which are ``part_of`` the process
+      manager.
+
+    Only the direct registry lookup is used, not the upcaster chain: the crash
+    window sits at the tail of the store, where every message was written with
+    the current type strings.
+    """
+    headers = message.metadata.headers if message.metadata else None
+    type_string = headers.type if headers else None
+    if not type_string:
+        return False
+
+    element_cls = domain._events_and_commands.get(type_string)
+    if element_cls is None or element_cls.element_type != DomainObjects.EVENT:
+        return False
+
+    part_of = getattr(element_cls.meta_, "part_of", None)
+    return getattr(part_of, "element_type", None) == DomainObjects.AGGREGATE
+
+
 def reconcile_outbox(
     domain: Any, provider_name: str = "default", limit: int = 1000
 ) -> int:
@@ -1028,9 +1073,20 @@ def reconcile_outbox(
     This closes the residual crash window from ADR-0015: an event appended to the
     event store (the durable anchor) whose relational outbox commit did not land.
     The divergence is at the *tail* of the store (the last unit of work before a
-    crash), so a cheap check on the newest event short-circuits when there is
-    nothing to repair, and only the most recent ``limit`` events are scanned
-    otherwise.
+    crash), so a cheap check on the newest message short-circuits when there is
+    nothing to repair, and only the most recent ``limit`` messages of ``$all``
+    are scanned otherwise. ``limit`` counts every message in ``$all``, including
+    ones this function skips.
+
+    Only events raised by this domain's aggregates are repaired, because those
+    are the only messages the unit of work writes outbox rows for. Another
+    domain's events in a shared store, commands, and process manager transition
+    events are skipped. Ownership is decided by type string, so a second domain
+    with the same name as this one is indistinguishable from it.
+
+    A rebuilt row carries the same ``partition_key`` the unit of work would have
+    set (ADR-0028). Its ``priority`` is the default, since the original request's
+    priority is not stored with the event.
 
     Only the internal-broker row is reconciled here; external published-broker
     rows are left to a future extension.
@@ -1064,25 +1120,44 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
             for row in outbox_repo.find_all_by_message_id(message_id)
         )
 
-    # Fast path: if the newest event already has its internal outbox row, the
-    # last unit of work committed fully and there is nothing at the tail to
-    # repair. This keeps the startup sweep cheap in the common (no-crash) case.
-    if _internal_row_exists(last.metadata.headers.id):
+    # Fast path: if the newest message is one of this domain's outboxed events
+    # and already has its internal row, the last unit of work committed fully
+    # and there is nothing at the tail to repair. This keeps the startup sweep
+    # cheap in the common (no-crash) case.
+    if _is_outboxed_event(domain, last) and _internal_row_exists(
+        last.metadata.headers.id
+    ):
         return 0
 
     tail = last.metadata.event_store.global_position
     start = max(0, tail - limit + 1)
     messages = store.read("$all", position=start, no_of_messages=limit)
 
-    missing = [m for m in messages if not _internal_row_exists(m.metadata.headers.id)]
-    if not missing:  # pragma: no cover - unreachable: the newest event lacks its
-        # row (fast path fell through) and is always inside the scan window, so
+    # Walk back from the tail to the newest message this domain outboxes. The
+    # newest message overall may be foreign, a command, or a transition event,
+    # none of which ever get a row, so it says nothing about a crash.
+    qualifying = [m for m in messages if _is_outboxed_event(domain, m)]
+    if not qualifying or _internal_row_exists(qualifying[-1].metadata.headers.id):
+        return 0
+
+    missing = [m for m in qualifying if not _internal_row_exists(m.metadata.headers.id)]
+    if not missing:  # pragma: no cover - unreachable: the newest qualifying
+        # event lacks its row (checked above) and is in `qualifying`, so
         # `missing` is non-empty here. Kept as a defensive guard.
         return 0
+
+    partition_keys = domain._partition_keys
+    backfill_suffix = backfill_suffix_from_config(domain.config)
 
     with UnitOfWork():
         for message in missing:
             domain_meta = message.metadata.domain
+            # Rebuild the event so the key is extracted and validated exactly
+            # as the unit of work does it. The message qualified, so its type
+            # resolves in this domain.
+            partition_key = UnitOfWork._extract_partition_key(
+                message.to_domain_object(), partition_keys, backfill_suffix
+            )
             outbox_message = Outbox.create_message(
                 message_id=message.metadata.headers.id,
                 stream_name=message.metadata.headers.stream,
@@ -1092,6 +1167,7 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 correlation_id=getattr(domain_meta, "correlation_id", None),
                 causation_id=getattr(domain_meta, "causation_id", None),
                 target_broker=internal_broker,
+                partition_key=partition_key,
             )
             outbox_repo._dao.save(outbox_message)
 

@@ -20,7 +20,11 @@ All commands accept a `--domain` option to specify the domain module path
 ## `protean outbox reconcile`
 
 Scans the tail of the event store and creates an outbox row for any event
-that is durable in the store but has no internal-broker outbox row. This is
+that is durable in the store but has no internal-broker outbox row. Only
+events raised by this domain's aggregates are repaired, because they are the
+only messages that get outbox rows: another domain's events in a shared store,
+commands, and process manager transition events are skipped. A rebuilt row
+carries the same `partition_key` the original commit would have set. This is
 the manual counterpart to the [automatic startup
 sweep](#automatic-startup-sweep), run it on demand after a suspected crash, or
 from a cron job as a periodic safety net.
@@ -39,7 +43,7 @@ protean outbox reconcile --provider=analytics --limit=5000 --domain=my_domain
 |--------|-------------|---------|
 | `--domain` | Domain module path | `.` (current directory) |
 | `--provider` | Provider whose outbox to reconcile | `default` |
-| `--limit` | Most recent events to scan for gaps | `1000` |
+| `--limit` | Most recent event-store messages to scan for gaps, skipped messages included | `1000` |
 
 **Output**
 
@@ -55,8 +59,10 @@ Nothing to reconcile: the outbox is consistent with the event store.
 ```
 
 The scan is cheap when there is nothing to repair: it first checks the single
-newest event, and only walks the `--limit` window when that newest event is
-itself missing its row (the signature of a crash at the tail). Reconciliation
+newest message, and only walks the `--limit` window when that message is
+missing its row or is one reconcile skips. In the window it finds the newest
+event this domain outboxes and repairs only if that event is missing its row
+(the signature of a crash at the tail). Reconciliation
 is idempotent, the composite unique index on (`message_id`, `target_broker`) means running it
 repeatedly, or concurrently with the startup sweep, never duplicates a row.
 
@@ -84,7 +90,7 @@ worker; the idempotent index makes the overlap safe.
 | Condition | Behavior |
 |-----------|----------|
 | Invalid domain path | Aborts with "Error loading Protean domain" |
-| Outbox not enabled for the domain | Aborts with "Outbox is not enabled for this domain" |
+| Outbox not enabled for the domain | Aborts with "Outbox is not enabled for this domain", naming the two settings that enable it |
 | Nothing to reconcile | Prints "Nothing to reconcile: the outbox is consistent with the event store" |
 
 ## How reconciliation works
