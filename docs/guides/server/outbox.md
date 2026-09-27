@@ -275,7 +275,8 @@ $ protean server --domain=my_domain
 ```
 
 The sweep checks only the newest stored message when that message is one of
-this domain's events and has its row. Otherwise it reads the `--limit` window.
+this domain's events and has its row. Otherwise it reads the newest 1,000
+messages.
 This happens on every boot when the store is shared with another domain, or
 when the last write was a command. The sweep never blocks boot (a failure is
 logged and startup continues), and is safe under `--workers N`, the composite

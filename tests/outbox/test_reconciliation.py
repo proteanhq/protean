@@ -221,7 +221,7 @@ class TestOutboxReconciliationOnMessageDB:
         assert len(outbox_repo.find_all_by_message_id(message_id)) == 1
 
 
-# --- Ownership filter (#1648) ------------------------------------------------
+# --- Ownership filter ---------------------------------------------------------
 #
 # Only events raised by this domain's aggregates get outbox rows from the unit
 # of work, so only those may be repaired. Foreign events in a shared store,
