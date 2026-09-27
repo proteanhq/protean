@@ -34,12 +34,31 @@ review.
 | `HEALTH_PORT_BIND` | info | Config | `protean server` runs a health-check server on port 8080; 0.17 changed its default bind host to loopback (`127.0.0.1`), so probes are no longer reachable off-host unless you set `host = "0.0.0.0"`. |
 | `ELASTICSEARCH_SERVER_V8` | warning | Infra | An Elasticsearch provider; installs now default to the v8 client, which requires an Elasticsearch 8.x server. |
 | `OUTBOX_NEEDS_ALTER` | warning | Schema | A live `outbox` table with unbounded string columns; emits the exact backend `ALTER` to apply the new `VARCHAR(N)` bounds. |
-| `NESTED_UNIT_OF_WORK` | warning | Source | A `UnitOfWork` opened inside another. After ADR-0027 it joins the outer transaction with no savepoints, so a nested rollback dooms the whole thing. |
+| `NESTED_UNIT_OF_WORK` | warning | Source | A `with UnitOfWork()` block opened inside another. After ADR-0027 it joins the outer transaction with no savepoints, so a nested rollback dooms the whole thing. |
 | `UNIT_OF_WORK_NESTING_REVIEW` | info | Source | No lexical nesting found, but nesting through a call cannot be seen statically. Reports how many blocks are worth walking. |
-| `IO_INSIDE_UNIT_OF_WORK` | warning | Source | An HTTP call, broker publish or email send inside a `UnitOfWork`, which now holds database locks for the length of the call. |
+| `IO_INSIDE_UNIT_OF_WORK` | warning | Source | An HTTP call, broker publish or email send inside a `with UnitOfWork()` block, which now holds database locks for the length of the call. |
 | `OUTBOX_TARGET_BROKER_NULLABLE` | warning | Schema | A live `outbox` table whose `target_broker` still allows NULL. Emits the backfill plus the `SET NOT NULL` for your dialect. Shipped in 0.16.2; reaches `main` in 0.17. |
 | `OUTBOX_UNIQUE_INDEX_LEGACY` | warning | Schema | A live `outbox` table still carrying the `message_id`-only unique index. Emits the swap to the composite `(message_id, target_broker)` index that the dual-write idempotency guard depends on. |
 | `CHECK_FAILED` | warning | — | A check could not complete (e.g. the database was unreachable); the report may be incomplete for that area. |
+
+### What the source checks cover
+
+`NESTED_UNIT_OF_WORK`, `UNIT_OF_WORK_NESTING_REVIEW` and `IO_INSIDE_UNIT_OF_WORK`
+read explicit `with UnitOfWork()` and `async with UnitOfWork()` blocks only. A
+clean report says nothing about the other places a Unit of Work runs:
+
+- **Handler methods.** Event handlers, command handlers, projectors and process
+  managers run each method in a Unit of Work the framework opens for you.
+  `upgrade-check` does not scan those methods. Run `protean check`, which reports
+  a method that persists and then calls out as
+  [`HANDLER_PERSISTS_AND_CALLS_OUT`](../fitness-functions.md#handler-persists-and-calls-out),
+  at `info` level.
+- **`@use_case` methods.** Neither `upgrade-check` nor `protean check` scans
+  them. Review them by hand.
+- **I/O through an injected port or adapter.** Both tools recognise a call as
+  I/O only when it resolves, by import, to a known I/O library. A call made
+  through an object you inject, such as a payment gateway port, is not flagged
+  by either tool.
 
 ## Generated SQL
 
