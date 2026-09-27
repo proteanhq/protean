@@ -370,3 +370,102 @@ class TestScanAgainstRealSource:
 
         assert (nested, io_sites_found) == ([], [])
         assert total == 1
+
+
+@pytest.mark.no_test_domain
+class TestScanScopeMatchesTheDocs:
+    """Pin the scope that docs/reference/cli/upgrade-check.md describes.
+
+    The "What the source checks cover" section says the scan reads explicit
+    `with UnitOfWork()` blocks only. It does not see the Unit of Work that a
+    `@handle` or `@use_case` method runs in, and it does not report a block
+    written inside one as nested. If the scan starts covering those methods,
+    these tests fail and that section of the docs needs updating with it.
+    """
+
+    SOURCE = (
+        "import httpx\n"
+        "from protean import Domain, UnitOfWork, handle, use_case\n"
+        "from protean.fields import Identifier, String\n"
+        "\n"
+        "domain = Domain(name='Scope')\n"
+        "\n"
+        "@domain.aggregate\n"
+        "class Order:\n"
+        "    status = String()\n"
+        "\n"
+        "@domain.event(part_of=Order)\n"
+        "class OrderPlaced:\n"
+        "    order_id = Identifier()\n"
+        "\n"
+        "@domain.event_handler(part_of=Order)\n"
+        "class Notify:\n"
+        "    @handle(OrderPlaced)\n"
+        "    def on_placed(self, event):\n"
+        "        domain.repository_for(Order).get(event.order_id)\n"
+        "        httpx.post('https://hook/handler', json={})\n"
+        "\n"
+        "@domain.application_service(part_of=Order)\n"
+        "class Orders:\n"
+        "    @use_case\n"
+        "    def confirm(self, order_id):\n"
+        "        domain.repository_for(Order).get(order_id)\n"
+        "        httpx.post('https://hook/use-case', json={})\n"
+    )
+
+    EXPLICIT_BLOCKS = (
+        "\n"
+        "@domain.event_handler(part_of=Order)\n"
+        "class NotifyInBlock:\n"
+        "    @handle(OrderPlaced)\n"
+        "    def on_placed(self, event):\n"
+        "        with UnitOfWork():\n"
+        "            httpx.post('https://hook/handler-block', json={})\n"
+        "\n"
+        "@domain.application_service(part_of=Order)\n"
+        "class OrdersInBlock:\n"
+        "    @use_case\n"
+        "    def confirm(self, order_id):\n"
+        "        with UnitOfWork():\n"
+        "            httpx.post('https://hook/use-case-block', json={})\n"
+    )
+
+    def _domain_at(self, tmp_path, body: str):
+        pkg = tmp_path / "scopeapp"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        (pkg / "domain.py").write_text(body)
+        sys.path.insert(0, str(tmp_path))
+        try:
+            module = importlib.import_module("scopeapp.domain")
+            module.domain.init(traverse=False)
+            return module.domain
+        finally:
+            sys.path.remove(str(tmp_path))
+
+    def teardown_method(self):
+        for name in [m for m in sys.modules if m.startswith("scopeapp")]:
+            del sys.modules[name]
+
+    def test_io_in_handler_and_use_case_bodies_is_not_scanned(self, tmp_path):
+        domain = self._domain_at(tmp_path, self.SOURCE)
+
+        with domain.domain_context():
+            nested, io_sites_found, total = scan_domain_source(domain)
+
+        assert (nested, io_sites_found, total) == ([], [], 0)
+
+    def test_explicit_blocks_in_those_methods_are_scanned_but_not_nested(
+        self, tmp_path
+    ):
+        domain = self._domain_at(tmp_path, self.SOURCE + self.EXPLICIT_BLOCKS)
+
+        with domain.domain_context():
+            nested, io_sites_found, total = scan_domain_source(domain)
+
+        assert total == 2
+        assert len(io_sites_found) == 2
+        assert all("httpx.post()" in site for site in io_sites_found)
+        # Each block sits inside the Unit of Work the framework opens around the
+        # method, but the scan cannot see that one, so it reports no nesting.
+        assert nested == []
