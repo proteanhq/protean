@@ -1,6 +1,8 @@
 """Reconciliation of the ADR-0015 crash window: events durable in the event
 store whose relational outbox row did not land."""
 
+import logging
+
 import pytest
 
 from protean.core.aggregate import BaseAggregate
@@ -599,14 +601,18 @@ class TestReconcilePartitionKey:
         domain.repository_for(Ledger).add(ledger)
         return domain.event_store.store.read_last_message("$all").metadata.headers.id
 
-    def test_rebuilt_row_carries_the_unit_of_work_partition_key(self, partitioned):
+    def test_rebuilt_row_carries_the_unit_of_work_partition_key(
+        self, partitioned, caplog
+    ):
         domain, outbox_repo = partitioned
         event_id = self._deposit_keyed(domain, "key-7")
         [original] = outbox_repo.find_all_by_message_id(event_id)
         assert original.partition_key == "key-7"  # precondition
 
         outbox_repo._dao._delete_all()
-        assert reconcile_outbox(domain) == 1
+        with caplog.at_level(logging.ERROR, logger="protean.utils.outbox"):
+            assert reconcile_outbox(domain) == 1
+        assert "as abandoned" not in caplog.text
 
         [rebuilt] = outbox_repo.find_all_by_message_id(event_id)
         assert rebuilt.partition_key == original.partition_key
@@ -626,7 +632,7 @@ class TestReconcilePartitionKey:
         assert post_row.partition_key is None
 
     def test_a_key_that_no_longer_validates_does_not_block_the_repair(
-        self, partitioned
+        self, partitioned, caplog
     ):
         """The backfill suffix changed after the events were written, so one
         stored key is now reserved. That row is saved as abandoned, so it is
@@ -637,11 +643,15 @@ class TestReconcilePartitionKey:
         outbox_repo._dao._delete_all()
         domain.config["server"]["priority_lanes"] = {"backfill_suffix": "key-7"}
 
-        assert reconcile_outbox(domain) == 2
+        with caplog.at_level(logging.ERROR, logger="protean.utils.outbox"):
+            assert reconcile_outbox(domain) == 2
+        assert f"saving the row for message {stale_id} as abandoned" in caplog.text
+        assert str(good_id) not in caplog.text
         [stale_row] = outbox_repo.find_all_by_message_id(stale_id)
         [good_row] = outbox_repo.find_all_by_message_id(good_id)
         assert stale_row.status == OutboxStatus.ABANDONED.value
         assert "partition_key could not be computed" in stale_row.last_error["message"]
+        assert stale_row.last_processed_at is not None
         assert good_row.status == OutboxStatus.PENDING.value
         assert good_row.partition_key == "key-8"
 

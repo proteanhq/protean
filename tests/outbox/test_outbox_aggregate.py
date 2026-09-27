@@ -471,6 +471,8 @@ class TestMarkMethodsRecordInjectedClock:
         sample_outbox.mark_abandoned("done")
 
         assert sample_outbox.last_error["abandoned_at"] == self.FIXED.isoformat()
+        # cleanup_old_abandoned() ages rows out by last_processed_at.
+        assert sample_outbox.last_processed_at == self.FIXED
 
 
 class TestResetForRetry:

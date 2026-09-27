@@ -367,6 +367,7 @@ class Outbox(BaseAggregate):
         """
         now = _domain_now(now)
         self.status = OutboxStatus.ABANDONED.value
+        self.last_processed_at = now
         self.last_error = {
             "message": reason,
             "abandoned_at": now.isoformat(),
