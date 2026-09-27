@@ -454,6 +454,25 @@ class TestReconcileSkipsForeignEvents:
             assert reconcile_outbox(domain) == 0
             assert outbox_repo.find_all_by_message_id(foreign_id) == []
 
+    def test_foreign_alias_of_a_local_event_is_skipped(self, tmp_path):
+        """A foreign type string mapped onto a class this domain also registers
+        resolves to the local class, but the unit of work never writes it."""
+        domain = _make_domain_with(
+            tmp_path,
+            before_init=lambda d: d.register_external_event(
+                Deposited, "Other.Deposited.v1"
+            ),
+        )
+        with domain.domain_context():
+            alias = Message(
+                data={},
+                metadata=Metadata(
+                    headers=MessageHeaders(id="m-1", type="Other.Deposited.v1")
+                ),
+            )
+            assert domain._events_and_commands["Other.Deposited.v1"] is Deposited
+            assert _is_outboxed_event(domain, alias, "default") is False
+
 
 @pytest.mark.no_test_domain
 class TestReconcileSkipsCommands:

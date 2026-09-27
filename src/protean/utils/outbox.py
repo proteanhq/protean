@@ -1049,7 +1049,8 @@ def _is_outboxed_event(domain: Any, message: Any, provider_name: str) -> bool:
 
     - another domain's events in a shared store (their type string carries the
       other domain's name, so it does not resolve here, and an event mapped in
-      with ``register_external_event`` is not in the domain's registry),
+      with ``register_external_event`` is not in the domain's registry or, if
+      mapped onto a local class, does not match that class's own type),
     - commands, which ``domain.process`` appends but never outboxes,
     - process manager transition events, which are ``part_of`` the process
       manager,
@@ -1064,9 +1065,14 @@ def _is_outboxed_event(domain: Any, message: Any, provider_name: str) -> bool:
     if not type_string:
         return False
 
-    element_cls = domain._events_and_commands.get(
-        type_string
-    ) or domain._upcaster_chain.resolve_event_class(type_string)
+    element_cls = domain._events_and_commands.get(type_string)
+    # ``register_external_event`` can map a foreign type string onto a class
+    # this domain also registers. The unit of work only writes the class's own
+    # current type, so a direct match must equal it.
+    if element_cls is not None and element_cls.__type__ != type_string:
+        return False
+    if element_cls is None:
+        element_cls = domain._upcaster_chain.resolve_event_class(type_string)
     if element_cls is None or element_cls.element_type != DomainObjects.EVENT:
         return False
 
