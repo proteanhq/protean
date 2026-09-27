@@ -274,10 +274,11 @@ operator action:
 $ protean server --domain=my_domain
 ```
 
-The sweep is cheap when there is nothing to repair (it checks only the newest
-stored message unless that one is missing its row or is a message reconcile
-skips), never blocks boot (a
-failure is logged and startup continues), and is safe under `--workers N`, the composite
+The sweep checks only the newest stored message when that message is one of
+this domain's events and has its row. Otherwise it reads the `--limit` window.
+This happens on every boot when the store is shared with another domain, or
+when the last write was a command. The sweep never blocks boot (a failure is
+logged and startup continues), and is safe under `--workers N`, the composite
 unique index on (`message_id`, `target_broker`) makes concurrent sweeps idempotent.
 
 **On demand with the CLI.** Run the same reconciliation yourself after a
@@ -295,11 +296,12 @@ $ protean outbox reconcile --provider=analytics --limit=5000 --domain=my_domain
 Reconciled 2 outbox row(s) from the event store.
 ```
 
-Reconciliation repairs only events raised by this domain's aggregates, so
-another domain's events in a shared event store, commands, and process manager
-transition events never get a row. Only the internal-broker row is reconciled;
-external published-broker rows are re-derived by the processor once the
-internal row publishes. See the
+Reconciliation repairs only events raised by this domain's aggregates on the
+given provider, so another domain's events in a shared event store, commands,
+process manager transition events, and events of aggregates on other providers
+never get a row. Only the internal-broker row is reconciled. External
+published-broker rows are not rebuilt, so a published event lost in the crash
+window does not reach external brokers. See the
 [`protean outbox reconcile` reference](../../reference/cli/data/outbox.md) for
 options and output.
 

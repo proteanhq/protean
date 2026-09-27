@@ -9,8 +9,9 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.process_manager import BaseProcessManager
+from protean.core.upcaster import BaseUpcaster
 from protean.domain import Domain
-from protean.fields import Identifier, Integer
+from protean.fields import Identifier, Integer, String
 from protean.utils.eventing import Message, MessageHeaders, Metadata
 from protean.utils.mixins import handle
 from protean.utils.outbox import _is_outboxed_event, reconcile_outbox
@@ -261,6 +262,22 @@ class Shipped(BaseEvent):
     shipment_id = Identifier(required=True)
 
 
+class Ledger(BaseAggregate):
+    status = Integer(default=0)
+
+
+class Posted(BaseEvent):
+    ledger_id = Identifier(required=True)
+
+
+class Report(BaseAggregate):
+    title = String(default="")
+
+
+class ReportFiled(BaseEvent):
+    report_id = Identifier(required=True)
+
+
 def _make_foreign_domain(**config):
     """A second domain, named differently, whose events stand in for another
     bounded context writing to a shared event store."""
@@ -296,9 +313,9 @@ def _deposited_message_ids(domain):
     ]
 
 
-def _make_domain_with(tmp_path, *elements):
+def _make_domain_with(tmp_path, *elements, before_init=None):
     """Like ``_make_domain`` but registers extra ``(cls, kwargs)`` elements
-    before ``init``, and creates the tables inside the domain context."""
+    and runs *before_init* on the domain before ``init``."""
     db_path = tmp_path / "reconcile.db"
     domain = Domain(name="Reconcile")
     domain.config["databases"]["default"] = {
@@ -311,6 +328,8 @@ def _make_domain_with(tmp_path, *elements):
     domain.register(Deposited, part_of=Account)
     for cls, kwargs in elements:
         domain.register(cls, **kwargs)
+    if before_init is not None:
+        before_init(domain)
     domain.init(traverse=False)
     return domain
 
@@ -355,6 +374,23 @@ class TestReconcileSkipsForeignEvents:
         assert len(rows) == 1
         assert rows[0].type == Deposited.__type__
         assert outbox_repo.find_all_by_message_id(foreign_id) == []
+
+    def test_newest_own_event_with_its_row_stops_the_repair(
+        self, domain_and_repo, foreign_domain
+    ):
+        """When the newest own event behind a foreign tail has its row, the last
+        commit finished. An older own event whose published row was cleaned up
+        must not be rebuilt and published again."""
+        domain, outbox_repo = domain_and_repo
+        _deposit(domain)
+        _deposit(domain)
+        older_id, newer_id = _deposited_message_ids(domain)
+        outbox_repo._dao.delete(outbox_repo.find_all_by_message_id(older_id)[0])
+        _append_foreign_event(domain, foreign_domain)
+
+        assert reconcile_outbox(domain) == 0
+        assert outbox_repo.find_all_by_message_id(older_id) == []
+        assert len(outbox_repo.find_all_by_message_id(newer_id)) == 1
 
     def test_window_with_only_foreign_messages_creates_nothing(
         self, domain_and_repo, foreign_domain
@@ -494,26 +530,82 @@ class TestReconcileSkipsProcessManagerTransitions:
 
 @pytest.mark.no_test_domain
 class TestReconcilePartitionKey:
-    def test_rebuilt_row_carries_the_unit_of_work_partition_key(self, tmp_path):
+    @pytest.fixture
+    def partitioned(self, tmp_path):
         domain = _make_domain_with(
             tmp_path,
             (
                 SequencedDepositHandler,
                 {"part_of": Account, "sequential_by": "account_id"},
             ),
+            (Ledger, {}),
+            (Posted, {"part_of": Ledger}),
         )
         with domain.domain_context():
             outbox_repo = _create_tables(domain)
-            account = _deposit(domain)
-            [event_id] = _deposited_message_ids(domain)
-            [original] = outbox_repo.find_all_by_message_id(event_id)
-            assert original.partition_key == str(account.id)  # precondition
+            domain.repository_for(Ledger)._dao
+            provider = domain.providers["default"]
+            provider._metadata.create_all(provider._engine)
+            yield domain, outbox_repo
 
-            outbox_repo._dao._delete_all()
-            assert reconcile_outbox(domain) == 1
+    def _deposit_keyed(self, domain, key):
+        """Raise a deposit whose ``sequential_by`` field differs from the
+        aggregate id, so a key read from the wrong field would not match."""
+        account = Account(balance=100)
+        account.raise_(Deposited(account_id=key, amount=100))
+        domain.repository_for(Account).add(account)
+        assert key != account.id  # precondition
+        return domain.event_store.store.read_last_message("$all").metadata.headers.id
 
-            [rebuilt] = outbox_repo.find_all_by_message_id(event_id)
-            assert rebuilt.partition_key == original.partition_key
+    def _post(self, domain):
+        ledger = Ledger()
+        ledger.raise_(Posted(ledger_id=ledger.id))
+        domain.repository_for(Ledger).add(ledger)
+        return domain.event_store.store.read_last_message("$all").metadata.headers.id
+
+    def test_rebuilt_row_carries_the_unit_of_work_partition_key(self, partitioned):
+        domain, outbox_repo = partitioned
+        event_id = self._deposit_keyed(domain, "key-7")
+        [original] = outbox_repo.find_all_by_message_id(event_id)
+        assert original.partition_key == "key-7"  # precondition
+
+        outbox_repo._dao._delete_all()
+        assert reconcile_outbox(domain) == 1
+
+        [rebuilt] = outbox_repo.find_all_by_message_id(event_id)
+        assert rebuilt.partition_key == original.partition_key
+
+    def test_unpartitioned_category_gets_no_key_beside_a_partitioned_one(
+        self, partitioned
+    ):
+        domain, outbox_repo = partitioned
+        deposit_id = self._deposit_keyed(domain, "key-7")
+        post_id = self._post(domain)
+        outbox_repo._dao._delete_all()
+
+        assert reconcile_outbox(domain) == 2
+        [deposit_row] = outbox_repo.find_all_by_message_id(deposit_id)
+        [post_row] = outbox_repo.find_all_by_message_id(post_id)
+        assert deposit_row.partition_key == "key-7"
+        assert post_row.partition_key is None
+
+    def test_a_key_that_no_longer_validates_does_not_block_the_repair(
+        self, partitioned
+    ):
+        """The backfill suffix changed after the events were written, so one
+        stored key is now reserved. That row is rebuilt without a key, and the
+        other lost row keeps its key."""
+        domain, outbox_repo = partitioned
+        stale_id = self._deposit_keyed(domain, "key-7")
+        good_id = self._deposit_keyed(domain, "key-8")
+        outbox_repo._dao._delete_all()
+        domain.config["server"]["priority_lanes"] = {"backfill_suffix": "key-7"}
+
+        assert reconcile_outbox(domain) == 2
+        [stale_row] = outbox_repo.find_all_by_message_id(stale_id)
+        [good_row] = outbox_repo.find_all_by_message_id(good_id)
+        assert stale_row.partition_key is None
+        assert good_row.partition_key == "key-8"
 
     def test_rebuilt_row_has_no_partition_key_without_sequential_by(
         self, domain_and_repo
@@ -542,14 +634,129 @@ class TestOutboxedEventPredicate:
         self, domain_and_repo, message
     ):
         domain, _ = domain_and_repo
-        assert _is_outboxed_event(domain, message) is False
+        assert _is_outboxed_event(domain, message, "default") is False
 
     def test_own_aggregate_event_qualifies(self, domain_and_repo):
         domain, _ = domain_and_repo
         _deposit(domain)
         message = domain.event_store.store.read_last_message("$all")
         assert message.metadata.headers.type == Deposited.__type__
-        assert _is_outboxed_event(domain, message) is True
+        assert _is_outboxed_event(domain, message, "default") is True
+
+
+@pytest.mark.no_test_domain
+class TestReconcileHonorsTheProvider:
+    """Each event's row lives in the outbox of its aggregate's provider, so
+    reconciling one provider must skip events of aggregates on another."""
+
+    @pytest.fixture
+    def domain(self, tmp_path):
+        def add_analytics_database(domain):
+            domain.config["databases"]["analytics"] = {
+                "provider": "sqlite",
+                "database_uri": f"sqlite:///{tmp_path / 'analytics.db'}",
+            }
+
+        domain = _make_domain_with(
+            tmp_path,
+            (Report, {"provider": "analytics"}),
+            (ReportFiled, {"part_of": Report}),
+            before_init=add_analytics_database,
+        )
+        with domain.domain_context():
+            _create_tables(domain)
+            provider = domain.providers["analytics"]
+            domain.repository_for(Report)._dao
+            domain._get_outbox_repo("analytics")._dao
+            provider._metadata.create_all(provider._engine)
+            yield domain
+
+    def _file_report(self, domain):
+        report = Report(title="Q3")
+        report.raise_(ReportFiled(report_id=report.id))
+        domain.repository_for(Report).add(report)
+        return _newest_message_id(domain)
+
+    def test_other_providers_committed_event_at_the_tail_is_a_noop(self, domain):
+        _deposit(domain)
+        report_event_id = self._file_report(domain)
+        analytics_repo = domain._get_outbox_repo("analytics")
+        default_repo = domain._get_outbox_repo("default")
+        assert len(analytics_repo.find_all_by_message_id(report_event_id)) == 1
+
+        assert reconcile_outbox(domain) == 0
+        assert default_repo.find_all_by_message_id(report_event_id) == []
+
+    def test_each_provider_repairs_only_its_own_events(self, domain):
+        _deposit(domain)
+        [deposit_id] = _deposited_message_ids(domain)
+        report_event_id = self._file_report(domain)
+        default_repo = domain._get_outbox_repo("default")
+        analytics_repo = domain._get_outbox_repo("analytics")
+        default_repo._dao._delete_all()
+        analytics_repo._dao._delete_all()
+
+        assert reconcile_outbox(domain) == 1
+        assert len(default_repo.find_all_by_message_id(deposit_id)) == 1
+        assert default_repo.find_all_by_message_id(report_event_id) == []
+
+        assert reconcile_outbox(domain, provider_name="analytics") == 1
+        assert len(analytics_repo.find_all_by_message_id(report_event_id)) == 1
+        assert analytics_repo.find_all_by_message_id(deposit_id) == []
+
+
+class Withdrawn(BaseEvent):
+    account_id = Identifier(required=True)
+    amount = Integer(required=True)
+    __version__ = 2
+
+
+class UpcastWithdrawn(BaseUpcaster):
+    def upcast(self, data):
+        return data
+
+
+@pytest.mark.no_test_domain
+class TestReconcileRepairsOlderEventVersions:
+    """A crash leaves a v1 event without its row, and the next deploy bumps the
+    event to v2 with an upcaster. The v1 event is still this domain's."""
+
+    def _v1_message(self):
+        class Withdrawn(BaseEvent):  # the same event before the version bump
+            account_id = Identifier(required=True)
+            amount = Integer(required=True)
+
+        old_domain = Domain(name="Reconcile")
+        old_domain.register(Account)
+        old_domain.register(Withdrawn, part_of=Account)
+        old_domain.init(traverse=False)
+        with old_domain.domain_context():
+            account = Account()
+            account.raise_(Withdrawn(account_id=account.id, amount=5))
+            return Message.from_domain_object(account._events[-1])
+
+    def test_lost_row_of_an_older_version_is_repaired(self, tmp_path):
+        domain = _make_domain_with(
+            tmp_path,
+            (Withdrawn, {"part_of": Account}),
+            before_init=lambda d: d.upcaster(
+                UpcastWithdrawn, event_type=Withdrawn, from_version=1, to_version=2
+            ),
+        )
+        message = self._v1_message()
+        assert message.metadata.headers.type == "Reconcile.Withdrawn.v1"
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            domain.event_store.store._write(
+                message.metadata.headers.stream,
+                message.metadata.headers.type,
+                message.data,
+                metadata=message.metadata.to_dict(),
+            )
+
+            assert reconcile_outbox(domain) == 1
+            [row] = outbox_repo.find_all_by_message_id(message.metadata.headers.id)
+            assert row.type == "Reconcile.Withdrawn.v1"
 
 
 @pytest.mark.message_db

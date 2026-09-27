@@ -47,8 +47,8 @@ def reconcile(
         if not derived_domain.has_outbox:
             print(
                 "Outbox is not enabled for this domain. Enable it with "
-                'default_subscription_type = "stream" under [server], '
-                "or with enable_outbox = true."
+                'default_subscription_type = "stream" under [server]. The older '
+                "enable_outbox = true switch also needs that setting."
             )
             raise typer.Abort()
 
