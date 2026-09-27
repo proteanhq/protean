@@ -11,9 +11,9 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.process_manager import BaseProcessManager
 from protean.domain import Domain
 from protean.fields import Identifier, Integer
-from protean.utils.eventing import Message
+from protean.utils.eventing import Message, MessageHeaders, Metadata
 from protean.utils.mixins import handle
-from protean.utils.outbox import reconcile_outbox
+from protean.utils.outbox import _is_outboxed_event, reconcile_outbox
 from tests.shared import MESSAGE_DB_URI
 
 
@@ -526,6 +526,30 @@ class TestReconcilePartitionKey:
         assert reconcile_outbox(domain) == 1
         [rebuilt] = outbox_repo.find_all_by_message_id(event_id)
         assert rebuilt.partition_key is None
+
+
+@pytest.mark.no_test_domain
+class TestOutboxedEventPredicate:
+    @pytest.mark.parametrize(
+        "message",
+        [
+            Message(data={}),
+            Message(data={}, metadata=Metadata(headers=MessageHeaders(id="m-1"))),
+        ],
+        ids=["no-metadata", "no-type"],
+    )
+    def test_message_without_a_type_string_does_not_qualify(
+        self, domain_and_repo, message
+    ):
+        domain, _ = domain_and_repo
+        assert _is_outboxed_event(domain, message) is False
+
+    def test_own_aggregate_event_qualifies(self, domain_and_repo):
+        domain, _ = domain_and_repo
+        _deposit(domain)
+        message = domain.event_store.store.read_last_message("$all")
+        assert message.metadata.headers.type == Deposited.__type__
+        assert _is_outboxed_event(domain, message) is True
 
 
 @pytest.mark.message_db
