@@ -14,7 +14,7 @@ from protean.core.index import Index
 from protean.core.repository import BaseRepository
 from protean.exceptions import DeserializationError, ValidationError
 from protean.fields import Auto
-from protean.utils import DomainObjects, ensure_utc_aware, outbox_trace
+from protean.utils import DomainObjects, ensure_utc_aware, fqn, outbox_trace
 from protean.utils.eventing import Metadata
 from protean.utils.globals import _domain_now
 from protean.utils.query import F, Q
@@ -1048,7 +1048,8 @@ def _is_outboxed_event(domain: Any, message: Any, provider_name: str) -> bool:
     excludes:
 
     - another domain's events in a shared store (their type string carries the
-      other domain's name, so it does not resolve here),
+      other domain's name, so it does not resolve here, and an event mapped in
+      with ``register_external_event`` is not in the domain's registry),
     - commands, which ``domain.process`` appends but never outboxes,
     - process manager transition events, which are ``part_of`` the process
       manager,
@@ -1067,6 +1068,15 @@ def _is_outboxed_event(domain: Any, message: Any, provider_name: str) -> bool:
         type_string
     ) or domain._upcaster_chain.resolve_event_class(type_string)
     if element_cls is None or element_cls.element_type != DomainObjects.EVENT:
+        return False
+
+    # ``register_external_event`` maps a foreign type string to the foreign
+    # class, which keeps its ``part_of``. Only events in this domain's own
+    # registry are raised here.
+    record = domain._domain_registry._elements[DomainObjects.EVENT.value].get(
+        fqn(element_cls)
+    )
+    if record is None or record.cls is not element_cls:
         return False
 
     part_of = getattr(element_cls.meta_, "part_of", None)

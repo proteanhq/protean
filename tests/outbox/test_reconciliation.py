@@ -437,6 +437,23 @@ class TestReconcileSkipsForeignEvents:
         assert len(outbox_repo.find_all_by_message_id(own_id)) == 1
         assert outbox_repo.find_all_by_message_id(foreign_id) == []
 
+    def test_externally_registered_foreign_event_is_skipped(
+        self, tmp_path, foreign_domain
+    ):
+        """A consumer domain maps the foreign type string to the foreign class,
+        which still carries ``part_of`` the foreign aggregate. The event is not
+        in the consumer's own registry, so it gets no row."""
+        domain = _make_domain_with(
+            tmp_path,
+            before_init=lambda d: d.register_external_event(Shipped, Shipped.__type__),
+        )
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            foreign_id = _append_foreign_event(domain, foreign_domain)
+
+            assert reconcile_outbox(domain) == 0
+            assert outbox_repo.find_all_by_message_id(foreign_id) == []
+
 
 @pytest.mark.no_test_domain
 class TestReconcileSkipsCommands:
