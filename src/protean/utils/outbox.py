@@ -1097,11 +1097,10 @@ def _rebuilt_partition_key(
     """The ``partition_key`` the unit of work would have set for *message*.
 
     Categories without a ``sequential_by`` handler have no key, so the event is
-    only rebuilt for a partitioned category. If the stored event no longer
-    loads or its key no longer validates (the payload schema, ``sequential_by``
-    or ``backfill_suffix`` changed after it was written), the row is rebuilt
-    without a key and a warning is logged. The event is then still published,
-    without its per-key routing, and the other rows in the sweep are repaired.
+    only rebuilt for a partitioned category. Raises ``DeserializationError`` or
+    ``ValidationError`` if the stored event no longer loads or its key no longer
+    validates (the payload schema, ``sequential_by`` or ``backfill_suffix``
+    changed after it was written).
     """
     from protean.core.unit_of_work import UnitOfWork  # noqa: PLC0415 - circular
 
@@ -1110,18 +1109,9 @@ def _rebuilt_partition_key(
     if not category or category not in partition_keys:
         return None
 
-    try:
-        return UnitOfWork._extract_partition_key(
-            message.to_domain_object(), partition_keys, backfill_suffix
-        )
-    except (DeserializationError, ValidationError) as exc:
-        logger.warning(
-            "outbox.reconcile: rebuilding the row for message %s without a "
-            "partition_key, because its key could not be computed: %s",
-            message.metadata.headers.id,
-            exc,
-        )
-        return None
+    return UnitOfWork._extract_partition_key(
+        message.to_domain_object(), partition_keys, backfill_suffix
+    )
 
 
 def reconcile_outbox(
@@ -1147,12 +1137,15 @@ def reconcile_outbox(
     other providers are skipped. Ownership is decided by type string, which
     starts with the domain name in CamelCase. Domains whose names give the same
     CamelCase form (``my-domain``, ``my_domain`` and ``My Domain`` all give
-    ``MyDomain``) cannot be told apart. A foreign type mapped onto a local event
-    with ``register_external_event`` also counts as this domain's.
+    ``MyDomain``) cannot be told apart. A foreign type mapped with
+    ``register_external_event`` is skipped, even when it maps onto a local event.
 
     A rebuilt row carries the same ``partition_key`` the unit of work would have
     set (ADR-0028). Its ``priority`` is the default, since the original request's
-    priority is not stored with the event.
+    priority is not stored with the event. If that key can no longer be computed
+    (the stored event no longer loads, or its key no longer validates), the row
+    is saved as abandoned and an error is logged. A row without its key would be
+    published to the base category, where no partitioned handler reads it.
 
     Only the internal-broker row is reconciled here; external published-broker
     rows are left to a future extension.
@@ -1218,6 +1211,20 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     with UnitOfWork():
         for message in missing:
             domain_meta = message.metadata.domain
+            abandon_reason = None
+            try:
+                partition_key = _rebuilt_partition_key(
+                    message, partition_keys, backfill_suffix
+                )
+            except (DeserializationError, ValidationError) as exc:
+                partition_key = None
+                abandon_reason = f"partition_key could not be computed: {exc}"
+                logger.error(
+                    "outbox.reconcile: saving the row for message %s as "
+                    "abandoned, because its %s",
+                    message.metadata.headers.id,
+                    abandon_reason,
+                )
             outbox_message = Outbox.create_message(
                 message_id=message.metadata.headers.id,
                 stream_name=message.metadata.headers.stream,
@@ -1227,10 +1234,10 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 correlation_id=getattr(domain_meta, "correlation_id", None),
                 causation_id=getattr(domain_meta, "causation_id", None),
                 target_broker=internal_broker,
-                partition_key=_rebuilt_partition_key(
-                    message, partition_keys, backfill_suffix
-                ),
+                partition_key=partition_key,
             )
+            if abandon_reason is not None:
+                outbox_message.mark_abandoned(abandon_reason)
             outbox_repo._dao.save(outbox_message)
 
     return len(missing)

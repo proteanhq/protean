@@ -14,7 +14,7 @@ from protean.domain import Domain
 from protean.fields import Identifier, Integer, String
 from protean.utils.eventing import Message, MessageHeaders, Metadata
 from protean.utils.mixins import handle
-from protean.utils.outbox import _is_outboxed_event, reconcile_outbox
+from protean.utils.outbox import OutboxStatus, _is_outboxed_event, reconcile_outbox
 from tests.shared import MESSAGE_DB_URI
 
 
@@ -629,8 +629,8 @@ class TestReconcilePartitionKey:
         self, partitioned
     ):
         """The backfill suffix changed after the events were written, so one
-        stored key is now reserved. That row is rebuilt without a key, and the
-        other lost row keeps its key."""
+        stored key is now reserved. That row is saved as abandoned, so it is
+        never published without its key, and the other lost row keeps its key."""
         domain, outbox_repo = partitioned
         stale_id = self._deposit_keyed(domain, "key-7")
         good_id = self._deposit_keyed(domain, "key-8")
@@ -640,7 +640,9 @@ class TestReconcilePartitionKey:
         assert reconcile_outbox(domain) == 2
         [stale_row] = outbox_repo.find_all_by_message_id(stale_id)
         [good_row] = outbox_repo.find_all_by_message_id(good_id)
-        assert stale_row.partition_key is None
+        assert stale_row.status == OutboxStatus.ABANDONED.value
+        assert "partition_key could not be computed" in stale_row.last_error["message"]
+        assert good_row.status == OutboxStatus.PENDING.value
         assert good_row.partition_key == "key-8"
 
     def test_rebuilt_row_has_no_partition_key_without_sequential_by(
