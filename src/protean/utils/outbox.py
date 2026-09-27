@@ -1098,7 +1098,11 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
         message_type = message.metadata.headers.type
         if message_type is None:  # pragma: no cover - store always sets a type
             return False
-        element_cls = domain._events_and_commands.get(message_type)
+        # An owned event stored under an older schema version resolves through
+        # the upcaster chain, the same way ``Message.to_domain_object`` does.
+        element_cls = domain._events_and_commands.get(
+            message_type
+        ) or domain._upcaster_chain.resolve_event_class(message_type)
         if element_cls is None:
             return False
         if element_cls.element_type != DomainObjects.EVENT:
@@ -1119,10 +1123,14 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     def _partition_key_for(message: Message) -> str | None:
         """The partition key the unit of work would have written for *message*.
 
-        Rebuilds the event from the stored message and runs the unit of work's
-        own extractor on it, so a rebuilt row gets the same ``sequential_by``
-        key as the original commit.
+        For a partitioned category, rebuilds the event from the stored message
+        and runs the unit of work's own extractor on it, so a rebuilt row gets
+        the same ``sequential_by`` key as the original commit.
         """
+        assert message.metadata is not None
+        domain_meta = message.metadata.domain
+        if not domain_meta or domain_meta.stream_category not in domain._partition_keys:
+            return None
         return UnitOfWork._extract_partition_key(
             message.to_domain_object(), domain._partition_keys, backfill_suffix
         )

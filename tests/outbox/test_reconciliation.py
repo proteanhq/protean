@@ -9,6 +9,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.process_manager import BaseProcessManager
+from protean.core.upcaster import BaseUpcaster
 from protean.domain import Domain
 from protean.fields import Identifier, Integer, String
 from protean.utils.mixins import handle
@@ -59,6 +60,21 @@ class OrderPM(BaseProcessManager):
     @handle(OrderPlaced, start=True, correlate="order_id")
     def on_placed(self, event):
         self.order_id = event.order_id
+
+
+class Withdrawn(BaseEvent):
+    """Current version: v2 added ``reason``."""
+
+    __version__ = 2
+    account_id = Identifier(required=True)
+    amount = Integer(required=True)
+    reason = String(required=True)
+
+
+class UpcastWithdrawnV1ToV2(BaseUpcaster):
+    def upcast(self, data: dict) -> dict:
+        data["reason"] = "unspecified"
+        return data
 
 
 class Report(BaseAggregate):
@@ -465,6 +481,66 @@ class TestOutboxReconciliationOwnership:
             assert reconcile_outbox(domain) == 2
             rebuilt = {row.message_id for row in outbox_repo.find_unprocessed()}
             assert rebuilt == written
+
+    def test_reconcile_repairs_an_owned_event_stored_under_an_old_version(
+        self, tmp_path
+    ):
+        """After a version bump the registry holds only the current type. An
+        owned event stored as v1 still resolves through the upcaster chain, and
+        its rebuilt row keeps the partition key of the upcast event."""
+        domain = Domain(name="ReconcileVersions")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'versions.db'}",
+        }
+        domain.config["enable_outbox"] = True
+        domain.config["server"] = {"default_subscription_type": "stream"}
+        domain.register(Account)
+        domain.register(Deposited, part_of=Account)
+        domain.register(Withdrawn, part_of=Account)
+        domain.register(
+            AccountBalanceHandler, part_of=Account, sequential_by="account_id"
+        )
+        domain.upcaster(
+            UpcastWithdrawnV1ToV2, event_type=Withdrawn, from_version=1, to_version=2
+        )
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            outbox_repo = _prepare_tables(domain, Account)
+            category = Account.meta_.stream_category
+            old_type = "ReconcileVersions.Withdrawn.v1"
+            assert old_type not in domain._events_and_commands
+
+            # A v1 event durable in the store whose outbox row never landed.
+            domain.event_store.store._write(
+                f"{category}-acct-1",
+                old_type,
+                {"account_id": "acct-1", "amount": 5},
+                {
+                    "headers": {
+                        "id": "withdrawn-v1",
+                        "type": old_type,
+                        "time": "2025-01-01T00:00:00+00:00",
+                        "stream": f"{category}-acct-1",
+                    },
+                    "envelope": {"specversion": "1.0"},
+                    "domain": {
+                        "fqn": "tests.outbox.test_reconciliation.Withdrawn",
+                        "kind": "EVENT",
+                        "stream_category": category,
+                        "version": 1,
+                        "sequence_id": "0",
+                        "asynchronous": True,
+                    },
+                },
+            )
+
+            assert reconcile_outbox(domain) == 1
+            rows = outbox_repo.find_all_by_message_id("withdrawn-v1")
+            assert len(rows) == 1
+            assert rows[0].type == old_type
+            assert rows[0].partition_key == "acct-1"
 
     def test_reconcile_preserves_the_partition_key(self, tmp_path):
         domain = _make_ownership_domain(tmp_path, sequential_by=True)
