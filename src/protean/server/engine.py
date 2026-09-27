@@ -1310,8 +1310,9 @@ class Engine:
         unpublished. Returns the number of rows repaired.
 
         Reads only the newest message when it is one of this domain's events
-        and has its row, and the ``limit`` window otherwise. A failure here must never block the engine from starting. With
-        ``server --workers N`` it runs once per worker; the reconcile is
+        and has its row, and the ``limit`` window otherwise. A failure here
+        must never block the engine from starting. With ``server --workers N``
+        it runs once per worker; the reconcile is
         idempotent (the ``(message_id, target_broker)`` unique index rejects
         duplicate rows), so a race between workers is safe. A single-flight guard
         is a possible future refinement.
