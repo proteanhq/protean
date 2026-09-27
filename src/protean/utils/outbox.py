@@ -12,8 +12,8 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index
 from protean.core.repository import BaseRepository
 from protean.fields import Auto
-from protean.utils import ensure_utc_aware, outbox_trace
-from protean.utils.eventing import Metadata
+from protean.utils import DomainObjects, ensure_utc_aware, outbox_trace
+from protean.utils.eventing import Message, Metadata
 from protean.utils.globals import _domain_now
 from protean.utils.query import F, Q
 
@@ -1029,8 +1029,21 @@ def reconcile_outbox(
     event store (the durable anchor) whose relational outbox commit did not land.
     The divergence is at the *tail* of the store (the last unit of work before a
     crash), so a cheap check on the newest event short-circuits when there is
-    nothing to repair, and only the most recent ``limit`` events are scanned
+    nothing to repair, and only the most recent ``limit`` messages are scanned
     otherwise.
+
+    Reconcile repairs only the messages this domain writes outbox rows for: a
+    message qualifies when its type resolves in this domain's registry to an
+    event class whose ``part_of`` is an aggregate. That is exactly the set the
+    unit of work writes internal outbox rows for. It excludes another domain's
+    events (their type strings do not resolve here), commands, and
+    process-manager transition events (registered here, but ``part_of`` is the
+    process manager, and they are appended without an outbox row by design).
+    Each provider has its own outbox, so only events of aggregates persisted by
+    *provider_name* qualify. The
+    ``$all`` stream mixes all of these when domains share one event store or a
+    domain appends commands, so an unfiltered scan would copy foreign or
+    non-owned messages into this domain's outbox.
 
     Only the internal-broker row is reconciled here; external published-broker
     rows are left to a future extension.
@@ -1058,27 +1071,89 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     internal_broker = outbox_config.get("broker", DEFAULT_TARGET_BROKER)
     outbox_repo = domain._get_outbox_repo(provider_name)
 
+    # Nothing writes an outbox row until the UnitOfWork below, so each message
+    # id is looked up at most once per call.
+    row_exists: dict[str, bool] = {}
+
     def _internal_row_exists(message_id: str) -> bool:
-        return any(
-            row.target_broker == internal_broker
-            for row in outbox_repo.find_all_by_message_id(message_id)
+        if message_id not in row_exists:
+            row_exists[message_id] = any(
+                row.target_broker == internal_broker
+                for row in outbox_repo.find_all_by_message_id(message_id)
+            )
+        return row_exists[message_id]
+
+    def _qualifies(message: Message) -> bool:
+        """Whether reconcile should rebuild an internal outbox row for *message*.
+
+        A message qualifies when its type resolves in this domain's registry to
+        an event class whose ``part_of`` is an aggregate persisted by
+        *provider_name*. This is exactly the set the unit of work writes into
+        this provider's outbox, so it excludes foreign events (unresolved here),
+        commands, process-manager transition events (``part_of`` is the process
+        manager), and events of aggregates whose rows go to another provider's
+        outbox.
+        """
+        assert message.metadata is not None
+        message_type = message.metadata.headers.type
+        if message_type is None:  # pragma: no cover - store always sets a type
+            return False
+        element_cls = domain._events_and_commands.get(message_type)
+        if element_cls is None:
+            return False
+        if element_cls.element_type != DomainObjects.EVENT:
+            return False
+        part_of = element_cls.meta_.part_of
+        return (
+            part_of is not None
+            and part_of.element_type == DomainObjects.AGGREGATE
+            and part_of.meta_.provider == provider_name
         )
 
-    # Fast path: if the newest event already has its internal outbox row, the
-    # last unit of work committed fully and there is nothing at the tail to
-    # repair. This keeps the startup sweep cheap in the common (no-crash) case.
-    if _internal_row_exists(last.metadata.headers.id):
+    backfill_suffix = (
+        domain.config.get("server", {})
+        .get("priority_lanes", {})
+        .get("backfill_suffix", "backfill")
+    )
+
+    def _partition_key_for(message: Message) -> str | None:
+        """The partition key the unit of work would have written for *message*.
+
+        Rebuilds the event from the stored message and runs the unit of work's
+        own extractor on it, so a rebuilt row gets the same ``sequential_by``
+        key as the original commit.
+        """
+        return UnitOfWork._extract_partition_key(
+            message.to_domain_object(), domain._partition_keys, backfill_suffix
+        )
+
+    # Fast path: if the newest message is one this domain owns and already has its
+    # internal outbox row, the last unit of work committed fully and there is
+    # nothing at the tail to repair, and the window is never read. When the
+    # newest message is not owned here (a command, or another domain's event),
+    # the check below costs one window read and one row lookup instead.
+    if _qualifies(last) and _internal_row_exists(last.metadata.headers.id):
         return 0
 
     tail = last.metadata.event_store.global_position
     start = max(0, tail - limit + 1)
     messages = store.read("$all", position=start, no_of_messages=limit)
 
-    missing = [m for m in messages if not _internal_row_exists(m.metadata.headers.id)]
-    if not missing:  # pragma: no cover - unreachable: the newest event lacks its
-        # row (fast path fell through) and is always inside the scan window, so
-        # `missing` is non-empty here. Kept as a defensive guard.
+    # Restrict to messages this domain owns before checking for gaps, so a
+    # foreign event or a command in the shared ``$all`` stream is never copied
+    # into this domain's outbox.
+    qualifying = [m for m in messages if _qualifies(m)]
+    if not qualifying:
         return 0
+
+    # The newest qualifying message is the tail of what this domain owns. If it
+    # already has its row, the crash window is closed for this domain.
+    if _internal_row_exists(qualifying[-1].metadata.headers.id):
+        return 0
+
+    # ``qualifying[-1]`` lacks its row (checked above), so ``missing`` is always
+    # non-empty here.
+    missing = [m for m in qualifying if not _internal_row_exists(m.metadata.headers.id)]
 
     with UnitOfWork():
         for message in missing:
@@ -1092,6 +1167,7 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 correlation_id=getattr(domain_meta, "correlation_id", None),
                 causation_id=getattr(domain_meta, "causation_id", None),
                 target_broker=internal_broker,
+                partition_key=_partition_key_for(message),
             )
             outbox_repo._dao.save(outbox_message)
 

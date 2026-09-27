@@ -294,6 +294,11 @@ $ protean outbox reconcile --provider=analytics --limit=5000 --domain=my_domain
 Reconciled 2 outbox row(s) from the event store.
 ```
 
+Reconcile repairs only the events this domain owns. When several domains share
+one event store, the sweep skips the other domains' events, this domain's
+commands, and process-manager transition events, so it never copies a message
+this domain does not publish into its outbox.
+
 Only the internal-broker row is reconciled; external published-broker rows are
 re-derived by the processor once the internal row publishes. See the
 [`protean outbox reconcile` reference](../../reference/cli/data/outbox.md) for

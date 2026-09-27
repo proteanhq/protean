@@ -76,6 +76,9 @@ class TestOutboxReconcile:
 
         assert result.exit_code != 0
         assert "Outbox is not enabled" in result.output
+        # The message names both switches that enable the outbox.
+        assert 'default_subscription_type = "stream"' in result.output
+        assert "enable_outbox" in result.output
         reconcile.assert_not_called()
 
     def test_reconcile_aborts_when_domain_not_found(self):

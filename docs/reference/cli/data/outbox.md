@@ -20,8 +20,8 @@ All commands accept a `--domain` option to specify the domain module path
 ## `protean outbox reconcile`
 
 Scans the tail of the event store and creates an outbox row for any event
-that is durable in the store but has no internal-broker outbox row. This is
-the manual counterpart to the [automatic startup
+this domain owns that is durable in the store but has no internal-broker outbox
+row. This is the manual counterpart to the [automatic startup
 sweep](#automatic-startup-sweep), run it on demand after a suspected crash, or
 from a cron job as a periodic safety net.
 
@@ -59,6 +59,20 @@ newest event, and only walks the `--limit` window when that newest event is
 itself missing its row (the signature of a crash at the tail). Reconciliation
 is idempotent, the composite unique index on (`message_id`, `target_broker`) means running it
 repeatedly, or concurrently with the startup sweep, never duplicates a row.
+
+The scan repairs only the events this domain owns: a message whose type resolves
+in this domain's registry to an event raised by one of its aggregates. Each
+provider has its own outbox, so `--provider` also limits the scan to events of
+aggregates that provider persists. When
+several domains share one event store, the `$all` stream also carries the other
+domains' events, this domain's commands, and process-manager transition events.
+Reconcile skips all of those, so it never copies a message this domain does not
+publish into its outbox. A rebuilt row keeps the `sequential_by` partition key
+the original commit would have written.
+
+`--limit` counts every message in `$all`, including the ones reconcile skips.
+On a shared store with busy neighbours, raise `--limit` so the window still
+reaches back past the last crash.
 
 Only the **internal-broker** row is reconciled. External published-broker rows
 (from `[outbox].external_brokers`) are re-derived by the outbox processor once

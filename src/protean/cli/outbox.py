@@ -45,7 +45,10 @@ def reconcile(
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         if not derived_domain.has_outbox:
-            print("Outbox is not enabled for this domain (set enable_outbox=True).")
+            print(
+                "Outbox is not enabled for this domain "
+                '(set default_subscription_type = "stream" or enable_outbox = true).'
+            )
             raise typer.Abort()
 
         created = reconcile_outbox(derived_domain, provider_name=provider, limit=limit)
