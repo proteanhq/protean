@@ -87,7 +87,7 @@ class TestOutboxReconcile:
             result = runner.invoke(app, ["outbox", "reconcile", "--domain", "x.py"])
 
         output = " ".join(result.output.split())  # undo terminal line wrapping
-        assert 'default_subscription_type = "stream"' in output
+        assert 'default_subscription_type = "stream" under [server]' in output
         assert "enable_outbox = true" in output
 
     def test_reconcile_aborts_when_domain_not_found(self):

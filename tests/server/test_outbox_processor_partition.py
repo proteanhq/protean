@@ -213,6 +213,7 @@ class TestAbandonBackstop:
             refetched = outbox_repo.get(row_id)
             assert refetched.status == OutboxStatus.ABANDONED.value
             assert "Invalid partition key" in refetched.last_error["message"]
+            assert refetched.last_error["reason"] == "Invalid partition key"
             # The backstop abandons instead of publishing.
             assert processor.broker.published == []
 

@@ -419,6 +419,11 @@ class TestMarkAbandoned:
         assert sample_outbox.locked_by is None
         assert sample_outbox.locked_until is None
 
+    def test_mark_abandoned_records_the_given_cause(self, sample_outbox):
+        sample_outbox.mark_abandoned("bad key", cause="Invalid partition key")
+
+        assert sample_outbox.last_error["reason"] == "Invalid partition key"
+
     def test_mark_abandoned_preserves_retry_count(self, sample_outbox):
         """Test that mark_abandoned preserves the current retry count."""
         sample_outbox.retry_count = 2

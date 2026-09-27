@@ -652,6 +652,7 @@ class TestReconcilePartitionKey:
         assert stale_row.status == OutboxStatus.ABANDONED.value
         assert "partition_key could not be computed" in stale_row.last_error["message"]
         assert stale_row.last_processed_at is not None
+        assert stale_row.last_error["reason"] == "Invalid partition key"
         assert good_row.status == OutboxStatus.PENDING.value
         assert good_row.partition_key == "key-8"
 

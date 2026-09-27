@@ -358,12 +358,19 @@ class Outbox(BaseAggregate):
             self.status = OutboxStatus.ABANDONED.value
             self.last_error["reason"] = "Max retries exceeded"
 
-    def mark_abandoned(self, reason: str, now: datetime | None = None) -> None:
+    def mark_abandoned(
+        self,
+        reason: str,
+        now: datetime | None = None,
+        cause: str = "Manually abandoned",
+    ) -> None:
         """Mark message as permanently failed.
 
         Args:
             reason: Reason for abandoning the message
             now: Timestamp to record. Defaults to the active domain's clock.
+            cause: Short label for what abandoned the row, stored as
+                ``last_error["reason"]``.
         """
         now = _domain_now(now)
         self.status = OutboxStatus.ABANDONED.value
@@ -372,7 +379,7 @@ class Outbox(BaseAggregate):
             "message": reason,
             "abandoned_at": now.isoformat(),
             "retry_count": self.retry_count,
-            "reason": "Manually abandoned",
+            "reason": cause,
         }
         self._clear_lock()
 
@@ -1238,7 +1245,9 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 partition_key=partition_key,
             )
             if abandon_reason is not None:
-                outbox_message.mark_abandoned(abandon_reason)
+                outbox_message.mark_abandoned(
+                    abandon_reason, cause="Invalid partition key"
+                )
             outbox_repo._dao.save(outbox_message)
 
     return len(missing)

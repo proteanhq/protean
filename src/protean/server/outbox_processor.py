@@ -403,7 +403,10 @@ class OutboxProcessor(BaseSubscription):
                 try:
                     with UnitOfWork():
                         fresh = self.outbox_repo.get(message.id)
-                        fresh.mark_abandoned(f"Invalid partition key: {reason}")
+                        fresh.mark_abandoned(
+                            f"Invalid partition key: {reason}",
+                            cause="Invalid partition key",
+                        )
                         self.outbox_repo.add(fresh)
                 except Exception:
                     logger.exception(
