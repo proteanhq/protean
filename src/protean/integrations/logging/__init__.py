@@ -163,12 +163,17 @@ class ProteanCorrelationFilter(logging.Filter):
 
     The filter never suppresses records — it always returns ``True``.
 
+    Attach the filter to the root logger's handlers. A filter on the root
+    logger itself does not run for records that propagate from child
+    loggers such as ``logging.getLogger("myapp.orders")``.
+
     Example::
 
         import logging
         from protean.integrations.logging import ProteanCorrelationFilter
 
-        logging.getLogger().addFilter(ProteanCorrelationFilter())
+        for handler in logging.getLogger().handlers:
+            handler.addFilter(ProteanCorrelationFilter())
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -189,12 +194,17 @@ class OTelTraceContextFilter(logging.Filter):
     ``trace_id`` and ``span_id`` default to ``""`` and ``trace_flags`` to
     ``0``. The filter never suppresses records — it always returns ``True``.
 
+    Attach the filter to the root logger's handlers. A filter on the root
+    logger itself does not run for records that propagate from child
+    loggers such as ``logging.getLogger("myapp.orders")``.
+
     Example::
 
         import logging
         from protean.integrations.logging import OTelTraceContextFilter
 
-        logging.getLogger().addFilter(OTelTraceContextFilter())
+        for handler in logging.getLogger().handlers:
+            handler.addFilter(OTelTraceContextFilter())
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -376,12 +386,17 @@ class ProteanRedactionFilter(logging.Filter):
 
     The filter never suppresses records — it always returns ``True``.
 
+    Attach the filter to the root logger's handlers. A filter on the root
+    logger itself does not run for records that propagate from child
+    loggers such as ``logging.getLogger("myapp.orders")``.
+
     Example::
 
         import logging
         from protean.integrations.logging import ProteanRedactionFilter
 
-        logging.getLogger().addFilter(ProteanRedactionFilter())
+        for handler in logging.getLogger().handlers:
+            handler.addFilter(ProteanRedactionFilter(["password"]))
     """
 
     def __init__(self, redact: Iterable[str] | None = None) -> None:

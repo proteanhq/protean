@@ -1,7 +1,8 @@
 """Save and restore the process-wide logging state around a test.
 
 ``configure_logging`` and ``logging.config.dictConfig`` change process-wide
-state: the root logger's level, handlers and filters, the level of named
+state: the root logger's level, handlers and filters, the filters on the root
+logger's handlers, the level of named
 loggers such as ``protean.server.engine``, the ``disabled`` flag that
 ``dictConfig`` sets on loggers it does not mention, ``logging.disable``, the
 structlog configuration, and the structlog context variables that
@@ -82,6 +83,9 @@ class LoggingSnapshot:
     named: dict[str, _LoggerState]
     disable_level: int
     structlog_config: dict[str, Any]
+    # Protean attaches its filters to each root handler as well, and a handler
+    # kept across tests would otherwise keep a filter a test added to it.
+    root_handler_filters: list[tuple[logging.Handler, list[Any]]]
 
     @classmethod
     def take(cls) -> "LoggingSnapshot":
@@ -95,6 +99,11 @@ class LoggingSnapshot:
             },
             disable_level=manager.disable,
             structlog_config=_structlog_config(),
+            root_handler_filters=[
+                (handler, list(handler.filters))
+                for handler in logging.getLogger().handlers
+                if not _is_pytest_handler(handler)
+            ],
         )
 
     def restore(self) -> None:
@@ -123,6 +132,9 @@ class LoggingSnapshot:
             if isinstance(logger, logging.Logger):
                 state = self.named.get(name) or _new_logger_state(logger)
                 _restore_logger(logger, state)
+        for handler, handler_filters in self.root_handler_filters:
+            if handler.filters != handler_filters:
+                handler.filters = handler_filters
 
         # A handler the test attached and nothing holds any more would stay
         # open until garbage collection, a log file included.

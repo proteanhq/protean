@@ -166,6 +166,7 @@ from protean.utils.idempotency import IdempotencyStore
 from protean.utils.logging import (
     TailSamplingFilter,
     TailSamplingProcessor,
+    _install_root_filter,
     access_logger,
     configure_logging,
 )
@@ -2770,7 +2771,7 @@ class Domain:
         Calls `protean.utils.logging.configure_logging` with the given
         keyword arguments **and** inserts a
         `ProteanCorrelationFilter` on the
-        root logger and a
+        root logger and its handlers, and a
         `protean_correlation_processor`
         into the structlog pipeline so that every log record automatically
         includes ``correlation_id`` and ``causation_id`` from the active
@@ -2862,16 +2863,13 @@ class Domain:
 
         configure_logging(extra_processors=extra, **config_kwargs)
 
-        # Attach the correlation filter to the root logger so that *all*
-        # stdlib handlers benefit from it.
-        root = __import__("logging").getLogger()
-        # Avoid adding duplicate filters on repeated calls.
-        if not any(isinstance(f, ProteanCorrelationFilter) for f in root.filters):
-            root.addFilter(ProteanCorrelationFilter())
-        if telemetry_enabled and not any(
-            isinstance(f, OTelTraceContextFilter) for f in root.filters
-        ):
-            root.addFilter(OTelTraceContextFilter())
+        # Attach the correlation filter to the root logger and to each root
+        # handler. A logger's filters do not run for records that propagate
+        # from child loggers, so the handler filters cover those records.
+        # Repeated calls add no duplicates.
+        _install_root_filter(ProteanCorrelationFilter())
+        if telemetry_enabled:
+            _install_root_filter(OTelTraceContextFilter())
 
         # Tail sampling filter on the protean.access stdlib logger — covers
         # the primary wide event emission path (access_logger is a stdlib

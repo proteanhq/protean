@@ -240,8 +240,8 @@ background jobs that tag context before any domain message exists.
 Both are safe no-ops outside a domain context: they return `""` for both fields
 so formatters referencing `%(correlation_id)s` never raise `KeyError`. That
 no-op semantics is the reason Protean can attach the filter to the root logger
-unconditionally. It costs one attribute set per record and changes nothing
-about the output shape when context is absent.
+and its handlers unconditionally. It costs one attribute set per record and
+changes nothing about the output shape when context is absent.
 
 For the full correlation story across HTTP, events, subscribers, and
 OTel spans, see
@@ -254,8 +254,8 @@ OTel spans, see
 OpenTelemetry trace context (`trace_id`, `span_id`, `trace_flags`) is injected
 by `OTelTraceContextFilter` and `protean_otel_processor`. Both are installed
 only when `telemetry.enabled = true`. When telemetry is disabled, the structlog
-chain has one fewer processor and the root logger has one fewer filter, so the
-hot path pays zero cost.
+chain has one fewer processor and the root logger and its handlers have one
+fewer filter, so the hot path pays zero cost.
 
 The processor lazily resolves OpenTelemetry symbols on first access and
 caches the result. If `opentelemetry` is not installed (the `telemetry`

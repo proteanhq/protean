@@ -96,3 +96,19 @@ def test_logging_disable_is_put_back():
     snapshot.restore()
 
     assert logging.Logger.manager.disable == logging.NOTSET
+
+
+def test_a_filter_added_to_a_kept_root_handler_is_removed():
+    root = logging.getLogger()
+    handler = logging.NullHandler()
+    root.addHandler(handler)
+    try:
+        snapshot = LoggingSnapshot.take()
+
+        handler.addFilter(logging.Filter("added"))
+        snapshot.restore()
+
+        assert handler in root.handlers
+        assert handler.filters == []
+    finally:
+        root.removeHandler(handler)

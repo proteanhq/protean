@@ -151,6 +151,26 @@ _FRAMEWORK_FIELDS = frozenset(
 # ---------------------------------------------------------------------------
 
 
+def _install_root_filter(filter_: logging.Filter) -> None:
+    """Attach ``filter_`` to the root logger and to each of its handlers.
+
+    A logger's filters run only for records logged on that logger, not for
+    records that propagate up from child loggers. Handler filters run for
+    every record the handler processes, so the filter also goes on each
+    handler the root logger holds at call time.
+
+    A target that already holds a filter of the same class is skipped, so
+    repeated calls add no duplicates. The check runs per target: a handler
+    that lacks the filter still gets it when the root logger already has it.
+    """
+    root = logging.getLogger()
+    filter_cls = type(filter_)
+    targets: list[logging.Filterer] = [root, *root.handlers]
+    for target in targets:
+        if not any(isinstance(f, filter_cls) for f in target.filters):
+            target.addFilter(filter_)
+
+
 def configure_logging(
     level: str | None = None,
     format: str = "auto",
@@ -195,7 +215,8 @@ def configure_logging(
             dict directly via ``logging.config.dictConfig()``. The user-supplied
             dict is expected to include any handlers/formatters desired. After
             applying, ``ProteanCorrelationFilter`` is still installed on the
-            root logger for consistency with ``Domain.configure_logging()``.
+            root logger and its handlers for consistency with
+            ``Domain.configure_logging()``.
         redact: Optional list of field names to mask in log output. Values are
             replaced with ``"[REDACTED]"`` on log records (stdlib) and event
             dicts (structlog). Matching is case-insensitive. When ``None``
@@ -216,22 +237,18 @@ def configure_logging(
         # output even when the user supplies their own stdlib dictConfig.
         env = _detect_env()
         _setup_structlog(env=env, format="auto", extra_processors=extra_processors)
-        # Install ProteanCorrelationFilter on the root logger so correlation_id
-        # and causation_id are available in every log record, matching the
-        # behavior of Domain.configure_logging().
+        # Install ProteanCorrelationFilter on the root logger and its handlers
+        # so correlation_id and causation_id are available in every log
+        # record, matching the behavior of Domain.configure_logging().
         try:
             from protean.integrations.logging import (  # noqa: PLC0415
                 ProteanCorrelationFilter,
                 ProteanRedactionFilter,
             )
 
-            root = logging.getLogger()
-            if not any(isinstance(f, ProteanCorrelationFilter) for f in root.filters):
-                root.addFilter(ProteanCorrelationFilter())
-            if redact and not any(
-                isinstance(f, ProteanRedactionFilter) for f in root.filters
-            ):
-                root.addFilter(ProteanRedactionFilter(redact))
+            _install_root_filter(ProteanCorrelationFilter())
+            if redact:
+                _install_root_filter(ProteanRedactionFilter(redact))
         except ImportError:
             pass
         return
@@ -261,13 +278,11 @@ def configure_logging(
     # --- structlog setup ---
     _setup_structlog(env=env, format=format, extra_processors=extra_processors)
 
-    # --- redaction filter on root logger (stdlib path) ---
+    # --- redaction filter on the root logger and its handlers (stdlib path) ---
     if redact:
         from protean.integrations.logging import ProteanRedactionFilter  # noqa: PLC0415
 
-        root = logging.getLogger()
-        if not any(isinstance(f, ProteanRedactionFilter) for f in root.filters):
-            root.addFilter(ProteanRedactionFilter(redact))
+        _install_root_filter(ProteanRedactionFilter(redact))
 
     # --- per-logger overrides ---
     if per_logger:
