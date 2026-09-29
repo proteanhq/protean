@@ -747,8 +747,8 @@ Level: WARNING. Index lifecycle and query failures. Event names follow
 ## Trace-context fields
 
 When `telemetry.enabled = true` in `domain.toml`,
-`Domain.configure_logging()` installs `OTelTraceContextFilter` on the root
-stdlib logger and on each of its handlers, and `protean_otel_processor` on the structlog pipeline.
+`Domain.configure_logging()` attaches `OTelTraceContextFilter` to the root stdlib logger and to each of its handlers.
+It also adds `protean_otel_processor` to the structlog pipeline.
 Every log record receives:
 
 | Field | Type | Notes |
@@ -807,8 +807,7 @@ redact = ["x-internal-token", "customer_ssn"]
 - **structlog pipeline:** the processor returned by
   `make_redaction_processor()` is appended to `extra_processors` so it
   runs **last**, after every caller-supplied processor.
-- **stdlib pipeline:** `ProteanRedactionFilter` is attached to the root
-  logger and to each of its handlers (when a redact list is configured).
+- **stdlib pipeline:** when a redact list is configured, `ProteanRedactionFilter` is attached to the root logger and to each of its handlers.
 - **`log_method_call`:** inherits redaction transparently because it
   routes through the same pipeline.
 
