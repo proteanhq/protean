@@ -43,6 +43,9 @@ the call in a method that persists nothing, and it costs only wall-clock time.
 A method that calls out *after* touching a repository holds row locks and a
 connection for the length of the call, and `protean check` reports it as
 [HANDLER_PERSISTS_AND_CALLS_OUT](../../reference/fitness-functions.md#handler-persists-and-calls-out).
+The check does not read `@use_case` methods, and it recognises only some calls
+as I/O, so a clean report is not proof (see [what the source checks
+cover](../../reference/cli/upgrade-check.md#what-the-source-checks-cover)).
 For how to split such a method, and the recipe for a multi-facet sync, see
 [Calling External Systems from
 Handlers](../../patterns/calling-external-systems-from-handlers.md).

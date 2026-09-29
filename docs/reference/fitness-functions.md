@@ -504,10 +504,13 @@ guessed at.
 It reads one method body at a time and reports nothing it cannot see
 statically, so it trades completeness for no false positives. A persist
 delegated to a helper the method calls, a repository held on `self`, a persist
-through the event store rather than `repository_for`, or an I/O client reached
-through a local variable or a subscript are not flagged. A clean report is not
-proof; when in doubt, keep the external call out of any method that also
-persists. See
+through the event store rather than `repository_for`, an I/O client reached
+through a local variable or a subscript, or a port or adapter held on `self`
+are not flagged. A port held on `self` is missed whatever its method is called.
+A port imported at module level counts only when its method is named
+`publish`, `send_email`, `sendmail`, `send_message` or `urlopen`, so
+`gateway.charge()` is not seen. A clean report is not proof; when in
+doubt, keep the external call out of any method that also persists. See
 [ADR-0031](https://github.com/proteanhq/protean/blob/main/docs/adr/0031-handlers-persist-or-call-out.md).
 
 ### UNBOUNDED_INDEXED_STRING { #unbounded-indexed-string }

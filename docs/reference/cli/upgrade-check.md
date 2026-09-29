@@ -34,12 +34,51 @@ review.
 | `HEALTH_PORT_BIND` | info | Config | `protean server` runs a health-check server on port 8080; 0.17 changed its default bind host to loopback (`127.0.0.1`), so probes are no longer reachable off-host unless you set `host = "0.0.0.0"`. |
 | `ELASTICSEARCH_SERVER_V8` | warning | Infra | An Elasticsearch provider; installs now default to the v8 client, which requires an Elasticsearch 8.x server. |
 | `OUTBOX_NEEDS_ALTER` | warning | Schema | A live `outbox` table with unbounded string columns; emits the exact backend `ALTER` to apply the new `VARCHAR(N)` bounds. |
-| `NESTED_UNIT_OF_WORK` | warning | Source | A `UnitOfWork` opened inside another. After ADR-0027 it joins the outer transaction with no savepoints, so a nested rollback dooms the whole thing. |
+| `NESTED_UNIT_OF_WORK` | warning | Source | A `with UnitOfWork()` block opened inside another. After ADR-0027 it joins the outer transaction with no savepoints, so a nested rollback dooms the whole thing. |
 | `UNIT_OF_WORK_NESTING_REVIEW` | info | Source | No lexical nesting found, but nesting through a call cannot be seen statically. Reports how many blocks are worth walking. |
-| `IO_INSIDE_UNIT_OF_WORK` | warning | Source | An HTTP call, broker publish or email send inside a `UnitOfWork`, which now holds database locks for the length of the call. |
+| `IO_INSIDE_UNIT_OF_WORK` | warning | Source | An HTTP call, broker publish or email send inside a `with UnitOfWork()` block, which now holds database locks for the length of the call. |
 | `OUTBOX_TARGET_BROKER_NULLABLE` | warning | Schema | A live `outbox` table whose `target_broker` still allows NULL. Emits the backfill plus the `SET NOT NULL` for your dialect. Shipped in 0.16.2; reaches `main` in 0.17. |
 | `OUTBOX_UNIQUE_INDEX_LEGACY` | warning | Schema | A live `outbox` table still carrying the `message_id`-only unique index. Emits the swap to the composite `(message_id, target_broker)` index that the dual-write idempotency guard depends on. |
 | `CHECK_FAILED` | warning | — | A check could not complete (e.g. the database was unreachable); the report may be incomplete for that area. |
+
+### What the source checks cover
+
+`NESTED_UNIT_OF_WORK`, `UNIT_OF_WORK_NESTING_REVIEW` and `IO_INSIDE_UNIT_OF_WORK`
+read `with UnitOfWork():` and `async with UnitOfWork():` blocks, where the
+statement calls `UnitOfWork` by that name. A Unit of Work opened any other way
+is not seen: through an alias (`from protean import UnitOfWork as U`), through a
+variable (`uow = UnitOfWork()` and then `with uow:`), or with `uow.start()`. The
+scan reads modules in the domain's own directory and its direct subdirectories.
+Modules nested deeper are not read.
+
+A clean report leaves three gaps:
+
+- **The Unit of Work the framework opens for you.** A `@handle` method (event
+  handlers, command handlers, projectors and process managers) and a
+  `@use_case` method run inside a Unit of Work that no `with` statement shows.
+  The scan cannot see it. An explicit `with UnitOfWork()` block inside one of
+  these methods is still scanned, and I/O inside it is reported. The block is
+  nested inside the framework's Unit of Work, though, and `NESTED_UNIT_OF_WORK`
+  does not report that. `protean check` has no nesting rule, so neither tool
+  reports this case. Search your handler and `@use_case` methods for
+  `UnitOfWork` by hand.
+- **I/O in a method body with no explicit block.** For `@handle` methods, run
+  `protean check`. It reports a method that calls out after its first
+  `repository_for(...)` as
+  [`HANDLER_PERSISTS_AND_CALLS_OUT`](../fitness-functions.md#handler-persists-and-calls-out),
+  at `info` level. An `info` finding does not change the exit code unless you
+  set `[lint].level = "info"` (see [`protean check`](check.md#exit-codes)).
+  `protean check` does not read `@use_case` methods, so review those by hand.
+- **I/O the rules do not recognise.** Both tools count a call as I/O in two
+  cases. An HTTP verb (`get`, `post`, `send` and the like) counts when it is
+  called on `httpx`, `requests`, `urllib`, `urllib3`, `aiohttp` or `smtplib`, or
+  on a name imported from one of them. A call named `publish`, `send_email`,
+  `sendmail`, `send_message` or `urlopen` also counts. `upgrade-check` counts it
+  on any receiver. `protean check` counts it only when the call resolves to an
+  imported name, so it misses one held on `self` or on a local. A method with
+  another name on an injected port or adapter (`self.gateway.charge()`) is not
+  flagged, and neither is a call into a client library outside that list, such
+  as `stripe` or `boto3`.
 
 ## Generated SQL
 
