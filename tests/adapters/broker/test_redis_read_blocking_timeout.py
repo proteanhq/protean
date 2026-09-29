@@ -13,6 +13,8 @@ import redis
 
 from protean.adapters.broker.redis import RedisBroker
 
+pytestmark = pytest.mark.no_test_domain
+
 
 class _FakeRedisClient:
     """Stand-in for the redis-py client, recording XREADGROUP calls.
@@ -71,13 +73,15 @@ class TestBlockArgument:
         assert [c["stream_id"] for c in client.xreadgroup_calls] == ["0", ">"]
         assert _new_message_call(client)["kwargs"].get("block") is None
 
-    def test_negative_timeout_sends_no_block_on_new_read(self):
-        client = _FakeRedisClient([[], []])
+    def test_negative_timeout_is_logged_and_returns_empty(self, caplog):
+        client = _FakeRedisClient([])
         broker = _broker(client)
 
-        assert _read(broker, -5) == []
+        with caplog.at_level("ERROR", logger="protean.adapters.broker.redis"):
+            assert _read(broker, -5) == []
 
-        assert _new_message_call(client)["kwargs"].get("block") is None
+        assert client.xreadgroup_calls == []
+        assert "broker.redis.read_blocking_failed" in caplog.text
 
     def test_non_int_timeout_is_logged_and_returns_empty(self, caplog):
         client = _FakeRedisClient([])

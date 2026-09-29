@@ -407,8 +407,9 @@ class RedisBroker(BaseBroker):
             consumer_group (str): The consumer group identifier
             consumer_name (str): The unique consumer name within the group
             timeout_ms (int): Timeout in milliseconds to wait for new messages.
-                ``0`` or a negative value returns immediately, without waiting.
-                Positive values are capped at 1000 ms.
+                ``0`` returns immediately, without waiting. Positive values are
+                capped at 1000 ms. A negative value is rejected and logged as a
+                read failure.
             count (int): Maximum number of messages to read
 
         Returns:
@@ -426,7 +427,9 @@ class RedisBroker(BaseBroker):
             # The new-message read and the NOGROUP retry share this value. It is
             # computed inside the ``try`` so a bad ``timeout_ms`` is logged like
             # any other read failure.
-            block = None if timeout_ms <= 0 else min(timeout_ms, 1000)
+            if timeout_ms < 0:
+                raise ValueError(f"timeout_ms must be non-negative, got {timeout_ms}")
+            block = None if timeout_ms == 0 else min(timeout_ms, 1000)
 
             # First, try to read pending messages (messages that were delivered but not ACKed)
             # Use "0" to read pending messages for this consumer
