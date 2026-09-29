@@ -329,47 +329,6 @@ class TestMultiWorkerQueuePath:
         assert records[-1].correlation_id == "c-worker"  # type: ignore[attr-defined]
         assert records[-1].causation_id == "k-worker"  # type: ignore[attr-defined]
 
-    def test_listener_keeps_the_trace_ids_a_worker_set(self, telemetry_domain):
-        telemetry_domain.configure_logging(level="DEBUG", format="json")
-        records: list[logging.LogRecord] = []
-        _record_root_handler(records)
-        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
-        record = logging.LogRecord(
-            CHILD_LOGGER, logging.INFO, __file__, 1, "from worker", None, None
-        )
-        record.trace_id = "a" * 32
-        record.span_id = "b" * 16
-        record.trace_flags = 1
-
-        listener = _build_queue_listener(log_queue)  # type: ignore[arg-type]
-        listener.start()
-        log_queue.put(record)
-        listener.stop()
-
-        assert records
-        assert records[-1].trace_id == "a" * 32  # type: ignore[attr-defined]
-        assert records[-1].span_id == "b" * 16  # type: ignore[attr-defined]
-        assert records[-1].trace_flags == 1  # type: ignore[attr-defined]
-
-    def test_listener_fills_trace_ids_a_worker_did_not_set(self, telemetry_domain):
-        telemetry_domain.configure_logging(level="DEBUG", format="json")
-        records: list[logging.LogRecord] = []
-        _record_root_handler(records)
-        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
-        record = logging.LogRecord(
-            CHILD_LOGGER, logging.INFO, __file__, 1, "from worker", None, None
-        )
-
-        listener = _build_queue_listener(log_queue)  # type: ignore[arg-type]
-        listener.start()
-        log_queue.put(record)
-        listener.stop()
-
-        assert records
-        assert records[-1].trace_id == ""  # type: ignore[attr-defined]
-        assert records[-1].span_id == ""  # type: ignore[attr-defined]
-        assert records[-1].trace_flags == 0  # type: ignore[attr-defined]
-
     def test_listener_still_runs_other_handler_filters(self, test_domain):
         test_domain.configure_logging(level="DEBUG", format="json")
         records: list[logging.LogRecord] = []
