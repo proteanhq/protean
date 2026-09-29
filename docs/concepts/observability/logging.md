@@ -240,8 +240,9 @@ background jobs that tag context before any domain message exists.
 Both are safe no-ops outside a domain context: they return `""` for both fields
 so formatters referencing `%(correlation_id)s` never raise `KeyError`. That
 no-op semantics is the reason Protean can attach the filter to the root logger
-and its handlers unconditionally. It costs one attribute set per record and
-changes nothing about the output shape when context is absent.
+and its handlers unconditionally. It sets two attributes each time it runs on
+a record, once on the root logger and once per root handler, and changes
+nothing about the output shape when context is absent.
 
 For the full correlation story across HTTP, events, subscribers, and
 OTel spans, see

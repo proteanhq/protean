@@ -8,11 +8,14 @@ well as to the root logger.
 """
 
 import logging
+import logging.handlers
+import queue
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
 
 from protean.domain import Domain
 from protean.integrations.logging import (
@@ -20,6 +23,7 @@ from protean.integrations.logging import (
     ProteanCorrelationFilter,
     ProteanRedactionFilter,
 )
+from protean.server.supervisor import _build_queue_listener, _install_worker_log_queue
 from protean.utils.eventing import DomainMeta, Message, MessageHeaders, Metadata
 from protean.utils.globals import g
 from protean.utils.logging import _install_root_filter, configure_logging
@@ -161,6 +165,7 @@ class TestCorrelationOnChildLoggerRecords:
         assert records[-1].correlation_id == "c-1"  # type: ignore[attr-defined]
         assert records[-1].causation_id == "k-1"  # type: ignore[attr-defined]
 
+    @pytest.mark.no_test_domain
     def test_outside_any_context_sets_empty_ids(self):
         records: list[logging.LogRecord] = []
         with patch.dict("os.environ", {}, clear=True):
@@ -219,12 +224,15 @@ class TestOTelOnChildLoggerRecords:
         telemetry_domain.configure_logging(level="DEBUG", format="json")
         records: list[logging.LogRecord] = []
         _record_root_handler(records)
-        _log_on_child()
+        tracer = SDKTracerProvider().get_tracer("test")
+        with tracer.start_as_current_span("child-log") as span:
+            _log_on_child()
+        context = span.get_span_context()
 
         assert records
-        assert records[-1].trace_id == ""  # type: ignore[attr-defined]
-        assert records[-1].span_id == ""  # type: ignore[attr-defined]
-        assert records[-1].trace_flags == 0  # type: ignore[attr-defined]
+        assert records[-1].trace_id == f"{context.trace_id:032x}"  # type: ignore[attr-defined]
+        assert records[-1].span_id == f"{context.span_id:016x}"  # type: ignore[attr-defined]
+        assert records[-1].trace_flags == int(context.trace_flags)  # type: ignore[attr-defined]
 
     def test_telemetry_disabled_installs_no_otel_filter(self, test_domain):
         test_domain.configure_logging(level="DEBUG", format="json")
@@ -249,14 +257,112 @@ class TestRepeatedConfigure:
             assert _count(target, OTelTraceContextFilter) == 1
             assert _count(target, ProteanRedactionFilter) == 1
 
-    def test_dict_config_path_twice(self, test_domain):
+    def test_dict_config_path_twice(self, telemetry_domain):
         records: list[logging.LogRecord] = []
         config = _dict_config(records)
-        test_domain.configure_logging(dict_config=config, redact=["password"])
-        test_domain.configure_logging(dict_config=config, redact=["password"])
+        telemetry_domain.configure_logging(dict_config=config, redact=["password"])
+        telemetry_domain.configure_logging(dict_config=config, redact=["password"])
 
         root = logging.getLogger()
         assert root.handlers
         for target in [root, *root.handlers]:
             assert _count(target, ProteanCorrelationFilter) == 1
+            assert _count(target, OTelTraceContextFilter) == 1
             assert _count(target, ProteanRedactionFilter) == 1
+
+        _log_on_child(password="s3cret")
+
+        assert records
+        assert records[-1].password == "[REDACTED]"  # type: ignore[attr-defined]
+
+
+class TestMultiWorkerQueuePath:
+    """Worker records keep their ids and masking through the supervisor's queue."""
+
+    def test_worker_queue_handler_gets_the_protean_filters(self, test_domain):
+        test_domain.config["logging"] = {"redact": ["password"]}
+        test_domain.configure_logging(level="DEBUG", format="json")
+        user_filter = logging.Filter("only-this")
+        logging.getLogger().addFilter(user_filter)
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+
+        _install_worker_log_queue(log_queue)  # type: ignore[arg-type]
+
+        handlers = logging.getLogger().handlers
+        assert len(handlers) == 1
+        queue_handler = handlers[0]
+        assert isinstance(queue_handler, logging.handlers.QueueHandler)
+        assert _count(queue_handler, ProteanCorrelationFilter) == 1
+        assert _count(queue_handler, ProteanRedactionFilter) == 1
+        assert user_filter not in queue_handler.filters
+
+    def test_worker_child_record_carries_ids_and_masking(self, test_domain):
+        test_domain.config["logging"] = {"redact": ["password"]}
+        test_domain.configure_logging(level="DEBUG", format="json")
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+        _install_worker_log_queue(log_queue)  # type: ignore[arg-type]
+
+        _set_message_context()
+        try:
+            _log_on_child(password="s3cret")
+        finally:
+            g.pop("message_in_context", None)
+
+        record = log_queue.get_nowait()
+        assert record.correlation_id == "c-1"  # type: ignore[attr-defined]
+        assert record.causation_id == "k-1"  # type: ignore[attr-defined]
+        assert record.password == "[REDACTED]"  # type: ignore[attr-defined]
+
+    def test_listener_keeps_the_ids_a_worker_set(self, test_domain):
+        test_domain.configure_logging(level="DEBUG", format="json")
+        records: list[logging.LogRecord] = []
+        _record_root_handler(records)
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+        record = logging.LogRecord(
+            CHILD_LOGGER, logging.INFO, __file__, 1, "from worker", None, None
+        )
+        record.correlation_id = "c-worker"
+        record.causation_id = "k-worker"
+
+        listener = _build_queue_listener(log_queue)  # type: ignore[arg-type]
+        listener.start()
+        log_queue.put(record)
+        listener.stop()
+
+        assert records
+        assert records[-1].correlation_id == "c-worker"  # type: ignore[attr-defined]
+        assert records[-1].causation_id == "k-worker"  # type: ignore[attr-defined]
+
+    def test_listener_still_runs_other_handler_filters(self, test_domain):
+        test_domain.configure_logging(level="DEBUG", format="json")
+        records: list[logging.LogRecord] = []
+        _record_root_handler(records)
+        logging.getLogger().handlers[0].addFilter(logging.Filter("elsewhere"))
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+        record = logging.LogRecord(
+            CHILD_LOGGER, logging.INFO, __file__, 1, "from worker", None, None
+        )
+
+        listener = _build_queue_listener(log_queue)  # type: ignore[arg-type]
+        listener.start()
+        log_queue.put(record)
+        listener.stop()
+
+        assert records == []
+
+    def test_listener_respects_handler_level(self, test_domain):
+        test_domain.configure_logging(level="DEBUG", format="json")
+        records: list[logging.LogRecord] = []
+        _record_root_handler(records)
+        logging.getLogger().handlers[0].setLevel(logging.ERROR)
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+        record = logging.LogRecord(
+            CHILD_LOGGER, logging.INFO, __file__, 1, "from worker", None, None
+        )
+
+        listener = _build_queue_listener(log_queue)  # type: ignore[arg-type]
+        listener.start()
+        log_queue.put(record)
+        listener.stop()
+
+        assert records == []

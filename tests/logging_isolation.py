@@ -99,10 +99,12 @@ class LoggingSnapshot:
             },
             disable_level=manager.disable,
             structlog_config=_structlog_config(),
+            # pytest's own capture handlers are included: pytest creates them
+            # once per session, so a filter left on one reaches every later
+            # test's ``caplog``.
             root_handler_filters=[
                 (handler, list(handler.filters))
                 for handler in logging.getLogger().handlers
-                if not _is_pytest_handler(handler)
             ],
         )
 

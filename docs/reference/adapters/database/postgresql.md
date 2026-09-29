@@ -146,8 +146,8 @@ slow_query_truncate_chars = 500  # max statement length in log events
 
 Set ``slow_query_threshold_ms = 0`` to WARN on every query (useful during
 performance investigations). Correlation context (``correlation_id``,
-``causation_id``) flows onto every record automatically via the root
-logger's ``ProteanCorrelationFilter``.
+``causation_id``) flows onto every record automatically via the
+``ProteanCorrelationFilter`` on the root logger's handlers.
 
 ## Limitations
 

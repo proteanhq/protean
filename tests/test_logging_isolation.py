@@ -112,3 +112,16 @@ def test_a_filter_added_to_a_kept_root_handler_is_removed():
         assert handler.filters == []
     finally:
         root.removeHandler(handler)
+
+
+def test_a_filter_added_to_pytest_capture_handler_is_removed(caplog):
+    root = logging.getLogger()
+    assert caplog.handler in root.handlers
+    saved = list(caplog.handler.filters)
+    snapshot = LoggingSnapshot.take()
+
+    caplog.handler.addFilter(logging.Filter("added"))
+    snapshot.restore()
+
+    assert caplog.handler in root.handlers
+    assert caplog.handler.filters == saved
