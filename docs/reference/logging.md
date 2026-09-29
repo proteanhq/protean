@@ -235,7 +235,7 @@ processor chain as `get_logger()` events.
 | `backup_count` | `int` | `5` | Number of rotated files. |
 | `extra_processors` | <code>list &#124; None</code> | `None` | Additional structlog processors inserted before the renderer. Redaction is appended after these so operator-supplied processors cannot smuggle sensitive values past it. |
 | `per_logger` | <code>dict[str, str] &#124; None</code> | `None` | Applied after main setup. |
-| `dict_config` | <code>dict &#124; None</code> | `None` | When provided, bypasses the environment-aware setup and applies `logging.config.dictConfig()`. The `ProteanCorrelationFilter` is still installed on the root logger. |
+| `dict_config` | <code>dict &#124; None</code> | `None` | When provided, bypasses the environment-aware setup and applies `logging.config.dictConfig()`. The `ProteanCorrelationFilter` is still installed on the root logger and on each of its handlers. |
 | `redact` | <code>list[str] &#124; None</code> | `None` | Adds keys (case-insensitive) to the redact list; always unioned with [`DEFAULT_REDACT_KEYS`](#redaction). |
 
 ### `Domain.configure_logging`
@@ -247,7 +247,7 @@ domain.configure_logging(**kwargs)
 Merges `domain.toml [logging]` with explicit kwargs, calls
 `configure_logging()`, and installs:
 
-- `ProteanCorrelationFilter` on the root stdlib logger
+- `ProteanCorrelationFilter` on the root stdlib logger and on each of its handlers
 - `protean_correlation_processor` on the structlog pipeline
 - `OTelTraceContextFilter` + `protean_otel_processor` when
   `telemetry.enabled = true`
@@ -747,8 +747,8 @@ Level: WARNING. Index lifecycle and query failures. Event names follow
 ## Trace-context fields
 
 When `telemetry.enabled = true` in `domain.toml`,
-`Domain.configure_logging()` installs `OTelTraceContextFilter` on the root
-stdlib logger and `protean_otel_processor` on the structlog pipeline.
+`Domain.configure_logging()` attaches `OTelTraceContextFilter` to the root stdlib logger and to each of its handlers.
+It also adds `protean_otel_processor` to the structlog pipeline.
 Every log record receives:
 
 | Field | Type | Notes |
@@ -807,8 +807,7 @@ redact = ["x-internal-token", "customer_ssn"]
 - **structlog pipeline:** the processor returned by
   `make_redaction_processor()` is appended to `extra_processors` so it
   runs **last**, after every caller-supplied processor.
-- **stdlib pipeline:** `ProteanRedactionFilter` is attached to the root
-  logger (when a redact list is configured).
+- **stdlib pipeline:** when a redact list is configured, `ProteanRedactionFilter` is attached to the root logger and to each of its handlers.
 - **`log_method_call`:** inherits redaction transparently because it
   routes through the same pipeline.
 

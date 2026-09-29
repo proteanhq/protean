@@ -47,7 +47,16 @@ strings (or ``0`` for ``trace_flags``).
 
 import logging
 from collections.abc import Callable, Iterable
+from contextvars import ContextVar
 from typing import Any
+
+# True while the multi-worker supervisor's listener thread hands a worker's
+# record to its handlers. The worker ran the context filters where its domain
+# context and span were active. The listener thread has neither, so the
+# filters keep the ids already on the record instead of blanking them.
+_keep_record_context: ContextVar[bool] = ContextVar(
+    "_keep_record_context", default=False
+)
 
 # OpenTelemetry trace helpers are resolved lazily on first use so that merely
 # importing this module (e.g. from ``Domain.configure_logging``) does not
@@ -163,15 +172,22 @@ class ProteanCorrelationFilter(logging.Filter):
 
     The filter never suppresses records — it always returns ``True``.
 
+    Attach the filter to the root logger's handlers. A filter on the root
+    logger itself does not run for records that propagate from child
+    loggers such as ``logging.getLogger("myapp.orders")``.
+
     Example::
 
         import logging
         from protean.integrations.logging import ProteanCorrelationFilter
 
-        logging.getLogger().addFilter(ProteanCorrelationFilter())
+        for handler in logging.getLogger().handlers:
+            handler.addFilter(ProteanCorrelationFilter())
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
+        if _keep_record_context.get() and hasattr(record, "correlation_id"):
+            return True
         correlation_id, causation_id = _get_correlation_context()
         record.correlation_id = correlation_id
         record.causation_id = causation_id
@@ -189,15 +205,22 @@ class OTelTraceContextFilter(logging.Filter):
     ``trace_id`` and ``span_id`` default to ``""`` and ``trace_flags`` to
     ``0``. The filter never suppresses records — it always returns ``True``.
 
+    Attach the filter to the root logger's handlers. A filter on the root
+    logger itself does not run for records that propagate from child
+    loggers such as ``logging.getLogger("myapp.orders")``.
+
     Example::
 
         import logging
         from protean.integrations.logging import OTelTraceContextFilter
 
-        logging.getLogger().addFilter(OTelTraceContextFilter())
+        for handler in logging.getLogger().handlers:
+            handler.addFilter(OTelTraceContextFilter())
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
+        if _keep_record_context.get() and hasattr(record, "trace_id"):
+            return True
         trace_id, span_id, trace_flags = _get_otel_trace_context()
         record.trace_id = trace_id
         record.span_id = span_id
@@ -376,12 +399,17 @@ class ProteanRedactionFilter(logging.Filter):
 
     The filter never suppresses records — it always returns ``True``.
 
+    Attach the filter to the root logger's handlers. A filter on the root
+    logger itself does not run for records that propagate from child
+    loggers such as ``logging.getLogger("myapp.orders")``.
+
     Example::
 
         import logging
         from protean.integrations.logging import ProteanRedactionFilter
 
-        logging.getLogger().addFilter(ProteanRedactionFilter())
+        for handler in logging.getLogger().handlers:
+            handler.addFilter(ProteanRedactionFilter(["password"]))
     """
 
     def __init__(self, redact: Iterable[str] | None = None) -> None:

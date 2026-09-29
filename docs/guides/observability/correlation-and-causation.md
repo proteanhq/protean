@@ -387,7 +387,7 @@ For details on the Observatory, see the
 ## Structured logging setup
 
 `Domain.init()` auto-configures logging and installs the correlation
-integrations, `ProteanCorrelationFilter` on the root stdlib logger and `protean_correlation_processor` on the structlog pipeline.
+integrations: `ProteanCorrelationFilter` on the root logger and on each of its handlers, and `protean_correlation_processor` on the structlog pipeline.
 Every log record emitted during message processing includes `correlation_id` and `causation_id` fields;
 no manual wiring required.
 
@@ -405,8 +405,13 @@ explicitly:
 import logging
 from protean.integrations.logging import ProteanCorrelationFilter
 
-logging.getLogger().addFilter(ProteanCorrelationFilter())
+for handler in logging.getLogger().handlers:
+    handler.addFilter(ProteanCorrelationFilter())
 ```
+
+Attach the filter to each handler on the root logger. A filter on a logger
+runs only for records logged on that logger, so a filter on the root logger
+misses records from child loggers such as `logging.getLogger("myapp.orders")`.
 
 ```python
 import structlog

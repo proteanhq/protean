@@ -38,10 +38,24 @@ from types import FrameType
 from typing import Any, Optional
 
 from protean._deprecation import warn_from_registry
+from protean.integrations.logging import (
+    OTelTraceContextFilter,
+    ProteanCorrelationFilter,
+    ProteanRedactionFilter,
+    _keep_record_context,
+)
+from protean.utils.logging import _install_root_filter
 
 logger = logging.getLogger(__name__)
 
 _SHUTDOWN_TIMEOUT_SECONDS = 30
+
+# The filters Protean attaches to the root logger and its handlers.
+_PROTEAN_ROOT_FILTERS = (
+    ProteanCorrelationFilter,
+    OTelTraceContextFilter,
+    ProteanRedactionFilter,
+)
 
 # The values the CLI's ``--log-level`` and ``--log-format`` flags accept.
 _LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
@@ -385,7 +399,26 @@ def _build_queue_listener(
         fallback = logging.StreamHandler(sys.stdout)
         fallback.setLevel(logging.INFO)
         handlers = [fallback]
-    return logging.handlers.QueueListener(queue, *handlers, respect_handler_level=True)
+    return _WorkerRecordListener(queue, *handlers, respect_handler_level=True)
+
+
+class _WorkerRecordListener(logging.handlers.QueueListener):
+    """A ``QueueListener`` that keeps the ids a worker set on its records.
+
+    The supervisor's handlers carry ``ProteanCorrelationFilter`` and, with
+    telemetry on, ``OTelTraceContextFilter``. The listener thread has no
+    domain context and no active span, so those filters would overwrite the
+    worker's ``correlation_id``, ``causation_id`` and trace ids with empty
+    values. This listener tells them to keep the ids already on the record,
+    then dispatches through each handler's ``handle()`` as usual.
+    """
+
+    def handle(self, record: logging.LogRecord) -> None:
+        token = _keep_record_context.set(True)
+        try:
+            super().handle(record)
+        finally:
+            _keep_record_context.reset(token)
 
 
 def _install_worker_log_queue(
@@ -395,15 +428,19 @@ def _install_worker_log_queue(
 
     Called from :func:`_worker_entry` after ``configure_logging()`` so the
     worker's real handlers are replaced by a single ``QueueHandler`` that
-    funnels every record to the supervisor's listener.  Preserves filters
-    (correlation/redaction) attached to the root logger by
-    ``Domain.configure_logging()``.
+    funnels every record to the supervisor's listener.  The Protean filters
+    (correlation, trace context, redaction) on the root logger stay there and
+    also go on the ``QueueHandler``, so records from child loggers get them
+    in the worker, where the domain context is active.
     """
     root = logging.getLogger()
     for handler in list(root.handlers):
         root.removeHandler(handler)
         handler.close()
     root.addHandler(logging.handlers.QueueHandler(queue))
+    for filter_ in list(root.filters):
+        if isinstance(filter_, _PROTEAN_ROOT_FILTERS):
+            _install_root_filter(filter_)
 
 
 def _worker_entry(
@@ -472,8 +509,8 @@ def _worker_entry(
         # Apply domain-level logging config (redact list, per_logger levels,
         # OTel trace context filter when telemetry.enabled is True). This must
         # run BEFORE installing the QueueHandler so we know which handlers the
-        # listener should mirror, and so filters attached to root by
-        # ``Domain.configure_logging`` survive into the queue path.
+        # listener should mirror, and so the filters it attaches to root can
+        # be copied onto the QueueHandler.
         if log_config is None:
             log_overrides: dict[str, str] = {}
             if log_level is not None:

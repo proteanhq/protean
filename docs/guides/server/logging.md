@@ -138,9 +138,17 @@ correlation filter stay in place while you raise the verbosity.
 
 `--log-config` applies the supplied JSON via `logging.config.dictConfig()`,
 and `server` and `observatory` then skip the domain's `[logging]` section. The
-correlation filter is still installed on the root logger. Add the redaction
-filter to your `dictConfig` yourself if you need it. If your `dictConfig`
-leaves the root logger without handlers, `Domain.init()` applies `[logging]`
+correlation filter is still installed on the root logger and on each handler
+your `dictConfig` puts on it. Add the redaction filter to your `dictConfig`
+yourself if you need it. If your application adds a handler to the root logger
+after logging is configured, add the filters to that handler yourself. The
+same goes for handlers your `dictConfig` puts on named loggers, and for child
+loggers that set `propagate = False`: their records never reach the root
+logger's handlers. A later call to `protean.utils.logging.configure_logging()`
+without `dict_config` replaces the root handlers and leaves the new ones
+without the correlation filter; call `Domain.configure_logging()` again to
+attach it. If your
+`dictConfig` leaves the root logger without handlers, `Domain.init()` applies `[logging]`
 anyway.
 
 The `--debug` flag on `protean server` and `protean observatory` was removed in
@@ -331,8 +339,13 @@ manually:
 import logging
 from protean.integrations.logging import ProteanCorrelationFilter
 
-logging.getLogger().addFilter(ProteanCorrelationFilter())
+for handler in logging.getLogger().handlers:
+    handler.addFilter(ProteanCorrelationFilter())
 ```
+
+Attach the filter to each handler on the root logger. A filter on a logger
+runs only for records logged on that logger, so a filter on the root logger
+misses records from child loggers such as `logging.getLogger("myapp.orders")`.
 
 `Domain.init()` also detects a pre-configured root logger (handlers already
 attached) and skips its auto-configuration in that case, so in many

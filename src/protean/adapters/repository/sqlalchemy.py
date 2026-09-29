@@ -127,7 +127,7 @@ def _maybe_log_query(
     """Emit a DEBUG query event or a WARNING slow-query event based on threshold.
 
     Uses stdlib loggers so the ``ProteanCorrelationFilter`` installed on the
-    root logger automatically injects ``correlation_id`` / ``causation_id``
+    root logger's handlers injects ``correlation_id`` / ``causation_id``
     onto the record. Parameters are passed through unchanged here — redaction
     is applied by the shared redaction filter/processor.
     """
