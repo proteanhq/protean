@@ -397,17 +397,18 @@ class RedisBroker(BaseBroker):
     ) -> list[tuple[str, dict[str, Any]]]:
         """Read messages from Redis Stream using blocking mode with XREADGROUP.
 
-        This method uses Redis's XREADGROUP with BLOCK parameter for efficient
-        blocking reads, avoiding CPU waste from polling. It first checks for
-        pending messages (from previous failed attempts) before reading new messages.
+        This method uses Redis's XREADGROUP with the BLOCK parameter, so a
+        positive timeout waits on the server instead of polling. It first checks
+        for pending messages (from previous failed attempts) before reading new
+        messages.
 
         Args:
             stream (str): The stream from which to read messages
             consumer_group (str): The consumer group identifier
             consumer_name (str): The unique consumer name within the group
             timeout_ms (int): Timeout in milliseconds to wait for new messages.
-                ``0`` returns immediately, without waiting. Positive values are
-                capped at 1000 ms.
+                ``0`` or a negative value returns immediately, without waiting.
+                Positive values are capped at 1000 ms.
             count (int): Maximum number of messages to read
 
         Returns:
@@ -415,14 +416,18 @@ class RedisBroker(BaseBroker):
         """
         self._ensure_group(consumer_group, stream)
 
-        # redis-py sends BLOCK only when ``block`` is not None, and Redis reads
-        # ``BLOCK 0`` as "wait forever". So a zero timeout passes None to skip
-        # the wait. Positive timeouts are capped at 1000 ms so the event loop
-        # can handle signals often. The new-message read and the NOGROUP retry
-        # share this value.
-        block: int | None = None if timeout_ms <= 0 else min(timeout_ms, 1000)
-
+        block: int | None = None
         try:
+            # redis-py sends BLOCK only when ``block`` is not None, and Redis
+            # reads ``BLOCK 0`` as "wait forever". So a zero timeout passes None
+            # to skip the wait. Positive timeouts are capped at 1000 ms, so a
+            # caller's poll loop re-checks for shutdown at least once a second
+            # and the wait stays under redis-py's default 5 s socket timeout.
+            # The new-message read and the NOGROUP retry share this value. It is
+            # computed inside the ``try`` so a bad ``timeout_ms`` is logged like
+            # any other read failure.
+            block = None if timeout_ms <= 0 else min(timeout_ms, 1000)
+
             # First, try to read pending messages (messages that were delivered but not ACKed)
             # Use "0" to read pending messages for this consumer
             response = self._client.xreadgroup(

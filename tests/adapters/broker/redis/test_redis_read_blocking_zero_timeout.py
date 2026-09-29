@@ -1,8 +1,8 @@
 """Live Redis tests for read_blocking timeouts.
 
-A zero timeout must return at once. Before the fix it sent ``BLOCK 0``, which
-Redis reads as "wait forever", so the call hung until the client's socket
-timeout and logged ``broker.redis.read_blocking_failed``.
+A zero timeout must return at once and must not send ``BLOCK 0``, which
+Redis reads as "wait forever" and which would hang the call until the client's
+socket timeout, logging ``broker.redis.read_blocking_failed``.
 """
 
 import logging

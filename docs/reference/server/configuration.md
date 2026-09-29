@@ -239,7 +239,7 @@ way.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `blocking_timeout_ms` | int | 5000 | Blocking read timeout in milliseconds. `0` returns immediately without waiting |
+| `blocking_timeout_ms` | int | 5000 | Blocking read timeout in milliseconds. The Redis broker waits at most 1000 ms per read. `0` does not wait, so an idle subscription polls Redis continuously and uses a full CPU core. Keep the default unless you have measured a need |
 | `max_retries` | int | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | int | 1 | Delay between retries |
 | `enable_dlq` | bool | true | Enable dead letter queue |

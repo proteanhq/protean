@@ -131,7 +131,9 @@ class StreamSubscription(BaseSubscription):
         )
 
         # Use zero tick interval for blocking reads
-        # The blocking read timeout will control the actual pacing
+        # The blocking read timeout will control the actual pacing. With a
+        # ``blocking_timeout_ms`` of 0 there is no wait, and the loop polls
+        # the broker continuously.
         super().__init__(engine, resolved_messages_per_tick, tick_interval=0)
 
         self.handler = handler
@@ -639,8 +641,9 @@ class StreamSubscription(BaseSubscription):
     async def _read_backfill_blocking(self) -> list[tuple[str, dict[str, Any]]]:
         """Blocking read from backfill stream with capped timeout.
 
-        Uses a short timeout (capped at 1 second) so we frequently re-check
-        the primary stream for new production messages. If a production request
+        Uses a short timeout (capped at 1 second, and no wait at all when
+        ``blocking_timeout_ms`` is 0) so we frequently re-check the primary
+        stream for new production messages. If a production request
         arrives while we're blocking on backfill, we'll notice within 1 second.
 
         Returns:
@@ -670,7 +673,8 @@ class StreamSubscription(BaseSubscription):
         Get the next batch of messages using blocking read.
 
         This method uses Redis Streams' XREADGROUP with BLOCK parameter to efficiently
-        wait for new messages without polling.
+        wait for new messages without polling. A ``blocking_timeout_ms`` of 0
+        does not wait, so the subscription polls the broker continuously.
 
         Returns:
             List[tuple[str, dict]]: The next batch of messages to process as (id, payload) tuples.

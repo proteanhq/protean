@@ -79,6 +79,16 @@ class TestBlockArgument:
 
         assert _new_message_call(client)["kwargs"].get("block") is None
 
+    def test_non_int_timeout_is_logged_and_returns_empty(self, caplog):
+        client = _FakeRedisClient([])
+        broker = _broker(client)
+
+        with caplog.at_level("ERROR", logger="protean.adapters.broker.redis"):
+            assert _read(broker, None) == []
+
+        assert client.xreadgroup_calls == []
+        assert "broker.redis.read_blocking_failed" in caplog.text
+
     @pytest.mark.parametrize(
         ("timeout_ms", "expected_block"),
         [(1, 1), (250, 250), (1000, 1000), (5000, 1000)],

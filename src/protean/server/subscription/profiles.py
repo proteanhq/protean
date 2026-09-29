@@ -389,7 +389,8 @@ class SubscriptionConfig:
         messages_per_tick: Number of messages to process per tick.
         tick_interval: Interval between processing ticks in seconds.
         blocking_timeout_ms: Timeout for blocking reads in milliseconds (STREAM only).
-            0 polls without waiting.
+            0 polls without waiting: the subscription then queries the broker
+            continuously and uses a full CPU core while idle.
         max_retries: Maximum retry attempts before moving to DLQ (STREAM only).
         retry_delay_seconds: Delay between retries in seconds (STREAM only).
         enable_dlq: Whether to enable dead letter queue (STREAM only).
