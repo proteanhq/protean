@@ -33,7 +33,7 @@ def reconcile(
         str, typer.Option(help="Provider whose outbox to reconcile")
     ] = "default",
     limit: Annotated[
-        int, typer.Option(help="Most recent events to scan for gaps")
+        int, typer.Option(help="Most recent event-store messages to scan for gaps")
     ] = 1000,
 ) -> None:
     """Create outbox rows for events in the event store that are missing them.
@@ -45,7 +45,11 @@ def reconcile(
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         if not derived_domain.has_outbox:
-            print("Outbox is not enabled for this domain (set enable_outbox=True).")
+            print(
+                "Outbox is not enabled for this domain. Enable it with "
+                'default_subscription_type = "stream" under \\[server]. The older '
+                "enable_outbox = true switch also needs that setting."
+            )
             raise typer.Abort()
 
         created = reconcile_outbox(derived_domain, provider_name=provider, limit=limit)

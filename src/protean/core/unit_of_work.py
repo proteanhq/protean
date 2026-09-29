@@ -261,6 +261,7 @@ class UnitOfWork:
             DEFAULT_TARGET_BROKER,
             Outbox,
             OutboxRepository,
+            backfill_suffix_from_config,
         )
 
         # Gather all events from identity map using helper method
@@ -325,11 +326,7 @@ class UnitOfWork:
             # not collide with (read here, not hardcoded, so a custom suffix is
             # honored). Both are inert when no handler opts in.
             partition_keys = self.domain._partition_keys
-            backfill_suffix = (
-                self.domain.config.get("server", {})
-                .get("priority_lanes", {})
-                .get("backfill_suffix", "backfill")
-            )
+            backfill_suffix = backfill_suffix_from_config(self.domain.config)
             # Always tag the internal row with the configured internal broker.
             # The composite (message_id, target_broker) unique index relies on
             # target_broker never being NULL: PostgreSQL and SQLite treat NULLs

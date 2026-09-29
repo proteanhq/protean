@@ -19,8 +19,15 @@ All commands accept a `--domain` option to specify the domain module path
 
 ## `protean outbox reconcile`
 
-Scans the tail of the event store and creates an outbox row for any event
-that is durable in the store but has no internal-broker outbox row. This is
+Scans the tail of the event store for events that are durable in the store
+but have no internal-broker outbox row, and creates the missing rows. It
+repairs only when the newest of this domain's events in the scan window is
+missing its row, which is what a crash at the tail leaves behind. Only events
+raised by this domain's aggregates on the given provider are repaired. Another
+domain's events in a shared store, commands, process manager transition
+events, and events of aggregates on other providers never get outbox rows in
+this provider, so they are skipped. A rebuilt row carries the same
+`partition_key` the original commit would have set. This is
 the manual counterpart to the [automatic startup
 sweep](#automatic-startup-sweep), run it on demand after a suspected crash, or
 from a cron job as a periodic safety net.
@@ -39,7 +46,7 @@ protean outbox reconcile --provider=analytics --limit=5000 --domain=my_domain
 |--------|-------------|---------|
 | `--domain` | Domain module path | `.` (current directory) |
 | `--provider` | Provider whose outbox to reconcile | `default` |
-| `--limit` | Most recent events to scan for gaps | `1000` |
+| `--limit` | Most recent event-store messages to scan for gaps, skipped messages included | `1000` |
 
 **Output**
 
@@ -54,15 +61,18 @@ nothing is rewritten:
 Nothing to reconcile: the outbox is consistent with the event store.
 ```
 
-The scan is cheap when there is nothing to repair: it first checks the single
-newest event, and only walks the `--limit` window when that newest event is
-itself missing its row (the signature of a crash at the tail). Reconciliation
+The scan first checks the single newest message. When that message is one of
+this domain's events and has its row, the scan stops there. Otherwise it reads
+the `--limit` window, finds the newest of this domain's events in it, and
+repairs only if that event is missing its row. In a store shared with other
+domains, or when the last write was a command, every run reads the full
+window. Reconciliation
 is idempotent, the composite unique index on (`message_id`, `target_broker`) means running it
 repeatedly, or concurrently with the startup sweep, never duplicates a row.
 
 Only the **internal-broker** row is reconciled. External published-broker rows
-(from `[outbox].external_brokers`) are re-derived by the outbox processor once
-the internal row is published, and are out of scope for this command.
+(from `[outbox].external_brokers`) are not rebuilt, so a published event lost
+in the crash window does not reach external brokers.
 
 ## Automatic startup sweep
 
@@ -74,8 +84,8 @@ action:
 protean server --domain=my_domain
 ```
 
-The sweep is gated on the outbox being enabled, is cheap in the common case
-(the newest-event check above), and can never block startup. A failure during
+The sweep is gated on the outbox being enabled, reads the store as described
+above, and can never block startup. A failure during
 the sweep is logged and boot continues. With `--workers N` it runs once per
 worker; the idempotent index makes the overlap safe.
 
@@ -84,7 +94,7 @@ worker; the idempotent index makes the overlap safe.
 | Condition | Behavior |
 |-----------|----------|
 | Invalid domain path | Aborts with "Error loading Protean domain" |
-| Outbox not enabled for the domain | Aborts with "Outbox is not enabled for this domain" |
+| Outbox not enabled for the domain | Aborts with "Outbox is not enabled for this domain", naming `default_subscription_type = "stream"` and the older `enable_outbox` switch, which also needs it |
 | Nothing to reconcile | Prints "Nothing to reconcile: the outbox is consistent with the event store" |
 
 ## How reconciliation works

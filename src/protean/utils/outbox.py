@@ -1,3 +1,4 @@
+import logging
 import traceback
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -11,11 +12,14 @@ if TYPE_CHECKING:
 from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index
 from protean.core.repository import BaseRepository
+from protean.exceptions import DeserializationError, ValidationError
 from protean.fields import Auto
-from protean.utils import ensure_utc_aware, outbox_trace
+from protean.utils import DomainObjects, ensure_utc_aware, fqn, outbox_trace
 from protean.utils.eventing import Metadata
 from protean.utils.globals import _domain_now
 from protean.utils.query import F, Q
+
+logger = logging.getLogger(__name__)
 
 PAGE_SIZE = 50  # Default page size for fetching messages
 DEFAULT_LOCK_DURATION_MINUTES = 5  # How long a claim holds a processing lock
@@ -354,20 +358,28 @@ class Outbox(BaseAggregate):
             self.status = OutboxStatus.ABANDONED.value
             self.last_error["reason"] = "Max retries exceeded"
 
-    def mark_abandoned(self, reason: str, now: datetime | None = None) -> None:
+    def mark_abandoned(
+        self,
+        reason: str,
+        now: datetime | None = None,
+        cause: str = "Manually abandoned",
+    ) -> None:
         """Mark message as permanently failed.
 
         Args:
             reason: Reason for abandoning the message
             now: Timestamp to record. Defaults to the active domain's clock.
+            cause: Short label for what abandoned the row, stored as
+                ``last_error["reason"]``.
         """
         now = _domain_now(now)
         self.status = OutboxStatus.ABANDONED.value
+        self.last_processed_at = now
         self.last_error = {
             "message": reason,
             "abandoned_at": now.isoformat(),
             "retry_count": self.retry_count,
-            "reason": "Manually abandoned",
+            "reason": cause,
         }
         self._clear_lock()
 
@@ -1019,6 +1031,97 @@ class OutboxRepository(BaseRepository):
         }
 
 
+def backfill_suffix_from_config(config: Any) -> str:
+    """Return the configured ``[server.priority_lanes].backfill_suffix``.
+
+    A partition key must not equal this suffix (ADR-0028 decision 3). The unit
+    of work and outbox reconciliation both validate keys against it, so both
+    read it through this helper and share one default.
+    """
+    suffix: str = (
+        config.get("server", {})
+        .get("priority_lanes", {})
+        .get("backfill_suffix", "backfill")
+    )
+    return suffix
+
+
+def _is_outboxed_event(domain: Any, message: Any, provider_name: str) -> bool:
+    """Whether the unit of work writes a row for *message* in *provider_name*'s outbox.
+
+    Only events raised by this domain's aggregates get outbox rows, and each
+    row goes to the outbox of the aggregate's own provider. A stored message
+    qualifies when its type string resolves in the domain's own type registry
+    to an event that is ``part_of`` an aggregate on *provider_name*. That
+    excludes:
+
+    - another domain's events in a shared store (their type string carries the
+      other domain's name, so it does not resolve here, and an event mapped in
+      with ``register_external_event`` is not in the domain's registry or, if
+      mapped onto a local class, does not match that class's own type),
+    - commands, which ``domain.process`` appends but never outboxes,
+    - process manager transition events, which are ``part_of`` the process
+      manager,
+    - events of aggregates on another provider, whose rows live in that
+      provider's outbox.
+
+    An older version of an event resolves through the upcaster chain, so an
+    event written before a version bump is still recognized.
+    """
+    headers = message.metadata.headers if message.metadata else None
+    type_string = headers.type if headers else None
+    if not type_string:
+        return False
+
+    element_cls = domain._events_and_commands.get(type_string)
+    # ``register_external_event`` can map a foreign type string onto a class
+    # this domain also registers. The unit of work only writes the class's own
+    # current type, so a direct match must equal it.
+    if element_cls is not None and element_cls.__type__ != type_string:
+        return False
+    if element_cls is None:
+        element_cls = domain._upcaster_chain.resolve_event_class(type_string)
+    if element_cls is None or element_cls.element_type != DomainObjects.EVENT:
+        return False
+
+    # ``register_external_event`` maps a foreign type string to the foreign
+    # class, which keeps its ``part_of``. Only events in this domain's own
+    # registry are raised here.
+    record = domain._domain_registry._elements[DomainObjects.EVENT.value].get(
+        fqn(element_cls)
+    )
+    if record is None or record.cls is not element_cls:
+        return False
+
+    part_of = getattr(element_cls.meta_, "part_of", None)
+    if part_of is None or part_of.element_type != DomainObjects.AGGREGATE:
+        return False
+    return bool(part_of.meta_.provider == provider_name)
+
+
+def _rebuilt_partition_key(
+    message: Any, partition_keys: dict[str, str], backfill_suffix: str
+) -> str | None:
+    """The ``partition_key`` the unit of work would have set for *message*.
+
+    Categories without a ``sequential_by`` handler have no key, so the event is
+    only rebuilt for a partitioned category. Raises ``DeserializationError`` or
+    ``ValidationError`` if the stored event no longer loads or its key no longer
+    validates (the payload schema, ``sequential_by`` or ``backfill_suffix``
+    changed after it was written).
+    """
+    from protean.core.unit_of_work import UnitOfWork  # noqa: PLC0415 - circular
+
+    domain_meta = message.metadata.domain
+    category = getattr(domain_meta, "stream_category", None)
+    if not category or category not in partition_keys:
+        return None
+
+    return UnitOfWork._extract_partition_key(
+        message.to_domain_object(), partition_keys, backfill_suffix
+    )
+
+
 def reconcile_outbox(
     domain: Any, provider_name: str = "default", limit: int = 1000
 ) -> int:
@@ -1028,9 +1131,29 @@ def reconcile_outbox(
     This closes the residual crash window from ADR-0015: an event appended to the
     event store (the durable anchor) whose relational outbox commit did not land.
     The divergence is at the *tail* of the store (the last unit of work before a
-    crash), so a cheap check on the newest event short-circuits when there is
-    nothing to repair, and only the most recent ``limit`` events are scanned
-    otherwise.
+    crash). When the newest message in the store is one of the events described
+    below and has its row, the function returns after that one lookup. Otherwise
+    it reads the most recent ``limit`` messages of ``$all`` and finds the newest
+    such event among them. It repairs only when that event is missing its row.
+    ``limit`` counts every message in ``$all``, including ones this function
+    skips.
+
+    Only events raised by this domain's aggregates on ``provider_name`` are
+    repaired, because those are the only messages the unit of work writes rows
+    for in that provider's outbox. Another domain's events in a shared store,
+    commands, process manager transition events, and events of aggregates on
+    other providers are skipped. Ownership is decided by type string, which
+    starts with the domain name in CamelCase. Domains whose names give the same
+    CamelCase form (``my-domain``, ``my_domain`` and ``My Domain`` all give
+    ``MyDomain``) cannot be told apart. A foreign type mapped with
+    ``register_external_event`` is skipped, even when it maps onto a local event.
+
+    A rebuilt row carries the same ``partition_key`` the unit of work would have
+    set (ADR-0028). Its ``priority`` is the default, since the original request's
+    priority is not stored with the event. If that key can no longer be computed
+    (the stored event no longer loads, or its key no longer validates), the row
+    is saved as abandoned and an error is logged. A row without its key would be
+    published to the base category, where no partitioned handler reads it.
 
     Only the internal-broker row is reconciled here; external published-broker
     rows are left to a future extension.
@@ -1064,25 +1187,52 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
             for row in outbox_repo.find_all_by_message_id(message_id)
         )
 
-    # Fast path: if the newest event already has its internal outbox row, the
-    # last unit of work committed fully and there is nothing at the tail to
-    # repair. This keeps the startup sweep cheap in the common (no-crash) case.
-    if _internal_row_exists(last.metadata.headers.id):
+    # Fast path: if the newest message is one of this domain's outboxed events
+    # and already has its internal row, the last unit of work committed fully
+    # and there is nothing at the tail to repair. This keeps the startup sweep
+    # cheap in the common (no-crash) case.
+    if _is_outboxed_event(domain, last, provider_name) and _internal_row_exists(
+        last.metadata.headers.id
+    ):
         return 0
 
     tail = last.metadata.event_store.global_position
     start = max(0, tail - limit + 1)
     messages = store.read("$all", position=start, no_of_messages=limit)
 
-    missing = [m for m in messages if not _internal_row_exists(m.metadata.headers.id)]
-    if not missing:  # pragma: no cover - unreachable: the newest event lacks its
-        # row (fast path fell through) and is always inside the scan window, so
-        # `missing` is non-empty here. Kept as a defensive guard.
+    # Walk back from the tail to the newest message this domain outboxes. The
+    # newest message overall may be foreign, a command, or a transition event.
+    # None of those ever get a row, so a missing row for one of them does not
+    # mean the last commit crashed.
+    qualifying = [m for m in messages if _is_outboxed_event(domain, m, provider_name)]
+    if not qualifying or _internal_row_exists(qualifying[-1].metadata.headers.id):
         return 0
+
+    missing = [m for m in qualifying if not _internal_row_exists(m.metadata.headers.id)]
+    if not missing:  # pragma: no cover - race guard: a concurrent sweep can
+        # insert the rows between the check above and this query.
+        return 0
+
+    partition_keys = domain._partition_keys
+    backfill_suffix = backfill_suffix_from_config(domain.config)
 
     with UnitOfWork():
         for message in missing:
             domain_meta = message.metadata.domain
+            abandon_reason = None
+            try:
+                partition_key = _rebuilt_partition_key(
+                    message, partition_keys, backfill_suffix
+                )
+            except (DeserializationError, ValidationError) as exc:
+                partition_key = None
+                abandon_reason = f"partition_key could not be computed: {exc}"
+                logger.error(
+                    "outbox.reconcile: saving the row for message %s as "
+                    "abandoned, because its %s",
+                    message.metadata.headers.id,
+                    abandon_reason,
+                )
             outbox_message = Outbox.create_message(
                 message_id=message.metadata.headers.id,
                 stream_name=message.metadata.headers.stream,
@@ -1092,7 +1242,12 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 correlation_id=getattr(domain_meta, "correlation_id", None),
                 causation_id=getattr(domain_meta, "causation_id", None),
                 target_broker=internal_broker,
+                partition_key=partition_key,
             )
+            if abandon_reason is not None:
+                outbox_message.mark_abandoned(
+                    abandon_reason, cause="Invalid partition key"
+                )
             outbox_repo._dao.save(outbox_message)
 
     return len(missing)

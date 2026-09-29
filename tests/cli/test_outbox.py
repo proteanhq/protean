@@ -78,6 +78,18 @@ class TestOutboxReconcile:
         assert "Outbox is not enabled" in result.output
         reconcile.assert_not_called()
 
+    def test_disabled_outbox_message_names_both_switches(self):
+        domain = _mock_domain(has_outbox=False)
+        with (
+            patch("protean.cli._helpers.derive_domain", return_value=domain),
+            patch("protean.cli.outbox.reconcile_outbox"),
+        ):
+            result = runner.invoke(app, ["outbox", "reconcile", "--domain", "x.py"])
+
+        output = " ".join(result.output.split())  # undo terminal line wrapping
+        assert 'default_subscription_type = "stream" under [server]' in output
+        assert "enable_outbox = true" in output
+
     def test_reconcile_aborts_when_domain_not_found(self):
         with patch(
             "protean.cli._helpers.derive_domain",
