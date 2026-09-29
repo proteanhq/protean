@@ -145,7 +145,7 @@ class OrderEventHandler:
 | Option | Default | Description |
 | ------ | ------- | ----------- |
 | `messages_per_tick` | 10 | Messages to read per batch |
-| `blocking_timeout_ms` | 5000 | Blocking read timeout in milliseconds |
+| `blocking_timeout_ms` | 5000 | Blocking read timeout in milliseconds. `0` returns immediately without waiting |
 | `max_retries` | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | 1 | Delay between retries |
 | `enable_dlq` | true | Whether to use dead letter queue |

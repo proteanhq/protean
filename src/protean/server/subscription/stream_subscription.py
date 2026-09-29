@@ -628,7 +628,7 @@ class StreamSubscription(BaseSubscription):
                 stream=self.stream_category,
                 consumer_group=self.consumer_group,
                 consumer_name=self.consumer_name,
-                timeout_ms=0,  # Non-blocking
+                timeout_ms=0,  # 0 = return immediately
                 count=self._current_batch_size(),
             )
         except Exception as e:

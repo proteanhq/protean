@@ -239,7 +239,7 @@ way.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `blocking_timeout_ms` | int | 5000 | Blocking read timeout in milliseconds |
+| `blocking_timeout_ms` | int | 5000 | Blocking read timeout in milliseconds. `0` returns immediately without waiting |
 | `max_retries` | int | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | int | 1 | Delay between retries |
 | `enable_dlq` | bool | true | Enable dead letter queue |

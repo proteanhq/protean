@@ -609,7 +609,7 @@ class BaseBroker(metaclass=ABCMeta):
             stream (str): The stream from which to read messages
             consumer_group (str): The consumer group identifier
             consumer_name (str): The unique consumer name within the group
-            timeout_ms (int): Timeout in milliseconds to wait for messages (0 = block indefinitely)
+            timeout_ms (int): Timeout in milliseconds to wait for messages (0 = return immediately, without waiting)
             count (int): Maximum number of messages to read
 
         Returns:
