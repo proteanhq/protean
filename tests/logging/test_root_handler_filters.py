@@ -10,7 +10,6 @@ well as to the root logger.
 import logging
 import logging.handlers
 import queue
-from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -80,12 +79,9 @@ def _count(target: logging.Filterer, cls: type) -> int:
 
 
 @pytest.fixture
-def telemetry_domain() -> Domain:
-    return Domain(
-        root_path=str(Path(__file__).parent),
-        name="RootFilterOTel",
-        config={"telemetry": {"enabled": True}},
-    )
+def telemetry_domain(test_domain: Domain) -> Domain:
+    test_domain.config["telemetry"] = {"enabled": True}
+    return test_domain
 
 
 class TestInstallRootFilter:
@@ -366,3 +362,31 @@ class TestMultiWorkerQueuePath:
         listener.stop()
 
         assert records == []
+
+    def test_listener_calls_handler_handle(self, test_domain):
+        test_domain.configure_logging(level="DEBUG", format="json")
+        handled: list[logging.LogRecord] = []
+
+        class _Overriding(_Recorder):
+            def handle(self, record: logging.LogRecord) -> bool:
+                handled.append(record)
+                return super().handle(record)
+
+        root = logging.getLogger()
+        custom = _Overriding([])
+        root.addHandler(custom)
+        _install_root_filter(ProteanCorrelationFilter())
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+        record = logging.LogRecord(
+            CHILD_LOGGER, logging.INFO, __file__, 1, "from worker", None, None
+        )
+        record.correlation_id = "c-worker"
+        record.causation_id = "k-worker"
+
+        listener = _build_queue_listener(log_queue)  # type: ignore[arg-type]
+        listener.start()
+        log_queue.put(record)
+        listener.stop()
+
+        assert len(handled) == 1
+        assert custom.records[-1].correlation_id == "c-worker"  # type: ignore[attr-defined]

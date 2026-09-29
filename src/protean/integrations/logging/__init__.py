@@ -47,7 +47,16 @@ strings (or ``0`` for ``trace_flags``).
 
 import logging
 from collections.abc import Callable, Iterable
+from contextvars import ContextVar
 from typing import Any
+
+# True while the multi-worker supervisor's listener thread hands a worker's
+# record to its handlers. The worker ran the context filters where its domain
+# context and span were active. The listener thread has neither, so the
+# filters keep the ids already on the record instead of blanking them.
+_keep_record_context: ContextVar[bool] = ContextVar(
+    "_keep_record_context", default=False
+)
 
 # OpenTelemetry trace helpers are resolved lazily on first use so that merely
 # importing this module (e.g. from ``Domain.configure_logging``) does not
@@ -177,6 +186,8 @@ class ProteanCorrelationFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
+        if _keep_record_context.get() and hasattr(record, "correlation_id"):
+            return True
         correlation_id, causation_id = _get_correlation_context()
         record.correlation_id = correlation_id
         record.causation_id = causation_id
@@ -208,6 +219,8 @@ class OTelTraceContextFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
+        if _keep_record_context.get() and hasattr(record, "trace_id"):
+            return True
         trace_id, span_id, trace_flags = _get_otel_trace_context()
         record.trace_id = trace_id
         record.span_id = span_id

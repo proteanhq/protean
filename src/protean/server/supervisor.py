@@ -42,6 +42,7 @@ from protean.integrations.logging import (
     OTelTraceContextFilter,
     ProteanCorrelationFilter,
     ProteanRedactionFilter,
+    _keep_record_context,
 )
 from protean.utils.logging import _install_root_filter
 
@@ -55,10 +56,6 @@ _PROTEAN_ROOT_FILTERS = (
     OTelTraceContextFilter,
     ProteanRedactionFilter,
 )
-# The filters that read the domain context or the active span. A worker's
-# ``QueueHandler`` runs them where that context lives, so the supervisor's
-# listener must not run them again.
-_CONTEXT_FILTERS = (ProteanCorrelationFilter, OTelTraceContextFilter)
 
 # The values the CLI's ``--log-level`` and ``--log-format`` flags accept.
 _LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
@@ -410,30 +407,18 @@ class _WorkerRecordListener(logging.handlers.QueueListener):
 
     The supervisor's handlers carry ``ProteanCorrelationFilter`` and, with
     telemetry on, ``OTelTraceContextFilter``. The listener thread has no
-    domain context and no active span, so running those filters here would
-    overwrite the worker's ``correlation_id``, ``causation_id`` and trace ids
-    with empty values. This listener runs every other filter on the handler,
-    then emits the record.
+    domain context and no active span, so those filters would overwrite the
+    worker's ``correlation_id``, ``causation_id`` and trace ids with empty
+    values. This listener tells them to keep the ids already on the record,
+    then dispatches through each handler's ``handle()`` as usual.
     """
 
     def handle(self, record: logging.LogRecord) -> None:
-        record = self.prepare(record)
-        for handler in self.handlers:
-            if self.respect_handler_level and record.levelno < handler.level:
-                continue
-            filterer = logging.Filterer()
-            filterer.filters = [
-                f for f in handler.filters if not isinstance(f, _CONTEXT_FILTERS)
-            ]
-            result = filterer.filter(record)
-            if not result:
-                continue
-            handled = result if isinstance(result, logging.LogRecord) else record
-            handler.acquire()
-            try:
-                handler.emit(handled)
-            finally:
-                handler.release()
+        token = _keep_record_context.set(True)
+        try:
+            super().handle(record)
+        finally:
+            _keep_record_context.reset(token)
 
 
 def _install_worker_log_queue(
