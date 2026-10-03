@@ -141,6 +141,7 @@ The `BaseDomainService.__init__` call is required so the pre and post invariants
 ### Persisting inside the domain service
 
 ```python
+# fragment
 # Wrong! The service persists
 class PlaceOrderService:
     def __call__(self):
@@ -153,6 +154,7 @@ Instead: keep the service stateless; the calling command handler persists the af
 ### Using a domain service for single-aggregate logic
 
 ```python
+# fragment
 # Wrong! Only one aggregate is involved
 @domain.domain_service(part_of=[Order])
 class CancelOrderService:
@@ -164,6 +166,7 @@ Instead: put single-aggregate logic on the aggregate itself; reach for a domain 
 ### Skipping BaseDomainService.__init__
 
 ```python
+# fragment
 # Wrong! Invariants won't be wired up
 @domain.domain_service(part_of=[Order, Inventory])
 class PlaceOrderService:

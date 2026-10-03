@@ -33,6 +33,7 @@ class Comment:
 ❌ **Wrong: Accessing entities through their own repository**
 
 ```python
+# fragment
 # Don't do this
 comment_repo = domain.repository_for(Comment)
 comments = comment_repo.filter(author="John")
@@ -168,6 +169,7 @@ class RelatedLineItem:
 ❌ **Wrong: Creating deep hierarchies**
 
 ```python
+# fragment
 Order → LineItem → Note → Reply → SubReply → Attachment  # 6 levels!
 ```
 
@@ -180,6 +182,7 @@ Order → LineItem → Note → Reply → SubReply → Attachment  # 6 levels!
 ✅ **Correct: Keep hierarchies shallow (2-3 levels max)**
 
 ```python
+# fragment
 # Better: Limit depth
 Order → LineItem → Note  # 3 levels
 

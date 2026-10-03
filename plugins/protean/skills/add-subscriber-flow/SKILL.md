@@ -159,6 +159,7 @@ External System → [Broker Stream] → Subscriber (ACL) → Domain Command/Aggr
 ### Letting external formats leak into the domain
 
 ```python
+# fragment
 # Wrong! Raw external payload pushed into domain logic
 def __call__(self, payload: dict) -> None:
     order = domain.repository_for(Order).get(payload["orderId"])
@@ -170,6 +171,7 @@ Instead: translate at the subscriber (the ACL) into domain language first, then 
 ### Business logic in the subscriber
 
 ```python
+# fragment
 # Wrong! Domain rules enforced in the ACL
 def __call__(self, payload: dict) -> None:
     if payload["amountPaid"] >= order.total:   # rule belongs on the aggregate
@@ -181,6 +183,7 @@ Instead: the subscriber only translates and delegates; rules live on the aggrega
 ### Typing the payload as a domain event
 
 ```python
+# fragment
 # Wrong! Subscribers receive raw dicts, not typed events
 def __call__(self, payload: PaymentConfirmed) -> None:
     ...
@@ -191,6 +194,7 @@ Instead: `def __call__(self, payload: dict)` — it is always a raw dict from th
 ### Forgetting sync processing in tests
 
 ```python
+# fragment
 # Wrong! Nothing processes the published message
 domain.brokers["default"].publish("payment_gateway", {"order_id": "O-1"})
 assert order.is_paid  # fails — subscriber never ran

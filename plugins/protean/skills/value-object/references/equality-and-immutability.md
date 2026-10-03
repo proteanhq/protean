@@ -284,6 +284,7 @@ class Email:
 Because value objects have no identity, equal instances are interchangeable:
 
 ```python
+# fragment
 @domain.aggregate
 class Order:
     shipping_address = ValueObject(Address)
@@ -308,6 +309,7 @@ assert addr1 == addr2
 Value objects can be used in sets because equality is well-defined:
 
 ```python
+# fragment
 addresses = set()
 addresses.add(Address(street="123 Main", city="Boston", ...))
 addresses.add(Address(street="123 Main", city="Boston", ...))  # Same values

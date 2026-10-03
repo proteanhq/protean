@@ -369,12 +369,14 @@ def test_nested_value_object_immutability():
 
 **Over-nesting** ❌
 ```python
+# fragment
 # Too many levels - hard to work with
 Customer → Profile → Contact → Address → StreetAddress → Unit → Floor
 ```
 
 **Breaking encapsulation** ❌
 ```python
+# fragment
 # Reaching too deep into nested structure
 if customer.contact.address.coordinates.latitude > 40:
     # Better: Add method to appropriate level

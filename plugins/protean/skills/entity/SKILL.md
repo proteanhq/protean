@@ -330,6 +330,7 @@ class Comment:
 
 ❌ **Querying entities directly**
 ```python
+# fragment
 # Don't do this
 comments = domain.repository_for(Comment).filter(author="John")
 ```

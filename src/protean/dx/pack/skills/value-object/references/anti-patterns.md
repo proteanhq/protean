@@ -76,6 +76,7 @@ class Order:
 
 **❌ Bad: Modifying value object attributes**
 ```python
+# fragment
 order = Order(
     total=Money(currency="USD", amount=100.0),
     ...

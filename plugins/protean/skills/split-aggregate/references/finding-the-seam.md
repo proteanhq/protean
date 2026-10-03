@@ -53,6 +53,7 @@ parcel.
 Avoid a `Reference` field pointing at the other aggregate's root:
 
 ```python
+# fragment
 # Wrong: a Reference across an aggregate boundary.
 order = Reference("Order")
 ```

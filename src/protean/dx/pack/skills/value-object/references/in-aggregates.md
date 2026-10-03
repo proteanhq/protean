@@ -449,6 +449,7 @@ order.total_amount = Money(currency="USD", amount=200)
 
 **Not leveraging VO behavior** ❌
 ```python
+# fragment
 # Bad: Reimplementing VO logic in aggregate
 def calculate_total(self):
     total_amount = 0

@@ -82,6 +82,7 @@ class OrderPM:
 
 **Right:**
 ```python
+# fragment
     @handle(OrderShipped, correlate="order_id")
     def on_shipped(self, event) -> None:
         self.status = "shipped"

@@ -234,6 +234,7 @@ class Order: ...
 ### Mutating state directly in business methods
 
 ```python
+# fragment
 # WRONG — state mutated in business method AND in @apply (double mutation)
 def close(self):
     self.status = "CLOSED"  # Don't do this
@@ -269,6 +270,7 @@ An `event_sourced=True` aggregate that raises no domain events has no state hist
 ### Forgetting to raise initial event in factory
 
 ```python
+# fragment
 # WRONG — no creation event recorded
 @classmethod
 def open(cls, account_id, owner_name):

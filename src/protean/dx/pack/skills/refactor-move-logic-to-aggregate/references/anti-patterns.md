@@ -3,6 +3,7 @@
 ## Moving persistence into the aggregate
 
 ```python
+# fragment
 # Bad: aggregate knows about persistence
 class Order:
     def place(self):
@@ -19,6 +20,7 @@ class Order:
 ## Creating setter methods instead of business operations
 
 ```python
+# fragment
 # Bad: setters disguised as methods
 class Ticket:
     def set_status(self, status):
@@ -40,6 +42,7 @@ class Ticket:
 ## Leaving events in the handler
 
 ```python
+# fragment
 # Bad: event raised in handler
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -59,6 +62,7 @@ def place_order(self, command):
 ## Over-guarding with invariants
 
 ```python
+# fragment
 # Bad: invariant for something field constraints already handle
 @invariant.post
 def title_must_not_be_empty(self):

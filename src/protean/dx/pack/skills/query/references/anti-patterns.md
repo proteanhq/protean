@@ -6,6 +6,7 @@ Queries belong to the **read** side. Their `part_of` is a projection, never an
 aggregate.
 
 ```python
+# fragment
 # WRONG — querying the write model
 @domain.query(part_of="Order")
 class GetOrderById:
@@ -26,6 +27,7 @@ A query is a parameter object, not a place for behavior. It should not reach int
 repositories, run filters, or compute results — that is the query handler's job.
 
 ```python
+# fragment
 # WRONG — query does the work
 @domain.query(part_of="OrderSummary")
 class GetOrderById:
@@ -43,6 +45,7 @@ Queries are immutable. Reusing one instance and "tweaking" it raises
 `IncorrectUsageError`.
 
 ```python
+# fragment
 # WRONG
 q = SearchOrders(status="placed")
 q.status = "shipped"  # IncorrectUsageError
@@ -57,6 +60,7 @@ Queries take basic fields and value objects only. Associations
 (`HasOne`/`HasMany`/`Reference`) are not allowed — they belong to aggregates.
 
 ```python
+# fragment
 # WRONG
 @domain.query(part_of="OrderSummary")
 class SearchOrders:
@@ -74,6 +78,7 @@ class SearchOrders:
 Commands are imperative (`PlaceOrder`); queries are named for what they return.
 
 ```python
+# fragment
 # WRONG
 class FetchStuff: ...
 class DoOrderLookup: ...

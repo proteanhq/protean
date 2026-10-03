@@ -71,6 +71,7 @@ Is it a single-field data constraint?
 
 **Wrong**: Checking business rules in the handler
 ```python
+# fragment
 # BAD: Business rule in handler
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -93,6 +94,7 @@ def must_have_items_when_placed(self):
 
 **Wrong**: Invariant duplicating a field constraint
 ```python
+# fragment
 # BAD: Duplicates min_value=0 field constraint
 quantity: Integer(min_value=0)
 
@@ -105,6 +107,7 @@ def quantity_must_be_non_negative(self):  # Redundant!
 ### Don't use @invariant.pre on value objects
 
 ```python
+# fragment
 # BAD: Pre-invariants don't apply to immutable VOs
 @domain.value_object
 class Money:

@@ -6,6 +6,7 @@ Protean's validation pipeline catches `ValidationError`. A plain `ValueError`
 propagates as an unhandled exception instead of a clean, field-scoped error.
 
 ```python
+# fragment
 # WRONG
 class PhoneValidator:
     def __call__(self, value):
@@ -27,6 +28,7 @@ A validator receives one field's value. It cannot see sibling fields, so it
 cannot express rules that span fields.
 
 ```python
+# fragment
 # WRONG — a validator can't reach end_date
 class AfterStartValidator:
     def __call__(self, value):  # only gets one value
@@ -49,6 +51,7 @@ Length and range checks already exist as field parameters. A validator that
 duplicates them is dead weight.
 
 ```python
+# fragment
 # WRONG
 class MaxLenValidator:
     def __call__(self, value):
@@ -67,6 +70,7 @@ domain rules).
 A validator with baked-in constants only works in one place.
 
 ```python
+# fragment
 # WRONG — only ever validates these domains
 class EmailDomainValidator:
     def __call__(self, value):
@@ -88,6 +92,7 @@ Validators run on every assignment. A database/network call here makes every
 write slow and couples the domain to infrastructure.
 
 ```python
+# fragment
 # WRONG — DB lookup on every set
 class UniqueEmailValidator:
     def __call__(self, value):

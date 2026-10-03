@@ -6,6 +6,7 @@ Command and event handlers use `@handle`; query handlers use `@read`. `@read`
 signals a stateless read with no Unit of Work.
 
 ```python
+# fragment
 # WRONG
 @read(GetOrderById)  # correct decorator...
 def get_by_id(self, query): ...
@@ -20,6 +21,7 @@ A query handler's whole purpose is to return data. A method that reads but does
 not `return` hands `None` back to the caller.
 
 ```python
+# fragment
 # WRONG
 @read(GetOrderById)
 def get_by_id(self, query):
@@ -36,6 +38,7 @@ def get_by_id(self, query):
 Reads must be free of mutation and persistence. Never write from a query handler.
 
 ```python
+# fragment
 # WRONG — mutating during a read
 @read(GetOrderById)
 def get_by_id(self, query):
@@ -54,6 +57,7 @@ Query handlers serve the read model. Loading the write-side aggregate couples th
 read path to the consistency boundary and the aggregate's shape.
 
 ```python
+# fragment
 # WRONG — reading the write model
 @read(GetOrderById)
 def get_by_id(self, query):

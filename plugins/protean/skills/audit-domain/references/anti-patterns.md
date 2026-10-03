@@ -11,6 +11,7 @@ These appear in nearly every codebase that hasn't been through a design review.
 Handler does everything — validates, calculates, constructs, persists, and coordinates:
 
 ```python
+# fragment
 # Bad: handler is a controller
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -35,6 +36,7 @@ def place_order(self, command):
 Using raw fields where value objects should model domain concepts:
 
 ```python
+# fragment
 # Bad: raw fields
 class Order:
     total_amount = Float()
@@ -54,6 +56,7 @@ class Order:
 Aggregate is just a data container with no behavior:
 
 ```python
+# fragment
 # Bad: anemic — no methods, no invariants
 @domain.aggregate
 class Order:
@@ -86,6 +89,7 @@ These appear when the codebase grows beyond the initial design.
 Modifying multiple aggregates in one handler:
 
 ```python
+# fragment
 # Bad: two aggregates in one transaction
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -115,6 +119,7 @@ def reserve_inventory(self, event):
 One aggregate doing everything:
 
 ```python
+# fragment
 # Bad: Order handles ordering, shipping, payment, and notifications
 @domain.aggregate
 class Order:
@@ -138,6 +143,7 @@ class Payment: ...    # Payments only
 Direct function calls instead of event-driven communication:
 
 ```python
+# fragment
 # Bad: direct call
 def complete_order(order_id):
     order = repo.get(order_id)
@@ -169,6 +175,7 @@ These are harder to spot but indicate architectural drift.
 Same rule checked in multiple places:
 
 ```python
+# fragment
 # Bad: validated in endpoint AND handler AND aggregate
 @app.post("/orders")
 def create_order(request):
@@ -200,6 +207,7 @@ def total_within_limit(self): ...
 Tests that mock domain internals instead of using real objects:
 
 ```python
+# fragment
 # Bad: mocking everything
 def test_place_order():
     mock_repo = Mock()

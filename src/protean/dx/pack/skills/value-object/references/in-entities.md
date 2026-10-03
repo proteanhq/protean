@@ -443,6 +443,7 @@ line_item.unit_price = Money(currency="USD", amount=100)
 
 **Not using VO methods** ❌
 ```python
+# fragment
 # Bad: Manual calculation
 def line_total(self):
     return self.unit_price.amount * self.quantity
@@ -454,6 +455,7 @@ def line_total(self):
 
 **Accessing entities directly** ❌
 ```python
+# fragment
 # Bad: Direct entity access
 line_item = repository.get_line_item(item_id)
 

@@ -63,6 +63,7 @@ Cross-aggregate projections are eventually consistent. The projection may briefl
 Use the `aggregates` parameter to list all aggregate classes:
 
 ```python
+# fragment
 @domain.projector(
     projector_for=MyProjection,
     aggregates=[AggregateA, AggregateB, AggregateC],
@@ -72,6 +73,7 @@ Use the `aggregates` parameter to list all aggregate classes:
 Alternatively, use `stream_categories` for explicit stream names:
 
 ```python
+# fragment
 @domain.projector(
     projector_for=MyProjection,
     stream_categories=["customer", "order"],

@@ -5,6 +5,7 @@
 Extracting VOs where none are needed:
 
 ```python
+# fragment
 # Bad: VO for a single field with no behavior
 @domain.value_object
 class CustomerName:
