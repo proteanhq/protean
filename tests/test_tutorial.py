@@ -73,12 +73,12 @@ ch20 = _load_chapter(20)
 ch21 = _load_chapter(21)
 
 # Chapter 9 is the ``bookshelf`` package; ch10 has already imported it.
-import bookshelf  # noqa: E402
-import bookshelf.commands  # noqa: E402
-import bookshelf.events  # noqa: E402
-import bookshelf.handlers  # noqa: E402
-import bookshelf.models  # noqa: E402
-import bookshelf.projections  # noqa: E402
+import bookshelf
+import bookshelf.commands
+import bookshelf.events
+import bookshelf.handlers
+import bookshelf.models
+import bookshelf.projections
 
 # Chapters that have projections (need DB artifact create/drop with real DBs)
 _HAS_PROJECTIONS = {ch07, bookshelf, ch10, ch21}

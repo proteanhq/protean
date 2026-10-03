@@ -21,7 +21,7 @@ def module_name_for(path: str) -> str:
     letter, digit or underscore becomes an underscore, so hyphenated folders
     and numbered file names give a valid, unique module name.
     """
-    stem = path[: -len(".py")] if path.endswith(".py") else path
+    stem = path.removesuffix(".py")
     return "docs_src_" + re.sub(r"[^0-9A-Za-z_]", "_", stem)
 
 

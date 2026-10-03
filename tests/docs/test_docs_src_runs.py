@@ -242,6 +242,7 @@ def run_examples(
         [sys.executable, "-c", _RUNNER, str(spec_path)],
         capture_output=True,
         text=True,
+        check=False,
         cwd=workdir,
         env={**os.environ, **(env or {})},
         # The per-example limit fires first; this is the backstop for the run.
@@ -517,8 +518,10 @@ class TestRunner:
         )
 
         assert report["failures"] == [
-            "wrong.py: expected ConfigurationError, but it raised "
-            "ValueError: not this one"
+            (
+                "wrong.py: expected ConfigurationError, but it raised "
+                "ValueError: not this one"
+            )
         ]
 
     def test_files_written_by_an_example_stay_out_of_the_root(self, corpus):
