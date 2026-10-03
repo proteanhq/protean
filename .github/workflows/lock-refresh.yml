@@ -41,6 +41,7 @@ jobs:
     name: Upgrade uv.lock
     outputs:
       changed: ${{ steps.diff.outputs.changed }}
+      sha: ${{ steps.diff.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -65,6 +66,7 @@ jobs:
       - name: Check for changes
         id: diff
         run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           if git diff --quiet -- uv.lock; then
             echo "uv.lock is already current."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -95,7 +97,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          # The commit the lock was generated from, not whatever main is now,
+          # so the committed lock always matches the pyproject.toml beside it.
+          # If main has moved since, the PR shows the conflict or the drift.
+          ref: ${{ needs.lock.outputs.sha }}
           fetch-depth: 1
           token: ${{ secrets.LOCK_REFRESH_TOKEN || github.token }}
 
