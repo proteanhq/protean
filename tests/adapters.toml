@@ -67,7 +67,9 @@ paths = [
     "tests/adapters/repository/sqlalchemy_repo/",
 ]
 markers = ["postgresql"]
-databases = ["POSTGRESQL"]
+# POSTGRESQL runs on psycopg 3, the default driver. POSTGRESQL_PSYCOPG2 runs
+# the same capability suite on psycopg2, the fallback.
+databases = ["POSTGRESQL", "POSTGRESQL_PSYCOPG2"]
 
 [adapters.redis-broker]
 lane = "pr"

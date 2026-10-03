@@ -296,6 +296,18 @@ These markers can be used with pytest's `-m` option to selectively run tests for
 
 Refer to `tests/conftest.py` for other database options.
 
+#### Running the PostgreSQL leg on each driver
+
+The `postgresql` provider supports psycopg 3 and psycopg2. `--db POSTGRESQL`
+uses a plain `postgresql://` URL, which picks psycopg 3. `--db
+POSTGRESQL_PSYCOPG2` uses a `postgresql+psycopg2://` URL, so the same
+conformance battery runs on psycopg2:
+
+```shell
+uv run pytest --postgresql --db POSTGRESQL tests/adapters/repository/generic
+uv run pytest --postgresql --db POSTGRESQL_PSYCOPG2 tests/adapters/repository/generic
+```
+
 #### Running the MySQL leg
 
 The `mysql` provider serves MySQL and MariaDB, and SQLAlchemy reports a

@@ -11,7 +11,7 @@ PYTHON_VERSIONS = ["3.11", "3.12", "3.13", "3.14", "3.15"]
 
 # Packages with C extensions that must be rebuilt per Python version.
 # uv's wheel cache can serve a .so compiled for the wrong interpreter.
-_C_EXT_PACKAGES = ["psycopg2-binary"]
+_C_EXT_PACKAGES = ["psycopg2-binary", "psycopg-binary"]
 
 
 def _install(session: nox.Session) -> None:

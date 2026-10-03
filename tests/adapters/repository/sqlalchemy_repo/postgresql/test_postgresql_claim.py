@@ -19,7 +19,10 @@ class ClaimJob(BaseAggregate):
 
 @pytest.fixture
 def claim_domain(test_domain):
-    test_domain.register(ClaimJob)
+    # Its own table name: this module leaves the table in place, and its uuid
+    # identity would otherwise be reused by the generic claim tests, which map
+    # a string identity onto ``claim_job``.
+    test_domain.register(ClaimJob, schema_name="pg_claim_job")
     test_domain.init(traverse=False)
     # Accessing the DAO registers ClaimJob's table in the provider metadata,
     # which must happen before create_all(). create_all is idempotent; the

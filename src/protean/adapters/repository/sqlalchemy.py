@@ -2,6 +2,7 @@
 
 import copy
 import decimal
+import importlib
 import json
 import logging
 import time
@@ -43,7 +44,7 @@ from sqlalchemy import types as sa_types
 from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.dialects.mysql import mariadb as mariadb_dialect
 from sqlalchemy.engine import Engine
-from sqlalchemy.engine.url import make_url
+from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
@@ -2162,7 +2163,7 @@ class SAProvider(BaseProvider):
         super().__init__(name, domain, conn_info)
 
         self._engine = create_engine(
-            make_url(self.conn_info["database_uri"]),
+            self._engine_url(),
             json_serializer=_custom_json_dumps,
             **self._additional_engine_args(),
         )
@@ -2189,6 +2190,10 @@ class SAProvider(BaseProvider):
             bind=self._engine, expire_on_commit=False, **kwargs
         )
         self._scoped_session_cls = orm.scoped_session(self._session_factory)
+
+    def _engine_url(self) -> URL:
+        """The URL the engine is built from: ``database_uri`` as configured."""
+        return make_url(self.conn_info["database_uri"])
 
     @abstractmethod
     def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
@@ -2508,8 +2513,81 @@ class SAProvider(BaseProvider):
                 conn.close()
 
 
+# The PostgreSQL drivers the provider supports, each with the extra that installs
+# it. A ``database_uri`` without a driver (``postgresql://``) takes the first one
+# that imports, so psycopg 3 is the default and psycopg2 the fallback.
+_POSTGRESQL_DRIVERS: dict[str, str] = {
+    "psycopg": "protean[postgresql]",
+    "psycopg2": "protean[postgresql-psycopg2]",
+}
+
+
+def _postgresql_driver_import_error(driver: str) -> ImportError | None:
+    """The error importing ``driver`` raises, or ``None`` when it imports.
+
+    psycopg 3 can be installed and still fail to import, when neither its binary
+    package nor a system ``libpq`` is present, so this imports the module rather
+    than only looking for it.
+    """
+    try:
+        importlib.import_module(driver)
+    except ImportError as exc:
+        return exc
+    return None
+
+
 class PostgresqlProvider(SAProvider):
+    """Provider for PostgreSQL, on psycopg 3 or psycopg2.
+
+    A ``database_uri`` that names its driver (``postgresql+psycopg://`` or
+    ``postgresql+psycopg2://``) uses that driver. One that does not
+    (``postgresql://``) uses psycopg 3 when it imports and psycopg2 otherwise.
+    Protean resolves the plain form itself because SQLAlchemy 2.0 reads it as
+    psycopg2 and SQLAlchemy 2.1 as psycopg 3. A driver that is missing fails at
+    ``domain.init()`` with the extra that installs it.
+    """
+
     __database__ = SAProvider.databases.postgresql.value
+
+    def _engine_url(self) -> URL:
+        url = super()._engine_url()
+        backend, _, driver = url.drivername.partition("+")
+
+        # A URL for another backend, or naming a driver outside the supported
+        # pair, goes to SQLAlchemy as written.
+        if backend != "postgresql":
+            return url
+
+        if driver:
+            if driver in _POSTGRESQL_DRIVERS:
+                error = _postgresql_driver_import_error(driver)
+                if error is not None:
+                    raise ConfigurationError(
+                        f"Database '{self.name}' uses a '{url.drivername}://' "
+                        f"URL, but the '{driver}' driver cannot be imported "
+                        f"({error}). Install it with "
+                        f'`pip install "{_POSTGRESQL_DRIVERS[driver]}"`.'
+                    ) from error
+            return url
+
+        errors: dict[str, ImportError] = {}
+        for candidate in _POSTGRESQL_DRIVERS:
+            error = _postgresql_driver_import_error(candidate)
+            if error is None:
+                logger.info(
+                    "repository.postgresql.driver_selected",
+                    extra={"database": self.name, "driver": candidate},
+                )
+                return url.set(drivername=f"{url.drivername}+{candidate}")
+            errors[candidate] = error
+
+        raise ConfigurationError(
+            f"Database '{self.name}' uses a '{url.drivername}://' URL, and no "
+            f"PostgreSQL driver can be imported "
+            f"(psycopg: {errors['psycopg']}; psycopg2: {errors['psycopg2']}). "
+            f'Install psycopg 3 with `pip install "{_POSTGRESQL_DRIVERS["psycopg"]}"`, '
+            f'or psycopg2 with `pip install "{_POSTGRESQL_DRIVERS["psycopg2"]}"`.'
+        )
 
     @property
     def capabilities(self) -> DatabaseCapabilities:

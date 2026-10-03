@@ -80,23 +80,33 @@ dependencies = [
 # Adapter extras: the infrastructure a domain talks to.
 elasticsearch = ["elasticsearch>=8.18.0,<9.0.0"]
 redis = ["redis>=8.0.0,<8.2.0"]
-# `greenlet` rides with the SQLAlchemy extras: SQLAlchemy requires it on common
-# platforms but declares no floor, and 3.2.3 is the first release with a
+# `greenlet` rides with the SQLAlchemy extras: SQLAlchemy 2.0 requires it on
+# common platforms but declares no floor (2.1 no longer requires it, but the
+# 2.0 floor still has to install), and 3.2.3 is the first release with a
 # manylinux cp314 wheel, so the floor keeps these extras installable on the
 # newest Python (ADR-0020). Nothing in core imports it. The platform marker
 # mirrors SQLAlchemy's own, so the extras never require greenlet on an
 # architecture SQLAlchemy itself would not.
+#
+# `postgresql` installs psycopg 3, the default driver, and `postgresql-psycopg2`
+# installs psycopg2 for applications that stay on it. 3.2.10 is the first
+# psycopg-binary release with cp314 wheels (ADR-0020).
 postgresql = [
-    "sqlalchemy>=2.0.36,<2.1",
+    "sqlalchemy>=2.0.36,<2.2",
+    "psycopg[binary]>=3.2.10",
+    "greenlet>=3.2.3,<4; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'",
+]
+postgresql-psycopg2 = [
+    "sqlalchemy>=2.0.36,<2.2",
     "psycopg2-binary>=2.9.11",
     "greenlet>=3.2.3,<4; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'",
 ]
 sqlite = [
-    "sqlalchemy>=2.0.36,<2.1",
+    "sqlalchemy>=2.0.36,<2.2",
     "greenlet>=3.2.3,<4; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'",
 ]
 mssql = [
-    "sqlalchemy>=2.0.36,<2.1",
+    "sqlalchemy>=2.0.36,<2.2",
     "pyodbc>=5.3.0",
     "greenlet>=3.2.3,<4; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'",
 ]
@@ -118,7 +128,7 @@ mssql = [
 # is cryptography's own dependency and declares no floor, and 2.0.0 is the first
 # release with cp314 wheels (ADR-0020).
 mysql = [
-    "sqlalchemy>=2.0.36,<2.1",
+    "sqlalchemy>=2.0.36,<2.2",
     "pymysql[rsa]>=1.1.1",
     "cffi>=2.0.0; platform_python_implementation != 'PyPy'",
     "greenlet>=3.2.3,<4; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'",

@@ -17,6 +17,7 @@ from tests.shared import (
     MESSAGE_DB_URI,
     MSSQL_URI,
     MYSQL_URI,
+    POSTGRES_PSYCOPG2_URI,
     POSTGRES_URI,
     REDIS_URI,
 )
@@ -242,6 +243,12 @@ def db_config(request, tmp_path_factory):
             "POSTGRESQL": {
                 "provider": "postgresql",
                 "database_uri": POSTGRES_URI,
+                "pool_size": 1,
+                "max_overflow": 2,
+            },
+            "POSTGRESQL_PSYCOPG2": {
+                "provider": "postgresql",
+                "database_uri": POSTGRES_PSYCOPG2_URI,
                 "pool_size": 1,
                 "max_overflow": 2,
             },

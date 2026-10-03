@@ -34,7 +34,7 @@ communicate with PostgreSQL databases.
 
 - **Use cases**: Production environments requiring full relational capabilities
 - **Capabilities**: Full relational set including native JSON and array columns
-- **Requires**: `psycopg2-binary` or `psycopg2`
+- **Requires**: psycopg 3 (`protean[postgresql]`) or psycopg2 (`protean[postgresql-psycopg2]`)
 
 [PostgreSQL provider reference](./postgresql.md)
 
