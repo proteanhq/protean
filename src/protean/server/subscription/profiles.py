@@ -215,8 +215,8 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
 # Shared with StreamSubscription, which checks the same value when it is built
 # without a SubscriptionConfig.
 _BLOCKING_TIMEOUT_ERROR = (
-    "blocking_timeout_ms must be positive. A read returns as soon as a message "
-    "arrives, so a smaller value does not lower latency"
+    "blocking_timeout_ms must be positive. A value of 0 would make the poll "
+    "loop query the broker with no pause"
 )
 
 # Hardcoded defaults used when no profile is specified.
@@ -396,8 +396,10 @@ class SubscriptionConfig:
         messages_per_tick: Number of messages to process per tick.
         tick_interval: Interval between processing ticks in seconds.
         blocking_timeout_ms: Timeout for blocking reads in milliseconds (STREAM only).
-            Must be positive. A read returns as soon as a message arrives, so
-            the value bounds the idle wait and does not affect latency.
+            Must be positive: 0 would make the poll loop query the broker with
+            no pause. With priority lanes on, the value (capped at 1000 ms)
+            also bounds how long a new primary message can wait while the
+            subscription waits on the backfill stream.
         max_retries: Maximum retry attempts before moving to DLQ (STREAM only).
         retry_delay_seconds: Delay between retries in seconds (STREAM only).
         enable_dlq: Whether to enable dead letter queue (STREAM only).

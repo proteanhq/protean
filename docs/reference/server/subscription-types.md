@@ -146,7 +146,7 @@ class OrderEventHandler:
 | Option | Default | Description |
 | ------ | ------- | ----------- |
 | `messages_per_tick` | 10 | Messages to read per batch |
-| `blocking_timeout_ms` | 5000 | Blocking read timeout in milliseconds. Must be positive. A read returns as soon as a message arrives, so a smaller value does not lower latency. The Redis broker waits at most 1000 ms per read |
+| `blocking_timeout_ms` | 5000 | Blocking read timeout in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. Without priority lanes, a read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the subscription waits this long on the backfill stream before it checks the primary stream again, so a smaller value lowers the worst-case pickup delay for production messages and sends more reads to Redis while idle |
 | `max_retries` | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | 1 | Delay between retries |
 | `enable_dlq` | true | Whether to use dead letter queue |
