@@ -367,14 +367,14 @@ class TestCircuitBreakerHalfOpen:
         assert sub.broker.read_blocking.call_args.kwargs["count"] == 1
 
     @pytest.mark.asyncio
-    async def test_half_open_backfill_lane_reads_single_message(self, domain):
+    async def test_half_open_combined_lanes_read_single_message(self, domain):
         sub = _make_stream_subscription(domain, messages_per_tick=25)
-        sub.broker.read_blocking = MagicMock(return_value=[])
+        sub.broker.read_blocking_streams = MagicMock(return_value={})
 
         sub.circuit_state = CircuitBreakerState.HALF_OPEN
-        await sub._read_backfill_blocking()
+        await sub._read_lanes_blocking()
 
-        assert sub.broker.read_blocking.call_args.kwargs["count"] == 1
+        assert sub.broker.read_blocking_streams.call_args.kwargs["count"] == 1
 
     @pytest.mark.asyncio
     async def test_closed_reads_full_batch(self, domain):

@@ -91,8 +91,8 @@ backfill stream (e.g., `customer:backfill`) instead of the primary stream
 ### 3. StreamSubscription Draining
 
 The Engine's StreamSubscription reads from the primary stream first (non-blocking).
-Only when the primary stream is empty does it fall back to the backfill stream
-(blocking read capped at 1 second). Production events are never blocked by
+Only when the primary stream is empty does it make one blocking read that waits
+on both streams (capped at 1 second). Production events are never blocked by
 backfill events.
 
 No handler changes are needed. The same projector processes events identically

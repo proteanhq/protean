@@ -1,7 +1,8 @@
 """Tests for StreamSubscription priority lanes feature.
 
 Verifies that when priority lanes are enabled, StreamSubscription:
-- Reads from a primary stream (non-blocking) before a backfill stream (blocking).
+- Reads from a primary stream (non-blocking) before one blocking read that
+  waits on both the primary and the backfill stream.
 - ACKs, NACKs, and DLQ messages on the correct stream.
 - Falls back to standard single-stream behavior when lanes are disabled.
 """
@@ -186,34 +187,34 @@ class TestPriorityReading:
         assert sub.broker.read_blocking.call_args.kwargs["stream"] == "orders"
 
     @pytest.mark.asyncio
-    async def test_primary_empty_reads_backfill(self):
-        """When the primary stream is empty, the backfill stream is read."""
+    async def test_primary_empty_reads_both_streams(self):
+        """When the primary stream is empty, one read waits on both streams."""
         engine = _make_engine(priority_lanes_config={"enabled": True})
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
         backfill_messages = [("msg-bf-1", {"data": "b"})]
-        streams_read = []
-
-        def _read_blocking(stream, **kwargs):
-            streams_read.append(stream)
-            if stream == "orders":
-                return []  # Primary empty
-            if stream == "orders:backfill":
-                return backfill_messages
-            return []
-
-        sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
+        sub.broker.read_blocking = MagicMock(return_value=[])  # Primary empty
+        sub.broker.read_blocking_streams = MagicMock(
+            return_value={"orders": [], "orders:backfill": backfill_messages}
+        )
+        processed = []
 
         async def _fake_process_batch(messages, stream=None):
+            processed.append((messages, stream))
             sub.keep_going = False
 
         sub.process_batch = _fake_process_batch
 
         await sub.poll()
 
-        # Both streams were read: primary first, then backfill
-        assert streams_read == ["orders", "orders:backfill"]
+        # The primary stream was read alone first, then both streams together
+        assert sub.broker.read_blocking.call_args.kwargs["stream"] == "orders"
+        assert sub.broker.read_blocking_streams.call_args.kwargs["streams"] == [
+            "orders",
+            "orders:backfill",
+        ]
+        assert processed == [(backfill_messages, "orders:backfill")]
 
     @pytest.mark.asyncio
     async def test_primary_read_is_nonblocking(self):
@@ -242,9 +243,8 @@ class TestPriorityReading:
         assert captured_kwargs["timeout_ms"] == 0
 
     @pytest.mark.asyncio
-    async def test_backfill_read_is_blocking_with_cap(self):
-        """The backfill stream read uses min(configured_timeout, 1000)."""
-        # Configure a large timeout (5000ms) so we can verify the cap
+    async def test_combined_read_is_blocking_with_cap(self):
+        """The combined read uses min(configured_timeout, 1000)."""
         engine = _make_engine(
             priority_lanes_config={"enabled": True},
             server_extras={"stream_subscription": {"blocking_timeout_ms": 5000}},
@@ -252,17 +252,13 @@ class TestPriorityReading:
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
-        backfill_kwargs = {}
-
-        def _read_blocking(stream, **kwargs):
-            if stream == "orders":
-                return []  # Primary empty
-            if stream == "orders:backfill":
-                backfill_kwargs.update(kwargs)
-                return [("msg-bf-1", {"data": "b"})]
-            return []
-
-        sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
+        sub.broker.read_blocking = MagicMock(return_value=[])  # Primary empty
+        sub.broker.read_blocking_streams = MagicMock(
+            return_value={
+                "orders": [],
+                "orders:backfill": [("msg-bf-1", {"data": "b"})],
+            }
+        )
 
         async def _fake_process_batch(messages, stream=None):
             sub.keep_going = False
@@ -271,12 +267,12 @@ class TestPriorityReading:
 
         await sub.poll()
 
-        # Backfill timeout should be capped at 1000 even though configured is 5000
-        assert backfill_kwargs["timeout_ms"] == 1000
+        timeout_ms = sub.broker.read_blocking_streams.call_args.kwargs["timeout_ms"]
+        assert timeout_ms == 1000
 
     @pytest.mark.asyncio
-    async def test_backfill_read_uses_configured_timeout_when_under_cap(self):
-        """When configured timeout < 1000, backfill uses the configured value."""
+    async def test_combined_read_uses_configured_timeout_when_under_cap(self):
+        """When configured timeout < 1000, the combined read uses the configured value."""
         engine = _make_engine(
             priority_lanes_config={"enabled": True},
             server_extras={"stream_subscription": {"blocking_timeout_ms": 500}},
@@ -284,17 +280,13 @@ class TestPriorityReading:
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
-        backfill_kwargs = {}
-
-        def _read_blocking(stream, **kwargs):
-            if stream == "orders":
-                return []
-            if stream == "orders:backfill":
-                backfill_kwargs.update(kwargs)
-                return [("msg-bf-1", {"data": "b"})]
-            return []
-
-        sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
+        sub.broker.read_blocking = MagicMock(return_value=[])  # Primary empty
+        sub.broker.read_blocking_streams = MagicMock(
+            return_value={
+                "orders": [],
+                "orders:backfill": [("msg-bf-1", {"data": "b"})],
+            }
+        )
 
         async def _fake_process_batch(messages, stream=None):
             sub.keep_going = False
@@ -303,7 +295,8 @@ class TestPriorityReading:
 
         await sub.poll()
 
-        assert backfill_kwargs["timeout_ms"] == 500
+        timeout_ms = sub.broker.read_blocking_streams.call_args.kwargs["timeout_ms"]
+        assert timeout_ms == 500
 
 
 # ---------------------------------------------------------------------------
@@ -475,22 +468,25 @@ class TestErrorHandling:
     """Tests for graceful degradation when Redis read calls fail."""
 
     @pytest.mark.asyncio
-    async def test_primary_read_error_falls_through_to_backfill(self):
-        """When primary non-blocking read raises, we still try backfill."""
+    async def test_primary_read_error_falls_through_to_combined_read(self):
+        """When the primary non-blocking read raises, the combined read still runs."""
         engine = _make_engine(priority_lanes_config={"enabled": True})
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
         backfill_messages = [("msg-bf-1", {"data": "b"})]
-        streams_read = []
+        reads = []
 
         def _read_blocking(stream, **kwargs):
-            streams_read.append(stream)
-            if stream == "orders":
-                raise ConnectionError("Redis connection lost")
-            return backfill_messages
+            reads.append(stream)
+            raise ConnectionError("Redis connection lost")
+
+        def _read_blocking_streams(streams, **kwargs):
+            reads.append(tuple(streams))
+            return {"orders": [], "orders:backfill": backfill_messages}
 
         sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
+        sub.broker.read_blocking_streams = MagicMock(side_effect=_read_blocking_streams)
 
         async def _fake_process_batch(messages, stream=None):
             sub.keep_going = False
@@ -499,34 +495,34 @@ class TestErrorHandling:
 
         await sub.poll()
 
-        # Primary failed, but backfill should still be read
-        assert "orders" in streams_read
-        assert "orders:backfill" in streams_read
+        # Primary failed, but the combined read still ran
+        assert reads == ["orders", ("orders", "orders:backfill")]
 
     @pytest.mark.asyncio
-    async def test_backfill_read_error_loops_back_to_primary(self):
-        """When backfill blocking read raises, the loop continues to primary."""
+    async def test_combined_read_error_loops_back_to_primary(self):
+        """When the combined blocking read raises, the loop continues to primary."""
         engine = _make_engine(priority_lanes_config={"enabled": True})
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
         iteration = 0
-        streams_read = []
+        reads = []
 
         def _read_blocking(stream, **kwargs):
+            reads.append(stream)
+            if iteration > 0:
+                # On second primary read, return messages to break the loop
+                return [("msg-1", {"data": "a"})]
+            return []  # Primary empty on first pass
+
+        def _read_blocking_streams(streams, **kwargs):
             nonlocal iteration
-            streams_read.append(stream)
-            if stream == "orders":
-                if iteration > 0:
-                    # On second primary read, return messages to break the loop
-                    return [("msg-1", {"data": "a"})]
-                return []  # Primary empty on first pass
-            if stream == "orders:backfill":
-                iteration += 1
-                raise ConnectionError("Redis connection lost on backfill")
-            return []
+            iteration += 1
+            reads.append(tuple(streams))
+            raise ConnectionError("Redis connection lost on combined read")
 
         sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
+        sub.broker.read_blocking_streams = MagicMock(side_effect=_read_blocking_streams)
 
         async def _fake_process_batch(messages, stream=None):
             sub.keep_going = False
@@ -535,36 +531,36 @@ class TestErrorHandling:
 
         await sub.poll()
 
-        # Should read primary, then backfill (error), then primary again
-        assert streams_read[0] == "orders"
-        assert streams_read[1] == "orders:backfill"
-        assert streams_read[2] == "orders"
+        # Should read primary, then both streams (error), then primary again
+        assert reads == ["orders", ("orders", "orders:backfill"), "orders"]
 
     @pytest.mark.asyncio
-    async def test_both_streams_error_continues_loop(self):
-        """When both primary and backfill raise, the loop retries."""
+    async def test_both_reads_error_continues_loop(self):
+        """When the primary and the combined read both raise, the loop retries."""
         engine = _make_engine(priority_lanes_config={"enabled": True})
         sub = _make_subscription(engine, stream_category="orders")
         sub.broker = engine.domain.brokers["default"]
 
         call_count = 0
 
-        def _read_blocking(stream, **kwargs):
+        def _failing_read(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count > 3:
                 # Break out by stopping the loop
                 sub.keep_going = False
-                return []
+                return {} if "streams" in kwargs else []
             raise ConnectionError("Redis down")
 
-        sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
+        sub.broker.read_blocking = MagicMock(side_effect=_failing_read)
+        sub.broker.read_blocking_streams = MagicMock(side_effect=_failing_read)
         sub.process_batch = MagicMock()
 
         await sub.poll()
 
         # Should have attempted reads before giving up
         assert call_count > 2
+        sub.process_batch.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_after_backfill_batch_error_primary_is_checked_first(self):
@@ -574,22 +570,23 @@ class TestErrorHandling:
         sub.broker = engine.domain.brokers["default"]
 
         iteration = 0
-        streams_read = []
+        reads = []
 
         def _read_blocking(stream, **kwargs):
+            reads.append(stream)
+            if iteration > 0:
+                # Second primary check: return messages to end the loop
+                return [("msg-1", {"data": "a"})]
+            return []  # Primary empty first time
+
+        def _read_blocking_streams(streams, **kwargs):
             nonlocal iteration
-            streams_read.append(stream)
-            if stream == "orders":
-                if iteration > 0:
-                    # Second primary check: return messages to end the loop
-                    return [("msg-1", {"data": "a"})]
-                return []  # Primary empty first time
-            if stream == "orders:backfill":
-                iteration += 1
-                return [("msg-bf-1", {"data": "b"})]
-            return []
+            iteration += 1
+            reads.append(tuple(streams))
+            return {"orders": [], "orders:backfill": [("msg-bf-1", {"data": "b"})]}
 
         sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
+        sub.broker.read_blocking_streams = MagicMock(side_effect=_read_blocking_streams)
 
         batch_count = 0
 
@@ -616,10 +613,8 @@ class TestErrorHandling:
         ):
             await sub.poll()
 
-        # After backfill error, the loop should re-check primary first
-        assert streams_read[0] == "orders"  # First primary check
-        assert streams_read[1] == "orders:backfill"  # Backfill read
-        assert streams_read[2] == "orders"  # Re-check primary
+        # After the backfill error, the loop should re-check primary first
+        assert reads == ["orders", ("orders", "orders:backfill"), "orders"]
 
 
 # ---------------------------------------------------------------------------

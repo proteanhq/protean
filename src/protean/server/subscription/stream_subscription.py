@@ -360,12 +360,14 @@ class StreamSubscription(BaseSubscription):
         When priority lanes are enabled, implements a two-lane priority system:
         1. Non-blocking read on primary stream (production traffic)
         2. If messages found → process them, loop back to step 1
-        3. If primary is empty → blocking read on backfill stream (short timeout)
-        4. Process backfill messages, loop back to step 1
+        3. If primary is empty → one blocking read that waits on both the
+           primary and the backfill stream (timeout capped at 1 second)
+        4. Process the primary messages from that read, then the backfill
+           messages, and loop back to step 1
 
         This ensures production events are always processed before backfill events.
-        The backfill blocking timeout is capped at 1 second so we re-check the
-        primary stream frequently.
+        A production message that arrives during the wait in step 3 ends the
+        wait, so an idle subscription picks it up at once.
         """
         batches_processed = 0
         consecutive_errors = 0
@@ -396,21 +398,35 @@ class StreamSubscription(BaseSubscription):
                         consecutive_errors = 0
                         continue
 
-                    # Step 2: Primary empty → blocking read on backfill stream.
+                    # Step 2: Primary empty → one blocking read on both streams.
                     # The primary read above awaits, so a drain (or shutdown)
                     # can begin while this turn is suspended. Re-check before
-                    # the backfill read: nothing is in flight at this point
+                    # the combined read: nothing is in flight at this point
                     # (the primary came back empty), so stopping here drops no
                     # message and avoids pulling in a new one.
                     if self._quiescing():
                         break
-                    messages = await self._read_backfill_blocking()
+                    primary, backfill = await self._read_lanes_blocking()
 
-                    if messages:
-                        await self.process_batch(messages, stream=self.backfill_stream)
+                    if primary:
+                        await self.process_batch(primary, stream=self.stream_category)
+                        await self._maybe_trim(self.stream_category)
+                        batches_processed += 1
+
+                    # The backfill entries are already delivered, so they are
+                    # processed like the rest of a batch, even if a drain began
+                    # meanwhile. The exception is a breaker the primary batch
+                    # opened (for example, a failed HALF_OPEN probe): handlers
+                    # must not run while it is OPEN. The entries then stay
+                    # pending and the next read after the reset window
+                    # redelivers them.
+                    if backfill and self.circuit_state == CircuitBreakerState.OPEN:
+                        backfill = []
+                    if backfill:
+                        await self.process_batch(backfill, stream=self.backfill_stream)
                         await self._maybe_trim(self.backfill_stream)
                         batches_processed += 1
-                    self._record_tick(started, self._tick_outcome(messages))
+                    self._record_tick(started, self._tick_outcome(primary + backfill))
 
                     # Yield control before re-checking primary
                     await asyncio.sleep(0)
@@ -642,34 +658,43 @@ class StreamSubscription(BaseSubscription):
             self._read_failed = True
             return []
 
-    async def _read_backfill_blocking(self) -> list[tuple[str, dict[str, Any]]]:
-        """Blocking read from backfill stream with capped timeout.
+    async def _read_lanes_blocking(
+        self,
+    ) -> tuple[list[tuple[str, dict[str, Any]]], list[tuple[str, dict[str, Any]]]]:
+        """Blocking read that waits on the primary and backfill streams at once.
 
-        Uses a short timeout (capped at 1 second) so we frequently re-check
-        the primary stream for new production messages. If a production request
-        arrives while we're blocking on backfill, we'll notice within 1 second.
+        Uses ``read_blocking_streams`` with a timeout capped at 1 second, so the
+        poll loop re-checks for shutdown at least once a second. A message on
+        either stream ends the wait, so a production message that arrives while
+        the subscription is idle is picked up at once.
 
         Returns:
-            List of ``(id, payload)`` tuples from the backfill stream.
+            A ``(primary, backfill)`` pair of ``(id, payload)`` tuple lists.
         """
         if not self.broker:
-            return []
+            return [], []
 
         try:
-            # Cap at 1 second to ensure responsive primary lane re-checks
-            backfill_timeout = min(self.blocking_timeout_ms, 1000)
-            return await asyncio.to_thread(
-                self.broker.read_blocking,
-                stream=self.backfill_stream,
+            result = await asyncio.to_thread(
+                self.broker.read_blocking_streams,
+                streams=[self.stream_category, self.backfill_stream],
                 consumer_group=self.consumer_group,
                 consumer_name=self.consumer_name,
-                timeout_ms=backfill_timeout,
+                timeout_ms=min(self.blocking_timeout_ms, 1000),
                 count=self._current_batch_size(),
             )
         except Exception as e:
-            logger.error(f"Error reading backfill stream {self.backfill_stream}: {e}")
+            logger.error(
+                f"Error reading streams {self.stream_category} and "
+                f"{self.backfill_stream}: {e}"
+            )
             self._read_failed = True
-            return []
+            return [], []
+
+        return (
+            result.get(self.stream_category, []),
+            result.get(self.backfill_stream, []),
+        )
 
     async def get_next_batch_of_messages(self) -> list[tuple[str, dict[str, Any]]]:
         """

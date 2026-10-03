@@ -284,6 +284,34 @@ def capabilities(self) -> BrokerCapabilities:
     return BrokerCapabilities.ENTERPRISE_STREAMING
 ```
 
+### Blocking reads
+
+A broker that declares `BLOCKING_READ` implements `_read_blocking`. The
+public `read_blocking` method calls it, and falls back to `_read` on brokers
+without the capability.
+
+`read_blocking_streams` reads several streams in one call and returns a dict
+with one key per stream, in the order given. Stream subscriptions with
+priority lanes use it to wait on the primary and the backfill stream at once.
+The default `_read_blocking_streams` on `BaseBroker` builds on
+`_read_blocking`. It reads every stream but the last without waiting, and
+waits on the last stream only if the others are empty. While it waits, it
+does not see the earlier streams. Override `_read_blocking_streams` if your
+backend can wait on several streams in one call, as the Redis broker does
+with a single `XREADGROUP`:
+
+```python
+def _read_blocking_streams(
+    self,
+    streams: Sequence[str],
+    consumer_group: str,
+    consumer_name: str,
+    timeout_ms: int = 5000,
+    count: int = 1,  # Applies to each stream
+) -> dict[str, list[tuple[str, dict]]]:
+    ...
+```
+
 ## Testing Your Broker
 
 ### Unit Tests

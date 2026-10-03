@@ -2,6 +2,7 @@ import logging
 import time
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum, Flag, auto
 from importlib import import_module, metadata
@@ -637,6 +638,95 @@ class BaseBroker(metaclass=ABCMeta):
                     raise
             else:
                 raise
+
+    def read_blocking_streams(
+        self,
+        streams: Sequence[str],
+        consumer_group: str,
+        consumer_name: str,
+        timeout_ms: int = 5000,
+        count: int = 1,
+    ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+        """Read messages from several streams, waiting on all of them at once.
+
+        The result has one key per requested stream, in the order given, with
+        an empty list for a stream that returned nothing. An empty ``streams``
+        returns an empty dict without reading.
+
+        Args:
+            streams (Sequence[str]): The streams to read from, in priority order
+            consumer_group (str): The consumer group identifier
+            consumer_name (str): The unique consumer name within the group
+            timeout_ms (int): Longest time to wait for messages, in milliseconds
+                (0 = return immediately, without waiting)
+            count (int): Maximum number of messages to read from each stream
+
+        Returns:
+            dict[str, list[tuple[str, dict]]]: The (identifier, message) tuples
+            read from each stream, keyed by stream name
+        """
+        if not streams:
+            return {}
+
+        # Check if broker supports blocking reads
+        if not self.has_capability(BrokerCapabilities.BLOCKING_READ):
+            # Fall back to a regular read on each stream in turn
+            return {
+                stream: self._read(stream, consumer_group, count) for stream in streams
+            }
+
+        try:
+            return self._read_blocking_streams(
+                streams, consumer_group, consumer_name, timeout_ms, count
+            )
+        except Exception as e:
+            # Check if this is a connection-related error and attempt recovery
+            if self._is_connection_error(e):
+                logger.warning(f"Connection error during read_blocking_streams: {e}")
+                if self._ensure_connection():
+                    # Retry the operation once after reconnection
+                    return self._read_blocking_streams(
+                        streams, consumer_group, consumer_name, timeout_ms, count
+                    )
+                else:
+                    raise
+            else:
+                raise
+
+    def _read_blocking_streams(
+        self,
+        streams: Sequence[str],
+        consumer_group: str,
+        consumer_name: str,
+        timeout_ms: int = 5000,
+        count: int = 1,
+    ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+        """Read several streams through ``_read_blocking``, one at a time.
+
+        Every stream but the last is read without waiting, in order. The first
+        one that returns messages ends the read. If all of them are empty, the
+        last stream is read with the given ``timeout_ms``. Brokers that can wait
+        on several streams in one call override this.
+        """
+        result: dict[str, list[tuple[str, dict[str, Any]]]] = {
+            stream: [] for stream in streams
+        }
+        if not streams:
+            return result
+
+        *leading, last = streams
+        for stream in leading:
+            messages = self._read_blocking(
+                stream, consumer_group, consumer_name, 0, count
+            )
+            if messages:
+                result[stream] = messages
+                return result
+
+        result[last] = self._read_blocking(
+            last, consumer_group, consumer_name, timeout_ms, count
+        )
+        return result
 
     @abstractmethod
     def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
