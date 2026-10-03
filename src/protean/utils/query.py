@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 def subclasses(cls: type) -> Iterator[type]:
     """Iterator utility to loop and clear registered Lookups against a class"""
     yield cls
+    subclass: type
     for subclass in cls.__subclasses__():
         yield from subclasses(subclass)
 
