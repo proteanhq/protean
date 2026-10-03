@@ -213,9 +213,7 @@ dev = [
     "coverage>=7.15.2",
     "docutils>=0.23",
     "pre-commit>=4.6.0",
-    # Held below 0.16 until a deliberate upgrade: 0.16 enables more rules by
-    # default and reformats code, so adopting it is its own change.
-    "ruff>=0.15.22,<0.16",
+    "ruff>=0.16.10",
     "twine>=6.2.0",
     "nox>=2026.7.11",
     "bump-my-version>=1.4.1",
