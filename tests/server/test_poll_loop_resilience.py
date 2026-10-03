@@ -797,12 +797,12 @@ class TestPollLoopDraining:
         assert BaseSubscription.pauses_on_drain is True
 
     @pytest.mark.asyncio
-    async def test_lanes_mode_skips_backfill_read_once_draining(self, domain_setup):
+    async def test_lanes_mode_skips_combined_read_once_draining(self, domain_setup):
         """A drain that lands while the primary read is in flight stops the turn
-        before the backfill read, so no new backfill message is pulled in."""
+        before the combined read, so no new backfill message is pulled in."""
         sub = _make_stream_subscription(domain_setup)
         sub._lanes_enabled = True
-        backfill_reads = 0
+        combined_reads = 0
 
         async def empty_primary_then_drain():
             # Primary is empty, and POST /drainz lands while this read is in
@@ -810,17 +810,17 @@ class TestPollLoopDraining:
             sub.engine.draining = True
             return []
 
-        async def counting_backfill():
-            nonlocal backfill_reads
-            backfill_reads += 1
-            return []
+        async def counting_combined_read():
+            nonlocal combined_reads
+            combined_reads += 1
+            return [], []
 
         sub._read_primary_nonblocking = empty_primary_then_drain
-        sub._read_backfill_blocking = counting_backfill
+        sub._read_lanes_blocking = counting_combined_read
 
         await sub.poll()
 
-        assert backfill_reads == 0
+        assert combined_reads == 0
 
     @pytest.mark.asyncio
     async def test_event_store_skips_recovery_once_draining(self, domain_setup):

@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from collections.abc import Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -517,6 +518,124 @@ class RedisBroker(BaseBroker):
                 self._ensure_connection()
             logger.exception("broker.redis.read_blocking_failed")
             return []
+
+    def _read_blocking_streams(
+        self,
+        streams: Sequence[str],
+        consumer_group: str,
+        consumer_name: str,
+        timeout_ms: int = 5000,
+        count: int = 1,
+    ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+        """Read several Redis Streams in one blocking XREADGROUP call.
+
+        Pending messages (delivered but not ACKed) on any of the streams are
+        read first, in one call, and returned if there are any. Otherwise one
+        call waits for a new message on all the streams at once, so a message
+        on any of them ends the wait.
+
+        Args:
+            streams (Sequence[str]): The streams to read from, in priority order
+            consumer_group (str): The consumer group identifier
+            consumer_name (str): The unique consumer name within the group
+            timeout_ms (int): Timeout in milliseconds to wait for new messages.
+                ``0`` returns immediately, without waiting. Positive values are
+                capped at 1000 ms, as in ``_read_blocking``. A negative value
+                is rejected and logged as a read failure.
+            count (int): Maximum number of messages to read from each stream
+
+        Returns:
+            dict[str, list[tuple[str, dict]]]: The (identifier, message) tuples
+            read from each stream, keyed by stream name in the order given
+        """
+        for stream in streams:
+            self._ensure_group(consumer_group, stream)
+
+        block: int | None = None
+        try:
+            # Same BLOCK rules as ``_read_blocking``: None skips the wait, since
+            # Redis reads ``BLOCK 0`` as "wait forever".
+            if timeout_ms < 0:
+                raise ValueError(f"timeout_ms must be non-negative, got {timeout_ms}")
+            block = None if timeout_ms == 0 else min(timeout_ms, 1000)
+
+            # Pending messages on every stream, in one call and without BLOCK
+            response = self._client.xreadgroup(
+                consumer_group,
+                consumer_name,
+                dict.fromkeys(streams, STREAM_ID_START),
+                count=count,
+            )
+            pending = self._group_stream_reply(streams, response)
+            if any(pending.values()):
+                return pending
+
+            # No pending messages: wait for a new message on any stream
+            response = self._client.xreadgroup(
+                consumer_group,
+                consumer_name,
+                dict.fromkeys(streams, NEW_MESSAGES_MARK),
+                count=count,
+                block=block,
+            )
+            return self._group_stream_reply(streams, response)
+
+        except redis.ResponseError as e:
+            if "NOGROUP" in str(e):
+                # A group is missing on at least one stream (for example, the
+                # stream was flushed). Invalidate the cache for every stream,
+                # recreate the groups, and retry the new-message read once.
+                for stream in streams:
+                    group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+                    self._created_groups_set.discard(group_key)
+                    self._ensure_group(consumer_group, stream)
+                try:
+                    response = self._client.xreadgroup(
+                        consumer_group,
+                        consumer_name,
+                        dict.fromkeys(streams, NEW_MESSAGES_MARK),
+                        count=count,
+                        block=block,
+                    )
+                    return self._group_stream_reply(streams, response)
+                except Exception:
+                    logger.exception("broker.redis.nogroup_retry_failed")
+                    return {stream: [] for stream in streams}
+            logger.exception("broker.redis.read_blocking_failed")
+            return {stream: [] for stream in streams}
+        except Exception as e:
+            # See ``_read_blocking``: reconnect here, since the base wrapper
+            # only sees exceptions this method re-raises.
+            if self._is_connection_error(e):
+                self._ensure_connection()
+            logger.exception("broker.redis.read_blocking_failed")
+            return {stream: [] for stream in streams}
+
+    def _group_stream_reply(
+        self, streams: Sequence[str], response: Any
+    ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+        """Map an XREADGROUP reply onto the requested streams.
+
+        The result has one key per requested stream, in the order given, so a
+        stream missing from the reply still maps to an empty list. Entries with
+        no fields (pending entries whose message was deleted) are skipped.
+        """
+        result: dict[str, list[tuple[str, dict[str, Any]]]] = {
+            stream: [] for stream in streams
+        }
+        for stream_name, stream_messages in response or []:
+            stream = self._decode_if_bytes(stream_name)
+            if stream not in result:
+                continue
+            for message_id, fields in stream_messages:
+                if fields:
+                    result[stream].append(
+                        (
+                            self._decode_if_bytes(message_id),
+                            self._deserialize_message(fields),
+                        )
+                    )
+        return result
 
     def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
         """Acknowledge message using Redis Streams XACK

@@ -187,9 +187,10 @@ class TestMaybeTrim:
 class _FakeBroker:
     """Broker stand-in for poll() tests: yields a batch, records trim() calls.
 
-    ``read_blocking`` returns whatever the constructor was given for the stream
-    being read (empty for any other), so the same broker can feed the standard,
-    primary-lane, and backfill-lane branches of ``poll()``.
+    ``read_blocking`` and ``read_blocking_streams`` return whatever the
+    constructor was given for each stream being read (empty for any other), so
+    the same broker can feed the standard, primary-lane, and backfill-lane
+    branches of ``poll()``.
     """
 
     def __init__(self, messages_by_stream: dict[str, list]) -> None:
@@ -198,6 +199,9 @@ class _FakeBroker:
 
     def read_blocking(self, *, stream, **kwargs):
         return self._messages_by_stream.get(stream, [])
+
+    def read_blocking_streams(self, *, streams, **kwargs):
+        return {stream: self._messages_by_stream.get(stream, []) for stream in streams}
 
     def trim(self, stream: str, maxlen: int) -> int:
         self.trim_calls.append((stream, maxlen))
@@ -256,7 +260,7 @@ class TestPollCallsTrim:
         assert broker.trim_calls == [("account", 500)]
 
     async def test_priority_lane_trims_primary_stream(self):
-        """Primary-lane batch trims stream_category (line 324)."""
+        """Primary-lane batch trims stream_category."""
         engine = _lanes_engine(enabled=True)
         sub = _poll_subscription(engine, retention_maxlen=500)
         broker = _FakeBroker({"account": [("m1", {"d": "x"})]})
@@ -266,7 +270,7 @@ class TestPollCallsTrim:
         assert broker.trim_calls == [("account", 500)]
 
     async def test_backfill_lane_trims_backfill_stream(self):
-        """Primary empty, backfill has work -> trims the backfill stream (line 337)."""
+        """Primary empty, backfill has work -> trims the backfill stream."""
         engine = _lanes_engine(enabled=True)
         sub = _poll_subscription(engine, retention_maxlen=500)
         # Primary "account" is empty; only the backfill stream yields a batch.

@@ -55,8 +55,8 @@ The split happens at two points in the pipeline:
 
 2. **StreamSubscription** (consume side): When reading messages, the
    subscription first does a non-blocking read on the primary stream. Only if
-   the primary stream is empty does it fall back to a short blocking read on
-   the backfill stream.
+   the primary stream is empty does it make one short blocking read that waits
+   on both the primary and the backfill stream.
 
 ```
                         Outbox                     Redis Streams           Engine
@@ -66,7 +66,8 @@ Production  ──► Outbox(priority=0)  ──► "customer"            ──
                                                                     Non-blocking read
                                                                          │
 Migration   ──► Outbox(priority=-50) ──► "customer:backfill"  ──► [Drained when idle]
-                                                                    Blocking read (1s cap)
+                                                                    Blocking read on both
+                                                                    streams (1s cap)
                                                                     Only when primary empty
 ```
 
@@ -80,9 +81,10 @@ This design has several important properties:
   mechanism. Failed messages are retried and eventually moved to a dead letter
   queue, just like standard processing.
 
-- **Responsive re-checking**: The backfill blocking read is capped at 1 second.
-  If a production event arrives while the Engine is waiting on backfill, it will
-  be picked up within 1 second.
+- **An idle Engine picks up production events at once**: On the Redis broker,
+  the blocking read waits on both streams at once. If a production event
+  arrives while the Engine is idle, the read returns with it. When one read
+  returns entries on both streams, the primary entries are processed first.
 
 ---
 
@@ -276,7 +278,7 @@ relative processing order depends on when each lane is drained. The primary
 lane is always drained first, so in practice primary events are processed
 before backfill events. However, if a backfill batch is already in progress
 when a new primary event arrives, the primary event will be picked up after the
-current backfill batch completes (within 1 second at most).
+current backfill batch completes.
 
 ### Outbox priority ordering
 
@@ -289,8 +291,9 @@ ordering applies within a single outbox polling cycle.
 
 For most use cases, the key guarantee is simple: **production events are never
 blocked by migration events.** The Engine always checks the primary stream
-before falling back to backfill, and the backfill blocking timeout is capped at
-1 second to ensure responsive re-checking.
+before it reads backfill. On the Redis broker, an idle Engine waits on both
+streams at once, so a production event never waits behind an empty backfill
+read.
 
 ---
 

@@ -91,8 +91,8 @@ backfill stream (e.g., `customer:backfill`) instead of the primary stream
 ### 3. StreamSubscription Draining
 
 The Engine's StreamSubscription reads from the primary stream first (non-blocking).
-Only when the primary stream is empty does it fall back to the backfill stream
-(blocking read capped at 1 second). Production events are never blocked by
+Only when the primary stream is empty does it make one blocking read that waits
+on both streams (capped at 1 second). Production events are never blocked by
 backfill events.
 
 No handler changes are needed. The same projector processes events identically
@@ -231,8 +231,9 @@ python migrate_loyalty_tiers.py
    events are published to `customer:backfill` instead of `customer`.
 
 3. **The StreamSubscription** first does a non-blocking read on `customer`
-   (primary). Only when the primary stream is empty does it fall back to
-   `customer:backfill`. Production events are always processed first.
+   (primary). Only when the primary stream is empty does it read
+   `customer:backfill`, in one blocking read that waits on both streams.
+   Production events are always processed first.
 
 4. **No handler changes needed**: The `CustomerProjector` processes events
    identically regardless of which lane they arrived on.
