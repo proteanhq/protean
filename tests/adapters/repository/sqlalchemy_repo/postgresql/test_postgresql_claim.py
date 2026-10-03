@@ -21,7 +21,7 @@ class ClaimJob(BaseAggregate):
 def claim_domain(test_domain):
     # Its own table name: this module leaves the table in place, and its uuid
     # identity would otherwise be reused by the generic claim tests, which map
-    # a string identity onto ``claim_job``.
+    # a string identity onto their own table.
     test_domain.register(ClaimJob, schema_name="pg_claim_job")
     test_domain.init(traverse=False)
     # Accessing the DAO registers ClaimJob's table in the provider metadata,

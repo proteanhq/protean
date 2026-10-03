@@ -28,7 +28,10 @@ class ClaimJob(BaseAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(ClaimJob)
+    # Its own table name: a local database can still hold a uuid-keyed
+    # ``claim_job`` table that older checkouts of the PostgreSQL claim test
+    # created and never dropped. Reusing it fails on psycopg 3.
+    test_domain.register(ClaimJob, schema_name="generic_claim_job")
     test_domain.init(traverse=False)
 
 
