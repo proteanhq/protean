@@ -30,13 +30,16 @@ The anti-pattern is when `part_of=Inventory` but the handler also modifies Order
 ## Forgetting stream_category
 
 ```python
+# fragment
 # Bad: won't receive Order events
 @domain.event_handler(part_of=Inventory)
 class OrderEventsHandler:
     @handle(OrderPlaced)
     def reserve(self, event):
         ...  # Never called! No stream_category specified
+```
 
+```python
 # Good: subscribes to Order's stream
 @domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
 class OrderEventsHandler:
@@ -48,12 +51,15 @@ class OrderEventsHandler:
 ## Events as commands (imperative naming)
 
 ```python
+# fragment
 # Bad: imperative name — this is a command, not an event
 @domain.event(part_of="Order")
 class ReserveInventory:
     product_id = String()
     quantity = Integer()
+```
 
+```python
 # Good: past tense — describes what happened
 @domain.event(part_of="Order")
 class OrderPlaced:
@@ -67,6 +73,7 @@ The consumer decides what to do in response to the event.
 ## Synchronous expectations with async processing
 
 ```python
+# fragment
 # Bad: expecting immediate consistency
 @handle(PlaceOrder)
 def place_order(self, command):

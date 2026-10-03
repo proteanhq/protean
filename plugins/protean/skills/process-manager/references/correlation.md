@@ -63,6 +63,7 @@ All events in a process must be routable to the same PM instance. This means:
 - **Dictionary correlation**: Each event can use a different source field name, but they must all map to the same PM field
 
 ```python
+# fragment
 # Events from different aggregates with consistent correlation
 @handle(OrderPlaced, start=True, correlate="order_id")        # event.order_id
 @handle(PaymentConfirmed, correlate="order_id")                # event.order_id

@@ -57,6 +57,7 @@ The event handler needs to find the correct target aggregate instance. Common ap
 ## Handler configuration
 
 ```python
+# fragment
 @domain.event_handler(
     part_of=TargetAggregate,                          # Handler belongs to target
     stream_category=SourceAggregate.meta_.stream_category,  # Listen to source

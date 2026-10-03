@@ -449,13 +449,16 @@ order.total_amount = Money(currency="USD", amount=200)
 
 **Not leveraging VO behavior** ❌
 ```python
+# fragment
 # Bad: Reimplementing VO logic in aggregate
 def calculate_total(self):
     total_amount = 0
     for item in self.line_items:
         total_amount += item.unit_price.amount * item.quantity
     return total_amount
+```
 
+```python
 # Good: Using VO methods
 def calculate_total(self):
     total = self.line_items[0].line_total

@@ -175,6 +175,7 @@ class OnboardingPM:
 ### Missing `correlate` on handlers
 
 ```python
+# fragment
 # WRONG — correlate is required for all PM handlers
 @handle(OrderPlaced, start=True)
 def on_order_placed(self, event):
@@ -193,6 +194,7 @@ def on_order_placed(self, event):
 ### No `start=True` handler
 
 ```python
+# fragment
 # WRONG — PM has no entry point
 @domain.process_manager(stream_categories=["ecommerce::order"])
 class BadPM:
@@ -206,6 +208,7 @@ Every PM must have at least one handler with `start=True`.
 ### Business logic in the process manager
 
 ```python
+# fragment
 # WRONG — PM is doing business validation
 @handle(PaymentConfirmed, correlate="order_id")
 def on_payment_confirmed(self, event):

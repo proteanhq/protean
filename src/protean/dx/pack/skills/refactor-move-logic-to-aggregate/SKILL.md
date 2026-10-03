@@ -43,6 +43,7 @@ and move it back into rich aggregate methods with proper invariants and events.
 Handler does validation, calculation, construction, and persistence:
 
 ```python
+# fragment
 # RED FLAG: handler has 10+ lines of logic
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -127,6 +128,7 @@ class Order:
 Move validation from handlers into `@invariant.post`:
 
 ```python
+# fragment
     @invariant.post
     def must_have_items_when_placed(self):
         """A placed order must have at least one item."""

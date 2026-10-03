@@ -236,6 +236,7 @@ A projection field no projector handler ever writes renders as a dead column. `c
 ### Confusing projection with aggregate
 
 ```python
+# fragment
 # Wrong! Projections are read models, not write models
 @domain.projection
 class Order:

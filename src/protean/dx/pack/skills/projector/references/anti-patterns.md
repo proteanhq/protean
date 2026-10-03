@@ -3,6 +3,7 @@
 ## 1. Missing projector_for
 
 ```python
+# fragment
 # Wrong! Projector must be associated with a projection
 @domain.projector(aggregates=[Product])
 class MyProjector:
@@ -22,6 +23,7 @@ Protean raises `IncorrectUsageError: Projector 'MyProjector' needs to be associa
 ## 2. Missing aggregates and stream_categories
 
 ```python
+# fragment
 # Wrong! No event source specified
 @domain.projector(projector_for=ProductInventory)
 class MyProjector:
@@ -41,6 +43,7 @@ Protean raises `IncorrectUsageError: Projector 'MyProjector' needs to be associa
 ## 3. Projection not registered with domain
 
 ```python
+# fragment
 # Wrong! Projection class not decorated with @domain.projection
 class UnregisteredProjection:
     product_id: Identifier(identifier=True)
@@ -63,6 +66,7 @@ Protean raises `IncorrectUsageError: 'UnregisteredProjection' is not a Projectio
 ## 4. Using References or Associations in projections
 
 ```python
+# fragment
 # Wrong! Projections reject References and Associations (HasOne/HasMany)
 @domain.projection
 class OrderView:
@@ -90,6 +94,7 @@ class OrderView:
 ## 5. Business logic in projector methods
 
 ```python
+# fragment
 # Wrong! Projectors should not contain business logic
 @on(OrderPlaced)
 def on_order_placed(self, event):
@@ -179,6 +184,7 @@ def on_product_added(self, event):
 A projector may only handle events the domain registers. A handler keyed on an event that no longer exists is wired to a type that can never be dispatched, usually a stale reference left after the event was renamed or removed.
 
 ```python
+# fragment
 # Wrong! ProductRenamed was removed from the domain, but the handler stays
 @domain.projector(projector_for=ProductInventory, aggregates=[Product])
 class InventoryProjector:

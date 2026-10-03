@@ -77,6 +77,7 @@ class Shipment:
 the boundary, which is what `check` reports as `CROSS_AGGREGATE_REFERENCE`:
 
 ```python
+# fragment
 # Wrong: a Reference across an aggregate boundary re-couples the two clusters.
 order = Reference("Order")
 ```

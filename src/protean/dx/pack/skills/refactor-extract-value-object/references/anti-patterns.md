@@ -5,12 +5,15 @@
 Extracting VOs where none are needed:
 
 ```python
+# fragment
 # Bad: VO for a single field with no behavior
 @domain.value_object
 class CustomerName:
     value = String(required=True)
 # Just use: name = String(required=True) on the aggregate
+```
 
+```python
 # Good: VO when there IS behavior or multiple fields
 @domain.value_object
 class PersonName:

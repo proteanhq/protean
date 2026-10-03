@@ -103,6 +103,7 @@ class ManageInventory:
 The `stream_category` parameter is essential for cross-aggregate handlers:
 
 ```python
+# fragment
 # This handler belongs to Inventory but listens to Order events
 @domain.event_handler(
     part_of=Inventory,

@@ -29,6 +29,7 @@ class ProductInventoryProjector:
 ### Method signature
 
 ```python
+# fragment
 @classmethod
 def handle_error(cls, exc: Exception, message) -> None:
 ```

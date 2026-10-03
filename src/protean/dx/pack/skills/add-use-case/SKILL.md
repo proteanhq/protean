@@ -226,6 +226,7 @@ def handle(self, command):
 ### Business logic in the handler instead of the aggregate
 
 ```python
+# fragment
 # Wrong! Business rule computed in the handler
 @handle(PlaceOrder)
 def handle(self, command):
@@ -247,6 +248,7 @@ def handle(self, command):
 ### Forgetting to raise the event
 
 ```python
+# fragment
 # Wrong! State changes, but nothing is recorded or published
 @classmethod
 def place(cls, **kwargs):
@@ -259,6 +261,7 @@ Instead: raise the past-tense event so the fact is recorded and handlers can rea
 ### Persisting multiple aggregates in one handler
 
 ```python
+# fragment
 # Wrong! Two aggregates mutated and saved in one transaction
 @handle(PlaceOrder)
 def handle(self, command):
@@ -273,6 +276,7 @@ Instead: persist one aggregate and coordinate the other via an event handler (ev
 ### Authorization inside the aggregate
 
 ```python
+# fragment
 # Wrong! Context/authorization baked into the domain model
 def cancel(self, role):
     if role != "admin":

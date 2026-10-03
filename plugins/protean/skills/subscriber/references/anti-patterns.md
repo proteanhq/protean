@@ -84,6 +84,7 @@ Event handlers use `event_processing`. Subscribers use `message_processing`. The
 **Wrong approach:** Using a subscriber to consume internal domain events.
 
 ```python
+# fragment
 # Wrong: subscribing to internal event streams
 @domain.subscriber(stream="order")
 class OrderSubscriber:

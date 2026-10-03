@@ -212,6 +212,7 @@ Need a queryable view of domain data?
 ### Complex field types in a projection
 
 ```python
+# fragment
 # Wrong! Projections are flat — no associations or value objects
 @domain.projection
 class ProductListing:
@@ -225,6 +226,7 @@ Instead: flatten into basic fields (`category_name: String()`, `review_count: In
 ### Business logic in the projector
 
 ```python
+# fragment
 # Wrong! Projector decides business rules
 @on(OrderPlaced)
 def on_order_placed(self, event):
@@ -237,6 +239,7 @@ Instead: projectors only map event data into projection rows; keep rules on the 
 ### Handling create but not update
 
 ```python
+# fragment
 # Wrong! Only the create event is handled — the projection goes stale
 @on(ProductAdded)
 def on_added(self, event): ...
@@ -248,6 +251,7 @@ Instead: handle every event that changes the projected data, including updates (
 ### Reading the aggregate instead of the projection
 
 ```python
+# fragment
 # Wrong! The read path queries the write model
 orders = domain.repository_for(Order).query.filter(status="placed")
 ```
@@ -282,6 +286,7 @@ subscriber fills it.
 ### Forgetting sync processing in tests
 
 ```python
+# fragment
 # Wrong! The projector never runs, so the projection stays empty
 domain.process(command)  # async by default
 assert domain.repository_for(ProductListing).get("P-1")  # fails

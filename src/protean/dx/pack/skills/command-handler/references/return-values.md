@@ -36,6 +36,7 @@ account_id = domain.process(register_cmd, asynchronous=False)
 ### Return a created identifier
 
 ```python
+# fragment
 @handle(CreateOrder)
 def handle_create(self, command):
     order = Order(order_id=command.order_id, ...)

@@ -151,6 +151,7 @@ Instead: Only create a custom repository when you need custom query methods
 ### Persisting child entities separately
 
 ```python
+# fragment
 # Wrong! Never persist entities directly
 @domain.repository(part_of=LineItem)  # LineItem is an entity, not an aggregate
 class LineItemRepository:

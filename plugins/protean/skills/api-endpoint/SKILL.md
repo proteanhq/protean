@@ -110,6 +110,7 @@ Use `asynchronous=False` when the endpoint needs to return data from the handler
 ### Business logic in the endpoint
 
 ```python
+# fragment
 # Wrong! Business logic belongs in the aggregate
 @app.post("/orders")
 async def create_order(request: Request):
@@ -123,6 +124,7 @@ Instead: Let the aggregate enforce business rules. The endpoint only constructs 
 ### Accessing repositories directly
 
 ```python
+# fragment
 # Wrong! Endpoints should not access repositories
 @app.get("/orders/{order_id}")
 async def get_order(order_id: str):
@@ -134,6 +136,7 @@ Instead: Use commands and `domain.process()` for all write operations. For reads
 ### Missing domain context middleware
 
 ```python
+# fragment
 # Wrong! current_domain will not be available without middleware
 @app.post("/orders")
 async def create_order(request: Request):
@@ -145,6 +148,7 @@ Instead: Always register the domain context middleware on the app.
 ### Calling handlers directly
 
 ```python
+# fragment
 # Wrong! Never bypass domain.process()
 @app.post("/orders")
 async def create_order(request: Request):
