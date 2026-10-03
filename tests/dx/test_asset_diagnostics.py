@@ -216,6 +216,9 @@ def collect_codes(skills_root: Path, assets: list[Path], tmp_path: Path) -> dict
     among its codes.
     """
     report_path = tmp_path / "check-report.json"
+    # A report left by an earlier run in the same directory must not pass
+    # for this one.
+    report_path.unlink(missing_ok=True)
     result = subprocess.run(
         [
             sys.executable,
@@ -234,7 +237,7 @@ def collect_codes(skills_root: Path, assets: list[Path], tmp_path: Path) -> dict
         stdin=subprocess.DEVNULL,
         check=False,
     )
-    assert report_path.is_file(), (
+    assert result.returncode == 0 and report_path.is_file(), (
         f"the check runner crashed before writing its report "
         f"(exit {result.returncode}):\n{result.stderr}"
     )
