@@ -300,9 +300,10 @@ Reconciled 2 outbox row(s) from the event store.
 Reconciliation repairs only events raised by this domain's aggregates on the
 given provider, so another domain's events in a shared event store, commands,
 process manager transition events, and events of aggregates on other providers
-never get a row. Only the internal-broker row is reconciled. External
-published-broker rows are not rebuilt, so a published event lost in the crash
-window does not reach external brokers. See the
+never get a row. A `published` event also gets back one row per broker in
+`[outbox].external_brokers`, so it still reaches external brokers. A broker
+added to `external_brokers` after the event was written is not back-filled. See
+the
 [`protean outbox reconcile` reference](../../reference/cli/data/outbox.md) for
 options and output.
 

@@ -645,7 +645,7 @@ class TestReconcilePartitionKey:
 
         with caplog.at_level(logging.ERROR, logger="protean.utils.outbox"):
             assert reconcile_outbox(domain) == 2
-        assert f"saving the row for message {stale_id} as abandoned" in caplog.text
+        assert f"saving the row(s) for message {stale_id} as abandoned" in caplog.text
         assert str(good_id) not in caplog.text
         [stale_row] = outbox_repo.find_all_by_message_id(stale_id)
         [good_row] = outbox_repo.find_all_by_message_id(good_id)
@@ -856,3 +856,251 @@ class TestReconcileTwoDomainsOnSharedMessageDB:
         with domain_a.domain_context():
             assert len(outbox_repo.find_all_by_message_id(own_id)) == 1
             assert outbox_repo.find_all_by_message_id(foreign_id) == []
+
+
+class Credited(BaseEvent):
+    account_id = Identifier(required=True)
+    amount = Integer(required=True)
+
+
+class SequencedCreditHandler(BaseEventHandler):
+    @handle(Credited)
+    def on_credited(self, event):
+        pass
+
+
+def _with_external_brokers(*brokers):
+    def configure(domain):
+        domain.config["outbox"]["external_brokers"] = list(brokers)
+        for broker in brokers:
+            domain.config["brokers"][broker] = {"provider": "inline"}
+
+    return configure
+
+
+@pytest.mark.no_test_domain
+class TestReconcileExternalBrokers:
+    """A ``published`` event gets one outbox row per external broker in the
+    same commit as its internal row. Reconcile rebuilds all of them."""
+
+    def _domain(self, tmp_path, *brokers, published=True, elements=()):
+        domain = _make_domain_with(
+            tmp_path,
+            (Credited, {"part_of": Account, "published": published}),
+            *elements,
+            before_init=_with_external_brokers(*brokers),
+        )
+        return domain
+
+    def _credit(self, domain, key=None):
+        account = Account(balance=100)
+        account.raise_(Credited(account_id=key or account.id, amount=100))
+        domain.repository_for(Account).add(account)
+        return domain.event_store.store.read_last_message("$all").metadata.headers.id
+
+    @staticmethod
+    def _brokers(outbox_repo, message_id):
+        return sorted(
+            row.target_broker for row in outbox_repo.find_all_by_message_id(message_id)
+        )
+
+    def test_published_event_gets_its_external_row_back(self, tmp_path):
+        domain = self._domain(tmp_path, "ext-a")
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            message_id = self._credit(domain)
+            assert self._brokers(outbox_repo, message_id) == ["default", "ext-a"]
+
+            outbox_repo._dao._delete_all()
+            assert reconcile_outbox(domain) == 2
+            assert self._brokers(outbox_repo, message_id) == ["default", "ext-a"]
+
+    def test_one_row_per_external_broker(self, tmp_path):
+        domain = self._domain(tmp_path, "ext-a", "ext-b")
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            message_id = self._credit(domain)
+
+            outbox_repo._dao._delete_all()
+            assert reconcile_outbox(domain) == 3
+            assert self._brokers(outbox_repo, message_id) == [
+                "default",
+                "ext-a",
+                "ext-b",
+            ]
+
+    def test_rebuilt_rows_match_what_the_unit_of_work_wrote(self, tmp_path):
+        domain = self._domain(tmp_path, "ext-a", "ext-b")
+        fields = (
+            "message_id",
+            "stream_name",
+            "type",
+            "data",
+            "partition_key",
+            "correlation_id",
+            "causation_id",
+            "priority",
+            "status",
+        )
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            message_id = self._credit(domain)
+            original = {
+                row.target_broker: {f: getattr(row, f) for f in fields}
+                for row in outbox_repo.find_all_by_message_id(message_id)
+            }
+            assert sorted(original) == ["default", "ext-a", "ext-b"]
+
+            outbox_repo._dao._delete_all()
+            reconcile_outbox(domain)
+            rebuilt = {
+                row.target_broker: {f: getattr(row, f) for f in fields}
+                for row in outbox_repo.find_all_by_message_id(message_id)
+            }
+            assert rebuilt == original
+
+    def test_external_rows_carry_the_partition_key(self, tmp_path):
+        domain = self._domain(
+            tmp_path,
+            "ext-a",
+            elements=(
+                (
+                    SequencedCreditHandler,
+                    {"part_of": Account, "sequential_by": "account_id"},
+                ),
+            ),
+        )
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            message_id = self._credit(domain, key="key-7")
+
+            outbox_repo._dao._delete_all()
+            assert reconcile_outbox(domain) == 2
+            rows = outbox_repo.find_all_by_message_id(message_id)
+            assert len(rows) == 2
+            for row in rows:
+                assert row.partition_key == "key-7"
+                assert row.status == OutboxStatus.PENDING.value
+
+    def test_a_key_that_no_longer_validates_abandons_every_row(self, tmp_path, caplog):
+        domain = self._domain(
+            tmp_path,
+            "ext-a",
+            elements=(
+                (
+                    SequencedCreditHandler,
+                    {"part_of": Account, "sequential_by": "account_id"},
+                ),
+            ),
+        )
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            message_id = self._credit(domain, key="key-7")
+            outbox_repo._dao._delete_all()
+            domain.config["server"]["priority_lanes"] = {"backfill_suffix": "key-7"}
+
+            with caplog.at_level(logging.ERROR, logger="protean.utils.outbox"):
+                assert reconcile_outbox(domain) == 2
+            assert f"saving the row(s) for message {message_id} as abandoned" in (
+                caplog.text
+            )
+            rows = outbox_repo.find_all_by_message_id(message_id)
+            assert sorted(row.target_broker for row in rows) == ["default", "ext-a"]
+            for row in rows:
+                assert row.status == OutboxStatus.ABANDONED.value
+                assert row.partition_key is None
+                assert row.last_error["reason"] == "Invalid partition key"
+                assert (
+                    "partition_key could not be computed" in row.last_error["message"]
+                )
+
+    def test_older_version_of_a_published_event_gets_its_external_row(self, tmp_path):
+        domain = _make_domain_with(
+            tmp_path,
+            (Withdrawn, {"part_of": Account, "published": True}),
+            before_init=lambda d: (
+                _with_external_brokers("ext-a")(d),
+                d.upcaster(
+                    UpcastWithdrawn, event_type=Withdrawn, from_version=1, to_version=2
+                ),
+            ),
+        )
+        message = TestReconcileRepairsOlderEventVersions()._v1_message()
+        assert message.metadata.headers.type == "Reconcile.Withdrawn.v1"
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            domain.event_store.store._write(
+                message.metadata.headers.stream,
+                message.metadata.headers.type,
+                message.data,
+                metadata=message.metadata.to_dict(),
+            )
+
+            assert reconcile_outbox(domain) == 2
+            rows = outbox_repo.find_all_by_message_id(message.metadata.headers.id)
+            assert sorted(row.target_broker for row in rows) == ["default", "ext-a"]
+            assert {row.type for row in rows} == {"Reconcile.Withdrawn.v1"}
+
+    def test_unpublished_event_gets_only_its_internal_row(self, tmp_path):
+        domain = self._domain(tmp_path, "ext-a", published=False)
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            message_id = self._credit(domain)
+            assert self._brokers(outbox_repo, message_id) == ["default"]
+
+            outbox_repo._dao._delete_all()
+            assert reconcile_outbox(domain) == 1
+            assert self._brokers(outbox_repo, message_id) == ["default"]
+
+    def test_published_event_without_external_brokers_gets_only_its_internal_row(
+        self, tmp_path
+    ):
+        domain = self._domain(tmp_path)
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            message_id = self._credit(domain)
+
+            outbox_repo._dao._delete_all()
+            assert reconcile_outbox(domain) == 1
+            assert self._brokers(outbox_repo, message_id) == ["default"]
+
+    def test_lost_external_rows_alone_are_not_repaired(self, tmp_path):
+        """A message counts as missing only when its internal row is missing,
+        since the unit of work saves all of its rows in one commit."""
+        domain = self._domain(tmp_path, "ext-a")
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            message_id = self._credit(domain)
+            for row in outbox_repo.find_all_by_message_id(message_id):
+                if row.target_broker == "ext-a":
+                    outbox_repo._dao.delete(row)
+
+            assert reconcile_outbox(domain) == 0
+            assert self._brokers(outbox_repo, message_id) == ["default"]
+
+    def test_an_existing_external_row_is_not_created_again(self, tmp_path):
+        domain = self._domain(tmp_path, "ext-a", "ext-b")
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            message_id = self._credit(domain)
+            for row in outbox_repo.find_all_by_message_id(message_id):
+                if row.target_broker != "ext-a":
+                    outbox_repo._dao.delete(row)
+
+            assert reconcile_outbox(domain) == 2
+            assert self._brokers(outbox_repo, message_id) == [
+                "default",
+                "ext-a",
+                "ext-b",
+            ]
+
+    def test_a_second_run_creates_nothing(self, tmp_path):
+        domain = self._domain(tmp_path, "ext-a")
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            message_id = self._credit(domain)
+            outbox_repo._dao._delete_all()
+
+            assert reconcile_outbox(domain) == 2
+            assert reconcile_outbox(domain) == 0
+            assert self._brokers(outbox_repo, message_id) == ["default", "ext-a"]

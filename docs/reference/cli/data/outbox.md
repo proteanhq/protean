@@ -70,9 +70,14 @@ window. Reconciliation
 is idempotent, the composite unique index on (`message_id`, `target_broker`) means running it
 repeatedly, or concurrently with the startup sweep, never duplicates a row.
 
-Only the **internal-broker** row is reconciled. External published-broker rows
-(from `[outbox].external_brokers`) are not rebuilt, so a published event lost
-in the crash window does not reach external brokers.
+A `published` event also gets back one row per broker in
+`[outbox].external_brokers`, with the same `partition_key` as its internal row.
+Reconciliation reads the event's current `published` flag and the current
+`external_brokers` list, because neither is stored with the event. An event
+counts as missing only when its internal-broker row is missing, since all of an
+event's rows are saved in one commit. So a broker added to `external_brokers`
+later is not back-filled for events that still have their internal row. The
+count in the output includes the external rows.
 
 ## Automatic startup sweep
 
