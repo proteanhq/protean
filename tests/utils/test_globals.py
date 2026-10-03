@@ -322,14 +322,14 @@ class TestProxyBehavior:
             assert current_domain == fresh_domain
             assert hash(current_domain) == hash(fresh_domain)
             assert current_domain is not fresh_domain
-            assert current_domain != None  # noqa: E711
+            assert current_domain != None
 
     @pytest.mark.no_test_domain
     def test_proxy_eq_when_unbound(self):
         # The proxy object itself is always present; only its resolved value is None.
         assert current_domain is not None
-        assert current_domain is current_domain
-        assert current_domain == None  # noqa: E711
+        assert current_domain is current_domain  # noqa: PLR0124  # the proxy resolves to the same object each time
+        assert current_domain == None
         assert current_domain != object()
 
     @pytest.mark.no_test_domain

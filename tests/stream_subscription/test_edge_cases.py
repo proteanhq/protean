@@ -105,7 +105,6 @@ class TestStreamSubscriptionEdgeCases:
             sleep_called.append(delay)
             # Stop iteration after first sleep
             subscription.keep_going = False
-            return
 
         # Mock process_batch to avoid processing
         async def mock_process_batch(messages, stream=None):

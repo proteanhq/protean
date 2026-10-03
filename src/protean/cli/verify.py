@@ -427,6 +427,7 @@ def _run_tests(path: str) -> tuple[dict[str, Any], str]:
         # non-decodable bytes would otherwise raise ``UnicodeDecodeError`` here.
         errors="replace",
         env=env,
+        check=False,
     )
     output = completed.stdout + completed.stderr
     returncode = completed.returncode

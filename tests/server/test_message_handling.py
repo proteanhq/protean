@@ -40,7 +40,6 @@ async def test_handler_invocation(test_domain):
     engine = Engine(domain=test_domain, test_mode=True)
     await engine.handle_broker_message(DummySubscriber, message)
 
-    global counter
     assert counter == 1
 
 

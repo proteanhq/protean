@@ -116,7 +116,7 @@ class BaseEmail(Element, BaseModel, OptionsMixin):
         except PydanticValidationError as e:
             raise ValidationError(convert_pydantic_errors(e)) from e
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, context: Any, /) -> None:
         self.defaults()
 
     def defaults(self) -> None:

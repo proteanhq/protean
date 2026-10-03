@@ -229,7 +229,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     # reserved name into no-ops.
     _replaying: bool = PrivateAttr(default=False)
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseEntity":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         if cls is BaseEntity:
             raise NotSupportedError("BaseEntity cannot be instantiated")
         return super().__new__(cls)
@@ -402,8 +402,10 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             raise NotSupportedError(
                 {
                     "_entity": [
-                        f"Multiple identifier fields found in entity {cls.__name__}. "
-                        "Only one identifier field is allowed."
+                        (
+                            f"Multiple identifier fields found in entity {cls.__name__}. "
+                            "Only one identifier field is allowed."
+                        )
                     ]
                 }
             )
@@ -540,7 +542,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         if collected_errors:
             raise ValidationError(collected_errors)
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, context: Any, /) -> None:
         if self.meta_.abstract is True:
             raise NotSupportedError(
                 f"{self.__class__.__name__} class has been marked abstract"
@@ -885,8 +887,10 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             raise ValidationError(
                 {
                     field_name: [
-                        f"Invalid status transition from '{current}'. "
-                        f"'{current}' is a terminal state with no allowed transitions"
+                        (
+                            f"Invalid status transition from '{current}'. "
+                            f"'{current}' is a terminal state with no allowed transitions"
+                        )
                     ]
                 }
             )

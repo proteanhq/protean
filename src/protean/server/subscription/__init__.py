@@ -161,7 +161,7 @@ class BaseSubscription(ABC):
         pause = self.tick_interval
         if self.engine.test_mode is True:
             pause = min(pause, TEST_MODE_MAX_TICK_PAUSE)
-        await asyncio.sleep(pause if pause > 0 else 0)
+        await asyncio.sleep(max(0, pause))
 
     def _record_tick(self, started: float, had_work: bool | None) -> None:
         """Note one pass of the poll loop for the engine's test-mode idle check.

@@ -95,7 +95,7 @@ class TestEquality:
         # Covers the type check
         assert pm != "not-a-pm"
         assert pm != 42
-        assert pm != None  # noqa: E711
+        assert pm != None
 
     @pytest.mark.no_test_domain
     def test_pm_with_identifier_field_equal(self):

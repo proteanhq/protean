@@ -16,7 +16,7 @@ def _event_store_section(domain_toml: str) -> str:
     can be anchored to it instead of matching anywhere in the file (a
     `provider = "memory"` string also appears unconditionally in the
     `[databases.memory]` section)."""
-    match = re.search(r"\[event_store\]\n(.*?)(?=\n\[|\Z)", domain_toml, re.S)
+    match = re.search(r"\[event_store\]\n(.*?)(?=\n\[|\Z)", domain_toml, re.DOTALL)
     assert match, "domain.toml missing [event_store] section"
     return match.group(1)
 

@@ -27,7 +27,7 @@ SOURCE_OF_TRUTH = REPO / "docs" / "community" / "quality.md"
 _EXACT_COUNT = re.compile(
     r"(?<![\d.])(\d{1,3},\d{3}|\d{4,})(?!\+)(?![\d.])(?=[^\n]{0,40}?\btest)"
     r"|\btests?\b[^\n]{0,40}?(?<![\d.])(\d{1,3},\d{3}|\d{4,})(?!\+)(?![\d.])",
-    re.I,
+    re.IGNORECASE,
 )
 
 _SEARCHED = ["README.md", "docs/index.md", "docs/why-protean.md"]

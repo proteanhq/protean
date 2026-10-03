@@ -63,6 +63,7 @@ def test_demo_runs_to_completion(name):
         capture_output=True,
         text=True,
         timeout=120,
+        check=False,
     )
     assert result.returncode == 0, (
         f"{name} exited {result.returncode}:\n{result.stderr}"

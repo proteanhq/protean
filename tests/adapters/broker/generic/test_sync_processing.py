@@ -28,5 +28,4 @@ def test_subscriber_sync_invocation(test_domain):
 
     test_domain.brokers["default"].publish(stream, message)
 
-    global counter
     assert counter == 1

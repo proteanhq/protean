@@ -106,6 +106,7 @@ class TestGeneratedProjectStarts:
             cwd=project,
             capture_output=True,
             text=True,
+            check=False,
         )
 
         assert completed.returncode == 0, (
@@ -123,6 +124,7 @@ class TestGeneratedProjectStarts:
             cwd=project,
             capture_output=True,
             text=True,
+            check=False,
         )
 
         assert completed.returncode == 0, (
@@ -165,6 +167,7 @@ class TestGeneratedProjectStarts:
             env=_subprocess_env(project),
             capture_output=True,
             text=True,
+            check=False,
         )
 
         assert completed.returncode == 0, (
@@ -194,6 +197,7 @@ class TestGeneratedProjectStarts:
             env=_subprocess_env(project),
             capture_output=True,
             text=True,
+            check=False,
         )
 
         assert completed.returncode == 0, (
@@ -254,6 +258,7 @@ class TestGeneratedProjectStarts:
             env=_subprocess_env(project),
             capture_output=True,
             text=True,
+            check=False,
         )
 
         assert completed.returncode == 0, (
@@ -521,7 +526,9 @@ class TestScaffoldedKeysMatchWhatAdaptersRead:
         project = _generate(tmp_path, [])
         text = (project / "src" / "scaffolded" / "domain.toml").read_text()
 
-        match = re.search(r"^# \[logging\]\n(.*?)(?=\n\n|\Z)", text, re.M | re.S)
+        match = re.search(
+            r"^# \[logging\]\n(.*?)(?=\n\n|\Z)", text, re.MULTILINE | re.DOTALL
+        )
         assert match, "domain.toml no longer ships a commented [logging] block"
 
         parsed_keys = set()

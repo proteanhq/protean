@@ -159,8 +159,8 @@ class TestProviderOwns:
         gate's name *equality* is genuinely exercised — an object-identity
         (``is``) implementation would fail this test."""
         # ``"".join`` yields a fresh, non-interned object on each call.
-        configured_name = "".join(["secondary", "-", "db"])
-        element_name = "".join(["secondary", "-", "db"])
+        configured_name = "".join(["secondary", "-", "db"])  # noqa: FLY002  # a literal would be interned
+        element_name = "".join(["secondary", "-", "db"])  # noqa: FLY002  # a literal would be interned
         assert configured_name == element_name and configured_name is not element_name
 
         domain = Domain(name="Owns-Multi-Provider")

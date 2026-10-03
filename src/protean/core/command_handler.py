@@ -44,7 +44,7 @@ Example:
             pass
 """
 
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, Self, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, _derive_element_class
@@ -131,7 +131,7 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
         ("suppress_checks", ()),
     ]
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseCommandHandler":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         if cls is BaseCommandHandler:
             raise NotSupportedError("BaseCommandHandler cannot be instantiated")
         return super().__new__(cls)

@@ -7,6 +7,7 @@ import typing
 from collections import defaultdict
 from enum import Enum
 from functools import partial
+from types import TracebackType
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from pydantic import Field as PydanticField
@@ -59,7 +60,7 @@ logger = logging.getLogger(__name__)
 def _dropped_helper(*args: Any, **kwargs: Any) -> None:
     """Stand-in for the ``add_``/``remove_`` helper of a reserved association
     during replay. It accepts any arguments and does nothing."""
-    return None
+    return
 
 
 class BaseAggregate(BaseEntity):
@@ -112,10 +113,10 @@ class BaseAggregate(BaseEntity):
         # checkers see the attribute.
         _fact_event_cls: ClassVar[type[BaseEvent]]
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseAggregate":
+    def __new__(cls, *args: Any, **kwargs: Any) -> typing.Self:
         if cls is BaseAggregate:
             raise NotSupportedError("BaseAggregate cannot be instantiated")
-        return cast("BaseAggregate", super().__new__(cls, *args, **kwargs))
+        return super().__new__(cls, *args, **kwargs)
 
     _default_options: ClassVar[list[tuple[str, Any]]] = [
         ("abstract", False),
@@ -874,7 +875,12 @@ class atomic_change:
         self.aggregate._precheck()
         self.aggregate._disable_invariant_checks = True
 
-    def __exit__(self, exc_type: Any, *args: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         # Re-enable invariant checks
         self.aggregate._disable_invariant_checks = False
 
@@ -917,9 +923,11 @@ class atomic_change:
                 raise ValidationError(
                     {
                         fname: [
-                            f"Invalid status transition from '{start}'. "
-                            f"'{start}' is a terminal state with no "
-                            f"allowed transitions"
+                            (
+                                f"Invalid status transition from '{start}'. "
+                                f"'{start}' is a terminal state with no "
+                                "allowed transitions"
+                            )
                         ]
                     }
                 )
@@ -930,9 +938,11 @@ class atomic_change:
                 raise ValidationError(
                     {
                         fname: [
-                            f"Invalid status transition from '{start}' "
-                            f"to '{end}'. "
-                            f"Allowed transitions: {allowed_str}"
+                            (
+                                f"Invalid status transition from '{start}' "
+                                f"to '{end}'. "
+                                f"Allowed transitions: {allowed_str}"
+                            )
                         ]
                     }
                 )

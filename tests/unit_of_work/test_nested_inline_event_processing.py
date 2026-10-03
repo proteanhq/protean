@@ -102,5 +102,4 @@ def test_nested_uow_processing(test_domain):
         Create(id=identifier, topic="foo", content="bar")
     )
 
-    global published_count
     assert published_count == 1

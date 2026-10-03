@@ -1544,12 +1544,12 @@ class EventStoreSubscription(BaseSubscription):
                 logger.info(f"Subscription cancelled: {self.subscriber_name}")
                 break
 
-            except Exception as exc:
+            except Exception:
                 self._forget_idle_tick()
                 consecutive_errors += 1
                 logger.exception(
                     f"Error in subscription {self.subscriber_name} "
-                    f"(attempt {consecutive_errors}): {exc}"
+                    f"(attempt {consecutive_errors})"
                 )
                 # Exponential backoff: 1s, 2s, 4s, 8s, ... capped at 30s
                 backoff = min(2 ** (consecutive_errors - 1), 30)

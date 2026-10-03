@@ -95,8 +95,8 @@ def _documented(text: str) -> set[str]:
     warning admonition rather than given a row of its own, and that is the right
     shape for it.
     """
-    names = set(re.findall(r"^\|\s*\*{0,2}`(\w+)`\*{0,2}\s*\|", text, re.M))
-    names |= set(re.findall(r"^#{2,4}\s*`(\w+)`\s*$", text, re.M))
+    names = set(re.findall(r"^\|\s*\*{0,2}`(\w+)`\*{0,2}\s*\|", text, re.MULTILINE))
+    names |= set(re.findall(r"^#{2,4}\s*`(\w+)`\s*$", text, re.MULTILINE))
     names |= set(re.findall(r"`(\w+)`", text))
     return names
 

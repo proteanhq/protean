@@ -608,10 +608,8 @@ def _extract_block_body(text: str, block: ManagedBlock) -> str:
     """
     after_begin, end_start = _block_bounds(text, block)
     raw = text[after_begin:end_start]
-    if raw.startswith("\n"):
-        raw = raw[1:]
-    if raw.endswith("\n"):
-        raw = raw[:-1]
+    raw = raw.removeprefix("\n")
+    raw = raw.removesuffix("\n")
     return raw
 
 

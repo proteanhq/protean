@@ -4,7 +4,7 @@ import logging
 import sys
 from collections.abc import Iterator
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, Self, cast
 
 from protean.utils.globals import _domain_context_stack
 
@@ -142,7 +142,7 @@ class DomainContext:
             rv = _domain_ctx_stack.pop()
         assert rv is self, f"Popped wrong domain context.  ({rv!r} instead of {self!r})"
 
-    def __enter__(self) -> "DomainContext":
+    def __enter__(self) -> Self:
         self.push()
 
         return self

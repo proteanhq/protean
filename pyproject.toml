@@ -313,10 +313,100 @@ ignore = [
 # the import-at-top rule is scoped to framework source. B018 (bare attribute
 # access to trigger lazy loads in conftests), B017/RUF043 (broad pytest.raises
 # patterns), and RUF012 (mutable fixtures on test classes) are all fine in tests.
-"tests/**/*.py" = ["PLC0415", "B018", "B017", "RUF012", "RUF043"]
+# Tests also catch Exception in worker threads and fake handlers to record a
+# failure for an assertion (BLE001), raise bare Exception to simulate an arbitrary
+# failure (TRY002), build fixed naive datetimes as data (DTZ), exec snippets they
+# verify (S102), and swallow errors in cleanup (S110).
+"tests/**/*.py" = [
+    "PLC0415",
+    "B018",
+    "B017",
+    "RUF012",
+    "RUF043",
+    "BLE001",
+    "TRY002",
+    "DTZ001",
+    "DTZ002",
+    "DTZ005",
+    "DTZ011",
+    "S102",
+    "S110",
+]
+# The examples use naive dates and a catch-all except to stay short on the page.
+"docs_src/**/*.py" = ["BLE001", "DTZ002", "DTZ011", "S110"]
+# Modules that parse a TOML, JSON or YAML document raise ValueError for a wrong
+# type in it, and the CLI catches ValueError to print a clean error. TRY004 would
+# turn a bad config file into a traceback.
+"src/protean/cli/docs.py" = ["TRY004"]
+"src/protean/dx/managed_files.py" = ["TRY004"]
+"src/protean/ir/config.py" = ["TRY004"]
+"src/protean/scaffold/change_plan.py" = ["TRY004"]
+"src/protean/scaffold/manifest.py" = ["TRY004"]
+"specs/checkpoint_trace.py" = ["TRY004"]
+"specs/occ_trace.py" = ["BLE001", "TRY004"]  # BLE001 is fixed in #1715
+"specs/outbox_trace.py" = ["TRY004"]
+"specs/recovery_trace.py" = ["TRY004"]
+"tests/eval/spec.py" = ["TRY004"]
+# Files that still fail BLE001, S110/S112 or TRY004. New files are checked from
+# the start. #1715 fixes BLE001, #1716 fixes S110 and S112, #1717 fixes TRY004,
+# and each deletes its files from this list.
+"src/protean/adapters/broker/redis.py" = ["BLE001"]
+"src/protean/adapters/broker/redis_pubsub.py" = ["BLE001"]
+"src/protean/adapters/repository/sqlalchemy.py" = ["BLE001"]
+"src/protean/cli/_ir_utils.py" = ["BLE001"]
+"src/protean/cli/check.py" = ["BLE001"]
+"src/protean/cli/events.py" = ["BLE001"]
+"src/protean/cli/hooks.py" = ["BLE001"]
+"src/protean/cli/test.py" = ["BLE001"]
+"src/protean/cli/verify.py" = ["BLE001"]
+"src/protean/core/command.py" = ["TRY004"]
+"src/protean/core/email.py" = ["TRY004"]
+"src/protean/core/entity.py" = ["TRY004"]
+"src/protean/core/event.py" = ["TRY004"]
+"src/protean/core/process_manager.py" = ["TRY004"]
+"src/protean/core/projection.py" = ["TRY004"]
+"src/protean/core/query.py" = ["TRY004"]
+"src/protean/core/unit_of_work.py" = ["BLE001", "S110"]
+"src/protean/core/value_object.py" = ["TRY004"]
+"src/protean/domain/__init__.py" = ["BLE001", "S110"]
+"src/protean/fields/base.py" = ["TRY004"]
+"src/protean/integrations/fastapi/middleware.py" = ["BLE001"]
+"src/protean/ir/analysis/dataflow.py" = ["BLE001"]
+"src/protean/ir/analysis/source_provider.py" = ["BLE001"]
+"src/protean/ir/builder.py" = ["BLE001"]
+"src/protean/ir/diagnostics.py" = ["BLE001"]
+"src/protean/ir/diff.py" = ["BLE001", "S110"]
+"src/protean/port/broker.py" = ["BLE001"]
+"src/protean/port/provider.py" = ["BLE001"]
+"src/protean/server/health.py" = ["BLE001", "S110"]
+"src/protean/server/observatory/api.py" = ["BLE001", "S110", "S112"]
+"src/protean/server/observatory/metrics.py" = ["BLE001", "S110"]
+"src/protean/server/observatory/routes/handlers.py" = ["BLE001", "S112"]
+"src/protean/server/observatory/routes/infrastructure.py" = ["BLE001"]
+"src/protean/server/observatory/routes/processes.py" = ["BLE001", "S112"]
+"src/protean/server/observatory/routes/timeline.py" = ["BLE001", "S112"]
+"src/protean/server/observatory/sse.py" = ["BLE001", "S112"]
+"src/protean/server/projection_status.py" = ["BLE001"]
+"src/protean/server/subscription/partitioned_stream_subscription.py" = ["BLE001"]
+"src/protean/server/subscription/stream_subscription.py" = ["BLE001", "S110"]
+"src/protean/server/subscription_status.py" = ["BLE001", "S110", "S112"]
+"src/protean/server/tracing.py" = ["BLE001"]
+"src/protean/testing.py" = ["BLE001"]
+"src/protean/upgrade.py" = ["BLE001"]
+"src/protean/upgrade_opportunities.py" = ["BLE001"]
+"src/protean/utils/eventing.py" = ["BLE001", "S110"]
+"src/protean/utils/logging.py" = ["BLE001", "S110"]
+"src/protean/utils/mixins.py" = ["BLE001", "S110"]
+"src/protean/utils/sync_dispatch.py" = ["BLE001"]
+"src/protean/utils/telemetry.py" = ["BLE001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["protean"]
+
+[tool.ruff.format]
+# ruff 0.16 formats Python code blocks in Markdown. #1671 moves the runnable blocks
+# out of docs/ and decides whether to format the fragments that stay inline.
+exclude = ["*.md"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -451,12 +451,12 @@ class StreamSubscription(BaseSubscription):
             except asyncio.CancelledError:
                 logger.info(f"Subscription cancelled: {self.subscriber_name}")
                 break
-            except Exception as e:
+            except Exception:
                 self._forget_idle_tick()
                 consecutive_errors += 1
                 logger.exception(
                     f"Error in subscription {self.subscriber_name} "
-                    f"(attempt {consecutive_errors}): {e}"
+                    f"(attempt {consecutive_errors})"
                 )
                 # Exponential backoff: 1s, 2s, 4s, 8s, ... capped at 30s
                 backoff = min(2 ** (consecutive_errors - 1), 30)
@@ -1042,8 +1042,8 @@ class StreamSubscription(BaseSubscription):
                 causation_id=domain_meta.get("causation_id"),
             )
             return True
-        except Exception as e:
-            logger.exception(f"Failed to move message {identifier} to DLQ: {e}")
+        except Exception:
+            logger.exception(f"Failed to move message {identifier} to DLQ")
             return False
 
     def _create_dlq_message(

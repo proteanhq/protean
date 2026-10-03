@@ -343,8 +343,7 @@ def collect_per_handler_trace_metrics(
     bucket_ms = _THROUGHPUT_BUCKET_S * 1000
     bucket_count = max(1, window_ms // bucket_ms)
     # Cap buckets for large windows to keep response reasonable
-    if bucket_count > 120:
-        bucket_count = 120
+    bucket_count = min(bucket_count, 120)
 
     try:
         raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)

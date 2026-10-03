@@ -57,7 +57,6 @@ def test_processing_messages_on_start(test_domain):
     engine = Engine(domain=test_domain, test_mode=True)
     engine.run()
 
-    global counter
     assert counter == 1
 
 

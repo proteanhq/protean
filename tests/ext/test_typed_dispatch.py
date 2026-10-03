@@ -100,6 +100,7 @@ def _run_pyright() -> tuple[list[str], list[str]]:
         [pyright, "--outputjson", str(FIXTURE)],
         capture_output=True,
         text=True,
+        check=False,
     )
     report = _parse_pyright_report(proc.stdout)
     if report is None:

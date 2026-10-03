@@ -258,7 +258,6 @@ async def test_subscription_process_batch_with_asynchronous_flag(test_domain, ca
         result = await subscription.process_batch(messages)
 
         # Check counting
-        global event_handler_counter
         # Only the async message should be processed
         assert event_handler_counter == 1
         assert result == 1  # One successful message
@@ -360,7 +359,6 @@ async def test_broker_subscription_process_batch_exception_handling(
         assert result == 0
 
         # Verify error handler was called
-        global error_handler_counter
         assert error_handler_counter >= 2  # Once for each message
 
         # Verify error was logged

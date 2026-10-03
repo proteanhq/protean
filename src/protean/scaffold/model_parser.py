@@ -537,7 +537,7 @@ def _parse_projector_line(block: _Block, stripped: str, lineno: int) -> None:
 
 
 def _finalize(blocks: list[_Block], last_line: int) -> dict[str, Any]:
-    end_line = last_line if last_line >= 1 else 1
+    end_line = max(last_line, 1)
     by_keyword: dict[str, list[_Block]] = {kw: [] for kw in _BLOCK_KEYWORDS}
     for block in blocks:
         by_keyword[block.keyword].append(block)

@@ -166,6 +166,6 @@ class PersistsThenCallsOutOnOneLine(BaseEventHandler):
     @handle(IoPlaced)
     def record(self, event):
         # fmt: off
-        repo = current_domain.repository_for(IoOrder); httpx.post(PARTNER_URL)  # noqa: E702
+        repo = current_domain.repository_for(IoOrder); httpx.post(PARTNER_URL)
         # fmt: on
         repo.add(IoOrder(name="oneline"))

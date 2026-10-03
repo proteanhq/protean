@@ -147,8 +147,10 @@ class TestField:
 
         assert exc.value.messages == {
             "unlinked": [
-                "ValidationError raised by `DummyStringField`, but error key "
-                "`unlinked` does not exist in the `error_messages` dictionary."
+                (
+                    "ValidationError raised by `DummyStringField`, but error key "
+                    "`unlinked` does not exist in the `error_messages` dictionary."
+                )
             ]
         }
 

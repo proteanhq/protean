@@ -813,12 +813,12 @@ class HasMany(Association):
 
         # Update objects from temporary cache if present
         updated_objects = []
-        for value in data:
-            identity = getattr(value, entity_id_fld.field_name)
+        for obj in data:
+            identity = getattr(obj, entity_id_fld.field_name)
             if identity in cache.updated:
                 updated_objects.append(cache.updated[identity])
             else:
-                updated_objects.append(value)
+                updated_objects.append(obj)
         data = updated_objects
 
         # Remove objects marked as removed in temporary cache

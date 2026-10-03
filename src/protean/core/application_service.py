@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import logging
 from collections.abc import Callable
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, Self, TypeVar
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import (
@@ -51,7 +51,7 @@ class BaseApplicationService(Element, OptionsMixin):
 
     element_type = DomainObjects.APPLICATION_SERVICE
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> BaseApplicationService:
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         if cls is BaseApplicationService:
             raise NotSupportedError("BaseApplicationService cannot be instantiated")
         # `object.__new__` takes only the class. Forwarding the caller's

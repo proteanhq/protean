@@ -395,10 +395,10 @@ class BrokerSubscription(BaseSubscription):
                 causation_id=domain_meta.get("causation_id"),
             )
             return True
-        except Exception as e:
+        except Exception:
             logger.exception(
                 f"[{self.subscriber_class_name}] Failed to move message "
-                f"{identifier} to DLQ: {e}"
+                f"{identifier} to DLQ"
             )
             return False
 

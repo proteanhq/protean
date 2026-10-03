@@ -1,5 +1,5 @@
 import logging
-from typing import Any, ClassVar, TypeVar, cast
+from typing import Any, ClassVar, Self, TypeVar, cast
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -53,7 +53,7 @@ class BaseEvent(BaseMessageType):
 
     element_type: ClassVar[str] = DomainObjects.EVENT
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseEvent":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         if cls is BaseEvent:
             raise NotSupportedError("BaseEvent cannot be instantiated")
         return super().__new__(cls)
@@ -126,7 +126,7 @@ class BaseEvent(BaseMessageType):
 
         object.__setattr__(self, "_initialized", True)
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, context: Any, /) -> None:
         if not hasattr(self.__class__, "__type__"):
             raise ConfigurationError(
                 f"`{self.__class__.__name__}` should be registered with a domain"

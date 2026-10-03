@@ -148,6 +148,7 @@ def _run_driver(project: Path) -> subprocess.CompletedProcess[str]:
         env=env,
         capture_output=True,
         text=True,
+        check=False,
     )
 
 

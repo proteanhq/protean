@@ -96,7 +96,7 @@ def _blog_sections(blog_text: str) -> dict[str, str]:
         end = re.search(rf"^# --8<-- \[end:{re.escape(name)}\]$", rest, re.MULTILINE)
         assert end is not None, f"blog.py has [start:{name}] but no [end:{name}]"
         body = rest[: end.start()]
-        sections[name] = body[1:] if body.startswith("\n") else body
+        sections[name] = body.removeprefix("\n")
     return sections
 
 
@@ -175,6 +175,7 @@ class TestDocsQuickstartSingleSourced:
             capture_output=True,
             text=True,
             timeout=30,
+            check=False,
         )
         assert result.returncode == 0, (
             f"blog.py failed to run.\nstdout:\n{result.stdout}\n"

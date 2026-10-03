@@ -88,7 +88,6 @@ class TestSyncDuplication:
     def test_sync_duplicate_returns_cached_result(self, test_domain):
         """Processing a command twice with the same key should return
         the cached result and invoke the handler only once."""
-        global call_counter
         identifier = str(uuid4())
 
         result1 = test_domain.process(
@@ -106,7 +105,6 @@ class TestSyncDuplication:
     def test_different_keys_are_processed_independently(self, test_domain):
         """Two commands with different idempotency keys should both
         be processed."""
-        global call_counter
 
         test_domain.process(
             Register(user_id=str(uuid4()), email="a@example.com"),
@@ -219,7 +217,6 @@ class TestFailureRecovery:
 class TestTTLExpiry:
     def test_idempotency_store_ttl_expiry(self, test_domain):
         """After the TTL expires, the same key should be processed again."""
-        global call_counter
 
         # Configure very short TTL for testing
         test_domain.config["idempotency"]["ttl"] = 1
@@ -255,7 +252,6 @@ class TestFullFlowIntegration:
     def test_full_flow_sync_with_retry(self, test_domain):
         """API-style flow: process sync with key -> success -> retry with same
         key -> cached result returned -> handler NOT called twice."""
-        global call_counter
         identifier = str(uuid4())
 
         # First call: handler processes command

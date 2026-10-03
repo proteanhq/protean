@@ -642,7 +642,6 @@ class TestHandlerReturnValue:
                 attempt_count += 1
                 if attempt_count == 1:
                     raise ExpectedVersionError("conflict")
-                return None
 
         test_domain.register(ReturningHandler, part_of=User)
         test_domain.init(traverse=False)

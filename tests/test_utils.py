@@ -106,7 +106,7 @@ class TestCloneClassSlotsAsString:
         """clone_class handles __slots__ as a single string."""
 
         class SlottedClass:
-            __slots__ = "value"
+            __slots__ = "value"  # noqa: PLC0205  # a string __slots__ is the input under test
 
             def __init__(self, value):
                 self.value = value

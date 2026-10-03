@@ -34,7 +34,9 @@ def _catalogued() -> set[str]:
     """Codes carrying an `### CODE_NAME` heading in the catalog."""
     return set(
         re.findall(
-            r"^###\s+([A-Z][A-Z_0-9]*)", CATALOG.read_text(encoding="utf-8"), flags=re.M
+            r"^###\s+([A-Z][A-Z_0-9]*)",
+            CATALOG.read_text(encoding="utf-8"),
+            flags=re.MULTILINE,
         )
     )
 

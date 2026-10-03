@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, cast
 
 from protean.core.queryset import Record
 from protean.exceptions import IncorrectUsageError, NotSupportedError
@@ -39,7 +39,7 @@ class BaseDatabaseModel(Element, OptionsMixin):
 
     element_type = DomainObjects.DATABASE_MODEL
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseDatabaseModel":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         if cls is BaseDatabaseModel:
             raise NotSupportedError("BaseDatabaseModel cannot be instantiated")
         return super().__new__(cls)

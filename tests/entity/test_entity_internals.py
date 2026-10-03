@@ -182,7 +182,7 @@ class TestEntityEqualityEdgeCases:
         order = Order(name="Test")
         assert order != "not an entity"
         assert order != 42
-        assert order != None  # noqa: E711
+        assert order != None
 
     def test_eq_without_id_field(self, test_domain):
         """__eq__ returns False when no id field."""

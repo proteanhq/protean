@@ -746,8 +746,10 @@ class TestWorkerEntryLoggingFlags:
             _worker_entry("my.domain", False, 41, log_config=log_config)
 
         assert logging.getLogger("protean.server.worker-41").disabled is False
-        messages = [r.getMessage() for r in records]
-        assert "Worker 41 failed: db unreachable" in messages
+        failures = [r for r in records if r.getMessage() == "Worker 41 failed"]
+        assert len(failures) == 1
+        assert failures[0].exc_info is not None
+        assert str(failures[0].exc_info[1]) == "db unreachable"
 
     def test_log_config_without_root_leaves_no_bootstrap_handler(self):
         root = logging.getLogger()

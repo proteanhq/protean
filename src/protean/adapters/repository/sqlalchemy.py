@@ -16,8 +16,6 @@ from datetime import datetime as _datetime
 from enum import Enum
 from typing import TYPE_CHECKING, ClassVar
 
-import sqlalchemy.dialects.mssql as mssql
-import sqlalchemy.dialects.mysql as mysql
 import sqlalchemy.dialects.postgresql as psql
 from sqlalchemy import (
     DDL,
@@ -41,6 +39,7 @@ from sqlalchemy import (
     Index as SAIndex,
 )
 from sqlalchemy import types as sa_types
+from sqlalchemy.dialects import mssql, mysql
 from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.dialects.mysql import mariadb as mariadb_dialect
 from sqlalchemy.engine import Engine

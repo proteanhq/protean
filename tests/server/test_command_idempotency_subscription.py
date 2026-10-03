@@ -110,7 +110,6 @@ class TestSubscriptionLevelDedup:
     async def test_subscription_skips_already_processed_command(self, test_domain):
         """If a command's idempotency key is already recorded as success
         in the store, process_batch should skip it."""
-        global handler_call_count
 
         # Submit a command async with an idempotency key
         message = _submit_and_read_back(test_domain, idempotency_key="sub-skip-1")
@@ -139,7 +138,6 @@ class TestSubscriptionLevelDedup:
         self, test_domain
     ):
         """Commands without an idempotency key should be processed normally."""
-        global handler_call_count
 
         message = _submit_and_read_back(test_domain, idempotency_key=None)
 

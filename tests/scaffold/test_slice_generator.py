@@ -2268,6 +2268,7 @@ def test_fragment_driven_slice_verifies_green(tmp_path):
         capture_output=True,
         text=True,
         errors="replace",
+        check=False,
     )
 
     assert completed.returncode == 0, (
@@ -2329,6 +2330,7 @@ def test_parsed_model_slice_verifies_green(tmp_path):
         capture_output=True,
         text=True,
         errors="replace",
+        check=False,
     )
 
     assert completed.returncode == 0, (
@@ -2397,6 +2399,7 @@ def test_slice_whose_fields_take_framework_names_runs(tmp_path):
         capture_output=True,
         text=True,
         errors="replace",
+        check=False,
     )
     assert completed.returncode == 0, (
         "protean verify must pass on a slice whose fields take framework names:\n"
@@ -2442,6 +2445,7 @@ def test_slice_whose_fields_take_framework_names_runs(tmp_path):
         capture_output=True,
         text=True,
         errors="replace",
+        check=False,
     )
 
     assert driven.returncode == 0, (
@@ -2497,6 +2501,7 @@ def test_slice_with_an_identifier_id_runs(tmp_path):
         capture_output=True,
         text=True,
         errors="replace",
+        check=False,
     )
 
     assert driven.returncode == 0, (
@@ -2548,6 +2553,7 @@ def test_slice_whose_command_takes_a_framework_import_name_runs(tmp_path):
         capture_output=True,
         text=True,
         errors="replace",
+        check=False,
     )
     assert completed.returncode == 0, (
         "protean verify must pass on a slice whose command takes a framework import "

@@ -120,7 +120,6 @@ async def test_deadline_stopped_retry_routes_through_error_path(test_domain):
     engine = Engine(domain=test_domain, test_mode=True)
     result = await engine.handle_message(FlakyHandler, message)
 
-    global attempts, errors_handled
     # Ran exactly once — no retry slept past the deadline.
     assert attempts == 1
     # The failure routed through the normal error path, not a silent skip...
@@ -140,7 +139,6 @@ async def test_already_expired_command_is_skipped_before_any_attempt(test_domain
     engine = Engine(domain=test_domain, test_mode=True)
     result = await engine.handle_message(FlakyHandler, message)
 
-    global attempts, errors_handled
     assert attempts == 0  # handler never ran
     assert errors_handled == 0  # not routed through the error path
     assert result is True  # acknowledged (position advances), not retried

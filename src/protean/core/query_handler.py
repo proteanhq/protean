@@ -29,7 +29,7 @@ Example:
         )
 """
 
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, Self, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, _derive_element_class
@@ -75,7 +75,7 @@ class BaseQueryHandler(Element, HandlerMixin, OptionsMixin):
         ("suppress_checks", ()),
     ]
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseQueryHandler":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         if cls is BaseQueryHandler:
             raise NotSupportedError("BaseQueryHandler cannot be instantiated")
         return super().__new__(cls)
