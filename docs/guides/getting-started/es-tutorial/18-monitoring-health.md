@@ -123,6 +123,12 @@ With monitoring in place, we can detect problems early. In the next chapter, a
 bank acquisition triggers a massive migration, and we learn how to handle it
 without disrupting production.
 
+## Full Source
+
+```python
+--8<-- "guides/getting-started/es-tutorial/ch18.py:full"
+```
+
 ## Next
 
 [Chapter 19: The Great Migration, Run on Priority Lanes →](19-priority-lanes.md)

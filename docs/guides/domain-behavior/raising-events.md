@@ -196,12 +196,15 @@ The event name is of the format
 `<AggregateName>FactEvent`, and the stream name will be
 `<stream_category>-fact-<aggregate_id>`, where `stream_category` is the aggregate's [stream category](../../concepts/async-processing/stream-categories.md).
 
-```python hl_lines="10 40 42"
+```python hl_lines="9 48 49"
 --8<-- "guides/domain-definition/events/003.py:full"
 ```
 
-The fact event for `User` aggregate in the above example is `UserFactEvent`
-and the output stream is `user-fact-e97cef08-f11d-43eb-8a69-251a0828bbff`
+The fact event for the `User` aggregate in the above example is `UserFactEvent`.
+The store returns it as a `Message`, and `to_domain_object()` turns it back
+into a `UserFactEvent`. The output stream is
+`authentication::user-fact-<user id>`, where `authentication` is the domain
+name.
 
 ---
 

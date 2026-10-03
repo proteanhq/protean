@@ -1,4 +1,6 @@
 # --8<-- [start:full]
+import os
+
 import sqlalchemy as sa
 
 from protean import Domain
@@ -8,7 +10,9 @@ from protean.fields import Integer, String
 domain = Domain()
 domain.config["databases"]["default"] = {
     "provider": "postgresql",
-    "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
+    "database_uri": os.environ.get(
+        "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres"
+    ),
 }
 
 

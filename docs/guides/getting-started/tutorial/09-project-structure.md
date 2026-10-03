@@ -38,7 +38,7 @@ tests/
 The domain lives in `bookshelf/__init__.py`:
 
 ```python
---8<-- "guides/getting-started/tutorial/ch09.py:domain_init"
+--8<-- "guides/getting-started/tutorial/bookshelf/__init__.py:domain_init"
 ```
 
 ### Models
@@ -46,7 +46,7 @@ The domain lives in `bookshelf/__init__.py`:
 Aggregates, entities, and value objects go in `bookshelf/models.py`:
 
 ```python
---8<-- "guides/getting-started/tutorial/ch09.py:models"
+--8<-- "guides/getting-started/tutorial/bookshelf/models.py:models"
 ```
 
 ### Events
@@ -54,7 +54,7 @@ Aggregates, entities, and value objects go in `bookshelf/models.py`:
 Domain events go in `bookshelf/events.py`:
 
 ```python
---8<-- "guides/getting-started/tutorial/ch09.py:events"
+--8<-- "guides/getting-started/tutorial/bookshelf/events.py:events"
 ```
 
 ### Commands
@@ -62,7 +62,7 @@ Domain events go in `bookshelf/events.py`:
 Commands go in `bookshelf/commands.py`:
 
 ```python
---8<-- "guides/getting-started/tutorial/ch09.py:commands"
+--8<-- "guides/getting-started/tutorial/bookshelf/commands.py:commands"
 ```
 
 ### Handlers
@@ -70,7 +70,7 @@ Commands go in `bookshelf/commands.py`:
 Command handlers and event handlers go in `bookshelf/handlers.py`:
 
 ```python
---8<-- "guides/getting-started/tutorial/ch09.py:handlers"
+--8<-- "guides/getting-started/tutorial/bookshelf/handlers.py:handlers"
 ```
 
 ### Projections
@@ -78,7 +78,7 @@ Command handlers and event handlers go in `bookshelf/handlers.py`:
 Projections and projectors go in `bookshelf/projections.py`:
 
 ```python
---8<-- "guides/getting-started/tutorial/ch09.py:projections"
+--8<-- "guides/getting-started/tutorial/bookshelf/projections.py:projections"
 ```
 
 ## Domain Auto-Discovery

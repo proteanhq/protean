@@ -140,6 +140,12 @@ The event store is not just an implementation detail. It is a database of facts
 about your business. Learning to query it directly is a useful debugging and
 analysis tool.
 
+## Full Source
+
+```python
+--8<-- "guides/getting-started/es-tutorial/ch21.py:full"
+```
+
 ## Next
 
 [Chapter 22: The Full Picture →](22-the-full-picture.md)

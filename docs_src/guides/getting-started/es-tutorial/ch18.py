@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 """Chapter 18: Monitoring Health
 
 Demonstrates the domain setup for health monitoring with the Observatory
@@ -213,3 +214,4 @@ class AccountSummaryProjector:
 
 
 # --8<-- [end:domain_setup]
+# --8<-- [end:full]
