@@ -578,12 +578,27 @@ class TestSharedDatabaseSuites:
             TestSuite("Database: A", ["a"]),
             TestSuite("Database: B", ["b"]),
         ]
-        state = self._track_overlap(runner)
+        # Each command waits until the other one is running too. If the suites
+        # ran one at a time, the barrier would time out and the command fail.
+        both_running = threading.Barrier(2, timeout=10)
+        started = []
+
+        def run_command(cmd):
+            if cmd[0] not in ("a", "b"):  # coverage erase / combine / report
+                return 0
+            started.append(cmd[0])
+            try:
+                both_running.wait()
+            except threading.BrokenBarrierError:
+                return 1
+            return 0
+
+        runner.run_command = run_command
 
         result = runner.run_test_suites_in_parallel(suites)
 
+        assert sorted(started) == ["a", "b"]
         assert result == 0
-        assert state["peak"] == 2
 
     def test_matrix_first_run_serializes_shared_database_suites(self):
         runner = TestRunner()
