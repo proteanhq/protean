@@ -15,6 +15,7 @@ files, and ch10 imports from it, so the ``tutorial/`` folder goes on
 
 import importlib.util
 import os
+import subprocess
 import sys
 import types
 
@@ -64,6 +65,19 @@ ch04 = _load_chapter(4)
 ch05 = _load_chapter(5)
 ch06 = _load_chapter(6)
 ch07 = _load_chapter(7)
+
+# Chapter 9 is the ``bookshelf`` package. Import its modules before ch10, and
+# record what they registered: ch10 calls ``domain.init()``, whose traversal
+# would register the modules again and hide a module that registers nothing.
+import bookshelf
+import bookshelf.commands
+import bookshelf.events
+import bookshelf.handlers
+import bookshelf.models
+import bookshelf.projections
+
+_BOOKSHELF_REGISTERED = set(bookshelf.domain.registry._elements_by_name)
+
 ch10 = _load_chapter(10)
 ch13 = _load_chapter(13)
 ch14 = _load_chapter(14)
@@ -71,14 +85,6 @@ ch15 = _load_chapter(15)
 ch19 = _load_chapter(19)
 ch20 = _load_chapter(20)
 ch21 = _load_chapter(21)
-
-# Chapter 9 is the ``bookshelf`` package; ch10 has already imported it.
-import bookshelf
-import bookshelf.commands
-import bookshelf.events
-import bookshelf.handlers
-import bookshelf.models
-import bookshelf.projections
 
 # Chapters that have projections (need DB artifact create/drop with real DBs)
 _HAS_PROJECTIONS = {ch07, bookshelf, ch10, ch21}
@@ -433,7 +439,6 @@ class TestTutorialCh09(_TutorialBase):
 
     def test_package_registers_every_module(self):
         """Ch9: The split modules register into the one ``bookshelf`` domain."""
-        registered = set(bookshelf.domain.registry._elements_by_name)
         assert {
             "Book",
             "Order",
@@ -442,7 +447,21 @@ class TestTutorialCh09(_TutorialBase):
             "BookCommandHandler",
             "BookCatalog",
             "BookCatalogProjector",
-        } <= registered
+        } <= _BOOKSHELF_REGISTERED
+
+    def test_importing_the_package_alone_registers_nothing(self):
+        """Ch9: ``__init__.py`` only creates the domain; the modules register."""
+        code = (
+            "import bookshelf; print(len(bookshelf.domain.registry._elements_by_name))"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=_TUTORIAL_DIR,
+        )
+        assert result.stdout.strip() == "0"
 
     def test_adding_a_book_fills_inventory_and_catalog(self):
         """Ch9: A command runs through handlers and the projector across modules."""

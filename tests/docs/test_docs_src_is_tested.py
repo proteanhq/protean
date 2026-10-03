@@ -1,15 +1,17 @@
 """Require every ``docs_src`` example to be loaded by a test.
 
 ``test_docs_src_runs.py`` proves each example runs and initializes. This guard
-asks for more: a test that loads the example and checks what it does. It finds
-the loaded examples by reading test source, not by running it:
+asks for more: a test that loads the example. It cannot tell whether the test
+then checks what the example does; it finds the loaded examples by reading test
+source for these calls and imports, without running it:
 
 - a ``load_example("<path>")`` call in any file under ``tests/docs/`` loads the
   example at that path (relative to ``docs_src``);
 - a ``_load_chapter(<n>)`` call in a tutorial test loads ``ch<nn>.py`` from that
   tutorial's folder;
-- an import of a ``docs_src`` package (``import bookshelf``) in any of those
-  files loads every module of the package.
+- an import of a ``docs_src`` package in any of those files loads the modules
+  it names: ``import bookshelf`` loads only ``bookshelf/__init__.py``, and
+  ``import bookshelf.models`` also loads ``bookshelf/models.py``.
 
 ``ALLOWLIST`` lists the examples no test loads yet. A file that is neither
 loaded nor listed fails, and so does a listed file that a test now loads, so
@@ -23,7 +25,12 @@ from pathlib import Path
 
 import pytest
 
-from tests.docs.support import DOCS_SRC, REPO_ROOT
+from tests.docs.support import (
+    DOCS_SRC,
+    REPO_ROOT,
+    imported_package_files,
+    package_dirs,
+)
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -125,16 +132,6 @@ def _docs_src_files(root: Path) -> set[str]:
     return {path.relative_to(root).as_posix() for path in root.rglob("*.py")}
 
 
-def _packages(root: Path) -> dict[str, list[str]]:
-    """Map each package's folder name under ``root`` to the files it holds."""
-    return {
-        init.parent.name: sorted(
-            path.relative_to(root).as_posix() for path in init.parent.glob("*.py")
-        )
-        for init in root.rglob("__init__.py")
-    }
-
-
 def _call_name(node: ast.Call) -> str | None:
     if isinstance(node.func, ast.Name):
         return node.func.id
@@ -160,11 +157,12 @@ def loaded_examples(
 
     ``test_files`` are read for ``load_example`` calls; ``chapter_loaders``
     maps more test files to the folder their ``_load_chapter`` calls read.
-    Both kinds are read for imports of a package under ``root``. A
+    Both kinds are read for imports of a package under ``root``, which load
+    the package modules they name. A
     ``load_example`` call that passes its own ``root=`` loads from somewhere
     else, so it does not count.
     """
-    packages = _packages(root)
+    packages = package_dirs(root)
     loaded: set[str] = set()
     for test_file in [*test_files, *chapter_loaders]:
         chapter_dir = chapter_loaders.get(test_file)
@@ -186,11 +184,7 @@ def loaded_examples(
                     and isinstance(node.args[0].value, int)
                 ):
                     loaded.add(f"{chapter_dir}/ch{node.args[0].value:02d}.py")
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    loaded.update(packages.get(alias.name.split(".")[0], []))
-            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-                loaded.update(packages.get(node.module.split(".")[0], []))
+        loaded |= imported_package_files(tree, root, packages)
     return loaded
 
 
@@ -226,8 +220,8 @@ def test_every_docs_src_file_is_loaded_by_a_test():
     untested, stale = coverage_problems(DOCS_SRC, _real_loaded(), ALLOWLIST)
 
     assert untested == [], (
-        "docs_src files that no test under tests/docs/ loads (load them with "
-        "load_example in a test):\n" + "\n".join(untested)
+        "docs_src files that no test loads (load them with load_example in a "
+        "test under tests/docs/, or list them in ALLOWLIST):\n" + "\n".join(untested)
     )
     assert stale == [], (
         "ALLOWLIST entries to remove (a test loads the file now, or the file "
@@ -315,3 +309,36 @@ class TestCoverageGuard:
 
         assert untested == []
         assert stale == ["guides/deleted.py"]
+
+    def test_importing_only_the_package_does_not_load_its_modules(self, layout):
+        root, tests = layout
+        _write(tests / "test_tut.py", "import shop\n")
+        loaded = loaded_examples([], {tests / "test_tut.py": "tut"}, root)
+
+        untested, _ = coverage_problems(
+            root, loaded, {"guides/a.py", "guides/b.py", "tut/ch01.py", "tut/ch02.py"}
+        )
+
+        assert loaded == {"tut/shop/__init__.py"}
+        assert untested == ["tut/shop/models.py"]
+
+    def test_a_from_import_of_a_package_module_loads_it(self, layout):
+        root, tests = layout
+        _write(tests / "test_tut.py", "from shop import models\n")
+
+        loaded = loaded_examples([], {tests / "test_tut.py": "tut"}, root)
+
+        assert loaded == {"tut/shop/__init__.py", "tut/shop/models.py"}
+
+    def test_a_load_example_call_through_the_module_counts(self, layout):
+        root, tests = layout
+        _write(tests / "test_a.py", 'support.load_example("guides/b.py")\n')
+
+        assert loaded_examples([tests / "test_a.py"], {}, root) == {"guides/b.py"}
+
+    def test_two_packages_with_the_same_folder_name_are_rejected(self, layout):
+        root, _ = layout
+        _write(root / "other/shop/__init__.py", "domain = None\n")
+
+        with pytest.raises(ValueError, match="share the folder name 'shop'"):
+            package_dirs(root)

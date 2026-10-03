@@ -7,20 +7,24 @@ initialize, fails the test with the file's path.
 
 The examples run in child interpreters, as in ``tests/dx/test_examples.py``:
 
+- The child interpreter keeps each file's registrations and side effects out
+  of this test process.
 - Each file runs under its own ``run_name``, which is never ``"__main__"``, so
-  its ``if __name__ == "__main__"`` demo block is skipped and its registrations
-  stay out of this test process.
-- Each file runs with its working directory set to a fresh temporary folder,
-  so a file that writes ``test.db`` or ``myapp.db`` leaves nothing in the repo.
+  its ``if __name__ == "__main__"`` demo block is skipped.
+- Each file runs with its working directory set to a fresh folder under the
+  test's temporary folder, so a file that writes ``test.db`` or ``myapp.db``
+  leaves nothing in the repo.
 - Each file has a time limit, so a file that blocks names itself.
 
 A package under ``docs_src`` (a folder with an ``__init__.py``) runs as one
 example: the runner imports the package and each of its modules, then
 initializes the package's domains.
 
-A file that needs a running service is listed in ``MARKERS`` with the pytest
-marker for that service. Each marker group runs in its own child, under a test
-that carries the marker, so the FULL leg runs it and the core lane skips it.
+A file that needs a running service or an optional package is listed in
+``MARKERS`` with a pytest marker. Each marker group runs in its own child, under
+a test that carries the marker. A service marker with a ``--<service>`` option
+(``postgresql``) is skipped in the core lane and runs in the FULL leg. The
+``fastapi`` marker has no such option, so its group runs in both.
 A file that shows an error on purpose is listed in ``EXPECTED_EXCEPTIONS``, and
 passes only if it raises that exception.
 
@@ -40,7 +44,13 @@ from pathlib import Path
 
 import pytest
 
-from tests.docs.support import DOCS, DOCS_SRC
+from tests.docs.support import (
+    DOCS,
+    DOCS_SRC,
+    imported_package_files,
+    module_name_for,
+    package_dirs,
+)
 from tests.shared import POSTGRES_URI
 
 pytestmark = pytest.mark.no_test_domain
@@ -68,18 +78,13 @@ EXPECTED_EXCEPTIONS: dict[str, str] = {
 EXAMPLE_TIMEOUT = 60
 
 
-def package_dirs(root: Path) -> list[Path]:
-    """Return every package folder under ``root``: a folder with an ``__init__.py``."""
-    return sorted(init.parent for init in root.rglob("__init__.py"))
-
-
 def discover_examples(root: Path) -> list[str]:
     """Return every example under ``root`` as a path relative to ``root``.
 
     A plain ``.py`` file is one example. A package is one example, named by its
     folder, and the files inside it are not listed on their own.
     """
-    packages = package_dirs(root)
+    packages = list(package_dirs(root).values())
     files = [
         path
         for path in root.rglob("*.py")
@@ -106,12 +111,14 @@ def _independent_example_count(root: Path) -> int:
 
 
 # The child-interpreter runner. It reads a JSON spec (the root, the examples to
-# run, the expected exceptions, the time limit and the report path), runs each
-# example in its own temporary working folder, initializes every domain the
-# example defines, and writes a JSON report with the count it ran and a line per
-# failure. It runs all examples before reporting, so one run names every broken
-# file. It writes the report to a file, not a stream, so the framework's own
-# logging cannot corrupt it.
+# run, the expected exceptions, the time limit, the working folder and the
+# report path), runs each example in its own folder under the working folder,
+# initializes every domain the example defines, and writes a JSON report with
+# the count it ran and a line per failure. It runs all examples before
+# reporting, so one run names every broken file. Before each example it rewrites
+# the report with that example under "running", so a child that dies mid-run
+# still names the file it was running. It writes the report to a file, not a
+# stream, so the framework's own logging cannot corrupt it.
 _RUNNER = """
 import importlib
 import json
@@ -120,7 +127,6 @@ import pathlib
 import runpy
 import signal
 import sys
-import tempfile
 
 spec = json.loads(pathlib.Path(sys.argv[1]).read_text())
 root = pathlib.Path(spec["root"])
@@ -175,11 +181,15 @@ def class_names(exc):
     return [cls.__name__ for cls in type(exc).__mro__]
 
 
-workspace = pathlib.Path(tempfile.mkdtemp(prefix="docs_src_examples_"))
+workspace = pathlib.Path(spec["workdir"]) / "examples"
+report = pathlib.Path(spec["report"])
 failures = []
 for index, example in enumerate(spec["examples"]):
+    report.write_text(
+        json.dumps({"count": index, "failures": failures, "running": example})
+    )
     workdir = workspace / str(index)
-    workdir.mkdir()
+    workdir.mkdir(parents=True)
     os.chdir(workdir)
     raised = None
     signal.alarm(timeout)
@@ -204,7 +214,7 @@ for index, example in enumerate(spec["examples"]):
             % (example, expected, type(raised).__name__, raised)
         )
 
-pathlib.Path(spec["report"]).write_text(
+report.write_text(
     json.dumps({"count": len(spec["examples"]), "failures": failures})
 )
 sys.exit(1 if failures else 0)
@@ -234,26 +244,35 @@ def run_examples(
                 "examples": examples,
                 "expected": expected,
                 "timeout": timeout,
+                "workdir": str(workdir),
                 "report": str(report_path),
             }
         )
     )
-    result = subprocess.run(
-        [sys.executable, "-c", _RUNNER, str(spec_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=workdir,
-        env={**os.environ, **(env or {})},
-        # The per-example limit fires first; this is the backstop for the run.
-        timeout=timeout * len(examples) + 120,
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", _RUNNER, str(spec_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=workdir,
+            env={**os.environ, **(env or {})},
+            # The per-example limit fires first; this is the backstop for the run.
+            timeout=timeout * len(examples) + 120,
+        )
+        returncode, stderr = result.returncode, result.stderr
+    except subprocess.TimeoutExpired:
+        returncode, stderr = None, "the run passed its overall time limit"
     assert report_path.is_file(), (
         f"the example runner crashed before writing its report "
-        f"(exit {result.returncode}):\n{result.stderr}"
+        f"(exit {returncode}):\n{stderr}"
     )
     report = json.loads(report_path.read_text())
-    assert (result.returncode == 0) == (report["failures"] == []), result.stderr
+    assert "running" not in report, (
+        f"the example runner stopped (exit {returncode}) while running "
+        f"{report['running']}:\n{stderr}"
+    )
+    assert (returncode == 0) == (report["failures"] == []), stderr
     return report
 
 
@@ -277,6 +296,18 @@ def test_example_discovery_is_not_vacuous():
     assert len(EXAMPLES) == _independent_example_count(DOCS_SRC)
     assert len(EXAMPLES) >= 110
     assert "guides/getting-started/tutorial/bookshelf" in EXAMPLES
+
+
+def test_example_module_names_are_unique():
+    # load_example registers each file under module_name_for(path). Two paths
+    # that map to one name (``a-b.py`` and ``a_b.py``) would replace each other.
+    paths = sorted(p.relative_to(DOCS_SRC).as_posix() for p in DOCS_SRC.rglob("*.py"))
+    assert paths
+    names: dict[str, list[str]] = {}
+    for path in paths:
+        names.setdefault(module_name_for(path), []).append(path)
+    clashes = {name: group for name, group in names.items() if len(group) > 1}
+    assert clashes == {}, f"docs_src paths that share a module name: {clashes}"
 
 
 def test_tables_name_only_existing_examples():
@@ -312,51 +343,39 @@ def test_every_example_runs_and_initializes(marker, tmp_path):
 
 # `--8<-- "guides/x/001.py"`, `--8<-- "guides/x/001.py:section"` or
 # `--8<-- "guides/x/001.py:10:20"`. The path is everything before the first colon.
-_INCLUDE = re.compile(r'--8<--\s+"([^":]+)[^"]*"')
+# Snippets does not include `;--8<--`, which escapes the marker.
+_INCLUDE = re.compile(r'(?<!;)--8<--\s+"([^":]+)[^"]*"')
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
 def included_paths(docs: Path) -> set[str]:
-    """Return every path a page under ``docs`` includes with ``--8<--``."""
+    """Return every path a page under ``docs`` includes with ``--8<--``.
+
+    An include inside an HTML comment does not count, because the page does
+    not show it. Pages that ``mkdocs.yml`` excludes from the build still count.
+    """
     included = set()
     for page in docs.rglob("*.md"):
-        included.update(_INCLUDE.findall(page.read_text(encoding="utf-8")))
+        text = _HTML_COMMENT.sub("", page.read_text(encoding="utf-8"))
+        included.update(_INCLUDE.findall(text))
     return included
-
-
-def _imported_top_level_names(path: Path) -> set[str]:
-    names = set()
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-        if isinstance(node, ast.Import):
-            names.update(alias.name.split(".")[0] for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            names.add(node.module.split(".")[0])
-    return names
 
 
 def unincluded_files(root: Path, docs: Path) -> list[str]:
     """Return the ``.py`` files under ``root`` that no page under ``docs`` includes.
 
-    A file counts as included when a page includes it directly. A file inside a
-    package also counts when a directly included file imports that package, so
-    a chapter that imports the package covers its modules.
+    A file counts as included when a page includes it directly. A module inside
+    a package also counts when a directly included file imports that module,
+    so a chapter that imports ``shop.models`` covers ``shop/models.py``.
     """
     files = sorted(path.relative_to(root).as_posix() for path in root.rglob("*.py"))
     included = {path for path in included_paths(docs) if path in files}
-    imported = set()
+    packages = package_dirs(root)
+    imported: set[str] = set()
     for path in included:
-        imported |= _imported_top_level_names(root / path)
-
-    missing = []
-    for path in files:
-        if path in included:
-            continue
-        package = next(
-            (p for p in package_dirs(root) if (root / path).is_relative_to(p)), None
-        )
-        if package is not None and package.name in imported:
-            continue
-        missing.append(path)
-    return missing
+        tree = ast.parse((root / path).read_text(encoding="utf-8"))
+        imported |= imported_package_files(tree, root, packages)
+    return [path for path in files if path not in included | imported]
 
 
 def test_every_docs_src_file_is_included_by_a_page():
@@ -436,6 +455,27 @@ class TestRunner:
 
         assert report["failures"] == ["guides/raises.py: RuntimeError: boom"]
 
+    def test_every_broken_file_in_a_run_is_named(self, corpus):
+        root, workdir = corpus
+        _write(root, "first.py", "raise RuntimeError('one')\n")
+        _write(root, "good.py", _GOOD)
+        _write(root, "second.py", "raise ValueError('two')\n")
+
+        report = run_examples(root, ["first.py", "good.py", "second.py"], {}, workdir)
+
+        assert report == {
+            "count": 3,
+            "failures": ["first.py: RuntimeError: one", "second.py: ValueError: two"],
+        }
+
+    def test_a_file_that_kills_the_runner_names_itself(self, corpus):
+        root, workdir = corpus
+        _write(root, "good.py", _GOOD)
+        _write(root, "exits.py", "import os\nos._exit(3)\n")
+
+        with pytest.raises(AssertionError, match="exit 3.*while running exits.py"):
+            run_examples(root, ["good.py", "exits.py"], {}, workdir)
+
     def test_a_domain_that_fails_init_names_the_file(self, corpus):
         root, workdir = corpus
         _write(root, "broken.py", _BROKEN.format(name="domain", label="Broken"))
@@ -451,6 +491,18 @@ class TestRunner:
         # failure shows the runner initializes every domain, not just one.
         root, workdir = corpus
         source = _GOOD + _BROKEN.format(name="second", label="Second")
+        _write(root, "two_domains.py", source)
+
+        report = run_examples(root, ["two_domains.py"], {}, workdir)
+
+        assert len(report["failures"]) == 1
+        assert report["failures"][0].startswith("two_domains.py: ")
+        assert "Unresolved references" in report["failures"][0]
+
+    def test_a_broken_first_domain_is_initialized(self, corpus):
+        # The reverse order: the broken domain comes first.
+        root, workdir = corpus
+        source = _BROKEN.format(name="first", label="First") + _GOOD
         _write(root, "two_domains.py", source)
 
         report = run_examples(root, ["two_domains.py"], {}, workdir)
@@ -539,8 +591,10 @@ class TestRunner:
 
         assert report == {"count": 1, "failures": []}
         assert not (root / written).exists()
-        assert not (workdir / written).exists()
         assert not (Path.cwd() / written).exists()
+        # The file lands in the example's own folder under the test's folder,
+        # which pytest removes, so nothing is left in the system temp folder.
+        assert (workdir / "examples" / "0" / written).is_file()
 
     def test_a_package_runs_as_one_example(self, corpus):
         root, workdir = corpus
@@ -610,3 +664,27 @@ class TestIncludeGuard:
             "t/shop/__init__.py",
             "t/shop/models.py",
         ]
+
+    def test_an_include_in_an_html_comment_or_escaped_does_not_count(self, tmp_path):
+        root, docs = tmp_path / "docs_src", tmp_path / "docs"
+        _write(root, "guides/hidden.py", "x = 1\n")
+        _write(root, "guides/escaped.py", "x = 1\n")
+        _write(
+            docs,
+            "page.md",
+            '<!--\n--8<-- "guides/hidden.py"\n-->\n\n;--8<-- "guides/escaped.py"\n',
+        )
+
+        assert unincluded_files(root, docs) == [
+            "guides/escaped.py",
+            "guides/hidden.py",
+        ]
+
+    def test_importing_only_the_package_does_not_cover_its_modules(self, tmp_path):
+        root, docs = tmp_path / "docs_src", tmp_path / "docs"
+        _write(root, "t/shop/__init__.py", "domain = None\n")
+        _write(root, "t/shop/models.py", "x = 1\n")
+        _write(root, "t/chapter.py", "import shop\n")
+        _write(docs, "page.md", '--8<-- "t/chapter.py:full"\n')
+
+        assert unincluded_files(root, docs) == ["t/shop/models.py"]

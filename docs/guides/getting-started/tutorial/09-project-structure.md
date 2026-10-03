@@ -85,11 +85,16 @@ Projections and projectors go in `bookshelf/projections.py`:
 
 Notice that we no longer pass `traverse=False` to `domain.init()`. With
 a proper package structure, Protean auto-discovers all domain elements
-by scanning the package:
+by scanning the package.
+
+`bookshelf/__init__.py` only creates the domain. The code that starts the
+application imports it and calls `init()` once. In the next chapter, that
+is the API module:
 
 ```python
-# In __init__.py
-domain.init()  # traverse=True by default — scans bookshelf/ for elements
+from bookshelf import domain
+
+domain.init()  # traverse=True by default: scans bookshelf/ for elements
 ```
 
 This finds all `@domain.aggregate`, `@domain.command`, `@domain.event`,

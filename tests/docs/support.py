@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import re
 import sys
@@ -53,3 +54,54 @@ def load_example(path: str, root: Path = DOCS_SRC) -> types.ModuleType:
         sys.modules.pop(name, None)
         raise
     return module
+
+
+def package_dirs(root: Path) -> dict[str, Path]:
+    """Map each package's folder name under ``root`` to its folder.
+
+    A package is a folder with an ``__init__.py``. Code imports a ``docs_src``
+    package by its folder name alone, so two packages with the same folder name
+    would shadow each other. That raises ``ValueError``.
+    """
+    packages: dict[str, Path] = {}
+    for init in sorted(root.rglob("__init__.py")):
+        folder = init.parent
+        if folder.name in packages:
+            raise ValueError(
+                f"two docs_src packages share the folder name {folder.name!r}: "
+                f"{packages[folder.name].relative_to(root).as_posix()} and "
+                f"{folder.relative_to(root).as_posix()}"
+            )
+        packages[folder.name] = folder
+    return packages
+
+
+def imported_package_files(
+    tree: ast.AST, root: Path, packages: dict[str, Path]
+) -> set[str]:
+    """Return the package files under ``root`` that the imports in ``tree`` load.
+
+    ``import shop`` loads only ``shop/__init__.py``. ``import shop.models``,
+    ``from shop.models import Thing`` and ``from shop import models`` also load
+    ``shop/models.py``. Paths are relative to ``root``.
+    """
+    dotted: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            dotted.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            dotted.append(node.module)
+            # ``from shop import models`` may name a module, not an attribute.
+            dotted.extend(f"{node.module}.{alias.name}" for alias in node.names)
+
+    loaded: set[str] = set()
+    for name in dotted:
+        package, _, rest = name.partition(".")
+        folder = packages.get(package)
+        if folder is None:
+            continue
+        loaded.add((folder / "__init__.py").relative_to(root).as_posix())
+        module = folder / f"{rest.split('.')[0]}.py"
+        if rest and module.is_file():
+            loaded.add(module.relative_to(root).as_posix())
+    return loaded
