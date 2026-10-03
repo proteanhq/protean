@@ -130,6 +130,13 @@ class TestDefaultReadBlockingStreams:
         assert result == {"a": [], "b": [], "c": []}
         assert broker.blocking_calls == [("a", 0, 1), ("b", 0, 1), ("c", 200, 1)]
 
+    def test_none_from_read_blocking_becomes_an_empty_list(self):
+        broker = _RecordingBroker(messages={"primary": None, "backfill": None})
+
+        result = broker.read_blocking_streams(["primary", "backfill"], "g", "c")
+
+        assert result == {"primary": [], "backfill": []}
+
     def test_default_with_no_streams_reads_nothing(self):
         broker = _RecordingBroker()
 
@@ -163,11 +170,14 @@ class TestReadBlockingStreamsWrapper:
             messages={"primary": [MESSAGE]}, errors=[ConnectionError("gone")]
         )
 
-        result = broker.read_blocking_streams(["primary", "backfill"], "g", "c")
+        result = broker.read_blocking_streams(
+            ["primary", "backfill"], "g", "c", timeout_ms=750, count=3
+        )
 
         assert result == {"primary": [MESSAGE], "backfill": []}
         assert broker.reconnects == 1
-        assert [call[0] for call in broker.blocking_calls] == ["primary", "primary"]
+        # The retry repeats the read with the same timeout and count.
+        assert broker.blocking_calls == [("primary", 0, 3), ("primary", 0, 3)]
 
     def test_connection_error_is_raised_when_reconnect_fails(self):
         broker = _RecordingBroker(errors=[ConnectionError("gone")])

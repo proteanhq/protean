@@ -81,9 +81,9 @@ This design has several important properties:
   mechanism. Failed messages are retried and eventually moved to a dead letter
   queue, just like standard processing.
 
-- **No wait on the wrong lane**: The blocking read waits on both streams at
-  once. If a production event arrives while the Engine is idle, the read
-  returns at once and the event is picked up without delay. When one read
+- **An idle Engine picks up production events at once**: On the Redis broker,
+  the blocking read waits on both streams at once. If a production event
+  arrives while the Engine is idle, the read returns with it. When one read
   returns entries on both streams, the primary entries are processed first.
 
 ---
@@ -291,8 +291,9 @@ ordering applies within a single outbox polling cycle.
 
 For most use cases, the key guarantee is simple: **production events are never
 blocked by migration events.** The Engine always checks the primary stream
-before it reads backfill, and while idle it waits on both streams at once, so
-a production event never waits behind an empty backfill read.
+before it reads backfill. On the Redis broker, an idle Engine waits on both
+streams at once, so a production event never waits behind an empty backfill
+read.
 
 ---
 

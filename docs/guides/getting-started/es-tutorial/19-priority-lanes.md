@@ -131,10 +131,10 @@ The `StreamSubscription` polling cycle:
 
 1. **Read from primary stream** (non-blocking)
 2. If messages found → process them, go to step 1
-3. If primary is empty → **read from backfill stream** (blocking, 1s
+3. If primary is empty → **one blocking read on both streams** (1s
    max)
-4. If backfill messages found → process them, go to step 1
-5. If both empty → wait and repeat
+4. Process the primary messages from that read, then the backfill
+   messages, and go to step 1
 
 Production traffic always takes precedence. The backfill stream is only
 touched when production is idle.

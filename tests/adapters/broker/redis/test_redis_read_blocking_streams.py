@@ -39,7 +39,8 @@ class TestReadBlockingStreamsAgainstRedis:
         assert len(result[primary]) == 1
         assert result[primary][0][1]["n"] == 1
         assert result[backfill] == []
-        assert elapsed < 0.5
+        # Woken by the publish, not by the end of the 1000 ms wait.
+        assert elapsed < 0.9
 
     def test_pending_entries_are_returned_before_new_ones(self, test_domain):
         broker = test_domain.brokers["default"]

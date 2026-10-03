@@ -168,6 +168,7 @@ class TestPriorityReading:
             return []
 
         sub.broker.read_blocking = MagicMock(side_effect=_read_blocking)
+        sub.broker.read_blocking_streams = MagicMock(return_value={})
 
         # Run a single iteration of the poll loop then stop
         processed_batches = []
@@ -181,10 +182,12 @@ class TestPriorityReading:
 
         await sub.poll()
 
-        # Only the primary stream was read
+        # Only the primary stream was read, and the combined read never ran
         assert call_count == 1
         sub.broker.read_blocking.assert_called_once()
         assert sub.broker.read_blocking.call_args.kwargs["stream"] == "orders"
+        sub.broker.read_blocking_streams.assert_not_called()
+        assert processed_batches == [primary_messages]
 
     @pytest.mark.asyncio
     async def test_primary_empty_reads_both_streams(self):

@@ -398,8 +398,7 @@ class SubscriptionConfig:
         blocking_timeout_ms: Timeout for blocking reads in milliseconds (STREAM only).
             Must be positive: 0 would make the poll loop query the broker with
             no pause. With priority lanes on, the value (capped at 1000 ms)
-            also bounds how long a new primary message can wait while the
-            subscription waits on the backfill stream.
+            is the longest wait of an idle read on both streams.
         max_retries: Maximum retry attempts before moving to DLQ (STREAM only).
         retry_delay_seconds: Delay between retries in seconds (STREAM only).
         enable_dlq: Whether to enable dead letter queue (STREAM only).

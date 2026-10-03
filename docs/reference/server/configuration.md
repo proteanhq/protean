@@ -239,7 +239,7 @@ way.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `blocking_timeout_ms` | int | 5000 | Longest wait of an idle blocking read, in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. A read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the read waits on the primary and the backfill stream at once, and a message on either one ends the wait |
+| `blocking_timeout_ms` | int | 5000 | Longest wait of an idle blocking read, in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. A read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the Redis broker waits on the primary and the backfill stream at once, and a message on either one ends the wait |
 | `max_retries` | int | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | int | 1 | Delay between retries |
 | `enable_dlq` | bool | true | Enable dead letter queue |

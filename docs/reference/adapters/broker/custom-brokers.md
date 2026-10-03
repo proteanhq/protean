@@ -292,13 +292,13 @@ without the capability.
 
 `read_blocking_streams` reads several streams in one call and returns a dict
 with one key per stream, in the order given. Stream subscriptions with
-priority lanes use it to wait on the primary and the backfill stream at once.
+priority lanes use it to read the primary and the backfill stream together.
 The default `_read_blocking_streams` on `BaseBroker` builds on
 `_read_blocking`. It reads every stream but the last without waiting, and
 waits on the last stream only if the others are empty. While it waits, it
 does not see the earlier streams. Override `_read_blocking_streams` if your
 backend can wait on several streams in one call, as the Redis broker does
-with a single `XREADGROUP`:
+with one blocking `XREADGROUP`:
 
 ```python
 def _read_blocking_streams(
@@ -308,7 +308,7 @@ def _read_blocking_streams(
     consumer_name: str,
     timeout_ms: int = 5000,
     count: int = 1,  # Applies to each stream
-) -> dict[str, list[tuple[str, dict]]]:
+) -> dict[str, list[tuple[str, dict[str, Any]]]]:
     ...
 ```
 

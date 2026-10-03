@@ -231,8 +231,9 @@ python migrate_loyalty_tiers.py
    events are published to `customer:backfill` instead of `customer`.
 
 3. **The StreamSubscription** first does a non-blocking read on `customer`
-   (primary). Only when the primary stream is empty does it fall back to
-   `customer:backfill`. Production events are always processed first.
+   (primary). Only when the primary stream is empty does it read
+   `customer:backfill`, in one blocking read that waits on both streams.
+   Production events are always processed first.
 
 4. **No handler changes needed**: The `CustomerProjector` processes events
    identically regardless of which lane they arrived on.

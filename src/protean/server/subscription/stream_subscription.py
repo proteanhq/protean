@@ -366,8 +366,8 @@ class StreamSubscription(BaseSubscription):
            messages, and loop back to step 1
 
         This ensures production events are always processed before backfill events.
-        A production message that arrives during the wait in step 3 ends the
-        wait, so an idle subscription picks it up at once.
+        On the Redis broker, a production message that arrives during the wait
+        in step 3 ends the wait, so an idle subscription picks it up at once.
         """
         batches_processed = 0
         consecutive_errors = 0
@@ -413,15 +413,11 @@ class StreamSubscription(BaseSubscription):
                         await self._maybe_trim(self.stream_category)
                         batches_processed += 1
 
-                    # The backfill entries are already delivered, so they are
-                    # processed like the rest of a batch, even if a drain began
-                    # meanwhile. The exception is a breaker the primary batch
-                    # opened (for example, a failed HALF_OPEN probe): handlers
-                    # must not run while it is OPEN. The entries then stay
-                    # pending and the next read after the reset window
-                    # redelivers them.
-                    if backfill and self.circuit_state == CircuitBreakerState.OPEN:
-                        backfill = []
+                    # The backfill entries are already delivered to this
+                    # consumer, so they are processed like the rest of one
+                    # batch, even if a drain began or the primary batch opened
+                    # the breaker. The consumer name changes on every restart,
+                    # so an entry left pending here would never be read again.
                     if backfill:
                         await self.process_batch(backfill, stream=self.backfill_stream)
                         await self._maybe_trim(self.backfill_stream)
@@ -661,12 +657,13 @@ class StreamSubscription(BaseSubscription):
     async def _read_lanes_blocking(
         self,
     ) -> tuple[list[tuple[str, dict[str, Any]]], list[tuple[str, dict[str, Any]]]]:
-        """Blocking read that waits on the primary and backfill streams at once.
+        """Blocking read on the primary and backfill streams in one call.
 
         Uses ``read_blocking_streams`` with a timeout capped at 1 second, so the
-        poll loop re-checks for shutdown at least once a second. A message on
-        either stream ends the wait, so a production message that arrives while
-        the subscription is idle is picked up at once.
+        poll loop re-checks for shutdown at least once a second. On the Redis
+        broker, a message on either stream ends the wait, so a production
+        message that arrives while the subscription is idle is picked up at
+        once.
 
         Returns:
             A ``(primary, backfill)`` pair of ``(id, payload)`` tuple lists.
@@ -692,8 +689,8 @@ class StreamSubscription(BaseSubscription):
             return [], []
 
         return (
-            result.get(self.stream_category, []),
-            result.get(self.backfill_stream, []),
+            result.get(self.stream_category) or [],
+            result.get(self.backfill_stream) or [],
         )
 
     async def get_next_batch_of_messages(self) -> list[tuple[str, dict[str, Any]]]:

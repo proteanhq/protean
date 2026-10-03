@@ -647,10 +647,12 @@ class BaseBroker(metaclass=ABCMeta):
         timeout_ms: int = 5000,
         count: int = 1,
     ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
-        """Read messages from several streams, waiting on all of them at once.
+        """Read messages from several streams in one call.
 
         The result has one key per requested stream, in the order given, with
-        an empty list for a stream that returned nothing. An empty ``streams``
+        an empty list for a stream that returned nothing. The default
+        implementation waits only on the last stream. Brokers that can wait on
+        all of them at once, such as Redis, override ``_read_blocking_streams``. An empty ``streams``
         returns an empty dict without reading.
 
         Args:
@@ -723,8 +725,9 @@ class BaseBroker(metaclass=ABCMeta):
                 result[stream] = messages
                 return result
 
-        result[last] = self._read_blocking(
-            last, consumer_group, consumer_name, timeout_ms, count
+        result[last] = (
+            self._read_blocking(last, consumer_group, consumer_name, timeout_ms, count)
+            or []
         )
         return result
 

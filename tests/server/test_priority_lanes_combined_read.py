@@ -152,9 +152,39 @@ class TestCombinedRead:
         sub.broker.read_blocking_streams.assert_not_called()
 
 
+class TestCombinedReadTickOutcome:
+    @pytest.mark.asyncio
+    async def test_primary_only_reply_counts_as_a_work_tick(self, lanes_domain):
+        sub = _lanes_subscription(
+            lanes_domain,
+            {"test::user": [PRIMARY_MESSAGE], "test::user:backfill": []},
+        )
+        sub.last_work_tick_finished = None
+        sub.last_idle_tick_started = None
+
+        await sub.poll()
+
+        assert sub.last_work_tick_finished is not None
+        assert sub.last_idle_tick_started is None
+
+    @pytest.mark.asyncio
+    async def test_none_for_a_stream_is_read_as_no_messages(self, lanes_domain):
+        sub = _lanes_subscription(
+            lanes_domain,
+            {"test::user": None, "test::user:backfill": [BACKFILL_MESSAGE]},
+        )
+        sub.last_work_tick_finished = None
+
+        await sub.poll()
+
+        assert sub.batches == [([BACKFILL_MESSAGE], sub.backfill_stream)]
+        # The turn finished normally instead of raising on the None value.
+        assert sub.last_work_tick_finished is not None
+
+
 class TestBackfillAfterPrimaryBatch:
     @pytest.mark.asyncio
-    async def test_backfill_is_skipped_when_primary_batch_opens_the_breaker(
+    async def test_backfill_is_processed_when_primary_batch_opens_the_breaker(
         self,
         lanes_domain,
     ):
@@ -178,7 +208,13 @@ class TestBackfillAfterPrimaryBatch:
         await sub.poll()
 
         assert sub.broker.read_blocking_streams.call_args.kwargs["count"] == 1
-        assert sub.batches == [([PRIMARY_MESSAGE], sub.stream_category)]
+        # The backfill entry is already delivered to this consumer, and the
+        # consumer name changes on restart, so it is processed now rather than
+        # left pending where no later read would find it.
+        assert sub.batches == [
+            ([PRIMARY_MESSAGE], sub.stream_category),
+            ([BACKFILL_MESSAGE], sub.backfill_stream),
+        ]
         assert sub.circuit_state == CircuitBreakerState.OPEN
 
     @pytest.mark.asyncio

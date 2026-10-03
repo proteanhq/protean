@@ -118,12 +118,13 @@ class TestNewMessageRead:
         client = _FakeRedisClient([[], []])
         broker = _broker(client)
 
-        assert _read(broker, timeout_ms) == EMPTY
+        assert _read(broker, timeout_ms, count=7) == EMPTY
 
         assert len(client.reads) == 2
         _, ids, kwargs = client.reads[1]
         assert ids == [("orders", ">"), ("orders:backfill", ">")]
         assert kwargs["block"] == expected_block
+        assert kwargs["count"] == 7
 
     def test_new_entries_are_grouped_by_stream(self):
         new = [[b"orders", [_entry("5-0", 5)]]]
@@ -179,7 +180,7 @@ class TestErrors:
         )
         broker = _broker(client)
 
-        result = _read(broker, timeout_ms)
+        result = _read(broker, timeout_ms, count=7)
 
         assert result == {"orders": [], "orders:backfill": [("9-0", {"n": 9})]}
         # Groups were created once up front, then again on both streams after
@@ -198,6 +199,7 @@ class TestErrors:
         _, ids, kwargs = client.reads[2]
         assert ids == [("orders", ">"), ("orders:backfill", ">")]
         assert kwargs["block"] == expected_block
+        assert kwargs["count"] == 7
 
     def test_second_nogroup_returns_empty_without_looping(self, caplog):
         nogroup = redis.ResponseError("NOGROUP No such consumer group")
