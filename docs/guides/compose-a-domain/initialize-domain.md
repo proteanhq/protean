@@ -45,7 +45,7 @@ infrastructure, like databases, brokers, and caches. They are useful for
 testing and prototyping. But for production purposes, you will want to choose
 a database that actually persists data.
 
-```python hl_lines="5-9 11"
+```python hl_lines="5-8 10"
 --8<-- "guides/compose-a-domain/017.py:full"
 ```
 

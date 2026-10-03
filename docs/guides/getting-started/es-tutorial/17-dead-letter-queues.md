@@ -144,6 +144,12 @@ exhausting retries. This is almost never what you want in production.
 Next, we set up proactive monitoring to catch problems before they
 fill the DLQ.
 
+## Full Source
+
+```python
+--8<-- "guides/getting-started/es-tutorial/ch17.py:full"
+```
+
 ## Next
 
 [Chapter 18: Monitoring Subscription Health →](18-monitoring-health.md)

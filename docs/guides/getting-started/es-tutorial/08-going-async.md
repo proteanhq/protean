@@ -168,6 +168,12 @@ The system is now truly asynchronous. In the next chapter, we will add
 account-to-account transfers. A multi-aggregate workflow that requires a
 process manager.
 
+## Full Source
+
+```python
+--8<-- "guides/getting-started/es-tutorial/ch08.py:full"
+```
+
 ## Next
 
 [Chapter 9: Transferring Funds →](09-transferring-funds.md)

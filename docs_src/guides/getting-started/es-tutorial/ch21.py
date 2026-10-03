@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 """Chapter 21: Event Store as a Database
 
 Demonstrates the domain setup for using the event store as the primary source
@@ -158,3 +159,4 @@ class AccountCommandHandler:
 
 
 # --8<-- [end:domain_setup]
+# --8<-- [end:full]

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 """Chapter 17: Dead Letter Queues
 
 Demonstrates the domain setup for dead letter queue management.  When an event
@@ -160,3 +161,4 @@ class AccountCommandHandler:
 
 
 # --8<-- [end:domain_setup]
+# --8<-- [end:full]

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 """Chapter 8: Going Async -- The Server
 
 This chapter is about configuration and running the Protean server
@@ -302,3 +303,4 @@ class AccountSummaryProjector:
 #
 # ---------------------------------------------------------------
 # --8<-- [end:configuration_example]
+# --8<-- [end:full]

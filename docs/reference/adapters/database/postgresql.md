@@ -123,7 +123,7 @@ during `protean db setup`:
 You can supply a custom SQLAlchemy Model in place of the one that Protean
 generates internally, allowing you full customization.
 
-```python hl_lines="8-11 20-23"
+```python hl_lines="10-15 24-27"
 --8<-- "adapters/database/postgresql/001.py:full"
 ```
 

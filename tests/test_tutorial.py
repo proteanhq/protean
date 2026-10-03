@@ -8,17 +8,19 @@ Runs with in-memory adapters by default.  Pass ``--db``, ``--store``,
 and ``--broker`` to pytest to exercise real adapters (same flags used
 by the rest of the test suite).
 
-Note: ch09 and ch10 import from a ``bookshelf`` package and cannot be
-loaded standalone.  They are tested implicitly through the documentation
-build and are excluded here.
+Chapter 9 splits the code into a ``bookshelf`` package next to the chapter
+files, and ch10 imports from it, so the ``tutorial/`` folder goes on
+``sys.path`` before either is loaded.
 """
 
 import importlib.util
 import os
+import subprocess
 import sys
 import types
 
 import pytest
+from fastapi.testclient import TestClient
 
 from protean.exceptions import ValidationError
 
@@ -34,6 +36,10 @@ _TUTORIAL_DIR = os.path.join(
     "tutorial",
 )
 _TUTORIAL_DIR = os.path.abspath(_TUTORIAL_DIR)
+
+# Chapter 9's ``bookshelf`` package lives in the tutorial folder.
+if _TUTORIAL_DIR not in sys.path:
+    sys.path.insert(0, _TUTORIAL_DIR)
 
 
 def _load_chapter(num: int) -> types.ModuleType:
@@ -59,6 +65,20 @@ ch04 = _load_chapter(4)
 ch05 = _load_chapter(5)
 ch06 = _load_chapter(6)
 ch07 = _load_chapter(7)
+
+# Chapter 9 is the ``bookshelf`` package. Import its modules before ch10, and
+# record what they registered: ch10 calls ``domain.init()``, whose traversal
+# would register the modules again and hide a module that registers nothing.
+import bookshelf
+import bookshelf.commands
+import bookshelf.events
+import bookshelf.handlers
+import bookshelf.models
+import bookshelf.projections
+
+_BOOKSHELF_REGISTERED = set(bookshelf.domain.registry._elements_by_name)
+
+ch10 = _load_chapter(10)
 ch13 = _load_chapter(13)
 ch14 = _load_chapter(14)
 ch15 = _load_chapter(15)
@@ -67,7 +87,7 @@ ch20 = _load_chapter(20)
 ch21 = _load_chapter(21)
 
 # Chapters that have projections (need DB artifact create/drop with real DBs)
-_HAS_PROJECTIONS = {ch07, ch21}
+_HAS_PROJECTIONS = {ch07, bookshelf, ch10, ch21}
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +428,90 @@ class TestTutorialCh07(_TutorialBase):
             updated = catalog_repo.get(gatsby.id)
             assert updated.price == 15.99
             assert updated.title == "The Great Gatsby"
+
+
+# ---------------------------------------------------------------------------
+# PART II (continued): The Package and the API (Ch 9-10)
+# ---------------------------------------------------------------------------
+@pytest.mark.no_test_domain
+class TestTutorialCh09(_TutorialBase):
+    _chapter_mod = bookshelf
+
+    def test_package_registers_every_module(self):
+        """Ch9: The split modules register into the one ``bookshelf`` domain."""
+        assert {
+            "Book",
+            "Order",
+            "BookAdded",
+            "AddBook",
+            "BookCommandHandler",
+            "BookCatalog",
+            "BookCatalogProjector",
+        } <= _BOOKSHELF_REGISTERED
+
+    def test_importing_the_package_alone_registers_nothing(self):
+        """Ch9: ``__init__.py`` only creates the domain; the modules register."""
+        code = (
+            "import bookshelf; print(len(bookshelf.domain.registry._elements_by_name))"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=_TUTORIAL_DIR,
+        )
+        assert result.stdout.strip() == "0"
+
+    def test_adding_a_book_fills_inventory_and_catalog(self):
+        """Ch9: A command runs through handlers and the projector across modules."""
+        domain = bookshelf.domain
+        with domain.domain_context():
+            book_id = domain.process(
+                bookshelf.commands.AddBook(
+                    title="Dune",
+                    author="Frank Herbert",
+                    isbn="9780441013593",
+                    price_amount=9.99,
+                )
+            )
+
+            inventory = (
+                domain.repository_for(bookshelf.models.Inventory)
+                .query.filter(book_id=book_id)
+                .all()
+            )
+            assert inventory.total == 1
+            assert inventory.first.quantity == 10
+
+            entry = domain.view_for(bookshelf.projections.BookCatalog).get(book_id)
+            assert entry.title == "Dune"
+            assert entry.price == 9.99
+
+
+@pytest.mark.no_test_domain
+class TestTutorialCh10(_TutorialBase):
+    _chapter_mod = ch10
+
+    def test_chapter_uses_the_package_domain(self):
+        """Ch10: The API is built on chapter 9's domain, not a new one."""
+        assert ch10.domain is bookshelf.domain
+
+    def test_added_book_shows_in_the_catalog(self):
+        """Ch10: POST a book, then read it back from the catalog endpoint."""
+        client = TestClient(ch10.app)
+
+        response = client.post(
+            "/books",
+            json={"title": "Dune", "author": "Frank Herbert", "price_amount": 9.99},
+        )
+        assert response.status_code == 200
+        book_id = response.json()["book_id"]
+
+        entry = client.get(f"/catalog/{book_id}")
+        assert entry.status_code == 200
+        assert entry.json()["title"] == "Dune"
+        assert entry.json()["price"] == 9.99
 
 
 # ---------------------------------------------------------------------------
