@@ -180,11 +180,13 @@ results = []
 for index, item in enumerate(job["files"]):
     label = item["file"]
     blocks = [b for b in item["blocks"] if not b["fragment"]]
-    namespace = {
-        "__name__": "_dx_snippet_%d_" % index,
-        "__file__": item["path"],
-        "__builtins__": builtins,
-    }
+    # Register the namespace as a real module: code that looks a class's
+    # module up in ``sys.modules`` (dataclasses, typing) must find it.
+    module = types.ModuleType("_dx_snippet_%d_" % index)
+    sys.modules[module.__name__] = module
+    namespace = module.__dict__
+    namespace["__file__"] = item["path"]
+    namespace["__builtins__"] = builtins
     for name in protean.__all__:
         namespace[name] = getattr(protean, name)
     for name in protean.fields.__all__:
@@ -722,6 +724,15 @@ def test_an_annotation_naming_an_undefined_type_fails_on_every_version(tmp_path,
 def test_an_unnamed_domain_is_named_after_the_snippet_module(tmp_path):
     root = _skill(
         tmp_path, "unnamed = Domain()\nassert unnamed.name == __name__, unnamed.name"
+    )
+    assert _run(root, tmp_path)[0]["failure"] is None
+
+
+def test_a_dataclass_with_a_string_annotation_runs(tmp_path):
+    root = _skill(
+        tmp_path,
+        "from dataclasses import dataclass\n\n@dataclass\nclass Point:\n"
+        "    value: 'int' = 1\n\nassert Point().value == 1",
     )
     assert _run(root, tmp_path)[0]["failure"] is None
 
