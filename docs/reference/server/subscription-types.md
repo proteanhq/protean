@@ -75,7 +75,8 @@ StreamSubscription uses Redis's `XREADGROUP` with blocking, which means:
 
 - No CPU-intensive polling
 - Low latency - messages are delivered as soon as available
-- Configurable timeout for periodic maintenance
+- Configurable timeout for periodic maintenance (the Redis broker caps each
+  wait at 1000 ms)
 
 ```python
 # Internally uses blocking read
@@ -83,7 +84,7 @@ messages = broker.read_blocking(
     stream=stream_category,
     consumer_group=consumer_group,
     consumer_name=consumer_name,
-    timeout_ms=5000,  # Block for up to 5 seconds
+    timeout_ms=5000,  # Redis caps the wait at 1 second
     count=100,        # Read up to 100 messages
 )
 ```
@@ -145,7 +146,7 @@ class OrderEventHandler:
 | Option | Default | Description |
 | ------ | ------- | ----------- |
 | `messages_per_tick` | 10 | Messages to read per batch |
-| `blocking_timeout_ms` | 5000 | Blocking read timeout in milliseconds |
+| `blocking_timeout_ms` | 5000 | Blocking read timeout in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. Without priority lanes, a read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the subscription waits this long on the backfill stream before it checks the primary stream again, so a smaller value lowers the worst-case pickup delay for production messages and sends more reads to Redis while idle |
 | `max_retries` | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | 1 | Delay between retries |
 | `enable_dlq` | true | Whether to use dead letter queue |

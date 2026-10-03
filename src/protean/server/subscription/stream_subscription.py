@@ -15,7 +15,7 @@ from protean.utils.eventing import Message
 from protean.utils.telemetry import get_domain_metrics
 
 from . import BaseSubscription
-from .profiles import CircuitBreakerState
+from .profiles import _BLOCKING_TIMEOUT_ERROR, CircuitBreakerState
 
 if TYPE_CHECKING:
     from protean.server.engine import Engine
@@ -104,6 +104,12 @@ class StreamSubscription(BaseSubscription):
             if blocking_timeout_ms is not None
             else int(stream_config.get("blocking_timeout_ms", 5000))
         )
+        # ``validate()`` rejects this too, but the constructor is also reached
+        # without a ``SubscriptionConfig``. A zero wait would spin the poll loop.
+        if resolved_blocking_timeout_ms <= 0:
+            raise ConfigurationError(
+                f"{_BLOCKING_TIMEOUT_ERROR}, got {resolved_blocking_timeout_ms}"
+            )
         resolved_max_retries: int = (
             max_retries
             if max_retries is not None
@@ -628,7 +634,7 @@ class StreamSubscription(BaseSubscription):
                 stream=self.stream_category,
                 consumer_group=self.consumer_group,
                 consumer_name=self.consumer_name,
-                timeout_ms=0,  # Non-blocking
+                timeout_ms=0,  # 0 = return immediately
                 count=self._current_batch_size(),
             )
         except Exception as e:

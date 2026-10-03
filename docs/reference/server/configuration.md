@@ -239,7 +239,7 @@ way.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `blocking_timeout_ms` | int | 5000 | Blocking read timeout in milliseconds |
+| `blocking_timeout_ms` | int | 5000 | Blocking read timeout in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. Without priority lanes, a read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the subscription waits this long on the backfill stream before it checks the primary stream again, so a smaller value lowers the worst-case pickup delay for production messages and sends more reads to Redis while idle |
 | `max_retries` | int | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | int | 1 | Delay between retries |
 | `enable_dlq` | bool | true | Enable dead letter queue |

@@ -278,20 +278,20 @@ def test_read_blocking_connection_recovery_failure(broker):
 
 
 def test_read_blocking_with_zero_timeout(broker):
-    """Test read_blocking with zero timeout (block indefinitely)."""
+    """Test read_blocking with zero timeout (return immediately)."""
     stream = "test_stream"
     consumer_group = "test_consumer_group"
     consumer_name = "test_consumer"
 
-    # Publish a message so we don't block forever
+    # Publish a message so the immediate read has something to return
     broker.publish(stream, {"test": "data"})
 
-    # Read with zero timeout (would block indefinitely if no messages)
+    # Read with zero timeout (returns at once, even with no messages)
     result = broker.read_blocking(
         stream=stream,
         consumer_group=consumer_group,
         consumer_name=consumer_name,
-        timeout_ms=0,  # Block indefinitely (but we have a message)
+        timeout_ms=0,  # Return immediately
         count=1,
     )
 

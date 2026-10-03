@@ -397,15 +397,19 @@ class RedisBroker(BaseBroker):
     ) -> list[tuple[str, dict[str, Any]]]:
         """Read messages from Redis Stream using blocking mode with XREADGROUP.
 
-        This method uses Redis's XREADGROUP with BLOCK parameter for efficient
-        blocking reads, avoiding CPU waste from polling. It first checks for
-        pending messages (from previous failed attempts) before reading new messages.
+        This method uses Redis's XREADGROUP with the BLOCK parameter, so a
+        positive timeout waits on the server instead of polling. It first checks
+        for pending messages (from previous failed attempts) before reading new
+        messages.
 
         Args:
             stream (str): The stream from which to read messages
             consumer_group (str): The consumer group identifier
             consumer_name (str): The unique consumer name within the group
-            timeout_ms (int): Timeout in milliseconds to wait for messages (0 = block indefinitely)
+            timeout_ms (int): Timeout in milliseconds to wait for new messages.
+                ``0`` returns immediately, without waiting. Positive values are
+                capped at 1000 ms. A negative value is rejected and logged as a
+                read failure.
             count (int): Maximum number of messages to read
 
         Returns:
@@ -413,7 +417,20 @@ class RedisBroker(BaseBroker):
         """
         self._ensure_group(consumer_group, stream)
 
+        block: int | None = None
         try:
+            # redis-py sends BLOCK only when ``block`` is not None, and Redis
+            # reads ``BLOCK 0`` as "wait forever". So a zero timeout passes None
+            # to skip the wait. Positive timeouts are capped at 1000 ms, so a
+            # caller's poll loop re-checks for shutdown at least once a second
+            # and the wait stays under redis-py's default 5 s socket timeout.
+            # The new-message read and the NOGROUP retry share this value. It is
+            # computed inside the ``try`` so a bad ``timeout_ms`` is logged like
+            # any other read failure.
+            if timeout_ms < 0:
+                raise ValueError(f"timeout_ms must be non-negative, got {timeout_ms}")
+            block = None if timeout_ms == 0 else min(timeout_ms, 1000)
+
             # First, try to read pending messages (messages that were delivered but not ACKed)
             # Use "0" to read pending messages for this consumer
             response = self._client.xreadgroup(
@@ -421,7 +438,8 @@ class RedisBroker(BaseBroker):
                 consumer_name,
                 {stream: "0"},  # "0" means read pending messages
                 count=count,
-                block=0,  # Non-blocking for pending messages
+                # No BLOCK: Redis returns pending entries at once for an id
+                # other than ">".
             )
 
             # If we got pending messages, return them
@@ -436,17 +454,13 @@ class RedisBroker(BaseBroker):
                 if messages:
                     return messages
 
-            # No pending messages, now try to read new messages with blocking
-            # Limit blocking timeout to 1000ms (1 second) to ensure signal responsiveness
-            # This allows the event loop to process signals more frequently
-            effective_timeout = min(timeout_ms, 1000)
-
+            # No pending messages, now read new messages, waiting up to ``block``
             response = self._client.xreadgroup(
                 consumer_group,
                 consumer_name,
                 {stream: NEW_MESSAGES_MARK},
                 count=count,
-                block=effective_timeout,  # Block for at most 1 second
+                block=block,
             )
 
             if not response:
@@ -477,7 +491,7 @@ class RedisBroker(BaseBroker):
                         consumer_name,
                         {stream: NEW_MESSAGES_MARK},
                         count=count,
-                        block=min(timeout_ms, 1000),
+                        block=block,
                     )
                     if not response:
                         return []

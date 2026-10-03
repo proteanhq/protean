@@ -390,7 +390,7 @@ class TestStreamReadOutcome:
         sub.stream_category = "orders"
         sub.consumer_group = "group"
         sub.consumer_name = "consumer"
-        sub.blocking_timeout_ms = 0
+        sub.blocking_timeout_ms = 100
         sub._current_batch_size = lambda: 1
 
         assert await sub.get_next_batch_of_messages() == []
