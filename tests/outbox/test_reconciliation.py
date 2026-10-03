@@ -2,6 +2,7 @@
 store whose relational outbox row did not land."""
 
 import logging
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -15,9 +16,15 @@ from protean.core.upcaster import BaseUpcaster
 from protean.domain import Domain
 from protean.fields import Identifier, Integer, String
 from protean.utils.eventing import Message, MessageHeaders, Metadata
+from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
-from protean.utils.outbox import OutboxStatus, _is_outboxed_event, reconcile_outbox
-from tests.shared import MESSAGE_DB_URI
+from protean.utils.outbox import (
+    OutboxStatus,
+    _is_outboxed_event,
+    _written_after,
+    reconcile_outbox,
+)
+from tests.shared import MESSAGE_DB_URI, FrozenClock
 
 
 class Account(BaseAggregate):
@@ -869,6 +876,18 @@ class SequencedCreditHandler(BaseEventHandler):
         pass
 
 
+class CreditAccount(BaseCommand):
+    amount = Integer(required=True)
+
+
+class CreditHandler(BaseCommandHandler):
+    @handle(CreditAccount)
+    def credit(self, command):
+        account = Account(balance=command.amount)
+        account.raise_(Credited(account_id=account.id, amount=command.amount))
+        current_domain.repository_for(Account).add(account)
+
+
 def _with_external_brokers(*brokers):
     def configure(domain):
         domain.config["outbox"]["external_brokers"] = list(brokers)
@@ -929,8 +948,21 @@ class TestReconcileExternalBrokers:
                 "ext-b",
             ]
 
-    def test_rebuilt_rows_match_what_the_unit_of_work_wrote(self, tmp_path):
-        domain = self._domain(tmp_path, "ext-a", "ext-b")
+    def test_rebuilt_rows_match_what_the_unit_of_work_wrote_at_default_priority(
+        self, tmp_path
+    ):
+        """Raised through a command, so the correlation and causation ids carry
+        real values. Priority matches only at the default, since the original
+        request's priority is not stored with the event."""
+        domain = self._domain(
+            tmp_path,
+            "ext-a",
+            "ext-b",
+            elements=(
+                (CreditAccount, {"part_of": Account}),
+                (CreditHandler, {"part_of": Account}),
+            ),
+        )
         fields = (
             "message_id",
             "stream_name",
@@ -944,12 +976,16 @@ class TestReconcileExternalBrokers:
         )
         with domain.domain_context():
             outbox_repo = _create_tables(domain)
-            message_id = self._credit(domain)
+            domain.process(CreditAccount(amount=100), asynchronous=False)
+            message_id = _newest_message_id(domain)
             original = {
                 row.target_broker: {f: getattr(row, f) for f in fields}
                 for row in outbox_repo.find_all_by_message_id(message_id)
             }
             assert sorted(original) == ["default", "ext-a", "ext-b"]
+            for row in original.values():
+                assert row["correlation_id"] is not None
+                assert row["causation_id"] is not None
 
             outbox_repo._dao._delete_all()
             reconcile_outbox(domain)
@@ -1104,3 +1140,88 @@ class TestReconcileExternalBrokers:
             assert reconcile_outbox(domain) == 2
             assert reconcile_outbox(domain) == 0
             assert self._brokers(outbox_repo, message_id) == ["default", "ext-a"]
+
+
+@pytest.mark.no_test_domain
+class TestReconcileSkipsRowsCleanupMayHaveDeleted:
+    """Cleanup deletes delivered rows after ``published_retention_hours`` and
+    abandoned rows after ``abandoned_retention_hours``. A deleted row looks the
+    same as one lost in a crash, so reconcile must not rebuild it and send the
+    event again."""
+
+    def _domain(self, tmp_path, **cleanup):
+        def configure(domain):
+            _with_external_brokers("ext-a")(domain)
+            domain.config["outbox"]["cleanup"].update(cleanup)
+
+        domain = _make_domain_with(
+            tmp_path,
+            (Credited, {"part_of": Account, "published": True}),
+            before_init=configure,
+        )
+        domain.clock = FrozenClock(datetime.now(UTC))
+        return domain
+
+    def _credit_and_lose_rows(self, domain):
+        outbox_repo = _create_tables(domain)
+        account = Account(balance=100)
+        account.raise_(Credited(account_id=account.id, amount=100))
+        domain.repository_for(Account).add(account)
+        message_id = _newest_message_id(domain)
+        assert len(outbox_repo.find_all_by_message_id(message_id)) == 2
+        outbox_repo._dao._delete_all()
+        return outbox_repo, message_id
+
+    def test_event_older_than_the_published_retention_is_not_rebuilt(self, tmp_path):
+        domain = self._domain(tmp_path)
+        with domain.domain_context():
+            outbox_repo, message_id = self._credit_and_lose_rows(domain)
+            domain.clock.advance(timedelta(hours=169))
+
+            assert reconcile_outbox(domain) == 0
+            assert outbox_repo.find_all_by_message_id(message_id) == []
+
+    def test_event_inside_the_published_retention_is_rebuilt(self, tmp_path):
+        domain = self._domain(tmp_path)
+        with domain.domain_context():
+            outbox_repo, message_id = self._credit_and_lose_rows(domain)
+            domain.clock.advance(timedelta(hours=167))
+
+            assert reconcile_outbox(domain) == 2
+            assert len(outbox_repo.find_all_by_message_id(message_id)) == 2
+
+    def test_the_shorter_retention_decides(self, tmp_path):
+        domain = self._domain(
+            tmp_path, published_retention_hours=500, abandoned_retention_hours=24
+        )
+        with domain.domain_context():
+            outbox_repo, message_id = self._credit_and_lose_rows(domain)
+            domain.clock.advance(timedelta(hours=25))
+
+            assert reconcile_outbox(domain) == 0
+            assert outbox_repo.find_all_by_message_id(message_id) == []
+
+    def test_only_events_inside_the_retention_are_rebuilt(self, tmp_path):
+        domain = self._domain(tmp_path)
+        with domain.domain_context():
+            outbox_repo, old_id = self._credit_and_lose_rows(domain)
+            domain.clock.advance(timedelta(hours=169))
+            _, new_id = self._credit_and_lose_rows(domain)
+
+            assert reconcile_outbox(domain) == 2
+            assert outbox_repo.find_all_by_message_id(old_id) == []
+            assert len(outbox_repo.find_all_by_message_id(new_id)) == 2
+
+    def test_message_without_a_stored_time_counts_as_recent(self):
+        cutoff = datetime.now(UTC)
+        message = Message(
+            data={}, metadata=Metadata(headers=MessageHeaders(id="m-1", time=None))
+        )
+        assert _written_after(message, cutoff) is True
+        old = Message(
+            data={},
+            metadata=Metadata(
+                headers=MessageHeaders(id="m-2", time=cutoff - timedelta(seconds=1))
+            ),
+        )
+        assert _written_after(old, cutoff) is False

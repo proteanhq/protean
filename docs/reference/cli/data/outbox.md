@@ -58,7 +58,7 @@ When the outbox already matches the event store (the common, no-crash case)
 nothing is rewritten:
 
 ```
-Nothing to reconcile: the outbox is consistent with the event store.
+Nothing to reconcile: no event in the scanned window is missing its outbox row.
 ```
 
 The scan first checks the single newest message. When that message is one of
@@ -79,6 +79,13 @@ event's rows are saved in one commit. So a broker added to `external_brokers`
 later is not back-filled for events that still have their internal row. The
 count in the output includes the external rows.
 
+Events older than the shorter of `[outbox.cleanup].published_retention_hours`
+(default 168) and `[outbox.cleanup].abandoned_retention_hours` (default 720)
+are skipped. Cleanup deletes rows older than these retentions, and a deleted
+row looks the same as one lost in a crash, so rebuilding it would send the
+event again. An event lost in a crash and left unrepaired for longer than that
+retention is not repaired.
+
 ## Automatic startup sweep
 
 The same reconciliation runs once automatically when the server boots, so a
@@ -92,7 +99,9 @@ protean server --domain=my_domain
 The sweep is gated on the outbox being enabled, reads the store as described
 above, and can never block startup. A failure during
 the sweep is logged and boot continues. With `--workers N` it runs once per
-worker; the idempotent index makes the overlap safe.
+worker; the idempotent index makes the overlap safe. The sweep covers only the
+`default` provider. Run `protean outbox reconcile --provider=<name>` for
+aggregates on other providers.
 
 ## Error Handling
 
@@ -100,7 +109,7 @@ worker; the idempotent index makes the overlap safe.
 |-----------|----------|
 | Invalid domain path | Aborts with "Error loading Protean domain" |
 | Outbox not enabled for the domain | Aborts with "Outbox is not enabled for this domain", naming `default_subscription_type = "stream"` and the older `enable_outbox` switch, which also needs it |
-| Nothing to reconcile | Prints "Nothing to reconcile: the outbox is consistent with the event store" |
+| Nothing to reconcile | Prints "Nothing to reconcile: no event in the scanned window is missing its outbox row" |
 
 ## How reconciliation works
 

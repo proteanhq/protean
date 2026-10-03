@@ -1058,7 +1058,10 @@ def _is_outboxed_event(domain: Any, message: Any, provider_name: str) -> bool:
 def _resolve_outboxed_event_class(
     domain: Any, message: Any, provider_name: str
 ) -> "type[BaseEvent] | None":
-    """The event class the unit of work outboxed *message* as, or ``None``.
+    """The event class whose rows the unit of work writes for *message*, or ``None``.
+
+    For an older event version this is the current class the upcaster chain
+    resolves to.
 
     Returns ``None`` when the unit of work writes no row for *message* in
     *provider_name*'s outbox.
@@ -1138,6 +1141,34 @@ def _rebuilt_partition_key(
     )
 
 
+def _cleanup_cutoff(domain: Any, outbox_config: dict[str, Any]) -> datetime:
+    """The oldest event time whose outbox rows cleanup cannot have deleted yet.
+
+    Uses the shorter of ``outbox.cleanup.published_retention_hours`` and
+    ``outbox.cleanup.abandoned_retention_hours``, with the same defaults the
+    outbox processor uses.
+    """
+    cleanup_config = outbox_config.get("cleanup", {})
+    retention_hours = min(
+        cleanup_config.get("published_retention_hours", 168),
+        cleanup_config.get("abandoned_retention_hours", 720),
+    )
+    now: datetime = domain.clock.now()
+    return now - timedelta(hours=retention_hours)
+
+
+def _written_after(message: Any, cutoff: datetime) -> bool:
+    """Whether *message* was written at or after *cutoff*.
+
+    A message with no stored time counts as recent, so it is not skipped.
+    """
+    headers = message.metadata.headers if message.metadata else None
+    written_at = headers.time if headers else None
+    if written_at is None:
+        return True
+    return ensure_utc_aware(written_at) >= cutoff
+
+
 def reconcile_outbox(
     domain: Any, provider_name: str = "default", limit: int = 1000
 ) -> int:
@@ -1181,6 +1212,13 @@ def reconcile_outbox(
     that still have their internal row. An external row that already exists is
     not created again.
 
+    Cleanup deletes published rows after ``outbox.cleanup.published_retention_hours``
+    and abandoned rows after ``outbox.cleanup.abandoned_retention_hours``. A
+    deleted row cannot be told apart from one lost in a crash, so events older
+    than the shorter of the two retentions are skipped. Otherwise a restart
+    after cleanup would send those events again. An event lost in a crash and
+    left unrepaired for longer than that retention is not repaired.
+
     The return value counts rows created, internal and external.
     """
     if not getattr(domain, "has_outbox", False):
@@ -1207,11 +1245,13 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     external_brokers: list[str] = outbox_config.get("external_brokers", [])
     outbox_repo = domain._get_outbox_repo(provider_name)
 
+    def _existing_brokers(message_id: str) -> set[str]:
+        return {
+            row.target_broker for row in outbox_repo.find_all_by_message_id(message_id)
+        }
+
     def _internal_row_exists(message_id: str) -> bool:
-        return any(
-            row.target_broker == internal_broker
-            for row in outbox_repo.find_all_by_message_id(message_id)
-        )
+        return internal_broker in _existing_brokers(message_id)
 
     # Fast path: if the newest message is one of this domain's outboxed events
     # and already has its internal row, the last unit of work committed fully
@@ -1230,11 +1270,29 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     # newest message overall may be foreign, a command, or a transition event.
     # None of those ever get a row, so a missing row for one of them does not
     # mean the last commit crashed.
-    qualifying = [m for m in messages if _is_outboxed_event(domain, m, provider_name)]
+    # Cleanup deletes delivered and abandoned rows once they pass their
+    # retention, and a deleted row looks the same as one lost in a crash. An
+    # event is never older than its row's ``published_at`` or
+    # ``last_processed_at``, so skipping events older than the shorter
+    # retention skips every row cleanup could have deleted.
+    cutoff = _cleanup_cutoff(domain, outbox_config)
+    qualifying = [
+        m
+        for m in messages
+        if _is_outboxed_event(domain, m, provider_name) and _written_after(m, cutoff)
+    ]
     if not qualifying or _internal_row_exists(qualifying[-1].metadata.headers.id):
         return 0
 
-    missing = [m for m in qualifying if not _internal_row_exists(m.metadata.headers.id)]
+    existing_brokers = {
+        m.metadata.headers.id: _existing_brokers(m.metadata.headers.id)
+        for m in qualifying
+    }
+    missing = [
+        m
+        for m in qualifying
+        if internal_broker not in existing_brokers[m.metadata.headers.id]
+    ]
     if not missing:  # pragma: no cover - race guard: a concurrent sweep can
         # insert the rows between the check above and this query.
         return 0
@@ -1271,12 +1329,10 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 and event_cls is not None
                 and getattr(event_cls.meta_, "published", False)
             ):
-                existing = {
-                    row.target_broker
-                    for row in outbox_repo.find_all_by_message_id(message_id)
-                }
                 target_brokers.extend(
-                    broker for broker in external_brokers if broker not in existing
+                    broker
+                    for broker in external_brokers
+                    if broker not in existing_brokers[message_id]
                 )
 
             for target_broker in target_brokers:

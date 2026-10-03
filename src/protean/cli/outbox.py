@@ -57,5 +57,6 @@ def reconcile(
             print(f"Reconciled {created} outbox row(s) from the event store.")
         else:
             print(
-                "Nothing to reconcile: the outbox is consistent with the event store."
+                "Nothing to reconcile: no event in the scanned window is missing "
+                "its outbox row."
             )
