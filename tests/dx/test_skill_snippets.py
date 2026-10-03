@@ -243,6 +243,7 @@ def run_snippets(
         text=True,
         cwd=work,
         stdin=subprocess.DEVNULL,
+        check=False,
         timeout=max(600.0, timeout * len(files) + 60),
     )
     assert report_path.is_file(), (
@@ -631,8 +632,10 @@ def test_an_allowlist_entry_for_a_missing_file_fails(tmp_path):
     root = _skill(tmp_path, "x = 1")
     results = _run(root, tmp_path)
     assert evaluate(results, frozenset({"skill/references/gone.md"})) == [
-        "skill/references/gone.md: is on the allowlist but has no python blocks "
-        "to run; remove the entry"
+        (
+            "skill/references/gone.md: is on the allowlist but has no python blocks "
+            "to run; remove the entry"
+        )
     ]
 
 

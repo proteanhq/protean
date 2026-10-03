@@ -212,6 +212,7 @@ def collect_codes(skills_root: Path, assets: list[Path], tmp_path: Path) -> dict
         text=True,
         timeout=300,
         stdin=subprocess.DEVNULL,
+        check=False,
     )
     assert report_path.is_file(), (
         f"the check runner crashed before writing its report "
@@ -338,8 +339,10 @@ def test_an_unlisted_warning_fails_and_names_asset_and_code(tmp_path):
     root = tmp_path / "skills"
     _write_asset(root, "foreign.py", _FOREIGN_EVENT_ASSET)
     assert _check(root, tmp_path) == [
-        "skill/assets/foreign.py: reports EVENT_HANDLER_FOREIGN_EVENT, which is "
-        "not on the allowlist"
+        (
+            "skill/assets/foreign.py: reports EVENT_HANDLER_FOREIGN_EVENT, which is "
+            "not on the allowlist"
+        )
     ]
 
 
@@ -366,9 +369,11 @@ def test_a_listed_code_that_no_longer_fires_fails(tmp_path):
     _write_asset(root, "lonely.py", _COMPLETENESS_ONLY_ASSET)
     allowlist = frozenset({("skill/assets/lonely.py", "EVENT_HANDLER_FOREIGN_EVENT")})
     assert _check(root, tmp_path, allowlist) == [
-        "skill/assets/lonely.py: no longer reports EVENT_HANDLER_FOREIGN_EVENT; "
-        "remove ('skill/assets/lonely.py', 'EVENT_HANDLER_FOREIGN_EVENT') from "
-        "the allowlist"
+        (
+            "skill/assets/lonely.py: no longer reports EVENT_HANDLER_FOREIGN_EVENT; "
+            "remove ('skill/assets/lonely.py', 'EVENT_HANDLER_FOREIGN_EVENT') from "
+            "the allowlist"
+        )
     ]
 
 
@@ -377,8 +382,10 @@ def test_a_listed_asset_that_is_gone_fails(tmp_path):
     _write_asset(root, "lonely.py", _COMPLETENESS_ONLY_ASSET)
     allowlist = frozenset({("skill/assets/gone.py", "UPCASTER_GAP")})
     assert _check(root, tmp_path, allowlist) == [
-        "skill/assets/gone.py: is on the allowlist for UPCASTER_GAP but was not "
-        "checked; remove the entry"
+        (
+            "skill/assets/gone.py: is on the allowlist for UPCASTER_GAP but was not "
+            "checked; remove the entry"
+        )
     ]
 
 
@@ -437,8 +444,10 @@ def test_a_validation_error_is_reported(tmp_path):
     root = tmp_path / "skills"
     _write_asset(root, "duplicate.py", _DUPLICATE_HANDLER_ASSET)
     assert _check(root, tmp_path) == [
-        "skill/assets/duplicate.py: reports IncorrectUsageError, which is not on "
-        "the allowlist"
+        (
+            "skill/assets/duplicate.py: reports IncorrectUsageError, which is not on "
+            "the allowlist"
+        )
     ]
 
 
@@ -465,8 +474,10 @@ def test_an_ir_build_failure_is_reported(tmp_path):
     _write_asset(root, "unbuildable.py", _IR_FAILURE_ASSET)
     problems = _check(root, tmp_path)
     assert problems == [
-        "skill/assets/unbuildable.py: reports IR_BUILD_FAILED, which is not on "
-        "the allowlist (AttributeError: 'str' object has no attribute '__module__')"
+        (
+            "skill/assets/unbuildable.py: reports IR_BUILD_FAILED, which is not on "
+            "the allowlist (AttributeError: 'str' object has no attribute '__module__')"
+        )
     ]
     allowlist = frozenset({("skill/assets/unbuildable.py", IR_BUILD_FAILED)})
     assert _check(root, tmp_path, allowlist) == []
@@ -476,8 +487,10 @@ def test_an_asset_without_a_domain_is_reported(tmp_path):
     root = tmp_path / "skills"
     _write_asset(root, "plain.py", "x = 1\n")
     assert _check(root, tmp_path) == [
-        "skill/assets/plain.py: could not be checked: RuntimeError: asset defines "
-        "no Domain"
+        (
+            "skill/assets/plain.py: could not be checked: RuntimeError: asset defines "
+            "no Domain"
+        )
     ]
 
 
@@ -491,6 +504,8 @@ def test_every_domain_in_an_asset_is_checked(tmp_path):
     )
     _write_asset(root, "two.py", source)
     assert _check(root, tmp_path) == [
-        "skill/assets/two.py: reports EVENT_HANDLER_FOREIGN_EVENT, which is not on "
-        "the allowlist"
+        (
+            "skill/assets/two.py: reports EVENT_HANDLER_FOREIGN_EVENT, which is not on "
+            "the allowlist"
+        )
     ]
