@@ -12,8 +12,7 @@ import pytest
 
 from protean.domain import Processing
 from protean.server.subscription.profiles import CircuitBreakerState
-
-from .test_circuit_breaker import (
+from tests.server.test_circuit_breaker import (
     Registered,
     ToggleEventHandler,
     User,
