@@ -219,6 +219,9 @@ def collect_codes(skills_root: Path, assets: list[Path], tmp_path: Path) -> dict
     result = subprocess.run(
         [
             sys.executable,
+            # No bytecode: the assets load as file-backed modules, and a
+            # ``__pycache__`` beside them would land in the shipped pack.
+            "-B",
             "-c",
             _RUNNER,
             str(skills_root),
@@ -393,6 +396,8 @@ def test_a_warning_read_from_source_is_reported(tmp_path):
             "on the allowlist"
         )
     ]
+    # Loading an asset as a module must not leave bytecode in the skills tree.
+    assert not list(root.rglob("__pycache__"))
 
 
 def test_a_listed_warning_passes(tmp_path):

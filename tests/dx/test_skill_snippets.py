@@ -122,6 +122,7 @@ import builtins
 import json
 import signal
 import sys
+import types
 
 import protean
 import protean.fields
@@ -152,6 +153,25 @@ def recording_new(cls, *args, **kwargs):
 
 
 Domain.__new__ = recording_new
+
+
+# Python 3.14 defers annotations (PEP 649); earlier versions evaluate them
+# when the module, function or class is defined. Evaluate the ones a block
+# defined right after it runs, so a block that names an undefined type fails
+# on every version.
+def evaluate_annotations(obj, module):
+    if not isinstance(obj, (type, types.FunctionType)) or obj.__module__ != module:
+        return
+    annotate = getattr(obj, "__annotate__", None)
+    if annotate is not None:
+        annotate(1)
+    if isinstance(obj, type):
+        for member in vars(obj).values():
+            member = getattr(member, "__func__", member)
+            if isinstance(member, property):
+                member = member.fget
+            if isinstance(member, types.FunctionType):
+                evaluate_annotations(member, module)
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     job = json.load(handle)
@@ -184,7 +204,14 @@ for index, item in enumerate(job["files"]):
                 step = "line %d" % block["line"]
                 not_run = [b["line"] for b in blocks[position + 1 :]]
                 padded = "\\n" * (block["line"] - 1) + block["source"]
+                before = {key: id(value) for key, value in namespace.items()}
                 exec(compile(padded, label, "exec"), namespace)
+                annotate = namespace.pop("__annotate__", None)
+                if annotate is not None:
+                    annotate(1)
+                for key, value in list(namespace.items()):
+                    if before.get(key) != id(value):
+                        evaluate_annotations(value, namespace["__name__"])
             not_run = []
             step = "init"
             for candidate in list(built):
@@ -670,6 +697,25 @@ def test_a_block_past_the_timeout_is_reported_and_the_next_file_runs(tmp_path):
             "failure": "line 2: ValueError: tail ran",
             "not_run": [],
         },
+    ]
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "email: Undefined = 1",
+        "def get(user_id) -> Undefined:\n    pass",
+        "class Service:\n    def get(self, user_id: Undefined):\n        pass",
+    ],
+)
+def test_an_annotation_naming_an_undefined_type_fails_on_every_version(tmp_path, block):
+    root = _skill(tmp_path, block, "x = 1")
+    assert _run(root, tmp_path) == [
+        {
+            "file": "skill/SKILL.md",
+            "failure": "line 4: NameError: name 'Undefined' is not defined",
+            "not_run": [8 + block.count("\n")],
+        }
     ]
 
 
