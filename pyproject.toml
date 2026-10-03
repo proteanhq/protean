@@ -241,6 +241,8 @@ test = [
     # Property-based testing (the serialization round-trip suite under tests/serialization/).
     "hypothesis>=6.156.6,<7",
     "pytest-xdist>=3.8.0",
+    # Parses the teaching skills' SKILL.md frontmatter in tests/dx/.
+    "pyyaml>=6.0.3",
 ]
 docs = [
     "mkdocs>=1.6.1,<2",

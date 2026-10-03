@@ -2725,6 +2725,7 @@ test = [
     { name = "pytest-asyncio" },
     { name = "pytest-mock" },
     { name = "pytest-xdist" },
+    { name = "pyyaml" },
 ]
 types = [
     { name = "types-mock" },
@@ -2815,6 +2816,7 @@ test = [
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pytest-mock", specifier = "==3.16.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 types = [
     { name = "types-mock", specifier = ">=5.2.0.20260518" },
