@@ -523,18 +523,21 @@ class TestRunner:
 
     def test_files_written_by_an_example_stay_out_of_the_root(self, corpus):
         root, workdir = corpus
+        # The SQLite adapter tests write ``test.db`` into the working folder,
+        # so this example writes a name no other test uses.
+        written = "docs_src_runner_probe.db"
         _write(
             root,
             "writes.py",
-            _GOOD + "\nopen('test.db', 'w').write('x')\n",
+            _GOOD + f"\nopen({written!r}, 'w').write('x')\n",
         )
 
         report = run_examples(root, ["writes.py"], {}, workdir)
 
         assert report == {"count": 1, "failures": []}
-        assert not (root / "test.db").exists()
-        assert not (workdir / "test.db").exists()
-        assert not (Path.cwd() / "test.db").exists()
+        assert not (root / written).exists()
+        assert not (workdir / written).exists()
+        assert not (Path.cwd() / written).exists()
 
     def test_a_package_runs_as_one_example(self, corpus):
         root, workdir = corpus
