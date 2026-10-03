@@ -1,7 +1,7 @@
 import contextlib
 import logging
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, cast
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
@@ -59,7 +59,7 @@ class BaseRepository(Element, OptionsMixin):
         ("suppress_checks", ()),
     ]
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseRepository":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         # Prevent instantiation of `BaseRepository itself`
         if cls is BaseRepository:
             raise NotSupportedError("BaseRepository cannot be instantiated")

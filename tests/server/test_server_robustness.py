@@ -288,7 +288,6 @@ def test_events_continue_processing_after_exceptions(robust_test_domain):
     # So we don't check that flag but instead verify processing was successful
 
     # Verify events were processed
-    global event_counter, error_counter
     assert event_counter >= 1  # Successfully processed the EmailSent event
     assert error_counter >= 2  # Counted the error and processed by error handler
 
@@ -335,7 +334,6 @@ def test_failing_error_handlers_dont_crash_engine(robust_test_domain):
     # Verify error handler was called and counted.
     # Use >= because when the error handler itself fails, the message
     # position may not be updated, causing re-processing across engine cycles.
-    global error_handler_error_counter
     assert (
         error_handler_error_counter >= 2
     )  # Both handler and error handler were called
@@ -361,7 +359,6 @@ def test_commands_continue_processing_after_exceptions(robust_test_domain):
     # So we verify by checking that commands were processed
 
     # Verify commands were processed
-    global command_counter, error_counter
     assert command_counter == 1  # Successfully processed the SendEmail command
     assert error_counter >= 2  # Processed both the error and error handler
 
@@ -388,7 +385,6 @@ def test_broker_messages_continue_processing_after_exceptions(robust_test_domain
     # So we verify by checking that messages were processed
 
     # Verify broker messages were processed
-    global broker_message_counter, error_counter, error_handler_error_counter
     assert (
         broker_message_counter == 1
     )  # Successfully processed the success stream message
@@ -425,7 +421,6 @@ async def test_event_handler_continues_after_exception(robust_test_domain):
     await engine.handle_message(SuccessfulEventHandler, successful_message)
 
     # Verify both messages were processed - this confirms error handling worked
-    global event_counter, error_counter
     assert event_counter == 1  # Successfully processed EmailSent event
     assert error_counter == 2  # Counted both error and error handler
 
@@ -446,7 +441,6 @@ async def test_broker_message_handling_continues_after_exception(robust_test_dom
     await engine.handle_broker_message(SuccessfulSubscriber, successful_message)
 
     # Verify both messages were processed - this confirms error handling worked
-    global broker_message_counter, error_counter
     assert broker_message_counter == 1  # Successfully processed message
     assert error_counter == 2  # Counted both error and error handler
 
@@ -512,12 +506,6 @@ def test_mixed_error_scenarios(robust_test_domain):
     # So we verify by checking all types of messages were processed
 
     # Verify all types of messages were processed
-    global \
-        event_counter, \
-        command_counter, \
-        broker_message_counter, \
-        error_counter, \
-        error_handler_error_counter
     assert event_counter >= 1  # At least one successful event
     assert command_counter >= 1  # At least one successful command
     assert broker_message_counter >= 1  # At least one successful broker message
@@ -593,7 +581,6 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
     await subscription.process_batch(messages)
 
     # Verify only the async message was processed
-    global event_counter
     assert event_counter == 1  # Only the async message should have been processed
 
 
@@ -655,7 +642,6 @@ async def test_subscription_exception_handling_with_position_updates(
     assert 42 in position_updates
 
     # Verify error was processed
-    global error_counter
     assert error_counter >= 1
 
 
@@ -682,7 +668,6 @@ async def test_error_handling_directly(robust_test_domain):
     assert engine.exit_code == 0
 
     # Verify error handling worked
-    global error_counter
     assert error_counter >= 1  # Error was counted/handled
 
 
@@ -709,7 +694,6 @@ async def test_failing_error_handler_directly(robust_test_domain):
     assert engine.exit_code == 0
 
     # Verify error handling worked
-    global error_handler_error_counter
     assert error_handler_error_counter >= 1  # Error handler was called
 
 
@@ -730,5 +714,4 @@ async def test_broker_error_handling_directly(robust_test_domain):
     assert engine.exit_code == 0
 
     # Verify error handling worked
-    global error_counter
     assert error_counter >= 1  # Error was counted/handled

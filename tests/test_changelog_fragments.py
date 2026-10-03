@@ -34,7 +34,7 @@ VALID_CATEGORIES = {
 # A fragment *declares* a break with one of these, not by mentioning the word in
 # passing ("breaking `set_ttl` into two methods" is prose, not a declaration).
 _DECLARES_BREAK = re.compile(
-    r"^\*\*Breaking\b|\*\*Breaking-change classification", re.M
+    r"^\*\*Breaking\b|\*\*Breaking-change classification", re.MULTILINE
 )
 _MIGRATION_LINK = re.compile(r"\*\*Migration:\*\*\s*\[[^\]]+\]\(([^)]+)\)")
 
@@ -46,7 +46,7 @@ _MIGRATION_LINK = re.compile(r"\*\*Migration:\*\*\s*\[[^\]]+\]\(([^)]+)\)")
 _SOUNDS_LIKE_A_BREAK = re.compile(
     r"\bnow (raises|rejects|fails|refuses|errors|stops|requires)\b"
     r"|\bno longer (accepts|works|starts|runs|stops|skips)\b",
-    re.I,
+    re.IGNORECASE,
 )
 
 

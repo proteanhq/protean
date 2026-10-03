@@ -23,7 +23,9 @@ def _close_shells(monkeypatch):
     second per shell to the suite's exit.
     """
     try:
-        from IPython.terminal.embed import InteractiveShellEmbed
+        from IPython.terminal.embed import (  # noqa: T100  # protean shell embeds IPython on purpose
+            InteractiveShellEmbed,
+        )
     except ImportError:
         yield
         return

@@ -351,12 +351,12 @@ class IRBuilder:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _extract_deprecated(cls: type[_ElementCls]) -> dict[str, str] | None:
+    def _extract_deprecated(element_cls: type[_ElementCls]) -> dict[str, str] | None:
         """Return the normalized ``deprecated`` metadata from an element's meta_.
 
         Returns ``None`` when the element is not deprecated (sparse IR).
         """
-        return getattr(getattr(cls, "meta_", None), "deprecated", None)
+        return getattr(getattr(element_cls, "meta_", None), "deprecated", None)
 
     # ------------------------------------------------------------------
     # Field extraction
@@ -919,12 +919,14 @@ class IRBuilder:
         return dict(sorted(entry.items()))
 
     @staticmethod
-    def _extract_resilience_policy(cls: type[_ElementCls]) -> dict[str, Any] | None:
+    def _extract_resilience_policy(
+        element_cls: type[_ElementCls],
+    ) -> dict[str, Any] | None:
         """Extract the handler's deadline/retry policy as a sparse IR dict.
 
         Returns ``None`` when no resilience options are set (sparse IR).
         """
-        meta = getattr(cls, "meta_", None)
+        meta = getattr(element_cls, "meta_", None)
         policy: dict[str, Any] = {}
 
         timeout = getattr(meta, "timeout", None)
@@ -1461,8 +1463,8 @@ class IRBuilder:
             flows["subscribers"][fqn(cls)] = self._extract_subscriber(cls, record)
 
         # Sort each section
-        for section in flows:
-            flows[section] = dict(sorted(flows[section].items()))
+        for section, entries in flows.items():
+            flows[section] = dict(sorted(entries.items()))
 
         return flows
 
@@ -1471,7 +1473,7 @@ class IRBuilder:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _resolve_aggregate_cls(cls: type[_ElementCls]) -> type | None:
+    def _resolve_aggregate_cls(element_cls: type[_ElementCls]) -> type | None:
         """Resolve the root aggregate class for an element.
 
         Tries ``aggregate_cluster`` first (set by resolver for entities,
@@ -1479,11 +1481,11 @@ class IRBuilder:
         (needed for fact events generated after cluster assignment).
         """
 
-        agg: type | None = getattr(cls.meta_, "aggregate_cluster", None)
+        agg: type | None = getattr(element_cls.meta_, "aggregate_cluster", None)
         if agg is not None:
             return agg
 
-        part_of = getattr(cls.meta_, "part_of", None)
+        part_of = getattr(element_cls.meta_, "part_of", None)
         while part_of is not None:
             if isinstance(part_of, type) and issubclass(part_of, BaseAggregate):
                 return part_of

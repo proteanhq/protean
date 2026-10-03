@@ -93,7 +93,7 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         ),
     )
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseValueObject":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         if cls is BaseValueObject:
             raise NotSupportedError("BaseValueObject cannot be instantiated")
         return super().__new__(cls)
@@ -216,7 +216,7 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         except PydanticValidationError as e:
             raise ValidationError(convert_pydantic_errors(e)) from e
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, context: Any, /) -> None:
         if self.meta_.abstract is True:
             raise NotSupportedError(
                 f"{self.__class__.__name__} class has been marked abstract"

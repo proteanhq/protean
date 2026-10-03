@@ -163,7 +163,7 @@ def test_mcp_registration_imports_without_the_mcp_extra() -> None:
         "print('sdk-free-ok')\n"
     )
     result = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
     )
     assert result.returncode == 0, result.stderr
     assert "sdk-free-ok" in result.stdout

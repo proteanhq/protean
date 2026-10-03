@@ -80,8 +80,8 @@ def Float(  # pyright: ignore[reportRedeclaration]
 
 
 def Decimal(  # pyright: ignore[reportRedeclaration]
-    min_value: decimal.Decimal | int | float | None = None,
-    max_value: decimal.Decimal | int | float | None = None,
+    min_value: decimal.Decimal | float | None = None,
+    max_value: decimal.Decimal | float | None = None,
     precision: int | None = None,
     scale: int | None = None,
     **kwargs: Any,
@@ -313,8 +313,8 @@ if TYPE_CHECKING:
     ) -> float: ...
 
     def Decimal(  # type: ignore[misc]
-        min_value: decimal.Decimal | int | float | None = None,
-        max_value: decimal.Decimal | int | float | None = None,
+        min_value: decimal.Decimal | float | None = None,
+        max_value: decimal.Decimal | float | None = None,
         precision: int | None = None,
         scale: int | None = None,
         **kwargs: Any,

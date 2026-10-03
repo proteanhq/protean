@@ -28,7 +28,7 @@ class PlainMoney(BaseValueObject):
     "value,expected",
     [
         ("10.25", decimal.Decimal("10.25")),
-        (10, decimal.Decimal("10")),
+        (10, decimal.Decimal(10)),
         (decimal.Decimal("3.1400"), decimal.Decimal("3.1400")),
     ],
 )

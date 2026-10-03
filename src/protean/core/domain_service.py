@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Callable
 from functools import wraps
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, cast
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import _invariant_code
@@ -55,7 +55,7 @@ class BaseDomainService(Element, OptionsMixin):
         # ("pre"/"post") → {method_name: method}.
         _invariants: ClassVar[defaultdict[str, dict[str, Callable[..., Any]]]]
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseDomainService":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         if cls is BaseDomainService:
             raise NotSupportedError("BaseDomainService cannot be instantiated")
         return super().__new__(cls)

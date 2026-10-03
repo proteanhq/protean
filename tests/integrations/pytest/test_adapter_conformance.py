@@ -379,6 +379,7 @@ class TestConformancePluginIntegration:
             text=True,
             cwd=str(tmp_path),
             timeout=60,
+            check=False,
         )
 
     def test_plugin_runs_basic_storage_tests(self, tmp_path: Path):

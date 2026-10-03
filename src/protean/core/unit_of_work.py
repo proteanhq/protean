@@ -2,7 +2,7 @@ import contextlib
 import logging
 from collections import defaultdict
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, Self, cast
 
 from protean.exceptions import (
     ConfigurationError,
@@ -103,7 +103,7 @@ class UnitOfWork:
     def in_progress(self) -> bool:
         return self._in_progress
 
-    def __enter__(self) -> "UnitOfWork":
+    def __enter__(self) -> Self:
         # Initiate a new session as part of self
         self.start()
         return self
@@ -511,11 +511,11 @@ class UnitOfWork:
             # propagate it unchanged for the version-retry machinery (mirrors
             # the StaleDataError translation below). Without this, the generic
             # handler would wrap it in TransactionError.
-            logger.exception("uow.commit_failed", exc_info=True)
+            logger.exception("uow.commit_failed")
             set_span_error(span, exc)
             raise
         except ValueError as exc:
-            logger.exception("uow.commit_failed", exc_info=True)
+            logger.exception("uow.commit_failed")
             set_span_error(span, exc)
 
             # The events are already appended, so this is not a version
@@ -534,14 +534,14 @@ class UnitOfWork:
             # Configuration errors can be raised if events are misconfigured
             #   We just re-raise it for the client to handle.
             set_span_error(span, exc)
-            raise exc
+            raise
         except Exception as exc:
             # A SQLAlchemy version_id_col mismatch surfaces at flush/commit as
             # StaleDataError. That is an optimistic-concurrency conflict, not a
             # generic transaction failure, so translate it to ExpectedVersionError
             # (matching the event-store P0001 path above) for the retry machinery.
             if type(exc).__name__ == "StaleDataError":
-                logger.exception("uow.commit_failed", exc_info=True)
+                logger.exception("uow.commit_failed")
                 set_span_error(span, exc)
                 raise ExpectedVersionError(str(exc)) from None
             logger.exception("uow.commit_failed")

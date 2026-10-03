@@ -140,8 +140,7 @@ def _compute_max_breadth(node: CausationNode) -> int:
     max_b = len(node.children)
     for child in node.children:
         child_b = _compute_max_breadth(child)
-        if child_b > max_b:
-            max_b = child_b
+        max_b = max(max_b, child_b)
     return max_b
 
 

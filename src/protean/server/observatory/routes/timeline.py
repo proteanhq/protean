@@ -431,8 +431,8 @@ def _build_causation_tree_from_group(
         else:
             roots.append(m)
 
-    for cid in children_map:
-        children_map[cid].sort(key=lambda m: m.get("global_position", 0))
+    for children in children_map.values():
+        children.sort(key=lambda m: m.get("global_position", 0))
 
     visited: set[str] = set()
 
@@ -770,8 +770,8 @@ def _group_by_correlation(
             )
 
     # Sort each group by global_position
-    for cid in groups:
-        groups[cid].sort(key=lambda x: x[0].get("global_position", 0))
+    for group in groups.values():
+        group.sort(key=lambda x: x[0].get("global_position", 0))
 
     return groups
 

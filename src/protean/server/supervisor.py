@@ -533,6 +533,6 @@ def _worker_entry(
             engine.run()
 
         sys.exit(engine.exit_code)
-    except Exception as exc:
-        worker_logger.exception(f"Worker {worker_id} failed: {exc}")
+    except Exception:
+        worker_logger.exception(f"Worker {worker_id} failed")
         sys.exit(1)

@@ -38,7 +38,7 @@ class TypeManager:
 
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
-        self.events_and_commands: dict[str, type[BaseCommand] | type[BaseEvent]] = {}
+        self.events_and_commands: dict[str, type[BaseCommand | BaseEvent]] = {}
         self.upcaster_chain: UpcasterChain = UpcasterChain()
 
     @property

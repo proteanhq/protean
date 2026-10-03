@@ -36,6 +36,7 @@ def _collected() -> tuple[int, int]:
         cwd=REPO,
         capture_output=True,
         text=True,
+        check=False,
     ).stdout
     m = re.search(r"(\d+)/(\d+) tests collected \((\d+) deselected\)", out)
     if not m:
@@ -46,7 +47,11 @@ def _collected() -> tuple[int, int]:
 
 def _count(pattern: str, root: Path) -> int:
     return sum(
-        len(re.findall(pattern, p.read_text(encoding="utf-8", errors="ignore"), re.M))
+        len(
+            re.findall(
+                pattern, p.read_text(encoding="utf-8", errors="ignore"), re.MULTILINE
+            )
+        )
         for p in root.rglob("*.py")
     )
 

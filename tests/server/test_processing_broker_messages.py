@@ -11,7 +11,6 @@ captured_contexts: list[Message | None] = []
 
 
 def append_to_terms(term):
-    global terms
     terms.append(term)
 
 
@@ -55,7 +54,6 @@ def test_processing_broker_messages(test_domain):
     engine = Engine(domain=test_domain, test_mode=True)
     engine.run()
 
-    global terms
     assert len(terms) == 2
     assert terms[0] == "bar"
     assert terms[1] == "baz"
@@ -73,7 +71,6 @@ def test_no_processing_when_shutting_down(test_domain):
     engine.shutting_down = True
     engine.run()
 
-    global terms
     assert len(terms) == 0
 
 

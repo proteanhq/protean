@@ -11,7 +11,7 @@ or meter, so instrumentation code never needs conditional guards.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 from protean.utils.eventing import TraceParent
 
@@ -353,9 +353,7 @@ def inject_traceparent_from_context() -> Any:
     return TraceParent.build(w3c_header)
 
 
-def create_observation(
-    value: int | float, attributes: dict[str, Any] | None = None
-) -> Any:
+def create_observation(value: float, attributes: dict[str, Any] | None = None) -> Any:
     """Create an OpenTelemetry ``Observation`` without leaking the OTel import.
 
     Returns a no-op named tuple when the SDK is not installed so that
@@ -467,10 +465,10 @@ def set_span_error(span: Any, exc: BaseException) -> None:
 class _NoOpSpan:
     """Minimal no-op span that supports the context-manager protocol."""
 
-    def __enter__(self) -> _NoOpSpan:
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *args: object) -> None:
         pass
 
     def set_attribute(self, key: str, value: Any) -> None:
@@ -503,24 +501,18 @@ class _NoOpTracer:
 class _NoOpObservation:
     """Lightweight stand-in for ``opentelemetry.metrics.Observation``."""
 
-    def __init__(
-        self, value: int | float, attributes: dict[str, Any] | None = None
-    ) -> None:
+    def __init__(self, value: float, attributes: dict[str, Any] | None = None) -> None:
         self.value = value
         self.attributes = attributes
 
 
 class _NoOpCounter:
-    def add(
-        self, amount: int | float, attributes: dict[str, Any] | None = None
-    ) -> None:
+    def add(self, amount: float, attributes: dict[str, Any] | None = None) -> None:
         pass
 
 
 class _NoOpHistogram:
-    def record(
-        self, amount: int | float, attributes: dict[str, Any] | None = None
-    ) -> None:
+    def record(self, amount: float, attributes: dict[str, Any] | None = None) -> None:
         pass
 
 

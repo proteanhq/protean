@@ -143,6 +143,7 @@ def test_every_example_builds_and_initializes(tmp_path):
         capture_output=True,
         text=True,
         timeout=300,
+        check=False,
     )
 
     assert report_path.is_file(), (
@@ -525,6 +526,7 @@ def _run_asset_check(asset: str, check: str) -> None:
         capture_output=True,
         text=True,
         timeout=120,
+        check=False,
     )
     assert result.returncode == 0 and result.stdout.strip().endswith("ok"), (
         f"{asset} failed its runtime check (exit {result.returncode}):\n{result.stderr}"

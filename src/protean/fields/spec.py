@@ -13,7 +13,7 @@ import inspect
 import warnings
 from collections.abc import Callable, Iterable
 from enum import Enum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, final
 from uuid import uuid4
 
 from pydantic import AfterValidator, BeforeValidator
@@ -38,6 +38,7 @@ from protean.utils.globals import current_domain
 # ---------------------------------------------------------------------------
 # Sentinel for "no default provided"
 # ---------------------------------------------------------------------------
+@final
 class _UNSET_TYPE:
     """Sentinel indicating no default was provided."""
 
@@ -108,8 +109,8 @@ class FieldSpec:
         # Type-specific constraints
         max_length: int | None = None,
         min_length: int | None = None,
-        max_value: float | int | decimal.Decimal | None = None,
-        min_value: float | int | decimal.Decimal | None = None,
+        max_value: float | decimal.Decimal | None = None,
+        min_value: float | decimal.Decimal | None = None,
         # Decimal-specific (NUMERIC(precision, scale))
         precision: int | None = None,
         scale: int | None = None,
@@ -179,8 +180,10 @@ class FieldSpec:
                 raise ProteanValidationError(
                     {
                         "auto_now": [
-                            "auto_now/auto_now_add are only supported on "
-                            "DateTime and Date fields"
+                            (
+                                "auto_now/auto_now_add are only supported on "
+                                "DateTime and Date fields"
+                            )
                         ]
                     }
                 )
@@ -188,9 +191,11 @@ class FieldSpec:
                 raise ProteanValidationError(
                     {
                         "auto_now": [
-                            "auto_now and auto_now_add are mutually exclusive: "
-                            "auto_now stamps on every save, auto_now_add only on "
-                            "create"
+                            (
+                                "auto_now and auto_now_add are mutually exclusive: "
+                                "auto_now stamps on every save, auto_now_add only on "
+                                "create"
+                            )
                         ]
                     }
                 )
@@ -198,9 +203,11 @@ class FieldSpec:
                 raise ProteanValidationError(
                     {
                         "auto_now": [
-                            "auto_now/auto_now_add fields cannot be required: the "
-                            "value is stamped at save time, so the field must be "
-                            "optional (drop required=True)"
+                            (
+                                "auto_now/auto_now_add fields cannot be required: the "
+                                "value is stamped at save time, so the field must be "
+                                "optional (drop required=True)"
+                            )
                         ]
                     }
                 )

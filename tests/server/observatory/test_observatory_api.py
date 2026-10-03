@@ -2049,3 +2049,66 @@ class TestWorkersEndpointMocked:
         assert worker["worker_id"] == "host1-1000"
         assert worker["throughput"]["total"] == 0
         assert all(c == 0 for c in worker["throughput"]["counts"])
+
+
+class TestTraceReadErrorPaths:
+    def _client(self) -> TestClient:
+        observatory = Observatory(domains=[_make_mock_domain()])
+        return TestClient(observatory.app)
+
+    def test_failed_traces_accepts_utc_z_timestamps(self):
+        redis_conn = MagicMock()
+        redis_conn.xrange.return_value = []
+
+        with patch(
+            "protean.server.observatory.api._get_redis", return_value=redis_conn
+        ):
+            response = self._client().get(
+                "/api/traces/failed",
+                params={"start": "2026-01-01T00:00:00Z", "end": "2026-01-01T00:01:00Z"},
+            )
+
+        assert response.status_code == 200
+        redis_conn.xrange.assert_called_once()
+        assert redis_conn.xrange.call_args.kwargs == {
+            "min": "1767225600000",
+            "max": "1767225660000",
+        }
+
+    def test_failed_traces_logs_traceback_when_stream_read_fails(self, caplog):
+        redis_conn = MagicMock()
+        redis_conn.xrange.side_effect = RuntimeError("connection lost")
+
+        with patch(
+            "protean.server.observatory.api._get_redis", return_value=redis_conn
+        ):
+            response = self._client().get("/api/traces/failed")
+
+        assert response.status_code == 500
+        assert response.json()["error"] == "Failed to read traces"
+        records = [
+            r
+            for r in caplog.records
+            if r.getMessage() == "Error reading trace stream for failed traces"
+        ]
+        assert len(records) == 1
+        assert records[0].exc_info is not None
+        assert str(records[0].exc_info[1]) == "connection lost"
+
+    def test_trace_detail_logs_traceback_when_stream_read_fails(self, caplog):
+        redis_conn = MagicMock()
+        redis_conn.xrange.side_effect = RuntimeError("connection lost")
+
+        with patch(
+            "protean.server.observatory.api._get_redis", return_value=redis_conn
+        ):
+            response = self._client().get("/api/traces/1-0")
+
+        assert response.status_code == 500
+        assert response.json()["error"] == "Failed to read trace"
+        records = [
+            r for r in caplog.records if r.getMessage() == "Error reading trace 1-0"
+        ]
+        assert len(records) == 1
+        assert records[0].exc_info is not None
+        assert str(records[0].exc_info[1]) == "connection lost"

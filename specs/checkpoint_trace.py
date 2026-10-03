@@ -75,8 +75,7 @@ def _record(out_path: Path) -> int:
         returned = sub._gap_safe_batch([message_at(p) for p in visible])
         for message in returned:
             sub.current_position = message.metadata.event_store.global_position
-        if sub._gap_watermark > sub.current_position:
-            sub.current_position = sub._gap_watermark
+        sub.current_position = max(sub.current_position, sub._gap_watermark)
 
     with checkpoint_trace.capture() as events:
         # Tick A: positions 1 and 3 have committed, 2 is still an open gap. The

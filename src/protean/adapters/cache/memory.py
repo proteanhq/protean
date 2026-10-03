@@ -13,9 +13,7 @@ from protean.utils.reflection import id_field
 
 
 class TTLDict(collections.abc.MutableMapping[str, Any]):
-    def __init__(
-        self, default_ttl: int | float | None, *args: Any, **kwargs: Any
-    ) -> None:
+    def __init__(self, default_ttl: float | None, *args: Any, **kwargs: Any) -> None:
         self._default_ttl = default_ttl
         self._values: dict[str, tuple[float | None, Any]] = {}
         self._lock = RLock()
@@ -26,7 +24,7 @@ class TTLDict(collections.abc.MutableMapping[str, Any]):
             f"<TTLDict@{id(self):#08x}; ttl={self._default_ttl!r}, v={self._values!r};>"
         )
 
-    def set_ttl(self, key: str, ttl: int | float, now: float | None = None) -> None:
+    def set_ttl(self, key: str, ttl: float, now: float | None = None) -> None:
         """Set TTL for the given key"""
         if now is None:
             now = time.time()

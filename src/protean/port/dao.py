@@ -178,7 +178,7 @@ class BaseDAO(metaclass=ABCMeta):
         values during ``_create`` (memory, Elasticsearch) need no flush and keep
         the default.
         """
-        return None
+        return
 
     def _sync_event_position(self, entity: BaseEntity) -> None:
         """Sync the aggregate's event position from the event store.

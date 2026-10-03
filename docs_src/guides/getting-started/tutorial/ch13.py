@@ -75,8 +75,10 @@ class OrderFulfillmentService:
                 raise ValidationError(
                     {
                         "_entity": [
-                            f"Insufficient stock for '{item.book_title}': "
-                            f"{inv.quantity} available, {item.quantity} requested"
+                            (
+                                f"Insufficient stock for '{item.book_title}': "
+                                f"{inv.quantity} available, {item.quantity} requested"
+                            )
                         ]
                     }
                 )

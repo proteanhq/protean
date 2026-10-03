@@ -14,7 +14,7 @@ Example::
 
 import logging
 from abc import abstractmethod
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, Self, TypeVar
 
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError, NotSupportedError
@@ -42,7 +42,7 @@ class BaseUpcaster(Element, OptionsMixin):
 
     element_type: ClassVar[str] = DomainObjects.UPCASTER
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseUpcaster":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         if cls is BaseUpcaster:
             raise NotSupportedError("BaseUpcaster cannot be instantiated")
         return super().__new__(cls)

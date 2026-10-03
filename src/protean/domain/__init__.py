@@ -1275,17 +1275,12 @@ class Domain:
             ).cls
             return element_cls
         except ConfigurationError:
-            try:
-                # Try fetching by fully qualified class name
-                fq_element_cls: type[Element] = (
-                    self._get_element_by_fully_qualified_name(
-                        element_types, element
-                    ).cls
-                )
-                return fq_element_cls
-            except ConfigurationError:
-                # Element has not been registered
-                raise
+            # Try fetching by fully qualified class name. This raises
+            # ConfigurationError when the element has not been registered.
+            fq_element_cls: type[Element] = self._get_element_by_fully_qualified_name(
+                element_types, element
+            ).cls
+            return fq_element_cls
 
     def _get_element_by_name(
         self, element_types: tuple[DomainObjects, ...], element_name: str
@@ -1339,14 +1334,13 @@ class Domain:
                 return self._domain_registry._elements[element_type.value][
                     element_fq_name
                 ]
-        else:
-            raise ConfigurationError(
-                {
-                    "element": f"Element {element_fq_name} not registered in domain {self.name}"
-                },
-                code=DiagnosticCode.CONFIG_ELEMENT_NOT_REGISTERED,
-                location="Domain._get_element_by_fully_qualified_name",
-            )
+        raise ConfigurationError(
+            {
+                "element": f"Element {element_fq_name} not registered in domain {self.name}"
+            },
+            code=DiagnosticCode.CONFIG_ELEMENT_NOT_REGISTERED,
+            location="Domain._get_element_by_fully_qualified_name",
+        )
 
     def _get_element_by_class(
         self, element_types: tuple[DomainObjects, ...], element_cls: type

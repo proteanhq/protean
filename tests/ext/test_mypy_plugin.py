@@ -441,6 +441,7 @@ class TestMypyDebugPrints:
             capture_output=True,
             text=True,
             env=env,
+            check=False,
         )
         # Debug output goes to stderr
         assert "[protean-mypy-debug]" in result.stderr

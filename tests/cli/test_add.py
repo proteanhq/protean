@@ -256,6 +256,7 @@ def test_apply_then_verify_is_green(tmp_path):
         capture_output=True,
         text=True,
         errors="replace",
+        check=False,
     )
 
     assert completed.returncode == 0, (
@@ -295,6 +296,7 @@ def test_planned_slice_loads_and_registers_under_traversal(
         env=_subprocess_env(project),
         capture_output=True,
         text=True,
+        check=False,
     )
 
     assert completed.returncode == 0, (

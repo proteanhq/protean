@@ -261,9 +261,7 @@ class TestGoldenSnapshot:
 
 def _meta_digest(meta: CodeMeta) -> str:
     """A stable short hash over a code's full metadata text."""
-    canon = "␟".join(
-        [meta.category, meta.level, meta.meaning, meta.rationale, meta.fix]
-    )
+    canon = f"{meta.category}␟{meta.level}␟{meta.meaning}␟{meta.rationale}␟{meta.fix}"
     return hashlib.sha256(canon.encode("utf-8")).hexdigest()[:16]
 
 

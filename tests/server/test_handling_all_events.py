@@ -102,5 +102,4 @@ async def test_that_any_message_can_be_handled_with_any_handler(test_domain):
     await engine.handle_message(SystemMetrics, message1)
     await engine.handle_message(SystemMetrics, message2)
 
-    global counter
     assert counter == 2

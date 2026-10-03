@@ -89,6 +89,7 @@ def test_from_model_builds_and_verifies_a_project(tmp_path):
         capture_output=True,
         text=True,
         errors="replace",
+        check=False,
     )
 
     project = out / "modelapp"

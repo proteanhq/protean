@@ -141,7 +141,7 @@ def get_version() -> str:
 
 def _fully_qualified_name(cls: type) -> str:
     """Return Fully Qualified name along with module"""
-    return ".".join([cls.__module__, cls.__qualname__])
+    return f"{cls.__module__}.{cls.__qualname__}"
 
 
 fqn = _fully_qualified_name

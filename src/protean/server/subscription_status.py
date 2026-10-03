@@ -1395,9 +1395,8 @@ def _parse_time(iso_value: str | None) -> datetime | None:
     if not iso_value:
         return None
     try:
-        # ``fromisoformat`` does not reliably accept a trailing ``Z``; normalize
-        # to ``+00:00`` so timestamps from any adapter parse consistently.
-        parsed = datetime.fromisoformat(iso_value.replace("Z", "+00:00"))
+        # ``fromisoformat`` accepts a trailing ``Z`` on Python 3.11+.
+        parsed = datetime.fromisoformat(iso_value)
     except (ValueError, TypeError):
         return None
     return ensure_utc_aware(parsed)

@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, cast
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
@@ -28,7 +28,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         ("suppress_checks", ()),
     ]
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseEventSourcedRepository":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         # Prevent instantiation of `BaseEventSourcedRepository itself`
         if cls is BaseEventSourcedRepository:
             raise NotSupportedError("BaseEventSourcedRepository cannot be instantiated")

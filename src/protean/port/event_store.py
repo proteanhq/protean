@@ -1056,8 +1056,8 @@ class BaseEventStore(metaclass=ABCMeta):
                 roots.append(m)
 
         # Sort children by global_position for deterministic ordering
-        for cid in children_map:
-            children_map[cid].sort(key=lambda m: m.get("global_position", 0))
+        for children in children_map.values():
+            children.sort(key=lambda m: m.get("global_position", 0))
 
         visited: set[str] = set()
 

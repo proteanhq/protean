@@ -1041,7 +1041,7 @@ def _run_pytest_for_marker(
     else:
         cmd.extend(["--tb=no", "-q"])
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
     # Parse summary from pytest output
     passed = failed = errors = skipped = 0

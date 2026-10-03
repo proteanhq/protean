@@ -105,5 +105,4 @@ def test_inline_event_processing_in_sync_mode(test_domain):
         )
     )
 
-    global counter
     assert counter == 2

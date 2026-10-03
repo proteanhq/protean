@@ -15,6 +15,7 @@ from protean.core.database_model import BaseDatabaseModel
 from protean.core.index import Index
 from protean.core.queryset import ResultSet
 from protean.exceptions import (
+    DatabaseError,
     ExpectedVersionError,
     ObjectNotFoundError,
     ValidationError,
@@ -46,12 +47,12 @@ class _ReverseCompare:
             return bool(self.value >= other.value)
         return bool(self.value >= other)
 
-    def __eq__(self, other: typing.Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, _ReverseCompare):
             return bool(self.value == other.value)
         return bool(self.value == other)
 
-    def __ne__(self, other: typing.Any) -> bool:
+    def __ne__(self, other: object) -> bool:
         return not self.__eq__(other)
 
     def __gt__(self, other: typing.Any) -> bool:
@@ -484,7 +485,7 @@ class MemoryProvider(BaseProvider):
                 items.extend(list(input_db.values()))
 
             except json.JSONDecodeError as exc:
-                raise Exception("Query Malformed") from exc
+                raise DatabaseError("Query Malformed") from exc
             except KeyError:
                 # We encountered a repository where the key was not found
                 pass
@@ -594,8 +595,10 @@ class DictDAO(BaseDAO):
                     raise ValidationError(
                         {
                             "_".join(index.fields): [
-                                f"{self.entity_cls.__name__} with "
-                                f"({fields_desc}) ({values_desc}) is already present."
+                                (
+                                    f"{self.entity_cls.__name__} with "
+                                    f"({fields_desc}) ({values_desc}) is already present."
+                                )
                             ]
                         }
                     )

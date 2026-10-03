@@ -83,8 +83,8 @@ def test_deprecated_plumbing_warns_and_delegates(name, impl):
 @pytest.mark.parametrize("name, impl", sorted(DEPRECATED.items()))
 def test_from_import_of_deprecated_name_warns(name, impl):
     # `from protean.utils import <name>` routes through __getattr__ too.
+    namespace: dict[str, object] = {}
     with pytest.warns(RemovedInProtean10Warning):
-        namespace: dict[str, object] = {}
         exec(f"from protean.utils import {name}", namespace)
     assert namespace[name] is impl
 

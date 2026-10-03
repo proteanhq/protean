@@ -428,16 +428,13 @@ class QuerySet:
 
         updated_item_count = 0
 
-        try:
-            items = self.all()
+        items = self.all()
 
-            for item in items:
-                self._owner_dao._apply_update(
-                    item, *data, apply_hooks=apply_hooks, **kwargs
-                )
-                updated_item_count += 1
-        except Exception:
-            raise
+        for item in items:
+            self._owner_dao._apply_update(
+                item, *data, apply_hooks=apply_hooks, **kwargs
+            )
+            updated_item_count += 1
 
         return updated_item_count
 
@@ -472,27 +469,24 @@ class QuerySet:
         # Destroy any cached results
         self._result_cache = None
 
-        try:
-            # Call the raw method of the repository
-            results = self._owner_dao._raw(query, data)
+        # Call the raw method of the repository
+        results = self._owner_dao._raw(query, data)
 
-            # Convert the returned results to entity and return it
-            entity_items = []
-            for item in results.items:
-                entity = self._owner_dao.database_model_cls.to_entity(item)
-                entity.state_.mark_retrieved()
+        # Convert the returned results to entity and return it
+        entity_items = []
+        for item in results.items:
+            entity = self._owner_dao.database_model_cls.to_entity(item)
+            entity.state_.mark_retrieved()
 
-                # Sync event position and register in UoW identity map
-                self._owner_dao._sync_event_position(entity)
-                self._owner_dao._track_in_uow(entity)
+            # Sync event position and register in UoW identity map
+            self._owner_dao._sync_event_position(entity)
+            self._owner_dao._track_in_uow(entity)
 
-                entity_items.append(entity)
-            results.items = entity_items
+            entity_items.append(entity)
+        results.items = entity_items
 
-            # Cache results
-            self._result_cache = results
-        except Exception:
-            raise
+        # Cache results
+        self._result_cache = results
 
         return results
 
@@ -509,14 +503,11 @@ class QuerySet:
         # Fetch Model class and connected repository from Domain
         deleted_item_count = 0
 
-        try:
-            items = self.all()
+        items = self.all()
 
-            for item in items:
-                self._owner_dao.delete(item)
-                deleted_item_count += 1
-        except Exception:
-            raise
+        for item in items:
+            self._owner_dao.delete(item)
+            deleted_item_count += 1
 
         return deleted_item_count
 
@@ -805,7 +796,7 @@ class Record:
         object.__setattr__(self, "_entity_name", state["_entity_name"])
         object.__setattr__(self, "_data", state["_data"])
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         return (
             isinstance(other, Record)
             and self._entity_name == other._entity_name

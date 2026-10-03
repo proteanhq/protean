@@ -75,7 +75,6 @@ async def test_handler_invocation(test_domain):
     engine = Engine(domain=test_domain, test_mode=True)
     await engine.handle_message(UserCommandHandler, message)
 
-    global counter
     assert counter == 1
 
 
@@ -95,5 +94,4 @@ def test_synchronous_command_is_not_handled_asynchronously(test_domain):
     engine = Engine(domain=test_domain, test_mode=True)
     engine.run()
 
-    global counter
     assert counter == 1

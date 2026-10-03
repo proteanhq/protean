@@ -143,6 +143,7 @@ class TestReadmeQuickstartMatchesSource:
             capture_output=True,
             text=True,
             timeout=30,
+            check=False,
         )
 
         assert result.returncode == 0, (

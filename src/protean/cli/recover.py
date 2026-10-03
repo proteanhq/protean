@@ -472,9 +472,11 @@ def recover(
     # can tell which handler and category to look at.
     if recovery_unknown:
         _lines = [
-            f"[yellow]{len(recovery_unknown)} recovery-tracking subscription(s) "
-            f"could not be verified (the recovery streams, or a tracked message, "
-            f"could not be read):[/yellow]"
+            (
+                f"[yellow]{len(recovery_unknown)} recovery-tracking subscription(s) "
+                "could not be verified (the recovery streams, or a tracked message, "
+                "could not be read):[/yellow]"
+            )
         ]
         _lines += [
             f"  {f.handler_name} ({f.stream_category})" for f in recovery_unknown

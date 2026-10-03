@@ -831,7 +831,7 @@ class Message(Element, BaseModel, OptionsMixin):
                 {"kind": ["Message type is not supported for deserialization"]}
             )
 
-    def _get_element_class(self) -> "type[BaseCommand] | type[BaseEvent]":
+    def _get_element_class(self) -> "type[BaseCommand | BaseEvent]":
         """Get the element class for the message type."""
         assert self.metadata is not None
         message_type = self.metadata.headers.type

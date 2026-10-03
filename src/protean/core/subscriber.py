@@ -1,13 +1,10 @@
 import logging
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
+from typing import Any, ClassVar, Self, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +27,7 @@ class BaseSubscriber(Element, OptionsMixin):
 
     element_type = DomainObjects.SUBSCRIBER
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseSubscriber":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         if cls is BaseSubscriber:
             raise NotSupportedError("BaseSubscriber cannot be instantiated")
         return super().__new__(cls)

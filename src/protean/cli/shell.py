@@ -29,7 +29,7 @@ def shell(
     # `ipython` is optional (protean[shell]). Import it before loading the domain
     # so a missing extra fails with an install hint rather than a raw traceback.
     try:
-        from IPython.terminal.embed import (  # noqa: PLC0415
+        from IPython.terminal.embed import (  # noqa: PLC0415, T100  # protean shell embeds IPython on purpose
             InteractiveShellEmbed,
         )
     except ImportError as exc:
@@ -58,7 +58,8 @@ def shell(
             f"    location: {sys.executable}\n"
             f"Domain: {domain_instance.name}\n"
         )
-        ipshell = InteractiveShellEmbed(  # type: ignore[no-untyped-call]  # IPython ships no py.typed
+        # The shell embeds IPython on purpose. It is not a leftover debugger call.
+        ipshell = InteractiveShellEmbed(  # type: ignore[no-untyped-call]  # noqa: T100  # IPython ships no py.typed
             banner1=banner, user_ns=ctx
         )
 

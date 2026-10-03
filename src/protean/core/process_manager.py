@@ -32,6 +32,7 @@ from typing import (
     Any,
     ClassVar,
     Optional,
+    Self,
     TypeVar,
     Union,
     cast,
@@ -168,7 +169,7 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
     # ClassVar set during _setup_process_managers — the auto-generated transition event
     _transition_event_cls: ClassVar[type[BaseEvent] | None] = None
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseProcessManager":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         if cls is BaseProcessManager:
             raise NotSupportedError("BaseProcessManager cannot be instantiated")
         return super().__new__(cls)

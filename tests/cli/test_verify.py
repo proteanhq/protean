@@ -698,6 +698,7 @@ class TestVerifyOnRealScaffold:
             capture_output=True,
             text=True,
             errors="replace",
+            check=False,
         )
 
         assert completed.returncode == 0, (

@@ -50,7 +50,9 @@ def toml_snippets():
     naming `provider` is a complete config; anything else is a fragment.
     """
     text = DOC.read_text(encoding="utf-8")
-    return [s for s in re.findall(r"```toml\n(.*?)```", text, re.S) if "provider" in s]
+    return [
+        s for s in re.findall(r"```toml\n(.*?)```", text, re.DOTALL) if "provider" in s
+    ]
 
 
 def repoint(snippet):

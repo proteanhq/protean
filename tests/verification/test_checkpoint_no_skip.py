@@ -94,8 +94,9 @@ class CheckpointNoSkip(RuleBasedStateMachine):
         # infinite gap timeout no hole is ever abandoned, so the watermark never
         # outruns the delivered frontier here — abandonment is covered by
         # ``tests/subscription/test_all_gap_safety.py``.
-        if self.sub._gap_watermark > self.sub.current_position:  # pragma: no cover
-            self.sub.current_position = self.sub._gap_watermark
+        self.sub.current_position = max(
+            self.sub.current_position, self.sub._gap_watermark
+        )
 
         # Progress: a gap-free drain must reach the committed frontier in one
         # tick. Guards against a regression where the batch stops yielding and

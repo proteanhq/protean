@@ -213,7 +213,7 @@ class SubscriptionFactory:
         # runtime (only ``__name__``/``__module__``/``__qualname__`` and the
         # routing methods are read). Cast to the declared type at this boundary
         # until the subscription classes' signatures are widened in turn.
-        handler_arg = cast("type[BaseEventHandler] | type[BaseCommandHandler]", handler)
+        handler_arg = cast("type[BaseEventHandler | BaseCommandHandler]", handler)
 
         if config.subscription_type == SubscriptionType.STREAM:
             if self._is_partitioned_category(stream_category):
@@ -273,7 +273,7 @@ class SubscriptionFactory:
         categories = list(pm_cls.meta_.stream_categories)
         primary = categories[0]
         config = self._config_resolver.resolve(pm_cls, stream_category=primary)
-        handler_arg = cast("type[BaseEventHandler] | type[BaseCommandHandler]", pm_cls)
+        handler_arg = cast("type[BaseEventHandler | BaseCommandHandler]", pm_cls)
         return PartitionedStreamSubscription.from_partitioned_config(
             engine=self._engine,
             stream_category=primary,

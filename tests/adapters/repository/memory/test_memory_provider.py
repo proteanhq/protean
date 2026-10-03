@@ -1,9 +1,12 @@
 """Module to test Memory Provider specific functionality"""
 
+import json
+
 import pytest
 
 from protean.adapters.repository.memory import MemoryProvider
 from protean.core.aggregate import BaseAggregate
+from protean.exceptions import DatabaseError
 from protean.fields import Integer, String
 
 
@@ -92,16 +95,18 @@ class TestMemoryProvider:
         provider = test_domain.providers["default"]
 
         # Malformed JSON with missing quotes around key
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(DatabaseError) as exc_info:
             provider.raw('{last_name:"John"}')
 
         assert "Query Malformed" in str(exc_info.value)
+        assert isinstance(exc_info.value.__cause__, json.JSONDecodeError)
 
         # Malformed JSON with unclosed bracket
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(DatabaseError) as exc_info:
             provider.raw('{"last_name":"John"')
 
         assert "Query Malformed" in str(exc_info.value)
+        assert isinstance(exc_info.value.__cause__, json.JSONDecodeError)
 
     def test_memory_raw_query_key_error(self, test_domain):
         """Test that querying with non-existent keys doesn't raise KeyError in Memory"""

@@ -73,7 +73,6 @@ async def test_expired_command_is_skipped_not_failed(test_domain):
     engine = Engine(domain=test_domain, test_mode=True)
     result = await engine.handle_message(UserCommandHandler, message)
 
-    global counter, error_handled
     # Acknowledged (position advances, no retry) but never executed, and the
     # error/recovery path is bypassed.
     assert result is True
@@ -89,6 +88,5 @@ async def test_non_expired_command_is_handled(test_domain):
     engine = Engine(domain=test_domain, test_mode=True)
     result = await engine.handle_message(UserCommandHandler, message)
 
-    global counter
     assert result is True
     assert counter == 1

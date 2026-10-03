@@ -3,7 +3,7 @@
 import inspect
 import logging
 import threading
-from typing import Any, ClassVar, TypeVar, cast
+from typing import Any, ClassVar, Self, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
@@ -107,7 +107,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
     _initialized: bool = PrivateAttr(default=False)
     _state: _EntityState = PrivateAttr(default_factory=_EntityState)
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseProjection":
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         if cls is BaseProjection:
             raise NotSupportedError("BaseProjection cannot be instantiated")
         return super().__new__(cls)
@@ -289,7 +289,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         except PydanticValidationError as e:
             raise ValidationError(convert_pydantic_errors(e)) from e
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, context: Any, /) -> None:
         # Pop init context from the thread-local stack (pushed by __init__)
         stack: list[dict[str, Any]] = getattr(_projection_init_context, "stack", [])
         if stack:
