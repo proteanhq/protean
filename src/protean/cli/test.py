@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import tomllib
 import webbrowser
@@ -85,11 +86,22 @@ class RunCategory(Enum):
     PR = "PR"
 
 
+# Database suites that point at the same server and database. Suites that share
+# a database cannot run at the same time: they create and drop the same tables.
+SHARED_DATABASES = {
+    "POSTGRESQL": "postgresql",
+    "POSTGRESQL_PSYCOPG2": "postgresql",
+}
+
+
 @dataclass
 class TestSuite:
     __test__ = False  # Prevent pytest from collecting this as a test class
     name: str
     command: list[str]
+    # Suites with the same ``shared_database`` run one at a time, even in
+    # parallel mode. ``None`` means the suite needs no exclusive access.
+    shared_database: str | None = None
 
 
 @dataclass
@@ -100,6 +112,8 @@ class TestRunner:
 
     def __init__(self) -> None:
         self.exit_status = 0
+        self._database_locks: dict[str, threading.Lock] = {}
+        self._database_locks_guard = threading.Lock()
 
         # Broker capability mappings
         self.broker_capabilities = {
@@ -284,7 +298,13 @@ class TestRunner:
                         marker=marker_expression, extra_flags=[f"--db={db}"]
                     )
                 )
-                suites.append(TestSuite(f"Database: {db}", cmd))
+                suites.append(
+                    TestSuite(
+                        f"Database: {db}",
+                        cmd,
+                        shared_database=SHARED_DATABASES.get(db),
+                    )
+                )
 
         # Capability-based broker tests
         all_brokers = TEST_CONFIGS["brokers"]
@@ -311,6 +331,11 @@ class TestRunner:
 
         return suites
 
+    def _database_lock(self, database: str) -> threading.Lock:
+        """Return the lock that serializes suites sharing ``database``."""
+        with self._database_locks_guard:
+            return self._database_locks.setdefault(database, threading.Lock())
+
     def run_single_suite(self, suite: TestSuite, quiet: bool = False) -> int:
         """Execute a single test suite."""
         print(f"🚀 Starting tests for {suite.name}...")
@@ -320,7 +345,11 @@ class TestRunner:
             cmd = [*cmd, "--tb=short", "-q"]
 
         print(f"Running command: {' '.join(cmd)}")
-        result = self.run_command(cmd)
+        if suite.shared_database is None:
+            result = self.run_command(cmd)
+        else:
+            with self._database_lock(suite.shared_database):
+                result = self.run_command(cmd)
         status_icon = "✅" if result == 0 else "❌"
         print(
             f"{status_icon} {'Completed' if result == 0 else 'Failed'} tests for {suite.name}"
