@@ -14,6 +14,7 @@ from protean import handle
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 from protean.server.engine import Engine
 from protean.server.subscription.stream_subscription import StreamSubscription
@@ -120,6 +121,41 @@ def _make_subscription(
     )
     sub.broker = FakeBroker()
     return sub
+
+
+# ── Tests: blocking timeout checked at construction ─────────────────────
+
+
+class TestBlockingTimeoutAtConstruction:
+    """The constructor rejects a non-positive wait however the value reaches it."""
+
+    @pytest.mark.parametrize("timeout_ms", [0, -1])
+    def test_argument_must_be_positive(self, test_domain, timeout_ms):
+        with pytest.raises(ConfigurationError, match="must be positive"):
+            StreamSubscription(
+                engine=Engine(test_domain, test_mode=True),
+                stream_category="test_stream",
+                handler=SucceedingHandler,
+                blocking_timeout_ms=timeout_ms,
+            )
+
+    def test_server_config_value_must_be_positive(self, test_domain):
+        test_domain.config["server"]["stream_subscription"]["blocking_timeout_ms"] = 0
+        with pytest.raises(ConfigurationError, match="must be positive"):
+            StreamSubscription(
+                engine=Engine(test_domain, test_mode=True),
+                stream_category="test_stream",
+                handler=SucceedingHandler,
+            )
+
+    def test_positive_value_is_kept(self, test_domain):
+        sub = StreamSubscription(
+            engine=Engine(test_domain, test_mode=True),
+            stream_category="test_stream",
+            handler=SucceedingHandler,
+            blocking_timeout_ms=1,
+        )
+        assert sub.blocking_timeout_ms == 1
 
 
 # ── Tests: Full retry → DLQ round-trip ──────────────────────────────────

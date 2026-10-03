@@ -73,7 +73,7 @@ horizontal scaling.
 
 StreamSubscription uses Redis's `XREADGROUP` with blocking, which means:
 
-- No CPU-intensive polling, as long as `blocking_timeout_ms` is above 0
+- No CPU-intensive polling
 - Low latency - messages are delivered as soon as available
 - Configurable timeout for periodic maintenance (the Redis broker caps each
   wait at 1000 ms)
@@ -146,7 +146,7 @@ class OrderEventHandler:
 | Option | Default | Description |
 | ------ | ------- | ----------- |
 | `messages_per_tick` | 10 | Messages to read per batch |
-| `blocking_timeout_ms` | 5000 | Blocking read timeout in milliseconds. The Redis broker waits at most 1000 ms per read. `0` does not wait, so an idle subscription polls Redis continuously and uses a full CPU core. Keep the default unless you have measured a need |
+| `blocking_timeout_ms` | 5000 | Blocking read timeout in milliseconds. Must be positive. A read returns as soon as a message arrives, so a smaller value does not lower latency. The Redis broker waits at most 1000 ms per read |
 | `max_retries` | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | 1 | Delay between retries |
 | `enable_dlq` | true | Whether to use dead letter queue |

@@ -15,7 +15,7 @@ from protean.utils.eventing import Message
 from protean.utils.telemetry import get_domain_metrics
 
 from . import BaseSubscription
-from .profiles import CircuitBreakerState
+from .profiles import _BLOCKING_TIMEOUT_ERROR, CircuitBreakerState
 
 if TYPE_CHECKING:
     from protean.server.engine import Engine
@@ -104,6 +104,12 @@ class StreamSubscription(BaseSubscription):
             if blocking_timeout_ms is not None
             else int(stream_config.get("blocking_timeout_ms", 5000))
         )
+        # ``validate()`` rejects this too, but the constructor is also reached
+        # without a ``SubscriptionConfig``. A zero wait would spin the poll loop.
+        if resolved_blocking_timeout_ms <= 0:
+            raise ConfigurationError(
+                f"{_BLOCKING_TIMEOUT_ERROR}, got {resolved_blocking_timeout_ms}"
+            )
         resolved_max_retries: int = (
             max_retries
             if max_retries is not None
@@ -131,9 +137,7 @@ class StreamSubscription(BaseSubscription):
         )
 
         # Use zero tick interval for blocking reads
-        # The blocking read timeout will control the actual pacing. With a
-        # ``blocking_timeout_ms`` of 0 there is no wait, and the loop polls
-        # the broker continuously.
+        # The blocking read timeout will control the actual pacing
         super().__init__(engine, resolved_messages_per_tick, tick_interval=0)
 
         self.handler = handler
@@ -641,9 +645,8 @@ class StreamSubscription(BaseSubscription):
     async def _read_backfill_blocking(self) -> list[tuple[str, dict[str, Any]]]:
         """Blocking read from backfill stream with capped timeout.
 
-        Uses a short timeout (capped at 1 second, and no wait at all when
-        ``blocking_timeout_ms`` is 0) so we frequently re-check the primary
-        stream for new production messages. If a production request
+        Uses a short timeout (capped at 1 second) so we frequently re-check
+        the primary stream for new production messages. If a production request
         arrives while we're blocking on backfill, we'll notice within 1 second.
 
         Returns:
@@ -673,8 +676,7 @@ class StreamSubscription(BaseSubscription):
         Get the next batch of messages using blocking read.
 
         This method uses Redis Streams' XREADGROUP with BLOCK parameter to efficiently
-        wait for new messages without polling. A ``blocking_timeout_ms`` of 0
-        does not wait, so the subscription polls the broker continuously.
+        wait for new messages without polling.
 
         Returns:
             List[tuple[str, dict]]: The next batch of messages to process as (id, payload) tuples.

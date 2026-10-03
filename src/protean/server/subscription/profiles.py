@@ -212,6 +212,13 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
     },
 }
 
+# Shared with StreamSubscription, which checks the same value when it is built
+# without a SubscriptionConfig.
+_BLOCKING_TIMEOUT_ERROR = (
+    "blocking_timeout_ms must be positive. A read returns as soon as a message "
+    "arrives, so a smaller value does not lower latency"
+)
+
 # Hardcoded defaults used when no profile is specified.
 # tick_interval is 0 because the default subscription type (STREAM) uses
 # blocking reads for pacing, making a tick-based sleep unnecessary.
@@ -389,8 +396,8 @@ class SubscriptionConfig:
         messages_per_tick: Number of messages to process per tick.
         tick_interval: Interval between processing ticks in seconds.
         blocking_timeout_ms: Timeout for blocking reads in milliseconds (STREAM only).
-            0 polls without waiting: the subscription then queries the broker
-            continuously and uses a full CPU core while idle.
+            Must be positive. A read returns as soon as a message arrives, so
+            the value bounds the idle wait and does not affect latency.
         max_retries: Maximum retry attempts before moving to DLQ (STREAM only).
         retry_delay_seconds: Delay between retries in seconds (STREAM only).
         enable_dlq: Whether to enable dead letter queue (STREAM only).
@@ -486,8 +493,8 @@ class SubscriptionConfig:
         if self.tick_interval < 0:
             errors.append("tick_interval must be non-negative")
 
-        if self.blocking_timeout_ms < 0:
-            errors.append("blocking_timeout_ms must be non-negative")
+        if self.blocking_timeout_ms <= 0:
+            errors.append(_BLOCKING_TIMEOUT_ERROR)
 
         if self.max_retries < 0:
             errors.append("max_retries must be non-negative")

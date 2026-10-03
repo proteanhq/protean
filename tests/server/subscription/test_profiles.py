@@ -405,11 +405,16 @@ class TestSubscriptionConfigValidation:
         config = SubscriptionConfig(tick_interval=0)
         assert config.tick_interval == 0
 
-    def test_negative_blocking_timeout_raises_error(self):
-        """Negative blocking_timeout_ms should raise error."""
+    @pytest.mark.parametrize("timeout_ms", [0, -1])
+    def test_non_positive_blocking_timeout_raises_error(self, timeout_ms):
+        """A zero wait would spin the poll loop, so 0 is rejected with negatives."""
         with pytest.raises(ConfigurationError) as exc_info:
-            SubscriptionConfig(blocking_timeout_ms=-1)
-        assert "blocking_timeout_ms must be non-negative" in str(exc_info.value)
+            SubscriptionConfig(blocking_timeout_ms=timeout_ms)
+        assert "blocking_timeout_ms must be positive" in str(exc_info.value)
+
+    def test_smallest_positive_blocking_timeout_is_valid(self):
+        config = SubscriptionConfig(blocking_timeout_ms=1)
+        assert config.blocking_timeout_ms == 1
 
     def test_negative_max_retries_raises_error(self):
         """Negative max_retries should raise error."""

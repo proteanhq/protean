@@ -513,21 +513,13 @@ class TestFromConfigRoundtrip:
 class TestFromConfigEdgeCases:
     """Edge case tests for from_config() methods."""
 
-    def test_stream_subscription_with_zero_blocking_timeout(self, engine):
-        """StreamSubscription can have zero blocking_timeout_ms."""
-        config = SubscriptionConfig.from_profile(
-            SubscriptionProfile.PRODUCTION,
-            blocking_timeout_ms=0,
-        )
-
-        subscription = StreamSubscription.from_config(
-            engine=engine,
-            stream_category="test",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert subscription.blocking_timeout_ms == 0
+    def test_zero_blocking_timeout_is_rejected(self):
+        """A zero blocking_timeout_ms would spin the poll loop, so it is rejected."""
+        with pytest.raises(ConfigurationError, match="must be positive"):
+            SubscriptionConfig.from_profile(
+                SubscriptionProfile.PRODUCTION,
+                blocking_timeout_ms=0,
+            )
 
     def test_stream_subscription_with_zero_max_retries(self, engine):
         """StreamSubscription can have zero max_retries (no retries)."""
