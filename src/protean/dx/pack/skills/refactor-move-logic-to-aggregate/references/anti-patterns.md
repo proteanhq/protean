@@ -9,7 +9,9 @@ class Order:
     def place(self):
         self.status = "PLACED"
         domain.repository_for(Order).add(self)  # NO! Persistence stays in handler
+```
 
+```python
 # Good: aggregate doesn't know about persistence
 class Order:
     def place(self):
@@ -28,7 +30,9 @@ class Ticket:
 
     def set_assignee(self, assignee_id):
         self.assignee_id = assignee_id
+```
 
+```python
 # Good: business operations that capture intent
 class Ticket:
     def assign(self, assignee_id):
@@ -50,7 +54,9 @@ def place_order(self, command):
     order.status = "PLACED"
     order.raise_(OrderPlaced(...))  # Should be inside order.place()
     domain.repository_for(Order).add(order)
+```
 
+```python
 # Good: event raised inside aggregate method
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -69,7 +75,9 @@ def title_must_not_be_empty(self):
     if not self.title:
         raise ValidationError(...)
 # Just use: title = String(required=True)
+```
 
+```python
 # Good: invariant for cross-field business rules
 @invariant.post
 def assigned_must_have_assignee(self):

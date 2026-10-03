@@ -140,7 +140,11 @@ def test_description_at_the_limit_passes(tmp_path):
 
 def test_missing_frontmatter_fails(tmp_path):
     (tmp_path / "bare").mkdir()
-    (tmp_path / "bare" / "SKILL.md").write_text("# No frontmatter\n")
+    # The body has a `---` rule and a closing `---`, but the file does not
+    # start with one, so there is no frontmatter block.
+    (tmp_path / "bare" / "SKILL.md").write_text(
+        "# No frontmatter\n\nname: bare\n\n---\n\nText.\n\n---\n"
+    )
     assert frontmatter_problems(tmp_path) == [
         "bare/SKILL.md: no frontmatter block between '---' lines"
     ]

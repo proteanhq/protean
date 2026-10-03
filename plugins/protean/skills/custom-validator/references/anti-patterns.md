@@ -12,7 +12,9 @@ class PhoneValidator:
     def __call__(self, value):
         if not value.startswith("+"):
             raise ValueError("Invalid phone")  # leaks, not field-scoped
+```
 
+```python
 # RIGHT
 from protean.exceptions import ValidationError
 
@@ -57,7 +59,9 @@ class MaxLenValidator:
     def __call__(self, value):
         if len(value) > 50:
             raise ValidationError("too long")
+```
 
+```python
 # RIGHT — use the field parameter
 name: String(max_length=50)
 ```
@@ -76,7 +80,9 @@ class EmailDomainValidator:
     def __call__(self, value):
         if value.split("@")[-1] not in ("acme.com",):
             raise ValidationError("bad domain")
+```
 
+```python
 # RIGHT — configurable, reusable across fields
 class AllowedDomainValidator:
     def __init__(self, allowed):

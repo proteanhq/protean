@@ -26,7 +26,9 @@ not `return` hands `None` back to the caller.
 @read(GetOrderById)
 def get_by_id(self, query):
     current_domain.view_for(OrderSummary).get(query.order_id)  # no return
+```
 
+```python
 # RIGHT
 @read(GetOrderById)
 def get_by_id(self, query):
@@ -62,7 +64,9 @@ read path to the consistency boundary and the aggregate's shape.
 @read(GetOrderById)
 def get_by_id(self, query):
     return current_domain.repository_for(Order).get(query.order_id)
+```
 
+```python
 # RIGHT — read the projection
 @read(GetOrderById)
 def get_by_id(self, query):

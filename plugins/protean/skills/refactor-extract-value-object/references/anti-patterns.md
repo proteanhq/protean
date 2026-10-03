@@ -11,7 +11,9 @@ Extracting VOs where none are needed:
 class CustomerName:
     value = String(required=True)
 # Just use: name = String(required=True) on the aggregate
+```
 
+```python
 # Good: VO when there IS behavior or multiple fields
 @domain.value_object
 class PersonName:

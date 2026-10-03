@@ -11,7 +11,9 @@ aggregate.
 @domain.query(part_of="Order")
 class GetOrderById:
     order_id: Identifier(required=True)
+```
 
+```python
 # RIGHT — querying a read model
 @domain.query(part_of="OrderSummary")
 class GetOrderById:
@@ -49,7 +51,9 @@ Queries are immutable. Reusing one instance and "tweaking" it raises
 # WRONG
 q = SearchOrders(status="placed")
 q.status = "shipped"  # IncorrectUsageError
+```
 
+```python
 # RIGHT — build a new query
 q = SearchOrders(status="shipped")
 ```
@@ -65,7 +69,9 @@ Queries take basic fields and value objects only. Associations
 @domain.query(part_of="OrderSummary")
 class SearchOrders:
     lines = HasMany("OrderLine")
+```
 
+```python
 # RIGHT — flat criteria
 @domain.query(part_of="OrderSummary")
 class SearchOrders:
@@ -82,7 +88,9 @@ Commands are imperative (`PlaceOrder`); queries are named for what they return.
 # WRONG
 class FetchStuff: ...
 class DoOrderLookup: ...
+```
 
+```python
 # RIGHT
 class GetOrderById: ...
 class SearchOrders: ...

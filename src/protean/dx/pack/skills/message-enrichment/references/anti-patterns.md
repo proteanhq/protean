@@ -10,7 +10,9 @@ Command and event enrichers have different signatures. Mixing them up fails.
 @domain.event_enricher
 def add_ctx(event):
     return {...}
+```
 
+```python
 # RIGHT
 @domain.event_enricher
 def add_ctx(event, aggregate):
@@ -33,7 +35,9 @@ Enrichers return data; they must not reach into the message and mutate it.
 def add_ctx(command):
     command._metadata.extensions["request_id"] = g.request_id
     return None
+```
 
+```python
 # RIGHT
 @domain.command_enricher
 def add_ctx(command):
@@ -51,7 +55,9 @@ being appended). Reading a missing attribute off `g` is the usual culprit.
 @domain.command_enricher
 def add_ctx(command):
     return {"request_id": g.request_id}
+```
 
+```python
 # RIGHT — degrade gracefully
 @domain.command_enricher
 def add_ctx(command):

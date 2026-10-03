@@ -456,7 +456,9 @@ def calculate_total(self):
     for item in self.line_items:
         total_amount += item.unit_price.amount * item.quantity
     return total_amount
+```
 
+```python
 # Good: Using VO methods
 def calculate_total(self):
     total = self.line_items[0].line_total

@@ -1,23 +1,23 @@
 """Run the fenced ``python`` blocks in every DX-pack skill's Markdown.
 
-``tests/dx/test_examples.py`` runs the ``assets/*.py`` files. The code blocks
-inside ``skills/*/SKILL.md`` and ``skills/*/references/*.md`` are what an agent
-reads most, and nothing ran them. This test runs them.
+``tests/dx/test_examples.py`` runs the ``assets/*.py`` files. This test runs
+the code blocks inside ``skills/*/SKILL.md`` and ``skills/*/references/*.md``.
 
 The blocks of one file run top to bottom in one namespace, because most blocks
 build on an earlier block or name an element a later block defines
 (``part_of="Order"``). The namespace starts with a prelude: ``domain =
 Domain(...)``, the public names from ``protean``, the field types from
 ``protean.fields``, and ``__file__`` set to the Markdown file's path. After the
-last block, every ``Domain`` in the namespace that registered an element is
-initialized with ``init(traverse=False)``, so a forward reference must resolve
+last block, every ``Domain`` built while the file ran that registered an
+element is initialized with ``init(traverse=False)``, so a forward reference must resolve
 by the end of the file. A reference that is still unresolved there fails the
 file at the ``init`` step.
 
 A block whose first line is ``# fragment`` is not run and does not touch the
 namespace. The marker is for a block that is not meant to run: a signature, a
-partial method, a wrong example shown on purpose. It is not for hiding an
-error. A file with a real failure goes on ``ALLOWLIST`` instead.
+partial method, a wrong example shown on purpose. A block meant to run that
+fails stays unmarked, and its file goes on ``ALLOWLIST``. A file whose blocks
+are all fragments runs nothing and passes.
 
 The allowlist is keyed by file and is strict. A listed file may fail. A listed
 file whose blocks all pass fails the test until its entry is removed.
@@ -58,6 +58,7 @@ FILE_TIMEOUT = 30.0
 _FENCE_OPEN = re.compile(r"^(?P<indent>[ \t]*)```python[ \t]*$")
 _FENCE_CLOSE = re.compile(r"^[ \t]*```[ \t]*$")
 _FRAGMENT = re.compile(r"^# fragment\b")
+_ANY_PY_FENCE = re.compile(r"^(```|~~~)\s*py", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -112,7 +113,7 @@ def discover_files(skills_root: Path) -> list[Path]:
 # The child-interpreter runner. argv[1] is a JSON file holding the files and
 # their blocks, the per-file timeout, and the report path. For each file it
 # builds a fresh namespace, runs the non-fragment blocks in order, and then
-# initializes every Domain that registered an element. It records the first
+# initializes every Domain built for the file that registered an element. It records the first
 # failure (the block's starting line, or "init") and the starting lines of the
 # blocks it did not run. It writes the report to a file, so start-up logging
 # and the blocks' own output cannot corrupt it.
@@ -136,8 +137,19 @@ def on_alarm(signum, frame):
 
 
 has_alarm = hasattr(signal, "setitimer")
-if has_alarm:
-    signal.signal(signal.SIGALRM, on_alarm)
+
+# Record every Domain built while a file runs, so the init step reaches a
+# Domain that a later block rebinds, deletes or stores out of the namespace.
+built = []
+original_init = Domain.__init__
+
+
+def recording_init(self, *args, **kwargs):
+    original_init(self, *args, **kwargs)
+    built.append(self)
+
+
+Domain.__init__ = recording_init
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     job = json.load(handle)
@@ -155,11 +167,14 @@ for index, item in enumerate(job["files"]):
         namespace[name] = getattr(protean, name)
     for name in protean.fields.__all__:
         namespace[name] = getattr(protean.fields, name)
+    built.clear()
     namespace["domain"] = Domain(name="Snippet%d" % index)
     failure = None
     not_run = []
     step = None
     if has_alarm:
+        # A block may replace the handler; put it back for every file.
+        signal.signal(signal.SIGALRM, on_alarm)
         signal.setitimer(signal.ITIMER_REAL, timeout)
     try:
         try:
@@ -170,10 +185,7 @@ for index, item in enumerate(job["files"]):
                 exec(compile(padded, label, "exec"), namespace)
             not_run = []
             step = "init"
-            domains = {
-                id(v): v for v in list(namespace.values()) if isinstance(v, Domain)
-            }
-            for candidate in domains.values():
+            for candidate in list(built):
                 if candidate.registry.elements:
                     candidate.init(traverse=False)
         finally:
@@ -317,6 +329,7 @@ ALLOWLIST: frozenset[str] = frozenset(
         "application-service/references/unit-of-work.md",
         "application-service/references/use-case-decorator.md",
         "audit-domain/SKILL.md",
+        "audit-domain/references/anti-patterns.md",
         "audit-domain/references/detection-heuristics.md",
         "command-handler/SKILL.md",
         "command-handler/references/anti-patterns.md",
@@ -383,12 +396,16 @@ ALLOWLIST: frozenset[str] = frozenset(
         "projector/references/error-handling.md",
         "projector/references/multiple-projectors.md",
         "query-handler/SKILL.md",
+        "query-handler/references/anti-patterns.md",
         "query/SKILL.md",
+        "query/references/anti-patterns.md",
         "refactor-extract-value-object/SKILL.md",
         "refactor-extract-value-object/references/migration-guide.md",
         "refactor-introduce-events/SKILL.md",
+        "refactor-introduce-events/references/anti-patterns.md",
         "refactor-introduce-events/references/event-design-guide.md",
         "refactor-move-logic-to-aggregate/SKILL.md",
+        "refactor-move-logic-to-aggregate/references/anti-patterns.md",
         "refactor-move-logic-to-aggregate/references/identifying-logic-leaks.md",
         "repository/SKILL.md",
         "repository/references/anti-patterns.md",
@@ -428,10 +445,12 @@ def test_snippet_discovery_is_not_vacuous():
             len(relative) == 3 and relative[1] == "references"
         )
         if in_scope:
+            # Count every fence that opens with a ``py`` tag in any spelling,
+            # so a variant the extractor skips breaks the count.
             independent += sum(
                 1
                 for line in path.read_text(encoding="utf-8").splitlines()
-                if line.strip() == "```python"
+                if _ANY_PY_FENCE.match(line.strip())
             )
     assert files, "discovered no Markdown files with python blocks"
     assert blocks == independent
@@ -646,3 +665,49 @@ def test_a_block_past_the_timeout_is_reported_and_the_next_file_runs(tmp_path):
             "not_run": [9],
         },
     ]
+
+
+@pytest.mark.parametrize(
+    "rebind",
+    [
+        "domain = Domain(name='Replacement')",
+        "del domain",
+        "holder = {'d': domain}\ndel domain",
+    ],
+)
+def test_a_domain_the_namespace_no_longer_holds_is_initialized(tmp_path, rebind):
+    root = _skill(
+        tmp_path,
+        "@domain.event(part_of='Order')\nclass OrderPlaced:\n    order_id = Identifier()",
+        rebind,
+    )
+    assert _run(root, tmp_path)[0]["failure"].startswith("init: ConfigurationError")
+
+
+def test_a_fragment_marker_below_the_first_line_does_not_skip_the_block(tmp_path):
+    root = _skill(tmp_path, "x = 1\n# fragment\nraise ValueError('runs')")
+    assert _run(root, tmp_path)[0]["failure"] == "line 4: ValueError: runs"
+
+
+@pytest.mark.skipif(
+    not hasattr(__import__("signal"), "setitimer"),
+    reason="the per-file timeout needs SIGALRM",
+)
+def test_a_block_that_replaces_the_alarm_handler_does_not_disable_later_timeouts(
+    tmp_path,
+):
+    root = tmp_path / "skills"
+    first = root / "a" / "SKILL.md"
+    first.parent.mkdir(parents=True)
+    first.write_text(
+        "```python\nimport signal\nsignal.signal(signal.SIGALRM, lambda *a: None)\n```\n"
+    )
+    second = root / "b" / "SKILL.md"
+    second.parent.mkdir()
+    second.write_text("```python\nimport time\ntime.sleep(30)\n```\n")
+    results = _run(root, tmp_path, timeout=0.5)
+    assert results[1] == {
+        "file": "b/SKILL.md",
+        "failure": "line 2: timed out after 0.5 seconds",
+        "not_run": [],
+    }

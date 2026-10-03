@@ -13,7 +13,6 @@ whether the second event is actually needed.
 ## Event handler modifying the source aggregate
 
 ```python
-# fragment
 # Bad: event handler reaches back into the source
 @domain.event_handler(part_of=Order, stream_category=Payment.meta_.stream_category)
 class PaymentEventsHandler:
@@ -38,7 +37,9 @@ class OrderEventsHandler:
     @handle(OrderPlaced)
     def reserve(self, event):
         ...  # Never called! No stream_category specified
+```
 
+```python
 # Good: subscribes to Order's stream
 @domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
 class OrderEventsHandler:
@@ -56,7 +57,9 @@ class OrderEventsHandler:
 class ReserveInventory:
     product_id = String()
     quantity = Integer()
+```
 
+```python
 # Good: past tense — describes what happened
 @domain.event(part_of="Order")
 class OrderPlaced:

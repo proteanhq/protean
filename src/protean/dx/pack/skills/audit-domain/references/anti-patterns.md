@@ -22,7 +22,9 @@ def place_order(self, command):
         raise ValidationError("Too expensive")
     order = Order(customer_id=command.customer_id, total=total, status="PLACED")
     self.repository.add(order)
+```
 
+```python
 # Good: handler orchestrates, aggregate owns logic
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -44,7 +46,9 @@ class Order:
     shipping_street = String()
     shipping_city = String()
     shipping_zip = String()
+```
 
+```python
 # Good: value objects
 class Order:
     total = ValueObject(Money)
@@ -63,7 +67,9 @@ class Order:
     customer_id = String(required=True)
     status = String(default="DRAFT")
     total = Float(default=0.0)
+```
 
+```python
 # Good: rich — has behavior and rules
 @domain.aggregate
 class Order:
@@ -99,7 +105,9 @@ def place_order(self, command):
     inventory = domain.repository_for(Inventory).get(command.product_id)
     inventory.reduce(command.quantity)
     domain.repository_for(Inventory).add(inventory)
+```
 
+```python
 # Good: events for cross-aggregate coordination
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -126,7 +134,9 @@ class Order:
     # 20+ fields
     # 15+ methods
     # Mix of ordering, shipping, payment logic
+```
 
+```python
 # Good: separate aggregates per bounded context
 @domain.aggregate
 class Order: ...      # Ordering only
@@ -151,7 +161,9 @@ def complete_order(order_id):
     repo.add(order)
     send_email(order.customer_email)  # Tight coupling
     update_analytics(order)            # More coupling
+```
 
+```python
 # Good: event-driven
 def complete_order(order_id):
     order = repo.get(order_id)
@@ -193,7 +205,9 @@ def place_order(self, command):
 def quantity_must_be_positive(self):  # Validation #3 (duplicate)
     if self.quantity <= 0:
         raise ValidationError(...)
+```
 
+```python
 # Good: validate once, at the right layer
 # Field constraint handles basic validation
 quantity = Integer(required=True, min_value=1)
@@ -216,7 +230,9 @@ def test_place_order():
     handler.repository = mock_repo
     handler.place_order(PlaceOrder(...))
     mock_repo.add.assert_called_once()
+```
 
+```python
 # Good: real objects with in-memory adapters
 def test_place_order():
     domain.process(PlaceOrder(...), asynchronous=False)

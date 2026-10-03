@@ -177,7 +177,9 @@ class AnalyticsHandler:
 # WRONG — if v2 existed in production, you need v1→v2 AND v2→v3
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=3)
 class SkipV2(BaseUpcaster): ...
+```
 
+```python
 # CORRECT — one step per version
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class V1ToV2(BaseUpcaster): ...
@@ -200,7 +202,9 @@ class SlowUpcaster(BaseUpcaster):
         user = db.query(User, data["user_id"])  # NO! No I/O
         data["user_name"] = user.name
         return data
+```
 
+```python
 # CORRECT — pure dict transformation only
 class FastUpcaster(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
@@ -214,7 +218,10 @@ class FastUpcaster(BaseUpcaster):
 # fragment
 # WRONG — event_type must be the CURRENT event class
 @domain.upcaster(event_type=OrderPlacedV1, from_version=1, to_version=2)
+```
 
+```python
+# fragment
 # CORRECT — always point to the current class
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 ```
@@ -228,7 +235,9 @@ class FastUpcaster(BaseUpcaster):
 class OrderPlaced:
     # __version__ not set — defaults to `1`
     ...
+```
 
+```python
 # CORRECT — set __version__ to match the upcaster chain's terminal version
 @domain.event(part_of="Order")
 class OrderPlaced:

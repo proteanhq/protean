@@ -1,9 +1,11 @@
 """Run ``Domain.check`` on every DX-pack skill asset and hold its findings.
 
 ``tests/dx/test_examples.py`` proves each ``skills/*/assets/*.py`` initializes.
-It does not ask whether the domain the asset teaches is a good one. This test
-runs ``Domain.check(traverse=False)`` on each asset's domains and collects every
-validation error and every diagnostic at level ``warning`` or ``error``.
+This test runs ``Domain.check(traverse=False)`` on each asset's domains and
+collects every validation error and every diagnostic at level ``warning`` or
+``error``. When validation passes but the IR fails to build, ``check`` returns
+no diagnostics, so the test builds the IR itself and records
+``IR_BUILD_FAILED`` for that asset.
 
 Four completeness codes are ignored for every asset. A teaching asset shows one
 concept and is not a whole application, so an aggregate without a command
@@ -51,6 +53,11 @@ COMPLETENESS_CODES = frozenset(
     }
 )
 
+# Recorded, in place of a diagnostic code, for a domain whose validation passes
+# but whose IR fails to build. ``Domain.check`` returns no diagnostics then, so
+# without this code the asset would look clean.
+IR_BUILD_FAILED = "IR_BUILD_FAILED"
+
 EXEMPT_NAMES = frozenset({"saga_before_unclosed.py", "audit_sample_codebase.py"})
 
 # (asset path relative to the skills root, diagnostic code). Each entry is a
@@ -74,6 +81,13 @@ ALLOWLIST = frozenset(
             "coverage-analysis/assets/coverage_domain_with_gaps.py",
             "EVENT_HANDLER_FOREIGN_EVENT",
         ),
+        ("domain-service/assets/domain_service_callable.py", IR_BUILD_FAILED),
+        ("domain-service/assets/domain_service_class_methods.py", IR_BUILD_FAILED),
+        (
+            "domain-service/assets/domain_service_instance_methods.py",
+            IR_BUILD_FAILED,
+        ),
+        ("domain-service/assets/domain_service_with_invariants.py", IR_BUILD_FAILED),
         ("event/assets/event_versioning.py", "UPCASTER_GAP"),
         (
             "event-handler/assets/cross_sync_multi_event.py",
@@ -127,8 +141,8 @@ def discover_assets(skills_root: Path) -> list[Path]:
 
 # The child-interpreter runner. argv[1] is the skills root, argv[2] a JSON list
 # of asset paths, argv[3] the report path. For each asset it records the codes
-# ``Domain.check`` returns at level warning or error, or the exception that
-# stopped it. It writes a file, not a stream, so start-up logging on stderr
+# ``Domain.check`` returns at level warning or error, ``IR_BUILD_FAILED`` when
+# the IR does not build, or the exception that stopped it. It writes a file, not a stream, so start-up logging on stderr
 # cannot corrupt the report.
 _RUNNER = """
 import json
@@ -143,6 +157,7 @@ assets = [pathlib.Path(p) for p in json.loads(sys.argv[2])]
 report_path = pathlib.Path(sys.argv[3])
 codes = {}
 crashes = {}
+ir_failures = {}
 for index, path in enumerate(assets):
     label = path.relative_to(skills_root).as_posix()
     try:
@@ -159,18 +174,29 @@ for index, path in enumerate(assets):
                 for entry in report["diagnostics"]
                 if entry.get("level") in ("warning", "error")
             )
+            if not report["errors"]:
+                # ``check`` drops an IR build failure and returns no
+                # diagnostics, so build the IR again to see the failure.
+                try:
+                    domain.to_ir()
+                except Exception as exc:
+                    found.add("IR_BUILD_FAILED")
+                    ir_failures[label] = "%s: %s" % (type(exc).__name__, exc)
         codes[label] = sorted(found)
     except Exception as exc:  # report the asset, then keep going
         crashes[label] = "%s: %s" % (type(exc).__name__, exc)
-report_path.write_text(json.dumps({"codes": codes, "crashes": crashes}))
+report = {"codes": codes, "crashes": crashes, "ir_failures": ir_failures}
+report_path.write_text(json.dumps(report))
 """
 
 
 def collect_codes(skills_root: Path, assets: list[Path], tmp_path: Path) -> dict:
     """Run ``Domain.check`` on each asset in a child interpreter.
 
-    Returns ``{"codes": {asset: [code, ...]}, "crashes": {asset: message}}``,
-    with asset paths relative to ``skills_root``.
+    Returns ``{"codes": {asset: [code, ...]}, "crashes": {asset: message},
+    "ir_failures": {asset: message}}``, with asset paths relative to
+    ``skills_root``. An asset in ``ir_failures`` also has ``IR_BUILD_FAILED``
+    among its codes.
     """
     report_path = tmp_path / "check-report.json"
     result = subprocess.run(
@@ -207,7 +233,10 @@ def evaluate(report: dict, allowlist: frozenset[tuple[str, str]]) -> list[str]:
         if code not in COMPLETENESS_CODES
     }
     for asset, code in sorted(found - allowlist):
-        problems.append(f"{asset}: reports {code}, which is not on the allowlist")
+        message = f"{asset}: reports {code}, which is not on the allowlist"
+        if code == IR_BUILD_FAILED:
+            message += f" ({report['ir_failures'][asset]})"
+        problems.append(message)
     checked = set(report["codes"])
     for asset, code in sorted(allowlist - found):
         if asset in checked:
@@ -369,4 +398,99 @@ def test_an_asset_that_raises_is_reported(tmp_path):
     _write_asset(root, "broken.py", "raise ValueError('boom')\n")
     assert _check(root, tmp_path) == [
         "skill/assets/broken.py: could not be checked: ValueError: boom"
+    ]
+
+
+_DUPLICATE_HANDLER_ASSET = """
+from protean import Domain, handle
+from protean.fields import Identifier, String
+
+domain = Domain(name="Duplicate")
+
+
+@domain.aggregate
+class Order:
+    name = String()
+
+
+@domain.command(part_of=Order)
+class PlaceOrder:
+    order_id = Identifier()
+
+
+@domain.command_handler(part_of=Order)
+class FirstHandler:
+    @handle(PlaceOrder)
+    def place(self, command):
+        pass
+
+
+@domain.command_handler(part_of=Order)
+class SecondHandler:
+    @handle(PlaceOrder)
+    def place(self, command):
+        pass
+"""
+
+
+def test_a_validation_error_is_reported(tmp_path):
+    root = tmp_path / "skills"
+    _write_asset(root, "duplicate.py", _DUPLICATE_HANDLER_ASSET)
+    assert _check(root, tmp_path) == [
+        "skill/assets/duplicate.py: reports IncorrectUsageError, which is not on "
+        "the allowlist"
+    ]
+
+
+_IR_FAILURE_ASSET = """
+from protean import Domain
+from protean.fields import String
+
+domain = Domain(name="Unbuildable")
+
+
+@domain.aggregate
+class Order:
+    name = String()
+
+
+@domain.domain_service(part_of=["Order", "Order"])
+class Pricing:
+    pass
+"""
+
+
+def test_an_ir_build_failure_is_reported(tmp_path):
+    root = tmp_path / "skills"
+    _write_asset(root, "unbuildable.py", _IR_FAILURE_ASSET)
+    problems = _check(root, tmp_path)
+    assert problems == [
+        "skill/assets/unbuildable.py: reports IR_BUILD_FAILED, which is not on "
+        "the allowlist (AttributeError: 'str' object has no attribute '__module__')"
+    ]
+    allowlist = frozenset({("skill/assets/unbuildable.py", IR_BUILD_FAILED)})
+    assert _check(root, tmp_path, allowlist) == []
+
+
+def test_an_asset_without_a_domain_is_reported(tmp_path):
+    root = tmp_path / "skills"
+    _write_asset(root, "plain.py", "x = 1\n")
+    assert _check(root, tmp_path) == [
+        "skill/assets/plain.py: could not be checked: RuntimeError: asset defines "
+        "no Domain"
+    ]
+
+
+def test_every_domain_in_an_asset_is_checked(tmp_path):
+    root = tmp_path / "skills"
+    source = (
+        _COMPLETENESS_ONLY_ASSET.replace("domain =", "first =").replace(
+            "@domain.", "@first."
+        )
+        + _FOREIGN_EVENT_ASSET
+    )
+    _write_asset(root, "two.py", source)
+    assert _check(root, tmp_path) == [
+        "skill/assets/two.py: reports EVENT_HANDLER_FOREIGN_EVENT, which is not on "
+        "the allowlist"
     ]
