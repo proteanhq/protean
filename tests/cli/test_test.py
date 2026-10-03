@@ -1,3 +1,5 @@
+import threading
+import time
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -525,6 +527,92 @@ class TestParallelExecution:
         assert result != 0
         captured = capsys.readouterr()
         assert "💥 Test suite 'Failing Suite' generated an exception" in captured.out
+
+
+class TestSharedDatabaseSuites:
+    """Suites that share one database must not run at the same time."""
+
+    def test_postgresql_suites_share_one_database(self):
+        suites = {s.name: s for s in TestRunner().generate_test_suites()}
+
+        assert suites["Database: POSTGRESQL"].shared_database == "postgresql"
+        assert suites["Database: POSTGRESQL_PSYCOPG2"].shared_database == "postgresql"
+        assert suites["Database: MYSQL"].shared_database is None
+        assert suites["Database: MARIADB"].shared_database is None
+        assert suites["Full Matrix"].shared_database is None
+
+    @staticmethod
+    def _track_overlap(runner):
+        """Make ``run_command`` record the most commands running at once."""
+        state = {"active": 0, "peak": 0}
+        guard = threading.Lock()
+
+        def run_command(cmd):
+            with guard:
+                state["active"] += 1
+                state["peak"] = max(state["peak"], state["active"])
+            time.sleep(0.2)
+            with guard:
+                state["active"] -= 1
+            return 0
+
+        runner.run_command = run_command
+        return state
+
+    def test_suites_sharing_a_database_run_one_at_a_time(self):
+        runner = TestRunner()
+        suites = [
+            TestSuite("Database: A", ["a"], shared_database="postgresql"),
+            TestSuite("Database: B", ["b"], shared_database="postgresql"),
+        ]
+        state = self._track_overlap(runner)
+
+        result = runner.run_test_suites_in_parallel(suites)
+
+        assert result == 0
+        assert state["peak"] == 1
+
+    def test_suites_without_a_shared_database_still_overlap(self):
+        runner = TestRunner()
+        suites = [
+            TestSuite("Database: A", ["a"]),
+            TestSuite("Database: B", ["b"]),
+        ]
+        # Each command waits until the other one is running too. If the suites
+        # ran one at a time, the barrier would time out and the command fail.
+        both_running = threading.Barrier(2, timeout=10)
+        started = []
+
+        def run_command(cmd):
+            if cmd[0] not in ("a", "b"):  # coverage erase / combine / report
+                return 0
+            started.append(cmd[0])
+            try:
+                both_running.wait()
+            except threading.BrokenBarrierError:
+                return 1
+            return 0
+
+        runner.run_command = run_command
+
+        result = runner.run_test_suites_in_parallel(suites)
+
+        assert sorted(started) == ["a", "b"]
+        assert result == 0
+
+    def test_matrix_first_run_serializes_shared_database_suites(self):
+        runner = TestRunner()
+        suites = [
+            TestSuite("Full Matrix", ["matrix"]),
+            TestSuite("Database: A", ["a"], shared_database="postgresql"),
+            TestSuite("Database: B", ["b"], shared_database="postgresql"),
+        ]
+        state = self._track_overlap(runner)
+
+        result = runner.run_full_suite_with_matrix_first(suites)
+
+        assert result == 0
+        assert state["peak"] == 1
 
 
 class TestStyleInjection:

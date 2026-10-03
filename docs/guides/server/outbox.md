@@ -281,6 +281,8 @@ This happens on every boot when the store is shared with another domain, or
 when the last write was a command. The sweep never blocks boot (a failure is
 logged and startup continues), and is safe under `--workers N`, the composite
 unique index on (`message_id`, `target_broker`) makes concurrent sweeps idempotent.
+The startup sweep covers only the `default` provider. Run the CLI with
+`--provider` for aggregates on other providers.
 
 **On demand with the CLI.** Run the same reconciliation yourself after a
 suspected crash, or from a cron job as a periodic safety net:
@@ -300,9 +302,23 @@ Reconciled 2 outbox row(s) from the event store.
 Reconciliation repairs only events raised by this domain's aggregates on the
 given provider, so another domain's events in a shared event store, commands,
 process manager transition events, and events of aggregates on other providers
-never get a row. Only the internal-broker row is reconciled. External
-published-broker rows are not rebuilt, so a published event lost in the crash
-window does not reach external brokers. See the
+never get a row.
+
+An event counts as missing only when its internal-broker row is missing. A
+`published` event that is missing gets back one row per broker in
+`[outbox].external_brokers`, so it reaches external brokers again. The list is
+read from the current configuration, so it includes brokers added after the
+event was written. External rows lost on their own, while the internal row
+remains, are not rebuilt. If the event's `partition_key` can no longer be
+computed, every rebuilt row is saved as abandoned and the event is not sent.
+
+Cleanup deletes delivered rows after `published_retention_hours` and abandoned
+rows after `abandoned_retention_hours`. A deleted row looks the same as a row
+lost in a crash. So reconciliation skips events older than the shorter of the
+two retentions, which keeps a restart from sending old events again. An event
+lost in a crash and left unrepaired for longer than that is not repaired.
+
+See the
 [`protean outbox reconcile` reference](../../reference/cli/data/outbox.md) for
 options and output.
 

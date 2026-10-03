@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Any, cast
 from pydantic import BeforeValidator, Field
 
 if TYPE_CHECKING:
+    from protean.core.event import BaseEvent
     from protean.core.queryset import QuerySet
 
 from protean.core.aggregate import BaseAggregate
@@ -1049,6 +1050,22 @@ def backfill_suffix_from_config(config: Any) -> str:
 def _is_outboxed_event(domain: Any, message: Any, provider_name: str) -> bool:
     """Whether the unit of work writes a row for *message* in *provider_name*'s outbox.
 
+    See ``_resolve_outboxed_event_class`` for the rules.
+    """
+    return _resolve_outboxed_event_class(domain, message, provider_name) is not None
+
+
+def _resolve_outboxed_event_class(
+    domain: Any, message: Any, provider_name: str
+) -> "type[BaseEvent] | None":
+    """The event class whose rows the unit of work writes for *message*, or ``None``.
+
+    For an older event version this is the current class the upcaster chain
+    resolves to.
+
+    Returns ``None`` when the unit of work writes no row for *message* in
+    *provider_name*'s outbox.
+
     Only events raised by this domain's aggregates get outbox rows, and each
     row goes to the outbox of the aggregate's own provider. A stored message
     qualifies when its type string resolves in the domain's own type registry
@@ -1071,18 +1088,18 @@ def _is_outboxed_event(domain: Any, message: Any, provider_name: str) -> bool:
     headers = message.metadata.headers if message.metadata else None
     type_string = headers.type if headers else None
     if not type_string:
-        return False
+        return None
 
     element_cls = domain._events_and_commands.get(type_string)
     # ``register_external_event`` can map a foreign type string onto a class
     # this domain also registers. The unit of work only writes the class's own
     # current type, so a direct match must equal it.
     if element_cls is not None and element_cls.__type__ != type_string:
-        return False
+        return None
     if element_cls is None:
         element_cls = domain._upcaster_chain.resolve_event_class(type_string)
     if element_cls is None or element_cls.element_type != DomainObjects.EVENT:
-        return False
+        return None
 
     # ``register_external_event`` maps a foreign type string to the foreign
     # class, which keeps its ``part_of``. Only events in this domain's own
@@ -1091,12 +1108,14 @@ def _is_outboxed_event(domain: Any, message: Any, provider_name: str) -> bool:
         fqn(element_cls)
     )
     if record is None or record.cls is not element_cls:
-        return False
+        return None
 
     part_of = getattr(element_cls.meta_, "part_of", None)
     if part_of is None or part_of.element_type != DomainObjects.AGGREGATE:
-        return False
-    return bool(part_of.meta_.provider == provider_name)
+        return None
+    if part_of.meta_.provider != provider_name:
+        return None
+    return cast("type[BaseEvent]", element_cls)
 
 
 def _rebuilt_partition_key(
@@ -1120,6 +1139,35 @@ def _rebuilt_partition_key(
     return UnitOfWork._extract_partition_key(
         message.to_domain_object(), partition_keys, backfill_suffix
     )
+
+
+def _cleanup_cutoff(domain: Any, outbox_config: dict[str, Any]) -> datetime:
+    """The oldest event time whose outbox rows cleanup cannot have deleted yet.
+
+    Uses the shorter of ``outbox.cleanup.published_retention_hours`` and
+    ``outbox.cleanup.abandoned_retention_hours``, with the same defaults the
+    outbox processor uses.
+    """
+    cleanup_config = outbox_config.get("cleanup", {})
+    retention_hours = min(
+        cleanup_config.get("published_retention_hours", 168),
+        cleanup_config.get("abandoned_retention_hours", 720),
+    )
+    now: datetime = domain.clock.now()
+    return now - timedelta(hours=retention_hours)
+
+
+def _written_after(message: Any, cutoff: datetime) -> bool:
+    """Whether *message* was written at or after *cutoff*.
+
+    A message with no stored time does not count. Its age is unknown, so
+    cleanup may already have deleted its row.
+    """
+    headers = message.metadata.headers if message.metadata else None
+    written_at = headers.time if headers else None
+    if written_at is None:
+        return False
+    return ensure_utc_aware(written_at) >= cutoff
 
 
 def reconcile_outbox(
@@ -1155,8 +1203,25 @@ def reconcile_outbox(
     is saved as abandoned and an error is logged. A row without its key would be
     published to the base category, where no partitioned handler reads it.
 
-    Only the internal-broker row is reconciled here; external published-broker
-    rows are left to a future extension.
+    A ``published`` event also gets one row per broker in
+    ``outbox.external_brokers``, with the same ``partition_key``. These rows are
+    built from the event class's current ``published`` flag and the current
+    ``external_brokers`` setting, since neither is stored with the event. A
+    message counts as missing only when its internal row is missing, because the
+    unit of work saves all of a message's rows in one commit. So a broker added
+    to ``external_brokers`` after the commit is not back-filled for messages
+    that still have their internal row. An external row that already exists is
+    not created again.
+
+    Cleanup deletes published rows after ``outbox.cleanup.published_retention_hours``
+    and abandoned rows after ``outbox.cleanup.abandoned_retention_hours``. A
+    deleted row cannot be told apart from one lost in a crash, so events older
+    than the shorter of the two retentions are skipped. Otherwise a restart
+    after cleanup would send those events again. An event lost in a crash and
+    left unrepaired for longer than that retention is not repaired. An event
+    with no stored time is also skipped, because its age is unknown.
+
+    The return value counts rows created, internal and external.
     """
     if not getattr(domain, "has_outbox", False):
         return 0
@@ -1179,13 +1244,16 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
 
     outbox_config = domain.config.get("outbox", {})
     internal_broker = outbox_config.get("broker", DEFAULT_TARGET_BROKER)
+    external_brokers: list[str] = outbox_config.get("external_brokers", [])
     outbox_repo = domain._get_outbox_repo(provider_name)
 
+    def _existing_brokers(message_id: str) -> set[str]:
+        return {
+            row.target_broker for row in outbox_repo.find_all_by_message_id(message_id)
+        }
+
     def _internal_row_exists(message_id: str) -> bool:
-        return any(
-            row.target_broker == internal_broker
-            for row in outbox_repo.find_all_by_message_id(message_id)
-        )
+        return internal_broker in _existing_brokers(message_id)
 
     # Fast path: if the newest message is one of this domain's outboxed events
     # and already has its internal row, the last unit of work committed fully
@@ -1204,11 +1272,29 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     # newest message overall may be foreign, a command, or a transition event.
     # None of those ever get a row, so a missing row for one of them does not
     # mean the last commit crashed.
-    qualifying = [m for m in messages if _is_outboxed_event(domain, m, provider_name)]
+    # Cleanup deletes delivered and abandoned rows once they pass their
+    # retention, and a deleted row looks the same as one lost in a crash. An
+    # event is never older than its row's ``published_at`` or
+    # ``last_processed_at``, so skipping events older than the shorter
+    # retention skips every row cleanup could have deleted.
+    cutoff = _cleanup_cutoff(domain, outbox_config)
+    qualifying = [
+        m
+        for m in messages
+        if _is_outboxed_event(domain, m, provider_name) and _written_after(m, cutoff)
+    ]
     if not qualifying or _internal_row_exists(qualifying[-1].metadata.headers.id):
         return 0
 
-    missing = [m for m in qualifying if not _internal_row_exists(m.metadata.headers.id)]
+    existing_brokers = {
+        m.metadata.headers.id: _existing_brokers(m.metadata.headers.id)
+        for m in qualifying
+    }
+    missing = [
+        m
+        for m in qualifying
+        if internal_broker not in existing_brokers[m.metadata.headers.id]
+    ]
     if not missing:  # pragma: no cover - race guard: a concurrent sweep can
         # insert the rows between the check above and this query.
         return 0
@@ -1216,8 +1302,10 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     partition_keys = domain._partition_keys
     backfill_suffix = backfill_suffix_from_config(domain.config)
 
+    created = 0
     with UnitOfWork():
         for message in missing:
+            message_id = message.metadata.headers.id
             domain_meta = message.metadata.domain
             abandon_reason = None
             try:
@@ -1228,26 +1316,44 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 partition_key = None
                 abandon_reason = f"partition_key could not be computed: {exc}"
                 logger.error(
-                    "outbox.reconcile: saving the row for message %s as "
+                    "outbox.reconcile: saving the row(s) for message %s as "
                     "abandoned, because its %s",
-                    message.metadata.headers.id,
+                    message_id,
                     abandon_reason,
                 )
-            outbox_message = Outbox.create_message(
-                message_id=message.metadata.headers.id,
-                stream_name=message.metadata.headers.stream,
-                message_type=message.metadata.headers.type,
-                data=message.data,
-                metadata=message.metadata,
-                correlation_id=getattr(domain_meta, "correlation_id", None),
-                causation_id=getattr(domain_meta, "causation_id", None),
-                target_broker=internal_broker,
-                partition_key=partition_key,
-            )
-            if abandon_reason is not None:
-                outbox_message.mark_abandoned(
-                    abandon_reason, cause="Invalid partition key"
-                )
-            outbox_repo._dao.save(outbox_message)
 
-    return len(missing)
+            # The unit of work writes one row per external broker for a
+            # ``published`` event, all in the same commit as the internal row.
+            target_brokers = [internal_broker]
+            event_cls = _resolve_outboxed_event_class(domain, message, provider_name)
+            if (
+                external_brokers
+                and event_cls is not None
+                and getattr(event_cls.meta_, "published", False)
+            ):
+                target_brokers.extend(
+                    broker
+                    for broker in external_brokers
+                    if broker not in existing_brokers[message_id]
+                )
+
+            for target_broker in target_brokers:
+                outbox_message = Outbox.create_message(
+                    message_id=message_id,
+                    stream_name=message.metadata.headers.stream,
+                    message_type=message.metadata.headers.type,
+                    data=message.data,
+                    metadata=message.metadata,
+                    correlation_id=getattr(domain_meta, "correlation_id", None),
+                    causation_id=getattr(domain_meta, "causation_id", None),
+                    target_broker=target_broker,
+                    partition_key=partition_key,
+                )
+                if abandon_reason is not None:
+                    outbox_message.mark_abandoned(
+                        abandon_reason, cause="Invalid partition key"
+                    )
+                outbox_repo._dao.save(outbox_message)
+                created += 1
+
+    return created
