@@ -140,16 +140,18 @@ has_alarm = hasattr(signal, "setitimer")
 
 # Record every Domain built while a file runs, so the init step reaches a
 # Domain that a later block rebinds, deletes or stores out of the namespace.
+# Hook ``__new__``, not ``__init__``: ``Domain.__init__`` names an unnamed
+# domain after its caller's module, so its caller must stay the block.
 built = []
-original_init = Domain.__init__
 
 
-def recording_init(self, *args, **kwargs):
-    original_init(self, *args, **kwargs)
-    built.append(self)
+def recording_new(cls, *args, **kwargs):
+    instance = object.__new__(cls)
+    built.append(instance)
+    return instance
 
 
-Domain.__init__ = recording_init
+Domain.__new__ = recording_new
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     job = json.load(handle)
@@ -652,22 +654,30 @@ def test_reference_files_are_run_too(tmp_path):
 )
 def test_a_block_past_the_timeout_is_reported_and_the_next_file_runs(tmp_path):
     root = _skill(tmp_path, "import time\ntime.sleep(30)", "x = 1")
-    other = root / "later" / "SKILL.md"
+    # "tail" sorts after "skill", so its result shows the run went on.
+    other = root / "tail" / "SKILL.md"
     other.parent.mkdir()
-    other.write_text("```python\nraise ValueError('later ran')\n```\n")
+    other.write_text("```python\nraise ValueError('tail ran')\n```\n")
     results = _run(root, tmp_path, timeout=0.5)
     assert results == [
-        {
-            "file": "later/SKILL.md",
-            "failure": "line 2: ValueError: later ran",
-            "not_run": [],
-        },
         {
             "file": "skill/SKILL.md",
             "failure": "line 4: timed out after 0.5 seconds",
             "not_run": [9],
         },
+        {
+            "file": "tail/SKILL.md",
+            "failure": "line 2: ValueError: tail ran",
+            "not_run": [],
+        },
     ]
+
+
+def test_an_unnamed_domain_is_named_after_the_snippet_module(tmp_path):
+    root = _skill(
+        tmp_path, "unnamed = Domain()\nassert unnamed.name == __name__, unnamed.name"
+    )
+    assert _run(root, tmp_path)[0]["failure"] is None
 
 
 @pytest.mark.parametrize(

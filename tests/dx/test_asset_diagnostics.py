@@ -17,8 +17,9 @@ deleting its entry.
 Some assets show a problem on purpose (the "before" side of a refactoring, an
 unclosed saga, the audit skill's sample codebase). They are exempt by name.
 
-The assets run in one child interpreter, each under its own ``run_name``, as in
-``test_examples.py``, so their registrations stay out of this test process.
+The assets run in one child interpreter, each as its own file-backed module,
+so their registrations stay out of this test process and source-reading
+diagnostics can find each asset's source.
 """
 
 from __future__ import annotations
@@ -121,6 +122,12 @@ ALLOWLIST = frozenset(
             "refactor-introduce-events/assets/introduce_events_ecommerce_after.py",
             "EVENT_HANDLER_FOREIGN_EVENT",
         ),
+        (
+            "repository/assets/repository_counting_and_nulls.py",
+            "UNINDEXED_FILTER_PATH",
+        ),
+        ("repository/assets/repository_custom.py", "UNINDEXED_FILTER_PATH"),
+        ("repository/assets/repository_with_database.py", "UNINDEXED_FILTER_PATH"),
     }
 )
 
@@ -145,9 +152,9 @@ def discover_assets(skills_root: Path) -> list[Path]:
 # the IR does not build, or the exception that stopped it. It writes a file, not a stream, so start-up logging on stderr
 # cannot corrupt the report.
 _RUNNER = """
+import importlib.util
 import json
 import pathlib
-import runpy
 import sys
 
 from protean.domain import Domain
@@ -160,8 +167,16 @@ crashes = {}
 ir_failures = {}
 for index, path in enumerate(assets):
     label = path.relative_to(skills_root).as_posix()
+    name = "_dx_check_%d_" % index
     try:
-        namespace = runpy.run_path(str(path), run_name="_dx_check_%d_" % index)
+        # A file-backed module that stays in ``sys.modules`` while it is
+        # checked: rules that read an element's source resolve its module
+        # with ``find_spec``, which finds nothing once the module is gone.
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        namespace = vars(module)
         domains = {id(v): v for v in namespace.values() if isinstance(v, Domain)}
         if not domains:
             raise RuntimeError("asset defines no Domain")
@@ -185,6 +200,8 @@ for index, path in enumerate(assets):
         codes[label] = sorted(found)
     except Exception as exc:  # report the asset, then keep going
         crashes[label] = "%s: %s" % (type(exc).__name__, exc)
+    finally:
+        sys.modules.pop(name, None)
 report = {"codes": codes, "crashes": crashes, "ir_failures": ir_failures}
 report_path.write_text(json.dumps(report))
 """
@@ -342,6 +359,38 @@ def test_an_unlisted_warning_fails_and_names_asset_and_code(tmp_path):
         (
             "skill/assets/foreign.py: reports EVENT_HANDLER_FOREIGN_EVENT, which is "
             "not on the allowlist"
+        )
+    ]
+
+
+_UNINDEXED_FILTER_ASSET = """
+from protean import Domain
+from protean.fields import String
+
+domain = Domain(name="Unindexed")
+
+
+@domain.aggregate
+class Customer:
+    email = String()
+
+
+@domain.repository(part_of=Customer)
+class CustomerRepository:
+    def by_email(self, email):
+        return self._dao.query.filter(email=email).all()
+"""
+
+
+def test_a_warning_read_from_source_is_reported(tmp_path):
+    # The rule reads the repository's method body, so it only fires when the
+    # asset's module source can be found during ``check``.
+    root = tmp_path / "skills"
+    _write_asset(root, "unindexed.py", _UNINDEXED_FILTER_ASSET)
+    assert _check(root, tmp_path) == [
+        (
+            "skill/assets/unindexed.py: reports UNINDEXED_FILTER_PATH, which is not "
+            "on the allowlist"
         )
     ]
 
