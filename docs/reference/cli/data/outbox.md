@@ -84,7 +84,8 @@ Events older than the shorter of `[outbox.cleanup].published_retention_hours`
 are skipped. Cleanup deletes rows older than these retentions, and a deleted
 row looks the same as one lost in a crash, so rebuilding it would send the
 event again. An event lost in a crash and left unrepaired for longer than that
-retention is not repaired.
+retention is not repaired. An event with no stored time is also skipped,
+because its age is unknown.
 
 ## Automatic startup sweep
 

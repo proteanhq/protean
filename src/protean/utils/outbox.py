@@ -1160,12 +1160,13 @@ def _cleanup_cutoff(domain: Any, outbox_config: dict[str, Any]) -> datetime:
 def _written_after(message: Any, cutoff: datetime) -> bool:
     """Whether *message* was written at or after *cutoff*.
 
-    A message with no stored time counts as recent, so it is not skipped.
+    A message with no stored time does not count. Its age is unknown, so
+    cleanup may already have deleted its row.
     """
     headers = message.metadata.headers if message.metadata else None
     written_at = headers.time if headers else None
     if written_at is None:
-        return True
+        return False
     return ensure_utc_aware(written_at) >= cutoff
 
 
@@ -1217,7 +1218,8 @@ def reconcile_outbox(
     deleted row cannot be told apart from one lost in a crash, so events older
     than the shorter of the two retentions are skipped. Otherwise a restart
     after cleanup would send those events again. An event lost in a crash and
-    left unrepaired for longer than that retention is not repaired.
+    left unrepaired for longer than that retention is not repaired. An event
+    with no stored time is also skipped, because its age is unknown.
 
     The return value counts rows created, internal and external.
     """

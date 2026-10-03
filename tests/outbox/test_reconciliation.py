@@ -1212,12 +1212,12 @@ class TestReconcileSkipsRowsCleanupMayHaveDeleted:
             assert outbox_repo.find_all_by_message_id(old_id) == []
             assert len(outbox_repo.find_all_by_message_id(new_id)) == 2
 
-    def test_message_without_a_stored_time_counts_as_recent(self):
+    def test_message_without_a_stored_time_is_not_recent(self):
         cutoff = datetime.now(UTC)
         message = Message(
             data={}, metadata=Metadata(headers=MessageHeaders(id="m-1", time=None))
         )
-        assert _written_after(message, cutoff) is True
+        assert _written_after(message, cutoff) is False
         old = Message(
             data={},
             metadata=Metadata(
