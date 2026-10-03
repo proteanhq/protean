@@ -144,6 +144,11 @@ document the change in the 0.18 migration guide. The actionable error plus the
   does. The rule is unchanged: a floor sits on every extra whose tree reaches
   the package.*
 
+  *Amended (October 2026, #1689): `postgresql` now installs psycopg 3, and a new
+  `postgresql-psycopg2` extra installs psycopg2. Both are SQLAlchemy extras, so
+  both carry the `greenlet` floor. SQLAlchemy 2.1 no longer requires `greenlet`,
+  but the extras still accept the 2.0 floor, which does.*
+
   *Amended (August 2026, #1375): `werkzeug` left core. `current_domain`,
   `current_uow`, and `g` are now backed by a small stdlib `contextvars`
   implementation that preserves the push/pop nesting semantics of the old

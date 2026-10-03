@@ -65,6 +65,7 @@ class TestTestRunner:
         assert runner.database_capabilities == {
             "MEMORY": "IN_MEMORY",
             "POSTGRESQL": "RELATIONAL_FULL",
+            "POSTGRESQL_PSYCOPG2": "RELATIONAL_FULL",
             "SQLITE": "RELATIONAL",
             "MSSQL": "RELATIONAL_FULL",
             "MYSQL": "RELATIONAL_JSON",

@@ -47,6 +47,7 @@ TEST_CONFIGS = {
     "databases": [
         "MEMORY",
         "POSTGRESQL",
+        "POSTGRESQL_PSYCOPG2",
         "SQLITE",
         "MSSQL",
         "MYSQL",
@@ -129,6 +130,9 @@ class TestRunner:
         self.database_capabilities: dict[str, str] = {
             "MEMORY": "IN_MEMORY",
             "POSTGRESQL": "RELATIONAL_FULL",
+            # One provider, two drivers. psycopg 3 is the default, and the
+            # psycopg2 entry keeps the fallback driver under the same suite.
+            "POSTGRESQL_PSYCOPG2": "RELATIONAL_FULL",
             "SQLITE": "RELATIONAL",
             "MSSQL": "RELATIONAL_FULL",
             # One provider, two SQLAlchemy dialect names. Both are in the

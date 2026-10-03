@@ -56,6 +56,9 @@ MARIADB_PORT = 53307
 
 # Pre-built connection URIs
 POSTGRES_URI = f"postgresql://postgres:postgres@localhost:{POSTGRES_PORT}/postgres"
+POSTGRES_PSYCOPG2_URI = (
+    f"postgresql+psycopg2://postgres:postgres@localhost:{POSTGRES_PORT}/postgres"
+)
 MESSAGE_DB_URI = f"postgresql://message_store@localhost:{MESSAGE_DB_PORT}/message_store?sslmode=disable"
 REDIS_URI = f"redis://localhost:{REDIS_PORT}"
 MSSQL_URI = (

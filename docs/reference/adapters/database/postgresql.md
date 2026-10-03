@@ -16,21 +16,26 @@ provides real ACID transactions, connection pooling, and schema management.
 pip install "protean[postgresql]"
 ```
 
-This installs `psycopg2-binary`, a pre-compiled binary that needs no build step
-with no system dependencies.
+This installs [psycopg 3](https://www.psycopg.org/psycopg3/) with its binary
+package (`psycopg[binary]`), which needs no build step and no system
+`libpq`. psycopg 3 is the default driver.
 
-For production deployments, you may prefer `psycopg2` (compiled from source
-against your system's `libpq`). To use it, install it explicitly in place of
-`psycopg2-binary`:
+To build against your system's `libpq` instead, install `psycopg` without the
+binary package. See the [psycopg 3 installation
+guide](https://www.psycopg.org/psycopg3/docs/basic/install.html) for the
+prerequisites.
+
+### Using psycopg2
+
+The provider also supports psycopg2. Install it with its own extra:
 
 ```bash
-pip install psycopg2
+pip install "protean[postgresql-psycopg2]"
 ```
 
-Both packages provide the same `psycopg2` Python module. Only one should be
-installed at a time. See the [psycopg2 installation
-guide](https://www.psycopg.org/docs/install.html) for system prerequisites when
-building from source.
+This installs `psycopg2-binary`. Install `psycopg2` in its place to build from
+source. Both provide the same `psycopg2` module, so install only one. See the
+[psycopg2 installation guide](https://www.psycopg.org/docs/install.html).
 
 ## Configuration
 
@@ -53,13 +58,33 @@ database_uri = "postgresql://postgres:postgres@localhost:5432/postgres"
 ### Connection String Format
 
 ```
-postgresql://[username]:[password]@[host]:[port]/[database]
+postgresql[+driver]://[username]:[password]@[host]:[port]/[database]
 
 # Examples:
 postgresql://postgres:postgres@localhost:5432/postgres
 postgresql://user:pass@db.example.com:5432/myapp
 postgresql://user:pass@db.example.com/myapp?sslmode=require
+postgresql+psycopg2://user:pass@db.example.com:5432/myapp
 ```
+
+### Choosing the driver
+
+The driver comes from the URL:
+
+| `database_uri` | Driver |
+|----------------|--------|
+| `postgresql+psycopg://...` | psycopg 3 |
+| `postgresql+psycopg2://...` | psycopg2 |
+| `postgresql://...` | psycopg 3 if it is installed, otherwise psycopg2 |
+
+Protean resolves the plain `postgresql://` form itself, so it means the same
+driver on SQLAlchemy 2.0 and 2.1. The provider logs the driver it chose as
+`repository.postgresql.driver_selected` at `INFO`.
+
+If the driver a URL needs cannot be imported, `domain.init()` raises a
+`ConfigurationError` that names the extra to install. A URL that names a
+psycopg2 driver does not fall back to psycopg 3. Write the driver into the URL
+when you want to control which one runs.
 
 ## Capabilities
 

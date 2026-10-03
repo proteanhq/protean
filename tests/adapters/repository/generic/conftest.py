@@ -18,6 +18,15 @@ _DB_CAPABILITY_MARKERS: dict[str, set[str]] = {
         "native_json",
         "native_array",
     },
+    "POSTGRESQL_PSYCOPG2": {
+        "basic_storage",
+        "transactional",
+        "atomic_transactions",
+        "raw_queries",
+        "schema_management",
+        "native_json",
+        "native_array",
+    },
     "SQLITE": {
         "basic_storage",
         "transactional",

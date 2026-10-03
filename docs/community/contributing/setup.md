@@ -45,7 +45,7 @@ $ uv sync --all-extras --all-groups
 $ pre-commit install --install-hooks
 ```
 
-- The `postgresql` extra installs `psycopg2-binary`, which includes pre-compiled binaries and requires no system dependencies. If you prefer to build `psycopg2` from source, install it explicitly with `pip install psycopg2`. See the [psycopg2 installation guide](https://www.psycopg.org/docs/install.html) for system prerequisites.
+- The `postgresql` extra installs psycopg 3 with its pre-compiled binary package, and the `postgresql-psycopg2` extra installs `psycopg2-binary`. `--all-extras` installs both, so the test suite can run on either driver. Neither needs system dependencies.
 
 ## Start coding
 
