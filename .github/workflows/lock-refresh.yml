@@ -39,6 +39,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # A manual run checks out the ref picked in the Actions UI. Pinning
+          # main keeps the PR, which targets main, free of that ref's commits.
+          ref: main
           fetch-depth: 1
           token: ${{ secrets.LOCK_REFRESH_TOKEN || github.token }}
 

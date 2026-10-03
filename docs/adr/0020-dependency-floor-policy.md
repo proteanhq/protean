@@ -74,10 +74,13 @@ newest version available.** Concretely:
   the lock. A weekly `lock-refresh` workflow runs `uv lock --upgrade` and opens
   one PR, so CI tests the newest release each range allows; a widened cap
   otherwise leaves the old version locked. Dependabot's `uv` ecosystem would
-  update the lock itself, but it ignores `versioning-strategy` and raises every
-  floor to the newest release, which this ADR rules out. A hold on a dependency
-  is a cap in `pyproject.toml` (`mypy<3`, `elasticsearch<9`), because
-  `uv lock --upgrade` does not read Dependabot's `ignore` rules.*
+  update the lock itself. It was not adopted here because its handling of
+  `versioning-strategy` is unsettled: Dependabot's maintainers say it supports
+  the same strategies as `pip` (dependabot-core #12162), while users still
+  report it raising floors to the newest release. Moving to it needs a trial
+  run that shows `increase-if-necessary` leaves the floors alone. A hold on a
+  dependency is a cap in `pyproject.toml` (`mypy<3`, `elasticsearch<9`),
+  because `uv lock --upgrade` does not read Dependabot's `ignore` rules.*
 - **Security floors are exempt from widening**: A floor that encodes a security
   fix (e.g. `jinja2>=3.1.6` for CVE-2025-27516) stays at the fixed version even
   when older versions would pass the functional suite.
