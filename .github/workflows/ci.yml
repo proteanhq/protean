@@ -284,6 +284,13 @@ jobs:
         with:
           python-version: "3.13"
 
+      # Runs before any `uv sync`, which would quietly re-resolve a stale lock.
+      # The test legs do exactly that, so a change that edits pyproject.toml
+      # without uv.lock (Dependabot's pip ecosystem does this) passes them on
+      # versions the committed lock does not record. Fix with `uv lock`.
+      - name: Check uv.lock is up to date
+        run: uv lock --check
+
       # Ruff only reads source files and its pyproject config; it does not import
       # protean, so the default sync (project + dev group, no adapter extras) is
       # all it needs and keeps this job fast.
@@ -408,7 +415,7 @@ jobs:
         with:
           python-version: 3.x
 
-      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
+      - run: echo "cache_id=$(date --utc '+%V')" >> "$GITHUB_ENV"
 
       - uses: actions/cache@v6
         with:

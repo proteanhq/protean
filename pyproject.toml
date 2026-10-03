@@ -226,7 +226,9 @@ test = [
     "pytest-asyncio>=1.4.0",
     "pytest-mock==3.16.0",
     "pytest>=9.1.1,<10.0.0",
-    "mypy>=2.3.0",
+    # Held on 2.x until a deliberate 3.x upgrade (see the ignore rule in
+    # .github/dependabot.yml). The cap holds it for `uv lock --upgrade` too.
+    "mypy>=2.3.0,<3",
     "coverage>=7.15.2",
     "httpx>=0.28.1",
     "jsonschema>=4.26.0",
