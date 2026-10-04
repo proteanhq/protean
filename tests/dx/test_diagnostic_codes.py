@@ -11,6 +11,8 @@ tolerance, and the ``teaching_skills`` key :func:`build_diagnostic` attaches.
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from protean.dx import pack
@@ -1103,9 +1105,11 @@ def test_reverse_index_inverts_and_sorts_skill_names(tmp_path, monkeypatch):
     }
 
 
-def test_reverse_index_skips_a_skill_that_fails_to_read(monkeypatch):
+def test_reverse_index_skips_a_skill_that_fails_to_read(monkeypatch, caplog):
     # iter_skills names a skill whose SKILL.md cannot be read: the reverse index
     # skips it and keeps the skills that read cleanly, rather than failing whole.
+    # The skipped skill is logged at debug level.
+    caplog.set_level(logging.DEBUG, logger="protean.dx.pack")
     monkeypatch.setattr(pack, "iter_skills", lambda: ["good", "bad"])
 
     def _read(name):
@@ -1116,6 +1120,11 @@ def test_reverse_index_skips_a_skill_that_fails_to_read(monkeypatch):
     monkeypatch.setattr(pack, "skill_diagnostic_codes", _read)
 
     assert pack.diagnostic_code_skills() == {"AGGREGATE_NO_INVARIANTS": ["good"]}
+    records = [r for r in caplog.records if r.name == "protean.dx.pack"]
+    assert len(records) == 1
+    assert records[0].levelno == logging.DEBUG
+    assert records[0].getMessage() == "Could not read the diagnostic codes of skill bad"
+    assert str(records[0].exc_info[1]) == "unreadable skill manifest"
 
 
 # --- Pack-absent tolerance --------------------------------------------------

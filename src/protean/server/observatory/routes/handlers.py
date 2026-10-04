@@ -68,6 +68,9 @@ def _get_redis(domains: list[Domain]) -> Any:
                 if broker and hasattr(broker, "redis_instance"):
                     return cast(_RedisStyleBroker, broker).redis_instance
         except Exception:
+            logger.debug(
+                "Could not get the Redis broker of domain %s", d.name, exc_info=True
+            )
             continue
     return None
 

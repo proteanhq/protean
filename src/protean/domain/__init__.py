@@ -791,7 +791,12 @@ class Domain:
                 ir = self.to_ir()
                 diagnostics = ir.get("diagnostics", [])
             except Exception:
-                pass
+                logger.warning(
+                    "Could not build the IR for domain '%s'; "
+                    "IR diagnostics are left out of the check result",
+                    self.name,
+                    exc_info=True,
+                )
 
         total_errors = len(errors)
         total_warnings = sum(1 for d in diagnostics if d.get("level") == "warning")

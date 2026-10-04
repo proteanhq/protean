@@ -625,11 +625,9 @@ class HealthServer:
                 )
                 await writer.drain()
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 writer.close()
                 await writer.wait_closed()
-            except Exception:
-                pass
 
     async def start(self) -> None:
         """Start the health check HTTP server.

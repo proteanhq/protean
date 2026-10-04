@@ -538,6 +538,9 @@ def _load_traces_for_correlation(
                     redis_conn = broker.redis_instance
                     break
         except Exception:
+            logger.debug(
+                "Could not get the Redis broker of domain %s", d.name, exc_info=True
+            )
             continue
     else:
         return traces

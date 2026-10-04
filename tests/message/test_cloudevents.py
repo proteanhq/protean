@@ -7,8 +7,8 @@ Tests cover:
 - Edge cases for source derivation, subject extraction, and metadata branches
 """
 
+from contextlib import contextmanager
 from datetime import UTC, datetime
-from unittest.mock import PropertyMock, patch
 from uuid import uuid4
 
 import pytest
@@ -26,6 +26,7 @@ from protean.utils.eventing import (
     Metadata,
     TraceParent,
 )
+from protean.utils.globals import _domain_context_stack
 
 # ── Domain elements ──────────────────────────────────────────────────
 
@@ -681,19 +682,31 @@ class TestRoundTrip:
 # ═══════════════════════════════════════════════════════════════════════
 
 
+@contextmanager
+def _no_domain_context():
+    """Pop every active domain context so ``current_domain`` resolves to nothing."""
+    popped = []
+    while _domain_context_stack.top is not None:
+        popped.append(_domain_context_stack.pop())
+    try:
+        yield
+    finally:
+        for ctx in reversed(popped):
+            _domain_context_stack.push(ctx)
+
+
 class TestDeriveSourceFallback:
-    """_derive_source() fallback chain when current_domain is unavailable."""
+    """_derive_source() fallback chain when no domain context is active."""
 
     def test_source_from_stream_category(self):
-        """When current_domain raises, derive from stream_category."""
+        """With no domain context, derive from stream_category."""
         metadata = Metadata(
             headers=MessageHeaders(id="test", type="Test.Event.v1"),
             domain=DomainMeta(stream_category="myapp::User"),
         )
         message = Message(data={}, metadata=metadata)
 
-        with patch("protean.utils.eventing.current_domain") as mock:
-            type(mock).config = PropertyMock(side_effect=RuntimeError)
+        with _no_domain_context():
             result = message._derive_source()
 
         assert result == "urn:protean:myapp"
@@ -705,8 +718,7 @@ class TestDeriveSourceFallback:
         )
         message = Message(data={}, metadata=metadata)
 
-        with patch("protean.utils.eventing.current_domain") as mock:
-            type(mock).config = PropertyMock(side_effect=RuntimeError)
+        with _no_domain_context():
             result = message._derive_source()
 
         assert result == "urn:protean:unknown"
@@ -719,8 +731,7 @@ class TestDeriveSourceFallback:
         )
         message = Message(data={}, metadata=metadata)
 
-        with patch("protean.utils.eventing.current_domain") as mock:
-            type(mock).config = PropertyMock(side_effect=RuntimeError)
+        with _no_domain_context():
             result = message._derive_source()
 
         assert result == "urn:protean:unknown"

@@ -14,12 +14,15 @@ through :func:`pack_files`.
 
 from __future__ import annotations
 
+import logging
 import re
 from functools import lru_cache
 from importlib import resources
 from importlib.resources.abc import Traversable
 
 import protean
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "AGENTS_SOURCE",
@@ -334,6 +337,9 @@ def diagnostic_code_skills() -> dict[str, list[str]]:
         try:
             codes = skill_diagnostic_codes(skill)
         except Exception:
+            logger.debug(
+                "Could not read the diagnostic codes of skill %s", skill, exc_info=True
+            )
             continue
         for code in codes:
             index.setdefault(code, []).append(skill)

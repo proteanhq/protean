@@ -104,6 +104,9 @@ def _get_redis(domains: list[Domain]) -> "redis.Redis[Any] | None":
                     instance: redis.Redis[Any] = broker.redis_instance
                     return instance
         except Exception:
+            logger.debug(
+                "Could not get the Redis broker of domain %s", d.name, exc_info=True
+            )
             continue
     return None
 
@@ -277,7 +280,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                             "lag": int(glag),
                         }
             except Exception:
-                pass
+                logger.debug("Could not read stream %s", name, exc_info=True)
 
         return JSONResponse(
             content={
@@ -343,9 +346,16 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                                 }
                             )
                     except Exception:
-                        pass
+                        logger.debug(
+                            "Could not read consumers of group %s on stream %s",
+                            gname,
+                            stream_name,
+                            exc_info=True,
+                        )
             except Exception:
-                pass
+                logger.debug(
+                    "Could not read groups of stream %s", stream_name, exc_info=True
+                )
 
         return JSONResponse(content={"consumers": result, "count": len(result)})
 
@@ -406,9 +416,16 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                                 }
                             )
                     except Exception:
-                        pass
+                        logger.debug(
+                            "Could not read consumers of group %s on stream %s",
+                            gname,
+                            stream_name,
+                            exc_info=True,
+                        )
             except Exception:
-                pass
+                logger.debug(
+                    "Could not read groups of stream %s", stream_name, exc_info=True
+                )
 
         # 2. Group consumers by worker key (hostname, pid)
         worker_map: dict[str, dict[str, Any]] = {}
@@ -589,12 +606,16 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                                 result["totals"]["consumer_pending"] += int(gpending)
                                 max_lag = max(max_lag, int(glag))
                     except Exception:
-                        pass
+                        logger.debug(
+                            "Could not read groups of stream %s",
+                            stream_name,
+                            exc_info=True,
+                        )
 
                     result["totals"]["stream_depth"] += max_lag
                     result["streams"][stream_name] = stream_entry
                 except Exception:
-                    pass
+                    logger.debug("Could not read stream %s", stream_name, exc_info=True)
 
         return JSONResponse(content=result)
 
@@ -620,7 +641,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                         gpending = g.get("pending") or g.get(b"pending") or 0
                         message_counts["in_flight"] += int(gpending)
             except Exception:
-                pass
+                logger.debug("Could not read stream %s", name, exc_info=True)
 
         return JSONResponse(
             content={

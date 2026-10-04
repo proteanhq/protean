@@ -66,7 +66,8 @@ def _get_version_retry_config() -> dict[str, Any]:
     """Read version retry configuration from the active domain.
 
     Falls back to defaults if no domain is active (e.g. during tests
-    that call handlers directly without a domain context).
+    that call handlers directly without a domain context). A value that
+    cannot be read as a number also falls back to defaults, with a warning.
     """
     try:
         if current_domain:
@@ -90,8 +91,11 @@ def _get_version_retry_config() -> dict[str, Any]:
                     )
                 ),
             }
-    except Exception:
-        pass
+    except (AttributeError, TypeError, ValueError):
+        logger.warning(
+            "Invalid `server.version_retry` configuration; using the defaults",
+            exc_info=True,
+        )
     return dict(_VERSION_RETRY_DEFAULTS)
 
 
@@ -268,7 +272,11 @@ def _record_handler_retry(instance: Any, exc: BaseException) -> None:
             },
         )
     except Exception:  # metrics must never break the retry path
-        pass
+        logger.debug(
+            "Could not record the handler retry metric for %s",
+            type(instance).__name__,
+            exc_info=True,
+        )
 
 
 def _deadline_exceeded_after(delay: float) -> bool:

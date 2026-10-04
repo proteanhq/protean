@@ -309,7 +309,12 @@ class StreamSubscription(BaseSubscription):
                     f"{self.subscriber_name} on '{self.stream_category}'"
                 )
         except Exception:
-            pass  # Non-critical — don't fail startup over cleanup
+            # Non-critical: do not fail startup over cleanup
+            logger.warning(
+                f"Failed to clean up stale consumers for "
+                f"{self.subscriber_name} on '{self.stream_category}'",
+                exc_info=True,
+            )
 
         # If priority lanes are enabled, also ensure consumer group for backfill stream
         if self._lanes_enabled:
@@ -338,7 +343,12 @@ class StreamSubscription(BaseSubscription):
                         f"{self.subscriber_name} on '{self.backfill_stream}'"
                     )
             except Exception:
-                pass
+                # Non-critical: do not fail startup over cleanup
+                logger.warning(
+                    f"Failed to clean up stale consumers for "
+                    f"{self.subscriber_name} on '{self.backfill_stream}'",
+                    exc_info=True,
+                )
 
             logger.debug(
                 f"Initialized priority lanes for {self.subscriber_name}: "

@@ -267,8 +267,9 @@ class UnitOfWork:
         # Gather all events from identity map using helper method
         all_events = self._gather_events()
 
-        # Record events raised for the access log wide event
-        try:
+        # Record events raised for the access log wide event. ``g`` raises
+        # ``AttributeError`` when no domain context is active.
+        with contextlib.suppress(AttributeError):
             event_names = [
                 event.__class__.__name__
                 for events in all_events.values()
@@ -276,8 +277,6 @@ class UnitOfWork:
             ]
             prev = getattr(g, "_access_log_events_raised", None) or []
             g._access_log_events_raised = prev + event_names
-        except Exception:
-            pass
 
         # Compute event count for span attribute
         total_events = sum(len(events) for events in all_events.values())

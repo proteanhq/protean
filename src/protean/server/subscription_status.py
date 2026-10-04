@@ -380,6 +380,9 @@ def _collect_partitioned_stream_status(
         try:
             groups = redis_conn.xinfo_groups(partition)
         except Exception:
+            logger.debug(
+                "Could not read groups of partition %s", partition, exc_info=True
+            )
             continue
         for group in groups:
             if not isinstance(group, dict):
@@ -516,7 +519,12 @@ def _collect_stream_status(
                         )
                         break
             except Exception:
-                pass
+                logger.debug(
+                    "Could not read group %s on stream %s",
+                    consumer_group,
+                    stream_category,
+                    exc_info=True,
+                )
 
             # Fallback: count messages after last-delivered-id via xrange
             if lag is None and last_delivered_id is not None:
@@ -626,7 +634,12 @@ def _collect_broker_status(
                             )
                             break
                 except Exception:
-                    pass
+                    logger.debug(
+                        "Could not read group %s on stream %s",
+                        consumer_group,
+                        stream_name,
+                        exc_info=True,
+                    )
 
                 if lag is None and last_delivered_id is not None:
                     try:

@@ -10,6 +10,7 @@ Public API::
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections.abc import Collection
 from dataclasses import dataclass, field
@@ -477,11 +478,11 @@ def _classify_removal(
         return "premature_removal"
 
     if current_version is not None:
-        try:
+        # Mixed numeric and text segments (``"1.0"`` vs ``"1.x"``) cannot be
+        # ordered and raise ``TypeError``; treat those as premature.
+        with contextlib.suppress(TypeError):
             if _parse_version_tuple(current_version) >= _parse_version_tuple(removal):
                 return "expected_removal"
-        except Exception:
-            pass
 
     # Without a current version to compare, we can't confirm the removal
     # is past the deadline — treat as premature.

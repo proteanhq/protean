@@ -72,6 +72,11 @@ def create_sse_endpoint(
                             redis_conn = cast(_RedisStyleBroker, broker).redis_instance
                             break
                 except Exception:
+                    logger.debug(
+                        "Could not get the Redis broker of domain %s",
+                        d.name,
+                        exc_info=True,
+                    )
                     continue
 
             if not redis_conn:

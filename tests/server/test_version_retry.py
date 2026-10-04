@@ -4,6 +4,7 @@ The @handle wrapper catches ExpectedVersionError and retries with exponential
 backoff before propagating to the subscription retry/DLQ pipeline.
 """
 
+import logging
 from enum import Enum
 from unittest.mock import patch
 from uuid import uuid4
@@ -177,17 +178,38 @@ class TestVersionRetryDefaults:
         assert config["max_retries"] == 10  # overridden
         assert config["base_delay_seconds"] == 0.05  # default
 
-    def test_config_falls_back_to_defaults_on_error(self, test_domain):
-        """Falls back to defaults when config access raises an exception."""
-        # Make config.get raise to exercise the except branch
-        original_config = test_domain.config
-        with patch.object(
-            type(original_config),
-            "get",
-            side_effect=RuntimeError("config error"),
-        ):
-            config = _get_version_retry_config()
-            assert config == _VERSION_RETRY_DEFAULTS
+    @pytest.mark.parametrize(
+        "bad_config",
+        [
+            {"max_retries": "three"},
+            {"base_delay_seconds": None},
+            "not-a-table",
+        ],
+    )
+    def test_invalid_config_falls_back_to_defaults_with_warning(
+        self, test_domain, caplog, bad_config
+    ):
+        """A value that cannot be read falls back to defaults and warns."""
+        test_domain.config["server"]["version_retry"] = bad_config
+        caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
+
+        config = _get_version_retry_config()
+
+        assert config == _VERSION_RETRY_DEFAULTS
+        records = [r for r in caplog.records if r.name == "protean.utils.mixins"]
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
+        assert records[0].getMessage() == (
+            "Invalid `server.version_retry` configuration; using the defaults"
+        )
+        assert records[0].exc_info is not None
+
+    def test_valid_config_logs_no_warning(self, test_domain, caplog):
+        caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
+
+        _get_version_retry_config()
+
+        assert [r for r in caplog.records if r.name == "protean.utils.mixins"] == []
 
     def test_config_falls_back_when_no_domain_active(self, test_domain):
         """Falls back to defaults when no domain context is active."""

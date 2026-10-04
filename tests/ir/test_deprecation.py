@@ -709,6 +709,15 @@ class TestClassifyRemoval:
         )
         assert result == "expected_removal"
 
+    def test_versions_that_cannot_be_ordered_are_premature(self) -> None:
+        # ``"1.x"`` parses to ``(1, "x")``; comparing ``0`` with ``"x"`` raises
+        # ``TypeError``, so the removal cannot be confirmed as past due.
+        result = _classify_removal(
+            {"since": "0.15", "removal": "1.x"},
+            current_version="1.0",
+        )
+        assert result == "premature_removal"
+
 
 # =====================================================================
 # diff_ir — deprecation-aware contract diffing

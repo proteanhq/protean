@@ -1143,15 +1143,14 @@ class Message(Element, BaseModel, OptionsMixin):
            (format ``<domain>::<aggregate>``) → ``urn:protean:<domain>``.
         3. ``"urn:protean:unknown"`` as a last resort.
         """
-        # 1. Configured source_uri
-        try:
+        # 1. Configured source_uri. ``current_domain`` raises
+        # ``AttributeError`` when no domain context is active.
+        with contextlib.suppress(AttributeError):
             source_uri = current_domain.config.get("source_uri")
             if source_uri:
                 return cast(str, source_uri)
             # Fall back to domain name
             return f"urn:protean:{current_domain.normalized_name}"
-        except Exception:
-            pass
 
         # 2. Extract from stream_category
         if (

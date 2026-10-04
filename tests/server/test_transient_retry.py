@@ -10,6 +10,7 @@ The policy is opt-in (disabled by default) and configurable domain-wide via
 ``@domain.command_handler(retries=..., backoff=..., retry_exceptions=...)``.
 """
 
+import logging
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from unittest.mock import patch
@@ -753,14 +754,25 @@ class TestRecordHandlerRetry:
         # Real (no-op) metrics registry; just assert it does not raise.
         _record_handler_retry(self._Dummy(), ConnectionError("x"))
 
-    def test_swallows_metric_errors(self, test_domain):
-        """A failure inside metric recording never propagates."""
+    def test_swallows_metric_errors(self, test_domain, caplog):
+        """A failure inside metric recording never propagates, and is logged."""
+        caplog.set_level(logging.DEBUG, logger="protean.utils.mixins")
         with patch(
-            "protean.utils.telemetry.get_domain_metrics",
+            "protean.utils.mixins.get_domain_metrics",
             side_effect=RuntimeError("metrics down"),
         ):
             # Must not raise — metrics must never break the retry path.
             _record_handler_retry(self._Dummy(), ConnectionError("x"))
+
+        records = [
+            r
+            for r in caplog.records
+            if r.name == "protean.utils.mixins"
+            and r.getMessage() == "Could not record the handler retry metric for _Dummy"
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.DEBUG
+        assert str(records[0].exc_info[1]) == "metrics down"
 
 
 # ---------------------------------------------------------------------------
