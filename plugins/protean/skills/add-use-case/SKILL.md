@@ -126,7 +126,7 @@ class OrderCommandHandler:
 ```
 
 **Key rules for command handlers** (see [command-handler](../command-handler/SKILL.md)):
-- `part_of=AggregateClass` (a string reference also works, resolved lazily at `init`; the class is just the usual convention when it is in scope)
+- `part_of=AggregateClass` when the class is in scope. A string reference also works and resolves at `init`
 - Use `@handle(CommandClass)` decorator on each handler method
 - Each handler method has signature `(self, command: CommandClass)`
 - Implicit UnitOfWork — no manual transaction management needed

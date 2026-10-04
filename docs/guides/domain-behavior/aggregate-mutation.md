@@ -73,7 +73,7 @@ In [2]: account.withdraw(1100.0)
 ---------------------------------------------------------------------------
 ValidationError                           Traceback (most recent call last)
 ...
-ValidationError: {'balance': ['Balance cannot be below overdraft limit']}
+ValidationError: {'_entity': ['Balance cannot be below overdraft limit']}
 ```
 
 ## How It Works {#how-it-works}

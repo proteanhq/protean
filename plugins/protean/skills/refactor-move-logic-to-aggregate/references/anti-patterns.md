@@ -79,6 +79,8 @@ def title_must_not_be_empty(self):
 
 ```python
 # Good: invariant for cross-field business rules
+from protean.exceptions import ValidationError
+
 @invariant.post
 def assigned_must_have_assignee(self):
     if self.status == "ASSIGNED" and not self.assignee_id:

@@ -41,7 +41,7 @@ class Account:
     def balance_must_be_above_overdraft_limit(self):
         if self.balance < -self.overdraft_limit:
             raise ValidationError(
-                {"balance": ["Balance cannot be below overdraft limit"]}
+                {"_entity": ["Balance cannot be below overdraft limit"]}
             )
 
     def withdraw(self, amount: float):
@@ -89,18 +89,24 @@ maps a key to a list of messages:
 
 ```python
 # fragment
-raise ValidationError({"balance": ["Balance cannot be below overdraft limit"]})
+raise ValidationError({"_entity": ["Balance cannot be below overdraft limit"]})
 ```
 
-- The key names the field at fault. A rule that spans several fields uses
-  `_entity`, the key the framework itself uses.
+- A rule about one field uses that field's name as the key, even when another
+  field decides whether the rule applies ("a placed order must have line items"
+  uses `line_items`). A rule that compares fields, such as a balance against an
+  overdraft limit, uses `_entity`, the key the framework itself uses.
 - Protean catches only `ValidationError` from an invariant. It collects the
-  messages from every failing invariant and raises one `ValidationError` that
-  carries the code `INVARIANT_PRE_FAILED` or `INVARIANT_POST_FAILED` in
-  `err.codes`.
-- Any other exception (`ValueError`, a custom exception class) is not collected
-  and gets no code. A plain-string `ValidationError("...")` fails with a
-  `TypeError`, because the framework reads the messages as a dict.
+  messages from every failing invariant and raises one `ValidationError`. On an
+  aggregate or entity, `err.codes` holds `INVARIANT_PRE_FAILED` or
+  `INVARIANT_POST_FAILED`. On a value object it holds
+  `VALUE_OBJECT_INVARIANT_FAILED`. A `code=` argument on the decorator replaces
+  the default code.
+- Any other exception (`ValueError`, a custom exception class) gets no code.
+  Raised while the object is being built, it comes back as
+  `ValidationError({"_entity": [...]})`. Raised on a later change, it escapes
+  as it is. A plain-string `ValidationError("...")` fails with a `TypeError`,
+  because the framework reads the messages as a dict.
 
 ### Single Invariant Example
 
@@ -116,7 +122,7 @@ class Account:
         if self.balance < -self.overdraft_limit:
             raise ValidationError(
                 {
-                    "balance": [
+                    "_entity": [
                         f"Balance {self.balance} cannot be below "
                         f"overdraft limit -{self.overdraft_limit}"
                     ]
@@ -154,16 +160,18 @@ class Warehouse:
     def reserved_cannot_exceed_current(self):
         if self.reserved_stock > self.current_stock:
             raise ValidationError(
-                {"reserved_stock": ["Reserved stock cannot exceed current stock"]}
+                {"_entity": ["Reserved stock cannot exceed current stock"]}
             )
 
     @invariant.post
     def total_cannot_exceed_capacity(self):
         if self.current_stock > self.max_capacity:
-            raise ValidationError({"current_stock": ["Stock exceeds capacity"]})
+            raise ValidationError({"_entity": ["Stock exceeds capacity"]})
 ```
 
-All invariants are checked on every state change. If any fails, the change is rejected.
+All invariants are checked on every state change. If any fails, the change raises
+`ValidationError`. The change is not undone: the object keeps the invalid value,
+so discard it instead of saving it.
 
 ### Combining Pre and Post Invariants
 
@@ -218,7 +226,7 @@ Field validation checks:
 @invariant.post
 def balance_must_be_above_overdraft_limit(self):
     if self.balance < -self.overdraft_limit:
-        raise ValidationError({"balance": ["Balance cannot be below overdraft limit"]})
+        raise ValidationError({"_entity": ["Balance cannot be below overdraft limit"]})
 ```
 
 Invariants check:
@@ -236,8 +244,10 @@ Invariants check:
 Protean checks invariants:
 
 1. **After initialization**: When creating a new aggregate instance
-2. **After any mutation**: When calling methods that change state
-3. **Before persistence**: When saving to repository
+2. **After any mutation**: When calling methods that change state, or when
+   setting a field directly
+
+The repository does not check invariants again when it saves.
 
 ```python
 # Checked after __init__
@@ -249,17 +259,15 @@ account = Account(balance=1000.0, overdraft_limit=100.0)
 account.withdraw(1200.0)
 # Raises ValidationError
 
-# Checked before save
+# Checked after a direct field change
 account = Account(balance=500.0, overdraft_limit=100.0)
-account.balance = -200.0  # Direct mutation
-domain.repository_for(Account).add(account)
-# Raises ValidationError
+account.balance = -200.0  # Raises ValidationError
 ```
 
 ## Best Practices
 
 1. **Name invariants descriptively** - Method name should explain the rule
-2. **Raise the dict form of `ValidationError`** - Key it by the field at fault, or `_entity` for a rule that spans fields
+2. **Raise the dict form of `ValidationError`** - Key it by the field at fault, or `_entity` for a rule that compares fields
 3. **Provide clear error messages** - Include context about what failed and why
 4. **Keep invariants simple** - Each method should check one rule
 5. **Use pre-conditions for state validation** - Check if operations are allowed
@@ -300,7 +308,7 @@ class ShoppingCart:
     def cart_cannot_exceed_max_items(self):
         if self._total_quantity() > self.max_items:
             raise ValidationError(
-                {"items": [f"Cart cannot exceed {self.max_items} items"]}
+                {"_entity": [f"Cart cannot exceed {self.max_items} items"]}
             )
 ```
 
@@ -334,7 +342,7 @@ def test_account_overdraft_invariant():
     with pytest.raises(ValidationError) as exc:
         account.withdraw(200.0)
     assert "INVARIANT_POST_FAILED" in exc.value.codes
-    assert "balance" in exc.value.messages
+    assert "_entity" in exc.value.messages
 ```
 
 ## Related

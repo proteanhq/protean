@@ -109,7 +109,7 @@ class Order:
 Follow the patterns in [event-handler](../event-handler/SKILL.md).
 
 Key points for this workflow:
-- Use `part_of=AggregateClass` (a string reference also works, resolved at `init`; the class is the usual convention when it is in scope)
+- Use `part_of=AggregateClass` when the class is in scope. A string reference also works and resolves at `init`
 - Use `@handle(EventClass)` decorator on handler methods
 - **Same-aggregate handler**: `@domain.event_handler(part_of=Order)` - listens to Order's own stream
 - **Cross-aggregate handler**: `@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)` - Inventory handler listens to Order stream
@@ -214,7 +214,7 @@ class OrderEventHandler:
 
 ## Key rules
 
-1. **Events use `part_of="String"`**, handlers use `part_of=ClassRef` (a string reference on a handler also works, resolved lazily at `init`; the class is just the usual convention when it is in scope) - don't mix them up
+1. **Events use `part_of="String"`** - Handlers usually pass the class, `part_of=ClassRef`, and a string works on a handler too
 2. **Events are past-tense** (`OrderPlaced`), commands are imperative (`PlaceOrder`)
 3. **Multiple handlers per event** - Unlike commands, the same event can be handled by many handlers
 4. **Event handlers do NOT return values** - Fire-and-forget pattern

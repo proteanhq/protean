@@ -1,10 +1,11 @@
 """Every invariant the DX pack shows raises the dict form of ``ValidationError``.
 
 Protean catches only ``ValidationError`` from an ``@invariant.pre`` or
-``@invariant.post`` method, reads its messages as a dict, and attaches
-``INVARIANT_PRE_FAILED`` or ``INVARIANT_POST_FAILED`` to the error it raises. A
-``ValueError`` or a custom exception escapes uncollected and carries no code. A
-plain-string ``ValidationError("...")`` fails with a ``TypeError``.
+``@invariant.post`` method, reads its messages as a dict, and attaches a
+diagnostic code to the error it raises (``INVARIANT_PRE_FAILED`` or
+``INVARIANT_POST_FAILED`` on an aggregate or entity). A ``ValueError`` or a
+custom exception carries no code. A plain-string ``ValidationError("...")``
+fails with a ``TypeError``.
 
 The snippet runner in ``test_skill_snippets.py`` cannot see a bad raise: a block
 that only defines an invariant never fires it. So this test reads the code
@@ -40,6 +41,9 @@ pytestmark = pytest.mark.no_test_domain
 PACK_ROOT = Path(str(dx.pack_files()))
 SKILLS_ROOT = PACK_ROOT / dx.SKILLS_DIR
 INVARIANT_ASSET = SKILLS_ROOT / "aggregate" / "assets" / "aggregate_with_invariants.py"
+VALUE_OBJECT_ASSET = (
+    SKILLS_ROOT / "value-object" / "assets" / "value_object_with_invariants.py"
+)
 
 if not PACK_ROOT.is_dir():
     pytest.skip(
@@ -63,13 +67,23 @@ def _is_invariant_decorator(decorator: ast.expr) -> bool:
 
 
 def _is_dict_form(node: ast.Raise) -> bool:
+    """``ValidationError({...})`` with at least one key, each mapped to a list.
+
+    An empty dict makes the invariant pass silently, and a string value is read
+    as a list of single characters, so both count as bad raises.
+    """
     exc = node.exc
-    return (
+    if not (
         isinstance(exc, ast.Call)
         and isinstance(exc.func, ast.Name)
         and exc.func.id == "ValidationError"
-        and bool(exc.args)
+        and exc.args
         and isinstance(exc.args[0], ast.Dict)
+    ):
+        return False
+    messages = exc.args[0]
+    return bool(messages.values) and all(
+        isinstance(value, ast.List) for value in messages.values
     )
 
 
@@ -176,6 +190,8 @@ def test_a_dict_form_raise_passes():
         'raise InsufficientFunds("Below zero")',
         'raise ValidationError("Below zero")',
         "raise ValidationError(...)",
+        "raise ValidationError({})",
+        'raise ValidationError({"balance": "Below zero"})',
         "raise ValidationError",
         "raise",
     ],
@@ -238,15 +254,24 @@ def test_an_unparseable_block_without_an_invariant_is_skipped():
 # --- The aggregate skill's invariant asset fails with the right code ----------
 
 
-@pytest.fixture
-def asset() -> dict[str, Any]:
-    namespace = runpy.run_path(str(INVARIANT_ASSET), run_name="_dx_invariant_asset")
+def _load(path: Path) -> Iterator[dict[str, Any]]:
+    namespace = runpy.run_path(str(path), run_name="_dx_invariant_asset")
     domains = [value for value in namespace.values() if isinstance(value, Domain)]
     assert len(domains) == 1
     domain = domains[0]
     domain.init(traverse=False)
     with domain.domain_context():
         yield namespace
+
+
+@pytest.fixture
+def asset() -> Iterator[dict[str, Any]]:
+    yield from _load(INVARIANT_ASSET)
+
+
+@pytest.fixture
+def value_object_asset() -> Iterator[dict[str, Any]]:
+    yield from _load(VALUE_OBJECT_ASSET)
 
 
 def test_a_failing_post_invariant_carries_invariant_post_failed(asset):
@@ -258,7 +283,7 @@ def test_a_failing_post_invariant_carries_invariant_post_failed(asset):
 
     assert "INVARIANT_POST_FAILED" in exc.value.codes
     assert dict(exc.value.messages) == {
-        "balance": ["Balance -100.0 cannot be below overdraft limit -50.0"]
+        "_entity": ["Balance -100.0 cannot be below overdraft limit -50.0"]
     }
 
 
@@ -282,5 +307,15 @@ def test_construction_with_failing_values_carries_the_code(asset):
 
     assert "INVARIANT_POST_FAILED" in exc.value.codes
     assert dict(exc.value.messages) == {
-        "reserved_stock": ["Reserved stock 20.0 exceeds current stock 10.0"]
+        "_entity": ["Reserved stock 20.0 exceeds current stock 10.0"]
+    }
+
+
+def test_a_failing_value_object_invariant_carries_its_own_code(value_object_asset):
+    with pytest.raises(ValidationError) as exc:
+        value_object_asset["Balance"](currency="USD", amount=-5.0)
+
+    assert exc.value.codes == ["VALUE_OBJECT_INVARIANT_FAILED"]
+    assert dict(exc.value.messages) == {
+        "balance": ["Balance cannot be negative for USD"]
     }

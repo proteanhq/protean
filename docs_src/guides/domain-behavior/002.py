@@ -21,7 +21,7 @@ class Account:
     def balance_must_be_greater_than_or_equal_to_overdraft_limit(self):
         if self.balance < -self.overdraft_limit:
             raise ValidationError(
-                {"balance": ["Balance cannot be below overdraft limit"]}
+                {"_entity": ["Balance cannot be below overdraft limit"]}
             )
 
     def withdraw(self, amount: float):

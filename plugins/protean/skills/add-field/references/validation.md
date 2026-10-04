@@ -154,7 +154,7 @@ class DateRange:
         Checked after initialization and after any attribute changes.
         """
         if self.end_date < self.start_date:
-            raise ValidationError({"end_date": ["End date must be after start date"]})
+            raise ValidationError({"_entity": ["End date must be after start date"]})
 ```
 
 **When post invariants run**:
@@ -203,7 +203,7 @@ def balance_must_not_be_negative(self):
 @invariant.post
 def balance_must_not_exceed_limit(self):
     if self.balance > self.max_balance:
-        raise ValidationError({"balance": ["Balance exceeds limit"]})
+        raise ValidationError({"_entity": ["Balance exceeds limit"]})
 
 # Bad: Multiple rules in one invariant
 @invariant.post
@@ -211,7 +211,7 @@ def balance_rules(self):
     if self.balance < 0:
         raise ValidationError({"balance": ["Balance cannot be negative"]})
     if self.balance > self.max_balance:
-        raise ValidationError({"balance": ["Balance exceeds limit"]})
+        raise ValidationError({"_entity": ["Balance exceeds limit"]})
 ```
 
 2. **Use descriptive names** - Name should describe the rule
@@ -320,7 +320,7 @@ class Subscription:
     def end_date_must_be_after_start_date(self):
         """Granular rule: date ordering."""
         if self.end_date <= self.start_date:
-            raise ValidationError({"end_date": ["End date must be after start date"]})
+            raise ValidationError({"_entity": ["End date must be after start date"]})
 
     @invariant.post
     def active_subscription_must_have_valid_dates(self):
@@ -339,7 +339,7 @@ class Subscription:
         days_diff = (self.end_date - self.start_date).days
         if self.trial_days > days_diff:
             raise ValidationError(
-                {"trial_days": ["Trial period exceeds subscription duration"]}
+                {"_entity": ["Trial period exceeds subscription duration"]}
             )
 ```
 
@@ -410,7 +410,7 @@ class Product:
         final_price = self.price - discount_amount
         if final_price <= 0:
             raise ValidationError(
-                {"discount_percent": ["Discount cannot reduce price to zero or below"]}
+                {"_entity": ["Discount cannot reduce price to zero or below"]}
             )
 ```
 
@@ -426,7 +426,7 @@ class DateRange:
     def end_must_be_after_start(self):
         """Date ordering rule."""
         if self.end_date <= self.start_date:
-            raise ValidationError({"end_date": ["End date must be after start date"]})
+            raise ValidationError({"_entity": ["End date must be after start date"]})
 
     @property
     def duration_days(self) -> int:

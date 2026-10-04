@@ -44,7 +44,7 @@ class Account:
         if self.balance < -self.overdraft_limit:
             raise ValidationError(
                 {
-                    "balance": [
+                    "_entity": [
                         f"Balance {self.balance} cannot be below "
                         f"overdraft limit -{self.overdraft_limit}"
                     ]
@@ -103,7 +103,7 @@ class Warehouse:
         if self.reserved_stock > self.current_stock:
             raise ValidationError(
                 {
-                    "reserved_stock": [
+                    "_entity": [
                         f"Reserved stock {self.reserved_stock} exceeds "
                         f"current stock {self.current_stock}"
                     ]
@@ -116,7 +116,7 @@ class Warehouse:
         if self.current_stock > self.max_capacity:
             raise ValidationError(
                 {
-                    "current_stock": [
+                    "_entity": [
                         f"Stock {self.current_stock} exceeds capacity {self.max_capacity}"
                     ]
                 }

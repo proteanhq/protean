@@ -532,6 +532,8 @@ class ShoppingCart:
 ### Pattern 2: HasOne with Validation
 
 ```python
+from protean.exceptions import ValidationError
+
 @domain.aggregate
 class Order:
     status: String(choices=["draft", "placed", "shipped"])

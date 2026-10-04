@@ -191,6 +191,8 @@ class Product:
 
 **Bad**:
 ```python
+from protean.exceptions import ValidationError
+
 @domain.aggregate
 class Product:
     price: Float(required=True)
@@ -209,6 +211,8 @@ class Product:
 
 **Good**:
 ```python
+from protean.exceptions import ValidationError
+
 @domain.aggregate
 class Product:
     # Field-level validation
@@ -223,7 +227,7 @@ class Product:
             final = self.price * (1 - self.discount_percent / 100)
             if final <= 0:
                 raise ValidationError(
-                    {"discount_percent": ["Discount makes price negative"]}
+                    {"_entity": ["Discount makes price negative"]}
                 )
 ```
 

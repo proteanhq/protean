@@ -290,7 +290,7 @@ class LineItem:
         discount_amount = self.unit_price * (self.discount_percent / 100)
         if discount_amount > self.unit_price:
             raise ValidationError(
-                {"discount_percent": ["Discount cannot exceed unit price"]}
+                {"_entity": ["Discount cannot exceed unit price"]}
             )
 
     @invariant.post

@@ -216,7 +216,7 @@ Use `@invariant.pre` (checked before changes) and `@invariant.post` (checked aft
 - **`@invariant.post`**: Validates after changes occur. Use for constraints that depend on the final state (e.g., "balance must not be negative"). Checked after initialization and after attribute updates.
 - **`@invariant.pre`**: Validates before changes occur. Use for preconditions that must be true before allowing state changes (e.g., "account must be active"). **Note**: Pre invariants are NOT checked during initialization.
 
-An invariant raises `ValidationError` with a dict that maps the field at fault to a list of messages: `ValidationError({"balance": ["..."]})`. A rule that spans several fields uses the key `_entity`. Protean catches only `ValidationError` from an invariant and attaches the code `INVARIANT_PRE_FAILED` or `INVARIANT_POST_FAILED`. A `ValueError` or a custom exception is not collected, and a plain-string `ValidationError("...")` fails with a `TypeError`.
+An invariant raises `ValidationError` with a dict that maps the field at fault to a list of messages: `ValidationError({"status": ["..."]})`. A rule that compares fields, such as a balance against an overdraft limit, uses the key `_entity`. Protean catches only `ValidationError` from an invariant and attaches the code `INVARIANT_PRE_FAILED` or `INVARIANT_POST_FAILED` (a `code=` argument on the decorator replaces it). A `ValueError` or a custom exception gets no code, and a plain-string `ValidationError("...")` fails with a `TypeError`.
 
 ```python
 from protean import invariant
@@ -237,7 +237,7 @@ class Account:
         """
         if self.balance < -self.overdraft_limit:
             raise ValidationError(
-                {"balance": ["Balance cannot be below overdraft limit"]}
+                {"_entity": ["Balance cannot be below overdraft limit"]}
             )
 
     # Pre invariants - only checked before changes (NOT during initialization)
