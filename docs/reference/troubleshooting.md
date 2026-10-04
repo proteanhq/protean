@@ -144,18 +144,18 @@ even though events have been raised.
 **Check 1: Is the projector registered?**
 
 ```python
-# fragment
-@domain.projector(part_of=OrderSummary)
+@domain.projector(projector_for=OrderSummary, aggregates=[Order])
 class OrderSummaryProjector:
     @handle(OrderPlaced)
     def on_placed(self, event: OrderPlaced):
         current_domain.repository_for(OrderSummary).add(
-            OrderSummary(order_id=event.order_id, ...)
+            OrderSummary(order_id=event.order_id, status="placed")
         )
 ```
 
-Verify the projector is decorated with `@domain.projector` and uses
-`part_of` pointing to the projection class.
+Verify the projector is decorated with `@domain.projector`, uses
+`projector_for` pointing to the projection class, and lists the aggregates
+whose events it handles in `aggregates`.
 
 **Check 2: Are events flowing?**
 

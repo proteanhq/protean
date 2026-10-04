@@ -415,7 +415,7 @@ The `store_config` fixture does the same for event stores:
 
 ## Code on documentation pages
 
-`tests/docs/test_doc_pages_run.py` runs every `python` block on every page under `docs/`, except the pages in `docs/adr/` and `docs/api/`. The blocks of a page run top to bottom in one namespace, so a block can use a name an earlier block defined. Each page starts with a `domain` and the public names from `protean` and `protean.fields`. After the last block, every domain the page registered an element with is initialized, so a `part_of` must resolve by the end of the page.
+`tests/docs/test_doc_pages_run.py` runs every `python` (or `py`) block on every page under `docs/`, except the pages in `docs/adr/` and `docs/api/`. The blocks of a page run top to bottom in one namespace, so a block can use a name an earlier block defined. Each page starts with a `domain` and the public names from `protean` and `protean.fields`. After the last block, every domain the page registered an element with is initialized, so a `part_of` must resolve by the end of the page.
 
 Put runnable code in a file under `docs_src` and include it on the page by a named section. A section starts at a line <code># --8<-- &#91;start:place_order]</code> and ends at a line <code># --8<-- &#91;end:place_order]</code>. Between them goes the code the page shows:
 
@@ -437,7 +437,8 @@ A block whose first line is `# fragment` does not run. Use it only for:
 - a signature, such as `Index.from_sql(dialect, ddl, name=None) -> RawIndex`
 - part of a class or a method
 - a wrong example shown on purpose
-- code that needs a service the core test lane does not run, such as a server that blocks
+- code that needs a service the core test lane does not run, such as a database
+- code that starts a server or otherwise blocks
 
 A `>>>` REPL session uses a `pycon` fence, and an IPython session uses `ipython`. Neither runs.
 

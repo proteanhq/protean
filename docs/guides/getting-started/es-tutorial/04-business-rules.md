@@ -25,6 +25,7 @@ the `@apply` handler has already mutated it.
 Add two invariants to the `Account` aggregate:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch04.py:invariants"
 ```
 
@@ -55,12 +56,14 @@ We also add an `AccountClosed` event and a `close()` method:
 ```
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch04.py:close_method"
 ```
 
 And the corresponding `@apply` handler:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch04.py:apply_account_closed"
 ```
 

@@ -254,7 +254,7 @@ processes `OrderPlaced` to create an `OrderSummary` projection, a duplicate
 delivery would try to create a second record with the same ID:
 
 ```python
-@domain.projector(part_of=OrderSummaryProjection)
+@domain.projector(projector_for=OrderSummaryProjection, aggregates=[Order])
 class OrderSummaryProjector(BaseProjector):
 
     @handle(OrderPlaced)
@@ -488,7 +488,7 @@ Projectors maintain read-optimized projections. They're typically idempotent
 by nature because they **set** the projection's state rather than accumulate it:
 
 ```python
-@domain.projector(part_of=OrderDashboardProjection)
+@domain.projector(projector_for=OrderDashboardProjection, aggregates=[Order])
 class OrderDashboardProjector(BaseProjector):
 
     @handle(OrderPlaced)

@@ -8,8 +8,9 @@ and the ``protean`` names, ``init(traverse=False)`` after the last block, and a
 30-second timeout per file.
 
 A block whose first line is ``# fragment`` is not run. The marker is for a
-block that is not meant to run: a signature, a partial method, a wrong example
-shown on purpose. A block meant to run that fails stays unmarked, and its file
+block that is not meant to run: a signature, part of a class or a method, a
+wrong example shown on purpose, code that needs a service the core lane does
+not run, or code that starts a server or otherwise blocks. A block meant to run that fails stays unmarked, and its file
 goes on ``ALLOWLIST``. A file whose blocks are all fragments runs nothing and
 passes.
 

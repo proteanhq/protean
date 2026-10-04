@@ -37,7 +37,7 @@ Notification handler shouldn't know about the Order aggregate at all, it's in a
 different bounded context. Now a projector also needs the data:
 
 ```python
-@domain.projector(part_of=OrderSummaryProjection)
+@domain.projector(projector_for=OrderSummaryProjection, aggregates=[Order])
 class OrderSummaryProjector(BaseProjector):
 
     @handle(OrderPlaced)
@@ -400,7 +400,7 @@ class OrderShipped(BaseEvent):
 ### Step 4: Write the Projector
 
 ```python
-@domain.projector(part_of=OrderSummaryProjection)
+@domain.projector(projector_for=OrderSummaryProjection, aggregates=[Order])
 class OrderSummaryProjector(BaseProjector):
 
     @handle(OrderPlaced)

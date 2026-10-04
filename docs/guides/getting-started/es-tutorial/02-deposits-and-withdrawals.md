@@ -73,6 +73,7 @@ conflict.
 Try withdrawing more than the balance:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch02.py:overdraft_validation"
 ```
 

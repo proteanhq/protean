@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from tests.support.snippets import (
+    FILE_TIMEOUT,
     Block,
     SnippetError,
     evaluate_one,
@@ -90,6 +91,11 @@ def test_py_and_attributed_fences_are_found_and_other_languages_are_not():
     ]
 
 
+def test_a_tilde_fence_is_closed_only_by_tildes():
+    text = "~~~python\na = 1\n```\nb = 2\n~~~\n"
+    assert [b.source for b in extract_blocks(text)] == ["a = 1\n```\nb = 2\n"]
+
+
 def test_blocks_under_a_tab_and_an_admonition_are_dedented():
     text = (
         '=== "Tab"\n'
@@ -154,12 +160,39 @@ def test_the_second_base_path_is_searched(bases):
             "shop.py:20:30",
             "include 'shop.py:20:30' asks for lines 20 to 30, but shop.py has 9 lines",
         ),
+        (
+            "shop.py:0:2",
+            "include 'shop.py:0:2' asks for lines 0 to 2, but shop.py has 9 lines",
+        ),
+        ("../outside.py", "no file '../outside.py' under docs_src, examples"),
     ],
 )
 def test_a_broken_include_raises_a_message_naming_it(bases, spec, message):
     with pytest.raises(SnippetError) as error:
         read_include(spec, bases)
     assert str(error.value) == message
+
+
+def test_an_absolute_include_path_is_refused(tmp_path, bases):
+    outside = tmp_path / "outside.py"
+    outside.write_text("x = 1\n", encoding="utf-8")
+    with pytest.raises(SnippetError) as error:
+        read_include(str(outside), bases)
+    assert str(error.value) == f"no file {str(outside)!r} under docs_src, examples"
+
+
+def test_a_relative_include_that_leaves_the_base_is_refused(tmp_path, bases):
+    (tmp_path / "outside.py").write_text("x = 1\n", encoding="utf-8")
+    with pytest.raises(SnippetError):
+        read_include("../outside.py", bases)
+
+
+def test_a_section_ends_at_its_first_end_marker(bases):
+    (bases[0] / "twice.py").write_text(
+        "# --8<-- [start:a]\nx = 1\n# --8<-- [end:a]\ny = 2\n# --8<-- [end:a]\n",
+        encoding="utf-8",
+    )
+    assert read_include("twice.py:a", bases) == "x = 1"
 
 
 def test_a_section_without_an_end_marker_raises(bases):
@@ -179,6 +212,66 @@ def test_included_lines_take_the_include_lines_indent(bases):
     assert expand(block) == Block(
         line=3, source="class Box:\n    EXTRA = 1\n    size = 2\n", fragment=False
     )
+
+
+def test_an_indented_section_inside_a_class_keeps_both_indents(bases):
+    (bases[0] / "methods.py").write_text(
+        "class Real:\n"
+        "    # --8<-- [start:m]\n"
+        "    def size(self):\n"
+        "        return 1\n"
+        "    # --8<-- [end:m]\n",
+        encoding="utf-8",
+    )
+    expand = include_expander(bases)
+    block = Block(
+        line=3, source='class Box:\n    --8<-- "methods.py:m"\n', fragment=False
+    )
+    assert expand(block).source == (
+        "class Box:\n        def size(self):\n            return 1\n"
+    )
+
+
+def test_a_block_of_only_an_indented_section_is_not_dedented(tmp_path, bases):
+    (bases[0] / "methods.py").write_text(
+        "class Real:\n"
+        "    # --8<-- [start:m]\n"
+        "    def size(self):\n"
+        "        return 1\n"
+        "    # --8<-- [end:m]\n",
+        encoding="utf-8",
+    )
+    expand = include_expander(bases)
+    block = Block(line=2, source='--8<-- "methods.py:m"\n', fragment=False)
+    assert expand(block).source == "    def size(self):\n        return 1\n"
+    page = _write(tmp_path, '```python\n--8<-- "methods.py:m"\n```\n')
+    assert parse_problems(page, "page.md", expand) == [
+        "page.md: line 2: SyntaxError on line 1 of the block: unexpected indent"
+    ]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "--8<-- 'extra.py'",
+        '-8<- "extra.py"',
+        ';--8<-- "extra.py"',
+        "--8<--",
+        '    ---8<--- "extra.py"',
+    ],
+)
+def test_an_include_line_in_another_form_raises(bases, line):
+    expand = include_expander(bases)
+    with pytest.raises(SnippetError) as error:
+        expand(Block(line=2, source=f"x = 1\n{line}\n", fragment=False))
+    assert str(error.value) == f"unknown include form {line.strip()!r}"
+
+
+def test_an_include_line_in_another_form_is_a_parse_problem(tmp_path, bases):
+    page = _write(tmp_path, "```python\nx = 1\n--8<-- 'extra.py'\n```\n")
+    assert parse_problems(page, "page.md", include_expander(bases)) == [
+        "page.md: line 2: unknown include form \"--8<-- 'extra.py'\""
+    ]
 
 
 def test_the_fragment_marker_comes_from_the_page_not_the_include(bases):
@@ -310,6 +403,40 @@ def test_a_page_that_binds_its_own_domain_has_it_initialized(tmp_path, bases):
     assert "`Happened` references `Missing` via part_of" in failure
 
 
+def test_a_domain_that_registers_nothing_is_not_initialized(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "class Strict(Domain):\n"
+        "    def init(self, traverse=True):\n"
+        "        raise RuntimeError('init ran')\n"
+        "\n"
+        "empty = Strict(name='Empty')\n"
+        "```\n",
+    )
+    assert _run(tmp_path, [page], bases)[0]["failure"] is None
+
+
+def test_a_domain_that_registers_an_element_is_initialized(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "class Strict(Domain):\n"
+        "    def init(self, traverse=True):\n"
+        "        raise RuntimeError('init ran')\n"
+        "\n"
+        "full = Strict(name='Full')\n"
+        "\n"
+        "@full.aggregate\n"
+        "class Thing:\n"
+        "    name = String()\n"
+        "```\n",
+    )
+    assert _run(tmp_path, [page], bases)[0]["failure"] == (
+        "init: RuntimeError: init ran"
+    )
+
+
 def test_an_allowlisted_page_that_passes_says_to_remove_the_entry(tmp_path, bases):
     page = _write(tmp_path, "```python\nx = 1\n```\n")
     (result,) = _run(tmp_path, [page], bases)
@@ -332,3 +459,59 @@ def test_a_page_past_the_timeout_is_reported_and_the_next_page_runs(tmp_path, ba
         },
         {"file": "b.md", "failure": "line 2: ValueError: b ran", "not_run": []},
     ]
+
+
+def test_the_per_file_timeout_is_thirty_seconds():
+    assert FILE_TIMEOUT == 30.0
+
+
+def test_a_page_that_catches_the_timeout_is_stopped_and_the_next_page_runs(
+    tmp_path, bases
+):
+    stuck = _write(
+        tmp_path,
+        "```python\n"
+        "import time\n"
+        "while True:\n"
+        "    try:\n"
+        "        time.sleep(10)\n"
+        "    except BaseException:\n"
+        "        pass\n"
+        "```\n"
+        "```python\nlater = 1\n```\n",
+        "a.md",
+    )
+    after = _write(tmp_path, "```python\nraise ValueError('b ran')\n```\n", "b.md")
+    assert _run(tmp_path, [stuck, after], bases, timeout=0.5) == [
+        {
+            "file": "a.md",
+            "failure": (
+                "line 2: still running at 1.0 seconds, past the 0.5-second "
+                "timeout; the runner stopped it"
+            ),
+            "not_run": [10],
+        },
+        {"file": "b.md", "failure": "line 2: ValueError: b ran", "not_run": []},
+    ]
+
+
+def test_a_page_that_crashes_the_runner_is_reported_and_the_next_page_runs(
+    tmp_path, bases
+):
+    first = _write(tmp_path, "```python\nfirst = 1\n```\n", "a.md")
+    crash = _write(
+        tmp_path,
+        "```python\nimport os\nos._exit(5)\n```\n```python\nlater = 1\n```\n",
+        "b.md",
+    )
+    after = _write(tmp_path, "```python\nraise ValueError('c ran')\n```\n", "c.md")
+    results = _run(tmp_path, [first, crash, after], bases)
+    assert [r["file"] for r in results] == ["a.md", "b.md", "c.md"]
+    assert results[0]["failure"] is None
+    assert results[1]["failure"].startswith("line 2: the runner crashed (exit 5)")
+    assert results[1]["not_run"] == [6]
+    assert results[2] == {
+        "file": "c.md",
+        "failure": "line 2: ValueError: c ran",
+        "not_run": [],
+    }

@@ -9,8 +9,9 @@ from ``docs_src`` or ``examples`` before the block runs, so a later inline
 block can use an element an include defined.
 
 A block whose first line is ``# fragment`` is not run. The marker is for a
-block that is not meant to run: a signature, a partial method, a wrong example
-shown on purpose, or code that needs a service the core lane does not run.
+block that is not meant to run: a signature, part of a class or a method, a
+wrong example shown on purpose, code that needs a service the core lane does
+not run, or code that starts a server or otherwise blocks.
 A page whose blocks fail goes on ``ALLOWLIST``. Marking a block ``# fragment``
 to hide an error is not allowed.
 
@@ -151,6 +152,7 @@ ALLOWLIST: frozenset[str] = frozenset(
         "guides/getting-started/es-tutorial/13-temporal-queries.md",
         "guides/getting-started/es-tutorial/14-connecting-outside-world.md",
         "guides/getting-started/es-tutorial/16-message-tracing.md",
+        "guides/getting-started/es-tutorial/19-priority-lanes.md",
         "guides/getting-started/es-tutorial/20-rebuilding-projections.md",
         "guides/getting-started/es-tutorial/22-the-full-picture.md",
         "guides/getting-started/tutorial/02-fields-and-value-objects.md",
@@ -298,12 +300,17 @@ def test_every_block_parses_and_every_include_resolves():
     assert problems == [], "\n".join(problems)
 
 
-_ANY_PY_FENCE = re.compile(r"^\s*(`{3,}|~{3,})\s*(python|py)(\s.*)?$")
+# Wider than the extractor's fence pattern on purpose: any case, ``python3``
+# and ``{.python}``. A docs page using one of those forms breaks the count.
+_ANY_PY_FENCE = re.compile(
+    r"^\s*(`{3,}|~{3,})\s*(python3?|py3?|\{\s*\.py(thon)?\b[^}]*\})(\s.*)?$",
+    re.IGNORECASE,
+)
 
 
 def test_page_discovery_is_not_vacuous():
     blocks = sum(len(extract_blocks(p.read_text(encoding="utf-8"))) for p in PAGES)
-    # Count every line that opens a ``python`` or ``py`` fence, so a variant
+    # Count every line that opens a Python fence in any form, so a variant
     # the extractor skips breaks the count.
     independent = sum(
         1

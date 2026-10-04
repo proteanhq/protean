@@ -267,7 +267,7 @@ class InventoryEventHandler(BaseEventHandler):
 #### Audit-Aware Projector
 
 ```python
-@domain.projector(part_of=OrderAuditProjection)
+@domain.projector(projector_for=OrderAuditProjection, aggregates=[Order])
 class OrderAuditProjector(BaseProjector):
 
     @handle(OrderPlaced)

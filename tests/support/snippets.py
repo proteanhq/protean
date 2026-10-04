@@ -24,14 +24,17 @@ A block whose first line is ``# fragment`` is not run and does not touch the
 namespace.
 
 All files run in one child interpreter, each under its own module name and its
-own ``Domain``, so registrations stay out of the test process. The child's
-working directory is a temporary directory, so a block that writes files or
-traverses the working directory touches nothing in the repository. Each file
-has a timeout, enforced with ``SIGALRM`` where the platform has it.
+own ``Domain``, so registrations stay out of the test process. The child starts
+in a temporary directory, so a relative path in a block resolves inside it.
+Each file has a timeout, enforced with ``SIGALRM`` where the platform has it. A
+file still running at twice its timeout (a block that catches the timeout, or a
+platform without ``SIGALRM``) stops the child; the file is reported as stuck
+and a new child runs the files after it.
 
 :func:`include_expander` builds a source transform that replaces
 ``--8<-- "<spec>"`` lines with the code they include, the way
-``pymdownx.snippets`` does when it builds the docs.
+``pymdownx.snippets`` does when it builds the docs. Any other ``--8<--`` line
+in a block is an include form the expander does not know, and fails.
 """
 
 from __future__ import annotations
@@ -108,6 +111,8 @@ def make_block(line: int, source: str) -> Block:
 # --- Includes ----------------------------------------------------------------
 
 _INCLUDE = re.compile(r'^(?P<indent>[ \t]*)--8<--[ \t]+"(?P<spec>[^"]*)"[ \t]*$')
+# Every line the docs build reads as an include, in any of its forms.
+_ANY_INCLUDE = re.compile(r"^[ \t]*;?-+8<-+")
 _SECTION_MARKER = re.compile(
     r"^.*?-+8<-+[ \t]+\[[ \t]*(?P<kind>start|end)[ \t]*:[ \t]*(?P<name>[\w-]+)[ \t]*\]"
 )
@@ -117,7 +122,10 @@ _SECTION = re.compile(r"^(?P<file>[^:]+):(?P<name>[\w-]+)$")
 
 def _resolve(path: str, bases: Sequence[Path]) -> Path:
     for base in bases:
-        candidate = base / path
+        candidate = (base / path).resolve()
+        # The docs build refuses a path that leaves its base folder.
+        if not candidate.is_relative_to(base.resolve()):
+            continue
         if candidate.is_file():
             return candidate
     names = ", ".join(base.name for base in bases)
@@ -184,9 +192,13 @@ def read_include(spec: str, bases: Sequence[Path]) -> str:
 def include_expander(bases: Sequence[Path]) -> Callable[[Block], Block]:
     """Return a transform that expands the ``--8<--`` lines in a block.
 
-    Each included line keeps the include line's indentation, and the block is
-    dedented again afterwards, as the docs build renders it. ``bases`` are the
-    folders an include path is relative to, searched in order.
+    Each included line gets the include line's indentation in front of its own,
+    as the docs build renders it. The block is not dedented again, so a section
+    whose code is indented in its file (a method) stays indented, and a block
+    holding only that include does not parse. ``bases`` are the folders an
+    include path is relative to, searched in order.
+
+    A ``--8<--`` line in any other form raises :class:`SnippetError`.
     """
 
     def expand(block: Block) -> Block:
@@ -195,6 +207,8 @@ def include_expander(bases: Sequence[Path]) -> Callable[[Block], Block]:
         for line in block.source.splitlines():
             match = _INCLUDE.match(line)
             if match is None:
+                if _ANY_INCLUDE.match(line):
+                    raise SnippetError(f"unknown include form {line.strip()!r}")
                 lines.append(line)
                 continue
             changed = True
@@ -203,9 +217,8 @@ def include_expander(bases: Sequence[Path]) -> Callable[[Block], Block]:
             lines.extend(indent + part if part else part for part in code.split("\n"))
         if not changed:
             return block
-        expanded = make_block(block.line, "\n".join(lines) + "\n")
         # The marker is read from the page, never from included code.
-        return replace(expanded, fragment=block.fragment)
+        return replace(block, source="\n".join(lines) + "\n")
 
     return expand
 
@@ -263,19 +276,29 @@ def parse_problems(
 
 # --- Running -----------------------------------------------------------------
 
+# A child exits with this code when a file runs past its hard limit.
+_STUCK_EXIT = 86
+
 # The child-interpreter runner. argv[1] is a JSON file holding the files and
-# their blocks, the per-file timeout, and the report path. For each file it
-# builds a fresh namespace, runs the non-fragment blocks in order, and then
-# initializes every Domain built for the file that registered an element. It
-# records the first failure (the block's starting line, or "init") and the
-# starting lines of the blocks it did not run. A file the parent could not
-# prepare carries an "error" and runs nothing. It writes the report to a file,
-# so start-up logging and the blocks' own output cannot corrupt it.
+# their blocks, the per-file timeout, the hard limit, and the report path. For
+# each file it builds a fresh namespace, runs the non-fragment blocks in order,
+# and then initializes every Domain built for the file that registered an
+# element. It records the first failure (the block's starting line, or "init")
+# and the starting lines of the blocks it did not run. A file the parent could
+# not prepare carries an "error" and runs nothing.
+#
+# The report is a file of JSON lines, written and flushed as the child goes: a
+# "step" line before each block and the init step, and a "result" line after
+# each file. If a file is still running at the hard limit, a watchdog thread
+# ends the child, and the parent reads which step was running from the report.
+# Writing to a file keeps start-up logging and the blocks' own output out of it.
 _RUNNER = """
 import builtins
 import json
+import os
 import signal
 import sys
+import threading
 import types
 
 import protean
@@ -330,16 +353,25 @@ def evaluate_annotations(obj, module):
 with open(sys.argv[1], encoding="utf-8") as handle:
     job = json.load(handle)
 timeout = job["timeout"]
-results = []
-for index, item in enumerate(job["files"]):
+report = open(job["report"], "a", encoding="utf-8")
+
+
+def emit(record):
+    report.write(json.dumps(record) + "\\n")
+    report.flush()
+
+
+for index, item in enumerate(job["files"], start=job["first_index"]):
     label = item["file"]
     blocks = [b for b in item["blocks"] if not b["fragment"]]
     if item.get("error"):
-        results.append(
+        emit(
             {
-                "file": label,
-                "failure": item["error"],
-                "not_run": [b["line"] for b in blocks],
+                "result": {
+                    "file": label,
+                    "failure": item["error"],
+                    "not_run": [b["line"] for b in blocks],
+                }
             }
         )
         continue
@@ -359,6 +391,9 @@ for index, item in enumerate(job["files"]):
     failure = None
     not_run = []
     step = None
+    watchdog = threading.Timer(job["hard_timeout"], os._exit, args=(job["stuck_exit"],))
+    watchdog.daemon = True
+    watchdog.start()
     if has_alarm:
         # A block may replace the handler; put it back for every file.
         signal.signal(signal.SIGALRM, on_alarm)
@@ -368,6 +403,7 @@ for index, item in enumerate(job["files"]):
             for position, block in enumerate(blocks):
                 step = "line %d" % block["line"]
                 not_run = [b["line"] for b in blocks[position + 1 :]]
+                emit({"step": step, "not_run": not_run})
                 padded = "\\n" * (block["line"] - 1) + block["source"]
                 before = {key: id(value) for key, value in namespace.items()}
                 exec(compile(padded, label, "exec"), namespace)
@@ -379,12 +415,14 @@ for index, item in enumerate(job["files"]):
                         evaluate_annotations(value, namespace["__name__"])
             not_run = []
             step = "init"
+            emit({"step": step, "not_run": not_run})
             for candidate in list(built):
                 if candidate.registry.elements:
                     candidate.init(traverse=False)
         finally:
             if has_alarm:
                 signal.setitimer(signal.ITIMER_REAL, 0)
+            watchdog.cancel()
     except SnippetTimeout:
         failure = "%s: timed out after %s seconds" % (step, timeout)
     except KeyboardInterrupt:
@@ -393,10 +431,7 @@ for index, item in enumerate(job["files"]):
         failure = "%s: %s: %s" % (step, type(exc).__name__, exc)
     if failure is None:
         not_run = []
-    results.append({"file": label, "failure": failure, "not_run": not_run})
-
-with open(job["report"], "w", encoding="utf-8") as handle:
-    json.dump(results, handle)
+    emit({"result": {"file": label, "failure": failure, "not_run": not_run}})
 """
 
 
@@ -419,6 +454,22 @@ def _job_entry(
     }
 
 
+def _read_report(path: Path) -> tuple[list[dict], dict | None]:
+    """Return the finished results in a report, and the last step after them."""
+    results: list[dict] = []
+    step = None
+    if not path.is_file():
+        return results, step
+    for line in path.read_text(encoding="utf-8").splitlines():
+        record = json.loads(line)
+        if "result" in record:
+            results.append(record["result"])
+            step = None
+        else:
+            step = record
+    return results, step
+
+
 def run_snippets(
     root: Path,
     files: list[Path],
@@ -432,31 +483,74 @@ def run_snippets(
     to ``root``. ``expand`` transforms each block before it runs; a
     :class:`SnippetError` it raises becomes the file's failure, and none of the
     file's blocks run.
+
+    A file still running at twice ``timeout``, or one that crashes the child,
+    fails with the step that was running, and a new child runs the files after
+    it.
     """
     work = tmp_path / "snippet-run"
     work.mkdir()
-    job_path = work / "job.json"
-    report_path = work / "report.json"
-    job = {
-        "timeout": timeout,
-        "report": str(report_path),
-        "files": [_job_entry(root, path, expand) for path in files],
-    }
-    job_path.write_text(json.dumps(job), encoding="utf-8")
-    result = subprocess.run(
-        [sys.executable, "-c", _RUNNER, str(job_path)],
-        capture_output=True,
-        text=True,
-        cwd=work,
-        stdin=subprocess.DEVNULL,
-        check=False,
-        timeout=max(600.0, timeout * len(files) + 60),
-    )
-    assert report_path.is_file(), (
-        f"the snippet runner crashed before writing its report "
-        f"(exit {result.returncode}):\n{result.stderr[-4000:]}"
-    )
-    return json.loads(report_path.read_text(encoding="utf-8"))
+    entries = [_job_entry(root, path, expand) for path in files]
+    hard_timeout = timeout * 2
+    results: list[dict] = []
+    attempt = 0
+    while len(results) < len(entries):
+        attempt += 1
+        pending = entries[len(results) :]
+        job_path = work / f"job-{attempt}.json"
+        report_path = work / f"report-{attempt}.jsonl"
+        job = {
+            "timeout": timeout,
+            "hard_timeout": hard_timeout,
+            "stuck_exit": _STUCK_EXIT,
+            "report": str(report_path),
+            "first_index": len(results),
+            "files": pending,
+        }
+        job_path.write_text(json.dumps(job), encoding="utf-8")
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", _RUNNER, str(job_path)],
+                capture_output=True,
+                text=True,
+                cwd=work,
+                stdin=subprocess.DEVNULL,
+                check=False,
+                timeout=hard_timeout * len(pending) + 60,
+            )
+            stuck = result.returncode == _STUCK_EXIT
+            stopped = f"exit {result.returncode}"
+            stderr = result.stderr
+        except subprocess.TimeoutExpired as exc:
+            stuck = True
+            stopped = "killed"
+            raw = exc.stderr or ""
+            stderr = raw.decode(errors="replace") if isinstance(raw, bytes) else raw
+        done, step = _read_report(report_path)
+        results.extend(done)
+        if len(results) == len(entries):
+            break
+        assert step is not None, (
+            f"the snippet runner stopped outside a file ({stopped}):\n{stderr[-4000:]}"
+        )
+        if stuck:
+            failure = (
+                f"{step['step']}: still running at {hard_timeout} seconds, "
+                f"past the {timeout}-second timeout; the runner stopped it"
+            )
+        else:
+            failure = (
+                f"{step['step']}: the runner crashed ({stopped}): "
+                f"{stderr[-2000:].strip()}"
+            )
+        results.append(
+            {
+                "file": pending[len(done)]["file"],
+                "failure": failure,
+                "not_run": step["not_run"],
+            }
+        )
+    return results
 
 
 def describe(result: dict) -> str:

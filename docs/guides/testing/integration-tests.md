@@ -184,12 +184,11 @@ When you drive the flow yourself, or need to wait for a later cascade to settle,
 the copy-pasted `for _ in range(N): Engine(...).run()` loop:
 
 ```python
-# fragment
 from protean.testing import drain
 
 def test_order_ships_after_payment():
-    process_and_wait(PlaceOrder(order_id="o1", ...), domain)
-    process_and_wait(ConfirmPayment(order_id="o1", ...), domain)
+    process_and_wait(PlaceOrder(order_id="o1", product_id="ABC", qty=5), domain)
+    process_and_wait(ConfirmPayment(order_id="o1", amount=50.0), domain)
 
     drain(domain, until=lambda: get_order("o1").status == "shipped")
 

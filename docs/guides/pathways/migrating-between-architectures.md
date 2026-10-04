@@ -123,7 +123,7 @@ class OrderSummary:
 
 
 # Populate it with a projector
-@domain.projector(part_of=OrderSummary)
+@domain.projector(projector_for=OrderSummary, aggregates=[Order])
 class OrderSummaryProjector:
     @handle(OrderPlaced)
     def on_placed(self, event: OrderPlaced):
