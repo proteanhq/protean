@@ -5,6 +5,7 @@ stream information, aggregated statistics, and trace history. These power the
 dashboard and can be consumed by external monitoring tools.
 """
 
+import contextlib
 import json
 import logging
 import time
@@ -481,7 +482,9 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         try:
             raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
             for stream_id, fields in raw_entries:
-                try:
+                with contextlib.suppress(
+                    json.JSONDecodeError, TypeError, ValueError, IndexError
+                ):
                     data_raw = fields.get(b"data") or fields.get("data")
                     if not data_raw:
                         continue
@@ -509,8 +512,6 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                     bucket_idx = (ts_ms - (now_ms - window_ms)) // bucket_ms
                     if 0 <= bucket_idx < bucket_count:
                         throughput[t_worker_id][bucket_idx] += 1
-                except (json.JSONDecodeError, TypeError, ValueError, IndexError):
-                    continue
         except Exception as e:
             logger.debug(f"Error reading traces for worker throughput: {e}")
 
@@ -692,7 +693,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
 
         result: list[dict[str, Any]] = []
         for stream_id, fields in raw_entries:
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 data_raw = fields.get(b"data") or fields.get("data")
                 if not data_raw:
                     continue
@@ -716,8 +717,6 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                 # message_id lookups return all matching events (no count limit)
                 if not message_id and len(result) >= count:
                     break
-            except (json.JSONDecodeError, TypeError):
-                continue
 
         return JSONResponse(content={"traces": result, "count": len(result)})
 
@@ -833,7 +832,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
 
         # Single pass over all entries
         for stream_id, fields in raw_entries:
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError, ValueError):
                 data_raw = fields.get(b"data") or fields.get("data")
                 if not data_raw:
                     continue
@@ -864,8 +863,6 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                         bucket["success"] += 1
                     elif event_type in _ERROR_EVENTS:
                         bucket["errors"] += 1
-            except (json.JSONDecodeError, TypeError, ValueError):
-                continue
 
         error_rate = round((error_count / total * 100), 2) if total > 0 else 0.0
         avg_latency_ms = (
@@ -958,7 +955,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         # Collect all matching entries (for total count + pagination)
         all_matches: list[dict[str, Any]] = []
         for stream_id, fields in raw_entries:
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 data_raw = fields.get(b"data") or fields.get("data")
                 if not data_raw:
                     continue
@@ -978,8 +975,6 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
 
                 trace["_stream_id"] = _decode_stream_id(stream_id)
                 all_matches.append(trace)
-            except (json.JSONDecodeError, TypeError):
-                continue
 
         # Sort newest first, then paginate
         all_matches.reverse()

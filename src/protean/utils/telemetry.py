@@ -10,6 +10,7 @@ or meter, so instrumentation code never needs conditional guards.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import TYPE_CHECKING, Any, Self
 
@@ -38,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 _OTEL_AVAILABLE = False
 
-try:
+with contextlib.suppress(ImportError):
     from opentelemetry import metrics as otel_metrics
     from opentelemetry import trace as otel_trace
     from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
@@ -48,8 +49,6 @@ try:
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
     _OTEL_AVAILABLE = True
-except ImportError:
-    pass
 
 
 # ---------------------------------------------------------------------------

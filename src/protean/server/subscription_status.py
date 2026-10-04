@@ -844,6 +844,9 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
         try:
             stream_category = _infer_stream_category(handler_cls)
         except ValueError:
+            logger.debug(
+                "Leaving %s out of the subscription status", handler_name, exc_info=True
+            )
             continue
         config = config_resolver.resolve(handler_cls, stream_category=stream_category)
 
@@ -867,6 +870,9 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
         try:
             stream_category = _infer_stream_category(handler_cls)
         except ValueError:
+            logger.debug(
+                "Leaving %s out of the subscription status", handler_name, exc_info=True
+            )
             continue
         handlers_by_stream[stream_category].append((handler_name, handler_cls))
 

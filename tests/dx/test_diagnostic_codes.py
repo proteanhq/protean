@@ -1127,6 +1127,17 @@ def test_reverse_index_skips_a_skill_that_fails_to_read(monkeypatch, caplog):
     assert str(records[0].exc_info[1]) == "unreadable skill manifest"
 
 
+def test_reverse_index_logs_nothing_when_every_skill_reads(monkeypatch, caplog):
+    caplog.set_level(logging.DEBUG, logger="protean.dx.pack")
+    monkeypatch.setattr(pack, "iter_skills", lambda: ["good"])
+    monkeypatch.setattr(
+        pack, "skill_diagnostic_codes", lambda name: ["AGGREGATE_NO_INVARIANTS"]
+    )
+
+    assert pack.diagnostic_code_skills() == {"AGGREGATE_NO_INVARIANTS": ["good"]}
+    assert not [r for r in caplog.records if r.name == "protean.dx.pack"]
+
+
 # --- Pack-absent tolerance --------------------------------------------------
 
 

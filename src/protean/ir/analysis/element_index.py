@@ -102,6 +102,7 @@ wrong answer, and a wrong answer is worse.
 from __future__ import annotations
 
 import ast
+import contextlib
 from dataclasses import dataclass, field
 from enum import StrEnum
 from types import CodeType
@@ -406,12 +407,11 @@ def _registered_element_types(domain: Domain) -> dict[type, str]:
         for record in records.values():
             if record.internal:
                 continue
-            try:
+            # A class with an unhashable metaclass cannot be a dict key
+            with contextlib.suppress(TypeError):
                 # First registration wins, for the same reason the class index
                 # takes the first definition: a stable answer.
                 types.setdefault(record.cls, element_type)
-            except TypeError:  # pragma: no cover - unhashable metaclass
-                continue
     return types
 
 

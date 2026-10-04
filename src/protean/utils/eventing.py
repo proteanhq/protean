@@ -475,15 +475,13 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
 
         When an identifier is provided, its value is used to construct
         unique stream name."""
-        try:
+        with contextlib.suppress(StopIteration):
             id_field = next(
                 field
                 for _, field in getattr(cls, _FIELDS, {}).items()
                 if getattr(field, "identifier", False)
             )
             setattr(cls, _ID_FIELD_NAME, id_field.field_name)
-        except StopIteration:
-            pass
 
     @property
     def payload(self) -> dict[str, Any]:
@@ -1143,9 +1141,10 @@ class Message(Element, BaseModel, OptionsMixin):
            (format ``<domain>::<aggregate>``) → ``urn:protean:<domain>``.
         3. ``"urn:protean:unknown"`` as a last resort.
         """
-        # 1. Configured source_uri. ``current_domain`` raises
-        # ``AttributeError`` when no domain context is active.
-        with contextlib.suppress(AttributeError):
+        from protean.domain.context import has_domain_context  # noqa: PLC0415
+
+        # 1. Configured source_uri, when a domain context is active
+        if has_domain_context():
             source_uri = current_domain.config.get("source_uri")
             if source_uri:
                 return cast(str, source_uri)

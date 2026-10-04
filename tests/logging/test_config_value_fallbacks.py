@@ -5,8 +5,10 @@ is not a table. ``_reset_access_log_counters`` does nothing when no domain
 context is active.
 """
 
+import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
+from unittest.mock import patch
 
 import pytest
 
@@ -42,8 +44,18 @@ class TestGetLoggingConfigValue:
         assert get_logging_config_value("slow_handler_threshold_ms", 500) == 500
 
     def test_no_domain_context_returns_default(self, test_domain):
-        with _no_domain_context():
+        with _no_domain_context(), warnings.catch_warnings():
+            warnings.simplefilter("error")
             assert get_logging_config_value("slow_handler_threshold_ms", 500) == 500
+
+    def test_unexpected_config_error_propagates(self, test_domain):
+        with (
+            patch.object(
+                type(test_domain.config), "get", side_effect=RuntimeError("boom")
+            ),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            get_logging_config_value("slow_handler_threshold_ms", 500)
 
 
 class TestResetAccessLogCounters:
@@ -59,5 +71,6 @@ class TestResetAccessLogCounters:
         assert g._access_log_uow_outcome == "no_uow"
 
     def test_no_domain_context_is_a_no_op(self, test_domain):
-        with _no_domain_context():
+        with _no_domain_context(), warnings.catch_warnings():
+            warnings.simplefilter("error")
             _reset_access_log_counters()

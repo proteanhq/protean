@@ -774,6 +774,18 @@ class TestRecordHandlerRetry:
         assert records[0].levelno == logging.DEBUG
         assert str(records[0].exc_info[1]) == "metrics down"
 
+    def test_recorded_metric_logs_nothing(self, test_domain, caplog):
+        caplog.set_level(logging.DEBUG, logger="protean.utils.mixins")
+
+        _record_handler_retry(self._Dummy(), ConnectionError("x"))
+
+        assert not [
+            r
+            for r in caplog.records
+            if r.name == "protean.utils.mixins"
+            and r.getMessage().startswith("Could not record the handler retry metric")
+        ]
+
 
 # ---------------------------------------------------------------------------
 # Interaction with the command deadline

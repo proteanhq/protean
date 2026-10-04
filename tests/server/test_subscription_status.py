@@ -7,6 +7,7 @@ when infrastructure is unavailable.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -782,7 +783,7 @@ class TestCollectSubscriptionStatuses:
         assert len(result) == 1
         mock_collect.assert_called_once()
 
-    def test_skips_handler_with_no_stream_category(self):
+    def test_skips_handler_with_no_stream_category(self, caplog):
         """Handlers that raise ValueError in _infer_stream_category are skipped."""
         mock_domain = MagicMock()
 
@@ -810,10 +811,25 @@ class TestCollectSubscriptionStatuses:
         mock_domain.registry.subscribers = {}
         mock_domain.has_outbox = False
 
-        with patch("protean.server.subscription_status.ConfigResolver"):
+        with (
+            patch("protean.server.subscription_status.ConfigResolver"),
+            caplog.at_level(logging.DEBUG, logger="protean.server.subscription_status"),
+        ):
             result = collect_subscription_statuses(mock_domain)
 
         assert result == []
+        skipped = [
+            r
+            for r in caplog.records
+            if r.name == "protean.server.subscription_status"
+            and "out of the subscription status" in r.getMessage()
+        ]
+        assert [r.getMessage() for r in skipped] == [
+            "Leaving broken-handler out of the subscription status",
+            "Leaving broken-cmd out of the subscription status",
+        ]
+        assert all(r.levelno == logging.DEBUG for r in skipped)
+        assert all(isinstance(r.exc_info[1], ValueError) for r in skipped)
 
     def test_discovers_command_handler_event_store_type(self):
         """Command handler resolved to EVENT_STORE type calls _collect_event_store_status."""

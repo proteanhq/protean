@@ -113,6 +113,32 @@ class TestBrokerLookupLogsSkippedDomain:
             "broker init failed",
         )
 
+    def test_timeline_trace_load_logs_nothing_when_lookup_succeeds(self, caplog):
+        logger_name = "protean.server.observatory.routes.timeline"
+        caplog.set_level(logging.DEBUG, logger=logger_name)
+        good, _ = _domain_with_redis()
+
+        assert _load_traces_for_correlation([good], "corr-1") == {}
+        assert not [r for r in caplog.records if r.name == logger_name]
+
+    def test_sse_stream_logs_nothing_when_lookup_does_not_raise(self, caplog):
+        logger_name = "protean.server.observatory.sse"
+        caplog.set_level(logging.DEBUG, logger=logger_name)
+        # The broker lookup succeeds but finds no Redis broker
+        domain = _mock_domain("no-redis")
+        domain.brokers.get.return_value = MagicMock(spec=[])
+        client = TestClient(Observatory(domains=[domain]).app)
+
+        with client.stream("GET", "/stream") as response:
+            data = None
+            for line in response.iter_lines():
+                if line.startswith("data: "):
+                    data = json.loads(line[len("data: ") :])
+                    break
+
+        assert data == {"error": "Redis not available"}
+        assert not [r for r in caplog.records if r.name == logger_name]
+
     def test_sse_stream_logs_failing_domain(self, caplog):
         logger_name = "protean.server.observatory.sse"
         caplog.set_level(logging.DEBUG, logger=logger_name)
@@ -296,3 +322,23 @@ class TestConsumerMetricsLogSkippedStream:
             "orders::order",
             "redis down",
         )
+
+    def test_no_record_when_scrape_succeeds(self, caplog):
+        caplog.set_level(logging.DEBUG, logger=self.logger_name)
+        domain, redis_conn = _domain_with_redis()
+        redis_conn.xinfo_groups.return_value = [
+            {"name": "Handler", "pending": 1, "lag": 0}
+        ]
+        redis_conn.xinfo_consumers.return_value = [
+            {"name": "Handler-host-1-abc", "pending": 1, "idle": 0}
+        ]
+
+        body = _hand_rolled_metrics([domain])
+
+        assert "protean_consumer_pending{" in body
+        assert not [
+            r
+            for r in caplog.records
+            if r.name == self.logger_name
+            and r.getMessage().startswith("Metrics: could not read")
+        ]

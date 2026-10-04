@@ -718,6 +718,23 @@ class TestClassifyRemoval:
         )
         assert result == "premature_removal"
 
+    @pytest.mark.parametrize(
+        ("removal", "current_version", "expected"),
+        [
+            (0.18, "0.18", "expected_removal"),
+            (0.18, "0.17", "premature_removal"),
+            (1, 1, "expected_removal"),
+        ],
+    )
+    def test_versions_written_as_numbers_are_compared(
+        self, removal, current_version, expected
+    ) -> None:
+        result = _classify_removal(
+            {"since": "0.15", "removal": removal},
+            current_version=current_version,
+        )
+        assert result == expected
+
 
 # =====================================================================
 # diff_ir — deprecation-aware contract diffing

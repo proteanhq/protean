@@ -1,3 +1,4 @@
+import contextlib
 import json
 import logging
 import time
@@ -216,12 +217,10 @@ class RedisPubSubBroker(BaseBroker):
 
             total_messages = 0
             for stream in streams:
-                try:
+                # A stream that does not exist is skipped
+                with contextlib.suppress(redis.ResponseError):
                     stream_length = self.redis_instance.llen(stream)
                     total_messages += stream_length
-                except redis.ResponseError:
-                    # Stream might not exist
-                    pass
 
             return {"total_messages": total_messages}
 

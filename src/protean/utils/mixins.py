@@ -62,16 +62,25 @@ _TRANSIENT_RETRY_DEFAULTS = {
 _VALID_BACKOFF_STRATEGIES = ("exponential", "linear", "fixed")
 
 
+# ``[server]`` tables already warned about. The config is read on every
+# handler call, so without this the warning would repeat for every message.
+_warned_version_retry_configs: set[str] = set()
+
+
 def _get_version_retry_config() -> dict[str, Any]:
     """Read version retry configuration from the active domain.
 
     Falls back to defaults if no domain is active (e.g. during tests
     that call handlers directly without a domain context). A value that
-    cannot be read as a number also falls back to defaults, with a warning.
+    is not a table, or that ``int()`` or ``float()`` cannot convert (such as
+    ``max_retries = inf``), also falls back to defaults, with a warning
+    logged once per distinct ``[server]`` table.
     """
-    try:
-        if current_domain:
-            server_config = current_domain.config.get("server", {})
+    from protean.domain.context import has_domain_context  # noqa: PLC0415
+
+    if has_domain_context():
+        server_config = current_domain.config.get("server", {})
+        try:
             cfg = server_config.get("version_retry", {})
             return {
                 "enabled": cfg.get("enabled", _VERSION_RETRY_DEFAULTS["enabled"]),
@@ -91,11 +100,16 @@ def _get_version_retry_config() -> dict[str, Any]:
                     )
                 ),
             }
-    except (AttributeError, TypeError, ValueError):
-        logger.warning(
-            "Invalid `server.version_retry` configuration; using the defaults",
-            exc_info=True,
-        )
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            seen = repr(server_config)
+            if seen not in _warned_version_retry_configs:
+                _warned_version_retry_configs.add(seen)
+                logger.warning(
+                    "Invalid `server.version_retry` configuration (server = %s); "
+                    "using the defaults",
+                    seen,
+                    exc_info=True,
+                )
     return dict(_VERSION_RETRY_DEFAULTS)
 
 

@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime as dt
 from unittest.mock import MagicMock, patch
@@ -782,7 +783,7 @@ class TestCollectTimelineStatsEdgeCases:
         assert stats["last_event_time"] is not None
         assert stats["events_per_minute"] is not None
 
-    def test_invalid_time_format(self, event_domain):
+    def test_invalid_time_format(self, event_domain, caplog):
         """ValueError from fromisoformat."""
         fake_messages = [
             {
@@ -794,12 +795,47 @@ class TestCollectTimelineStatsEdgeCases:
                 "data": {},
             },
         ]
-        with patch.object(
-            event_domain.event_store.store, "_read", return_value=fake_messages
+        with (
+            patch.object(
+                event_domain.event_store.store, "_read", return_value=fake_messages
+            ),
+            caplog.at_level(
+                logging.DEBUG, logger="protean.server.observatory.routes.timeline"
+            ),
         ):
             stats = collect_timeline_stats([event_domain])
         assert stats["total_events"] == 1
         assert stats["last_event_time"] is None
+        skipped = [r for r in caplog.records if "is not ISO 8601" in r.getMessage()]
+        assert len(skipped) == 1
+        assert skipped[0].levelno == logging.DEBUG
+        assert skipped[0].getMessage() == (
+            "Skipping the time of a message in test::badtime-1: "
+            "'not-a-date' is not ISO 8601"
+        )
+
+    def test_iso_string_time_logs_nothing(self, event_domain, caplog):
+        fake_messages = [
+            {
+                "stream_name": "test::goodtime-1",
+                "type": "Test.GoodTime.v1",
+                "global_position": 1,
+                "time": "2025-06-15T12:00:00+00:00",
+                "metadata": {},
+                "data": {},
+            },
+        ]
+        with (
+            patch.object(
+                event_domain.event_store.store, "_read", return_value=fake_messages
+            ),
+            caplog.at_level(
+                logging.DEBUG, logger="protean.server.observatory.routes.timeline"
+            ),
+        ):
+            stats = collect_timeline_stats([event_domain])
+        assert stats["last_event_time"] == "2025-06-15T12:00:00+00:00"
+        assert not [r for r in caplog.records if "is not ISO 8601" in r.getMessage()]
 
     def test_non_string_non_datetime_time(self, event_domain):
         """else branch for unrecognized time type."""

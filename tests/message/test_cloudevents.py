@@ -7,8 +7,10 @@ Tests cover:
 - Edge cases for source derivation, subject extraction, and metadata branches
 """
 
+import warnings
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -735,6 +737,36 @@ class TestDeriveSourceFallback:
             result = message._derive_source()
 
         assert result == "urn:protean:unknown"
+
+    def test_no_domain_context_emits_no_warning(self):
+        """Serializing outside a domain context stays quiet under -W error."""
+        metadata = Metadata(
+            headers=MessageHeaders(id="test", type="Test.Event.v1"),
+            domain=DomainMeta(stream_category="myapp::User"),
+        )
+        message = Message(data={}, metadata=metadata)
+
+        with _no_domain_context(), warnings.catch_warnings():
+            warnings.simplefilter("error")
+            result = message._derive_source()
+
+        assert result == "urn:protean:myapp"
+
+    def test_unexpected_config_error_propagates(self, test_domain):
+        """A failure reading the active domain's config is not swallowed."""
+        metadata = Metadata(
+            headers=MessageHeaders(id="test", type="Test.Event.v1"),
+            domain=DomainMeta(stream_category="myapp::User"),
+        )
+        message = Message(data={}, metadata=metadata)
+
+        with (
+            patch.object(
+                type(test_domain.config), "get", side_effect=RuntimeError("boom")
+            ),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            message._derive_source()
 
 
 class TestExtractSubjectEdgeCases:

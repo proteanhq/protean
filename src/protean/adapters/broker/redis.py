@@ -1,3 +1,4 @@
+import contextlib
 import json
 import logging
 import time
@@ -726,8 +727,8 @@ class RedisBroker(BaseBroker):
             try:
                 raw_messages = self._client.xrange(dlq_stream)
             except redis.ResponseError:
-                # Stream doesn't exist
-                continue
+                # The stream does not exist, so it holds no DLQ messages
+                raw_messages = []
 
             for redis_id, fields in raw_messages:
                 entry = self._parse_dlq_entry(dlq_stream, redis_id, fields)
@@ -1237,13 +1238,15 @@ class RedisBroker(BaseBroker):
             total_pending = 0
 
             for stream in streams_to_check:
-                try:
+                # A stream that does not exist is skipped
+                with contextlib.suppress(redis.ResponseError):
                     # Get stream length (total messages)
                     stream_length = self._client.xlen(stream)
                     total_messages += stream_length
 
                     # Get pending messages for all consumer groups in this stream
-                    try:
+                    # A stream may not have consumer groups yet
+                    with contextlib.suppress(redis.ResponseError):
                         # redis-stubs leaves xinfo_groups untyped (stub gap).
                         groups_info = self._client.xinfo_groups(stream)  # type: ignore[no-untyped-call]
                         for group_info in groups_info:
@@ -1256,13 +1259,6 @@ class RedisBroker(BaseBroker):
                                     if pending_count is not None
                                     else 0
                                 )
-                    except redis.ResponseError:
-                        # Stream might not have consumer groups yet
-                        pass
-
-                except redis.ResponseError:
-                    # Stream might not exist
-                    pass
 
             # Failed messages would be those in DLQ or exceeded retry limits
             # For now, we don't track failed messages separately
@@ -1286,12 +1282,10 @@ class RedisBroker(BaseBroker):
             # Filter out streams that don't actually exist
             existing_streams = []
             for stream in streams_to_check:
-                try:
+                # A stream that does not exist is skipped
+                with contextlib.suppress(redis.ResponseError):
                     if self._client.xlen(stream) >= 0:  # Stream exists
                         existing_streams.append(stream)
-                except redis.ResponseError:
-                    # Stream doesn't exist, skip it
-                    pass
 
             return {"count": len(existing_streams), "names": sorted(existing_streams)}
         except Exception as e:

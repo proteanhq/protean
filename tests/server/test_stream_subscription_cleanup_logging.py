@@ -107,6 +107,10 @@ async def test_backfill_cleanup_failure_is_logged(test_domain, monkeypatch, capl
         f"{prefix} on 'cleanup_stream'",
         f"{prefix} on '{subscription.backfill_stream}'",
     ]
+    assert [str(r.exc_info[1]) for r in _cleanup_warnings(caplog)] == [
+        "redis down",
+        "redis down",
+    ]
 
 
 async def test_no_warning_when_cleanup_succeeds(test_domain, caplog):

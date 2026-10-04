@@ -5,6 +5,7 @@ backoff before propagating to the subscription retry/DLQ pipeline.
 """
 
 import logging
+import warnings
 from enum import Enum
 from unittest.mock import patch
 from uuid import uuid4
@@ -19,6 +20,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ExpectedVersionError
 from protean.fields import Identifier, String
+from protean.utils import mixins
 from protean.utils.globals import current_domain
 from protean.utils.mixins import (
     _VERSION_RETRY_DEFAULTS,
@@ -178,16 +180,23 @@ class TestVersionRetryDefaults:
         assert config["max_retries"] == 10  # overridden
         assert config["base_delay_seconds"] == 0.05  # default
 
+    @pytest.fixture
+    def fresh_warnings(self, monkeypatch):
+        """Forget the ``[server]`` tables earlier tests already warned about."""
+        monkeypatch.setattr(mixins, "_warned_version_retry_configs", set())
+
     @pytest.mark.parametrize(
         "bad_config",
         [
             {"max_retries": "three"},
             {"base_delay_seconds": None},
+            # TOML accepts ``inf``; ``int(inf)`` raises OverflowError
+            {"max_retries": float("inf")},
             "not-a-table",
         ],
     )
     def test_invalid_config_falls_back_to_defaults_with_warning(
-        self, test_domain, caplog, bad_config
+        self, test_domain, caplog, fresh_warnings, bad_config
     ):
         """A value that cannot be read falls back to defaults and warns."""
         test_domain.config["server"]["version_retry"] = bad_config
@@ -199,10 +208,36 @@ class TestVersionRetryDefaults:
         records = [r for r in caplog.records if r.name == "protean.utils.mixins"]
         assert len(records) == 1
         assert records[0].levelno == logging.WARNING
-        assert records[0].getMessage() == (
-            "Invalid `server.version_retry` configuration; using the defaults"
+        message = records[0].getMessage()
+        assert message.startswith(
+            "Invalid `server.version_retry` configuration (server = "
         )
+        assert message.endswith("); using the defaults")
+        assert repr(bad_config) in message
         assert records[0].exc_info is not None
+
+    def test_invalid_config_warns_once(self, test_domain, caplog, fresh_warnings):
+        """The config is read on every handler call; the warning is not."""
+        test_domain.config["server"]["version_retry"] = {"max_retries": "three"}
+        caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
+
+        for _ in range(3):
+            assert _get_version_retry_config() == _VERSION_RETRY_DEFAULTS
+
+        records = [r for r in caplog.records if r.name == "protean.utils.mixins"]
+        assert len(records) == 1
+
+    def test_unexpected_config_error_propagates(self, test_domain):
+        """Only conversion and non-table errors fall back; others surface."""
+
+        class BrokenTable(dict):
+            def get(self, *args, **kwargs):
+                raise RuntimeError("config error")
+
+        test_domain.config["server"] = BrokenTable()
+
+        with pytest.raises(RuntimeError, match="config error"):
+            _get_version_retry_config()
 
     def test_valid_config_logs_no_warning(self, test_domain, caplog):
         caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
@@ -218,7 +253,10 @@ class TestVersionRetryDefaults:
         # Temporarily pop the domain context to make current_domain falsy
         ctx = _domain_context_stack.pop()
         try:
-            config = _get_version_retry_config()
+            # No "outside of domain context" warning either
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                config = _get_version_retry_config()
             assert config == _VERSION_RETRY_DEFAULTS
         finally:
             _domain_context_stack.push(ctx)

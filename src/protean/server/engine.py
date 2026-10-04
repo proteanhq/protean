@@ -207,7 +207,8 @@ def _extract_correlation_id(message: dict[str, Any]) -> str:
             for key in path:
                 current = current[key]  # type: ignore[index]
         except (KeyError, TypeError):
-            continue
+            # The message has no value at this path
+            current = None
 
         normalized = _normalize(current)
         if normalized is not None:

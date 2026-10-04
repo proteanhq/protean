@@ -606,7 +606,8 @@ class HealthServer:
 
             await writer.drain()
         except (TimeoutError, ConnectionResetError, BrokenPipeError):
-            pass
+            # The client went away before the response was written
+            logger.debug("Health probe client disconnected", exc_info=True)
         except asyncio.CancelledError:
             raise
         except Exception:

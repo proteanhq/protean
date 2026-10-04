@@ -19,6 +19,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import time
@@ -227,7 +228,7 @@ def collect_pm_trace_metrics(
     stats: dict[str, dict[str, Any]] = {}
 
     for _stream_id, fields in raw_entries:
-        try:
+        with contextlib.suppress(json.JSONDecodeError, TypeError, ValueError):
             data_raw = fields.get(b"data") or fields.get("data")
             if not data_raw:
                 continue
@@ -260,9 +261,6 @@ def collect_pm_trace_metrics(
 
             elif event_type in _ERROR_EVENTS:
                 entry["failed"] += 1
-
-        except (json.JSONDecodeError, TypeError, ValueError):
-            continue
 
     # Compute derived metrics
     result: dict[str, dict[str, Any]] = {}
