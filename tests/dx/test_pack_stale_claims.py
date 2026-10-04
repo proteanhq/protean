@@ -27,13 +27,13 @@ if not PACK_ROOT.is_dir():
     )
 
 # A string part_of resolves at init on every element, so no skill may say a
-# handler or repository rejects it.
+# handler or repository rejects it. Each alternative names part_of, a string
+# reference, or a handler or repository, so text about other APIs passes.
 _STRING_PART_OF_REJECTED = re.compile(
-    r"not\s+(a\s+)?string\b"
-    r"|do(es)?\s+(\*\*)?not(\*\*)?\s+accept\s+a\s+string"
-    r"|string\b[^.]{0,60}\bnot\s+accepted"
-    r"|raises\s+(an\s+error\s+)?at\s+registration"
-    r"|requires?\s+the\s+resolved\s+class",
+    r"part_of\b.*\bnot\s+(a\s+)?string\b"
+    r"|do(es)?\s+(\*\*)?not(\*\*)?\s+accept\s+a\s+string\s+(`?part_of|reference)"
+    r"|string\s+reference\b[^.]{0,60}\bnot\s+accepted"
+    r"|(handlers?|repositor(y|ies))\s+requires?\s+the\s+resolved\s+class",
     re.IGNORECASE,
 )
 
@@ -128,6 +128,10 @@ def test_a_stale_line_is_reported(line, rule):
         "[CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/)",
         'A string, `part_of="AggregateName"`, also works and resolves at `init`',
         "anything else is rejected at registration with `IncorrectUsageError`.",
+        "The value is not a string, so the field raises `ValidationError`.",
+        "A handler with no `@handle` method raises at registration.",
+        "The serializer does not accept a string for `amount`.",
+        "A `HasMany` field requires the resolved class of its entity.",
     ],
 )
 def test_a_current_line_passes(line):
