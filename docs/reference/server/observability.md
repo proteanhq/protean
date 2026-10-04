@@ -135,6 +135,7 @@ and provides multiple monitoring interfaces. It runs on its own port (default
 ### Starting the Observatory
 
 ```python
+# fragment
 from protean.server.observatory import Observatory
 
 # Single domain

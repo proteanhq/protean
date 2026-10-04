@@ -144,6 +144,7 @@ even though events have been raised.
 **Check 1: Is the projector registered?**
 
 ```python
+# fragment
 @domain.projector(part_of=OrderSummary)
 class OrderSummaryProjector:
     @handle(OrderPlaced)
@@ -247,6 +248,7 @@ causes:
     `except ValidationError` that does `e.messages.items()` will fail on those.
 
     ```python
+    # fragment
     except ValidationError as e:
         if isinstance(e.messages, dict):
             for field, errors in e.messages.items():

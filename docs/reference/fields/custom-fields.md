@@ -18,6 +18,7 @@ fields do.
 ## Signature
 
 ```python
+# fragment
 Custom(python_type, *, validators=(), serializers=(), **constraints)
 ```
 

@@ -56,7 +56,7 @@ are allowed.
 is accepted. Strings like `1` are allowed. So are UUIDs because they can be
 represented as integer values.
 
-```python
+```ipython
 In [1]: import uuid
 
 In [2]: uuid.uuid4().int

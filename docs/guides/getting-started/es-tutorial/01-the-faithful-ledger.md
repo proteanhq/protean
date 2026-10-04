@@ -125,7 +125,7 @@ $ protean shell --domain fidelis
 Inside the shell, you can create accounts, make transactions, and
 inspect the event store interactively:
 
-```python
+```pycon
 >>> account = Account.open("ACC-002", "Bob Smith", 500.00)
 >>> account.balance
 500.0

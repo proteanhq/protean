@@ -1,46 +1,37 @@
 """Run the fenced ``python`` blocks in every DX-pack skill's Markdown.
 
 ``tests/dx/test_examples.py`` runs the ``assets/*.py`` files. This test runs
-the code blocks inside ``skills/*/SKILL.md`` and ``skills/*/references/*.md``.
+the code blocks inside ``skills/*/SKILL.md`` and ``skills/*/references/*.md``,
+through the runner in ``tests/support/snippets.py``. That module describes how
+the blocks of one file run: one namespace per file, a prelude with ``domain``
+and the ``protean`` names, ``init(traverse=False)`` after the last block, and a
+30-second timeout per file.
 
-The blocks of one file run top to bottom in one namespace, because most blocks
-build on an earlier block or name an element a later block defines
-(``part_of="Order"``). The namespace starts with a prelude: ``domain =
-Domain(...)``, the public names from ``protean``, the field types from
-``protean.fields``, and ``__file__`` set to the Markdown file's path. After the
-last block, every ``Domain`` built while the file ran that registered an
-element is initialized with ``init(traverse=False)``, so a forward reference must resolve
-by the end of the file. A reference that is still unresolved there fails the
-file at the ``init`` step.
-
-A block whose first line is ``# fragment`` is not run and does not touch the
-namespace. The marker is for a block that is not meant to run: a signature, a
-partial method, a wrong example shown on purpose. A block meant to run that
-fails stays unmarked, and its file goes on ``ALLOWLIST``. A file whose blocks
-are all fragments runs nothing and passes.
+A block whose first line is ``# fragment`` is not run. The marker is for a
+block that is not meant to run: a signature, a partial method, a wrong example
+shown on purpose. A block meant to run that fails stays unmarked, and its file
+goes on ``ALLOWLIST``. A file whose blocks are all fragments runs nothing and
+passes.
 
 The allowlist is keyed by file and is strict. A listed file may fail. A listed
 file whose blocks all pass fails the test until its entry is removed.
-
-All files run in one child interpreter, each under its own module name and its
-own ``Domain``, so registrations stay out of this test process. The child's
-working directory is a temporary directory, so a block that writes files or
-traverses the working directory touches nothing in the repository. Each file
-has a 30-second timeout, enforced with ``SIGALRM`` where the platform has it.
 """
 
 from __future__ import annotations
 
-import json
 import re
-import subprocess
-import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from protean import dx
+from tests.support.snippets import (
+    FILE_TIMEOUT,
+    Block,
+    evaluate,
+    extract_blocks,
+    run_snippets,
+)
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -53,51 +44,7 @@ if not PACK_ROOT.is_dir():
         allow_module_level=True,
     )
 
-FILE_TIMEOUT = 30.0
-
-_FENCE_OPEN = re.compile(r"^(?P<indent>[ \t]*)```python[ \t]*$")
-_FENCE_CLOSE = re.compile(r"^[ \t]*```[ \t]*$")
-_FRAGMENT = re.compile(r"^# fragment\b")
 _ANY_PY_FENCE = re.compile(r"^(```|~~~)\s*py", re.IGNORECASE)
-
-
-@dataclass(frozen=True)
-class Block:
-    line: int  # 1-based line number of the block's first code line
-    source: str
-    fragment: bool
-
-
-def extract_blocks(text: str) -> list[Block]:
-    """Return the fenced ``python`` blocks in ``text``, in order.
-
-    A fence indented inside a list item has its indentation removed from every
-    line of the block.
-    """
-    blocks = []
-    lines = text.splitlines()
-    index = 0
-    while index < len(lines):
-        match = _FENCE_OPEN.match(lines[index])
-        if not match:
-            index += 1
-            continue
-        indent = match.group("indent")
-        start = index + 1
-        end = start
-        while end < len(lines) and not _FENCE_CLOSE.match(lines[end]):
-            end += 1
-        body = [
-            line[len(indent) :] if line.startswith(indent) else line.lstrip()
-            for line in lines[start:end]
-        ]
-        source = "\n".join(body) + "\n"
-        first = body[0].strip() if body else ""
-        blocks.append(
-            Block(line=start + 1, source=source, fragment=bool(_FRAGMENT.match(first)))
-        )
-        index = end + 1
-    return blocks
 
 
 def discover_files(skills_root: Path) -> list[Path]:
@@ -108,206 +55,6 @@ def discover_files(skills_root: Path) -> list[Path]:
     return sorted(
         path for path in candidates if extract_blocks(path.read_text(encoding="utf-8"))
     )
-
-
-# The child-interpreter runner. argv[1] is a JSON file holding the files and
-# their blocks, the per-file timeout, and the report path. For each file it
-# builds a fresh namespace, runs the non-fragment blocks in order, and then
-# initializes every Domain built for the file that registered an element. It records the first
-# failure (the block's starting line, or "init") and the starting lines of the
-# blocks it did not run. It writes the report to a file, so start-up logging
-# and the blocks' own output cannot corrupt it.
-_RUNNER = """
-import builtins
-import json
-import signal
-import sys
-import types
-
-import protean
-import protean.fields
-from protean.domain import Domain
-
-
-class SnippetTimeout(BaseException):
-    pass
-
-
-def on_alarm(signum, frame):
-    raise SnippetTimeout()
-
-
-has_alarm = hasattr(signal, "setitimer")
-
-# Record every Domain built while a file runs, so the init step reaches a
-# Domain that a later block rebinds, deletes or stores out of the namespace.
-# Hook ``__new__``, not ``__init__``: ``Domain.__init__`` names an unnamed
-# domain after its caller's module, so its caller must stay the block.
-built = []
-
-
-def recording_new(cls, *args, **kwargs):
-    instance = object.__new__(cls)
-    built.append(instance)
-    return instance
-
-
-Domain.__new__ = recording_new
-
-
-# Python 3.14 defers annotations (PEP 649); earlier versions evaluate them
-# when the module, function or class is defined. Evaluate the ones a block
-# defined right after it runs, so a block that names an undefined type fails
-# on every version.
-def evaluate_annotations(obj, module):
-    if not isinstance(obj, (type, types.FunctionType)) or obj.__module__ != module:
-        return
-    annotate = getattr(obj, "__annotate__", None)
-    if annotate is not None:
-        annotate(1)
-    if isinstance(obj, type):
-        for member in vars(obj).values():
-            member = getattr(member, "__func__", member)
-            if isinstance(member, property):
-                member = member.fget
-            if isinstance(member, types.FunctionType):
-                evaluate_annotations(member, module)
-
-with open(sys.argv[1], encoding="utf-8") as handle:
-    job = json.load(handle)
-timeout = job["timeout"]
-results = []
-for index, item in enumerate(job["files"]):
-    label = item["file"]
-    blocks = [b for b in item["blocks"] if not b["fragment"]]
-    # Register the namespace as a real module: code that looks a class's
-    # module up in ``sys.modules`` (dataclasses, typing) must find it.
-    module = types.ModuleType("_dx_snippet_%d_" % index)
-    sys.modules[module.__name__] = module
-    namespace = module.__dict__
-    namespace["__file__"] = item["path"]
-    namespace["__builtins__"] = builtins
-    for name in protean.__all__:
-        namespace[name] = getattr(protean, name)
-    for name in protean.fields.__all__:
-        namespace[name] = getattr(protean.fields, name)
-    built.clear()
-    namespace["domain"] = Domain(name="Snippet%d" % index)
-    failure = None
-    not_run = []
-    step = None
-    if has_alarm:
-        # A block may replace the handler; put it back for every file.
-        signal.signal(signal.SIGALRM, on_alarm)
-        signal.setitimer(signal.ITIMER_REAL, timeout)
-    try:
-        try:
-            for position, block in enumerate(blocks):
-                step = "line %d" % block["line"]
-                not_run = [b["line"] for b in blocks[position + 1 :]]
-                padded = "\\n" * (block["line"] - 1) + block["source"]
-                before = {key: id(value) for key, value in namespace.items()}
-                exec(compile(padded, label, "exec"), namespace)
-                annotate = namespace.pop("__annotate__", None)
-                if annotate is not None:
-                    annotate(1)
-                for key, value in list(namespace.items()):
-                    if before.get(key) != id(value):
-                        evaluate_annotations(value, namespace["__name__"])
-            not_run = []
-            step = "init"
-            for candidate in list(built):
-                if candidate.registry.elements:
-                    candidate.init(traverse=False)
-        finally:
-            if has_alarm:
-                signal.setitimer(signal.ITIMER_REAL, 0)
-    except SnippetTimeout:
-        failure = "%s: timed out after %s seconds" % (step, timeout)
-    except KeyboardInterrupt:
-        raise
-    except BaseException as exc:
-        failure = "%s: %s: %s" % (step, type(exc).__name__, exc)
-    if failure is None:
-        not_run = []
-    results.append({"file": label, "failure": failure, "not_run": not_run})
-
-with open(job["report"], "w", encoding="utf-8") as handle:
-    json.dump(results, handle)
-"""
-
-
-def run_snippets(
-    skills_root: Path,
-    files: list[Path],
-    tmp_path: Path,
-    timeout: float = FILE_TIMEOUT,
-) -> list[dict]:
-    """Run each file's blocks in a child interpreter and return its results.
-
-    Each result is ``{"file", "failure", "not_run"}``, with ``file`` relative
-    to ``skills_root``.
-    """
-    work = tmp_path / "snippet-run"
-    work.mkdir()
-    job_path = work / "job.json"
-    report_path = work / "report.json"
-    job = {
-        "timeout": timeout,
-        "report": str(report_path),
-        "files": [
-            {
-                "file": path.relative_to(skills_root).as_posix(),
-                "path": str(path),
-                "blocks": [
-                    {"line": b.line, "source": b.source, "fragment": b.fragment}
-                    for b in extract_blocks(path.read_text(encoding="utf-8"))
-                ],
-            }
-            for path in files
-        ],
-    }
-    job_path.write_text(json.dumps(job), encoding="utf-8")
-    result = subprocess.run(
-        [sys.executable, "-c", _RUNNER, str(job_path)],
-        capture_output=True,
-        text=True,
-        cwd=work,
-        stdin=subprocess.DEVNULL,
-        check=False,
-        timeout=max(600.0, timeout * len(files) + 60),
-    )
-    assert report_path.is_file(), (
-        f"the snippet runner crashed before writing its report "
-        f"(exit {result.returncode}):\n{result.stderr[-4000:]}"
-    )
-    return json.loads(report_path.read_text(encoding="utf-8"))
-
-
-def evaluate(results: list[dict], allowlist: frozenset[str]) -> list[str]:
-    """Compare the results with the allowlist and list the problems."""
-    problems = []
-    seen = set()
-    for result in results:
-        label = result["file"]
-        seen.add(label)
-        failure = result["failure"]
-        if failure is None and label in allowlist:
-            problems.append(
-                f"{label}: every block passes; remove {label!r} from the allowlist"
-            )
-        elif failure is not None and label not in allowlist:
-            message = f"{label}: {failure}"
-            if result["not_run"]:
-                lines = ", ".join(str(line) for line in result["not_run"])
-                message += f"; not run: blocks at lines {lines}"
-            problems.append(message)
-    problems.extend(
-        f"{label}: is on the allowlist but has no python blocks to run; "
-        "remove the entry"
-        for label in sorted(allowlist - seen)
-    )
-    return problems
 
 
 # Files with a block that fails today, relative to the skills root. Fix the

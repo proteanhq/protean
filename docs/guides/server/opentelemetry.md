@@ -530,7 +530,7 @@ with tracer.start_as_current_span(
 ) as span:
     span.set_attribute("protean.<subsystem>.<attribute>", value)
     try:
-        # ... actual work ...
+        ...  # the actual work
     except Exception as exc:
         set_span_error(span, exc)
         raise

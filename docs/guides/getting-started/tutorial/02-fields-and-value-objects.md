@@ -39,7 +39,7 @@ For the complete list of field types and options, see the
 The `genre` field uses a Python `Enum` to restrict valid values.
 Attempting to create a book with an invalid genre raises a `ValidationError`:
 
-```python
+```pycon
 >>> Book(title="Test", author="Test", genre="ROMANCE")
 ValidationError: {'genre': ["Value 'ROMANCE' is not a valid choice. ..."]}
 ```

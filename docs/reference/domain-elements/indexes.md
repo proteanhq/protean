@@ -66,6 +66,7 @@ example to reference it from a migration or a monitoring query).
 ## `Index.from_sql`
 
 ```python
+# fragment
 Index.from_sql(dialect, ddl, name=None) -> RawIndex
 ```
 

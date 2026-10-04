@@ -278,7 +278,7 @@ from my_domain import domain
 
 try:
     with domain.domain_context():
-        # ... do work ...
+        ...  # do the work
 finally:
     domain.close()
 ```

@@ -86,6 +86,7 @@ through the primary stream at full speed.
 Contexts nest. The innermost wins:
 
 ```python
+# fragment
 with processing_priority(Priority.BULK):
     # These go to backfill stream
     domain.process(OpenAccount(account_number="MIGR-001", ...))
@@ -103,6 +104,7 @@ with processing_priority(Priority.BULK):
 You can also set priority on individual commands:
 
 ```python
+# fragment
 domain.process(
     OpenAccount(account_number="MIGR-001", ...),
     priority=Priority.BULK,

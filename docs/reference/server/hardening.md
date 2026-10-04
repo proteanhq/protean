@@ -351,6 +351,7 @@ shutdown, including the `drain_timeout` window described below.
 ### FastAPI router factory
 
 ```python
+# fragment
 from protean.integrations.fastapi.health import create_health_router
 
 create_health_router(

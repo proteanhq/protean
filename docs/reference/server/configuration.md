@@ -553,6 +553,7 @@ to configure external dispatch.
 ### Invalid Subscription Type
 
 ```python
+# fragment
 @domain.event_handler(subscription_type="invalid")
 ```
 
@@ -564,6 +565,7 @@ Valid types are: stream, event_store
 ### Invalid Profile
 
 ```python
+# fragment
 @domain.event_handler(subscription_profile="nonexistent")
 ```
 
@@ -575,6 +577,7 @@ Valid profiles are: production, fast, batch, debug, projection
 ### Incompatible Options
 
 ```python
+# fragment
 @domain.event_handler(
     subscription_type="event_store",
     subscription_config={"enable_dlq": True}
@@ -594,6 +597,7 @@ EventStoreSubscription handles messages without DLQ support.
 Start with a profile and override specific options:
 
 ```python
+# fragment
 @domain.event_handler(
     part_of=Order,
     subscription_profile="production",

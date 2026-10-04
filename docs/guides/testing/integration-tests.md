@@ -184,6 +184,7 @@ When you drive the flow yourself, or need to wait for a later cascade to settle,
 the copy-pasted `for _ in range(N): Engine(...).run()` loop:
 
 ```python
+# fragment
 from protean.testing import drain
 
 def test_order_ships_after_payment():

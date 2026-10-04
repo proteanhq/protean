@@ -353,6 +353,7 @@ Same-value assignments are also validated against the map. To make a state
 **idempotent** (self-transition allowed), include it in its own target list:
 
 ```python
+# fragment
 OrderStatus.CANCELLED: [OrderStatus.CANCELLED],  # cancel() is idempotent
 ```
 

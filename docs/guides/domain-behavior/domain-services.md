@@ -38,7 +38,7 @@ method in the Domain Service can be a class method, that receives all
 the input necessary for performing the business function.
 
 ```python hl_lines="1-2"
---8<-- "guides/domain-behavior/008.py:88:98"
+--8<-- "guides/domain-behavior/008.py:86:96"
 ```
 
 Invoking it is straightforward:
@@ -58,7 +58,7 @@ In this flavor, the Domain Service is instantiated with the aggregates and each
 method performs a distinct business function.
 
 ```python hl_lines="1-2 9"
---8<-- "guides/domain-behavior/007.py:88:112"
+--8<-- "guides/domain-behavior/007.py:86:110"
 ```
 
 You would then instantiate the Domain Service, passing the relevant aggregates
@@ -75,7 +75,7 @@ If you have a single business function, you can model it as a callable
 class:
 
 ```python hl_lines="1-2 9"
---8<-- "guides/domain-behavior/006.py:88:112"
+--8<-- "guides/domain-behavior/006.py:87:111"
 ```
 
 ```shell

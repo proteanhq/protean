@@ -16,7 +16,7 @@ every subsequent mutation:
 The `order_must_have_items` invariant runs whenever the Order is created
 or modified. If the items list is empty, it rejects the change:
 
-```python
+```pycon
 >>> Order(customer_name="Alice")
 ValidationError: {'_entity': ['An order must contain at least one item']}
 ```
@@ -40,7 +40,7 @@ def cannot_modify_shipped_order(self):
 
 This prevents any modifications once an order has been shipped:
 
-```python
+```pycon
 >>> order.ship()
 >>> order.customer_name = "Bob"
 ValidationError: {'_entity': ['Cannot modify an order that has been shipped']}
