@@ -1135,11 +1135,14 @@ class Message(Element, BaseModel, OptionsMixin):
     def _derive_source(self) -> str:
         """Derive the CloudEvents ``source`` URI-reference.
 
-        Fallback chain:
+        With an active domain context:
         1. ``current_domain.config["source_uri"]`` if configured.
-        2. Domain name extracted from ``metadata.domain.stream_category``
+        2. Otherwise ``urn:protean:<normalized domain name>``.
+
+        Without a domain context:
+        1. Domain name extracted from ``metadata.domain.stream_category``
            (format ``<domain>::<aggregate>``) → ``urn:protean:<domain>``.
-        3. ``"urn:protean:unknown"`` as a last resort.
+        2. ``"urn:protean:unknown"`` as a last resort.
         """
         from protean.domain.context import has_domain_context  # noqa: PLC0415
 

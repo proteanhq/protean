@@ -2075,6 +2075,24 @@ class TestTraceReadErrorPaths:
             "max": "1767225660000",
         }
 
+    def test_failed_traces_skip_entries_without_data_or_with_bad_json(self):
+        redis_conn = MagicMock()
+        redis_conn.xrange.return_value = [
+            (b"1-0", {b"other": b"x"}),
+            (b"2-0", {b"data": b"{not json"}),
+            (b"3-0", {b"data": json.dumps({"event": "handler.failed"}).encode()}),
+        ]
+
+        with patch(
+            "protean.server.observatory.api._get_redis", return_value=redis_conn
+        ):
+            response = self._client().get("/api/traces/failed")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total_count"] == 1
+        assert body["traces"][0]["_stream_id"] == "3-0"
+
     def test_failed_traces_logs_traceback_when_stream_read_fails(self, caplog):
         redis_conn = MagicMock()
         redis_conn.xrange.side_effect = RuntimeError("connection lost")
