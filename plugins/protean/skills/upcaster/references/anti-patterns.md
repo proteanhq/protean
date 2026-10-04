@@ -7,6 +7,7 @@ Common mistakes when working with event upcasters, and how to fix them.
 **Problem**: Creating a direct v1→v3 upcaster when v2 existed in production.
 
 ```python
+# fragment
 # WRONG — if v2 events exist in the event store, they won't be upcast
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=3)
 class SkipV2(BaseUpcaster):
@@ -41,6 +42,7 @@ class V2ToV3(BaseUpcaster):
 **Problem**: Making database queries, API calls, or file reads inside the upcaster.
 
 ```python
+# fragment
 # WRONG — runs on every deserialization, can be called thousands of times
 class SlowUpcaster(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
@@ -73,6 +75,7 @@ class PureUpcaster(BaseUpcaster):
 **Problem**: Using an upcaster when the event's business meaning has changed.
 
 ```python
+# fragment
 # WRONG — "total" changed from tax-inclusive to tax-exclusive
 # Old events: total = 110.00 (includes $10 tax)
 # New events: total = 100.00 (excludes tax)
@@ -106,6 +109,7 @@ class OrderPlacedV2(BaseEvent):
 **Problem**: Setting `event_type` to an old or versioned event class instead of the current one.
 
 ```python
+# fragment
 # WRONG — event_type must be the current class
 @domain.upcaster(event_type=OrderPlacedV1, from_version=1, to_version=2)
 ```
@@ -115,6 +119,7 @@ class OrderPlacedV2(BaseEvent):
 **Fix**: Always use the current event class.
 
 ```python
+# fragment
 # CORRECT
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 ```
@@ -151,6 +156,7 @@ class OrderPlaced:
 **Problem**: Using runtime-dependent values in the upcaster.
 
 ```python
+# fragment
 # WRONG — different results on different runs
 from datetime import datetime
 

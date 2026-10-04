@@ -427,6 +427,9 @@ def test_hardening_bar_note_names_the_guards_that_enforce_it():
         "tests/dx/test_examples.py",
         "tests/dx/test_pack_integrity.py",
         "tests/dx/test_diagnostic_codes.py",
+        "tests/dx/test_skill_snippets.py",
+        "tests/dx/test_asset_diagnostics.py",
+        "tests/dx/test_skill_frontmatter.py",
     ):
         assert guard in text, f"the hardening-bar note does not name {guard}"
 

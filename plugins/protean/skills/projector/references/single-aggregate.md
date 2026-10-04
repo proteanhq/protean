@@ -82,6 +82,7 @@ class ProductInventoryProjector:
 When you specify `aggregates=[Product]`, Protean automatically derives the stream category from `Product.meta_.stream_category`. This is equivalent to:
 
 ```python
+# fragment
 @domain.projector(
     projector_for=ProductInventory,
     stream_categories=[Product.meta_.stream_category],

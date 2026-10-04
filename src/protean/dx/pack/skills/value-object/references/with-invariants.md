@@ -335,6 +335,7 @@ def check_something(self):
 
 **Too many rules in one method** ❌
 ```python
+# fragment
 @invariant.post
 def validate_everything(self):
     # Checking 10 different things...

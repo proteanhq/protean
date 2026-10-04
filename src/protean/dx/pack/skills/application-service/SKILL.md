@@ -1,6 +1,6 @@
 ---
 name: application-service
-description: Define a Protean application service - a stateless orchestration layer that coordinates use cases between external callers (API controllers, CLI handlers, background jobs) and the domain model. Application services load aggregates, invoke domain methods, and persist results without containing business logic themselves. They are always associated with one aggregate via part_of and use the @use_case decorator for automatic UnitOfWork wrapping. Unlike command handlers, application services are invoked directly (not via domain.process()) and always return values synchronously. Use when you need to define a use case, orchestrate a domain operation, create an application service, implement a use-case method, add an entry point for domain operations, wire an API to domain logic in pure DDD (non-CQRS), or when the user asks to "create an application service", "add a use case", "implement an application service", "orchestrate domain operations". Application services are the DDD approach; for CQRS use command handlers instead.
+description: Define a Protean application service - a stateless orchestration layer that coordinates use cases between external callers (API controllers, CLI handlers, background jobs) and the domain model. Application services load aggregates, invoke domain methods, and persist results without containing business logic. They are always associated with one aggregate via part_of and use the @use_case decorator for automatic UnitOfWork wrapping. Unlike command handlers, application services are invoked directly (not via domain.process()) and return values synchronously. Use when you need to define a use case, orchestrate a domain operation, create an application service, implement a use-case method, add an entry point for domain operations, wire an API to domain logic in pure DDD (non-CQRS), or when the user asks to "create an application service", "add a use case", "implement an application service", "orchestrate domain operations". Application services are the DDD approach; for CQRS use command handlers instead.
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -190,6 +190,7 @@ def place_order(self, items: list) -> Identifier:
 ### Using domain.process() instead of direct invocation
 
 ```python
+# fragment
 # Wrong! Application services are not dispatched via domain.process()
 domain.process(some_service_call)
 ```

@@ -173,10 +173,13 @@ class AnalyticsHandler:
 ### Skipping versions in chains
 
 ```python
+# fragment
 # WRONG — if v2 existed in production, you need v1→v2 AND v2→v3
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=3)
 class SkipV2(BaseUpcaster): ...
+```
 
+```python
 # CORRECT — one step per version
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class V1ToV2(BaseUpcaster): ...
@@ -192,13 +195,16 @@ build-time signal as `UPCASTER_GAP`.
 ### Performing I/O in upcast()
 
 ```python
+# fragment
 # WRONG — upcasting runs on the deserialization path and must stay fast
 class SlowUpcaster(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         user = db.query(User, data["user_id"])  # NO! No I/O
         data["user_name"] = user.name
         return data
+```
 
+```python
 # CORRECT — pure dict transformation only
 class FastUpcaster(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
@@ -209,9 +215,13 @@ class FastUpcaster(BaseUpcaster):
 ### Pointing event_type at old class
 
 ```python
+# fragment
 # WRONG — event_type must be the CURRENT event class
 @domain.upcaster(event_type=OrderPlacedV1, from_version=1, to_version=2)
+```
 
+```python
+# fragment
 # CORRECT — always point to the current class
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 ```
@@ -219,12 +229,15 @@ class FastUpcaster(BaseUpcaster):
 ### Forgetting to bump __version__
 
 ```python
+# fragment
 # WRONG — event still at default v1, but upcaster targets v2
 @domain.event(part_of="Order")
 class OrderPlaced:
     # __version__ not set — defaults to `1`
     ...
+```
 
+```python
 # CORRECT — set __version__ to match the upcaster chain's terminal version
 @domain.event(part_of="Order")
 class OrderPlaced:

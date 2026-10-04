@@ -11,6 +11,7 @@ These appear in nearly every codebase that hasn't been through a design review.
 Handler does everything — validates, calculates, constructs, persists, and coordinates:
 
 ```python
+# fragment
 # Bad: handler is a controller
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -21,7 +22,9 @@ def place_order(self, command):
         raise ValidationError("Too expensive")
     order = Order(customer_id=command.customer_id, total=total, status="PLACED")
     self.repository.add(order)
+```
 
+```python
 # Good: handler orchestrates, aggregate owns logic
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -35,6 +38,7 @@ def place_order(self, command):
 Using raw fields where value objects should model domain concepts:
 
 ```python
+# fragment
 # Bad: raw fields
 class Order:
     total_amount = Float()
@@ -42,7 +46,9 @@ class Order:
     shipping_street = String()
     shipping_city = String()
     shipping_zip = String()
+```
 
+```python
 # Good: value objects
 class Order:
     total = ValueObject(Money)
@@ -54,13 +60,16 @@ class Order:
 Aggregate is just a data container with no behavior:
 
 ```python
+# fragment
 # Bad: anemic — no methods, no invariants
 @domain.aggregate
 class Order:
     customer_id = String(required=True)
     status = String(default="DRAFT")
     total = Float(default=0.0)
+```
 
+```python
 # Good: rich — has behavior and rules
 @domain.aggregate
 class Order:
@@ -86,6 +95,7 @@ These appear when the codebase grows beyond the initial design.
 Modifying multiple aggregates in one handler:
 
 ```python
+# fragment
 # Bad: two aggregates in one transaction
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -95,7 +105,9 @@ def place_order(self, command):
     inventory = domain.repository_for(Inventory).get(command.product_id)
     inventory.reduce(command.quantity)
     domain.repository_for(Inventory).add(inventory)
+```
 
+```python
 # Good: events for cross-aggregate coordination
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -115,13 +127,16 @@ def reserve_inventory(self, event):
 One aggregate doing everything:
 
 ```python
+# fragment
 # Bad: Order handles ordering, shipping, payment, and notifications
 @domain.aggregate
 class Order:
     # 20+ fields
     # 15+ methods
     # Mix of ordering, shipping, payment logic
+```
 
+```python
 # Good: separate aggregates per bounded context
 @domain.aggregate
 class Order: ...      # Ordering only
@@ -138,6 +153,7 @@ class Payment: ...    # Payments only
 Direct function calls instead of event-driven communication:
 
 ```python
+# fragment
 # Bad: direct call
 def complete_order(order_id):
     order = repo.get(order_id)
@@ -145,7 +161,9 @@ def complete_order(order_id):
     repo.add(order)
     send_email(order.customer_email)  # Tight coupling
     update_analytics(order)            # More coupling
+```
 
+```python
 # Good: event-driven
 def complete_order(order_id):
     order = repo.get(order_id)
@@ -169,6 +187,7 @@ These are harder to spot but indicate architectural drift.
 Same rule checked in multiple places:
 
 ```python
+# fragment
 # Bad: validated in endpoint AND handler AND aggregate
 @app.post("/orders")
 def create_order(request):
@@ -186,7 +205,9 @@ def place_order(self, command):
 def quantity_must_be_positive(self):  # Validation #3 (duplicate)
     if self.quantity <= 0:
         raise ValidationError(...)
+```
 
+```python
 # Good: validate once, at the right layer
 # Field constraint handles basic validation
 quantity = Integer(required=True, min_value=1)
@@ -200,6 +221,7 @@ def total_within_limit(self): ...
 Tests that mock domain internals instead of using real objects:
 
 ```python
+# fragment
 # Bad: mocking everything
 def test_place_order():
     mock_repo = Mock()
@@ -208,7 +230,9 @@ def test_place_order():
     handler.repository = mock_repo
     handler.place_order(PlaceOrder(...))
     mock_repo.add.assert_called_once()
+```
 
+```python
 # Good: real objects with in-memory adapters
 def test_place_order():
     domain.process(PlaceOrder(...), asynchronous=False)

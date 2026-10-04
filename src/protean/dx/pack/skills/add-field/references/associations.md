@@ -300,9 +300,12 @@ grand_total = order.total.add(shipping_cost)
 Value objects are immutable. Replace them entirely:
 
 ```python
+# fragment
 # Wrong: Cannot modify
 order.total.amount = 200.0  # Raises IncorrectUsageError
+```
 
+```python
 # Correct: Replace entire value object
 order.total = Money(amount=200.0, currency="USD")
 ```

@@ -1,6 +1,6 @@
 ---
 name: domain-service
-description: Define a Protean domain service - a stateless orchestrator that encapsulates complex business logic spanning multiple aggregates. Domain services centralize cross-aggregate operations that don't naturally fit within any single aggregate, while keeping aggregates focused on their core state and behavior. Use when you need to coordinate logic across two or more aggregates, implement a cross-aggregate business rule, orchestrate a domain operation that mutates multiple aggregates in a single transaction, define invariants that span aggregate boundaries, or implement the DDD Domain Service pattern. Domain services are always associated with at least two aggregates via part_of. Supports three flavors: callable class (__call__), class with instance methods, and class with class methods. Supports pre and post invariants for cross-aggregate validation.
+description: "Define a Protean domain service - a stateless orchestrator that encapsulates complex business logic spanning multiple aggregates. Domain services centralize cross-aggregate operations that don't naturally fit within any single aggregate, while keeping aggregates focused on their core state and behavior. Use when you need to coordinate logic across two or more aggregates, implement a cross-aggregate business rule, orchestrate a domain operation that mutates multiple aggregates in a single transaction, define invariants that span aggregate boundaries, or implement the DDD Domain Service pattern. Domain services are always associated with at least two aggregates via part_of. Supports three flavors: callable class (__call__), class with instance methods, and class with class methods. Supports pre and post invariants for cross-aggregate validation."
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -165,6 +165,7 @@ class OrderPlacementService:
 ### Associating with only one aggregate
 
 ```python
+# fragment
 # Wrong - raises IncorrectUsageError
 @domain.domain_service(part_of=[Order])
 class OrderService:
@@ -183,6 +184,7 @@ If your logic only involves one aggregate, it belongs **in the aggregate itself*
 ### Forgetting super().__init__()
 
 ```python
+# fragment
 # Wrong - won't track aggregates properly
 class OrderPlacementService:
     def __init__(self, order, inventories):
@@ -202,6 +204,7 @@ class OrderPlacementService:
 ### Persisting inside the domain service
 
 ```python
+# fragment
 # Wrong - domain services don't handle persistence
 def place_order(self):
     self.order.confirm()
@@ -218,6 +221,7 @@ def place_order(self):
 ### Missing underscore on private methods
 
 ```python
+# fragment
 # Wrong - causes RecursionError due to invariant wrapping
 def calculate_total(self):
     ...

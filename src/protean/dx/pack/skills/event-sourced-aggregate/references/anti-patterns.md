@@ -9,6 +9,7 @@ Common mistakes when building event-sourced aggregates in Protean and how to avo
 When business methods mutate state directly AND `raise_()` invokes the `@apply` handler, state gets mutated twice — once in the business method and once in `@apply`.
 
 ```python
+# fragment
 # WRONG — state mutated twice (business method + @apply)
 def close(self):
     self.status = "CLOSED"  # First mutation
@@ -64,6 +65,7 @@ def archived(self, event: OrderArchived):
 Creating an aggregate without raising a creation event means the first state change is not recorded.
 
 ```python
+# fragment
 # WRONG — no creation event
 @classmethod
 def open(cls, account_id, owner_name):
@@ -91,6 +93,7 @@ def open(cls, account_id, owner_name):
 `from_events()` creates a blank aggregate by setting every field to `None` directly, bypassing declared field defaults, then applies all events through `@apply`. The first event's `@apply` handler must set ALL fields including identity: any field it leaves unset stays `None`, never its declared default.
 
 ```python
+# fragment
 # WRONG — @apply handler doesn't set all fields
 @apply
 def account_opened(self, event: AccountOpened):
@@ -119,6 +122,7 @@ def account_opened(self, event: AccountOpened):
 Defining a standard `@domain.repository` for an event-sourced aggregate won't work correctly. ES aggregates require event-sourced repositories.
 
 ```python
+# fragment
 # WRONG — standard repository for ES aggregate
 @domain.repository(part_of=Account)
 class AccountRepository:
@@ -151,6 +155,7 @@ domain.register(AccountRepository, part_of=Account)
 Including too much data in events makes them expensive to store and process:
 
 ```python
+# fragment
 # WRONG — event carries entire aggregate state
 @domain.event(part_of="Order")
 class ItemAdded:
@@ -183,6 +188,7 @@ class ItemAdded:
 Mutating state directly without raising events means changes won't be persisted to the event store and won't survive replay:
 
 ```python
+# fragment
 # WRONG — direct mutation without event
 @domain.aggregate(event_sourced=True)
 class Account:
@@ -212,6 +218,7 @@ class Account:
 Raising events without validation means invalid state changes get recorded:
 
 ```python
+# fragment
 # WRONG — no validation before raising
 def withdraw(self, amount):
     self.raise_(MoneyWithdrawn(account_id=self.account_id, amount=amount))
@@ -237,6 +244,7 @@ def withdraw(self, amount):
 `@apply` methods must be pure state mutations — they should not query databases, call APIs, or access other aggregates:
 
 ```python
+# fragment
 # WRONG — external query in @apply
 @apply
 def order_placed(self, event: OrderPlaced):

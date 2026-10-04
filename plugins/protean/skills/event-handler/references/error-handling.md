@@ -37,6 +37,7 @@ class ShipmentNotifier:
 ## Method Signature
 
 ```python
+# fragment
 @classmethod
 def handle_error(cls, exc: Exception, message) -> None:
 ```

@@ -3,6 +3,7 @@
 ## 1. Missing identifier field
 
 ```python
+# fragment
 # Wrong! No identifier field
 @domain.projection
 class UserView:
@@ -27,6 +28,7 @@ Error: `` "Projection `UserView` needs to have at least one identifier" ``
 A projection needs a projector to populate it. With no projector, nothing writes to the projection, so queries against it always come back empty.
 
 ```python
+# fragment
 # Wrong! Nothing populates this projection
 @domain.projection
 class OrderSummary:
@@ -56,6 +58,7 @@ class OrderSummary:
 ## 3. Using Reference fields
 
 ```python
+# fragment
 # Wrong! References not allowed
 @domain.projection
 class OrderView:
@@ -76,6 +79,7 @@ class OrderView:
 ## 4. Using Association fields
 
 ```python
+# fragment
 # Wrong! Associations not allowed
 @domain.projection
 class OrderView:
@@ -96,6 +100,7 @@ class OrderView:
 ## 5. No storage backend
 
 ```python
+# fragment
 # Wrong! Must have either provider or cache
 domain.register(MyProjection, provider=None, cache=None)
 ```
@@ -118,6 +123,7 @@ Error: `"MyProjection projection needs to have either a database or a cache prov
 ## 6. Putting business logic in projections
 
 ```python
+# fragment
 # Wrong! Projections are read-only data containers
 @domain.projection
 class OrderView:
@@ -141,6 +147,7 @@ class OrderView:
 ## 7. Treating projections as aggregates
 
 ```python
+# fragment
 # Wrong! Don't use projections as write models
 @domain.projection
 class Product:
@@ -207,6 +214,7 @@ class OrderSummaryProjector:
 **Fix**: Write the field from the projector method that handles the event carrying it, or drop the field when nothing sources it:
 
 ```python
+# fragment
     @on(OrderPlaced)
     def on_placed(self, event: OrderPlaced) -> None:
         repo = current_domain.repository_for(OrderSummary)
@@ -226,6 +234,7 @@ class OrderSummaryProjector:
 Read a projection through `view_for(Projection)`, which returns a read-only view with `get()`, `query`, `find_by()`, `count()`, and `exists()`. Use `connection_for(Projection)` for the raw store connection. Both require a projection; passing an element of another type raises `IncorrectUsageError`.
 
 ```python
+# fragment
 # Wrong! Order is an aggregate, so view_for rejects it
 view = current_domain.view_for(Order)
 ```

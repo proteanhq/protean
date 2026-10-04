@@ -5,11 +5,14 @@
 Command and event enrichers have different signatures. Mixing them up fails.
 
 ```python
+# fragment
 # WRONG — event enricher missing the aggregate parameter
 @domain.event_enricher
 def add_ctx(event):
     return {...}
+```
 
+```python
 # RIGHT
 @domain.event_enricher
 def add_ctx(event, aggregate):
@@ -26,12 +29,15 @@ def add_ctx(command):
 Enrichers return data; they must not reach into the message and mutate it.
 
 ```python
+# fragment
 # WRONG
 @domain.command_enricher
 def add_ctx(command):
     command._metadata.extensions["request_id"] = g.request_id
     return None
+```
 
+```python
 # RIGHT
 @domain.command_enricher
 def add_ctx(command):
@@ -44,11 +50,14 @@ An enricher that raises stops the command from being processed (or the event fro
 being appended). Reading a missing attribute off `g` is the usual culprit.
 
 ```python
+# fragment
 # WRONG — raises AttributeError when request_id isn't set
 @domain.command_enricher
 def add_ctx(command):
     return {"request_id": g.request_id}
+```
 
+```python
 # RIGHT — degrade gracefully
 @domain.command_enricher
 def add_ctx(command):
@@ -61,6 +70,7 @@ Enrichers run on the hot path of every command/event. They should read context a
 return a dict — not load aggregates, hit the database, or call services.
 
 ```python
+# fragment
 # WRONG — I/O in an enricher
 @domain.event_enricher
 def add_ctx(event, aggregate):
@@ -82,6 +92,7 @@ plain function or a callable object (a class with `__call__`). Registering a
 non-callable value raises `IncorrectUsageError` (`USAGE_ENRICHER_NOT_CALLABLE`).
 
 ```python
+# fragment
 # WRONG: a dict is not callable
 domain.register_command_enricher({"request_id": "static"})
 ```

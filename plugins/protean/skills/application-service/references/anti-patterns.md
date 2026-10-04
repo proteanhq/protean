@@ -7,6 +7,7 @@ Common mistakes when implementing application services and how to avoid them.
 Application services should orchestrate, not decide. Business rules belong in aggregates or domain services.
 
 ```python
+# fragment
 # Wrong - business logic in the service
 @use_case
 def place_order(self, items, customer_id):
@@ -34,6 +35,7 @@ def place_order(self, items, customer_id):
 A use case method should persist only one aggregate root. Use domain events for cross-aggregate coordination.
 
 ```python
+# fragment
 # Wrong - persisting two aggregates
 @use_case
 def transfer_funds(self, from_id, to_id, amount):
@@ -60,6 +62,7 @@ def transfer_funds(self, from_id, to_id, amount):
 The `@use_case` decorator already wraps the method in a UnitOfWork.
 
 ```python
+# fragment
 # Wrong - redundant UoW
 @use_case
 def register_user(self, email, name):
@@ -83,6 +86,7 @@ def register_user(self, email, name):
 Application services are called directly, not dispatched through the domain's command processing pipeline.
 
 ```python
+# fragment
 # Wrong - this is the command handler pattern
 result = domain.process(some_command, asynchronous=False)
 ```
@@ -98,6 +102,7 @@ user_id = svc.register_user(email="user@example.com", name="User")
 Every application service must declare which aggregate it operates on.
 
 ```python
+# fragment
 # Wrong - will raise IncorrectUsageError
 @domain.application_service
 class UserServices:
@@ -116,6 +121,7 @@ class UserServices:
 Each method should represent a single, cohesive business operation.
 
 ```python
+# fragment
 # Wrong - combining multiple operations
 @use_case
 def register_and_activate(self, email, name):
@@ -145,6 +151,7 @@ def activate_user(self, user_id):
 Let exceptions propagate — the UoW handles rollback, and the caller handles the error.
 
 ```python
+# fragment
 # Wrong - swallowing exceptions
 @use_case
 def register_user(self, email, name):

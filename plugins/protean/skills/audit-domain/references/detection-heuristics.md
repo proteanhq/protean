@@ -7,6 +7,7 @@ Detailed patterns for identifying each anti-pattern category during a domain aud
 **What to grep for in handler files:**
 
 ```python
+# fragment
 # Calculations in handlers
 total = ...
 price = ... * ...
