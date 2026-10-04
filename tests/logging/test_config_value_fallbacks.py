@@ -48,12 +48,11 @@ class TestGetLoggingConfigValue:
             warnings.simplefilter("error")
             assert get_logging_config_value("slow_handler_threshold_ms", 500) == 500
 
-    def test_unexpected_config_error_propagates(self, test_domain):
+    @pytest.mark.parametrize("error", [RuntimeError, AttributeError])
+    def test_unexpected_config_error_propagates(self, test_domain, error):
         with (
-            patch.object(
-                type(test_domain.config), "get", side_effect=RuntimeError("boom")
-            ),
-            pytest.raises(RuntimeError, match="boom"),
+            patch.object(type(test_domain.config), "get", side_effect=error("boom")),
+            pytest.raises(error, match="boom"),
         ):
             get_logging_config_value("slow_handler_threshold_ms", 500)
 

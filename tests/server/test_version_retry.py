@@ -214,7 +214,8 @@ class TestVersionRetryDefaults:
         )
         assert message.endswith("); using the defaults")
         assert repr(bad_config) in message
-        assert records[0].exc_info is not None
+        # A conversion failure carries its traceback; a non-table has none
+        assert bool(records[0].exc_info) == isinstance(bad_config, dict)
 
     def test_invalid_config_warns_once(self, test_domain, caplog, fresh_warnings):
         """The config is read on every handler call; the warning is not."""
@@ -227,17 +228,30 @@ class TestVersionRetryDefaults:
         records = [r for r in caplog.records if r.name == "protean.utils.mixins"]
         assert len(records) == 1
 
-    def test_unexpected_config_error_propagates(self, test_domain):
+    @pytest.mark.parametrize("error", [RuntimeError, AttributeError, TypeError])
+    def test_unexpected_config_error_propagates(self, test_domain, error):
         """Only conversion and non-table errors fall back; others surface."""
 
         class BrokenTable(dict):
             def get(self, *args, **kwargs):
-                raise RuntimeError("config error")
+                raise error("config error")
 
         test_domain.config["server"] = BrokenTable()
 
-        with pytest.raises(RuntimeError, match="config error"):
+        with pytest.raises(error, match="config error"):
             _get_version_retry_config()
+
+    def test_non_table_server_section_falls_back_with_warning(
+        self, test_domain, caplog, fresh_warnings
+    ):
+        test_domain.config["server"] = "not-a-table"
+        caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
+
+        assert _get_version_retry_config() == _VERSION_RETRY_DEFAULTS
+
+        records = [r for r in caplog.records if r.name == "protean.utils.mixins"]
+        assert len(records) == 1
+        assert "'not-a-table'" in records[0].getMessage()
 
     def test_valid_config_logs_no_warning(self, test_domain, caplog):
         caplog.set_level(logging.WARNING, logger="protean.utils.mixins")

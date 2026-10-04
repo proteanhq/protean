@@ -78,39 +78,50 @@ def _get_version_retry_config() -> dict[str, Any]:
     """
     from protean.domain.context import has_domain_context  # noqa: PLC0415
 
-    if has_domain_context():
-        server_config = current_domain.config.get("server", {})
-        try:
-            cfg = server_config.get("version_retry", {})
-            return {
-                "enabled": cfg.get("enabled", _VERSION_RETRY_DEFAULTS["enabled"]),
-                "max_retries": int(
-                    cfg.get("max_retries", _VERSION_RETRY_DEFAULTS["max_retries"])
-                ),
-                "base_delay_seconds": float(
-                    cfg.get(
-                        "base_delay_seconds",
-                        _VERSION_RETRY_DEFAULTS["base_delay_seconds"],
-                    )
-                ),
-                "max_delay_seconds": float(
-                    cfg.get(
-                        "max_delay_seconds",
-                        _VERSION_RETRY_DEFAULTS["max_delay_seconds"],
-                    )
-                ),
-            }
-        except (AttributeError, TypeError, ValueError, OverflowError):
-            seen = repr(server_config)
-            if seen not in _warned_version_retry_configs:
-                _warned_version_retry_configs.add(seen)
-                logger.warning(
-                    "Invalid `server.version_retry` configuration (server = %s); "
-                    "using the defaults",
-                    seen,
-                    exc_info=True,
-                )
+    if not has_domain_context():
+        return dict(_VERSION_RETRY_DEFAULTS)
+
+    server_config = current_domain.config.get("server", {})
+    cfg = (
+        server_config.get("version_retry", {})
+        if isinstance(server_config, dict)
+        else None
+    )
+    if not isinstance(cfg, dict):
+        _warn_invalid_version_retry_config(server_config, exc_info=False)
+        return dict(_VERSION_RETRY_DEFAULTS)
+
+    enabled = cfg.get("enabled", _VERSION_RETRY_DEFAULTS["enabled"])
+    max_retries = cfg.get("max_retries", _VERSION_RETRY_DEFAULTS["max_retries"])
+    base_delay = cfg.get(
+        "base_delay_seconds", _VERSION_RETRY_DEFAULTS["base_delay_seconds"]
+    )
+    max_delay = cfg.get(
+        "max_delay_seconds", _VERSION_RETRY_DEFAULTS["max_delay_seconds"]
+    )
+    try:
+        return {
+            "enabled": enabled,
+            "max_retries": int(max_retries),
+            "base_delay_seconds": float(base_delay),
+            "max_delay_seconds": float(max_delay),
+        }
+    except (TypeError, ValueError, OverflowError):
+        _warn_invalid_version_retry_config(server_config, exc_info=True)
     return dict(_VERSION_RETRY_DEFAULTS)
+
+
+def _warn_invalid_version_retry_config(server_config: Any, *, exc_info: bool) -> None:
+    """Warn about an unreadable ``[server]`` table, once per distinct table."""
+    seen = repr(server_config)
+    if seen not in _warned_version_retry_configs:
+        _warned_version_retry_configs.add(seen)
+        logger.warning(
+            "Invalid `server.version_retry` configuration (server = %s); "
+            "using the defaults",
+            seen,
+            exc_info=exc_info,
+        )
 
 
 @functools.cache

@@ -457,14 +457,16 @@ def get_logging_config_value(key: str, default: _T) -> _T:
     Returns ``default`` when no domain is bound to the current context or when
     the key is absent. Uses ``has_domain_context()`` to avoid triggering the
     outside-domain-context warning that ``current_domain`` would emit outside a
-    domain context. A ``[logging]`` value that is not a table raises
-    ``AttributeError``, which also yields ``default``, silently, because callers
-    sit on a hot path (e.g. per-query instrumentation).
+    domain context. A ``[logging]`` value that is not a table also yields
+    ``default``, silently, because callers sit on a hot path (e.g. per-query
+    instrumentation).
     """
-    with suppress(AttributeError):
-        if has_domain_context():
-            return cast(_T, current_domain.config.get("logging", {}).get(key, default))
-    return default
+    if not has_domain_context():
+        return default
+    section = current_domain.config.get("logging", {})
+    if not isinstance(section, dict):
+        return default
+    return cast(_T, section.get(key, default))
 
 
 def _get_slow_handler_threshold() -> float:
