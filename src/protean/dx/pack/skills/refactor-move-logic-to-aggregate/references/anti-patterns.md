@@ -73,7 +73,7 @@ def place_order(self, command):
 @invariant.post
 def title_must_not_be_empty(self):
     if not self.title:
-        raise ValidationError(...)
+        raise ValidationError({"title": ["Title is required"]})
 # Just use: title = String(required=True)
 ```
 
@@ -82,7 +82,7 @@ def title_must_not_be_empty(self):
 @invariant.post
 def assigned_must_have_assignee(self):
     if self.status == "ASSIGNED" and not self.assignee_id:
-        raise ValidationError(...)
+        raise ValidationError({"assignee_id": ["An assigned task needs an assignee"]})
 ```
 
 ## Related

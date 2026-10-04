@@ -10,7 +10,7 @@ Source aggregate changes state → target aggregate updates its state.
 class InventorySyncHandler:
     @handle(OrderShipped)
     def on_order_shipped(self, event):
-        inventory = domain.repository_for(Inventory)._dao.find_by(product_id=event.product_id)
+        inventory = domain.repository_for(Inventory).find_by(product_id=event.product_id)
         inventory.reduce_stock(event.quantity)
         domain.repository_for(Inventory).add(inventory)
 ```
@@ -25,7 +25,7 @@ Source aggregate reaches a lifecycle point → target aggregate is created or ac
 class SubscriptionSyncHandler:
     @handle(PaymentConfirmed)
     def on_payment_confirmed(self, event):
-        subscription = domain.repository_for(Subscription)._dao.find_by(customer_id=event.customer_id)
+        subscription = domain.repository_for(Subscription).find_by(customer_id=event.customer_id)
         subscription.activate(plan_name=event.plan_name)
         domain.repository_for(Subscription).add(subscription)
 ```
@@ -52,7 +52,7 @@ The event handler needs to find the correct target aggregate instance. Common ap
 | Approach | When to use |
 |----------|------------|
 | `repo.get(id)` | Event carries the target's ID directly |
-| `repo._dao.find_by(field=value)` | Event carries a foreign key to look up by |
+| `repo.find_by(field=value)` | Event carries a foreign key to look up by |
 
 ## Handler configuration
 

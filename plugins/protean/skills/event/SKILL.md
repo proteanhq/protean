@@ -335,8 +335,8 @@ event = OrderPlaced(order_id="123", customer_id="456")
 - `aggregate` - Events are always part of aggregates
 - `value-object` - Events can contain value objects
 - `event-handler` - How events are consumed and processed
-- `patterns/event-sourcing` - Using events as the source of truth
-- `patterns/cqrs` - Using events for read model updates
+- `event-sourced-aggregate` - Using events as the source of truth
+- [CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/) - Using events for read model updates
 
 ## Verify your work
 

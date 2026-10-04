@@ -76,7 +76,7 @@ class TestLifecycle:
             CreateTicket(title="Bug", reporter="alice"),
             asynchronous=False,
         )
-        tickets = domain.repository_for(Ticket)._dao.query.all()
+        tickets = domain.repository_for(Ticket).query.all()
         ticket = next(t for t in tickets.items if t.title == "Bug")
 
         # Step 2: Assign (triggers event handler → audit entry)
@@ -91,7 +91,7 @@ class TestLifecycle:
         assert updated.assignee == "bob"
 
         # Step 4: Verify side effects
-        entries = domain.repository_for(AuditEntry)._dao.query.all()
+        entries = domain.repository_for(AuditEntry).query.all()
         matching = [e for e in entries.items if e.ticket_id == ticket.id]
         assert len(matching) == 1
 ```

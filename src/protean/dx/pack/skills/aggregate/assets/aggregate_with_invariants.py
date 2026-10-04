@@ -5,27 +5,25 @@ This example demonstrates:
 - Invariant decorators (@invariant.pre and @invariant.post)
 - Business rule enforcement at aggregate level
 - Field-level validation vs invariant validation
-- Raising domain exceptions on invariant violations
+- Raising the dict form of ValidationError on invariant violations
 - State-changing methods with invariants
 
 Usage:
     account = Account(account_number="ACC-001", balance=1000.0, overdraft_limit=100.0)
     account.withdraw(500.0)  # OK
-    account.withdraw(700.0)  # Raises InsufficientFundsException
+    account.withdraw(700.0)  # Raises ValidationError
 """
 
 from protean import Domain, invariant
+from protean.exceptions import ValidationError
 from protean.fields import Float, String
 
 # Domain setup
 domain = Domain()
 
 
-# Custom domain exception
-class InsufficientFundsException(Exception):
-    """Raised when account balance would go below overdraft limit."""
-
-
+# Custom domain exception, raised by an ordinary method. An invariant raises
+# ValidationError instead, so the framework collects its failure.
 class InvalidTransferException(Exception):
     """Raised when transfer violates business rules."""
 
@@ -44,8 +42,13 @@ class Account:
     def balance_must_be_above_overdraft_limit(self):
         """Balance must not fall below the negative overdraft limit."""
         if self.balance < -self.overdraft_limit:
-            raise InsufficientFundsException(
-                f"Balance {self.balance} cannot be below overdraft limit -{self.overdraft_limit}"
+            raise ValidationError(
+                {
+                    "balance": [
+                        f"Balance {self.balance} cannot be below "
+                        f"overdraft limit -{self.overdraft_limit}"
+                    ]
+                }
             )
 
     # Pre-condition invariant: checked before state changes
@@ -53,8 +56,8 @@ class Account:
     def account_must_be_active(self):
         """Account must be active for transactions."""
         if self.status != "active":
-            raise InvalidTransferException(
-                f"Cannot perform transactions on {self.status} account"
+            raise ValidationError(
+                {"status": [f"Cannot perform transactions on {self.status} account"]}
             )
 
     def deposit(self, amount: float):
@@ -98,16 +101,25 @@ class Warehouse:
     def reserved_stock_cannot_exceed_current(self):
         """Reserved stock cannot exceed available stock."""
         if self.reserved_stock > self.current_stock:
-            raise ValueError(
-                f"Reserved stock {self.reserved_stock} exceeds current stock {self.current_stock}"
+            raise ValidationError(
+                {
+                    "reserved_stock": [
+                        f"Reserved stock {self.reserved_stock} exceeds "
+                        f"current stock {self.current_stock}"
+                    ]
+                }
             )
 
     @invariant.post
     def total_stock_cannot_exceed_capacity(self):
         """Total stock cannot exceed warehouse capacity."""
         if self.current_stock > self.max_capacity:
-            raise ValueError(
-                f"Stock {self.current_stock} exceeds capacity {self.max_capacity}"
+            raise ValidationError(
+                {
+                    "current_stock": [
+                        f"Stock {self.current_stock} exceeds capacity {self.max_capacity}"
+                    ]
+                }
             )
 
     def receive_stock(self, quantity: float):
@@ -166,8 +178,8 @@ if __name__ == "__main__":
         balance_before_failed_withdrawal = account.balance
         try:
             account.withdraw(200.0)
-        except InsufficientFundsException as e:
-            print(f"Failed: {e}")
+        except ValidationError as e:
+            print(f"Failed: {dict(e.messages)}")
             # Note: Account is now in invalid state, don't save it!
 
         print(
@@ -200,6 +212,6 @@ if __name__ == "__main__":
 
         # Try to exceed capacity
         try:
-            warehouse.receive_stock(6000.0)
-        except ValueError as e:
-            print(f"Failed: {e}")
+            warehouse.receive_stock(8000.0)
+        except ValidationError as e:
+            print(f"Failed: {dict(e.messages)}")

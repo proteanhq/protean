@@ -41,14 +41,14 @@ domain.repository_for(ProductInventory).remove(inventory)
 inventory = domain.repository_for(ProductInventory).get("PROD-001")
 ```
 
-### Query with DAO
+### Query with the repository
 
 ```python
 # Find by a specific field
-inventory = domain.repository_for(ProductInventory)._dao.find_by(product_id="PROD-001")
+inventory = domain.repository_for(ProductInventory).find_by(product_id="PROD-001")
 
 # Query all records
-all_items = domain.repository_for(ProductInventory)._dao.query.all()
+all_items = domain.repository_for(ProductInventory).query.all()
 ```
 
 ## Projection state tracking

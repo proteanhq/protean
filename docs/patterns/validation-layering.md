@@ -478,7 +478,9 @@ class Order:
     def only_admin_can_set_high_discount(self):
         # The aggregate shouldn't know about user roles
         if self.discount_percent > 20 and current_user().role != "admin":
-            raise ValidationError(...)
+            raise ValidationError(
+                {"discount_percent": ["Only an admin can set a discount above 20%"]}
+            )
 ```
 
 The aggregate shouldn't access the current user or know about roles. That's

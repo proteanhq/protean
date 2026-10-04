@@ -189,8 +189,8 @@ class Account:
     @invariant.post
     def balance_must_be_above_overdraft_limit(self):
         if self.balance < -self.overdraft_limit:
-            raise InsufficientFundsException(
-                "Balance cannot be below overdraft limit"
+            raise ValidationError(
+                {"balance": ["Balance cannot be below overdraft limit"]}
             )
 
     def withdraw(self, amount: float):

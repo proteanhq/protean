@@ -25,6 +25,7 @@ Usage:
 
 from protean import Domain, handle, invariant
 from protean.core.aggregate import apply
+from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier, String
 from protean.utils.globals import current_domain
 
@@ -112,7 +113,9 @@ class Account:
     def balance_must_not_be_negative(self):
         """Account balance cannot go below zero."""
         if self.balance < 0:
-            raise ValueError(f"Insufficient funds: balance would be {self.balance}")
+            raise ValidationError(
+                {"balance": [f"Insufficient funds: balance would be {self.balance}"]}
+            )
 
     # --- Factory classmethod ---
 

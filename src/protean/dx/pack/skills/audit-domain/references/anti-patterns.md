@@ -204,7 +204,7 @@ def place_order(self, command):
 @invariant.post
 def quantity_must_be_positive(self):  # Validation #3 (duplicate)
     if self.quantity <= 0:
-        raise ValidationError(...)
+        raise ValidationError({"quantity": ["Quantity must be positive"]})
 ```
 
 ```python

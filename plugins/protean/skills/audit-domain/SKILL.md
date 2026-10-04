@@ -132,7 +132,7 @@ more than one aggregate class.
 instead of string references.
 
 **Signals**:
-- `@domain.command(part_of=OrderAggregate)` (class, not string)
+- `@domain.command(part_of=OrderAggregate)` (a class reference where a string would do)
 - `@domain.event(part_of=Order)` where `Order` is imported at top of file
 - `from .order import Order` in command/event files
 

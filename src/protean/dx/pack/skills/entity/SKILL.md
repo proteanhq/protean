@@ -272,6 +272,7 @@ class LineItem:
 
 ```python
 from protean import invariant
+from protean.exceptions import ValidationError
 
 @domain.entity(part_of="Order")
 class LineItem:
@@ -288,7 +289,9 @@ class LineItem:
         """
         discount_amount = self.unit_price * (self.discount_percent / 100)
         if discount_amount > self.unit_price:
-            raise ValueError("Discount cannot exceed unit price")
+            raise ValidationError(
+                {"discount_percent": ["Discount cannot exceed unit price"]}
+            )
 
     @invariant.post
     def quantity_times_price_must_be_reasonable(self):
@@ -298,7 +301,9 @@ class LineItem:
         """
         total = self.quantity * self.unit_price
         if total > 1_000_000:  # Business limit
-            raise ValueError("Line item total exceeds maximum allowed")
+            raise ValidationError(
+                {"_entity": ["Line item total exceeds maximum allowed"]}
+            )
 
     @property
     def subtotal(self) -> float:

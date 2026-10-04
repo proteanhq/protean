@@ -216,11 +216,11 @@ Use `@invariant.pre` (checked before changes) and `@invariant.post` (checked aft
 - **`@invariant.post`**: Validates after changes occur. Use for constraints that depend on the final state (e.g., "balance must not be negative"). Checked after initialization and after attribute updates.
 - **`@invariant.pre`**: Validates before changes occur. Use for preconditions that must be true before allowing state changes (e.g., "account must be active"). **Note**: Pre invariants are NOT checked during initialization.
 
+An invariant raises `ValidationError` with a dict that maps the field at fault to a list of messages: `ValidationError({"balance": ["..."]})`. A rule that spans several fields uses the key `_entity`. Protean catches only `ValidationError` from an invariant and attaches the code `INVARIANT_PRE_FAILED` or `INVARIANT_POST_FAILED`. A `ValueError` or a custom exception is not collected, and a plain-string `ValidationError("...")` fails with a `TypeError`.
+
 ```python
 from protean import invariant
-
-class InsufficientFundsException(Exception):
-    pass
+from protean.exceptions import ValidationError
 
 @domain.aggregate
 class Account:
@@ -236,8 +236,8 @@ class Account:
         Granular rule: Each invariant checks ONE business constraint.
         """
         if self.balance < -self.overdraft_limit:
-            raise InsufficientFundsException(
-                f"Balance cannot be below overdraft limit"
+            raise ValidationError(
+                {"balance": ["Balance cannot be below overdraft limit"]}
             )
 
     # Pre invariants - only checked before changes (NOT during initialization)
@@ -248,7 +248,7 @@ class Account:
         Pre-check ensures we don't attempt invalid operations.
         """
         if self.status != "active":
-            raise ValueError("Account is not active")
+            raise ValidationError({"status": ["Account is not active"]})
 
     def withdraw(self, amount: float):
         """Withdraw money from account.
@@ -315,7 +315,7 @@ See [Configuration Reference](references/configuration.md) for detailed document
 Aggregates are persisted using repositories:
 
 ```python
-from protean.globals import current_domain
+from protean import current_domain
 
 # Create
 order = Order(customer_id="C123")
@@ -337,6 +337,7 @@ current_domain.repository_for(Order).remove(order)
 
 ```python
 from protean import Domain, invariant
+from protean.exceptions import ValidationError
 from protean.fields import String, Float, HasMany, Integer
 
 domain = Domain()
@@ -364,7 +365,7 @@ class Order:
     @invariant.post
     def placed_order_must_have_items(self):
         if self.status == "placed" and not self.line_items:
-            raise ValueError("Cannot place empty order")
+            raise ValidationError({"line_items": ["Cannot place empty order"]})
 
     def place_order(self):
         if not self.line_items:

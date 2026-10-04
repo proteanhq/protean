@@ -77,7 +77,7 @@ class PlaceOrder:
 Follow the patterns in [command-handler](../command-handler/SKILL.md).
 
 Key points for this workflow:
-- Use `part_of=AggregateClass` (class reference, not string)
+- Use `part_of=AggregateClass` (a string reference also works, resolved at `init`; the class is the usual convention when it is in scope)
 - Use `@handle(CommandClass)` decorator on handler methods
 - **Creating aggregates**: Construct from command data, call method, persist with `domain.repository_for(Aggregate).add()`
 - **Updating aggregates**: Load with `domain.repository_for(Aggregate).get(id)`, call method, persist

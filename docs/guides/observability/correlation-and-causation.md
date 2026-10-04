@@ -56,7 +56,7 @@ incoming request and stores it in the global context. `current_domain.process()`
 picks it up automatically:
 
 ```python
-from protean.globals import current_domain
+from protean import current_domain
 from protean.integrations.fastapi import DomainContextMiddleware
 
 app.add_middleware(

@@ -88,6 +88,6 @@ class InventorySyncHandler:
     def on_order_shipped(self, event: OrderShipped):
         """Reduce inventory stock when an order ships."""
         repo = domain.repository_for(Inventory)
-        inventory = repo._dao.find_by(product_id=event.product_id)
+        inventory = repo.find_by(product_id=event.product_id)
         inventory.reduce_stock(event.quantity)
         repo.add(inventory)

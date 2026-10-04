@@ -11,7 +11,7 @@ from __future__ import annotations
 from protean.fields import Auto, Float, Identifier, String
 
 from protean import handle
-from protean.globals import current_domain
+from protean import current_domain
 
 
 @domain.aggregate

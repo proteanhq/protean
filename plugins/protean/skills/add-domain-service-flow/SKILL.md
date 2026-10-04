@@ -102,7 +102,7 @@ class OrderCommandHandler:
     def handle_place_order(self, command):
         order = domain.repository_for(Order).get(command.order_id)
         inventories = [
-            domain.repository_for(Inventory)._dao.find_by(product_id=item.product_id)
+            domain.repository_for(Inventory).find_by(product_id=item.product_id)
             for item in order.items
         ]
 

@@ -140,6 +140,7 @@ Post invariants check state AFTER changes:
 
 ```python
 from protean import invariant
+from protean.exceptions import ValidationError
 
 @domain.aggregate
 class DateRange:
@@ -153,7 +154,7 @@ class DateRange:
         Checked after initialization and after any attribute changes.
         """
         if self.end_date < self.start_date:
-            raise ValidationError("End date must be after start date")
+            raise ValidationError({"end_date": ["End date must be after start date"]})
 ```
 
 **When post invariants run**:
@@ -178,7 +179,7 @@ class Account:
         NOT checked during initialization, only before updates.
         """
         if self.status != "active":
-            raise ValueError("Account is not active")
+            raise ValidationError({"status": ["Account is not active"]})
 
     def withdraw(self, amount: float):
         self.balance -= amount  # Pre invariant checked before this
@@ -196,21 +197,21 @@ class Account:
 @invariant.post
 def balance_must_not_be_negative(self):
     if self.balance < 0:
-        raise ValidationError("Balance cannot be negative")
+        raise ValidationError({"balance": ["Balance cannot be negative"]})
 
 # Good: Another single rule
 @invariant.post
 def balance_must_not_exceed_limit(self):
     if self.balance > self.max_balance:
-        raise ValidationError("Balance exceeds limit")
+        raise ValidationError({"balance": ["Balance exceeds limit"]})
 
 # Bad: Multiple rules in one invariant
 @invariant.post
 def balance_rules(self):
     if self.balance < 0:
-        raise ValidationError("Balance cannot be negative")
+        raise ValidationError({"balance": ["Balance cannot be negative"]})
     if self.balance > self.max_balance:
-        raise ValidationError("Balance exceeds limit")
+        raise ValidationError({"balance": ["Balance exceeds limit"]})
 ```
 
 2. **Use descriptive names** - Name should describe the rule
@@ -319,7 +320,7 @@ class Subscription:
     def end_date_must_be_after_start_date(self):
         """Granular rule: date ordering."""
         if self.end_date <= self.start_date:
-            raise ValidationError("End date must be after start date")
+            raise ValidationError({"end_date": ["End date must be after start date"]})
 
     @invariant.post
     def active_subscription_must_have_valid_dates(self):
@@ -328,14 +329,18 @@ class Subscription:
             from datetime import date
             today = date.today()
             if today < self.start_date or today > self.end_date:
-                raise ValidationError("Active subscription must be within date range")
+                raise ValidationError(
+                    {"_entity": ["Active subscription must be within date range"]}
+                )
 
     @invariant.post
     def trial_period_must_fit_within_subscription(self):
         """Granular rule: trial period constraint."""
         days_diff = (self.end_date - self.start_date).days
         if self.trial_days > days_diff:
-            raise ValidationError("Trial period exceeds subscription duration")
+            raise ValidationError(
+                {"trial_days": ["Trial period exceeds subscription duration"]}
+            )
 ```
 
 ### Example 4: Method Parameter Validation
@@ -349,7 +354,7 @@ class Account:
     def balance_must_not_be_negative(self):
         """Invariant: balance state constraint."""
         if self.balance < 0:
-            raise ValidationError("Insufficient funds")
+            raise ValidationError({"balance": ["Insufficient funds"]})
 
     def withdraw(self, amount: float):
         """Withdraw money from account."""
@@ -404,7 +409,9 @@ class Product:
         discount_amount = self.price * (self.discount_percent / 100)
         final_price = self.price - discount_amount
         if final_price <= 0:
-            raise ValidationError("Discount cannot reduce price to zero or below")
+            raise ValidationError(
+                {"discount_percent": ["Discount cannot reduce price to zero or below"]}
+            )
 ```
 
 ### Pattern 3: Date Range Validation
@@ -419,7 +426,7 @@ class DateRange:
     def end_must_be_after_start(self):
         """Date ordering rule."""
         if self.end_date <= self.start_date:
-            raise ValidationError("End date must be after start date")
+            raise ValidationError({"end_date": ["End date must be after start date"]})
 
     @property
     def duration_days(self) -> int:
@@ -440,13 +447,17 @@ class Order:
     def shipped_orders_must_have_tracking(self):
         """Conditional: shipped requires tracking."""
         if self.status in ["shipped", "delivered"] and not self.tracking_number:
-            raise ValidationError("Shipped orders must have tracking number")
+            raise ValidationError(
+                {"tracking_number": ["Shipped orders must have tracking number"]}
+            )
 
     @invariant.post
     def delivered_orders_must_have_delivery_date(self):
         """Conditional: delivered requires date."""
         if self.status == "delivered" and not self.delivery_date:
-            raise ValidationError("Delivered orders must have delivery date")
+            raise ValidationError(
+                {"delivery_date": ["Delivered orders must have delivery date"]}
+            )
 ```
 
 ## Anti-Patterns
@@ -486,7 +497,7 @@ class Product:
     @invariant.post  # Wrong! Use field parameter
     def price_must_be_positive(self):
         if self.price <= 0:
-            raise ValidationError("Price must be positive")
+            raise ValidationError({"price": ["Price must be positive"]})
 ```
 
 **Good**:
@@ -503,11 +514,11 @@ class Product:
 @invariant.post
 def validate_order(self):  # Too many rules!
     if not self.line_items:
-        raise ValidationError("Order must have items")
+        raise ValidationError({"line_items": ["Order must have items"]})
     if self.total < 0:
-        raise ValidationError("Total cannot be negative")
+        raise ValidationError({"total": ["Total cannot be negative"]})
     if self.status == "shipped" and not self.tracking:
-        raise ValidationError("Shipped needs tracking")
+        raise ValidationError({"tracking": ["Shipped needs tracking"]})
 ```
 
 **Good**:
@@ -515,17 +526,17 @@ def validate_order(self):  # Too many rules!
 @invariant.post
 def order_must_have_items(self):
     if not self.line_items:
-        raise ValidationError("Order must have items")
+        raise ValidationError({"line_items": ["Order must have items"]})
 
 @invariant.post
 def order_total_must_not_be_negative(self):
     if self.total < 0:
-        raise ValidationError("Total cannot be negative")
+        raise ValidationError({"total": ["Total cannot be negative"]})
 
 @invariant.post
 def shipped_order_must_have_tracking(self):
     if self.status == "shipped" and not self.tracking:
-        raise ValidationError("Shipped needs tracking")
+        raise ValidationError({"tracking": ["Shipped needs tracking"]})
 ```
 
 ## Summary

@@ -8,7 +8,7 @@ Invariants:
 - Ensure business rules are never violated
 - Are checked automatically by Protean
 - Can be pre-conditions (checked before) or post-conditions (checked after)
-- Raise exceptions when violated
+- Raise `ValidationError` in its dict form when violated
 - Help maintain aggregate consistency
 
 ## Code
@@ -18,7 +18,7 @@ The complete implementation is in [assets/aggregate_with_invariants.py](../asset
 Key highlights:
 - `@invariant.pre` decorator for pre-conditions
 - `@invariant.post` decorator for post-conditions
-- Custom domain exceptions for business rule violations
+- `ValidationError({"field": ["message"]})` for every rule violation
 - Invariants checked on every state change
 - Multiple invariants per aggregate
 
@@ -29,6 +29,9 @@ Key highlights:
 Post-conditions are checked **after** a state change:
 
 ```python
+from protean.exceptions import ValidationError
+
+
 @domain.aggregate
 class Account:
     balance: Float(default=0.0)
@@ -37,8 +40,8 @@ class Account:
     @invariant.post
     def balance_must_be_above_overdraft_limit(self):
         if self.balance < -self.overdraft_limit:
-            raise InsufficientFundsException(
-                f"Balance cannot be below overdraft limit"
+            raise ValidationError(
+                {"balance": ["Balance cannot be below overdraft limit"]}
             )
 
     def withdraw(self, amount: float):
@@ -63,8 +66,8 @@ class Account:
     @invariant.pre
     def account_must_be_active(self):
         if self.status != "active":
-            raise InvalidTransferException(
-                f"Cannot perform transactions on {self.status} account"
+            raise ValidationError(
+                {"status": [f"Cannot perform transactions on {self.status} account"]}
             )
 
     def withdraw(self, amount: float):
@@ -79,18 +82,25 @@ class Account:
 
 ## Walkthrough
 
-### Defining Custom Exceptions
+### Raising the Error
+
+An invariant signals a broken rule by raising `ValidationError` with a dict that
+maps a key to a list of messages:
 
 ```python
-class InsufficientFundsException(Exception):
-    """Raised when account balance would go below overdraft limit."""
-    pass
+# fragment
+raise ValidationError({"balance": ["Balance cannot be below overdraft limit"]})
 ```
 
-Custom exceptions:
-- Make error handling explicit
-- Enable specific catch blocks
-- Communicate business rule violations clearly
+- The key names the field at fault. A rule that spans several fields uses
+  `_entity`, the key the framework itself uses.
+- Protean catches only `ValidationError` from an invariant. It collects the
+  messages from every failing invariant and raises one `ValidationError` that
+  carries the code `INVARIANT_PRE_FAILED` or `INVARIANT_POST_FAILED` in
+  `err.codes`.
+- Any other exception (`ValueError`, a custom exception class) is not collected
+  and gets no code. A plain-string `ValidationError("...")` fails with a
+  `TypeError`, because the framework reads the messages as a dict.
 
 ### Single Invariant Example
 
@@ -104,9 +114,13 @@ class Account:
     @invariant.post
     def balance_must_be_above_overdraft_limit(self):
         if self.balance < -self.overdraft_limit:
-            raise InsufficientFundsException(
-                f"Balance {self.balance} cannot be below "
-                f"overdraft limit -{self.overdraft_limit}"
+            raise ValidationError(
+                {
+                    "balance": [
+                        f"Balance {self.balance} cannot be below "
+                        f"overdraft limit -{self.overdraft_limit}"
+                    ]
+                }
             )
 
     def withdraw(self, amount: float):
@@ -134,19 +148,19 @@ class Warehouse:
     @invariant.post
     def stock_cannot_be_negative(self):
         if self.current_stock < 0:
-            raise ValueError("Stock cannot be negative")
+            raise ValidationError({"current_stock": ["Stock cannot be negative"]})
 
     @invariant.post
     def reserved_cannot_exceed_current(self):
         if self.reserved_stock > self.current_stock:
-            raise ValueError(
-                "Reserved stock cannot exceed current stock"
+            raise ValidationError(
+                {"reserved_stock": ["Reserved stock cannot exceed current stock"]}
             )
 
     @invariant.post
     def total_cannot_exceed_capacity(self):
         if self.current_stock > self.max_capacity:
-            raise ValueError("Stock exceeds capacity")
+            raise ValidationError({"current_stock": ["Stock exceeds capacity"]})
 ```
 
 All invariants are checked on every state change. If any fails, the change is rejected.
@@ -162,16 +176,12 @@ class Order:
     @invariant.pre
     def order_must_be_draft_to_modify(self):
         if self.status != "draft":
-            raise InvalidOperationException(
-                "Cannot modify non-draft order"
-            )
+            raise ValidationError({"status": ["Cannot modify non-draft order"]})
 
     @invariant.post
     def placed_order_must_have_items(self):
         if self.status == "placed" and not self.line_items:
-            raise InvalidOperationException(
-                "Cannot place order without items"
-            )
+            raise ValidationError({"line_items": ["Cannot place order without items"]})
 
     def add_item(self, item: OrderLine):
         # Pre-check: must be draft
@@ -208,7 +218,7 @@ Field validation checks:
 @invariant.post
 def balance_must_be_above_overdraft_limit(self):
     if self.balance < -self.overdraft_limit:
-        raise InsufficientFundsException(...)
+        raise ValidationError({"balance": ["Balance cannot be below overdraft limit"]})
 ```
 
 Invariants check:
@@ -232,24 +242,24 @@ Protean checks invariants:
 ```python
 # Checked after __init__
 account = Account(balance=-500.0, overdraft_limit=100.0)
-# Raises InsufficientFundsException
+# Raises ValidationError
 
 # Checked after state change
 account = Account(balance=1000.0, overdraft_limit=100.0)
 account.withdraw(1200.0)
-# Raises InsufficientFundsException
+# Raises ValidationError
 
 # Checked before save
 account = Account(balance=500.0, overdraft_limit=100.0)
 account.balance = -200.0  # Direct mutation
 domain.repository_for(Account).add(account)
-# Raises InsufficientFundsException
+# Raises ValidationError
 ```
 
 ## Best Practices
 
 1. **Name invariants descriptively** - Method name should explain the rule
-2. **Use domain exceptions** - Create custom exception classes for business rules
+2. **Raise the dict form of `ValidationError`** - Key it by the field at fault, or `_entity` for a rule that spans fields
 3. **Provide clear error messages** - Include context about what failed and why
 4. **Keep invariants simple** - Each method should check one rule
 5. **Use pre-conditions for state validation** - Check if operations are allowed
@@ -265,12 +275,14 @@ domain.repository_for(Account).add(account)
 def order_state_consistency(self):
     if self.status == "placed":
         if not self.line_items:
-            raise ValueError("Placed order must have items")
+            raise ValidationError({"line_items": ["Placed order must have items"]})
         if not self.payment_info:
-            raise ValueError("Placed order must have payment")
+            raise ValidationError({"payment_info": ["Placed order must have payment"]})
     if self.status == "shipped":
         if not self.shipping_info:
-            raise ValueError("Shipped order must have shipping info")
+            raise ValidationError(
+                {"shipping_info": ["Shipped order must have shipping info"]}
+            )
 ```
 
 ### Invariant with Helper Method
@@ -287,8 +299,8 @@ class ShoppingCart:
     @invariant.post
     def cart_cannot_exceed_max_items(self):
         if self._total_quantity() > self.max_items:
-            raise ValueError(
-                f"Cart cannot exceed {self.max_items} items"
+            raise ValidationError(
+                {"items": [f"Cart cannot exceed {self.max_items} items"]}
             )
 ```
 
@@ -319,8 +331,10 @@ def test_account_overdraft_invariant():
     assert account.balance == 0.0
 
     # Should fail
-    with pytest.raises(InsufficientFundsException):
+    with pytest.raises(ValidationError) as exc:
         account.withdraw(200.0)
+    assert "INVARIANT_POST_FAILED" in exc.value.codes
+    assert "balance" in exc.value.messages
 ```
 
 ## Related

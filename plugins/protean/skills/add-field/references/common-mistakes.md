@@ -199,12 +199,12 @@ class Product:
     @invariant.post  # Wrong! Use field parameter
     def price_must_be_positive(self):
         if self.price <= 0:
-            raise ValidationError("Price must be positive")
+            raise ValidationError({"price": ["Price must be positive"]})
 
     @invariant.post  # Wrong! Use field parameter
     def name_must_not_be_too_long(self):
         if len(self.name) > 200:
-            raise ValidationError("Name too long")
+            raise ValidationError({"name": ["Name too long"]})
 ```
 
 **Good**:
@@ -222,7 +222,9 @@ class Product:
         if self.discount_percent > 0:
             final = self.price * (1 - self.discount_percent / 100)
             if final <= 0:
-                raise ValidationError("Discount makes price negative")
+                raise ValidationError(
+                    {"discount_percent": ["Discount makes price negative"]}
+                )
 ```
 
 **Why it matters**: Right tool for the job, clearer intent, automatic enforcement.

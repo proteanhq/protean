@@ -109,7 +109,7 @@ class Order:
 Follow the patterns in [event-handler](../event-handler/SKILL.md).
 
 Key points for this workflow:
-- Use `part_of=AggregateClass` (class reference, not string)
+- Use `part_of=AggregateClass` (a string reference also works, resolved at `init`; the class is the usual convention when it is in scope)
 - Use `@handle(EventClass)` decorator on handler methods
 - **Same-aggregate handler**: `@domain.event_handler(part_of=Order)` - listens to Order's own stream
 - **Cross-aggregate handler**: `@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)` - Inventory handler listens to Order stream
@@ -132,7 +132,7 @@ class OrderEventHandler:
 class InventoryHandler:
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):
-        inventory = domain.repository_for(Inventory)._dao.find_by(product_id=event.product_id)
+        inventory = domain.repository_for(Inventory).find_by(product_id=event.product_id)
         inventory.reduce_stock(event.quantity)
         domain.repository_for(Inventory).add(inventory)
 ```

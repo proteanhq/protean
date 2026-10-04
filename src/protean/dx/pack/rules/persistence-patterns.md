@@ -64,7 +64,7 @@ Always submit commands through `domain.process()`. Never call handlers directly:
 domain.process(PlaceOrder(buyer_id=buyer_id, items=items))
 
 # In FastAPI endpoints
-from protean.globals import current_domain
+from protean import current_domain
 current_domain.process(PlaceOrder(buyer_id=buyer_id, items=items))
 
 # Bad — calling handler directly

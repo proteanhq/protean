@@ -88,14 +88,14 @@ class ManageInventory:
     @handle(OrderShipped)
     def on_order_shipped(self, event: OrderShipped):
         repo = domain.repository_for(Inventory)
-        inventory = repo._dao.find_by(product_id=event.product_id)
+        inventory = repo.find_by(product_id=event.product_id)
         inventory.reduce_stock(event.quantity)
         repo.add(inventory)
 ```
 
 - `part_of=Inventory` — handler belongs to Inventory aggregate
 - `stream_category=Order.meta_.stream_category` — listens to Order's event stream
-- Uses `_dao.find_by()` to look up inventory by product_id (not by aggregate ID)
+- Uses `repo.find_by()` to look up inventory by product_id (not by aggregate ID)
 - Calls `reduce_stock()` on the aggregate — keeps business logic in the aggregate
 
 ## Key pattern: stream_category

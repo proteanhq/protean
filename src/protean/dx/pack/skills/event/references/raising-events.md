@@ -435,7 +435,7 @@ def place(self):
 Events are automatically persisted when the aggregate is saved:
 
 ```python
-from protean.globals import current_domain
+from protean import current_domain
 
 # Create and save aggregate
 order = Order(

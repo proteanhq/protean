@@ -208,7 +208,7 @@ command = PlaceOrder(order_id="ORD-001", customer_id="CUST-456")
 - `command-handler` - How commands are processed
 - `event` - Commands and events are complementary (commands = intent, events = result)
 - `value-object` - Commands can contain value objects
-- `patterns/cqrs` - Commands are the "C" in CQRS
+- [CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/) - Commands are the "C" in CQRS
 
 ## Verify your work
 

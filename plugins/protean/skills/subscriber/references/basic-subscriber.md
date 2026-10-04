@@ -46,7 +46,7 @@ class PaymentConfirmationSubscriber:
     def __call__(self, payload: dict) -> None:
         order_id = payload["order_id"]
         repo = domain.repository_for(Payment)
-        payment = repo._dao.find_by(order_id=order_id)
+        payment = repo.find_by(order_id=order_id)
         payment.confirm()
         repo.add(payment)
 ```
@@ -74,7 +74,7 @@ domain.brokers["default"].publish(
 )
 
 # Verify subscriber processed the message
-updated = domain.repository_for(Payment)._dao.find_by(order_id="ORD-001")
+updated = domain.repository_for(Payment).find_by(order_id="ORD-001")
 assert updated.status == "CONFIRMED"
 ```
 

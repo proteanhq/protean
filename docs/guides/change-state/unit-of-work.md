@@ -99,7 +99,7 @@ The active UoW is accessible anywhere through the `current_uow` context
 variable:
 
 ```python
-from protean.globals import current_uow
+from protean import current_uow
 
 if current_uow and current_uow.in_progress:
     # A UoW is active — changes will be committed when it exits
