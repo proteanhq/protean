@@ -720,6 +720,8 @@ class TestTutorialCh20(_TutorialBase):
             assert inv.quantity == 7
             assert len(inv._events) == 1
             assert inv._events[0].__class__.__name__ == "InventoryReserved"
+            assert inv._events[0].order_id == "order-1"
+            assert inv._events[0].book_id == "book-1"
 
             # Shipment success path
             shipment = ch20.Shipment(order_id=order.id)
