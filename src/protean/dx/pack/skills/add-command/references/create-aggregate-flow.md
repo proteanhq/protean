@@ -77,12 +77,22 @@ Note: `part_of=User` uses the class reference. A string reference (`part_of="Use
 ### The Endpoint
 
 ```python
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from protean.utils.globals import current_domain
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Wire the commands and handlers once, before the app takes requests
+    domain.init()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.middleware("http")

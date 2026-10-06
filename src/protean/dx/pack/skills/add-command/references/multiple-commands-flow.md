@@ -110,12 +110,22 @@ Map each command to an appropriate HTTP verb and route:
 All endpoints live on one FastAPI app. The middleware gives each request a domain context, so `current_domain` works in the endpoints:
 
 ```python
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from protean.utils.globals import current_domain
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Wire the commands and handlers once, before the app takes requests
+    domain.init()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.middleware("http")
