@@ -475,12 +475,15 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
 
         When an identifier is provided, its value is used to construct
         unique stream name."""
-        with contextlib.suppress(StopIteration):
-            id_field = next(
+        id_field = next(
+            (
                 field
                 for _, field in getattr(cls, _FIELDS, {}).items()
                 if getattr(field, "identifier", False)
-            )
+            ),
+            None,
+        )
+        if id_field is not None:
             setattr(cls, _ID_FIELD_NAME, id_field.field_name)
 
     @property

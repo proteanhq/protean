@@ -24,7 +24,6 @@ Example::
             self.mark_as_complete()
 """
 
-import contextlib
 import logging
 from collections.abc import Callable
 from datetime import date, datetime
@@ -242,12 +241,15 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
     @classmethod
     def __track_id_field(cls) -> None:
         """Find the field marked ``identifier=True`` and record its name."""
-        with contextlib.suppress(StopIteration):
-            id_fld = next(
+        id_fld = next(
+            (
                 field
                 for _, field in getattr(cls, _FIELDS, {}).items()
                 if getattr(field, "identifier", False)
-            )
+            ),
+            None,
+        )
+        if id_fld is not None:
             setattr(cls, _ID_FIELD_NAME, id_fld.field_name)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

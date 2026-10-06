@@ -1,6 +1,5 @@
 """Projection Functionality and Classes"""
 
-import contextlib
 import inspect
 import logging
 import threading
@@ -205,12 +204,15 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
     @classmethod
     def __track_id_field(cls) -> None:
         """Find the field marked ``identifier=True`` and record its name."""
-        with contextlib.suppress(StopIteration):
-            id_fld = next(
+        id_fld = next(
+            (
                 field
                 for _, field in getattr(cls, _FIELDS, {}).items()
                 if getattr(field, "identifier", False)
-            )
+            ),
+            None,
+        )
+        if id_fld is not None:
             setattr(cls, _ID_FIELD_NAME, id_fld.field_name)
 
     @staticmethod
