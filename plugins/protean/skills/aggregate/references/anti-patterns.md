@@ -152,7 +152,7 @@ class SupportTicket:
 # fragment
 # Trying to load and persist an entity on its own
 line_item_id = order.line_items[0].id
-line_items = current_domain.repository_for(LineItem)  # Wrong! Entities have no repository of their own
+line_items = current_domain.repository_for(LineItem)  # Wrong! Load the Order, not the entity
 line_item = line_items.get(line_item_id)
 line_item.quantity = 5  # Changed outside the aggregate, so its invariants never run
 line_items.add(line_item)  # Wrong!
