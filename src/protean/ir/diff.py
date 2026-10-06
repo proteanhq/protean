@@ -10,6 +10,7 @@ Public API::
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections.abc import Collection
 from dataclasses import dataclass, field
@@ -444,8 +445,8 @@ def _parse_version_tuple(version_str: str) -> tuple[int | str, ...]:
     """Parse a version string into a comparable tuple.
 
     Handles versions like ``"0.15"``, ``"0.15.0"``, ``"1.2.3"``.
-    Non-numeric segments are kept as strings so that pre-release
-    suffixes sort correctly (e.g. ``"rc1"`` < any int).
+    Non-numeric segments are kept as strings. Comparing a string segment
+    with an int segment at the same position raises ``TypeError``.
     """
     parts: list[int | str] = []
     for segment in version_str.strip().split("."):
@@ -477,11 +478,14 @@ def _classify_removal(
         return "premature_removal"
 
     if current_version is not None:
-        try:
-            if _parse_version_tuple(current_version) >= _parse_version_tuple(removal):
+        # ``str()`` accepts a version written as a number (``removal: 0.18``).
+        # Mixed numeric and text segments (``"1.0"`` vs ``"1.x"``) cannot be
+        # ordered and raise ``TypeError``; treat those as premature.
+        with contextlib.suppress(TypeError):
+            if _parse_version_tuple(str(current_version)) >= _parse_version_tuple(
+                str(removal)
+            ):
                 return "expected_removal"
-        except Exception:
-            pass
 
     # Without a current version to compare, we can't confirm the removal
     # is past the deadline — treat as premature.

@@ -355,6 +355,7 @@ class TestRedisErrorHandling:
         # Create consumer groups and streams to track
         broker.get_next("test_stream", "test_group")
         broker.get_next("another_stream", "another_group")
+        broker.redis_instance.rpush("test_stream", "m1")
 
         # Mock Redis llen to raise exception
         with patch.object(broker.redis_instance, "llen") as mock_llen:
@@ -377,37 +378,22 @@ class TestRedisErrorHandling:
                 assert "Error calculating message counts" in caplog.records[0].message
                 assert "Connection failed" in caplog.records[0].message
 
-    def test_calculate_message_counts_handles_redis_response_error(
+    def test_calculate_message_counts_skips_keys_that_are_not_lists(
         self, broker, caplog
     ):
-        """Test that _calculate_message_counts handles Redis ResponseError properly"""
-        # Create consumer groups and streams to track
+        """A missing key or a key of another type is not counted"""
         broker.get_next("test_stream", "test_group")
         broker.get_next("another_stream", "another_group")
+        broker.get_next("missing_stream", "missing_group")
+        broker.redis_instance.set("test_stream", "not-a-list")
+        broker.redis_instance.rpush("another_stream", "m1", "m2", "m3")
 
-        # Mock Redis llen to raise ResponseError for specific stream
-        def mock_llen_side_effect(stream_name):
-            if stream_name == "test_stream":
-                raise redis.ResponseError("Stream might not exist")
-            return 5  # Return count for other streams
+        caplog.clear()
+        with caplog.at_level(logging.DEBUG):
+            result = broker._calculate_message_counts()
 
-        with patch.object(
-            broker.redis_instance, "llen", side_effect=mock_llen_side_effect
-        ):
-            # Clear any existing logs
-            caplog.clear()
-
-            # Set log level to capture debug messages
-            with caplog.at_level(logging.DEBUG):
-                # Call _calculate_message_counts which should handle the ResponseError
-                result = broker._calculate_message_counts()
-
-                # Should return count for streams that worked (another_stream = 5)
-                assert result == {"total_messages": 5}
-
-                # Should not log any error messages since ResponseError is handled silently
-                # (it just means the stream might not exist)
-                assert len([r for r in caplog.records if r.levelname == "DEBUG"]) == 0
+        assert result == {"total_messages": 3}
+        assert not [r for r in caplog.records if r.levelname == "DEBUG"]
 
 
 @pytest.mark.redis

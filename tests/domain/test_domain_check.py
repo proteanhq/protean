@@ -8,6 +8,8 @@ Diagnostics have a ``level`` field ("warning" or "info") and the counts
 dict derives ``warnings`` and ``infos`` from the diagnostics list.
 """
 
+import logging
+
 import pytest
 
 from protean.core.aggregate import BaseAggregate
@@ -222,6 +224,45 @@ class TestDomainCheckDiagnostics:
         assert result["diagnostics"] == []
         assert result["counts"]["warnings"] == 0
         assert result["counts"]["infos"] == 0
+
+
+class TestDomainCheckIRFailure:
+    """A failure while building the IR is logged, and the check still reports."""
+
+    @pytest.mark.no_test_domain
+    def test_ir_failure_is_logged_and_diagnostics_left_empty(self, monkeypatch, caplog):
+        domain = Domain(name="IRFails", root_path=__file__)
+        domain.register(Order)
+
+        def _broken_to_ir():
+            raise RuntimeError("IR builder crashed")
+
+        monkeypatch.setattr(domain, "to_ir", _broken_to_ir)
+        caplog.set_level(logging.WARNING, logger="protean.domain")
+
+        result = domain.check(traverse=False)
+
+        assert result["status"] == "pass"
+        assert result["errors"] == []
+        assert result["diagnostics"] == []
+        records = [r for r in caplog.records if r.name == "protean.domain"]
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
+        assert records[0].getMessage() == (
+            "Could not build the IR for domain 'IRFails'; "
+            "IR diagnostics are left out of the check result"
+        )
+        assert str(records[0].exc_info[1]) == "IR builder crashed"
+
+    @pytest.mark.no_test_domain
+    def test_no_warning_when_ir_builds(self, caplog):
+        domain = Domain(name="IRBuilds", root_path=__file__)
+        domain.register(Order)
+        caplog.set_level(logging.WARNING, logger="protean.domain")
+
+        domain.check(traverse=False)
+
+        assert [r for r in caplog.records if r.name == "protean.domain"] == []
 
 
 class TestDomainCheckInfoStatus:

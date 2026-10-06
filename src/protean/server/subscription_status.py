@@ -380,6 +380,9 @@ def _collect_partitioned_stream_status(
         try:
             groups = redis_conn.xinfo_groups(partition)
         except Exception:
+            logger.debug(
+                "Could not read groups of partition %s", partition, exc_info=True
+            )
             continue
         for group in groups:
             if not isinstance(group, dict):
@@ -516,7 +519,12 @@ def _collect_stream_status(
                         )
                         break
             except Exception:
-                pass
+                logger.debug(
+                    "Could not read group %s on stream %s",
+                    consumer_group,
+                    stream_category,
+                    exc_info=True,
+                )
 
             # Fallback: count messages after last-delivered-id via xrange
             if lag is None and last_delivered_id is not None:
@@ -626,7 +634,12 @@ def _collect_broker_status(
                             )
                             break
                 except Exception:
-                    pass
+                    logger.debug(
+                        "Could not read group %s on stream %s",
+                        consumer_group,
+                        stream_name,
+                        exc_info=True,
+                    )
 
                 if lag is None and last_delivered_id is not None:
                     try:
@@ -831,6 +844,9 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
         try:
             stream_category = _infer_stream_category(handler_cls)
         except ValueError:
+            logger.debug(
+                "Leaving %s out of the subscription status", handler_name, exc_info=True
+            )
             continue
         config = config_resolver.resolve(handler_cls, stream_category=stream_category)
 
@@ -854,6 +870,9 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
         try:
             stream_category = _infer_stream_category(handler_cls)
         except ValueError:
+            logger.debug(
+                "Leaving %s out of the subscription status", handler_name, exc_info=True
+            )
             continue
         handlers_by_stream[stream_category].append((handler_name, handler_cls))
 

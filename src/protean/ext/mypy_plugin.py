@@ -41,6 +41,7 @@ Enable the plugin in your mypy configuration::
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import sys
@@ -760,12 +761,10 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
                 type_fqn = FIELD_TYPE_MAP.get(canonical)
 
         if type_fqn is not None:
-            try:
+            with contextlib.suppress(KeyError, AssertionError):
                 base_type = ctx.api.named_type(type_fqn, [])
                 # Make it optional since we can't determine required/default
                 fields.append((field_name, UnionType([base_type, NoneType()])))
-            except (KeyError, AssertionError):
-                pass
             continue
 
         # Check if it's an association field (HasMany, HasOne, ValueObject, Reference)
@@ -790,11 +789,9 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
         # id is already injected as a Var — add it as a kwarg too
         has_id = any(f[0] == "id" for f in fields)
         if not has_id:
-            try:
+            with contextlib.suppress(KeyError, AssertionError):
                 str_type = ctx.api.named_type("builtins.str", [])
                 fields.insert(0, ("id", str_type))
-            except (KeyError, AssertionError):
-                pass
 
     if not fields:
         return

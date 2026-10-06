@@ -6,6 +6,7 @@ event type, and message type.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -72,6 +73,11 @@ def create_sse_endpoint(
                             redis_conn = cast(_RedisStyleBroker, broker).redis_instance
                             break
                 except Exception:
+                    logger.debug(
+                        "Could not get the Redis broker of domain %s",
+                        d.name,
+                        exc_info=True,
+                    )
                     continue
 
             if not redis_conn:
@@ -97,7 +103,7 @@ def create_sse_endpoint(
                     )
 
                     if message and message["type"] == "message":
-                        try:
+                        with contextlib.suppress(json.JSONDecodeError, TypeError):
                             data = json.loads(message["data"])
 
                             # Apply filters
@@ -111,8 +117,6 @@ def create_sse_endpoint(
                                 continue
 
                             yield _format_sse(data)
-                        except (json.JSONDecodeError, TypeError):
-                            continue
                     else:
                         # No message, yield a keepalive comment to prevent timeouts
                         yield ": keepalive\n\n"

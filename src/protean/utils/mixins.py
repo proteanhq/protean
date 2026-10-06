@@ -62,37 +62,78 @@ _TRANSIENT_RETRY_DEFAULTS = {
 _VALID_BACKOFF_STRATEGIES = ("exponential", "linear", "fixed")
 
 
+# ``[server]`` tables already warned about. The config is read on every
+# handler call, so without this the warning would repeat for every message.
+_warned_version_retry_configs: set[str] = set()
+
+
 def _get_version_retry_config() -> dict[str, Any]:
     """Read version retry configuration from the active domain.
 
     Falls back to defaults if no domain is active (e.g. during tests
-    that call handlers directly without a domain context).
+    that call handlers directly without a domain context). A value that
+    is not a table, or that ``int()`` or ``float()`` cannot convert (such as
+    ``max_retries = inf``), also falls back to defaults, with a warning
+    logged once per distinct ``[server]`` table.
     """
+    from protean.domain.context import has_domain_context  # noqa: PLC0415
+
+    if not has_domain_context():
+        return dict(_VERSION_RETRY_DEFAULTS)
+
+    server_config = current_domain.config.get("server", {})
+    cfg = (
+        server_config.get("version_retry", {})
+        if isinstance(server_config, dict)
+        else None
+    )
+    if not isinstance(cfg, dict):
+        detail = (
+            f"`server.version_retry` is a {type(cfg).__name__}, not a table"
+            if isinstance(server_config, dict)
+            else f"`server` is a {type(server_config).__name__}, not a table"
+        )
+        _warn_invalid_version_retry_config(server_config, detail, exc_info=False)
+        return dict(_VERSION_RETRY_DEFAULTS)
+
+    enabled = cfg.get("enabled", _VERSION_RETRY_DEFAULTS["enabled"])
+    max_retries = cfg.get("max_retries", _VERSION_RETRY_DEFAULTS["max_retries"])
+    base_delay = cfg.get(
+        "base_delay_seconds", _VERSION_RETRY_DEFAULTS["base_delay_seconds"]
+    )
+    max_delay = cfg.get(
+        "max_delay_seconds", _VERSION_RETRY_DEFAULTS["max_delay_seconds"]
+    )
     try:
-        if current_domain:
-            server_config = current_domain.config.get("server", {})
-            cfg = server_config.get("version_retry", {})
-            return {
-                "enabled": cfg.get("enabled", _VERSION_RETRY_DEFAULTS["enabled"]),
-                "max_retries": int(
-                    cfg.get("max_retries", _VERSION_RETRY_DEFAULTS["max_retries"])
-                ),
-                "base_delay_seconds": float(
-                    cfg.get(
-                        "base_delay_seconds",
-                        _VERSION_RETRY_DEFAULTS["base_delay_seconds"],
-                    )
-                ),
-                "max_delay_seconds": float(
-                    cfg.get(
-                        "max_delay_seconds",
-                        _VERSION_RETRY_DEFAULTS["max_delay_seconds"],
-                    )
-                ),
-            }
-    except Exception:
-        pass
+        return {
+            "enabled": enabled,
+            "max_retries": int(max_retries),
+            "base_delay_seconds": float(base_delay),
+            "max_delay_seconds": float(max_delay),
+        }
+    except (TypeError, ValueError, OverflowError):
+        _warn_invalid_version_retry_config(
+            server_config, f"version_retry = {cfg!r}", exc_info=True
+        )
     return dict(_VERSION_RETRY_DEFAULTS)
+
+
+def _warn_invalid_version_retry_config(
+    server_config: Any, detail: str, *, exc_info: bool
+) -> None:
+    """Warn about an unreadable ``[server]`` table, once per distinct table.
+
+    The message carries *detail*, which names only the ``version_retry`` value.
+    The rest of ``[server]`` can hold credentials, so it stays out of the log.
+    """
+    seen = repr(server_config)
+    if seen not in _warned_version_retry_configs:
+        _warned_version_retry_configs.add(seen)
+        logger.warning(
+            "Invalid `server.version_retry` configuration (%s); using the defaults",
+            detail,
+            exc_info=exc_info,
+        )
 
 
 @functools.cache
@@ -268,7 +309,11 @@ def _record_handler_retry(instance: Any, exc: BaseException) -> None:
             },
         )
     except Exception:  # metrics must never break the retry path
-        pass
+        logger.debug(
+            "Could not record the handler retry metric for %s",
+            type(instance).__name__,
+            exc_info=True,
+        )
 
 
 def _deadline_exceeded_after(delay: float) -> bool:

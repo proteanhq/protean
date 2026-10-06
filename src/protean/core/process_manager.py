@@ -241,15 +241,16 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
     @classmethod
     def __track_id_field(cls) -> None:
         """Find the field marked ``identifier=True`` and record its name."""
-        try:
-            id_fld = next(
+        id_fld = next(
+            (
                 field
                 for _, field in getattr(cls, _FIELDS, {}).items()
                 if getattr(field, "identifier", False)
-            )
+            ),
+            None,
+        )
+        if id_fld is not None:
             setattr(cls, _ID_FIELD_NAME, id_fld.field_name)
-        except StopIteration:
-            pass
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         if self.meta_.abstract is True:

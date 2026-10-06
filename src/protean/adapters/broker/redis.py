@@ -334,6 +334,16 @@ class RedisBroker(BaseBroker):
                 return value
         return None
 
+    def _is_stream(self, key: str) -> bool:
+        """Return whether *key* holds a Redis stream.
+
+        ``TYPE`` answers ``none`` for a missing key, so a missing key and a key
+        that holds another type both return ``False``.
+        """
+        # redis-stubs leaves type untyped (stub gap).
+        key_type = self._client.type(key)  # type: ignore[no-untyped-call]
+        return self._decode_if_bytes(key_type) == "stream"
+
     def _decode_if_bytes(self, value: Any) -> str:
         """Convert bytes to string if needed, otherwise return as string"""
         if isinstance(value, bytes):
@@ -723,11 +733,8 @@ class RedisBroker(BaseBroker):
         """List DLQ messages across specified DLQ streams."""
         entries: list[DLQEntry] = []
         for dlq_stream in dlq_streams:
-            try:
-                raw_messages = self._client.xrange(dlq_stream)
-            except redis.ResponseError:
-                # Stream doesn't exist
-                continue
+            # XRANGE returns an empty list for a stream that does not exist
+            raw_messages = self._client.xrange(dlq_stream)
 
             for redis_id, fields in raw_messages:
                 entry = self._parse_dlq_entry(dlq_stream, redis_id, fields)
@@ -1237,32 +1244,22 @@ class RedisBroker(BaseBroker):
             total_pending = 0
 
             for stream in streams_to_check:
-                try:
-                    # Get stream length (total messages)
-                    stream_length = self._client.xlen(stream)
-                    total_messages += stream_length
+                if not self._is_stream(stream):
+                    continue
 
-                    # Get pending messages for all consumer groups in this stream
-                    try:
-                        # redis-stubs leaves xinfo_groups untyped (stub gap).
-                        groups_info = self._client.xinfo_groups(stream)  # type: ignore[no-untyped-call]
-                        for group_info in groups_info:
-                            if isinstance(group_info, dict):
-                                pending_count = self._get_field_value(
-                                    group_info, "pending", convert_to_int=True
-                                )
-                                total_pending += (
-                                    int(pending_count)
-                                    if pending_count is not None
-                                    else 0
-                                )
-                    except redis.ResponseError:
-                        # Stream might not have consumer groups yet
-                        pass
+                total_messages += self._client.xlen(stream)
 
-                except redis.ResponseError:
-                    # Stream might not exist
-                    pass
+                # Pending messages across the stream's consumer groups
+                # redis-stubs leaves xinfo_groups untyped (stub gap).
+                groups_info = self._client.xinfo_groups(stream)  # type: ignore[no-untyped-call]
+                for group_info in groups_info:
+                    if isinstance(group_info, dict):
+                        pending_count = self._get_field_value(
+                            group_info, "pending", convert_to_int=True
+                        )
+                        total_pending += (
+                            int(pending_count) if pending_count is not None else 0
+                        )
 
             # Failed messages would be those in DLQ or exceeded retry limits
             # For now, we don't track failed messages separately
@@ -1283,15 +1280,9 @@ class RedisBroker(BaseBroker):
         """Calculate streams information"""
         try:
             streams_to_check = self._get_streams_to_check()
-            # Filter out streams that don't actually exist
-            existing_streams = []
-            for stream in streams_to_check:
-                try:
-                    if self._client.xlen(stream) >= 0:  # Stream exists
-                        existing_streams.append(stream)
-                except redis.ResponseError:
-                    # Stream doesn't exist, skip it
-                    pass
+            existing_streams = [
+                stream for stream in streams_to_check if self._is_stream(stream)
+            ]
 
             return {"count": len(existing_streams), "names": sorted(existing_streams)}
         except Exception as e:

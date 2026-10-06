@@ -709,6 +709,32 @@ class TestClassifyRemoval:
         )
         assert result == "expected_removal"
 
+    def test_versions_that_cannot_be_ordered_are_premature(self) -> None:
+        # ``"1.x"`` parses to ``(1, "x")``; comparing ``0`` with ``"x"`` raises
+        # ``TypeError``, so the removal cannot be confirmed as past due.
+        result = _classify_removal(
+            {"since": "0.15", "removal": "1.x"},
+            current_version="1.0",
+        )
+        assert result == "premature_removal"
+
+    @pytest.mark.parametrize(
+        ("removal", "current_version", "expected"),
+        [
+            (0.18, "0.18", "expected_removal"),
+            (0.18, "0.17", "premature_removal"),
+            (1, 1, "expected_removal"),
+        ],
+    )
+    def test_versions_written_as_numbers_are_compared(
+        self, removal, current_version, expected
+    ) -> None:
+        result = _classify_removal(
+            {"since": "0.15", "removal": removal},
+            current_version=current_version,
+        )
+        assert result == expected
+
 
 # =====================================================================
 # diff_ir — deprecation-aware contract diffing

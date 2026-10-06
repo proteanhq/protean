@@ -8,17 +8,21 @@ one that says "unknown", because an operator acts on it.
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from protean.server.subscription_status import (
     _classify_status,
+    _collect_broker_status,
     _collect_outbox_statuses,
     _collect_partitioned_stream_status,
+    _collect_stream_status,
     _is_partitioned_category,
     _outbox_processor_names,
 )
+from protean.utils import fqn
 
 
 def _domain(providers: dict, outbox_config: dict | None = None):
@@ -588,3 +592,128 @@ class TestEachOutboxRowCountsItsOwnBroker:
 
         passed = [c.args[0] for c in repo.count_by_status.call_args_list]
         assert passed == ["default", "partner"]
+
+
+class _GroupReadHandler:
+    """A handler class whose fully qualified name keys its consumer group."""
+
+
+@pytest.mark.no_test_domain
+class TestSkippedGroupReadsAreLogged:
+    """A group read that fails is skipped, and a debug record says which one."""
+
+    logger_name = "protean.server.subscription_status"
+
+    def _broker(self, redis):
+        broker = MagicMock()
+        broker.redis_instance = redis
+        broker._partition_keys.return_value = {"a"}
+        broker._get_field_value.side_effect = lambda d, f, convert_to_int=False: d.get(
+            f
+        )
+        return broker
+
+    def _domain(self, redis):
+        domain = MagicMock()
+        domain.brokers.get.return_value = self._broker(redis)
+        return domain
+
+    def _records(self, caplog, message):
+        return [
+            r
+            for r in caplog.records
+            if r.name == self.logger_name and r.getMessage() == message
+        ]
+
+    def _assert_one_debug(self, caplog, message):
+        records = self._records(caplog, message)
+        assert len(records) == 1, [r.getMessage() for r in caplog.records]
+        assert records[0].levelno == logging.DEBUG
+        assert records[0].exc_info is not None
+        assert str(records[0].exc_info[1]) == "redis down"
+
+    def test_partition_read_failure_is_logged(self, caplog):
+        caplog.set_level(logging.DEBUG, logger=self.logger_name)
+        redis = MagicMock()
+        redis.xlen.return_value = 5
+        redis.xinfo_groups.side_effect = ConnectionError("redis down")
+        handler = MagicMock()
+        handler.__name__ = "H"
+
+        status = _collect_partitioned_stream_status(
+            self._domain(redis), "orders", handler, "order", "grp"
+        )
+
+        assert status.lag is None
+        self._assert_one_debug(caplog, "Could not read groups of partition order:a")
+
+    def test_stream_group_read_failure_is_logged(self, caplog):
+        caplog.set_level(logging.DEBUG, logger=self.logger_name)
+        redis = MagicMock()
+        redis.xlen.return_value = 4
+        redis.xinfo_groups.side_effect = ConnectionError("redis down")
+
+        with patch(
+            "protean.server.subscription_status._is_partitioned_category",
+            return_value=False,
+        ):
+            status = _collect_stream_status(
+                self._domain(redis),
+                "n",
+                _GroupReadHandler,
+                "cat",
+                consumer_group_name="grp",
+            )
+
+        assert status.stream_category == "cat"
+        assert status.pending == 0
+        self._assert_one_debug(caplog, "Could not read group grp on stream cat")
+
+    def test_broker_group_read_failure_is_logged(self, caplog):
+        caplog.set_level(logging.DEBUG, logger=self.logger_name)
+        redis = MagicMock()
+        redis.xlen.return_value = 4
+        redis.xinfo_groups.side_effect = ConnectionError("redis down")
+
+        status = _collect_broker_status(
+            self._domain(redis), "n", _GroupReadHandler, "external", "default"
+        )
+
+        assert status.pending == 0
+        self._assert_one_debug(
+            caplog,
+            f"Could not read group {fqn(_GroupReadHandler)} on stream external",
+        )
+
+    def test_no_record_when_group_reads_succeed(self, caplog):
+        caplog.set_level(logging.DEBUG, logger=self.logger_name)
+        redis = MagicMock()
+        redis.xlen.return_value = 4
+        redis.xinfo_groups.return_value = [
+            {
+                "name": fqn(_GroupReadHandler),
+                "pending": 1,
+                "lag": 0,
+                "consumers": 1,
+            }
+        ]
+        handler = MagicMock()
+        handler.__name__ = "H"
+
+        _collect_partitioned_stream_status(
+            self._domain(redis), "orders", handler, "order", fqn(_GroupReadHandler)
+        )
+        with patch(
+            "protean.server.subscription_status._is_partitioned_category",
+            return_value=False,
+        ):
+            _collect_stream_status(self._domain(redis), "n", _GroupReadHandler, "cat")
+        _collect_broker_status(
+            self._domain(redis), "n", _GroupReadHandler, "external", "default"
+        )
+
+        assert not [
+            r
+            for r in caplog.records
+            if r.name == self.logger_name and r.getMessage().startswith("Could not")
+        ]

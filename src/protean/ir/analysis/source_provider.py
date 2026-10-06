@@ -259,7 +259,7 @@ class SourceProvider:
             try:
                 filenames = os.listdir(directory)
             except OSError:  # pragma: no cover - directory vanished mid-walk
-                continue
+                filenames = []
             for filename in filenames:
                 path = directory / filename
                 if os.path.splitext(filename)[1] != ".py" or not path.is_file():

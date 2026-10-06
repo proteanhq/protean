@@ -1634,27 +1634,52 @@ class TestHandleConnectionErrors:
             setattr(writer, k, v)
         return writer
 
-    def test_timeout_on_read_is_handled(self, health_server):
-        """asyncio.TimeoutError during read is silently handled."""
+    @staticmethod
+    def _disconnect_records(caplog):
+        return [
+            r
+            for r in caplog.records
+            if r.name == "protean.server.health"
+            and r.getMessage() == "Health probe client disconnected"
+        ]
+
+    @pytest.mark.parametrize(
+        "error", [asyncio.TimeoutError, ConnectionResetError, BrokenPipeError]
+    )
+    def test_client_disconnect_is_logged_at_debug(self, health_server, caplog, error):
+        """A client that goes away is logged at debug and gets no 503."""
         _, hs, loop, _ = health_server
+        writer = self._make_mock_writer()
 
         async def _test():
             mock_reader = MagicMock()
-            mock_reader.read = AsyncMock(side_effect=asyncio.TimeoutError)
-            await hs._handle_connection(mock_reader, self._make_mock_writer())
+            mock_reader.read = AsyncMock(side_effect=error)
+            await hs._handle_connection(mock_reader, writer)
 
-        loop.run_until_complete(_test())
+        with caplog.at_level(logging.DEBUG, logger="protean.server.health"):
+            loop.run_until_complete(_test())
 
-    def test_connection_reset_is_handled(self, health_server):
-        """ConnectionResetError during read is silently handled."""
+        records = self._disconnect_records(caplog)
+        assert len(records) == 1
+        assert records[0].levelno == logging.DEBUG
+        assert isinstance(records[0].exc_info[1], error)
+        writer.write.assert_not_called()
+        writer.close.assert_called_once()
+
+    def test_answered_probe_logs_no_disconnect(self, health_server, caplog):
         _, hs, loop, _ = health_server
+        writer = self._make_mock_writer()
 
         async def _test():
             mock_reader = MagicMock()
-            mock_reader.read = AsyncMock(side_effect=ConnectionResetError)
-            await hs._handle_connection(mock_reader, self._make_mock_writer())
+            mock_reader.read = AsyncMock(return_value=b"GET /healthz HTTP/1.1\r\n\r\n")
+            await hs._handle_connection(mock_reader, writer)
 
-        loop.run_until_complete(_test())
+        with caplog.at_level(logging.DEBUG, logger="protean.server.health"):
+            loop.run_until_complete(_test())
+
+        writer.write.assert_called_once()
+        assert self._disconnect_records(caplog) == []
 
     def test_writer_close_exception_is_suppressed(self, health_server):
         """Exception during writer.close() in finally block is suppressed."""
@@ -1669,6 +1694,21 @@ class TestHandleConnectionErrors:
             await hs._handle_connection(mock_reader, writer)
 
         loop.run_until_complete(_test())
+
+    def test_writer_close_other_error_propagates(self, health_server):
+        """Only ``OSError`` from closing the socket is suppressed."""
+        _, hs, loop, _ = health_server
+
+        async def _test():
+            mock_reader = MagicMock()
+            mock_reader.read = AsyncMock(return_value=b"GET /healthz HTTP/1.1\r\n\r\n")
+            writer = self._make_mock_writer(
+                close=MagicMock(side_effect=RuntimeError("bug in close")),
+            )
+            await hs._handle_connection(mock_reader, writer)
+
+        with pytest.raises(RuntimeError, match="bug in close"):
+            loop.run_until_complete(_test())
 
     def test_generic_exception_is_logged(self, health_server, caplog):
         """Non-network exceptions are logged at debug level."""

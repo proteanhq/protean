@@ -40,7 +40,7 @@ import random
 import sys
 import time
 from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
@@ -240,7 +240,7 @@ def configure_logging(
         # Install ProteanCorrelationFilter on the root logger and its handlers
         # so correlation_id and causation_id are available in every log
         # record, matching the behavior of Domain.configure_logging().
-        try:
+        with suppress(ImportError):
             from protean.integrations.logging import (  # noqa: PLC0415
                 ProteanCorrelationFilter,
                 ProteanRedactionFilter,
@@ -249,8 +249,6 @@ def configure_logging(
             _install_root_filter(ProteanCorrelationFilter())
             if redact:
                 _install_root_filter(ProteanRedactionFilter(redact))
-        except ImportError:
-            pass
         return
 
     env = _detect_env()
@@ -371,14 +369,15 @@ def _http_wide_event_extras() -> dict[str, Any] | None:
 
 
 def _reset_access_log_counters() -> None:
-    """Reset per-handler access log counters on g."""
-    try:
+    """Reset per-handler access log counters on g.
+
+    Does nothing when no domain context is active.
+    """
+    if has_domain_context():
         g._access_log_repo_loads = 0
         g._access_log_repo_saves = 0
         g._access_log_events_raised = []
         g._access_log_uow_outcome = "no_uow"
-    except Exception:
-        pass
 
 
 def _get_correlation_context() -> tuple[str, str]:
@@ -458,15 +457,16 @@ def get_logging_config_value(key: str, default: _T) -> _T:
     Returns ``default`` when no domain is bound to the current context or when
     the key is absent. Uses ``has_domain_context()`` to avoid triggering the
     outside-domain-context warning that ``current_domain`` would emit outside a
-    domain context. Any unexpected failure also yields ``default`` so callers on
-    a hot path (e.g. per-query instrumentation) can safely swallow it.
+    domain context. A ``[logging]`` value that is not a table also yields
+    ``default``, silently, because callers sit on a hot path (e.g. per-query
+    instrumentation).
     """
-    try:
-        if has_domain_context():
-            return cast(_T, current_domain.config.get("logging", {}).get(key, default))
-    except Exception:
-        pass
-    return default
+    if not has_domain_context():
+        return default
+    section = current_domain.config.get("logging", {})
+    if not isinstance(section, dict):
+        return default
+    return cast(_T, section.get(key, default))
 
 
 def _get_slow_handler_threshold() -> float:

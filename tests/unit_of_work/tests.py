@@ -168,6 +168,8 @@ class TestUnitOfWorkAdditionalCoverage:
         mock_event = Mock()
         mock_event.__class__ = Mock()
         mock_event.__class__.__type__ = "TestEvent.v1"
+        # The commit records event class names for the access log
+        mock_event.__class__.__name__ = "TestEvent"
         mock_event._metadata = Mock()
         mock_event._metadata.id = "test-event-1"
         mock_event.to_dict = Mock(return_value={"test": "data"})

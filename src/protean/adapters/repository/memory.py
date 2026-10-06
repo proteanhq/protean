@@ -1,5 +1,6 @@
 """Implementation of a dictionary based repository"""
 
+import contextlib
 import copy
 import json
 import typing
@@ -478,17 +479,15 @@ class MemoryProvider(BaseProvider):
                 # Ensures that the string contains double quotes around keys and values
                 query = query.replace("'", '"')
                 criteria = json.loads(query)
+            except json.JSONDecodeError as exc:
+                raise DatabaseError("Query Malformed") from exc
 
+            # A repository without the queried key contributes no items
+            with contextlib.suppress(KeyError):
                 for key, value in criteria.items():
                     input_db = self._evaluate_lookup(key, value, False, input_db)
 
                 items.extend(list(input_db.values()))
-
-            except json.JSONDecodeError as exc:
-                raise DatabaseError("Query Malformed") from exc
-            except KeyError:
-                # We encountered a repository where the key was not found
-                pass
 
         return items
 

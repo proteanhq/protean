@@ -354,7 +354,12 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
                         elif isinstance(raw_time, str):
                             try:
                                 msg_dt = datetime.fromisoformat(raw_time)
-                            except (ValueError, TypeError):
+                            except ValueError:
+                                logger.debug(
+                                    "Skipping the time of a message in %s: %r is not ISO 8601",
+                                    stream,
+                                    raw_time,
+                                )
                                 continue
                             raw_time_str = raw_time
                         else:
@@ -538,6 +543,9 @@ def _load_traces_for_correlation(
                     redis_conn = broker.redis_instance
                     break
         except Exception:
+            logger.debug(
+                "Could not get the Redis broker of domain %s", d.name, exc_info=True
+            )
             continue
     else:
         return traces

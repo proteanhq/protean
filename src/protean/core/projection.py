@@ -204,15 +204,16 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
     @classmethod
     def __track_id_field(cls) -> None:
         """Find the field marked ``identifier=True`` and record its name."""
-        try:
-            id_fld = next(
+        id_fld = next(
+            (
                 field
                 for _, field in getattr(cls, _FIELDS, {}).items()
                 if getattr(field, "identifier", False)
-            )
+            ),
+            None,
+        )
+        if id_fld is not None:
             setattr(cls, _ID_FIELD_NAME, id_fld.field_name)
-        except StopIteration:
-            pass
 
     @staticmethod
     def _is_vo_descriptor(klass: type, name: str) -> bool:

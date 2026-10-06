@@ -12,6 +12,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import time
@@ -68,6 +69,9 @@ def _get_redis(domains: list[Domain]) -> Any:
                 if broker and hasattr(broker, "redis_instance"):
                     return cast(_RedisStyleBroker, broker).redis_instance
         except Exception:
+            logger.debug(
+                "Could not get the Redis broker of domain %s", d.name, exc_info=True
+            )
             continue
     return None
 
@@ -355,7 +359,7 @@ def collect_per_handler_trace_metrics(
     stats: dict[str, dict[str, Any]] = {}
 
     for stream_id, fields in raw_entries:
-        try:
+        with contextlib.suppress(json.JSONDecodeError, TypeError, ValueError):
             data_raw = fields.get(b"data") or fields.get("data")
             if not data_raw:
                 continue
@@ -396,9 +400,6 @@ def collect_per_handler_trace_metrics(
 
             elif event_type in _ERROR_EVENTS:
                 entry["failed"] += 1
-
-        except (json.JSONDecodeError, TypeError, ValueError):
-            continue
 
     # Compute derived metrics
     result: dict[str, dict[str, Any]] = {}
@@ -443,7 +444,7 @@ def collect_recent_messages(
     for stream_id, fields in raw_entries:
         if len(messages) >= count:
             break
-        try:
+        with contextlib.suppress(json.JSONDecodeError, TypeError):
             data_raw = fields.get(b"data") or fields.get("data")
             if not data_raw:
                 continue
@@ -456,8 +457,6 @@ def collect_recent_messages(
 
             trace["_stream_id"] = _decode_stream_id(stream_id)
             messages.append(trace)
-        except (json.JSONDecodeError, TypeError):
-            continue
 
     return messages
 

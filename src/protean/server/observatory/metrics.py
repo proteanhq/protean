@@ -764,9 +764,18 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
                                     f"protean_consumer_idle_ms{{{labels}}} {int(cidle)}"
                                 )
                         except Exception:
-                            pass
+                            logger.debug(
+                                "Metrics: could not read consumers of group %s on stream %s",
+                                gname,
+                                stream_name,
+                                exc_info=True,
+                            )
                 except Exception:
-                    pass
+                    logger.debug(
+                        "Metrics: could not read groups of stream %s",
+                        stream_name,
+                        exc_info=True,
+                    )
     except Exception as e:
         logger.debug(f"Metrics: consumer metrics failed: {e}")
 

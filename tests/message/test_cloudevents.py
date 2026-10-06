@@ -7,8 +7,10 @@ Tests cover:
 - Edge cases for source derivation, subject extraction, and metadata branches
 """
 
+import warnings
+from contextlib import contextmanager
 from datetime import UTC, datetime
-from unittest.mock import PropertyMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -26,6 +28,7 @@ from protean.utils.eventing import (
     Metadata,
     TraceParent,
 )
+from protean.utils.globals import _domain_context_stack
 
 # ── Domain elements ──────────────────────────────────────────────────
 
@@ -681,19 +684,31 @@ class TestRoundTrip:
 # ═══════════════════════════════════════════════════════════════════════
 
 
+@contextmanager
+def _no_domain_context():
+    """Pop every active domain context so ``current_domain`` resolves to nothing."""
+    popped = []
+    while _domain_context_stack.top is not None:
+        popped.append(_domain_context_stack.pop())
+    try:
+        yield
+    finally:
+        for ctx in reversed(popped):
+            _domain_context_stack.push(ctx)
+
+
 class TestDeriveSourceFallback:
-    """_derive_source() fallback chain when current_domain is unavailable."""
+    """_derive_source() fallback chain when no domain context is active."""
 
     def test_source_from_stream_category(self):
-        """When current_domain raises, derive from stream_category."""
+        """With no domain context, derive from stream_category."""
         metadata = Metadata(
             headers=MessageHeaders(id="test", type="Test.Event.v1"),
             domain=DomainMeta(stream_category="myapp::User"),
         )
         message = Message(data={}, metadata=metadata)
 
-        with patch("protean.utils.eventing.current_domain") as mock:
-            type(mock).config = PropertyMock(side_effect=RuntimeError)
+        with _no_domain_context():
             result = message._derive_source()
 
         assert result == "urn:protean:myapp"
@@ -705,8 +720,7 @@ class TestDeriveSourceFallback:
         )
         message = Message(data={}, metadata=metadata)
 
-        with patch("protean.utils.eventing.current_domain") as mock:
-            type(mock).config = PropertyMock(side_effect=RuntimeError)
+        with _no_domain_context():
             result = message._derive_source()
 
         assert result == "urn:protean:unknown"
@@ -719,11 +733,40 @@ class TestDeriveSourceFallback:
         )
         message = Message(data={}, metadata=metadata)
 
-        with patch("protean.utils.eventing.current_domain") as mock:
-            type(mock).config = PropertyMock(side_effect=RuntimeError)
+        with _no_domain_context():
             result = message._derive_source()
 
         assert result == "urn:protean:unknown"
+
+    def test_no_domain_context_emits_no_warning(self):
+        """Serializing outside a domain context stays quiet under -W error."""
+        metadata = Metadata(
+            headers=MessageHeaders(id="test", type="Test.Event.v1"),
+            domain=DomainMeta(stream_category="myapp::User"),
+        )
+        message = Message(data={}, metadata=metadata)
+
+        with _no_domain_context(), warnings.catch_warnings():
+            warnings.simplefilter("error")
+            result = message._derive_source()
+
+        assert result == "urn:protean:myapp"
+
+    def test_unexpected_config_error_propagates(self, test_domain):
+        """A failure reading the active domain's config is not swallowed."""
+        metadata = Metadata(
+            headers=MessageHeaders(id="test", type="Test.Event.v1"),
+            domain=DomainMeta(stream_category="myapp::User"),
+        )
+        message = Message(data={}, metadata=metadata)
+
+        with (
+            patch.object(
+                type(test_domain.config), "get", side_effect=RuntimeError("boom")
+            ),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            message._derive_source()
 
 
 class TestExtractSubjectEdgeCases:

@@ -464,6 +464,7 @@ nav:
       - "0042 · Subscription owns retry and dead-lettering": adr/0042-subscription-owns-retry-and-dead-lettering.md
       - "0043 · Typed query dispatch": adr/0043-typed-query-dispatch.md
       - "0044 · Custom-field extension contract": adr/0044-custom-field-extension-contract.md
+      - "0045 · Handle only the errors you expect": adr/0045-handle-only-the-errors-you-expect.md
     - Troubleshooting:
       - reference/troubleshooting.md
 

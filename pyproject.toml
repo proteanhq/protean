@@ -286,7 +286,9 @@ extend-select = [
     "UP",      # pyupgrade — modernize syntax for the minimum Python (3.11+)
     "B",       # flake8-bugbear — likely bugs (raise-without-from, mutable defaults, …)
     "C4",      # flake8-comprehensions
-    "SIM",     # flake8-simplify
+    "SIM",     # flake8-simplify. When SIM105 flags `except StopIteration: pass`
+               # around next(), use next(iterator, None) and an `is not None`
+               # check. Keep contextlib.suppress for real errors you mean to ignore.
     "PIE",     # flake8-pie — misc small lints
     "PERF",    # perflint — performance anti-patterns
     "RUF",     # Ruff-specific rules
@@ -347,9 +349,9 @@ ignore = [
 "specs/outbox_trace.py" = ["TRY004"]
 "specs/recovery_trace.py" = ["TRY004"]
 "tests/eval/spec.py" = ["TRY004"]
-# Files that still fail BLE001, S110/S112 or TRY004. New files are checked from
-# the start. #1715 fixes BLE001, #1716 fixes S110 and S112, #1717 fixes TRY004,
-# and each deletes its files from this list.
+# Files that still fail BLE001 or TRY004. New files are checked from the start.
+# #1715 fixes BLE001, #1717 fixes TRY004, and each deletes its files from this
+# list.
 "src/protean/adapters/broker/redis.py" = ["BLE001"]
 "src/protean/adapters/broker/redis_pubsub.py" = ["BLE001"]
 "src/protean/adapters/repository/sqlalchemy.py" = ["BLE001"]
@@ -366,37 +368,37 @@ ignore = [
 "src/protean/core/process_manager.py" = ["TRY004"]
 "src/protean/core/projection.py" = ["TRY004"]
 "src/protean/core/query.py" = ["TRY004"]
-"src/protean/core/unit_of_work.py" = ["BLE001", "S110"]
+"src/protean/core/unit_of_work.py" = ["BLE001"]
 "src/protean/core/value_object.py" = ["TRY004"]
-"src/protean/domain/__init__.py" = ["BLE001", "S110"]
+"src/protean/domain/__init__.py" = ["BLE001"]
 "src/protean/fields/base.py" = ["TRY004"]
 "src/protean/integrations/fastapi/middleware.py" = ["BLE001"]
 "src/protean/ir/analysis/dataflow.py" = ["BLE001"]
 "src/protean/ir/analysis/source_provider.py" = ["BLE001"]
 "src/protean/ir/builder.py" = ["BLE001"]
 "src/protean/ir/diagnostics.py" = ["BLE001"]
-"src/protean/ir/diff.py" = ["BLE001", "S110"]
+"src/protean/ir/diff.py" = ["BLE001"]
 "src/protean/port/broker.py" = ["BLE001"]
 "src/protean/port/provider.py" = ["BLE001"]
-"src/protean/server/health.py" = ["BLE001", "S110"]
-"src/protean/server/observatory/api.py" = ["BLE001", "S110", "S112"]
-"src/protean/server/observatory/metrics.py" = ["BLE001", "S110"]
-"src/protean/server/observatory/routes/handlers.py" = ["BLE001", "S112"]
+"src/protean/server/health.py" = ["BLE001"]
+"src/protean/server/observatory/api.py" = ["BLE001"]
+"src/protean/server/observatory/metrics.py" = ["BLE001"]
+"src/protean/server/observatory/routes/handlers.py" = ["BLE001"]
 "src/protean/server/observatory/routes/infrastructure.py" = ["BLE001"]
-"src/protean/server/observatory/routes/processes.py" = ["BLE001", "S112"]
-"src/protean/server/observatory/routes/timeline.py" = ["BLE001", "S112"]
-"src/protean/server/observatory/sse.py" = ["BLE001", "S112"]
+"src/protean/server/observatory/routes/processes.py" = ["BLE001"]
+"src/protean/server/observatory/routes/timeline.py" = ["BLE001"]
+"src/protean/server/observatory/sse.py" = ["BLE001"]
 "src/protean/server/projection_status.py" = ["BLE001"]
 "src/protean/server/subscription/partitioned_stream_subscription.py" = ["BLE001"]
-"src/protean/server/subscription/stream_subscription.py" = ["BLE001", "S110"]
-"src/protean/server/subscription_status.py" = ["BLE001", "S110", "S112"]
+"src/protean/server/subscription/stream_subscription.py" = ["BLE001"]
+"src/protean/server/subscription_status.py" = ["BLE001"]
 "src/protean/server/tracing.py" = ["BLE001"]
 "src/protean/testing.py" = ["BLE001"]
 "src/protean/upgrade.py" = ["BLE001"]
 "src/protean/upgrade_opportunities.py" = ["BLE001"]
-"src/protean/utils/eventing.py" = ["BLE001", "S110"]
-"src/protean/utils/logging.py" = ["BLE001", "S110"]
-"src/protean/utils/mixins.py" = ["BLE001", "S110"]
+"src/protean/utils/eventing.py" = ["BLE001"]
+"src/protean/utils/logging.py" = ["BLE001"]
+"src/protean/utils/mixins.py" = ["BLE001"]
 "src/protean/utils/sync_dispatch.py" = ["BLE001"]
 "src/protean/utils/telemetry.py" = ["BLE001"]
 

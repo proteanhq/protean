@@ -4,6 +4,8 @@ The @handle wrapper catches ExpectedVersionError and retries with exponential
 backoff before propagating to the subscription retry/DLQ pipeline.
 """
 
+import logging
+import warnings
 from enum import Enum
 from unittest.mock import patch
 from uuid import uuid4
@@ -18,6 +20,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ExpectedVersionError
 from protean.fields import Identifier, String
+from protean.utils import mixins
 from protean.utils.globals import current_domain
 from protean.utils.mixins import (
     _VERSION_RETRY_DEFAULTS,
@@ -177,17 +180,103 @@ class TestVersionRetryDefaults:
         assert config["max_retries"] == 10  # overridden
         assert config["base_delay_seconds"] == 0.05  # default
 
-    def test_config_falls_back_to_defaults_on_error(self, test_domain):
-        """Falls back to defaults when config access raises an exception."""
-        # Make config.get raise to exercise the except branch
-        original_config = test_domain.config
-        with patch.object(
-            type(original_config),
-            "get",
-            side_effect=RuntimeError("config error"),
-        ):
-            config = _get_version_retry_config()
-            assert config == _VERSION_RETRY_DEFAULTS
+    @pytest.fixture
+    def fresh_warnings(self, monkeypatch):
+        """Forget the ``[server]`` tables earlier tests already warned about."""
+        monkeypatch.setattr(mixins, "_warned_version_retry_configs", set())
+
+    @pytest.mark.parametrize(
+        "bad_config",
+        [
+            {"max_retries": "three"},
+            {"base_delay_seconds": None},
+            # TOML accepts ``inf``; ``int(inf)`` raises OverflowError
+            {"max_retries": float("inf")},
+            "not-a-table",
+        ],
+    )
+    def test_invalid_config_falls_back_to_defaults_with_warning(
+        self, test_domain, caplog, fresh_warnings, bad_config
+    ):
+        """A value that cannot be read falls back to defaults and warns."""
+        test_domain.config["server"]["version_retry"] = bad_config
+        caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
+
+        config = _get_version_retry_config()
+
+        assert config == _VERSION_RETRY_DEFAULTS
+        records = [r for r in caplog.records if r.name == "protean.utils.mixins"]
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
+        message = records[0].getMessage()
+        assert message.startswith("Invalid `server.version_retry` configuration (")
+        assert message.endswith("); using the defaults")
+        if isinstance(bad_config, dict):
+            assert f"version_retry = {bad_config!r}" in message
+        else:
+            assert "`server.version_retry` is a str, not a table" in message
+        # A conversion failure carries its traceback; a non-table has none
+        assert bool(records[0].exc_info) == isinstance(bad_config, dict)
+
+    def test_warning_leaves_the_rest_of_the_server_table_out(
+        self, test_domain, caplog, fresh_warnings
+    ):
+        """Other `[server]` keys can hold credentials; the warning omits them."""
+        test_domain.config["server"]["admin_token"] = "s3cr3t-token"
+        test_domain.config["server"]["version_retry"] = {"max_retries": "three"}
+        caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
+
+        assert _get_version_retry_config() == _VERSION_RETRY_DEFAULTS
+
+        records = [r for r in caplog.records if r.name == "protean.utils.mixins"]
+        assert len(records) == 1
+        assert "s3cr3t-token" not in records[0].getMessage()
+        assert "s3cr3t-token" not in caplog.text
+
+    def test_invalid_config_warns_once(self, test_domain, caplog, fresh_warnings):
+        """The config is read on every handler call; the warning is not."""
+        test_domain.config["server"]["version_retry"] = {"max_retries": "three"}
+        caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
+
+        for _ in range(3):
+            assert _get_version_retry_config() == _VERSION_RETRY_DEFAULTS
+
+        records = [r for r in caplog.records if r.name == "protean.utils.mixins"]
+        assert len(records) == 1
+
+    @pytest.mark.parametrize("error", [RuntimeError, AttributeError, TypeError])
+    def test_unexpected_config_error_propagates(self, test_domain, error):
+        """Only conversion and non-table errors fall back; others surface."""
+
+        class BrokenTable(dict):
+            def get(self, *args, **kwargs):
+                raise error("config error")
+
+        test_domain.config["server"] = BrokenTable()
+
+        with pytest.raises(error, match="config error"):
+            _get_version_retry_config()
+
+    def test_non_table_server_section_falls_back_with_warning(
+        self, test_domain, caplog, fresh_warnings
+    ):
+        test_domain.config["server"] = "redis://user:s3cr3t@host"
+        caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
+
+        assert _get_version_retry_config() == _VERSION_RETRY_DEFAULTS
+
+        records = [r for r in caplog.records if r.name == "protean.utils.mixins"]
+        assert len(records) == 1
+        message = records[0].getMessage()
+        assert "`server` is a str, not a table" in message
+        assert "s3cr3t" not in message
+
+    def test_valid_config_logs_no_warning(self, test_domain, caplog):
+        caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
+
+        _get_version_retry_config()
+
+        assert [r for r in caplog.records if r.name == "protean.utils.mixins"] == []
 
     def test_config_falls_back_when_no_domain_active(self, test_domain):
         """Falls back to defaults when no domain context is active."""
@@ -196,7 +285,10 @@ class TestVersionRetryDefaults:
         # Temporarily pop the domain context to make current_domain falsy
         ctx = _domain_context_stack.pop()
         try:
-            config = _get_version_retry_config()
+            # No "outside of domain context" warning either
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                config = _get_version_retry_config()
             assert config == _VERSION_RETRY_DEFAULTS
         finally:
             _domain_context_stack.push(ctx)
