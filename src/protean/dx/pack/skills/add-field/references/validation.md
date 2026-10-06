@@ -18,7 +18,7 @@ Field-level validation is the first line of defense. Use it for data type constr
 All fields support these validation parameters:
 
 ```python
-from protean.fields import String, Integer, Float
+from protean.fields import Decimal, Float, Integer, String
 
 @domain.aggregate
 class Product:
@@ -48,10 +48,10 @@ description: Text()  # No length limit
 user_input: String(sanitize=True)  # Opt-in: the default is off
 ```
 
-**Integer/Float validation**:
+**Integer/Decimal/Float validation**:
 ```python
 # Range constraints
-price: Float(min_value=0.01, max_value=999999.99)
+price: Decimal(precision=19, scale=4, min_value=0.01, max_value=999999.99)
 quantity: Integer(min_value=1, max_value=1000)
 discount: Float(min_value=0.0, max_value=100.0)
 
@@ -98,16 +98,20 @@ class Employee:
 2. `__call__` method that takes the field value
 3. Raises `ValidationError` on invalid data
 
-**Multiple validators**:
+**Multiple validators** run in the order you list them:
 ```python
-email: String(
-    required=True,
-    validators=[
-        EmailFormatValidator(),
-        EmailDomainValidator("company.com"),
-        EmailBlocklistValidator()
-    ]
-)
+from protean.fields.validators import RegexValidator
+
+@domain.aggregate
+class Contractor:
+    email: String(
+        required=True,
+        max_length=254,
+        validators=[
+            RegexValidator(r"^[^@\s]+@[^@\s]+\.[^@\s]+$"),
+            EmailDomainValidator("company.com"),
+        ]
+    )
 ```
 
 **When to use custom validators**:
@@ -159,17 +163,21 @@ class DateRange:
 
 **When post invariants run**:
 - After object initialization
-- After any attribute change
-- Before saving to database
+- After any attribute change (on the aggregate root too, when a child entity changes)
+- At the end of a `with atomic_change(obj):` block, when you group several changes
+
+`repository.add()` does not re-check them. The object was already valid after its last change.
 
 ### Pre Invariants
 
 Pre invariants check state BEFORE changes (not during initialization):
 
 ```python
+from decimal import Decimal as D
+
 @domain.aggregate
 class Account:
-    balance: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
     status: String(default="active")
 
     @invariant.pre
@@ -181,13 +189,13 @@ class Account:
         if self.status != "active":
             raise ValidationError({"status": ["Account is not active"]})
 
-    def withdraw(self, amount: float):
+    def withdraw(self, amount: D):
         self.balance -= amount  # Pre invariant checked before this
 ```
 
 **When pre invariants run**:
 - Before attribute changes (NOT during initialization)
-- Before method execution that modifies state
+- At the start of a `with atomic_change(obj):` block, when you group several changes
 
 ### Best Practices for Invariants
 
@@ -274,7 +282,7 @@ Method parameter?
 class Product:
     # Use field parameters for data type constraints
     name: String(required=True, min_length=3, max_length=200)
-    price: Float(required=True, min_value=0.01, max_value=999999.99)
+    price: Decimal(required=True, precision=19, scale=4, min_value=0.01, max_value=999999.99)
     stock_count: Integer(default=0, min_value=0)
     status: String(choices=["draft", "active", "discontinued"])
 ```
@@ -348,7 +356,7 @@ class Subscription:
 ```python
 @domain.aggregate
 class Account:
-    balance: Float(default=0.0, min_value=0.0)  # Field constraint
+    balance: Decimal(precision=19, scale=4, default=0, min_value=0)  # Field constraint
 
     @invariant.post
     def balance_must_not_be_negative(self):
@@ -356,7 +364,7 @@ class Account:
         if self.balance < 0:
             raise ValidationError({"balance": ["Insufficient funds"]})
 
-    def withdraw(self, amount: float):
+    def withdraw(self, amount: D):
         """Withdraw money from account."""
         # Parameter validation in method
         if amount <= 0:
@@ -400,8 +408,9 @@ class User:
 @domain.aggregate
 class Product:
     # Field-level: positive price
-    price: Float(required=True, min_value=0.01)
-    discount_percent: Float(default=0.0, min_value=0.0, max_value=100.0)
+    price: Decimal(required=True, precision=19, scale=4, min_value=0.01)
+    # A Decimal too, because it feeds money arithmetic
+    discount_percent: Decimal(precision=5, scale=2, default=0, min_value=0, max_value=100)
 
     @invariant.post
     def discounted_price_must_be_positive(self):
@@ -468,9 +477,9 @@ class Order:
 ```python
 @domain.aggregate
 class Product:
-    price: Float(required=True)  # No validation!
+    price: Decimal(required=True, precision=19, scale=4)  # No validation!
 
-    def set_price(self, new_price: float):
+    def set_price(self, new_price: D):
         if new_price <= 0:  # Manual validation
             raise ValueError("Price must be positive")
         self.price = new_price
@@ -480,9 +489,9 @@ class Product:
 ```python
 @domain.aggregate
 class Product:
-    price: Float(required=True, min_value=0.01)  # Field handles it
+    price: Decimal(required=True, precision=19, scale=4, min_value=0.01)  # Field handles it
 
-    def set_price(self, new_price: float):
+    def set_price(self, new_price: D):
         self.price = new_price  # Field validates automatically
 ```
 
@@ -492,7 +501,7 @@ class Product:
 ```python
 @domain.aggregate
 class Product:
-    price: Float(required=True)
+    price: Decimal(required=True, precision=19, scale=4)
 
     @invariant.post  # Wrong! Use field parameter
     def price_must_be_positive(self):
@@ -504,7 +513,7 @@ class Product:
 ```python
 @domain.aggregate
 class Product:
-    price: Float(required=True, min_value=0.01)  # Field parameter
+    price: Decimal(required=True, precision=19, scale=4, min_value=0.01)  # Field parameter
 ```
 
 ### Anti-Pattern 3: Multiple Rules in One Invariant

@@ -10,13 +10,16 @@ This example demonstrates:
 
 Usage:
     order = Order(customer_id="C123")
-    shipping = ShippingInfo(address="123 Main St", city="NYC")
+    shipping = ShippingInfo(address="123 Main St", city="NYC", postal_code="10001")
     order.shipping_info = shipping
     domain.repository_for(Order).add(order)
 """
 
+from decimal import Decimal as D  # stdlib Decimal, aliased so it does not clash with the field
+
 from protean import Domain
-from protean.fields import Float, HasMany, HasOne, Integer, Reference, String
+from protean.exceptions import ValidationError
+from protean.fields import Decimal, HasMany, HasOne, Identifier, Integer, String
 
 # Domain setup
 domain = Domain()
@@ -26,7 +29,7 @@ domain = Domain()
 class Order:
     """An order aggregate containing line items and shipping info."""
 
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)
     status: String(max_length=20, default="pending")
 
     # One-to-many: order has many line items
@@ -36,11 +39,9 @@ class Order:
     shipping_info = HasOne("ShippingInfo")
 
     @property
-    def total_amount(self) -> float:
+    def total_amount(self) -> D:
         """Calculate total order amount."""
-        if not self.line_items:
-            return 0.0
-        return sum(item.subtotal for item in self.line_items)
+        return sum((item.subtotal for item in self.line_items), D("0"))
 
     @property
     def is_shippable(self) -> bool:
@@ -50,11 +51,15 @@ class Order:
     def validate_for_shipment(self):
         """Validate order is ready for shipment."""
         if not self.line_items:
-            raise ValueError("Order must have at least one line item")
+            raise ValidationError(
+                {"line_items": ["Order must have at least one line item"]}
+            )
         if self.shipping_info is None:
-            raise ValueError("Order must have shipping information")
+            raise ValidationError(
+                {"shipping_info": ["Order must have shipping information"]}
+            )
         if not self.shipping_info.is_valid:
-            raise ValueError("Shipping address is incomplete")
+            raise ValidationError({"shipping_info": ["Shipping address is incomplete"]})
 
     def ship(self):
         """Mark order as shipped."""
@@ -66,16 +71,15 @@ class Order:
 class LineItem:
     """A line item entity in an order."""
 
-    product_id: String(required=True, max_length=50)
+    product_id: Identifier(required=True)
     product_name: String(required=True, max_length=200)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True, min_value=0.0)
+    unit_price: Decimal(precision=19, scale=4, required=True, min_value=0)
 
-    # Reference back to parent aggregate (automatic)
-    order = Reference("Order")
+    # Protean adds `order` (a Reference to Order) and `order_id` automatically
 
     @property
-    def subtotal(self) -> float:
+    def subtotal(self) -> D:
         """Calculate line item subtotal."""
         return self.quantity * self.unit_price
 
@@ -91,8 +95,7 @@ class ShippingInfo:
     country: String(max_length=50, default="USA")
     phone: String(max_length=20)
 
-    # Reference back to parent aggregate (automatic)
-    order = Reference("Order")
+    # Protean adds `order` (a Reference to Order) and `order_id` automatically
 
     @property
     def is_valid(self) -> bool:
@@ -129,13 +132,13 @@ if __name__ == "__main__":
             product_id="PROD-001",
             product_name="Laptop",
             quantity=1,
-            unit_price=999.99,
+            unit_price=D("999.99"),
         )
         item2 = LineItem(
             product_id="PROD-002",
             product_name="Mouse",
             quantity=2,
-            unit_price=29.99,
+            unit_price=D("29.99"),
         )
         order.add_line_items([item1, item2])
 

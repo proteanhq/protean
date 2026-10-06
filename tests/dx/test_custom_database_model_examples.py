@@ -33,7 +33,7 @@ from protean import dx
 from protean.core.database_model import BaseDatabaseModel
 from protean.domain import Domain
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Float, HasMany, Identifier, Integer, String
+from protean.fields import Decimal, Float, HasMany, Identifier, Integer, String
 
 # These build their own domains and read package data; they never touch the
 # autouse ``test_domain`` fixture, so skip it and its initialization cost.
@@ -188,6 +188,8 @@ class TestEntityCustomDatabaseModel:
             String=String,
             Integer=Integer,
             Float=Float,
+            Identifier=Identifier,
+            Decimal=Decimal,
         )
 
         assert "LineItemModel" in namespace, (

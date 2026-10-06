@@ -1,6 +1,6 @@
 # Aggregate Configuration Options
 
-Aggregates can be customized through various configuration options passed to the decorator or defined in a Meta class.
+Aggregates are configured through options passed to the `@domain.aggregate` decorator.
 
 ## Overview
 
@@ -12,32 +12,20 @@ Configuration options control:
 - Custom model mapping
 - Event sourcing stream categories
 
-## Configuration Methods
+## Passing options
 
-### Via Decorator Parameters
+Pass every option as a keyword argument to the decorator:
 
 ```python
 @domain.aggregate(
-    abstract=True,
-    provider="orders_db",
+    provider="default",
     schema_name="order_records"
 )
 class Order:
     ...
 ```
 
-### Via Meta Class
-
-```python
-@domain.aggregate
-class Order:
-    class Meta:
-        abstract = False
-        provider = "orders_db"
-        schema_name = "order_records"
-```
-
-Both approaches are equivalent. Choose decorator parameters for simple cases, Meta class when you have many options.
+An inner `class Meta:` on the aggregate is ignored. Protean does not read it, so options set there have no effect. Use the decorator options.
 
 ## Configuration Options
 
@@ -49,6 +37,15 @@ Both approaches are equivalent. Choose decorator parameters for simple cases, Me
 Marks an aggregate as abstract. Abstract aggregates cannot be instantiated and must be subclassed.
 
 ```python
+from datetime import datetime, timezone
+
+from protean.exceptions import NotSupportedError
+
+
+def utc_now():
+    return datetime.now(timezone.utc)
+
+
 @domain.aggregate(abstract=True)
 class TimeStamped:
     created_at: DateTime(default=utc_now)
@@ -58,11 +55,15 @@ class TimeStamped:
 class User(TimeStamped):
     name: String(required=True)
 
-# OK
-user = User(name="John")
+domain.init(traverse=False)
 
-# Raises NotSupportedError
-timestamped = TimeStamped()
+with domain.domain_context():
+    user = User(name="John")  # OK
+
+    try:
+        TimeStamped()
+    except NotSupportedError:
+        print("Abstract aggregates cannot be instantiated")
 ```
 
 **Use cases:**
@@ -85,7 +86,7 @@ Controls whether Protean automatically adds an `id` field as the identifier.
 # Default behavior - auto-generated id field
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)
 # Has: id: Auto()
 
 # Custom identifier
@@ -112,20 +113,20 @@ class Product:
 **Type:** `str`
 **Default:** `"default"`
 
-Specifies which database/provider to use for persistence.
+Names the database the aggregate is persisted to. The value is a key in the `databases` section of the domain config. Each entry in that section names its adapter by its registered name (`memory`, `sqlite`, `postgresql`, `mssql`, `mysql`, `elasticsearch`), not by a class path.
 
-```python
+```toml
 # In domain.toml
 [databases.default]
-provider = "protean.adapters.repository.sqlalchemy.SAProvider"
+provider = "sqlite"
 database_uri = "sqlite:///primary.db"
 
 [databases.orders_db]
-provider = "protean.adapters.repository.sqlalchemy.SAProvider"
+provider = "postgresql"
 database_uri = "postgresql://localhost/orders"
 
 [databases.analytics_db]
-provider = "protean.adapters.repository.elasticsearch.ESProvider"
+provider = "elasticsearch"
 database_uri = "http://localhost:9200"
 ```
 
@@ -280,8 +281,6 @@ class Order:
 ## Example: Full Configuration
 
 ```python
-from datetime import datetime, timezone
-
 @domain.aggregate(
     abstract=False,
     auto_add_id_field=True,
@@ -292,10 +291,10 @@ from datetime import datetime, timezone
 class Order:
     """Fully configured order aggregate."""
 
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)
     status: String(max_length=20, default="draft")
-    total_amount: Float(default=0.0)
-    created_at: DateTime(default=lambda: datetime.now(timezone.utc))
+    total_amount: Decimal(precision=19, scale=4, default=0)
+    created_at: DateTime(default=utc_now)
 ```
 
 This aggregate:

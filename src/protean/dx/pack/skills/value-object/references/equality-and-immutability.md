@@ -17,38 +17,52 @@ Key concepts:
 Value objects are equal when all their attributes match:
 
 ```python
+from decimal import Decimal as D
+
+from protean.exceptions import IncorrectUsageError
+
+
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 # Two instances with same values
-m1 = Money(currency="USD", amount=100.0)
-m2 = Money(currency="USD", amount=100.0)
+m1 = Money(currency="USD", amount=D("100.00"))
+m2 = Money(currency="USD", amount=D("100.00"))
 
 # They are equal
-assert m1 == m2  # True
+assert m1 == m2
 
 # Different values are not equal
-m3 = Money(currency="EUR", amount=100.0)
-assert m1 == m3  # False
+m3 = Money(currency="EUR", amount=D("100.00"))
+assert m1 != m3
 ```
 
 This is fundamentally different from entities, where identity matters:
 
 ```python
-@domain.entity(part_of="Order")
+@domain.aggregate
+class Order:
+    items = HasMany("LineItem")
+
+
+@domain.entity(part_of=Order)
 class LineItem:
     product_id: String(required=True)
     quantity: Integer(required=True)
 
-# Two entities with same attributes but different IDs
-item1 = LineItem(product_id="PROD-1", quantity=5)
-item2 = LineItem(product_id="PROD-1", quantity=5)
 
-# They are NOT equal (different identities)
-assert item1 != item2
+domain.init(traverse=False)
+
+with domain.domain_context():
+    # Two entities with same attributes but different IDs
+    item1 = LineItem(product_id="PROD-1", quantity=5)
+    item2 = LineItem(product_id="PROD-1", quantity=5)
+
+    # They are NOT equal (different identities)
+    assert item1 != item2
 ```
 
 ### All Attributes Matter
@@ -78,7 +92,7 @@ addr2 = Address(
 )
 
 # All attributes match
-assert addr1 == addr2  # True
+assert addr1 == addr2
 
 addr3 = Address(
     street="123 Main St",  # Same street
@@ -88,7 +102,7 @@ addr3 = Address(
 )
 
 # One attribute differs
-assert addr1 == addr3  # False
+assert addr1 != addr3
 ```
 
 ### Nested Value Objects
@@ -118,7 +132,7 @@ loc2 = Location(
 )
 
 # Deep equality - nested VOs also compared
-assert loc1 == loc2  # True
+assert loc1 == loc2
 ```
 
 ## Immutability
@@ -128,13 +142,17 @@ assert loc1 == loc2  # True
 Value objects cannot be changed once created:
 
 ```python
-money = Money(currency="USD", amount=100.0)
+money = Money(currency="USD", amount=D("100.00"))
 
-# This raises IncorrectUsageError
-money.currency = "EUR"
+try:
+    money.currency = "EUR"
+except IncorrectUsageError:
+    print("Cannot change currency")
 
-# This also raises IncorrectUsageError
-money.amount = 200.0
+try:
+    money.amount = D("200.00")
+except IncorrectUsageError:
+    print("Cannot change amount")
 ```
 
 ### Replace Instead of Modify
@@ -143,14 +161,16 @@ To "change" a value object, create a new instance:
 
 ```python
 # Original value object
-order.total = Money(currency="USD", amount=100.0)
+price = Money(currency="USD", amount=D("100.00"))
 
 # Cannot modify
-# order.total.amount = 200.0  # Won't work!
+# price.amount = D("200.00")  # Raises IncorrectUsageError
 
 # Replace with new instance
-order.total = Money(currency="USD", amount=200.0)
+price = Money(currency="USD", amount=D("200.00"))
 ```
+
+On an aggregate, assign the new instance to the field. See [Immutability in Aggregates](#immutability-in-aggregates).
 
 ### Why Immutability Matters
 
@@ -159,7 +179,7 @@ Immutability provides several benefits:
 **1. Thread Safety**
 ```python
 # Value objects can be safely shared between threads
-shared_price = Money(currency="USD", amount=50.0)
+shared_price = Money(currency="USD", amount=D("50.00"))
 
 # Multiple threads can read without locks
 # No thread can modify it
@@ -167,16 +187,17 @@ shared_price = Money(currency="USD", amount=50.0)
 
 **2. Predictable Behavior**
 ```python
-def calculate_discount(price: Money, rate: float) -> Money:
+def calculate_discount(price: Money, rate: D) -> Money:
     # price parameter won't be modified
     # Safe to use without defensive copying
-    return price.multiply(1.0 - rate)
+    return Money(currency=price.currency, amount=price.amount * (1 - rate))
 
-original_price = Money(currency="USD", amount=100.0)
-discounted = calculate_discount(original_price, 0.1)
+original_price = Money(currency="USD", amount=D("100.00"))
+discounted = calculate_discount(original_price, D("0.1"))
 
 # original_price unchanged
-assert original_price.amount == 100.0
+assert original_price.amount == D("100.00")
+assert discounted.amount == D("90.00")
 ```
 
 **3. Safe Caching**
@@ -184,10 +205,12 @@ assert original_price.amount == 100.0
 # Value objects can be cached safely
 cache = {}
 
-address = Address(...)
-cache[address] = compute_expensive_result(address)
+address = Address(street="123 Main St", city="Boston", state="MA", postal_code="02101")
+cache[address] = "Delivery zone 3"  # the result of an expensive lookup
 
-# Address can't change, so cache entry remains valid
+# Address can't change, so cache entry remains valid.
+# An equal address finds the same entry.
+assert cache[Address(street="123 Main St", city="Boston", state="MA", postal_code="02101")] == "Delivery zone 3"
 ```
 
 ### Methods Return New Instances
@@ -198,7 +221,7 @@ Value object methods that "modify" values return NEW instances:
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
     def add(self, other: "Money") -> "Money":
         # Returns NEW instance
@@ -207,16 +230,16 @@ class Money:
             amount=self.amount + other.amount
         )
 
-m1 = Money(currency="USD", amount=100.0)
-m2 = Money(currency="USD", amount=50.0)
+m1 = Money(currency="USD", amount=D("100.00"))
+m2 = Money(currency="USD", amount=D("50.00"))
 
 # add() returns new instance
 m3 = m1.add(m2)
 
 # Original instances unchanged
-assert m1.amount == 100.0
-assert m2.amount == 50.0
-assert m3.amount == 150.0
+assert m1.amount == D("100.00")
+assert m2.amount == D("50.00")
+assert m3.amount == D("150.00")
 ```
 
 ### Immutability in Aggregates
@@ -228,16 +251,19 @@ When value objects are embedded in aggregates, replace them entirely:
 class Account:
     balance = ValueObject(Money)
 
-account = Account(balance=Money(currency="USD", amount=1000.0))
+domain.init(traverse=False)
 
-# Cannot modify VO attribute
-# account.balance.amount = 1500.0  # Won't work!
+with domain.domain_context():
+    account = Account(balance=Money(currency="USD", amount=D("1000.00")))
 
-# Replace entire VO
-account.balance = Money(currency="USD", amount=1500.0)
+    # Cannot modify VO attribute
+    # account.balance.amount = D("1500.00")  # Raises IncorrectUsageError
 
-# Or use shadow attributes (only during initialization)
-account = Account(balance_currency="USD", balance_amount=1000.0)
+    # Replace entire VO
+    account.balance = Money(currency="USD", amount=D("1500.00"))
+
+    # Or pass the VO's fields flattened, one level deep (only at creation)
+    account = Account(balance_currency="USD", balance_amount=D("1000.00"))
 ```
 
 ## No Identity
@@ -253,12 +279,13 @@ class Money:
     # id: String(identifier=True)  # Raises IncorrectUsageError
 
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 ```
 
 Trying to add identity fields raises an error:
 
 ```python
+# fragment
 # This will fail
 @domain.value_object
 class Address:
@@ -284,19 +311,22 @@ class Email:
 Because value objects have no identity, equal instances are interchangeable:
 
 ```python
-# fragment
 @domain.aggregate
 class Order:
     shipping_address = ValueObject(Address)
 
+
+domain.init(traverse=False)
+
 # Two equal addresses
-addr1 = Address(street="123 Main", city="Boston", ...)
-addr2 = Address(street="123 Main", city="Boston", ...)
+addr1 = Address(street="123 Main St", city="Boston", state="MA", postal_code="02101")
+addr2 = Address(street="123 Main St", city="Boston", state="MA", postal_code="02101")
 
-order = Order(shipping_address=addr1)
+with domain.domain_context():
+    order = Order(shipping_address=addr1)
 
-# Can swap with equal VO
-order.shipping_address = addr2
+    # Can swap with equal VO
+    order.shipping_address = addr2
 
 # No meaningful difference - they're equal
 assert addr1 == addr2
@@ -309,10 +339,9 @@ assert addr1 == addr2
 Value objects can be used in sets because equality is well-defined:
 
 ```python
-# fragment
 addresses = set()
-addresses.add(Address(street="123 Main", city="Boston", ...))
-addresses.add(Address(street="123 Main", city="Boston", ...))  # Same values
+addresses.add(Address(street="123 Main St", city="Boston", state="MA", postal_code="02101"))
+addresses.add(Address(street="123 Main St", city="Boston", state="MA", postal_code="02101"))  # Same values
 
 # Set contains only one address (they're equal)
 assert len(addresses) == 1
@@ -324,12 +353,12 @@ Value objects can be dictionary keys (with caution):
 
 ```python
 shipping_costs = {
-    Address(...): Money(currency="USD", amount=10.0),
-    Address(...): Money(currency="USD", amount=15.0),
+    Address(street="123 Main St", city="Boston", state="MA", postal_code="02101"): Money(currency="USD", amount=D("10.00")),
+    Address(street="9 Elm St", city="Austin", state="TX", postal_code="73301"): Money(currency="USD", amount=D("15.00")),
 }
 ```
 
-**Note**: Use carefully. If the value object is mutable in practice (against the pattern), dictionary keys can break.
+A key can't change after it goes into the dictionary, because value objects are immutable.
 
 ### In Comparisons
 
@@ -347,10 +376,13 @@ class Order:
 ## Testing Equality and Immutability
 
 ```python
+import pytest
+
+
 def test_value_object_equality():
-    m1 = Money(currency="USD", amount=100.0)
-    m2 = Money(currency="USD", amount=100.0)
-    m3 = Money(currency="EUR", amount=100.0)
+    m1 = Money(currency="USD", amount=D("100.00"))
+    m2 = Money(currency="USD", amount=D("100.00"))
+    m3 = Money(currency="EUR", amount=D("100.00"))
 
     # Same values are equal
     assert m1 == m2
@@ -358,25 +390,25 @@ def test_value_object_equality():
     assert m1 != m3
 
 def test_value_object_immutability():
-    money = Money(currency="USD", amount=100.0)
+    money = Money(currency="USD", amount=D("100.00"))
 
     with pytest.raises(IncorrectUsageError):
         money.currency = "EUR"
 
     with pytest.raises(IncorrectUsageError):
-        money.amount = 200.0
+        money.amount = D("200.00")
 
 def test_methods_return_new_instances():
-    m1 = Money(currency="USD", amount=100.0)
-    m2 = Money(currency="USD", amount=50.0)
+    m1 = Money(currency="USD", amount=D("100.00"))
+    m2 = Money(currency="USD", amount=D("50.00"))
 
     m3 = m1.add(m2)
 
     # New instance created
-    assert m3.amount == 150.0
+    assert m3.amount == D("150.00")
     # Originals unchanged
-    assert m1.amount == 100.0
-    assert m2.amount == 50.0
+    assert m1.amount == D("100.00")
+    assert m2.amount == D("50.00")
 
 def test_nested_value_object_equality():
     loc1 = Location(
@@ -395,13 +427,14 @@ def test_nested_value_object_equality():
 
 **Trying to modify value objects** ❌
 ```python
-money.amount = 200  # Won't work!
+# fragment
+money.amount = D("200.00")  # Raises IncorrectUsageError
 ```
 
 **Expecting identity-based equality** ❌
 ```python
-m1 = Money(currency="USD", amount=100)
-m2 = Money(currency="USD", amount=100)
+m1 = Money(currency="USD", amount=D("100.00"))
+m2 = Money(currency="USD", amount=D("100.00"))
 
 # Wrong assumption: they're different objects
 if m1 is not m2:  # True, but misleading
@@ -411,6 +444,7 @@ if m1 is not m2:  # True, but misleading
 
 **Adding identity fields** ❌
 ```python
+# fragment
 @domain.value_object
 class Money:
     id: Auto()  # Error! VOs can't have identity
@@ -418,9 +452,10 @@ class Money:
 
 **Modifying then expecting changes** ❌
 ```python
-order.total.amount = 200  # Raises error
+# fragment
+order.total.amount = D("200.00")  # Raises IncorrectUsageError
 # Must replace entire VO
-order.total = Money(currency="USD", amount=200)
+order.total = Money(currency="USD", amount=D("200.00"))
 ```
 
 ## Best Practices

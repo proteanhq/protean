@@ -586,3 +586,38 @@ assert all(isinstance(item.unit_price, Money) for item in replayed.items)
 assert replayed.total == 125.0
 """,
     )
+
+
+def test_invoice_finds_and_removes_a_line_by_keyword_id():
+    _run_asset_check(
+        "add-field/assets/add_association_fields.py",
+        """
+from decimal import Decimal as StdDecimal
+
+from protean.exceptions import ObjectNotFoundError, ValidationError
+
+invoice = Invoice(invoice_number="INV-1", customer_id="CUST-1")
+line = InvoiceLineItem(description="Mouse", quantity=2, unit_price="29.99")
+invoice.add_line_items(line)
+
+assert invoice.get_one_from_line_items(id=line.id) is line
+assert invoice.total == StdDecimal("59.98")
+
+try:
+    invoice.get_one_from_line_items(id="missing")
+except ObjectNotFoundError:
+    pass
+else:
+    raise AssertionError("a miss must raise ObjectNotFoundError")
+
+try:
+    invoice.remove_product_line("missing")
+except ValidationError as exc:
+    assert exc.messages == {"line_items": ["No line item with id missing"]}
+else:
+    raise AssertionError("removing an unknown line must raise ValidationError")
+
+invoice.remove_product_line(line.id)
+assert invoice.line_items == []
+""",
+    )

@@ -43,7 +43,7 @@ order_id: String(required=True, identifier=True)
 
 **When NOT to use**:
 - Long text (use Text instead)
-- Numbers (use Integer/Float)
+- Numbers (use Integer, Decimal or Float)
 - Emails/phones without validation (use custom validator)
 
 ### Text
@@ -106,19 +106,48 @@ rating: Integer(required=True, min_value=1, max_value=5)
 ```
 
 **When NOT to use**:
-- Decimals (use Float)
+- Fractional numbers (use Decimal or Float)
 - Large numbers that might overflow (use String for display)
-- Money (use Float with Money value object)
+- Money (use Decimal)
+
+### Decimal
+
+**Purpose**: Exact decimal numbers, stored as Python `decimal.Decimal`
+
+**Use for**:
+- Money amounts (price, total, balance, fee)
+- Any value where binary floating-point rounding is not acceptable
+
+**Parameters**:
+- `precision` - Total number of digits
+- `scale` - Digits after the decimal point
+- `min_value` - Minimum allowed value
+- `max_value` - Maximum allowed value
+
+**Examples**:
+```python
+# Price with minimum
+price: Decimal(required=True, precision=19, scale=4, min_value=0.01)
+
+# Balance that starts at zero
+balance: Decimal(precision=19, scale=4, default=0)
+```
+
+The field turns the ints, floats and strings you pass into `decimal.Decimal` values. Do your
+arithmetic with `decimal.Decimal` too: adding a `float` to a `Decimal` raises `TypeError`.
+Import the standard library class under another name (`from decimal import Decimal as D`)
+so it does not clash with the `Decimal` field.
+
+**Note**: When an amount needs a currency, put both in a Money value object.
 
 ### Float
 
-**Purpose**: Decimal numbers
+**Purpose**: Approximate (binary floating-point) numbers
 
 **Use for**:
-- Money amounts
 - Percentages
 - Measurements (weight, height, distance)
-- Calculations
+- Coordinates (latitude, longitude)
 - Ratings (4.5 stars)
 
 **Parameters**:
@@ -127,9 +156,6 @@ rating: Integer(required=True, min_value=1, max_value=5)
 
 **Examples**:
 ```python
-# Price with minimum
-price: Float(required=True, min_value=0.01)
-
 # Percentage (0-100)
 discount_percent: Float(min_value=0.0, max_value=100.0, default=0.0)
 
@@ -142,10 +168,8 @@ temperature_celsius: Float(min_value=-273.15, max_value=1000.0)
 
 **When NOT to use**:
 - Counts (use Integer)
-- Money without currency (use Money value object)
-- Exact decimal math (Python Decimal issues)
-
-**Note**: For money, prefer using a Money value object that combines amount and currency.
+- Money (use Decimal)
+- Any value that needs exact decimal math (use Decimal)
 
 ### Boolean
 
@@ -262,17 +286,20 @@ class ShippingInfo:
 
 **Access pattern**:
 ```python
-order = Order(customer_id="C123")
-order.shipping_info = ShippingInfo(address="123 Main St", city="NYC")
+domain.init(traverse=False)
 
-# Access directly
-print(order.shipping_info.address)
+with domain.domain_context():
+    order = Order()
+    order.shipping_info = ShippingInfo(address="123 Main St", city="NYC")
+
+    # Access directly
+    print(order.shipping_info.address)
 ```
 
 **When NOT to use**:
 - One-to-many (use HasMany)
 - Immutable data (use ValueObject)
-- Reference to another aggregate (use Reference)
+- Link to another aggregate (use an `Identifier` field)
 
 ### HasMany
 
@@ -298,24 +325,32 @@ class LineItem:
 **Auto-generated methods**:
 - `add_line_items(item)` - Add items
 - `remove_line_items(item)` - Remove item
-- `get_one_from_line_items(id)` - Get by ID
-- `filter_line_items(**criteria)` - Filter items
+- `get_one_from_line_items(id=item_id)` - Get one item by keyword criteria. Raises
+  `ObjectNotFoundError` (from `protean.exceptions`) when nothing matches.
+- `filter_line_items(**criteria)` - Get the items whose fields equal the given values
+  (equality only; no operators such as `quantity__gt`)
 
 **Access pattern**:
 ```python
-order = Order(customer_id="C123")
-item = LineItem(product_id="P1", quantity=2)
-order.add_line_items([item])  # Auto-generated helper
+domain.init(traverse=False)
 
-# Access collection
-for item in order.line_items:
-    print(item.product_id)
+with domain.domain_context():
+    order = Order()
+    item = LineItem(product_id="P1", quantity=2)
+    order.add_line_items([item])  # Auto-generated helper
+
+    # Get one item by its id (keyword argument)
+    same_item = order.get_one_from_line_items(id=item.id)
+
+    # Access collection
+    for line in order.line_items:
+        print(line.product_id)
 ```
 
 **When NOT to use**:
 - Simple value lists (use List)
 - Immutable data (use ValueObject)
-- Reference to another aggregate (use Reference)
+- Link to another aggregate (use an `Identifier` field)
 
 ### ValueObject
 
@@ -331,7 +366,7 @@ for item in order.line_items:
 ```python
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(required=True, precision=19, scale=4)
     currency: String(max_length=3, default="USD")
 
     def add(self, other: "Money") -> "Money":
@@ -347,56 +382,80 @@ class Order:
 
 **Initialization**:
 ```python
-# With object
-order = Order(
-    customer_id="C123",
-    total=Money(amount=100.0, currency="USD")
-)
+domain.init(traverse=False)
 
-# By attributes
-order = Order(
-    customer_id="C123",
-    total_amount=100.0,
-    total_currency="USD"
-)
+with domain.domain_context():
+    # With object
+    order = Order(total=Money(amount="100.00", currency="USD"))
+
+    # By attributes
+    order = Order(total_amount="100.00", total_currency="USD")
 ```
 
 **When NOT to use**:
 - Single simple value (use simple field)
 - Mutable data (use Entity)
-- Reference to another aggregate (use Reference)
+- Link to another aggregate (use an `Identifier` field)
 
 ### Reference
 
-**Purpose**: Reference another aggregate by ID
+**Purpose**: Link an entity back to its own aggregate root
 
 **Use for**:
-- Cross-aggregate relationships
-- Avoid loading full aggregate
-- Maintain aggregate boundaries
+- The reverse side of a `HasOne` or `HasMany` field
+
+`HasOne` and `HasMany` add this field to the entity for you, named after the aggregate.
+Declare it yourself only when you want a different name.
 
 **Examples**:
 ```python
 @domain.aggregate
-class Order:
-    # Reference Customer aggregate
-    customer = Reference("Customer")
+class Post:
+    title: String(required=True, max_length=200)
+    comments = HasMany("Comment")
 
+@domain.entity(part_of="Post")
+class Comment:
+    body: Text(required=True)
+    post = Reference("Post")  # Stores the root's id in post_id
+```
+
+**When NOT to use**:
+- Link to another aggregate (use an `Identifier` field). `protean check` reports a
+  `Reference` to another aggregate as `CROSS_AGGREGATE_REFERENCE`.
+- Value objects (use ValueObject field)
+
+### Linking to another aggregate
+
+**Purpose**: Point at another aggregate by its id
+
+Aggregates link to each other by id only. Add an `Identifier` field that holds the other
+aggregate's id, and load that aggregate through its repository when you need it.
+
+**Examples**:
+```python
 @domain.aggregate
 class Customer:
-    name: String(required=True)
-    email: String(required=True)
+    name: String(required=True, max_length=100)
+    email: String(required=True, max_length=254)
+
+@domain.aggregate
+class Invoice:
+    customer_id: Identifier(required=True)  # Holds the Customer's id
 ```
 
 **Access pattern**:
 ```python
-order = Order(customer="CUST-123")  # Just the ID
+domain.init(traverse=False)
 
-# Get ID
-customer_id = order.customer_id
+with domain.domain_context():
+    customer = Customer(name="Jane Doe", email="jane@example.com")
+    domain.repository_for(Customer).add(customer)
 
-# Load full aggregate if needed
-customer = domain.repository_for(Customer).get(order.customer_id)
+    invoice = Invoice(customer_id=customer.id)  # Just the id
+
+    # Load full aggregate if needed
+    customer = domain.repository_for(Customer).get(invoice.customer_id)
 ```
 
 **When NOT to use**:
@@ -463,17 +522,21 @@ class Product:
 
 **Examples**:
 ```python
-# List of strings
-tags: List(content_type=String)
+@domain.aggregate
+class Article:
+    title: String(required=True, max_length=200)
 
-# List of integers
-scores: List(content_type=Integer)
+    # List of strings
+    tags: List(content_type=String)
+
+    # List of integers
+    scores: List(content_type=Integer)
+
+domain.init(traverse=False)
 
 # Usage
-product = Product(
-    name="Widget",
-    tags=["electronics", "gadgets", "new"]
-)
+with domain.domain_context():
+    article = Article(title="Widgets", tags=["electronics", "gadgets", "new"])
 ```
 
 **When NOT to use**:
@@ -491,17 +554,24 @@ product = Product(
 
 **Examples**:
 ```python
-# Metadata
-metadata: Dict()
+@domain.aggregate
+class Gadget:
+    name: String(required=True, max_length=100)
 
-# Configuration
-settings: Dict()
+    # Metadata
+    metadata: Dict()
+
+    # Configuration
+    settings: Dict()
+
+domain.init(traverse=False)
 
 # Usage
-product = Product(
-    name="Widget",
-    metadata={"color": "blue", "size": "medium", "weight": 1.5}
-)
+with domain.domain_context():
+    gadget = Gadget(
+        name="Widget",
+        metadata={"color": "blue", "size": "medium", "weight": 1.5}
+    )
 ```
 
 **When NOT to use**:
@@ -514,7 +584,8 @@ Use this tree to choose the right field type:
 
 ```
 Is it a relationship to another element?
-├─ Yes → Association field (HasOne, HasMany, ValueObject, Reference)
+├─ Inside the same aggregate → HasOne, HasMany, ValueObject
+├─ Another aggregate → Identifier holding its id
 └─ No → Continue
 
 Is it a simple value?
@@ -523,7 +594,8 @@ Is it a simple value?
 │  └─ Long → Text
 ├─ Number?
 │  ├─ Whole number → Integer
-│  └─ Decimal → Float
+│  ├─ Money → Decimal(precision=19, scale=4)
+│  └─ Measurement → Float
 ├─ True/False? → Boolean
 ├─ Date?
 │  ├─ Date only → Date
@@ -539,7 +611,8 @@ Is it a simple value?
 A: String if under 255 chars and you want length validation. Text for longer content.
 
 **Q: Integer or Float for money?**
-A: Neither - use Float with a Money value object (includes currency).
+A: Neither. Use `Decimal(precision=19, scale=4)`. When the amount needs a currency, put both
+in a Money value object.
 
 **Q: HasMany or List for collections?**
 A: HasMany for entities with identity. List for simple values.

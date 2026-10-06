@@ -11,13 +11,16 @@ This example demonstrates:
 
 Usage:
     order = Order(customer_id="C123")
-    item = LineItem(product_id="P1", quantity=2, unit_price=50.0)
+    item = LineItem(product_id="P1", product_name="Mug", quantity=2, unit_price=D("50"))
     order.add_line_items([item])
     domain.repository_for(Order).add(order)
 """
 
+from decimal import Decimal as D  # stdlib Decimal, aliased so it does not clash with the field
+
 from protean import Domain
-from protean.fields import Float, HasMany, Integer, Reference, String
+from protean.exceptions import ValidationError
+from protean.fields import Decimal, HasMany, Identifier, Integer, String
 
 # Domain setup
 domain = Domain()
@@ -28,33 +31,29 @@ class Order:
     """An order aggregate containing multiple line items."""
 
     order_number: String(required=True, max_length=50, unique=True)
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)
     status: String(max_length=20, default="draft")
 
     # One-to-many: order has many line items
     line_items = HasMany("LineItem")
 
     @property
-    def total_amount(self) -> float:
+    def total_amount(self) -> D:
         """Calculate total order amount from all line items."""
-        if not self.line_items:
-            return 0.0
-        return sum(item.total for item in self.line_items)
+        return sum((item.total for item in self.line_items), D("0"))
 
     @property
     def total_quantity(self) -> int:
         """Calculate total quantity across all line items."""
-        if not self.line_items:
-            return 0
         return sum(item.quantity for item in self.line_items)
 
     @property
     def item_count(self) -> int:
         """Get number of line items."""
-        return len(self.line_items) if self.line_items else 0
+        return len(self.line_items)
 
     def add_item(
-        self, product_id: str, product_name: str, quantity: int, unit_price: float
+        self, product_id: str, product_name: str, quantity: int, unit_price: D
     ):
         """
         Add a new line item to the order.
@@ -71,10 +70,12 @@ class Order:
 
     def remove_item(self, product_id: str):
         """Remove a line item by product ID."""
-        item = next((i for i in self.line_items if i.product_id == product_id), None)
-        if item is None:
-            raise ValueError(f"Product {product_id} not found in order")
-        self.remove_line_items(item)
+        items = self.filter_line_items(product_id=product_id)
+        if not items:
+            raise ValidationError(
+                {"line_items": [f"Product {product_id} not found in order"]}
+            )
+        self.remove_line_items(items)
 
     def update_item_quantity(self, product_id: str, new_quantity: int):
         """
@@ -82,24 +83,24 @@ class Order:
 
         Validation (quantity > 0) is enforced by LineItem field constraint.
         """
-        item = next((i for i in self.line_items if i.product_id == product_id), None)
-        if item is None:
-            raise ValueError(f"Product {product_id} not found in order")
-
-        item.quantity = new_quantity
+        items = self.filter_line_items(product_id=product_id)
+        if not items:
+            raise ValidationError(
+                {"line_items": [f"Product {product_id} not found in order"]}
+            )
+        items[0].quantity = new_quantity
 
     def clear_items(self):
         """Remove all line items from order."""
-        if self.line_items:
-            # Create a copy of the list to avoid modification during iteration
-            items_to_remove = list(self.line_items)
-            for item in items_to_remove:
-                self.remove_line_items(item)
+        # Copy the list so it is not changed while removing
+        self.remove_line_items(list(self.line_items))
 
     def place(self):
         """Place the order."""
         if not self.line_items:
-            raise ValueError("Cannot place order without line items")
+            raise ValidationError(
+                {"line_items": ["Cannot place an order without line items"]}
+            )
         self.status = "placed"
 
 
@@ -107,48 +108,47 @@ class Order:
 class LineItem:
     """A line item entity representing a product in an order."""
 
-    product_id: String(required=True, max_length=50)
+    product_id: Identifier(required=True)
     product_name: String(required=True, max_length=200)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True, min_value=0.0)
-    discount_percent: Float(min_value=0.0, max_value=100.0, default=0.0)
+    unit_price: Decimal(precision=19, scale=4, required=True, min_value=0)
+    discount_percent: Decimal(precision=5, scale=2, min_value=0, max_value=100, default=0)
 
-    # Reference back to parent aggregate (automatic)
-    order = Reference(Order)
+    # Protean adds `order` (a Reference to Order) and `order_id` automatically
 
     @property
-    def subtotal(self) -> float:
+    def subtotal(self) -> D:
         """Calculate subtotal before discount."""
         return self.quantity * self.unit_price
 
     @property
-    def discount_amount(self) -> float:
+    def discount_amount(self) -> D:
         """Calculate discount amount."""
-        return self.subtotal * (self.discount_percent / 100.0)
+        return self.subtotal * self.discount_percent / D("100")
 
     @property
-    def total(self) -> float:
+    def total(self) -> D:
         """Calculate total after discount."""
         return self.subtotal - self.discount_amount
 
-    def apply_discount(self, percent: float):
-        """Apply a discount to this line item."""
-        if percent < 0 or percent > 100:
-            raise ValueError("Discount percent must be between 0 and 100")
+    def apply_discount(self, percent: D):
+        """Apply a discount to this line item.
+
+        The field constraints (0 to 100) reject an out-of-range percent.
+        """
         self.discount_percent = percent
 
     def increase_quantity(self, amount: int):
         """Increase quantity by specified amount."""
         if amount <= 0:
-            raise ValueError("Amount must be positive")
+            raise ValidationError({"quantity": ["Amount must be positive"]})
         self.quantity += amount
 
     def decrease_quantity(self, amount: int):
         """Decrease quantity by specified amount."""
         if amount <= 0:
-            raise ValueError("Amount must be positive")
-        if self.quantity - amount < 1:
-            raise ValueError("Resulting quantity must be at least 1")
+            raise ValidationError({"quantity": ["Amount must be positive"]})
+        # The min_value=1 constraint rejects a quantity below 1
         self.quantity -= amount
 
 
@@ -164,9 +164,9 @@ if __name__ == "__main__":
         )
 
         # Add line items using helper method
-        order.add_item("PROD-001", "Laptop", 1, 999.99)
-        order.add_item("PROD-002", "Mouse", 2, 29.99)
-        order.add_item("PROD-003", "Keyboard", 1, 79.99)
+        order.add_item("PROD-001", "Laptop", 1, D("999.99"))
+        order.add_item("PROD-002", "Mouse", 2, D("29.99"))
+        order.add_item("PROD-003", "Keyboard", 1, D("79.99"))
 
         print(f"Order: {order.order_number}")
         print(f"Customer: {order.customer_id}")
@@ -180,7 +180,7 @@ if __name__ == "__main__":
             print(f"  - {item.product_name} (x{item.quantity}): ${item.subtotal:.2f}")
 
         # Apply discount to first item
-        order.line_items[0].apply_discount(10.0)
+        order.line_items[0].apply_discount(D("10"))
         print("\nAfter 10% discount on laptop:")
         print(f"  Subtotal: ${order.line_items[0].subtotal:.2f}")
         print(f"  Discount: ${order.line_items[0].discount_amount:.2f}")

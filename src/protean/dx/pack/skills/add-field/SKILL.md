@@ -13,20 +13,20 @@ metadata:
 
 # Add Field
 
-Guide for adding fields to Protean domain elements — choosing the right type, configuring
+Guide for adding fields to Protean domain elements: choosing the right type, configuring
 parameters, and placing fields correctly.
 
 ## Information to gather
 
 Before adding a field:
 
-- [ ] **Target element** — Which aggregate, entity, or value object?
-- [ ] **Data purpose** — What does this field represent?
-- [ ] **Data type** — Text, number, date, boolean, relationship?
+- [ ] **Target element**: Which aggregate, entity, or value object?
+- [ ] **Data purpose**: What does this field represent?
+- [ ] **Data type**: Text, number, date, boolean, relationship?
 - [ ] **Required or optional?**
 - [ ] **Default value?**
-- [ ] **Validation rules?** — Length, range, format, cross-field?
-- [ ] **Relationship?** — Is this a reference to another domain element?
+- [ ] **Validation rules?**: Length, range, format, cross-field?
+- [ ] **Relationship?**: Is this a reference to another domain element?
 
 ## Process
 
@@ -35,7 +35,7 @@ Before adding a field:
 | Target | When | Patterns |
 |--------|------|----------|
 | **Aggregate** | Root domain object | See [aggregate](../aggregate/SKILL.md) |
-| **Entity** | Child object within an aggregate (has identity) | See [entity](../entity/SKILL.md) — always needs `part_of="AggName"` |
+| **Entity** | Child object within an aggregate (has identity) | See [entity](../entity/SKILL.md): always needs `part_of="AggName"` |
 | **Value Object** | Immutable descriptive concept (no identity) | See [value-object](../value-object/SKILL.md) |
 
 ### Step 2: Choose the field type
@@ -46,15 +46,26 @@ Before adding a field:
 
 ```python
 email = String(required=True, max_length=254)
-price = Float(required=True, min_value=0.01)
+price = Decimal(required=True, precision=19, scale=4, min_value=0.01)
 ```
+
+Use `Decimal` for money. `Float` stores binary floating-point values, so amounts drift
+when you add them up.
 
 **Use ValueObject** when the data has multiple related attributes, behavior, or should
 be reusable:
 
 ```python
-total = ValueObject(Money)       # Money has amount + currency + add()/multiply()
-address = ValueObject(Address)   # Address has street + city + state + zip + format()
+@domain.value_object
+class Money:
+    amount = Decimal(required=True, precision=19, scale=4)
+    currency = String(required=True, max_length=3)
+
+
+@domain.aggregate
+class Invoice:
+    number = String(required=True, max_length=20)
+    total = ValueObject(Money)  # amount and currency always travel together
 ```
 
 **Rule of thumb**: If you see two fields that always travel together (amount + currency,
@@ -81,7 +92,8 @@ tags = List(content_type=String)  # Just strings, no identity
 | Short text | `String(max_length=N)` | names, codes, statuses |
 | Long text | `Text()` | descriptions, notes |
 | Whole number | `Integer()` | counts, quantities |
-| Decimal | `Float()` | prices, percentages |
+| Money | `Decimal(precision=19, scale=4)` | prices, totals, balances |
+| Measurement | `Float()` | weights, ratios, coordinates |
 | True/False | `Boolean(default=True)` | flags |
 | Date only | `Date()` | birth_date, expiry_date |
 | Date + time | `DateTime()` | timestamps |
@@ -89,13 +101,16 @@ tags = List(content_type=String)  # Just strings, no identity
 | One child entity | `HasOne("Entity")` | one-to-one |
 | Many child entities | `HasMany("Entity")` | one-to-many |
 | Embedded VO | `ValueObject(VOClass)` | Money, Address |
-| Reference to aggregate | `Reference("OtherAgg")` | foreign key |
+| Link to another aggregate | `Identifier()` | `customer_id`, holds the other aggregate's id |
+| Link back to own aggregate root | `Reference("Order")` | on an entity, the reverse side of `HasMany`/`HasOne` |
 | Simple list | `List(content_type=String)` | tags, codes |
 | Key-value | `Dict()` | metadata |
 
 ### Step 3: Configure field parameters
 
 ```python
+from protean.fields.validators import RegexValidator
+
 # Required vs optional
 name = String(required=True)
 description = String()              # Optional (can be None)
@@ -105,22 +120,22 @@ status = String(default="draft")
 
 # Constraints
 sku = String(unique=True, max_length=50)
-price = Float(min_value=0.01, max_value=999999.99)
+price = Decimal(precision=19, scale=4, min_value=0.01, max_value=999999.99)
 quantity = Integer(min_value=1, max_value=10000)
 
 # Enum-like choices
 status = String(choices=["draft", "published", "archived"])
 
-# Custom validators
-email = String(validators=[EmailValidator()])
+# Format validators
+email = String(validators=[RegexValidator(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")])
 ```
 
 ### Step 4: Choose validation layer
 
 | Rule type | Where | How |
 |-----------|-------|-----|
-| Single-field constraint | Field parameter | `Float(min_value=0.01)` |
-| Format validation | Custom validator | `String(validators=[EmailValidator()])` |
+| Single-field constraint | Field parameter | `Integer(min_value=1)` |
+| Format validation | Validator | `String(validators=[RegexValidator(r"...")])` or a custom validator class |
 | Cross-field business rule | `@invariant.post` on aggregate | See [add-validation](../add-validation/SKILL.md) |
 | State-dependent guard | Method body | `if self.status != "DRAFT": raise ...` |
 
@@ -154,45 +169,47 @@ on PostgreSQL. Size the length to the field's domain.
 
 When you add `items = HasMany("LineItem")`, these methods are automatically available:
 
-- `aggregate.add_items(item)` — Add one or more items
-- `aggregate.remove_items(item)` — Remove an item
-- `aggregate.get_one_from_items(id)` — Get by identifier
-- `aggregate.filter_items(**criteria)` — Filter items
+- `aggregate.add_items(item)`: add one or more items
+- `aggregate.remove_items(item)`: remove an item
+- `aggregate.get_one_from_items(id=item_id)`: get one item by keyword criteria. It raises
+  `ObjectNotFoundError` (from `protean.exceptions`) when nothing matches, and never returns `None`.
+- `aggregate.filter_items(**criteria)`: get the items whose fields equal the given values.
+  It matches equality only; operators such as `price__gt` are not supported.
 
-**Never manually define these methods** — they exist automatically.
+**Never manually define these methods**: they exist automatically.
 
 ## Common mistakes
 
-- **Primitives instead of value objects** — `total_amount` + `total_currency` should be `ValueObject(Money)`
-- **Wrong field type** — Use `Integer`/`Float` for numbers, not `String`. Use `Date`/`DateTime` for dates.
-- **Forgetting `part_of` on entities** — Always specify `@domain.entity(part_of="Order")`
-- **Recreating HasMany helpers** — Don't define `add_items()` manually
-- **Field validation AND invariant** — Pick one layer, don't duplicate
+- **Primitives instead of value objects**: `total_amount` + `total_currency` should be `ValueObject(Money)`
+- **Wrong field type**: use `Integer` for counts, `Decimal` for money and `Float` for measurements, not `String`. Use `Date`/`DateTime` for dates.
+- **Forgetting `part_of` on entities**: Always specify `@domain.entity(part_of="Order")`
+- **Recreating HasMany helpers**: Don't define `add_items()` manually
+- **Field validation AND invariant**: Pick one layer, don't duplicate
 
 See [references/common-mistakes.md](references/common-mistakes.md) for detailed examples.
 
 ## Complete examples
 
-- [Simple fields](assets/add_simple_field.py) — Adding basic fields to an aggregate
-- [Custom validator](assets/add_field_with_custom_validator.py) — Field with custom validation
-- [Association fields](assets/add_association_fields.py) — HasOne, HasMany, Reference
-- [ValueObject field](assets/add_value_object_field.py) — Embedding a value object
+- [Simple fields](assets/add_simple_field.py): Adding basic fields to an aggregate
+- [Custom validator](assets/add_field_with_custom_validator.py): Field with custom validation
+- [Association fields](assets/add_association_fields.py): HasOne, HasMany, and an `Identifier` link to another aggregate
+- [ValueObject field](assets/add_value_object_field.py): Embedding a value object
 
 ## Detailed references
 
-- [Field Types Guide](references/field-types.md) — Comprehensive guide to all field types
-- [Validation Strategies](references/validation.md) — Field validation vs invariants
-- [Association Fields](references/associations.md) — HasOne, HasMany, ValueObject, Reference
-- [Common Mistakes](references/common-mistakes.md) — Anti-patterns when adding fields
+- [Field Types Guide](references/field-types.md): Comprehensive guide to all field types
+- [Validation Strategies](references/validation.md): Field validation vs invariants
+- [Association Fields](references/associations.md): HasOne, HasMany, ValueObject, Reference, cross-aggregate identifiers
+- [Common Mistakes](references/common-mistakes.md): Anti-patterns when adding fields
 
 ## Related skills
 
-- [aggregate](../aggregate/SKILL.md) — Aggregate field patterns
-- [entity](../entity/SKILL.md) — Entity field patterns
-- [value-object](../value-object/SKILL.md) — Value object definition
-- [add-validation](../add-validation/SKILL.md) — Choosing the right validation layer
-- [custom-validator](../custom-validator/SKILL.md) — Building custom field validators
-- [refactor-extract-value-object](../refactor-extract-value-object/SKILL.md) — When fields should become VOs
+- [aggregate](../aggregate/SKILL.md): Aggregate field patterns
+- [entity](../entity/SKILL.md): Entity field patterns
+- [value-object](../value-object/SKILL.md): Value object definition
+- [add-validation](../add-validation/SKILL.md): Choosing the right validation layer
+- [custom-validator](../custom-validator/SKILL.md): Building custom field validators
+- [refactor-extract-value-object](../refactor-extract-value-object/SKILL.md): When fields should become VOs
 
 ## Verify your work
 

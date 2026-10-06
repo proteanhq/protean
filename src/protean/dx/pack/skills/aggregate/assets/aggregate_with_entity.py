@@ -11,12 +11,22 @@ This example demonstrates:
 
 Usage:
     order = Order(customer_id="C123")
-    order.add_line_items(LineItem(product_id="P1", quantity=2, unit_price=50.0))
+    order.add_line_items(LineItem(product_id="P1", quantity=2, unit_price="50.00"))
     domain.repository_for(Order).add(order)
 """
 
+from decimal import Decimal as D
+
 from protean import Domain
-from protean.fields import Float, HasMany, HasOne, Integer, Reference, String
+from protean.fields import (
+    Decimal,
+    HasMany,
+    HasOne,
+    Identifier,
+    Integer,
+    Reference,
+    String,
+)
 
 # Domain setup
 domain = Domain()
@@ -26,7 +36,7 @@ domain = Domain()
 class Order:
     """An order aggregate that contains line items and shipping info."""
 
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)  # Another aggregate, held by id
     status: String(max_length=20, default="draft")
 
     # One-to-many relationship: an order has many line items
@@ -36,11 +46,9 @@ class Order:
     shipping_info = HasOne("ShippingInfo")
 
     @property
-    def total_amount(self) -> float:
+    def total_amount(self) -> D:
         """Calculate total amount from all line items."""
-        if not self.line_items:
-            return 0.0
-        return sum(item.subtotal for item in self.line_items)
+        return sum((item.subtotal for item in self.line_items), D("0"))
 
     def place_order(self):
         """Place the order if it has items."""
@@ -55,13 +63,13 @@ class LineItem:
 
     product_id: String(required=True, max_length=50)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True)
+    unit_price: Decimal(precision=19, scale=4, required=True)
 
     # Bidirectional reference back to parent (automatically created)
     order = Reference(Order)
 
     @property
-    def subtotal(self) -> float:
+    def subtotal(self) -> D:
         """Calculate subtotal for this line item."""
         return self.quantity * self.unit_price
 
@@ -88,8 +96,8 @@ if __name__ == "__main__":
         order = Order(customer_id="CUST-12345")
 
         # Add line items
-        item1 = LineItem(product_id="PROD-001", quantity=2, unit_price=29.99)
-        item2 = LineItem(product_id="PROD-002", quantity=1, unit_price=49.99)
+        item1 = LineItem(product_id="PROD-001", quantity=2, unit_price="29.99")
+        item2 = LineItem(product_id="PROD-002", quantity=1, unit_price="49.99")
         order.add_line_items([item1, item2])
 
         # Add shipping info

@@ -26,10 +26,28 @@ Key highlights:
 ### Basic Embedding
 
 ```python
+from decimal import Decimal as D
+
+from protean.exceptions import IncorrectUsageError
+
+
 @domain.value_object
 class Money:
     currency: String(max_length=3, default="USD")
-    amount: Integer(default=0)
+    amount: Decimal(precision=19, scale=4, default=0)
+
+    def add(self, other: "Money") -> "Money":
+        if self.currency != other.currency:
+            raise ValueError("Cannot add different currencies")
+        return Money(currency=self.currency, amount=self.amount + other.amount)
+
+    def subtract(self, other: "Money") -> "Money":
+        if self.currency != other.currency:
+            raise ValueError("Cannot subtract different currencies")
+        return Money(currency=self.currency, amount=self.amount - other.amount)
+
+    def multiply(self, factor: int) -> "Money":
+        return Money(currency=self.currency, amount=self.amount * factor)
 
 
 @domain.aggregate
@@ -42,12 +60,24 @@ class Order:
 
 The aggregate:
 - Uses `ValueObject` field to embed Money
-- Money handles its own validation
+- Money handles its own validation and arithmetic
 - Total amount is always valid currency + amount combination
+- `amount` is a `Decimal` field, so it holds exact decimal values. The standard-library `Decimal` is imported as `D` to keep it apart from the field type of the same name.
+
+The rest of this page reuses this `Money` class.
 
 ### Multiple Value Objects
 
 ```python
+@domain.value_object
+class Address:
+    street: String(required=True, max_length=100)
+    city: String(required=True, max_length=50)
+    state: String(required=True, max_length=50)
+    postal_code: String(required=True, max_length=20)
+    country: String(required=True, max_length=50)
+
+
 @domain.aggregate
 class Order:
     """Order with multiple value objects."""
@@ -71,10 +101,22 @@ Benefits:
 ### Value Objects in Aggregate Methods
 
 ```python
+@domain.entity(part_of="Order")
+class OrderLine:
+    product_id: String(required=True)
+    quantity: Integer(required=True, min_value=1)
+    unit_price = ValueObject(Money, required=True)
+
+    @property
+    def line_total(self) -> Money:
+        return self.unit_price.multiply(self.quantity)
+
+
 @domain.aggregate
 class Order:
     line_items = HasMany(OrderLine)
     total_amount = ValueObject(Money, required=True)
+    status: String(default="pending")
 
     def calculate_total(self) -> Money:
         """
@@ -84,7 +126,7 @@ class Order:
         to implement domain rules.
         """
         if not self.line_items:
-            return Money(currency="USD", amount=0)
+            return Money(currency="USD", amount=D("0"))
 
         total = self.line_items[0].line_total
         for item in self.line_items[1:]:
@@ -114,6 +156,7 @@ Patterns:
 @domain.aggregate
 class Order:
     shipping_address = ValueObject(Address, required=True)
+    status: String(default="pending")
 
     def update_shipping_address(self, new_address: Address):
         """
@@ -137,22 +180,13 @@ Key points:
 
 ## Common Patterns
 
+The examples below reuse the `Money` and `Address` value objects defined above.
+
 ### Order with Line Items and Money
 
 Complete e-commerce order scenario:
 
 ```python
-@domain.value_object
-class Money:
-    currency: String(max_length=3, required=True)
-    amount: Integer(required=True)
-
-    def add(self, other: "Money") -> "Money":
-        if self.currency != other.currency:
-            raise ValueError("Cannot add different currencies")
-        return Money(currency=self.currency, amount=self.amount + other.amount)
-
-
 @domain.entity(part_of="Order")
 class OrderLine:
     product_id: String(required=True)
@@ -167,14 +201,14 @@ class OrderLine:
 @domain.aggregate
 class Order:
     order_number: String(required=True, identifier=True)
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)  # Customer is another aggregate
     shipping_address = ValueObject(Address, required=True)
     total_amount = ValueObject(Money, required=True)
     line_items = HasMany(OrderLine)
 
     def calculate_total(self) -> Money:
         if not self.line_items:
-            return Money(currency="USD", amount=0)
+            return Money(currency="USD", amount=D("0"))
         total = self.line_items[0].line_total
         for item in self.line_items[1:]:
             total = total.add(item.line_total)
@@ -197,15 +231,6 @@ class PhoneNumber:
     @property
     def full_number(self) -> str:
         return f"{self.country_code}{self.number}"
-
-
-@domain.value_object
-class Address:
-    street: String(required=True, max_length=100)
-    city: String(required=True, max_length=50)
-    state: String(required=True, max_length=50)
-    postal_code: String(required=True, max_length=20)
-    country: String(required=True, max_length=50)
 
 
 @domain.aggregate
@@ -244,12 +269,6 @@ class Dimensions:
         return self.length * self.width * self.height
 
 
-@domain.value_object
-class Money:
-    currency: String(max_length=3, required=True)
-    amount: Float(required=True, min_value=0)
-
-
 @domain.aggregate
 class Product:
     sku: String(required=True, max_length=50, identifier=True)
@@ -264,38 +283,23 @@ class Product:
         """Calculate shipping based on dimensions."""
         if not self.dimensions:
             # Default flat rate
-            return Money(currency=self.price.currency, amount=10.0)
+            return Money(currency=self.price.currency, amount=D("10.00"))
 
-        # Rate based on volume
-        volume = self.dimensions.volume
-        rate = 0.05  # per cubic unit
+        # Rate based on volume. Volume is a float; convert it before
+        # mixing it with money, and round to cents.
+        volume = D(str(self.dimensions.volume))
+        rate = D("0.05")  # per cubic unit
 
-        shipping_amount = volume * rate
+        shipping_amount = (volume * rate).quantize(D("0.01"))
         return Money(
             currency=self.price.currency,
-            amount=max(shipping_amount, 5.0)  # Minimum $5
+            amount=max(shipping_amount, D("5.00"))  # Minimum $5
         )
 ```
 
 ### Account with Balance and Transactions
 
 ```python
-@domain.value_object
-class Money:
-    currency: String(max_length=3, required=True)
-    amount: Float(required=True)
-
-    def add(self, other: "Money") -> "Money":
-        if self.currency != other.currency:
-            raise ValueError("Currency mismatch")
-        return Money(currency=self.currency, amount=self.amount + other.amount)
-
-    def subtract(self, other: "Money") -> "Money":
-        if self.currency != other.currency:
-            raise ValueError("Currency mismatch")
-        return Money(currency=self.currency, amount=self.amount - other.amount)
-
-
 @domain.aggregate
 class Account:
     account_number: String(required=True, identifier=True)
@@ -322,97 +326,116 @@ class Account:
 
 ## Initialization Patterns
 
+Creating an aggregate needs an initialized domain and an active domain context.
+
 ### Initialize with Complete Value Objects
 
 ```python
-order = Order(
-    order_number="ORD-001",
-    customer_id="CUST-123",
-    shipping_address=Address(
-        street="123 Main St",
-        city="Boston",
-        state="MA",
-        postal_code="02101",
-        country="USA"
-    ),
-    total_amount=Money(currency="USD", amount=100)
-)
+domain.init(traverse=False)
+
+with domain.domain_context():
+    order = Order(
+        order_number="ORD-001",
+        customer_id="CUST-123",
+        shipping_address=Address(
+            street="123 Main St",
+            city="Boston",
+            state="MA",
+            postal_code="02101",
+            country="USA"
+        ),
+        total_amount=Money(currency="USD", amount=D("100.00"))
+    )
 ```
 
 ### Initialize with Attributes
 
 ```python
-order = Order(
-    order_number="ORD-002",
-    customer_id="CUST-456",
-    shipping_address_street="456 Oak Ave",
-    shipping_address_city="New York",
-    shipping_address_state="NY",
-    shipping_address_postal_code="10001",
-    shipping_address_country="USA",
-    total_amount_currency="USD",
-    total_amount_amount=200
-)
+with domain.domain_context():
+    order = Order(
+        order_number="ORD-002",
+        customer_id="CUST-456",
+        shipping_address_street="456 Oak Ave",
+        shipping_address_city="New York",
+        shipping_address_state="NY",
+        shipping_address_postal_code="10001",
+        shipping_address_country="USA",
+        total_amount_currency="USD",
+        total_amount_amount=D("200.00")
+    )
 ```
 
-Both approaches produce identical aggregates.
+Both approaches produce identical aggregates. Flattened attributes work one level deep: `shipping_address_city` sets `city` on the `shipping_address` value object. If a value object holds another value object, pass the inner one as an object.
 
 ## Accessing Value Object Attributes
 
 ```python
-order = Order(...)
-
 # Access value object
 print(order.total_amount.currency)
 print(order.total_amount.amount)
 
-# Access nested value object
+# Access value object fields
 print(order.shipping_address.street)
 print(order.shipping_address.city)
 
-# Use in methods
-if order.total_amount.amount > 1000:
-    apply_bulk_discount(order)
+# Use in business decisions
+if order.total_amount.amount > D("1000"):
+    print("Eligible for bulk discount")
 ```
 
 ## Testing Aggregates with Value Objects
 
 ```python
-def test_order_creation():
-    order = Order(
+import pytest
+
+
+def build_order() -> Order:
+    return Order(
         order_number="ORD-001",
         customer_id="CUST-123",
-        shipping_address=Address(...),
-        total_amount=Money(currency="USD", amount=100)
+        shipping_address=Address(
+            street="123 Main St",
+            city="Boston",
+            state="MA",
+            postal_code="02101",
+            country="USA"
+        ),
+        total_amount=Money(currency="USD", amount=D("100.00"))
     )
 
-    assert order.total_amount.amount == 100
+
+def test_order_creation():
+    order = build_order()
+
+    assert order.total_amount.amount == D("100.00")
     assert order.shipping_address.city == "Boston"
 
 def test_order_calculate_total():
-    order = Order(...)
+    order = build_order()
     order.add_line_items(
         OrderLine(
             product_id="PROD-001",
             quantity=2,
-            unit_price=Money(currency="USD", amount=50)
+            unit_price=Money(currency="USD", amount=D("50.00"))
         )
     )
 
     total = order.calculate_total()
-    assert total.amount == 100
+    assert total.amount == D("100.00")
     assert total.currency == "USD"
 
 def test_cannot_modify_value_object():
-    order = Order(...)
+    order = build_order()
 
     with pytest.raises(IncorrectUsageError):
-        order.total_amount.amount = 200
+        order.total_amount.amount = D("200.00")
 
     # Correct way: replace entire value object
-    order.total_amount = Money(currency="USD", amount=200)
-    assert order.total_amount.amount == 200
+    order.total_amount = Money(currency="USD", amount=D("200.00"))
+    assert order.total_amount.amount == D("200.00")
 ```
+
+These tests run inside a domain context, which the test setup provides.
 
 ## Best Practices
 
@@ -428,10 +451,11 @@ def test_cannot_modify_value_object():
 
 **Flattening value objects** ❌
 ```python
+# fragment
 @domain.aggregate
 class Order:
     # Bad: Flattening Money to primitives
-    amount: Float()
+    amount: Decimal(precision=19, scale=4)
     currency: String()
 
     # Good: Using Money value object
@@ -440,11 +464,12 @@ class Order:
 
 **Trying to modify value objects** ❌
 ```python
+# fragment
 # Won't work - value objects are immutable
-order.total_amount.amount = 200
+order.total_amount.amount = D("200.00")
 
 # Correct - replace entire value object
-order.total_amount = Money(currency="USD", amount=200)
+order.total_amount = Money(currency="USD", amount=D("200.00"))
 ```
 
 **Not leveraging VO behavior** ❌
@@ -469,6 +494,7 @@ def calculate_total(self):
 
 **Missing required value objects** ❌
 ```python
+# fragment
 # If VO is required, don't allow None
 @domain.aggregate
 class Order:

@@ -38,7 +38,7 @@ Key highlights:
 ```python
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, default="USD")
 
     def add(self, other: "Money") -> "Money":
@@ -48,6 +48,20 @@ class Money:
             amount=self.amount + other.amount,
             currency=self.currency
         )
+
+    def multiply(self, factor: int) -> "Money":
+        return Money(amount=self.amount * factor, currency=self.currency)
+
+
+@domain.value_object
+class Address:
+    street: String(required=True, max_length=200)
+    city: String(required=True, max_length=100)
+    postal_code: String(max_length=20)
+    country: String(max_length=100)
+
+    def full_address(self) -> str:
+        return f"{self.street}, {self.city} {self.postal_code}, {self.country}"
 ```
 
 Value objects:
@@ -61,7 +75,8 @@ Value objects:
 ```python
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)
+    lines = HasMany("OrderLine")
 
     # Value object fields
     shipping_address = ValueObject(Address)
@@ -86,47 +101,57 @@ class OrderLine:
 
 Entities can also contain value objects, combining identity (entity) with rich data types (value objects).
 
+Creating instances needs an initialized domain and an active domain context:
+
+```python
+domain.init(traverse=False)
+```
+
 ### Working with Value Objects
 
 **Creating value objects:**
 
 ```python
-price = Money(amount=29.99, currency="USD")
-address = Address(
-    street="123 Main St",
-    city="San Francisco",
-    postal_code="94102",
-    country="USA"
-)
+with domain.domain_context():
+    price = Money(amount="29.99", currency="USD")
+    address = Address(
+        street="123 Main St",
+        city="San Francisco",
+        postal_code="94102",
+        country="USA"
+    )
 ```
 
 **Using value objects in aggregates:**
 
 ```python
-order = Order(
-    customer_id="C123",
-    shipping_address=address,
-    billing_address=address  # Can reuse - no identity issues
-)
+with domain.domain_context():
+    order = Order(
+        customer_id="C123",
+        shipping_address=address,
+        billing_address=address  # Can reuse - no identity issues
+    )
 ```
 
 **Accessing value object attributes:**
 
 ```python
-# Direct access
-order.shipping_address.city  # "San Francisco"
+with domain.domain_context():
+    # Direct access
+    order.shipping_address.city  # "San Francisco"
 
-# Through behavior
-full_addr = order.shipping_address.full_address()
+    # Through behavior
+    full_addr = order.shipping_address.full_address()
 ```
 
 **Value object immutability:**
 
 ```python
-# This creates a NEW Money object
-new_price = price.multiply(2)
-print(price.amount)      # Still 29.99
-print(new_price.amount)  # 59.98
+with domain.domain_context():
+    # This creates a NEW Money object
+    new_price = price.multiply(2)
+    print(price.amount)      # Still 29.99
+    print(new_price.amount)  # 59.98
 ```
 
 ## Flattening Value Object Attributes
@@ -134,11 +159,8 @@ print(new_price.amount)  # 59.98
 When persisted, value object attributes are flattened into the parent:
 
 ```python
-@domain.aggregate
-class Order:
-    shipping_address = ValueObject(Address)
-
-# In database/storage:
+# For shipping_address = ValueObject(Address) on Order,
+# the database/storage holds:
 # - shipping_address_street
 # - shipping_address_city
 # - shipping_address_postal_code
@@ -148,7 +170,8 @@ class Order:
 You can access these flattened attributes directly:
 
 ```python
-order.shipping_address_city  # "San Francisco"
+with domain.domain_context():
+    order.shipping_address_city  # "San Francisco"
 ```
 
 ## Value Objects with Behavior
@@ -158,7 +181,7 @@ Value objects shine when they encapsulate both data and behavior:
 ```python
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(required=True, max_length=3)
 
     def add(self, other: "Money") -> "Money":
@@ -167,7 +190,7 @@ class Money:
             raise ValueError("Currency mismatch")
         return Money(amount=self.amount + other.amount, currency=self.currency)
 
-    def multiply(self, factor: float) -> "Money":
+    def multiply(self, factor: int) -> "Money":
         """Multiply amount by a factor."""
         return Money(amount=self.amount * factor, currency=self.currency)
 
@@ -189,17 +212,16 @@ This encapsulation:
 
 ### Calculated Properties Using Value Objects
 
-```python
-@domain.aggregate
-class Order:
-    lines = HasMany(OrderLine)
+Add a property to the `Order` aggregate that folds its lines into one `Money`:
 
-    @property
-    def order_total(self) -> Money:
-        total = Money(amount=0.0, currency="USD")
-        for line in self.lines:
-            total = total.add(line.line_total)
-        return total
+```python
+# fragment
+@property
+def order_total(self) -> Money:
+    total = Money(amount=0, currency="USD")
+    for line in self.lines:
+        total = total.add(line.line_total)
+    return total
 ```
 
 ### Value Objects in Collections
@@ -232,6 +254,19 @@ class Address:
     street: String(required=True)
     city: String(required=True)
     location = ValueObject(Coordinates)
+```
+
+Pass the inner value object as an object, not as flattened keyword arguments:
+
+```python
+domain.init(traverse=False)
+
+with domain.domain_context():
+    address = Address(
+        street="123 Main St",
+        city="San Francisco",
+        location=Coordinates(latitude=37.7749, longitude=-122.4194),
+    )
 ```
 
 ## Best Practices

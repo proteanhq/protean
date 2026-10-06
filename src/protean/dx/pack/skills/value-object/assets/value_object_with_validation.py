@@ -16,7 +16,7 @@ from protean.exceptions import ValidationError
 from protean.fields import String, ValueObject
 
 # Domain setup (required for runnable examples)
-domain = Domain(__name__)
+domain = Domain()
 
 
 class EmailValidator:

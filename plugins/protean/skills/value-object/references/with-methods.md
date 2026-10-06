@@ -25,10 +25,16 @@ Key highlights:
 ### Basic Operations
 
 ```python
+from decimal import ROUND_HALF_EVEN
+from decimal import Decimal as D
+
+FOUR_PLACES = D("0.0001")  # the field stores four decimal places
+
+
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount = Decimal(required=True, precision=2, scale=2)
+    amount: Decimal(precision=19, scale=4, required=True)
 
     def add(self, other: "Money") -> "Money":
         """Add two Money values, ensuring same currency."""
@@ -40,63 +46,75 @@ class Money:
             currency=self.currency,
             amount=self.amount + other.amount
         )
+
+    def subtract(self, other: "Money") -> "Money":
+        """Subtract two Money values."""
+        if self.currency != other.currency:
+            raise ValueError("Cannot subtract different currencies")
+        return Money(
+            currency=self.currency,
+            amount=self.amount - other.amount
+        )
+
+    def multiply(self, factor: int | D) -> "Money":
+        """Multiply money by a factor."""
+        return Money(
+            currency=self.currency,
+            amount=(self.amount * factor).quantize(FOUR_PLACES, rounding=ROUND_HALF_EVEN)
+        )
+
+    def divide(self, divisor: int | D) -> "Money":
+        """Divide money by a divisor."""
+        if divisor == 0:
+            raise ValueError("Cannot divide by zero")
+        return Money(
+            currency=self.currency,
+            amount=(self.amount / divisor).quantize(FOUR_PLACES, rounding=ROUND_HALF_EVEN)
+        )
+
+    @property
+    def is_positive(self) -> bool:
+        """Check if amount is positive."""
+        return self.amount > 0
+
+    @property
+    def is_zero(self) -> bool:
+        """Check if amount is zero."""
+        return self.amount == 0
+
+    @property
+    def is_negative(self) -> bool:
+        """Check if amount is negative."""
+        return self.amount < 0
+
+    def is_greater_than(self, other: "Money") -> bool:
+        """Compare if this money is greater than other."""
+        if self.currency != other.currency:
+            raise ValueError("Cannot compare different currencies")
+        return self.amount > other.amount
+
+    def is_less_than(self, other: "Money") -> bool:
+        """Compare if this money is less than other."""
+        if self.currency != other.currency:
+            raise ValueError("Cannot compare different currencies")
+        return self.amount < other.amount
 ```
 
-Key points:
-- Method returns a NEW Money instance (immutability)
-- Validates business rules (matching currencies)
+The `amount` field is the Protean `Decimal` field, which stores a standard-library `decimal.Decimal`. The standard-library class is imported as `D` so the two names do not clash. Use `D("8.75")` for money literals, never floats.
+
+The sections below walk through the parts of this class.
+
+### Arithmetic Operations
+
+`add`, `subtract`, `multiply` and `divide` each return a NEW Money instance (immutability):
+- `add` and `subtract` check that both values use the same currency, with a clear error message
+- `divide` refuses a zero divisor
+- `multiply` and `divide` round the result to the four decimal places the field allows. Without rounding, `D("100") / 3` has too many digits and the field rejects it.
 - Type hints guide usage
-- Clear error messages
-
-### Mathematical Operations
-
-```python
-def subtract(self, other: "Money") -> "Money":
-    """Subtract two Money values."""
-    if self.currency != other.currency:
-        raise ValueError(f"Cannot subtract different currencies")
-    return Money(
-        currency=self.currency,
-        amount=self.amount - other.amount
-    )
-
-def multiply(self, factor: Decimal) -> "Money":
-    """Multiply money by a factor."""
-    return Money(
-        currency=self.currency,
-        amount=self.amount * factor
-    )
-
-def divide(self, divisor: Decimal) -> "Money":
-    """Divide money by a divisor."""
-    if divisor == 0:
-        raise ValueError("Cannot divide by zero")
-    return Money(
-        currency=self.currency,
-        amount=self.amount / divisor
-    )
-```
 
 ### Computed Properties
 
-```python
-@property
-def is_positive(self) -> bool:
-    """Check if amount is positive."""
-    return self.amount > 0
-
-@property
-def is_zero(self) -> bool:
-    """Check if amount is zero."""
-    return self.amount == 0
-
-@property
-def is_negative(self) -> bool:
-    """Check if amount is negative."""
-    return self.amount < 0
-```
-
-Properties:
+`is_positive`, `is_zero` and `is_negative` are properties. They:
 - Don't modify state
 - Return derived information
 - Make code more readable
@@ -104,19 +122,7 @@ Properties:
 
 ### Comparison Methods
 
-```python
-def is_greater_than(self, other: "Money") -> bool:
-    """Compare if this money is greater than other."""
-    if self.currency != other.currency:
-        raise ValueError("Cannot compare different currencies")
-    return self.amount > other.amount
-
-def is_less_than(self, other: "Money") -> bool:
-    """Compare if this money is less than other."""
-    if self.currency != other.currency:
-        raise ValueError("Cannot compare different currencies")
-    return self.amount < other.amount
-```
+`is_greater_than` and `is_less_than` compare amounts, and refuse to compare different currencies.
 
 ## Common Patterns
 
@@ -125,14 +131,15 @@ def is_less_than(self, other: "Money") -> bool:
 The classic example - Money value object with mathematical operations:
 
 ```python
-price = Money(currency="USD", amount=Decimal("100.00"))
-tax = Money(currency="USD", amount=Decimal("8.75"))
+price = Money(currency="USD", amount=D("100.00"))
+tax = Money(currency="USD", amount=D("8.75"))
 total = price.add(tax)
 
 # With discount
-discount_rate = Decimal("0.10")  # 10%
+discount_rate = D("0.10")  # 10%
 discount = price.multiply(discount_rate)
 final_price = price.subtract(discount)
+assert final_price.amount == D("90.00")
 ```
 
 ### Date Range Operations
@@ -226,7 +233,7 @@ class Weight:
 @domain.entity(part_of="Order")
 class LineItem:
     product_id: String(required=True)
-    quantity = Decimal(required=True)
+    quantity: Integer(required=True, min_value=1)
     unit_price = ValueObject(Money, required=True)
 
     @property
@@ -245,7 +252,7 @@ class Order:
     def calculate_total(self) -> Money:
         """Sum all line items using Money's add method."""
         if not self.line_items:
-            return Money(currency="USD", amount=Decimal("0.00"))
+            return Money(currency="USD", amount=D("0.00"))
 
         total = self.line_items[0].total
         for item in self.line_items[1:]:
@@ -253,10 +260,10 @@ class Order:
 
         return total
 
-    def apply_discount(self, percentage: Decimal) -> Money:
+    def apply_discount(self, percentage: D) -> Money:
         """Calculate discounted total."""
         total = self.calculate_total()
-        discount_factor = Decimal("1.0") - (percentage / Decimal("100.0"))
+        discount_factor = D("1") - (percentage / D("100"))
         return total.multiply(discount_factor)
 ```
 
@@ -265,28 +272,31 @@ class Order:
 Test all operations and edge cases:
 
 ```python
+import pytest
+
+
 def test_money_addition():
-    m1 = Money(currency="USD", amount=Decimal("100.00"))
-    m2 = Money(currency="USD", amount=Decimal("50.00"))
+    m1 = Money(currency="USD", amount=D("100.00"))
+    m2 = Money(currency="USD", amount=D("50.00"))
     result = m1.add(m2)
 
-    assert result.amount == Decimal("150.00")
+    assert result.amount == D("150.00")
     assert result.currency == "USD"
     # Original instances unchanged (immutability)
-    assert m1.amount == Decimal("100.00")
+    assert m1.amount == D("100.00")
 
 def test_cannot_add_different_currencies():
-    m1 = Money(currency="USD", amount=Decimal("100.00"))
-    m2 = Money(currency="EUR", amount=Decimal("50.00"))
+    m1 = Money(currency="USD", amount=D("100.00"))
+    m2 = Money(currency="EUR", amount=D("50.00"))
 
     with pytest.raises(ValueError) as exc:
         m1.add(m2)
     assert "different currencies" in str(exc.value)
 
 def test_money_is_positive():
-    m1 = Money(currency="USD", amount=Decimal("100.00"))
-    m2 = Money(currency="USD", amount=Decimal("-50.00"))
-    m3 = Money(currency="USD", amount=Decimal("0.00"))
+    m1 = Money(currency="USD", amount=D("100.00"))
+    m2 = Money(currency="USD", amount=D("-50.00"))
+    m3 = Money(currency="USD", amount=D("0.00"))
 
     assert m1.is_positive is True
     assert m2.is_positive is False
@@ -307,6 +317,7 @@ def test_money_is_positive():
 
 **Modifying self** ❌
 ```python
+# fragment
 def add(self, other: "Money") -> "Money":
     self.amount += other.amount  # Wrong! Violates immutability
     return self
@@ -314,6 +325,7 @@ def add(self, other: "Money") -> "Money":
 
 **Not validating operations** ❌
 ```python
+# fragment
 def add(self, other: "Money") -> "Money":
     # Missing currency check!
     return Money(currency=self.currency, amount=self.amount + other.amount)
@@ -321,6 +333,7 @@ def add(self, other: "Money") -> "Money":
 
 **Operations without return** ❌
 ```python
+# fragment
 def add(self, other: "Money"):  # Missing return type
     # What does this return?
     pass

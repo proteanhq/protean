@@ -12,12 +12,22 @@ Usage:
     python value_object_in_aggregate.py
 """
 
+from decimal import Decimal as D
+
 from protean import Domain
-from protean.fields import DateTime, HasMany, Integer, String, ValueObject
+from protean.fields import (
+    DateTime,
+    Decimal,
+    HasMany,
+    Identifier,
+    Integer,
+    String,
+    ValueObject,
+)
 from protean.utils import utcnow_func
 
 # Domain setup (required for runnable examples)
-domain = Domain(__name__)
+domain = Domain()
 
 
 @domain.value_object
@@ -25,7 +35,7 @@ class Money:
     """Money value object with currency and amount."""
 
     currency: String(max_length=3, default="USD")
-    amount: Integer(default=0)
+    amount: Decimal(precision=19, scale=4, default=0)
 
     def add(self, other: "Money") -> "Money":
         """Add two Money values."""
@@ -81,7 +91,7 @@ class Order:
     """
 
     order_number: String(required=True, max_length=20, identifier=True)
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)
 
     # Value objects in aggregate
     shipping_address = ValueObject(Address, required=True)
@@ -106,7 +116,7 @@ class Order:
         work with value objects to implement domain rules.
         """
         if not self.line_items:
-            return Money(currency="USD", amount=0)
+            return Money(currency="USD", amount=D("0"))
 
         total = self.line_items[0].line_total
         for item in self.line_items[1:]:
@@ -185,7 +195,7 @@ if __name__ == "__main__":
                 postal_code="62701",
                 country="USA",
             ),
-            total_amount=Money(currency="USD", amount=0),  # Will be calculated
+            total_amount=Money(currency="USD", amount=D("0")),  # Will be calculated
         )
 
         print(f"Order: {order.order_number}")
@@ -199,7 +209,7 @@ if __name__ == "__main__":
                 product_id="PROD-001",
                 product_name="Laptop",
                 quantity=1,
-                unit_price=Money(currency="USD", amount=1200),
+                unit_price=Money(currency="USD", amount=D("1200.00")),
             )
         )
         order.add_line_items(
@@ -207,7 +217,7 @@ if __name__ == "__main__":
                 product_id="PROD-002",
                 product_name="Mouse",
                 quantity=2,
-                unit_price=Money(currency="USD", amount=25),
+                unit_price=Money(currency="USD", amount=D("25.00")),
             )
         )
 
@@ -254,7 +264,8 @@ if __name__ == "__main__":
         except ValueError as e:
             print(f"Business rule enforced: {e}")
 
-        # Create order with attribute initialization
+        # An aggregate also accepts a value object's fields flattened
+        # one level deep, as <field>_<attribute>
         print("\n--- Alternative initialization ---")
         order2 = Order(
             order_number="ORD-2024-002",
@@ -265,7 +276,7 @@ if __name__ == "__main__":
             shipping_address_postal_code="02101",
             shipping_address_country="USA",
             total_amount_currency="USD",
-            total_amount_amount=500,
+            total_amount_amount=D("500.00"),
         )
         print(f"Order 2: {order2.order_number}")
         print(f"Shipping to: {order2.shipping_address.full_address}")

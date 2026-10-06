@@ -25,6 +25,11 @@ Key points:
 ### The Validator Class
 
 ```python
+import re
+
+from protean.exceptions import ValidationError
+
+
 class EmailValidator:
     """Custom validator for email address format."""
 
@@ -84,28 +89,33 @@ Benefits:
 Use built-in field validators for simple cases:
 
 ```python
+from protean.fields.validators import RegexValidator
+
+
 @domain.value_object
 class PhoneNumber:
     number: String(
         max_length=20,
         required=True,
         min_length=10,
-        regex=r'^\+?[1-9]\d{1,14}$'
+        validators=[RegexValidator(r'^\+?[1-9]\d{1,14}$')]
     )
 ```
+
+`String` has no `regex` option. Pattern checks go through `RegexValidator` in the `validators` list.
 
 ### Custom Validator Functions
 
 For reusable validation logic:
 
 ```python
-def validate_positive(value):
+def validate_not_negative(value):
     if value < 0:
-        raise ValidationError("Value must be positive")
+        raise ValidationError("Value must not be negative")
 
 @domain.value_object
 class Price:
-    amount: Float(required=True, validators=[validate_positive])
+    amount: Decimal(precision=19, scale=4, required=True, validators=[validate_not_negative])
 ```
 
 ### Validator Classes
@@ -160,36 +170,37 @@ class WebURL:
 ### Postal Codes
 
 ```python
-class PostalCodeValidator:
-    def __init__(self, country):
-        self.country = country
-        self.patterns = {
-            'US': r'^\d{5}(-\d{4})?$',
-            'UK': r'^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$',
-            'CA': r'^[A-Z]\d[A-Z]\s?\d[A-Z]\d$'
-        }
+POSTAL_CODE_PATTERNS = {
+    'US': r'^\d{5}(-\d{4})?$',
+    'UK': r'^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$',
+    'CA': r'^[A-Z]\d[A-Z]\s?\d[A-Z]\d$'
+}
 
-    def __call__(self, value):
-        pattern = self.patterns.get(self.country)
-        if not pattern or not re.match(pattern, value):
-            raise ValidationError(f"Invalid {self.country} postal code")
 
 @domain.value_object
 class PostalCode:
     code: String(max_length=10, required=True)
-    country: String(max_length=2, required=True)
+    country: String(max_length=2, required=True, choices=list(POSTAL_CODE_PATTERNS))
 
-    def __post_init__(self):
-        # Validate code format for the country
-        validator = PostalCodeValidator(self.country)
-        validator(self.code)
+    @invariant.post
+    def code_must_match_country_format(self):
+        pattern = POSTAL_CODE_PATTERNS.get(self.country)
+        if not pattern or not re.match(pattern, self.code):
+            raise ValidationError(
+                {"code": [f"Invalid {self.country} postal code"]}
+            )
 ```
+
+A field validator sees one value. The postal code format depends on the country, so the check runs in an `@invariant.post`, which sees every field.
 
 ## Testing Validation
 
 Always test both valid and invalid cases:
 
 ```python
+import pytest
+
+
 def test_valid_email():
     email = Email(address="john@example.com")
     assert email.address == "john@example.com"

@@ -7,16 +7,20 @@ This example demonstrates:
 - Auto-generated helper methods for HasMany
 - Accessing and manipulating associations
 - Custom methods that use auto-generated helpers
+- Linking to another aggregate with an Identifier field that holds its id
 
 Usage:
     python add_association_fields.py
 """
 
+from decimal import Decimal as D
+
 from protean import Domain
-from protean.fields import Float, HasMany, HasOne, Integer, String
+from protean.exceptions import ObjectNotFoundError, ValidationError
+from protean.fields import Decimal, HasMany, HasOne, Identifier, Integer, List, String
 
 # Domain setup
-domain = Domain(__name__)
+domain = Domain()
 
 
 # ========================================
@@ -29,7 +33,7 @@ class Order:
     """Order aggregate with one-to-one shipping info relationship."""
 
     order_number: String(required=True, max_length=50, identifier=True)
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)  # Links to the Customer aggregate by id
     status: String(default="draft", choices=["draft", "placed", "shipped", "delivered"])
 
     # HasOne: One order has one shipping info
@@ -64,12 +68,14 @@ class ShoppingCart:
     HasMany auto-generates these methods:
     - add_items(item): Add one or more items
     - remove_items(item): Remove an item
-    - get_one_from_items(id): Get item by ID
-    - filter_items(**criteria): Filter items
+    - get_one_from_items(id=item_id): Get one item by keyword criteria.
+      Raises ObjectNotFoundError when nothing matches.
+    - filter_items(**criteria): Get the items whose fields equal the given
+      values (equality only, no operators such as unit_price__gt)
     """
 
     cart_id: String(required=True, max_length=50, identifier=True)
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)  # Links to the Customer aggregate by id
 
     # HasMany: One cart has many items
     items = HasMany("CartItem")
@@ -80,9 +86,9 @@ class ShoppingCart:
         return sum(item.quantity for item in self.items)
 
     @property
-    def subtotal(self) -> float:
+    def subtotal(self) -> D:
         """Calculate cart subtotal."""
-        return sum(item.line_total for item in self.items)
+        return sum((item.line_total for item in self.items), D("0"))
 
 
 @domain.entity(part_of="ShoppingCart")
@@ -92,10 +98,10 @@ class CartItem:
     product_id: String(required=True, max_length=50)
     product_name: String(required=True, max_length=200)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True, min_value=0.01)
+    unit_price: Decimal(required=True, precision=19, scale=4, min_value=0.01)
 
     @property
-    def line_total(self) -> float:
+    def line_total(self) -> D:
         """Calculate line total."""
         return self.quantity * self.unit_price
 
@@ -107,18 +113,22 @@ class CartItem:
 
 @domain.aggregate
 class BlogPost:
-    """Blog post with comments and tags.
+    """Blog post with comments, attachments and tags.
 
-    Demonstrates multiple HasMany relationships.
+    Demonstrates multiple HasMany relationships. Tags are plain strings with
+    no identity, so they use a List instead of HasMany.
     """
 
     title: String(required=True, max_length=200)
     content: String(required=True, max_length=10000)
-    author_id: String(required=True, max_length=50)
+    author_id: Identifier(required=True)  # Links to the User aggregate by id
 
     # Multiple HasMany relationships
     comments = HasMany("Comment")
-    tags = HasMany("Tag")
+    attachments = HasMany("Attachment")
+
+    # Simple values without identity
+    tags: List(content_type=String)
 
     @property
     def comment_count(self) -> int:
@@ -126,9 +136,9 @@ class BlogPost:
         return len(self.comments)
 
     @property
-    def tag_names(self) -> list:
-        """Get list of tag names."""
-        return [tag.name for tag in self.tags]
+    def attachment_names(self) -> list:
+        """Get list of attachment file names."""
+        return [attachment.file_name for attachment in self.attachments]
 
 
 @domain.entity(part_of="BlogPost")
@@ -141,10 +151,11 @@ class Comment:
 
 
 @domain.entity(part_of="BlogPost")
-class Tag:
-    """Tag entity."""
+class Attachment:
+    """Attachment entity."""
 
-    name: String(required=True, max_length=50)
+    file_name: String(required=True, max_length=255)
+    size_bytes: Integer(required=True, min_value=0)
 
 
 # ========================================
@@ -160,13 +171,13 @@ class Invoice:
     """
 
     invoice_number: String(required=True, max_length=50, identifier=True)
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)  # Links to the Customer aggregate by id
     status: String(default="draft", choices=["draft", "sent", "paid", "overdue"])
 
     # HasMany relationship (auto-generates add_line_items, remove_line_items, etc.)
     line_items = HasMany("InvoiceLineItem")
 
-    def add_product_line(self, description: str, quantity: int, unit_price: float):
+    def add_product_line(self, description: str, quantity: int, unit_price: D):
         """Custom method to add line item with validation.
 
         Uses auto-generated add_line_items() under the hood.
@@ -183,24 +194,26 @@ class Invoice:
         # Use auto-generated helper
         self.add_line_items([line])
 
-    def remove_product_line(self, line_id: str):  # pragma: no cover
+    def remove_product_line(self, line_id: str):
         """Custom method to remove line item by ID.
 
-        FIXME: This method has a bug - get_one_from_line_items() API is incorrect.
-        The correct Protean API needs to be verified.
         Uses auto-generated get_one_from_line_items() and remove_line_items().
+        get_one_from_line_items() takes keyword criteria and raises
+        ObjectNotFoundError when no line matches; it never returns None.
         """
         # Use auto-generated helper to find
-        line = self.get_one_from_line_items(line_id)  # pragma: no cover
+        try:
+            line = self.get_one_from_line_items(id=line_id)
+        except ObjectNotFoundError:
+            raise ValidationError({"line_items": [f"No line item with id {line_id}"]})
 
         # Use auto-generated helper to remove
-        if line:  # pragma: no cover
-            self.remove_line_items(line)  # pragma: no cover
+        self.remove_line_items(line)
 
     @property
-    def total(self) -> float:
+    def total(self) -> D:
         """Calculate invoice total."""
-        return sum(item.line_total for item in self.line_items)
+        return sum((item.line_total for item in self.line_items), D("0"))
 
 
 @domain.entity(part_of="Invoice")
@@ -209,10 +222,10 @@ class InvoiceLineItem:
 
     description: String(required=True, max_length=500)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True, min_value=0.01)
+    unit_price: Decimal(required=True, precision=19, scale=4, min_value=0.01)
 
     @property
-    def line_total(self) -> float:
+    def line_total(self) -> D:
         """Calculate line total."""
         return self.quantity * self.unit_price
 
@@ -267,19 +280,19 @@ if __name__ == "__main__":
                 product_id="PROD-001",
                 product_name="Wireless Mouse",
                 quantity=1,
-                unit_price=29.99,
+                unit_price=D("29.99"),
             ),
             CartItem(
                 product_id="PROD-002",
                 product_name="Keyboard",
                 quantity=1,
-                unit_price=79.99,
+                unit_price=D("79.99"),
             ),
             CartItem(
                 product_id="PROD-003",
                 product_name="USB Cable",
                 quantity=3,
-                unit_price=9.99,
+                unit_price=D("9.99"),
             ),
         ]
 
@@ -330,16 +343,24 @@ if __name__ == "__main__":
         ]
         post.add_comments(comments)  # Auto-generated
 
-        # Add tags (auto-generated add_tags())
-        tags = [Tag(name="python"), Tag(name="ddd"), Tag(name="protean")]
-        post.add_tags(tags)  # Auto-generated
+        # Add attachments (auto-generated add_attachments())
+        post.add_attachments(
+            [
+                Attachment(file_name="diagram.png", size_bytes=48213),
+                Attachment(file_name="example.py", size_bytes=1820),
+            ]
+        )  # Auto-generated
+
+        # Tags are a plain list
+        post.tags = ["python", "ddd", "protean"]
 
         print(f"Post: {post.title}")
         print(f"Comments: {post.comment_count}")
         for comment in post.comments:
             print(f"  - {comment.author_name}: {comment.content}")
         print()
-        print(f"Tags: {', '.join(post.tag_names)}")
+        print(f"Attachments: {', '.join(post.attachment_names)}")
+        print(f"Tags: {', '.join(post.tags)}")
         print()
 
         # ========================================
@@ -353,9 +374,13 @@ if __name__ == "__main__":
         )
 
         # Add lines using custom method (which uses auto-generated helper)
-        invoice.add_product_line("Consulting Services", quantity=10, unit_price=150.0)
-        invoice.add_product_line("Software License", quantity=1, unit_price=499.99)
-        invoice.add_product_line("Support (monthly)", quantity=12, unit_price=99.99)
+        invoice.add_product_line(
+            "Consulting Services", quantity=10, unit_price=D("150.00")
+        )
+        invoice.add_product_line("Software License", quantity=1, unit_price=D("499.99"))
+        invoice.add_product_line(
+            "Support (monthly)", quantity=12, unit_price=D("99.99")
+        )
 
         print(f"Invoice: {invoice.invoice_number}")
         print(f"Line items: {len(invoice.line_items)}")
@@ -392,28 +417,45 @@ if __name__ == "__main__":
                     product_id="PROD-001",
                     product_name="Mouse",
                     quantity=1,
-                    unit_price=29.99,
+                    unit_price=D("29.99"),
                 ),
                 CartItem(
                     product_id="PROD-004",
                     product_name="Monitor",
                     quantity=1,
-                    unit_price=299.99,
+                    unit_price=D("299.99"),
                 ),
                 CartItem(
                     product_id="PROD-005",
                     product_name="Webcam",
                     quantity=2,
-                    unit_price=89.99,
+                    unit_price=D("89.99"),
                 ),
             ]
         )
 
-        # Filter expensive items (using auto-generated filter_items())
-        # Note: In real Protean, filter methods support query operators
         print("All items in cart:")
         for item in cart2.items:
             print(f"  - {item.product_name}: ${item.unit_price:.2f}")
+        print()
+
+        # filter_items() matches on equality only
+        monitors = cart2.filter_items(product_id="PROD-004")
+        print(f"Items with product PROD-004: {[i.product_name for i in monitors]}")
+
+        # For comparisons, filter the collection in Python
+        expensive = [i for i in cart2.items if i.unit_price > D("50")]
+        print(f"Items over $50: {[i.product_name for i in expensive]}")
+
+        # get_one_from_items() takes keyword criteria
+        webcam = cart2.get_one_from_items(id=expensive[1].id)
+        print(f"Found by id: {webcam.product_name}")
+
+        # A miss raises ObjectNotFoundError
+        try:
+            cart2.get_one_from_items(id="no-such-item")
+        except ObjectNotFoundError:
+            print("No item with id 'no-such-item'")
         print()
 
         print("=" * 60)

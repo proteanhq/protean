@@ -11,12 +11,14 @@ Usage:
     python value_object_with_invariants.py
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, String, ValueObject
+from protean.fields import Decimal, Float, String, ValueObject
 
 # Domain setup (required for runnable examples)
-domain = Domain(__name__)
+domain = Domain()
 
 
 @domain.value_object
@@ -29,7 +31,7 @@ class Balance:
     """
 
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
     @invariant.post
     def check_balance_is_positive_if_currency_is_usd(self):
@@ -99,17 +101,17 @@ if __name__ == "__main__":
 
     with domain.domain_context():
         # Valid USD balance (positive)
-        bal1 = Balance(currency="USD", amount=100.0)
+        bal1 = Balance(currency="USD", amount=D("100.00"))
         print(f"Valid USD balance: {bal1.currency} {bal1.amount}")
 
         # Valid non-USD balance (can be negative)
-        bal2 = Balance(currency="EUR", amount=-50.0)
+        bal2 = Balance(currency="EUR", amount=D("-50.00"))
         print(f"Valid EUR balance: {bal2.currency} {bal2.amount}")
 
         # Invalid USD balance (negative) - will raise ValidationError
         print("\nTrying to create negative USD balance:")
         try:
-            Balance(currency="USD", amount=-100.0)
+            Balance(currency="USD", amount=D("-100.00"))
             print("Should have failed!")
         except ValidationError as e:
             print(f"Invariant enforced: {e}")
@@ -151,7 +153,7 @@ if __name__ == "__main__":
 
         # Use in aggregate
         account = Account(
-            balance=Balance(currency="USD", amount=1000.0), name="Checking"
+            balance=Balance(currency="USD", amount=D("1000.00")), name="Checking"
         )
         print(
             f"\nAccount created: {account.name}, Balance: {account.balance.amount}"

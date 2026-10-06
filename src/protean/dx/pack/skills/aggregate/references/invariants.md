@@ -7,7 +7,7 @@ Invariants are business rules that must always hold true for an aggregate. Prote
 Invariants:
 - Ensure business rules are never violated
 - Are checked automatically by Protean
-- Can be pre-conditions (checked before) or post-conditions (checked after)
+- Can be pre-conditions (checked before a change) or post-conditions (checked after it)
 - Raise `ValidationError` in its dict form when violated
 - Help maintain aggregate consistency
 
@@ -19,7 +19,7 @@ Key highlights:
 - `@invariant.pre` decorator for pre-conditions
 - `@invariant.post` decorator for post-conditions
 - `ValidationError({"field": ["message"]})` for every rule violation
-- Invariants checked on every state change
+- Invariants checked at the end of `__init__` and on every field assignment
 - Multiple invariants per aggregate
 
 ## Types of Invariants
@@ -29,13 +29,15 @@ Key highlights:
 Post-conditions are checked **after** a state change:
 
 ```python
+from decimal import Decimal as D
+
 from protean.exceptions import ValidationError
 
 
 @domain.aggregate
 class Account:
-    balance: Float(default=0.0)
-    overdraft_limit: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
+    overdraft_limit: Decimal(precision=19, scale=4, default=0)
 
     @invariant.post
     def balance_must_be_above_overdraft_limit(self):
@@ -44,23 +46,25 @@ class Account:
                 {"_entity": ["Balance cannot be below overdraft limit"]}
             )
 
-    def withdraw(self, amount: float):
+    def withdraw(self, amount):
         self.balance -= amount
-        # Post-invariant checked here
+        # Post-invariant checked here, on the assignment
 ```
 
 **Use post-conditions when:**
 - You need to validate the result of a state change
 - The rule depends on the new state
-- You want to allow intermediate invalid states during computation
+- Several fields change together: wrap the changes in `atomic_change` so the check runs once, at the end
 
 ### Pre-Condition Invariants (`@invariant.pre`)
 
-Pre-conditions are checked **before** a state change:
+Pre-conditions are checked **before** a state change. A failing pre-condition
+rejects the change, so the field keeps its old value:
 
 ```python
 @domain.aggregate
 class Account:
+    balance: Decimal(precision=19, scale=4, default=0)
     status: String(max_length=20, default="active")
 
     @invariant.pre
@@ -70,8 +74,8 @@ class Account:
                 {"status": [f"Cannot perform transactions on {self.status} account"]}
             )
 
-    def withdraw(self, amount: float):
-        # Pre-invariant checked here first
+    def withdraw(self, amount):
+        # Pre-invariant checked first, on the assignment
         self.balance -= amount
 ```
 
@@ -114,8 +118,8 @@ raise ValidationError({"_entity": ["Balance cannot be below overdraft limit"]})
 @domain.aggregate
 class Account:
     account_number: String(required=True, identifier=True)
-    balance: Float(default=0.0)
-    overdraft_limit: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
+    overdraft_limit: Decimal(precision=19, scale=4, default=0)
 
     @invariant.post
     def balance_must_be_above_overdraft_limit(self):
@@ -129,7 +133,7 @@ class Account:
                 }
             )
 
-    def withdraw(self, amount: float):
+    def withdraw(self, amount):
         if amount <= 0:
             raise ValueError("Withdrawal amount must be positive")
         self.balance -= amount
@@ -169,13 +173,19 @@ class Warehouse:
             raise ValidationError({"_entity": ["Stock exceeds capacity"]})
 ```
 
-All invariants are checked on every state change. If any fails, the change raises
-`ValidationError`. The change is not undone: the object keeps the invalid value,
-so discard it instead of saving it.
+All post-invariants are checked on every field assignment. If any fails, the
+assignment raises `ValidationError`. The change is not undone: the object keeps
+the invalid value, so discard it instead of persisting it.
 
 ### Combining Pre and Post Invariants
 
 ```python
+@domain.entity(part_of="Order")
+class OrderLine:
+    sku: String(required=True)
+    quantity: Integer(default=1, min_value=1)
+
+
 @domain.aggregate
 class Order:
     status: String(default="draft")
@@ -192,6 +202,7 @@ class Order:
             raise ValidationError({"line_items": ["Cannot place order without items"]})
 
     def add_item(self, item: OrderLine):
+        # Adding a child checks the root's invariants too
         # Pre-check: must be draft
         self.add_line_items(item)
         # Post-check: runs, but won't fail (still draft)
@@ -209,8 +220,9 @@ There's an important distinction:
 ### Field-Level Validation
 
 ```python
+# fragment
 class Account:
-    balance: Float(required=True)  # Must exist
+    balance: Decimal(precision=19, scale=4, required=True)  # Must exist
     account_number: String(required=True, max_length=50)  # Format constraints
 ```
 
@@ -241,27 +253,53 @@ Invariants check:
 
 ## When Invariants Are Checked
 
-Protean checks invariants:
+Protean checks invariants at these points:
 
-1. **After initialization**: When creating a new aggregate instance
-2. **After any mutation**: When calling methods that change state, or when
-   setting a field directly
+1. **At the end of `__init__`**: post-invariants run once the new instance is
+   built. Pre-invariants do not run here.
+2. **On every field assignment**: pre-invariants run before the new value is
+   set, and post-invariants run after it. A method that changes state is checked
+   at each assignment it makes. A change to a child entity (adding, removing, or
+   setting a field on it) checks the invariants on the aggregate root as well.
+3. **At the end of an `atomic_change` block**: `with atomic_change(account):`
+   (`from protean import atomic_change`) runs the pre-invariants once at the
+   start and defers the post-invariants to the end of the block. Use it when
+   several fields must change together and are invalid in between.
 
-The repository does not check invariants again when it saves.
+`repository.add()` does not check invariants again. A broken rule raises at the
+assignment that breaks it, before the aggregate reaches the repository.
 
 ```python
-# Checked after __init__
-account = Account(balance=-500.0, overdraft_limit=100.0)
-# Raises ValidationError
+from protean import atomic_change
 
-# Checked after state change
-account = Account(balance=1000.0, overdraft_limit=100.0)
-account.withdraw(1200.0)
-# Raises ValidationError
+domain.init(traverse=False)
 
-# Checked after a direct field change
-account = Account(balance=500.0, overdraft_limit=100.0)
-account.balance = -200.0  # Raises ValidationError
+with domain.domain_context():
+    # Checked at the end of __init__
+    try:
+        Account(account_number="ACC-1", balance="-500.00", overdraft_limit="100.00")
+    except ValidationError as exc:
+        print(exc.messages)  # {'_entity': [...]}
+
+    # Checked on the assignment inside withdraw()
+    account = Account(account_number="ACC-2", balance="1000.00", overdraft_limit="100.00")
+    try:
+        account.withdraw(D("1200.00"))
+    except ValidationError as exc:
+        print(exc.messages)
+
+    # Checked on a direct field change
+    account = Account(account_number="ACC-3", balance="500.00", overdraft_limit="100.00")
+    try:
+        account.balance = D("-200.00")  # Raises here, not when the account is persisted
+    except ValidationError as exc:
+        print(exc.messages)
+
+    # Deferred to the end of the block
+    account = Account(account_number="ACC-4", balance="500.00", overdraft_limit="100.00")
+    with atomic_change(account):
+        account.balance = D("-800.00")  # Invalid for now, not checked yet
+        account.overdraft_limit = D("1000.00")  # Valid again when the block ends
 ```
 
 ## Best Practices
@@ -296,6 +334,12 @@ def order_state_consistency(self):
 ### Invariant with Helper Method
 
 ```python
+@domain.entity(part_of="ShoppingCart")
+class CartItem:
+    sku: String(required=True)
+    quantity: Integer(default=1, min_value=1)
+
+
 @domain.aggregate
 class ShoppingCart:
     items = HasMany("CartItem")
@@ -331,16 +375,19 @@ def warn_on_low_stock(self):
 ## Testing Invariants
 
 ```python
+import pytest
+
+
 def test_account_overdraft_invariant():
-    account = Account(balance=1000.0, overdraft_limit=100.0)
+    account = Account(account_number="ACC-1", balance="1000.00", overdraft_limit="100.00")
 
     # Should succeed
-    account.withdraw(1000.0)
-    assert account.balance == 0.0
+    account.withdraw(D("1000.00"))
+    assert account.balance == D("0")
 
     # Should fail
     with pytest.raises(ValidationError) as exc:
-        account.withdraw(200.0)
+        account.withdraw(D("200.00"))
     assert "INVARIANT_POST_FAILED" in exc.value.codes
     assert "_entity" in exc.value.messages
 ```

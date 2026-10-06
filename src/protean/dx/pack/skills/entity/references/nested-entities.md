@@ -36,27 +36,60 @@ Key highlights:
 ### The Aggregate Root
 
 ```python
+from datetime import datetime
+from decimal import Decimal as D  # stdlib Decimal, aliased so it does not clash with the field
+
+from protean import Domain, invariant
+from protean.exceptions import ValidationError
+from protean.fields import DateTime, Decimal, HasMany, Identifier, Integer, String, Text
+
+domain = Domain()
+
 @domain.aggregate
 class Order:
     order_number: String(required=True, max_length=50)
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)
     status: String(max_length=20, default="draft")
 
     # First level: aggregate has many line items
     line_items = HasMany("LineItem")
+
+    @property
+    def total_notes(self) -> int:
+        """Count notes across all line items."""
+        return sum(len(item.notes) for item in self.line_items)
+
+    def get_items_with_notes(self) -> list:
+        """Get all line items that have notes."""
+        return [item for item in self.line_items if item.notes]
+
+    def get_all_notes(self) -> list:
+        """Get all notes from all line items."""
+        all_notes = []
+        for item in self.line_items:
+            all_notes.extend(item.notes)
+        return all_notes
+
+    @invariant.post
+    def customization_fees_cannot_exceed_item_price(self):
+        for item in self.line_items:
+            if item.customization_fee > item.quantity * item.unit_price:
+                raise ValidationError(
+                    {"_entity": [f"Customization fees exceed the price of {item.product_name}"]}
+                )
 ```
 
-The Order aggregate is the root of the hierarchy.
+The Order aggregate is the root of the hierarchy. Its methods read the nested entities at every level.
 
 ### First-Level Entities
 
 ```python
 @domain.entity(part_of="Order")
 class LineItem:
-    product_id: String(required=True, max_length=50)
+    product_id: Identifier(required=True)
     product_name: String(required=True, max_length=200)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True, min_value=0.0)
+    unit_price: Decimal(precision=19, scale=4, required=True, min_value=0)
 
     # Second level: line item has many notes
     notes = HasMany("LineItemNote")
@@ -64,174 +97,22 @@ class LineItem:
     # Second level: line item has many customizations
     customizations = HasMany("LineItemCustomization")
 
-    # Reference back to aggregate
-    order = Reference(Order)
-```
-
-LineItem is a first-level entity that contains other entities (notes and customizations).
-
-### Second-Level Entities
-
-```python
-@domain.entity(part_of="Order")
-class LineItemNote:
-    content: Text(required=True)
-    author: String(max_length=100, default="Customer")
-    created_at: DateTime(default=datetime.now)
-
-    # Reference back to parent LineItem (not Order!)
-    line_item = Reference("LineItem")
-
-
-@domain.entity(part_of="Order")
-class LineItemCustomization:
-    customization_type: String(required=True, max_length=50)
-    details: Text(required=True)
-    price: Float(default=0.0, min_value=0.0)
-
-    # Reference back to parent LineItem
-    line_item = Reference("LineItem")
-```
-
-Second-level entities:
-- Still specify `part_of=Order` (the aggregate root)
-- Reference their immediate parent entity (LineItem)
-- Are persisted as part of the aggregate
-
-### Building the Hierarchy
-
-```python
-# Create aggregate
-order = Order(
-    order_number="ORD-2024-001",
-    customer_id="CUST-12345"
-)
-
-# Create first-level entity
-item = LineItem(
-    product_id="PROD-001",
-    product_name="Custom T-Shirt",
-    quantity=2,
-    unit_price=29.99
-)
-
-# Create second-level entities (notes)
-note1 = LineItemNote(content="Please use soft fabric", author="Customer")
-note2 = LineItemNote(content="Gift wrap this item", author="Customer")
-item.add_notes([note1, note2])
-
-# Create second-level entities (customizations)
-custom1 = LineItemCustomization(
-    customization_type="Color",
-    details="Navy Blue",
-    price=0.0
-)
-custom2 = LineItemCustomization(
-    customization_type="Engraving",
-    details="Happy Birthday!",
-    price=5.99
-)
-item.add_customizations([custom1, custom2])
-
-# Add first-level entity to aggregate
-order.add_line_items([item])
-```
-
-Build the hierarchy from bottom-up, then add to parent.
-
-### Navigating the Hierarchy
-
-```python
-# Top-down navigation
-for item in order.line_items:
-    print(f"Item: {item.product_name}")
-
-    # Navigate to second-level entities
-    if item.notes:
-        for note in item.notes:
-            print(f"  Note: {note.content}")
-
-    if item.customizations:
-        for custom in item.customizations:
-            print(f"  Customization: {custom.description}")
-
-# Bottom-up navigation
-if order.line_items and order.line_items[0].notes:
-    first_note = order.line_items[0].notes[0]
-    # Navigate from note to line item
-    parent_item = first_note.line_item
-    # Navigate from line item to order
-    parent_order = parent_item.order
-```
-
-Navigation works both ways through reference fields.
-
-### Business Logic Across Levels
-
-```python
-@domain.aggregate
-class Order:
-    line_items = HasMany("LineItem")
+    # Protean adds `order` (a Reference to Order) and `order_id` automatically
 
     @property
-    def total_notes(self) -> int:
-        """Count notes across all line items."""
-        if not self.line_items:
-            return 0
-        return sum(
-            len(item.notes) if item.notes else 0
-            for item in self.line_items
-        )
-
-    def get_items_with_notes(self) -> list:
-        """Get all line items that have notes."""
-        if not self.line_items:
-            return []
-        return [
-            item for item in self.line_items
-            if item.notes and len(item.notes) > 0
-        ]
-```
-
-The aggregate can compute values from nested entities at any level.
-
-### Entity-Level Logic
-
-```python
-@domain.entity(part_of="Order")
-class LineItem:
-    notes = HasMany("LineItemNote")
-    customizations = HasMany("LineItemCustomization")
-
-    @property
-    def customization_fee(self) -> float:
+    def customization_fee(self) -> D:
         """Calculate total customization fees."""
-        if not self.customizations:
-            return 0.0
-        return sum(c.price for c in self.customizations)
+        return sum((c.price for c in self.customizations), D("0"))
+
+    @property
+    def total(self) -> D:
+        """Total including customization fees."""
+        return self.quantity * self.unit_price + self.customization_fee
 
     @property
     def has_special_instructions(self) -> bool:
         """Check if item has special notes."""
-        return self.notes and len(self.notes) > 0
-
-    def add_note(self, content: str, author: str = "Customer"):
-        """Add a note to this line item."""
-        note = LineItemNote(content=content, author=author)
-        self.add_notes([note])
-```
-
-First-level entities encapsulate logic for their child entities.
-
-## Common Patterns
-
-### Helper Methods for Nested Creation
-
-```python
-@domain.entity(part_of="Order")
-class LineItem:
-    notes = HasMany("LineItemNote")
-    customizations = HasMany("LineItemCustomization")
+        return len(self.notes) > 0
 
     def add_note(self, content: str, author: str = "Customer"):
         """Convenience method to add a note."""
@@ -239,7 +120,7 @@ class LineItem:
         self.add_notes([note])
 
     def add_customization(self, customization_type: str,
-                         details: str, price: float = 0.0):
+                          details: str, price: D = D("0")):
         """Convenience method to add a customization."""
         custom = LineItemCustomization(
             customization_type=customization_type,
@@ -249,75 +130,169 @@ class LineItem:
         self.add_customizations([custom])
 ```
 
-Provide helper methods to simplify nested entity creation.
+LineItem is a first-level entity that contains other entities (notes and customizations).
+
+### Second-Level Entities
+
+```python
+@domain.entity(part_of=LineItem)
+class LineItemNote:
+    content: Text(required=True)
+    author: String(max_length=100, default="Customer")
+    created_at: DateTime(default=datetime.now)
+    # Protean adds `line_item` (a Reference to LineItem) and `line_item_id`
+
+
+@domain.entity(part_of=LineItem)
+class LineItemCustomization:
+    customization_type: String(required=True, max_length=50)
+    details: Text(required=True)
+    price: Decimal(precision=19, scale=4, default=0, min_value=0)
+    # Protean adds `line_item` (a Reference to LineItem) and `line_item_id`
+```
+
+Second-level entities:
+- Are `part_of` their immediate parent entity (`LineItem`), not the aggregate root
+- Pass the parent as a class (`part_of=LineItem`). A string `part_of` resolves only to an aggregate, so define the parent entity first.
+- Get a `Reference` back to the parent entity automatically. Do not declare it yourself.
+- Still belong to the `Order` aggregate and are persisted with it
+
+### Building the Hierarchy
+
+Creating instances needs an initialized domain and an active domain context:
+
+```python
+domain.init(traverse=False)
+
+with domain.domain_context():
+    # Create aggregate
+    order = Order(
+        order_number="ORD-2024-001",
+        customer_id="CUST-12345"
+    )
+
+    # Create first-level entity
+    item = LineItem(
+        product_id="PROD-001",
+        product_name="Custom T-Shirt",
+        quantity=2,
+        unit_price=D("29.99")
+    )
+
+    # Create second-level entities (notes)
+    note1 = LineItemNote(content="Please use soft fabric", author="Customer")
+    note2 = LineItemNote(content="Gift wrap this item", author="Customer")
+    item.add_notes([note1, note2])
+
+    # Create second-level entities (customizations)
+    custom1 = LineItemCustomization(
+        customization_type="Color",
+        details="Navy Blue",
+    )
+    custom2 = LineItemCustomization(
+        customization_type="Engraving",
+        details="Happy Birthday!",
+        price=D("5.99")
+    )
+    item.add_customizations([custom1, custom2])
+
+    # Add first-level entity to aggregate
+    order.add_line_items([item])
+```
+
+Build the hierarchy from bottom-up, then add to parent.
+
+### Navigating the Hierarchy
+
+```python
+with domain.domain_context():
+    # Top-down navigation
+    for item in order.line_items:
+        print(f"Item: {item.product_name}")
+
+        # Navigate to second-level entities
+        for note in item.notes:
+            print(f"  Note: {note.content}")
+
+        for custom in item.customizations:
+            print(f"  Customization: {custom.customization_type}: {custom.details}")
+
+    # Bottom-up navigation
+    first_note = order.line_items[0].notes[0]
+    # Navigate from note to line item
+    parent_item = first_note.line_item
+    # Navigate from line item to order
+    parent_order = parent_item.order
+```
+
+Navigation works both ways through reference fields. A `HasMany` field is always a list, empty when there are no items, so you can loop over it without a `None` check.
+
+## Common Patterns
+
+The patterns below are excerpts from the `Order` and `LineItem` classes defined above.
+
+### Business Logic Across Levels
+
+```python
+# fragment
+# In Order
+@property
+def total_notes(self) -> int:
+    """Count notes across all line items."""
+    return sum(len(item.notes) for item in self.line_items)
+```
+
+The aggregate can compute values from nested entities at any level.
+
+### Helper Methods for Nested Creation
+
+```python
+# fragment
+# In LineItem
+def add_note(self, content: str, author: str = "Customer"):
+    """Convenience method to add a note."""
+    note = LineItemNote(content=content.strip(), author=author)
+    self.add_notes([note])
+```
+
+Helper methods on the parent entity keep nested creation in one place:
+
+```python
+with domain.domain_context():
+    item.add_note("Deliver after 5pm")
+    item.add_customization("Size", "Large")
+```
 
 ### Computed Properties from Nested Entities
 
 ```python
-@domain.entity(part_of="Order")
-class LineItem:
-    customizations = HasMany("LineItemCustomization")
-
-    @property
-    def total(self) -> float:
-        """Total including customization fees."""
-        base = self.quantity * self.unit_price
-        custom_fees = sum(
-            c.price for c in self.customizations
-        ) if self.customizations else 0.0
-        return base + custom_fees
+# fragment
+# In LineItem
+@property
+def customization_fee(self) -> D:
+    """Calculate total customization fees."""
+    return sum((c.price for c in self.customizations), D("0"))
 ```
 
-Calculate values that depend on nested collections.
+Start `sum()` at `D("0")` so the result stays a `Decimal` when there are no customizations.
 
 ### Validation Across Levels
 
-```python
-@domain.aggregate
-class Order:
-    def validate_for_processing(self):
-        """Validate entire order hierarchy."""
-        if not self.line_items:
-            raise ValueError("Order must have line items")
-
-        for item in self.line_items:
-            if item.quantity <= 0:
-                raise ValueError(f"Invalid quantity for {item.product_name}")
-
-            # Validate nested entities
-            if item.customizations:
-                for custom in item.customizations:
-                    if custom.price < 0:
-                        raise ValueError("Customization price cannot be negative")
-```
-
-Validation can traverse the entire hierarchy.
-
-### Filtering Nested Collections
+Rules that span the hierarchy belong in an invariant on the aggregate root. A change to any entity in the hierarchy runs the root's post-invariants, so the rule holds at every level:
 
 ```python
-@domain.aggregate
-class Order:
-    def get_items_with_customizations(self) -> list:
-        """Get items that have customizations."""
-        if not self.line_items:
-            return []
-        return [
-            item for item in self.line_items
-            if item.customizations and len(item.customizations) > 0
-        ]
+with domain.domain_context():
+    mug = LineItem(product_id="PROD-002", product_name="Mug", quantity=1, unit_price=D("15.99"))
+    gift_order = Order(order_number="ORD-2024-002", customer_id="CUST-12345", line_items=[mug])
 
-    def get_all_notes(self) -> list:
-        """Get all notes from all line items."""
-        all_notes = []
-        if self.line_items:
-            for item in self.line_items:
-                if item.notes:
-                    all_notes.extend(item.notes)
-        return all_notes
+    try:
+        # $50 of engraving on a $15.99 line item
+        mug.add_customization("Engraving", "A very long message", D("50"))
+    except ValidationError as exc:
+        print(exc.messages["_entity"])  # ['Customization fees exceed the price of Mug']
 ```
 
-Aggregate methods can collect and filter across nested levels.
+Field constraints such as `min_value=1` on `quantity` and `min_value=0` on `price` already cover single values, so the invariant checks only the rule that spans levels.
 
 ## Guidelines for Nested Entities
 
@@ -332,33 +307,41 @@ Aggregate methods can collect and filter across nested levels.
 
 Deep nesting makes code hard to navigate and reason about.
 
-### Reference Direction
+### Parent Direction
 
-**Always reference the immediate parent:**
+**Make a nested entity `part_of` its immediate parent:**
 
 ```python
-# ✅ Correct
-@domain.entity(part_of="Order")
+# fragment
+# ✅ Correct: part_of the parent entity; line_item is added automatically
+@domain.entity(part_of=LineItem)
 class LineItemNote:
-    line_item = Reference("LineItem")  # Reference parent entity
+    content: Text(required=True)
 
-# ❌ Wrong
+# ❌ Wrong: part_of the root, with a hand-written Reference to the parent entity
 @domain.entity(part_of="Order")
 class LineItemNote:
-    order = Reference(Order)  # Skip intermediate entity
+    content: Text(required=True)
+    line_item = Reference("LineItem")
 ```
+
+A `Reference` field is only for an entity pointing back to its own parent. Protean adds it for you from `part_of`.
 
 ### Performance Considerations
 
 Be mindful of loading large nested structures:
 
 ```python
-# If you have many line items with many notes each:
-order = repository.get(order_id)
-# This loads: Order + all LineItems + all Notes + all Customizations
+with domain.domain_context():
+    repository = domain.repository_for(Order)
+    repository.add(order)
 
-# Consider limiting depth or using pagination for very large structures
+    # If you have many line items with many notes each:
+    order = repository.get(order.id)
+    # This loads: Order + all LineItems + all Notes + all Customizations
 ```
+
+Consider limiting depth for very large structures.
 
 ## Testing
 
@@ -368,32 +351,35 @@ To test nested entities:
 
 ```python
 def test_nested_entities():
-    order = Order(order_number="ORD-001", customer_id="C123")
+    with domain.domain_context():
+        order = Order(order_number="ORD-001", customer_id="C123")
 
-    # Create nested structure
-    item = LineItem(product_id="P1", product_name="T-Shirt",
-                   quantity=2, unit_price=29.99)
+        # Create nested structure
+        item = LineItem(product_id="P1", product_name="T-Shirt",
+                        quantity=2, unit_price=D("29.99"))
 
-    note = LineItemNote(content="Gift wrap please", author="Customer")
-    item.add_notes([note])
+        note = LineItemNote(content="Gift wrap please", author="Customer")
+        item.add_notes([note])
 
-    custom = LineItemCustomization(
-        customization_type="Color",
-        details="Blue",
-        price=0.0
-    )
-    item.add_customizations([custom])
+        custom = LineItemCustomization(
+            customization_type="Color",
+            details="Blue",
+        )
+        item.add_customizations([custom])
 
-    order.add_line_items([item])
+        order.add_line_items([item])
 
-    # Test structure
-    assert len(order.line_items) == 1
-    assert len(order.line_items[0].notes) == 1
-    assert len(order.line_items[0].customizations) == 1
+        # Test structure
+        assert len(order.line_items) == 1
+        assert len(order.line_items[0].notes) == 1
+        assert len(order.line_items[0].customizations) == 1
 
-    # Test navigation
-    assert note.line_item == item
-    assert item.order == order
+        # Test navigation
+        assert note.line_item == item
+        assert item.order == order
+
+
+test_nested_entities()
 ```
 
 ## Related

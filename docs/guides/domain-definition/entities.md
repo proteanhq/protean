@@ -46,15 +46,11 @@ relationships, as described in the [Associations](#associations) section below.
 
 ## Configuration
 
-Similar to an aggregate, an entity's behavior can be customized with by passing
-additional options to its decorator, or with a `Meta` class.
+Similar to an aggregate, an entity's behavior can be customized by passing
+options to its decorator. Protean does not read an inner `class Meta:` on an
+entity, so options placed there are ignored.
 
 Available options are:
-
-### `abstract`
-
-Marks an Entity as abstract if `True`. If abstract, the entity cannot be
-instantiated and needs to be subclassed.
 
 ### `auto_add_id_field`
 
@@ -71,9 +67,11 @@ default, `schema_name` is the snake case version of the Entity's name.
 ### `database_model`
 
 Similar to an aggregate, Protean automatically constructs a representation
-of the entity that is compatible with the configured database. While the
-generated model suits most use cases, you can also explicitly construct a model
-and associate it with the entity, just like in an aggregate.
+of the entity that is compatible with the configured database. The generated
+model suits most use cases. To control the mapping yourself, register your own
+model with `@domain.database_model(part_of=<Entity>)`, as described in
+[Database Models](../change-state/database-models.md). Passing a model through
+this decorator option has no effect.
 
 ### `provider`
 
@@ -100,6 +98,12 @@ aggregates:
 from protean import Index
 
 
+@domain.aggregate
+class Order:
+    number: String(max_length=20)
+    line_items = HasMany("LineItem")
+
+
 @domain.entity(part_of=Order, indexes=[Index("sku", unique=True)])
 class LineItem:
     sku = String(max_length=64)
@@ -107,6 +111,39 @@ class LineItem:
 ```
 
 See [Declaring Indexes](indexes.md) for the full workflow.
+
+## Sharing Fields Through a Base Class
+
+`@domain.entity` has no `abstract` option. Passing it raises
+`ConfigurationError`. To share fields and behavior between entities, put them
+on a subclass of `BaseEntity` and leave that class undecorated. Decorate only
+the concrete subclasses:
+
+```python
+from protean.core.entity import BaseEntity
+from protean.utils.reflection import declared_fields
+
+
+class BaseLineItem(BaseEntity):
+    quantity: Integer(required=True, min_value=1)
+    unit_price: Decimal(precision=19, scale=4, required=True)
+
+    @property
+    def subtotal(self):
+        return self.quantity * self.unit_price
+
+
+@domain.entity(part_of=Order)
+class ProductLineItem(BaseLineItem):
+    sku: String(max_length=64, required=True)
+
+
+print(list(declared_fields(ProductLineItem)))
+# ['quantity', 'unit_price', 'id', 'sku', 'order']
+```
+
+The base class is not registered with the domain and gets no table of its own.
+It must subclass `BaseEntity`: a plain mixin class contributes no fields.
 
 ## Entity Lifecycle
 
@@ -132,6 +169,19 @@ aggregates. However, the event is always registered on the **aggregate root**,
 not on the entity itself. The root is the owner of the event stream.
 
 ```python
+@domain.aggregate
+class Order:
+    number: String(max_length=20)
+    items = HasMany("OrderItem")
+
+
+@domain.event(part_of=Order)
+class OrderItemQuantityChanged:
+    order_id: Identifier(required=True)
+    product_name: String(max_length=100)
+    new_quantity: Integer()
+
+
 @domain.entity(part_of=Order)
 class OrderItem:
     product_name: String(max_length=100)
@@ -155,6 +205,9 @@ Entities support the same invariant mechanism as aggregates, use `@invariant.pos
 rules that must always hold:
 
 ```python
+from protean.exceptions import ValidationError
+
+
 @domain.entity(part_of=Order)
 class OrderItem:
     product_name: String(max_length=100)
@@ -183,8 +236,8 @@ other field values:
 class OrderItem:
     product_name: String(max_length=100)
     quantity: Integer(default=1)
-    unit_price: Float()
-    line_total: Float()
+    unit_price: Decimal(precision=19, scale=4)
+    line_total: Decimal(precision=19, scale=4)
 
     def defaults(self):
         if self.line_total is None and self.unit_price is not None:
@@ -207,8 +260,13 @@ You never persist an entity directly, always persist through the aggregate's
 repository:
 
 ```python
-repo = domain.repository_for(Order)
-repo.add(order)  # Persists the order AND all its OrderItems
+domain.init(traverse=False)
+
+with domain.domain_context():
+    order = Order(number="ORD-1", items=[OrderItem(product_name="Widget", quantity=2)])
+
+    repo = domain.repository_for(Order)
+    repo.add(order)  # Persists the order AND all its OrderItems
 ```
 
 ## Constructing from Value Objects
@@ -218,13 +276,36 @@ When commands and events carry entity data as value objects (see
 use the `from_value_object()` classmethod to convert them back:
 
 ```python
+from protean import handle
+from protean.fields import List, ValueObjectFromEntity
+
+
+@domain.command(part_of=Order)
+class PlaceOrder:
+    number: String(max_length=20)
+    items: List(content_type=ValueObjectFromEntity(OrderItem))
+
+
 @domain.command_handler(part_of=Order)
 class PlaceOrderHandler:
     @handle(PlaceOrder)
     def handle_place_order(self, command: PlaceOrder):
         items = [OrderItem.from_value_object(item) for item in command.items]
-        order = Order(customer_id=command.customer_id, items=items)
-        # ...
+        order = Order(number=command.number, items=items)
+        domain.repository_for(Order).add(order)
+```
+
+The conversion itself needs no handler. With `OrderItem` as defined above:
+
+```python
+from protean import value_object_from_entity
+
+OrderItemData = value_object_from_entity(OrderItem)
+
+with domain.domain_context():
+    data = OrderItemData(product_name="Widget", quantity=2)
+    item = OrderItem.from_value_object(data)
+    print(item.product_name, item.quantity)  # Widget 2
 ```
 
 `from_value_object()` calls `vo.to_dict()` and constructs an entity instance.
@@ -251,31 +332,41 @@ class OrderItem:
     product_name: String(max_length=100)
     quantity: Integer()
     # Automatically gets: order = Reference(Order)
-    # Automatically gets: order_id = String()  # Shadow field
+    # Automatically gets: order_id, a shadow field holding the order's id
 ```
 
 ### Explicit Reference Fields
 
-You can also explicitly define reference fields for more control:
+You can also define the reference field yourself, for example to rename its
+shadow field. Tell the aggregate's `HasMany` about the new name with `via`:
 
 ```python
+@domain.aggregate
+class Order:
+    number: String(max_length=20)
+    items = HasMany("OrderItem", via="parent_order_id")
+
 @domain.entity(part_of=Order)
 class OrderItem:
     product_name: String(max_length=100)
     quantity: Integer()
-    order = Reference(Order, referenced_as="order_number")
-    # Creates shadow field 'order_number' instead of 'order_id'
+    order = Reference(Order, referenced_as="parent_order_id")
+    # Creates shadow field 'parent_order_id' instead of 'order_id'
 ```
+
+A `Reference` field may point only to the entity's own aggregate. To link to a
+different aggregate, store its identity in an `Identifier` field.
 
 ### Navigation Between Entities
 
 Reference fields enable navigation from child entities back to their parent aggregate:
 
 ```python
-# Access parent aggregate from entity
-order_item = OrderItem(product_name="Widget", quantity=2)
-parent_order = order_item.order  # Order object
-order_id = order_item.order_id   # Order's ID value
+with domain.domain_context():
+    # Access parent aggregate from entity
+    order_item = order.items[0]
+    parent_order = order_item.order  # Order object
+    order_id = order_item.order_id   # Order's ID value
 ```
 
 For comprehensive relationship documentation, see [Expressing Relationships](./relationships.md) and [Association Fields](../../reference/fields/association-fields.md).
@@ -287,7 +378,7 @@ For comprehensive relationship documentation, see [Expressing Relationships](./r
 | `IncorrectUsageError` | Entity defined without `part_of`; every entity must be associated with an aggregate. |
 | `ValidationError` | Field validation fails during construction (e.g. missing `required` field). Contains a `messages` dict. |
 | `ValidationError` | An `@invariant.post` check on the entity raises a validation error. |
-| `NotSupportedError` | Trying to instantiate an abstract entity directly. |
+| `ConfigurationError` | An unknown option is passed to `@domain.entity`, such as `abstract`. |
 | `ConfigurationError` | Entity raises an event not associated with its aggregate root (`part_of` mismatch). |
 
 ---
