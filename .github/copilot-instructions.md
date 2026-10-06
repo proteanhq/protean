@@ -15,6 +15,13 @@ code's style.
 - Flag `except` blocks that swallow an error, fall back to a default that hides a
   failure, or turn a hard error into a quiet wrong value. An error that cannot be
   handled should surface, not be masked.
+- Flag an `except` or `contextlib.suppress` whose comment names a cause the call
+  does not raise for. Redis `XRANGE`, `XLEN` and `LLEN` return `[]` or `0` for a
+  missing key, so a `ResponseError` handler commented "the stream does not exist"
+  only catches real failures such as `WRONGTYPE` or `NOPERM`.
+- Flag a log message that formats a whole config table or mapping, for example the
+  `repr()` of `[server]`. Other keys in it can hold credentials, and the redaction
+  filter only reads structured log fields. Log the one offending value, or its type.
 - When two layers both handle an "unset" value, flag a lower layer that resolves
   "unset" to a config-time default the caller's own value should have won. Decide
   what "unset" means at each layer, and test the empty shapes (`None`, `""`, missing
