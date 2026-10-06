@@ -21,7 +21,8 @@ code's style.
   only catches real failures such as `WRONGTYPE` or `NOPERM`.
 - Flag a log message that formats a whole config table or mapping, for example the
   `repr()` of `[server]`. Other keys in it can hold credentials, and the redaction
-  filter only reads structured log fields. Log the one offending value, or its type.
+  filter only reads structured log fields. Log the offending key and the value's
+  type, and include the value only when it cannot hold a credential.
 - When two layers both handle an "unset" value, flag a lower layer that resolves
   "unset" to a config-time default the caller's own value should have won. Decide
   what "unset" means at each layer, and test the empty shapes (`None`, `""`, missing
