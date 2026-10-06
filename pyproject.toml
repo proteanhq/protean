@@ -286,7 +286,9 @@ extend-select = [
     "UP",      # pyupgrade — modernize syntax for the minimum Python (3.11+)
     "B",       # flake8-bugbear — likely bugs (raise-without-from, mutable defaults, …)
     "C4",      # flake8-comprehensions
-    "SIM",     # flake8-simplify
+    "SIM",     # flake8-simplify. When SIM105 flags `except StopIteration: pass`
+               # around next(), use next(iterator, None) and an `is not None`
+               # check. Keep contextlib.suppress for real errors you mean to ignore.
     "PIE",     # flake8-pie — misc small lints
     "PERF",    # perflint — performance anti-patterns
     "RUF",     # Ruff-specific rules
