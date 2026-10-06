@@ -348,7 +348,7 @@ schema-sharing, not code-sharing.
 
 ### Accidental Shared Kernel
 
-```python
+```text
 # Anti-pattern: sharing evolved into a large shared library
 shared-events/
   events/

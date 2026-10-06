@@ -73,6 +73,7 @@ Protean provides three mechanisms that make dual-mode testing natural:
 Protean's default configuration uses in-memory adapters for everything:
 
 ```python
+# fragment
 # Protean's built-in defaults
 "databases": {"default": {"provider": "memory"}},
 "event_store": {"provider": "memory"},

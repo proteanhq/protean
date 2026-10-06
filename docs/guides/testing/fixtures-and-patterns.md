@@ -595,6 +595,7 @@ def test_one():
 
 def test_two():
     # users_created still has Alice from test_one!
+    assert users_created == []  # fails after test_one
 
 # GOOD: Use fixtures for cleanup
 @pytest.fixture(autouse=True)

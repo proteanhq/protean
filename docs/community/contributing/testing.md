@@ -413,6 +413,39 @@ The `store_config` fixture does the same for event stores:
 - Used to dynamically select the event store to test against
 - Works with the `--store` option to specify the store type
 
+## Code on documentation pages
+
+`tests/docs/test_doc_pages_run.py` runs every `python` (or `py`) block on every page under `docs/`, except the pages in `docs/adr/` and `docs/api/`. The blocks of a page run top to bottom in one namespace, so a block can use a name an earlier block defined. Each page starts with a `domain` and the public names from `protean` and `protean.fields`. After the last block, every domain the page registered an element with is initialized, so a `part_of` must resolve by the end of the page.
+
+Put runnable code in a file under `docs_src` and include it on the page by a named section. A section starts at a line <code># --8<-- &#91;start:place_order]</code> and ends at a line <code># --8<-- &#91;end:place_order]</code>. Between them goes the code the page shows:
+
+```python
+@domain.aggregate
+class Order:
+    status = String()
+
+
+@domain.command(part_of=Order)
+class PlaceOrder:
+    order_id = Identifier(required=True)
+```
+
+The page includes it with `--8<-- "path/to/file.py:place_order"` inside a `python` fence. The test replaces that line with the section's code before it runs the block. Prefer a named section to a line range like `file.py:10:24`, because a line range points at the wrong lines once the file changes.
+
+A block whose first line is `# fragment` does not run. Use it only for:
+
+- a signature, such as `Index.from_sql(dialect, ddl, name=None) -> RawIndex`
+- part of a class or a method
+- a wrong example shown on purpose
+- code that needs a service the core test lane does not run, such as a database
+- code that starts a server or otherwise blocks
+
+A `>>>` REPL session uses a `pycon` fence, and an IPython session uses `ipython`. Neither runs.
+
+If a page's code fails, fix it. If you cannot fix it in the same change, add the page to `ALLOWLIST` in `tests/docs/test_doc_pages_run.py`. Do not mark a block `# fragment` to hide an error. The allowlist is strict: once a listed page passes, the test fails until you remove its entry.
+
+Two checks have no allowlist. Every block that is not a fragment must parse, and every `--8<--` include must point at a file and a section that exist.
+
 ## Code Coverage
 
 Protean uses Coverage.py to track test coverage. `coverage` configuration is maintained in `pyproject.toml`.

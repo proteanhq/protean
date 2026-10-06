@@ -134,7 +134,7 @@ $ protean shell --domain bookshelf
 Inside the shell, the domain is already initialized and activated. You
 can create books, persist them, and query, all interactively:
 
-```python
+```pycon
 >>> book = Book(title="1984", author="George Orwell", price=9.99)
 >>> repo = domain.repository_for(Book)
 >>> repo.add(book)

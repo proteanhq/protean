@@ -43,6 +43,7 @@ parent.
 Let's create an order with items and a shipping address:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch03.py:create_order"
 ```
 
@@ -69,6 +70,7 @@ Address) is persisted as a single unit.
 We can also add items to an existing order:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch03.py:add_items"
 ```
 

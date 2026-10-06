@@ -406,6 +406,7 @@ The `ResultSet` class wraps raw database results, preventing DAO-specific data
 structures from leaking into the domain layer:
 
 ```python
+# fragment
 class ResultSet:
     offset: int          # current page offset
     limit: int | None    # requested page size (None = unlimited)

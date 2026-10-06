@@ -42,7 +42,7 @@ Projectors are defined using the `Domain.projector` decorator and must be
 associated with a specific projection via `projector_for`:
 
 ```python hl_lines="1-2"
---8<-- "guides/consume-state/002.py:88:117"
+--8<-- "guides/consume-state/002.py:89:118"
 ```
 
 You must also specify which events to listen to, via either `aggregates` (a
@@ -61,7 +61,7 @@ Projectors use the `@on` decorator (an alias for `@handle`) to specify which
 events they respond to:
 
 ```python hl_lines="5 21"
---8<-- "guides/consume-state/002.py:88:117"
+--8<-- "guides/consume-state/002.py:89:118"
 ```
 
 A single projector can handle multiple events, and multiple projectors can

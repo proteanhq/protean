@@ -16,7 +16,7 @@ Projections are populated in response to domain events by
 Projections are defined with the `Domain.projection` decorator.
 
 ```python hl_lines="1-2"
---8<-- "guides/consume-state/002.py:65:75"
+--8<-- "guides/consume-state/002.py:66:75"
 ```
 
 ### Configuration Options

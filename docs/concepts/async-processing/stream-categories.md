@@ -335,6 +335,7 @@ class InventoryEventHandler:
 Don't use overly generic stream categories that make it unclear what messages they contain:
 
 ```python
+# fragment
 # Avoid
 @domain.aggregate(stream_category="data")
 @domain.aggregate(stream_category="entity")

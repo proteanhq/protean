@@ -138,8 +138,8 @@ You can also add validations at the field level by defining custom validators.
 A validator is any callable class that accepts a value and raises `ValueError`
 if the value is invalid:
 
-```python hl_lines="14-16"
---8<-- "guides/domain-behavior/005.py:10:26"
+```python hl_lines="15-17"
+--8<-- "guides/domain-behavior/005.py:9:25"
 ```
 
 Now, an email address assigned to the field is validated with the custom

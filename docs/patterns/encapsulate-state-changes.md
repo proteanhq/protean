@@ -502,6 +502,7 @@ class Order:
             self.cancellation_reason = kwargs.get("reason")
             # ... cancellation logic
         elif new_status == "paid":
+            self.status = "paid"
             # ... payment logic
 ```
 

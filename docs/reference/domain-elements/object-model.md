@@ -17,7 +17,7 @@ Options are passed as parameters to the element decorator:
 --8<-- "guides/compose-a-domain/021.py:full"
 ```
 
-```python
+```ipython
 In [1]: User.meta_
 Out[1]:
 {'database_model': None,

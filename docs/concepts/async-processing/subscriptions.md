@@ -180,6 +180,7 @@ restarts.
 EventStoreSubscription stores position in the event store itself:
 
 ```python
+# fragment
 # Position stream name
 f"position-{subscriber_name}-{stream_category}"
 

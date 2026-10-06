@@ -88,14 +88,18 @@ Contexts nest. The innermost wins:
 ```python
 with processing_priority(Priority.BULK):
     # These go to backfill stream
-    domain.process(OpenAccount(account_number="MIGR-001", ...))
+    domain.process(OpenAccount(
+        account_number="MIGR-001", holder_name="Ada Lovelace", opening_deposit=100.0
+    ))
 
     # But a critical real-time deposit still goes to primary
     with processing_priority(Priority.CRITICAL):
         domain.process(MakeDeposit(account_id="acc-vip", amount=1_000_000))
 
     # Back to BULK for remaining migration
-    domain.process(OpenAccount(account_number="MIGR-002", ...))
+    domain.process(OpenAccount(
+        account_number="MIGR-002", holder_name="Alan Turing", opening_deposit=250.0
+    ))
 ```
 
 ## Per-Command Priority
@@ -104,7 +108,9 @@ You can also set priority on individual commands:
 
 ```python
 domain.process(
-    OpenAccount(account_number="MIGR-001", ...),
+    OpenAccount(
+        account_number="MIGR-001", holder_name="Ada Lovelace", opening_deposit=100.0
+    ),
     priority=Priority.BULK,
 )
 ```

@@ -12,6 +12,7 @@ Start the Observatory alongside your engine to get a dashboard, REST API,
 SSE stream, and Prometheus metrics endpoint:
 
 ```python
+# fragment
 from protean.server.observatory import Observatory
 
 observatory = Observatory(domains=[domain])
