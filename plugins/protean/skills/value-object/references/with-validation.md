@@ -170,6 +170,8 @@ class WebURL:
 ### Postal Codes
 
 ```python
+import re
+
 POSTAL_CODE_PATTERNS = {
     'US': r'^\d{5}(-\d{4})?$',
     'UK': r'^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$',
