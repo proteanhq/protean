@@ -23,6 +23,22 @@ Key highlights:
 
 ## Common Value Objects in Commands
 
+The commands on this page belong to these aggregates:
+
+```python
+@domain.aggregate
+class Order:
+    customer_id: String(required=True)
+
+@domain.aggregate
+class Customer:
+    name: String(required=True)
+
+@domain.aggregate
+class User:
+    email: String(required=True)
+```
+
 ### Money
 
 The most common value object in business commands:

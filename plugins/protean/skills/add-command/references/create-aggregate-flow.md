@@ -19,6 +19,22 @@ Key highlights:
 
 ## Walkthrough
 
+### The Aggregate
+
+The command creates a `User`:
+
+```python
+@domain.aggregate
+class User:
+    user_id: Identifier(identifier=True)
+    email: String(required=True, max_length=255)
+    name: String(required=True, max_length=100)
+    status: String(default="pending")
+
+    def register(self):
+        self.status = "registered"
+```
+
 ### The Command
 
 ```python
@@ -61,6 +77,20 @@ Note: `part_of=User` uses the class reference. A string reference (`part_of="Use
 ### The Endpoint
 
 ```python
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from protean.utils.globals import current_domain
+
+app = FastAPI()
+
+
+@app.middleware("http")
+async def domain_context_middleware(request: Request, call_next):
+    with domain.domain_context():
+        return await call_next(request)
+
+
 @app.post("/users/register", status_code=201)
 async def register_user(request: Request):
     payload = await request.json()
@@ -73,6 +103,7 @@ async def register_user(request: Request):
     return JSONResponse(status_code=201, content={"user_id": result, "status": "registered"})
 ```
 
+- The middleware gives each request a domain context, so `current_domain` works
 - HTTP POST for creation (returns 201)
 - Constructs command from JSON payload
 - Uses `current_domain.process()` for synchronous processing

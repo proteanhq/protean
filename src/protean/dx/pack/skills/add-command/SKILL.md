@@ -84,6 +84,26 @@ Key points for this workflow:
 - Return the aggregate's identifier for synchronous processing
 - Each handler runs within an implicit UnitOfWork - no manual wrapping
 
+The handler works on an existing `Order` aggregate like this one:
+
+```python
+@domain.aggregate
+class Order:
+    order_id: Identifier(identifier=True)
+    customer_id: String(required=True)
+    total_amount: Float()
+    status: String(default="draft")
+    cancellation_reason: String()
+
+    def place(self, total_amount: float):
+        self.total_amount = total_amount
+        self.status = "placed"
+
+    def cancel(self, reason: str):
+        self.status = "cancelled"
+        self.cancellation_reason = reason
+```
+
 ```python
 @domain.command_handler(part_of=Order)
 class OrderCommandHandler:
@@ -110,6 +130,20 @@ Key points for this workflow:
 - Return appropriate HTTP status codes (201 for creation, 200 for updates)
 
 ```python
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from protean.utils.globals import current_domain
+
+app = FastAPI()
+
+
+@app.middleware("http")
+async def domain_context_middleware(request: Request, call_next):
+    with domain.domain_context():
+        return await call_next(request)
+
+
 @app.post("/orders", status_code=201)
 async def create_order(request: Request):
     payload = await request.json()

@@ -24,6 +24,10 @@ from protean.fields import String, Identifier
 
 domain = Domain()
 
+@domain.aggregate
+class Order:
+    customer_id: String(required=True)
+
 @domain.command(part_of="Order")
 class PlaceOrder:
     order_id: Identifier(required=True)
@@ -82,13 +86,16 @@ class PlaceOrder:
     customer_id: String(required=True)
     total_amount: Float(required=True)
 
+domain.init(traverse=False)
+
 # Create and submit command
-command = PlaceOrder(
-    order_id="ORD-001",
-    customer_id="CUST-123",
-    total_amount=99.99
-)
-domain.process(command)
+with domain.domain_context():
+    command = PlaceOrder(
+        order_id="ORD-001",
+        customer_id="CUST-123",
+        total_amount=99.99
+    )
+    domain.process(command)
 ```
 
 ## Submitting commands
@@ -96,14 +103,15 @@ domain.process(command)
 Commands are submitted to the domain for processing:
 
 ```python
-# Default processing (based on domain config, default is async)
-domain.process(command)
+with domain.domain_context():
+    # Default processing (based on domain config, default is async)
+    domain.process(command)
 
-# Explicit synchronous processing
-domain.process(command, asynchronous=False)
+    # Explicit synchronous processing
+    domain.process(command, asynchronous=False)
 
-# Explicit asynchronous processing
-domain.process(command, asynchronous=True)
+    # Explicit asynchronous processing
+    domain.process(command, asynchronous=True)
 ```
 
 Domain-wide configuration:
@@ -137,6 +145,7 @@ class PlaceOrder:  # Correct! Imperative verb
 ### Not associating command with aggregate
 
 ```python
+# fragment
 @domain.command  # Wrong! Missing part_of
 class PlaceOrder:
     pass
@@ -153,6 +162,7 @@ class PlaceOrder:
 ### Including entities in commands
 
 ```python
+# fragment
 @domain.command(part_of="Order")
 class PlaceOrder:
     items = HasMany(OrderItem)  # Wrong! Commands can't contain entities
@@ -161,8 +171,15 @@ class PlaceOrder:
 Instead: Only fields and value objects
 
 ```python
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+    currency: String(max_length=3, default="USD")
+
 @domain.command(part_of="Order")
 class PlaceOrder:
+    order_id: Identifier(required=True)
+    customer_id: String(required=True)
     items: List()  # Serialize as list of dicts
     total = ValueObject(Money)  # Value objects are allowed
 ```
@@ -170,6 +187,7 @@ class PlaceOrder:
 ### Trying to modify a command after creation
 
 ```python
+# fragment
 command = PlaceOrder(order_id="ORD-001", customer_id="CUST-123")
 command.customer_id = "CUST-456"  # Raises IncorrectUsageError!
 ```
@@ -177,7 +195,10 @@ command.customer_id = "CUST-456"  # Raises IncorrectUsageError!
 Instead: Create a new command instance
 
 ```python
-command = PlaceOrder(order_id="ORD-001", customer_id="CUST-456")
+domain.init(traverse=False)
+
+with domain.domain_context():
+    command = PlaceOrder(order_id="ORD-001", customer_id="CUST-456")
 ```
 
 ### What `check` reports

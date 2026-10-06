@@ -25,6 +25,27 @@ Key highlights:
 
 ## Characteristics
 
+The events on this page belong to these aggregates:
+
+```python
+@domain.aggregate
+class Order:
+    customer_id: String(required=True)
+    status: String(default="draft")
+
+@domain.aggregate
+class Inventory:
+    quantity: Integer(default=0)
+
+@domain.aggregate
+class Account:
+    balance: Float(default=0.0)
+
+@domain.aggregate
+class Stock:
+    available: Integer(default=0)
+```
+
 ### 1. Incremental Changes Only
 
 Delta events contain only the data that changed or is necessary to understand the change:

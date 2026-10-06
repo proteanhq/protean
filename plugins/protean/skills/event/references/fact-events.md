@@ -11,13 +11,13 @@ Unlike delta events that capture incremental changes, fact events provide a comp
 - When consumers shouldn't build state from multiple delta events
 - Providing read models to external APIs or services
 - Simplifying consumer logic (no need to track event history)
-- Creating periodic snapshots for performance optimization
 
 ## Code
 
 The complete implementation is in [assets/event_fact.py](../assets/event_fact.py).
 
 Key highlights:
+- Generated with `@domain.aggregate(fact_events=True)`, no event class to write
 - Contains complete aggregate state
 - Enables Event-carried State Transfer pattern
 - Simplifies consumer logic
@@ -45,119 +45,7 @@ The Event-carried State Transfer pattern means that events carry enough informat
 
 ### 1. Complete State
 
-Fact events include all attributes needed to fully describe the aggregate:
-
-```python
-@domain.event(part_of="Order")
-class OrderSnapshot:
-    """Complete order state at a point in time."""
-    __version__ = 1
-
-    # Identity
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
-
-    # State
-    status: String(required=True)
-
-    # Complete data
-    items: List()  # All order items
-    total = ValueObject(Money, required=True)
-
-    # Timestamps
-    placed_at: DateTime()
-    shipped_at: DateTime()
-    delivered_at: DateTime()
-    cancelled_at: DateTime()
-
-    # Additional context
-    shipping_address = ValueObject(Address)
-    billing_address = ValueObject(Address)
-```
-
-### 2. Self-contained Information
-
-Consumers can understand the complete state without additional context:
-
-```python
-@domain.event(part_of="Customer")
-class CustomerProfileUpdated:
-    """Complete customer profile for external systems."""
-    __version__ = 1
-
-    customer_id: String(required=True, identifier=True)
-    email: String(required=True)
-    full_name: String(required=True)
-    phone: String()
-
-    # Complete address info
-    address = ValueObject(Address, required=True)
-
-    # Account status
-    status: String(required=True)
-    account_type: String(required=True)
-
-    # Preferences
-    preferences: Dict()
-
-    # Metadata
-    created_at: DateTime(required=True)
-    updated_at: DateTime(required=True)
-```
-
-## When to Use Fact Events
-
-### Use Fact Events When:
-
-1. **External consumers** - Other bounded contexts or systems need current state
-2. **Simplified consumption** - Consumers shouldn't need to maintain event history
-3. **Periodic snapshots** - Send complete state at intervals
-4. **Integration events** - Publishing to external systems or APIs
-
-### Use Delta Events When:
-
-1. **Event sourcing** - Reconstructing state by replaying events
-2. **Internal projections** - Building custom read models from event stream
-3. **Audit trail** - Detailed change history required
-4. **Minimal data transfer** - Bandwidth or storage constraints
-
-### Hybrid Approach
-
-Many systems use both:
-- **Delta events** for internal event sourcing and projections
-- **Fact events** for external communication and integration
-
-```python
-# Internal delta events
-@domain.event(part_of="Order")
-class OrderPlaced:
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
-    placed_at: DateTime(required=True)
-
-@domain.event(part_of="Order")
-class OrderShipped:
-    order_id: String(required=True, identifier=True)
-    shipped_at: DateTime(required=True)
-
-# External fact event
-@domain.event(part_of="Order")
-class OrderStatusChanged:
-    """Published to external systems with complete state."""
-    __version__ = 1
-
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
-    status: String(required=True)
-    items: List()
-    total = ValueObject(Money)
-    placed_at: DateTime()
-    shipped_at: DateTime()
-```
-
-## Examples
-
-### E-Commerce Order Snapshot
+A fact event carries every field of the aggregate. You do not declare the event class. Set `fact_events=True` on the aggregate, and Protean generates an `<Aggregate>FactEvent` class from the aggregate's fields during `domain.init()`. For `Customer`, the class is `CustomerFactEvent`.
 
 ```python
 @domain.value_object
@@ -173,89 +61,179 @@ class Address:
     postal_code: String(required=True, max_length=20)
     country: String(required=True, max_length=50)
 
-@domain.event(part_of="Order")
-class OrderSnapshot:
-    """Complete order state for external systems."""
-    __version__ = 1
-
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
-    status: String(required=True)
-
-    items: List()  # Complete order items
-    total = ValueObject(Money, required=True)
-    subtotal = ValueObject(Money)
-    tax = ValueObject(Money)
-    shipping_cost = ValueObject(Money)
-
-    shipping_address = ValueObject(Address, required=True)
-    billing_address = ValueObject(Address)
-
-    placed_at: DateTime()
-    shipped_at: DateTime()
-    delivered_at: DateTime()
-```
-
-### Customer Profile Snapshot
-
-```python
-@domain.event(part_of="Customer")
-class CustomerSnapshot:
-    """Complete customer information for CRM integration."""
-    __version__ = 1
-
-    customer_id: String(required=True, identifier=True)
+@domain.aggregate(fact_events=True)
+class Customer:
     email: String(required=True, max_length=255)
     full_name: String(required=True, max_length=200)
     phone: String(max_length=20)
-
-    # Complete address
     primary_address = ValueObject(Address)
+    status: String(default="active")
+    account_type: String(default="standard")
+    loyalty_tier: String(max_length=50)
+    preferences: Dict()
 
-    # Account details
-    status: String(required=True)
-    account_type: String(required=True)
-    loyalty_tier: String()
-
-    # Metadata
-    created_at: DateTime(required=True)
-    last_login_at: DateTime()
-    total_orders: Integer(default=0)
-    lifetime_value = ValueObject(Money)
+    def upgrade(self, tier):
+        self.account_type = "premium"
+        self.loyalty_tier = tier
 ```
 
-## Raising Fact Events
+### 2. Self-contained Information
 
-Fact events are typically raised at specific milestones or on a schedule:
+Consumers read the whole state from one event. The repository writes the fact event when it saves the aggregate. It goes to the `<stream_category>-fact-<id>` stream:
 
 ```python
-@domain.aggregate
-class Order:
+domain.init(traverse=False)
+with domain.domain_context():
+    customer = Customer(
+        email="john.doe@example.com",
+        full_name="John Doe",
+        primary_address=Address(
+            street="456 Market St",
+            city="San Francisco",
+            postal_code="94102",
+            country="USA",
+        ),
+    )
+    domain.repository_for(Customer).add(customer)
+
+    stream = f"{Customer.meta_.stream_category}-fact-{customer.id}"
+    fact = domain.event_store.store.read(stream)[-1].to_domain_object()
+    print(type(fact).__name__)  # CustomerFactEvent
+    print(fact.full_name, fact.primary_address.city)  # John Doe San Francisco
+```
+
+## When to Use Fact Events
+
+### Use Fact Events When:
+
+1. **External consumers** - Other bounded contexts or systems need current state
+2. **Simplified consumption** - Consumers shouldn't need to maintain event history
+3. **Integration events** - Publishing to external systems or APIs
+
+### Use Delta Events When:
+
+1. **Event sourcing** - Reconstructing state by replaying events
+2. **Internal projections** - Building custom read models from event stream
+3. **Audit trail** - Detailed change history required
+4. **Minimal data transfer** - Bandwidth or storage constraints
+
+### Hybrid Approach
+
+Many systems use both:
+- **Delta events** for internal event sourcing and projections
+- **Fact events** for external communication and integration
+
+The aggregate raises delta events by hand and also turns on `fact_events=True`. Each save writes both:
+
+```python
+from datetime import datetime, timezone
+
+# Internal delta events
+@domain.event(part_of="Order")
+class OrderPlaced:
     order_id: String(required=True, identifier=True)
     customer_id: String(required=True)
-    status: String(default="draft")
-    items = HasMany("OrderItem")
-    total = ValueObject(Money)
+    placed_at: DateTime(required=True)
 
-    def publish_snapshot(self):
-        """Publish complete order state for external consumers."""
-        self.raise_(OrderSnapshot(
-            order_id=self.order_id,
+@domain.event(part_of="Order")
+class OrderShipped:
+    order_id: String(required=True, identifier=True)
+    shipped_at: DateTime(required=True)
+
+# External consumers read the generated OrderFactEvent
+@domain.aggregate(fact_events=True)
+class Order:
+    customer_id: String(required=True)
+    status: String(default="draft")
+    total = ValueObject(Money)
+    shipping_address = ValueObject(Address)
+    placed_at: DateTime()
+    shipped_at: DateTime()
+
+    def place(self):
+        self.status = "placed"
+        self.placed_at = datetime.now(timezone.utc)
+        self.raise_(OrderPlaced(
+            order_id=self.id,
             customer_id=self.customer_id,
-            status=self.status,
-            items=[item.to_dict() for item in self.items],
-            total=self.total,
             placed_at=self.placed_at,
-            shipped_at=self.shipped_at,
-            delivered_at=self.delivered_at
         ))
+
+    def ship(self):
+        self.status = "shipped"
+        self.shipped_at = datetime.now(timezone.utc)
+        self.raise_(OrderShipped(order_id=self.id, shipped_at=self.shipped_at))
+```
+
+## Examples
+
+### E-Commerce Order
+
+The delta events go to the order's own stream. The fact events go to the fact stream, one per save:
+
+```python
+domain.init(traverse=False)
+with domain.domain_context():
+    repo = domain.repository_for(Order)
+    order = Order(customer_id="CUST-123", total=Money(amount=99.99))
+    order.place()
+    repo.add(order)  # writes OrderPlaced and the first OrderFactEvent
+
+    order = repo.get(order.id)
+    order.ship()
+    repo.add(order)  # writes OrderShipped and a second OrderFactEvent
+
+    store = domain.event_store.store
+    category = Order.meta_.stream_category
+    delta = [type(m.to_domain_object()).__name__ for m in store.read(f"{category}-{order.id}")]
+    facts = [m.to_domain_object().status for m in store.read(f"{category}-fact-{order.id}")]
+    print(delta)  # ['OrderPlaced', 'OrderShipped']
+    print(facts)  # ['placed', 'shipped']
+```
+
+### Customer Profile Updates
+
+Every save that changes the customer adds one fact event. The last one holds the current state:
+
+```python
+with domain.domain_context():
+    repo = domain.repository_for(Customer)
+    customer = Customer(email="jane.roe@example.com", full_name="Jane Roe")
+    repo.add(customer)
+
+    customer = repo.get(customer.id)
+    customer.upgrade("gold")
+    repo.add(customer)
+
+    stream = f"{Customer.meta_.stream_category}-fact-{customer.id}"
+    messages = domain.event_store.store.read(stream)
+    latest = messages[-1].to_domain_object()
+    print(len(messages), type(latest).__name__)  # 2 CustomerFactEvent
+    print(latest.account_type, latest.loyalty_tier)  # premium gold
+```
+
+## When Fact Events Are Written
+
+You never raise a fact event yourself. The repository writes one when it saves an aggregate that is new or has changed. Saving an unchanged aggregate writes nothing:
+
+```python
+with domain.domain_context():
+    repo = domain.repository_for(Customer)
+    customer = Customer(email="sam.lee@example.com", full_name="Sam Lee")
+    repo.add(customer)
+
+    customer = repo.get(customer.id)
+    repo.add(customer)  # no changes, so no new fact event
+
+    stream = f"{Customer.meta_.stream_category}-fact-{customer.id}"
+    print(len(domain.event_store.store.read(stream)))  # 1
 ```
 
 ## Best Practices
 
-1. **Use descriptive names** - "Snapshot", "StateChanged", "Updated" indicate complete state
-2. **Version carefully** - Schema changes affect all consumers
-3. **Include timestamps** - When was this snapshot taken?
+1. **Let Protean generate the event** - Use `fact_events=True` instead of writing a snapshot event by hand
+2. **Version carefully** - The event's fields follow the aggregate's fields, so changing the aggregate changes what every consumer receives
+3. **Read the timestamp from metadata** - `fact._metadata.headers.time` records when the save happened
 4. **Don't over-use** - Fact events are heavier than delta events
 5. **Document consumer expectations** - What data consumers should use
 

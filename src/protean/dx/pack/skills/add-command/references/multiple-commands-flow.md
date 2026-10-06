@@ -18,6 +18,37 @@ Key highlights:
 
 ## Walkthrough
 
+### The Aggregate
+
+The commands below all act on one `Order` aggregate:
+
+```python
+@domain.aggregate
+class Order:
+    order_id: Identifier(identifier=True)
+    customer_id: String(required=True)
+    total_amount: Float()
+    status: String(default="draft")
+    payment_method: String()
+    cancel_reason: String()
+
+    def place(self, total_amount: float):
+        self.total_amount = total_amount
+        self.status = "placed"
+
+    def pay(self, payment_method: str):
+        if self.status != "placed":
+            raise ValueError(f"Cannot pay for order in '{self.status}' status")
+        self.payment_method = payment_method
+        self.status = "paid"
+
+    def cancel(self, reason: str):
+        if self.status in ("paid", "cancelled"):
+            raise ValueError(f"Cannot cancel order in '{self.status}' status")
+        self.status = "cancelled"
+        self.cancel_reason = reason
+```
+
 ### Multiple Commands
 
 ```python
@@ -75,6 +106,23 @@ Map each command to an appropriate HTTP verb and route:
 | `PlaceOrder` | POST | `/orders` | Create (body only) |
 | `PayOrder` | PUT | `/orders/{id}/pay` | Update (path + body) |
 | `CancelOrder` | PUT | `/orders/{id}/cancel` | Update (path + body) |
+
+All endpoints live on one FastAPI app. The middleware gives each request a domain context, so `current_domain` works in the endpoints:
+
+```python
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from protean.utils.globals import current_domain
+
+app = FastAPI()
+
+
+@app.middleware("http")
+async def domain_context_middleware(request: Request, call_next):
+    with domain.domain_context():
+        return await call_next(request)
+```
 
 ## Adding a New Command to an Existing Aggregate
 

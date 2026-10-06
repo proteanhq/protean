@@ -19,7 +19,13 @@ A decision guide for choosing between upcasting, creating a new event type, or t
 
 ## Backward-Compatible Changes (No Upcaster Needed)
 
-These changes are always safe and require no upcaster:
+These changes are always safe and require no upcaster. The examples use an `Order` aggregate:
+
+```python
+@domain.aggregate
+class Order:
+    currency = String()
+```
 
 ### Adding optional fields with defaults
 
@@ -84,6 +90,9 @@ def on_placed(self, event: OrderPlaced):
 
 ```python
 # Upcaster — single transformation, clean handler
+from protean.core.upcaster import BaseUpcaster
+
+
 class UpcastV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["currency"] = "USD"

@@ -18,6 +18,27 @@ Key highlights:
 
 ## Walkthrough
 
+### The Aggregate
+
+The command acts on an existing `Reservation`:
+
+```python
+@domain.aggregate
+class Reservation:
+    reservation_id: Identifier(identifier=True)
+    guest_name: String(required=True, max_length=200)
+    status: String(default="confirmed")
+    cancel_reason: String()
+
+    def cancel(self, reason: str):
+        if self.status == "cancelled":
+            raise ValueError("Reservation is already cancelled")
+        if self.status == "checked_in":
+            raise ValueError("Cannot cancel after check-in")
+        self.status = "cancelled"
+        self.cancel_reason = reason
+```
+
 ### The Command
 
 ```python
@@ -33,12 +54,14 @@ class CancelReservation:
 ### The Handler (Update Pattern)
 
 ```python
-@handle(CancelReservation)
-def handle_cancel_reservation(self, command: CancelReservation):
-    reservation = domain.repository_for(Reservation).get(command.reservation_id)
-    reservation.cancel(reason=command.reason)
-    domain.repository_for(Reservation).add(reservation)
-    return reservation.reservation_id
+@domain.command_handler(part_of=Reservation)
+class ReservationCommandHandler:
+    @handle(CancelReservation)
+    def handle_cancel_reservation(self, command: CancelReservation):
+        reservation = domain.repository_for(Reservation).get(command.reservation_id)
+        reservation.cancel(reason=command.reason)
+        domain.repository_for(Reservation).add(reservation)
+        return reservation.reservation_id
 ```
 
 The update pattern has four steps:
@@ -50,6 +73,20 @@ The update pattern has four steps:
 ### The Endpoint
 
 ```python
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from protean.utils.globals import current_domain
+
+app = FastAPI()
+
+
+@app.middleware("http")
+async def domain_context_middleware(request: Request, call_next):
+    with domain.domain_context():
+        return await call_next(request)
+
+
 @app.put("/reservations/{reservation_id}/cancel")
 async def cancel_reservation(reservation_id: str, request: Request):
     payload = await request.json()
@@ -61,6 +98,7 @@ async def cancel_reservation(reservation_id: str, request: Request):
     return JSONResponse(content={"reservation_id": result, "status": "cancelled"})
 ```
 
+- The middleware gives each request a domain context, so `current_domain` works
 - HTTP PUT for actions on existing resources
 - Combines path parameters (resource ID) with request body (action data)
 - Uses `current_domain.process()` for synchronous processing

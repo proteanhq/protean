@@ -23,6 +23,7 @@ Edges are grouped by **event_base_type** — the type string prefix without the 
 For each event_base_type, edges are organized into an adjacency map:
 
 ```python
+# fragment
 adjacency = {from_version: (to_version, upcaster_cls)}
 ```
 
@@ -33,6 +34,7 @@ Each `from_version` maps to exactly one target. Duplicates (two upcasters with t
 The terminal version is any version that appears as a `to_version` but never as a `from_version`. There must be exactly one terminal version — this is the current event version.
 
 ```python
+# fragment
 terminal_versions = all_to_versions - all_from_versions
 # Must be exactly {current_version}
 ```
@@ -42,6 +44,7 @@ terminal_versions = all_to_versions - all_from_versions
 For each source version, the algorithm walks the adjacency map collecting upcaster instances until reaching the terminal:
 
 ```python
+# fragment
 chain = []
 v = start_version
 while v in adjacency:
@@ -57,6 +60,7 @@ Upcasters are instantiated once during chain building and reused for every subse
 Pre-computed chains are stored for O(1) lookup:
 
 ```python
+# fragment
 _chains[(event_base_type, from_version)] = [upcaster_instance, ...]
 _version_map["Domain.Event.v1"] = CurrentEventClass
 ```
@@ -66,6 +70,9 @@ After building, the raw edges are cleared — they are no longer needed.
 ## Internal Data Structures
 
 ```python
+from typing import Any
+
+
 class UpcasterChain:
     # Pre-build: edges collected during registration
     _edges: dict[str, list[tuple[int, int, type]]]
@@ -85,6 +92,7 @@ class UpcasterChain:
 Chain building happens during `domain.init()`, immediately after event type strings are registered:
 
 ```python
+# fragment
 # In Domain.init():
 self._set_and_record_event_and_command_type()  # 1. Build type string registry
 self._build_upcaster_chains()                  # 2. Validate & build chains
@@ -111,12 +119,13 @@ All validation runs at startup during `domain.init()`. The following errors are 
 Two upcasters registered for the same `(event_type, from_version)`:
 
 ```python
+# fragment
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcasterA(BaseUpcaster): ...
 
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcasterB(BaseUpcaster): ...
-# → ConfigurationError: Duplicate upcaster for OrderPlaced from version v1
+# → ConfigurationError: Duplicate upcaster for `MyDomain.OrderPlaced` from version `1`
 ```
 
 ### Cycle detection
@@ -124,6 +133,7 @@ class UpcasterB(BaseUpcaster): ...
 Version graph contains a loop:
 
 ```python
+# fragment
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class Forward(BaseUpcaster): ...
 
@@ -137,12 +147,13 @@ class Backward(BaseUpcaster): ...
 Two upcasters with the same `from_version` but different targets:
 
 ```python
+# fragment
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class BranchA(BaseUpcaster): ...
 
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=3)
 class BranchB(BaseUpcaster): ...
-# → ConfigurationError: Duplicate upcaster for OrderPlaced from version 1
+# → ConfigurationError: Duplicate upcaster for `MyDomain.OrderPlaced` from version `1`
 ```
 
 ### Missing event class
@@ -150,6 +161,7 @@ class BranchB(BaseUpcaster): ...
 Chain terminal doesn't match any registered event `__version__`:
 
 ```python
+# fragment
 # OrderPlaced.__version__ = 2
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=99)
 class WrongTarget(BaseUpcaster): ...

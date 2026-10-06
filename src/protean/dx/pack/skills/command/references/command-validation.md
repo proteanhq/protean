@@ -1,6 +1,6 @@
 # Command Validation
 
-Commands validate their data on instantiation. Invalid data raises `InvalidDataError` with detailed error messages. This ensures that only valid commands reach command handlers.
+Commands validate their data on instantiation. Invalid data raises `protean.exceptions.ValidationError` with an error message for each failing field. This ensures that only valid commands reach command handlers.
 
 ## Overview
 
@@ -19,6 +19,22 @@ Key highlights:
 
 ## Field Validation Types
 
+The examples on this page are commands for these aggregates. Each example catches `ValidationError` from `protean.exceptions`:
+
+```python
+from protean.exceptions import ValidationError
+
+@domain.aggregate
+class User:
+    email: String(required=True)
+
+@domain.aggregate
+class Product:
+    name: String(required=True)
+```
+
+A command checks its data when you build it, so each example initializes the domain and builds commands inside a domain context.
+
 ### Required Fields
 
 Fields marked `required=True` must be provided:
@@ -30,11 +46,17 @@ class RegisterUser:
     email: String(required=True)
     nickname: String()  # Optional - defaults to None
 
-# OK
-RegisterUser(user_id="USER-001", email="alice@example.com")
+domain.init(traverse=False)
 
-# Fails: missing required email
-RegisterUser(user_id="USER-001")  # Raises InvalidDataError
+with domain.domain_context():
+    # OK
+    RegisterUser(user_id="USER-001", email="alice@example.com")
+
+    # Fails: missing required email
+    try:
+        RegisterUser(user_id="USER-001")
+    except ValidationError as e:
+        print(e.messages)  # {'email': ['is required']}
 ```
 
 ### String max_length
@@ -44,11 +66,17 @@ RegisterUser(user_id="USER-001")  # Raises InvalidDataError
 class RegisterUser:
     username: String(required=True, max_length=50)
 
-# OK
-RegisterUser(username="alice_smith")
+domain.init(traverse=False)
 
-# Fails: exceeds max_length
-RegisterUser(username="a" * 51)  # Raises InvalidDataError
+with domain.domain_context():
+    # OK
+    RegisterUser(username="alice_smith")
+
+    # Fails: exceeds max_length
+    try:
+        RegisterUser(username="a" * 51)
+    except ValidationError as e:
+        print(e.messages)  # {'username': ['String should have at most 50 characters']}
 ```
 
 ### Numeric min_value / max_value
@@ -59,6 +87,14 @@ class UpdatePricing:
     product_id: Identifier(required=True)
     new_price: Float(required=True, min_value=0.01)
     discount: Float(min_value=0.0, max_value=100.0)
+
+domain.init(traverse=False)
+
+with domain.domain_context():
+    try:
+        UpdatePricing(product_id="PROD-001", new_price=0.0)
+    except ValidationError as e:
+        print(e.messages)  # {'new_price': ['Input should be greater than or equal to 0.01']}
 ```
 
 ### Default Values
@@ -72,8 +108,11 @@ class RegisterUser:
     email: String(required=True)
     age: Integer(default=21)
 
-cmd = RegisterUser(user_id="USER-001", email="a@b.com")
-assert cmd.age == 21  # Default applied
+domain.init(traverse=False)
+
+with domain.domain_context():
+    cmd = RegisterUser(user_id="USER-001", email="a@b.com")
+    assert cmd.age == 21  # Default applied
 ```
 
 ## Unknown Field Rejection
@@ -85,25 +124,46 @@ Commands reject fields that are not defined in the class:
 class RegisterUser:
     email: String(required=True)
 
-# Raises InvalidDataError: {"foo": ["is invalid"]}
-RegisterUser(email="alice@example.com", foo="bar")
+domain.init(traverse=False)
+
+with domain.domain_context():
+    try:
+        RegisterUser(email="alice@example.com", foo="bar")
+    except ValidationError as e:
+        print(e.messages)  # {'foo': ['Extra inputs are not permitted']}
 ```
 
 ## Error Message Format
 
-`InvalidDataError` contains a `messages` dict mapping field names to error lists:
+`ValidationError` has a `messages` dict. Each key is a field name, and each value is a list of error strings for that field. One error reports every field that failed:
 
 ```python
-try:
-    RegisterUser(
-        user_id="USER-001",
-        email="alice@example.com",
-        username="x" * 51,  # exceeds max_length=50
-        password="secret",
-    )
-except InvalidDataError as e:
-    print(e.messages)
-    # {"username": ["value has more than 50 characters"]}
+@domain.command(part_of="User")
+class RegisterUser:
+    user_id: Identifier(required=True)
+    email: String(required=True, max_length=250)
+    username: String(required=True, max_length=50)
+    password: String(required=True, max_length=255)
+
+domain.init(traverse=False)
+
+with domain.domain_context():
+    try:
+        RegisterUser(
+            user_id="USER-001",
+            email="alice@example.com",
+            username="x" * 51,  # exceeds max_length=50
+            password="secret",
+        )
+    except ValidationError as e:
+        print(e.messages)
+        # {'username': ['String should have at most 50 characters']}
+
+    try:
+        RegisterUser(user_id="USER-001")
+    except ValidationError as e:
+        print(e.messages)
+        # {'email': ['is required'], 'username': ['is required'], 'password': ['is required']}
 ```
 
 ## Validation Best Practices

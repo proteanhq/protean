@@ -2,6 +2,54 @@
 
 Common mistakes when building event-sourced aggregates in Protean and how to avoid them.
 
+The examples on this page use these events and aggregates:
+
+```python
+from protean.core.aggregate import apply
+from protean.fields import Float, Identifier, String
+from protean.utils.globals import current_domain
+
+@domain.event(part_of="Account")
+class AccountOpened:
+    account_id: Identifier(required=True)
+    owner_name: String(required=True)
+    balance: Float(required=True)
+
+@domain.event(part_of="Account")
+class AccountClosed:
+    account_id: Identifier(required=True)
+
+@domain.event(part_of="Account")
+class MoneyWithdrawn:
+    account_id: Identifier(required=True)
+    amount: Float(required=True)
+
+@domain.event(part_of="Account")
+class NameUpdated:
+    account_id: Identifier(required=True)
+    name: String(required=True)
+
+@domain.aggregate(event_sourced=True)
+class Account:
+    account_id: Identifier(identifier=True)
+    owner_name: String(required=True)
+    balance: Float(default=0.0)
+    status: String(default="ACTIVE")
+
+    @apply
+    def account_opened(self, event: AccountOpened):
+        self.account_id = event.account_id
+        self.owner_name = event.owner_name
+        self.balance = event.balance
+        self.status = "ACTIVE"
+
+@domain.aggregate(event_sourced=True)
+class Order:
+    order_id: Identifier(identifier=True)
+    status: String()
+    customer_name: String()
+```
+
 ## 1. Mutating State Directly in Business Methods
 
 ### The Problem
@@ -134,7 +182,10 @@ class AccountRepository:
 Either use the auto-selected repository:
 
 ```python
-repo = current_domain.repository_for(Account)  # Auto-selects ES repo
+domain.init(traverse=False)
+
+with domain.domain_context():
+    repo = current_domain.repository_for(Account)  # Auto-selects ES repo
 ```
 
 Or define an explicit ES repository by subclassing `BaseEventSourcedRepository`:
@@ -203,6 +254,9 @@ ALL state changes must go through `raise_()` and `@apply`:
 ```python
 @domain.aggregate(event_sourced=True)
 class Account:
+    account_id: Identifier(identifier=True)
+    name: String()
+
     def update_name(self, name):
         self.raise_(NameUpdated(account_id=self.account_id, name=name))
 

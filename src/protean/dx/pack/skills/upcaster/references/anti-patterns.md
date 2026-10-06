@@ -2,6 +2,25 @@
 
 Common mistakes when working with event upcasters, and how to fix them.
 
+The examples use an `Order` aggregate whose `OrderPlaced` event is now at version 3:
+
+```python
+from protean.core.upcaster import BaseUpcaster
+
+
+@domain.aggregate
+class Order:
+    customer_id = Identifier()
+
+
+@domain.event(part_of="Order")
+class OrderPlaced:
+    __version__ = 3
+    order_id = Identifier(required=True)
+    total_amount = Float(required=True)
+    currency = String(required=True)
+```
+
 ## 1. Skipping versions in chains
 
 **Problem**: Creating a direct v1→v3 upcaster when v2 existed in production.
@@ -88,17 +107,22 @@ class ChangeSemantics(BaseUpcaster):
 
 **Why it's wrong**: An upcaster can transform structure (rename, add, remove fields) but can't change what a field *means*. If the business semantics changed, consumers using the upcast data will compute wrong results.
 
-**Fix**: Create a new event type when the business meaning changes.
+**Fix**: Create a new event type when the business meaning changes. In this example an `Invoice` aggregate changes what its `total` means:
 
 ```python
+@domain.aggregate
+class Invoice:
+    total = Float()
+
+
 # Old event type (kept for historical events)
-@domain.event(part_of="Order")
-class OrderPlaced(BaseEvent):
+@domain.event(part_of="Invoice")
+class InvoiceIssued:
     total = Float()  # Includes tax
 
 # New event type (used going forward)
-@domain.event(part_of="Order")
-class OrderPlacedV2(BaseEvent):
+@domain.event(part_of="Invoice")
+class TaxedInvoiceIssued:
     subtotal = Float()  # Excludes tax
     tax = Float()
     total = Float()     # Includes tax
@@ -129,15 +153,16 @@ class OrderPlacedV2(BaseEvent):
 **Problem**: Adding an upcaster but leaving the event class at its default version.
 
 ```python
+# fragment
+# WRONG: the event is still at v1
 @domain.event(part_of="Order")
-class OrderPlaced:
+class OrderShipped:
     # __version__ defaults to `1`
     order_id = Identifier(required=True)
-    amount = Float(required=True)
-    currency = String(required=True)  # New field
+    carrier = String(required=True)  # New field
 
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class UpcastV1ToV2(BaseUpcaster): ...
+@domain.upcaster(event_type=OrderShipped, from_version=1, to_version=2)
+class UpcastOrderShippedV1ToV2(BaseUpcaster): ...
 ```
 
 **Why it's wrong**: The event is still registered as v1, but the upcaster chain's terminal version is v2. During `domain.init()`, chain validation fails because no event is registered with the type string ending in `.v2`.
@@ -146,9 +171,16 @@ class UpcastV1ToV2(BaseUpcaster): ...
 
 ```python
 @domain.event(part_of="Order")
-class OrderPlaced:
+class OrderShipped:
     __version__ = 2  # Must match the chain's terminal version
-    ...
+    order_id = Identifier(required=True)
+    carrier = String(required=True)
+
+@domain.upcaster(event_type=OrderShipped, from_version=1, to_version=2)
+class UpcastOrderShippedV1ToV2(BaseUpcaster):
+    def upcast(self, data: dict) -> dict:
+        data["carrier"] = "unknown"  # v1 did not record the carrier
+        return data
 ```
 
 ## 7. Non-deterministic transformations

@@ -89,7 +89,6 @@ ALLOWLIST = frozenset(
             IR_BUILD_FAILED,
         ),
         ("domain-service/assets/domain_service_with_invariants.py", IR_BUILD_FAILED),
-        ("event/assets/event_versioning.py", "UPCASTER_GAP"),
         (
             "event-handler/assets/cross_sync_multi_event.py",
             "EVENT_HANDLER_FOREIGN_EVENT",

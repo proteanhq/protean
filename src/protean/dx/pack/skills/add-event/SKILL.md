@@ -71,6 +71,8 @@ Key points for this workflow:
 class OrderPlaced:
     order_id: Identifier(required=True)
     customer_id: String(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
     total_amount: Float(required=True)
 ```
 
@@ -90,8 +92,12 @@ Key points for this workflow:
 class Order:
     order_id: Identifier(identifier=True)
     customer_id: String(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
     status: String(default="draft")
     total_amount: Float()
+    confirmation_number: String()
+    tracking_number: String()
 
     def place(self):
         if self.status != "draft":
@@ -100,6 +106,8 @@ class Order:
         self.raise_(OrderPlaced(
             order_id=self.order_id,
             customer_id=self.customer_id,
+            product_id=self.product_id,
+            quantity=self.quantity,
             total_amount=self.total_amount,
         ))
 ```
@@ -116,6 +124,20 @@ Key points for this workflow:
 - Event handlers do NOT return values (fire-and-forget)
 - Each handler runs within an implicit UnitOfWork - no manual wrapping
 - Multiple handlers can process the same event (unlike commands)
+
+The cross-aggregate example below needs a target aggregate. Here `Inventory` tracks stock per product:
+
+```python
+@domain.aggregate
+class Inventory:
+    product_id: Identifier(required=True)
+    in_stock: Integer(required=True)
+
+    def reduce_stock(self, quantity: int):
+        if quantity > self.in_stock:
+            raise ValueError(f"Insufficient stock: have {self.in_stock}, need {quantity}")
+        self.in_stock -= quantity
+```
 
 ```python
 # Same-aggregate handler
@@ -200,6 +222,10 @@ src/myapp/inventory/
 When the aggregate already has an event handler, add the new `@handle` method to the existing handler class. Multiple `@handle` methods in one handler class is fine.
 
 ```python
+@domain.event(part_of="Order")
+class OrderShipped:
+    order_id: Identifier(required=True)
+
 @domain.event_handler(part_of=Order)
 class OrderEventHandler:
     @handle(OrderPlaced)
