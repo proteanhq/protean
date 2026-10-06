@@ -64,7 +64,7 @@ Report each of these codes at the severity in the table. `check` prints other di
 
 ## Detection categories
 
-`check` cannot see handler bodies, endpoints or tests, so most of these categories need a reading of the code. Scan for them in order. Each has a detection heuristic and a linked fix. Where a finding is one `check` already reported, record it once, with its code.
+`check` reads handler bodies for only one rule, `HANDLER_PERSISTS_AND_CALLS_OUT`, and does not look at endpoints or tests, so most of these categories need a reading of the code. Scan for them in order. Each has a detection heuristic and a linked fix. Where a finding is one `check` already reported, record it once, with its code.
 
 ### 1. Logic leak — business logic outside aggregates
 
