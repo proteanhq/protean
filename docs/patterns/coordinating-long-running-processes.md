@@ -200,7 +200,7 @@ compensation explicitly, and handle timeouts.
 ```python
 from protean import handle
 from protean.fields import Identifier, String
-from protean.globals import current_domain
+from protean import current_domain
 
 
 @domain.process_manager(

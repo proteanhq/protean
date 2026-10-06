@@ -1,11 +1,8 @@
 from protean import Domain, invariant
+from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier
 
 banking = Domain()
-
-
-class InsufficientFundsException(Exception):
-    pass
 
 
 @banking.event(part_of="Account")
@@ -23,7 +20,9 @@ class Account:
     @invariant.post
     def balance_must_be_greater_than_or_equal_to_overdraft_limit(self):
         if self.balance < -self.overdraft_limit:
-            raise InsufficientFundsException("Balance cannot be below overdraft limit")
+            raise ValidationError(
+                {"_entity": ["Balance cannot be below overdraft limit"]}
+            )
 
     def withdraw(self, amount: float):
         self.balance -= amount  # Update account state (mutation)

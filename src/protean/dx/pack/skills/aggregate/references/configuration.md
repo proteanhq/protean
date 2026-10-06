@@ -273,7 +273,7 @@ class Order:
 # Commands are sent to: test::order:command-{aggregate_id}
 ```
 
-**Related:** See [Stream Categories](https://protean.readthedocs.io/guides/essentials/stream-categories.html) documentation.
+**Related:** See [Stream Categories](https://docs.proteanhq.com/concepts/async-processing/stream-categories/) documentation.
 
 ---
 
@@ -354,5 +354,5 @@ class Order:
 ## Related
 
 - [Aggregate Inheritance](../assets/aggregate_inheritance.py)
-- [Stream Categories](https://protean.readthedocs.io/guides/essentials/stream-categories.html)
-- [Database Providers](https://protean.readthedocs.io/guides/adapters/database.html)
+- [Stream Categories](https://docs.proteanhq.com/concepts/async-processing/stream-categories/)
+- [Database Providers](https://docs.proteanhq.com/reference/adapters/database/)

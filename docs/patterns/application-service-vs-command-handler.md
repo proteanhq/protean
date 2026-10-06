@@ -50,7 +50,7 @@ def create_user(payload: CreateUserRequest):
     # But domain.process() doesn't return the user...
     # Now we have to query for it by email
     repo = domain.repository_for(User)
-    user = repo._dao.query.filter(email=payload.email).first()
+    user = repo.query.filter(email=payload.email).first()
     return {"id": user.id, "email": user.email}
 ```
 
@@ -444,7 +444,7 @@ def create_product(payload: CreateProductRequest):
     )
     # Now we have to query for the product we just created
     repo = domain.repository_for(Product)
-    products = repo._dao.query.filter(name=payload.name).all().items
+    products = repo.query.filter(name=payload.name).all().items
     return {"id": str(products[0].product_id), "name": products[0].name}
 ```
 

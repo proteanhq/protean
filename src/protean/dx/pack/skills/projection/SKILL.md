@@ -150,19 +150,19 @@ class Building:
 
 ## Querying read models
 
-Projections are queried through the same repository/DAO interface as aggregates:
+Projections are queried through the same repository interface as aggregates:
 
 ```python
 repo = domain.repository_for(ProductInventory)
 
 # Flat COUNT without loading rows
-low_stock = repo._dao.query.filter(stock_quantity__lt=10).count()
+low_stock = repo.query.filter(stock_quantity__lt=10).count()
 
 # isnull lookup — records where a field is / isn't set
-never_updated = repo._dao.query.filter(last_updated__isnull=True).all().items
+never_updated = repo.query.filter(last_updated__isnull=True).all().items
 
 # Fetch items without the separate total-count round-trip
-page = repo._dao.query.filter(stock_quantity__lt=10).all(with_total=False).items
+page = repo.query.filter(stock_quantity__lt=10).all(with_total=False).items
 ```
 
 See the `repository` skill for the full querying surface (filtering, ordering,
@@ -270,7 +270,7 @@ Instead: Use `@domain.aggregate` for write models with business logic
 - `projector` - Projectors populate projections from domain events
 - `aggregate` - Aggregates are the write-side counterpart to projections
 - `event` - Events are the bridge between aggregates and projections
-- `patterns/cqrs` - Projections implement the query side of CQRS
+- [CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/) - Projections implement the query side of CQRS
 
 ## Verify your work
 

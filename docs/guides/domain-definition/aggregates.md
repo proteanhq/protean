@@ -327,7 +327,7 @@ In [3]: current_domain.repository_for(Post).add(post)
 Below is an example of adding multiple comments to the domain defined above:
 
 ```shell
-In [1]: from protean.globals import current_domain
+In [1]: from protean import current_domain
 
 In [2]: post = Post(title='Foo')
 

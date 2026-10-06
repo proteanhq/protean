@@ -56,7 +56,7 @@ class OrderEventHandler:
 5. **Implicit UnitOfWork** - Each handler method runs within a UnitOfWork context automatically
 6. **Multiple handlers per event** - Unlike commands, multiple event handlers can process the same event
 7. **Import handle from protean** - `from protean import handle` (not from protean.core)
-8. **part_of uses class reference** - Handler uses `part_of=AggregateClass` (not a string). Define the aggregate before the handler so the class resolves; unlike events/commands, event handlers do **not** accept a string `part_of` (it raises at registration)
+8. **part_of uses class reference** - Handler uses `part_of=AggregateClass` by convention. A string reference (`part_of="AggregateName"`) also works and resolves at `init`, so the aggregate may be defined after the handler
 9. **stream_category for cross-aggregate** - Use `stream_category=OtherAggregate.meta_.stream_category` to listen to another aggregate's events
 
 ## Handler options
@@ -78,7 +78,7 @@ class ManageInventory:
     @handle(OrderShipped)
     def reduce_stock_level(self, event: OrderShipped):
         repo = domain.repository_for(Inventory)
-        inventory = repo._dao.find_by(book_id=event.book_id)
+        inventory = repo.find_by(book_id=event.book_id)
         inventory.in_stock -= event.quantity
         repo.add(inventory)
 ```

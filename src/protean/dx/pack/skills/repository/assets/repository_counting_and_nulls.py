@@ -47,8 +47,8 @@ class Ticket:
 class TicketRepository:
     """Read-optimized queries over tickets.
 
-    Repositories take a class reference for part_of (the aggregate must be
-    defined first); unlike handlers, they do not accept a string reference.
+    part_of takes the aggregate class or a string reference. A string resolves
+    at init, so the aggregate may be defined after the repository.
     """
 
     def count_by_status(self, status: str) -> int:

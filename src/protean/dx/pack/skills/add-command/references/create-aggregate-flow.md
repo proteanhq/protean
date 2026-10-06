@@ -56,7 +56,7 @@ The create pattern has four steps:
 3. **Persist** using `domain.repository_for(Aggregate).add()`
 4. **Return** an identifier for the caller
 
-Note: `part_of=User` uses the class reference (not a string).
+Note: `part_of=User` uses the class reference. A string reference (`part_of="User"`) also works and resolves at `init`.
 
 ### The Endpoint
 

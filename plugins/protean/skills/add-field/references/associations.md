@@ -532,6 +532,8 @@ class ShoppingCart:
 ### Pattern 2: HasOne with Validation
 
 ```python
+from protean.exceptions import ValidationError
+
 @domain.aggregate
 class Order:
     status: String(choices=["draft", "placed", "shipped"])
@@ -540,7 +542,9 @@ class Order:
     @invariant.post
     def placed_orders_must_have_shipping(self):
         if self.status in ["placed", "shipped"] and not self.shipping_info:
-            raise ValidationError("Placed orders must have shipping info")
+            raise ValidationError(
+                {"shipping_info": ["Placed orders must have shipping info"]}
+            )
 ```
 
 ### Pattern 3: ValueObject in Entity

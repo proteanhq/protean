@@ -139,7 +139,7 @@ from protean.fields import Auto, DateTime, Float, Identifier, Integer, String
 from protean import handle
 from protean.core.application_service import use_case, BaseApplicationService
 from protean.core.projector import on
-from protean.globals import current_domain
+from protean import current_domain
 
 
 @domain.event(part_of="Order")
@@ -545,7 +545,7 @@ noticeable. Plan for it.
 @app.get("/orders")
 async def list_orders():
     repo = domain.repository_for(Order)
-    orders = repo._dao.query.all().items
+    orders = repo.query.all().items
     return [o.to_dict() for o in orders]
 ```
 

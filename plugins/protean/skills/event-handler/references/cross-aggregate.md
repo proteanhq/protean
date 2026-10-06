@@ -41,20 +41,20 @@ The `stream_category` should be set using `Aggregate.meta_.stream_category` to g
 @handle(OrderShipped)
 def reduce_stock_level(self, event: OrderShipped):
     repo = domain.repository_for(Inventory)
-    inventory = repo._dao.find_by(book_id=event.book_id)
+    inventory = repo.find_by(book_id=event.book_id)
     inventory.in_stock -= event.quantity
     repo.add(inventory)
 ```
 
 The handler:
 1. Receives the `OrderShipped` event from the Order stream
-2. Looks up the Inventory record by `book_id` using the DAO
+2. Looks up the Inventory record by `book_id` with `repo.find_by()`
 3. Reduces the stock quantity
 4. Persists the updated Inventory
 
-### Why _dao.find_by?
+### Why find_by?
 
-In the cross-aggregate pattern, you often need to look up an aggregate by a non-identity field (e.g., `book_id` instead of the Inventory's primary key). The `_dao.find_by()` method allows querying by any field.
+In the cross-aggregate pattern, you often need to look up an aggregate by a non-identity field (e.g., `book_id` instead of the Inventory's primary key). The repository's `find_by()` method queries by any field and returns exactly one aggregate. It raises `ObjectNotFoundError` when nothing matches and `TooManyObjectsError` when more than one record does.
 
 Alternatively, if you know the aggregate's identity, use `repo.get(id)`.
 
@@ -86,4 +86,4 @@ Cross-aggregate event handling provides eventual consistency. The Order aggregat
 - [Anti-patterns](./anti-patterns.md) - Common mistakes
 - `event` - Events are the input to event handlers
 - `aggregate` - Event handlers are always connected to aggregates
-- `patterns/event-sourcing` - Event handlers in event sourcing context
+- `event-sourced-aggregate` - Aggregates whose state is rebuilt from their events

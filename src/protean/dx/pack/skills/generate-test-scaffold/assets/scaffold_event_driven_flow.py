@@ -124,6 +124,6 @@ class InventoryEventHandler:
     def on_order_placed(self, event: OrderPlaced):
         """When an order is placed, reserve stock in inventory."""
         repo = domain.repository_for(Inventory)
-        inventory = repo._dao.find_by(product_id=event.product_id)
+        inventory = repo.find_by(product_id=event.product_id)
         inventory.reserve(event.quantity)
         repo.add(inventory)

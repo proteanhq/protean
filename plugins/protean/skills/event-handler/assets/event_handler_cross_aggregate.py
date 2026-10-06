@@ -87,7 +87,7 @@ class ManageInventory:
         decreases stock by the ordered quantity, and persists.
         """
         repo = domain.repository_for(Inventory)
-        inventory = repo._dao.find_by(book_id=event.book_id)
+        inventory = repo.find_by(book_id=event.book_id)
         inventory.in_stock -= event.quantity
         repo.add(inventory)
 

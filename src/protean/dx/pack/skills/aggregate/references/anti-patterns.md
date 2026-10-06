@@ -181,6 +181,8 @@ account.withdraw(200.0)  # balance = -100.0, violates overdraft!
 ✅ **Good:**
 
 ```python
+from protean.exceptions import ValidationError
+
 @domain.aggregate
 class Account:
     balance: Float(default=0.0)
@@ -189,8 +191,8 @@ class Account:
     @invariant.post
     def balance_must_be_above_overdraft_limit(self):
         if self.balance < -self.overdraft_limit:
-            raise InsufficientFundsException(
-                "Balance cannot be below overdraft limit"
+            raise ValidationError(
+                {"_entity": ["Balance cannot be below overdraft limit"]}
             )
 
     def withdraw(self, amount: float):

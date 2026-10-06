@@ -330,7 +330,7 @@ def check_something(self):
 @invariant.post
 def check_something(self):
     if self.amount < 0:
-        raise ValidationError("Invalid")  # Too vague!
+        raise ValidationError({"amount": ["Invalid"]})  # Too vague!
 ```
 
 **Too many rules in one method** ❌

@@ -46,12 +46,12 @@ class OrderRepository:
 
 ## Key rules
 
-1. **Repositories always belong to an aggregate** - Specify `part_of` with the aggregate **class**: `@domain.repository(part_of=Order)`. Define the aggregate before the repository so the class resolves. Unlike command/event handlers, repositories require the resolved class — a string reference (`part_of="Order"`) is not accepted and raises an error at registration
+1. **Repositories always belong to an aggregate** - Specify `part_of` with the aggregate class, `@domain.repository(part_of=Order)`, or with a string reference, `@domain.repository(part_of="Order")`. A string resolves at `init`, so the aggregate may be defined after the repository
 2. **Default repository is automatic** - Every aggregate gets `add()` and `get()` for free; only write a custom repository when you need custom queries
 3. **Persist at the aggregate level** - Repositories save the entire aggregate including enclosed entities and value objects; never persist entities separately
 4. **Use `add()` for both create and update** - The repository's `add()` method handles both new and modified aggregates (collection semantics)
 5. **Use `get()` to load by identifier** - Loads the aggregate with all its children from the persistence store
-6. **Use the query helpers for custom queries** - Inside a custom repository, use `self.query` for filtering, sorting, and paging. `self.find_by()` loads one aggregate by its field values, `self.find()` runs a composable `Q` expression and returns one `ResultSet` page of matches, capped at the aggregate's `limit` (100 by default), with `total` carrying the full count. `self.exists()` returns a bool. `self._dao` stays available as an internal escape hatch for infrastructure work
+6. **Use the query helpers for custom queries** - Inside a custom repository, use `self.query` for filtering, sorting, and paging. `self.find_by()` loads one aggregate by its field values, `self.find()` runs a composable `Q` expression and returns one `ResultSet` page of matches, capped at the aggregate's `limit` (100 by default), with `total` carrying the full count. `self.exists()` returns a bool. Below these helpers sits a private data access object, kept for infrastructure work such as hard deletion and test teardown. [Custom Queries](references/custom-queries.md) names it and says when to use it
 7. **Repositories respect Unit of Work** - When inside a UoW (e.g., command handlers), changes are committed atomically at UoW commit
 8. **Database option controls provider binding** - Use `database` option to lock a repository to a specific database type (default is `"ALL"`)
 9. **Children are synced automatically** - HasMany/HasOne child entities are persisted/removed automatically when the aggregate is added
@@ -197,7 +197,7 @@ Instead: Let the implicit UnitOfWork handle transactional behavior
 
 ### Core Concepts
 - [Default Repository](references/default-repository.md) - How Protean auto-generates repositories
-- [Custom Queries](references/custom-queries.md) - Writing domain-specific query methods using DAO
+- [Custom Queries](references/custom-queries.md) - Writing domain-specific query methods
 - [Database-Specific Repositories](references/database-specific.md) - Binding repositories to specific databases
 - [Unit of Work Integration](references/unit-of-work.md) - Transactional semantics and UoW
 - [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them

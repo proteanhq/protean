@@ -30,8 +30,8 @@ An Application Service (or another element from the Application Layer, like
 the repository. It then invokes a method on the aggregate that mutates state.
 Below is the aggregate method that mutates state:
 
-```python hl_lines="13-16 18-24"
---8<-- "guides/domain-behavior/002.py:10:33"
+```python hl_lines="13-18 20-23"
+--8<-- "guides/domain-behavior/002.py:8:30"
 ```
 
 Also visible is the invariant (business rule) that the balance should never
@@ -42,8 +42,8 @@ be below the overdraft limit.
 Changing state within an aggregate is straightforward, in the form of attribute
 updates.
 
-```python hl_lines="13"
---8<-- "guides/domain-behavior/002.py:16:33"
+```python hl_lines="15"
+--8<-- "guides/domain-behavior/002.py:14:30"
 ```
 
 If the state change is successful, meaning it satisfies all
@@ -63,16 +63,17 @@ Out[3]:
  'id': '73e6826c-cae0-4fbf-b42b-7edefc030968'}
 ```
 
-If the change does not satisfy an invariant, exceptions are raised.
+If the change does not satisfy an invariant, Protean raises a `ValidationError`
+that carries the invariant's message under the field it names.
 
 ```shell hl_lines="3 7"
 In [1]: account = Account(account_number="1234", balance=1000.0, overdraft_limit=50.0)
 
 In [2]: account.withdraw(1100.0)
 ---------------------------------------------------------------------------
-InsufficientFundsException                Traceback (most recent call last)
+ValidationError                           Traceback (most recent call last)
 ...
-InsufficientFundsException: Balance cannot be below overdraft limit
+ValidationError: {'_entity': ['Balance cannot be below overdraft limit']}
 ```
 
 ## How It Works {#how-it-works}

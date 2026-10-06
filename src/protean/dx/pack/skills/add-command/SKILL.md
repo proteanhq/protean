@@ -77,7 +77,7 @@ class PlaceOrder:
 Follow the patterns in [command-handler](../command-handler/SKILL.md).
 
 Key points for this workflow:
-- Use `part_of=AggregateClass` (class reference, not string)
+- Use `part_of=AggregateClass` when the class is in scope. A string reference also works and resolves at `init`
 - Use `@handle(CommandClass)` decorator on handler methods
 - **Creating aggregates**: Construct from command data, call method, persist with `domain.repository_for(Aggregate).add()`
 - **Updating aggregates**: Load with `domain.repository_for(Aggregate).get(id)`, call method, persist
@@ -179,7 +179,7 @@ class OrderCommandHandler:
 
 ## Key rules
 
-1. **Commands use `part_of="String"`**, handlers use `part_of=ClassRef` (a string reference on a handler also works, resolved lazily at `init`; the class is just the usual convention when it is in scope) - don't mix them up
+1. **Commands use `part_of="String"`** - Handlers usually pass the class, `part_of=ClassRef`, and a string works on a handler too
 2. **One handler per command** - Protean enforces this; multiple `@handle` methods in one handler is fine
 3. **Implicit UnitOfWork** - Do NOT wrap handler methods in manual UnitOfWork
 4. **Endpoints are thin** - Only construct commands and call `domain.process()`. No repository access, no business logic

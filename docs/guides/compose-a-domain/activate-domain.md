@@ -94,7 +94,7 @@ Using this pattern, you can, for example, manage a file connection for the
 lifetime of a domain call:
 
 ```python
-from protean.globals import g
+from protean import g
 
 def get_log():
     if 'log' not in g:

@@ -286,7 +286,7 @@ Instead: Register projection with `@domain.projection` decorator
 - `aggregate` - Aggregates produce the events that projectors consume
 - `event-handler` - Generic event handlers (compare/contrast with projectors)
 - `projection` - Projections are the output that projectors maintain
-- `patterns/cqrs` - Projectors implement the query side of CQRS
+- [CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/) - Projectors implement the query side of CQRS
 
 ## Verify your work
 

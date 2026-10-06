@@ -54,7 +54,7 @@ class OrderCommandHandler:
 6. **Implicit UnitOfWork** - Each handler method runs within a UnitOfWork context automatically (no manual wrapping needed)
 7. **Persist one aggregate** - Handler should persist only one aggregate root per operation; use domain events for cross-aggregate coordination
 8. **Import handle from protean** - `from protean import handle` (not from protean.core)
-9. **part_of uses class reference** - Handler uses `part_of=AggregateClass`, while commands use `part_of="AggregateName"` (string). Define the aggregate before the handler so the class resolves; unlike commands, command handlers do **not** accept a string `part_of` (it raises at registration)
+9. **part_of on a handler takes the class or a string** - A handler usually passes the class, `part_of=AggregateClass`. A string, `part_of="AggregateName"`, also works on the handler and resolves at `init`, so the aggregate may be defined after the handler. Commands use the string form
 
 ## Handler options
 

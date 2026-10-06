@@ -210,7 +210,7 @@ Dashboard](../../reference/cli/runtime/observatory.md#endpoints).
 **A shell session**, query the outbox repository directly:
 
 ```python
-from protean.globals import current_domain
+from protean import current_domain
 from protean.utils.outbox import OutboxStatus
 
 with domain.domain_context():

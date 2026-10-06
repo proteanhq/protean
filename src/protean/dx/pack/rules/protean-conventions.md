@@ -14,7 +14,9 @@ globs: "**/*.py"
 
 ## References
 
-- Always use **string references** for `part_of` to avoid circular imports:
+- Use **string references** for `part_of` on commands and events, to avoid
+  circular imports. A handler or repository usually passes the aggregate class
+  when it is in scope. A string works there too and resolves at `init`:
   ```python
   # Good
   @domain.event(part_of="Order")

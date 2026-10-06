@@ -98,6 +98,6 @@ class SubscriptionSyncHandler:
     def on_payment_confirmed(self, event: PaymentConfirmed):
         """Activate subscription when payment is confirmed."""
         repo = domain.repository_for(Subscription)
-        subscription = repo._dao.find_by(customer_id=event.customer_id)
+        subscription = repo.find_by(customer_id=event.customer_id)
         subscription.activate(plan_name=event.plan_name)
         repo.add(subscription)

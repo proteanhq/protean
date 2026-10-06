@@ -5,7 +5,7 @@ This example demonstrates:
 - Persisting projection records via domain.repository_for()
 - Retrieving projection records by identifier
 - Updating projection records
-- Querying all records with _dao.query.all()
+- Querying all records with repository.query.all()
 - Projection state tracking (is_new)
 - Projections use the same repository pattern as aggregates
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         person2 = Person(person_id="2", first_name="Alice", last_name="Smith", age=30)
         domain.repository_for(Person).add(person2)
 
-        all_people = domain.repository_for(Person)._dao.query.all()
+        all_people = domain.repository_for(Person).query.all()
         print(f"Total people: {len(all_people.items)}")
         assert len(all_people.items) == 2
 

@@ -16,8 +16,8 @@ When an aggregate mutates, it also (preferably) raises one or more events
 to record the state change in time, as well as propagate it within and beyond
 the bounded context.
 
-```python hl_lines="15-19"
---8<-- "guides/domain-behavior/002.py:16:35"
+```python hl_lines="17"
+--8<-- "guides/domain-behavior/002.py:14:30"
 ```
 
 The generated events are collected in the mutated aggregate:
