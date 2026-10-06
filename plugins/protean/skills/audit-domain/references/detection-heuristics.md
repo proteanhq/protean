@@ -71,7 +71,7 @@ other_repo.add(inventory)  # Different aggregate type
 
 **How to confirm**: Check if both repositories are used within the same `@handle` method. A handler file that imports two repository types but uses them in different methods is fine.
 
-`check` reports `COMMAND_HANDLER_CROSS_CLUSTER` when a command handler processes another cluster's command. It does not report a handler method that loads two aggregate types. The one rule that reads handler bodies, `HANDLER_PERSISTS_AND_CALLS_OUT`, looks for an external call after a `repository_for(...)` call, not for a second repository.
+`check` reports `COMMAND_HANDLER_CROSS_CLUSTER` when a command handler processes another cluster's command. No `check` rule reports a handler method that loads two aggregate types, so find those by reading the handlers.
 
 ## 4. God Aggregate Detection
 
