@@ -124,18 +124,29 @@ Follow the patterns in [api-endpoint](../api-endpoint/SKILL.md).
 
 Key points for this workflow:
 - Endpoint is a thin adapter - NO business logic
+- Call `domain.init()` at app startup (the `lifespan` hook), after every registration and before the first request
 - Always set up domain context middleware
 - Construct command from request payload (and path parameters)
 - Use `current_domain.process(command, asynchronous=False)` for synchronous processing
 - Return appropriate HTTP status codes (201 for creation, 200 for updates)
 
 ```python
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from protean.utils.globals import current_domain
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Wire the commands and handlers once, before the app takes requests
+    domain.init()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.middleware("http")

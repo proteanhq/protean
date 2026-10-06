@@ -88,10 +88,11 @@ class Order:
     status: String(default="placed")
 
     @classmethod
-    def place(cls, customer_id, product_id, quantity, unit_price):
+    def place(cls, order_id, customer_id, product_id, quantity, unit_price):
         """Factory method for placing a new order."""
         total = quantity * unit_price
         order = cls(
+            id=order_id,
             customer_id=customer_id,
             product_id=product_id,
             quantity=quantity,
@@ -117,6 +118,7 @@ class OrderCommandHandler:
     @handle(PlaceOrder)
     def handle_place_order(self, command: PlaceOrder):
         order = Order.place(
+            order_id=command.order_id,
             customer_id=command.customer_id,
             product_id=command.product_id,
             quantity=command.quantity,
@@ -270,7 +272,13 @@ Instead: keep the rule in an aggregate method/factory; the handler only orchestr
 ```python
 @handle(PlaceOrder)
 def handle_place_order(self, command):
-    order = Order.place(customer_id=command.customer_id, quantity=command.quantity, unit_price=10.0)
+    order = Order.place(
+        order_id=command.order_id,
+        customer_id=command.customer_id,
+        product_id=command.product_id,
+        quantity=command.quantity,
+        unit_price=10.0,
+    )
     domain.repository_for(Order).add(order)
 ```
 
