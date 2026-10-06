@@ -140,6 +140,7 @@ class OrderFulfillmentPM:
     @handle(OrderConfirmed, start=True, correlate="order_id")
     def on_order_confirmed(self, event: OrderConfirmed):
         """Step 1: Order confirmed — reserve inventory."""
+        self.order_id = event.order_id
         current_domain.process(
             ReserveInventory(
                 order_id=event.order_id,

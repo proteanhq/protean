@@ -98,7 +98,7 @@ Events from different aggregates may arrive in any order. Design your projector 
 
 ### Redelivered events
 
-An event can be delivered more than once. As written, this projector counts the order again when `OrderPlaced` is redelivered, and a redelivered `CustomerRegistered` fails because the record already exists. Write each handler as an upsert, or set `idempotent=True` on the projector so the framework skips an event it has already handled. That option is exactly-once only on a transactional database provider and does nothing for a cache-backed projection (see the `idempotent` option in [projector](../../projector/SKILL.md)).
+An event can be delivered more than once. As written, this projector counts the order again when `OrderPlaced` is redelivered, and a redelivered `CustomerRegistered` fails because the record already exists. Writing `on_customer_registered` as an upsert (get the record, create it only if missing) fixes the second case. An upsert does not fix the first: adding to a count or a total is not safe to repeat, so set `idempotent=True` on the projector to have the framework skip an event it has already handled. That option is exactly-once only on a transactional database provider and does nothing for a cache-backed projection (see the `idempotent` option in [projector](../../projector/SKILL.md)).
 
 ### Identifier mapping
 

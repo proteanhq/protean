@@ -175,7 +175,7 @@ class TransactionProjector:
         domain.repository_for(Balances).add(balance)
 ```
 
-A redelivered `Transacted` adds the amount twice here, and a redelivered `Registered` fails because the record exists. Set `idempotent=True` on the projector (see the options table below) or write each handler as an upsert.
+A redelivered `Transacted` adds the amount twice here, and a redelivered `Registered` fails because the record exists. Writing `on_registered` as an upsert (get the record, create it only if missing) fixes the second case. An upsert does not fix the first, because adding to a balance is not safe to repeat. Set `idempotent=True` on the projector (see the options table below) to have the framework skip an event it has already handled.
 
 ## Quick example: Multiple projectors for same event
 
