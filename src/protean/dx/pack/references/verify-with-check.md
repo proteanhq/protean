@@ -17,11 +17,15 @@ done.
    the changed domain. It returns the same full report. The `validate` tool is
    the narrower go/no-go answer: it tells you whether the domain is valid and
    lists its errors, but it does not carry the warning and info diagnostics, so
-   use `check` when you need to read and resolve every finding.
+   use `check` when you need to read and resolve every finding. The `check`
+   tool takes no level, so its report includes the info-level diagnostics.
+   Skip those, the same as `--level=warning` does on the command line.
 4. Read each error and warning, fix the cause in the domain code, and run the
    check again.
 
 Stop when `check --level=warning` reports no error or warning that your change
 introduced. A domain may already carry warnings from before your change. Leave
 those alone unless the task is to fix them. Run the check once before you start
-if you need to tell the two apart.
+if you need to tell the two apart. If a new warning asks for work the task
+did not ask for, such as a command handler for a new aggregate, tell the user
+about it instead of building it.

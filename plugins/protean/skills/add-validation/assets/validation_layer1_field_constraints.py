@@ -32,7 +32,7 @@ from protean.fields import Float, Integer, String
 from protean.fields.validators import RegexValidator
 
 # Domain setup
-domain = Domain(__name__)
+domain = Domain()
 
 
 class Department(Enum):

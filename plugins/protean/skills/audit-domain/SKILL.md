@@ -46,19 +46,21 @@ Produces a prioritized report linking each finding to the appropriate refactorin
 protean check --domain=<module>
 ```
 
-Through the MCP server, call the `check` tool instead. Do not pass `--level=warning` here. Several of the codes below are info level, and they are audit findings even though they do not fail a build.
+If the module defines more than one domain, name the one to audit after a colon, for example `--domain=myapp.domain:billing`.
 
-| Code | Level | What it reports | Category below | Fix |
-|------|-------|-----------------|----------------|-----|
-| `AGGREGATE_TOO_LARGE` | info | The aggregate's cluster has more child entities than `[lint] aggregate_size_limit` (default 5) | 4 | [split-aggregate](../split-aggregate/SKILL.md) |
-| `AGGREGATE_NO_INVARIANTS` | info | The aggregate declares no invariant | 7 | [add-validation](../add-validation/SKILL.md) |
-| `COMMAND_HANDLER_CROSS_CLUSTER` | warning | A command handler processes another cluster's command | 3 | [command-handler](../command-handler/SKILL.md) |
-| `CROSS_AGGREGATE_REFERENCE` | warning | A field holds a `Reference` to another aggregate root | none | [split-aggregate](../split-aggregate/SKILL.md) |
-| `EVENT_HANDLER_FOREIGN_EVENT` | warning | An event handler reacts to another cluster's event | none | [event-handler](../event-handler/SKILL.md) |
-| `HANDLER_PERSISTS_AND_CALLS_OUT` | info | A handler method persists and then calls an external system while the transaction is open | none | [command-handler](../command-handler/SKILL.md) |
-| `HANDLER_TOO_BROAD` | info | A handler handles more message types than `[lint] handler_breadth_limit` (default 5) | none | [command-handler](../command-handler/SKILL.md) |
+Through the MCP server, call the `check` tool instead. Do not pass `--level=warning` here. Several of the codes below are info level, and `--level=warning` would hide them.
 
-Report each code at the severity of its category below. Report a code with no category as MEDIUM if it is a warning and LOW if it is info. The other diagnostics `check` prints (errors, naming and wiring codes) belong in the report too, but the element skills cover their fixes.
+| Code | Level | What it reports | Severity | Fix |
+|------|-------|-----------------|----------|-----|
+| `COMMAND_HANDLER_CROSS_CLUSTER` | warning | A command handler processes another cluster's command | HIGH | [command-handler](../command-handler/SKILL.md) |
+| `CROSS_AGGREGATE_REFERENCE` | warning | A field holds a `Reference` to another aggregate root | HIGH | [split-aggregate](../split-aggregate/SKILL.md) |
+| `EVENT_HANDLER_FOREIGN_EVENT` | warning | An event handler reacts to another cluster's event | MEDIUM | [event-handler](../event-handler/SKILL.md) |
+| `AGGREGATE_TOO_LARGE` | info | The aggregate's cluster has more child entities than `[lint] aggregate_size_limit` (default 5) | MEDIUM, or HIGH with the category 4 signals | [split-aggregate](../split-aggregate/SKILL.md) |
+| `HANDLER_PERSISTS_AND_CALLS_OUT` | info | A handler method persists and then calls an external system while the transaction is open | MEDIUM | [command-handler](../command-handler/SKILL.md) |
+| `AGGREGATE_NO_INVARIANTS` | info | The aggregate declares no invariant | LOW | [add-validation](../add-validation/SKILL.md) |
+| `HANDLER_TOO_BROAD` | info | A command or event handler handles more message types than `[lint] handler_breadth_limit` (default 5) | LOW | [command-handler](../command-handler/SKILL.md), [event-handler](../event-handler/SKILL.md) |
+
+Report each of these codes at the severity in the table. `check` prints other diagnostics too, such as errors and naming and wiring codes. Report those at their level: an error as CRITICAL, a warning as MEDIUM, and an info diagnostic as LOW. The element skills cover their fixes.
 
 ## Detection categories
 
@@ -102,7 +104,6 @@ more than one aggregate class.
 - `current_domain.repository_for(X).add()` calls on more than one aggregate type
 - Multiple `domain.repository_for(X)` calls in one handler
 - Loading and mutating a second aggregate inside a handler
-- A command handler for another cluster's command: `check` reports `COMMAND_HANDLER_CROSS_CLUSTER`
 
 **Severity**: CRITICAL
 **Fix**: [refactor-introduce-events](../refactor-introduce-events/SKILL.md)
@@ -153,7 +154,6 @@ more than one aggregate class.
 - Input checking `if not field:` in API endpoints
 - Duplicate validation (same check in endpoint AND aggregate)
 - Missing `@invariant.post` decorators on aggregates with complex rules
-- An aggregate with no invariant at all: `check` reports `AGGREGATE_NO_INVARIANTS`
 
 **Severity**: MEDIUM
 **Fix**: [add-validation](../add-validation/SKILL.md)
@@ -212,7 +212,7 @@ logic without raising events.
 
 ### Step 1: Run `protean check`
 
-Run `protean check --domain=<module>`, or the MCP `check` tool, as described in [Start with `protean check`](#start-with-protean-check). Keep its output. Each code it reports is a finding, and the codes tell you which categories are already covered.
+Run `protean check --domain=<module>` (or `--domain=<module>:<name>` when the module defines more than one domain), or the MCP `check` tool, as described in [Start with `protean check`](#start-with-protean-check). Keep its output. Each code it reports is a finding, and the codes tell you which categories are already covered.
 
 ### Step 2: Discover domain files
 
@@ -336,10 +336,11 @@ Would produce:
 CRITICAL: Transaction boundary violation: handler modifies both Order and Inventory (lines 12-14)
 HIGH: Logic leak: validation and calculation in handler, not aggregate (lines 5-9)
 HIGH: Missing events: Inventory update should be event-driven, not direct (lines 12-14)
-MEDIUM: Scattered validation: AGGREGATE_NO_INVARIANTS on Order and Inventory (from check)
+MEDIUM: AGGREGATE_WITHOUT_COMMAND_HANDLER on Inventory (from check)
+LOW: AGGREGATE_NO_INVARIANTS on Order and Inventory (from check)
 ```
 
-`check` also reports `AGGREGATE_WITHOUT_COMMAND_HANDLER` for Inventory. The aggregate skill covers that one.
+`AGGREGATE_WITHOUT_COMMAND_HANDLER` is a warning that the table above does not list, so it is reported as MEDIUM. The aggregate skill covers its fix.
 
 ## Examples
 

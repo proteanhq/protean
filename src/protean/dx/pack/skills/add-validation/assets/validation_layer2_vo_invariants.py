@@ -28,7 +28,7 @@ from protean.exceptions import ValidationError
 from protean.fields import Float, String, ValueObject
 
 # Domain setup
-domain = Domain(__name__)
+domain = Domain()
 
 VALID_CURRENCIES = {"USD", "EUR", "GBP", "JPY", "CAD", "AUD"}
 

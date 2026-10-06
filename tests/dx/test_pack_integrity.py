@@ -426,6 +426,13 @@ def test_verify_reference_names_the_stop_level_and_a_named_domain():
     assert any(":" in value for value in domains), (
         f"no --domain value in the verify reference names a domain: {domains}"
     )
+    # Stopping only when check reports nothing would make an agent fix warnings
+    # that were there before its change.
+    prose = " ".join(text.split())
+    assert "reports no error or warning that your change introduced" in prose
+    # The MCP check tool takes no level, so the reference must say to skip the
+    # info-level diagnostics it returns.
+    assert "Skip those, the same as `--level=warning`" in prose
 
 
 @requires_pack_on_disk

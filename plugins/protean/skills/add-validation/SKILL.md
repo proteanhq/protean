@@ -39,7 +39,7 @@ Before adding a validation, understand:
 Use for single-field data type rules. These are the simplest and most common validations.
 
 ```python
-from protean.fields import String, Integer, Float, Date
+from protean.fields import Decimal, Integer, String
 from enum import Enum
 
 class OrderStatus(Enum):
@@ -54,7 +54,7 @@ class Order:
 
     # Range constraints
     quantity: Integer(required=True, min_value=1, max_value=10000)
-    price: Float(required=True, min_value=0.01)
+    price: Decimal(precision=19, scale=4, required=True, min_value=0.01)
 
     # Length constraints
     notes: String(max_length=500)
@@ -79,6 +79,7 @@ Use for domain concept rules that span multiple fields of a value object. Value 
 ```python
 from protean import invariant
 from protean.exceptions import ValidationError
+from protean.fields import Date, Decimal, String
 
 @domain.value_object
 class DateRange:
@@ -95,7 +96,7 @@ class DateRange:
 
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, required=True)
 
     @invariant.post
@@ -120,20 +121,27 @@ class Money:
 
 Use for business rules that enforce consistency across an aggregate's state. Supports both `@invariant.pre` (before change) and `@invariant.post` (after change).
 
+Money fields are `Decimal`, so the total compares exactly. With `Float` fields, subtotals of 0.1 and 0.2 do not add up to a total of 0.3.
+
 ```python
+from protean import invariant
+from protean.exceptions import ValidationError
+from protean.fields import Decimal, HasMany, Integer, String
+
+
 @domain.entity(part_of="Order")
 class LineItem:
     product_id: String(required=True)
     quantity: Integer(required=True)
-    price: Float(required=True)
-    subtotal: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
+    subtotal: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.aggregate
 class Order:
     status: String(default="draft")
     items = HasMany("LineItem")
-    total_amount: Float(default=0.0)
+    total_amount: Decimal(precision=19, scale=4, default=0)
 
     def place(self):
         self.status = "placed"
@@ -183,34 +191,17 @@ business rules it must always satisfy, or reconsider whether the concept is an a
 plain value-carrier is often better modelled as a value object or as an entity inside another
 aggregate.
 
-### Atomic changes
-
-When multiple attributes need to change together, use `atomic_change` to defer validation until all changes are made. Creating an aggregate needs an initialized domain and an active domain context:
-
-```python
-from protean import atomic_change
-
-domain.init(traverse=False)
-
-with domain.domain_context():
-    order = Order(
-        items=[LineItem(product_id="P1", quantity=10, price=10.0, subtotal=100.0)],
-        total_amount=100.0,
-    )
-
-    with atomic_change(order):
-        order.total_amount = 120.0  # No validation yet
-        order.add_items(
-            LineItem(product_id="P3", quantity=2, price=10.0, subtotal=20.0)
-        )
-    # Post-invariants checked here: the total matches the items again
-```
-
 ## Layer 4: Handler/service guards
 
 Use for authorization, context-dependent rules, and checks that need external data not available inside the aggregate.
 
 ```python
+from protean import handle
+from protean.exceptions import ValidationError
+from protean.fields import Identifier, String
+from protean.utils.globals import current_domain
+
+
 @domain.command(part_of=Order)
 class PlaceOrder:
     order_id: Identifier(required=True)
@@ -250,6 +241,33 @@ class OrderCommandHandler:
 - Any rule that needs data not available inside the aggregate
 
 **Validation timing**: During handler execution, before aggregate operations.
+
+## Atomic changes
+
+When multiple attributes need to change together, use `atomic_change` to defer validation until all changes are made. This example uses the `Order` and `LineItem` from Layer 3. Creating an aggregate needs an initialized domain and an active domain context, so `domain.init()` runs after every element is defined:
+
+```python
+from decimal import Decimal as D
+
+from protean import atomic_change
+
+domain.init(traverse=False)
+
+with domain.domain_context():
+    order = Order(
+        items=[
+            LineItem(product_id="P1", quantity=10, price=D("10"), subtotal=D("100"))
+        ],
+        total_amount=D("100"),
+    )
+
+    with atomic_change(order):
+        order.total_amount = D("120")  # No validation yet
+        order.add_items(
+            LineItem(product_id="P3", quantity=2, price=D("10"), subtotal=D("20"))
+        )
+    # Post-invariants checked here: the total matches the items again
+```
 
 ## Decision guide: Choosing the right layer
 

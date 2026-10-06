@@ -6,8 +6,7 @@ Detailed patterns for identifying each anti-pattern category during a domain aud
 
 **What to grep for in handler files:**
 
-```python
-# fragment
+```text
 # Calculations in handlers
 total = ...
 price = ... * ...
@@ -60,8 +59,7 @@ aggregate.field = command.value  # Multiple of these = logic leak
 
 **What to grep for:**
 
-```python
-# fragment
+```text
 # Multiple repository accesses
 current_domain.repository_for(AggregateA)
 current_domain.repository_for(AggregateB)  # Second aggregate = violation
@@ -100,7 +98,7 @@ other_repo.add(inventory)  # Different aggregate type
 
 **Direct handler calls (6)**: Grep for `Handler()` instantiation or handler method calls outside of `domain.process()`.
 
-**Scattered validation (7)**: Grep for `ValidationError` or `ValueError` in handler and endpoint files. Check if the same validation exists as an `@invariant`. `check` reports `AGGREGATE_NO_INVARIANTS` for an aggregate with no invariant at all.
+**Scattered validation (7)**: Grep for `ValidationError` or `ValueError` in handler and endpoint files. Check if the same validation exists as an `@invariant`. An aggregate with no invariant at all is a separate finding: `check` reports it as `AGGREGATE_NO_INVARIANTS`.
 
 **Circular import risk (8)**: Grep for `part_of=` (without quotes around the value) in command, event, entity, and value object files.
 

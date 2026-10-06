@@ -33,15 +33,15 @@ Domain unit tests are the **majority** of your test suite — they test the most
 
 ### Test (user-written business logic)
 
-1. **Aggregate factory methods** — correct state after creation, correct events raised via `raise_()`
-2. **Aggregate state-change methods** — before/after state assertions, status transitions
-3. **User-defined invariants** — `@invariant.pre` and `@invariant.post` enforcement
-4. **Business rules** — methods that reject invalid operations (e.g., "can't cancel a draft order")
-5. **Event data correctness** — events raised by `raise_()` carry the right field values
-6. **Value object custom operations** — user-defined methods like `Money.add()`, not VO construction/equality
-7. **Entity management** — add/remove entities through aggregate methods
-8. **Handler orchestration** — `domain.process()` creates/updates the right aggregate state
-9. **Event handler side effects** — cross-aggregate state changes triggered by events
+1. **Aggregate factory methods**: correct state after creation, correct events raised via `raise_()`
+2. **Aggregate state-change methods**: before/after state assertions, status transitions
+3. **User-defined invariants**: `@invariant.pre` and `@invariant.post` enforcement
+4. **Business rules**: methods that reject invalid operations (e.g., "can't cancel a draft order")
+5. **Event data correctness**: events raised by `raise_()` carry the right field values
+6. **Value object custom operations**: user-defined methods like `Money.add()`, not VO construction/equality
+7. **Entity management**: add/remove entities through aggregate methods
+8. **Handler orchestration**: `domain.process()` creates/updates the right aggregate state
+9. **Event handler side effects**: cross-aggregate state changes triggered by events
 10. **End-to-end flows** — full lifecycle from command to final state
 
 ### Skip (framework guarantees)
@@ -262,22 +262,24 @@ assert target.field == expected
 
 ## Common mistakes
 
-1. **Testing framework guarantees** — Don't test VO immutability, command required fields, or registry presence. Protean handles these.
-2. **Forgetting `_events.clear()`** — After a factory that raises events, clear `_events` before testing the next method's events.
-3. **Leaving processing asynchronous** — A bare `Domain()` processes events and commands asynchronously. Set `event_processing` and `command_processing` to `"sync"` in the root `conftest.py` (or in `domain.toml`). Then `domain.process()` needs no `asynchronous=False`, and event handlers run when an aggregate is persisted.
-4. **Building the test domain by hand** — Use `DomainFixture` in the root `conftest.py`. It initializes the domain, creates the schema, and resets data after each test.
-5. **Catching the wrong exception** — `pytest.raises(ValueError)` passes only if the method raises `ValueError`. Read the method and name what it raises, with `match=` for the message.
-6. **Not creating prerequisite state** — For event handler tests, ensure the target aggregate exists in the repository before the source event fires.
-7. **Using mocks instead of real domain elements** — Protean provides in-memory repositories and synchronous event processing for tests. Construct real aggregates, VOs, commands, and events instead of mocking them. Mocks hide bugs and make tests brittle. Reserve mocks only for truly external dependencies (third-party APIs) that have no in-memory substitute.
+1. **Testing framework guarantees**: don't test VO immutability, command required fields, or registry presence. Protean handles these.
+2. **Forgetting `_events.clear()`**: after a factory that raises events, clear `_events` before testing the next method's events.
+3. **Leaving processing asynchronous**: a bare `Domain()` processes events and commands asynchronously. Set `event_processing` and `command_processing` to `"sync"` in the root `conftest.py` (or in `domain.toml`). Then `domain.process()` needs no `asynchronous=False`, and event handlers run when an aggregate is persisted.
+4. **Building the test domain by hand**: use `DomainFixture` in the root `conftest.py`. It initializes the domain, creates the schema, and resets data after each test.
+5. **Catching the wrong exception**: `pytest.raises(ValueError)` passes only if the method raises `ValueError` or a subclass of it. Read the method and name what it raises, with `match=` for the message.
+6. **Not creating prerequisite state**: for event handler tests, ensure the target aggregate exists in the repository before the source event fires.
+7. **Using mocks instead of real domain elements**: Protean provides in-memory repositories and synchronous event processing for tests. Construct real aggregates, VOs, commands, and events instead of mocking them. Mocks hide bugs and make tests brittle. Reserve mocks only for truly external dependencies (third-party APIs) that have no in-memory substitute.
 
 ## Complete examples
 
-Each asset is a pytest module: the domain first, then its tests. Copy one into a project as `test_<name>.py`, next to the root conftest.
+Each asset is a pytest module: the domain first, then its tests below the `# --- Tests ---` line. Each asset defines its own `domain = Domain()`, so do not copy a whole asset into a project's test suite. The Step 7 conftest sets up the project's domain, not the asset's, and the asset's tests would fail.
 
-- [Root conftest](assets/conftest.py) — `DomainFixture` with event and command processing set to `"sync"`
-- [Aggregate unit tests](assets/scaffold_aggregate_unit.py) — Order with entities, value objects, invariants
-- [Command flow tests](assets/scaffold_command_flow.py) — User registration with handler and API (the API test needs `fastapi` and `httpx`)
-- [Event-driven flow tests](assets/scaffold_event_driven_flow.py) — Cross-aggregate Order → Inventory sync
+To use an asset in a project, copy only the part below `# --- Tests ---` into `tests/test_<name>.py`. Import the elements it uses from the project, for example `from myapp import domain, Order, OrderPlaced`. The Step 7 conftest then sets up the domain.
+
+- [Scaffold conftest](assets/conftest.py): runs the assets exactly as written, in a folder of their own. Each test module there must define `domain`, so do not use this conftest as a project's root conftest. Use the Step 7 conftest there.
+- [Aggregate unit tests](assets/scaffold_aggregate_unit.py): Order with entities, value objects, invariants
+- [Command flow tests](assets/scaffold_command_flow.py): User registration with handler and API (the API test needs `fastapi` and `httpx`)
+- [Event-driven flow tests](assets/scaffold_event_driven_flow.py): Cross-aggregate Order → Inventory sync
 
 ## Detailed references
 

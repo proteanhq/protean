@@ -1,6 +1,6 @@
 # Layer 4: Handler/Service Guards
 
-Handler guards enforce context-dependent rules that cannot be expressed as field constraints or invariants — because they depend on who is performing the action, external data, or cross-aggregate state.
+Handler guards enforce context-dependent rules that cannot be expressed as field constraints or invariants, because they depend on who is performing the action, external data, or cross-aggregate state.
 
 ## Code
 
@@ -11,7 +11,10 @@ The complete implementation is in [assets/validation_layer4_handler_guards.py](.
 ```python
 from datetime import datetime
 
+from protean import handle
 from protean.exceptions import ValidationError
+from protean.fields import Identifier, String
+from protean.utils.globals import current_domain
 
 ALLOWED_ROLES = {"admin", "manager"}
 
@@ -42,9 +45,14 @@ class AccountCommandHandler:
         if command.requested_by_role not in ALLOWED_ROLES:
             raise ValidationError({"authorization": ["Not authorized"]})
 
-        # Guard 2: Existence check. get() raises ObjectNotFoundError on a miss.
+        # Guard 2: Existence check. get() raises ObjectNotFoundError on a miss;
+        # get_or_none() returns None so the handler can say why.
         repo = current_domain.repository_for(Account)
-        account = repo.get(command.account_id)
+        account = repo.get_or_none(command.account_id)
+        if account is None:
+            raise ValidationError(
+                {"account_id": [f"Account {command.account_id} not found"]}
+            )
 
         # Guard 3: Context-dependent check
         if not is_business_hours():
@@ -56,6 +64,8 @@ class AccountCommandHandler:
 ```
 
 ## Common Guard Patterns
+
+Each pattern below is a few lines from inside a handler method like `close_account` above. They use that method's `command` and `repo`, so they do not run on their own.
 
 ### Authorization (role-based)
 ```python
@@ -69,10 +79,8 @@ if command.role not in ALLOWED_ROLES:
 ### Existence check
 ```python
 # fragment
-entity = repo.get(command.entity_id)
-# ObjectNotFoundError raised automatically if not found
-
-# To report a missing entity as a validation error instead:
+# get() raises ObjectNotFoundError on a miss. To report a missing
+# entity as a validation error, as the handler above does:
 entity = repo.get_or_none(command.entity_id)
 if entity is None:
     raise ValidationError({"entity_id": ["Not found"]})

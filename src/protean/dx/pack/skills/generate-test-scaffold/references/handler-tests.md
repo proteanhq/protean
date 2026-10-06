@@ -101,7 +101,7 @@ class TestAPIEndpoint:
 
 ## Avoid mocks — use real domain elements
 
-Use `domain.process()` and `domain.repository_for()` with real commands, aggregates, and events. Protean's synchronous processing (`event_processing` and `command_processing` set to `"sync"` in the root `conftest.py`) and in-memory repositories eliminate the need for mocks. Do not mock handlers, repositories, or aggregate methods — test the real orchestration. Only mock truly external dependencies (third-party HTTP APIs) that have no in-memory substitute.
+Use `domain.process()` and `domain.repository_for()` with real commands, aggregates, and events. Protean's synchronous processing (`event_processing` and `command_processing` set to `"sync"` in the root `conftest.py`) and in-memory repositories eliminate the need for mocks. Do not mock handlers, repositories, or aggregate methods. Test the real orchestration. Only mock truly external dependencies (third-party HTTP APIs) that have no in-memory substitute.
 
 ## What NOT to test
 

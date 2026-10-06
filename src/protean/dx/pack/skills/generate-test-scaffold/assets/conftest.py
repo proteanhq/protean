@@ -1,5 +1,10 @@
 """
-Root conftest.py for the scaffold test modules.
+conftest.py for running the scaffold modules exactly as written.
+
+Put it in a folder of its own, next to the scaffold modules. Every test module
+in that folder must define `domain`, because the fixture reads it from there.
+It is not a project's root conftest: a project test module that does not define
+`domain` would fail. A project uses the conftest in SKILL.md Step 7.
 
 This example demonstrates:
 - DomainFixture from protean.integrations.pytest, which initializes the domain,
@@ -10,8 +15,8 @@ This example demonstrates:
   after each test
 
 Each scaffold module here defines its own domain, so the fixture reads `domain`
-from the test module and is module-scoped. In a project with one domain, import
-it and make the fixture session-scoped instead:
+from the test module and is module-scoped. The SKILL.md Step 7 conftest imports
+the project's one domain and is session-scoped instead:
 
     from myapp import domain
 
