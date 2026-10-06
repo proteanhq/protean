@@ -7,6 +7,7 @@ tests. Covers the core DLQ operations also tested in the inline broker's
 """
 
 import pytest
+import redis
 
 from protean.adapters.broker.redis import RedisBroker
 from tests.shared import REDIS_URI
@@ -69,6 +70,12 @@ class TestRedisDLQManagement:
     def test_dlq_list_empty_returns_empty(self, test_domain):
         broker = _broker(test_domain)
         assert broker.dlq_list(["nonexistent:dlq"]) == []
+
+    def test_dlq_list_raises_for_a_key_that_is_not_a_stream(self, test_domain):
+        broker = _broker(test_domain)
+        broker._client.set("orders:dlq", "not-a-stream")
+        with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
+            broker.dlq_list(["orders:dlq"])
 
     def test_dlq_list_filters_by_stream(self, test_domain):
         broker = _broker(test_domain)

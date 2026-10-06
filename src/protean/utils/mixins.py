@@ -88,7 +88,12 @@ def _get_version_retry_config() -> dict[str, Any]:
         else None
     )
     if not isinstance(cfg, dict):
-        _warn_invalid_version_retry_config(server_config, exc_info=False)
+        detail = (
+            f"`server.version_retry` is a {type(cfg).__name__}, not a table"
+            if isinstance(server_config, dict)
+            else f"`server` is a {type(server_config).__name__}, not a table"
+        )
+        _warn_invalid_version_retry_config(server_config, detail, exc_info=False)
         return dict(_VERSION_RETRY_DEFAULTS)
 
     enabled = cfg.get("enabled", _VERSION_RETRY_DEFAULTS["enabled"])
@@ -107,19 +112,26 @@ def _get_version_retry_config() -> dict[str, Any]:
             "max_delay_seconds": float(max_delay),
         }
     except (TypeError, ValueError, OverflowError):
-        _warn_invalid_version_retry_config(server_config, exc_info=True)
+        _warn_invalid_version_retry_config(
+            server_config, f"version_retry = {cfg!r}", exc_info=True
+        )
     return dict(_VERSION_RETRY_DEFAULTS)
 
 
-def _warn_invalid_version_retry_config(server_config: Any, *, exc_info: bool) -> None:
-    """Warn about an unreadable ``[server]`` table, once per distinct table."""
+def _warn_invalid_version_retry_config(
+    server_config: Any, detail: str, *, exc_info: bool
+) -> None:
+    """Warn about an unreadable ``[server]`` table, once per distinct table.
+
+    The message carries *detail*, which names only the ``version_retry`` value.
+    The rest of ``[server]`` can hold credentials, so it stays out of the log.
+    """
     seen = repr(server_config)
     if seen not in _warned_version_retry_configs:
         _warned_version_retry_configs.add(seen)
         logger.warning(
-            "Invalid `server.version_retry` configuration (server = %s); "
-            "using the defaults",
-            seen,
+            "Invalid `server.version_retry` configuration (%s); using the defaults",
+            detail,
             exc_info=exc_info,
         )
 

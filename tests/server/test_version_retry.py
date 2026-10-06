@@ -209,13 +209,29 @@ class TestVersionRetryDefaults:
         assert len(records) == 1
         assert records[0].levelno == logging.WARNING
         message = records[0].getMessage()
-        assert message.startswith(
-            "Invalid `server.version_retry` configuration (server = "
-        )
+        assert message.startswith("Invalid `server.version_retry` configuration (")
         assert message.endswith("); using the defaults")
-        assert repr(bad_config) in message
+        if isinstance(bad_config, dict):
+            assert f"version_retry = {bad_config!r}" in message
+        else:
+            assert "`server.version_retry` is a str, not a table" in message
         # A conversion failure carries its traceback; a non-table has none
         assert bool(records[0].exc_info) == isinstance(bad_config, dict)
+
+    def test_warning_leaves_the_rest_of_the_server_table_out(
+        self, test_domain, caplog, fresh_warnings
+    ):
+        """Other `[server]` keys can hold credentials; the warning omits them."""
+        test_domain.config["server"]["admin_token"] = "s3cr3t-token"
+        test_domain.config["server"]["version_retry"] = {"max_retries": "three"}
+        caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
+
+        assert _get_version_retry_config() == _VERSION_RETRY_DEFAULTS
+
+        records = [r for r in caplog.records if r.name == "protean.utils.mixins"]
+        assert len(records) == 1
+        assert "s3cr3t-token" not in records[0].getMessage()
+        assert "s3cr3t-token" not in caplog.text
 
     def test_invalid_config_warns_once(self, test_domain, caplog, fresh_warnings):
         """The config is read on every handler call; the warning is not."""
@@ -244,14 +260,16 @@ class TestVersionRetryDefaults:
     def test_non_table_server_section_falls_back_with_warning(
         self, test_domain, caplog, fresh_warnings
     ):
-        test_domain.config["server"] = "not-a-table"
+        test_domain.config["server"] = "redis://user:s3cr3t@host"
         caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
 
         assert _get_version_retry_config() == _VERSION_RETRY_DEFAULTS
 
         records = [r for r in caplog.records if r.name == "protean.utils.mixins"]
         assert len(records) == 1
-        assert "'not-a-table'" in records[0].getMessage()
+        message = records[0].getMessage()
+        assert "`server` is a str, not a table" in message
+        assert "s3cr3t" not in message
 
     def test_valid_config_logs_no_warning(self, test_domain, caplog):
         caplog.set_level(logging.WARNING, logger="protean.utils.mixins")

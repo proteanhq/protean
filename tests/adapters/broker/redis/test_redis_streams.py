@@ -791,18 +791,9 @@ def test_ping_with_exception(redis_broker, monkeypatch):
 
 
 @pytest.mark.redis
-def test_calculate_message_counts_with_stream_errors(redis_broker, monkeypatch):
-    """Test _calculate_message_counts with stream-specific errors"""
-    import redis
-
-    def mock_xlen(*args, **kwargs):
-        raise redis.ResponseError(
-            "WRONGTYPE Operation against a key holding the wrong kind of value"
-        )
-
-    monkeypatch.setattr(redis_broker.redis_instance, "xlen", mock_xlen)
-
-    # Add a stream to check
+def test_calculate_message_counts_skips_a_key_of_another_type(redis_broker):
+    """A key that holds a string, not a stream, is not counted"""
+    redis_broker.redis_instance.set("test_stream", "not-a-stream")
     redis_broker._subscribers["test_stream"] = []
 
     result = redis_broker._calculate_message_counts()

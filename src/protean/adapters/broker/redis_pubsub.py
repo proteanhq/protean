@@ -1,4 +1,3 @@
-import contextlib
 import json
 import logging
 import time
@@ -217,10 +216,12 @@ class RedisPubSubBroker(BaseBroker):
 
             total_messages = 0
             for stream in streams:
-                # A stream that does not exist is skipped
-                with contextlib.suppress(redis.ResponseError):
-                    stream_length = self.redis_instance.llen(stream)
-                    total_messages += stream_length
+                # TYPE answers "none" for a missing key; skip anything not a list.
+                # redis-stubs leaves type untyped (stub gap).
+                key_type = self.redis_instance.type(stream)  # type: ignore[no-untyped-call]
+                if key_type not in (b"list", "list"):
+                    continue
+                total_messages += self.redis_instance.llen(stream)
 
             return {"total_messages": total_messages}
 

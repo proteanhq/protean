@@ -459,47 +459,62 @@ class TestRedisEdgeCases:
         assert result == 0
         assert "Failed to convert not-a-number to int" in caplog.text
 
-    def test_calculate_message_counts_xinfo_groups_error(self, test_domain):
-        """Test _calculate_message_counts when xinfo_groups fails."""
+    def test_calculate_message_counts_skips_keys_that_are_not_streams(
+        self, test_domain
+    ):
+        """A missing key or a key of another type is not counted."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
-        # Mock redis instance
         mock_redis = MagicMock()
-        mock_redis.xlen.return_value = 100  # Stream has 100 messages
-        # xinfo_groups raises error (stream has no consumer groups)
-        mock_redis.xinfo_groups.side_effect = redis.ResponseError("ERR no such key")
+        types = {"stream-a": b"stream", "missing": b"none", "a-string": b"string"}
+        mock_redis.type.side_effect = types.__getitem__
+        mock_redis.xlen.return_value = 100
+        mock_redis.xinfo_groups.return_value = [{"pending": 3}]
         broker.redis_instance = mock_redis
 
-        # Add a stream to check
-        broker._subscribers["test-stream"] = set()
+        for key in types:
+            broker._subscribers[key] = set()
 
         counts = broker._calculate_message_counts()
 
-        # Should still return total messages, with 0 pending
         assert counts["total_messages"] == 100
-        assert counts["in_flight"] == 0  # No pending since groups info failed
+        assert counts["in_flight"] == 3
+        mock_redis.xlen.assert_called_once_with("stream-a")
+        mock_redis.xinfo_groups.assert_called_once_with("stream-a")
 
-    def test_calculate_streams_info_stream_doesnt_exist(self, test_domain):
-        """Test _calculate_streams_info when xlen fails for non-existent stream."""
+    def test_calculate_message_counts_logs_a_redis_error(self, test_domain, caplog):
+        """A Redis error on a real stream is logged, not skipped."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
-        # Mock redis instance
         mock_redis = MagicMock()
+        mock_redis.type.return_value = b"stream"
+        mock_redis.xlen.return_value = 100
+        mock_redis.xinfo_groups.side_effect = redis.ResponseError("NOPERM denied")
+        broker.redis_instance = mock_redis
+        broker._subscribers["test-stream"] = set()
 
-        def xlen_side_effect(stream):
-            if stream == "existing-stream":
-                return 10
-            else:
-                # Non-existent streams raise ResponseError
-                raise redis.ResponseError("ERR no such key")
+        with caplog.at_level(logging.DEBUG, logger="protean.adapters.broker.redis"):
+            counts = broker._calculate_message_counts()
 
-        mock_redis.xlen.side_effect = xlen_side_effect
+        assert counts == {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
+        assert "Error calculating message counts: NOPERM denied" in caplog.text
+
+    def test_calculate_streams_info_stream_doesnt_exist(self, test_domain):
+        """Test _calculate_streams_info leaves out streams that do not exist."""
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
+
+        # TYPE answers "none" for a missing key
+        mock_redis = MagicMock()
+        types = {
+            "existing-stream": b"stream",
+            "non-existing-stream": b"none",
+            "another-missing": b"none",
+        }
+        mock_redis.type.side_effect = types.__getitem__
         broker.redis_instance = mock_redis
 
-        # Add both existing and non-existing streams
-        broker._subscribers["existing-stream"] = set()
-        broker._subscribers["non-existing-stream"] = set()
-        broker._subscribers["another-missing"] = set()
+        for key in types:
+            broker._subscribers[key] = set()
 
         streams_info = broker._calculate_streams_info()
 
