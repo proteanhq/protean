@@ -203,7 +203,10 @@ from protean.core.projector import on
 
 @domain.projector(
     projector_for=OrderSummary,
-    stream_categories=["order", "customer"],
+    stream_categories=[
+        Order.meta_.stream_category,     # "<domain>::order"
+        Customer.meta_.stream_category,  # "<domain>::customer"
+    ],
 )
 class OrderSummaryProjector:
 

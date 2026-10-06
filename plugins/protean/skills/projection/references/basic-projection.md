@@ -64,9 +64,15 @@ Important properties:
 Projections support several useful properties:
 
 ```python
+inventory = ProductInventory(
+    product_id="123", name="Laptop", price=999.99, stock_quantity=50
+)
+inventory1 = ProductInventory(product_id="123", name="Laptop", price=999.99)
+inventory2 = ProductInventory(product_id="123", name="Laptop Pro", price=1299.99)
+
 # Convert to dictionary
 inventory.to_dict()
-# {'product_id': '123', 'name': 'Laptop', 'price': 999.99, 'stock_quantity': 50}
+# {'product_id': '123', 'name': 'Laptop', 'price': 999.99, 'stock_quantity': 50, 'last_updated': None}
 
 # String representation
 str(inventory)

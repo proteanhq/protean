@@ -4,7 +4,7 @@ Process manager that issues commands to drive other aggregates forward.
 This example demonstrates:
 - Issuing commands via current_domain.process() inside handler methods
 - Importing current_domain from protean (the public API)
-- Commands appended to the event store at each process() call
+- One command issued per process() call
 - PM as coordinator: decides WHAT happens next, aggregates decide HOW
 - Two command issuance patterns: from event data and from PM state
 

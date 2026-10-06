@@ -38,24 +38,7 @@ class ProductListing:
     price: Float(required=True)
 ```
 
-### 4. Build the projector
-
-The projector maps events to projection operations (create, update, delete).
-
-```python
-@domain.projector(projector_for=ProductListing, aggregates=[Product])
-class ProductListingProjector:
-    @on(ProductAdded)
-    def on_product_added(self, event):
-        listing = ProductListing(
-            product_id=event.product_id,
-            name=event.name,
-            price=event.price,
-        )
-        domain.repository_for(ProductListing).add(listing)
-```
-
-### 5. Raise events from the aggregate
+### 4. Raise events from the aggregate
 
 Add factory methods or domain methods that raise events.
 
@@ -70,6 +53,53 @@ class Product:
         product = cls(name=name, price=price)
         product.raise_(ProductAdded(product_id=product.id, name=name, price=price))
         return product
+```
+
+### 5. Build the projector
+
+The projector maps events to projection operations (create, update, delete).
+
+```python
+from protean.core.projector import on
+
+@domain.projector(projector_for=ProductListing, aggregates=[Product])
+class ProductListingProjector:
+    @on(ProductAdded)
+    def on_product_added(self, event):
+        listing = ProductListing(
+            product_id=event.product_id,
+            name=event.name,
+            price=event.price,
+        )
+        domain.repository_for(ProductListing).add(listing)
+```
+
+### 6. Read the model back
+
+Answer reads with a query and a query handler. The handler reads through `domain.view_for`, which is read-only.
+
+```python
+from protean import current_domain, read
+
+@domain.query(part_of=ProductListing)
+class GetProductListing:
+    product_id: Identifier(required=True)
+
+@domain.query_handler(part_of=ProductListing)
+class ProductListingQueryHandler:
+    @read(GetProductListing)
+    def get_listing(self, query: GetProductListing):
+        return current_domain.view_for(ProductListing).get(query.product_id)
+
+domain.config["event_processing"] = "sync"  # run the projector right away
+domain.init(traverse=False)
+
+with domain.domain_context():
+    product = Product.create(name="Desk Lamp", price=39.0)
+    domain.repository_for(Product).add(product)
+
+    listing = domain.dispatch(GetProductListing(product_id=product.id))
+    print(listing.name, listing.price)  # Desk Lamp 39.0
 ```
 
 ## Key patterns

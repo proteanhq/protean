@@ -414,7 +414,11 @@ Projections built from multiple aggregate streams:
 ```python
 @domain.projector(
     projector_for=SalesDashboard,
-    stream_categories=["order", "customer", "product"]
+    stream_categories=[
+        Order.meta_.stream_category,     # "<domain>::order"
+        Customer.meta_.stream_category,  # "<domain>::customer"
+        Product.meta_.stream_category,   # "<domain>::product"
+    ],
 )
 class SalesDashboardProjector:
     """Builds comprehensive sales view from multiple sources."""

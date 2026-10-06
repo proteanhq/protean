@@ -67,6 +67,7 @@ list). Otherwise, the PM will never see the response event and the workflow
 will stall.
 
 ```python
+# fragment
 # The PM issues commands to Order, Payment, and Shipping aggregates.
 # Therefore, it subscribes to all three streams.
 @domain.process_manager(
@@ -113,8 +114,12 @@ Process managers drive other aggregates forward by issuing commands:
 2. On payment failure, the handler issues `CancelOrder` to compensate,
    and `end=True` marks the PM as complete.
 
-Commands issued inside a handler are committed atomically as part of the same
-Unit of Work.
+If the handler fails after issuing a command, the PM's own state change rolls
+back. Whether the command is written at all depends on the event store. The
+memory store writes the command through the handler's Unit of Work, so the
+failure discards it. Message-DB writes straight through on its own connection,
+so there the command survives while the PM's transition does not. Do not design
+around either case. Keep issued commands idempotent so re-issuing one is safe.
 
 ## Process Manager Workflow
 
@@ -156,6 +161,7 @@ declare a `correlate` parameter.
 The simplest form, the PM field name matches the event field name:
 
 ```python
+# fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
@@ -168,6 +174,7 @@ Here, `event.order_id` is extracted and used to find or create the PM instance.
 When the PM field name differs from the event field name, use a dictionary:
 
 ```python
+# fragment
 @handle(ExternalPaymentReceived, correlate={"order_id": "ext_order_ref"})
 def on_payment_received(self, event: ExternalPaymentReceived) -> None:
     ...
@@ -179,7 +186,7 @@ This extracts `event.ext_order_ref` and maps it to the PM's `order_id` field.
 
 ### Starting a Process
 
-Exactly one handler must be marked with `start=True`. When a start event
+At least one handler must be marked with `start=True`. When a start event
 arrives and no PM instance exists for that correlation value, a new instance
 is created. If a non-start event arrives with no existing PM, it is silently
 skipped.
@@ -191,6 +198,7 @@ There are two ways to mark a PM as complete:
 **Using `end=True`**. The PM is automatically marked complete after the handler runs:
 
 ```python
+# fragment
 @handle(PaymentFailed, correlate="order_id", end=True)
 def on_payment_failed(self, event: PaymentFailed) -> None:
     self.status = "cancelled"
@@ -199,11 +207,17 @@ def on_payment_failed(self, event: PaymentFailed) -> None:
 **Using `mark_as_complete()`**, call explicitly within a handler for conditional completion:
 
 ```python
+# fragment
 @handle(ShipmentDelivered, correlate="order_id")
 def on_shipment_delivered(self, event: ShipmentDelivered) -> None:
     self.status = "completed"
     self.mark_as_complete()
 ```
+
+`protean check` reports a process manager with no `end=True` handler as
+`PROCESS_MANAGER_UNCLOSED`. It reads only the `end=True` flag, so a process
+manager that completes through `mark_as_complete()` alone is reported too. Mark
+at least one terminating handler `end=True`.
 
 ### Completed Process Managers Skip Events
 
@@ -220,6 +234,7 @@ are silently skipped. No new transition is persisted and no handler runs.
   commands to.
 
     ```python
+# fragment
     @domain.process_manager(
         stream_categories=["ecommerce::order", "ecommerce::payment", "ecommerce::shipping"]
     )
@@ -231,6 +246,7 @@ are silently skipped. No new transition is persisted and no handler runs.
   stream categories from their stream configurations.
 
     ```python
+# fragment
     @domain.process_manager(aggregates=[Order, Payment, Shipping])
     class OrderFulfillmentPM:
         ...
@@ -306,12 +322,9 @@ class OrderFulfillmentPM:
         self.status = "awaiting_inventory"
         current_domain.process(ReserveInventory(order_id=self.order_id))
 
-    @handle(InventoryReserved, correlate="order_id")
+    @handle(InventoryReserved, correlate="order_id", end=True)
     def on_inventory_reserved(self, event: InventoryReserved) -> None:
-        if self.status != "awaiting_inventory":
-            return
         self.status = "completed"
-        self.mark_as_complete()
 ```
 
 When domains are **distributed as independent services**, use subscribers
@@ -328,6 +341,7 @@ handling, following the same pattern as
 [event handlers](./event-handlers.md#error-handling):
 
 ```python
+# fragment
 @domain.process_manager(stream_categories=["ecommerce::order", "ecommerce::payment"])
 class OrderFulfillmentPM:
     ...

@@ -68,6 +68,7 @@ class ProductInventory:
 | `order_by` | `()` | Default ordering for query results |
 | `limit` | `100` | Default query result limit; `None` for unlimited |
 | `abstract` | `False` | If `True`, projection is an abstract base class |
+| `externally_populated` | `False` | Set `True` when a subscriber or event handler fills the projection. `check` then skips `PROJECTION_WITHOUT_PROJECTOR` and `UNSOURCED_PROJECTION_FIELD` for it |
 
 To control the database mapping, register your own model with
 `@domain.database_model(part_of=...)`. There is a `database_model` option on
@@ -96,6 +97,7 @@ Projections also accept `ValueObject` fields (`from protean.fields import ValueO
 ## Quick example: Database-backed projection
 
 ```python
+# fragment
 @domain.projection(provider="postgres", schema_name="product_inventory")
 class ProductInventory:
     product_id: Identifier(identifier=True, required=True)
@@ -106,6 +108,7 @@ class ProductInventory:
 ## Quick example: Cache-backed projection
 
 ```python
+# fragment
 @domain.projection(cache="redis")
 class ActiveSession:
     session_id: Identifier(identifier=True, required=True)
@@ -176,6 +179,7 @@ non-projection element (an aggregate, say) raises `USAGE_NOT_A_PROJECTION`.
 ### Missing identifier field
 
 ```python
+# fragment
 @domain.projection
 class UserView:
     name: String()  # Wrong! No identifier field
@@ -195,6 +199,7 @@ class UserView:
 ### Using Reference or Association fields
 
 ```python
+# fragment
 @domain.projection
 class OrderView:
     order_id: Identifier(identifier=True)
@@ -220,6 +225,7 @@ class OrderView:
 ### No provider and no cache
 
 ```python
+# fragment
 domain.register(MyProjection, provider=None, cache=None)  # Wrong!
 ```
 
@@ -256,7 +262,7 @@ Instead: Use `@domain.aggregate` for write models with business logic
 - [Basic Projection](references/basic-projection.md) - Defining a simple projection with field types
 - [Configuration Options](references/configuration-options.md) - Provider, cache, schema_name, limit, and order_by
 - [Persistence & Querying](references/persistence-querying.md) - Persisting and querying projection data
-- [Field Type Restrictions](references/field-type-restrictions.md) - Why only basic types are allowed
+- [Field Type Restrictions](references/field-type-restrictions.md) - Which field types are allowed, and why References and Associations are not
 - [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
 
 ### Complete Examples

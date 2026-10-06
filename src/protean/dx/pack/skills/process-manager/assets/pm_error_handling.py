@@ -12,7 +12,7 @@ processing. In synchronous mode, exceptions propagate directly.
 
 Domain: User onboarding process
     - AccountCreated (start) -> status: awaiting_verification
-    - EmailVerified (mark_as_complete) -> status: verified
+    - EmailVerified (end) -> status: verified
 
 Usage:
     from pm_error_handling import OnboardingPM, domain
@@ -82,11 +82,10 @@ class OnboardingPM:
         self.account_id = event.account_id
         self.status = "awaiting_verification"
 
-    @handle(EmailVerified, correlate="account_id")
+    @handle(EmailVerified, correlate="account_id", end=True)
     def on_email_verified(self, event: EmailVerified) -> None:
-        """Complete onboarding when email is verified."""
+        """Complete onboarding when email is verified (auto-completes PM)."""
         self.status = "verified"
-        self.mark_as_complete()
 
     @classmethod
     def handle_error(cls, exc: Exception, message) -> None:

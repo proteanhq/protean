@@ -11,6 +11,53 @@ A cross-aggregate projector listens to events from multiple aggregates and combi
 - Maintaining a user balance view that tracks both registration (User) and transactions (Transaction)
 - Any read model that requires data from more than one aggregate's event stream
 
+## The aggregates, events, and projection
+
+The examples on this page use two aggregates:
+
+```python
+from protean.core.projector import on
+
+@domain.aggregate
+class User:
+    email: String()
+    name: String()
+
+@domain.aggregate
+class Transaction:
+    user_id: Identifier()
+    amount: Float()
+```
+
+### Events from different aggregates
+
+Each event belongs to its own aggregate via `part_of`:
+
+```python
+@domain.event(part_of="User")
+class Registered:
+    user_id: Identifier()
+    email: String()
+    name: String()
+
+@domain.event(part_of="Transaction")
+class Transacted:
+    user_id: Identifier()
+    amount: Float()
+```
+
+### Cross-aggregate projection
+
+The projection combines data from both aggregates:
+
+```python
+@domain.projection
+class Balances:
+    user_id: Identifier(identifier=True)
+    name: String()
+    balance: Float()
+```
+
 ## Specifying multiple aggregates
 
 ### Using aggregates parameter
@@ -41,9 +88,17 @@ Protean derives stream categories from each aggregate automatically: `User.meta_
 For finer control, specify stream categories directly:
 
 ```python
+@domain.projection
+class SystemMetrics:
+    metric: String(identifier=True)
+    count: Integer(default=0)
+
 @domain.projector(
     projector_for=SystemMetrics,
-    stream_categories=["user", "order", "payment"],
+    stream_categories=[
+        User.meta_.stream_category,         # "<domain>::user"
+        Transaction.meta_.stream_category,  # "<domain>::transaction"
+    ],
 )
 class SystemMetricsProjector:
     ...
@@ -54,36 +109,9 @@ This is useful when:
 - You want to use custom stream category names
 - You're listening to streams from external bounded contexts
 
+A stream category is domain-qualified: `<domain>::<aggregate>`. A bare name like `"user"` never matches. Derive the category from the registered aggregate with `meta_.stream_category`, or write it in full, as in `"shop::user"` for a domain named `shop`.
+
 ## Code walkthrough
-
-### Events from different aggregates
-
-Each event belongs to its own aggregate via `part_of`:
-
-```python
-@domain.event(part_of="User")
-class Registered:
-    user_id: Identifier()
-    email: String()
-    name: String()
-
-@domain.event(part_of="Transaction")
-class Transacted:
-    user_id: Identifier()
-    amount: Float()
-```
-
-### Cross-aggregate projection
-
-The projection combines data from both aggregates:
-
-```python
-@domain.projection
-class Balances:
-    user_id: Identifier(identifier=True)
-    name: String()
-    balance: Float()
-```
 
 ### The cross-aggregate projector
 

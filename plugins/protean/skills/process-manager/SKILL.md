@@ -53,10 +53,9 @@ class OrderFulfillmentPM:
         self.order_id = event.order_id
         self.status = "awaiting_payment"
 
-    @handle(PaymentConfirmed, correlate="order_id")
+    @handle(PaymentConfirmed, correlate="order_id", end=True)
     def on_payment_confirmed(self, event: PaymentConfirmed) -> None:
         self.status = "completed"
-        self.mark_as_complete()
 ```
 
 ## Key rules
@@ -69,7 +68,7 @@ class OrderFulfillmentPM:
 6. **No return values** — Process managers follow fire-and-forget pattern. Return values are discarded
 7. **Import `handle` from `protean`** — `from protean import handle` (not from `protean.core` or `protean.utils`)
 8. **Issue commands via `current_domain.process()`** — Import from `protean`: `from protean import current_domain`. Call `current_domain.process(CommandClass(...))` to drive other aggregates
-9. **Always define at least one terminal state** — Use `end=True` on a handler or call `self.mark_as_complete()` inside a handler. Without this, the PM accepts events indefinitely
+9. **Always define at least one terminal state** — Mark the terminating handler `end=True`. Calling `self.mark_as_complete()` inside a handler also completes the instance, but `check` still reports `PROCESS_MANAGER_UNCLOSED` unless some handler has `end=True`. Without a terminal state, the PM accepts events indefinitely
 10. **PM fields are persisted as transition events** — After each handler runs, the framework auto-generates a transition event capturing all field values and persists it to the PM's own stream
 11. **Completed PMs skip subsequent events** — Once a PM is marked complete, any further events for that correlation value are silently skipped
 
@@ -91,7 +90,7 @@ class OrderFulfillmentPM:
 | Parameter | Purpose | Required |
 |-----------|---------|----------|
 | First arg (event class) | The event class this handler processes | Yes |
-| `start` | `True` creates new PM instance (at least one per PM) | One handler must have `True` |
+| `start` | `True` creates new PM instance (at least one per PM) | At least one handler must have `True` |
 | `correlate` | String or dict mapping event field to PM identity | Yes (all PM handlers) |
 | `end` | `True` auto-marks PM as complete after handler runs | No |
 
@@ -100,7 +99,19 @@ class OrderFulfillmentPM:
 When PM field names differ from event field names, use a dictionary:
 
 ```python
-@domain.process_manager(stream_categories=["billing::invoice"])
+@domain.aggregate
+class Invoice:
+    ext_order_ref: Identifier(required=True)
+
+@domain.event(part_of=Invoice)
+class ExternalPaymentReceived:
+    ext_order_ref: Identifier(required=True)
+
+@domain.event(part_of=Invoice)
+class ReconciliationCompleted:
+    ext_order_ref: Identifier(required=True)
+
+@domain.process_manager(aggregates=[Invoice])
 class PaymentReconciliationPM:
     order_id: Identifier()
     status: String(default="pending")
@@ -113,16 +124,24 @@ class PaymentReconciliationPM:
     def on_payment_received(self, event: ExternalPaymentReceived) -> None:
         self.order_id = event.ext_order_ref
         self.status = "received"
-        self.mark_as_complete()
+
+    @handle(
+        ReconciliationCompleted,
+        correlate={"order_id": "ext_order_ref"},
+        end=True,
+    )
+    def on_reconciled(self, event: ReconciliationCompleted) -> None:
+        self.status = "reconciled"
 ```
 
-This extracts `event.ext_order_ref` and maps it to the PM's `order_id` field.
+This extracts `event.ext_order_ref` and uses its value to find the PM instance whose `order_id` holds it.
 
 ## Quick example: Issuing commands
 
 Process managers drive other aggregates forward by issuing commands:
 
 ```python
+# fragment
 from protean import current_domain
 
 @handle(OrderPlaced, start=True, correlate="order_id")
@@ -134,7 +153,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     )
 ```
 
-`current_domain.process()` appends the command to the event store as soon as it is called, before the enclosing Unit of Work commits. If the handler fails after issuing a command, the process manager's own state changes roll back. The already-appended command stays in the store.
+If the handler fails after issuing a command, the process manager's own state change rolls back. Whether the command is written at all depends on the event store. The memory store writes the command through the handler's Unit of Work, so the failure discards it. Message-DB writes straight through on its own connection, so there the command survives while the transition does not. Do not design around either case. Keep issued commands idempotent so re-issuing one is safe.
 
 ## Process manager vs event handler
 
@@ -155,7 +174,23 @@ def on_order_placed(self, event: OrderPlaced) -> None:
 Override `handle_error` classmethod for custom error recovery during async processing:
 
 ```python
-@domain.process_manager(stream_categories=["onboarding::account"])
+import logging
+
+logger = logging.getLogger(__name__)
+
+@domain.aggregate
+class Account:
+    email: String(required=True)
+
+@domain.event(part_of=Account)
+class AccountCreated:
+    account_id: Identifier(required=True)
+
+@domain.event(part_of=Account)
+class EmailVerified:
+    account_id: Identifier(required=True)
+
+@domain.process_manager(aggregates=[Account])
 class OnboardingPM:
     account_id: Identifier()
     status: String(default="new")
@@ -164,6 +199,10 @@ class OnboardingPM:
     def on_account_created(self, event) -> None:
         self.account_id = event.account_id
         self.status = "awaiting_verification"
+
+    @handle(EmailVerified, correlate="account_id", end=True)
+    def on_email_verified(self, event) -> None:
+        self.status = "verified"
 
     @classmethod
     def handle_error(cls, exc: Exception, message) -> None:
@@ -185,6 +224,7 @@ def on_order_placed(self, event):
 Instead: Always specify `correlate` on every PM handler
 
 ```python
+# fragment
 # CORRECT
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event):

@@ -8,6 +8,7 @@ Every handler in a process manager must specify a `correlate` parameter. Without
 
 **Wrong:**
 ```python
+# fragment
 @handle(OrderPlaced, start=True)  # Missing correlate!
 def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
@@ -15,6 +16,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
 
 **Right:**
 ```python
+# fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
@@ -28,7 +30,8 @@ Every process manager must have at least one handler marked with `start=True`. W
 
 **Wrong:**
 ```python
-@domain.process_manager(stream_categories=["ecommerce::order"])
+# fragment
+@domain.process_manager(aggregates=[Order])
 class OrderPM:
     @handle(OrderPlaced, correlate="order_id")  # No start=True!
     def on_order_placed(self, event) -> None:
@@ -37,11 +40,29 @@ class OrderPM:
 
 **Right:**
 ```python
-@domain.process_manager(stream_categories=["ecommerce::order"])
+@domain.aggregate
+class Order:
+    status: String(default="new")
+
+@domain.event(part_of=Order)
+class OrderPlaced:
+    order_id: Identifier(required=True)
+
+@domain.event(part_of=Order)
+class OrderShipped:
+    order_id: Identifier(required=True)
+
+@domain.process_manager(aggregates=[Order])
 class OrderPM:
+    status: String(default="new")
+
     @handle(OrderPlaced, start=True, correlate="order_id")
     def on_order_placed(self, event) -> None:
-        pass
+        self.status = "processing"
+
+    @handle(OrderShipped, correlate="order_id", end=True)
+    def on_shipped(self, event) -> None:
+        self.status = "shipped"
 ```
 
 Protean raises `IncorrectUsageError` during `domain.init()` if no handler has `start=True`.
@@ -52,6 +73,7 @@ The PM should coordinate, not compute. If you find yourself validating business 
 
 **Wrong:**
 ```python
+# fragment
 @handle(PaymentConfirmed, correlate="order_id")
 def on_payment_confirmed(self, event):
     if event.amount < self.total * 0.95:  # Business rule in PM!
@@ -65,11 +87,12 @@ The Payment aggregate enforces amount validation in its command handler. The PM 
 
 ## 4. Missing Terminal State
 
-A process manager without `mark_as_complete()` or `end=True` on any handler will never finish. Its stream will grow indefinitely, and it will continue accepting events even after the business process is logically complete.
+A process manager without `mark_as_complete()` or `end=True` on any handler will never finish. Its stream will grow indefinitely, and it will continue accepting events even after the business process is logically complete. `check` reports such a PM as `PROCESS_MANAGER_UNCLOSED`. It reads only the `end=True` flag, so a PM that completes through `mark_as_complete()` alone is reported too.
 
 **Wrong:**
 ```python
-@domain.process_manager(stream_categories=["ecommerce::order"])
+# fragment
+@domain.process_manager(aggregates=[Order])
 class OrderPM:
     @handle(OrderPlaced, start=True, correlate="order_id")
     def on_order_placed(self, event) -> None:
@@ -83,10 +106,9 @@ class OrderPM:
 **Right:**
 ```python
 # fragment
-    @handle(OrderShipped, correlate="order_id")
+    @handle(OrderShipped, correlate="order_id", end=True)  # PM properly terminates
     def on_shipped(self, event) -> None:
         self.status = "shipped"
-        self.mark_as_complete()  # PM properly terminates
 ```
 
 ## 5. Assuming Correlation Matches by Field Name
@@ -94,6 +116,7 @@ class OrderPM:
 Each handler's `correlate` spec is resolved independently. The framework extracts a value via `getattr(event, field_name)` and looks up the PM instance purely by that value. Field name plays no part in the lookup. So this routes correctly even though the field names differ:
 
 ```python
+# fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event) -> None: ...
 
@@ -117,6 +140,7 @@ If you find yourself:
 
 **Wrong:**
 ```python
+# fragment
 @domain.event_handler(part_of=Order)
 class OrderWorkflow:
     # Stateless handler trying to do stateful work
@@ -138,6 +162,7 @@ Process manager handlers do not return values. Return values are silently discar
 
 **Wrong:**
 ```python
+# fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event) -> None:
     return {"status": "started"}  # Discarded!
@@ -152,6 +177,7 @@ Each PM handler runs within an implicit UnitOfWork. Do not wrap manually.
 
 **Wrong:**
 ```python
+# fragment
 from protean.core.unit_of_work import UnitOfWork
 
 @handle(OrderPlaced, start=True, correlate="order_id")

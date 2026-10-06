@@ -113,7 +113,6 @@ ALLOWLIST: frozenset[str] = frozenset(
         "guides/consume-state/cloudevents.md",
         "guides/consume-state/event-handlers.md",
         "guides/consume-state/event-upcasting.md",
-        "guides/consume-state/process-managers.md",
         "guides/consume-state/projections.md",
         "guides/consume-state/projectors.md",
         "guides/consume-state/query-handlers.md",

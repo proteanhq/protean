@@ -75,6 +75,18 @@ class PaymentConfirmationSubscriber:
 ## Quick example: Multiple subscribers
 
 ```python
+@domain.aggregate
+class Order:
+    status: String(max_length=20, default="PENDING")
+    tracking_number: String(max_length=50)
+
+    def mark_paid(self):
+        self.status = "PAID"
+
+    def mark_shipped(self, tracking_number: str):
+        self.status = "SHIPPED"
+        self.tracking_number = tracking_number
+
 @domain.subscriber(stream="payment_gateway")
 class PaymentWebhookSubscriber:
     def __call__(self, payload: dict) -> None:
@@ -94,6 +106,17 @@ class ShippingUpdateSubscriber:
 ## Quick example: Anti-corruption layer
 
 ```python
+@domain.aggregate
+class Customer:
+    name: String(required=True)
+    email: String(required=True)
+
+@domain.command(part_of="Customer")
+class RegisterCustomer:
+    customer_id: Identifier(required=True)
+    name: String(required=True)
+    email: String(required=True)
+
 @domain.subscriber(stream="erp_user_events")
 class ERPUserSubscriber:
     """Translates external ERP format into domain commands."""
@@ -114,6 +137,10 @@ class ERPUserSubscriber:
 Override `handle_error` classmethod for custom error recovery during async processing:
 
 ```python
+import logging
+
+logger = logging.getLogger(__name__)
+
 @domain.subscriber(stream="inventory_updates")
 class InventorySubscriber:
     def __call__(self, payload: dict) -> None:
@@ -130,6 +157,7 @@ class InventorySubscriber:
 ### Missing stream parameter
 
 ```python
+# fragment
 @domain.subscriber  # Wrong! Missing stream
 class MySubscriber:
     def __call__(self, payload: dict) -> None:
@@ -155,6 +183,7 @@ stream was removed.
 ### Using @handle decorator
 
 ```python
+# fragment
 @domain.subscriber(stream="payment_gateway")
 class PaymentSubscriber:
     @handle(PaymentReceived)  # Wrong! Subscribers don't use @handle
@@ -179,6 +208,7 @@ domain.config["message_processing"] = "sync"  # Correct!
 ### Expecting typed event objects
 
 ```python
+# fragment
 def __call__(self, event: PaymentConfirmed) -> None:  # Wrong type!
     order_id = event.order_id
 ```
@@ -186,6 +216,7 @@ def __call__(self, event: PaymentConfirmed) -> None:  # Wrong type!
 Instead: Always expect `dict`
 
 ```python
+# fragment
 def __call__(self, payload: dict) -> None:  # Correct!
     order_id = payload["order_id"]
 ```

@@ -36,19 +36,42 @@ class OrderSummary:
     status: String()
 ```
 
-**Fix**: Add a projector that handles the aggregate's events and writes the projection. When a subscriber fills the projection from outside the domain, mark it `externally_populated=True` instead:
+**Fix**: Add a projector that handles the aggregate's events and writes the projection:
 
 ```python
+from protean.core.projector import on
+
+
+@domain.aggregate
+class Order:
+    customer_email: String()
+
+
+@domain.event(part_of=Order)
+class OrderPlaced:
+    order_id: Identifier(required=True)
+    customer_email: String()
+
+
+@domain.projection
+class OrderSummary:
+    order_id: Identifier(identifier=True)
+    status: String()
+
+
 @domain.projector(projector_for=OrderSummary, aggregates=[Order])
 class OrderSummaryProjector:
     @on(OrderPlaced)
     def on_placed(self, event: OrderPlaced) -> None:
         repo = current_domain.repository_for(OrderSummary)
         repo.add(OrderSummary(order_id=event.order_id, status="PLACED"))
+```
 
-# OR, when a subscriber fills it from an external stream:
+When a subscriber fills the projection from an external stream, mark it `externally_populated=True` instead of adding a projector:
+
+```python
 @domain.projection(externally_populated=True)
-class OrderSummary:
+class PartnerOrderSummary:
     order_id: Identifier(identifier=True)
     status: String()
 ```
@@ -108,6 +131,7 @@ domain.register(MyProjection, provider=None, cache=None)
 **Fix**: Always have at least one storage backend:
 
 ```python
+# fragment
 @domain.projection  # Uses default provider
 class MyProjection:
     ...
@@ -186,6 +210,7 @@ class ProductView:
 ## 8. Modifying identifier values
 
 ```python
+# fragment
 inventory = ProductInventory(product_id="PROD-001", name="Laptop")
 inventory.product_id = "PROD-002"  # Wrong! Raises InvalidOperationError
 ```
@@ -242,9 +267,16 @@ view = current_domain.view_for(Order)
 **Fix**: Call the accessor with a projection, or use the accessor that matches the element's type:
 
 ```python
-view = current_domain.view_for(OrderSummary)
-order = view.get("order-123")
-shipped = view.query.filter(status="shipped").all()
+domain.init(traverse=False)
+
+with domain.domain_context():
+    current_domain.repository_for(OrderSummary).add(
+        OrderSummary(order_id="order-123", status="shipped")
+    )
+
+    view = current_domain.view_for(OrderSummary)
+    order = view.get("order-123")
+    shipped = view.query.filter(status="shipped").all()
 ```
 
 `check` reports `USAGE_NOT_A_PROJECTION` when `view_for` or `connection_for` is given a non-projection.

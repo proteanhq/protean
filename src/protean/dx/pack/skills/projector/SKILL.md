@@ -75,7 +75,7 @@ class ProductInventoryProjector:
 ## Key rules
 
 1. **projector_for required** - Projector must be associated with a projection: `@domain.projector(projector_for=MyProjection, ...)`
-2. **aggregates or stream_categories required** - Must specify event source: `aggregates=[Product]` or `stream_categories=["product"]`
+2. **aggregates or stream_categories required** - Must specify event source: `aggregates=[Product]` or `stream_categories=[Product.meta_.stream_category]`. A stream category is domain-qualified (`<domain>::<aggregate>`, such as `inventory::product`), so a bare `"product"` never matches. Derive it from the aggregate
 3. **Use @on decorator** - Each handler method is decorated with `@on(EventClass)` (imported from `protean.core.projector`)
 4. **Handler methods take self and event** - Signature: `def method_name(self, event: EventClass)`
 5. **No return values** - Projector methods do NOT return values (CQRS pattern)
@@ -104,6 +104,11 @@ class ProductInventoryProjector:
 ## Quick example: Multiple events in one projector
 
 ```python
+@domain.event(part_of="Product")
+class StockAdjusted:
+    product_id: Identifier(required=True)
+    new_stock_quantity: Integer(required=True)
+
 @domain.projector(projector_for=ProductInventory, aggregates=[Product])
 class ProductInventoryProjector:
     @on(ProductAdded)
@@ -126,6 +131,33 @@ class ProductInventoryProjector:
 ## Quick example: Cross-aggregate projector
 
 ```python
+from protean.fields import Float
+
+@domain.aggregate
+class User:
+    name: String(required=True)
+
+@domain.aggregate
+class Transaction:
+    user_id: Identifier(required=True)
+    amount: Float(required=True)
+
+@domain.event(part_of=User)
+class Registered:
+    user_id: Identifier(required=True)
+    name: String(required=True)
+
+@domain.event(part_of=Transaction)
+class Transacted:
+    user_id: Identifier(required=True)
+    amount: Float(required=True)
+
+@domain.projection
+class Balances:
+    user_id: Identifier(identifier=True, required=True)
+    name: String()
+    balance: Float(default=0.0)
+
 @domain.projector(
     projector_for=Balances,
     aggregates=[User, Transaction],
@@ -146,6 +178,11 @@ class TransactionProjector:
 ## Quick example: Multiple projectors for same event
 
 ```python
+@domain.projection
+class ProductCatalog:
+    product_id: Identifier(identifier=True, required=True)
+    name: String(required=True)
+
 @domain.projector(projector_for=ProductInventory, aggregates=[Product])
 class ProductInventoryProjector:
     @on(ProductAdded)
@@ -164,21 +201,32 @@ class ProductCatalogProjector:
 ## Quick example: Using stream_categories
 
 ```python
+@domain.projection
+class SystemMetrics:
+    metric: String(identifier=True)
+    count: Integer(default=0)
+
 @domain.projector(
     projector_for=SystemMetrics,
-    stream_categories=["user", "order", "payment"],
+    stream_categories=[
+        User.meta_.stream_category,         # "<domain>::user"
+        Transaction.meta_.stream_category,  # "<domain>::transaction"
+    ],
 )
 class SystemMetricsProjector:
-    @on(UserRegistered)
-    def on_user_registered(self, event):
+    @on(Registered)
+    def on_registered(self, event):
         ...
 ```
+
+Read the category from `meta_.stream_category` after the aggregate is registered. Registration prefixes it with the domain name.
 
 ## Common mistakes
 
 ### Missing projector_for
 
 ```python
+# fragment
 @domain.projector(aggregates=[Product])  # Wrong! Missing projector_for
 class MyProjector:
     pass
@@ -195,6 +243,7 @@ class MyProjector:
 ### Missing aggregates and stream_categories
 
 ```python
+# fragment
 @domain.projector(projector_for=ProductInventory)  # Wrong! No event source
 class MyProjector:
     pass
@@ -229,6 +278,7 @@ class MyProjector:
 ### Handling an event the domain never registers
 
 ```python
+# fragment
 @domain.projector(projector_for=ProductInventory, aggregates=[Product])
 class MyProjector:
     @on(ProductRenamed)  # Wrong! ProductRenamed was renamed/removed
@@ -244,6 +294,7 @@ event, or remove the handler for the orphaned type.
 ### Using references or associations in projections
 
 ```python
+# fragment
 @domain.projection
 class OrderView:
     customer = Reference(Customer)  # Wrong! No references in projections
@@ -255,6 +306,7 @@ Instead: Flatten references and associations into basic field types (String, Int
 ### Projection not registered with domain
 
 ```python
+# fragment
 class MyProjection:  # Wrong! Not registered with domain
     product_id: Identifier(identifier=True)
 

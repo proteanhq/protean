@@ -34,6 +34,7 @@ A `ValueObject` field is stored as flattened shadow columns (`shipping_address_s
 ### Reference fields
 
 ```python
+# fragment
 # This raises IncorrectUsageError at class definition time
 @domain.projection
 class UserView:
@@ -46,6 +47,7 @@ Error: `"Projections can only contain basic field types and ValueObjects. Remove
 ### Association fields
 
 ```python
+# fragment
 # This raises IncorrectUsageError at class definition time
 @domain.projection
 class UserView:
@@ -61,6 +63,25 @@ Instead of complex field types, flatten nested data into basic fields:
 
 ### Before (aggregate with complex types)
 ```python
+@domain.aggregate
+class Customer:
+    name: String()
+    email: String()
+
+
+@domain.entity(part_of="Order")
+class OrderItem:
+    product_id: Identifier()
+    price: Float()
+
+
+@domain.value_object
+class Address:
+    street: String()
+    city: String()
+    zip: String()
+
+
 @domain.aggregate
 class Order:
     order_id: Identifier(identifier=True)
@@ -84,6 +105,15 @@ class OrderView:
 ```
 
 The projector is responsible for flattening the event data into the projection fields.
+
+The address could also stay a value object in the projection, because projections accept `ValueObject` fields:
+
+```python
+@domain.projection
+class OrderShippingView:
+    order_id: Identifier(identifier=True)
+    shipping_address = ValueObject(Address)
+```
 
 ## Validation timing
 

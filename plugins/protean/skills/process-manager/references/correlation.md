@@ -18,6 +18,7 @@ When an event arrives, the framework:
 The simplest form — the PM field name matches the event field name:
 
 ```python
+# fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
@@ -37,6 +38,7 @@ All four handlers in `OrderFulfillmentPM` use `correlate="order_id"`, which mean
 When the PM field name differs from the event field name, use a dictionary mapping:
 
 ```python
+# fragment
 @handle(
     ExternalPaymentReceived,
     start=True,
@@ -47,7 +49,7 @@ def on_payment_received(self, event: ExternalPaymentReceived) -> None:
     self.status = "received"
 ```
 
-The dictionary format is `{pm_field_name: event_field_name}`. The framework extracts `event.ext_order_ref` and uses its value to route to the correct PM instance (identified by `order_id`).
+The dictionary format is `{pm_field_name: event_field_name}`. The framework extracts `event.ext_order_ref` and uses its value to route to the correct PM instance. The handler then stores that value in `order_id`.
 
 ## Code
 
@@ -57,10 +59,10 @@ The dictionary correlation example is in [assets/pm_dict_correlation.py](../asse
 
 ## Correlation Consistency
 
-All events in a process must be routable to the same PM instance. This means:
+All events in a process must be routable to the same PM instance. The framework matches by value. It reads the correlation value from each event and looks up the PM instance by that value alone. Field names play no part in the lookup.
 
-- **String correlation**: All events must carry the same field name (e.g., `order_id`)
-- **Dictionary correlation**: Each event can use a different source field name, but they must all map to the same PM field
+- **String correlation**: `correlate="order_id"` reads `event.order_id`. Handlers can name different fields, such as `order_id` on one event and `payment_order_id` on another, as long as both fields hold the same value.
+- **Dictionary correlation**: `correlate={"order_id": "ext_order_ref"}` reads `event.ext_order_ref`. The framework uses only the dict's value. The key documents which PM field the value belongs to.
 
 ```python
 # fragment

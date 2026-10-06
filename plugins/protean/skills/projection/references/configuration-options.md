@@ -20,6 +20,7 @@ class ProductInventory:
 Specify a custom provider:
 
 ```python
+# fragment
 @domain.projection(provider="postgres")
 class ProductInventory:
     product_id: Identifier(identifier=True)
@@ -31,6 +32,7 @@ class ProductInventory:
 Use a cache instead of a database:
 
 ```python
+# fragment
 @domain.projection(cache="redis")
 class ActiveSession:
     session_id: Identifier(identifier=True)
@@ -44,6 +46,7 @@ class ActiveSession:
 A projection must have at least one storage backend. Registering with both set to `None` raises `NotSupportedError`:
 
 ```python
+# fragment
 # This will raise NotSupportedError
 domain.register(MyProjection, provider=None, cache=None)
 ```
@@ -56,7 +59,7 @@ Controls the table/collection name in the database. Defaults to the underscore-c
 
 ```python
 @domain.projection(schema_name="product_inventory_view")
-class ProductInventory:
+class ProductCatalog:
     product_id: Identifier(identifier=True)
     ...
 ```
@@ -95,16 +98,16 @@ Default query result limit. Set to `100` by default:
 
 ```python
 @domain.projection(limit=50)          # Limit to 50 results
-class UserDirectory:
-    ...
+class UserSummary:
+    user_id: Identifier(identifier=True)
 
 @domain.projection(limit=None)        # No limit (unlimited)
 class FullReport:
-    ...
+    report_id: Identifier(identifier=True)
 
 @domain.projection(limit=-1)          # Negative values treated as None (unlimited)
 class AnotherReport:
-    ...
+    report_id: Identifier(identifier=True)
 ```
 
 ### order_by
@@ -121,6 +124,21 @@ class UserDirectory:
 
 Order_by can be overridden in subclasses.
 
+## Check options
+
+### externally_populated
+
+Defaults to `False`. Set it to `True` when a subscriber or event handler fills the projection, for example from another domain's messages. Without it, `check` reports `PROJECTION_WITHOUT_PROJECTOR` for a projection that no projector writes. With it, `check` skips that diagnostic and `UNSOURCED_PROJECTION_FIELD` for the projection.
+
+```python
+@domain.projection(externally_populated=True)
+class ExchangeRate:
+    currency_code: Identifier(identifier=True)
+    rate: Float()
+```
+
+The option changes only what `check` reports. Storage and querying work the same.
+
 ## Abstract projections
 
 Mark a projection as abstract to create a base class that won't be registered as a concrete projection:
@@ -131,10 +149,13 @@ class BaseView:
     age: Integer(default=5)
     # No identifier field required for abstract projections
 
+@domain.projection
 class ConcreteView(BaseView):
     view_id: Identifier(identifier=True)
     name: String()
 ```
+
+A subclass of an abstract projection needs its own `@domain.projection` decorator (or `domain.register()` call). Registration turns it into a concrete projection. It inherits the base's fields, so `ConcreteView` has `age`, `view_id` and `name`.
 
 Abstract projections:
 - Don't require an identifier field

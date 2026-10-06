@@ -15,7 +15,34 @@ Multiple projectors can handle the same events and populate their own independen
 
 ### Same events, different projections
 
-Each projector listens to the same aggregate's events but updates a different projection:
+Each projector listens to the same aggregate's events but updates a different projection. The example uses this aggregate, event, and two projections:
+
+```python
+from protean.core.projector import on
+
+@domain.event(part_of="Product")
+class ProductAdded:
+    product_id: Identifier(required=True)
+    name: String(required=True)
+    stock_quantity: Integer(required=True)
+
+@domain.aggregate
+class Product:
+    name: String(required=True)
+    stock_quantity: Integer(default=0)
+
+@domain.projection
+class ProductInventory:
+    product_id: Identifier(identifier=True, required=True)
+    name: String(required=True)
+    stock_quantity: Integer(default=0)
+
+@domain.projection
+class ProductCatalog:
+    product_id: Identifier(identifier=True, required=True)
+    name: String(required=True)
+    in_stock: String(choices=["YES", "NO"])
+```
 
 ```python
 @domain.projector(projector_for=ProductInventory, aggregates=[Product])
