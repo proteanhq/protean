@@ -1,15 +1,16 @@
 ---
-description: Projection patterns — basic fields only, projector wiring, and read model rules
+description: Projection patterns: no association fields, projector wiring, and read model rules
 globs: "**/*.py"
 ---
 
 # Projection Patterns
 
-## Basic Fields Only
+## No Association Fields
 
-Projections support only basic field types: `String`, `Integer`, `Float`, `Identifier`,
-`DateTime`, `Boolean`, `Text`, `Date`, `Auto`. No `Reference`, `HasOne`, `HasMany`, or
-`ValueObject`:
+Projections take basic field types (`String`, `Integer`, `Float`, `Identifier`,
+`DateTime`, `Boolean`, `Text`, `Date`, `Auto`) and `ValueObject` fields. A
+`ValueObject` field is stored as flattened shadow fields. `Reference`, `HasOne`
+and `HasMany` are rejected:
 
 ```python
 @domain.projection

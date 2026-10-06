@@ -15,7 +15,7 @@ metadata:
 
 A read model is the query side of CQRS. It consists of three parts working together:
 
-1. **Projection** — A denormalized, query-optimized data structure built from basic fields and value objects
+1. **Projection**: A denormalized, query-optimized data structure built from basic fields and value objects
 2. **Projector** — An event listener that populates and updates the projection
 3. **Domain events** — The bridge between write-side aggregates and read-side projections
 
@@ -35,7 +35,7 @@ Before building a read model, understand:
 - [ ] **What query does this serve?** — What data does the UI/API need? (e.g., "product listing with stock levels")
 - [ ] **Which aggregates contribute data?** — Single aggregate or multiple? (determines projector configuration)
 - [ ] **What events trigger updates?** — Which state changes should update the read model?
-- [ ] **What fields are needed?** — Basic types (String, Integer, Float, Identifier, DateTime, Boolean, Text, Date) and `ValueObject`. No `Reference`, `HasOne` or `HasMany`
+- [ ] **What fields are needed?** Basic types (String, Integer, Float, Identifier, DateTime, Boolean, Text, Date) and `ValueObject`. No `Reference`, `HasOne` or `HasMany`
 - [ ] **What storage is appropriate?** — Database (durable, queryable) or cache (fast, ephemeral)?
 
 ## Process
@@ -172,8 +172,10 @@ with domain.domain_context():
     domain.repository_for(Product).add(product)  # the projector runs here
 
     listing = domain.dispatch(GetProductListing(product_id=product.id))
-    print(listing.name, listing.price)  # Desk Lamp 39.0
+    assert (listing.name, listing.price) == ("Desk Lamp", 39.0)
 ```
+
+`view_for(...).get()` raises `ObjectNotFoundError` when no record has that id. With asynchronous event processing, that includes a read made right after the write, before the projector has run.
 
 Calling `domain.view_for(ProductListing)` directly works too, for example in a test.
 
@@ -232,6 +234,10 @@ class UserBalanceProjector:
         balance.balance += event.amount
         domain.repository_for(UserBalance).add(balance)
 ```
+
+### Redelivered events
+
+An event can be delivered more than once. As written, this projector adds the amount again when `TransactionCompleted` is redelivered, and a redelivered `UserRegistered` fails because the record already exists. Write each handler as an upsert, or set `idempotent=True` on the projector so the framework skips an event it has already handled. That option is exactly-once only on a transactional database provider and does nothing for a cache-backed projection (see the `idempotent` option in [projector](../projector/SKILL.md)).
 
 ## Choosing storage
 

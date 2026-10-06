@@ -80,7 +80,7 @@ Here is the complete round-trip for one step in an order fulfillment workflow:
                     │                             │
                     │  on_order_placed()           │──► RequestPayment command
                     │  on_payment_confirmed()      │──► CreateShipment command
-                    │  on_shipment_delivered()      │──► mark_as_complete()
+                    │  on_shipment_delivered()      │──► end=True: complete
                     └─────────────────────────────┘
                               │           │
                               ▼           ▼
@@ -116,8 +116,8 @@ Walking through the chain step by step:
    the `ecommerce::shipping` stream.
 
 6. The PM subscribes to `ecommerce::shipping`, so **`ShipmentDelivered` is
-   delivered to `on_shipment_delivered()`**. The handler calls
-   `mark_as_complete()`. The workflow is done.
+   delivered to `on_shipment_delivered()`**. That handler is marked
+   `end=True`, so the PM is complete once it returns. The workflow is done.
 
 **This is why the PM subscribes to multiple stream categories.** Each command
 the PM issues targets a different aggregate. That aggregate's response (an
@@ -167,11 +167,13 @@ an instance replays these transitions to rebuild state.
 
 ### Process managers have a lifecycle. { data-toc-label="Lifecycle" }
 
-Every process manager begins with a **start** event, the handler marked with
-`start=True`. It runs through intermediate states as subsequent events arrive,
-and ends when either `mark_as_complete()` is called in a handler or a handler
-is marked with `end=True`. Once complete, subsequent events for that instance
-are skipped.
+Every process manager begins with a **start** event, handled by a handler
+marked with `start=True`. A process manager can have more than one start
+handler. It runs through intermediate states as subsequent events arrive, and
+ends when a handler marked with `end=True` returns or a handler calls
+`mark_as_complete()`. Once complete, subsequent events for that instance are
+skipped. Mark at least one terminating handler `end=True`: `protean check`
+reports a process manager without one as `PROCESS_MANAGER_UNCLOSED`.
 
 ### Process managers issue commands, not mutations. { data-toc-label="Issue Commands" }
 
@@ -189,9 +191,11 @@ routing.
 
 ### Process managers run within a Unit of Work. { data-toc-label="Transactions" }
 
-Each handler executes inside its own Unit of Work. The transition event and
-any commands issued by the handler are committed atomically. If an error
-occurs, the entire operation is rolled back.
+Each handler executes inside its own Unit of Work. If the handler fails, the
+PM's transition is rolled back. A command the handler issued before the failure
+is discarded on the memory event store, but Message-DB writes it on its own
+connection, so there it survives. Keep issued commands idempotent so re-issuing
+one is safe.
 
 ## Best Practices
 

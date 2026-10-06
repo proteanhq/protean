@@ -33,8 +33,8 @@ on the event store. The memory store writes the command through the handler's
 Unit of Work, so the failure discards it: raising inside a start handler that had
 just issued a command left the store with zero commands and zero saga
 transitions. Message-DB writes straight through on its own connection, so there
-the command survives while the saga's transition does not. Do not design around
-either case. Keep compensating commands idempotent so re-issuing one is safe.
+the command survives while the saga's transition does not. Do not rely on
+either behavior. Keep compensating commands idempotent so re-issuing one is safe.
 
 ## Points to keep in mind
 

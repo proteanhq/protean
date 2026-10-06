@@ -54,23 +54,27 @@ arrives, Protean creates a *new* PM instance and stores the correlated `order_id
 **`correlate`**, Each handler declares how to match incoming events to existing PM
 instances:
 
-- `correlate="order_id"`: The event's `order_id` field matches the PM's
-  `order_id` field directly.
-- `correlate={"order_id": "book_id"}`: Maps the PM's `order_id` to the
-  event's `book_id` field (for events that don't carry `order_id`).
+- `correlate="order_id"`: Protean reads the event's `order_id` value and
+  routes the event to the PM instance started with that value. Every event in
+  this workflow carries the order's id, which is why `InventoryReserved` has an
+  `order_id` field.
+- When an event carries the order's id under another name, use a dictionary,
+  such as `correlate={"order_id": "order_ref"}`. Protean reads `event.order_ref`
+  and matches its value the same way.
 
-**`mark_as_complete()`**, Marks the PM instance as finished. Subsequent events for this `order_id` are
-skipped.
+**`end=True`**, Marks the PM instance as finished once the handler returns.
+Subsequent events for this `order_id` are skipped. Both the success handler and
+the compensation handler end the workflow.
 
 ### How It Works
 
 1. **`OrderConfirmed`** fires → PM starts (via `start=True`), issues
    `ReserveInventory` command.
 2. **`InventoryReserved`** fires → PM issues `CreateShipment` command.
-3. **`ShipmentCreated`** fires → PM issues `CompleteOrder` command,
-   marks itself complete.
+3. **`ShipmentCreated`** fires → PM issues `CompleteOrder` command and
+   completes (`end=True`).
 4. **`ShipmentFailed`** fires → PM issues `ReleaseInventory` and
-   `CancelOrder` commands (compensation).
+   `CancelOrder` commands (compensation) and completes (`end=True`).
 
 ## The Compensation Pattern
 

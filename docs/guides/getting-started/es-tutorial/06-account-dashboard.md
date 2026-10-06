@@ -24,8 +24,8 @@ automatically.
 
 Notice:
 
-- Projections use basic field types only. No `HasMany`, no `ValueObject`. They
-  are flat database tables.
+- Projections cannot hold association fields such as `HasMany`. This one uses
+  basic field types only, so it maps to a flat database table.
 - **`identifier=True`** marks the projection's primary key.
 - The projection stores exactly the data the dashboard needs.
 

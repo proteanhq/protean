@@ -364,6 +364,10 @@ class ActiveOrderProjector:
         repository.query.filter(order_id=event.order_id).delete()
 ```
 
+`delete()` removes only the records the query returns, and a query returns at
+most the projection's `limit` (100 by default). When a filter can match more
+records than that, call `.limit(None)` before `delete()`.
+
 ## Complete Example
 
 Below is a comprehensive example showing projections and projectors working

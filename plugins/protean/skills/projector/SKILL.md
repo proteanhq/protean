@@ -175,6 +175,8 @@ class TransactionProjector:
         domain.repository_for(Balances).add(balance)
 ```
 
+A redelivered `Transacted` adds the amount twice here, and a redelivered `Registered` fails because the record exists. Set `idempotent=True` on the projector (see the options table below) or write each handler as an upsert.
+
 ## Quick example: Multiple projectors for same event
 
 ```python

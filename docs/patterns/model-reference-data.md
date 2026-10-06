@@ -306,7 +306,9 @@ class CurrencyCatalogProjector:
 
 A cache-backed projection has no repository, so the projector writes through
 `cache_for()` and readers use `view_for()`. Cache keys have the form
-`{projection_name}:::{identifier}`.
+`<prefix>:::<identifier>`, where the prefix is the projection's class name in
+snake case (`CurrencyOption` becomes `currency_option`). Renaming the class
+changes the key the projector must remove.
 
 The read side is now a fast, cache-resident `code → option` catalog, decoupled
 from the write model, with a single invalidation point (the projector). When the

@@ -20,7 +20,7 @@ import pytest
 from protean import dx
 from protean.domain import Domain
 from protean.ir.builder import IRBuilder
-from protean.utils import DomainObjects
+from protean.ir.diagnostics import DiagnosticCode
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -56,10 +56,12 @@ def test_asset_reports_no_unclosed_process_manager(asset):
     # ``check`` leaves ``diagnostics`` empty when validation fails or the IR
     # does not build, so prove both before reading the diagnostics.
     assert report["errors"] == []
-    assert domain.registry._elements[DomainObjects.PROCESS_MANAGER.value]
+    assert domain.registry.process_managers
     IRBuilder(domain).build()
 
     unclosed = [
-        d for d in report["diagnostics"] if d["code"] == "PROCESS_MANAGER_UNCLOSED"
+        d
+        for d in report["diagnostics"]
+        if d["code"] == DiagnosticCode.PROCESS_MANAGER_UNCLOSED
     ]
     assert unclosed == []

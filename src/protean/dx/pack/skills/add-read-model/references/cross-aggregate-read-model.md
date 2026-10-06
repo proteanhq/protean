@@ -96,6 +96,10 @@ Events from different aggregates may arrive in any order. Design your projector 
 - **Initialize first, update later**: The initialization event (e.g., `CustomerRegistered`) should create the projection record. Subsequent events update it.
 - **Missing records**: If an update event arrives before the initialization event, you may need to handle the missing record gracefully.
 
+### Redelivered events
+
+An event can be delivered more than once. As written, this projector counts the order again when `OrderPlaced` is redelivered, and a redelivered `CustomerRegistered` fails because the record already exists. Write each handler as an upsert, or set `idempotent=True` on the projector so the framework skips an event it has already handled. That option is exactly-once only on a transactional database provider and does nothing for a cache-backed projection (see the `idempotent` option in [projector](../../projector/SKILL.md)).
+
 ### Identifier mapping
 
 The projection identifier is typically the "owner" aggregate's ID. Events from other aggregates need a foreign key to locate the correct projection record.
@@ -165,8 +169,14 @@ with domain.domain_context():
     domain.repository_for(Order).add(order)
 
     summary = domain.dispatch(GetCustomerOrderSummary(customer_id=customer.id))
-    print(summary.customer_name, summary.order_count, summary.total_spent)  # Ada 1 120.0
+    assert (summary.customer_name, summary.order_count, summary.total_spent) == (
+        "Ada",
+        1,
+        120.0,
+    )
 ```
+
+`view_for(...).get()` raises `ObjectNotFoundError` when no record has that id. With asynchronous event processing, that includes a read made right after the write, before the projector has run.
 
 ## Complete example
 

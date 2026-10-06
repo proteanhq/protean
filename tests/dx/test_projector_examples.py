@@ -82,3 +82,61 @@ def test_cross_aggregate_projector_creates_then_updates_the_record():
 
         balance = domain.repository_for(Balances).get(user.id)
         assert balance.balance == 100.0
+
+
+def test_multiple_events_projector_creates_then_updates_the_record():
+    ns, domain = _load(
+        "projector/assets/projector_multiple_events.py", "projector_events_example"
+    )
+    Product, ProductInventory = ns["Product"], ns["ProductInventory"]
+
+    with domain.domain_context():
+        product = Product.create(
+            name="Laptop", description="A laptop", price=999.99, stock_quantity=50
+        )
+        domain.repository_for(Product).add(product)
+        assert domain.repository_for(ProductInventory).get(product.id).name == "Laptop"
+
+        product.adjust_stock(-10)
+        domain.repository_for(Product).add(product)
+        inventory = domain.repository_for(ProductInventory).get(product.id)
+        assert inventory.stock_quantity == 40
+
+
+def test_both_projectors_receive_the_same_events():
+    ns, domain = _load(
+        "projector/assets/projector_multiple_projectors.py",
+        "projector_projectors_example",
+    )
+    Product = ns["Product"]
+    ProductInventory, ProductCatalog = ns["ProductInventory"], ns["ProductCatalog"]
+
+    with domain.domain_context():
+        product = Product.create(
+            name="Laptop", description="A laptop", price=999.99, stock_quantity=50
+        )
+        domain.repository_for(Product).add(product)
+        assert domain.repository_for(ProductCatalog).get(product.id).in_stock == "YES"
+
+        product.adjust_stock(-50)
+        domain.repository_for(Product).add(product)
+        inventory = domain.repository_for(ProductInventory).get(product.id)
+        catalog = domain.repository_for(ProductCatalog).get(product.id)
+        assert inventory.stock_quantity == 0
+        assert catalog.in_stock == "NO"
+
+
+def test_error_handling_projector_creates_the_record():
+    ns, domain = _load(
+        "projector/assets/projector_error_handling.py", "projector_errors_example"
+    )
+    Shipment, ShipmentStatus = ns["Shipment"], ns["ShipmentStatus"]
+
+    with domain.domain_context():
+        shipment = Shipment(tracking_id="TRACK-001", destination="New York")
+        shipment.dispatch()
+        domain.repository_for(Shipment).add(shipment)
+
+        status = domain.repository_for(ShipmentStatus).get(shipment.id)
+        assert status.tracking_id == "TRACK-001"
+        assert status.status == "dispatched"

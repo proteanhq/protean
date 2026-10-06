@@ -15,7 +15,7 @@ When an event arrives, the framework:
 
 ## String Correlation
 
-The simplest form — the PM field name matches the event field name:
+The simplest form names the event field that holds the correlation value:
 
 ```python
 # fragment
@@ -35,7 +35,7 @@ All four handlers in `OrderFulfillmentPM` use `correlate="order_id"`, which mean
 
 ## Dictionary Correlation
 
-When the PM field name differs from the event field name, use a dictionary mapping:
+When the event carries the value under a different name than the PM field, use a dictionary mapping:
 
 ```python
 # fragment

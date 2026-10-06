@@ -68,7 +68,7 @@ class OrderFulfillmentPM:
 6. **No return values** — Process managers follow fire-and-forget pattern. Return values are discarded
 7. **Import `handle` from `protean`** — `from protean import handle` (not from `protean.core` or `protean.utils`)
 8. **Issue commands via `current_domain.process()`** — Import from `protean`: `from protean import current_domain`. Call `current_domain.process(CommandClass(...))` to drive other aggregates
-9. **Always define at least one terminal state** — Mark the terminating handler `end=True`. Calling `self.mark_as_complete()` inside a handler also completes the instance, but `check` still reports `PROCESS_MANAGER_UNCLOSED` unless some handler has `end=True`. Without a terminal state, the PM accepts events indefinitely
+9. **Always define at least one terminal state**: Mark the terminating handler `end=True`. `check` reports `PROCESS_MANAGER_UNCLOSED` for a process manager with no `end=True` handler, even when a handler calls `self.mark_as_complete()`. Without a terminal state, the PM accepts events indefinitely
 10. **PM fields are persisted as transition events** — After each handler runs, the framework auto-generates a transition event capturing all field values and persists it to the PM's own stream
 11. **Completed PMs skip subsequent events** — Once a PM is marked complete, any further events for that correlation value are silently skipped
 
@@ -153,7 +153,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     )
 ```
 
-If the handler fails after issuing a command, the process manager's own state change rolls back. Whether the command is written at all depends on the event store. The memory store writes the command through the handler's Unit of Work, so the failure discards it. Message-DB writes straight through on its own connection, so there the command survives while the transition does not. Do not design around either case. Keep issued commands idempotent so re-issuing one is safe.
+If the handler fails after issuing a command, the process manager's own state change rolls back. Whether the command is written at all depends on the event store. The memory store writes the command through the handler's Unit of Work, so the failure discards it. Message-DB writes straight through on its own connection, so there the command survives while the transition does not. Do not rely on either behavior. Keep issued commands idempotent so re-issuing one is safe.
 
 ## Process manager vs event handler
 

@@ -6,9 +6,9 @@ Process managers have a defined lifecycle: they start when an initiating event a
 
 The lifecycle is controlled by three parameters on the `@handle` decorator:
 
-- **`start=True`** — Creates a new PM instance when no existing instance is found
-- **`end=True`** — Auto-marks the PM as complete after the handler runs
-- **`mark_as_complete()`** — Explicitly marks the PM as complete from within a handler
+- **`start=True`**: Creates a new PM instance when no existing instance is found
+- **`end=True`**: Auto-marks the PM as complete after the handler returns, on every path
+- **`mark_as_complete()`**: Explicitly marks the PM as complete from within a handler
 
 ## Starting a Process
 
@@ -45,7 +45,7 @@ def on_payment_failed(self, event: PaymentFailed) -> None:
     # PM is auto-completed after this handler returns
 ```
 
-Use `end=True` for unconditional terminal states, where the handler always leads to completion. `check` reports a PM with no `end=True` handler as `PROCESS_MANAGER_UNCLOSED`, so every PM should mark at least one terminating handler this way.
+Use `end=True` for unconditional terminal states, where the handler always leads to completion. The PM completes after every normal return from the handler, including an early `return` from a guard, so do not put `end=True` on a handler that completes only on some paths. `check` reports a PM with no `end=True` handler as `PROCESS_MANAGER_UNCLOSED`, so every PM should mark at least one terminating handler this way.
 
 ### Using `mark_as_complete()`
 
@@ -115,7 +115,7 @@ After `on_payment_confirmed` runs:
 
 ## Best Practices
 
-- **Always define at least one terminal state** — Mark at least one handler `end=True`. Without a terminal state, the PM accepts events indefinitely
+- **Always define at least one terminal state**: Mark at least one handler `end=True`. Without a terminal state, the PM accepts events indefinitely
 - **Handle compensation on failure paths** — When a step fails, issue compensating commands to undo earlier steps
 - **Design for idempotency** — Events may be delivered more than once; handlers should produce the same outcome
 

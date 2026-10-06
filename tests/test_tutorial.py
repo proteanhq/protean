@@ -716,7 +716,7 @@ class TestTutorialCh20(_TutorialBase):
 
             # Inventory reserve raises InventoryReserved
             inv = ch20.Inventory(book_id="book-1", title="Dune", quantity=10)
-            inv.reserve(3)
+            inv.reserve("order-1", 3)
             assert inv.quantity == 7
             assert len(inv._events) == 1
             assert inv._events[0].__class__.__name__ == "InventoryReserved"

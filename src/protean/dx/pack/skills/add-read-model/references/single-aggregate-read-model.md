@@ -99,8 +99,10 @@ with domain.domain_context():
     domain.repository_for(Product).add(product)
 
     listing = domain.dispatch(GetProductListing(product_id=product.id))
-    print(listing.name, listing.price)  # Desk Lamp 39.0
+    assert (listing.name, listing.price) == ("Desk Lamp", 39.0)
 ```
+
+`view_for(...).get()` raises `ObjectNotFoundError` when no record has that id. With asynchronous event processing, that includes a read made right after the write, before the projector has run.
 
 ## Key patterns
 

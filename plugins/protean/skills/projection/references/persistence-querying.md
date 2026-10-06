@@ -52,6 +52,13 @@ with domain.domain_context():
     assert deleted == 1
 ```
 
+`delete()` removes only the records the query returns, and a query returns at most the projection's `limit` (100 by default). To remove every match of a broader filter, such as every product out of stock, lift the limit first:
+
+```python
+with domain.domain_context():
+    repo.query.filter(stock_quantity=0).limit(None).delete()
+```
+
 ## Querying projections
 
 ### Get by identifier

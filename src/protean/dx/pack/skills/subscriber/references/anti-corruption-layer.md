@@ -60,7 +60,7 @@ class RegisterCustomer:
     source: String(default="erp")
 ```
 
-The aggregate and the command use the domain's own language. No traces of the external format.
+The aggregate and the command use the domain's own language and carry nothing from the external format.
 
 ### The Subscriber (ACL)
 
