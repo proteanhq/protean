@@ -1,6 +1,6 @@
 # Detection Heuristics
 
-Detailed patterns for identifying each anti-pattern category during a domain audit.
+Detailed patterns for identifying each anti-pattern category during a domain audit. Run `protean check --domain=<module>` first. The codes it reports cover part of categories 3, 4 and 7, so the patterns below are for what it cannot see.
 
 ## 1. Logic Leak Detection
 
@@ -61,20 +61,25 @@ aggregate.field = command.value  # Multiple of these = logic leak
 **What to grep for:**
 
 ```python
+# fragment
 # Multiple repository accesses
-domain.repository_for(AggregateA)
-domain.repository_for(AggregateB)  # Second aggregate = violation
+current_domain.repository_for(AggregateA)
+current_domain.repository_for(AggregateB)  # Second aggregate = violation
 
-# Multiple self.repository usages on different types
-self.repository.add(order)
+# Repositories for different types used together
+current_domain.repository_for(Order).add(order)
 other_repo.add(inventory)  # Different aggregate type
 ```
 
 **How to confirm**: Check if both repositories are used within the same `@handle` method. A handler file that imports two repository types but uses them in different methods is fine.
 
+`check` reports `COMMAND_HANDLER_CROSS_CLUSTER` when a command handler processes another cluster's command. It does not read handler bodies, so it cannot see a second repository inside one method.
+
 ## 4. God Aggregate Detection
 
-**Quantitative signals:**
+**What `check` reports**: `AGGREGATE_TOO_LARGE`, when the aggregate's cluster holds more child entities than `[lint] aggregate_size_limit` in the domain config (default 5). Change the limit there if your domain needs a different one.
+
+**Signals this skill adds** (`check` does not count them, so read the aggregate):
 
 | Metric | Warning threshold | Critical threshold |
 |--------|------------------|--------------------|
@@ -95,7 +100,7 @@ other_repo.add(inventory)  # Different aggregate type
 
 **Direct handler calls (6)**: Grep for `Handler()` instantiation or handler method calls outside of `domain.process()`.
 
-**Scattered validation (7)**: Grep for `ValidationError` or `ValueError` in handler and endpoint files. Check if the same validation exists as an `@invariant`.
+**Scattered validation (7)**: Grep for `ValidationError` or `ValueError` in handler and endpoint files. Check if the same validation exists as an `@invariant`. `check` reports `AGGREGATE_NO_INVARIANTS` for an aggregate with no invariant at all.
 
 **Circular import risk (8)**: Grep for `part_of=` (without quotes around the value) in command, event, entity, and value object files.
 

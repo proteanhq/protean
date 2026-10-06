@@ -8,6 +8,13 @@ How to safely migrate from primitive fields to value objects in a running system
 
 Create the VO in a shared location if used across aggregates, or alongside the aggregate if used only once.
 
+```python
+@domain.value_object
+class Money:
+    amount = Float(required=True)
+    currency = String(max_length=3, default="USD")
+```
+
 ### 2. Add the new VO field alongside old fields
 
 Don't remove the old fields yet — add the new field in parallel:
@@ -38,6 +45,7 @@ def place(self, items):
 Change all code that reads primitive fields to read from the VO:
 
 ```python
+# fragment
 # Before
 if order.total_amount > MAX_ORDER:
     ...

@@ -6,18 +6,20 @@ This example demonstrates:
 - Event handler side effects (reserving stock in another aggregate)
 - Business rule enforcement in aggregate methods (insufficient stock)
 - End-to-end flow verification across aggregate boundaries
-- Synchronous event processing for testability
+- Pytest tests for the flow, run with the fixtures in conftest.py, which set
+  event processing to "sync" so the handler runs when the Order is persisted
 
 Domain: When an Order is placed, an event handler on the Inventory aggregate
 listens to OrderPlaced and reserves the requested stock. The Inventory aggregate
 enforces that you cannot reserve more than available stock.
 """
 
+import pytest
+
 from protean import Domain, handle
 from protean.fields import Identifier, Integer, String
 
-domain = Domain(__name__)
-domain.config["event_processing"] = "sync"
+domain = Domain()
 
 
 # --- Events ---
@@ -127,3 +129,52 @@ class InventoryEventHandler:
         inventory = repo.find_by(product_id=event.product_id)
         inventory.reserve(event.quantity)
         repo.add(inventory)
+
+
+# --- Tests ---
+
+
+class TestInventory:
+    def test_reserve_moves_stock_to_reserved(self):
+        inventory = Inventory(product_id="p-1", available=10)
+        inventory.reserve(4)
+
+        assert inventory.available == 6
+        assert inventory.reserved == 4
+        assert len(inventory._events) == 1
+        assert inventory._events[0].remaining_available == 6
+
+    def test_cannot_reserve_more_than_available(self):
+        # reserve() raises ValueError and leaves the stock unchanged.
+        inventory = Inventory(product_id="p-1", available=3)
+        with pytest.raises(ValueError, match="Insufficient stock"):
+            inventory.reserve(5)
+        assert inventory.available == 3
+        assert inventory.reserved == 0
+
+
+class TestCrossAggregateFlow:
+    def test_order_placed_reserves_inventory(self):
+        # The Inventory must exist before the Order is persisted, because the
+        # event handler loads it.
+        inventory = Inventory(product_id="p-1", available=100, reserved=0)
+        domain.repository_for(Inventory).add(inventory)
+
+        order = Order.place(customer_id="c-1", product_id="p-1", quantity=5)
+        domain.repository_for(Order).add(order)
+
+        updated = domain.repository_for(Inventory).get(inventory.id)
+        assert updated.available == 95
+        assert updated.reserved == 5
+
+    def test_multiple_orders_accumulate_reservations(self):
+        inventory = Inventory(product_id="p-1", available=100, reserved=0)
+        domain.repository_for(Inventory).add(inventory)
+
+        for quantity in (10, 15):
+            order = Order.place(customer_id="c-1", product_id="p-1", quantity=quantity)
+            domain.repository_for(Order).add(order)
+
+        updated = domain.repository_for(Inventory).get(inventory.id)
+        assert updated.available == 75
+        assert updated.reserved == 25

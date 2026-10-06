@@ -14,38 +14,26 @@ Complete examples are in:
 
 ## Testing command handler orchestration
 
-Use `domain.process(command, asynchronous=False)` to test the full handler pipeline:
+Use `domain.process(command)` to test the full handler pipeline. The root `conftest.py` sets `command_processing = "sync"` (see [the root conftest](../assets/conftest.py)), so `process()` runs the handler before it returns and returns the handler's result:
 
 ```python
 class TestHandlerProcessing:
     def test_command_creates_and_persists_aggregate(self):
         """Handler creates aggregate and persists it."""
-        result = domain.process(
-            RegisterUser(email="a@test.com", name="Alice"),
-            asynchronous=False,
-        )
+        result = domain.process(RegisterUser(email="a@test.com", name="Alice"))
         user = domain.repository_for(User).get(result)
         assert user.email == "a@test.com"
         assert user.status == "registered"
 
     def test_handler_returns_identifier(self):
         """Handler returns aggregate ID."""
-        result = domain.process(
-            RegisterUser(email="b@test.com", name="Bob"),
-            asynchronous=False,
-        )
+        result = domain.process(RegisterUser(email="b@test.com", name="Bob"))
         assert result is not None
 
     def test_multiple_commands_create_separate_aggregates(self):
         """Each command creates an independent aggregate."""
-        r1 = domain.process(
-            RegisterUser(email="a@test.com", name="A"),
-            asynchronous=False,
-        )
-        r2 = domain.process(
-            RegisterUser(email="b@test.com", name="B"),
-            asynchronous=False,
-        )
+        r1 = domain.process(RegisterUser(email="a@test.com", name="A"))
+        r2 = domain.process(RegisterUser(email="b@test.com", name="B"))
         assert r1 != r2
         u1 = domain.repository_for(User).get(r1)
         u2 = domain.repository_for(User).get(r2)
@@ -55,7 +43,7 @@ class TestHandlerProcessing:
 
 ## Testing event handler side effects
 
-Event handlers fire when their source aggregate is persisted (with sync processing). Set up the target aggregate first:
+Event handlers fire when their source aggregate is persisted, because the root `conftest.py` sets `event_processing = "sync"`. With the default asynchronous processing, the handler does not run inside the test. Set up the target aggregate first:
 
 ```python
 class TestEventHandlerSideEffects:
@@ -79,9 +67,10 @@ class TestEventHandlerSideEffects:
 
 ## Testing FastAPI endpoints
 
-Use `TestClient` from Starlette/FastAPI to test HTTP endpoints:
+Use `TestClient` from FastAPI to test HTTP endpoints. It needs the `fastapi` and `httpx` packages:
 
 ```python
+import pytest
 from fastapi.testclient import TestClient
 
 class TestAPIEndpoint:
@@ -112,7 +101,7 @@ class TestAPIEndpoint:
 
 ## Avoid mocks — use real domain elements
 
-Use `domain.process()` and `domain.repository_for()` with real commands, aggregates, and events. Protean's synchronous event processing (`domain.config["event_processing"] = "sync"`) and in-memory repositories eliminate the need for mocks. Do not mock handlers, repositories, or aggregate methods — test the real orchestration. Only mock truly external dependencies (third-party HTTP APIs) that have no in-memory substitute.
+Use `domain.process()` and `domain.repository_for()` with real commands, aggregates, and events. Protean's synchronous processing (`event_processing` and `command_processing` set to `"sync"` in the root `conftest.py`) and in-memory repositories eliminate the need for mocks. Do not mock handlers, repositories, or aggregate methods — test the real orchestration. Only mock truly external dependencies (third-party HTTP APIs) that have no in-memory substitute.
 
 ## What NOT to test
 

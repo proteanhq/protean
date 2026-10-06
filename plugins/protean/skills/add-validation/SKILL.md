@@ -121,11 +121,22 @@ class Money:
 Use for business rules that enforce consistency across an aggregate's state. Supports both `@invariant.pre` (before change) and `@invariant.post` (after change).
 
 ```python
+@domain.entity(part_of="Order")
+class LineItem:
+    product_id: String(required=True)
+    quantity: Integer(required=True)
+    price: Float(required=True)
+    subtotal: Float(required=True)
+
+
 @domain.aggregate
 class Order:
     status: String(default="draft")
     items = HasMany("LineItem")
     total_amount: Float(default=0.0)
+
+    def place(self):
+        self.status = "placed"
 
     @invariant.post
     def total_must_equal_sum_of_items(self):
@@ -174,17 +185,25 @@ aggregate.
 
 ### Atomic changes
 
-When multiple attributes need to change together, use `atomic_change` to defer validation until all changes are made:
+When multiple attributes need to change together, use `atomic_change` to defer validation until all changes are made. Creating an aggregate needs an initialized domain and an active domain context:
 
 ```python
 from protean import atomic_change
 
-with atomic_change(order):
-    order.total_amount = 120.0  # No validation yet
-    order.add_items(
-        LineItem(product_id="P3", quantity=2, price=10.0, subtotal=20.0)
+domain.init(traverse=False)
+
+with domain.domain_context():
+    order = Order(
+        items=[LineItem(product_id="P1", quantity=10, price=10.0, subtotal=100.0)],
+        total_amount=100.0,
     )
-# Post-invariants checked here — aggregate is now valid
+
+    with atomic_change(order):
+        order.total_amount = 120.0  # No validation yet
+        order.add_items(
+            LineItem(product_id="P3", quantity=2, price=10.0, subtotal=20.0)
+        )
+    # Post-invariants checked here: the total matches the items again
 ```
 
 ## Layer 4: Handler/service guards
@@ -192,6 +211,12 @@ with atomic_change(order):
 Use for authorization, context-dependent rules, and checks that need external data not available inside the aggregate.
 
 ```python
+@domain.command(part_of=Order)
+class PlaceOrder:
+    order_id: Identifier(required=True)
+    requested_by_role: String(required=True)
+
+
 @domain.command_handler(part_of=Order)
 class OrderCommandHandler:
 
@@ -203,8 +228,10 @@ class OrderCommandHandler:
                 {"authorization": ["Only customers or admins can place orders"]}
             )
 
-        # Layer 4: External data check
-        order = domain.repository_for(Order).get(command.order_id)
+        # Layer 4: External data check. get() raises ObjectNotFoundError
+        # on a miss; get_or_none() returns None so the handler can say why.
+        repo = current_domain.repository_for(Order)
+        order = repo.get_or_none(command.order_id)
         if order is None:
             raise ValidationError(
                 {"order_id": [f"Order {command.order_id} not found"]}
@@ -212,7 +239,7 @@ class OrderCommandHandler:
 
         # Business logic (Layers 1-3 validate automatically)
         order.place()
-        domain.repository_for(Order).add(order)
+        repo.add(order)
 ```
 
 **When to use Layer 4**:

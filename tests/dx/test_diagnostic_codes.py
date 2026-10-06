@@ -222,8 +222,8 @@ def test_every_skill_in_the_reverse_index_exists():
     )
 
 
-# The workflow/refactor/analysis family (#1554). The six skills that teach a
-# coded fix pin to their exact declared codes; the eight that teach none pin to
+# The workflow/refactor/analysis family (#1554). The nine skills that teach a
+# coded fix pin to their exact declared codes; the seven that teach none pin to
 # an empty list. Scoped to this family's own skills so the building-block and
 # event/CQRS passes can add their declarations without colliding here.
 _FAMILY_CODE_TEACHING_SKILLS = {
@@ -231,6 +231,15 @@ _FAMILY_CODE_TEACHING_SKILLS = {
     "add-validation": ["AGGREGATE_NO_INVARIANTS", "VALUE_OBJECT_INVARIANT_FAILED"],
     "add-read-model": ["PROJECTION_WITHOUT_PROJECTOR", "UNSOURCED_PROJECTION_FIELD"],
     "add-saga-flow": ["PROCESS_MANAGER_UNCLOSED"],
+    "audit-domain": [
+        "AGGREGATE_NO_INVARIANTS",
+        "AGGREGATE_TOO_LARGE",
+        "COMMAND_HANDLER_CROSS_CLUSTER",
+        "CROSS_AGGREGATE_REFERENCE",
+        "EVENT_HANDLER_FOREIGN_EVENT",
+        "HANDLER_PERSISTS_AND_CALLS_OUT",
+        "HANDLER_TOO_BROAD",
+    ],
     "refactor-extract-value-object": ["VALUE_OBJECT_MUTABLE_FIELD"],
     "refactor-introduce-events": ["EVENT_WITHOUT_DATA", "UNRAISED_EVENT"],
     "refactor-move-logic-to-aggregate": ["AGGREGATE_NO_INVARIANTS"],
@@ -245,7 +254,6 @@ _FAMILY_NO_CODE_SKILLS = [
     "add-subscriber-flow",
     "coverage-analysis",
     "generate-test-scaffold",
-    "audit-domain",
 ]
 
 

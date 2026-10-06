@@ -9,31 +9,57 @@ The complete implementation is in [assets/validation_layer4_handler_guards.py](.
 ## Pattern
 
 ```python
-@domain.command_handler(part_of=SomeAggregate)
-class SomeCommandHandler:
+from datetime import datetime
 
-    @handle(SomeCommand)
-    def handle_command(self, command: SomeCommand):
+from protean.exceptions import ValidationError
+
+ALLOWED_ROLES = {"admin", "manager"}
+
+
+def is_business_hours() -> bool:
+    return 9 <= datetime.now().hour < 17
+
+
+@domain.aggregate
+class Account:
+    status: String(default="open")
+
+    def close(self):
+        self.status = "closed"
+
+
+@domain.command(part_of=Account)
+class CloseAccount:
+    account_id: Identifier(required=True)
+    requested_by_role: String(required=True)
+
+
+@domain.command_handler(part_of=Account)
+class AccountCommandHandler:
+    @handle(CloseAccount)
+    def close_account(self, command: CloseAccount):
         # Guard 1: Authorization
         if command.requested_by_role not in ALLOWED_ROLES:
             raise ValidationError({"authorization": ["Not authorized"]})
 
-        # Guard 2: Existence check
-        entity = domain.repository_for(SomeAggregate).get(command.entity_id)
+        # Guard 2: Existence check. get() raises ObjectNotFoundError on a miss.
+        repo = current_domain.repository_for(Account)
+        account = repo.get(command.account_id)
 
         # Guard 3: Context-dependent check
         if not is_business_hours():
             raise ValidationError({"timing": ["Only during business hours"]})
 
         # Business logic (Layers 1-3 validate automatically)
-        entity.do_something()
-        domain.repository_for(SomeAggregate).add(entity)
+        account.close()
+        repo.add(account)
 ```
 
 ## Common Guard Patterns
 
 ### Authorization (role-based)
 ```python
+# fragment
 ALLOWED_ROLES = {"admin", "manager"}
 
 if command.role not in ALLOWED_ROLES:
@@ -42,19 +68,27 @@ if command.role not in ALLOWED_ROLES:
 
 ### Existence check
 ```python
+# fragment
 entity = repo.get(command.entity_id)
 # ObjectNotFoundError raised automatically if not found
+
+# To report a missing entity as a validation error instead:
+entity = repo.get_or_none(command.entity_id)
+if entity is None:
+    raise ValidationError({"entity_id": ["Not found"]})
 ```
 
 ### Cross-aggregate consistency
 ```python
-customer = domain.repository_for(Customer).get(command.customer_id)
+# fragment
+customer = current_domain.repository_for(Customer).get(command.customer_id)
 if customer.status != "active":
     raise ValidationError({"customer": ["Customer account is inactive"]})
 ```
 
 ### Rate limiting / quota
 ```python
+# fragment
 count = repo.count_by_user(command.user_id)
 if count >= MAX_ITEMS:
     raise ValidationError({"quota": [f"Maximum {MAX_ITEMS} items reached"]})

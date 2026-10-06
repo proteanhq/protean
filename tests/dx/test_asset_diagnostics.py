@@ -138,11 +138,15 @@ def is_exempt(path: Path) -> bool:
 
 
 def discover_assets(skills_root: Path) -> list[Path]:
-    """Every non-exempt ``*/assets/*.py`` under ``skills_root``, sorted."""
+    """Every non-exempt ``*/assets/*.py`` under ``skills_root``, sorted.
+
+    A package ``__init__.py`` and the pytest ``conftest.py`` define no domain
+    and are skipped.
+    """
     return sorted(
         path
         for path in skills_root.glob("*/assets/*.py")
-        if path.name != "__init__.py" and not is_exempt(path)
+        if path.name not in ("__init__.py", "conftest.py") and not is_exempt(path)
     )
 
 
@@ -283,7 +287,7 @@ def test_asset_discovery_is_not_vacuous():
         for skill in SKILLS_ROOT.iterdir()
         if (skill / "assets").is_dir()
         for path in (skill / "assets").iterdir()
-        if path.suffix == ".py" and path.name != "__init__.py"
+        if path.suffix == ".py" and path.name not in ("__init__.py", "conftest.py")
     ]
     exempt = [path for path in every if is_exempt(path)]
     assert assets, "discovered no assets under the DX pack"

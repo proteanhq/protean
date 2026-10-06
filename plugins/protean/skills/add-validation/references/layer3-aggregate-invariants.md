@@ -73,15 +73,43 @@ def reserved_cannot_exceed_stock(self):
 
 ## Atomic Changes
 
-When changing multiple related fields, use `atomic_change` to defer validation:
+When changing multiple related fields, use `atomic_change` to defer validation. Creating the aggregate needs an initialized domain and an active domain context:
 
 ```python
 from protean import atomic_change
+from protean.exceptions import ValidationError
 
-with atomic_change(order):
-    order.total_amount = 120.0
-    order.add_items(OrderItem(...))
-# Invariants checked here, once, after all changes
+
+@domain.entity(part_of="Order")
+class OrderItem:
+    product_id: String(required=True)
+    subtotal: Float(required=True)
+
+
+@domain.aggregate
+class Order:
+    items = HasMany("OrderItem")
+    total_amount: Float(default=0.0)
+
+    @invariant.post
+    def total_must_equal_sum_of_items(self):
+        if self.items:
+            expected = sum(item.subtotal for item in self.items)
+            if self.total_amount != expected:
+                raise ValidationError({"_entity": ["Total mismatch"]})
+
+
+domain.init(traverse=False)
+
+with domain.domain_context():
+    order = Order(
+        items=[OrderItem(product_id="P1", subtotal=100.0)], total_amount=100.0
+    )
+
+    with atomic_change(order):
+        order.total_amount = 120.0
+        order.add_items(OrderItem(product_id="P2", subtotal=20.0))
+    # Invariants checked here, once, after all changes
 ```
 
 Without `atomic_change`, each assignment triggers validation, which may fail for intermediate states.
