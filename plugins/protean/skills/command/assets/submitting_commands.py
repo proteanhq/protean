@@ -30,7 +30,7 @@ domain = Domain()
 class Order:
     """Order aggregate."""
 
-    order_id: Identifier(required=True)
+    order_id: Identifier(identifier=True)
     customer_id: String(required=True)
     total_amount: Float()
     status: String(default="draft")
@@ -47,7 +47,7 @@ class Order:
 class Shipment:
     """Shipment aggregate."""
 
-    shipment_id: Identifier(required=True)
+    shipment_id: Identifier(identifier=True)
     order_id: String(required=True)
     status: String(default="pending")
 

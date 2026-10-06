@@ -93,6 +93,15 @@ def on_placed(self, event: OrderPlaced):
 from protean.core.upcaster import BaseUpcaster
 
 
+@domain.event(part_of="Order")
+class OrderPlaced:
+    __version__ = 2
+    order_id = Identifier(required=True)
+    amount = Float(required=True)
+    currency = String(required=True)
+
+
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcastV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["currency"] = "USD"

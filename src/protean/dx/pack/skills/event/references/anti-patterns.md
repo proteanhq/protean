@@ -446,7 +446,7 @@ When creating events, ensure:
 - [ ] Event includes only necessary data
 - [ ] Event is immutable (no modification after creation)
 - [ ] Event has `__version__` attribute
-- [ ] Events are raised AFTER state changes
+- [ ] Events are raised AFTER state changes (an event-sourced aggregate raises first, and `@apply` changes the state)
 - [ ] Events are only raised on success (not for failures)
 - [ ] Query methods don't raise events
 - [ ] Primary identifier marked with `identifier=True`

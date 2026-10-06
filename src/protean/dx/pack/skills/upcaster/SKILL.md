@@ -166,6 +166,7 @@ class Order:
     @apply
     def on_placed(self, event: OrderPlaced):
         # Always receives current v3 schema — upcasters handle old versions
+        self.order_id = event.order_id
         self.total_amount = event.total_amount
         self.currency = event.currency
 ```
@@ -230,16 +231,17 @@ build-time signal as `UPCASTER_GAP`.
 # WRONG — upcasting runs on the deserialization path and must stay fast
 class SlowUpcaster(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
-        user = db.query(User, data["user_id"])  # NO! No I/O
-        data["user_name"] = user.name
+        customer = db.query(Customer, data["customer_id"])  # NO! No I/O
+        data["currency"] = customer.currency
         return data
 ```
 
 ```python
 # CORRECT — pure dict transformation only
-class FastUpcaster(BaseUpcaster):
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
+class UpcastV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
-        data["user_name"] = data.get("user_name", "Unknown")
+        data["currency"] = data.get("currency", "USD")
         return data
 ```
 

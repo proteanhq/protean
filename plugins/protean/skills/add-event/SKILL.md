@@ -95,7 +95,7 @@ class Order:
     product_id: Identifier(required=True)
     quantity: Integer(required=True)
     status: String(default="draft")
-    total_amount: Float()
+    total_amount: Float(required=True)
     confirmation_number: String()
     tracking_number: String()
 
@@ -246,7 +246,7 @@ class OrderEventHandler:
 4. **Event handlers do NOT return values** - Fire-and-forget pattern
 5. **Implicit UnitOfWork** - Do NOT wrap handler methods in manual UnitOfWork
 6. **Business logic in aggregates** - Handlers only orchestrate (load, call method, persist)
-7. **Raise events after state change** - Call `self.raise_()` after the aggregate state is updated
+7. **Raise events after state change** - Call `self.raise_()` after the aggregate state is updated. An event-sourced aggregate is the exception: it raises the event first, and `@apply` changes the state (see the `event-sourced-aggregate` skill)
 8. **Cross-aggregate uses stream_category** - `stream_category=SourceAggregate.meta_.stream_category`
 9. **Sync processing for dev/test** - Set `domain.config["event_processing"] = "sync"`
 10. **Events carry minimal data** - Only IDs and data needed by consumers, not entire aggregate state
@@ -259,7 +259,7 @@ class OrderEventHandler:
 - **Returning values from event handlers** - Event handlers are fire-and-forget
 - **Manual UnitOfWork in handlers** - It's implicit, don't wrap
 - **Missing stream_category for cross-aggregate** - Without it, handler only sees its own aggregate's events
-- **Raising events before state change** - State should change first, then raise the event
+- **Raising events before state change** - State should change first, then raise the event. This does not apply to an event-sourced aggregate, where the event is raised first and `@apply` changes the state
 
 ## Complete examples
 

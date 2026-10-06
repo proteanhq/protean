@@ -71,7 +71,7 @@ class Order:
     status: String(default="draft")
 ```
 
-The repository writes a new fact event each time it saves the aggregate. The event goes to the `<stream_category>-fact-<id>` stream. It does not appear in `order._events`.
+The repository writes a fact event each time it saves a new or changed aggregate. Saving an unchanged aggregate writes none. The event goes to the `<stream_category>-fact-<id>` stream. Your code never raises it: the repository raises it on the aggregate as it saves, and the unit of work stores it on commit.
 
 ```python
 domain.init(traverse=False)

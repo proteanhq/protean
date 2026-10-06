@@ -56,7 +56,9 @@ with domain.domain_context():
     try:
         RegisterUser(user_id="USER-001")
     except ValidationError as e:
-        print(e.messages)  # {'email': ['is required']}
+        assert e.messages == {'email': ['is required']}
+    else:
+        raise AssertionError("expected a ValidationError")
 ```
 
 ### String max_length
@@ -76,7 +78,9 @@ with domain.domain_context():
     try:
         RegisterUser(username="a" * 51)
     except ValidationError as e:
-        print(e.messages)  # {'username': ['String should have at most 50 characters']}
+        assert e.messages == {'username': ['String should have at most 50 characters']}
+    else:
+        raise AssertionError("expected a ValidationError")
 ```
 
 ### Numeric min_value / max_value
@@ -94,7 +98,9 @@ with domain.domain_context():
     try:
         UpdatePricing(product_id="PROD-001", new_price=0.0)
     except ValidationError as e:
-        print(e.messages)  # {'new_price': ['Input should be greater than or equal to 0.01']}
+        assert e.messages == {'new_price': ['Input should be greater than or equal to 0.01']}
+    else:
+        raise AssertionError("expected a ValidationError")
 ```
 
 ### Default Values
@@ -130,7 +136,9 @@ with domain.domain_context():
     try:
         RegisterUser(email="alice@example.com", foo="bar")
     except ValidationError as e:
-        print(e.messages)  # {'foo': ['Extra inputs are not permitted']}
+        assert e.messages == {'foo': ['Extra inputs are not permitted']}
+    else:
+        raise AssertionError("expected a ValidationError")
 ```
 
 ## Error Message Format
@@ -156,14 +164,16 @@ with domain.domain_context():
             password="secret",
         )
     except ValidationError as e:
-        print(e.messages)
-        # {'username': ['String should have at most 50 characters']}
+        assert e.messages == {'username': ['String should have at most 50 characters']}
+    else:
+        raise AssertionError("expected a ValidationError")
 
     try:
         RegisterUser(user_id="USER-001")
     except ValidationError as e:
-        print(e.messages)
-        # {'email': ['is required'], 'username': ['is required'], 'password': ['is required']}
+        assert e.messages == {'email': ['is required'], 'username': ['is required'], 'password': ['is required']}
+    else:
+        raise AssertionError("expected a ValidationError")
 ```
 
 ## Validation Best Practices

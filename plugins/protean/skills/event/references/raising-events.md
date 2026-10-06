@@ -322,7 +322,7 @@ class Customer:
         return customer
 ```
 
-Raise the creation event from a factory classmethod, not from `__init__`. The framework also calls `__init__` when it loads an aggregate from the repository, so an event raised there would fire again on every load.
+Raise the creation event from a factory classmethod, not from `__init__`. The framework also calls `__init__` when it loads an aggregate that stores its state from the repository, so an event raised there would fire again on every load. An event-sourced aggregate is rebuilt from its events without calling `__init__`, but its creation event still belongs in a factory method.
 
 ### Updates
 
@@ -393,6 +393,8 @@ def place(self):
     self.raise_(OrderPlaced(...))  # Event first - wrong!
     self.status = "placed"  # State change after
 ```
+
+This rule is for an aggregate that stores its state. An event-sourced aggregate works the other way: the method raises the event, and its `@apply` handler changes the state. See the `event-sourced-aggregate` skill.
 
 ### 2. Use Descriptive Event Names
 

@@ -65,8 +65,8 @@ class V2ToV3(BaseUpcaster):
 # WRONG — runs on every deserialization, can be called thousands of times
 class SlowUpcaster(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
-        user = database.get_user(data["user_id"])
-        data["user_name"] = user.name
+        customer = database.get_customer(data["customer_id"])
+        data["currency"] = customer.currency
         return data
 ```
 
@@ -75,9 +75,10 @@ class SlowUpcaster(BaseUpcaster):
 **Fix**: Use only data available in the event payload. If the old event doesn't have the needed data, provide a reasonable default.
 
 ```python
-class PureUpcaster(BaseUpcaster):
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
+class V1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
-        data["user_name"] = data.get("user_name", "Unknown")
+        data["currency"] = data.get("currency", "USD")
         return data
 ```
 
@@ -194,7 +195,7 @@ from datetime import datetime
 
 class NonDeterministic(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
-        data["migrated_at"] = datetime.now().isoformat()
+        data["currency"] = "EUR" if datetime.now().year >= 2025 else "USD"
         return data
 ```
 
@@ -203,8 +204,9 @@ class NonDeterministic(BaseUpcaster):
 **Fix**: Use only deterministic values derived from the event data itself.
 
 ```python
-class Deterministic(BaseUpcaster):
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
+class V1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
-        data["migrated_at"] = "2024-01-01T00:00:00+00:00"  # Fixed value
+        data["currency"] = "USD"  # Fixed value: every v1 order was in USD
         return data
 ```

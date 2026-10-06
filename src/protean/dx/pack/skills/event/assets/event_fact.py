@@ -9,8 +9,9 @@ This example demonstrates:
 - Delta events, raised by hand, next to the generated fact events
 
 You do not declare a fact event class. Protean builds one from the
-aggregate's fields during ``domain.init()``, and the repository writes a new
-fact event with the full aggregate state every time it saves the aggregate.
+aggregate's fields during ``domain.init()``. Each time the repository saves a
+new or changed aggregate, it writes a fact event with the full aggregate
+state. Saving an unchanged aggregate writes none.
 
 Usage:
     domain.init(traverse=False)

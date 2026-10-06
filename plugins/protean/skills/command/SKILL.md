@@ -71,20 +71,34 @@ Commands cannot use `HasOne`, `HasMany`, or `Reference` fields.
 ## Quick example
 
 ```python
-from protean import Domain
+from protean import Domain, handle
 from protean.fields import String, Float, DateTime, Identifier
 
 domain = Domain()
 
 @domain.aggregate
 class Order:
-    order_id: Identifier(required=True)
+    order_id: Identifier(identifier=True)
+    customer_id: String(required=True)
+    total_amount: Float()
 
 @domain.command(part_of="Order")
 class PlaceOrder:
     order_id: Identifier(required=True)
     customer_id: String(required=True)
     total_amount: Float(required=True)
+
+# Register the handler before init(); one registered after is not wired
+@domain.command_handler(part_of="Order")
+class OrderCommandHandler:
+    @handle(PlaceOrder)
+    def place_order(self, command: PlaceOrder):
+        order = Order(
+            order_id=command.order_id,
+            customer_id=command.customer_id,
+            total_amount=command.total_amount,
+        )
+        domain.repository_for(Order).add(order)
 
 domain.init(traverse=False)
 

@@ -163,12 +163,12 @@ class PriceChanged:
 
 ## Version Migration Patterns
 
-### Pattern 1: Side-by-side Versions
+### Pattern 1: A New Event for a New Fact
 
-Create new event types for major changes:
+When the change records a different business fact, add a new event type with its own name, starting at version 1:
 
 ```python
-# Old event - still supported
+# The existing event keeps its name and its version
 @domain.event(part_of="Order")
 class OrderPlaced:
     __version__ = 1
@@ -176,16 +176,17 @@ class OrderPlaced:
     order_id: String(required=True, identifier=True)
     customer_id: String(required=True)
 
-# New event for new schema
+# A different fact gets its own event
 @domain.event(part_of="Order")
-class OrderPlacedV2:
-    __version__ = 2
+class OrderPriced:
+    __version__ = 1
 
     order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
     total = ValueObject(Money, required=True)
     items: List()
 ```
+
+Do not put a version number in a class name, such as `OrderPlacedV2`. The framework links the versions of an event by its type name, so no upcaster can turn a stored `OrderPlaced` into an `OrderPlacedV2`. When the fact stays the same and only its shape changes, keep the name, raise `__version__` and add an upcaster (Pattern 2).
 
 ### Pattern 2: Upcasting
 

@@ -22,7 +22,7 @@ Key highlights:
 
 ## Submitting Commands
 
-The examples on this page use this aggregate and command:
+The examples on this page use this aggregate, command and command handler:
 
 ```python
 @domain.aggregate
@@ -41,7 +41,21 @@ class PlaceOrder:
     order_id: Identifier(required=True)
     customer_id: String(required=True)
     total_amount: Float(required=True)
+
+
+@domain.command_handler(part_of="Order")
+class OrderCommandHandler:
+    @handle(PlaceOrder)
+    def handle_place_order(self, command: PlaceOrder):
+        order = Order(
+            order_id=command.order_id,
+            customer_id=command.customer_id,
+        )
+        order.place(total_amount=command.total_amount)
+        domain.repository_for(Order).add(order)
 ```
+
+Register the handler before `domain.init()`. A handler registered after `init()` is not wired to its command, and `domain.process()` then runs no handler and saves nothing.
 
 Initialize the domain, then build and submit the command inside a domain context:
 
@@ -132,20 +146,7 @@ Protean Server --> Command Handler: Process command
 
 ## Command Handler Association
 
-Commands are routed to handlers via the `@handle` decorator:
-
-```python
-@domain.command_handler(part_of="Order")
-class OrderCommandHandler:
-    @handle(PlaceOrder)
-    def handle_place_order(self, command: PlaceOrder):
-        order = Order(
-            order_id=command.order_id,
-            customer_id=command.customer_id,
-        )
-        order.place(total_amount=command.total_amount)
-        domain.repository_for(Order).add(order)
-```
+Commands are routed to handlers via the `@handle` decorator. `OrderCommandHandler` in the first block on this page routes `PlaceOrder` to `handle_place_order`.
 
 Key rule: **One command, one handler**. A command can only be processed by a single command handler. This is different from events, which can have multiple handlers.
 
