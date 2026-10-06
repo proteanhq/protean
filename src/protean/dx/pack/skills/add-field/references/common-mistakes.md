@@ -388,8 +388,8 @@ class LineItem:
     product_id: String(required=True)
 ```
 
-Use `Reference` only on an entity, to point back at its own aggregate root. `HasMany` and
-`HasOne` add that field for you.
+Use `Reference` only on an entity, to point back at its parent (the aggregate root, or the
+parent entity when nested). `HasMany` and `HasOne` add that field for you.
 
 **Why it matters**: Proper aggregate boundaries, correct relationship modeling.
 

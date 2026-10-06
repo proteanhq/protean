@@ -1,6 +1,6 @@
 # Entity Configuration
 
-Entities are configured through options passed to the `@domain.entity` decorator. An inner `class Meta:` on an entity is ignored, so put every option in the decorator. This guide covers the available options and how to use them.
+Entities are configured through options passed to the `@domain.entity` decorator. An inner `class Meta:` on an entity is ignored, so put every option in the decorator.
 
 ## Overview
 
@@ -17,7 +17,7 @@ Entity configuration controls:
 
 Associates the entity with an aggregate. This is the only required configuration option.
 
-**Always use a string reference** to avoid circular dependencies:
+**Use a string reference to the aggregate** to avoid circular dependencies. A nested entity is the exception: its `part_of` is the parent entity, passed as a class, because a string resolves only to an aggregate (see [Nested Entities](nested-entities.md)).
 
 ```python
 from decimal import Decimal as D  # stdlib Decimal, aliased so it does not clash with the field
@@ -42,7 +42,7 @@ class LineItem:
 
 ### Sharing fields through a base class
 
-`@domain.entity` has no `abstract` option: passing it raises `ConfigurationError`. To share fields and behavior, put them on a plain subclass of `BaseEntity` and leave it undecorated. Decorate only the concrete subclasses.
+`@domain.entity` has no `abstract` option: passing it raises `ConfigurationError`. To share fields and behavior, put them on a plain subclass of `BaseEntity` and leave it undecorated. Decorate only the concrete subclasses. Keep association fields (`HasMany`, `HasOne`) on the concrete entities: the same association inherited by two entities fails `domain.init()` with `ConfigurationError`.
 
 ```python
 class BaseLineItem(BaseEntity):

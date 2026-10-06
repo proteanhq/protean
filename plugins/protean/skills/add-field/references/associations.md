@@ -8,7 +8,7 @@ Protean provides four types of association fields:
 1. **HasOne** - One-to-one relationship with an entity
 2. **HasMany** - One-to-many relationship with entities
 3. **ValueObject** - Embed an immutable value object
-4. **Reference** - Link an entity back to its own aggregate root
+4. **Reference** - Link an entity back to its parent (the aggregate root, or the parent entity when nested)
 
 To link to a *different* aggregate, do not use an association field. Store the other
 aggregate's id in an `Identifier` field. See [Linking to Another Aggregate](#linking-to-another-aggregate).
@@ -128,7 +128,8 @@ When you define a `HasMany` field, Protean automatically creates helper methods.
 
 Both take keyword arguments only. `filter_line_items` matches equality only: it does not
 support operators such as `unit_price__gt`. `get_one_from_line_items` raises
-`ObjectNotFoundError` (from `protean.exceptions`) when no item matches. It never returns `None`.
+`ObjectNotFoundError` (from `protean.exceptions`) when no item matches, and `TooManyObjectsError`
+when more than one matches. It never returns `None`.
 
 **Important**: These methods are AUTO-GENERATED. Do NOT create them manually.
 
@@ -179,6 +180,7 @@ from protean.exceptions import ObjectNotFoundError
 
 # Get by identifier (keyword argument)
 item = order.get_one_from_line_items(id=item1.id)  # Auto-generated
+assert item is item1
 
 # A miss raises ObjectNotFoundError
 try:
@@ -201,6 +203,7 @@ order.remove_line_items(item)  # Auto-generated helper
 
 # Remove by identifier
 other = order.get_one_from_line_items(id=items[0].id)
+assert other is items[0]
 order.remove_line_items(other)
 ```
 
@@ -381,13 +384,14 @@ class Order:
 
 See [../assets/add_value_object_field.py](../assets/add_value_object_field.py) for complete example.
 
-## Reference (Link Back to the Aggregate Root)
+## Reference (Link Back to the Parent)
 
 ### Purpose
 
-Use `Reference` on an entity to point at its own aggregate root. It is the reverse side of
-a `HasMany` or `HasOne` field. The `Reference` named `post` stores the root's id in
-`post_id` and gives access to the root object through `post`.
+Use `Reference` on an entity to point at its parent: the aggregate root, or the parent entity
+when the entity is nested. It is the reverse side of a `HasMany` or `HasOne` field. The
+`Reference` named `post` stores the root's id in `post_id` and gives access to the root object
+through `post`.
 
 ### Basic Usage
 
@@ -503,7 +507,7 @@ Same aggregate boundary?
 ├─ One-to-many with entities → HasMany
 └─ Immutable complex data → ValueObject
 
-Entity pointing at its own aggregate root?
+Entity pointing at its parent (aggregate root or parent entity)?
 └─ Reference (HasOne/HasMany add it for you)
 
 Another aggregate?

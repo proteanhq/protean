@@ -152,10 +152,10 @@ state determines what happens when the aggregate is persisted:
 
 | State | Property | Meaning |
 |---|---|---|
-| **New** | `_state.is_new` | Freshly constructed, not yet persisted. Will be inserted on save. |
+| **New** | `_state.is_new` | Freshly constructed, not yet persisted. Inserted when the aggregate is next persisted with `repository.add()`. |
 | **Persisted** | `_state.is_persisted` | Loaded from or saved to the database. No pending changes. |
-| **Changed** | `_state.is_changed` | Modified since last persistence. Will be updated on save. |
-| **Destroyed** | `_state.is_destroyed` | Marked for deletion. Will be removed on save. |
+| **Changed** | `_state.is_changed` | Modified since last persistence. Updated when the aggregate is next persisted with `repository.add()`. |
+| **Destroyed** | `_state.is_destroyed` | Marked for deletion. Deleted when the aggregate is next persisted with `repository.add()`. |
 
 State transitions happen automatically. You don't need to manage them directly.
 Creating an entity marks it as *new*; modifying an attribute marks it as
@@ -354,8 +354,9 @@ class OrderItem:
     # Creates shadow field 'parent_order_id' instead of 'order_id'
 ```
 
-A `Reference` field may point only to the entity's own aggregate. To link to a
-different aggregate, store its identity in an `Identifier` field.
+A `Reference` field may point only to the entity's parent: the aggregate root,
+or the parent entity when the entity is nested. To link to a different
+aggregate, store its identity in an `Identifier` field.
 
 ### Navigation Between Entities
 

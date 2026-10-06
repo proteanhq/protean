@@ -37,7 +37,7 @@ class LineItem:
 
 ## Key rules
 
-1. **Entities must be part of an aggregate** - Use `part_of` parameter to associate with parent aggregate. **Always use a string reference** (`part_of="Order"`) to avoid circular dependencies when aggregate and entity are in the same file
+1. **Entities must be part of an aggregate** - Use `part_of` parameter to associate with parent aggregate. **Use a string reference** (`part_of="Order"`) to avoid circular dependencies when aggregate and entity are in the same file. A nested entity passes its parent entity as a class (`part_of=LineItem`), because a string resolves only to an aggregate
 2. **Entities have automatic identity** - An `id` field is auto-generated unless `auto_add_id_field=False`
 3. **Entities get automatic reference fields** - A reference field back to parent aggregate is created automatically
 4. **Entities are accessed through aggregates** - Never query or update entities directly
@@ -69,7 +69,7 @@ class Comment:
 
 ### Entity with part_of
 
-**Always use a string reference** for `part_of` to avoid circular dependencies:
+**Use a string reference to the aggregate** for `part_of` to avoid circular dependencies (a nested entity is the exception, see [Nested entities](references/nested-entities.md)):
 
 ```python
 @domain.entity(part_of="Order")
@@ -121,7 +121,7 @@ class LineItem:
 
 - `add_line_items(item)` - Add one or more items to the collection
 - `remove_line_items(item)` - Remove an item from the collection
-- `get_one_from_line_items(id=item_id)` - Get the one item that matches the keyword arguments. It raises `ObjectNotFoundError` (from `protean.exceptions`) when no item matches.
+- `get_one_from_line_items(id=item_id)` - Get the one item that matches the keyword arguments. It raises `ObjectNotFoundError` (from `protean.exceptions`) when no item matches, and `TooManyObjectsError` when more than one does.
 - `filter_line_items(**criteria)` - Return the items whose fields equal the given values, such as `filter_line_items(product_id="P1")`. It matches on equality only.
 
 **Important**: Do NOT manually create these methods - they are automatically available. Only create custom methods if you need behavior different from the defaults.
@@ -134,7 +134,7 @@ Entities automatically get a reference field to their parent aggregate. A `LineI
 
 ### Sharing fields through a base class
 
-`@domain.entity` has no `abstract` option. To share fields between entities, put them on a plain subclass of `BaseEntity` and leave it undecorated. Decorate only the concrete subclasses:
+`@domain.entity` has no `abstract` option. To share fields between entities, put them on a plain subclass of `BaseEntity` and leave it undecorated. Decorate only the concrete subclasses. Keep association fields (`HasMany`, `HasOne`) on the concrete entities, because two entities that inherit the same association fail `domain.init()`:
 
 ```python
 from protean.core.entity import BaseEntity

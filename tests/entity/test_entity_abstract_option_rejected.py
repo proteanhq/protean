@@ -25,6 +25,7 @@ def test_registering_an_entity_with_abstract_raises(test_domain):
     with pytest.raises(ConfigurationError) as exc:
         test_domain.register(Comment, part_of=Post, abstract=True)
 
+    assert "Unknown option" in str(exc.value)
     assert "abstract" in str(exc.value)
 
 
@@ -39,6 +40,7 @@ def test_decorating_an_entity_with_abstract_raises(test_domain):
         class Comment:
             body = String()
 
+    assert "Unknown option" in str(exc.value)
     assert "abstract" in str(exc.value)
 
 

@@ -81,7 +81,7 @@ class ShippingInfo:
 
 Entities must specify which aggregate they belong to using the `part_of` parameter. This creates the relationship and ensures entities are managed correctly.
 
-The `Reference` field creates a bidirectional relationship. While optional to declare explicitly, it documents the relationship and enables navigation from child to parent. Use `Reference` only for an entity pointing at its own aggregate root. To point at another aggregate, hold its id in an `Identifier()` field.
+The `Reference` field creates a bidirectional relationship. While optional to declare explicitly, it documents the relationship and enables navigation from child to parent. Use `Reference` only for an entity pointing at its parent: the aggregate root, or the parent entity when the entity is nested. To point at another aggregate, hold its id in an `Identifier()` field.
 
 Creating instances needs an initialized domain and an active domain context:
 
@@ -120,6 +120,7 @@ with domain.domain_context():
 
     # One item by its fields. Raises ObjectNotFoundError when nothing matches
     found = order.get_one_from_line_items(id=first.id)
+    assert found is first
 
     # All items whose fields equal the given values
     p1_items = order.filter_line_items(product_id="P1")

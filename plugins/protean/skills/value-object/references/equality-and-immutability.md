@@ -14,7 +14,8 @@ Key concepts:
 
 ### Value-Based Equality
 
-Value objects are equal when all their attributes match:
+Value objects are equal when all their attributes match. A Decimal amount matches only in the
+same exact form (see [Decimal Amounts Compare by Their Exact Form](#decimal-amounts-compare-by-their-exact-form)):
 
 ```python
 from decimal import Decimal as D
@@ -105,6 +106,26 @@ addr3 = Address(
 assert addr1 != addr3
 ```
 
+### Decimal Amounts Compare by Their Exact Form
+
+A value object compares its `to_dict()` output, and `to_dict()` turns a `decimal.Decimal`
+into its string. So `D("1.0")` and `D("1.00")`, which are equal as numbers, make two
+unequal value objects:
+
+```python
+assert Money(currency="USD", amount=D("1.0")) != Money(currency="USD", amount=D("1.00"))
+
+# Quantize to the field's scale before building the value object
+FOUR_PLACES = D("0.0001")
+assert Money(currency="USD", amount=D("1.0").quantize(FOUR_PLACES)) == Money(
+    currency="USD", amount=D("1.00").quantize(FOUR_PLACES)
+)
+```
+
+The same applies to a value read back from a database, which may come back with a different
+number of decimal places, and to a `default=0`, which the field keeps as the int `0`.
+Quantize amounts in the methods that build them, as `with-methods.md` does.
+
 ### Nested Value Objects
 
 Equality cascades through nested value objects:
@@ -190,7 +211,8 @@ shared_price = Money(currency="USD", amount=D("50.00"))
 def calculate_discount(price: Money, rate: D) -> Money:
     # price parameter won't be modified
     # Safe to use without defensive copying
-    return Money(currency=price.currency, amount=price.amount * (1 - rate))
+    amount = (price.amount * (1 - rate)).quantize(D("0.0001"))
+    return Money(currency=price.currency, amount=amount)
 
 original_price = Money(currency="USD", amount=D("100.00"))
 discounted = calculate_discount(original_price, D("0.1"))
@@ -274,7 +296,7 @@ Unlike entities and aggregates, value objects don't have identity fields:
 
 ```python
 @domain.value_object
-class Money:
+class Price:
     # Cannot use identifier=True
     # id: String(identifier=True)  # Raises IncorrectUsageError
 
@@ -282,16 +304,20 @@ class Money:
     amount: Decimal(precision=19, scale=4, required=True)
 ```
 
-Trying to add identity fields raises an error:
+Marking a field as the identifier raises `IncorrectUsageError` when the class is registered:
 
 ```python
-# fragment
-# This will fail
-@domain.value_object
-class Address:
-    id: Auto()  # Error: Value objects cannot have identity fields
-    street: String()
+import pytest
+
+with pytest.raises(IncorrectUsageError):
+
+    @domain.value_object
+    class Address:
+        id: Auto(identifier=True)  # Value objects cannot have identity fields
+        street: String()
 ```
+
+A plain `Auto()` field without `identifier=True` is accepted. It is not an identity: it generates a new value for every instance, and that value takes part in equality, so two addresses with the same street compare unequal. Leave such fields out of value objects.
 
 ### Value Objects Cannot Be Unique
 
@@ -447,7 +473,7 @@ if m1 is not m2:  # True, but misleading
 # fragment
 @domain.value_object
 class Money:
-    id: Auto()  # Error! VOs can't have identity
+    id: Auto(identifier=True)  # IncorrectUsageError: VOs can't have identity
 ```
 
 **Modifying then expecting changes** ❌

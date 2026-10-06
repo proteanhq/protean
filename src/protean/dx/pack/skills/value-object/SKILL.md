@@ -266,7 +266,7 @@ with domain.domain_context():
     )
 ```
 
-Both approaches produce identical results. Attribute initialization works one level deep, on the aggregate or entity that holds the value object, and only when you create it. It does not work for updating a value object later, and a value object's own constructor does not accept it.
+Both approaches produce identical results. Attribute initialization works one level deep, on the aggregate or entity that holds the value object, and only when you create it. It does not work for updating a value object later: `account.balance_amount = D("5")` raises no error, but it sets a stray attribute and leaves `account.balance` unchanged. A value object's own constructor does not accept flattened attributes either.
 
 ## Nested value objects
 
@@ -364,7 +364,7 @@ This is fundamentally different from entities, where identity matters:
 ## Common mistakes
 
 - **Trying to modify value objects**: VOs are immutable. Replace the entire VO instead: `account.balance = Balance(currency="USD", amount=D("200.00"))`
-- **Adding identity fields**: VOs cannot have `identifier=True` or `Auto()`. Use Entity if you need identity.
+- **Adding identity fields**: VOs cannot have fields marked `identifier=True` or `unique=True`; registering one raises `IncorrectUsageError`. A plain `Auto()` field is accepted, but it generates a new value per instance and breaks equality. Use Entity if you need identity.
 - **Using primitives instead of VOs**: Use `total = ValueObject(Money)` instead of separate `total_amount`/`total_currency` fields.
 - **Methods that modify self**: Always return NEW instances: `return Money(amount=self.amount + other.amount)`
 - **Not using invariants for cross-field validations**: Use `@invariant.post` instead of `__init__` validation.

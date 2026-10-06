@@ -102,7 +102,7 @@ tags = List(content_type=String)  # Just strings, no identity
 | Many child entities | `HasMany("Entity")` | one-to-many |
 | Embedded VO | `ValueObject(VOClass)` | Money, Address |
 | Link to another aggregate | `Identifier()` | `customer_id`, holds the other aggregate's id |
-| Link back to own aggregate root | `Reference("Order")` | on an entity, the reverse side of `HasMany`/`HasOne` |
+| Link back to the parent (aggregate root, or parent entity when nested) | `Reference("Order")` | on an entity, the reverse side of `HasMany`/`HasOne` |
 | Simple list | `List(content_type=String)` | tags, codes |
 | Key-value | `Dict()` | metadata |
 
@@ -172,7 +172,8 @@ When you add `items = HasMany("LineItem")`, these methods are automatically avai
 - `aggregate.add_items(item)`: add one or more items
 - `aggregate.remove_items(item)`: remove an item
 - `aggregate.get_one_from_items(id=item_id)`: get one item by keyword criteria. It raises
-  `ObjectNotFoundError` (from `protean.exceptions`) when nothing matches, and never returns `None`.
+  `ObjectNotFoundError` (from `protean.exceptions`) when nothing matches and `TooManyObjectsError`
+  when more than one item matches. It never returns `None`.
 - `aggregate.filter_items(**criteria)`: get the items whose fields equal the given values.
   It matches equality only; operators such as `price__gt` are not supported.
 

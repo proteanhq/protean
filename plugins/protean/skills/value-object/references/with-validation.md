@@ -25,8 +25,6 @@ Key points:
 ### The Validator Class
 
 ```python
-import re
-
 from protean.exceptions import ValidationError
 
 
@@ -40,7 +38,9 @@ class EmailValidator:
         """Validate email address according to business rules."""
         if value.count("@") != 1:
             raise ValidationError(self.error)
-        # ... more validation rules
+        local_part, domain_part = value.split("@")
+        if not local_part or len(local_part) > 64 or not domain_part:
+            raise ValidationError(self.error)
 ```
 
 The validator is a callable class that:

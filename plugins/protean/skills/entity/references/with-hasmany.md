@@ -209,6 +209,7 @@ with domain.domain_context():
 
     # Get one item by its id; raises ObjectNotFoundError when nothing matches
     laptop = order.get_one_from_line_items(id=item1.id)
+    assert laptop is item1
 
     # Filter items by field values (equality only)
     mice = order.filter_line_items(product_id="PROD-002")
@@ -227,6 +228,7 @@ with domain.domain_context():
 
     # Or fetch by id and update
     laptop = order.get_one_from_line_items(id=item1.id)
+    assert laptop is item1
     laptop.quantity = 5
 ```
 

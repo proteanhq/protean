@@ -621,3 +621,18 @@ invoice.remove_product_line(line.id)
 assert invoice.line_items == []
 """,
     )
+
+
+def test_warehouse_ships_part_of_its_reserved_stock():
+    _run_asset_check(
+        "aggregate/assets/aggregate_with_invariants.py",
+        """
+warehouse = Warehouse(name="Main", max_capacity=1000.0)
+warehouse.receive_stock(100.0)
+warehouse.reserve_stock(100.0)
+warehouse.ship_stock(50.0)
+
+assert warehouse.current_stock == 50.0
+assert warehouse.reserved_stock == 50.0
+""",
+    )

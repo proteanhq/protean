@@ -236,7 +236,7 @@ Order → Note (with reference to LineItem)
 @domain.entity(part_of="Order")
 class LineItem:
     quantity: Integer()  # No constraints!
-    unit_price: Decimal()  # Can be negative!
+    unit_price: Decimal(precision=19, scale=4)  # Can be negative!
 
     def set_quantity(self, qty):
         self.quantity = qty  # No validation!
@@ -285,7 +285,7 @@ class LineItem:
 - Can lead to consistency issues
 - `protean check` reports it as `CROSS_AGGREGATE_REFERENCE`
 
-A `Reference` field is only for an entity pointing at its own aggregate root.
+A `Reference` field is only for an entity pointing at its parent: the aggregate root, or the parent entity when the entity is nested.
 
 ✅ **Correct: Use IDs to reference other aggregates**
 
@@ -341,8 +341,8 @@ class LineItem:
 
     @property
     def discount_amount(self) -> D:
-        """Calculate discount amount."""
-        return self.subtotal * D(str(self.discount_percent)) / 100
+        """Calculate discount amount, rounded to the money fields' scale."""
+        return (self.subtotal * D(str(self.discount_percent)) / 100).quantize(D("0.0001"))
 
     @property
     def total(self) -> D:

@@ -276,21 +276,26 @@ class CreditCard:
 Test both valid and invalid cases for each invariant:
 
 ```python
+from decimal import Decimal as D
+
+import pytest
+
+
 def test_valid_usd_balance():
     # Positive USD balance is valid
-    balance = Balance(currency="USD", amount=100.0)
-    assert balance.amount == 100.0
+    balance = Balance(currency="USD", amount=D("100.00"))
+    assert balance.amount == D("100.00")
 
 def test_negative_usd_balance_fails():
     # Negative USD balance violates invariant
     with pytest.raises(ValidationError) as exc:
-        Balance(currency="USD", amount=-100.0)
+        Balance(currency="USD", amount=D("-100.00"))
     assert "Balance cannot be negative for USD" in str(exc.value)
 
 def test_negative_eur_balance_allowed():
     # Negative EUR balance is allowed (different rule)
-    balance = Balance(currency="EUR", amount=-50.0)
-    assert balance.amount == -50.0
+    balance = Balance(currency="EUR", amount=D("-50.00"))
+    assert balance.amount == D("-50.00")
 
 def test_date_range_valid():
     # End after start is valid

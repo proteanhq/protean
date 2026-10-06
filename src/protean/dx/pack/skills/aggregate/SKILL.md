@@ -134,7 +134,7 @@ class LineItem:
 
 - `add_line_items(item)` - Add one or more items to the collection
 - `remove_line_items(item)` - Remove an item from the collection
-- `get_one_from_line_items(id=item_id)` - Get the one item whose fields match the keyword arguments. Raises `ObjectNotFoundError` (from `protean.exceptions`) when nothing matches
+- `get_one_from_line_items(id=item_id)` - Get the one item whose fields match the keyword arguments. Raises `ObjectNotFoundError` (from `protean.exceptions`) when nothing matches, and `TooManyObjectsError` when more than one item matches
 - `filter_line_items(**criteria)` - Return the items whose fields equal the given values, for example `order.filter_line_items(product_id="P1")`. It matches equality only; there are no `__gt`-style operators
 
 Both lookup helpers take keyword arguments. A positional argument raises `TypeError`.
@@ -231,7 +231,7 @@ class LineItem:
 
 ## Invariants (business rules)
 
-**Important principle**: All business validations should be codified as invariants, as granularly as possible. Each invariant should check a single business rule. Protean checks post-invariants at the end of `__init__` and on every field assignment. A change to a child entity checks the root's invariants too. To change several fields that are only valid together, wrap the changes in `with atomic_change(order):` (`from protean import atomic_change`), which defers the checks to the end of the block. `repository.add()` does not check invariants again.
+**Important principle**: All business validations should be codified as invariants, as granularly as possible. Each invariant should check a single business rule. Protean checks post-invariants at the end of `__init__`. Every field assignment runs the pre-invariants before the new value is set and the post-invariants after it. Adding, removing or changing a child entity checks the root's invariants too. To change several fields that are only valid together, wrap the changes in `with atomic_change(order):` (`from protean import atomic_change`), which runs the pre-invariants once at the start and the post-invariants once at the end of the block. `repository.add()` does not check invariants again.
 
 Use `@invariant.pre` (checked before changes) and `@invariant.post` (checked after changes):
 

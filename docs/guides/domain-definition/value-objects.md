@@ -32,7 +32,7 @@ above.
 
 Below is a sample implementation of the `Email` concept as a Value Object:
 
-```python hl_lines="8-38 40-49"
+```python hl_lines="8-30 33-41"
 --8<-- "guides/domain-definition/009.py:full"
 ```
 
@@ -78,7 +78,7 @@ and ensures it participates in the aggregate's validation lifecycle.
 Value Objects can be embedded into Aggregates and Entities with the
 `ValueObject` field:
 
-```python hl_lines="54"
+```python hl_lines="46"
 --8<-- "guides/domain-definition/009.py:full"
 ```
 
@@ -130,7 +130,7 @@ ValidationError: {'address': ['Invalid email address']}
 
 Value Objects are typically initialized along with the enclosing entity.
 
-```python hl_lines="14"
+```python hl_lines="20"
 --8<-- "guides/domain-definition/010.py:full"
 ```
 
@@ -359,6 +359,11 @@ In [5]: bal1 == bal3
 Out[5]: False
 ```
 
+Value objects compare their `to_dict()` output, where a `Decimal` becomes its
+string. `D('100.0')` and `D('100.00')` are equal numbers, but a `Balance`
+holding one does not equal a `Balance` holding the other. Quantize amounts to
+the field's scale before you compare them.
+
 ## Identity
 
 Unlike Aggregates and Entities, Value Objects do not have any inbuilt concept
@@ -380,14 +385,13 @@ In [1]: @domain.value_object
 IncorrectUsageError: "Value Objects cannot contain fields marked 'unique' (field 'currency')"
 ```
 
-Same case if you try to find a Value Object's `id_field`:
+A Value Object also has no `id_field`. Asking for it returns `None`:
 
 ```shell
 In [4]: from protean.utils.reflection import id_field
 
-In [5]: id_field(Balance)
-...
-IncorrectUsageError: "<class '__main__.Balance'> does not have identity fields"
+In [5]: id_field(Balance) is None
+Out[5]: True
 ```
 
 ## Immutability

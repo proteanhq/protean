@@ -138,6 +138,11 @@ arithmetic with `decimal.Decimal` too: adding a `float` to a `Decimal` raises `T
 Import the standard library class under another name (`from decimal import Decimal as D`)
 so it does not clash with the `Decimal` field.
 
+The field does not convert its `default`. With `default=0` the attribute holds the int `0`
+until you assign a value. Arithmetic with `decimal.Decimal` still works, but `to_dict()`
+emits `0` where an assigned value would emit a string, and a value object holding the
+default does not compare equal to one built with `D("0")`.
+
 **Note**: When an amount needs a currency, put both in a Money value object.
 
 ### Float
@@ -326,7 +331,8 @@ class LineItem:
 - `add_line_items(item)` - Add items
 - `remove_line_items(item)` - Remove item
 - `get_one_from_line_items(id=item_id)` - Get one item by keyword criteria. Raises
-  `ObjectNotFoundError` (from `protean.exceptions`) when nothing matches.
+  `ObjectNotFoundError` (from `protean.exceptions`) when nothing matches, and
+  `TooManyObjectsError` when more than one item matches.
 - `filter_line_items(**criteria)` - Get the items whose fields equal the given values
   (equality only; no operators such as `quantity__gt`)
 
@@ -341,6 +347,7 @@ with domain.domain_context():
 
     # Get one item by its id (keyword argument)
     same_item = order.get_one_from_line_items(id=item.id)
+    assert same_item is item
 
     # Access collection
     for line in order.line_items:
@@ -399,7 +406,7 @@ with domain.domain_context():
 
 ### Reference
 
-**Purpose**: Link an entity back to its own aggregate root
+**Purpose**: Link an entity back to its parent (the aggregate root, or the parent entity when nested)
 
 **Use for**:
 - The reverse side of a `HasOne` or `HasMany` field
@@ -457,6 +464,10 @@ with domain.domain_context():
     # Load full aggregate if needed
     customer = domain.repository_for(Customer).get(invoice.customer_id)
 ```
+
+An `Identifier` field stores the id as a string, so an `Integer` id of `42` comes back as
+`"42"`, and `repository_for(...).get("42")` does not find an aggregate whose id field is
+`Integer(identifier=True)`. Give the target aggregate the default id or a `String` id.
 
 **When NOT to use**:
 - Entities within same aggregate (use HasOne/HasMany)

@@ -80,17 +80,18 @@ class Order:
 
 **❌ Bad: Modifying value object attributes**
 ```python
-# fragment
-order = Order(
-    total=Money(currency="USD", amount=D("100.00")),
-    ...
-)
+import pytest
 
-# This raises IncorrectUsageError
-order.total.amount = D("200.00")
+from protean.exceptions import IncorrectUsageError
 
-# This also fails
-order.total.currency = "EUR"
+total = Money(currency="USD", amount=D("100.00"))
+
+# Assigning to a value object's attribute raises IncorrectUsageError
+with pytest.raises(IncorrectUsageError):
+    total.amount = D("200.00")
+
+with pytest.raises(IncorrectUsageError):
+    total.currency = "EUR"
 ```
 
 **✅ Good: Replacing entire value object**
@@ -156,7 +157,7 @@ class Money:
 # fragment
 @domain.value_object
 class Address:
-    id: Auto()  # Error! Value objects can't have identity
+    id: Auto(identifier=True)  # Error! Value objects can't have identity
     street: String(required=True)
     city: String(required=True)
 ```
@@ -446,7 +447,7 @@ class Address:
 # fragment
 @domain.aggregate
 class Order:
-    line_items = HasMany(LineItem)
+    line_items = HasMany("LineItem")
 
     def calculate_total(self) -> D:
         # Reimplementing Money logic

@@ -16,7 +16,7 @@ Usage:
 
 from decimal import Decimal as D
 
-from protean import Domain, invariant
+from protean import Domain, atomic_change, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Decimal, Float, String
 
@@ -154,9 +154,12 @@ class Warehouse:
             raise ValueError(
                 f"Cannot ship {quantity}, only {self.reserved_stock} reserved"
             )
-        self.current_stock -= quantity
-        self.reserved_stock -= quantity
-        # Invariants will check all constraints
+        # Each assignment runs the post-invariants. Lowering current_stock
+        # first would leave reserved_stock above it for a moment, so both
+        # changes go in one atomic_change block and the checks run at the end.
+        with atomic_change(self):
+            self.current_stock -= quantity
+            self.reserved_stock -= quantity
 
 
 # Example usage

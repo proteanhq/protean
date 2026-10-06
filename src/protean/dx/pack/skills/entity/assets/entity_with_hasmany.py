@@ -18,6 +18,8 @@ Usage:
 
 from decimal import Decimal as D  # stdlib Decimal, aliased so it does not clash with the field
 
+FOUR_PLACES = D("0.0001")  # the scale of the money fields
+
 from protean import Domain
 from protean.exceptions import ValidationError
 from protean.fields import Decimal, HasMany, Identifier, Integer, String
@@ -123,8 +125,8 @@ class LineItem:
 
     @property
     def discount_amount(self) -> D:
-        """Calculate discount amount."""
-        return self.subtotal * self.discount_percent / D("100")
+        """Calculate discount amount, rounded to the money fields' scale."""
+        return (self.subtotal * self.discount_percent / D("100")).quantize(FOUR_PLACES)
 
     @property
     def total(self) -> D:
