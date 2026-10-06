@@ -18,10 +18,8 @@ a User aggregate, calls register() to set status and raise UserRegistered,
 then persists. A FastAPI endpoint wires HTTP to the command.
 """
 
-import pytest
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from fastapi.testclient import TestClient
 
 from protean import Domain, handle
 from protean.fields import Identifier, String
@@ -132,6 +130,9 @@ async def register_user(request: Request):
 
 
 # --- Tests ---
+
+import pytest
+from fastapi.testclient import TestClient
 
 
 class TestUser:

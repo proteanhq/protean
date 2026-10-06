@@ -15,8 +15,8 @@ point, as it does in a user's project.
 A second run copies each scaffold the way SKILL.md tells an agent to use one
 in a project. The part above the ``# --- Tests ---`` line becomes the project
 package ``myapp``, the part below it becomes ``tests/test_<name>.py`` importing
-from ``myapp``, and the ``tests/conftest.py`` block of SKILL.md Step 7 sits at
-the root of the tests.
+from ``myapp`` only the elements it uses, and the ``tests/conftest.py`` block
+of SKILL.md Step 7 sits at the root of the tests.
 
 A scaffold passes when pytest exits 0 and its JUnit report shows that every
 ``test_`` function in the asset passed, by name, so a module that collects no
@@ -152,6 +152,29 @@ def step7_conftest() -> str:
     return matches[0]
 
 
+def project_names_used(domain_part: str, tests_part: str) -> list[str]:
+    """Name the elements ``domain_part`` defines that ``tests_part`` uses.
+
+    These are the imports SKILL.md tells an agent to add from the project.
+    Names the domain part only imports, like ``pytest``, are left out, so the
+    test part must import them itself.
+    """
+    defined = set()
+    for node in ast.parse(domain_part).body:
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+            defined.add(node.name)
+        elif isinstance(node, ast.Assign):
+            defined.update(
+                target.id for target in node.targets if isinstance(target, ast.Name)
+            )
+    used = {
+        node.id
+        for node in ast.walk(ast.parse(tests_part))
+        if isinstance(node, ast.Name)
+    }
+    return sorted(defined & used)
+
+
 def run_in_project(scaffold: Path, workdir: Path) -> Outcome:
     """Split ``scaffold`` into a ``myapp`` package and a test module, and run it.
 
@@ -168,8 +191,9 @@ def run_in_project(scaffold: Path, workdir: Path) -> Outcome:
     tests_dir = workdir / "tests"
     tests_dir.mkdir()
     (tests_dir / "conftest.py").write_text(step7_conftest(), encoding="utf-8")
+    names = ", ".join(project_names_used(domain_part, tests_part))
     (tests_dir / f"{module}.py").write_text(
-        "from myapp import *  # noqa: F403\n" + tests_part, encoding="utf-8"
+        f"from myapp import {names}\n" + tests_part, encoding="utf-8"
     )
     return _run_pytest(workdir, tests_dir, module)
 
@@ -332,3 +356,12 @@ def test_an_uncollected_test_is_reported_even_when_the_count_matches(tmp_path):
     outcome = run_scaffold(scaffold, CONFTEST, workdir)
     assert outcome.passed == {"test_param"}
     assert problems_for(scaffold, outcome) == ["did not pass: TestB.test_b"]
+
+
+def test_project_names_used_leaves_out_what_the_domain_part_imports():
+    domain_part = (
+        "import pytest\nfrom protean import Domain\n\n"
+        "domain = Domain()\n\nclass Order: pass\n\ndef helper(): pass\n"
+    )
+    tests_part = "def test_x():\n    pytest.fail(Order, domain)\n"
+    assert project_names_used(domain_part, tests_part) == ["Order", "domain"]

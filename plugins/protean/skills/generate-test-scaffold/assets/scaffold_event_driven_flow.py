@@ -14,8 +14,6 @@ listens to OrderPlaced and reserves the requested stock. The Inventory aggregate
 enforces that you cannot reserve more than available stock.
 """
 
-import pytest
-
 from protean import Domain, handle
 from protean.fields import Identifier, Integer, String
 
@@ -132,6 +130,8 @@ class InventoryEventHandler:
 
 
 # --- Tests ---
+
+import pytest
 
 
 class TestInventory:

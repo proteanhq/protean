@@ -14,8 +14,6 @@ Orders can be placed (which raises OrderPlaced) and cancelled (which raises
 OrderCancelled), with business rules guarding both transitions.
 """
 
-import pytest
-
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
@@ -175,6 +173,10 @@ class Order:
 
 
 # --- Tests ---
+
+import pytest
+
+from protean.exceptions import ValidationError
 
 
 class TestOrderBehavior:
