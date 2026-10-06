@@ -32,7 +32,7 @@ above.
 
 Below is a sample implementation of the `Email` concept as a Value Object:
 
-```python hl_lines="8-38 40-49"
+```python hl_lines="8-30 33-41"
 --8<-- "guides/domain-definition/009.py:full"
 ```
 
@@ -78,7 +78,7 @@ and ensures it participates in the aggregate's validation lifecycle.
 Value Objects can be embedded into Aggregates and Entities with the
 `ValueObject` field:
 
-```python hl_lines="54"
+```python hl_lines="46"
 --8<-- "guides/domain-definition/009.py:full"
 ```
 
@@ -108,10 +108,11 @@ In [1]: user = User(
 
 In [2]: user.to_dict()
 Out[2]:
-{'email': {'address': 'john.doe@gmail.com'},
- 'name': 'John Doe',
+{'name': 'John Doe',
  'timezone': 'America/Los_Angeles',
- 'id': '9b03b7ff-ccfa-41f8-9467-b98588aa4302'}
+ 'id': '9b03b7ff-ccfa-41f8-9467-b98588aa4302',
+ 'email': {'address': 'john.doe@gmail.com'},
+ '_version': -1}
 ```
 
 Supplying an invalid email address throws a `ValidationError`:
@@ -122,31 +123,36 @@ In [3]: User(
    ...:     name='John Doe',
    ...:     timezone='America/Los_Angeles'
    ...: )
-ValidationError: {'email_address': ['Invalid email address']}
+ValidationError: {'address': ['Invalid email address']}
 ```
 
 ## Assigning Values
 
 Value Objects are typically initialized along with the enclosing entity.
 
-```python hl_lines="14"
+```python hl_lines="20"
 --8<-- "guides/domain-definition/010.py:full"
 ```
+
+`Balance` holds money, so `amount` is a `Decimal` field. The examples import
+Python's `decimal.Decimal` as `D` so it does not clash with the field of the
+same name: `from decimal import Decimal as D`.
 
 Assigning value is straight-forward with a `Balance` object:
 
 ```shell
 ...
 In [1]: account = Account(
-   ...:     balance=Balance(currency="USD", amount=100.0),
+   ...:     balance=Balance(currency="USD", amount=D("100.00")),
    ...:     name="Checking"
    ...:     )
 
 In [2]: account.to_dict()
 Out[2]:
-{'balance': {'currency': 'USD', 'amount': 100.0},
- 'name': 'Checking',
- 'id': '74731f8b-a58e-4666-858b-b2e57e42ce68'}
+{'name': 'Checking',
+ 'id': '74731f8b-a58e-4666-858b-b2e57e42ce68',
+ 'balance': {'currency': 'USD', 'amount': '100.00'},
+ '_version': -1}
 ```
 
 It is also possible to initialize a Value Object by its attributes:
@@ -154,16 +160,17 @@ It is also possible to initialize a Value Object by its attributes:
 ```shell
 ...
 In [1]: account = Account(
-   ...:     balance_currency = "USD",
-   ...:     balance_amount = 100.0,
+   ...:     balance_currency="USD",
+   ...:     balance_amount=D("100.00"),
    ...:     name="Checking"
    ...:     )
 
 In [2]: account.to_dict()
 Out[2]:
-{'balance': {'currency': 'USD', 'amount': 100.0},
- 'name': 'Checking',
- 'id': 'a41a0ac9-9e6d-4300-96e3-054c70201e51'}
+{'name': 'Checking',
+ 'id': 'a41a0ac9-9e6d-4300-96e3-054c70201e51',
+ 'balance': {'currency': 'USD', 'amount': '100.00'},
+ '_version': -1}
 ```
 
 The attribute names are a combination of the field name defined in `Account`
@@ -203,40 +210,56 @@ class Address:
     location = ValueObject(GeoLocation)
 ```
 
-When embedded in an aggregate, nested value objects are flattened for
-persistence. The database columns follow a naming convention that
-concatenates field names with underscores:
+When a value object is embedded in an aggregate, its fields are flattened
+one level for persistence. Each column name joins the aggregate's field name
+and the value object's field name with an underscore. A nested value object
+is not flattened further: it is stored whole in one column.
 
-| Aggregate field | VO field | Nested VO field | Database column |
-|---|---|---|---|
-| `address` | `street` | — | `address_street` |
-| `address` | `location` | `latitude` | `address_location_latitude` |
-| `address` | `location` | `longitude` | `address_location_longitude` |
+| Aggregate field | VO field | Database column |
+|---|---|---|
+| `address` | `street` | `address_street` |
+| `address` | `city` | `address_city` |
+| `address` | `zip_code` | `address_zip_code` |
+| `address` | `location` | `address_location` (the whole `GeoLocation`) |
 
-You can initialize nested value objects by passing the inner object
-directly or by using flattened attribute names:
+Build a nested value object and pass it in:
 
 ```python
-# Using nested objects
-store = Store(
-    name="Downtown",
-    address=Address(
-        street="123 Main St",
-        city="Springfield",
-        zip_code="62701",
-        location=GeoLocation(latitude=39.78, longitude=-89.65),
-    )
-)
+@domain.aggregate
+class Store:
+    name: String(max_length=100)
+    address = ValueObject(Address)
 
-# Using flattened attributes (equivalent)
-store = Store(
-    name="Downtown",
-    address_street="123 Main St",
-    address_city="Springfield",
-    address_zip_code="62701",
-    address_location_latitude=39.78,
-    address_location_longitude=-89.65,
-)
+
+domain.init(traverse=False)
+
+with domain.domain_context():
+    store = Store(
+        name="Downtown",
+        address=Address(
+            street="123 Main St",
+            city="Springfield",
+            zip_code="62701",
+            location=GeoLocation(latitude=39.78, longitude=-89.65),
+        ),
+    )
+    assert store.address.location.latitude == 39.78
+```
+
+The aggregate also accepts the flattened names from the table, one level
+deep. A nested value object is still passed as an object. Deeper names such
+as `address_location_latitude` are rejected with a `ValidationError`:
+
+```python
+with domain.domain_context():
+    store = Store(
+        name="Downtown",
+        address_street="123 Main St",
+        address_city="Springfield",
+        address_zip_code="62701",
+        address_location=GeoLocation(latitude=39.78, longitude=-89.65),
+    )
+    assert store.address.city == "Springfield"
 ```
 
 ## Dict-Based Initialization
@@ -245,11 +268,15 @@ Value objects can be initialized from dictionaries, which is especially
 useful when receiving data from APIs or external sources:
 
 ```python
-account = Account(
-    balance={"currency": "USD", "amount": 100.0},
-    name="Checking"
-)
-# Protean auto-converts the dict to a Balance value object
+from decimal import Decimal as D
+
+with domain.domain_context():
+    account = Account(
+        balance={"currency": "USD", "amount": D("100.00")},
+        name="Checking",
+    )
+    # Protean converts the dict to a Balance value object
+    assert account.balance == Balance(currency="USD", amount=D("100.00"))
 ```
 
 This works for nested value objects too, any dict matching the value object's
@@ -266,7 +293,7 @@ initialized.
 ```
 
 ```shell hl_lines="3"
-In [1]: Balance(currency="USD", amount=-100)
+In [1]: Balance(currency="USD", amount=D("-100.00"))
 ...
 ValidationError: {'balance': ['Balance cannot be negative for USD']}
 ```
@@ -319,11 +346,11 @@ Two value objects are considered to be equal if their values are equal.
 ```
 
 ```shell
-In [1]: bal1 = Balance(currency='USD', amount=100.0)
+In [1]: bal1 = Balance(currency='USD', amount=D('100.00'))
 
-In [2]: bal2 = Balance(currency='USD', amount=100.0)
+In [2]: bal2 = Balance(currency='USD', amount=D('100.00'))
 
-In [3]: bal3 = Balance(currency='CAD', amount=100.0)
+In [3]: bal3 = Balance(currency='CAD', amount=D('100.00'))
 
 In [4]: bal1 == bal2
 Out[4]: True
@@ -331,6 +358,11 @@ Out[4]: True
 In [5]: bal1 == bal3
 Out[5]: False
 ```
+
+Value objects compare their `to_dict()` output, where a `Decimal` becomes its
+string. `D('100.0')` and `D('100.00')` are equal numbers, but a `Balance`
+holding one does not equal a `Balance` holding the other. Quantize amounts to
+the field's scale before you compare them.
 
 ## Identity
 
@@ -348,27 +380,27 @@ For example, trying to mark a Value Object field with `unique = True` or
 In [1]: @domain.value_object
    ...: class Balance:
    ...:     currency = String(max_length=3, unique=True)
-   ...:     amount = Float()
+   ...:     amount = Decimal(precision=19, scale=4)
 ...
 IncorrectUsageError: "Value Objects cannot contain fields marked 'unique' (field 'currency')"
 ```
 
-Same case if you try to find a Value Object's `id_field`:
+A Value Object also has no `id_field`. Asking for it returns `None`:
 
 ```shell
 In [4]: from protean.utils.reflection import id_field
 
-In [5]: id_field(Balance)
-...
-IncorrectUsageError: "<class '__main__.Balance'> does not have identity fields"
+In [5]: id_field(Balance) is None
+Out[5]: True
 ```
 
 ## Immutability
 
-A Value Object cannot be altered once initialized. Trying to do so will throw a TypeError.
+A Value Object cannot be altered once initialized. Trying to do so raises an
+`IncorrectUsageError`.
 
 ```shell
-In [1]: bal1 = Balance(currency='USD', amount=100.0)
+In [1]: bal1 = Balance(currency='USD', amount=D('100.00'))
 
 In [2]: bal1.currency = "CAD"
 ...
@@ -382,24 +414,31 @@ Instead, use `replace()` to create a new instance with selected fields
 changed, similar to `dataclasses.replace()`:
 
 ```python
-balance = Balance(currency="USD", amount=100.0)
-updated = balance.replace(amount=200.0)
+from decimal import Decimal as D
 
-assert updated.amount == 200.0
+balance = Balance(currency="USD", amount=D("100.00"))
+updated = balance.replace(amount=D("200.00"))
+
+assert updated.amount == D("200.00")
 assert updated.currency == "USD"  # unchanged fields are preserved
-assert balance.amount == 100.0    # original is not modified
+assert balance.amount == D("100.00")  # original is not modified
 ```
 
 `replace()` copies all current field values, overlays the provided keyword
 arguments, and constructs a new instance of the same class. Invariants are
-re-validated on the new instance, so invalid replacements are rejected:
+re-validated on the new instance, so invalid replacements are rejected. Here
+`Balance` is the version from [Invariants](#invariants), which rejects negative
+USD amounts:
 
 ```python
-balance = Balance(currency="USD", amount=100.0)
+--8<-- "guides/domain-definition/012.py:full"
 
-# Invariant rejects negative balances for USD
-balance.replace(amount=-100000000000000.0)
-# ValidationError: {'balance': ['Balance cannot be negative for USD']}
+balance = Balance(currency="USD", amount=D("100.00"))
+
+try:
+    balance.replace(amount=D("-100.00"))
+except ValidationError as exc:
+    print(exc.messages)  # {'balance': ['Balance cannot be negative for USD']}
 ```
 
 Passing `field=None` explicitly sets the field to `None`. It does not keep the
@@ -420,8 +459,12 @@ assert updated.nickname is None  # explicitly set to None
 Unknown field names raise `IncorrectUsageError`:
 
 ```python
-balance.replace(nonexistent=42)
-# IncorrectUsageError: "Unknown field(s) for Balance: nonexistent"
+from protean.exceptions import IncorrectUsageError
+
+try:
+    balance.replace(nonexistent=42)
+except IncorrectUsageError as exc:
+    print(exc)  # Unknown field(s) for Balance: nonexistent
 ```
 
 `replace()` also works with nested value objects. Pass a new value object
@@ -435,8 +478,8 @@ keys or in sets:
 
 ```python
 prices = {
-    Balance(currency="USD", amount=9.99): "budget",
-    Balance(currency="USD", amount=99.99): "premium",
+    Balance(currency="USD", amount=D("9.99")): "budget",
+    Balance(currency="USD", amount=D("99.99")): "premium",
 }
 
 unique_emails = {Email(address="a@b.com"), Email(address="c@d.com")}
@@ -453,11 +496,17 @@ Manually duplicating the fields is tedious and error-prone. Protean provides
 from protean import value_object_from_entity
 from protean.fields import List, ValueObject
 
+@domain.aggregate
+class Order:
+    customer_id: Identifier(required=True)
+    items = HasMany("OrderItem")
+
 @domain.entity(part_of=Order)
 class OrderItem:
     product_name: String(max_length=100)
     quantity: Integer()
-    unit_price: Float()
+    unit_price: Decimal(precision=19, scale=4)
+    internal_notes: String(max_length=500)
 
 # Auto-generate a VO mirroring OrderItem's fields
 OrderItemVO = value_object_from_entity(OrderItem)

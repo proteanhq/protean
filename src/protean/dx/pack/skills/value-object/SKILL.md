@@ -39,16 +39,20 @@ See [Deciding Between Elements](https://docs.proteanhq.com/concepts/building-blo
 A value object is defined using the `@domain.value_object` decorator:
 
 ```python
-from protean import Domain
-from protean.fields import String, Float
+from decimal import Decimal as D
 
-domain = Domain(__name__)
+from protean import Domain
+from protean.fields import Decimal, String
+
+domain = Domain()
 
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True, min_value=0.0)
+    amount: Decimal(precision=19, scale=4, required=True, min_value=0)
 ```
+
+Use the `Decimal` field for money, never `Float`. A float cannot hold most cents exactly. The field stores a standard-library `decimal.Decimal`, so do arithmetic on money with decimals too. Import the standard-library class under an alias (`from decimal import Decimal as D`) so it does not clash with the field of the same name.
 
 ## Key rules
 
@@ -72,19 +76,23 @@ class Money:
 class Balance:
     """Currency and amount with field-level validations."""
     currency: String(max_length=3, min_length=3, required=True)  # ISO code
-    amount: Float(required=True, min_value=0.0)  # Positive amounts
+    amount: Decimal(precision=19, scale=4, required=True, min_value=0)  # No negative amounts
 ```
 
 **Common field validation parameters**:
 - **All fields**: `required`, `default`, `unique`, `choices`, `validators`
 - **String**: `max_length`, `min_length`, `sanitize`
-- **Integer/Float**: `min_value`, `max_value`
+- **Integer/Float/Decimal**: `min_value`, `max_value`
+- **Decimal**: `precision`, `scale`
 
 ### Value object with field-level validation
 
 Use field validators for single-field data type validations:
 
 ```python
+from protean.exceptions import ValidationError
+
+
 class EmailValidator:
     def __init__(self):
         self.error = "Invalid email address"
@@ -111,7 +119,7 @@ class Email:
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
     def add(self, other: "Money") -> "Money":
         """Add two Money values, ensuring same currency."""
@@ -123,8 +131,8 @@ class Money:
             amount=self.amount + other.amount
         )
 
-    def multiply(self, factor: float) -> "Money":
-        """Multiply money by a factor."""
+    def multiply(self, factor: int | D) -> "Money":
+        """Multiply money by a whole number or a decimal."""
         return Money(
             currency=self.currency,
             amount=self.amount * factor
@@ -158,10 +166,10 @@ class DateRange:
 
 
 @domain.value_object
-class Money:
+class Price:
     # Use field-level validation for data type constraints
     currency: String(max_length=3, min_length=3, required=True)
-    amount: Float(required=True, min_value=0.0)  # Enforces positive amounts
+    amount: Decimal(precision=19, scale=4, required=True, min_value=0)  # No negative amounts
 
     @invariant.post
     def currency_must_be_valid_ISO_code(self):
@@ -183,7 +191,7 @@ class Money:
 3. **Only `@invariant.post`** - Pre invariants don't apply to immutable objects
 4. **Prefer field validations first** - Use field parameters (`min_value`, `max_value`, etc.) for data type constraints
 5. **Use invariants for business logic** - Cross-field validations, domain-specific rules, complex validations
-6. **Example**: `amount > 0` → Use `Float(min_value=0.01)` (field validation), not invariant
+6. **Example**: `amount > 0` → Use `Decimal(precision=19, scale=4, min_value=D("0.01"))` (field validation), not invariant
 7. **Example**: `end_date > start_date` → Use `@invariant.post` (cross-field business rule)
 
 ## Embedding in aggregates and entities
@@ -215,6 +223,12 @@ class LineItem:
 ### Multiple value objects
 
 ```python
+@domain.value_object
+class Address:
+    street: String(required=True, max_length=100)
+    city: String(required=True, max_length=50)
+
+
 @domain.aggregate
 class Order:
     order_number: String(required=True, identifier=True)
@@ -226,27 +240,33 @@ class Order:
 
 ## Initialization patterns
 
+Building an aggregate needs an initialized domain and an active domain context.
+
 ### Initialize with complete object
 
 ```python
-account = Account(
-    balance=Balance(currency="USD", amount=100.0),
-    account_number="ACC-12345"
-)
+domain.init(traverse=False)
+
+with domain.domain_context():
+    account = Account(
+        balance=Balance(currency="USD", amount=D("100.00")),
+        account_number="ACC-12345"
+    )
 ```
 
 ### Initialize by attributes
 
 ```python
-# Attribute names: {field_name}_{vo_field_name}
-account = Account(
-    balance_currency="USD",
-    balance_amount=100.0,
-    account_number="ACC-12345"
-)
+with domain.domain_context():
+    # Attribute names: {field_name}_{vo_field_name}
+    account = Account(
+        balance_currency="USD",
+        balance_amount=D("100.00"),
+        account_number="ACC-12345"
+    )
 ```
 
-Both approaches produce identical results. Attribute initialization only works during entity/aggregate creation, not for updating value objects later.
+Both approaches produce identical results. Attribute initialization works one level deep, on the aggregate or entity that holds the value object, and only when you create it. It does not work for updating a value object later: `account.balance_amount = D("5")` raises no error, but it sets a stray attribute and leaves `account.balance` unchanged. A value object's own constructor does not accept flattened attributes either.
 
 ## Nested value objects
 
@@ -269,7 +289,7 @@ class Address:
     coordinates = ValueObject(Coordinates)  # Nested VO
 
 
-# Initialize with nested objects
+# Pass the nested value object as an object
 address = Address(
     street="123 Broadway",
     city="New York",
@@ -278,52 +298,50 @@ address = Address(
     country="USA",
     coordinates=Coordinates(latitude=40.7128, longitude=-74.0060)
 )
-
-# Or by attributes
-address = Address(
-    street="123 Broadway",
-    city="New York",
-    state="NY",
-    postal_code="10012",
-    country="USA",
-    coordinates_latitude=40.7128,
-    coordinates_longitude=-74.0060
-)
 ```
+
+A value object's constructor takes only its own fields. `Address(coordinates_latitude=40.7128)` fails with "Extra inputs are not permitted". Build the inner value object first and pass it in.
 
 ## Immutability
 
 Value objects cannot be modified after creation:
 
 ```python
-balance = Balance(currency="USD", amount=100.0)
+from protean.exceptions import IncorrectUsageError
 
-# This raises IncorrectUsageError
-balance.currency = "EUR"
+balance = Balance(currency="USD", amount=D("100.00"))
 
-# This also raises IncorrectUsageError
-balance.amount = 200.0
+try:
+    balance.currency = "EUR"
+except IncorrectUsageError:
+    print("Value objects are immutable")
+
+try:
+    balance.amount = D("200.00")
+except IncorrectUsageError:
+    print("Value objects are immutable")
 ```
 
 To "change" a value object, replace it entirely:
 
 ```python
-account.balance = Balance(currency="USD", amount=200.0)
+with domain.domain_context():
+    account.balance = Balance(currency="USD", amount=D("200.00"))
 ```
 
 Methods in value objects must return NEW instances, not modify self:
 
 ```python
-m1 = Money(currency="USD", amount=100.0)
-m2 = Money(currency="USD", amount=50.0)
+m1 = Money(currency="USD", amount=D("100.00"))
+m2 = Money(currency="USD", amount=D("50.00"))
 
 # add() returns NEW Money instance
 m3 = m1.add(m2)
 
 # Originals unchanged
-assert m1.amount == 100.0
-assert m2.amount == 50.0
-assert m3.amount == 150.0
+assert m1.amount == D("100.00")
+assert m2.amount == D("50.00")
+assert m3.amount == D("150.00")
 ```
 
 ## Equality
@@ -331,12 +349,12 @@ assert m3.amount == 150.0
 Two value objects with the same attribute values are equal:
 
 ```python
-bal1 = Balance(currency="USD", amount=100.0)
-bal2 = Balance(currency="USD", amount=100.0)
-bal3 = Balance(currency="EUR", amount=100.0)
+bal1 = Balance(currency="USD", amount=D("100.00"))
+bal2 = Balance(currency="USD", amount=D("100.00"))
+bal3 = Balance(currency="EUR", amount=D("100.00"))
 
-assert bal1 == bal2  # True - same values
-assert bal1 == bal3  # False - different currency
+assert bal1 == bal2  # same values
+assert bal1 != bal3  # different currency
 ```
 
 This is fundamentally different from entities, where identity matters:
@@ -345,11 +363,11 @@ This is fundamentally different from entities, where identity matters:
 
 ## Common mistakes
 
-- **Trying to modify value objects** — VOs are immutable. Replace the entire VO instead: `account.balance = Balance(currency="USD", amount=200.0)`
-- **Adding identity fields** — VOs cannot have `identifier=True` or `Auto()`. Use Entity if you need identity.
-- **Using primitives instead of VOs** — Use `total = ValueObject(Money)` instead of separate `total_amount`/`total_currency` fields.
-- **Methods that modify self** — Always return NEW instances: `return Money(amount=self.amount + other.amount)`
-- **Not using invariants for cross-field validations** — Use `@invariant.post` instead of `__init__` validation.
+- **Trying to modify value objects**: VOs are immutable. Replace the entire VO instead: `account.balance = Balance(currency="USD", amount=D("200.00"))`
+- **Adding identity fields**: VOs cannot have fields marked `identifier=True` or `unique=True`; registering one raises `IncorrectUsageError`. A plain `Auto()` field is accepted, but it generates a new value per instance and breaks equality. Use Entity if you need identity.
+- **Using primitives instead of VOs**: Use `total = ValueObject(Money)` instead of separate `total_amount`/`total_currency` fields.
+- **Methods that modify self**: Always return NEW instances: `return Money(amount=self.amount + other.amount)`
+- **Not using invariants for cross-field validations**: Use `@invariant.post` instead of `__init__` validation.
 
 See [Anti-patterns](references/anti-patterns.md) for detailed examples of each mistake.
 
@@ -368,19 +386,21 @@ A second diagnostic surfaces at runtime. It depends on the values a value object
 Complete example with aggregate, entity, and value objects:
 
 ```python
-from protean import Domain
-from protean.fields import Float, Integer, String, ValueObject, HasMany
+from decimal import Decimal as D
 
-domain = Domain(__name__)
+from protean import Domain
+from protean.fields import Decimal, HasMany, Integer, String, ValueObject
+
+domain = Domain()
 
 
 @domain.value_object
 class Money:
     """Money with currency and amount."""
     currency: String(max_length=3, default="USD")
-    amount: Float(default=0.0)
+    amount: Decimal(precision=19, scale=4, default=0)
 
-    def multiply(self, factor: float) -> "Money":
+    def multiply(self, factor: int | D) -> "Money":
         return Money(currency=self.currency, amount=self.amount * factor)
 
     def add(self, other: "Money") -> "Money":
@@ -409,7 +429,7 @@ class Order:
 
     def calculate_total(self) -> Money:
         if not self.line_items:
-            return Money(currency="USD", amount=0.0)
+            return Money(currency="USD", amount=D("0"))
 
         total = self.line_items[0].line_total
         for item in self.line_items[1:]:

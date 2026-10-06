@@ -14,7 +14,7 @@ Usage:
 """
 
 from protean import Domain
-from protean.fields import Float, HasMany, Integer, String, ValueObject
+from protean.fields import Decimal, HasMany, Identifier, Integer, String, ValueObject
 
 # Domain setup
 domain = Domain()
@@ -24,7 +24,7 @@ domain = Domain()
 class Money:
     """Value object representing monetary amounts."""
 
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, default="USD")
 
     def add(self, other: "Money") -> "Money":
@@ -33,7 +33,7 @@ class Money:
             raise ValueError(f"Cannot add {self.currency} and {other.currency}")
         return Money(amount=self.amount + other.amount, currency=self.currency)
 
-    def multiply(self, factor: float) -> "Money":
+    def multiply(self, factor: int) -> "Money":
         """Multiply money by a factor."""
         return Money(amount=self.amount * factor, currency=self.currency)
 
@@ -78,7 +78,7 @@ class OrderLine:
 class Order:
     """Order aggregate using value objects for money and address."""
 
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)  # Another aggregate, held by id
 
     # Value objects directly in aggregate
     shipping_address = ValueObject(Address)
@@ -90,10 +90,7 @@ class Order:
     @property
     def order_total(self) -> Money:
         """Calculate total from all lines."""
-        if not self.lines:
-            return Money(amount=0.0, currency="USD")
-
-        total = Money(amount=0.0, currency="USD")
+        total = Money(amount=0, currency="USD")
         for line in self.lines:
             total = total.add(line.line_total)
         return total
@@ -105,8 +102,8 @@ if __name__ == "__main__":
 
     with domain.domain_context():
         # Create value objects
-        unit_price_1 = Money(amount=29.99, currency="USD")
-        unit_price_2 = Money(amount=49.99, currency="USD")
+        unit_price_1 = Money(amount="29.99", currency="USD")
+        unit_price_2 = Money(amount="49.99", currency="USD")
 
         shipping_addr = Address(
             street="123 Main St",

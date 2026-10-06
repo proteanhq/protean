@@ -9,14 +9,16 @@ This example demonstrates:
 - State-changing methods with invariants
 
 Usage:
-    account = Account(account_number="ACC-001", balance=1000.0, overdraft_limit=100.0)
-    account.withdraw(500.0)  # OK
-    account.withdraw(700.0)  # Raises ValidationError
+    account = Account(account_number="ACC-001", balance="1000.00", overdraft_limit="100.00")
+    account.withdraw("500.00")  # OK
+    account.withdraw("700.00")  # Raises ValidationError
 """
 
-from protean import Domain, invariant
+from decimal import Decimal as D
+
+from protean import Domain, atomic_change, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, String
+from protean.fields import Decimal, Float, String
 
 # Domain setup
 domain = Domain()
@@ -33,11 +35,14 @@ class Account:
     """Bank account with balance invariants."""
 
     account_number: String(required=True, max_length=50, identifier=True)
-    balance: Float(default=0.0)  # Can be negative within overdraft_limit
-    overdraft_limit: Float(default=0.0, min_value=0.0)  # Field-level validation
+    # Can be negative within overdraft_limit
+    balance: Decimal(precision=19, scale=4, default=0)
+    # Field-level validation
+    overdraft_limit: Decimal(precision=19, scale=4, default=0, min_value=0)
     status: String(max_length=20, default="active")
 
-    # Post-condition invariant: checked after any state change
+    # Post-condition invariant: checked at the end of __init__ and after
+    # every field assignment
     @invariant.post
     def balance_must_be_above_overdraft_limit(self):
         """Balance must not fall below the negative overdraft limit."""
@@ -51,7 +56,7 @@ class Account:
                 }
             )
 
-    # Pre-condition invariant: checked before state changes
+    # Pre-condition invariant: checked before every field assignment
     @invariant.pre
     def account_must_be_active(self):
         """Account must be active for transactions."""
@@ -60,19 +65,21 @@ class Account:
                 {"status": [f"Cannot perform transactions on {self.status} account"]}
             )
 
-    def deposit(self, amount: float):
+    def deposit(self, amount):
         """Deposit money into the account."""
+        amount = D(str(amount))  # Accept int, float, str or Decimal
         if amount <= 0:
             raise ValueError("Deposit amount must be positive")
         self.balance += amount
 
-    def withdraw(self, amount: float):
+    def withdraw(self, amount):
         """
         Withdraw money from the account.
 
         The balance_must_be_above_overdraft_limit invariant
-        will be checked after this method executes.
+        is checked on the assignment to self.balance.
         """
+        amount = D(str(amount))  # Accept int, float, str or Decimal
         if amount <= 0:
             raise ValueError("Withdrawal amount must be positive")
         self.balance -= amount
@@ -147,9 +154,12 @@ class Warehouse:
             raise ValueError(
                 f"Cannot ship {quantity}, only {self.reserved_stock} reserved"
             )
-        self.current_stock -= quantity
-        self.reserved_stock -= quantity
-        # Invariants will check all constraints
+        # Each assignment runs the post-invariants. Lowering current_stock
+        # first would leave reserved_stock above it for a moment, so both
+        # changes go in one atomic_change block and the checks run at the end.
+        with atomic_change(self):
+            self.current_stock -= quantity
+            self.reserved_stock -= quantity
 
 
 # Example usage
@@ -161,26 +171,26 @@ if __name__ == "__main__":
 
         # Create account
         account = Account(
-            account_number="ACC-12345", balance=1000.0, overdraft_limit=200.0
+            account_number="ACC-12345", balance="1000.00", overdraft_limit="200.00"
         )
 
         print(f"Initial balance: ${account.balance:.2f}")
 
         # Successful withdrawal
-        account.withdraw(500.0)
+        account.withdraw("500.00")
         print(f"After withdrawal of $500: ${account.balance:.2f}")
 
         # Another withdrawal within overdraft limit
-        account.withdraw(600.0)
+        account.withdraw("600.00")
         print(f"After withdrawal of $600: ${account.balance:.2f}")
 
         # Try to withdraw beyond overdraft limit
         balance_before_failed_withdrawal = account.balance
         try:
-            account.withdraw(200.0)
+            account.withdraw("200.00")
         except ValidationError as e:
             print(f"Failed: {dict(e.messages)}")
-            # Note: Account is now in invalid state, don't save it!
+            # The account now holds the invalid balance. Discard it, don't persist it.
 
         print(
             f"Balance before failed withdrawal: ${balance_before_failed_withdrawal:.2f}"

@@ -2,7 +2,7 @@
 from protean.domain import Domain
 from protean.fields import Date, String
 
-publishing = Domain(__name__)
+publishing = Domain()
 
 
 @publishing.aggregate

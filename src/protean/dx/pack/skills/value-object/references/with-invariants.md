@@ -25,10 +25,13 @@ Key points:
 ### Simple Invariant
 
 ```python
+from protean.exceptions import ValidationError
+
+
 @domain.value_object
 class Balance:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
     @invariant.post
     def check_balance_is_positive_if_currency_is_USD(self):
@@ -230,12 +233,15 @@ class Rectangle:
 - Simple type/format checking
 
 ```python
+from protean.fields.validators import RegexValidator
+
+
 @domain.value_object
 class Email:
     address: String(
         max_length=254,
         required=True,
-        validators=[EmailValidator()]  # Single field
+        validators=[RegexValidator(r"^[^@\s]+@[^@\s]+$")]  # Single field
     )
 ```
 
@@ -270,21 +276,26 @@ class CreditCard:
 Test both valid and invalid cases for each invariant:
 
 ```python
+from decimal import Decimal as D
+
+import pytest
+
+
 def test_valid_usd_balance():
     # Positive USD balance is valid
-    balance = Balance(currency="USD", amount=100.0)
-    assert balance.amount == 100.0
+    balance = Balance(currency="USD", amount=D("100.00"))
+    assert balance.amount == D("100.00")
 
 def test_negative_usd_balance_fails():
     # Negative USD balance violates invariant
     with pytest.raises(ValidationError) as exc:
-        Balance(currency="USD", amount=-100.0)
+        Balance(currency="USD", amount=D("-100.00"))
     assert "Balance cannot be negative for USD" in str(exc.value)
 
 def test_negative_eur_balance_allowed():
     # Negative EUR balance is allowed (different rule)
-    balance = Balance(currency="EUR", amount=-50.0)
-    assert balance.amount == -50.0
+    balance = Balance(currency="EUR", amount=D("-50.00"))
+    assert balance.amount == D("-50.00")
 
 def test_date_range_valid():
     # End after start is valid
@@ -312,6 +323,7 @@ def test_date_range_invalid():
 
 **Missing @invariant.post decorator** ❌
 ```python
+# fragment
 def check_something(self):  # Won't run automatically!
     if self.amount < 0:
         raise ValidationError(...)
@@ -319,6 +331,7 @@ def check_something(self):  # Won't run automatically!
 
 **Not raising ValidationError** ❌
 ```python
+# fragment
 @invariant.post
 def check_something(self):
     if self.amount < 0:
@@ -327,6 +340,7 @@ def check_something(self):
 
 **Vague error messages** ❌
 ```python
+# fragment
 @invariant.post
 def check_something(self):
     if self.amount < 0:
@@ -350,7 +364,7 @@ Invariants enforce rules at creation time. Methods validate operations:
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
     @invariant.post
     def amount_must_be_valid(self):

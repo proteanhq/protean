@@ -11,12 +11,14 @@ Usage:
     python value_object_nested.py
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, String, ValueObject
+from protean.fields import Decimal, Float, String, ValueObject
 
 # Domain setup (required for runnable examples)
-domain = Domain(__name__)
+domain = Domain()
 
 
 @domain.value_object
@@ -78,7 +80,7 @@ class Money:
     """Simple money value object for demonstration."""
 
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
     def add(self, other: "Money") -> "Money":
         """Add two Money values, ensuring same currency."""
@@ -151,16 +153,32 @@ if __name__ == "__main__":
         print(f"\nAddress: {address.full_address}")
         print(f"Location: {address.coordinates.as_text}")
 
-        # Can also initialize nested value objects by dict
+        # A value object's constructor takes only its own fields:
+        # flattened attributes for a nested value object are rejected
+        try:
+            Address(
+                street="456 Market Street",
+                city="San Francisco",
+                state="CA",
+                postal_code="94102",
+                country="USA",
+                coordinates_latitude=37.7749,
+                coordinates_longitude=-122.4194,
+            )
+            print("Should have failed!")
+        except ValidationError as e:
+            print(f"\nFlattened attributes rejected: {sorted(e.messages)}")
+
+        # Build the nested value object and pass it in
         address2 = Address(
             street="456 Market Street",
             city="San Francisco",
             state="CA",
             postal_code="94102",
             country="USA",
-            coordinates={"latitude": 37.7749, "longitude": -122.4194},
+            coordinates=Coordinates(latitude=37.7749, longitude=-122.4194),
         )
-        print(f"\nAddress 2: {address2.full_address}")
+        print(f"Address 2: {address2.full_address}")
         print(f"Location 2: {address2.coordinates.as_text}")
 
         # Multiple levels of nesting
@@ -171,8 +189,8 @@ if __name__ == "__main__":
         print(f"Contact address: {contact.address.full_address}")
 
         # Multiple nested value objects of same type
-        usd_base = Money(currency="USD", amount=100.0)
-        usd_tax = Money(currency="USD", amount=8.75)
+        usd_base = Money(currency="USD", amount=D("100.00"))
+        usd_tax = Money(currency="USD", amount=D("8.75"))
 
         price_breakdown = PriceWithTax(base_price=usd_base, tax_amount=usd_tax)
         print("\nPrice breakdown:")

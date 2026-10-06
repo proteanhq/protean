@@ -54,13 +54,20 @@ class Post:
 **Important**: Protean fields come with built-in validation parameters. Always use these instead of manual validation in methods.
 
 ```python
-from protean.fields import String, Integer, Float, Boolean, Date, DateTime, Text
+from datetime import datetime, timezone
+
+from protean.fields import String, Integer, Float, Decimal, Boolean, Date, DateTime, Text
+
+
+def utc_now():
+    return datetime.now(timezone.utc)
+
 
 @domain.aggregate
 class Product:
     name: String(required=True, max_length=200, min_length=3)
     description: Text()
-    price: Float(required=True, min_value=0.01)  # Field-level validation
+    price: Decimal(precision=19, scale=4, required=True, min_value=0.01)  # Field-level validation
     in_stock: Boolean(default=True)
     stock_count: Integer(default=0, min_value=0)  # Field-level validation
     discount_percent: Float(min_value=0.0, max_value=100.0, default=0.0)
@@ -70,7 +77,8 @@ class Product:
 **Common field validation parameters**:
 - **All fields**: `required`, `default`, `unique`, `choices`, `validators`
 - **String/Text**: `max_length`, `min_length`, `sanitize`
-- **Integer/Float**: `min_value`, `max_value`
+- **Integer/Float/Decimal**: `min_value`, `max_value`
+- **Decimal**: `precision`, `scale` (use `Decimal(precision=19, scale=4)` for money)
 
 **Use field validations for**:
 - Data type constraints (string length, number ranges)
@@ -92,7 +100,7 @@ from protean.fields import HasOne
 
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)
     shipping_info = HasOne("ShippingInfo")
 
 @domain.entity(part_of="Order")
@@ -112,22 +120,24 @@ from protean.fields import HasMany
 
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)
     line_items = HasMany("LineItem")
 
 @domain.entity(part_of="Order")
 class LineItem:
-    product_id: String(required=True)
+    product_id: Identifier(required=True)
     quantity: Integer(required=True)
-    unit_price: Float(required=True)
+    unit_price: Decimal(precision=19, scale=4, required=True)
 ```
 
 **Auto-generated helper methods**: When you define a `HasMany` field, Protean automatically creates helper methods for managing the association. For the `line_items` field above, these methods are generated:
 
 - `add_line_items(item)` - Add one or more items to the collection
 - `remove_line_items(item)` - Remove an item from the collection
-- `get_one_from_line_items(identifier)` - Get a specific item by its identifier
-- `filter_line_items(**criteria)` - Filter items based on criteria
+- `get_one_from_line_items(id=item_id)` - Get the one item whose fields match the keyword arguments. Raises `ObjectNotFoundError` (from `protean.exceptions`) when nothing matches, and `TooManyObjectsError` when more than one item matches
+- `filter_line_items(**criteria)` - Return the items whose fields equal the given values, for example `order.filter_line_items(product_id="P1")`. It matches equality only; there are no `__gt`-style operators
+
+Both lookup helpers take keyword arguments. A positional argument raises `TypeError`.
 
 **Important**: Do NOT manually create these methods - they are automatically available. Only create custom methods if you need behavior different from the defaults (e.g., custom validation when adding items).
 
@@ -140,36 +150,40 @@ from protean.fields import ValueObject
 
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, default="USD")
 
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)
+    line_items = HasMany("LineItem")
     total = ValueObject(Money)
 ```
 
 ## Initialization
 
-Create aggregate instances by passing field values as keyword arguments:
+Create aggregate instances by passing field values as keyword arguments. Instances need an initialized domain and an active domain context:
 
 ```python
-# Simple aggregate
-post = Post(
-    title="Getting Started with Protean",
-    content="Protean is a DDD framework...",
-    status="draft"
-)
+domain.init(traverse=False)
 
-# With entities (using auto-generated add_line_items() helper)
-order = Order(customer_id="C123")
-order.add_line_items(LineItem(product_id="P1", quantity=2, unit_price=50.0))
+with domain.domain_context():
+    # Simple aggregate
+    post = Post(
+        title="Getting Started with Protean",
+        content="Protean is a DDD framework...",
+        status="draft"
+    )
 
-# With value objects
-order = Order(
-    customer_id="C123",
-    total=Money(amount=100.0, currency="USD")
-)
+    # With entities (using auto-generated add_line_items() helper)
+    order = Order(customer_id="C123")
+    order.add_line_items(LineItem(product_id="P1", quantity=2, unit_price="50.00"))
+
+    # With value objects
+    order = Order(
+        customer_id="C123",
+        total=Money(amount="100.00", currency="USD")
+    )
 ```
 
 The `id` field is automatically generated on creation.
@@ -181,10 +195,11 @@ Define methods on the aggregate to change state:
 ```python
 @domain.aggregate
 class Order:
+    customer_id: Identifier(required=True)
     status: String(max_length=20, default="draft")
     line_items = HasMany("LineItem")
 
-    def add_item(self, product_id: str, quantity: int, price: float):
+    def add_item(self, product_id: str, quantity: int, price):
         """Add an item to the order with custom business logic.
 
         Note: This uses the auto-generated add_line_items() helper.
@@ -205,11 +220,18 @@ class Order:
         if self.status == "shipped":
             raise ValueError("Cannot cancel shipped order")
         self.status = "cancelled"
+
+
+@domain.entity(part_of=Order)
+class LineItem:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+    unit_price: Decimal(precision=19, scale=4, required=True)
 ```
 
 ## Invariants (business rules)
 
-**Important principle**: All business validations should be codified as invariants, as granularly as possible. Each invariant should check a single business rule. Protean automatically enforces invariants after initialization and whenever attributes change.
+**Important principle**: All business validations should be codified as invariants, as granularly as possible. Each invariant should check a single business rule. Protean checks post-invariants at the end of `__init__`. Every field assignment runs the pre-invariants before the new value is set and the post-invariants after it. Adding, removing or changing a child entity checks the root's invariants too. To change several fields that are only valid together, wrap the changes in `with atomic_change(order):` (`from protean import atomic_change`), which runs the pre-invariants once at the start and the post-invariants once at the end of the block. `repository.add()` does not check invariants again.
 
 Use `@invariant.pre` (checked before changes) and `@invariant.post` (checked after changes):
 
@@ -224,8 +246,8 @@ from protean.exceptions import ValidationError
 
 @domain.aggregate
 class Account:
-    balance: Float(default=0.0)
-    overdraft_limit: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
+    overdraft_limit: Decimal(precision=19, scale=4, default=0)
     status: String(default="active")
 
     # Post invariants - checked after initialization and after changes
@@ -250,7 +272,7 @@ class Account:
         if self.status != "active":
             raise ValidationError({"status": ["Account is not active"]})
 
-    def withdraw(self, amount: float):
+    def withdraw(self, amount):
         """Withdraw money from account.
 
         Note: Parameter validations (amount > 0) belong in the method
@@ -298,15 +320,16 @@ Pass options to the decorator:
 
 ```python
 @domain.aggregate(
-    abstract=True,              # Cannot be instantiated
     auto_add_id_field=False,    # Control automatic ID field
-    provider="orders_db",       # Database to use
+    provider="default",         # Provider name from the domain config's `databases` section
     schema_name="customer_orders",  # Table/collection name
     stream_category="order"     # Event sourcing stream category
 )
-class Order:
-    ...
+class ArchivedOrder:
+    order_number: String(identifier=True, max_length=20)
 ```
+
+`abstract=True` marks a base aggregate that cannot be instantiated (see [Inheritance](#inheritance)). An inner `class Meta:` on the aggregate is ignored; pass every option to the decorator.
 
 See [Configuration Reference](references/configuration.md) for detailed documentation.
 
@@ -317,28 +340,38 @@ Aggregates are persisted using repositories:
 ```python
 from protean import current_domain
 
-# Create
-order = Order(customer_id="C123")
-order.add_line_items(LineItem(...))  # Auto-generated helper
-current_domain.repository_for(Order).add(order)
+domain.init(traverse=False)
 
-# Retrieve
-order = current_domain.repository_for(Order).get(order_id)
+with domain.domain_context():
+    repo = current_domain.repository_for(Order)
 
-# Update
-order.status = "placed"
-current_domain.repository_for(Order).add(order)
+    # Create
+    order = Order(customer_id="C123")
+    order.add_item("P1", 2, "50.00")  # Custom method using add_line_items()
+    repo.add(order)
 
-# Delete
-current_domain.repository_for(Order).remove(order)
+    # Retrieve
+    order = repo.get(order.id)
+
+    # Update
+    order.place_order()
+    repo.add(order)
+
+    # "Delete": record the change as a status, then persist it with add()
+    order.cancel()
+    repo.add(order)
 ```
+
+Repositories have no `save()` or `remove()` method. `add()` both inserts and updates. Model removal as a state change, such as `cancel()` above.
 
 ## Quick example
 
 ```python
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import String, Float, HasMany, Integer
+from protean.fields import Decimal, HasMany, Identifier, Integer, String
+
+from decimal import Decimal as D
 
 domain = Domain()
 
@@ -346,21 +379,21 @@ domain = Domain()
 class LineItem:
     product_id: String(required=True, max_length=50)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True)
+    unit_price: Decimal(precision=19, scale=4, required=True)
 
     @property
-    def subtotal(self) -> float:
+    def subtotal(self) -> D:
         return self.quantity * self.unit_price
 
 @domain.aggregate
 class Order:
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)
     status: String(max_length=20, default="draft")
     line_items = HasMany(LineItem)
 
     @property
-    def total(self) -> float:
-        return sum(item.subtotal for item in self.line_items)
+    def total(self) -> D:
+        return sum((item.subtotal for item in self.line_items), D("0"))
 
     @invariant.post
     def placed_order_must_have_items(self):
@@ -373,14 +406,17 @@ class Order:
         self.status = "placed"
 
 # Usage
-order = Order(customer_id="CUST-12345")
-# Using auto-generated add_line_items() helper
-order.add_line_items(LineItem(product_id="PROD-001", quantity=2, unit_price=29.99))
-order.add_line_items(LineItem(product_id="PROD-002", quantity=1, unit_price=49.99))
-order.place_order()
+domain.init(traverse=False)
 
-print(f"Order total: ${order.total:.2f}")
-print(f"Status: {order.status}")
+with domain.domain_context():
+    order = Order(customer_id="CUST-12345")
+    # Using auto-generated add_line_items() helper
+    order.add_line_items(LineItem(product_id="PROD-001", quantity=2, unit_price="29.99"))
+    order.add_line_items(LineItem(product_id="PROD-002", quantity=1, unit_price="49.99"))
+    order.place_order()
+
+    print(f"Order total: ${order.total:.2f}")
+    print(f"Status: {order.status}")
 ```
 
 ## Common mistakes
@@ -404,17 +440,17 @@ def withdraw(self, amount):
         raise ValueError("Insufficient funds")
 ```
 
-✅ **Instead**: Codify ALL business rules as granular `@invariant.post` — automatically enforced everywhere.
+✅ **Instead**: Codify ALL business rules as granular `@invariant.post` methods. Protean enforces them everywhere.
 
 ### ❌ Not using field-level validations
 
 ```python
-price: Float(required=True)  # No min_value!
+price: Decimal(precision=19, scale=4, required=True)  # No min_value!
 def set_price(self, p):
     if p <= 0: raise ValueError(...)  # Manual validation
 ```
 
-✅ **Instead**: `price: Float(required=True, min_value=0.01)` — field handles it.
+✅ **Instead**: `price: Decimal(precision=19, scale=4, required=True, min_value=0.01)`. The field handles it.
 
 See [Anti-patterns](references/anti-patterns.md) for additional mistakes: oversized aggregates, direct entity access, transaction boundary violations, manually recreating auto-generated helpers.
 

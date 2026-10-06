@@ -37,9 +37,15 @@ Key highlights:
 ### The Aggregate
 
 ```python
+from protean import Domain
+from protean.exceptions import ValidationError
+from protean.fields import HasMany, HasOne, Identifier, Integer, String
+
+domain = Domain()
+
 @domain.aggregate
 class Order:
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)
     status: String(max_length=20, default="pending")
 
     # One-to-many: order has many line items
@@ -47,6 +53,12 @@ class Order:
 
     # One-to-one: order has one shipping info
     shipping_info = HasOne("ShippingInfo")
+
+
+@domain.entity(part_of="Order")
+class LineItem:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True, min_value=1)
 ```
 
 The Order aggregate defines two types of relationships:
@@ -64,123 +76,7 @@ class ShippingInfo:
     postal_code: String(required=True, max_length=20)
     country: String(max_length=50, default="USA")
     phone: String(max_length=20)
-
-    # Automatic reference back to parent
-    order = Reference(Order)
-```
-
-The ShippingInfo entity:
-- Must specify `part_of=Order` to associate with the aggregate
-- Gets an automatic `order` reference field pointing back to the parent
-- Gets an automatic `order_id` shadow field for the parent's ID
-- Can have its own business logic and validation
-
-### Setting HasOne Relationships
-
-```python
-# Create the aggregate
-order = Order(customer_id="CUST-12345")
-
-# Create the related entity
-shipping = ShippingInfo(
-    address="123 Main Street",
-    city="San Francisco",
-    state="CA",
-    postal_code="94102",
-    country="USA",
-)
-
-# Set the HasOne relationship
-order.shipping_info = shipping
-```
-
-Unlike HasMany where you use `add_*` methods, HasOne relationships are set directly via assignment.
-
-### Accessing HasOne Relationships
-
-```python
-# Access the related entity
-if order.shipping_info:
-    print(f"Shipping to: {order.shipping_info.city}")
-    print(f"Address: {order.shipping_info.full_address}")
-```
-
-HasOne relationships can be None if not set, so always check before accessing.
-
-### Bidirectional Navigation
-
-```python
-# Access parent from child
-shipping = order.shipping_info
-parent_order = shipping.order  # Navigate back to Order
-order_id = shipping.order_id   # Get parent's ID
-```
-
-The automatic reference field enables navigation from child back to parent.
-
-### Business Logic with HasOne
-
-```python
-@domain.aggregate
-class Order:
-    # ... fields ...
-
-    @property
-    def is_shippable(self) -> bool:
-        """Check if order can be shipped."""
-        return self.shipping_info is not None and len(self.line_items) > 0
-
-    def validate_for_shipment(self):
-        """Validate order is ready for shipment."""
-        if self.shipping_info is None:
-            raise ValueError("Order must have shipping information")
-        if not self.shipping_info.is_valid:
-            raise ValueError("Shipping address is incomplete")
-```
-
-The aggregate can validate the HasOne entity and enforce business rules.
-
-## Common Patterns
-
-### Optional HasOne
-
-```python
-@domain.aggregate
-class Order:
-    shipping_info = HasOne("ShippingInfo")  # Optional - can be None
-
-    def ship(self):
-        if self.shipping_info is None:
-            raise ValueError("Cannot ship without shipping info")
-```
-
-HasOne relationships are optional by default. Check for None before using.
-
-### Required HasOne (via validation)
-
-```python
-@domain.aggregate
-class Order:
-    shipping_info = HasOne("ShippingInfo")
-
-    def place(self):
-        if not self.shipping_info:
-            raise ValueError("Shipping info required to place order")
-        self.status = "placed"
-```
-
-While you can't make HasOne required at the field level, you can enforce it in business logic.
-
-### HasOne with Computed Properties
-
-```python
-@domain.entity(part_of="Order")
-class ShippingInfo:
-    address: String(required=True)
-    city: String(required=True)
-    state: String()
-    postal_code: String(required=True)
-    country: String(default="USA")
+    # Protean adds `order` (a Reference to Order) and `order_id` automatically
 
     @property
     def full_address(self) -> str:
@@ -192,7 +88,128 @@ class ShippingInfo:
         return ", ".join(parts)
 ```
 
-Entities in HasOne relationships can have their own methods and properties.
+The ShippingInfo entity:
+- Must specify `part_of="Order"` to associate with the aggregate
+- Gets an automatic `order` reference field pointing back to the parent
+- Gets an automatic `order_id` shadow field for the parent's ID
+- Can have its own business logic and validation, such as the `full_address` property
+
+### Business Logic with HasOne
+
+```python
+@domain.aggregate
+class Order:
+    customer_id: Identifier(required=True)
+    status: String(max_length=20, default="pending")
+    line_items = HasMany("LineItem")
+    shipping_info = HasOne("ShippingInfo")  # Optional: None until set
+
+    @property
+    def is_shippable(self) -> bool:
+        """Check if order can be shipped."""
+        return self.shipping_info is not None and len(self.line_items) > 0
+
+    def place(self):
+        if self.shipping_info is None:
+            raise ValidationError(
+                {"shipping_info": ["Shipping info is required to place the order"]}
+            )
+        self.status = "placed"
+
+    def ship(self):
+        if not self.is_shippable:
+            raise ValidationError(
+                {"_entity": ["Order needs shipping info and at least one item to ship"]}
+            )
+        self.status = "shipped"
+```
+
+The aggregate can check the HasOne entity and enforce business rules.
+
+### Setting HasOne Relationships
+
+Creating instances needs an initialized domain and an active domain context:
+
+```python
+domain.init(traverse=False)
+
+with domain.domain_context():
+    # Create the aggregate
+    order = Order(customer_id="CUST-12345")
+
+    # Create the related entity
+    shipping = ShippingInfo(
+        address="123 Main Street",
+        city="San Francisco",
+        state="CA",
+        postal_code="94102",
+        country="USA",
+    )
+
+    # Set the HasOne relationship
+    order.shipping_info = shipping
+```
+
+Unlike HasMany where you use `add_*` methods, HasOne relationships are set directly via assignment.
+
+### Accessing HasOne Relationships
+
+```python
+with domain.domain_context():
+    # Access the related entity
+    if order.shipping_info:
+        print(f"Shipping to: {order.shipping_info.city}")
+        print(f"Address: {order.shipping_info.full_address}")
+```
+
+HasOne relationships can be None if not set, so always check before accessing.
+
+### Bidirectional Navigation
+
+```python
+with domain.domain_context():
+    # Access parent from child
+    shipping = order.shipping_info
+    parent_order = shipping.order  # Navigate back to Order
+    order_id = shipping.order_id   # Get parent's ID
+```
+
+The automatic reference field enables navigation from child back to parent.
+
+## Common Patterns
+
+### Optional HasOne
+
+A HasOne field is optional: it is `None` until you assign an entity. Check for `None` before using it, as `Order.is_shippable` does above:
+
+```python
+with domain.domain_context():
+    draft = Order(customer_id="CUST-67890")
+    assert draft.shipping_info is None
+    assert draft.is_shippable is False
+```
+
+### Required HasOne (via validation)
+
+You can't make a HasOne required at the field level. Enforce it in the aggregate method that needs it, as `Order.place()` does above:
+
+```python
+with domain.domain_context():
+    try:
+        draft.place()
+    except ValidationError as exc:
+        print(exc.messages["shipping_info"])  # ['Shipping info is required to place the order']
+```
+
+### HasOne with Computed Properties
+
+Entities in HasOne relationships can have their own methods and properties, such as `ShippingInfo.full_address` above:
+
+```python
+with domain.domain_context():
+    print(order.shipping_info.full_address)
+    # 123 Main Street, San Francisco, CA, 94102, USA
+```
 
 ## Testing
 
@@ -202,22 +219,26 @@ To test HasOne relationships:
 
 ```python
 def test_hasone_relationship():
-    order = Order(customer_id="C123")
-    shipping = ShippingInfo(
-        address="123 Main St",
-        city="NYC",
-        postal_code="10001",
-        country="USA"
-    )
-    order.shipping_info = shipping
+    with domain.domain_context():
+        order = Order(customer_id="C123")
+        shipping = ShippingInfo(
+            address="123 Main St",
+            city="NYC",
+            postal_code="10001",
+            country="USA"
+        )
+        order.shipping_info = shipping
 
-    # Test relationship is set
-    assert order.shipping_info is not None
-    assert order.shipping_info.city == "NYC"
+        # Test relationship is set
+        assert order.shipping_info is not None
+        assert order.shipping_info.city == "NYC"
 
-    # Test bidirectional reference
-    assert shipping.order == order
-    assert shipping.order_id == order.id
+        # Test bidirectional reference
+        assert shipping.order == order
+        assert shipping.order_id == order.id
+
+
+test_hasone_relationship()
 ```
 
 ## Related

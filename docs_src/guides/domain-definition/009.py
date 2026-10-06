@@ -3,7 +3,7 @@ from protean.domain import Domain
 from protean.exceptions import ValidationError
 from protean.fields import String, ValueObject
 
-domain = Domain(__name__)
+domain = Domain()
 
 
 class EmailValidator:

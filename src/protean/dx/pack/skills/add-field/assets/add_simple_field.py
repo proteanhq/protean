@@ -13,13 +13,18 @@ Usage:
 """
 
 from datetime import UTC, date, datetime
+from decimal import Decimal as D
 
 from protean import Domain
+from protean.exceptions import ValidationError
 from protean.fields import (
     Boolean,
     Date,
     DateTime,
+    Decimal,
     Float,
+    HasMany,
+    Identifier,
     Integer,
     String,
     Text,
@@ -27,7 +32,7 @@ from protean.fields import (
 )
 
 # Domain setup
-domain = Domain(__name__)
+domain = Domain()
 
 
 def utc_now():
@@ -53,7 +58,10 @@ class Product:
     description: Text()  # Long text, no length limit
 
     # Numeric fields with range validation
-    price: Float(required=True, min_value=0.01, max_value=999999.99)
+    # Money is a Decimal: exact, no binary floating-point rounding
+    price: Decimal(
+        required=True, precision=19, scale=4, min_value=0.01, max_value=999999.99
+    )
     stock_count: Integer(default=0, min_value=0, max_value=100000)
     weight_kg: Float(min_value=0.1, max_value=1000.0)
 
@@ -84,12 +92,15 @@ class Order:
     """Order aggregate containing line item entities."""
 
     order_number: String(required=True, max_length=50, identifier=True)
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)  # Links to the Customer aggregate by id
     status: String(
         default="draft",
         choices=["draft", "placed", "shipped", "delivered", "cancelled"],
     )
     created_at: DateTime(default=utc_now)
+
+    # The order's line items (child entities)
+    line_items = HasMany("LineItem")
 
 
 @domain.entity(part_of="Order")  # Must specify parent aggregate
@@ -99,22 +110,24 @@ class LineItem:
     Demonstrates adding fields to entities.
     """
 
-    # Product reference
-    product_id: String(required=True, max_length=50)
+    # Link to the Product aggregate by id
+    product_id: Identifier(required=True)
     product_name: String(required=True, max_length=200)  # Denormalized for display
 
     # Quantity and pricing
     quantity: Integer(required=True, min_value=1, max_value=1000)
-    unit_price: Float(required=True, min_value=0.01)
+    unit_price: Decimal(required=True, precision=19, scale=4, min_value=0.01)
 
-    # Optional discount
-    discount_percent: Float(default=0.0, min_value=0.0, max_value=100.0)
+    # Optional discount. A Decimal too, because it feeds money arithmetic.
+    discount_percent: Decimal(
+        precision=5, scale=2, default=0, min_value=0, max_value=100
+    )
 
     # Optional notes
     notes: String(max_length=500)
 
     @property
-    def subtotal(self) -> float:
+    def subtotal(self) -> D:
         """Calculate line item subtotal."""
         base = self.quantity * self.unit_price
         discount = base * (self.discount_percent / 100)
@@ -167,7 +180,7 @@ if __name__ == "__main__":
             name="Wireless Mouse",
             sku="MOUSE-001",
             description="Ergonomic wireless mouse with USB receiver",
-            price=29.99,
+            price=D("29.99"),
             stock_count=50,
             weight_kg=0.15,
             category="electronics",
@@ -194,20 +207,22 @@ if __name__ == "__main__":
             order_number="ORD-2024-001", customer_id="CUST-123", status="draft"
         )
 
-        # Add line item (in real code, use HasMany field)
+        # Add a line item through the auto-generated HasMany helper
         line_item = LineItem(
             product_id="PROD-001",
             product_name="Wireless Mouse",
             quantity=2,
-            unit_price=29.99,
-            discount_percent=10.0,
+            unit_price=D("29.99"),
+            discount_percent=D("10"),
             notes="Gift wrap requested",
         )
+        order.add_line_items(line_item)
 
         print("Order created:")
         print(f"  Order Number: {order.order_number}")
         print(f"  Customer: {order.customer_id}")
         print(f"  Status: {order.status}")
+        print(f"  Line items: {len(order.line_items)}")
         print()
 
         print("Line Item:")
@@ -227,11 +242,11 @@ if __name__ == "__main__":
             valid_product = Product(
                 name="Test Product",
                 sku="TEST-001",
-                price=50.0,  # Valid: between 0.01 and 999999.99
+                price=D("50.00"),  # Valid: between 0.01 and 999999.99
                 category="electronics",
             )
             print("  ✓ Valid price accepted")
-        except Exception as e:
+        except ValidationError as e:
             print(f"  ✗ Unexpected error: {e}")
 
         # Invalid: below minimum
@@ -239,11 +254,11 @@ if __name__ == "__main__":
             invalid_product = Product(
                 name="Test Product",
                 sku="TEST-002",
-                price=0.0,  # Invalid: below min_value=0.01
+                price=D("0"),  # Invalid: below min_value=0.01
                 category="electronics",
             )
             print("  ✗ Invalid price was accepted (should have failed!)")
-        except Exception:
+        except ValidationError:
             print("  ✓ Invalid price rejected: Price below minimum")
 
         # Invalid: missing required field
@@ -253,5 +268,5 @@ if __name__ == "__main__":
                 # Missing required 'sku' and 'category'
             )
             print("  ✗ Missing required fields accepted (should have failed!)")
-        except Exception:
+        except ValidationError:
             print("  ✓ Missing required fields rejected")

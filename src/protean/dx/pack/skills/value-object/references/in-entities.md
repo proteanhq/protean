@@ -26,10 +26,23 @@ Key highlights:
 ### Basic Embedding in Entity
 
 ```python
+from decimal import Decimal as D
+
+from protean.exceptions import IncorrectUsageError
+
+
 @domain.value_object
 class Money:
     currency: String(max_length=3, default="USD")
-    amount: Float(default=0.0)
+    amount: Decimal(precision=19, scale=4, default=0)
+
+    def add(self, other: "Money") -> "Money":
+        if self.currency != other.currency:
+            raise ValueError("Cannot add different currencies")
+        return Money(currency=self.currency, amount=self.amount + other.amount)
+
+    def multiply(self, factor: int) -> "Money":
+        return Money(currency=self.currency, amount=self.amount * factor)
 
 
 @domain.entity(part_of="Order")
@@ -52,6 +65,8 @@ The entity:
 - Entity methods return value objects
 - Clean separation of concerns
 
+`amount` is a `Decimal` field, so money stays exact. The standard-library `Decimal` is imported as `D` to keep it apart from the field type. The rest of this page reuses this `Money` class.
+
 ### Multiple Value Objects in Entity
 
 ```python
@@ -71,6 +86,7 @@ class Dimensions:
 class LineItem:
     """Entity with multiple value objects."""
     product_id: String(required=True)
+    product_name: String(required=True)
     quantity: Integer(required=True, min_value=1)
 
     # Multiple value objects
@@ -100,13 +116,13 @@ Benefits:
 class Order:
     """Order aggregate containing LineItem entities."""
     order_number: String(required=True, identifier=True)
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)  # Customer is another aggregate
     line_items = HasMany(LineItem)
 
     def total(self) -> Money:
         """Calculate order total from line items."""
         if not self.line_items:
-            return Money(currency="USD", amount=0.0)
+            return Money(currency="USD", amount=D("0"))
 
         total = self.line_items[0].line_total
         for item in self.line_items[1:]:
@@ -123,20 +139,11 @@ The complete picture:
 
 ## Common Patterns
 
-### Order Lines with Pricing
+### Cart Lines with Pricing
 
 ```python
-@domain.value_object
-class Money:
-    currency: String(max_length=3, required=True)
-    amount: Float(required=True)
-
-    def multiply(self, factor: float) -> "Money":
-        return Money(currency=self.currency, amount=self.amount * factor)
-
-
-@domain.entity(part_of="Order")
-class OrderLine:
+@domain.entity(part_of="Cart")
+class CartLine:
     product_id: String(required=True)
     product_name: String(required=True)
     quantity: Integer(required=True, min_value=1)
@@ -148,14 +155,14 @@ class OrderLine:
 
 
 @domain.aggregate
-class Order:
-    order_number: String(required=True, identifier=True)
-    line_items = HasMany(OrderLine)
+class Cart:
+    cart_id: String(required=True, identifier=True)
+    line_items = HasMany(CartLine)
 
     def add_item(self, product_id: str, name: str, quantity: int, price: Money):
-        """Add line item to order."""
+        """Add line item to cart."""
         self.add_line_items(
-            OrderLine(
+            CartLine(
                 product_id=product_id,
                 product_name=name,
                 quantity=quantity,
@@ -201,7 +208,7 @@ class Invoice:
 
     def total(self) -> Money:
         if not self.lines:
-            return Money(currency="USD", amount=0.0)
+            return Money(currency="USD", amount=D("0"))
 
         total = self.lines[0].total
         for line in self.lines[1:]:
@@ -298,48 +305,52 @@ class Inventory:
 
 ## Initialization Patterns
 
+Creating an entity or aggregate needs an initialized domain and an active domain context.
+
 ### Initialize Entity with Value Object
 
 ```python
-# With complete value object
-line_item = LineItem(
-    product_id="PROD-001",
-    product_name="Laptop",
-    quantity=2,
-    unit_price=Money(currency="USD", amount=1200.0)
-)
+domain.init(traverse=False)
 
-# By attributes
-line_item = LineItem(
-    product_id="PROD-001",
-    product_name="Laptop",
-    quantity=2,
-    unit_price_currency="USD",
-    unit_price_amount=1200.0
-)
+with domain.domain_context():
+    # With complete value object
+    line_item = LineItem(
+        product_id="PROD-001",
+        product_name="Laptop",
+        quantity=2,
+        unit_price=Money(currency="USD", amount=D("1200.00"))
+    )
+
+    # By attributes (one level deep)
+    line_item = LineItem(
+        product_id="PROD-001",
+        product_name="Laptop",
+        quantity=2,
+        unit_price_currency="USD",
+        unit_price_amount=D("1200.00")
+    )
 ```
 
 ### Add Entity to Aggregate
 
 ```python
-order = Order(order_number="ORD-001", customer_id="CUST-123")
+with domain.domain_context():
+    order = Order(order_number="ORD-001", customer_id="CUST-123")
 
-# Add with complete VO
-order.add_line_items(
-    LineItem(
-        product_id="PROD-001",
-        product_name="Laptop",
-        quantity=1,
-        unit_price=Money(currency="USD", amount=1200.0)
+    # Add with complete VO
+    order.add_line_items(
+        LineItem(
+            product_id="PROD-001",
+            product_name="Laptop",
+            quantity=1,
+            unit_price=Money(currency="USD", amount=D("1200.00"))
+        )
     )
-)
 ```
 
 ## Accessing Value Objects in Entities
 
 ```python
-order = Order(...)
-
 # Access entity
 line_item = order.line_items[0]
 
@@ -359,13 +370,21 @@ print(f"Order total: {order_total.currency} {order_total.amount}")
 ## Replacing Value Objects in Entities
 
 ```python
-# Cannot modify value object
-line_item.unit_price.amount = 1000.0  # Raises IncorrectUsageError
+with domain.domain_context():
+    # Cannot modify value object
+    try:
+        line_item.unit_price.amount = D("1000.00")
+    except IncorrectUsageError:
+        print("Replace the value object instead")
 
-# Replace entire value object
-line_item.unit_price = Money(currency="USD", amount=1000.0)
+    # Replace entire value object
+    line_item.unit_price = Money(currency="USD", amount=D("1000.00"))
+```
 
-# Or through entity method
+Or put the replacement in an entity method:
+
+```python
+# fragment
 def update_price(self, new_price: Money):
     """Update line item price."""
     self.unit_price = new_price
@@ -374,15 +393,18 @@ def update_price(self, new_price: Money):
 ## Testing Entities with Value Objects
 
 ```python
+import pytest
+
+
 def test_line_item_with_money():
     item = LineItem(
         product_id="PROD-001",
         product_name="Laptop",
         quantity=2,
-        unit_price=Money(currency="USD", amount=100.0)
+        unit_price=Money(currency="USD", amount=D("100.00"))
     )
 
-    assert item.unit_price.amount == 100.0
+    assert item.unit_price.amount == D("100.00")
     assert item.unit_price.currency == "USD"
 
 def test_line_item_total_calculation():
@@ -390,23 +412,30 @@ def test_line_item_total_calculation():
         product_id="PROD-001",
         product_name="Laptop",
         quantity=3,
-        unit_price=Money(currency="USD", amount=50.0)
+        unit_price=Money(currency="USD", amount=D("50.00"))
     )
 
     total = item.line_total
-    assert total.amount == 150.0
+    assert total.amount == D("150.00")
     assert total.currency == "USD"
 
 def test_entity_value_object_immutability():
-    item = LineItem(...)
+    item = LineItem(
+        product_id="PROD-001",
+        product_name="Laptop",
+        quantity=1,
+        unit_price=Money(currency="USD", amount=D("100.00"))
+    )
 
     with pytest.raises(IncorrectUsageError):
-        item.unit_price.amount = 200.0
+        item.unit_price.amount = D("200.00")
 
     # Correct way
-    item.unit_price = Money(currency="USD", amount=200.0)
-    assert item.unit_price.amount == 200.0
+    item.unit_price = Money(currency="USD", amount=D("200.00"))
+    assert item.unit_price.amount == D("200.00")
 ```
+
+These tests run inside a domain context, which the test setup provides.
 
 ## Best Practices
 
@@ -422,10 +451,11 @@ def test_entity_value_object_immutability():
 
 **Exposing primitives instead of VOs** ❌
 ```python
+# fragment
 @domain.entity(part_of="Order")
 class LineItem:
     # Bad: Primitives
-    price_amount: Float()
+    price_amount: Decimal(precision=19, scale=4)
     price_currency: String()
 
     # Good: Value object
@@ -434,11 +464,12 @@ class LineItem:
 
 **Trying to modify entity VOs** ❌
 ```python
+# fragment
 # Won't work
-line_item.unit_price.amount = 100
+line_item.unit_price.amount = D("100.00")
 
 # Correct
-line_item.unit_price = Money(currency="USD", amount=100)
+line_item.unit_price = Money(currency="USD", amount=D("100.00"))
 ```
 
 **Not using VO methods** ❌
@@ -458,14 +489,18 @@ def line_total(self):
 **Accessing entities directly** ❌
 ```python
 # fragment
-# Bad: Direct entity access
-line_item = repository.get_line_item(item_id)
+# Bad: loading a line item on its own, outside its Order
+line_item = domain.repository_for(LineItem).get(item_id)
 ```
 
 ```python
 # Good: Through aggregate
-order = repository.get_order(order_id)
-line_item = order.line_items[0]
+with domain.domain_context():
+    repo = domain.repository_for(Order)
+    repo.add(order)
+
+    order = repo.get("ORD-001")
+    line_item = order.line_items[0]
 ```
 
 ## Related

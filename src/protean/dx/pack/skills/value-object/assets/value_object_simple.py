@@ -11,11 +11,13 @@ Usage:
     python value_object_simple.py
 """
 
+from decimal import Decimal as D
+
 from protean import Domain
-from protean.fields import Float, String, ValueObject
+from protean.fields import Decimal, String, ValueObject
 
 # Domain setup (required for runnable examples)
-domain = Domain(__name__)
+domain = Domain()
 
 
 @domain.value_object
@@ -28,7 +30,7 @@ class Balance:
     """
 
     currency: String(max_length=3, required=True)
-    amount: Float(required=True, min_value=0.0)
+    amount: Decimal(precision=19, scale=4, required=True, min_value=0)
 
 
 @domain.aggregate
@@ -40,25 +42,27 @@ class Account:
 
 
 if __name__ == "__main__":
+    domain.init(traverse=False)
+
     with domain.domain_context():
         # Create a Balance value object
-        bal1 = Balance(currency="USD", amount=100.0)
+        bal1 = Balance(currency="USD", amount=D("100.00"))
         print(f"Balance 1: {bal1.currency} {bal1.amount}")
 
         # Create another Balance with same values
-        bal2 = Balance(currency="USD", amount=100.0)
+        bal2 = Balance(currency="USD", amount=D("100.00"))
         print(f"Balance 2: {bal2.currency} {bal2.amount}")
 
         # Two value objects with same attributes are equal
         print(f"bal1 == bal2: {bal1 == bal2}")  # True
 
         # Different values are not equal
-        bal3 = Balance(currency="EUR", amount=100.0)
+        bal3 = Balance(currency="EUR", amount=D("100.00"))
         print(f"bal1 == bal3: {bal1 == bal3}")  # False
 
         # Use in aggregate - assign as complete object
         account = Account(
-            balance=Balance(currency="USD", amount=500.0), name="Checking"
+            balance=Balance(currency="USD", amount=D("500.00")), name="Checking"
         )
         print(
             f"\nAccount: {account.name}, Balance: {account.balance.currency} {account.balance.amount}"
@@ -66,7 +70,7 @@ if __name__ == "__main__":
 
         # Can also initialize by attributes during creation
         account2 = Account(
-            balance_currency="EUR", balance_amount=1000.0, name="Savings"
+            balance_currency="EUR", balance_amount=D("1000.00"), name="Savings"
         )
         print(
             f"Account 2: {account2.name}, Balance: {account2.balance.currency} {account2.balance.amount}"
@@ -79,5 +83,5 @@ if __name__ == "__main__":
             print(f"\nImmutability enforced: {e}")
 
         # To "change" a value object, replace it entirely
-        account.balance = Balance(currency="USD", amount=600.0)
+        account.balance = Balance(currency="USD", amount=D("600.00"))
         print(f"\nUpdated account balance: {account.balance.amount}")

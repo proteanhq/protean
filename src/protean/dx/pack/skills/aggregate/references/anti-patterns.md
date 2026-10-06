@@ -9,35 +9,42 @@ Common mistakes when designing and implementing aggregates, with explanations an
 ❌ **Bad:**
 
 ```python
+# fragment
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)
     status: String(default="draft")
-    total: Float(default=0.0)
+    total: Decimal(precision=19, scale=4, default=0)
 
     # Just data, no behavior!
 
 # Business logic scattered in services
 def place_order(order_id: str):
+    repository = current_domain.repository_for(Order)
     order = repository.get(order_id)
     order.status = "placed"  # Direct mutation
     order.total = calculate_total(order)
-    repository.save(order)
+    repository.add(order)
 ```
 
 ✅ **Good:**
 
 ```python
+from decimal import Decimal as D
+
+from protean import current_domain
+
+
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)
     status: String(default="draft")
     line_items = HasMany("LineItem")
 
     @property
-    def total(self) -> float:
+    def total(self) -> D:
         """Calculated property."""
-        return sum(item.subtotal for item in self.line_items)
+        return sum((item.subtotal for item in self.line_items), D("0"))
 
     def place_order(self):
         """Business logic within aggregate."""
@@ -45,11 +52,24 @@ class Order:
             raise ValueError("Cannot place empty order")
         self.status = "placed"
 
+
+@domain.entity(part_of="Order")
+class LineItem:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True, min_value=1)
+    unit_price: Decimal(precision=19, scale=4, required=True)
+
+    @property
+    def subtotal(self) -> D:
+        return self.quantity * self.unit_price
+
+
 # Application service just orchestrates
 def place_order(order_id: str):
+    repository = current_domain.repository_for(Order)
     order = repository.get(order_id)
     order.place_order()  # Business logic in aggregate
-    repository.save(order)
+    repository.add(order)
 ```
 
 **Why it matters:**
@@ -72,6 +92,7 @@ The example below is the second kind. It declares three entity types, so it stay
 ❌ **Bad:**
 
 ```python
+# fragment
 @domain.aggregate
 class Customer:
     name: String(required=True)
@@ -95,14 +116,14 @@ class Customer:
 # Order is its own aggregate
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)  # Reference, not containment
+    customer_id: Identifier(required=True)  # Held by id, not contained
     status: String(default="draft")
     line_items = HasMany("LineItem")  # Limited items per order
 
 # Support ticket is its own aggregate
 @domain.aggregate
 class SupportTicket:
-    customer_id: String(required=True)  # Reference
+    customer_id: Identifier(required=True)  # Held by id
     subject: String(required=True)
     status: String(default="open")
 ```
@@ -128,26 +149,37 @@ class SupportTicket:
 ❌ **Bad:**
 
 ```python
-# Trying to access entity directly
+# fragment
+# Trying to load and persist an entity on its own
 line_item_id = order.line_items[0].id
-line_item = repository_for(LineItem).get(line_item_id)  # Wrong!
-line_item.quantity = 5  # Wrong!
-repository_for(LineItem).save(line_item)  # Wrong!
+line_items = current_domain.repository_for(LineItem)  # Wrong! Load the Order, not the entity
+line_item = line_items.get(line_item_id)
+line_item.quantity = 5  # Changed outside the aggregate, so its invariants never run
+line_items.add(line_item)  # Wrong!
 ```
 
 ✅ **Good:**
 
 ```python
-# Always work through aggregate
-order = repository_for(Order).get(order_id)
+domain.init(traverse=False)
 
-# Modify through aggregate methods
-for item in order.line_items:
-    if item.product_id == "PROD-001":
-        item.quantity = 5
+with domain.domain_context():
+    repository = current_domain.repository_for(Order)
 
-# Save aggregate (entities are saved automatically)
-repository_for(Order).save(order)
+    order = Order(customer_id="C1")
+    order.add_line_items(LineItem(product_id="PROD-001", quantity=1, unit_price="9.99"))
+    repository.add(order)
+
+    # Always work through the aggregate
+    order = repository.get(order.id)
+
+    # Modify entities through the aggregate
+    for item in order.line_items:
+        if item.product_id == "PROD-001":
+            item.quantity = 5
+
+    # Persist the aggregate (its entities are persisted with it)
+    repository.add(order)
 ```
 
 **Why it matters:**
@@ -167,15 +199,18 @@ repository_for(Order).save(order)
 ```python
 @domain.aggregate
 class Account:
-    balance: Float(default=0.0)
-    overdraft_limit: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
+    overdraft_limit: Decimal(precision=19, scale=4, default=0)
 
-    def withdraw(self, amount: float):
+    def withdraw(self, amount):
         self.balance -= amount  # No validation!
 
-# Allows invalid state
-account = Account(balance=100.0, overdraft_limit=50.0)
-account.withdraw(200.0)  # balance = -100.0, violates overdraft!
+domain.init(traverse=False)
+
+with domain.domain_context():
+    # Allows invalid state
+    account = Account(balance="100.00", overdraft_limit="50.00")
+    account.withdraw(D("200.00"))  # balance = -100.00, violates overdraft!
 ```
 
 ✅ **Good:**
@@ -185,8 +220,8 @@ from protean.exceptions import ValidationError
 
 @domain.aggregate
 class Account:
-    balance: Float(default=0.0)
-    overdraft_limit: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
+    overdraft_limit: Decimal(precision=19, scale=4, default=0)
 
     @invariant.post
     def balance_must_be_above_overdraft_limit(self):
@@ -195,11 +230,11 @@ class Account:
                 {"_entity": ["Balance cannot be below overdraft limit"]}
             )
 
-    def withdraw(self, amount: float):
+    def withdraw(self, amount):
         if amount <= 0:
             raise ValueError("Amount must be positive")
         self.balance -= amount
-        # Invariant checked automatically
+        # Invariant checked automatically on the assignment
 ```
 
 **Why it matters:**
@@ -216,7 +251,10 @@ class Account:
 ❌ **Bad:**
 
 ```python
-def transfer_funds(from_account_id: str, to_account_id: str, amount: float):
+# fragment
+def transfer_funds(from_account_id: str, to_account_id: str, amount):
+    repository = current_domain.repository_for(Account)
+
     # Modifying two aggregates in one transaction!
     from_account = repository.get(from_account_id)
     to_account = repository.get(to_account_id)
@@ -224,9 +262,9 @@ def transfer_funds(from_account_id: str, to_account_id: str, amount: float):
     from_account.withdraw(amount)
     to_account.deposit(amount)
 
-    # Both saved in same transaction
-    repository.save(from_account)
-    repository.save(to_account)
+    # Both persisted in the same unit of work
+    repository.add(from_account)
+    repository.add(to_account)
 ```
 
 ✅ **Good:**
@@ -235,16 +273,26 @@ def transfer_funds(from_account_id: str, to_account_id: str, amount: float):
 # Use eventual consistency with events
 @domain.event(part_of="Account")
 class FundsWithdrawn:
-    account_id: String(required=True)
-    amount: Float(required=True)
-    transfer_id: String(required=True)
+    account_id: Identifier(required=True)
+    to_account_id: Identifier(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
+    transfer_id: Identifier(required=True)
 
 @domain.aggregate
 class Account:
-    def withdraw_for_transfer(self, amount: float, transfer_id: str):
+    balance: Decimal(precision=19, scale=4, default=0)
+
+    def withdraw(self, amount):
+        self.balance -= amount
+
+    def deposit(self, amount):
+        self.balance += amount
+
+    def withdraw_for_transfer(self, amount, to_account_id: str, transfer_id: str):
         self.withdraw(amount)
         self.raise_(FundsWithdrawn(
             account_id=self.id,
+            to_account_id=to_account_id,
             amount=amount,
             transfer_id=transfer_id
         ))
@@ -253,10 +301,11 @@ class Account:
 class FundsWithdrawnHandler:
     @handle(FundsWithdrawn)
     def complete_transfer(self, event: FundsWithdrawn):
-        # Handle in separate transaction
+        # Runs in its own transaction, after the withdrawal is committed
+        repository = current_domain.repository_for(Account)
         to_account = repository.get(event.to_account_id)
         to_account.deposit(event.amount)
-        repository.save(to_account)
+        repository.add(to_account)
 ```
 
 **Why it matters:**
@@ -318,16 +367,10 @@ class Order:
 ❌ **Bad:**
 
 ```python
-@domain.aggregate
-class Order:
-    _items = HasMany("OrderLine")
-
-    @property
-    def items(self):
-        return self._items  # Direct access!
-
-# Can violate invariants
-order.items.append(LineItem(...))  # Bypasses add_items() method
+# fragment
+# Appending to the list skips the invariant checks,
+# and the repository does not persist the appended item
+order.line_items.append(OrderLine(sku="SKU-1"))
 ```
 
 ✅ **Good:**
@@ -335,20 +378,33 @@ order.items.append(LineItem(...))  # Bypasses add_items() method
 ```python
 @domain.aggregate
 class Order:
-    _items = HasMany("OrderLine")
+    line_items = HasMany("OrderLine")
+
+    @invariant.post
+    def cannot_exceed_50_items(self):
+        if len(self.line_items) > 50:
+            raise ValidationError({"line_items": ["Cannot exceed 50 items"]})
+
+
+@domain.entity(part_of="Order")
+class OrderLine:
+    sku: String(required=True)
+    quantity: Integer(default=1, min_value=1)
+    unit_price: Decimal(precision=19, scale=4, default=0)
 
     @property
-    def items(self):
-        return tuple(self._items)  # Immutable view
+    def subtotal(self) -> D:
+        return self.quantity * self.unit_price
 
-    def add_item(self, item: OrderLine):
-        # Enforce invariants here
-        if len(self._items) >= 50:
-            raise ValueError("Cannot exceed 50 items")
-        self._items.add(item)
+
+domain.init(traverse=False)
+
+with domain.domain_context():
+    order = Order()
+    order.add_line_items(OrderLine(sku="SKU-1"))  # Checks invariants, tracked for persistence
 ```
 
-**Note:** Protean's HasMany already handles this correctly with generated methods.
+`HasMany` generates `add_line_items()`, `remove_line_items()`, `get_one_from_line_items()` and `filter_line_items()`. Change the collection only through these helpers, or through aggregate methods that call them.
 
 ---
 
@@ -359,13 +415,14 @@ class Order:
 ❌ **Bad:**
 
 ```python
+# fragment
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)
 
     def validate_order(self):
         # Loading another aggregate!
-        customer = repository_for(Customer).get(self.customer_id)
+        customer = current_domain.repository_for(Customer).get(self.customer_id)
         if customer.credit_limit < self.total:
             raise ValueError("Exceeds credit limit")
 ```
@@ -373,29 +430,29 @@ class Order:
 ✅ **Good:**
 
 ```python
-# Use a domain service for cross-aggregate logic
-@domain.domain_service
-class OrderValidationService:
-    def validate_order(self, order: Order, customer: Customer):
-        if customer.credit_limit < order.total:
-            raise ValueError("Exceeds credit limit")
+@domain.aggregate
+class Customer:
+    name: String(required=True)
+    credit_limit: Decimal(precision=19, scale=4, default=0)
 
-# Or use events for eventual consistency
-@domain.event(part_of="Order")
-class OrderPlaced:
-    order_id: String(required=True)
-    customer_id: String(required=True)
-    total: Float(required=True)
 
-@domain.event_handler(part_of="Customer")
-class OrderPlacedHandler:
-    @handle(OrderPlaced)
-    def check_credit_limit(self, event: OrderPlaced):
-        customer = repository_for(Customer).get(event.customer_id)
-        if customer.credit_limit < event.total:
-            # Handle violation (cancel order, etc.)
-            pass
+# Use a domain service for logic that spans two aggregates
+@domain.domain_service(part_of=[Order, Customer])
+class OrderCreditCheck:
+    def __init__(self, order, customer):
+        super().__init__(order, customer)
+        self.order = order
+        self.customer = customer
+
+    def check(self):
+        order_total = sum((item.subtotal for item in self.order.line_items), D("0"))
+        if order_total > self.customer.credit_limit:
+            raise ValidationError({"_entity": ["Order exceeds the credit limit"]})
 ```
+
+The caller (a command handler or application service) loads both aggregates through their repositories, runs the service, and persists the result.
+
+When the second step can happen later, in its own transaction, use an event instead. `Order` raises `OrderPlaced`. An event handler in `Order`'s own cluster reacts and issues a command, and the other aggregate's command handler does the work. The [split-aggregate](../../split-aggregate/SKILL.md) skill shows this form. It also covers why the handler stays in the cluster that owns the event, and how to make the step safe to repeat.
 
 **Why it matters:**
 - Aggregates should be independent
@@ -415,12 +472,12 @@ class OrderPlacedHandler:
 @domain.aggregate
 class Order:
     line_items = HasMany("OrderLine")
-    total: Float(default=0.0)  # Stored!
+    total: Decimal(precision=19, scale=4, default=0)  # Stored!
 
     def add_item(self, item: OrderLine):
         self.add_line_items(item)
         # Must remember to update total everywhere!
-        self.total = sum(item.subtotal for item in self.line_items)
+        self.total = sum((item.subtotal for item in self.line_items), D("0"))
 ```
 
 ✅ **Good:**
@@ -431,9 +488,9 @@ class Order:
     line_items = HasMany("OrderLine")
 
     @property
-    def total(self) -> float:
+    def total(self) -> D:
         """Always calculated, never stored."""
-        return sum(item.subtotal for item in self.line_items)
+        return sum((item.subtotal for item in self.line_items), D("0"))
 ```
 
 **Exception:** Storing calculated values is OK for:
@@ -450,6 +507,7 @@ class Order:
 ❌ **Bad:**
 
 ```python
+# fragment
 @domain.aggregate
 class Customer:
     # Identity
@@ -486,18 +544,22 @@ class Customer:
 # Ordering bounded context
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)  # Reference
+    customer_id: Identifier(required=True)  # Held by id
 
 # Billing bounded context
 @domain.aggregate
 class BillingAccount:
-    customer_id: String(required=True)  # Reference
+    customer_id: Identifier(required=True)  # Held by id
     credit_cards = HasMany("CreditCard")
+
+@domain.entity(part_of="BillingAccount")
+class CreditCard:
+    last_four: String(max_length=4)
 
 # Loyalty bounded context
 @domain.aggregate
 class LoyaltyAccount:
-    customer_id: String(required=True)  # Reference
+    customer_id: Identifier(required=True)  # Held by id
     points: Integer(default=0)
     tier: String(default="bronze")
 ```

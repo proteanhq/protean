@@ -18,6 +18,7 @@ This document covers:
 
 **Bad**:
 ```python
+# fragment
 @domain.aggregate
 class Product:
     price: String()  # Wrong type!
@@ -29,7 +30,7 @@ class Product:
 ```python
 @domain.aggregate
 class Product:
-    price: Float(required=True, min_value=0.01)
+    price: Decimal(required=True, precision=19, scale=4, min_value=0.01)
     quantity: Integer(required=True, min_value=0)
     discount: Float(min_value=0.0, max_value=100.0, default=0.0)
 ```
@@ -44,6 +45,7 @@ class Product:
 
 **Bad**:
 ```python
+# fragment
 @domain.aggregate
 class User:
     username: Text()  # Too permissive!
@@ -68,9 +70,10 @@ class User:
 
 **Bad**:
 ```python
+# fragment
 @domain.aggregate
 class Order:
-    total_amount: Float()
+    total_amount: Decimal(precision=19, scale=4)
     total_currency: String()  # Related but separate
 
     shipping_street: String()
@@ -83,7 +86,7 @@ class Order:
 ```python
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(required=True, precision=19, scale=4)
     currency: String(max_length=3, default="USD")
 
 @domain.value_object
@@ -109,6 +112,7 @@ class Order:
 
 **Bad**:
 ```python
+# fragment
 # Using HasMany for simple strings
 @domain.entity(part_of="Product")
 class Tag:
@@ -145,12 +149,13 @@ class Order:
 
 **Bad**:
 ```python
+# fragment
 @domain.aggregate
 class Product:
-    price: Float(required=True)  # No validation!
+    price: Decimal(required=True, precision=19, scale=4)  # No validation!
     stock_count: Integer(default=0)  # No validation!
 
-    def set_price(self, new_price: float):
+    def set_price(self, new_price: D):
         # Manual validation repeated everywhere
         if new_price <= 0:
             raise ValueError("Price must be positive")
@@ -168,13 +173,15 @@ class Product:
 
 **Good**:
 ```python
+from decimal import Decimal as D
+
 @domain.aggregate
 class Product:
     # Field-level validation automatically enforced
-    price: Float(required=True, min_value=0.01, max_value=999999.99)
+    price: Decimal(required=True, precision=19, scale=4, min_value=0.01, max_value=999999.99)
     stock_count: Integer(default=0, min_value=0)
 
-    def set_price(self, new_price: float):
+    def set_price(self, new_price: D):
         self.price = new_price  # Field validates automatically
 
     def adjust_stock(self, delta: int):
@@ -191,11 +198,12 @@ class Product:
 
 **Bad**:
 ```python
+# fragment
 from protean.exceptions import ValidationError
 
 @domain.aggregate
 class Product:
-    price: Float(required=True)
+    price: Decimal(required=True, precision=19, scale=4)
     name: String(required=True)
 
     @invariant.post  # Wrong! Use field parameter
@@ -216,19 +224,18 @@ from protean.exceptions import ValidationError
 @domain.aggregate
 class Product:
     # Field-level validation
-    price: Float(required=True, min_value=0.01)
+    price: Decimal(required=True, precision=19, scale=4, min_value=0.01)
+    sale_price: Decimal(precision=19, scale=4, min_value=0.01)
     name: String(required=True, max_length=200)
 
     # Invariants ONLY for cross-field business rules
     @invariant.post
-    def discounted_price_must_be_positive(self):
+    def sale_price_must_not_exceed_price(self):
         """Cross-field business rule."""
-        if self.discount_percent > 0:
-            final = self.price * (1 - self.discount_percent / 100)
-            if final <= 0:
-                raise ValidationError(
-                    {"_entity": ["Discount makes price negative"]}
-                )
+        if self.sale_price is not None and self.sale_price > self.price:
+            raise ValidationError(
+                {"_entity": ["Sale price cannot be higher than the price"]}
+            )
 ```
 
 **Why it matters**: Right tool for the job, clearer intent, automatic enforcement.
@@ -241,6 +248,7 @@ class Product:
 
 **Bad**:
 ```python
+# fragment
 @domain.aggregate
 class User:
     age: Integer()  # No min/max!
@@ -250,6 +258,8 @@ class User:
 
 **Good**:
 ```python
+from protean.exceptions import ValidationError
+
 class EmailValidator:
     def __call__(self, value: str):
         if "@" not in value or value.startswith("@"):
@@ -272,6 +282,7 @@ class User:
 
 **Bad**:
 ```python
+# fragment
 @domain.aggregate
 class Order:
     line_items = HasMany("LineItem")
@@ -297,7 +308,7 @@ class Order:
     # add_line_items(), remove_line_items() already exist!
 
     # Only create custom methods when you need ADDITIONAL logic
-    def add_product(self, product_id: str, quantity: int, price: float):
+    def add_product(self, product_id: str, quantity: int, price: D):
         """Custom method with validation."""
         if quantity > 100:
             raise ValueError("Max 100 per product")
@@ -305,6 +316,12 @@ class Order:
         # Use auto-generated helper
         item = LineItem(product_id=product_id, quantity=quantity, unit_price=price)
         self.add_line_items([item])
+
+@domain.entity(part_of="Order")
+class LineItem:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True, min_value=1)
+    unit_price: Decimal(required=True, precision=19, scale=4)
 ```
 
 **Why it matters**: Don't fight the framework, less code to maintain, consistent API.
@@ -317,6 +334,7 @@ class Order:
 
 **Bad**:
 ```python
+# fragment
 @domain.entity  # ERROR! Missing part_of
 class LineItem:
     product_id: String(required=True)
@@ -337,10 +355,12 @@ class LineItem:
 
 ### Mistake 10: Wrong Association Type
 
-**Problem**: Using Reference for same-aggregate relationships or HasMany for cross-aggregate.
+**Problem**: Using Reference for same-aggregate relationships, or an association field
+(Reference, HasOne, HasMany) to point at another aggregate.
 
 **Bad**:
 ```python
+# fragment
 @domain.aggregate
 class Order:
     # Wrong! LineItem is part of Order aggregate
@@ -349,7 +369,8 @@ class Order:
 @domain.aggregate
 class Order:
     # Wrong! Customer is separate aggregate
-    customer = HasMany("Customer")  # Should be Reference
+    customer = Reference("Customer")  # Should be an Identifier holding its id
+    # protean check reports this as CROSS_AGGREGATE_REFERENCE
 ```
 
 **Good**:
@@ -359,13 +380,16 @@ class Order:
     # Correct: HasMany for same-aggregate entities
     line_items = HasMany("LineItem")
 
-    # Correct: Reference for cross-aggregate
-    customer = Reference("Customer")
+    # Correct: Identifier holding the other aggregate's id
+    customer_id = Identifier(required=True)
 
 @domain.entity(part_of="Order")
 class LineItem:
     product_id: String(required=True)
 ```
+
+Use `Reference` only on an entity, to point back at its parent (the aggregate root, or the
+parent entity when nested). `HasMany` and `HasOne` add that field for you.
 
 **Why it matters**: Proper aggregate boundaries, correct relationship modeling.
 
@@ -377,11 +401,12 @@ class LineItem:
 
 **Bad**:
 ```python
+# fragment
 # Order details scattered
 @domain.aggregate
 class Customer:
     name: String(required=True)
-    order_total: Float()  # Wrong! Belongs to Order
+    order_total: Decimal(precision=19, scale=4)  # Wrong! Belongs to Order
     order_status: String()  # Wrong! Belongs to Order
 
 # Aggregate for data that should be entity
@@ -400,7 +425,7 @@ class Customer:
 
 @domain.aggregate
 class Order:
-    customer = Reference("Customer")
+    customer_id = Identifier(required=True)  # Holds the Customer's id
     total = ValueObject(Money)
     status: String(choices=["draft", "placed", "shipped"])
     line_items = HasMany("LineItem")
@@ -421,13 +446,14 @@ class LineItem:  # Correctly an entity
 
 **Bad**:
 ```python
+# fragment
 @domain.aggregate
 class Order:
     # Email as primitive string
     customer_email: String()  # No validation!
 
     # Money as primitives
-    total_amount: Float()
+    total_amount: Decimal(precision=19, scale=4)
     total_currency: String()  # Scattered
 
     # Address as primitives
@@ -445,7 +471,7 @@ class Email:
 
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(required=True, precision=19, scale=4)
     currency: String(max_length=3, default="USD")
 
 @domain.value_object
@@ -472,6 +498,7 @@ class Order:
 
 **Bad**:
 ```python
+# fragment
 @domain.aggregate
 class User:
     email: String()  # Is this required? Unclear
@@ -497,6 +524,7 @@ class User:
 
 **Bad**:
 ```python
+# fragment
 @domain.aggregate
 class Post:
     title: String(required=True)
@@ -525,6 +553,7 @@ class Post:
 
 **Bad**:
 ```python
+# fragment
 @domain.aggregate
 class Order:
     status: String()  # Any value allowed! Typos possible
@@ -551,30 +580,39 @@ class Order:
 
 **Bad**:
 ```python
+# fragment
 # Add field and assume it works
-price: Float(min_value=0.01)
+price: Decimal(precision=19, scale=4, min_value=0.01)
 
 # No tests!
 ```
 
 **Good**:
 ```python
-# Add field with validation
-price: Float(required=True, min_value=0.01, max_value=999999.99)
+import pytest
+from decimal import Decimal as D
 
-# Write tests
+from protean.exceptions import ValidationError
+
+# Add field with validation
+@domain.aggregate
+class Product:
+    name: String(required=True, max_length=200)
+    price: Decimal(required=True, precision=19, scale=4, min_value=0.01, max_value=999999.99)
+
+# Write tests (run inside a domain context, usually set up by a fixture)
 def test_product_price_validation():
     # Test valid price
-    product = Product(name="Widget", price=50.0)
-    assert product.price == 50.0
+    product = Product(name="Widget", price=D("50.00"))
+    assert product.price == D("50.00")
 
     # Test invalid price (too low)
     with pytest.raises(ValidationError):
-        Product(name="Widget", price=0.0)
+        Product(name="Widget", price=D("0"))
 
     # Test invalid price (too high)
     with pytest.raises(ValidationError):
-        Product(name="Widget", price=1000000.0)
+        Product(name="Widget", price=D("1000000"))
 ```
 
 **Why it matters**: Confidence, catches bugs early, documents behavior.
@@ -587,11 +625,12 @@ def test_product_price_validation():
 
 **Bad**:
 ```python
+# fragment
 @domain.aggregate
 class Order:
     customerID: String()  # camelCase
     order_number: String()  # snake_case
-    OrderTotal: Float()  # PascalCase
+    OrderTotal: Decimal(precision=19, scale=4)  # PascalCase
     line_items = HasMany("LineItem")  # snake_case
 ```
 
@@ -599,7 +638,7 @@ class Order:
 ```python
 @domain.aggregate
 class Order:
-    customer_id: String()  # Consistent snake_case
+    customer_id: Identifier()  # Consistent snake_case
     order_number: String()  # Consistent snake_case
     total = ValueObject(Money)  # Consistent snake_case
     line_items = HasMany("LineItem")  # Consistent snake_case
@@ -612,7 +651,7 @@ class Order:
 Before adding a field, verify:
 
 **Field Type**:
-- [ ] Using correct type (String vs Text, Integer vs Float)
+- [ ] Using correct type (String vs Text; Integer, Decimal or Float)
 - [ ] Not using String for numeric values
 - [ ] Using ValueObject for complex/related data
 
@@ -622,7 +661,7 @@ Before adding a field, verify:
 - [ ] Custom validators for complex format validation
 
 **Associations**:
-- [ ] Using correct association type (HasOne, HasMany, ValueObject, Reference)
+- [ ] Using correct association type (HasOne, HasMany, ValueObject), and an `Identifier` for another aggregate
 - [ ] Not manually creating auto-generated methods
 - [ ] Entities have part_of specified
 

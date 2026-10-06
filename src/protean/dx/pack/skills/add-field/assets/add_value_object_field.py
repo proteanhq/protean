@@ -14,12 +14,14 @@ Usage:
     python add_value_object_field.py
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, Integer, String, ValueObject
+from protean.fields import Decimal, Float, Identifier, Integer, String, ValueObject
 
 # Domain setup
-domain = Domain(__name__)
+domain = Domain()
 
 
 # ========================================
@@ -37,7 +39,7 @@ class Money:
     - Behavior (add, multiply methods)
     """
 
-    amount: Float(required=True)
+    amount: Decimal(required=True, precision=19, scale=4)
     currency: String(max_length=3, default="USD")
 
     def add(self, other: "Money") -> "Money":
@@ -49,12 +51,13 @@ class Money:
             raise ValueError(f"Cannot add {self.currency} and {other.currency}")
         return Money(amount=self.amount + other.amount, currency=self.currency)
 
-    def multiply(self, factor: float) -> "Money":
+    def multiply(self, factor: D | int) -> "Money":
         """Multiply money by a factor.
 
-        Returns NEW instance.
+        Returns NEW instance, rounded to the field's 4 decimal places.
         """
-        return Money(amount=self.amount * factor, currency=self.currency)
+        amount = (self.amount * factor).quantize(D("0.0001"))
+        return Money(amount=amount, currency=self.currency)
 
     def subtract(self, other: "Money") -> "Money":
         """Subtract money.
@@ -140,7 +143,7 @@ class Order:
     """
 
     order_number: String(required=True, max_length=50, identifier=True)
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)  # Links to the Customer aggregate by id
     status: String(default="draft", choices=["draft", "placed", "shipped", "delivered"])
 
     # ValueObject fields
@@ -167,13 +170,13 @@ class Product:
     sku: String(required=True, max_length=50, identifier=True)
     name: String(required=True, max_length=200)
 
-    # Price as Money (not primitive float)
+    # Price as Money (not a bare number)
     price = ValueObject(Money, required=True)
 
     # Location (optional)
     warehouse_location = ValueObject(Coordinates)
 
-    def apply_discount(self, discount_percent: float):
+    def apply_discount(self, discount_percent: D):
         """Apply discount to price.
 
         Demonstrates replacing value object (immutability).
@@ -209,7 +212,7 @@ class LineItem:
     - Calculations using value object methods
     """
 
-    product_id: String(required=True, max_length=50)
+    product_id: Identifier(required=True)  # Links to the Product aggregate by id
     product_name: String(required=True, max_length=200)
     quantity: Integer(required=True, min_value=1)
 
@@ -246,8 +249,8 @@ if __name__ == "__main__":
         order = Order(
             order_number="ORD-001",
             customer_id="CUST-123",
-            total=Money(amount=150.0, currency="USD"),
-            shipping_cost=Money(amount=10.0, currency="USD"),
+            total=Money(amount=D("150.00"), currency="USD"),
+            shipping_cost=Money(amount=D("10.00"), currency="USD"),
             shipping_address=Address(
                 street="123 Main St", city="New York", state="NY", postal_code="10001"
             ),
@@ -270,9 +273,9 @@ if __name__ == "__main__":
         order2 = Order(
             order_number="ORD-002",
             customer_id="CUST-456",
-            total_amount=200.0,
+            total_amount=D("200.00"),
             total_currency="USD",
-            shipping_cost_amount=15.0,
+            shipping_cost_amount=D("15.00"),
             shipping_cost_currency="USD",
             shipping_address_street="456 Oak Ave",
             shipping_address_city="Boston",
@@ -295,7 +298,7 @@ if __name__ == "__main__":
         product = Product(
             sku="PROD-001",
             name="Wireless Mouse",
-            price=Money(amount=29.99, currency="USD"),
+            price=Money(amount=D("29.99"), currency="USD"),
             warehouse_location=Coordinates(latitude=40.7128, longitude=-74.0060),
         )
 
@@ -303,20 +306,20 @@ if __name__ == "__main__":
         print(f"Original price: ${product.price.amount:.2f}")
 
         # Apply 20% discount
-        product.apply_discount(20.0)
+        product.apply_discount(D("20"))
         print(f"After 20% discount: ${product.price.amount:.2f}")
 
         # Cannot modify value object directly
         print("\nTrying to modify value object directly:")
         try:
-            product.price.amount = 50.0  # This will fail!
+            product.price.amount = D("50.00")  # This will fail!
             print("  ERROR: Should have prevented modification!")
         except Exception:
             print("  ✓ Correctly prevented: Value objects are immutable")
 
         # Must replace entire value object
         print("\nReplacing value object:")
-        product.price = Money(amount=19.99, currency="USD")
+        product.price = Money(amount=D("19.99"), currency="USD")
         print(f"  New price: ${product.price.amount:.2f}")
         print()
 
@@ -326,8 +329,8 @@ if __name__ == "__main__":
         print("4. Value Object Methods")
         print("-" * 60)
 
-        price1 = Money(amount=100.0, currency="USD")
-        price2 = Money(amount=50.0, currency="USD")
+        price1 = Money(amount=D("100.00"), currency="USD")
+        price2 = Money(amount=D("50.00"), currency="USD")
 
         # Add (returns new Money instance)
         total = price1.add(price2)
@@ -353,8 +356,8 @@ if __name__ == "__main__":
         print("5. Currency Validation")
         print("-" * 60)
 
-        usd = Money(amount=100.0, currency="USD")
-        eur = Money(amount=100.0, currency="EUR")
+        usd = Money(amount=D("100.00"), currency="USD")
+        eur = Money(amount=D("100.00"), currency="EUR")
 
         try:
             mixed = usd.add(eur)  # Should fail!
@@ -373,8 +376,8 @@ if __name__ == "__main__":
         order4 = Order(
             order_number="ORD-004",
             customer_id="CUST-999",
-            total=Money(amount=100.0, currency="USD"),
-            shipping_cost=Money(amount=10.0, currency="USD"),
+            total=Money(amount=D("100.00"), currency="USD"),
+            shipping_cost=Money(amount=D("10.00"), currency="USD"),
             shipping_address=Address(
                 street="789 Pine Rd", city="Seattle", state="WA", postal_code="98101"
             ),
@@ -389,9 +392,9 @@ if __name__ == "__main__":
         print()
 
         # ========================================
-        # Example 8: Value Object with Invariants
+        # Example 7: Value Object with Invariants
         # ========================================
-        print("8. Value Objects with Validation")
+        print("7. Value Objects with Validation")
         print("-" * 60)
 
         # Valid date range

@@ -18,13 +18,18 @@ Key highlights:
 - Value objects can contain ValueObject fields
 - Nesting can be multiple levels deep
 - Immutability cascades through nested structures
-- Can initialize nested VOs by attributes or objects
+- A nested value object is passed in as an object
 
 ## Walkthrough
 
 ### Simple Nesting
 
 ```python
+from decimal import Decimal as D
+
+from protean.exceptions import IncorrectUsageError, ValidationError
+
+
 @domain.value_object
 class Coordinates:
     """Geographic coordinates value object."""
@@ -71,7 +76,7 @@ Three levels:
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.value_object
@@ -105,40 +110,42 @@ address = Address(
 )
 ```
 
-### Initialize by Attributes
+### Do Not Flatten Into a Value Object
+
+A value object's constructor accepts only its own fields. Flattened keyword arguments such as `coordinates_latitude=` fail:
 
 ```python
-# Initialize nested VO by flattening attributes
-address = Address(
-    street="456 Market Street",
-    city="San Francisco",
-    state="CA",
-    postal_code="94102",
-    country="USA",
-    coordinates_latitude=37.7749,
-    coordinates_longitude=-122.4194
-)
+try:
+    Address(
+        street="456 Market Street",
+        city="San Francisco",
+        state="CA",
+        postal_code="94102",
+        country="USA",
+        coordinates_latitude=37.7749,
+        coordinates_longitude=-122.4194
+    )
+except ValidationError as exc:
+    print(exc.messages)  # coordinates_latitude: Extra inputs are not permitted
 ```
 
-The attribute naming pattern:
-- `{field_name}_{nested_field_name}`
-- `coordinates_latitude` → `coordinates` field, `latitude` attribute
-- Works at any nesting depth
+An aggregate or entity accepts one level of flattening for a value object field it holds directly (`Customer(shipping_address_city="Boston", ...)`). Nothing deeper works, so build nested value objects as objects at every level.
 
-### Deep Nesting with Attributes
+### Deep Nesting
 
 ```python
 # Three levels: ContactInfo → Address → Coordinates
 contact = ContactInfo(
     email="john@example.com",
     phone="+1-555-0123",
-    address_street="789 Main St",
-    address_city="Boston",
-    address_state="MA",
-    address_postal_code="02101",
-    address_country="USA",
-    address_coordinates_latitude=42.3601,
-    address_coordinates_longitude=-71.0589
+    address=Address(
+        street="789 Main St",
+        city="Boston",
+        state="MA",
+        postal_code="02101",
+        country="USA",
+        coordinates=Coordinates(latitude=42.3601, longitude=-71.0589),
+    ),
 )
 ```
 
@@ -147,12 +154,6 @@ contact = ContactInfo(
 ### Geographic Data
 
 ```python
-@domain.value_object
-class Coordinates:
-    latitude: Float(required=True)
-    longitude: Float(required=True)
-
-
 @domain.value_object
 class Location:
     """Location with name and coordinates."""
@@ -166,13 +167,9 @@ class Location:
 
 ### Money with Breakdown
 
+This example reuses the `Money` value object defined above.
+
 ```python
-@domain.value_object
-class Money:
-    currency: String(max_length=3, required=True)
-    amount: Float(required=True)
-
-
 @domain.value_object
 class InvoiceTotal:
     """Invoice total with tax breakdown."""
@@ -190,7 +187,7 @@ class InvoiceTotal:
             self.shipping.amount
         )
 
-        if abs(self.total.amount - expected_total) > 0.01:
+        if self.total.amount != expected_total:
             raise ValidationError(
                 {"total": ["Total doesn't match sum of components"]}
             )
@@ -269,7 +266,25 @@ class Customer:
 
 Access patterns:
 ```python
-customer = Customer(...)
+domain.init(traverse=False)
+
+with domain.domain_context():
+    customer = Customer(
+        customer_id="CUST-001",
+        name=PersonName(first_name="John", last_name="Smith"),
+        contact=ContactDetails(
+            name=PersonName(first_name="John", last_name="Smith"),
+            email="john@example.com",
+        ),
+        shipping_address=Address(
+            street="123 Main St",
+            city="Boston",
+            state="MA",
+            postal_code="02101",
+            country="USA",
+            coordinates=Coordinates(latitude=42.36, longitude=-71.06),
+        ),
+    )
 
 # Access nested attributes
 print(customer.name.full_name)
@@ -293,10 +308,16 @@ address = Address(
 )
 
 # Cannot modify nested value object
-address.coordinates.latitude = 50.0  # Raises IncorrectUsageError
+try:
+    address.coordinates.latitude = 50.0
+except IncorrectUsageError:
+    print("Nested value objects are immutable")
 
 # Cannot modify value object itself
-address.city = "New York"  # Raises IncorrectUsageError
+try:
+    address.city = "New York"
+except IncorrectUsageError:
+    print("Value objects are immutable")
 
 # To "change", replace entire value object
 new_address = Address(
@@ -307,12 +328,18 @@ new_address = Address(
     country="USA",
     coordinates=Coordinates(latitude=40.71, longitude=-74.01)
 )
-customer.shipping_address = new_address  # This works
+with domain.domain_context():
+    customer.shipping_address = new_address  # This works
 ```
 
 ## Testing Nested Value Objects
 
 ```python
+import pytest
+
+from protean.exceptions import IncorrectUsageError, ValidationError
+
+
 def test_nested_value_object_creation():
     coords = Coordinates(latitude=40.7128, longitude=-74.0060)
     address = Address(
@@ -327,19 +354,17 @@ def test_nested_value_object_creation():
     assert address.coordinates.latitude == 40.7128
     assert address.coordinates.longitude == -74.0060
 
-def test_nested_value_object_by_attributes():
-    address = Address(
-        street="123 Broadway",
-        city="New York",
-        state="NY",
-        postal_code="10012",
-        country="USA",
-        coordinates_latitude=40.7128,
-        coordinates_longitude=-74.0060
-    )
-
-    assert address.coordinates.latitude == 40.7128
-    assert address.coordinates.longitude == -74.0060
+def test_nested_value_object_rejects_flattened_attributes():
+    with pytest.raises(ValidationError):
+        Address(
+            street="123 Broadway",
+            city="New York",
+            state="NY",
+            postal_code="10012",
+            country="USA",
+            coordinates_latitude=40.7128,
+            coordinates_longitude=-74.0060
+        )
 
 def test_nested_value_object_immutability():
     address = Address(
@@ -361,7 +386,7 @@ def test_nested_value_object_immutability():
 2. **Keep nesting reasonable** - Avoid more than 3-4 levels deep
 3. **Name fields clearly** - Field name should indicate what it contains
 4. **Document composition** - Explain why VOs are nested
-5. **Test initialization patterns** - Both object and attribute initialization
+5. **Pass nested value objects as objects** - A value object's constructor takes no flattened attributes
 6. **Validate relationships** - Use invariants for cross-VO rules
 7. **Provide computed properties** - For derived values from nested data
 
@@ -384,8 +409,9 @@ if customer.contact.address.coordinates.latitude > 40:
 
 **Forgetting immutability** ❌
 ```python
+# fragment
 # Trying to modify nested VO
-customer.address.coordinates.latitude = 50.0  # Won't work!
+customer.shipping_address.coordinates.latitude = 50.0  # Raises IncorrectUsageError
 ```
 
 ## Related

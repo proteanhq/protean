@@ -18,12 +18,13 @@ Common anti-patterns:
 
 **❌ Bad: Using primitives everywhere**
 ```python
+# fragment
 @domain.aggregate
 class Order:
     customer_id: String(required=True)
 
     # Flattened money
-    total_amount: Float()
+    total_amount: Decimal(precision=19, scale=4)
     total_currency: String()
 
     # Flattened address
@@ -42,10 +43,13 @@ class Order:
 
 **✅ Good: Using value objects**
 ```python
+from decimal import Decimal as D
+
+
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True, min_value=0)
+    amount: Decimal(precision=19, scale=4, required=True, min_value=0)
 
 
 @domain.value_object
@@ -59,7 +63,7 @@ class Address:
 
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)
     total = ValueObject(Money, required=True)
     shipping_address = ValueObject(Address, required=True)
 ```
@@ -76,37 +80,52 @@ class Order:
 
 **❌ Bad: Modifying value object attributes**
 ```python
-# fragment
-order = Order(
-    total=Money(currency="USD", amount=100.0),
-    ...
-)
+import pytest
 
-# This raises IncorrectUsageError
-order.total.amount = 200.0
+from protean.exceptions import IncorrectUsageError
 
-# This also fails
-order.total.currency = "EUR"
+total = Money(currency="USD", amount=D("100.00"))
+
+# Assigning to a value object's attribute raises IncorrectUsageError
+with pytest.raises(IncorrectUsageError):
+    total.amount = D("200.00")
+
+with pytest.raises(IncorrectUsageError):
+    total.currency = "EUR"
 ```
 
 **✅ Good: Replacing entire value object**
 ```python
-# Create new instance and replace
-order.total = Money(currency="USD", amount=200.0)
+domain.init(traverse=False)
 
-# Or use value object methods that return new instances
-discounted = order.total.multiply(0.9)
-order.total = discounted
+with domain.domain_context():
+    order = Order(
+        customer_id="CUST-001",
+        total=Money(currency="USD", amount=D("100.00")),
+        shipping_address=Address(
+            street="123 Main St",
+            city="Boston",
+            state="MA",
+            postal_code="02101",
+            country="USA",
+        ),
+    )
+
+    # Create new instance and replace
+    order.total = Money(currency="USD", amount=D("200.00"))
 ```
+
+A value object method that returns a new instance works the same way: `order.total = order.total.multiply(D("0.9"))`. See [Anemic Value Objects](#anemic-value-objects) for such a method.
 
 ### Anti-Pattern: Methods That Modify Self
 
 **❌ Bad: Modifying self in methods**
 ```python
+# fragment
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
     def add(self, other: "Money") -> "Money":
         # Wrong! Trying to modify self
@@ -119,7 +138,7 @@ class Money:
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
     def add(self, other: "Money") -> "Money":
         # Correct: Return new instance
@@ -135,15 +154,17 @@ class Money:
 
 **❌ Bad: Adding ID fields**
 ```python
+# fragment
 @domain.value_object
 class Address:
-    id: Auto()  # Error! Value objects can't have identity
+    id: Auto(identifier=True)  # Error! Value objects can't have identity
     street: String(required=True)
     city: String(required=True)
 ```
 
 **❌ Bad: Marking fields as identifier**
 ```python
+# fragment
 @domain.value_object
 class Email:
     address: String(identifier=True)  # Error!
@@ -151,6 +172,7 @@ class Email:
 
 **❌ Bad: Marking fields as unique**
 ```python
+# fragment
 @domain.value_object
 class PhoneNumber:
     number: String(unique=True)  # Error!
@@ -177,10 +199,11 @@ class ContactMethod:
 
 **❌ Bad: Just data, no behavior**
 ```python
+# fragment
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     # No methods!
 
 
@@ -189,7 +212,7 @@ class Money:
 class Order:
     total = ValueObject(Money)
 
-    def calculate_discount(self, percentage: float) -> Money:
+    def calculate_discount(self, percentage: D) -> Money:
         # Logic that should be in Money
         discounted_amount = self.total.amount * (1 - percentage)
         return Money(
@@ -203,12 +226,12 @@ class Order:
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
-    def multiply(self, factor: float) -> "Money":
+    def multiply(self, factor: int | D) -> "Money":
         return Money(
             currency=self.currency,
-            amount=self.amount * factor
+            amount=(self.amount * factor).quantize(D("0.0001"))
         )
 
     def add(self, other: "Money") -> "Money":
@@ -224,7 +247,7 @@ class Money:
 class Order:
     total = ValueObject(Money)
 
-    def calculate_discount(self, percentage: float) -> Money:
+    def calculate_discount(self, percentage: D) -> Money:
         # Use value object's behavior
         return self.total.multiply(1 - percentage)
 ```
@@ -235,11 +258,12 @@ class Order:
 
 **❌ Bad: Referencing entities**
 ```python
+# fragment
 @domain.value_object
 class OrderSummary:
     order_id: String()  # Reference to Order entity
     customer_id: String()  # Reference to Customer entity
-    total: Float()
+    total: Decimal(precision=19, scale=4)
 
     # This couples VO to entities - wrong!
 ```
@@ -256,14 +280,14 @@ class OrderSummary:
 class Money:
     # Self-contained, no entity references
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.aggregate
 class Order:
     # Aggregate contains VOs and entity references
     order_id: String(identifier=True)
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)  # Another aggregate, held by id
     total = ValueObject(Money)
 ```
 
@@ -273,6 +297,7 @@ class Order:
 
 **❌ Bad: Accepting invalid values**
 ```python
+# fragment
 @domain.value_object
 class Email:
     address: String(max_length=254)
@@ -285,20 +310,23 @@ email = Email(address="")  # Should fail!
 
 **✅ Good: Validation built-in**
 ```python
+from protean.exceptions import ValidationError
+from protean.fields.validators import RegexValidator
+
+
 @domain.value_object
 class Email:
     address: String(
         max_length=254,
         required=True,
-        validators=[EmailValidator()]
+        validators=[RegexValidator(r"^[^@\s]+@[^@\s]+$", message="Invalid email address")]
     )
 
 # Invalid emails are rejected
 try:
     email = Email(address="not-an-email")
-except ValidationError:
-    # Correctly rejected
-    pass
+except ValidationError as exc:
+    print(exc.messages)  # {'address': ['Invalid email address']}
 ```
 
 ## Wrong Aggregate/Entity/Value Object Choice
@@ -307,6 +335,7 @@ except ValidationError:
 
 **❌ Bad: Using VO when identity matters**
 ```python
+# fragment
 @domain.value_object
 class Customer:
     name: String()
@@ -332,11 +361,12 @@ class Customer:
 
 **❌ Bad: Using entity when no identity needed**
 ```python
+# fragment
 @domain.entity(part_of="Order")
 class Money:
     id: Auto()  # Money doesn't need identity!
     currency: String()
-    amount: Float()
+    amount: Decimal(precision=19, scale=4)
 ```
 
 **Signals it should be value object:**
@@ -350,7 +380,7 @@ class Money:
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 ```
 
 ## Over-nesting Value Objects
@@ -359,6 +389,7 @@ class Money:
 
 **❌ Bad: Excessive nesting**
 ```python
+# fragment
 @domain.value_object
 class Unit:
     number: String()
@@ -413,20 +444,35 @@ class Address:
 
 **❌ Bad: Duplicating VO behavior in aggregate**
 ```python
+# fragment
 @domain.aggregate
 class Order:
-    line_items = HasMany(LineItem)
+    line_items = HasMany("LineItem")
 
-    def calculate_total(self) -> float:
+    def calculate_total(self) -> D:
         # Reimplementing Money logic
-        total = 0.0
+        total = D("0")
         for item in self.line_items:
             total += item.unit_price.amount * item.quantity
         return total
 ```
 
 **✅ Good: Using VO methods**
+
+This example uses the `Money` class with `multiply` and `add` from [Anemic Value Objects](#anemic-value-objects).
+
 ```python
+@domain.entity(part_of="Order")
+class LineItem:
+    product_id: String(required=True)
+    quantity: Integer(required=True, min_value=1)
+    unit_price = ValueObject(Money, required=True)
+
+    @property
+    def line_total(self) -> Money:
+        return self.unit_price.multiply(self.quantity)
+
+
 @domain.aggregate
 class Order:
     line_items = HasMany(LineItem)
@@ -434,7 +480,7 @@ class Order:
     def calculate_total(self) -> Money:
         # Using Money's methods
         if not self.line_items:
-            return Money(currency="USD", amount=0.0)
+            return Money(currency="USD", amount=D("0"))
 
         total = self.line_items[0].line_total
         for item in self.line_items[1:]:
@@ -449,10 +495,11 @@ class Order:
 
 **❌ Bad: Vague errors**
 ```python
+# fragment
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
     def add(self, other: "Money") -> "Money":
         if self.currency != other.currency:
@@ -464,7 +511,7 @@ class Money:
 @domain.value_object
 class Money:
     currency: String(max_length=3, required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
     def add(self, other: "Money") -> "Money":
         if self.currency != other.currency:

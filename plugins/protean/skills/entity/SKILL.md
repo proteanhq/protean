@@ -17,25 +17,27 @@ An entity is defined using the `@domain.entity` decorator and must specify which
 
 ```python
 from protean import Domain
-from protean.fields import String, Integer
+from protean.fields import Decimal, HasMany, Identifier, Integer
 
 domain = Domain()
 
 @domain.aggregate
 class Order:
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)
     line_items = HasMany("LineItem")
 
 @domain.entity(part_of="Order")
 class LineItem:
-    product_id: String(required=True, max_length=50)
+    product_id: Identifier(required=True)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True)
+    unit_price: Decimal(precision=19, scale=4, required=True)
 ```
+
+`customer_id` and `product_id` hold the ids of other aggregates. Link to another aggregate with an `Identifier` field, never with a `Reference`.
 
 ## Key rules
 
-1. **Entities must be part of an aggregate** - Use `part_of` parameter to associate with parent aggregate. **Always use a string reference** (`part_of="Order"`) to avoid circular dependencies when aggregate and entity are in the same file
+1. **Entities must be part of an aggregate** - Use `part_of` parameter to associate with parent aggregate. **Use a string reference** (`part_of="Order"`) to avoid circular dependencies when aggregate and entity are in the same file. A nested entity passes its parent entity as a class (`part_of=LineItem`), because a string resolves only to an aggregate
 2. **Entities have automatic identity** - An `id` field is auto-generated unless `auto_add_id_field=False`
 3. **Entities get automatic reference fields** - A reference field back to parent aggregate is created automatically
 4. **Entities are accessed through aggregates** - Never query or update entities directly
@@ -49,18 +51,25 @@ class LineItem:
 ### Simple entity
 
 ```python
+from protean.fields import String
+
+@domain.aggregate
+class Post:
+    title: String(required=True, max_length=200)
+    comments = HasMany("Comment")
+
 @domain.entity(part_of="Post")
 class Comment:
     content: String(required=True, max_length=500)
     author: String(required=True, max_length=100)
     # Automatically gets: id field
     # Automatically gets: post = Reference(Post)
-    # Automatically gets: post_id: String()  # Shadow field
+    # Automatically gets: post_id  # Shadow field holding the post's id
 ```
 
 ### Entity with part_of
 
-**Always use a string reference** for `part_of` to avoid circular dependencies:
+**Use a string reference to the aggregate** for `part_of` to avoid circular dependencies (a nested entity is the exception, see [Nested entities](references/nested-entities.md)):
 
 ```python
 @domain.entity(part_of="Order")
@@ -69,7 +78,7 @@ class LineItem:
     quantity: Integer(required=True)
 ```
 
-**Why string references?** Aggregates, entities, and value objects are often defined in the same file. The aggregate references entities via `HasMany("LineItem")` (forward reference), and entities reference back via `part_of`. If entities use a class reference (`part_of=Order`), the entity must be defined *after* the aggregate — but the aggregate's `HasMany` needs the entity to exist too. Using string references on both sides (`HasMany("LineItem")` and `part_of="Order"`) breaks this circular dependency and allows elements to be defined in any order.
+**Why string references?** Aggregates, entities, and value objects are often defined in the same file. The aggregate references entities via `HasMany("LineItem")` (forward reference), and entities reference back via `part_of`. If entities use a class reference (`part_of=Order`), the entity must be defined *after* the aggregate, but the aggregate's `HasMany` needs the entity to exist too. Using string references on both sides (`HasMany("LineItem")` and `part_of="Order"`) breaks this circular dependency and allows elements to be defined in any order.
 
 ## Associations
 
@@ -80,7 +89,7 @@ One-to-one relationship with another entity:
 ```python
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)
     shipping_info = HasOne("ShippingInfo")
 
 @domain.entity(part_of="Order")
@@ -98,12 +107,13 @@ One-to-many relationship with other entities:
 ```python
 @domain.aggregate
 class Order:
-    customer_id: String(required=True)
+    customer_id: Identifier(required=True)
+    shipping_info = HasOne("ShippingInfo")
     line_items = HasMany("LineItem")
 
 @domain.entity(part_of="Order")
 class LineItem:
-    product_id: String(required=True)
+    product_id: Identifier(required=True)
     quantity: Integer(required=True)
 ```
 
@@ -111,40 +121,34 @@ class LineItem:
 
 - `add_line_items(item)` - Add one or more items to the collection
 - `remove_line_items(item)` - Remove an item from the collection
-- `get_one_from_line_items(identifier)` - Get a specific item by its identifier
-- `filter_line_items(**criteria)` - Filter items based on criteria
+- `get_one_from_line_items(id=item_id)` - Get the one item that matches the keyword arguments. It raises `ObjectNotFoundError` (from `protean.exceptions`) when no item matches, and `TooManyObjectsError` when more than one does.
+- `filter_line_items(**criteria)` - Return the items whose fields equal the given values, such as `filter_line_items(product_id="P1")`. It matches on equality only.
 
 **Important**: Do NOT manually create these methods - they are automatically available. Only create custom methods if you need behavior different from the defaults.
 
 ### Automatic reference fields
 
-Entities automatically get a reference field to their parent aggregate:
-
-```python
-order = Order(customer_id="C123")
-item = LineItem(product_id="P1", quantity=2)
-order.add_line_items([item])
-
-# Access parent from entity
-parent_order = item.order  # Returns the Order object
-parent_id = item.order_id  # Returns the order's ID
-```
+Entities automatically get a reference field to their parent aggregate. A `LineItem` that is part of `Order` gets `item.order`, which returns the `Order` object, and `item.order_id`, which holds the order's id. [Accessing entities](#accessing-entities) shows both in use.
 
 ## Configuration options
 
-### `abstract`
+### Sharing fields through a base class
 
-Mark an entity as abstract to prevent direct instantiation:
+`@domain.entity` has no `abstract` option. To share fields between entities, put them on a plain subclass of `BaseEntity` and leave it undecorated. Decorate only the concrete subclasses. Keep association fields (`HasMany`, `HasOne`) on the concrete entities, because two entities that inherit the same association fail `domain.init()`:
 
 ```python
-@domain.entity(part_of="Order", abstract=True)
-class BaseLineItem:
+from protean.core.entity import BaseEntity
+
+class BaseLineItem(BaseEntity):
     quantity: Integer(required=True)
 
 @domain.entity(part_of="Order")
 class ProductLineItem(BaseLineItem):
-    product_id: String(required=True)
+    product_id: Identifier(required=True)
+    # Inherits quantity from BaseLineItem
 ```
+
+The base class is not registered with the domain, so it gets no table and no association. Do not decorate it: a decorated base becomes a real entity of its own.
 
 ### `auto_add_id_field`
 
@@ -155,7 +159,7 @@ Control automatic ID field generation:
 class LineItem:
     # You must provide your own identifier field
     line_number: Integer(required=True, identifier=True)
-    product_id: String(required=True)
+    product_id: Identifier(required=True)
 ```
 
 ### `schema_name`
@@ -165,58 +169,84 @@ Customize the persistence name:
 ```python
 @domain.entity(part_of="Order", schema_name="order_items")
 class LineItem:
-    product_id: String(required=True)
+    product_id: Identifier(required=True)
     quantity: Integer(required=True)
 ```
 
 ## Working with entities
 
-The examples below use auto-generated helper methods like `add_line_items()` and `remove_line_items()`. These are automatically created by Protean for `HasMany` relationships - you don't need to define them yourself.
+Creating instances needs an initialized domain and an active domain context, so the examples call `domain.init(traverse=False)` once and wrap their code in `with domain.domain_context():`. They use auto-generated helper methods like `add_line_items()` and `remove_line_items()`. These are automatically created by Protean for `HasMany` relationships - you don't need to define them yourself. They work on this model:
+
+```python
+@domain.aggregate
+class Order:
+    customer_id: Identifier(required=True)
+    line_items = HasMany("LineItem")
+
+@domain.entity(part_of="Order")
+class LineItem:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+```
 
 ### Adding entities to aggregate
 
 ```python
-order = Order(customer_id="C123")
+domain.init(traverse=False)
 
-# Create and add entity using auto-generated add_line_items() helper
-item = LineItem(product_id="P1", quantity=2)
-order.add_line_items([item])
+with domain.domain_context():
+    order = Order(customer_id="C123")
 
-# Or add multiple
-items = [
-    LineItem(product_id="P1", quantity=2),
-    LineItem(product_id="P2", quantity=1)
-]
-order.add_line_items(items)
+    # Create and add entity using auto-generated add_line_items() helper
+    item = LineItem(product_id="P1", quantity=2)
+    order.add_line_items([item])
+
+    # Or add multiple
+    items = [
+        LineItem(product_id="P2", quantity=1),
+        LineItem(product_id="P3", quantity=4),
+    ]
+    order.add_line_items(items)
+
+    domain.repository_for(Order).add(order)
+    order_id = order.id
 ```
 
 ### Accessing entities
 
 ```python
-# Access via aggregate
-order = domain.repository_for(Order).get(order_id)
-line_items = order.line_items  # List of LineItem entities
+with domain.domain_context():
+    # Access via aggregate
+    order = domain.repository_for(Order).get(order_id)
+    line_items = order.line_items  # List of LineItem entities
 
-# Iterate over entities
-for item in order.line_items:
-    print(f"Product: {item.product_id}, Qty: {item.quantity}")
+    # Iterate over entities
+    for item in order.line_items:
+        print(f"Product: {item.product_id}, Qty: {item.quantity}")
+
+    # Access the parent from an entity
+    parent_order = item.order  # Returns the Order object
+    parent_id = item.order_id  # Returns the order's ID
 ```
 
 ### Updating entities
 
 ```python
-# Update through aggregate
-order = domain.repository_for(Order).get(order_id)
-order.line_items[0].quantity = 5  # Update entity
-domain.repository_for(Order).add(order)  # Save aggregate
+with domain.domain_context():
+    # Update through aggregate
+    order = domain.repository_for(Order).get(order_id)
+    order.line_items[0].quantity = 5  # Update entity
+    domain.repository_for(Order).add(order)  # Save aggregate
 ```
 
 ### Removing entities
 
 ```python
-order = domain.repository_for(Order).get(order_id)
-order.remove_line_items(order.line_items[0])  # Uses auto-generated remove_line_items() helper
-domain.repository_for(Order).add(order)  # Save aggregate
+with domain.domain_context():
+    order = domain.repository_for(Order).get(order_id)
+    item = order.line_items[0]
+    order.remove_line_items(item)  # Uses auto-generated remove_line_items() helper
+    domain.repository_for(Order).add(order)  # Save aggregate
 ```
 
 ## Entity behavior
@@ -226,14 +256,16 @@ domain.repository_for(Order).add(order)  # Save aggregate
 Entities can have methods and computed properties:
 
 ```python
+from decimal import Decimal as D  # stdlib Decimal, aliased so it does not clash with the field
+
 @domain.entity(part_of="Order")
 class LineItem:
-    product_id: String(required=True)
+    product_id: Identifier(required=True)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True)
+    unit_price: Decimal(precision=19, scale=4, required=True)
 
     @property
-    def subtotal(self) -> float:
+    def subtotal(self) -> D:
         """Calculate line item subtotal."""
         return self.quantity * self.unit_price
 
@@ -257,14 +289,15 @@ Entities support three levels of validation (use in this order):
 class LineItem:
     product_id: String(required=True, max_length=50, min_length=3)
     quantity: Integer(required=True, min_value=1, max_value=1000)
-    unit_price: Float(required=True, min_value=0.01)
+    unit_price: Decimal(precision=19, scale=4, required=True, min_value=0.01)
     discount_percent: Float(min_value=0.0, max_value=100.0, default=0.0)
 ```
 
 **Common field validation parameters**:
 - **All fields**: `required`, `default`, `unique`, `choices`, `validators`
 - **String**: `max_length`, `min_length`, `sanitize`
-- **Integer/Float**: `min_value`, `max_value`
+- **Integer/Float/Decimal**: `min_value`, `max_value`
+- **Decimal**: `precision`, `scale` (use `Decimal(precision=19, scale=4)` for money)
 
 **2. Business rules as invariants** - For cross-field validations and domain logic:
 
@@ -278,19 +311,18 @@ from protean.exceptions import ValidationError
 class LineItem:
     product_id: String(required=True, max_length=50)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True, min_value=0.01)
+    unit_price: Decimal(precision=19, scale=4, required=True, min_value=0.01)
     discount_percent: Float(min_value=0.0, max_value=100.0, default=0.0)
 
     @invariant.post
-    def discount_cannot_exceed_unit_price(self):
-        """Granular business rule: discount validation.
+    def large_discount_needs_bulk_quantity(self):
+        """Granular business rule: discounts above 20% need 10 or more units.
 
-        Post invariants are checked after initialization and after any changes.
+        Post invariants run at the end of __init__ and on every field assignment.
         """
-        discount_amount = self.unit_price * (self.discount_percent / 100)
-        if discount_amount > self.unit_price:
+        if self.discount_percent > 20 and self.quantity < 10:
             raise ValidationError(
-                {"_entity": ["Discount cannot exceed unit price"]}
+                {"_entity": ["Discounts above 20% need a quantity of 10 or more"]}
             )
 
     @invariant.post
@@ -306,19 +338,20 @@ class LineItem:
             )
 
     @property
-    def subtotal(self) -> float:
+    def subtotal(self) -> D:
         """Calculate line item subtotal."""
         base = self.quantity * self.unit_price
-        discount = base * (self.discount_percent / 100)
+        discount = base * D(str(self.discount_percent)) / 100
         return base - discount
 ```
 
-**Note**: Entity invariants are validated as part of the aggregate's validation. When you save an aggregate, all invariants in the aggregate and its entities are checked.
+**Note**: Entity invariants are validated as part of the aggregate's validation. Post-invariants run at the end of `__init__` and on every field assignment. A change to a child entity also runs the aggregate root's post-invariants. `repository.add()` does not check them again, so an invalid change fails at the assignment, not at save time.
 
 ## Common mistakes
 
 ❌ **Defining entity without `part_of`**
 ```python
+# fragment
 @domain.entity
 class Comment:  # Error: Entity needs to be associated with an Aggregate
     content: String(max_length=500)
@@ -329,6 +362,7 @@ class Comment:  # Error: Entity needs to be associated with an Aggregate
 @domain.entity(part_of="Post")
 class Comment:
     content: String(max_length=500)
+    author: String(max_length=100)
 ```
 
 ---
@@ -342,14 +376,31 @@ comments = domain.repository_for(Comment).filter(author="John")
 
 ✅ **Access through aggregate**:
 ```python
-post = domain.repository_for(Post).get(post_id)
-comments = [c for c in post.comments if c.author == "John"]
+@domain.aggregate
+class Post:
+    title: String(required=True, max_length=200)
+    comments = HasMany("Comment")
+
+@domain.entity(part_of="Post")
+class Comment:
+    content: String(max_length=500)
+    author: String(max_length=100)
+
+domain.init(traverse=False)
+
+with domain.domain_context():
+    post = Post(title="Hello", comments=[Comment(content="Nice", author="John")])
+    domain.repository_for(Post).add(post)
+
+    post = domain.repository_for(Post).get(post.id)
+    comments = post.filter_comments(author="John")
 ```
 
 ---
 
 ❌ **Entity containing another entity without relationship**
 ```python
+# fragment
 @domain.entity(part_of="Order")
 class LineItem:
     note = Comment()  # Wrong: Use HasOne relationship
@@ -357,19 +408,29 @@ class LineItem:
 
 ✅ **Use proper association fields**:
 ```python
-@domain.entity(part_of="Order")
-class LineItem:
-    notes = HasMany("LineItemNote")
+@domain.aggregate
+class Order:
+    customer_id: Identifier(required=True)
+    line_items = HasMany("LineItem")
 
 @domain.entity(part_of="Order")
+class LineItem:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+    notes = HasMany("LineItemNote")
+
+@domain.entity(part_of=LineItem)
 class LineItemNote:
     content: String(max_length=500)
 ```
+
+A nested entity is `part_of` its parent entity, not the aggregate. Pass the parent entity as a class: a string `part_of` resolves only to an aggregate.
 
 ---
 
 ❌ **Using entity as aggregate root**
 ```python
+# fragment
 @domain.entity(part_of="Order")
 class LineItem:
     product_id: String(required=True)
@@ -380,15 +441,19 @@ domain.repository_for(LineItem).add(item)  # Wrong!
 
 ✅ **Persist through aggregate**:
 ```python
-order = Order(customer_id="C123")
-order.add_line_items([LineItem(product_id="P1", quantity=2)])
-domain.repository_for(Order).add(order)  # Correct!
+domain.init(traverse=False)
+
+with domain.domain_context():
+    order = Order(customer_id="C123")
+    order.add_line_items([LineItem(product_id="P1", quantity=2)])
+    domain.repository_for(Order).add(order)  # Correct!
 ```
 
 ---
 
 ❌ **Manually creating auto-generated helper methods**
 ```python
+# fragment
 @domain.aggregate
 class Order:
     line_items = HasMany("LineItem")
@@ -403,12 +468,21 @@ class Order:
 ```python
 @domain.aggregate
 class Order:
+    customer_id: Identifier(required=True)
     line_items = HasMany("LineItem")
     # add_line_items(), remove_line_items(), etc. are auto-generated!
 
+@domain.entity(part_of="Order")
+class LineItem:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+
+domain.init(traverse=False)
+
 # Use the auto-generated helpers
-order = Order(customer_id="C123")
-order.add_line_items([LineItem(product_id="P1", quantity=2)])  # Auto-generated
+with domain.domain_context():
+    order = Order(customer_id="C123")
+    order.add_line_items([LineItem(product_id="P1", quantity=2)])  # Auto-generated
 ```
 
 ## Examples

@@ -4,7 +4,7 @@ Simple entity with basic fields.
 This example demonstrates:
 - Basic entity definition with @domain.entity decorator
 - Required part_of parameter to associate with aggregate
-- Simple field types (String, Integer, Float)
+- Simple field types (String, Text, Integer)
 - Automatic id field generation
 - Automatic reference field to parent aggregate
 - Entity methods and computed properties
@@ -55,7 +55,7 @@ class Comment:
     # Automatic fields added by Protean:
     # - id: Auto-generated identifier
     # - post: Reference(Post) - reference back to parent
-    # - post_id: String() - shadow field for parent ID
+    # - post_id: shadow field holding the parent ID
 
     def upvote(self):
         """Increment the upvote count."""

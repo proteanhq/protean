@@ -11,12 +11,22 @@ Usage:
     python value_object_in_entity.py
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, HasMany, Integer, String, ValueObject
+from protean.fields import (
+    Decimal,
+    Float,
+    HasMany,
+    Identifier,
+    Integer,
+    String,
+    ValueObject,
+)
 
 # Domain setup (required for runnable examples)
-domain = Domain(__name__)
+domain = Domain()
 
 
 @domain.value_object
@@ -24,7 +34,7 @@ class Money:
     """Money value object."""
 
     currency: String(max_length=3, default="USD")
-    amount: Float(default=0.0)
+    amount: Decimal(precision=19, scale=4, default=0)
 
     def add(self, other: "Money") -> "Money":
         """Add two Money values."""
@@ -32,7 +42,7 @@ class Money:
             raise ValueError("Cannot add different currencies")
         return Money(currency=self.currency, amount=self.amount + other.amount)
 
-    def multiply(self, factor: float) -> "Money":
+    def multiply(self, factor: int) -> "Money":
         """Multiply money by a factor."""
         return Money(currency=self.currency, amount=self.amount * factor)
 
@@ -130,14 +140,14 @@ class Order:
     """Order aggregate containing LineItem entities with value objects."""
 
     order_number: String(required=True, max_length=20, identifier=True)
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)
     line_items = HasMany(LineItem)
 
     @property
     def order_total(self) -> Money:
         """Calculate order total from line items."""
         if not self.line_items:
-            return Money(currency="USD", amount=0.0)
+            return Money(currency="USD", amount=D("0"))
 
         total = self.line_items[0].line_total
         for item in self.line_items[1:]:
@@ -165,14 +175,14 @@ class Invoice:
     """Invoice aggregate containing InvoiceLine entities."""
 
     invoice_number: String(required=True, max_length=20, identifier=True)
-    customer_id: String(required=True, max_length=50)
+    customer_id: Identifier(required=True)
     invoice_lines = HasMany(InvoiceLine)
 
     @property
     def invoice_total(self) -> Money:
         """Calculate invoice total."""
         if not self.invoice_lines:
-            return Money(currency="USD", amount=0.0)
+            return Money(currency="USD", amount=D("0"))
 
         total = self.invoice_lines[0].total
         for line in self.invoice_lines[1:]:
@@ -198,7 +208,7 @@ if __name__ == "__main__":
                 product_id="PROD-001",
                 product_name="Laptop",
                 quantity=2,
-                unit_price=Money(currency="USD", amount=1200.0),
+                unit_price=Money(currency="USD", amount=D("1200.00")),
                 dimensions=Dimensions(length=35.0, width=25.0, height=2.0, weight=2.5),
             )
         )
@@ -208,7 +218,7 @@ if __name__ == "__main__":
                 product_id="PROD-002",
                 product_name="Mouse",
                 quantity=3,
-                unit_price=Money(currency="USD", amount=25.0),
+                unit_price=Money(currency="USD", amount=D("25.00")),
                 dimensions=Dimensions(length=10.0, width=6.0, height=4.0, weight=0.1),
             )
         )
@@ -245,7 +255,7 @@ if __name__ == "__main__":
                 product_name="Keyboard",
                 quantity=1,
                 unit_price_currency="USD",
-                unit_price_amount=75.0,
+                unit_price_amount=D("75.00"),
                 dimensions_length=45.0,
                 dimensions_width=15.0,
                 dimensions_height=3.0,
@@ -266,8 +276,8 @@ if __name__ == "__main__":
             InvoiceLine(
                 description="Consulting Services - 10 hours",
                 quantity=10,
-                unit_price=Money(currency="USD", amount=150.0),
-                discount=Money(currency="USD", amount=100.0),  # Bulk discount
+                unit_price=Money(currency="USD", amount=D("150.00")),
+                discount=Money(currency="USD", amount=D("100.00")),  # Bulk discount
             )
         )
 
@@ -275,7 +285,7 @@ if __name__ == "__main__":
             InvoiceLine(
                 description="Software License",
                 quantity=1,
-                unit_price=Money(currency="USD", amount=500.0),
+                unit_price=Money(currency="USD", amount=D("500.00")),
                 # No discount
             )
         )

@@ -16,7 +16,7 @@ Usage:
 from datetime import UTC, datetime
 
 from protean import Domain
-from protean.fields import DateTime, Float, String, Text
+from protean.fields import DateTime, Decimal, String, Text
 
 # Domain setup
 domain = Domain()
@@ -88,7 +88,7 @@ class Article(Auditable):
 
 
 @domain.aggregate(abstract=True, auto_add_id_field=False)
-class BaseEntity:
+class CustomKeyed:
     """
     Abstract base with no automatic ID field.
 
@@ -100,13 +100,13 @@ class BaseEntity:
 
 
 @domain.aggregate
-class Product(BaseEntity):
+class Product(CustomKeyed):
     """Product with custom identifier field."""
 
     # Define our own identifier field
     sku: String(required=True, max_length=50, identifier=True)
     name: String(required=True, max_length=200)
-    price: Float()  # Could be Money value object in real app
+    price: Decimal(precision=19, scale=4)  # Could be a Money value object
 
 
 # Example usage
@@ -158,7 +158,7 @@ if __name__ == "__main__":
 
         print("\n=== Custom Identifier ===")
 
-        product = Product(sku="PROD-12345", name="Wireless Mouse", price=29.99)
+        product = Product(sku="PROD-12345", name="Wireless Mouse", price="29.99")
 
         print(f"Product: {product.name}")
         print(f"SKU (identifier): {product.sku}")
