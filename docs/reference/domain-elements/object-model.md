@@ -104,7 +104,8 @@ Raises `IncorrectUsageError` if called on non-container elements
 
 ### `unique_fields`
 
-Return a dictionary of the fields marked as unique, keyed by field name. The
-identity field is always unique.
+Return a dictionary of the fields marked as unique, keyed by attribute name.
+These are the same keys `attributes` returns, so a field that sets
+`referenced_as` appears under that name. The identity field is always unique.
 
 Raises `IncorrectUsageError` if called on non-container elements.
