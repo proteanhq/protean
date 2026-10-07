@@ -419,8 +419,9 @@ adjustments:
 - **`HasOne`/`HasMany` associations are recursively converted**: Child
   entities become nested value objects or lists of value objects.
 - **Private fields (prefixed with `_`) are skipped.**
-- **Field constraints are not copied**: each field keeps its type and
-  default, but options such as `max_length` are left behind.
+- **Length and range limits are not copied**: each field keeps its type,
+  `choices`, required flag, and default, but limits such as `max_length`
+  and `min_value` are left behind.
 
 You can customize the generated class name and exclude specific fields:
 
