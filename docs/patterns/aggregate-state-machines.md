@@ -206,9 +206,10 @@ invariants that run on every mutation to catch anything that slips through:
 --8<-- "patterns/aggregate-state-machines/003.py:invariants"
 ```
 
-The pre-invariant prevents invalid transitions on terminal states. The
-post-invariants ensure that every state has the data it requires. Together
-they make impossible states truly impossible.
+The pre-invariant blocks any change to an order in a terminal state. The
+post-invariants check that a shipped order has a tracking number and a
+`shipped_at` time. Add a post-invariant like these for each state that needs
+its own data.
 
 !!! note "Pre vs post invariants for state machines"
     `@invariant.pre` runs **before** state changes and is ideal for
