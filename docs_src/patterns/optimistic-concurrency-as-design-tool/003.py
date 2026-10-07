@@ -23,11 +23,6 @@ class SharedCart:
 
     def add_item(self, product_id: str, quantity: int) -> None:
         """Add an item to the shared cart."""
-        if len(self.items) >= self.max_items:
-            raise ValidationError(
-                {"items": [f"Cart cannot exceed {self.max_items} items"]}
-            )
-
         # Check if item already exists and update quantity
         for item in self.items:
             if item.product_id == product_id:
@@ -40,6 +35,11 @@ class SharedCart:
                     )
                 )
                 return
+
+        if len(self.items) >= self.max_items:
+            raise ValidationError(
+                {"items": [f"Cart cannot exceed {self.max_items} items"]}
+            )
 
         self.add_items(
             CartItem(
@@ -87,7 +87,8 @@ class SharedCartService:
 
                     # Check if the operation still makes sense
                     # on the latest version
-                    if len(cart.items) >= cart.max_items:
+                    is_new = all(i.product_id != product_id for i in cart.items)
+                    if is_new and len(cart.items) >= cart.max_items:
                         raise ValidationError(
                             {"items": ["Cart is full. Remove items first."]}
                         )

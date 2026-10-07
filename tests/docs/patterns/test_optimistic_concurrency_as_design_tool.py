@@ -452,6 +452,14 @@ class TestSharedCart:
         assert exc.value.messages == {"items": ["Cart cannot exceed 1 items"]}
         assert [i.product_id for i in cart.items] == ["apple"]
 
+    def test_aggregate_merges_the_same_product_into_a_full_cart(self, carts):
+        cart = carts.SharedCart(cart_id="c1", team_id="t1", max_items=1)
+        cart.add_item("apple", 1)
+
+        cart.add_item("apple", 2)
+
+        assert [(i.product_id, i.quantity) for i in cart.items] == [("apple", 3)]
+
     def test_service_adds_and_saves_the_item(self, carts):
         repo = carts.domain.repository_for(carts.SharedCart)
         repo.add(carts.SharedCart(cart_id="c1", team_id="t1"))
@@ -474,6 +482,17 @@ class TestSharedCart:
 
         assert exc.value.messages == {"items": ["Cart is full. Remove items first."]}
         assert [i.product_id for i in repo.get("c1").items] == ["apple"]
+
+    def test_service_merges_the_same_product_into_a_full_cart(self, carts):
+        repo = carts.domain.repository_for(carts.SharedCart)
+        cart = carts.SharedCart(cart_id="c1", team_id="t1", max_items=1)
+        cart.add_item("apple", 1)
+        repo.add(cart)
+
+        carts.SharedCartService().add_item("c1", "apple", 2)
+
+        cart = repo.get("c1")
+        assert [(i.product_id, i.quantity) for i in cart.items] == [("apple", 3)]
 
     def test_service_merges_a_concurrent_add(self, carts, monkeypatch):
         domain = carts.domain

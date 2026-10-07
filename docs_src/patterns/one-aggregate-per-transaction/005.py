@@ -35,6 +35,10 @@ class OrderMaintenanceService:
             # the orders closed before it stay committed.
             with UnitOfWork():
                 order = repo.get(order_id)
+                # The order may have shipped or had its deadline moved
+                # since the scan, so check again on the fresh copy.
+                if order.status != "pending" or order.deadline >= now:
+                    continue
                 order.close("Expired past deadline")
                 repo.add(order)
             closed.append(order_id)

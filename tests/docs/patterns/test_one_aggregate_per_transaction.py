@@ -454,6 +454,30 @@ def test_close_expired_closes_only_pending_orders_past_their_deadline():
         assert repo.get("done").status == "shipped"
 
 
+def test_close_expired_skips_an_order_that_changed_after_the_scan(monkeypatch):
+    example = load_example("patterns/one-aggregate-per-transaction/005.py")
+    domain = _start(example)
+    with domain.domain_context():
+        repo = _bulk_orders(example, datetime.now(UTC))
+        repo_class = type(repo)
+        original_get = repo_class.get
+
+        def get_after_old_2_ships(self, identifier):
+            order = original_get(self, identifier)
+            if identifier == "old-2":
+                order.status = "shipped"
+            return order
+
+        monkeypatch.setattr(repo_class, "get", get_after_old_2_ships)
+
+        closed = example.OrderMaintenanceService().close_expired()
+
+        assert closed == ["old-1"]
+        monkeypatch.undo()
+        assert repo.get("old-1").status == "closed"
+        assert repo.get("old-2").status == "pending"
+
+
 def test_a_failure_on_one_order_keeps_the_orders_closed_before_it(monkeypatch):
     example = load_example("patterns/one-aggregate-per-transaction/005.py")
     domain = _start(example)
