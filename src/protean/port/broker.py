@@ -312,7 +312,7 @@ class BaseBroker(metaclass=ABCMeta):
             self._last_ping_time = time.time() - start_time
             self._last_ping_success = result
             return result
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - health probe: any adapter fault is "down"
             logger.debug(f"Ping failed for broker {self.name}: {e}")
             self._last_ping_time = None
             self._last_ping_success = False
@@ -358,7 +358,7 @@ class BaseBroker(metaclass=ABCMeta):
                 "uptime_seconds": uptime_seconds,
                 "details": broker_details,
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - health probe: report the fault as unhealthy
             logger.error(f"Error gathering health stats for broker {self.name}: {e}")
             return {
                 "status": "unhealthy",
@@ -1186,7 +1186,7 @@ class BrokerRegistry:
                 register_func = entry_point.load()
                 register_func()
                 logger.debug(f"Loaded broker plugin: {entry_point.name}")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - a plugin is third-party code
                 logger.debug(f"Failed to load broker plugin '{entry_point.name}': {e}")
 
         cls._initialized = True

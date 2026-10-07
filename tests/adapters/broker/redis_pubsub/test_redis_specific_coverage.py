@@ -378,6 +378,46 @@ class TestRedisErrorHandling:
                 assert "Error calculating message counts" in caplog.records[0].message
                 assert "Connection failed" in caplog.records[0].message
 
+    def test_ping_lets_other_errors_through(self, broker):
+        """An error that is neither a Redis nor a socket error reaches the caller"""
+        with patch.object(broker.redis_instance, "ping") as mock_ping:
+            mock_ping.side_effect = RuntimeError("bug in ping")
+
+            with pytest.raises(RuntimeError, match="bug in ping"):
+                broker._ping()
+
+    def test_calculate_message_counts_lets_other_errors_through(self, broker):
+        """An error that is not a Redis error reaches the caller"""
+        broker.get_next("test_stream", "test_group")
+        broker.redis_instance.rpush("test_stream", "m1")
+
+        with patch.object(broker.redis_instance, "llen") as mock_llen:
+            mock_llen.side_effect = TypeError("bad length")
+
+            with pytest.raises(TypeError, match="bad length"):
+                broker._calculate_message_counts()
+
+    def test_ensure_connection_logs_a_bad_reconnect_uri(self, broker, caplog):
+        """A failed ping triggers a reconnect; a bad URI is logged, not raised"""
+        with (
+            patch.object(broker.redis_instance, "ping") as mock_ping,
+            patch("redis.Redis.from_url", side_effect=ValueError("bad URI scheme")),
+            caplog.at_level(logging.DEBUG),
+        ):
+            mock_ping.side_effect = redis.ConnectionError("Connection refused")
+            assert broker._ensure_connection() is False
+
+        assert "Redis connection attempt 1 failed: Connection refused" in caplog.text
+        assert "Failed to create new Redis connection: bad URI scheme" in caplog.text
+
+    def test_ensure_connection_lets_other_errors_through(self, broker):
+        """A ping error that is neither a Redis nor a socket error reaches the caller"""
+        with patch.object(broker.redis_instance, "ping") as mock_ping:
+            mock_ping.side_effect = RuntimeError("bug in ping")
+
+            with pytest.raises(RuntimeError, match="bug in ping"):
+                broker._ensure_connection()
+
     def test_calculate_message_counts_skips_keys_that_are_not_lists(
         self, broker, caplog
     ):

@@ -223,14 +223,34 @@ class TestTransientRetryDefaults:
         finally:
             _domain_context_stack.push(ctx)
 
-    def test_falls_back_to_defaults_on_config_error(self, test_domain):
-        """A failure reading config falls back to (disabled) defaults."""
-        with patch.object(
-            type(test_domain.config), "get", side_effect=RuntimeError("boom")
-        ):
+    def test_falls_back_to_defaults_on_a_bad_value(self, test_domain, caplog):
+        """A value that is not a number falls back to (disabled) defaults."""
+        test_domain.config["server"]["transient_retry"] = {
+            "enabled": True,
+            "max_retries": "many",
+        }
+        with caplog.at_level(logging.WARNING, logger="protean.utils.mixins"):
             cfg = _get_transient_retry_config(None)
         assert cfg["max_retries"] == 0
         assert cfg["exceptions"] == (ConnectionError, TimeoutError, SendError)
+        assert "Invalid [server.transient_retry] config" in caplog.text
+        assert "many" in caplog.text
+
+    def test_falls_back_to_defaults_when_section_is_not_a_table(
+        self, test_domain, caplog
+    ):
+        test_domain.config["server"]["transient_retry"] = "on"
+        with caplog.at_level(logging.WARNING, logger="protean.utils.mixins"):
+            cfg = _get_transient_retry_config(None)
+        assert cfg["max_retries"] == 0
+        assert "Invalid [server.transient_retry] config" in caplog.text
+
+    def test_an_unexpected_config_error_propagates(self, test_domain):
+        with patch.object(
+            type(test_domain.config), "get", side_effect=RuntimeError("boom")
+        ):
+            with pytest.raises(RuntimeError, match="boom"):
+                _get_transient_retry_config(None)
 
 
 class TestExceptionResolution:

@@ -5,7 +5,6 @@ stream information, aggregated statistics, and trace history. These power the
 dashboard and can be consumed by external monitoring tools.
 """
 
-import contextlib
 import json
 import logging
 import time
@@ -18,7 +17,7 @@ from fastapi.responses import JSONResponse
 from protean.domain import Domain
 from protean.port.broker import BrokerCapabilities
 
-from ..tracing import TRACE_STREAM
+from ..tracing import TRACE_STREAM, decode_trace, trace_number
 
 if TYPE_CHECKING:
     import redis
@@ -134,7 +133,7 @@ def _discover_streams(redis_conn: "redis.Redis[Any] | None") -> list[str]:
             if cursor == 0:
                 break
         return sorted(streams)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - scrape: show no streams when Redis fails
         logger.debug(f"Error discovering streams from Redis: {e}")
         return []
 
@@ -481,39 +480,32 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
 
         try:
             raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
-            for stream_id, fields in raw_entries:
-                with contextlib.suppress(
-                    json.JSONDecodeError, TypeError, ValueError, IndexError
-                ):
-                    data_raw = fields.get(b"data") or fields.get("data")
-                    if not data_raw:
-                        continue
-                    if isinstance(data_raw, bytes):
-                        data_raw = data_raw.decode("utf-8")
-                    trace = json.loads(data_raw)
+        except Exception:  # scrape: show zero throughput without traces
+            logger.debug("Could not read traces for worker throughput", exc_info=True)
+            raw_entries = []
 
-                    if trace.get("event") != "handler.completed":
-                        continue
+        for stream_id, fields in raw_entries:
+            trace = decode_trace(fields)
+            if trace is None or trace.get("event") != "handler.completed":
+                continue
 
-                    trace_worker_id = trace.get("worker_id")
-                    if not trace_worker_id:
-                        continue
+            trace_worker_id = trace.get("worker_id")
+            if not trace_worker_id or not isinstance(trace_worker_id, str):
+                continue
 
-                    # Map trace worker_id (subscription ID) to worker key
-                    t_hostname, t_pid = _parse_worker_key(trace_worker_id)
-                    t_worker_id = f"{t_hostname}-{t_pid}"
+            # Map trace worker_id (subscription ID) to worker key
+            t_hostname, t_pid = _parse_worker_key(trace_worker_id)
+            t_worker_id = f"{t_hostname}-{t_pid}"
 
-                    if t_worker_id not in throughput:
-                        continue
+            if t_worker_id not in throughput:
+                continue
 
-                    # Determine bucket from stream ID timestamp
-                    sid = _decode_stream_id(stream_id)
-                    ts_ms = int(sid.split("-")[0])
-                    bucket_idx = (ts_ms - (now_ms - window_ms)) // bucket_ms
-                    if 0 <= bucket_idx < bucket_count:
-                        throughput[t_worker_id][bucket_idx] += 1
-        except Exception as e:
-            logger.debug(f"Error reading traces for worker throughput: {e}")
+            # Determine bucket from stream ID timestamp
+            sid = _decode_stream_id(stream_id)
+            ts_ms = int(sid.split("-")[0])
+            bucket_idx = (ts_ms - (now_ms - window_ms)) // bucket_ms
+            if 0 <= bucket_idx < bucket_count:
+                throughput[t_worker_id][bucket_idx] += 1
 
         # 5. Merge throughput into worker objects and compute status
         for wid, w in worker_map.items():
@@ -693,30 +685,26 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
 
         result: list[dict[str, Any]] = []
         for stream_id, fields in raw_entries:
-            with contextlib.suppress(json.JSONDecodeError, TypeError):
-                data_raw = fields.get(b"data") or fields.get("data")
-                if not data_raw:
-                    continue
-                if isinstance(data_raw, bytes):
-                    data_raw = data_raw.decode("utf-8")
-                trace = json.loads(data_raw)
+            trace = decode_trace(fields)
+            if trace is None:
+                continue
 
-                # Apply filters
-                if domain and trace.get("domain") != domain:
-                    continue
-                if stream and trace.get("stream") != stream:
-                    continue
-                if event and trace.get("event") != event:
-                    continue
-                if message_id and trace.get("message_id") != message_id:
-                    continue
+            # Apply filters
+            if domain and trace.get("domain") != domain:
+                continue
+            if stream and trace.get("stream") != stream:
+                continue
+            if event and trace.get("event") != event:
+                continue
+            if message_id and trace.get("message_id") != message_id:
+                continue
 
-                trace["_stream_id"] = _decode_stream_id(stream_id)
-                result.append(trace)
+            trace["_stream_id"] = _decode_stream_id(stream_id)
+            result.append(trace)
 
-                # message_id lookups return all matching events (no count limit)
-                if not message_id and len(result) >= count:
-                    break
+            # message_id lookups return all matching events (no count limit)
+            if not message_id and len(result) >= count:
+                break
 
         return JSONResponse(content={"traces": result, "count": len(result)})
 
@@ -832,37 +820,35 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
 
         # Single pass over all entries
         for stream_id, fields in raw_entries:
-            with contextlib.suppress(json.JSONDecodeError, TypeError, ValueError):
-                data_raw = fields.get(b"data") or fields.get("data")
-                if not data_raw:
-                    continue
-                if isinstance(data_raw, bytes):
-                    data_raw = data_raw.decode("utf-8")
-                trace = json.loads(data_raw)
+            trace = decode_trace(fields)
+            if trace is None:
+                continue
 
-                event_type = trace.get("event", "unknown")
+            event_type = trace.get("event", "unknown")
+            if not isinstance(event_type, str):
+                continue
 
-                # Stats
-                counts[event_type] = counts.get(event_type, 0) + 1
-                total += 1
-                if event_type in _ERROR_EVENTS:
-                    error_count += 1
-                duration = trace.get("duration_ms")
-                if event_type == "handler.completed" and duration is not None:
-                    latency_sum += float(duration)
-                    latency_count += 1
+            # Stats
+            counts[event_type] = counts.get(event_type, 0) + 1
+            total += 1
+            if event_type in _ERROR_EVENTS:
+                error_count += 1
+            duration = trace_number(trace.get("duration_ms"))
+            if event_type == "handler.completed" and duration is not None:
+                latency_sum += duration
+                latency_count += 1
 
-                # Timeline bucket
-                sid = _decode_stream_id(stream_id)
-                ts_ms = int(sid.split("-")[0])
-                bucket_key = ts_ms // bucket_ms * bucket_ms
-                bucket = buckets.get(bucket_key)
-                if bucket is not None:
-                    bucket["total"] += 1
-                    if event_type in _SUCCESS_EVENTS:
-                        bucket["success"] += 1
-                    elif event_type in _ERROR_EVENTS:
-                        bucket["errors"] += 1
+            # Timeline bucket
+            sid = _decode_stream_id(stream_id)
+            ts_ms = int(sid.split("-")[0])
+            bucket_key = ts_ms // bucket_ms * bucket_ms
+            bucket = buckets.get(bucket_key)
+            if bucket is not None:
+                bucket["total"] += 1
+                if event_type in _SUCCESS_EVENTS:
+                    bucket["success"] += 1
+                elif event_type in _ERROR_EVENTS:
+                    bucket["errors"] += 1
 
         error_rate = round((error_count / total * 100), 2) if total > 0 else 0.0
         avg_latency_ms = (
@@ -955,26 +941,22 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         # Collect all matching entries (for total count + pagination)
         all_matches: list[dict[str, Any]] = []
         for stream_id, fields in raw_entries:
-            with contextlib.suppress(json.JSONDecodeError, TypeError):
-                data_raw = fields.get(b"data") or fields.get("data")
-                if not data_raw:
-                    continue
-                if isinstance(data_raw, bytes):
-                    data_raw = data_raw.decode("utf-8")
-                trace = json.loads(data_raw)
+            trace = decode_trace(fields)
+            if trace is None:
+                continue
 
-                event_type = trace.get("event", "")
-                if event_type not in _ERROR_EVENTS:
-                    continue
+            event_type = trace.get("event", "")
+            if not isinstance(event_type, str) or event_type not in _ERROR_EVENTS:
+                continue
 
-                # Apply optional filters
-                if handler and trace.get("handler") != handler:
-                    continue
-                if message_type and trace.get("message_type") != message_type:
-                    continue
+            # Apply optional filters
+            if handler and trace.get("handler") != handler:
+                continue
+            if message_type and trace.get("message_type") != message_type:
+                continue
 
-                trace["_stream_id"] = _decode_stream_id(stream_id)
-                all_matches.append(trace)
+            trace["_stream_id"] = _decode_stream_id(stream_id)
+            all_matches.append(trace)
 
         # Sort newest first, then paginate
         all_matches.reverse()
@@ -1004,17 +986,13 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
             return JSONResponse(content={"error": "Trace not found"}, status_code=404)
 
         _, fields = entries[0]
-        try:
-            data_raw = fields.get(b"data") or fields.get("data")
-            if isinstance(data_raw, bytes):
-                data_raw = data_raw.decode("utf-8")
-            trace = json.loads(data_raw)
-            trace["_stream_id"] = stream_id
-            return JSONResponse(content=trace)
-        except (json.JSONDecodeError, TypeError):
+        trace = decode_trace(fields)
+        if trace is None:
             return JSONResponse(
                 content={"error": "Failed to parse trace data"}, status_code=500
             )
+        trace["_stream_id"] = stream_id
+        return JSONResponse(content=trace)
 
     @router.get("/subscriptions")
     async def subscriptions() -> JSONResponse:

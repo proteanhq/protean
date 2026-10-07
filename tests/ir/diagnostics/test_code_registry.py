@@ -15,6 +15,7 @@ code and its metadata. These tests hold three promises:
 
 import ast
 import hashlib
+import sys
 import tomllib
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -22,12 +23,14 @@ from pathlib import Path
 import pytest
 
 import protean
+from protean.dx import pack
 from protean.ir.diagnostics import (
     REGISTRY,
     CodeMeta,
     Diagnostic,
     DiagnosticCode,
     ResolvingOperation,
+    _teaching_skills_for,
     build_diagnostic,
     resolve,
 )
@@ -479,6 +482,23 @@ class TestBuildDiagnostic:
             location="Config2._replace_env_var",
         )
         assert withloc["location"] == "Config2._replace_env_var"
+
+
+class TestTeachingSkillsFor:
+    def test_a_missing_pack_module_yields_no_skills(self, monkeypatch):
+        # A ``None`` entry in sys.modules makes the import raise ImportError.
+        monkeypatch.setitem(sys.modules, "protean.dx.pack", None)
+
+        assert _teaching_skills_for("AGGREGATE_TOO_LARGE") == []
+
+    def test_an_unexpected_error_in_the_index_reaches_the_caller(self, monkeypatch):
+        def _broken():
+            raise TypeError("bug in the index")
+
+        monkeypatch.setattr(pack, "diagnostic_code_skills", _broken)
+
+        with pytest.raises(TypeError, match="bug in the index"):
+            _teaching_skills_for("AGGREGATE_TOO_LARGE")
 
 
 class TestResolvingOperation:

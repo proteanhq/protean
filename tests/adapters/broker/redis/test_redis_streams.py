@@ -1,4 +1,5 @@
 import pytest
+import redis
 
 from protean.adapters.broker.redis import RedisBroker
 
@@ -657,8 +658,6 @@ def test_extract_message_from_response_edge_cases(redis_broker):
 @pytest.mark.redis
 def test_handle_redis_error_non_nogroup_error(redis_broker):
     """Test handling of non-NOGROUP Redis errors"""
-    import redis
-
     # Mock _handle_redis_error to test the non-NOGROUP path
     non_nogroup_error = redis.ResponseError(
         "WRONGTYPE Operation against a key holding the wrong kind of value"
@@ -706,7 +705,6 @@ def test_nack_with_unexpected_exception(redis_broker, monkeypatch):
 @pytest.mark.redis
 def test_is_message_pending_with_redis_error(redis_broker, monkeypatch):
     """Test _is_message_pending with Redis response errors"""
-    import redis
 
     def mock_xpending_range(*args, **kwargs):
         raise redis.ResponseError(
@@ -724,7 +722,6 @@ def test_is_message_pending_with_redis_error(redis_broker, monkeypatch):
 @pytest.mark.redis
 def test_ensure_group_with_non_busygroup_error(redis_broker, monkeypatch):
     """Test _ensure_group with non-BUSYGROUP Redis errors"""
-    import redis
 
     def mock_xgroup_create(*args, **kwargs):
         raise redis.ResponseError(
@@ -755,17 +752,33 @@ def test_ensure_group_with_unexpected_exception(redis_broker, monkeypatch):
 
 
 @pytest.mark.redis
-def test_extract_group_data_with_exception(redis_broker, monkeypatch):
-    """Test _extract_group_data with exceptions during processing"""
+def test_extract_group_data_with_redis_error(redis_broker, monkeypatch):
+    """A Redis error while reading the group's consumers yields no group data"""
 
-    def mock_get_field_value(*args, **kwargs):
-        raise Exception("Field extraction error")
+    def mock_xinfo_consumers(*args, **kwargs):
+        raise redis.ResponseError("NOGROUP No such consumer group")
 
-    monkeypatch.setattr(redis_broker, "_get_field_value", mock_get_field_value)
+    monkeypatch.setattr(
+        redis_broker.redis_instance, "xinfo_consumers", mock_xinfo_consumers
+    )
 
     group_info = {b"name": b"test_group", b"pending": b"0"}
     result = redis_broker._extract_group_data(group_info, "test_stream")
     assert result is None
+
+
+@pytest.mark.redis
+def test_extract_group_data_lets_other_errors_through(redis_broker, monkeypatch):
+    """An error that is not a Redis error reaches the caller"""
+
+    def mock_get_field_value(*args, **kwargs):
+        raise KeyError("Field extraction error")
+
+    monkeypatch.setattr(redis_broker, "_get_field_value", mock_get_field_value)
+
+    group_info = {b"name": b"test_group", b"pending": b"0"}
+    with pytest.raises(KeyError, match="Field extraction error"):
+        redis_broker._extract_group_data(group_info, "test_stream")
 
 
 @pytest.mark.redis
@@ -782,12 +795,25 @@ def test_ping_with_exception(redis_broker, monkeypatch):
     """Test _ping with connection exceptions"""
 
     def mock_ping():
-        raise Exception("Connection error")
+        raise redis.ConnectionError("Connection error")
 
     monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
 
     result = redis_broker._ping()
     assert result is False
+
+
+@pytest.mark.redis
+def test_ping_lets_other_errors_through(redis_broker, monkeypatch):
+    """An error that is neither a Redis nor a socket error reaches the caller"""
+
+    def mock_ping():
+        raise RuntimeError("bug in ping")
+
+    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+
+    with pytest.raises(RuntimeError, match="bug in ping"):
+        redis_broker._ping()
 
 
 @pytest.mark.redis
@@ -806,7 +832,6 @@ def test_calculate_message_counts_skips_a_key_of_another_type(redis_broker):
 @pytest.mark.redis
 def test_calculate_message_counts_with_group_errors(redis_broker, monkeypatch):
     """Test _calculate_message_counts with group-specific errors"""
-    import redis
 
     def mock_xinfo_groups(*args, **kwargs):
         raise redis.ResponseError("NOGROUP No such key 'test_stream' or consumer group")
@@ -822,15 +847,15 @@ def test_calculate_message_counts_with_group_errors(redis_broker, monkeypatch):
 
 
 @pytest.mark.redis
-def test_calculate_message_counts_with_general_exception(redis_broker, monkeypatch):
-    """Test _calculate_message_counts with general exceptions"""
+def test_calculate_message_counts_with_redis_error(redis_broker, monkeypatch):
+    """A Redis error while counting gives zero counts"""
 
-    def mock_get_streams_to_check():
-        raise Exception("Unexpected error getting streams")
+    def mock_xlen(*args, **kwargs):
+        raise redis.ConnectionError("Connection lost")
 
-    monkeypatch.setattr(
-        redis_broker, "_get_streams_to_check", mock_get_streams_to_check
-    )
+    monkeypatch.setattr(redis_broker.redis_instance, "xlen", mock_xlen)
+    redis_broker.publish("test_stream", {"data": "x"})
+    redis_broker._subscribers["test_stream"] = []
 
     result = redis_broker._calculate_message_counts()
     assert result["total_messages"] == 0
@@ -840,15 +865,29 @@ def test_calculate_message_counts_with_general_exception(redis_broker, monkeypat
 
 
 @pytest.mark.redis
-def test_calculate_streams_info_with_exception(redis_broker, monkeypatch):
-    """Test _calculate_streams_info with exceptions"""
+def test_calculate_message_counts_lets_other_errors_through(redis_broker, monkeypatch):
+    """An error that is not a Redis error reaches the caller"""
 
     def mock_get_streams_to_check():
-        raise Exception("Unexpected error getting streams")
+        raise RuntimeError("Unexpected error getting streams")
 
     monkeypatch.setattr(
         redis_broker, "_get_streams_to_check", mock_get_streams_to_check
     )
+
+    with pytest.raises(RuntimeError, match="Unexpected error getting streams"):
+        redis_broker._calculate_message_counts()
+
+
+@pytest.mark.redis
+def test_calculate_streams_info_with_redis_error(redis_broker, monkeypatch):
+    """A Redis error while listing streams gives an empty list"""
+
+    def mock_type(*args, **kwargs):
+        raise redis.ConnectionError("Connection lost")
+
+    monkeypatch.setattr(redis_broker.redis_instance, "type", mock_type)
+    redis_broker._subscribers["test_stream"] = []
 
     result = redis_broker._calculate_streams_info()
     assert result["count"] == 0
@@ -856,20 +895,33 @@ def test_calculate_streams_info_with_exception(redis_broker, monkeypatch):
 
 
 @pytest.mark.redis
-def test_calculate_consumer_groups_info_with_exception(redis_broker, monkeypatch):
-    """Test _calculate_consumer_groups_info with exceptions"""
+def test_calculate_streams_info_lets_other_errors_through(redis_broker, monkeypatch):
+    """An error that is not a Redis error reaches the caller"""
 
-    def mock_created_groups():
-        raise Exception("Unexpected error accessing created groups")
+    def mock_get_streams_to_check():
+        raise RuntimeError("Unexpected error getting streams")
 
-    # Mock the _created_groups property to raise an exception
+    monkeypatch.setattr(
+        redis_broker, "_get_streams_to_check", mock_get_streams_to_check
+    )
+
+    with pytest.raises(RuntimeError, match="Unexpected error getting streams"):
+        redis_broker._calculate_streams_info()
+
+
+@pytest.mark.redis
+def test_calculate_consumer_groups_info_lets_errors_through(redis_broker, monkeypatch):
+    """Reading the created groups makes no Redis call, so an error reaches the caller"""
+
+    def mock_created_groups(self):
+        raise RuntimeError("Unexpected error accessing created groups")
+
     monkeypatch.setattr(
         type(redis_broker), "_created_groups", property(mock_created_groups)
     )
 
-    result = redis_broker._calculate_consumer_groups_info()
-    assert result["count"] == 0
-    assert result["names"] == []
+    with pytest.raises(RuntimeError, match="accessing created groups"):
+        redis_broker._calculate_consumer_groups_info()
 
 
 @pytest.mark.redis
@@ -962,8 +1014,6 @@ def test_ensure_connection_with_reconnection_success(redis_broker, monkeypatch):
 
     monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
 
-    import redis
-
     monkeypatch.setattr(redis.Redis, "from_url", mock_redis_from_url)
 
     result = redis_broker._ensure_connection()
@@ -983,8 +1033,6 @@ def test_ensure_connection_with_reconnection_failure(redis_broker, monkeypatch):
 
     monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
 
-    import redis
-
     monkeypatch.setattr(redis.Redis, "from_url", mock_redis_from_url)
 
     result = redis_broker._ensure_connection()
@@ -1000,15 +1048,13 @@ def test_ensure_connection_with_exception_and_recovery(redis_broker, monkeypatch
         nonlocal ping_call_count
         ping_call_count += 1
         if ping_call_count <= 2:
-            raise Exception("Connection error")
+            raise redis.ConnectionError("Connection error")
         return True  # Final attempt succeeds
 
     def mock_redis_from_url(url):
         return redis_broker.redis_instance
 
     monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
-
-    import redis
 
     monkeypatch.setattr(redis.Redis, "from_url", mock_redis_from_url)
 
@@ -1022,19 +1068,30 @@ def test_ensure_connection_with_complete_failure(redis_broker, monkeypatch):
     """Test _ensure_connection with complete failure"""
 
     def mock_ping():
-        raise Exception("Connection error")
+        raise redis.ConnectionError("Connection error")
 
     def mock_redis_from_url(url):
         return redis_broker.redis_instance
 
     monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
 
-    import redis
-
     monkeypatch.setattr(redis.Redis, "from_url", mock_redis_from_url)
 
     result = redis_broker._ensure_connection()
     assert result is False
+
+
+@pytest.mark.redis
+def test_ensure_connection_lets_other_errors_through(redis_broker, monkeypatch):
+    """An error from ping that is neither a Redis nor a socket error reaches the caller"""
+
+    def mock_ping():
+        raise RuntimeError("bug in ping")
+
+    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+
+    with pytest.raises(RuntimeError, match="bug in ping"):
+        redis_broker._ensure_connection()
 
 
 @pytest.mark.redis

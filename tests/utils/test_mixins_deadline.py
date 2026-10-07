@@ -108,3 +108,17 @@ class TestDeadlineExceededAfterFallbacks:
         # With no domain context at all, reading the message context raises and
         # the retry path is left unconstrained rather than propagating.
         assert _deadline_exceeded_after(9999) is False
+
+
+class TestDeadlineContextRead:
+    def test_an_unexpected_error_reading_g_propagates(self, monkeypatch):
+        from protean.utils import mixins
+
+        class _BrokenGlobals:
+            def get(self, name):
+                raise RuntimeError("broken context")
+
+        monkeypatch.setattr(mixins, "g", _BrokenGlobals())
+
+        with pytest.raises(RuntimeError, match="broken context"):
+            _deadline_exceeded_after(1)

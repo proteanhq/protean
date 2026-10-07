@@ -20,7 +20,6 @@ Endpoints:
 
 from __future__ import annotations
 
-import json
 import logging
 import time as _time
 from collections import defaultdict
@@ -32,7 +31,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from protean.port.event_store import CausationNode
-from protean.server.tracing import TRACE_STREAM
+from protean.server.tracing import TRACE_STREAM, decode_trace
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -67,8 +66,11 @@ def _unique_store_domains(domains: list[Domain]) -> list[Domain]:
             )
             if not store_key:
                 store_key = str(id(store))  # Fallback for stores without conn_info
-        except Exception:
-            store_key = str(id(domain))  # Fallback — treat as unique
+        except Exception as exc:  # noqa: BLE001 - the store is set up from user config
+            logger.debug(
+                "Cannot read the event store of domain %s: %r", domain.name, exc
+            )
+            store_key = str(id(domain))  # Fallback: treat as unique
         if store_key not in seen_stores:
             seen_stores.add(store_key)
             unique.append(domain)
@@ -561,45 +563,31 @@ def _load_traces_for_correlation(
         return traces
 
     for _stream_id, fields in raw_entries:
-        try:
-            data_raw = fields.get(b"data") or fields.get("data")
-            if not data_raw:
-                continue
-            if isinstance(data_raw, bytes):
-                data_raw = data_raw.decode("utf-8")
-            trace = json.loads(data_raw)
-
-            if trace.get("correlation_id") != correlation_id:
-                continue
-
-            event_type = trace.get("event", "")
-            if event_type not in ("handler.completed", "handler.failed"):
-                continue
-
-            mid = trace.get("message_id")
-            if mid:
-                raw_duration = trace.get("duration_ms")
-                duration_ms: float | None = None
-                if raw_duration is not None:
-                    try:
-                        duration_ms = float(raw_duration)
-                    except (ValueError, TypeError):
-                        duration_ms = None
-                traces[mid] = {
-                    "handler": trace.get("handler"),
-                    "duration_ms": duration_ms,
-                }
-        except (
-            AttributeError,
-            json.JSONDecodeError,
-            TypeError,
-            UnicodeDecodeError,
-        ):
-            logger.debug(
-                "Skipping malformed trace entry during correlation enrichment",
-                exc_info=True,
-            )
+        trace = decode_trace(fields)
+        if trace is None:
+            logger.debug("Skipping malformed trace entry during correlation enrichment")
             continue
+
+        if trace.get("correlation_id") != correlation_id:
+            continue
+
+        event_type = trace.get("event", "")
+        if event_type not in ("handler.completed", "handler.failed"):
+            continue
+
+        mid = trace.get("message_id")
+        if mid and isinstance(mid, str):
+            raw_duration = trace.get("duration_ms")
+            duration_ms: float | None = None
+            if raw_duration is not None:
+                try:
+                    duration_ms = float(raw_duration)
+                except (ValueError, TypeError):
+                    duration_ms = None
+            traces[mid] = {
+                "handler": trace.get("handler"),
+                "duration_ms": duration_ms,
+            }
 
     return traces
 

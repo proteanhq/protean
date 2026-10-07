@@ -394,7 +394,7 @@ def _get_correlation_context() -> tuple[str, str]:
             domain_meta.correlation_id or "",
             domain_meta.causation_id or "",
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 - runs in logging filters, where a log call would recurse
         return ("", "")
 
 
@@ -437,18 +437,17 @@ def _read_access_log_counters() -> tuple[list[str], dict[str, int], str]:
     Returns:
         Tuple of (events_raised, repo_operations, uow_outcome)
     """
-    try:
-        events_raised = getattr(g, "_access_log_events_raised", []) or []
-        repo_loads = getattr(g, "_access_log_repo_loads", 0) or 0
-        repo_saves = getattr(g, "_access_log_repo_saves", 0) or 0
-        uow_outcome = getattr(g, "_access_log_uow_outcome", "no_uow") or "no_uow"
-        return (
-            list(events_raised),
-            {"loads": repo_loads, "saves": repo_saves},
-            uow_outcome,
-        )
-    except Exception:
-        return ([], {"loads": 0, "saves": 0}, "no_uow")
+    # ``g`` raises ``AttributeError`` outside a domain context, so the
+    # ``getattr`` defaults also cover that case.
+    events_raised = getattr(g, "_access_log_events_raised", []) or []
+    repo_loads = getattr(g, "_access_log_repo_loads", 0) or 0
+    repo_saves = getattr(g, "_access_log_repo_saves", 0) or 0
+    uow_outcome = getattr(g, "_access_log_uow_outcome", "no_uow") or "no_uow"
+    return (
+        list(events_raised),
+        {"loads": repo_loads, "saves": repo_saves},
+        uow_outcome,
+    )
 
 
 def get_logging_config_value(key: str, default: _T) -> _T:

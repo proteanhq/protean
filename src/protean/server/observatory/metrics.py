@@ -135,7 +135,7 @@ def _collect_subscription_statuses(
             try:
                 statuses = collect_subscription_statuses(domain)
                 results.extend((domain, s) for s in statuses)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - one domain's failure must not stop the scrape
                 logger.debug(
                     "Shared collection: subscription status failed for %s: %s",
                     domain.name,
@@ -170,7 +170,7 @@ def _collect_projection_statuses(
                         domain, include_row_count=False
                     )
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - one domain's failure must not stop the scrape
                 logger.debug(
                     "Shared collection: projection status failed for %s: %s",
                     domain.name,
@@ -201,7 +201,7 @@ def _collect_pool_stats(
                             if stats:
                                 db_type = getattr(provider, "__database__", "unknown")
                                 results.append((name, db_type, stats))
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - one domain's failure must not stop the scrape
                 logger.debug(
                     "Shared collection: pool stats failed for %s: %s",
                     domain.name,
@@ -239,7 +239,7 @@ def _collect_broker_pool_stats(
                             max_conn = getattr(pool, "max_connections", 0)
                             active = created - available
                             results.append((name, active, available, max_conn))
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - one domain's failure must not stop the scrape
                 logger.debug(
                     "Shared collection: broker pool stats failed for %s: %s",
                     domain.name,
@@ -301,7 +301,7 @@ def _register_infrastructure_gauges(domains: list[Domain]) -> None:
                             {"domain": domain.name},
                         )
                     )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - a gauge callback must not raise into the SDK
                 logger.debug(
                     "Gauge callback: outbox query failed for %s: %s", domain.name, exc
                 )
@@ -325,7 +325,7 @@ def _register_infrastructure_gauges(domains: list[Domain]) -> None:
                         1 if health.get("connected") and details.get("healthy") else 0
                     )
                     return [create_observation(is_up)]
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a gauge callback must not raise into the SDK
             logger.debug("Gauge callback: broker_up query failed: %s", exc)
         return [create_observation(0)]
 
@@ -337,7 +337,7 @@ def _register_infrastructure_gauges(domains: list[Domain]) -> None:
                     health = broker.health_stats()
                     mem = health.get("details", {}).get("used_memory", 0)
                     return [create_observation(mem)]
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a gauge callback must not raise into the SDK
             logger.debug("Gauge callback: broker_memory query failed: %s", exc)
         return [create_observation(0)]
 
@@ -349,7 +349,7 @@ def _register_infrastructure_gauges(domains: list[Domain]) -> None:
                     health = broker.health_stats()
                     clients = health.get("details", {}).get("connected_clients", 0)
                     return [create_observation(clients)]
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a gauge callback must not raise into the SDK
             logger.debug("Gauge callback: broker_clients query failed: %s", exc)
         return [create_observation(0)]
 
@@ -361,7 +361,7 @@ def _register_infrastructure_gauges(domains: list[Domain]) -> None:
                     health = broker.health_stats()
                     ops = health.get("details", {}).get("instantaneous_ops_per_sec", 0)
                     return [create_observation(ops)]
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a gauge callback must not raise into the SDK
             logger.debug("Gauge callback: broker_ops query failed: %s", exc)
         return [create_observation(0)]
 
@@ -544,7 +544,7 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
                 lines.append(
                     f'protean_outbox_pending_count{{domain="{domain.name}"}} {pending_total}'
                 )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - one section's failure must not stop the scrape
             logger.debug(f"Metrics: outbox query failed for {domain.name}: {e}")
 
     # --- Broker / stream metrics (from first domain's broker) ---
@@ -624,7 +624,7 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
                 lines.append("# TYPE protean_consumer_groups_count gauge")
                 lines.append(f"protean_consumer_groups_count {cg_info.get('count', 0)}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - one section's failure must not stop the scrape
         logger.debug(f"Metrics: broker query failed: {e}")
 
     # --- Subscription lag metrics (shared collection) ---
@@ -682,7 +682,7 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
                 lines.append(
                     f"protean_subscription_status{{{labels}}} {1 if s.status == 'ok' else 0}"
                 )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - one section's failure must not stop the scrape
         logger.debug(f"Metrics: subscription status failed: {e}")
 
     # --- Projection staleness metrics (shared collection) ---
@@ -703,7 +703,7 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
                     f"protean_projection_staleness_seconds{{{labels}}} "
                     f"{p.staleness_seconds}"
                 )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - one section's failure must not stop the scrape
         logger.debug(f"Metrics: projection staleness failed: {e}")
 
     # --- Per-consumer metrics (via XINFO CONSUMERS) ---
@@ -776,7 +776,7 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
                         stream_name,
                         exc_info=True,
                     )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - one section's failure must not stop the scrape
         logger.debug(f"Metrics: consumer metrics failed: {e}")
 
     # --- Database connection pool metrics ---
@@ -814,7 +814,7 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
                 lines.append(
                     f"protean_db_pool_checked_in{{{labels}}} {stats.get('checked_in', 0)}"
                 )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - one section's failure must not stop the scrape
         logger.debug(f"Metrics: pool stats failed: {e}")
 
     # --- Broker connection pool metrics ---
@@ -832,7 +832,7 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
                 lines.append(
                     f"protean_broker_pool_active_connections{{{labels}}} {active}"
                 )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - one section's failure must not stop the scrape
         logger.debug(f"Metrics: broker pool stats failed: {e}")
 
     lines.append("")  # Trailing newline

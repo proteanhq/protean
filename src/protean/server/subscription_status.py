@@ -259,7 +259,7 @@ def _collect_event_store_status(
                 recovery_checkpoint_stream=recovery_stream,
                 failed_positions_stream=failed_stream,
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - status probe: any fault means unknown
         logger.debug(
             "Error collecting event store subscription status for %s: %s",
             name,
@@ -346,7 +346,7 @@ def _collect_partitioned_stream_status(
 
     try:
         keys = base_broker._partition_keys(stream_category)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - status probe: any fault means unknown
         logger.debug("Error listing partitions for %s: %s", stream_category, exc)
         return _unknown_status(name, handler_cls.__name__, "stream", stream_category)
 
@@ -484,7 +484,8 @@ def _collect_stream_status(
             # Stream length
             try:
                 stream_length = redis_conn.xlen(stream_category)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - status probe: show length 0
+                logger.debug("Could not read length of %s: %r", stream_category, exc)
                 stream_length = 0
 
             # Consumer group info
@@ -533,7 +534,8 @@ def _collect_stream_status(
                         stream_category, min=f"({last_delivered_id}"
                     )
                     lag = len(remaining)
-                except Exception:
+                except Exception as exc:  # noqa: BLE001 - status probe: lag stays unknown
+                    logger.debug("Could not count lag of %s: %r", stream_category, exc)
                     # Leave lag unknown rather than falling back to `pending`.
                     # With nothing pending that fallback yields lag=0, which
                     # classifies as "ok" and reports a subscription as healthy
@@ -560,7 +562,7 @@ def _collect_stream_status(
                 consumer_count=consumer_count,
                 dlq_depth=dlq_depth,
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - status probe: any fault means unknown
         logger.debug(
             "Error collecting stream subscription status for %s: %s", name, exc
         )
@@ -597,7 +599,8 @@ def _collect_broker_status(
 
                 try:
                     stream_length = redis_conn.xlen(stream_name)
-                except Exception:
+                except Exception as exc:  # noqa: BLE001 - status probe: show length 0
+                    logger.debug("Could not read length of %s: %r", stream_name, exc)
                     stream_length = 0
 
                 pending = 0
@@ -647,7 +650,8 @@ def _collect_broker_status(
                             stream_name, min=f"({last_delivered_id}"
                         )
                         lag = len(remaining)
-                    except Exception:
+                    except Exception as exc:  # noqa: BLE001 - status probe: lag stays unknown
+                        logger.debug("Could not count lag of %s: %r", stream_name, exc)
                         # See the stream path: an unknown lag must not be
                         # reported as zero.
                         lag = None
@@ -690,7 +694,7 @@ def _collect_broker_status(
                 consumer_count=consumer_count,
                 dlq_depth=0,
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - status probe: any fault means unknown
         logger.debug(
             "Error collecting broker subscription status for %s: %s", name, exc
         )
@@ -802,7 +806,7 @@ def _collect_outbox_statuses(domain: Domain) -> list[SubscriptionStatus]:
                         dlq_depth=failed_count + abandoned_count,
                     )
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - status probe: one failure must not stop the others
             logger.debug(
                 "Error collecting outbox processor status for %s: %s", name, exc
             )
@@ -1169,7 +1173,7 @@ def _collect_one_recovery_checkpoint(
             if parsed_head is None:
                 try:
                     head = store.stream_head_position(status.stream_category)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - a head-read failure must not block the scan
                     logger.debug(
                         "Could not read stream head for %s: %s", status.name, exc
                     )
@@ -1211,7 +1215,7 @@ def _collect_one_recovery_checkpoint(
                     found = read_recovery_message(
                         store, status.stream_category, pos, info
                     )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - one bad position must not discard the rest
                     logger.warning(
                         "Could not re-read recovery position %s for %s: %s",
                         pos,
@@ -1223,7 +1227,7 @@ def _collect_one_recovery_checkpoint(
                 if not found:
                     stale_positions.append(pos)
             stale_positions.sort()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - report any failure as unverified
         # The reconstruction (or a store-wide failure) can raise on its own: a
         # store error, or a corrupt checkpoint record left by a partial restore.
         # Report it as unverified rather than folding it into "clean", which is

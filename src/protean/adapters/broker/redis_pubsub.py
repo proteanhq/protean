@@ -137,7 +137,7 @@ class RedisPubSubBroker(BaseBroker):
         """Test basic connectivity to Redis broker"""
         try:
             return self.redis_instance.ping()
-        except Exception as e:
+        except (redis.RedisError, OSError) as e:
             logger.debug(f"Redis PubSub ping failed: {e}")
             return False
 
@@ -225,7 +225,7 @@ class RedisPubSubBroker(BaseBroker):
 
             return {"total_messages": total_messages}
 
-        except Exception as e:
+        except redis.RedisError as e:
             logger.debug(f"Error calculating message counts: {e}")
             return {"total_messages": 0}
 
@@ -241,7 +241,7 @@ class RedisPubSubBroker(BaseBroker):
                             f"Redis connection restored on attempt {attempt + 1}"
                         )
                     return True
-            except Exception as e:
+            except (redis.RedisError, OSError) as e:
                 logger.debug(f"Redis connection attempt {attempt + 1} failed: {e}")
 
             # Connection failed, try to reconnect
@@ -250,10 +250,11 @@ class RedisPubSubBroker(BaseBroker):
                     logger.info(
                         f"Redis connection failed, attempting to reconnect (attempt {attempt + 1}/{max_attempts})..."
                     )
+                    # from_url() does not connect; it raises ValueError for a bad URI.
                     self.redis_instance = redis.Redis.from_url(
                         cast(str, self.conn_info["URI"])
                     )
-                except Exception as reconnect_error:
+                except (redis.RedisError, ValueError) as reconnect_error:
                     logger.error(
                         f"Failed to create new Redis connection: {reconnect_error}"
                     )

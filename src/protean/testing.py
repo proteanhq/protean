@@ -363,7 +363,7 @@ class AggregateResult:
             result = domain.process(
                 command, asynchronous=False, correlation_id=correlation_id
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - recorded as the rejection for the test to assert
             self._rejection = exc
             # On rejection, load aggregate from event store to reflect
             # the state before the failed command
@@ -760,7 +760,7 @@ def process_and_wait(
     error: Exception | None = None
     try:
         result = domain.process(command, correlation_id=correlation_id)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - recorded in the outcome for the test to assert
         error = exc
 
     # Drain only when something is left to process asynchronously. A

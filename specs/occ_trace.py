@@ -80,7 +80,7 @@ def _record(out_path: Path, writers: int) -> int:
                     repo.add(counter)
             except ExpectedVersionError:
                 pass  # a losing writer; the tracer already recorded the conflict
-            except Exception as exc:  # a broken barrier, a store error, etc.
+            except Exception as exc:  # noqa: BLE001 - recorded in errors and reported after the join
                 errors.append(f"worker {worker_no}: {type(exc).__name__}: {exc}")
 
         with occ_trace.capture() as events:

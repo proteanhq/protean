@@ -92,3 +92,51 @@ class TestSqlAlchemyCredentialRedaction:
 
         record = error_records[0]
         assert record.database_uri == "<unparseable>"
+
+    @pytest.mark.no_test_domain
+    def test_connection_failed_handles_a_uri_with_a_bad_port(self, caplog):
+        """A port that is not a number (ValueError) also logs '<unparseable>'."""
+        try:
+            from sqlalchemy.exc import DatabaseError
+
+            from protean.adapters.repository.sqlalchemy import SAProvider
+        except ImportError:
+            pytest.skip("sqlalchemy not installed")
+
+        provider = MagicMock(spec=SAProvider)
+        provider.conn_info = {"database_uri": "postgresql://u:s3cret@host:abc/db"}
+
+        mock_conn = MagicMock()
+        mock_conn.execute.side_effect = DatabaseError("", {}, Exception("conn refused"))
+        provider.get_connection = MagicMock(return_value=mock_conn)
+
+        with caplog.at_level(logging.ERROR):
+            assert SAProvider.is_alive(provider) is False
+
+        records = [
+            r
+            for r in caplog.records
+            if "repository.sqlalchemy.connection_failed" in r.getMessage()
+        ]
+        assert len(records) == 1
+        assert records[0].database_uri == "<unparseable>"
+
+    @pytest.mark.no_test_domain
+    def test_connection_failed_lets_a_missing_uri_through(self):
+        """Only a URI that cannot be parsed is redacted as '<unparseable>'."""
+        try:
+            from sqlalchemy.exc import DatabaseError
+
+            from protean.adapters.repository.sqlalchemy import SAProvider
+        except ImportError:
+            pytest.skip("sqlalchemy not installed")
+
+        provider = MagicMock(spec=SAProvider)
+        provider.conn_info = {}
+
+        mock_conn = MagicMock()
+        mock_conn.execute.side_effect = DatabaseError("", {}, Exception("conn refused"))
+        provider.get_connection = MagicMock(return_value=mock_conn)
+
+        with pytest.raises(KeyError, match="database_uri"):
+            SAProvider.is_alive(provider)

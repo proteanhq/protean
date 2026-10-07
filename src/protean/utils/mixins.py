@@ -241,7 +241,12 @@ def _get_transient_retry_config(instance: Any = None) -> dict[str, Any]:
                     raw.get("max_delay_seconds", cfg["max_delay_seconds"])
                 )
                 exception_spec = raw.get("exceptions")
-    except Exception:
+    except (AttributeError, TypeError, ValueError) as exc:
+        # The section is not a table, or one of its values is not a number.
+        logger.warning(
+            "Invalid [server.transient_retry] config (%r), using the defaults",
+            exc,
+        )
         cfg = dict(_TRANSIENT_RETRY_DEFAULTS)
         exception_spec = None
 
@@ -331,8 +336,9 @@ def _deadline_exceeded_after(delay: float) -> bool:
     """
     try:
         msg = g.get("message_in_context")
-    except Exception:
-        # No active domain/message context -> no deadline to honor.
+    except AttributeError:
+        # No active domain context, so ``g`` has nothing to read and there is
+        # no deadline to honor.
         return False
     headers = getattr(getattr(msg, "metadata", None), "headers", None)
     if headers is None or getattr(headers, "deadline", None) is None:
@@ -742,7 +748,7 @@ class HandlerMixin:
                 raise
             # `Exception` and not `BaseException`, so an interrupt or a
             # cancellation still stops dispatch where it is raised.
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - collected and re-raised below
                 failures.append(exc)
             except BaseException as exc:
                 _carry_discarded_failures(cls, item, failures, exc)

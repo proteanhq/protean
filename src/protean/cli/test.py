@@ -379,7 +379,7 @@ class TestRunner:
                     result = future.result()
                     self.track_exit_code(result)
                     print(f"📊 Progress: {i}/{len(suites)} test suites completed")
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - one suite's crash must not stop the run
                     print(f"💥 Test suite '{suite.name}' generated an exception: {exc}")
                     self.track_exit_code(1)
 
@@ -508,7 +508,7 @@ class TestRunner:
                         print(
                             f"📊 Progress: {i}/{len(remaining_suites)} remaining test suites completed"
                         )
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 - one suite's crash must not stop the run
                         print(
                             f"💥 Test suite '{suite.name}' generated an exception: {exc}"
                         )

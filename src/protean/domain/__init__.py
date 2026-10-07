@@ -309,26 +309,27 @@ class Domain:
         try:
             # Get the frame of the caller of the Domain constructor (2 frames up)
             frame = sys._getframe(2)
-            filename = frame.f_code.co_filename
+        except ValueError:
+            # The call stack is not that deep
+            return str(Path.cwd())
+        filename = frame.f_code.co_filename
 
-            # Handle special cases
-            if self._is_interactive_context(filename):
-                # Interactive shell or Jupyter notebook
-                return str(Path.cwd())
+        # Handle special cases
+        if self._is_interactive_context(filename):
+            # Interactive shell or Jupyter notebook
+            return str(Path.cwd())
 
-            # Handle frozen applications (PyInstaller, etc.)
-            if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-                # PyInstaller creates a temp folder and stores path in _MEIPASS
-                return str(sys._MEIPASS)
+        # Handle frozen applications (PyInstaller, etc.)
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            return str(sys._MEIPASS)
 
-            # Regular Python script
-            try:
-                return str(Path(filename).resolve().parent)
-            except (TypeError, ValueError):
-                # Fallback to CWD if unable to determine path
-                return str(Path.cwd())
-        except Exception:
-            # Final fallback for any other unexpected errors
+        # Regular Python script
+        try:
+            return str(Path(filename).resolve().parent)
+        # A symlink loop raises RuntimeError before Python 3.13 and OSError after.
+        except (TypeError, ValueError, OSError, RuntimeError):
+            # Fallback to CWD if unable to determine path
             return str(Path.cwd())
 
     def __init__(
@@ -728,7 +729,7 @@ class Domain:
                 return
 
             self.configure_logging()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - logging setup must never break Domain.init()
             # Degrade gracefully — never let logging setup break Domain.init()
             print(
                 f"Warning: auto-configuration of logging failed: {exc}",

@@ -435,10 +435,10 @@ class PartitionedStreamSubscription(StreamSubscription):
                 owned.lease_key,
                 owned.fence_token,
             )
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - best effort: the lease expires anyway
             logger.debug(
                 "partition.lease_release_failed",
-                extra={"partition": owned.partition_id},
+                extra={"partition": owned.partition_id, "error": repr(exc)},
             )
 
     # ------------------------------------------------------------------
@@ -617,10 +617,14 @@ class PartitionedStreamSubscription(StreamSubscription):
         assert self.broker is not None, "Broker not initialized"
         try:
             message = Message.deserialize(payload)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - a bad payload is a failed message, not a crash
             logger.error(
                 "partition.deserialize_failed",
-                extra={"partition": owned.partition_id, "message_id": identifier},
+                extra={
+                    "partition": owned.partition_id,
+                    "message_id": identifier,
+                    "error": repr(exc),
+                },
             )
             return False
 

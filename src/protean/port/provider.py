@@ -470,7 +470,7 @@ class ProviderRegistry:
                 register_func = entry_point.load()
                 register_func()
                 logger.debug(f"Loaded provider plugin: {entry_point.name}")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - a plugin is third-party code
                 logger.debug(
                     f"Failed to load provider plugin '{entry_point.name}': {e}"
                 )

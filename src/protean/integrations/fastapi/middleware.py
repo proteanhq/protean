@@ -351,7 +351,7 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
         """
         try:
             response = await call_next(request)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - re-raised after the wide event
             return None, 500, exc
         return response, response.status_code, None
 

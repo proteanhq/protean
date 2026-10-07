@@ -213,7 +213,7 @@ def _check_outbox_schema(domain: Domain) -> list[UpgradeFinding]:
             columns = {
                 c["name"]: c for c in inspector.get_columns("outbox", schema=schema)
             }
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - reported as a CHECK_FAILED finding
             # Reported rather than swallowed. The command documents CHECK_FAILED
             # as "a check could not complete; the report may be incomplete for
             # that area", and silently skipping a database would leave a clean
@@ -498,7 +498,7 @@ def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
                 c["name"]: c for c in inspector.get_columns("outbox", schema=schema)
             }
             indexes = inspector.get_indexes("outbox", schema=schema)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - reported as a CHECK_FAILED finding
             # Reported rather than swallowed. The command documents CHECK_FAILED
             # as "a check could not complete; the report may be incomplete for
             # that area", and skipping a database silently would leave a clean
@@ -632,7 +632,7 @@ def run_upgrade_checks(domain: Domain) -> list[UpgradeFinding]:
     for check in _CHECKS:
         try:
             findings.extend(check(domain))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - one failing check must not stop the report
             findings.append(
                 UpgradeFinding(
                     code="CHECK_FAILED",

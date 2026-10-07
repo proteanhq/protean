@@ -66,7 +66,7 @@ def load_domain(domain_path: str, *, as_json: bool = False) -> Domain:
 
     try:
         derived_domain.init()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: user domain code can raise anything
         _abort_load(
             f"Error initialising Protean domain: {exc}", as_json=as_json, exc=exc
         )
@@ -85,7 +85,7 @@ def load_domain_ir(domain_path: str, *, as_json: bool = False) -> dict[str, Any]
 
     try:
         return derived_domain.to_ir()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: report any IR build failure
         _abort_load(
             f"Error generating IR from Protean domain: {exc}", as_json=as_json, exc=exc
         )

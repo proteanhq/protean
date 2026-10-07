@@ -1,5 +1,7 @@
 """Diagnostics: TestCustomLintRules."""
 
+import logging
+
 from protean import Domain
 from protean.fields.simple import String
 from protean.ir.builder import IRBuilder
@@ -40,10 +42,17 @@ class TestCustomLintRules:
         codes = [d["code"] for d in ir["diagnostics"]]
         assert "CUSTOM_CHECK" not in codes
 
-    def test_raising_rule_is_skipped(self):
+    def test_raising_rule_is_skipped(self, caplog):
         """A rule that throws an exception is logged and skipped."""
         domain = _build_domain_with_rules([f"{_FIXTURES}.raising_rule"])
-        ir = IRBuilder(domain).build()
+        with caplog.at_level(logging.WARNING, logger="protean.ir.builder"):
+            ir = IRBuilder(domain).build()
+
+        assert any(
+            "raising_rule" in r.getMessage()
+            and "Something went wrong in the rule" in r.getMessage()
+            for r in caplog.records
+        )
 
         # Should not crash — built-in diagnostics still present
         assert isinstance(ir["diagnostics"], list)
@@ -81,10 +90,18 @@ class TestCustomLintRules:
         ir = IRBuilder(domain).build()
         assert isinstance(ir["diagnostics"], list)
 
-    def test_import_failure_skipped(self):
+    def test_import_failure_skipped(self, caplog):
         """A non-existent rule path is logged and skipped."""
         domain = _build_domain_with_rules(["nonexistent.module.rule"])
-        ir = IRBuilder(domain).build()
+        with caplog.at_level(logging.WARNING, logger="protean.ir.builder"):
+            ir = IRBuilder(domain).build()
+
+        assert any(
+            "nonexistent.module.rule" in r.getMessage()
+            and "could not be imported" in r.getMessage()
+            and "ModuleNotFoundError" in r.getMessage()
+            for r in caplog.records
+        )
         assert isinstance(ir["diagnostics"], list)
 
     def test_invalid_dotted_path_skipped(self):

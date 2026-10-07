@@ -244,7 +244,8 @@ def _cache_status(domain: Domain) -> dict[str, Any]:
                 try:
                     cache.ping()
                     result["status"] = "healthy"
-                except Exception:
+                except Exception as exc:  # noqa: BLE001 - health probe: any fault is "unhealthy"
+                    logger.debug("Cache ping failed: %r", exc)
                     result["status"] = "unhealthy"
             else:
                 result["status"] = "healthy"

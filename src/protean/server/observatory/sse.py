@@ -6,7 +6,6 @@ event type, and message type.
 """
 
 import asyncio
-import contextlib
 import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -22,7 +21,7 @@ from fastapi.responses import StreamingResponse
 
 from protean.domain import Domain
 
-from ..tracing import TRACE_CHANNEL
+from ..tracing import TRACE_CHANNEL, decode_trace_payload
 
 logger = logging.getLogger(__name__)
 
@@ -103,20 +102,21 @@ def create_sse_endpoint(
                     )
 
                     if message and message["type"] == "message":
-                        with contextlib.suppress(json.JSONDecodeError, TypeError):
-                            data = json.loads(message["data"])
+                        data = decode_trace_payload(message["data"])
+                        if data is None:
+                            continue
 
-                            # Apply filters
-                            if domain and data.get("domain") != domain:
-                                continue
-                            if stream and data.get("stream") != stream:
-                                continue
-                            if event and not fnmatch(data.get("event", ""), event):
-                                continue
-                            if type and not fnmatch(data.get("message_type", ""), type):
-                                continue
+                        # Apply filters
+                        if domain and data.get("domain") != domain:
+                            continue
+                        if stream and data.get("stream") != stream:
+                            continue
+                        if event and not _matches(data.get("event", ""), event):
+                            continue
+                        if type and not _matches(data.get("message_type", ""), type):
+                            continue
 
-                            yield _format_sse(data)
+                        yield _format_sse(data)
                     else:
                         # No message, yield a keepalive comment to prevent timeouts
                         yield ": keepalive\n\n"
@@ -139,6 +139,11 @@ def create_sse_endpoint(
         )
 
     return stream_events
+
+
+def _matches(value: object, pattern: str) -> bool:
+    """Match a trace value against a glob pattern. A non-str value never matches."""
+    return isinstance(value, str) and fnmatch(value, pattern)
 
 
 def _format_sse(data: dict[str, Any], event_type: str = "trace") -> str:

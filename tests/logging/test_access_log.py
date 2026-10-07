@@ -378,3 +378,33 @@ class TestAccessLogHelperFallbacks:
         agg, agg_id = _extract_aggregate_info(object(), type)
         assert agg == ""
         assert agg_id == ""
+
+
+class TestReadAccessLogCounters:
+    """The counters come from ``g``, and a broken counter is not hidden."""
+
+    def test_counters_are_read_from_g(self, test_domain):
+        from protean.utils.globals import g
+        from protean.utils.logging import _read_access_log_counters
+
+        with test_domain.domain_context():
+            g._access_log_events_raised = ["Registered"]
+            g._access_log_repo_loads = 2
+            g._access_log_repo_saves = 1
+            g._access_log_uow_outcome = "committed"
+
+            events, ops, outcome = _read_access_log_counters()
+
+        assert events == ["Registered"]
+        assert ops == {"loads": 2, "saves": 1}
+        assert outcome == "committed"
+
+    def test_a_counter_that_is_not_a_list_raises(self, test_domain):
+        from protean.utils.globals import g
+        from protean.utils.logging import _read_access_log_counters
+
+        with test_domain.domain_context():
+            g._access_log_events_raised = 42
+
+            with pytest.raises(TypeError):
+                _read_access_log_counters()

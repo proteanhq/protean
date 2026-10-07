@@ -1057,9 +1057,9 @@ class RedisBroker(BaseBroker):
                     )
                     removed += 1
                     logger.debug(f"Removed stale consumer {name} from {group_name}")
-                except Exception as e:
+                except redis.RedisError as e:
                     logger.debug(f"Failed to remove stale consumer {name}: {e}")
-        except Exception as e:
+        except redis.RedisError as e:
             logger.debug(
                 f"Error cleaning stale consumers for {group_name} on {stream}: {e}"
             )
@@ -1167,7 +1167,7 @@ class RedisBroker(BaseBroker):
                 },
             )
 
-        except Exception as e:
+        except redis.RedisError as e:
             logger.debug(f"Error extracting group data: {e}")
             return None
 
@@ -1232,7 +1232,7 @@ class RedisBroker(BaseBroker):
         """Test basic connectivity to Redis broker"""
         try:
             return self._client.ping()
-        except Exception as e:
+        except (redis.RedisError, OSError) as e:
             logger.debug(f"Redis ping failed: {e}")
             return False
 
@@ -1272,7 +1272,7 @@ class RedisBroker(BaseBroker):
                 "dlq": 0,  # Redis Streams don't have explicit DLQ
             }
 
-        except Exception as e:
+        except redis.RedisError as e:
             logger.debug(f"Error calculating message counts: {e}")
             return {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
 
@@ -1285,31 +1285,23 @@ class RedisBroker(BaseBroker):
             ]
 
             return {"count": len(existing_streams), "names": sorted(existing_streams)}
-        except Exception as e:
+        except redis.RedisError as e:
             logger.debug(f"Error calculating streams info: {e}")
             return {"count": 0, "names": []}
 
     def _calculate_consumer_groups_info(self) -> dict[str, Any]:
         """Calculate consumer groups information"""
-        try:
-            # Get all unique consumer group names across all streams
-            consumer_groups = set()
+        # Get all unique consumer group names across all streams
+        consumer_groups = set()
+        for group_key in self._created_groups:
+            if CONSUMER_GROUP_SEPARATOR in group_key:
+                # Split off the LAST colon: the group name (a dotted handler
+                # FQN, no colons) is the final segment, while the stream part
+                # may itself carry colons for partition streams (ADR-0028).
+                group_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[1]
+                consumer_groups.add(group_name)
 
-            # Access _created_groups safely in case it's patched to raise an exception
-            created_groups = self._created_groups
-
-            for group_key in created_groups:
-                if CONSUMER_GROUP_SEPARATOR in group_key:
-                    # Split off the LAST colon: the group name (a dotted handler
-                    # FQN, no colons) is the final segment, while the stream part
-                    # may itself carry colons for partition streams (ADR-0028).
-                    group_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[1]
-                    consumer_groups.add(group_name)
-
-            return {"count": len(consumer_groups), "names": sorted(consumer_groups)}
-        except Exception as e:
-            logger.debug(f"Error calculating consumer groups info: {e}")
-            return {"count": 0, "names": []}
+        return {"count": len(consumer_groups), "names": sorted(consumer_groups)}
 
     def _health_stats(self) -> dict[str, Any]:
         """Get Redis-specific health and performance statistics"""
@@ -1423,7 +1415,7 @@ class RedisBroker(BaseBroker):
                         )
                     return True
 
-            except Exception as e:
+            except (redis.RedisError, OSError) as e:
                 logger.debug(f"Redis connection attempt {attempt + 1} failed: {e}")
 
             # Connection failed, try to reconnect (unless it's the last attempt)

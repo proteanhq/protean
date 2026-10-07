@@ -19,6 +19,7 @@ from protean.exceptions import (
     DeserializationError,
     IncorrectUsageError,
     InvalidDataError,
+    ValidationError,
 )
 from protean.fields.association import Association, Reference
 from protean.fields.base import FieldBase
@@ -84,6 +85,9 @@ class TraceParent(BaseValueObject):
 
     @classmethod
     def build(cls, traceparent: str) -> "TraceParent | None":
+        if not isinstance(traceparent, str):
+            logger.error(f"Traceparent is not a string: {traceparent!r}")
+            return None
         try:
             parts = traceparent.split("-")
             if len(parts) != 4:
@@ -102,7 +106,7 @@ class TraceParent(BaseValueObject):
             # be misread as unsampled.
             sampled = bool(int(trace_flags, 16) & 0x01)
             return cls(trace_id=trace_id, parent_id=parent_id, sampled=sampled)
-        except Exception as e:
+        except (ValueError, ValidationError) as e:
             logger.error(f"Error parsing traceparent: {e}")
             logger.error(f"Provided traceparent: {traceparent}")
             return None

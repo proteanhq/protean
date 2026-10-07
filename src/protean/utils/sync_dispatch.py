@@ -128,7 +128,7 @@ def drain_sync_dispatch() -> None:
                 # cancellation still stops the drain where it is raised. Keeping
                 # `failures` to `Exception` also matters below: the
                 # `ExceptionGroup` rejects a bare `BaseException` as a member.
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - collected and re-raised below
                     failures.append(exc)
                 except BaseException as exc:
                     _carry_discarded_failures(failures, exc)

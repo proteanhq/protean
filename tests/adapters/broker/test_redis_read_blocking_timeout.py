@@ -28,6 +28,9 @@ class _FakeRedisClient:
         self.xreadgroup_calls: list[dict] = []
         self.xgroup_create_calls = 0
 
+    def ping(self):
+        return True
+
     def xgroup_create(self, stream, group_name, id=None, mkstream=False):
         self.xgroup_create_calls += 1
         return True
