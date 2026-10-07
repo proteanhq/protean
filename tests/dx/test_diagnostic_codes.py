@@ -1187,18 +1187,18 @@ def test_build_diagnostic_tolerates_pack_absent(monkeypatch):
     assert "teaching_skills" not in diag
 
 
-def test_build_diagnostic_tolerates_a_reverse_index_that_raises(monkeypatch):
-    # The reverse-index lookup itself blowing up (not just a stripped pack) is
-    # swallowed by build_diagnostic: the key is omitted, the diagnostic stands.
+def test_build_diagnostic_propagates_a_reverse_index_that_raises(monkeypatch):
+    # Only a missing DX pack module is tolerated. A stripped or unreadable pack
+    # already degrades to an empty index inside ``diagnostic_code_skills``, so
+    # an error raised by the lookup itself is a real fault and reaches the caller.
     def _boom():
         raise RuntimeError("reverse index build failed")
 
     monkeypatch.setattr(pack, "diagnostic_code_skills", _boom)
 
-    diag = build_diagnostic(
-        DiagnosticCode.AGGREGATE_NO_INVARIANTS,
-        element="my_app.Order",
-        message="Order declares no invariants.",
-    )
-
-    assert "teaching_skills" not in diag
+    with pytest.raises(RuntimeError, match="reverse index build failed"):
+        build_diagnostic(
+            DiagnosticCode.AGGREGATE_NO_INVARIANTS,
+            element="my_app.Order",
+            message="Order declares no invariants.",
+        )
