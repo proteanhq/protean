@@ -577,7 +577,7 @@ class QuerySet:
 
     @property
     def has_prev(self) -> bool:
-        """Return True if this page has items and is not the first page."""
+        """Return True if this page has items and starts after the first item (offset > 0)."""
         return self._data.has_prev
 
     @property
@@ -640,7 +640,7 @@ class ResultSet:
 
     @property
     def has_prev(self) -> bool:
-        """Is ``True`` if this page has items and is not the first page."""
+        """Is ``True`` if this page has items and starts after the first item (offset > 0)."""
         return bool(self.items) and self.offset > 0
 
     @property
