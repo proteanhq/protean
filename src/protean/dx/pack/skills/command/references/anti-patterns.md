@@ -163,7 +163,7 @@ class OrderHandler:
         # Process order AND raise events for other aggregates
         order = Order(...)
         order.place()
-        self.repository.add(order)
+        current_domain.repository_for(Order).add(order)
         # Events will notify Inventory via event handlers
 ```
 

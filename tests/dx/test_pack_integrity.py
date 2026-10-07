@@ -413,6 +413,28 @@ def test_verify_reference_is_present_and_non_empty():
     assert "check" in text
 
 
+def test_verify_reference_names_the_stop_level_and_a_named_domain():
+    # The stop rule is "no error or warning", so the command the reference
+    # gives must filter at that level. Info diagnostics are often kept on
+    # purpose and would otherwise read as work left to do. A module that
+    # defines more than one domain needs the `module:name` form of --domain.
+    text = dx.read_pack_text(REFERENCES_DIR, VERIFY_REFERENCE)
+
+    assert "--level=warning" in text
+    domains = re.findall(r"--domain=(\S+?)[`\s]", text)
+    assert domains, "the verify reference names no --domain value"
+    assert any(":" in value for value in domains), (
+        f"no --domain value in the verify reference names a domain: {domains}"
+    )
+    # Stopping only when check reports nothing would make an agent fix warnings
+    # that were there before its change.
+    prose = " ".join(text.split())
+    assert "reports no error or warning that your change introduced" in prose
+    # The MCP check tool takes no level, so the reference must say to skip the
+    # info-level diagnostics it returns.
+    assert "Skip those, the same as `--level=warning`" in prose
+
+
 @requires_pack_on_disk
 def test_hardening_bar_note_names_the_guards_that_enforce_it():
     # The bar is maintainer-facing: it belongs to the pack, not to the guidance

@@ -21,16 +21,25 @@ def place_order(self, command):
     if total > MAX_ORDER:
         raise ValidationError("Too expensive")
     order = Order(customer_id=command.customer_id, total=total, status="PLACED")
-    self.repository.add(order)
+    current_domain.repository_for(Order).add(order)
 ```
 
 ```python
+@domain.command(part_of="Order")
+class PlaceOrder:
+    customer_id = Identifier(required=True)
+    items = List(content_type=Dict())
+
+
 # Good: handler orchestrates, aggregate owns logic
-@handle(PlaceOrder)
-def place_order(self, command):
-    order = Order(customer_id=command.customer_id)
-    order.place(items=command.items)
-    self.repository.add(order)
+@domain.command_handler(part_of="Order")
+class OrderCommandHandler:
+    @handle(PlaceOrder)
+    def place_order(self, command):
+        order = Order(customer_id=command.customer_id)
+        order.place(items=command.items)
+        current_domain.repository_for(Order).add(order)
+        return order.id
 ```
 
 ### Primitive Obsession
@@ -49,7 +58,21 @@ class Order:
 ```
 
 ```python
+@domain.value_object
+class Money:
+    amount = Decimal(required=True, precision=19, scale=4)
+    currency = String(max_length=3, default="USD")
+
+
+@domain.value_object
+class Address:
+    street = String(required=True)
+    city = String(required=True)
+    zip_code = String(required=True)
+
+
 # Good: value objects
+@domain.aggregate
 class Order:
     total = ValueObject(Money)
     shipping_address = ValueObject(Address)
@@ -100,31 +123,72 @@ Modifying multiple aggregates in one handler:
 @handle(PlaceOrder)
 def place_order(self, command):
     order = Order.create(...)
-    self.repository.add(order)
+    current_domain.repository_for(Order).add(order)
     # Violates: one aggregate per transaction
-    inventory = domain.repository_for(Inventory).get(command.product_id)
+    inventory = current_domain.repository_for(Inventory).get(command.product_id)
     inventory.reduce(command.quantity)
-    domain.repository_for(Inventory).add(inventory)
+    current_domain.repository_for(Inventory).add(inventory)
 ```
 
-```python
-# Good: events for cross-aggregate coordination
-@handle(PlaceOrder)
-def place_order(self, command):
-    order = Order.create(...)  # Raises OrderPlaced event
-    self.repository.add(order)
+The fix keeps each handler to one aggregate. Order's own event handler reacts to `OrderPlaced` and sends a command, and Inventory's command handler changes Inventory:
 
-# Separate handler reacts to the event
-@handle(OrderPlaced)
-def reserve_inventory(self, event):
-    inventory = self.repository.get(event.product_id)
-    inventory.reserve(event.quantity)
-    self.repository.add(inventory)
+```python
+@domain.aggregate
+class Inventory:
+    available = Integer(default=0)
+    reserved = Integer(default=0)
+
+    def reserve(self, quantity):
+        self.available -= quantity
+        self.reserved += quantity
+
+
+@domain.event(part_of="Order")
+class OrderPlaced:
+    order_id = Identifier(required=True)
+    product_id = Identifier(required=True)
+    quantity = Integer(required=True)
+
+
+@domain.command(part_of="Inventory")
+class ReserveStock:
+    product_id = Identifier(required=True)
+    quantity = Integer(required=True)
+
+
+# Good: events for cross-aggregate coordination
+@domain.command_handler(part_of="Order")
+class OrderCommandHandler:
+    @handle(PlaceOrder)
+    def place_order(self, command):
+        order = Order.create(...)  # Raises OrderPlaced event
+        current_domain.repository_for(Order).add(order)
+        return order.id
+
+
+# Order's event handler reacts and hands off with a command
+@domain.event_handler(part_of="Order")
+class OrderEventHandler:
+    @handle(OrderPlaced)
+    def reserve_inventory(self, event):
+        current_domain.process(
+            ReserveStock(product_id=event.product_id, quantity=event.quantity)
+        )
+
+
+@domain.command_handler(part_of="Inventory")
+class InventoryCommandHandler:
+    @handle(ReserveStock)
+    def reserve_stock(self, command):
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.get(command.product_id)
+        inventory.reserve(command.quantity)
+        repo.add(inventory)
 ```
 
 ### God Aggregate
 
-One aggregate doing everything:
+One aggregate doing everything. `check` reports `AGGREGATE_TOO_LARGE` when the aggregate's cluster holds more child entities than `[lint] aggregate_size_limit` (default 5). Field and method counts are a judgement call that `check` does not make:
 
 ```python
 # fragment
@@ -164,18 +228,38 @@ def complete_order(order_id):
 ```
 
 ```python
+@domain.command(part_of="Order")
+class CompleteOrder:
+    order_id = Identifier(required=True)
+
+
+@domain.event(part_of="Order")
+class OrderCompleted:
+    order_id = Identifier(required=True)
+
+
 # Good: event-driven
-def complete_order(order_id):
-    order = repo.get(order_id)
-    order.complete()  # Raises OrderCompleted event
-    repo.add(order)
+@domain.command_handler(part_of="Order")
+class CompleteOrderHandler:
+    @handle(CompleteOrder)
+    def complete_order(self, command):
+        repo = current_domain.repository_for(Order)
+        order = repo.get(command.order_id)
+        order.complete()  # Raises OrderCompleted event
+        repo.add(order)
+
 
 # Separate handlers react
-@handle(OrderCompleted)
-def send_confirmation(self, event): ...
+@domain.event_handler(part_of="Order")
+class OrderConfirmations:
+    @handle(OrderCompleted)
+    def send_confirmation(self, event): ...
 
-@handle(OrderCompleted)
-def update_analytics(self, event): ...
+
+@domain.event_handler(part_of="Order")
+class OrderAnalytics:
+    @handle(OrderCompleted)
+    def update_analytics(self, event): ...
 ```
 
 ## Tier 3: Subtle Issues
@@ -209,11 +293,14 @@ def quantity_must_be_positive(self):  # Validation #3 (duplicate)
 
 ```python
 # Good: validate once, at the right layer
-# Field constraint handles basic validation
-quantity = Integer(required=True, min_value=1)
-# Invariant handles complex business rules
-@invariant.post
-def total_within_limit(self): ...
+@domain.aggregate
+class OrderLine:
+    # Field constraint handles basic validation
+    quantity = Integer(required=True, min_value=1)
+
+    # Invariant handles complex business rules
+    @invariant.post
+    def total_within_limit(self): ...
 ```
 
 ### Mock-Heavy Tests
@@ -233,11 +320,11 @@ def test_place_order():
 ```
 
 ```python
-# Good: real objects with in-memory adapters
+# Good: real objects with in-memory adapters. The test conftest sets
+# command_processing to "sync", so process() returns the handler's result.
 def test_place_order():
-    domain.process(PlaceOrder(...), asynchronous=False)
-    repo = domain.repository_for(Order)
-    order = repo.get(order_id)
+    order_id = domain.process(PlaceOrder(customer_id="c-1", items=[{"sku": "A1"}]))
+    order = domain.repository_for(Order).get(order_id)
     assert order.status == "PLACED"
 ```
 

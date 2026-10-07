@@ -14,6 +14,15 @@ metadata:
   version: "0.1"
   category: workflow
   composes: [aggregate, command-handler, event-handler, value-object, repository]
+  diagnostic_codes:
+    - AGGREGATE_NO_INVARIANTS
+    - AGGREGATE_TOO_LARGE
+    - AGGREGATE_WITHOUT_COMMAND_HANDLER
+    - COMMAND_HANDLER_CROSS_CLUSTER
+    - CROSS_AGGREGATE_REFERENCE
+    - EVENT_HANDLER_FOREIGN_EVENT
+    - HANDLER_PERSISTS_AND_CALLS_OUT
+    - HANDLER_TOO_BROAD
 ---
 
 # Audit Domain
@@ -30,9 +39,33 @@ Produces a prioritized report linking each finding to the appropriate refactorin
 | **Refactoring links** | Each finding links to the skill that fixes it |
 | **Summary statistics** | Aggregate counts, handler counts, issue breakdown |
 
+## Start with `protean check`
+
+`protean check` finds part of what this audit looks for. Run it first and record what it reports:
+
+```bash
+protean check --domain=<module>
+```
+
+If the module defines more than one domain, name the one to audit after a colon, for example `--domain=myapp.domain:billing`.
+
+Through the MCP server, call the `check` tool instead. Do not pass `--level=warning` here. Several of the codes below are info level, and `--level=warning` would hide them.
+
+| Code | Level | What it reports | Severity | Fix |
+|------|-------|-----------------|----------|-----|
+| `COMMAND_HANDLER_CROSS_CLUSTER` | warning | A command handler processes another cluster's command | HIGH | [command-handler](../command-handler/SKILL.md) |
+| `CROSS_AGGREGATE_REFERENCE` | warning | A field holds a `Reference` to another aggregate root | HIGH | [split-aggregate](../split-aggregate/SKILL.md) |
+| `EVENT_HANDLER_FOREIGN_EVENT` | warning | An event handler reacts to another cluster's event | MEDIUM | [event-handler](../event-handler/SKILL.md) |
+| `AGGREGATE_TOO_LARGE` | info | The aggregate's cluster has more child entities than `[lint] aggregate_size_limit` (default 5) | MEDIUM, or HIGH with the category 4 signals | [split-aggregate](../split-aggregate/SKILL.md) |
+| `HANDLER_PERSISTS_AND_CALLS_OUT` | info | A handler method persists and then calls an external system while the transaction is open | MEDIUM | [command-handler](../command-handler/SKILL.md) |
+| `AGGREGATE_NO_INVARIANTS` | info | The aggregate declares no invariant | LOW | [add-validation](../add-validation/SKILL.md) |
+| `HANDLER_TOO_BROAD` | info | A command or event handler handles more message types than `[lint] handler_breadth_limit` (default 5) | LOW | [command-handler](../command-handler/SKILL.md), [event-handler](../event-handler/SKILL.md) |
+
+Report each of these codes at the severity in the table. `check` prints other diagnostics too, such as errors and naming and wiring codes. Report those at their level: an error as CRITICAL, a warning as MEDIUM, and an info diagnostic as LOW. The element skills cover their fixes.
+
 ## Detection categories
 
-Scan for these anti-patterns in order. Each has a detection heuristic and a linked fix.
+`check` has no rule for most of these categories, and it does not look at endpoints or tests, so they need a reading of the code. Scan for them in order. Each has a detection heuristic and a linked fix. Where a finding is one `check` already reported, record it once, with its code.
 
 ### 1. Logic leak — business logic outside aggregates
 
@@ -69,7 +102,7 @@ fields representing domain concepts that deserve their own type.
 more than one aggregate class.
 
 **Signals**:
-- Multiple `self.repository.add()` calls on different aggregate types
+- `current_domain.repository_for(X).add()` calls on more than one aggregate type
 - Multiple `domain.repository_for(X)` calls in one handler
 - Loading and mutating a second aggregate inside a handler
 
@@ -78,9 +111,9 @@ more than one aggregate class.
 
 ### 4. God aggregate — oversized aggregate root
 
-**Detect**: Aggregates with too many fields, methods, or responsibilities.
+**Detect**: `check` reports `AGGREGATE_TOO_LARGE` when the aggregate's cluster holds more child entities than `[lint] aggregate_size_limit` (default 5). That is the only size rule the framework enforces.
 
-**Signals**:
+**Signals this skill adds** (`check` does not count these, so judge them by reading the aggregate):
 - More than 12-15 fields on a single aggregate
 - More than 8-10 public methods
 - More than 5 invariants
@@ -124,7 +157,7 @@ more than one aggregate class.
 - Missing `@invariant.post` decorators on aggregates with complex rules
 
 **Severity**: MEDIUM
-**Fix**: refactor-add-invariants (planned)
+**Fix**: [add-validation](../add-validation/SKILL.md)
 
 ### 8. Circular import risk — class references in DTOs
 
@@ -178,7 +211,11 @@ logic without raising events.
 
 ## Process
 
-### Step 1: Discover domain files
+### Step 1: Run `protean check`
+
+Run `protean check --domain=<module>` (or `--domain=<module>:<name>` when the module defines more than one domain), or the MCP `check` tool, as described in [Start with `protean check`](#start-with-protean-check). Keep its output. Each code it reports is a finding, and the codes tell you which categories are already covered.
+
+### Step 2: Discover domain files
 
 Find all Python files containing `@domain.` decorators or importing from `protean`:
 
@@ -192,16 +229,16 @@ src/**/
 └── **/test_*.py
 ```
 
-### Step 2: Scan each file
+### Step 3: Scan each file
 
-For every domain file, check all 11 detection categories. Record each finding with:
+For every domain file, check all 11 detection categories. Skip a finding `check` already reported in Step 1. Record each finding with:
 - **File and line number**
-- **Category** (1-11 from above)
+- **Category** (1-11 from above), and the `check` code if there is one
 - **Severity** (CRITICAL / HIGH / MEDIUM / LOW)
 - **Description** — what was found
 - **Suggestion** — one-sentence fix
 
-### Step 3: Produce the report
+### Step 4: Produce the report
 
 ```markdown
 ## Domain Audit Report
@@ -211,6 +248,7 @@ For every domain file, check all 11 detection categories. Record each finding wi
 - Aggregates found: N
 - Handlers found: N
 - Issues found: N (C critical, H high, M medium, L low)
+- From `check`: N (list the codes)
 
 ### CRITICAL
 1. **[Category]: [description]** — `file.py:line`
@@ -231,7 +269,7 @@ For every domain file, check all 11 detection categories. Record each finding wi
 3. ...
 ```
 
-### Step 4: Suggest refactoring order
+### Step 5: Suggest refactoring order
 
 Prioritize fixes by:
 1. **CRITICAL first** — transaction boundary violations break data consistency
@@ -248,7 +286,33 @@ Prioritize fixes by:
 
 ## Quick example
 
-Scanning a file like this:
+A domain with these elements:
+
+```python
+from protean.exceptions import ValidationError
+
+
+@domain.aggregate
+class Order:
+    buyer_id = Identifier(required=True)
+    total = Float()
+    status = String(default="DRAFT")
+
+
+@domain.aggregate
+class Inventory:
+    quantity = Integer(default=0)
+
+
+@domain.command(part_of=Order)
+class PlaceOrder:
+    buyer_id = Identifier(required=True)
+    product_id = Identifier(required=True)
+    quantity = Integer(required=True)
+    items = List(content_type=Dict())
+```
+
+and this handler:
 
 ```python
 @domain.command_handler(part_of=Order)
@@ -256,24 +320,28 @@ class OrderCommandHandler:
     @handle(PlaceOrder)
     def place_order(self, command):
         if len(command.items) == 0:
-            raise ValidationError("Order must have items")
-        total = sum(i.price * i.qty for i in command.items)
+            raise ValidationError({"items": ["Order must have items"]})
+        total = sum(i["price"] * i["qty"] for i in command.items)
         if total > 10000:
-            raise ValidationError("Order exceeds maximum")
+            raise ValidationError({"total": ["Order exceeds maximum"]})
         order = Order(buyer_id=command.buyer_id, total=total, status="PLACED")
-        self.repository.add(order)
-        inventory = domain.repository_for(Inventory).get(command.product_id)
+        current_domain.repository_for(Order).add(order)
+        inventory = current_domain.repository_for(Inventory).get(command.product_id)
         inventory.quantity -= command.quantity
-        domain.repository_for(Inventory).add(inventory)
+        current_domain.repository_for(Inventory).add(inventory)
 ```
 
 Would produce:
 
 ```
-CRITICAL: Transaction boundary violation — handler modifies both Order and Inventory (line 10-12)
-HIGH: Logic leak — validation and calculation in handler, not aggregate (lines 3-8)
-HIGH: Missing events — Inventory update should be event-driven, not direct (line 10-12)
+CRITICAL: Transaction boundary violation: handler modifies both Order and Inventory (lines 12-14)
+HIGH: Logic leak: validation and calculation in handler, not aggregate (lines 5-9)
+HIGH: Missing events: Inventory update should be event-driven, not direct (lines 12-14)
+MEDIUM: AGGREGATE_WITHOUT_COMMAND_HANDLER on Inventory (from check)
+LOW: AGGREGATE_NO_INVARIANTS on Order and Inventory (from check)
 ```
+
+`AGGREGATE_WITHOUT_COMMAND_HANDLER` is a warning that the table above does not list, so it is reported as MEDIUM. The aggregate skill covers its fix.
 
 ## Examples
 

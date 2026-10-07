@@ -7,6 +7,7 @@ This example demonstrates:
 - Value object with custom operations (Money.add())
 - User-defined invariants (@invariant.post)
 - Business rules that reject invalid operations
+- Pytest tests for each of them, run with the fixtures in conftest.py
 
 Domain: An e-commerce Order that contains LineItems with Money prices.
 Orders can be placed (which raises OrderPlaced) and cancelled (which raises
@@ -17,8 +18,7 @@ from protean import Domain, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
 
-domain = Domain(__name__)
-domain.config["event_processing"] = "sync"
+domain = Domain()
 
 
 # --- Value Object ---
@@ -170,3 +170,104 @@ class Order:
                 reason=reason,
             )
         )
+
+
+# --- Tests ---
+
+import pytest
+
+from protean.exceptions import ValidationError
+
+
+class TestOrderBehavior:
+    def test_create_starts_as_a_draft(self):
+        order = Order.create(customer_id="cust-1")
+        assert order.customer_id == "cust-1"
+        assert order.status == "draft"
+        assert order._events == []
+
+    def test_place_sets_status_to_placed(self):
+        order = Order.create(customer_id="cust-1")
+        order.add_item(product_id="p-1", quantity=2, unit_price=10.0)
+        order.place()
+        assert order.status == "placed"
+
+    def test_add_and_remove_items(self):
+        order = Order.create(customer_id="cust-1")
+        order.add_item(product_id="p-1", quantity=2, unit_price=10.0)
+        order.add_item(product_id="p-2", quantity=1, unit_price=25.0)
+        assert order.total == 45.0
+
+        order.remove_item("p-1")
+        assert [item.product_id for item in order.line_items] == ["p-2"]
+        assert order.total == 25.0
+
+
+class TestOrderEvents:
+    def test_place_raises_order_placed_with_its_data(self):
+        order = Order.create(customer_id="cust-1")
+        order.add_item(product_id="p-1", quantity=2, unit_price=10.0)
+        order.place()
+
+        assert len(order._events) == 1
+        event = order._events[0]
+        assert isinstance(event, OrderPlaced)
+        assert event.order_id == order.id
+        assert event.customer_id == "cust-1"
+        assert event.item_count == 1
+        assert event.total_amount == 20.0
+
+    def test_cancel_raises_order_cancelled(self):
+        order = Order.create(customer_id="cust-1")
+        order.add_item(product_id="p-1", quantity=1, unit_price=5.0)
+        order.place()
+        order._events.clear()  # Keep only the events cancel() raises
+
+        order.cancel("changed my mind")
+
+        assert order.status == "cancelled"
+        assert len(order._events) == 1
+        assert isinstance(order._events[0], OrderCancelled)
+        assert order._events[0].reason == "changed my mind"
+
+
+class TestOrderBusinessRules:
+    def test_cannot_place_an_empty_order(self):
+        # The post-invariant raises ValidationError.
+        order = Order.create(customer_id="cust-1")
+        with pytest.raises(ValidationError) as exc_info:
+            order.place()
+        assert exc_info.value.messages == {
+            "_entity": ["Order must have at least one item to be placed"]
+        }
+
+    def test_cannot_place_an_order_twice(self):
+        # place() raises ValueError when the order is not a draft.
+        order = Order.create(customer_id="cust-1")
+        order.add_item(product_id="p-1", quantity=1, unit_price=5.0)
+        order.place()
+        with pytest.raises(ValueError, match="Cannot place order in 'placed' status"):
+            order.place()
+        assert order.status == "placed"
+
+    def test_cannot_cancel_a_draft_order(self):
+        order = Order.create(customer_id="cust-1")
+        with pytest.raises(ValueError, match="Cannot cancel order in 'draft' status"):
+            order.cancel("too early")
+        assert order.status == "draft"
+
+    def test_cannot_remove_an_item_that_is_not_there(self):
+        order = Order.create(customer_id="cust-1")
+        with pytest.raises(ValueError, match="No item with product_id 'p-9'"):
+            order.remove_item("p-9")
+
+
+class TestMoney:
+    def test_add_same_currency(self):
+        result = Money(amount=10.0, currency="USD").add(Money(amount=20.0))
+        assert result.amount == 30.0
+        assert result.currency == "USD"
+
+    def test_add_different_currency_fails(self):
+        with pytest.raises(ValueError, match="Cannot add USD and EUR"):
+            Money(amount=10.0).add(Money(amount=20.0, currency="EUR"))

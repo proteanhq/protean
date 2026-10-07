@@ -99,7 +99,7 @@ For each gap, use [generate-test-scaffold](../../generate-test-scaffold/SKILL.md
 
 **Key patterns:**
 - Use `_events.clear()` to isolate event assertions after a factory that also raises events
-- Always pass `asynchronous=False` to `domain.process()` in tests
+- Set `event_processing` and `command_processing` to `"sync"` in the test conftest, so `domain.process()` and event handlers run inside the test (generate-test-scaffold Step 7)
 - For cross-aggregate tests, ensure the target aggregate exists in the repository before the source event fires
 
 ## Common analysis mistakes

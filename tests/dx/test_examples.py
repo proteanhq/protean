@@ -54,11 +54,19 @@ if not PACK_ROOT.is_dir():
     )
 
 
+# Asset files that define no example: package ``__init__.py`` markers, and the
+# pytest ``conftest.py`` that generate-test-scaffold ships next to its scaffolds
+# (``tests/dx/test_scaffold_tests_pass.py`` runs it).
+NOT_EXAMPLES = frozenset({"__init__.py", "conftest.py"})
+
+
 def _discover_assets() -> list[Path]:
-    """Return every example asset under the pack, sorted, excluding package
-    ``__init__.py`` markers (which define no example)."""
+    """Return every example asset under the pack, sorted, excluding the files
+    in :data:`NOT_EXAMPLES`."""
     return sorted(
-        path for path in SKILLS_ROOT.glob("*/assets/*.py") if path.name != "__init__.py"
+        path
+        for path in SKILLS_ROOT.glob("*/assets/*.py")
+        if path.name not in NOT_EXAMPLES
     )
 
 
@@ -77,7 +85,7 @@ def _independent_asset_count() -> int:
         total += sum(
             1
             for path in assets_dir.iterdir()
-            if path.suffix == ".py" and path.name != "__init__.py"
+            if path.suffix == ".py" and path.name not in NOT_EXAMPLES
         )
     return total
 
@@ -103,7 +111,9 @@ from protean.domain import Domain
 skills_root = pathlib.Path(sys.argv[1])
 report_path = pathlib.Path(sys.argv[2])
 assets = sorted(
-    p for p in skills_root.glob("*/assets/*.py") if p.name != "__init__.py"
+    p
+    for p in skills_root.glob("*/assets/*.py")
+    if p.name not in ("__init__.py", "conftest.py")
 )
 failures = []
 for index, path in enumerate(assets):

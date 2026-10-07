@@ -107,7 +107,7 @@ Read all test files and map what is already tested:
 3. **Event raised**: Test asserts `isinstance(aggregate._events[N], EventClass)` AND checks event field values
 4. **Invariant**: Test triggers the invariant condition and uses `pytest.raises`
 5. **Business rule**: Test for the happy path AND test for the rejection case
-6. **Command handler**: Test calls `domain.process(Command(...), asynchronous=False)` and verifies persisted state
+6. **Command handler**: Test calls `domain.process(Command(...))` and verifies persisted state. The test conftest sets `command_processing` to `"sync"`, as in [generate-test-scaffold](../generate-test-scaffold/SKILL.md) Step 7
 7. **Event handler**: Test verifies the target aggregate state changed after the source aggregate was persisted
 8. **VO operation**: Test calls the custom method and asserts the result
 

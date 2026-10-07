@@ -35,7 +35,7 @@ from protean.exceptions import ValidationError
 from protean.fields import Float, Integer, String, ValueObject
 
 # Domain setup
-domain = Domain(__name__)
+domain = Domain()
 
 
 # ============================================================

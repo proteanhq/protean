@@ -31,7 +31,7 @@ from protean.exceptions import ValidationError
 from protean.fields import Auto, HasMany, Identifier, String
 
 # Domain setup
-domain = Domain(__name__)
+domain = Domain()
 
 
 @domain.aggregate

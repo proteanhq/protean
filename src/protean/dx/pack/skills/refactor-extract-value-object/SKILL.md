@@ -94,7 +94,7 @@ class Money:
             raise ValueError(f"Cannot add {self.currency} and {other.currency}")
         return Money(amount=self.amount + other.amount, currency=self.currency)
 
-    def multiply(self, factor: int) -> "Money":
+    def multiply(self, factor: float) -> "Money":
         return Money(amount=self.amount * factor, currency=self.currency)
 ```
 
@@ -132,8 +132,7 @@ def apply_discount(self, percentage):
 
 # After
 def apply_discount(self, percentage):
-    discount = self.total.multiply_by_fraction(1 - percentage / 100)
-    self.total = discount
+    self.total = self.total.multiply(1 - percentage / 100)
 ```
 
 ### Step 5: Update commands and events
@@ -161,6 +160,7 @@ For events, flattening is often preferred since events are read by many consumer
 2. Update aggregate tests to use VO construction
 3. Update assertion patterns:
    ```python
+   # fragment
    # Before
    assert order.total_amount == 59.98
    assert order.total_currency == "USD"

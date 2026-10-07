@@ -68,14 +68,14 @@ def test_invariant_rejects_invalid_state(self):
 
 ## Testing business rules in methods
 
-Methods that guard against invalid operations with `ValueError` or `ValidationError`:
+`pytest.raises` names the exception the tested method raises. Read the method to find it. In the Order example, `place()` raises `ValueError` for an order that is not a draft, and the post-invariant raises `ValidationError`. Add `match=` so the test fails when a different check raises the same type:
 
 ```python
 def test_cannot_place_already_placed_order(self):
     order = Order.create(customer_id="cust-1")
     order.add_item(product_id="p-1", quantity=1, unit_price=5.0)
     order.place()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Cannot place order in 'placed' status"):
         order.place()  # Already placed
 
 def test_state_unchanged_on_failure(self):
@@ -83,7 +83,7 @@ def test_state_unchanged_on_failure(self):
     order.add_item(product_id="p-1", quantity=1, unit_price=5.0)
     order.place()
     original_status = order.status
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Cannot place order"):
         order.place()
     assert order.status == original_status  # Unchanged
 ```
@@ -127,7 +127,8 @@ def test_money_add_same_currency(self):
 def test_money_add_different_currency_fails(self):
     m1 = Money(amount=10.0, currency="USD")
     m2 = Money(amount=20.0, currency="EUR")
-    with pytest.raises(ValueError):
+    # Money.add() raises ValueError for mixed currencies.
+    with pytest.raises(ValueError, match="Cannot add USD and EUR"):
         m1.add(m2)
 ```
 

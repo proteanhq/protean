@@ -77,9 +77,9 @@ class OrderCommandHandler:
     def handle_place_order(self, command: PlaceOrder):
         """Handle the PlaceOrder command by creating and placing an order.
 
-        In a full application, you would persist the aggregate using:
-            self.repository.add(order)
-        This requires a configured persistence provider (database).
+        In a full application, the handler persists the aggregate with
+        current_domain.repository_for(Order).add(order). Handlers have no
+        self.repository attribute.
         """
         order = Order(
             order_id=command.order_id,

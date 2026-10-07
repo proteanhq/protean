@@ -12,6 +12,8 @@ Complete examples are in:
 - [assets/scaffold_command_flow.py](../assets/scaffold_command_flow.py) — Command processing flow
 - [assets/scaffold_event_driven_flow.py](../assets/scaffold_event_driven_flow.py) — Cross-aggregate event flow
 
+These tests rely on the root `conftest.py` from [the scaffold assets](../assets/conftest.py). It sets `event_processing` and `command_processing` to `"sync"`, so `domain.process()` runs the handler at once and event handlers run when an aggregate is persisted.
+
 ## End-to-end command flow
 
 Test the full journey from command to persisted state:
@@ -20,10 +22,7 @@ Test the full journey from command to persisted state:
 class TestCommandFlow:
     def test_register_user_end_to_end(self):
         """Command → handler → aggregate → persisted."""
-        result = domain.process(
-            RegisterUser(email="a@test.com", name="Alice"),
-            asynchronous=False,
-        )
+        result = domain.process(RegisterUser(email="a@test.com", name="Alice"))
         user = domain.repository_for(User).get(result)
         assert user.status == "registered"
         assert user.email == "a@test.com"
@@ -72,18 +71,12 @@ class TestLifecycle:
     def test_create_assign_audit_lifecycle(self):
         """Create ticket → assign → verify audit entry."""
         # Step 1: Create
-        domain.process(
-            CreateTicket(title="Bug", reporter="alice"),
-            asynchronous=False,
-        )
+        domain.process(CreateTicket(title="Bug", reporter="alice"))
         tickets = domain.repository_for(Ticket).query.all()
         ticket = next(t for t in tickets.items if t.title == "Bug")
 
         # Step 2: Assign (triggers event handler → audit entry)
-        domain.process(
-            AssignTicket(ticket_id=ticket.id, assignee="bob"),
-            asynchronous=False,
-        )
+        domain.process(AssignTicket(ticket_id=ticket.id, assignee="bob"))
 
         # Step 3: Verify final state
         updated = domain.repository_for(Ticket).get(ticket.id)

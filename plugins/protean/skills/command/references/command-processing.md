@@ -116,7 +116,7 @@ class OrderCommandHandler:
             customer_id=command.customer_id,
         )
         order.place(total_amount=command.total_amount)
-        self.repository.add(order)
+        current_domain.repository_for(Order).add(order)
 ```
 
 Key rule: **One command, one handler**. A command can only be processed by a single command handler. This is different from events, which can have multiple handlers.

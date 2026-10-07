@@ -7,7 +7,11 @@ This example demonstrates:
 - Aggregate factory method with event raising
 - User-defined state transition business rules
 - FastAPI endpoint integration
-- Synchronous command processing for testability
+- Pytest tests for the handler and the endpoint, run with the fixtures in
+  conftest.py, which set command and event processing to "sync"
+
+The endpoint tests use FastAPI's TestClient, which needs the `fastapi` and
+`httpx` packages. A project without FastAPI keeps only the handler tests.
 
 Domain: A user registration system where RegisterUser command creates
 a User aggregate, calls register() to set status and raise UserRegistered,
@@ -21,8 +25,7 @@ from protean import Domain, handle
 from protean.fields import Identifier, String
 from protean.utils.globals import current_domain
 
-domain = Domain(__name__)
-domain.config["event_processing"] = "sync"
+domain = Domain()
 
 
 # --- Events ---
@@ -119,8 +122,71 @@ async def register_user(request: Request):
         email=payload["email"],
         name=payload["name"],
     )
-    result = current_domain.process(command, asynchronous=False)
+    result = current_domain.process(command)
     return JSONResponse(
         status_code=201,
         content={"user_id": str(result), "status": "registered"},
     )
+
+
+# --- Tests ---
+
+import pytest
+from fastapi.testclient import TestClient
+
+
+class TestUser:
+    def test_register_raises_user_registered(self):
+        user = User.register(email="a@test.com", name="Alice")
+        assert user.status == "registered"
+        assert len(user._events) == 1
+        event = user._events[0]
+        assert isinstance(event, UserRegistered)
+        assert event.user_id == user.id
+        assert event.email == "a@test.com"
+
+    def test_activate_a_registered_user(self):
+        user = User.register(email="a@test.com", name="Alice")
+        user.activate()
+        assert user.status == "active"
+
+    def test_cannot_activate_a_pending_user(self):
+        # activate() raises ValueError for a user that is not registered.
+        user = User(email="a@test.com", name="Alice")
+        with pytest.raises(ValueError, match="Cannot activate user in 'pending' status"):
+            user.activate()
+
+
+class TestHandlerProcessing:
+    def test_register_user_creates_and_persists(self):
+        # command_processing is "sync", so process() runs the handler now and
+        # returns its result.
+        result = domain.process(RegisterUser(email="a@test.com", name="Alice"))
+
+        user = domain.repository_for(User).get(result)
+        assert user.status == "registered"
+        assert user.email == "a@test.com"
+
+    def test_each_command_creates_its_own_user(self):
+        first = domain.process(RegisterUser(email="a@test.com", name="A"))
+        second = domain.process(RegisterUser(email="b@test.com", name="B"))
+
+        assert first != second
+        assert domain.repository_for(User).get(second).email == "b@test.com"
+
+
+class TestRegisterEndpoint:
+    @pytest.fixture
+    def client(self):
+        return TestClient(app)
+
+    def test_register_returns_201_and_persists(self, client):
+        response = client.post(
+            "/users/register", json={"email": "a@test.com", "name": "Alice"}
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "registered"
+        user = domain.repository_for(User).get(data["user_id"])
+        assert user.name == "Alice"
