@@ -1,8 +1,9 @@
 # Elasticsearch
 
-The Elasticsearch provider uses
-[elasticsearch-dsl](https://elasticsearch-dsl-py.readthedocs.io/) for document
-store operations, making it suitable for search and analytics workloads.
+The Elasticsearch provider uses the
+[DSL module](https://elasticsearch-py.readthedocs.io/en/stable/dsl.html) that
+ships with the `elasticsearch` client (`elasticsearch.dsl`) for document store
+operations, making it suitable for search and analytics workloads.
 
 ## Overview
 
@@ -22,8 +23,8 @@ operations.
 ```bash
 pip install "protean[elasticsearch]"
 
-# Or install packages separately
-pip install elasticsearch elasticsearch-dsl
+# Or install the client separately
+pip install "elasticsearch>=8.18.0,<9.0.0"
 ```
 
 ## Configuration
@@ -114,41 +115,23 @@ Elasticsearch Model (see below).
 
 ## Custom Elasticsearch Model
 
-Supply a custom `@domain.model` when you need ES-specific field tuning
-(analyzers, multi-fields, normalizers, etc.) or custom `Index` settings.
-User-defined fields take precedence; unmapped attributes are filled in
-automatically from the aggregate.
+Supply a custom `@domain.database_model` when you need ES-specific field tuning
+(analyzers, multi-fields, normalizers, etc.). User-defined fields take
+precedence; unmapped attributes are filled in automatically from the aggregate.
+This example needs a running Elasticsearch server:
 
 ```python
-import elasticsearch_dsl
-
-@domain.aggregate
-class Article:
-    title: String()
-    body: String()
-    category: String()
-
-    class Meta:
-        schema_name = "articles"
-
-@domain.model(part_of=Article)
-class ArticleModel:
-    # Full-text search with .keyword subfield for exact match
-    title = elasticsearch_dsl.Text(
-        analyzer="standard",
-        fields={"keyword": elasticsearch_dsl.Keyword()}
-    )
-    # Full-text search only
-    body = elasticsearch_dsl.Text(analyzer="english")
-    # category is not listed — auto-mapped as Keyword from the aggregate
-
-    class Index:
-        settings = {"number_of_shards": 1}
+# fragment
+--8<-- "adapters/database/elasticsearch/001.py:full"
 ```
 
+The index is named `articles`, from the aggregate's `schema_name` option.
+`title` and `body` are mapped as `text`, and `category` as `keyword`.
+
 !!! note
-    When a custom model defines an `Index` inner class, its settings override
-    the global `settings` from the configuration file.
+    Index settings come from the `settings` configuration option. Protean
+    builds the model's `Index` inner class itself, so `settings` declared on a
+    custom model's `Index` class are not used.
 
 !!! note
     When a custom model defines `Text`-type fields, lookups like `exact`,

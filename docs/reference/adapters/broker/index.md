@@ -83,76 +83,34 @@ Brokers are organized into capability tiers, each building upon the previous:
 You can check broker capabilities at runtime:
 
 ```python
-from protean.port.broker import BrokerCapabilities
-
-# Get a broker instance
-broker = domain.brokers['default']
-
-# Check for specific capabilities
-if broker.has_capability(BrokerCapabilities.CONSUMER_GROUPS):
-    # Use consumer group features
-    messages = broker.read(
-        stream="orders",
-        consumer_group="order-processor"
-    )
-
-# Check for any of multiple capabilities
-if broker.has_any_capability(
-    BrokerCapabilities.MESSAGE_ACKNOWLEDGEMENT |
-    BrokerCapabilities.MESSAGE_REJECTION
-):
-    # Handle acknowledgments
-    broker.ack(stream="orders", message_id=msg_id)
+--8<-- "adapters/broker/index/001.py:full"
 ```
 
 ## Basic Usage
 
+### Consuming Messages
+
+Messages are typically consumed through Subscribers. A subscriber is a class
+with a `__call__` method that receives the message as a dict. Register
+subscribers before you initialize the domain.
+
+By default, a published message waits for the message processing engine (see
+below). With `message_processing = "sync"`, the inline broker delivers each
+message to its subscribers as soon as it is published. The examples on this
+page use that setting:
+
+```python
+--8<-- "adapters/broker/index/002.py:subscriber"
+```
+
 ### Publishing Messages
 
 ```python
-from protean import Domain
-
-domain = Domain(__name__)
-
-# Publish to the default broker
-domain.brokers.publish(
-    stream="user-events",
-    message={
-        "event_type": "user.registered",
-        "user_id": "123",
-        "email": "user@example.com"
-    }
-)
-
-# Publish to a specific broker
-domain.brokers['notifications'].publish(
-    stream="notifications",
-    message={
-        "type": "email",
-        "to": "user@example.com",
-        "subject": "Welcome!"
-    }
-)
+--8<-- "adapters/broker/index/002.py:publish"
 ```
 
-### Consuming Messages
-
-Messages are typically consumed through Subscribers:
-
-```python
-from protean import Domain, handle
-
-domain = Domain(__name__)
-
-@domain.subscriber(stream="user-events")
-class UserEventSubscriber:
-    @handle("user.registered")
-    def send_welcome_email(self, message):
-        # Process the message
-        user_id = message["user_id"]
-        email = message["email"]
-        # Send welcome email...
-```
+After the first publish, the subscriber above has recorded
+`user@example.com`.
 
 ## Message Processing Engine
 
@@ -176,33 +134,28 @@ The engine automatically:
 
 ## Error Handling
 
-Brokers provide these error handling mechanisms:
+`publish` rejects an empty message with a `ValidationError` before it reaches
+the broker:
 
 ```python
-from protean.exceptions import BrokerConnectionError
-
-try:
-    domain.brokers.publish(stream="events", message=data)
-except BrokerConnectionError as e:
-    # Handle connection failures
-    logger.error(f"Failed to publish: {e}")
-    # Implement retry logic or fallback
+--8<-- "adapters/broker/index/002.py:errors"
 ```
+
+Here `error` is `{"message": ["Message cannot be empty"]}`.
+
+On a connection error, Protean tries to reconnect. If it reconnects, it retries
+the operation once. If it cannot reconnect, or the retry fails, the error from
+the broker's client library is raised (for Redis, a
+`redis.exceptions.ConnectionError`).
 
 ## Health Checks
 
-Monitor broker health and connectivity:
+Monitor broker health and connectivity. `health_stats()` returns a dict with
+`status` (`"healthy"`, `"degraded"` or `"unhealthy"`), `connected`,
+`last_ping_ms`, `uptime_seconds` and a broker-specific `details` dict:
 
 ```python
-# Check broker connection
-broker = domain.brokers['default']
-if broker.ping():
-    print("Broker is healthy")
-
-# Get detailed health statistics
-health_stats = broker.health_stats()
-print(f"Healthy: {health_stats.get('healthy', False)}")
-print(f"Message counts: {health_stats.get('message_counts', {})}")
+--8<-- "adapters/broker/index/002.py:health"
 ```
 
 ## Configuring a broker

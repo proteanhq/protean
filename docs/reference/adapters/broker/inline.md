@@ -1,6 +1,6 @@
 # Inline Broker
 
-The Inline broker is a synchronous, stubbed, in-memory message broker that processes messages within the same process. It's the default broker in Protean and requires no external dependencies.
+The Inline broker is an in-memory message broker that keeps messages within the same process. With `message_processing = "sync"`, it delivers each message to its subscribers as soon as it is published. It's the default broker in Protean and requires no external dependencies.
 
 ## Overview
 
@@ -42,8 +42,6 @@ enable_dlq = true  # Enable dead letter queue for failed messages
 | `message_timeout` | `300.0` | Timeout for message processing (seconds) |
 | `enable_dlq` | `true` | Enable dead letter queue |
 
-Note: `IS_ASYNC` is always set to `false` for the Inline broker, regardless of configuration.
-
 ## Capabilities
 
 The Inline broker supports the following capabilities:
@@ -59,104 +57,31 @@ The Inline broker supports the following capabilities:
 
 ### Basic Publishing and Subscribing
 
+A subscriber is a class with a `__call__` method that receives each message as
+a dict:
+
 ```python
-from protean import Domain, handle
-
-domain = Domain(__name__)
-domain.config['brokers'] = {
-    'default': {
-        'provider': 'inline'
-    }
-}
-domain.init()
-
-# Publishing messages
-domain.brokers.publish(
-    stream="user-events",
-    message={
-        "type": "user.created",
-        "user_id": "123",
-        "name": "John Doe"
-    }
-)
-
-# Subscribing to messages
-@domain.subscriber(stream="user-events")
-class UserEventSubscriber:
-    @handle("user.created")
-    def on_user_created(self, message):
-        print(f"User created: {message['name']}")
+--8<-- "adapters/broker/inline/001.py:basic"
 ```
+
+The subscriber prints `User created: John Doe`.
 
 ### Testing with Inline Broker
 
 The Inline broker is ideal for testing as it provides deterministic, synchronous behavior. Use Protean's `DomainFixture` to manage the domain lifecycle:
 
 ```python
-import pytest
-from protean import Domain
-from protean.integrations.pytest import DomainFixture
-
-domain = Domain(__name__)
-domain.config['brokers'] = {
-    'default': {'provider': 'inline'}
-}
-
-
-@pytest.fixture(scope="session")
-def app_fixture():
-    fixture = DomainFixture(domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():
-        yield
-
-
-def test_message_processing():
-    # Track processed messages
-    processed = []
-
-    @domain.subscriber(stream="test-stream")
-    class TestSubscriber:
-        @handle("test.event")
-        def process(self, message):
-            processed.append(message)
-
-    # Publish a message
-    domain.brokers.publish(
-        stream="test-stream",
-        message={"type": "test.event", "data": "test"}
-    )
-
-    # Message is processed synchronously
-    assert len(processed) == 1
-    assert processed[0]["data"] == "test"
+# fragment
+--8<-- "adapters/broker/inline/002.py:full"
 ```
 
 ### Consumer Groups
 
-The Inline broker supports consumer groups for distributing messages:
+Consumer groups read a stream independently. Each group receives every
+message, and within a group each message is handed out once:
 
 ```python
-# Multiple subscribers in the same consumer group
-@domain.subscriber(stream="orders", consumer_group="order-processor")
-class OrderProcessor1:
-    @handle("order.created")
-    def process(self, message):
-        print(f"Processor 1 handling order {message['order_id']}")
-
-@domain.subscriber(stream="orders", consumer_group="order-processor")
-class OrderProcessor2:
-    @handle("order.created")
-    def process(self, message):
-        print(f"Processor 2 handling order {message['order_id']}")
-
-# Messages are distributed across processors in the same group
+--8<-- "adapters/broker/inline/001.py:consumer_groups"
 ```
 
 ## Limitations
@@ -184,7 +109,7 @@ class OrderProcessor2:
 
 The Inline broker is designed to be easily replaced with production-ready brokers:
 
-```python
+```toml
 # Development configuration
 [dev.brokers.default]
 provider = "inline"

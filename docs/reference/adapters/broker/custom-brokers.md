@@ -12,66 +12,32 @@ Custom brokers allow you to:
 
 ## Architecture
 
-All brokers must inherit from `BaseBroker` and implement the required abstract methods:
+All brokers must inherit from `BaseBroker` and implement its abstract methods.
+`BaseBroker` declares sixteen of them, plus the `capabilities` property:
+
+- Publishing and reading: `_publish`, `_get_next`, `_read`
+- Acknowledgment: `_ack`, `_nack`
+- Consumer groups: `_ensure_group`
+- Connection and health: `_ping`, `_health_stats`, `_ensure_connection`,
+  `_info`, `_data_reset`
+- Dead letter queue: `_dlq_list`, `_dlq_inspect`, `_dlq_replay`,
+  `_dlq_replay_all`, `_dlq_purge`
+
+A broker that does not support a feature still implements the method. It
+returns an empty result, as the Redis PubSub broker does for the dead letter
+queue methods.
+
+The broker below implements every method by handing it to an in-memory
+`InlineBroker`. Replace those calls with calls to your messaging client:
 
 ```python
-from typing import TYPE_CHECKING, Dict, List, Tuple
-from protean.port.broker import BaseBroker, BrokerCapabilities
+--8<-- "adapters/broker/custom-brokers/delegating_broker/__init__.py:broker"
+```
 
-if TYPE_CHECKING:
-    from protean.domain import Domain
+Once registered, the broker is configured by its name like any other:
 
-class CustomBroker(BaseBroker):
-    """Custom broker implementation."""
-
-    def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
-        super().__init__(name, domain, conn_info)
-        # Initialize your broker connection here
-
-    @property
-    def capabilities(self) -> BrokerCapabilities:
-        """Declare broker capabilities."""
-        return BrokerCapabilities.BASIC_PUBSUB
-
-    def _publish(self, stream: str, message: dict) -> str:
-        """Publish a message to the broker."""
-        # Implementation required
-        pass
-
-    def _read(
-        self,
-        stream: str,
-        consumer_group: str,
-        no_of_messages: int
-    ) -> List[Tuple[str, dict]]:
-        """Read messages from the broker."""
-        # Implementation required
-        pass
-
-    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        """Acknowledge message processing."""
-        # Required if ACK_NACK capability is declared
-        pass
-
-    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        """Reject message for reprocessing."""
-        # Required if ACK_NACK capability is declared
-        pass
-
-    def _ping(self) -> bool:
-        """Test broker connectivity."""
-        # Implementation required
-        pass
-
-    def _health_stats(self) -> dict:
-        """Get broker health statistics."""
-        # Implementation required
-        pass
-
-    def _ensure_connection(self) -> bool:
-        """Ensure connection is healthy."""
-        # Implementation required
-        pass
+```python
+--8<-- "adapters/broker/custom-brokers/delegating_broker/__init__.py:usage"
 ```
 
 ## Example: Kafka Broker
@@ -110,6 +76,7 @@ kafka = "protean_kafka:register"
 ### Registration Function
 
 ```python
+# fragment
 # src/protean_kafka/__init__.py
 """Kafka broker plugin for Protean."""
 
@@ -132,6 +99,7 @@ def register():
 ### Broker Implementation
 
 ```python
+# fragment
 # src/protean_kafka/broker.py
 """Kafka broker implementation."""
 
@@ -229,6 +197,11 @@ class KafkaBroker(BaseBroker):
         return self._ping()
 ```
 
+This listing shows the core methods only. A complete Kafka broker also
+implements `_get_next`, `_ensure_group`, `_info`, `_data_reset` and the five
+`_dlq_*` methods from the [Architecture](#architecture) list. Without them,
+Python refuses to create an instance of the class.
+
 ## Installation & Usage
 
 ### For External Packages
@@ -266,6 +239,7 @@ mybroker = "protean.adapters.broker.mybroker:register"
 Choose the appropriate capability tier for your broker:
 
 ```python
+# fragment
 @property
 def capabilities(self) -> BrokerCapabilities:
     # Basic pub/sub only
@@ -301,6 +275,7 @@ backend can wait on several streams in one call, as the Redis broker does
 with one blocking `XREADGROUP`:
 
 ```python
+# fragment
 def _read_blocking_streams(
     self,
     streams: Sequence[str],
@@ -317,6 +292,7 @@ def _read_blocking_streams(
 ### Unit Tests
 
 ```python
+# fragment
 import pytest
 from unittest.mock import Mock, patch
 
@@ -336,6 +312,7 @@ def test_publish():
 ### Integration Tests
 
 ```python
+# fragment
 @pytest.mark.integration
 def test_end_to_end():
     """Test full message flow."""
@@ -369,6 +346,7 @@ def test_end_to_end():
 ### Connection Pooling
 
 ```python
+# fragment
 def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
     super().__init__(name, domain, conn_info)
 
@@ -384,6 +362,7 @@ def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
 ### Retry Logic
 
 ```python
+# fragment
 import time
 
 def _publish(self, stream: str, message: dict) -> str:

@@ -45,7 +45,6 @@ CHAPTER_LOADERS: dict[Path, str] = {
 # docs_src examples that no test loads yet. Remove an entry when a test loads it.
 ALLOWLIST: set[str] = {
     "adapters/001.py",
-    "adapters/database/postgresql/001.py",
     "guides/change-state/001.py",
     "guides/change-state/002.py",
     "guides/change-state/003.py",

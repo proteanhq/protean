@@ -182,29 +182,10 @@ Common capability combinations are bundled as convenience sets:
 You can check provider capabilities programmatically:
 
 ```python
-from protean.port.provider import DatabaseCapabilities
-
-# Get the default provider
-provider = domain.providers["default"]
-
-# Check for a single capability
-if provider.has_capability(DatabaseCapabilities.RAW_QUERIES):
-    results = provider.raw("SELECT * FROM users WHERE age > 21")
-
-# Check for all of multiple capabilities (AND logic)
-if provider.has_all_capabilities(
-    DatabaseCapabilities.NATIVE_JSON | DatabaseCapabilities.NATIVE_ARRAY
-):
-    # Use native JSON and array columns
-    ...
-
-# Check for any of multiple capabilities (OR logic)
-if provider.has_any_capability(
-    DatabaseCapabilities.TRANSACTIONS | DatabaseCapabilities.SIMULATED_TRANSACTIONS
-):
-    # Some form of transaction support is available
-    ...
+--8<-- "adapters/database/index/001.py:full"
 ```
+
+On the memory provider, `results` holds one record, Ada's.
 
 !!!note
     Methods that require a specific capability (like `raw()`) automatically

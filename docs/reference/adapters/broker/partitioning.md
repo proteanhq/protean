@@ -29,6 +29,7 @@ exist, and a way to **own** one safely while other workers are running.
 A broker opts in by advertising the capability:
 
 ```python
+# fragment
 from protean.port.broker import BaseBroker, BrokerCapabilities
 
 
@@ -96,6 +97,7 @@ partition and let the next cycle re-acquire.
 ### `LeaseLostError`
 
 ```python
+# fragment
 from protean.port.broker import LeaseLostError
 ```
 

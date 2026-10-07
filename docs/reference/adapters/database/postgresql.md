@@ -123,7 +123,8 @@ during `protean db setup`:
 You can supply a custom SQLAlchemy Model in place of the one that Protean
 generates internally, allowing you full customization.
 
-```python hl_lines="10-15 24-27"
+```python hl_lines="11-16 25-28"
+# fragment
 --8<-- "adapters/database/postgresql/001.py:full"
 ```
 
@@ -136,11 +137,13 @@ generates internally, allowing you full customization.
 Use the `raw()` method to execute SQL directly:
 
 ```python
-results = domain.providers["default"].raw(
-    "SELECT * FROM users WHERE age > :age",
-    {"age": 21}
-)
+# fragment
+--8<-- "adapters/database/postgresql/002.py:full"
+--8<-- "adapters/database/postgresql/002.py:raw"
 ```
+
+`users_older_than(21)` returns the matching rows. The aggregate sets
+`schema_name="users"`, so its table is `users`.
 
 Raw queries execute immediately in their own transaction context. Results are
 returned as-is from the database without entity conversion.

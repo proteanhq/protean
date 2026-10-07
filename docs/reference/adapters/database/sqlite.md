@@ -85,18 +85,8 @@ constraints. The pattern is identical to
 [PostgreSQL models](./postgresql.md#sqlalchemy-model).
 
 ```python
-import sqlalchemy as sa
-from protean.adapters.repository.sqlalchemy import SqlalchemyModel
-
-@domain.aggregate
-class User:
-    name: String(max_length=100)
-    email: String(max_length=255)
-
-@domain.database_model(part_of=User)
-class UserModel:
-    name = sa.Column(sa.String(100))
-    email = sa.Column(sa.String(255), unique=True)
+# fragment
+--8<-- "adapters/database/sqlite/001.py:full"
 ```
 
 !!!note

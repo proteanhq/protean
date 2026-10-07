@@ -50,8 +50,11 @@ configuration:
 # Default: in-memory event store
 [event_store]
 provider = "memory"
+```
 
-# Production: Message DB
+For production, point it at Message DB instead:
+
+```toml
 [event_store]
 provider = "message_db"
 database_uri = "postgresql://postgres:postgres@localhost:5433/message_store"
@@ -66,22 +69,16 @@ database_uri = "postgresql://postgres:postgres@localhost:5433/message_store"
 
 ## Core Operations
 
+The examples below build on one another. They use a small banking domain with
+an event-sourced `Account`.
+
 ### Writing Events
 
 Events are written to streams by the framework as part of aggregate
 persistence. You do not typically call the event store directly:
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Account:
-    balance: Float(default=0.0)
-
-    @apply
-    def deposited(self, event: Deposited):
-        self.balance += event.amount
-
-    def deposit(self, amount):
-        self.raise_(Deposited(amount=amount))
+--8<-- "adapters/eventstore/index/001.py:write"
 ```
 
 When the aggregate is persisted, Protean writes the raised events to the event
@@ -89,31 +86,23 @@ store automatically.
 
 ### Reading Streams
 
+The event store adapter is at `domain.event_store.store`. Each aggregate
+instance has its own stream, named after the aggregate's stream category and
+its identifier. For the account above, the stream is
+`banking::account-<id>`.
+
 ```python
-# Read from the beginning of a stream
-messages = domain.event_store.read("account-123")
-
-# Read from a specific position
-messages = domain.event_store.read("account-123", position=5)
-
-# Read the last message in a stream
-last = domain.event_store.read_last_message("account-123")
+--8<-- "adapters/eventstore/index/001.py:read"
 ```
+
+Positions count from 0, so `position=1` skips the first event.
 
 ### Temporal Queries
 
 Load an event-sourced aggregate at a specific version or point in time:
 
 ```python
-# Load at version 5 (replay only the first 5 events)
-account = domain.event_store.load_aggregate(Account, "123", at_version=5)
-
-# Load as of a specific timestamp
-from datetime import datetime
-account = domain.event_store.load_aggregate(
-    Account, "123",
-    as_of=datetime(2024, 6, 15, 12, 0, 0)
-)
+--8<-- "adapters/eventstore/index/001.py:temporal"
 ```
 
 See [Temporal Queries](../../../guides/change-state/temporal-queries.md) for
@@ -124,27 +113,24 @@ the full guide.
 Snapshots cache aggregate state to avoid replaying long event streams:
 
 ```python
-# Create a snapshot for one aggregate
-domain.event_store.create_snapshot(Account, "123")
-
-# Create snapshots for all instances of an aggregate type
-domain.event_store.create_snapshots(Account)
+--8<-- "adapters/eventstore/index/001.py:snapshots"
 ```
+
+`create_snapshot` returns `True` when it wrote a snapshot.
+`create_snapshots` returns the number of aggregates it snapshotted.
 
 ### Causation Tracing
 
-Trace the causal chain of events to understand how one event led to another:
+Trace the causal chain of events to understand how one message led to another.
+`trace_causation` and `trace_effects` take a message id. `build_causation_tree`
+takes a correlation id:
 
 ```python
-# Find the root cause of an event
-chain = domain.event_store.trace_causation(message_id="evt-456")
-
-# Find all effects triggered by an event
-effects = domain.event_store.trace_effects(message_id="evt-123")
-
-# Build a full causation tree
-tree = domain.event_store.build_causation_tree(message_id="evt-123")
+--8<-- "adapters/eventstore/index/001.py:causation"
 ```
+
+Here `chain` holds the `Deposit` command and then the `Deposited` event, and
+`effects` holds the `Deposited` event.
 
 See [Message Tracing](../../../guides/domain-behavior/message-tracing.md) for
 the full guide.
@@ -155,13 +141,13 @@ Use the `protean events` CLI to inspect event store contents:
 
 ```bash
 # Read from a stream
-protean events read account-123
+protean events read "banking::account-<id>" --domain=my_domain
 
 # View aggregate history
-protean events history --stream account-123
+protean events history --aggregate=Account --id=<id> --domain=my_domain
 
 # Trace a causal chain
-protean events trace --correlation-id "corr-abc"
+protean events trace "<correlation-id>" --domain=my_domain
 ```
 
 See [`protean events`](../../cli/data/events.md) for the full CLI reference.

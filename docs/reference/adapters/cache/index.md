@@ -102,16 +102,10 @@ every entry with a concrete TTL, so it has no never-expiring keys to report.
 So code reads the same on either adapter:
 
 ```python
-import math
-
-remaining = cache.get_ttl(key)
-if remaining is None:
-    ...                     # no such key
-elif remaining == math.inf:
-    ...                     # never expires
-else:
-    ...                     # seconds remaining
+--8<-- "adapters/cache/index/001.py:full"
 ```
+
+On the memory cache, `present` is `"60s left"` and `missing` is `"missing"`.
 
 ### `_get_all` is a bounded utility, not a paged read
 
