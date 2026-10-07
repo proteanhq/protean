@@ -357,6 +357,12 @@ class TestAccessLogHelperFallbacks:
         assert corr == ""
         assert caus == ""
 
+    def test_get_correlation_context_without_message_in_context(self, test_domain):
+        from protean.utils.logging import _get_correlation_context
+
+        with test_domain.domain_context():
+            assert _get_correlation_context() == ("", "")
+
     def test_read_access_log_counters_without_domain(self):
         from protean.utils.logging import _read_access_log_counters
 

@@ -382,20 +382,19 @@ def _reset_access_log_counters() -> None:
 
 def _get_correlation_context() -> tuple[str, str]:
     """Extract correlation_id and causation_id from the current message context."""
-    try:
-        msg = g.get("message_in_context")
-        if msg is None:
-            return ("", "")
-        metadata = getattr(msg, "metadata", None)
-        domain_meta = getattr(metadata, "domain", None) if metadata else None
-        if domain_meta is None:
-            return ("", "")
-        return (
-            domain_meta.correlation_id or "",
-            domain_meta.causation_id or "",
-        )
-    except Exception:  # noqa: BLE001 - runs in logging filters, where a log call would recurse
+    if not has_domain_context():
         return ("", "")
+    msg = g.get("message_in_context")
+    if msg is None:
+        return ("", "")
+    metadata = getattr(msg, "metadata", None)
+    domain_meta = getattr(metadata, "domain", None) if metadata else None
+    if domain_meta is None:
+        return ("", "")
+    return (
+        domain_meta.correlation_id or "",
+        domain_meta.causation_id or "",
+    )
 
 
 def _extract_aggregate_info(item: Any, handler_cls: type) -> tuple[str, str]:
