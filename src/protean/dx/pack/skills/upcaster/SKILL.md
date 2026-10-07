@@ -32,7 +32,7 @@ class OrderPlaced:
     currency = String(required=True)
 
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class UpcastOrderPlacedV1ToV2(BaseUpcaster):
+class UpcastV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["currency"] = "USD"
         return data
@@ -96,9 +96,24 @@ class UpcastV1ToV2(BaseUpcaster):
 
 ### Restructuring data (flat → nested)
 
+This example evolves a `CustomerRegistered` event whose v2 stores the address as one nested value:
+
+```python
+@domain.event(part_of="Customer")
+class CustomerRegistered:
+    __version__ = 2
+    customer_id = Identifier(required=True)
+    address = Dict()
+
+
+@domain.aggregate
+class Customer:
+    name = String()
+```
+
 ```python
 @domain.upcaster(event_type=CustomerRegistered, from_version=1, to_version=2)
-class UpcastV1ToV2(BaseUpcaster):
+class UpcastCustomerRegisteredV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["address"] = {
             "street": data.pop("street", ""),
@@ -151,17 +166,23 @@ class Order:
     @apply
     def on_placed(self, event: OrderPlaced):
         # Always receives current v3 schema — upcasters handle old versions
+        self.order_id = event.order_id
         self.total_amount = event.total_amount
         self.currency = event.currency
 ```
 
 ## With event handlers and projectors
 
-Upcasting also applies to asynchronous event processing. Old events are upcast before reaching `@handle`:
+Upcasting also applies to asynchronous event processing. Old events are upcast before reaching `@handle`. The handler below belongs to the `Order` aggregate, whose stream carries `OrderPlaced`, and records revenue through a helper:
 
 ```python
-@domain.event_handler(part_of=Analytics)
-class AnalyticsHandler:
+def record_revenue(amount, currency):
+    print(f"Revenue: {amount} {currency}")
+```
+
+```python
+@domain.event_handler(part_of=Order)
+class OrderRevenueHandler:
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):
         # Always receives current schema, even for historical replays
@@ -182,10 +203,16 @@ class SkipV2(BaseUpcaster): ...
 ```python
 # CORRECT — one step per version
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class V1ToV2(BaseUpcaster): ...
+class UpcastV1ToV2(BaseUpcaster):
+    def upcast(self, data: dict) -> dict:
+        data["currency"] = "USD"
+        return data
 
 @domain.upcaster(event_type=OrderPlaced, from_version=2, to_version=3)
-class V2ToV3(BaseUpcaster): ...
+class UpcastV2ToV3(BaseUpcaster):
+    def upcast(self, data: dict) -> dict:
+        data["total_amount"] = data.pop("amount")
+        return data
 ```
 
 An event at its current version with no upcaster path covering a stored
@@ -199,16 +226,17 @@ build-time signal as `UPCASTER_GAP`.
 # WRONG — upcasting runs on the deserialization path and must stay fast
 class SlowUpcaster(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
-        user = db.query(User, data["user_id"])  # NO! No I/O
-        data["user_name"] = user.name
+        customer = db.query(Customer, data["customer_id"])  # NO! No I/O
+        data["currency"] = customer.currency
         return data
 ```
 
 ```python
 # CORRECT — pure dict transformation only
-class FastUpcaster(BaseUpcaster):
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
+class UpcastV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
-        data["user_name"] = data.get("user_name", "Unknown")
+        data["currency"] = data.get("currency", "USD")
         return data
 ```
 
@@ -232,17 +260,28 @@ class FastUpcaster(BaseUpcaster):
 # fragment
 # WRONG — event still at default v1, but upcaster targets v2
 @domain.event(part_of="Order")
-class OrderPlaced:
+class OrderShipped:
     # __version__ not set — defaults to `1`
-    ...
+    order_id = Identifier(required=True)
+    carrier = String(required=True)
+
+@domain.upcaster(event_type=OrderShipped, from_version=1, to_version=2)
+class UpcastOrderShippedV1ToV2(BaseUpcaster): ...
 ```
 
 ```python
 # CORRECT — set __version__ to match the upcaster chain's terminal version
 @domain.event(part_of="Order")
-class OrderPlaced:
+class OrderShipped:
     __version__ = 2
-    ...
+    order_id = Identifier(required=True)
+    carrier = String(required=True)
+
+@domain.upcaster(event_type=OrderShipped, from_version=1, to_version=2)
+class UpcastOrderShippedV1ToV2(BaseUpcaster):
+    def upcast(self, data: dict) -> dict:
+        data["carrier"] = "unknown"  # v1 did not record the carrier
+        return data
 ```
 
 See [Anti-patterns](references/anti-patterns.md) for more.

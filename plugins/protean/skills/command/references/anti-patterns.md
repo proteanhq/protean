@@ -6,6 +6,35 @@ Common mistakes when working with commands and how to avoid them.
 
 Commands are deceptively simple but have specific constraints that, when violated, lead to fragile designs. This guide covers the most common anti-patterns and their correct alternatives.
 
+The examples below use these aggregates and value object:
+
+```python
+@domain.aggregate
+class Order:
+    customer_id: String(required=True)
+    status: String(default="DRAFT")
+
+    def place(self):
+        self.status = "PLACED"
+
+@domain.aggregate
+class Payment:
+    amount: Float(required=True)
+
+@domain.aggregate
+class Inventory:
+    product_id: String(required=True)
+
+@domain.aggregate
+class Product:
+    name: String(required=True)
+
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+    currency: String(max_length=3, default="USD")
+```
+
 ## 1. Using Past-Tense Verbs Instead of Imperative
 
 ### Wrong
@@ -43,6 +72,7 @@ class ProcessPayment:  # Imperative - tells the system what to do
 ### Wrong
 
 ```python
+# fragment
 @domain.command  # Missing part_of parameter!
 class PlaceOrder:
     order_id: Identifier(required=True)
@@ -63,6 +93,7 @@ class PlaceOrder:
 ### Wrong
 
 ```python
+# fragment
 @domain.entity(part_of="Order")
 class LineItem:
     product_id: String(required=True)
@@ -122,15 +153,19 @@ class PlaceOrder:
 ### Wrong
 
 ```python
-command = PlaceOrder(order_id="123", customer_id="456")
+# fragment
+command = PlaceOrder(order_id="123", customer_id="456", total_amount=99.99)
 command.order_id = "789"  # Raises IncorrectUsageError!
 ```
 
 ### Correct
 
 ```python
-# Commands are immutable - create a new instance instead
-command = PlaceOrder(order_id="789", customer_id="456")
+domain.init(traverse=False)
+
+with domain.domain_context():
+    # Commands are immutable - create a new instance instead
+    command = PlaceOrder(order_id="789", customer_id="456", total_amount=99.99)
 ```
 
 **Why it matters:** Commands are immutable. This guarantees the intent captured at creation time cannot be tampered with during processing.
@@ -140,6 +175,7 @@ command = PlaceOrder(order_id="789", customer_id="456")
 ### Wrong
 
 ```python
+# fragment
 @domain.command_handler(part_of="Order")
 class OrderHandler:
     @handle(PlaceOrder)
@@ -161,9 +197,9 @@ class OrderHandler:
     @handle(PlaceOrder)  # One handler for this command
     def handle_place_order(self, command):
         # Process order AND raise events for other aggregates
-        order = Order(...)
+        order = Order(id=command.order_id, customer_id=command.customer_id)
         order.place()
-        current_domain.repository_for(Order).add(order)
+        domain.repository_for(Order).add(order)
         # Events will notify Inventory via event handlers
 ```
 
@@ -254,6 +290,7 @@ class ShipOrder:  # Specific action
 ### Wrong
 
 ```python
+# fragment
 @domain.command(abstract=True)
 class BaseCommand:
     entity_id: Identifier(required=True)

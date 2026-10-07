@@ -16,11 +16,25 @@ The complete implementation is in [assets/command_inheritance.py](../assets/comm
 
 Key highlights:
 - Abstract commands use `@domain.command(abstract=True)`
-- Abstract commands do NOT require `part_of` (they are never instantiated)
+- Abstract commands do NOT require `part_of` (they are base classes, never submitted)
 - Concrete commands inherit all parent fields
 - Multi-level inheritance is supported
 
 ## Defining Abstract Commands
+
+The examples on this page are commands for these two aggregates:
+
+```python
+@domain.aggregate
+class Product:
+    name: String(required=True, max_length=200)
+    price: Float(required=True)
+
+@domain.aggregate
+class Customer:
+    name: String(required=True, max_length=100)
+    active: Boolean(default=True)
+```
 
 ```python
 @domain.command(abstract=True)
@@ -31,7 +45,7 @@ class AbstractEntityCommand:
 ```
 
 Abstract commands:
-- Cannot be instantiated directly
+- Are base classes only. Protean lets you build an instance, but it has no aggregate, so `domain.process()` fails on it
 - Do not require `part_of` parameter
 - Define fields that all child commands inherit
 
@@ -86,7 +100,7 @@ Avoid when:
 3. Concrete commands MUST specify `part_of`
 4. Fields are inherited from all ancestors
 5. Concrete commands can override inherited field definitions
-6. Abstract commands cannot be instantiated
+6. Abstract commands are never submitted; submit a concrete subclass
 
 ## Related
 

@@ -12,6 +12,41 @@ from protean.core.aggregate import apply
 
 ## How It Works
 
+The examples on this page use this `User` aggregate:
+
+```python
+from protean.fields import Identifier, String
+
+@domain.event(part_of="User")
+class UserRegistered:
+    user_id: Identifier(required=True)
+    name: String(required=True)
+
+@domain.event(part_of="User")
+class UserActivated:
+    user_id: Identifier(required=True)
+
+@domain.event(part_of="User")
+class UserArchived:
+    user_id: Identifier(required=True)
+
+@domain.aggregate(event_sourced=True)
+class User:
+    user_id: Identifier(identifier=True)
+    name: String(required=True)
+    status: String(default="PENDING")
+
+    @apply
+    def registered(self, event: UserRegistered):
+        self.user_id = event.user_id
+        self.name = event.name
+        self.status = "PENDING"
+
+    @apply
+    def activated(self, event: UserActivated):
+        self.status = "ACTIVE"
+```
+
 ### Method Signature
 
 Each `@apply` method must:
@@ -70,6 +105,8 @@ When the aggregate is registered (the moment `@domain.aggregate` decorates the c
 These maps are used during event replay to find the correct handler for each event.
 
 ```python
+from protean.utils import fqn
+
 # Once the aggregate is registered, the aggregate class has:
 User._projections[fqn(UserActivated)]  # → {User.activated}
 User._events_cls_map[fqn(UserActivated)]  # → UserActivated
@@ -111,9 +148,19 @@ Because the same `@apply` handler runs in both paths, live processing and replay
 If an event is applied but no `@apply` method is registered for it, an `IncorrectUsageError` is raised:
 
 ```python
-# If User has no @apply method for UserArchived:
-user._apply(UserArchived(user_id="U-001"))
-# → IncorrectUsageError: No @apply handler registered for event `...UserArchived` in `User`
+from protean.exceptions import IncorrectUsageError
+
+domain.init(traverse=False)
+
+with domain.domain_context():
+    user = User.from_events([UserRegistered(user_id="U-001", name="Alice")])
+
+    # User has no @apply method for UserArchived:
+    try:
+        user._apply(UserArchived(user_id="U-001"))
+    except IncorrectUsageError as exc:
+        print(exc)
+        # → No @apply handler registered for event `...UserArchived` in `User`
 ```
 
 This ensures every event type has explicit handling logic.

@@ -72,7 +72,6 @@ ALLOWLIST = frozenset(
             IR_BUILD_FAILED,
         ),
         ("domain-service/assets/domain_service_with_invariants.py", IR_BUILD_FAILED),
-        ("event/assets/event_versioning.py", "UPCASTER_GAP"),
         (
             "repository/assets/repository_counting_and_nulls.py",
             "UNINDEXED_FILTER_PATH",

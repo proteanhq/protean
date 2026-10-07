@@ -30,7 +30,7 @@ domain = Domain()
 class Order:
     """Order aggregate."""
 
-    order_id: Identifier(required=True)
+    order_id: Identifier(identifier=True)
     customer_id: String(required=True)
     total_amount: Float()
     status: String(default="draft")
@@ -47,7 +47,7 @@ class Order:
 class Shipment:
     """Shipment aggregate."""
 
-    shipment_id: Identifier(required=True)
+    shipment_id: Identifier(identifier=True)
     order_id: String(required=True)
     status: String(default="pending")
 
@@ -75,17 +75,13 @@ class OrderCommandHandler:
 
     @handle(PlaceOrder)
     def handle_place_order(self, command: PlaceOrder):
-        """Handle the PlaceOrder command by creating and placing an order.
-
-        In a full application, the handler persists the aggregate with
-        current_domain.repository_for(Order).add(order). Handlers have no
-        self.repository attribute.
-        """
+        """Handle the PlaceOrder command by creating, placing and saving an order."""
         order = Order(
             order_id=command.order_id,
             customer_id=command.customer_id,
         )
         order.place(total_amount=command.total_amount)
+        domain.repository_for(Order).add(order)
 
 
 @domain.command_handler(part_of=Shipment)

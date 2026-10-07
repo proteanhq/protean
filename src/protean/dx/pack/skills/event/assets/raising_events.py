@@ -3,7 +3,8 @@ Complete example of raising events from aggregates.
 
 This example demonstrates:
 - Raising events using self.raise_() method
-- Events raised AFTER state changes
+- Events raised AFTER state changes (an aggregate that stores its state;
+  an event-sourced aggregate raises first and lets @apply change the state)
 - Passing data from aggregate to events
 - Raising multiple events from one method
 - Events with value objects

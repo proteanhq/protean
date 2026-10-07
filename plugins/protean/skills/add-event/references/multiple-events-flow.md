@@ -47,6 +47,40 @@ class ShipmentDelivered:
 - Each event carries data specific to that transition
 - All events share `part_of="Shipment"`
 
+The `Shipment` aggregate raises these events from its lifecycle methods:
+
+```python
+@domain.aggregate
+class Shipment:
+    shipment_id: Identifier(identifier=True)
+    order_id: Identifier(required=True)
+    carrier: String(required=True)
+    status: String(default="created")
+    tracking_info: String()
+    delivered_at: DateTime()
+
+    def dispatch(self):
+        if self.status != "created":
+            raise ValueError(f"Cannot dispatch shipment in '{self.status}' status")
+        self.status = "dispatched"
+        self.raise_(ShipmentDispatched(
+            shipment_id=self.shipment_id,
+            order_id=self.order_id,
+            carrier=self.carrier,
+        ))
+
+    def deliver(self, delivered_at):
+        if self.status != "dispatched":
+            raise ValueError(f"Cannot deliver shipment in '{self.status}' status")
+        self.status = "delivered"
+        self.delivered_at = delivered_at
+        self.raise_(ShipmentDelivered(
+            shipment_id=self.shipment_id,
+            order_id=self.order_id,
+            delivered_at=delivered_at,
+        ))
+```
+
 ### Same-Aggregate Handler with Multiple @handle Methods
 
 ```python
@@ -68,6 +102,16 @@ class ShipmentEventHandler:
 - All belong to the same aggregate stream
 
 ### Multiple Handlers for the Same Event
+
+The notification handler belongs to a separate `Notification` aggregate:
+
+```python
+@domain.aggregate
+class Notification:
+    recipient: String(required=True)
+    message: String(required=True)
+    notification_type: String(required=True)
+```
 
 ```python
 # Handler 1: Same-aggregate (tracking)

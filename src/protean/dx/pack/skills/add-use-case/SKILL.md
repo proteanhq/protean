@@ -57,7 +57,7 @@ class PlaceOrder:
 **Key rules for commands** (see [command](../command/SKILL.md)):
 - Named as imperative: `PlaceOrder`, `ApproveRequest`, `CancelSubscription`
 - Fields are the input data, not the entire aggregate state
-- `required=True` on mandatory fields — raises `InvalidDataError` if missing
+- `required=True` on mandatory fields. A missing field raises `protean.exceptions.ValidationError`, and its `.messages` maps the field to its errors (`{'order_id': ['is required']}`)
 - Use field constraints for basic validation (Layer 1)
 
 ### Step 2: Define the event
@@ -88,10 +88,11 @@ class Order:
     status: String(default="placed")
 
     @classmethod
-    def place(cls, customer_id, product_id, quantity, unit_price):
+    def place(cls, order_id, customer_id, product_id, quantity, unit_price):
         """Factory method for placing a new order."""
         total = quantity * unit_price
         order = cls(
+            id=order_id,
             customer_id=customer_id,
             product_id=product_id,
             quantity=quantity,
@@ -117,6 +118,7 @@ class OrderCommandHandler:
     @handle(PlaceOrder)
     def handle_place_order(self, command: PlaceOrder):
         order = Order.place(
+            order_id=command.order_id,
             customer_id=command.customer_id,
             product_id=command.product_id,
             quantity=command.quantity,
@@ -136,6 +138,14 @@ class OrderCommandHandler:
 
 Event handlers react to events for side effects: notifications, cross-aggregate updates, logging. The handler sits in the cluster that owns the event, here `Order`. To change another aggregate, it issues a command, and that aggregate's command handler does the write.
 
+The handler below records a `Notification`, so define that aggregate first:
+
+```python
+@domain.aggregate
+class Notification:
+    message: String(required=True)
+```
+
 ```python
 @domain.event_handler(part_of=Order)
 class OrderNotificationHandler:
@@ -153,16 +163,21 @@ class OrderNotificationHandler:
 
 ### Step 6: Process the command
 
+Initialize the domain, then process the command inside a domain context:
+
 ```python
-domain.process(
-    PlaceOrder(
-        order_id="ORD-001",
-        customer_id="CUST-001",
-        product_id="PROD-001",
-        quantity=3,
-    ),
-    asynchronous=False,
-)
+domain.init(traverse=False)
+
+with domain.domain_context():
+    domain.process(
+        PlaceOrder(
+            order_id="ORD-001",
+            customer_id="CUST-001",
+            product_id="PROD-001",
+            quantity=3,
+        ),
+        asynchronous=False,
+    )
 ```
 
 ## The command flow
@@ -179,12 +194,28 @@ domain.process(
 
 ## Use case patterns
 
+The update and guard patterns below handle two more commands on `Order`:
+
+```python
+@domain.command(part_of="Order")
+class ApproveOrder:
+    order_id: Identifier(required=True)
+    approver_id: Identifier(required=True)
+
+
+@domain.command(part_of="Order")
+class CancelOrder:
+    order_id: Identifier(required=True)
+    requested_by_role: String(required=True)
+    reason: String()
+```
+
 ### Create pattern (factory method)
 
 ```python
 # Handler creates a new aggregate
 @handle(PlaceOrder)
-def handle(self, command):
+def handle_place_order(self, command):
     order = Order.place(...)  # Factory method
     domain.repository_for(Order).add(order)
 ```
@@ -194,7 +225,7 @@ def handle(self, command):
 ```python
 # Handler loads existing aggregate and calls method
 @handle(ApproveOrder)
-def handle(self, command):
+def handle_approve_order(self, command):
     order = domain.repository_for(Order).get(command.order_id)
     order.approve(approved_by=command.approver_id)
     domain.repository_for(Order).add(order)
@@ -205,7 +236,7 @@ def handle(self, command):
 ```python
 # Handler validates context before aggregate operation
 @handle(CancelOrder)
-def handle(self, command):
+def handle_cancel_order(self, command):
     if command.requested_by_role not in ["admin", "customer"]:
         raise ValidationError({"authorization": ["Not authorized"]})
     order = domain.repository_for(Order).get(command.order_id)
@@ -233,7 +264,7 @@ def handle(self, command):
 # fragment
 # Wrong! Business rule computed in the handler
 @handle(PlaceOrder)
-def handle(self, command):
+def handle_place_order(self, command):
     order = Order(customer_id=command.customer_id)
     order.total_amount = command.quantity * 10.0  # rule leaks into the handler
     order.status = "placed"
@@ -244,8 +275,14 @@ Instead: keep the rule in an aggregate method/factory; the handler only orchestr
 
 ```python
 @handle(PlaceOrder)
-def handle(self, command):
-    order = Order.place(customer_id=command.customer_id, quantity=command.quantity, unit_price=10.0)
+def handle_place_order(self, command):
+    order = Order.place(
+        order_id=command.order_id,
+        customer_id=command.customer_id,
+        product_id=command.product_id,
+        quantity=command.quantity,
+        unit_price=10.0,
+    )
     domain.repository_for(Order).add(order)
 ```
 
@@ -268,7 +305,7 @@ Instead: raise the past-tense event so the fact is recorded and handlers can rea
 # fragment
 # Wrong! Two aggregates mutated and saved in one transaction
 @handle(PlaceOrder)
-def handle(self, command):
+def handle_place_order(self, command):
     order = Order.place(...)
     inventory.reduce(command.quantity)
     domain.repository_for(Order).add(order)

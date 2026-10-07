@@ -6,7 +6,7 @@ This example demonstrates:
 - max_length validation on String fields
 - min_value / max_value validation on numeric fields
 - Default values for optional fields
-- InvalidDataError when validation fails
+- ValidationError (from protean.exceptions) when validation fails
 - Validating unknown fields are rejected
 
 Usage:
@@ -19,6 +19,7 @@ Usage:
 """
 
 from protean import Domain
+from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier, Integer, String
 
 # Domain setup
@@ -104,6 +105,13 @@ if __name__ == "__main__":
         print(f"Username: {register.username}")
         print(f"Age (default): {register.age}")
 
+        # Validation: required fields missing
+        try:
+            RegisterUser(user_id="USER-002")
+        except ValidationError as e:
+            print(f"\nrequired validation: {type(e).__name__}")
+            print(f"  Messages: {e.messages}")
+
         # Validation: max_length exceeded
         try:
             RegisterUser(
@@ -112,7 +120,7 @@ if __name__ == "__main__":
                 username="x" * 51,  # Exceeds max_length=50
                 password="secret",
             )
-        except Exception as e:
+        except ValidationError as e:
             print(f"\nmax_length validation: {type(e).__name__}")
             print(f"  Messages: {e.messages}")
 
@@ -125,7 +133,7 @@ if __name__ == "__main__":
                 username="charlie",
                 password="secret",
             )
-        except Exception as e:
+        except ValidationError as e:
             print(f"\nUnknown field validation: {type(e).__name__}")
             print(f"  Messages: {e.messages}")
 

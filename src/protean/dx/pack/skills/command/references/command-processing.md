@@ -22,16 +22,56 @@ Key highlights:
 
 ## Submitting Commands
 
-```python
-# Construct the command
-command = PlaceOrder(
-    order_id="ORD-001",
-    customer_id="CUST-123",
-    total_amount=99.99,
-)
+The examples on this page use this aggregate, command and command handler:
 
-# Submit to domain (uses domain config default)
-domain.process(command)
+```python
+@domain.aggregate
+class Order:
+    order_id: Identifier(identifier=True)
+    customer_id: String(required=True)
+    total_amount: Float()
+    status: String(default="DRAFT")
+
+    def place(self, total_amount):
+        self.total_amount = total_amount
+        self.status = "PLACED"
+
+@domain.command(part_of="Order")
+class PlaceOrder:
+    order_id: Identifier(required=True)
+    customer_id: String(required=True)
+    total_amount: Float(required=True)
+
+
+@domain.command_handler(part_of="Order")
+class OrderCommandHandler:
+    @handle(PlaceOrder)
+    def handle_place_order(self, command: PlaceOrder):
+        order = Order(
+            order_id=command.order_id,
+            customer_id=command.customer_id,
+        )
+        order.place(total_amount=command.total_amount)
+        domain.repository_for(Order).add(order)
+```
+
+Register the handler before `domain.init()`. A handler registered after `init()` is not wired to its command, and `domain.process()` then runs no handler and saves nothing.
+
+Initialize the domain, then build and submit the command inside a domain context:
+
+```python
+domain.init(traverse=False)
+
+with domain.domain_context():
+    # Construct the command
+    command = PlaceOrder(
+        order_id="ORD-001",
+        customer_id="CUST-123",
+        total_amount=99.99,
+    )
+
+    # Submit to domain (uses domain config default)
+    domain.process(command)
 ```
 
 ## Processing Modes
@@ -41,8 +81,9 @@ domain.process(command)
 Command processed immediately, execution blocked until done:
 
 ```python
-# Per-instance override
-domain.process(command, asynchronous=False)
+with domain.domain_context():
+    # Per-instance override
+    domain.process(command, asynchronous=False)
 ```
 
 Use synchronous when:
@@ -55,8 +96,9 @@ Use synchronous when:
 Command stored in event store, processed by background worker later:
 
 ```python
-# Per-instance override
-domain.process(command, asynchronous=True)
+with domain.domain_context():
+    # Per-instance override
+    domain.process(command, asynchronous=True)
 ```
 
 Use asynchronous when:
@@ -104,20 +146,7 @@ Protean Server --> Command Handler: Process command
 
 ## Command Handler Association
 
-Commands are routed to handlers via the `@handle` decorator:
-
-```python
-@domain.command_handler(part_of="Order")
-class OrderCommandHandler:
-    @handle(PlaceOrder)
-    def handle_place_order(self, command: PlaceOrder):
-        order = Order(
-            order_id=command.order_id,
-            customer_id=command.customer_id,
-        )
-        order.place(total_amount=command.total_amount)
-        current_domain.repository_for(Order).add(order)
-```
+Commands are routed to handlers via the `@handle` decorator. `OrderCommandHandler` in the first block on this page routes `PlaceOrder` to `handle_place_order`.
 
 Key rule: **One command, one handler**. A command can only be processed by a single command handler. This is different from events, which can have multiple handlers.
 
@@ -126,8 +155,8 @@ Key rule: **One command, one handler**. A command can only be processed by a sin
 Commands automatically receive metadata:
 
 - **Timestamp** - When the command was created
-- **Unique ID** - Auto-generated identifier in headers
-- **Type** - Fully qualified class name
+- **Unique ID** - Set in the headers when the command is processed
+- **Type** - Domain name, class name and version, such as `Shop.PlaceOrder.v1`
 - **Version** - Schema version from `__version__`
 - **Domain metadata** - Processing flags (synchronous/asynchronous)
 

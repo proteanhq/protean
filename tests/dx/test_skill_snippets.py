@@ -62,23 +62,14 @@ def discover_files(skills_root: Path) -> list[Path]:
 # file, then delete its entry.
 ALLOWLIST: frozenset[str] = frozenset(
     {
-        "add-command/SKILL.md",
-        "add-command/references/create-aggregate-flow.md",
-        "add-command/references/multiple-commands-flow.md",
-        "add-command/references/update-aggregate-flow.md",
         "add-domain-service-flow/SKILL.md",
         "add-domain-service-flow/references/domain-service-patterns.md",
-        "add-event/SKILL.md",
-        "add-event/references/multiple-events-flow.md",
-        "add-event/references/same-aggregate-flow.md",
         "add-saga-flow/SKILL.md",
         "add-saga-flow/references/compensation.md",
         "add-saga-flow/references/saga-lifecycle.md",
         "add-subscriber-flow/SKILL.md",
         "add-subscriber-flow/references/anti-corruption-layer.md",
         "add-subscriber-flow/references/external-integration.md",
-        "add-use-case/SKILL.md",
-        "add-use-case/references/command-flow-patterns.md",
         "api-endpoint/SKILL.md",
         "api-endpoint/references/anti-patterns.md",
         "api-endpoint/references/request-validation.md",
@@ -96,12 +87,6 @@ ALLOWLIST: frozenset[str] = frozenset(
         "command-handler/references/loading-aggregates.md",
         "command-handler/references/return-values.md",
         "command-handler/references/unit-of-work.md",
-        "command/SKILL.md",
-        "command/references/anti-patterns.md",
-        "command/references/command-inheritance.md",
-        "command/references/command-processing.md",
-        "command/references/command-validation.md",
-        "command/references/with-value-objects.md",
         "custom-validator/SKILL.md",
         "custom-validator/references/basic-validators.md",
         "custom-validator/references/composing-validators.md",
@@ -116,17 +101,6 @@ ALLOWLIST: frozenset[str] = frozenset(
         "event-handler/references/cross-aggregate-patterns.md",
         "event-handler/references/cross-aggregate.md",
         "event-handler/references/error-handling.md",
-        "event-sourced-aggregate/SKILL.md",
-        "event-sourced-aggregate/references/anti-patterns.md",
-        "event-sourced-aggregate/references/apply-decorator.md",
-        "event-sourced-aggregate/references/event-sourced-repository.md",
-        "event/SKILL.md",
-        "event/references/anti-patterns.md",
-        "event/references/delta-events.md",
-        "event/references/event-versioning.md",
-        "event/references/fact-events.md",
-        "event/references/raising-events.md",
-        "event/references/with-value-objects.md",
         "extract-bounded-context/SKILL.md",
         "extract-bounded-context/references/event-integration.md",
         "message-enrichment/SKILL.md",
@@ -145,10 +119,6 @@ ALLOWLIST: frozenset[str] = frozenset(
         "repository/references/default-repository.md",
         "repository/references/unit-of-work.md",
         "split-aggregate/SKILL.md",
-        "upcaster/SKILL.md",
-        "upcaster/references/anti-patterns.md",
-        "upcaster/references/upcaster-chain.md",
-        "upcaster/references/when-to-upcast.md",
     }
 )
 
@@ -311,6 +281,47 @@ def test_a_domain_the_blocks_declare_is_initialized_too(tmp_path):
         "@other.event(part_of='Missing')\nclass Happened:\n    x = String()",
     )
     assert _run(root, tmp_path)[0]["failure"].startswith("init: ConfigurationError")
+
+
+_UPCASTER_PRELUDE = (
+    "from protean.core.upcaster import BaseUpcaster\n"
+    "@domain.aggregate\nclass Order:\n    name = String()\n"
+    "@domain.event(part_of=Order)\nclass OrderPlaced:\n"
+    "    __version__ = 2\n    order_id = Identifier()\n"
+    "@domain.event(part_of=Order)\nclass OrderShipped:\n"
+    "    __version__ = 2\n    order_id = Identifier()"
+)
+
+
+def _upcaster(event: str) -> str:
+    return (
+        f"@domain.upcaster(event_type={event}, from_version=1, to_version=2)\n"
+        "class UpcastV1ToV2(BaseUpcaster):\n"
+        "    def upcast(self, data):\n        return data"
+    )
+
+
+def test_an_upcaster_name_reused_for_another_edge_fails_at_that_block(tmp_path):
+    root = _skill(
+        tmp_path,
+        _UPCASTER_PRELUDE,
+        _upcaster("OrderPlaced"),
+        _upcaster("OrderShipped"),
+    )
+    failure = _run(root, tmp_path)[0]["failure"]
+    assert failure.startswith("line 26: DuplicateElement: ")
+    assert "UpcastV1ToV2 replaces an upcaster of the same name" in failure
+    assert "for OrderPlaced v1 to v2" in failure
+
+
+def test_an_upcaster_name_reused_for_the_same_edge_passes(tmp_path):
+    root = _skill(
+        tmp_path,
+        _UPCASTER_PRELUDE,
+        _upcaster("OrderPlaced"),
+        _upcaster("OrderPlaced"),
+    )
+    assert _run(root, tmp_path)[0]["failure"] is None
 
 
 def test_a_fragment_is_skipped_and_the_next_block_runs(tmp_path):

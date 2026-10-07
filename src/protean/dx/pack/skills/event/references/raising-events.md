@@ -71,6 +71,15 @@ class Order:
 
 ## Raising Single Events
 
+The examples from here on use a `Money` value object:
+
+```python
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+    currency: String(max_length=3, default="USD")
+```
+
 Most state changes raise a single event:
 
 ```python
@@ -301,15 +310,19 @@ class Customer:
     email: String(required=True)
     status: String(default="active")
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    @classmethod
+    def register(cls, customer_id: str, email: str) -> "Customer":
+        customer = cls(customer_id=customer_id, email=email)
         # Raise event on creation
-        self.raise_(CustomerRegistered(
-            customer_id=self.customer_id,
-            email=self.email,
+        customer.raise_(CustomerRegistered(
+            customer_id=customer.customer_id,
+            email=customer.email,
             registered_at=datetime.now(timezone.utc)
         ))
+        return customer
 ```
+
+Raise the creation event from a factory classmethod, not from `__init__`. The framework also calls `__init__` when it loads an aggregate that stores its state from the repository, so an event raised there would fire again on every load. An event-sourced aggregate is rebuilt from its events without calling `__init__`, but its creation event still belongs in a factory method.
 
 ### Updates
 
@@ -381,9 +394,12 @@ def place(self):
     self.status = "placed"  # State change after
 ```
 
+This rule is for an aggregate that stores its state. An event-sourced aggregate works the other way: the method raises the event, and its `@apply` handler changes the state. See the `event-sourced-aggregate` skill.
+
 ### 2. Use Descriptive Event Names
 
 ```python
+# fragment
 # Good: Clear what happened
 self.raise_(OrderPlaced(...))
 self.raise_(PaymentConfirmed(...))
@@ -397,6 +413,7 @@ self.raise_(StateChanged(...))
 ### 3. Include Sufficient Context
 
 ```python
+# fragment
 # Good: Event has all necessary info
 self.raise_(OrderPlaced(
     order_id=self.order_id,
@@ -437,19 +454,18 @@ Events are automatically persisted when the aggregate is saved:
 ```python
 from protean import current_domain
 
-# Create and save aggregate
-order = Order(
-    order_id="ORD-001",
-    customer_id="CUST-123",
-    total=Money(amount=99.99, currency="USD")
-)
-order.place()  # Raises OrderPlaced event
+domain.init(traverse=False)
 
-# Save aggregate - events are persisted automatically
-repo = current_domain.repository_for(Order)
-repo.add(order)  # Aggregate and events saved together
+with domain.domain_context():
+    # Create the aggregate and change its state
+    order = Order(order_id="ORD-001")
+    order.cancel(reason="Customer request")  # Raises OrderCancelled
 
-# Events are now in the event store and will trigger handlers
+    # Save aggregate - events are persisted automatically
+    repo = current_domain.repository_for(Order)
+    repo.add(order)  # Aggregate and events saved together
+
+    # Events are now in the event store and will trigger handlers
 ```
 
 ## Related

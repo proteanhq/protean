@@ -23,6 +23,29 @@ Key highlights:
 
 ## Common Value Objects in Events
 
+The events on this page belong to these aggregates. `Order` is defined in [Creating Events with Value Objects](#creating-events-with-value-objects).
+
+```python
+@domain.aggregate
+class Shipment:
+    status: String()
+
+
+@domain.aggregate
+class User:
+    email: String()
+
+
+@domain.aggregate
+class Account:
+    holder_name: String()
+
+
+@domain.aggregate
+class Patient:
+    name: String()
+```
+
 ### Money
 
 The most common value object in business events:
@@ -104,6 +127,7 @@ class Money:
 class Address:
     street: String(required=True, max_length=200)
     city: String(required=True, max_length=100)
+    state: String(max_length=50)
     postal_code: String(required=True, max_length=20)
     country: String(required=True, max_length=50)
 
@@ -202,10 +226,21 @@ When raising events, instantiate value objects:
 ```python
 from datetime import datetime, timezone
 
+@domain.event(part_of="Order")
+class OrderPlaced:
+    __version__ = 1
+
+    order_id: String(required=True, identifier=True)
+    customer_id: String(required=True)
+    total = ValueObject(Money, required=True)
+    shipping_address = ValueObject(Address, required=True)
+    placed_at: DateTime(required=True)
+
 @domain.aggregate
 class Order:
     order_id: String(required=True, identifier=True)
     customer_id: String(required=True)
+    status: String(default="draft")
     total = ValueObject(Money)
     shipping_address = ValueObject(Address)
 
@@ -222,19 +257,22 @@ class Order:
         ))
 
 # Usage
-order = Order(
-    order_id="ORD-001",
-    customer_id="CUST-123",
-    total=Money(amount=99.99, currency="USD"),
-    shipping_address=Address(
-        street="123 Main St",
-        city="San Francisco",
-        state="CA",
-        postal_code="94102",
-        country="USA"
+domain.init(traverse=False)
+
+with domain.domain_context():
+    order = Order(
+        order_id="ORD-001",
+        customer_id="CUST-123",
+        total=Money(amount=99.99, currency="USD"),
+        shipping_address=Address(
+            street="123 Main St",
+            city="San Francisco",
+            state="CA",
+            postal_code="94102",
+            country="USA"
+        )
     )
-)
-order.place()
+    order.place()
 ```
 
 ## Domain-Specific Value Objects

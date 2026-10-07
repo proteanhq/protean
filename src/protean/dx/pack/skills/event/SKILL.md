@@ -62,17 +62,27 @@ class OrderPlaced:
 ```
 
 ### Fact Events
-Fact events contain complete aggregate state at a point in time (Event-carried State Transfer pattern).
+Fact events contain complete aggregate state at a point in time (Event-carried State Transfer pattern). You do not write a fact event class. Turn them on with `fact_events=True`, and Protean generates an `<Aggregate>FactEvent` class from the aggregate's fields. For `Order`, the class is `OrderFactEvent`.
 
 ```python
-@domain.event(part_of="Order")
-class OrderSnapshot:
-    """Complete order state for consumers."""
-    order_id: String(required=True, identifier=True)
+@domain.aggregate(fact_events=True)
+class Order:
     customer_id: String(required=True)
-    status: String(required=True)
-    items: List()  # Full state
-    total = ValueObject(Money)
+    status: String(default="draft")
+```
+
+The repository writes a fact event each time it saves a new or changed aggregate. Saving an unchanged aggregate writes none. The event goes to the `<stream_category>-fact-<id>` stream. Your code never raises it: the repository raises it on the aggregate as it saves, and the unit of work stores it on commit.
+
+```python
+domain.init(traverse=False)
+with domain.domain_context():
+    order = Order(customer_id="CUST-123")
+    domain.repository_for(Order).add(order)
+
+    stream = f"{Order.meta_.stream_category}-fact-{order.id}"
+    fact = domain.event_store.store.read(stream)[-1].to_domain_object()
+    print(type(fact).__name__)  # OrderFactEvent
+    print(fact.id == order.id, fact.customer_id, fact.status)  # True CUST-123 draft
 ```
 
 ## Fields and versioning
@@ -81,6 +91,11 @@ class OrderSnapshot:
 
 ```python
 from protean.fields import String, Integer, Float, DateTime, Boolean
+
+@domain.aggregate
+class Product:
+    name: String(required=True, max_length=200)
+    price: Float(required=True)
 
 @domain.event(part_of="Product")
 class ProductCreated:
@@ -164,6 +179,8 @@ class Order:
         ))
 ```
 
+This aggregate stores its state, so the method changes the state first and then raises the event. An event-sourced aggregate works the other way. The business method raises the event, and an `@apply` method changes the state. See the `event-sourced-aggregate` skill.
+
 ## Quick example
 
 ```python
@@ -211,13 +228,15 @@ class Order:
         ))
 
 # Usage
-order = Order(
-    order_id="ORD-001",
-    customer_id="CUST-123",
-    total=Money(amount=99.99, currency="USD")
-)
-order.place()
-print(f"Order {order.order_id} placed. Events: {len(order._events)}")
+domain.init(traverse=False)
+with domain.domain_context():
+    order = Order(
+        order_id="ORD-001",
+        customer_id="CUST-123",
+        total=Money(amount=99.99, currency="USD")
+    )
+    order.place()
+    print(f"Order {order.order_id} placed. Events: {len(order._events)}")
 ```
 
 ## Common mistakes
@@ -241,6 +260,7 @@ class OrderPlaced:  # Correct! Past-tense
 ### ❌ Not associating event with aggregate
 
 ```python
+# fragment
 @domain.event  # Wrong! Missing part_of
 class OrderPlaced:
     pass
@@ -257,6 +277,7 @@ class OrderPlaced:
 ### ❌ Including entities in events
 
 ```python
+# fragment
 @domain.event(part_of="Order")
 class OrderPlaced:
     order_entity = HasOne(OrderEntity)  # Wrong! Events can't contain entities
@@ -294,15 +315,30 @@ class OrderPlaced:
 ### ❌ Making events mutable
 
 ```python
+# fragment
 event = OrderPlaced(order_id="123", customer_id="456")
 event.order_id = "789"  # Wrong! Events are immutable
 ```
 
 ✅ **Instead: Events are immutable facts**
 
+Assigning to a field of an event raises `IncorrectUsageError`. To record a different fact, raise a new event.
+
 ```python
-event = OrderPlaced(order_id="123", customer_id="456")
-# Cannot modify - event is immutable and represents what happened
+from protean.exceptions import IncorrectUsageError
+
+@domain.event(part_of="Order")
+class OrderPlaced:
+    order_id: String(required=True, identifier=True)
+    customer_id: String(required=True)
+
+domain.init(traverse=False)
+with domain.domain_context():
+    event = OrderPlaced(order_id="123", customer_id="456")
+    try:
+        event.order_id = "789"
+    except IncorrectUsageError as exc:
+        print(exc)  # Event/Command Objects are immutable and cannot be modified once created
 ```
 
 ### What `check` reports
@@ -327,7 +363,7 @@ event = OrderPlaced(order_id="123", customer_id="456")
 ### Complete Examples
 - [Simple Delta Event](assets/event_simple.py) - Basic event with minimal fields
 - [Event with Value Objects](assets/event_with_value_object.py) - Events containing value objects
-- [Fact Event](assets/event_fact.py) - Complete state snapshot event
+- [Fact Event](assets/event_fact.py) - Fact events generated with `fact_events=True`
 - [Event Versioning](assets/event_versioning.py) - Schema evolution examples
 - [Raising Events](assets/raising_events.py) - Complete example with aggregate raising events
 

@@ -1,5 +1,58 @@
 # Command Flow Patterns
 
+The handler methods on this page work on three small aggregates and their commands. Define them first:
+
+```python
+@domain.aggregate
+class Account:
+    username: String(required=True)
+    email: String(required=True)
+
+    @classmethod
+    def register(cls, username, email):
+        return cls(username=username, email=email)
+
+
+@domain.aggregate
+class Ticket:
+    assignee: String()
+
+    def assign(self, assignee):
+        self.assignee = assignee
+
+
+@domain.aggregate
+class Expense:
+    status: String(default="submitted")
+    approved_by: String()
+
+    def approve(self, approved_by):
+        self.status = "approved"
+        self.approved_by = approved_by
+
+
+@domain.command(part_of=Account)
+class RegisterAccount:
+    username: String(required=True)
+    email: String(required=True)
+
+
+@domain.command(part_of=Ticket)
+class AssignTicket:
+    ticket_id: Identifier(required=True)
+    assignee: String(required=True)
+
+
+@domain.command(part_of=Expense)
+class ApproveExpense:
+    expense_id: Identifier(required=True)
+    approved_by: String(required=True)
+    requested_by_role: String(required=True)
+
+
+ALLOWED_ROLES = ["manager", "finance"]
+```
+
 ## Create pattern
 
 The handler creates a new aggregate using a factory method.

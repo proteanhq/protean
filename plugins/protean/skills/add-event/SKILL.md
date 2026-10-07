@@ -73,6 +73,8 @@ Key points for this workflow:
 class OrderPlaced:
     order_id: Identifier(required=True)
     customer_id: String(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
     total_amount: Float(required=True)
 ```
 
@@ -92,8 +94,12 @@ Key points for this workflow:
 class Order:
     order_id: Identifier(identifier=True)
     customer_id: String(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
     status: String(default="draft")
-    total_amount: Float()
+    total_amount: Float(required=True)
+    confirmation_number: String()
+    tracking_number: String()
 
     def place(self):
         if self.status != "draft":
@@ -102,6 +108,8 @@ class Order:
         self.raise_(OrderPlaced(
             order_id=self.order_id,
             customer_id=self.customer_id,
+            product_id=self.product_id,
+            quantity=self.quantity,
             total_amount=self.total_amount,
         ))
 ```
@@ -120,6 +128,20 @@ Key points for this workflow:
 - Event handlers do NOT return values (fire-and-forget)
 - Each handler runs within an implicit UnitOfWork - no manual wrapping
 - Multiple handlers can process the same event (unlike commands)
+
+The cross-aggregate example below needs a target aggregate. Here `Inventory` tracks stock per product:
+
+```python
+@domain.aggregate
+class Inventory:
+    product_id: Identifier(required=True)
+    in_stock: Integer(required=True)
+
+    def reduce_stock(self, quantity: int):
+        if quantity > self.in_stock:
+            raise ValueError(f"Insufficient stock: have {self.in_stock}, need {quantity}")
+        self.in_stock -= quantity
+```
 
 ```python
 # Same-aggregate handler
@@ -242,6 +264,10 @@ src/myapp/inventory/
 When the aggregate already has an event handler, add the new `@handle` method to the existing handler class. Multiple `@handle` methods in one handler class is fine.
 
 ```python
+@domain.event(part_of="Order")
+class OrderShipped:
+    order_id: Identifier(required=True)
+
 @domain.event_handler(part_of=Order)
 class OrderEventHandler:
     @handle(OrderPlaced)
@@ -262,7 +288,7 @@ class OrderEventHandler:
 4. **Event handlers do NOT return values** - Fire-and-forget pattern
 5. **Implicit UnitOfWork** - Do NOT wrap handler methods in manual UnitOfWork
 6. **Business logic in aggregates** - Handlers only orchestrate (load, call method, persist)
-7. **Raise events after state change** - Call `self.raise_()` after the aggregate state is updated
+7. **Raise events after state change** - Call `self.raise_()` after the aggregate state is updated. An event-sourced aggregate is the exception: it raises the event first, and `@apply` changes the state (see the `event-sourced-aggregate` skill)
 8. **Cross-aggregate goes through a command** - The handler sits in the source's cluster and issues a command that the target's command handler processes. The command carries an id from the event, and the target's command handler returns without changes when that work is already done
 9. **Sync processing for dev/test** - Set `domain.config["event_processing"] = "sync"`
 10. **Events carry minimal data** - Only IDs and data needed by consumers, not entire aggregate state
@@ -276,7 +302,7 @@ class OrderEventHandler:
 - **Manual UnitOfWork in handlers** - It's implicit, don't wrap
 - **Putting the handler in the target's cluster** - A handler that is `part_of` the target aggregate and reacts to the source's event is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`. Keep the handler in the source's cluster and issue a command
 - **Generating a fresh id in the handler** - Events are delivered at least once, so a `uuid4()` per delivery writes the change twice. Take the id from the event
-- **Raising events before state change** - State should change first, then raise the event
+- **Raising events before state change** - State should change first, then raise the event. This does not apply to an event-sourced aggregate, where the event is raised first and `@apply` changes the state
 
 ## Complete examples
 

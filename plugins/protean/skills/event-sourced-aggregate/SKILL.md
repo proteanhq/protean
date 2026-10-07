@@ -55,6 +55,8 @@ class Account:
 
     @apply
     def opened(self, event: AccountOpened):
+        self.account_id = event.account_id
+        self.owner_name = event.owner_name
         self.status = "ACTIVE"
 
     @apply
@@ -76,6 +78,8 @@ class Account:
 10. **ES repository is selected automatically** — `domain.repository_for(Account)` returns an event-sourced repository when the aggregate has `event_sourced=True`
 11. **Fact events auto-generate state snapshots** — Use `@domain.aggregate(event_sourced=True, fact_events=True)` to auto-publish complete state after each persist
 12. **First event's `@apply` must set ALL fields** — `from_events()` creates a blank aggregate and applies all events through `@apply`, so the first event's handler must establish all state including identity
+13. **A failed handler writes no events**: Events added to the repository inside a command handler or a `with UnitOfWork():` block reach the event store only when the unit of work commits. If the handler raises after `repo.add(account)`, the unit of work rolls back and none of the new events reach the account's stream. A new account's stream stays empty; an existing account's stream keeps the events it already had. The `account` object in memory is not reset: it still holds the raised events in `_events` and the state its `@apply` handlers set. Do not reuse it.
+14. **`reserved=[...]` names removed fields**: `@domain.aggregate(event_sourced=True, reserved=["nickname"])` marks `nickname` as a field that once existed. Declaring a live field with a reserved name fails at registration with `IncorrectUsageError`, message "Field(s) ['nickname'] on aggregate \`Account\` reuse a reserved name; a reserved name can never be declared again as a field". During replay (`from_events()` or `repo.get()`), an `@apply` handler for an old event can still run `self.nickname = event.nickname`. The assignment is dropped without an error, and the rebuilt aggregate has no `nickname` attribute. The same assignment on the live `raise_()` path raises a Pydantic `pydantic_core.ValidationError`, not `protean.exceptions.ValidationError`.
 
 ## The @apply pattern
 
@@ -109,17 +113,37 @@ Because `@apply` runs in both paths, live and replay always produce identical st
 
 ## Factory classmethod pattern
 
-Always use a factory classmethod to create new event-sourced aggregates:
+Always use a factory classmethod to create new event-sourced aggregates. Here `User.register()` is the factory:
 
 ```python
-@classmethod
-def register(cls, user_id, name, email):
-    user = cls(user_id=user_id, name=name, email=email)
-    user.raise_(UserRegistered(user_id=user_id, name=name, email=email))
-    return user
+@domain.event(part_of="User")
+class UserRegistered:
+    user_id: Identifier(required=True)
+    name: String(required=True)
+    email: String(required=True)
+
+@domain.aggregate(event_sourced=True)
+class User:
+    user_id: Identifier(identifier=True)
+    name: String(required=True)
+    email: String(required=True)
+
+    @classmethod
+    def register(cls, user_id, name, email):
+        user = cls(user_id=user_id, name=name, email=email)
+        user.raise_(UserRegistered(user_id=user_id, name=name, email=email))
+        return user
+
+    @apply
+    def registered(self, event: UserRegistered):
+        self.user_id = event.user_id
+        self.name = event.name
+        self.email = event.email
 
 # Usage
-user = User.register(user_id="U-001", name="Alice", email="alice@example.com")
+domain.init(traverse=False)
+with domain.domain_context():
+    user = User.register(user_id="U-001", name="Alice", email="alice@example.com")
 ```
 
 This ensures the creation event is always the first event in the aggregate's stream.
@@ -143,8 +167,12 @@ With `_create_new()`, the `@apply` handler for `UserRegistered` must set ALL fie
 Event-sourced aggregates can be reconstructed from their event history:
 
 ```python
-# Build aggregate from events
-user = User.from_events(events)
+with domain.domain_context():
+    events = user._events  # the events raised so far
+
+    # Build aggregate from events
+    rebuilt = User.from_events(events)
+    assert rebuilt.email == user.email
 
 # Internally:
 # 1. Creates a blank aggregate via _create_for_reconstitution()
@@ -154,8 +182,10 @@ user = User.from_events(events)
 
 The repository handles this automatically when loading:
 ```python
-repo = domain.repository_for(User)
-user = repo.get(user_id)  # Reconstructs from event store
+with domain.domain_context():
+    repo = domain.repository_for(User)
+    repo.add(user)  # Writes the raised events to the event store
+    user = repo.get(user.user_id)  # Reconstructs from event store
 ```
 
 ## Event-sourced repository
@@ -165,14 +195,17 @@ ES aggregates use a specialized repository that persists events instead of state
 ```python
 from protean.utils.globals import current_domain
 
-# The domain auto-selects the right repository type
-repo = current_domain.repository_for(Account)
+with domain.domain_context():
+    account = Account.open(account_id="A-001", owner_name="Alice")
 
-# Persist — writes events to event store
-repo.add(account)
+    # The domain auto-selects the right repository type
+    repo = current_domain.repository_for(Account)
 
-# Load — reconstructs from event stream
-account = repo.get(account_id)
+    # Persist: writes events to event store
+    repo.add(account)
+
+    # Load: reconstructs from event stream
+    account = repo.get(account.account_id)
 ```
 
 For custom queries, define an explicit ES repository by subclassing `BaseEventSourcedRepository` and registering it against the aggregate:

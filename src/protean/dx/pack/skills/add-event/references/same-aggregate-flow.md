@@ -43,15 +43,23 @@ class OrderPlaced:
 ### The Aggregate Method
 
 ```python
-def place(self):
-    if self.status != "draft":
-        raise ValueError(f"Cannot place order in '{self.status}' status")
-    self.status = "placed"
-    self.raise_(OrderPlaced(
-        order_id=self.order_id,
-        customer_id=self.customer_id,
-        total_amount=self.total_amount,
-    ))
+@domain.aggregate
+class Order:
+    order_id: Identifier(identifier=True)
+    customer_id: String(required=True)
+    total_amount: Float(required=True)
+    status: String(default="draft")
+    confirmation_number: String()
+
+    def place(self):
+        if self.status != "draft":
+            raise ValueError(f"Cannot place order in '{self.status}' status")
+        self.status = "placed"
+        self.raise_(OrderPlaced(
+            order_id=self.order_id,
+            customer_id=self.customer_id,
+            total_amount=self.total_amount,
+        ))
 ```
 
 - Business logic (guards) execute first

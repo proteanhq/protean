@@ -18,11 +18,41 @@ The complete implementation is in [assets/event_versioning.py](../assets/event_v
 
 Key highlights:
 - Use `__version__` class attribute to track schema versions
-- Start with "v1" and increment for breaking changes
+- Start at `1` and increment for breaking changes
 - Maintain backward compatibility when possible
 - Document version changes in event docstrings
 
 ## Basic Versioning
+
+The examples on this page use these aggregates and value objects:
+
+```python
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+    currency: String(max_length=3, default="USD")
+
+
+@domain.value_object
+class Address:
+    street: String(required=True)
+    city: String(required=True)
+
+
+@domain.aggregate
+class Order:
+    customer_id: String()
+
+
+@domain.aggregate
+class Product:
+    name: String()
+
+
+@domain.aggregate
+class User:
+    email: String()
+```
 
 Every event should have a `__version__` attribute from the start:
 
@@ -133,12 +163,12 @@ class PriceChanged:
 
 ## Version Migration Patterns
 
-### Pattern 1: Side-by-side Versions
+### Pattern 1: A New Event for a New Fact
 
-Create new event types for major changes:
+When the change records a different business fact, add a new event type with its own name, starting at version 1:
 
 ```python
-# Old event - still supported
+# The existing event keeps its name and its version
 @domain.event(part_of="Order")
 class OrderPlaced:
     __version__ = 1
@@ -146,39 +176,43 @@ class OrderPlaced:
     order_id: String(required=True, identifier=True)
     customer_id: String(required=True)
 
-# New event for new schema
+# A different fact gets its own event
 @domain.event(part_of="Order")
-class OrderPlacedV2:
-    __version__ = 2
+class OrderPriced:
+    __version__ = 1
 
     order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
     total = ValueObject(Money, required=True)
     items: List()
 ```
+
+Do not put a version number in a class name, such as `OrderPlacedV2`. The framework links the versions of an event by its type name, so no upcaster can turn a stored `OrderPlaced` into an `OrderPlacedV2`. When the fact stays the same and only its shape changes, keep the name, raise `__version__` and add an upcaster (Pattern 2).
 
 ### Pattern 2: Upcasting
 
 Transform old event versions to new format when reading:
 
 ```python
-class EventUpcaster:
-    """Upcast old event versions to current schema."""
+from protean.core.upcaster import BaseUpcaster
 
-    def upcast(self, event_data: dict, version: str) -> dict:
-        if version == "v1":
-            # Transform v1 to v2 format
-            return self._upcast_v1_to_v2(event_data)
-        return event_data
 
-    def _upcast_v1_to_v2(self, event_data: dict) -> dict:
-        """Transform OrderPlaced v1 to v2."""
-        return {
-            **event_data,
-            "__version__": 2,
-            "total": {"amount": 0.0, "currency": "USD"}  # Default value
-        }
+@domain.event(part_of="Order")
+class OrderPlaced:
+    __version__ = 2
+
+    order_id: String(required=True, identifier=True)
+    customer_id: String(required=True)
+    total = ValueObject(Money, required=True)
+
+
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
+class UpcastOrderPlacedV1ToV2(BaseUpcaster):
+    def upcast(self, data: dict) -> dict:
+        data["total"] = {"amount": 0.0, "currency": "USD"}  # v1 had no total
+        return data
 ```
+
+`event_type` is the current event class. The framework applies the upcaster when it reads a stored v1 event. See the `upcaster` skill for chains, rules and testing.
 
 ### Pattern 3: Weak Schema
 
@@ -259,27 +293,49 @@ class ProductCreated:
 
 ### 4. Test Multiple Versions
 
-```python
-def test_deserialize_v1_event():
-    """Ensure old v1 events still deserialize."""
-    event_data = {
-        "__version__": 1,
-        "order_id": "ORD-001",
-        "customer_id": "CUST-123"
-    }
-    event = OrderPlaced(**event_data)
-    assert event.order_id == "ORD-001"
+The version is not a payload field. It comes from the class attribute, and the event carries it in its metadata. Passing `__version__` as a keyword raises `ValidationError: {'__version__': ['Extra inputs are not permitted']}`.
 
-def test_deserialize_v2_event():
-    """Ensure new v2 events deserialize with new fields."""
-    event_data = {
-        "__version__": 2,
-        "order_id": "ORD-001",
-        "customer_id": "CUST-123",
-        "total": {"amount": 99.99, "currency": "USD"}
-    }
-    event = OrderPlaced(**event_data)
+Test that the current version builds and that the upcaster turns an old payload into a valid current one:
+
+```python
+@domain.event(part_of="Order")
+class OrderPlaced:
+    __version__ = 2
+
+    order_id: String(required=True, identifier=True)
+    customer_id: String(required=True)
+    total = ValueObject(Money, required=True)
+
+
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
+class UpcastOrderPlacedV1ToV2(BaseUpcaster):
+    def upcast(self, data: dict) -> dict:
+        data["total"] = {"amount": 0.0, "currency": "USD"}
+        return data
+
+
+def test_v2_event_carries_its_version():
+    event = OrderPlaced(
+        order_id="ORD-001",
+        customer_id="CUST-123",
+        total=Money(amount=99.99, currency="USD"),
+    )
     assert event.total.amount == 99.99
+    assert event._metadata.domain.version == 2
+    assert event._metadata.headers.type.endswith(".v2")
+
+
+def test_v1_payload_upcasts_to_v2():
+    v1_data = {"order_id": "ORD-001", "customer_id": "CUST-123"}
+    data = UpcastOrderPlacedV1ToV2().upcast(v1_data)
+    event = OrderPlaced(**data)
+    assert event.total.amount == 0.0
+
+
+domain.init(traverse=False)
+with domain.domain_context():
+    test_v2_event_carries_its_version()
+    test_v1_payload_upcasts_to_v2()
 ```
 
 ## Common Versioning Scenarios

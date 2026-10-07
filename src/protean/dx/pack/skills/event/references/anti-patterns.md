@@ -6,6 +6,32 @@ Common mistakes when working with events and how to avoid them.
 
 Events are deceptively simple but have specific constraints that, when violated, lead to fragile designs. This guide covers the most common anti-patterns and their correct alternatives.
 
+The examples share this setup. It defines the aggregates the events belong to and the `Money` value object:
+
+```python
+from datetime import datetime, timezone
+
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+    currency: String(max_length=3, default="USD")
+
+@domain.aggregate
+class Order:
+    order_id: String(required=True, identifier=True)
+    customer_id: String(required=True)
+    status: String(default="draft")
+    total = ValueObject(Money)
+
+@domain.aggregate
+class Payment:
+    payment_id: String(required=True, identifier=True)
+
+@domain.aggregate
+class Product:
+    product_id: String(required=True, identifier=True)
+```
+
 ## 1. Using Imperative Verbs Instead of Past-Tense
 
 ### ❌ Wrong
@@ -43,6 +69,7 @@ class PaymentProcessed:  # Past-tense - this already occurred
 ### ❌ Wrong
 
 ```python
+# fragment
 @domain.event  # Missing part_of parameter!
 class OrderPlaced:
     order_id: String(required=True)
@@ -63,6 +90,7 @@ class OrderPlaced:
 ### ❌ Wrong
 
 ```python
+# fragment
 @domain.entity(part_of="Order")
 class LineItem:
     product_id: String(required=True)
@@ -123,6 +151,7 @@ class OrderPlaced:
 ### ❌ Wrong
 
 ```python
+# fragment
 event = OrderPlaced(order_id="123", customer_id="456")
 # Trying to modify event after creation
 event.order_id = "789"  # Wrong! Events are immutable
@@ -130,10 +159,25 @@ event.order_id = "789"  # Wrong! Events are immutable
 
 ### ✅ Correct
 
+Assigning to a field raises `IncorrectUsageError`. If you need different data, create a new event:
+
 ```python
-event = OrderPlaced(order_id="123", customer_id="456")
-# Events are immutable - cannot be changed
-# If you need different data, create a new event
+from protean.exceptions import IncorrectUsageError
+
+@domain.event(part_of="Order")
+class OrderPlaced:
+    order_id: String(required=True, identifier=True)
+    customer_id: String(required=True)
+
+domain.init(traverse=False)
+with domain.domain_context():
+    event = OrderPlaced(order_id="123", customer_id="456")
+    try:
+        event.order_id = "789"
+    except IncorrectUsageError as exc:
+        print(exc)  # Event/Command Objects are immutable and cannot be modified once created
+
+    corrected = OrderPlaced(order_id="789", customer_id="456")
 ```
 
 **Why it matters:** Events are immutable facts representing what happened in the past. They cannot be changed. This immutability is enforced by Protean.
@@ -187,6 +231,8 @@ class Order:
 ```python
 @domain.aggregate
 class Order:
+    order_id: String(required=True, identifier=True)
+    customer_id: String(required=True)
     status: String(default="draft")
 
     def place(self):
@@ -202,6 +248,8 @@ class Order:
 ```
 
 **Why it matters:** Events describe what happened. The state change must occur first, then the event records that it happened.
+
+This rule is for aggregates that store their state. An event-sourced aggregate works the other way. The business method raises the event, and an `@apply` method changes the state. See the `event-sourced-aggregate` skill.
 
 ## 8. Raising Events for Failed Operations
 
@@ -398,7 +446,7 @@ When creating events, ensure:
 - [ ] Event includes only necessary data
 - [ ] Event is immutable (no modification after creation)
 - [ ] Event has `__version__` attribute
-- [ ] Events are raised AFTER state changes
+- [ ] Events are raised AFTER state changes (an event-sourced aggregate raises first, and `@apply` changes the state)
 - [ ] Events are only raised on success (not for failures)
 - [ ] Query methods don't raise events
 - [ ] Primary identifier marked with `identifier=True`
