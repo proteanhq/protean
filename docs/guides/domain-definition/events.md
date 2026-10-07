@@ -38,8 +38,9 @@ concrete events can inherit:
 --8<-- "guides/domain-definition/events/004.py:events"
 ```
 
-Abstract events cannot be instantiated or raised directly. They don't
-require `part_of` since they are never emitted to a stream.
+Abstract events cannot be raised directly: raising one throws
+`ConfigurationError`. They don't require `part_of` since they are never
+emitted to a stream.
 
 ---
 

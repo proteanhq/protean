@@ -5,6 +5,8 @@ import pytest
 from protean.exceptions import ValidationError
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_custom_brand_parses_a_hex_string_into_a_color():
     example = load_example("guides/domain-definition/fields/custom-fields/001.py")

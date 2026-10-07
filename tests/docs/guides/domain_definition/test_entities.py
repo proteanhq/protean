@@ -1,6 +1,10 @@
 """The example on the entities guide behaves as the page says."""
 
+import pytest
+
 from tests.docs.support import load_example
+
+pytestmark = pytest.mark.no_test_domain
 
 
 def test_entities_guide_comment_links_to_its_post():

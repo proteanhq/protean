@@ -8,6 +8,8 @@ from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import String
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_declared_indexes_appear_in_meta_in_order():
     example = load_example("reference/domain-elements/indexes/001.py")

@@ -6,6 +6,8 @@ from protean.exceptions import ObjectNotFoundError, TooManyObjectsError
 from protean.utils.reflection import attributes, declared_fields
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_has_one_author_is_linked_to_its_book_and_persisted_with_it():
     example = load_example("guides/domain-definition/fields/association-fields/001.py")

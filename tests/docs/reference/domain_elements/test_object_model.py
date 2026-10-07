@@ -6,6 +6,8 @@ from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import reflection
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_meta_holds_the_options_passed_to_the_decorator():
     example = load_example("guides/compose-a-domain/021.py")

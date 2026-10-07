@@ -2,8 +2,12 @@
 
 import re
 
+import pytest
+
 from protean.fields import String
 from tests.docs.support import DOCS_SRC, load_example
+
+pytestmark = pytest.mark.no_test_domain
 
 EXAMPLES = DOCS_SRC / "reference" / "domain-elements" / "domain-constructor"
 

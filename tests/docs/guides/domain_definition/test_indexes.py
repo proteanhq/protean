@@ -6,6 +6,8 @@ from protean.core.index import RawIndex
 from protean.exceptions import ValidationError
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_customer_declares_a_unique_and_a_plain_index():
     example = load_example("guides/domain-definition/indexes/001.py")

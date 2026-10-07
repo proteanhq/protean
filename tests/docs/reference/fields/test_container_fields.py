@@ -6,6 +6,8 @@ from protean.exceptions import ValidationError
 from protean.fields import Auto, Decimal, Dict, List
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_list_of_strings_accepts_strings_and_rejects_numbers():
     example = load_example("guides/domain-definition/fields/container-fields/001.py")

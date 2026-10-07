@@ -6,6 +6,8 @@ from protean.exceptions import ValidationError
 from protean.utils.reflection import attributes, declared_fields
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_setting_a_has_one_child_links_it_to_the_blog():
     example = load_example("guides/domain-definition/relationships/001.py")

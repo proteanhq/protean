@@ -6,6 +6,8 @@ from protean.exceptions import ValidationError
 from protean.utils.reflection import declared_fields
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_annotation_and_assignment_fields_both_validate():
     example = load_example("guides/domain-definition/fields/index-page/001.py")

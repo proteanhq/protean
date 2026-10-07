@@ -8,6 +8,8 @@ from protean.exceptions import ValidationError
 from protean.utils.reflection import attributes, declared_fields
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_product_declares_its_fields_and_defaults_created_at_to_now():
     example = load_example("guides/domain-definition/fields/001.py")

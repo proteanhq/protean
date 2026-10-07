@@ -8,6 +8,8 @@ import pytest
 from protean.exceptions import IncorrectUsageError, ValidationError
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_email_accepts_a_valid_address_and_compares_by_value():
     example = load_example("guides/domain-definition/009.py")

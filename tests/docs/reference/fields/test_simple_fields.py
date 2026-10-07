@@ -10,6 +10,8 @@ from protean.fields import Identifier
 from protean.utils.reflection import declared_fields
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_string_name_accepts_a_valid_length_and_rejects_out_of_bounds():
     example = load_example("guides/domain-definition/fields/simple-fields/001.py")

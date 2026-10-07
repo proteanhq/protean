@@ -7,6 +7,8 @@ from protean.fields import String
 from protean.ir.builder import IRBuilder
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_decorator_options_show_up_in_meta():
     example = load_example("reference/domain-elements/element-decorators/001.py")

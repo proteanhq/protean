@@ -9,6 +9,8 @@ from protean.utils.eventing import Message
 from protean.utils.reflection import attributes, declared_fields
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_required_name_rejects_a_missing_value():
     example = load_example("guides/domain-definition/fields/options/001.py")

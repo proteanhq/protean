@@ -10,6 +10,8 @@ from protean.fields import Auto, Identifier
 from protean.utils.reflection import attributes, declared_fields, id_field
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_user_id_is_the_declared_identity_field():
     example = load_example("guides/compose-a-domain/023.py")

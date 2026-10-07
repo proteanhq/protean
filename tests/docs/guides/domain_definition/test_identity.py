@@ -12,6 +12,8 @@ from protean.fields import String
 from protean.utils.reflection import declared_fields, id_field
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_customer_gets_a_default_uuid_id():
     example = load_example("guides/domain-definition/identity/001.py")

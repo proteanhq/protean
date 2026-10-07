@@ -9,6 +9,8 @@ from protean.exceptions import NotSupportedError, ValidationError
 from protean.utils.reflection import declared_fields, fields
 from tests.docs.support import load_example
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_post_gets_an_identity_and_keeps_its_values():
     example = load_example("guides/domain-definition/001.py")
