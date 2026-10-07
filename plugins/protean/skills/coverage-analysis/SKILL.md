@@ -108,7 +108,7 @@ Read all test files and map what is already tested:
 4. **Invariant**: Test triggers the invariant condition and uses `pytest.raises`
 5. **Business rule**: Test for the happy path AND test for the rejection case
 6. **Command handler**: Test calls `domain.process(Command(...))` and verifies persisted state. The test conftest sets `command_processing` to `"sync"`, as in [generate-test-scaffold](../generate-test-scaffold/SKILL.md) Step 7
-7. **Event handler**: Test verifies the target aggregate state changed after the source aggregate was persisted
+7. **Event handler**: Test verifies the target aggregate state changed after the source aggregate was persisted. When the handler hands off to another aggregate with a command, also test that a repeated command changes nothing, because events are delivered at least once
 8. **VO operation**: Test calls the custom method and asserts the result
 
 ### Step 3: Identify gaps
@@ -177,11 +177,11 @@ Do not report missing tests for framework-guaranteed behavior:
 
 ## Common mistakes
 
-1. **Flagging framework guarantees as gaps** — Don't report missing tests for VO immutability, field validation, or registry presence
-2. **Missing negative tests** — Every business rule (`if ... raise`) needs both a happy path test AND a rejection test
-3. **Checking only isinstance for events** — Event data verification (field values) is a separate coverage point from event type checking
-4. **Forgetting cross-aggregate handlers** — Event handlers that listen to OTHER aggregates' streams are often the most undertested
-5. **Not tracing raise_() to event classes** — Each `raise_()` call means there should be a test verifying that specific event
+1. **Flagging framework guarantees as gaps**: don't report missing tests for VO immutability, field validation, or registry presence
+2. **Missing negative tests**: every business rule (`if ... raise`) needs both a happy path test AND a rejection test
+3. **Checking only isinstance for events**: event data verification (field values) is a separate coverage point from event type checking
+4. **Forgetting cross-aggregate handlers**: event handlers that issue a command to another aggregate are often the most undertested
+5. **Not tracing raise_() to event classes**: each `raise_()` call means there should be a test verifying that specific event
 
 ## Complete examples
 

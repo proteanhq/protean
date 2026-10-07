@@ -61,7 +61,7 @@ class OrderCommandHandler:
     def place_order(self, command):
         ...
 
-@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
+@domain.event_handler(part_of=Order)
 class OrderEventsHandler:
     @handle(OrderPlaced)
     def on_order_placed(self, event):

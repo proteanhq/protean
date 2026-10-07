@@ -5,18 +5,32 @@ This example demonstrates:
 - Two commands on the same aggregate (create + update pattern)
 - Aggregate factory method for creation
 - Aggregate instance method for updates
-- Event handler reacting to events from the same aggregate
+- Event handler in Ticket's cluster reacting to Ticket's own event
+- The event handler hands off to AuditEntry by issuing a RecordAudit command
 - Full lifecycle: create ticket → assign ticket → event handler logs assignment
 
 Domain: A support ticket system where tickets can be created and assigned,
 with an audit log tracking assignments.
+
+Events are delivered at least once, so each audit entry takes the event's
+message id as its id (`<stream>-<version>.<n>`, because `Ticket` is not
+event sourced), and the command handler skips
+an entry that already exists. The message id names one change only while the
+ticket is loaded fresh before each change, as the command handlers here do.
+The entry id is a string, so this guard needs the default `identity_type`.
 """
 
-from protean import Domain, handle
-from protean.fields import Auto, Identifier, String
+from protean import Domain, current_domain, handle
+from protean.exceptions import ObjectNotFoundError
+from protean.fields import Identifier, String
 
 domain = Domain(__name__)
+
+# Run the hop in-process: TicketAssigned reaches the event handler when the unit
+# of work that saves the ticket commits, and RecordAudit reaches its handler as
+# soon as it is issued.
 domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
 
 
 # --- Events ---
@@ -123,25 +137,70 @@ class TicketCommandHandler:
 class AuditEntry:
     """Audit log entry for tracking ticket assignments."""
 
-    entry_id: Auto(identifier=True)
+    entry_id: Identifier(identifier=True)
     ticket_id: Identifier(required=True)
     action: String(required=True, max_length=50)
     detail: String(max_length=500)
 
 
-# --- Event Handler ---
+@domain.command(part_of="AuditEntry")
+class RecordAudit:
+    """Command to record one audit entry.
+
+    `entry_id` is the id of the event being audited, so a redelivered event
+    reissues the same command and the handler can tell the entry exists.
+    """
+
+    entry_id: Identifier(required=True)
+    ticket_id: Identifier(required=True)
+    action: String(required=True, max_length=50)
+    detail: String(max_length=500)
 
 
-@domain.event_handler(part_of=AuditEntry, stream_category=Ticket.meta_.stream_category)
+@domain.command_handler(part_of=AuditEntry)
+class AuditCommandHandler:
+    """The write path for AuditEntry."""
+
+    @handle(RecordAudit)
+    def handle_record(self, command: RecordAudit):
+        """Add the audit entry unless it is already recorded."""
+        repo = current_domain.repository_for(AuditEntry)
+        try:
+            repo.get(command.entry_id)
+        except ObjectNotFoundError:
+            repo.add(
+                AuditEntry(
+                    entry_id=command.entry_id,
+                    ticket_id=command.ticket_id,
+                    action=command.action,
+                    detail=command.detail,
+                )
+            )
+        else:
+            return  # already recorded; a redelivered event must not log twice
+
+
+# --- Event Handler (in the cluster that owns the event) ---
+
+
+@domain.event_handler(part_of=Ticket)
 class TicketAuditHandler:
-    """Event handler that logs ticket assignments to the audit log."""
+    """Event handler that logs ticket assignments to the audit log.
+
+    The handler sits in Ticket's cluster, because it reacts to Ticket's own
+    event (a handler that reacts to another cluster's event is what `check`
+    reports as EVENT_HANDLER_FOREIGN_EVENT). It hands off to AuditEntry with a
+    command, and AuditEntry's command handler does the write.
+    """
 
     @handle(TicketAssigned)
     def on_ticket_assigned(self, event: TicketAssigned):
-        """Log the assignment in the audit trail."""
-        entry = AuditEntry(
-            ticket_id=event.ticket_id,
-            action="assigned",
-            detail=f"Assigned to {event.assignee}",
+        """Ask the audit log to record the assignment."""
+        current_domain.process(
+            RecordAudit(
+                entry_id=event._metadata.headers.id,
+                ticket_id=event.ticket_id,
+                action="assigned",
+                detail=f"Assigned to {event.assignee}",
+            )
         )
-        domain.repository_for(AuditEntry).add(entry)

@@ -3,20 +3,40 @@ Cross-aggregate sync with multiple events from one source.
 
 This example demonstrates:
 - Multiple events from the same source aggregate (Task)
-- Event handler reacting to different events with different behavior
-- Target aggregate (TeamMember) tracks workload from task events
-- Handler incrementing and decrementing counts based on events
+- One event handler in Task's own cluster (part_of=Task) reacting to
+  different events with different behavior
+- Each event becomes a different command to the target aggregate
+  (TeamMember), whose command handler does the write
+- TeamMember counts go up and down based on the events
+- A redelivered event is a no-op: each command carries the id of the event
+  that caused it, and TeamMember records the ids it has already applied
 
 Domain: A project management system where TeamMember aggregate
 tracks workload (assigned_count, completed_count) based on
 Task lifecycle events.
+
+Usage:
+    domain.init(traverse=False)
+    with domain.domain_context():
+        domain.repository_for(TeamMember).add(
+            TeamMember(member_id="M-1", name="Alice")
+        )
+        task = Task(title="Write docs")
+        domain.repository_for(Task).add(task)
+        domain.process(AssignTask(task_id=task.id, assignee_id="M-1"))
+        # Alice's assigned_count is now 1.
 """
 
-from protean import Domain, handle
-from protean.fields import Identifier, Integer, String
+from protean import Domain, current_domain, handle
+from protean.fields import Identifier, Integer, List, String
 
 domain = Domain(__name__)
+
+# Run the hop in-process: each Task event reaches the event handler when the
+# unit of work that saves the task commits, and each command reaches its handler
+# as soon as it is issued.
 domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
 
 
 # --- Events ---
@@ -44,6 +64,63 @@ class TaskUnassigned:
 
     task_id: Identifier(required=True)
     assignee_id: Identifier(required=True)
+
+
+# --- Commands to Task ---
+
+
+@domain.command(part_of="Task")
+class AssignTask:
+    """Assign a task to a team member."""
+
+    task_id: Identifier(required=True)
+    assignee_id: Identifier(required=True)
+
+
+@domain.command(part_of="Task")
+class CompleteTask:
+    """Mark a task as completed."""
+
+    task_id: Identifier(required=True)
+
+
+@domain.command(part_of="Task")
+class UnassignTask:
+    """Take a task away from its assignee."""
+
+    task_id: Identifier(required=True)
+
+
+# --- Commands to TeamMember ---
+#
+# `change_id` is the id of the Task event that caused the command. Every
+# delivery of one event carries the same id, so TeamMember can tell a repeat
+# from a new change. A task can be assigned, unassigned and assigned again, so
+# the task id alone cannot tell them apart.
+
+
+@domain.command(part_of="TeamMember")
+class RecordAssignment:
+    """Add one task to a member's open workload."""
+
+    member_id: Identifier(required=True)
+    change_id: Identifier(required=True)
+
+
+@domain.command(part_of="TeamMember")
+class RecordCompletion:
+    """Move one task from a member's open workload to completed."""
+
+    member_id: Identifier(required=True)
+    change_id: Identifier(required=True)
+
+
+@domain.command(part_of="TeamMember")
+class RecordUnassignment:
+    """Remove one task from a member's open workload."""
+
+    member_id: Identifier(required=True)
+    change_id: Identifier(required=True)
 
 
 # --- Source Aggregate: Task ---
@@ -81,51 +158,151 @@ class Task:
 
 @domain.aggregate
 class TeamMember:
-    """TeamMember aggregate tracking workload (target of sync)."""
+    """TeamMember aggregate tracking workload (target of sync).
+
+    `applied_change_ids` records which Task events have already changed the
+    counts. Changing a count is an update, so the counts alone cannot show
+    whether a given event was applied; this list can.
+    """
 
     member_id: Identifier(identifier=True)
     name: String(required=True, max_length=100)
     assigned_count: Integer(default=0)
     completed_count: Integer(default=0)
+    applied_change_ids: List(content_type=String)
+
+    def record_assignment(self, change_id):
+        self.assigned_count += 1
+        self._mark_applied(change_id)
+
+    def record_completion(self, change_id):
+        self.assigned_count -= 1
+        self.completed_count += 1
+        self._mark_applied(change_id)
+
+    def record_unassignment(self, change_id):
+        self.assigned_count -= 1
+        self._mark_applied(change_id)
+
+    def _mark_applied(self, change_id):
+        self.applied_change_ids = [*self.applied_change_ids, change_id]
 
 
-# --- Cross-Aggregate Event Handler ---
+# --- Command handlers (the write path for each aggregate) ---
 
 
-@domain.event_handler(
-    part_of=TeamMember,
-    stream_category=Task.meta_.stream_category,
-)
+@domain.command_handler(part_of=Task)
+class TaskCommandHandler:
+    """The write path for Task."""
+
+    @handle(AssignTask)
+    def assign_task(self, command: AssignTask):
+        repo = current_domain.repository_for(Task)
+        task = repo.get(command.task_id)
+        task.assign_to(command.assignee_id)
+        repo.add(task)
+
+    @handle(CompleteTask)
+    def complete_task(self, command: CompleteTask):
+        repo = current_domain.repository_for(Task)
+        task = repo.get(command.task_id)
+        task.complete()
+        repo.add(task)
+
+    @handle(UnassignTask)
+    def unassign_task(self, command: UnassignTask):
+        repo = current_domain.repository_for(Task)
+        task = repo.get(command.task_id)
+        task.unassign()
+        repo.add(task)
+
+
+@domain.command_handler(part_of=TeamMember)
+class TeamMemberCommandHandler:
+    """The write path for TeamMember.
+
+    Each method returns without changes when the member has already applied
+    the command's change. A redelivered Task event reissues its command, and
+    applying it again would count the task twice.
+    """
+
+    @handle(RecordAssignment)
+    def record_assignment(self, command: RecordAssignment):
+        repo = current_domain.repository_for(TeamMember)
+        member = repo.get(command.member_id)
+        if command.change_id in member.applied_change_ids:
+            return
+        member.record_assignment(command.change_id)
+        repo.add(member)
+
+    @handle(RecordCompletion)
+    def record_completion(self, command: RecordCompletion):
+        repo = current_domain.repository_for(TeamMember)
+        member = repo.get(command.member_id)
+        if command.change_id in member.applied_change_ids:
+            return
+        member.record_completion(command.change_id)
+        repo.add(member)
+
+    @handle(RecordUnassignment)
+    def record_unassignment(self, command: RecordUnassignment):
+        repo = current_domain.repository_for(TeamMember)
+        member = repo.get(command.member_id)
+        if command.change_id in member.applied_change_ids:
+            return
+        member.record_unassignment(command.change_id)
+        repo.add(member)
+
+
+# --- The cross-aggregate link: an event handler in Task's cluster ---
+
+
+@domain.event_handler(part_of=Task)
 class WorkloadSyncHandler:
-    """Syncs TeamMember workload from Task lifecycle events.
+    """Turn Task lifecycle events into TeamMember workload commands.
 
-    Handles multiple event types from the Task aggregate:
-    - TaskAssigned: increment assigned_count
-    - TaskCompleted: decrement assigned, increment completed
-    - TaskUnassigned: decrement assigned_count
+    The handler sits in Task's cluster because the events belong to Task (a
+    handler that reacts to another cluster's event is what `check` reports as
+    EVENT_HANDLER_FOREIGN_EVENT). Each event maps to a different command:
+    - TaskAssigned: RecordAssignment (increment assigned_count)
+    - TaskCompleted: RecordCompletion (decrement assigned, increment completed)
+    - TaskUnassigned: RecordUnassignment (decrement assigned_count)
+
+    `event._metadata.headers.id` is the event's message id, the same on
+    every delivery of that event.
+    On an aggregate that is not event sourced it has the form
+    `<stream>-<version>.<n>`, so it names one change only
+    while the task is loaded fresh before each change, as the command
+    handlers here do. An instance saved twice without reloading raises its
+    second event under the same id.
     """
 
     @handle(TaskAssigned)
     def on_task_assigned(self, event: TaskAssigned):
-        """Increment workload when task is assigned."""
-        repo = domain.repository_for(TeamMember)
-        member = repo.get(event.assignee_id)
-        member.assigned_count += 1
-        repo.add(member)
+        """Ask TeamMember to count the newly assigned task."""
+        current_domain.process(
+            RecordAssignment(
+                member_id=event.assignee_id,
+                change_id=event._metadata.headers.id,
+            )
+        )
 
     @handle(TaskCompleted)
     def on_task_completed(self, event: TaskCompleted):
-        """Move task from assigned to completed count."""
-        repo = domain.repository_for(TeamMember)
-        member = repo.get(event.assignee_id)
-        member.assigned_count -= 1
-        member.completed_count += 1
-        repo.add(member)
+        """Ask TeamMember to move the task from assigned to completed."""
+        current_domain.process(
+            RecordCompletion(
+                member_id=event.assignee_id,
+                change_id=event._metadata.headers.id,
+            )
+        )
 
     @handle(TaskUnassigned)
     def on_task_unassigned(self, event: TaskUnassigned):
-        """Decrement workload when task is unassigned."""
-        repo = domain.repository_for(TeamMember)
-        member = repo.get(event.assignee_id)
-        member.assigned_count -= 1
-        repo.add(member)
+        """Ask TeamMember to drop the task from the open workload."""
+        current_domain.process(
+            RecordUnassignment(
+                member_id=event.assignee_id,
+                change_id=event._metadata.headers.id,
+            )
+        )

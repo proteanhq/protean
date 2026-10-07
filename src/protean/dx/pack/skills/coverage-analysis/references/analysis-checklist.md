@@ -58,8 +58,9 @@ For each `@domain.value_object` class:
 
 ### Event handlers
 - For each `@domain.event_handler`, list `@handle(EventClass)` methods
-- Note `stream_category` (which aggregate's events it listens to)
-- Note the side effect (what changes in the target aggregate)
+- Note which aggregate's events it handles (its `part_of`)
+- Note the side effect: the command it issues and what changes in the target aggregate
+- Note the guard in the target's command handler that makes a repeated command a no-op (events are delivered at least once)
 
 ## Step 5: Inventory existing tests
 
@@ -104,11 +105,11 @@ For each gap, use [generate-test-scaffold](../../generate-test-scaffold/SKILL.md
 
 ## Common analysis mistakes
 
-1. **Flagging framework guarantees** — VO immutability, field validation, registration are NOT gaps
-2. **Missing negative tests** — Every `if ... raise` needs both happy path and rejection test
-3. **isinstance-only event checks** — Verifying event type without checking field values is partial coverage
-4. **Forgetting cross-aggregate handlers** — Event handlers listening to other streams are often undertested
-5. **Not tracing raise_() calls** — Each `raise_()` should have a corresponding test
+1. **Flagging framework guarantees**: VO immutability, field validation, registration are NOT gaps
+2. **Missing negative tests**: every `if ... raise` needs both happy path and rejection test
+3. **isinstance-only event checks**: verifying event type without checking field values is partial coverage
+4. **Forgetting cross-aggregate handlers**: event handlers that issue a command to another aggregate are often undertested
+5. **Not tracing raise_() calls**: each `raise_()` should have a corresponding test
 
 ## Related
 
