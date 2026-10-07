@@ -32,7 +32,7 @@ class Person:
 In [1]: repo = domain.repository_for(Person)
 
 In [2]: repo
-Out[2]: <PersonRepository at 0x104f3a1d0>
+Out[2]: <protean.adapters.repository.PersonRepository object at 0x104f3a1d0>
 ```
 
 The default repository provides these methods:
@@ -66,7 +66,7 @@ repository:
 In [1]: repo = domain.repository_for(Person)
 
 In [2]: repo
-Out[2]: <CustomPersonRepository at 0x1079af290>
+Out[2]: <__main__.CustomPersonRepository object at 0x1079af290>
 
 In [3]: repo.add(Person(name="John Doe", email="john.doe@example.com"))
 Out[3]: <Person: Person object (id: 9ba6a890-e783-455e-9a6b-a0a16c0514df)>
@@ -188,14 +188,18 @@ For a comprehensive guide on querying, see
 
 ## Connecting to a specific database
 
-When multiple database providers are configured, you can connect a repository
-to a specific one using the `database` parameter:
+The `database` parameter ties a repository to one kind of database. Its value
+is a database type: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or
+`elasticsearch`. It is not the name of a configured provider. Protean returns
+the repository only when the aggregate is stored in a provider of that type.
+
+The aggregate's `provider` option picks which configured provider stores it.
+Here `Person` is stored in the `reporting` provider. That provider is a memory
+database, so `domain.repository_for(Person)` returns
+`PersonReportingRepository`:
 
 ```python
-@domain.repository(part_of=Person, database="reporting")
-class PersonReportingRepository:
-    def active_users_summary(self) -> list:
-        return self.query.filter(active=True).all().items
+--8<-- "guides/change-state/repositories/001.py:reporting"
 ```
 
 When no `database` is specified, the default value is `"ALL"`, which means
@@ -204,9 +208,10 @@ the repository works with whichever provider the aggregate is assigned to
 `"default"` provider).
 
 !!!note
-    A repository can be connected to a specific persistence store by specifying
-    the `database` parameter. This is useful when you have separate databases
-    for different concerns (e.g., transactional vs. reporting).
+    Use `database` when an aggregate needs different query code on different
+    databases, for example a raw SQL query that only PostgreSQL understands.
+    If the aggregate's provider is a different type, Protean returns the
+    generic repository instead.
 
 ## `domain.repository_for()`
 
@@ -215,8 +220,13 @@ repository instance. It accepts an aggregate class (not a string) and returns
 the repository associated with that aggregate:
 
 ```python
-repo = domain.repository_for(Order)
-order = repo.get(order_id)
+domain.init(traverse=False)
+
+with domain.domain_context():
+    repo = domain.repository_for(Person)
+    repo.add(Person(id="42", name="John Doe"))
+
+    person = repo.get("42")
 ```
 
 How it works:

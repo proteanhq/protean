@@ -8,6 +8,16 @@ historical point, answering "what was the state of this order yesterday?" or
 "what did the account look like at version 5?" without any extra
 infrastructure.
 
+The examples on this page use this event-sourced `Order`. The order
+`order-123` has seven events, and `cutoff` is a moment between the fourth and
+the fifth:
+
+```python
+--8<-- "guides/change-state/temporal-queries/001.py:aggregate"
+
+--8<-- "guides/change-state/temporal-queries/001.py:history"
+```
+
 ## By version
 
 Pass `at_version` to `get()` to reconstitute an aggregate at a specific event
@@ -15,12 +25,7 @@ version. Versions are 0-indexed: version 0 is the state after the first event,
 version 1 after the second, and so on.
 
 ```python
-repo = domain.repository_for(Order)
-
-# State after the 6th event (version 5)
-order_v5 = repo.get("order-123", at_version=5)
-
-assert order_v5._version == 5
+--8<-- "guides/change-state/temporal-queries/001.py:at_version"
 ```
 
 This is useful for comparing state before and after a particular event, or for
@@ -33,13 +38,7 @@ particular moment in time. Only events written on or before the given
 `datetime` are replayed.
 
 ```python
-from datetime import datetime, UTC
-
-repo = domain.repository_for(Order)
-
-# What was this order's state at noon on February 20?
-cutoff = datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC)
-order_then = repo.get("order-123", as_of=cutoff)
+--8<-- "guides/change-state/temporal-queries/001.py:as_of"
 ```
 
 !!! note
@@ -74,6 +73,7 @@ to modify an aggregate, load it at its current version with a plain `get()`.
 `IncorrectUsageError`:
 
 ```python
+# fragment
 # This raises IncorrectUsageError
 repo.get("order-123", at_version=5, as_of=cutoff)
 ```
@@ -100,12 +100,7 @@ aggregate was already loaded in the current transaction, a temporal query
 replays events from the event store to ensure the historical state is accurate:
 
 ```python
-with UnitOfWork():
-    current = repo.get("order-123")       # Loaded into identity map
-    current.place_item(...)               # Mutated in memory
-
-    historical = repo.get("order-123", at_version=0)  # Fresh from events
-    assert historical._version == 0      # Not affected by in-memory mutation
+--8<-- "guides/change-state/temporal-queries/001.py:identity_map"
 ```
 
 ## Error handling

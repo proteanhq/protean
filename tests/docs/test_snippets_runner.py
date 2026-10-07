@@ -437,6 +437,32 @@ def test_a_domain_that_registers_an_element_is_initialized(tmp_path, bases):
     )
 
 
+def test_a_domain_context_a_page_leaves_open_is_closed_before_the_next_page(
+    tmp_path, bases
+):
+    opener = _write(
+        tmp_path,
+        "```python\n"
+        "from protean.utils.globals import current_domain\n"
+        "domain.domain_context().push()\n"
+        "assert current_domain.name == domain.name\n"
+        "```\n",
+        name="a.md",
+    )
+    reader = _write(
+        tmp_path,
+        "```python\n"
+        "from protean.utils.globals import current_domain\n"
+        "assert not current_domain, current_domain.name\n"
+        "```\n",
+        name="b.md",
+    )
+    assert _run(tmp_path, [opener, reader], bases) == [
+        {"file": "a.md", "failure": None, "not_run": []},
+        {"file": "b.md", "failure": None, "not_run": []},
+    ]
+
+
 def test_an_allowlisted_page_that_passes_says_to_remove_the_entry(tmp_path, bases):
     page = _write(tmp_path, "```python\nx = 1\n```\n")
     (result,) = _run(tmp_path, [page], bases)

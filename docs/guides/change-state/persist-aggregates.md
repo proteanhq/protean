@@ -20,7 +20,7 @@ In [1]: domain.repository_for(Person).get("1")
 Out[1]: <Person: Person object (id: 1)>
 
 In [2]: domain.repository_for(Person).get("1").to_dict()
-Out[2]: {'name': 'John Doe', 'email': 'john.doe@localhost', 'id': '1'}
+Out[2]: {'name': 'John Doe', 'email': 'john.doe@localhost', 'id': '1', '_version': 0}
 ```
 
 ## Transaction
@@ -32,18 +32,10 @@ context exits.
 The following calls are equivalent in behavior:
 
 ```python
-...
-# Version 1
-domain.repository_for(Person).add(person)
-...
+--8<-- "guides/change-state/persist-aggregates/001.py:version_1"
 
-...
-# Version 2
-from protean import UnitOfWork
-
-with UnitOfWork():
-    domain.repository_for(Person).add(person)
-...
+--8<-- "guides/change-state/persist-aggregates/001.py:version_2_import"
+--8<-- "guides/change-state/persist-aggregates/001.py:version_2"
 ```
 
 This means changes across the aggregate cluster are committed as a single
@@ -66,7 +58,7 @@ persisting to the database.
 --8<-- "guides/change-state/003.py:full"
 ```
 
-```shell hl_lines="12-16 21-22"
+```shell hl_lines="13-17 22-23"
 In [1]: post = Post(title="Events in Aggregates", body="Lorem ipsum dolor sit amet, consectetur adipiscing...")
 
 In [2]: post.to_dict()
@@ -74,15 +66,16 @@ Out[2]:
 {'title': 'Events in Aggregates',
  'body': 'Lorem ipsum dolor sit amet, consectetur adipiscing...',
  'published': False,
- 'id': 'a9ea7763-c5b2-4c8c-9c97-43ba890517d0'}
+ 'id': 'a9ea7763-c5b2-4c8c-9c97-43ba890517d0',
+ '_version': -1}
 
 In [3]: post.publish()
 
 In [4]: post._events
-Out[4]: [<PostPublished: PostPublished object ({
-    'post_id': 'a9ea7763-c5b2-4c8c-9c97-43ba890517d0',
-    'body': 'Lorem ipsum dolor sit amet, consectetur adipiscing...'
-})>]
+Out[4]: [PostPublished(
+    post_id='a9ea7763-c5b2-4c8c-9c97-43ba890517d0',
+    body='Lorem ipsum dolor sit amet, consectetur adipiscing...'
+)]
 
 In [5]: domain.repository_for(Post).add(post)
 Out[5]: <Post: Post object (id: a9ea7763-c5b2-4c8c-9c97-43ba890517d0)>
@@ -96,7 +89,7 @@ Out[6]: []
 Recall that Protean repositories behave like a `set` collection. Updating is
 as simple as mutating an aggregate and persisting it with `add` again.
 
-```shell hl_lines="15 20 22 25 27"
+```shell hl_lines="15 21 23 26 28"
 In [1]: post = Post(
    ...:     id="1",
    ...:     title="Events in Aggregates",
@@ -114,7 +107,8 @@ Out[4]:
 {'title': 'Events in Aggregates',
  'body': 'Lorem ipsum dolor sit amet, consectetur adipiscing...',
  'published': False,
- 'id': '1'}
+ 'id': '1',
+ '_version': 0}
 
 In [5]: post.title = "(Updated Title) Events in Entities"
 
@@ -126,7 +120,8 @@ Out[7]:
 {'title': '(Updated Title) Events in Entities',
  'body': 'Lorem ipsum dolor sit amet, consectetur adipiscing...',
  'published': False,
- 'id': '1'}
+ 'id': '1',
+ '_version': 0}
 ```
 
 ---

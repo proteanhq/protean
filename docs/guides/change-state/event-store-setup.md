@@ -65,16 +65,7 @@ Only aggregates marked with `event_sourced=True` use the event store
 for persistence:
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Account:
-    balance = Float(default=0.0)
-
-    def deposit(self, amount):
-        self.raise_(Deposited(amount=amount))
-
-    @apply(Deposited)
-    def on_deposited(self, event):
-        self.balance += event.amount
+--8<-- "guides/change-state/event-store-setup/001.py:account"
 ```
 
 Non-event-sourced aggregates continue to use the database provider
@@ -106,22 +97,7 @@ protean events search --type=Deposited --domain=myapp
 ### Programmatic
 
 ```python
-store = domain.event_store.store
-
-# Read from beginning of stream
-messages = store.read("myapp::account-acc-001")
-
-# Read from a specific position
-messages = store.read("myapp::account-acc-001", position=5)
-
-# Read last message
-last = store.read_last_message("myapp::account-acc-001")
-
-# Page through a whole stream without a size cap. `read_all` is a generator
-# that reads in `page_size` batches until the stream is exhausted, so it is
-# safe to iterate a store larger than a single `read` returns.
-for message in store.read_all("myapp::account", page_size=1000):
-    ...  # handle each message
+--8<-- "guides/change-state/event-store-setup/001.py:read"
 ```
 
 Both `read` and `read_all` return events and commands only. A read whose scope
@@ -151,14 +127,8 @@ underscored).
 Event-sourced aggregates support time-travel queries:
 
 ```python
-repo = domain.repository_for(Account)
-
-# Load at a specific version
-account = repo.get(account_id, at_version=5)
-
-# Load state as of a point in time
-from datetime import datetime
-account = repo.get(account_id, as_of=datetime(2024, 6, 15, 12, 0))
+--8<-- "guides/change-state/event-store-setup/001.py:datetime_import"
+--8<-- "guides/change-state/event-store-setup/001.py:temporal"
 ```
 
 See [Temporal Queries](./temporal-queries.md) for the full guide.

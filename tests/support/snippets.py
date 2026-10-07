@@ -308,6 +308,7 @@ import types
 import protean
 import protean.fields
 from protean.domain import Domain
+from protean.utils.globals import _domain_context_stack, _uow_context_stack
 
 
 class SnippetTimeout(BaseException):
@@ -474,6 +475,13 @@ for index, item in enumerate(job["files"], start=job["first_index"]):
         raise
     except BaseException as exc:
         failure = "%s: %s: %s" % (step, type(exc).__name__, exc)
+    # A file may push a domain context or open a unit of work and leave it
+    # open. Clear both, so the next file cannot pass by using this file's
+    # domain.
+    while _uow_context_stack.pop() is not None:
+        pass
+    while _domain_context_stack.pop() is not None:
+        pass
     if failure is None:
         not_run = []
     emit({"result": {"file": label, "failure": failure, "not_run": not_run}})

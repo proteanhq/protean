@@ -111,25 +111,13 @@ When commands are processed synchronously, the command handler's return value is
 To process a command synchronously and receive its return value:
 
 ```python
-# Process command synchronously and get the return value
-result = domain.process(command, asynchronous=False)
+--8<-- "guides/change-state/command-handlers/001.py:process_sync"
 ```
 
 Example of a command handler that returns a value:
 
 ```python
-@domain.command_handler(part_of=Account)
-class AccountCommandHandler:
-    @handle(RegisterCommand)
-    def register(self, command: RegisterCommand) -> str:
-        account = Account(
-            email=command.email,
-            name=command.name
-        )
-        current_domain.repository_for(Account).add(account)
-
-        # Return the account ID for immediate use
-        return account.id
+--8<-- "guides/change-state/command-handlers/001.py:handler"
 ```
 
 ### Asynchronous Processing
@@ -137,8 +125,7 @@ class AccountCommandHandler:
 When commands are processed asynchronously (the default behavior), the command handler's return value is not passed back to the caller. Instead, the domain's `process` method returns the position of the command in the event store:
 
 ```python
-# Process command asynchronously (default)
-position = domain.process(command)  # or domain.process(command, asynchronous=True)
+--8<-- "guides/change-state/command-handlers/001.py:process_async"
 ```
 
 In asynchronous processing, commands are handled in the background by the Protean Engine, and any return values from the command handler are ignored.
@@ -162,18 +149,7 @@ When a command is submitted with an idempotency key (via
 handler through the command's metadata:
 
 ```python
-@domain.command_handler(part_of=Account)
-class AccountCommandHandler:
-    @handle(ChargeCard)
-    def charge(self, command: ChargeCard):
-        key = command._metadata.headers.idempotency_key
-
-        # Pass through to external APIs that support idempotency
-        stripe.PaymentIntent.create(
-            amount=command.amount,
-            currency="usd",
-            idempotency_key=key,
-        )
+--8<-- "guides/change-state/command-handlers/002.py:handler"
 ```
 
 This is useful for:
@@ -225,22 +201,7 @@ Error handling differs between synchronous and asynchronous command processing:
 You can define a `handle_error` class method in your command handler to handle exceptions:
 
 ```python
-@domain.command_handler(part_of=Account)
-class AccountCommandHandler:
-    @handle(RegisterCommand)
-    def register(self, command: RegisterCommand):
-        # Command handling logic that might raise exceptions
-        ...
-
-    @classmethod
-    def handle_error(cls, exc: Exception, message):
-        """Custom error handling logic for command processing failures"""
-        # Log the error
-        logger.error(f"Failed to process command: {exc}")
-
-        # Perform recovery operations
-        # Example: notify monitoring systems, attempt retry, etc.
-        ...
+--8<-- "guides/change-state/command-handlers/003.py:handler"
 ```
 
 ### How It Works
@@ -283,13 +244,7 @@ infrastructure error, such as a dropped connection or a timeout. Enable it
 per handler with `retries`:
 
 ```python
-@domain.command_handler(part_of=Account, retries=3, backoff="exponential")
-class AccountCommandHandler:
-    @handle(DebitAccount)
-    def debit(self, command: DebitAccount):
-        # A ConnectionError here is retried up to 3 times with
-        # exponential backoff before propagating.
-        ...
+--8<-- "guides/change-state/command-handlers/004.py:handler"
 ```
 
 Each attempt runs in a fresh Unit of Work, so a failed attempt is rolled back

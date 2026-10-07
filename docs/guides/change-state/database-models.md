@@ -30,18 +30,8 @@ model is sufficient.
 Subclass `BaseDatabaseModel` and register it with `part_of`:
 
 ```python
-from protean.core.database_model import BaseDatabaseModel
-
-@domain.aggregate
-class Product:
-    name = String(required=True)
-    description = Text()
-    price = Float()
-
-class ProductModel(BaseDatabaseModel):
-    pass  # Empty -- just override the schema name
-
-domain.register(ProductModel, part_of=Product, schema_name="products")
+--8<-- "guides/change-state/database-models/001.py:import"
+--8<-- "guides/change-state/database-models/001.py:custom_model"
 ```
 
 ### Overriding field types
@@ -49,7 +39,8 @@ domain.register(ProductModel, part_of=Product, schema_name="products")
 Map aggregate fields to adapter-specific types:
 
 ```python
-from elasticsearch_dsl import Text as ESText, Keyword
+# fragment
+from elasticsearch.dsl import Keyword, Text as ESText
 
 class ProductSearchModel(BaseDatabaseModel):
     name = Keyword()                          # Exact match, no analysis
@@ -58,7 +49,7 @@ class ProductSearchModel(BaseDatabaseModel):
 domain.register(
     ProductSearchModel,
     part_of=Product,
-    database="search",
+    database="elasticsearch",
 )
 ```
 
@@ -68,6 +59,7 @@ A model can map fewer fields than the aggregate. Unmapped fields are
 handled by auto-generation:
 
 ```python
+# fragment
 class ProductSearchModel(BaseDatabaseModel):
     name = Keyword()  # Override only this field
     # description and price use default mapping
@@ -83,14 +75,18 @@ domain.register(ProductSearchModel, part_of=Product)
 |--------|------|-------------|
 | `part_of` | class | **Required.** The aggregate or entity this model maps to |
 | `schema_name` | str | Override the storage table/collection name |
-| `database` | str | Provider name from `[databases.<name>]` config (default: `"default"`) |
+| `database` | str | The database type this model applies to: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or `elasticsearch`. This is not a provider name. Without it, the model is used for any database type that has no model of its own. |
 
 ```python
+class ProductReportingModel(BaseDatabaseModel):
+    pass
+
+
 domain.register(
-    CustomerModel,
-    part_of=Customer,
-    schema_name="clients",
-    database="reporting",
+    ProductReportingModel,
+    part_of=Product,
+    schema_name="product_reports",
+    database="postgresql",
 )
 ```
 
@@ -99,9 +95,10 @@ domain.register(
 ## Multi-database deployment
 
 Register multiple models for the same aggregate, each targeting a
-different database:
+different database type:
 
 ```python
+# fragment
 class CustomerWriteModel(BaseDatabaseModel):
     pass
 
@@ -111,13 +108,13 @@ class CustomerSearchModel(BaseDatabaseModel):
 domain.register(
     CustomerWriteModel,
     part_of=Customer,
-    database="default",
+    database="postgresql",
     schema_name="customers",
 )
 domain.register(
     CustomerSearchModel,
     part_of=Customer,
-    database="search",
+    database="elasticsearch",
     schema_name="customer_index",
 )
 ```

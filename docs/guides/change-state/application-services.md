@@ -34,12 +34,11 @@ use case method represents a distinct business operation, receives plain Python
 arguments, and can return values directly to the caller.
 
 Unlike command handlers (which are dispatched via `domain.process()`),
-application services are instantiated and called directly:
+application services are instantiated and called directly, with the domain
+active (for example inside `with auth.domain_context():`):
 
 ```python
-user_service = UserApplicationServices()
-user_id = user_service.register_user(email="john@example.com", name="John Doe")
-user_service.activate_user(user_id=user_id)
+--8<-- "guides/change-state/008.py:call"
 ```
 
 This makes them ideal for synchronous request-response workflows where the
@@ -65,14 +64,7 @@ the UoW rolls back all changes.
 at the INFO level, providing traceability for debugging and auditing.
 
 ```python
-@domain.application_service(part_of=Order)
-class OrderApplicationServices:
-    @use_case
-    def place_order(self, customer_id: str, items: list) -> Identifier:
-        # Everything inside here runs within a UnitOfWork
-        order = Order.create(customer_id=customer_id, items=items)
-        current_domain.repository_for(Order).add(order)
-        return order.id
+--8<-- "guides/change-state/application-services/001.py:service"
 ```
 
 !!!note
@@ -140,24 +132,7 @@ workflows.
 Common return value patterns:
 
 ```python
-@domain.application_service(part_of=User)
-class UserApplicationServices:
-    @use_case
-    def register_user(self, email: str, name: str) -> Identifier:
-        user = User.register(email, name)
-        current_domain.repository_for(User).add(user)
-        return user.id  # Return the new entity's identifier
-
-    @use_case
-    def activate_user(self, user_id: Identifier) -> None:
-        user = current_domain.repository_for(User).get(user_id)
-        user.activate()
-        current_domain.repository_for(User).add(user)
-        # No return value needed for mutative operations
-
-    @use_case
-    def get_user(self, user_id: Identifier) -> User:
-        return current_domain.repository_for(User).get(user_id)
+--8<-- "guides/change-state/application-services/002.py:service"
 ```
 
 This direct return capability distinguishes Application Services from both
@@ -195,27 +170,7 @@ exception. This ensures that no partial state is persisted, maintaining
 data consistency.
 
 ```python
-@domain.application_service(part_of=User)
-class UserApplicationServices:
-    @use_case
-    def register_user(self, email: str, name: str) -> Identifier:
-        user = User.register(email, name)
-        current_domain.repository_for(User).add(user)
-        return user.id
-
-
-# In the API layer
-try:
-    user_service = UserApplicationServices()
-    user_id = user_service.register_user(
-        email="john@example.com", name="John Doe"
-    )
-except ValidationError as exc:
-    # Handle validation errors (e.g., return 400 response)
-    ...
-except Exception as exc:
-    # Handle unexpected errors (e.g., return 500 response)
-    ...
+--8<-- "guides/change-state/application-services/003.py:errors"
 ```
 
 **Best Practices:**

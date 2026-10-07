@@ -32,7 +32,7 @@ class ArticlePublished:
 
 @publishing.aggregate
 class Article:
-    article_id: Identifier(required=True)
+    article_id: Identifier(identifier=True)
     status: String(choices=ArticleStatus, default=ArticleStatus.DRAFT.value)
     published_at: DateTime(default=utc_now)
 

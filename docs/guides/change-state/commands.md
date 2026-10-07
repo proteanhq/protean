@@ -59,7 +59,7 @@ In [2]: publishing.process(command)
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `command` | command instance | *required* | The command to process. |
-| `asynchronous` | `bool` or `None` | `None` | Override the domain's default processing mode. `None` uses the `command_processing` config. |
+| `asynchronous` | `bool` or `None` | `None` | Override the domain's default processing mode. `None` uses the `command_processing` config. `False` always handles the command at once. `True` has no effect when `command_processing` is `"sync"`. |
 | `idempotency_key` | `str` or `None` | `None` | Caller-provided key for submission-level deduplication (requires Redis). |
 | `raise_on_duplicate` | `bool` | `False` | When `True`, raises `DuplicateCommandError` on duplicate idempotency keys instead of silently returning the cached result. |
 | `priority` | `int` or `None` | `None` | Processing priority for events produced by this command. When priority lanes are enabled, events below the threshold are routed to a backfill stream. |
@@ -84,16 +84,19 @@ Protean provides built-in support for **command idempotency**, ensuring that
 processing the same command multiple times produces the same effect as
 processing it once.
 
+The examples from here on use this `Order` aggregate and its commands:
+
+```python
+--8<-- "guides/change-state/commands/001.py:elements"
+```
+
 ### Idempotency Keys
 
 When submitting a command, you can provide an **idempotency key**, a unique
 token that identifies the specific request:
 
 ```python
-domain.process(
-    PlaceOrder(order_id="ord-42", items=items),
-    idempotency_key="req-abc-123",
-)
+--8<-- "guides/change-state/commands/001.py:place"
 ```
 
 If the same idempotency key is submitted again, `domain.process()` returns the
@@ -105,8 +108,7 @@ The idempotency key is stored in the command's metadata headers, not in the
 command payload. This keeps the command's domain data clean:
 
 ```python
-# In a handler, the key is accessible via metadata
-key = command._metadata.headers.idempotency_key
+--8<-- "guides/change-state/commands/001.py:handler"
 ```
 
 !!!note
@@ -122,16 +124,7 @@ receives the same result as the first submission. When explicit feedback is
 needed, use `raise_on_duplicate=True`:
 
 ```python
-from protean.exceptions import DuplicateCommandError
-
-try:
-    domain.process(
-        PlaceOrder(order_id="ord-42", items=items),
-        idempotency_key="req-abc-123",
-        raise_on_duplicate=True,
-    )
-except DuplicateCommandError as exc:
-    original_result = exc.original_result
+--8<-- "guides/change-state/commands/001.py:place_once"
 ```
 
 ### Requirements
@@ -167,11 +160,7 @@ You can control the processing mode in two ways:
 When submitting a command, you can explicitly specify whether it should be processed synchronously or asynchronously:
 
 ```python
-# Process synchronously (default is based on domain configuration)
-domain.process(command, asynchronous=False)
-
-# Process asynchronously
-domain.process(command, asynchronous=True)
+--8<-- "guides/change-state/commands/002.py:modes"
 ```
 
 ### 2. Domain Configuration
@@ -192,6 +181,10 @@ domain.config["command_processing"] = "sync"  # or "async"
 ```
 
 By default, Protean sets `command_processing` to `async` in the domain configuration.
+
+When `command_processing` is `"sync"`, Protean handles every command at once,
+even one submitted with `asynchronous=True`. Passing `asynchronous=False`
+handles a command at once in an `"async"` domain.
 
 ### When to use each mode
 
@@ -238,24 +231,14 @@ Pass either an absolute `deadline` or a relative `timeout` to
 `domain.process()` (they are mutually exclusive):
 
 ```python
-from datetime import datetime, timedelta, timezone
-
-# Absolute deadline
-domain.process(
-    ChargeCard(order_id="ord-42"),
-    deadline=datetime.now(timezone.utc) + timedelta(seconds=30),
-)
-
-# Relative timeout — converted to an absolute deadline at submission,
-# so it survives queue delays
-domain.process(ChargeCard(order_id="ord-42"), timeout=timedelta(seconds=30))
+--8<-- "guides/change-state/commands/003.py:set_deadline"
 ```
 
 The deadline is stored on the command's metadata headers (not the payload),
 and is readable in a handler:
 
 ```python
-deadline = command._metadata.headers.deadline
+--8<-- "guides/change-state/commands/003.py:read_deadline"
 ```
 
 ### What happens when a command expires
@@ -269,13 +252,7 @@ The behavior differs by processing mode, a deliberate asymmetry:
 | Who observes the loss | The caller, immediately | Operators, via logs/traces/metrics |
 
 ```python
-from protean.exceptions import CommandExpiredError
-
-try:
-    domain.process(cmd, asynchronous=False, deadline=past_deadline)
-except CommandExpiredError as exc:
-    exc.command_type  # the expired command's type string
-    exc.deadline      # the deadline that was exceeded
+--8<-- "guides/change-state/commands/003.py:expired"
 ```
 
 An expired command **changes no state**, no aggregate is loaded, no invariant
@@ -293,12 +270,7 @@ deadline of the message currently being processed. The whole causal chain is
 bound by the original deadline unless a downstream call overrides it:
 
 ```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(PlaceOrder)
-    def place(self, command: PlaceOrder):
-        # ReserveStock inherits PlaceOrder's deadline automatically
-        current_domain.process(ReserveStock(order_id=command.order_id))
+--8<-- "guides/change-state/commands/003.py:propagation"
 ```
 
 ### Default deadlines
@@ -399,21 +371,13 @@ IncorrectUsageError: 'Command Objects are immutable and cannot be modified once 
 
 ## Relationship with Event Processing
 
-Protean offers similar configuration options for events through:
-
-- The `event_processing` domain configuration setting
-- The ability to raise events with specific `asynchronous` flags
+Protean offers a similar configuration option for events: the
+`event_processing` domain configuration setting.
 
 Events and commands in Protean follow the same processing patterns, enabling you to build consistent, predictable workflows. You can configure both to suit your specific domain needs:
 
 ```python
-# Domain-wide configuration
-domain.config["command_processing"] = "sync"  # or "async"
-domain.config["event_processing"] = "async"   # or "sync"
-
-# Per-instance control
-domain.process(command, asynchronous=False)   # Override domain setting for a specific command
-aggregate.raise_(event, asynchronous=True)    # Override domain setting for a specific event
+--8<-- "guides/change-state/commands/004.py:config"
 ```
 
 This flexibility allows you to implement various architectural patterns like CQRS, Event Sourcing, and Workflow-driven architectures within your Protean applications.
