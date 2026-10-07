@@ -1,7 +1,7 @@
 """The message-enrichment skill's audit enricher survives the outbox.
 
-An aggregate enricher runs for every aggregate Protean saves, including the
-outbox rows written when an aggregate raises an event. The skill, the message
+An aggregate enricher runs for every aggregate Protean saves. With the outbox
+on, that includes the outbox rows written when an aggregate raises an event. The skill, the message
 enrichment guide and the audit fields pattern skip an aggregate without the
 audit field. These tests show why the check is needed and that it works.
 """

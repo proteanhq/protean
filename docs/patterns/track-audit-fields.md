@@ -84,8 +84,8 @@ def stamp_audit_user(aggregate):
 
 Setting `created_by` only when it is unset keeps it stable across later
 updates, while `updated_by` refreshes every time. The enricher runs for every
-aggregate Protean saves, including the outbox rows written when an aggregate
-raises an event. The `hasattr` check skips any aggregate without audit fields.
+aggregate Protean saves. When the outbox is on, that includes the outbox rows
+written when an aggregate raises an event. The `hasattr` check skips any aggregate without audit fields.
 
 ### Supplying the acting user
 

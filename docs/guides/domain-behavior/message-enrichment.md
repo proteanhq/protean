@@ -140,9 +140,9 @@ with domain.domain_context(current_user="alice"):
 
 Aggregate enrichers run in registration order, fire only for aggregates (not
 child entities), and (because they assign through normal attributes) invariants
-still run on the stamped fields. If one raises, the save is aborted. They also
-fire for the outbox rows Protean saves when an aggregate raises an event,
-which is why the example skips an aggregate without `updated_by`.
+still run on the stamped fields. If one raises, the save is aborted. When the outbox
+is on, they also fire for the outbox rows Protean saves when an aggregate
+raises an event, which is why the example skips an aggregate without `updated_by`.
 
 Keep them to cross-cutting lifecycle/audit metadata; they are not a hook for
 business logic or for raising events. For the complete recipe (an abstract audit
