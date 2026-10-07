@@ -75,6 +75,7 @@ MARKERS: dict[str, str] = {
     "adapters/database/postgresql/001.py": "postgresql",
     "adapters/database/postgresql/002.py": "postgresql",
     "adapters/database/sqlite/001.py": "sqlite",
+    "reference/domain-elements/domain-constructor/008.py": "postgresql",
     "guides/getting-started/tutorial/ch10.py": "fastapi",
 }
 

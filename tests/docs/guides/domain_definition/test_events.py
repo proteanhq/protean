@@ -4,7 +4,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from protean.exceptions import ConfigurationError, IncorrectUsageError, ValidationError
+from protean.exceptions import (
+    ConfigurationError,
+    IncorrectUsageError,
+    NotSupportedError,
+    ValidationError,
+)
 from protean.utils.reflection import declared_fields
 from tests.docs.support import load_example
 
@@ -113,6 +118,24 @@ def test_abstract_event_cannot_be_raised():
 
         with pytest.raises(ConfigurationError):
             order.raise_(base)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="An abstract event can be instantiated; only raising it fails.",
+)
+def test_abstract_event_cannot_be_instantiated():
+    example = load_example("guides/domain-definition/events/004.py")
+    example.domain.init(traverse=False)
+
+    with example.domain.domain_context():
+        try:
+            example.BaseOrderEvent(order_id="1", occurred_at=datetime.now(UTC))
+        except NotSupportedError:
+            return
+
+    raise AssertionError("BaseOrderEvent was instantiated")
 
 
 def test_events_can_be_set_to_sync_processing():

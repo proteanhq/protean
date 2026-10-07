@@ -242,6 +242,25 @@ def test_order_item_vo_mirrors_the_entity_fields():
     assert "quantity" in exc.value.messages
 
 
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="value_object_from_entity does not copy field constraints such as "
+    "max_length.",
+)
+def test_generated_vo_keeps_the_entity_max_length():
+    example = load_example("guides/domain-definition/value-objects/009.py")
+    example.domain.init(traverse=False)
+    vo = example.value_object_from_entity(example.OrderItem)
+
+    try:
+        vo(product_name="x" * 101, quantity=2)
+    except ValidationError:
+        return
+
+    raise AssertionError("product_name over max_length=100 was accepted")
+
+
 def test_custom_vo_has_the_given_name_and_drops_internal_notes():
     example = load_example("guides/domain-definition/value-objects/009.py")
 

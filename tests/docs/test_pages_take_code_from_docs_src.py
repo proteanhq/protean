@@ -1,0 +1,85 @@
+"""The pages converted to docs_src keep their code there.
+
+On each page in ``PAGES``, a Python block either is marked ``# fragment`` or
+holds nothing but named-section includes, such as
+``--8<-- "guides/x/001.py:full"``. A line-range include or inline code that is
+not a fragment fails the test, so a converted page cannot drift back.
+"""
+
+from __future__ import annotations
+
+import re
+
+import pytest
+
+from tests.docs.support import DOCS
+from tests.support.snippets import extract_blocks
+
+pytestmark = pytest.mark.no_test_domain
+
+PAGES = (
+    "guides/domain-definition/aggregates.md",
+    "guides/domain-definition/events.md",
+    "guides/domain-definition/fields.md",
+    "guides/domain-definition/identity.md",
+    "guides/domain-definition/indexes.md",
+    "guides/domain-definition/relationships.md",
+    "guides/domain-definition/value-objects.md",
+    "reference/domain-elements/domain-constructor.md",
+    "reference/domain-elements/element-decorators.md",
+    "reference/domain-elements/identity.md",
+    "reference/domain-elements/indexes.md",
+    "reference/domain-elements/object-model.md",
+    "reference/fields/arguments.md",
+    "reference/fields/association-fields.md",
+    "reference/fields/container-fields.md",
+    "reference/fields/custom-fields.md",
+    "reference/fields/defining-fields.md",
+    "reference/fields/index.md",
+    "reference/fields/simple-fields.md",
+)
+
+_SECTION_INCLUDE = re.compile(r'^--8<-- "[^":]+\.py:[A-Za-z_][\w-]*"$')
+
+
+def block_problems(text: str) -> list[str]:
+    """Return a line per block that is neither a fragment nor section includes."""
+    problems = []
+    for block in extract_blocks(text):
+        if block.fragment:
+            continue
+        lines = [line.strip() for line in block.source.splitlines() if line.strip()]
+        bad = [line for line in lines if not _SECTION_INCLUDE.match(line)]
+        if not lines or bad:
+            problems.append(f"line {block.line}: {bad[0] if bad else 'empty block'}")
+    return problems
+
+
+@pytest.mark.parametrize("page", PAGES)
+def test_page_blocks_are_fragments_or_section_includes(page: str):
+    text = (DOCS / page).read_text(encoding="utf-8")
+
+    assert extract_blocks(text), f"{page} has no Python blocks"
+    assert block_problems(text) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '```python\n--8<-- "guides/x/001.py:3:9"\n```\n',
+        '```python\n--8<-- "guides/x/001.py"\n```\n',
+        "```python\nfrom protean import Domain\n```\n",
+    ],
+    ids=["line-range", "whole-file", "inline-code"],
+)
+def test_a_block_that_is_not_a_section_include_is_reported(source: str):
+    assert len(block_problems(source)) == 1
+
+
+def test_a_fragment_or_a_section_include_is_accepted():
+    source = (
+        '```python\n--8<-- "guides/x/001.py:full"\n```\n'
+        "```python\n# fragment\nOrder.place()\n```\n"
+    )
+
+    assert block_problems(source) == []

@@ -141,6 +141,7 @@ def test_custom_validator_accepts_mydomain_and_rejects_other_domains():
 
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason="Protean ignores error_messages on a FieldSpec field and reports "
     "'is required' instead of the custom message.",
 )

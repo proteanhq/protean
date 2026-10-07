@@ -24,9 +24,8 @@ is not allowed to be blank. Default is `False`.
 Leaving the field blank or not specifying a value will raise a
 `ValidationError`:
 
-```shell hl_lines="4"
+```shell hl_lines="3"
 In [1]: p = Person()
-ERROR: Error during initialization: {'name': ['is required']}
 ...
 ValidationError: {'name': ['is required']}
 ```
@@ -42,7 +41,7 @@ in RDBMS).
 
 The field is validated to be unique and non-blank:
 
-```shell hl_lines="6 11"
+```shell hl_lines="6 10"
 In [1]: from protean.utils.reflection import declared_fields
 
 In [2]: p = Person(email='john.doe@example.com', name='John Doe')
@@ -51,7 +50,6 @@ In [3]: declared_fields(p)["email"].identifier
 Out[3]: True
 
 In [4]: p = Person(name='John Doe')
-ERROR: Error during initialization: {'email': ['is required']}
 ...
 ValidationError: {'email': ['is required']}
 ```
@@ -94,13 +92,15 @@ Out[2]:
 
 ### Mutable object defaults
 
-**IMPORTANT**: The default cannot be a mutable object (list, set, dict, entity
-instance, etc.), because the reference to the same object would be used as the
-default in all instances. Instead, wrap the desired default in a callable.
+Protean copies a `list` or `dict` default for each instance, so
+`default=[]` and `default={}` are safe. The copy is shallow: objects nested
+inside the list or dict are still shared. Other mutable objects, such as a
+`set` or an entity instance, are not copied at all. For those, and for a
+non-empty default, wrap the default in a callable.
 
-For example, to specify a default `list` for `List` field, use a function:
+For example, to give a `List` field a default list of topics, use a function:
 
-```python hl_lines="12"
+```python hl_lines="7-8 14"
 --8<-- "guides/domain-definition/fields/options/004.py:full"
 ```
 
@@ -226,21 +226,20 @@ for example, has two default validators: `MinLengthValidator` and
 `MaxLengthValidator` classes associated with `min_length` and `max_length`
 attributes.
 
-```python hl_lines="9-16 21"
+```python hl_lines="10-17 22"
 --8<-- "guides/domain-definition/fields/options/010.py:full"
 ```
 
 If the value fails to satisfy the validation, a `ValidationError` will be
 thrown with the custom error message.
 
-```shell hl_lines="9"
+```shell hl_lines="8"
 In [1]: e = Employee(email="john@mydomain.com")
 
 In [2]: e.to_dict()
 Out[2]: {'email': 'john@mydomain.com', '_version': -1}
 
 In [3]: e2 = Employee(email="john@otherdomain.com")
-ERROR: Error during initialization: {'email': ['Email does not belong to mydomain.com']}
 ...
 ValidationError: {'email': ['Email does not belong to mydomain.com']}
 ```
@@ -259,9 +258,8 @@ detailed in their documentation.
 
 Now the custom message will be available in `ValidationError`:
 
-```shell hl_lines="4"
+```shell hl_lines="3"
 In [1]: Building()
-ERROR: Error during initialization: {'doors': ['Every building needs some!']}
 ...
 ValidationError: {'doors': ['Every building needs some!']}
 ```

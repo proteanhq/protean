@@ -6,7 +6,9 @@ import uuid
 
 import pytest
 
+from protean import Domain
 from protean.exceptions import ValidationError
+from protean.fields import String
 from protean.utils.reflection import declared_fields, id_field
 from tests.docs.support import load_example
 
@@ -70,6 +72,34 @@ def test_domain_identity_function_gives_epoch_millisecond_ids():
     assert isinstance(event.id, int)
     assert before <= event.id <= after
     assert event.to_dict() == {"name": "launch", "id": event.id, "_version": -1}
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="Protean does not check the identity function's return type "
+    "against identity_type.",
+)
+def test_a_string_identity_under_integer_identity_type_is_rejected():
+    domain = Domain(
+        name="Launches",
+        config={"identity_strategy": "function", "identity_type": "integer"},
+        identity_function=lambda: "abc",
+    )
+
+    @domain.aggregate
+    class Event:
+        name: String(max_length=100, required=True)
+
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        try:
+            Event(name="launch")
+        except ValidationError:
+            return
+
+    raise AssertionError("Event accepted a string id")
 
 
 def test_invoice_number_is_a_prefixed_business_key():

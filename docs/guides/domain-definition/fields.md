@@ -92,18 +92,17 @@ construction time:
 ```
 
 !!! note "List and dict defaults are copied for each instance"
-    In plain Python, a mutable default is one object shared by every call
-    that uses it. Protean avoids this for fields: it turns `default=[]` and
-    `default={}` into a fresh empty list or dict for each instance. A
-    callable such as `default=list` gives the same result and says so
-    explicitly:
+    Protean turns `default=[]` and `default={}` into a fresh list or dict
+    for each instance. The copy is shallow, and other mutable objects such
+    as sets are not copied. A callable such as `default=list` gives the
+    same result:
 
     ```python
     # fragment
     # Protean gives each Customer its own copy of this list
     tags: List(default=[])
 
-    # The same result, stated explicitly
+    # The same result, with a callable
     tags: List(default=list)
     ```
 
@@ -215,8 +214,8 @@ schema:
 ```
 
 The attribute on the aggregate stays `name`, but the persisted field is
-`full_name`. This is a persistence-layer concern only; domain code never
-sees the `referenced_as` name.
+`full_name`. Domain code reads and writes `person.name`. Reflection helpers
+that describe storage, such as `attributes()`, list the field as `full_name`.
 
 ---
 

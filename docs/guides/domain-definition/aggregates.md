@@ -101,7 +101,7 @@ Often, you may want to have common attributes across aggregates in your domain.
 `created_at` and `updated_at` are great examples. You can declare these common
 attributes in a base aggregate and inherit it in concrete classes:
 
-```python hl_lines="9-10 16"
+```python hl_lines="9-10 15-16"
 --8<-- "guides/domain-definition/003.py:full"
 ```
 
@@ -140,7 +140,7 @@ complete reference.
 Marks an Aggregate as abstract if `True`. If abstract, the aggregate
 cannot be instantiated and needs to be subclassed.
 
-```python hl_lines="12"
+```python hl_lines="13"
 --8<-- "guides/domain-definition/003.py:full"
 ```
 
@@ -291,10 +291,12 @@ Out[6]: <Post: Post object (id: 19031285-6e27-4b7e-8b06-47ba6766208a)>
 In [7]: post.to_dict()
 Out[7]:
 {'title': 'Foo',
- 'created_on': '2024-05-06 14:29:22.946329+00:00',
- 'comments': [{'content': 'bar', 'id': 'af238f7b-5225-41fc-ae37-36cd4cface66'},
-  {'content': 'baz', 'id': '5b7fa5ad-7b64-4194-ade7-fb7a4b3a8a15'}],
- 'id': '19031285-6e27-4b7e-8b06-47ba6766208a'}
+ 'created_at': '2024-05-06T14:29:22.946329+00:00',
+ 'id': '19031285-6e27-4b7e-8b06-47ba6766208a',
+ 'stats': None,
+ 'comments': [{'content': 'bar', 'added_at': None, 'id': 'af238f7b-5225-41fc-ae37-36cd4cface66'},
+  {'content': 'baz', 'added_at': None, 'id': '5b7fa5ad-7b64-4194-ade7-fb7a4b3a8a15'}],
+ '_version': 0}
 ```
 
 ### Bidirectional Relationships

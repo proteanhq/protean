@@ -90,8 +90,10 @@ The `via` parameter allows you to specify which field in the child entity should
 ```
 
 Without `via`, the foreign key would be `product_sku`: the aggregate name joined
-to its identifier field, `sku`. With `via="reviewed_sku"`, it uses
-`reviewed_sku` instead.
+to its identifier field, `sku`. With `via="reviewed_sku"`, Protean stores the
+product's `sku` in `reviewed_sku` and loads a product's reviews by that field.
+It still adds the default `product_sku` field to `Review` and fills it with
+the same value.
 
 ### The `referenced_as` Parameter
 

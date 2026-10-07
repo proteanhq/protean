@@ -69,3 +69,14 @@ def test_identity_function_generates_the_identities():
 
     assert re.fullmatch(r"custom-id-\d{4}", first.id)
     assert re.fullmatch(r"custom-id-\d{4}", second.id)
+
+
+def test_config_overrides_the_default_configuration(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    example = load_example("reference/domain-elements/domain-constructor/008.py")
+
+    assert example.domain.config["identity_strategy"] == "uuid"
+    assert example.domain.config["databases"]["default"] == {
+        "provider": "postgresql",
+        "database_uri": "postgresql://user:pass@localhost/db",
+    }

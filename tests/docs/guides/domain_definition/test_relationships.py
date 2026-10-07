@@ -3,7 +3,7 @@
 import pytest
 
 from protean.exceptions import ValidationError
-from protean.utils.reflection import declared_fields
+from protean.utils.reflection import attributes, declared_fields
 from tests.docs.support import load_example
 
 
@@ -112,6 +112,23 @@ def test_via_stores_the_product_sku_in_reviewed_sku():
     assert "product_sku" not in stored
 
 
+def test_via_keeps_the_default_foreign_key_alongside_it():
+    example = load_example("guides/domain-definition/relationships/004.py")
+    example.domain.init(traverse=False)
+
+    with example.domain.domain_context():
+        product = example.Product(name="Lamp", sku="LAMP-01")
+        product.add_reviews(example.Review(content="Bright", rating=5))
+        repo = example.domain.repository_for(example.Product)
+        repo.add(product)
+        stored = repo.get("LAMP-01")
+
+    assert {"reviewed_sku", "product_sku"} <= set(attributes(example.Review))
+    assert len(stored.reviews) == 1
+    assert stored.reviews[0].reviewed_sku == "LAMP-01"
+    assert stored.reviews[0].product_sku == "LAMP-01"
+
+
 def test_review_rejects_a_rating_above_five():
     example = load_example("guides/domain-definition/relationships/004.py")
     example.domain.init(traverse=False)
@@ -173,41 +190,3 @@ def test_order_requires_a_customer_id():
         example.Order()
 
     assert "customer_id" in exc.value.messages
-
-
-def test_entities_guide_comment_links_to_its_post():
-    example = load_example("guides/domain-definition/007.py")
-    example.publishing.init(traverse=False)
-
-    with example.publishing.domain_context():
-        post = example.Post(name="Hello", created_on="2024-01-01")
-        comment = example.Comment(content="Nice", post=post)
-
-    assert comment.post_id == post.id
-    assert example.Comment.meta_.part_of is example.Post
-
-
-def test_post_with_stats_and_comments_links_both_children():
-    example = load_example("guides/domain-definition/008.py")
-    example.publishing.init(traverse=False)
-
-    with example.publishing.domain_context():
-        post = example.Post(title="Hello")
-        post.stats = example.Statistic(likes=3, dislikes=0)
-        post.add_comments(example.Comment(content="Nice"))
-
-    assert post.created_at is not None
-    assert post.stats.post_id == post.id
-    assert post.stats.likes == 3
-    assert len(post.comments) == 1
-    assert post.comments[0].post_id == post.id
-
-
-def test_post_title_rejects_a_value_over_its_max_length():
-    example = load_example("guides/domain-definition/008.py")
-    example.publishing.init(traverse=False)
-
-    with example.publishing.domain_context(), pytest.raises(ValidationError) as exc:
-        example.Post(title="x" * 51)
-
-    assert "title" in exc.value.messages

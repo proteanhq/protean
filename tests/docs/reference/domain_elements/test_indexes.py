@@ -26,7 +26,7 @@ def test_declared_indexes_appear_in_meta_in_order():
 
     assert partial.fields == ("status",)
     assert partial.name == "ix_active"
-    assert partial.where is not None
+    assert partial.where.children == [("status__in", ["pending", "failed"])]
 
 
 def test_names_are_derived_as_the_naming_table_shows():

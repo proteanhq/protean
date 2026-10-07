@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 
 from protean.exceptions import ValidationError
+from protean.fields import Identifier
 from protean.utils.reflection import declared_fields
 from tests.docs.support import load_example
 
@@ -27,6 +28,16 @@ def test_string_name_accepts_a_valid_length_and_rejects_out_of_bounds():
     assert "name" in short.value.messages
     assert "name" in long.value.messages
     assert missing.value.messages == {"name": ["is required"]}
+
+
+def test_string_name_is_sanitized_because_the_example_opts_in():
+    example = load_example("guides/domain-definition/fields/simple-fields/001.py")
+    example.domain.init(traverse=False)
+
+    with example.domain.domain_context():
+        person = example.Person(name="Tom & Jerry")
+
+    assert person.name == "Tom &amp; Jerry"
 
 
 def test_person_gets_an_auto_id_by_default():
@@ -179,6 +190,7 @@ def test_identifier_user_id_is_the_identity():
 
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason="Identifier always stores a string; the identity_type config does "
     "not change the field's type.",
 )
@@ -192,6 +204,16 @@ def test_integer_identity_type_keeps_user_id_an_integer():
     assert user.to_dict()["user_id"] == 1
 
 
+@pytest.mark.xfail(
+    strict=True,
+    raises=TypeError,
+    reason="Identifier takes no identity_type argument.",
+)
+def test_identifier_rejects_an_unsupported_identity_type():
+    with pytest.raises(ValidationError):
+        Identifier(identity_type="foo")
+
+
 def test_status_defaults_to_draft_and_rejects_an_unknown_value():
     example = load_example("guides/domain-definition/fields/simple-fields/011.py")
     example.domain.init(traverse=False)
@@ -201,8 +223,9 @@ def test_status_defaults_to_draft_and_rejects_an_unknown_value():
         order.status = "SHIPPED"  # no transitions, so any listed value is fine
         with pytest.raises(ValidationError) as exc:
             order.status = "LOST"
+        fresh = example.Order()
 
-    assert example.Order().status == "DRAFT"
+    assert fresh.status == "DRAFT"
     assert order.status == "SHIPPED"
     assert "status" in exc.value.messages
 

@@ -156,13 +156,13 @@ An event is made of three parts:
 
 ### Headers
 
-#### `trace_id`
+#### `traceparent`
 
-The `trace_id` is a unique identifier of UUID format, that connects all
-processing originating from a request. Trace IDs provide a detailed view of
-the request's journey through the system. It helps in understanding the
-complete flow of a request, showing each service interaction, the time taken,
-and where any delays occur.
+The `traceparent` header holds the W3C Trace Context of the request that led
+to the event. A tracing backend uses it to connect all the processing that
+started from one request: each service call, the time it took, and where
+delays happened. Protean fills it from the current OpenTelemetry span when the
+event is created. It is `null` when no trace is active.
 
 ### Metadata
 
@@ -183,7 +183,7 @@ Sample metadata from an event:
     },
     "envelope": {
         "specversion": "1.0",
-        "checksum": "cd9d7b681c5e44fab98ffa379db7c5ee5a143824dc235117339b54221ab2e2c8"
+        "checksum": "<SHA-256 hex digest of the event payload>"
     },
     "domain": {
         "fqn": "tests.event.test_event_metadata.UserLoggedIn",
@@ -203,8 +203,9 @@ Sample metadata from an event:
 }
 ```
 
-The `headers` group holds the message `id`, `type`, `time` and `stream`. The
-`domain` group holds the other fields described below.
+The `headers` group holds the message `id`, `type`, `time` and `stream`, plus
+`traceparent`, `idempotency_key` and `deadline`. The `domain` group holds the
+other fields described below.
 
 #### `id`
 

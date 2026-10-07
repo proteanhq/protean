@@ -3,6 +3,7 @@
 import pytest
 
 from protean.exceptions import ValidationError
+from protean.fields import Auto, Decimal, Dict, List
 from tests.docs.support import load_example
 
 
@@ -17,6 +18,18 @@ def test_list_of_strings_accepts_strings_and_rejects_numbers():
 
     assert user.roles == ["ADMIN", "EDITOR"]
     assert "roles" in exc.value.messages
+
+
+def test_list_accepts_decimal_and_dict_content_types():
+    assert List(content_type=Decimal()).content_type is not None
+    assert List(content_type=Dict()).content_type is not None
+
+
+def test_list_rejects_auto_as_its_content_type():
+    with pytest.raises(ValidationError) as exc:
+        List(content_type=Auto())
+
+    assert exc.value.messages == {"content_type": ["Content type not supported"]}
 
 
 def test_dict_payload_keeps_the_dictionary():
@@ -85,6 +98,16 @@ def test_list_of_value_objects_is_persisted_and_updated_on_save():
         "456 Side St",
     ]
     assert isinstance(refreshed.customer.addresses[0], example.Address)
+
+
+def test_list_of_value_objects_rejects_an_item_that_is_not_an_address():
+    example = load_example("guides/domain-definition/fields/container-fields/004.py")
+    example.domain.init(traverse=False)
+
+    with example.domain.domain_context(), pytest.raises(ValidationError) as exc:
+        example.Customer(name="John Doe", email="john@doe.com", addresses=["Main St"])
+
+    assert "addresses" in exc.value.messages
 
 
 def test_value_object_from_entity_validates_place_order_items():

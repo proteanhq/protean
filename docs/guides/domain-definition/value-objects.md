@@ -45,7 +45,6 @@ In [1]: Email(address="john.doe@gmail.com")
 Out[1]: <Email: Email object ({'address': 'john.doe@gmail.com'})>
 
 In [2]: Email(address="john.doegmail.com")
-06:40:44,241 ERROR: defaultdict(<class 'list'>, {'address': ['Invalid email address']})
 ...
 ValidationError: {'address': ['Invalid email address']}
 ```

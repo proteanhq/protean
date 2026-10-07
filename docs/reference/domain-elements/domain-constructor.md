@@ -58,16 +58,7 @@ If not provided, configuration is loaded from `.domain.toml`, `domain.toml`,
 or `pyproject.toml` files in the domain folder or its parent directories.
 
 ```python
-# fragment
-domain = Domain(config={
-    "identity_strategy": "uuid",
-    "databases": {
-        "default": {
-            "provider": "postgresql",
-            "database_uri": "postgresql://user:pass@localhost/db",
-        }
-    }
-})
+--8<-- "reference/domain-elements/domain-constructor/008.py:config"
 ```
 
 See [Configuration](../configuration/index.md) for the full list of

@@ -11,7 +11,7 @@ style that reads best for each situation.
 
 Fields are declared as type annotations using Protean's field functions:
 
-```python hl_lines="4-6"
+```python hl_lines="9-11 16"
 --8<-- "guides/domain-definition/fields/defining-fields/001.py:full"
 ```
 
@@ -28,7 +28,7 @@ fields declared this way.
 
 Fields are assigned as class variables, using the same field functions:
 
-```python hl_lines="4-6"
+```python hl_lines="9-10 15-16"
 --8<-- "guides/domain-definition/fields/defining-fields/002.py:full"
 ```
 
@@ -42,7 +42,7 @@ validation, and persistence.
 Protean domain elements are Pydantic models internally, so you can use
 standard Python type annotations and Pydantic's `Field()` directly:
 
-```python hl_lines="6-7"
+```python hl_lines="14-15"
 --8<-- "guides/domain-definition/fields/defining-fields/003.py:full"
 ```
 

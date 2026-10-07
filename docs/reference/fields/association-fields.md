@@ -83,7 +83,7 @@ entity.
 Protean provides helper methods that begin with `add_` and `remove_` to add
 and remove child entities from the `HasMany` relationship.
 
-```shell hl_lines="4-5 14-15 19 28"
+```shell hl_lines="4-5 14-15 18 27"
 In [1]: post = Post(
    ...:     title="Foo",
    ...:     comments=[
@@ -184,4 +184,4 @@ By default, association fields create foreign keys following the pattern `<aggre
 --8<-- "guides/domain-definition/fields/association-fields/005.py:via"
 ```
 
-This is particularly useful when you want to link entities using fields other than the default identifier, or when you need specific naming conventions for your foreign key relationships.
+Use it when the foreign key has to match a column name in an existing schema. The value stored in the `via` field is still the parent's identifier, and Protean still adds the default `<aggregate_name>_id` field next to it.

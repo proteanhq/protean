@@ -122,7 +122,7 @@ def test_order_declares_a_unique_and_a_partial_index():
     assert partial.name == "ix_active"
     assert partial.fields == ("status", "priority")
     assert partial.desc == ("priority",)
-    assert partial.where is not None
+    assert partial.where.children == [("status__in", ["pending", "failed"])]
 
 
 def test_invoice_total_defaults_from_subtotal_and_tax_rate():
@@ -135,3 +135,48 @@ def test_invoice_total_defaults_from_subtotal_and_tax_rate():
 
     assert derived.total == pytest.approx(110.0)
     assert given.total == 50.0
+
+
+def test_post_with_stats_and_comments_links_both_children():
+    example = load_example("guides/domain-definition/008.py")
+    example.publishing.init(traverse=False)
+
+    with example.publishing.domain_context():
+        post = example.Post(title="Hello")
+        post.stats = example.Statistic(likes=3, dislikes=0)
+        post.add_comments(example.Comment(content="Nice"))
+
+    assert post.created_at is not None
+    assert post.stats.post_id == post.id
+    assert post.stats.likes == 3
+    assert len(post.comments) == 1
+    assert post.comments[0].post_id == post.id
+
+
+def test_post_title_rejects_a_value_over_its_max_length():
+    example = load_example("guides/domain-definition/008.py")
+    example.publishing.init(traverse=False)
+
+    with example.publishing.domain_context(), pytest.raises(ValidationError) as exc:
+        example.Post(title="x" * 51)
+
+    assert "title" in exc.value.messages
+
+
+def test_saved_post_lists_its_comments_in_to_dict():
+    example = load_example("guides/domain-definition/008.py")
+    example.publishing.init(traverse=False)
+
+    with example.publishing.domain_context():
+        post = example.Post(title="Foo")
+        post.add_comments(
+            [example.Comment(content="bar"), example.Comment(content="baz")]
+        )
+        example.publishing.repository_for(example.Post).add(post)
+
+    data = post.to_dict()
+    assert list(data) == ["title", "created_at", "id", "stats", "comments", "_version"]
+    assert data["stats"] is None
+    assert data["_version"] == 0
+    assert [list(c) for c in data["comments"]] == [["content", "added_at", "id"]] * 2
+    assert [c["content"] for c in data["comments"]] == ["bar", "baz"]

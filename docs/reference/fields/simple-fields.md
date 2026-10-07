@@ -326,13 +326,12 @@ Same-value assignments are also validated against the map. To make a state
 OrderStatus.CANCELLED: [OrderStatus.CANCELLED],  # cancel() is idempotent
 ```
 
-```shell hl_lines="3 7"
+```shell hl_lines="3 6"
 In [1]: order = Order()
 
 In [2]: order.status = "PLACED"  # DRAFT → PLACED: allowed
 
 In [3]: order.status = "SHIPPED"
-ERROR: ...
 ValidationError: {'status': ["Invalid status transition from 'PLACED' to 'SHIPPED'. Allowed transitions: CONFIRMED, CANCELLED"]}
 ```
 

@@ -62,9 +62,12 @@ A field that represents a list of values.
 
 **Optional Arguments**
 
-- **`content_type`**: The type of items in the list. Accepted field types are
-`Boolean`, `Date`, `DateTime`, `Float`, `Identifier`, `Integer`, `String`, and
-`Text`. When you leave it out, the list accepts items of any type.
+- **`content_type`**: The type of items in the list. It can be a simple field
+such as `String`, `Integer`, `Float`, `Decimal`, `Boolean`, `Date`,
+`DateTime`, `Identifier`, `Text` or `Dict`, or a `ValueObject` field (see
+[List of Value Objects](#list-of-value-objects)). `Auto` raises a
+`ValidationError`. Association fields such as `HasMany` and `Reference` are not
+supported. When you leave it out, the list accepts items of any type.
 
 ```python hl_lines="10"
 --8<-- "guides/domain-definition/fields/container-fields/001.py:full"
@@ -73,7 +76,7 @@ A field that represents a list of values.
 The value is provided as a `list`, and the values in the `list` are validated
 to be of the right type.
 
-```shell hl_lines="6 13"
+```shell hl_lines="6 12"
 In [1]: user = User(email="john.doe@gmail.com", roles=['ADMIN', 'EDITOR'])
 
 In [2]: user.to_dict()
@@ -84,7 +87,6 @@ Out[2]:
  '_version': -1}
 
 In [3]: user2 = User(email="jane.doe@gmail.com", roles=[1, 2])
-ERROR: Error during initialization: {'roles': ['Input should be a valid string', 'Input should be a valid string']}
 ...
 ValidationError: {'roles': ['Input should be a valid string', 'Input should be a valid string']}
 ```
