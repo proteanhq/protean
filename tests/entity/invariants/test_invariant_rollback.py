@@ -2,7 +2,7 @@
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import BaseAggregate, atomic_change
 from protean.core.entity import BaseEntity, invariant
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
@@ -435,6 +435,27 @@ class TestAssociationAssignmentRollsBack:
         assert line.tags == [tag]
         assert line._temp_cache["tags"].removed == {}
 
+    def test_rejected_has_one_child_is_left_unlinked(self, order):
+        rejected = OrderNote(text="")
+
+        with pytest.raises(ValidationError):
+            order.note = rejected
+
+        assert rejected._root is None
+        assert rejected._owner is None
+        assert rejected.order_id is None
+        assert rejected.__dict__.get("order") is None
+
+    def test_rejected_has_many_child_is_left_unlinked(self, order):
+        rejected = OrderItem(quantity=1, price=1.0)
+
+        with pytest.raises(ValidationError):
+            order.add_items(rejected)
+
+        assert rejected._root is None
+        assert rejected._owner is None
+        assert rejected.order_id is None
+
     def test_successful_add_and_remove_still_apply(self, order):
         new_item = OrderItem(quantity=0, price=1.0)
 
@@ -500,3 +521,52 @@ class TestControls:
         assert "balance" in exc.value.messages
         assert account.balance == 10.0
         assert account.state_.is_changed is False
+
+
+class TestAtomicChangeRollsBack:
+    def test_fields_changed_in_the_block_return_to_block_entry(self, account):
+        with pytest.raises(ValidationError):
+            with atomic_change(account):
+                account.name = "Renamed"
+                account.balance = -5.0
+
+        assert account.name == "Main"
+        assert account.balance == 10.0
+        assert account.state_.is_changed is False
+
+    def test_child_fields_and_associations_return_to_block_entry(self, order):
+        old_items = list(order.items)
+        first = old_items[0]
+        added_before = dict(order._temp_cache["items"].added)
+
+        with pytest.raises(ValidationError):
+            with atomic_change(order):
+                first.quantity = 3
+                order.add_items(OrderItem(quantity=1, price=1.0))
+                order.remove_items(old_items[1])
+                order.total = 25.0
+
+        assert order.items == old_items
+        assert first.quantity == 2
+        assert first.state_.is_changed is False
+        assert order.total == 20.0
+        assert order._temp_cache["items"].added == added_before
+        assert order._temp_cache["items"].removed == {}
+        assert order.state_.is_changed is False
+
+    def test_error_inside_the_block_also_rolls_back(self, account):
+        with pytest.raises(RuntimeError):
+            with atomic_change(account):
+                account.balance = 3.0
+                raise RuntimeError("stop")
+
+        assert account.balance == 10.0
+        assert account.state_.is_changed is False
+
+    def test_passing_block_keeps_its_changes(self, order):
+        with atomic_change(order):
+            order.add_items(OrderItem(quantity=1, price=1.0))
+            order.total = 21.0
+
+        assert order.total == 21.0
+        assert len(order.items) == 3

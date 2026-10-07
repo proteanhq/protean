@@ -109,11 +109,12 @@ the same way, including the removal of the child's own children. The
 assignment is also undone when an invariant fails with an error other than
 `ValidationError`, such as a `TypeError` from comparing `None`.
 
-Two cases are not rolled back. Changes made inside an `atomic_change` block
-stay applied when the check at the end of the block fails (see below). On an
-event-sourced aggregate, a failed `raise_()` discards the event, but the field
-changes its `@apply` handler made stay on the object. Discard the aggregate
-after that error instead of persisting it.
+An `atomic_change` block is rolled back as a whole: when the block raises or
+the check at its end fails, the aggregate and its child entities go back to
+their state from block entry, including association changes (see below). On
+an event-sourced aggregate, `raise_()` runs the `@apply` handler inside
+`atomic_change`, so a failed `raise_()` undoes the handler's field changes and
+also discards the event.
 
 !!!note
     `pre` invariants are not applicable when aggregates and entities are being
@@ -224,8 +225,8 @@ Within the `atomic_change` context manager, the cycle works as follows:
 2. **Invariant checks are suspended** during the block. Individual assignments
    do not trigger pre/post checks.
 3. **Post-invariants fire on exit**: The final state is validated. If a
-   check fails, `ValidationError` is raised and the changes made inside the
-   block stay applied.
+   check fails, `ValidationError` is raised and every change made inside the
+   block is undone.
 
 ```shell hl_lines="14"
 In [1]: from protean import atomic_change

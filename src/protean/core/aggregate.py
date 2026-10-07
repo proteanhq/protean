@@ -19,7 +19,13 @@ from protean._deprecation import (
     warn_deprecated,
     warn_from_registry,
 )
-from protean.core.entity import BaseEntity, _EntityState
+from protean.core.entity import (
+    BaseEntity,
+    _EntitySnapshot,
+    _EntityState,
+    _restore_entities,
+    _snapshot_entity_trees,
+)
 from protean.core.event import BaseEvent
 from protean.core.value_object import value_object_from_entity
 from protean.exceptions import (
@@ -194,8 +200,8 @@ class BaseAggregate(BaseEntity):
         On an event-sourced aggregate, the event's ``@apply`` handler then
         runs. If any step raises (an enricher, the handler, or an invariant
         check around it), ``_events``, ``_version`` and ``_event_position``
-        go back to their values from before the call and the error
-        propagates. Field changes the handler made are not undone.
+        go back to their values from before the call, ``atomic_change``
+        undoes the field changes the handler made, and the error propagates.
         """
         # Guard: temporal aggregates are read-only
         if self._is_temporal:
@@ -862,17 +868,23 @@ class atomic_change:
     overall start-to-end transition on exit, so batched mutations
     (and ``@apply`` handlers in ES aggregates) are validated as a single
     logical transition.
+
+    When the block raises, or the checks on exit fail, the aggregate and
+    the child entities loaded on entry go back to their state from block
+    entry.
     """
 
     def __init__(self, aggregate: Any) -> None:
         self.aggregate = aggregate
         self._status_snapshots: dict[str, Any] = {}
+        self._entity_snapshots: list[_EntitySnapshot] = []
 
     def __enter__(self) -> None:
         # Capture status field snapshots BEFORE precheck
         self._capture_status_snapshots()
         # Temporary disable invariant checks
         self.aggregate._precheck()
+        self._entity_snapshots = _snapshot_entity_trees([self.aggregate])
         self.aggregate._disable_invariant_checks = True
 
     def __exit__(
@@ -886,10 +898,17 @@ class atomic_change:
 
         # Validate status transitions (start -> end) before post-invariants.
         # Only validate when no exception is being propagated.
-        if exc_type is None:
-            self._validate_status_transitions()
+        try:
+            if exc_type is None:
+                self._validate_status_transitions()
 
-        self.aggregate._postcheck()
+            self.aggregate._postcheck()
+        except BaseException:
+            _restore_entities(self._entity_snapshots)
+            raise
+
+        if exc_type is not None:
+            _restore_entities(self._entity_snapshots)
 
     def _capture_status_snapshots(self) -> None:
         """Snapshot all status fields with transition rules."""

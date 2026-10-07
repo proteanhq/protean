@@ -36,9 +36,8 @@ Here is how they work:
     - Calls the matching `@apply` handler (state is mutated)
     - Runs all `@invariant.post` methods
     - If any invariant raises `ValidationError`, the event is rejected:
-      it is not recorded and the version does not move. The field changes
-      the handler made stay on the object, so discard the aggregate
-      instead of persisting it
+      it is not recorded, the version does not move, and the field changes
+      the handler made are undone
 
 2. **`balance_must_not_be_negative`** ensures no operation can leave
    the account with a negative balance. We no longer need the manual

@@ -294,3 +294,28 @@ class TestSuccessfulRaiseIsUnchanged:
         assert wallet._event_position == position + 1
         assert wallet._events[:-1] == events
         assert isinstance(wallet._events[-1], NoteAdded)
+
+
+class TestRejectedEventUndoesFieldChanges:
+    def test_post_invariant_failure_restores_the_fields(self):
+        wallet = Wallet.open(wallet_id=str(uuid4()))
+        wallet.raise_(LabelChanged(wallet_id=wallet.wallet_id, label="old"))
+        changed_before = wallet.state_.is_changed
+        events, version, position = _state(wallet)
+
+        with pytest.raises(ValidationError):
+            wallet.raise_(LabelChanged(wallet_id=wallet.wallet_id, label="forbidden"))
+
+        assert wallet.label == "old"
+        assert wallet.state_.is_changed is changed_before
+        assert wallet._events == events
+        assert wallet._version == version
+        assert wallet._event_position == position
+
+    def test_failing_handler_undoes_changes_from_a_chained_event(self):
+        wallet = Wallet.open(wallet_id=str(uuid4()))
+
+        with pytest.raises(ValueError, match="chain rejected"):
+            wallet.raise_(ChainStarted(wallet_id=wallet.wallet_id))
+
+        assert wallet.note is None
