@@ -37,8 +37,9 @@ registers the service, so leaving the call out does not turn them off.
 
 Protean wraps every public method and `__call__` with the invariant checks. A
 public helper called from another public method runs the invariants again. An
-invariant that calls a public helper never ends: the helper's wrapper runs the
-invariant again. Start helper names with `_` so they are not wrapped:
+invariant that calls a public helper fails: the helper's wrapper runs the
+invariant again, which calls the helper again, until Python's recursion limit
+stops the call. Start helper names with `_` so they are not wrapped:
 
 ```python
 @domain.domain_service(part_of=[Order, Inventory])

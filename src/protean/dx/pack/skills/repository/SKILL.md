@@ -103,9 +103,9 @@ class OrderRepository:
 
 ## Quick example: Custom repository with queries
 
-Every field a query method filters on gets an index, and every indexed `String`
-gets a `max_length`. Without them, `check` reports `UNINDEXED_FILTER_PATH` and
-`UNBOUNDED_INDEXED_STRING`:
+Every field a query method filters on gets an index. Without one, `check`
+reports `UNINDEXED_FILTER_PATH`. Index `String` fields, not `Text`: an index on
+a `Text` field makes `check` report `UNBOUNDED_INDEXED_STRING`:
 
 ```python
 @domain.aggregate(

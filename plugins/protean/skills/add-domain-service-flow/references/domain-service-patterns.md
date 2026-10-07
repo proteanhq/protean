@@ -106,7 +106,7 @@ Domain services support the same `@invariant.pre` and `@invariant.post` decorato
 
 They run around every public method of the service, and `__call__` counts as public. If one public method calls another, the invariants run again for the inner call.
 
-Helper methods start with `_`, which keeps them unwrapped. An invariant must never call a public method: the method's wrapper runs the invariant again, which calls the method again, without end.
+Helper methods start with `_`, which keeps them unwrapped. An invariant must never call a public method: the method's wrapper runs the invariant again, which calls the method again, until Python's recursion limit stops the call.
 
 ## Wiring into command handlers
 

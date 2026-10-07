@@ -4,7 +4,8 @@ The domain-service and add-domain-service-flow skills tell a reader how
 invariants wrap a domain service's methods. These tests run each rule against
 the framework, and check that no page in the pack or the docs claims a public
 helper raises ``RecursionError``. A public method calling another public method
-only runs the invariants again.
+only runs the invariants again; only an invariant calling a public helper
+recurses.
 """
 
 from __future__ import annotations
@@ -96,6 +97,38 @@ def test_underscore_helper_is_not_wrapped():
 
     assert result == "private"
     assert calls == []
+
+
+def test_invariant_calling_a_public_helper_stops_at_the_recursion_limit():
+    domain = Domain(name="DomainServiceRecursion")
+
+    @domain.aggregate
+    class Order:
+        total = Integer(default=0)
+
+    @domain.aggregate
+    class Inventory:
+        quantity = Integer(default=0)
+
+    @domain.domain_service(part_of=[Order, Inventory])
+    class Fulfillment:
+        def __init__(self, order, inventory):
+            self.order = order
+            self.inventory = inventory
+
+        @invariant.pre
+        def in_stock(self):
+            if self.stock() < 1:
+                raise ValidationError({"_service": ["Out of stock"]})
+
+        def stock(self):
+            return self.inventory.quantity
+
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        with pytest.raises(RecursionError):
+            Fulfillment(Order(), Inventory(quantity=5)).stock()
 
 
 def test_no_page_claims_a_recursion_error():

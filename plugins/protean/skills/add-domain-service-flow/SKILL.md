@@ -145,7 +145,7 @@ Pre-invariants validate before execution. Post-invariants validate after. Add th
             raise ValidationError({"_service": ["Order was not confirmed"]})
 ```
 
-Invariants run around **every public method** of the service, including `__call__`. If one public method calls another, the invariants run again for the inner call. Name helper methods with a leading `_` so they are not wrapped. An invariant must never call a public method: that method's wrapper runs the invariant again, which calls the method again, without end.
+Invariants run around **every public method** of the service, including `__call__`. If one public method calls another, the invariants run again for the inner call. Name helper methods with a leading `_` so they are not wrapped. An invariant must never call a public method: that method's wrapper runs the invariant again, which calls the method again, until Python's recursion limit stops the call.
 
 ### Step 3: Wire into a command handler
 
@@ -290,7 +290,7 @@ class PlaceOrderService:
             raise ValidationError({"_service": ["Insufficient stock"]})
 ```
 
-The call to `stock_for()` runs the pre-invariants again, which call `stock_for()` again, without end. Instead: name the helper `_stock_for()`. Methods that start with `_` are not wrapped.
+The call to `stock_for()` runs the pre-invariants again, which call `stock_for()` again, until Python's recursion limit stops the call. Instead: name the helper `_stock_for()`. Methods that start with `_` are not wrapped.
 
 ## Complete examples
 

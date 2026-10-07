@@ -107,8 +107,9 @@ way to model the Domain Service.
     methods (other than `__call__`) and private methods (prefixed with `_`).
     A public method that calls another public method on the same instance
     runs the invariants again around the inner call. An invariant that calls
-    a public method never ends, because that method's wrapper runs the
-    invariant again. Put helpers in private methods (prefixed with `_`) so
+    a public method fails: that method's wrapper runs the invariant again,
+    which calls the method again, until Python's recursion limit stops the
+    call. Put helpers in private methods (prefixed with `_`) so
     they are not wrapped.
 
 ## Domain Service vs Application Service vs Command Handler

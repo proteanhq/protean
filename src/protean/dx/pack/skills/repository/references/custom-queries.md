@@ -24,7 +24,7 @@ Inside a custom repository, `self.query` returns a `QuerySet` for fluent filteri
 
 ### Basic Filtering
 
-The examples on this page use these aggregates. Each field a query method filters on has an index led by it, and each indexed `String` has a `max_length`, so `check` reports no `UNINDEXED_FILTER_PATH` or `UNBOUNDED_INDEXED_STRING`:
+The examples on this page use these aggregates. Each field a query method filters on has an index led by it, and no index covers a `Text` field, so `check` reports no `UNINDEXED_FILTER_PATH` or `UNBOUNDED_INDEXED_STRING`:
 
 ```python
 @domain.aggregate(
