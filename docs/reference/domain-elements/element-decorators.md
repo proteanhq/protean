@@ -9,9 +9,7 @@ domain registry, and accepts **options** that control its runtime behavior.
 Options are passed as keyword arguments:
 
 ```python
-@domain.aggregate(schema_name="users", fact_events=True)
-class User:
-    name = String(required=True)
+--8<-- "reference/domain-elements/element-decorators/001.py:options"
 ```
 
 All options are accessible at runtime via `element.meta_`.
@@ -31,9 +29,7 @@ default is `()`.
 | `suppress_checks` | `()` | Diagnostic codes `protean check` should not report for this element |
 
 ```python
-@domain.aggregate(suppress_checks=("PROTEAN_R011",))
-class Order:
-    ...
+--8<-- "reference/domain-elements/element-decorators/002.py:suppress_checks"
 ```
 
 Suppress the narrowest thing that works: one code on one element. It applies to
@@ -163,19 +159,12 @@ The schema version can be declared **either** with the `version=` decorator
 option **or** with a `__version__` class attribute (both default to `1`):
 
 ```python
-@domain.event(part_of=Order, version=2)     # decorator option
-class OrderPlaced:
-    order_id = String()
-
-@domain.event(part_of=Order)
-class OrderShipped:
-    __version__ = 2                          # class attribute
-    order_id = String()
+--8<-- "reference/domain-elements/element-decorators/003.py:version"
 ```
 
 The two forms are equivalent, both drive the `vN` suffix of the event's type
-string (`Order.OrderPlaced.v2`). Declaring the version **both** ways on the same class raises an
-`IncorrectUsageError`. The same option is available on `@domain.command`.
+string (`Ordering.OrderPlaced.v2` in a domain named `Ordering`). Declaring the
+version **both** ways on the same class raises an `IncorrectUsageError`. The same option is available on `@domain.command`.
 
 Guide: [Events](../../guides/domain-definition/events.md) ·
 Reference: [Compatibility](../compatibility/index.md)

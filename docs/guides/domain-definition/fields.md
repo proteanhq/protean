@@ -19,16 +19,7 @@ functions, `String`, `Integer`, `Float`, `DateTime`, `List`, and so on. The reco
 annotation:
 
 ```python
-from protean import Domain
-from protean.fields import String, Float, DateTime
-
-domain = Domain()
-
-@domain.aggregate
-class Product:
-    name: String(max_length=100, required=True)
-    price: Float(min_value=0)
-    created_at: DateTime(default="utc_now")
+--8<-- "guides/domain-definition/fields/001.py:aggregate"
 ```
 
 You can also assign fields as class attributes (`name = String(...)`). The two
@@ -55,14 +46,7 @@ matches the shape of the data you're modeling:
 A typical aggregate uses all three:
 
 ```python
-from protean.fields import String, Float, DateTime, List, HasMany
-
-@domain.aggregate
-class Order:
-    customer_name: String(max_length=100, required=True)   # simple
-    placed_at: DateTime(default="utc_now")                 # simple
-    tags: List(content_type=String)                        # container
-    items = HasMany("LineItem")                            # association
+--8<-- "guides/domain-definition/fields/002.py:aggregate"
 ```
 
 Lifecycle state gets its own type, use
@@ -79,10 +63,7 @@ By default, every field is optional. Mark a field `required=True` to
 reject construction when the value is missing or blank:
 
 ```python
-@domain.aggregate
-class Customer:
-    email: String(required=True)
-    name: String(max_length=100)
+--8<-- "guides/domain-definition/fields/003.py:aggregate"
 ```
 
 Attempting to build a `Customer` without an email raises a
@@ -102,32 +83,27 @@ how identity generation is configured.
 
 ## Setting defaults
 
-Use `default` for a literal value or a callable that produces one. Call
-the callable (don't invoke it yourself) so Protean can evaluate it at
+Use `default` for a literal value or a callable that produces one. Pass
+the callable itself, not its result, so Protean can call it at
 construction time:
 
 ```python
-from datetime import datetime, timezone
-
-def _utc_now():
-    return datetime.now(timezone.utc)
-
-@domain.aggregate
-class ShoppingCart:
-    created_at: DateTime(default=_utc_now)
-    currency: String(default="USD")
+--8<-- "guides/domain-definition/fields/004.py:aggregate"
 ```
 
-!!! warning "Don't use mutable defaults"
-    Passing a list, dict, set, or entity instance as `default=` shares a
-    single object across every instance of the aggregate. Wrap the value
-    in a callable instead:
+!!! note "List and dict defaults are copied for each instance"
+    In plain Python, a mutable default is one object shared by every call
+    that uses it. Protean avoids this for fields: it turns `default=[]` and
+    `default={}` into a fresh empty list or dict for each instance. A
+    callable such as `default=list` gives the same result and says so
+    explicitly:
 
     ```python
-    # Wrong — every Customer shares the same list
+    # fragment
+    # Protean gives each Customer its own copy of this list
     tags: List(default=[])
 
-    # Right — each Customer gets a fresh list
+    # The same result, stated explicitly
     tags: List(default=list)
     ```
 
@@ -143,14 +119,7 @@ computing the value in `default=`.
 Most field types accept constraints as arguments. The common ones:
 
 ```python
-from protean.fields import String, Integer, Float
-
-@domain.aggregate
-class Listing:
-    title: String(max_length=200, min_length=3)           # length bounds
-    priority: Integer(min_value=1, max_value=5)           # numeric bounds
-    discount: Float(min_value=0, max_value=1)
-    status: String(choices=["DRAFT", "PUBLISHED", "SOLD"]) # enumerated
+--8<-- "guides/domain-definition/fields/005.py:aggregate"
 ```
 
 `choices` also accepts an `Enum` class, which is the preferred form when
@@ -165,10 +134,7 @@ for a field. Uniqueness is enforced by the underlying persistence store
 when the aggregate is saved:
 
 ```python
-@domain.aggregate
-class User:
-    email: String(required=True, unique=True)
-    name: String(max_length=100)
+--8<-- "guides/domain-definition/fields/006.py:aggregate"
 ```
 
 For multi-field uniqueness, conditional (partial) uniqueness, or non-unique
@@ -183,22 +149,7 @@ For single-field format checks that go beyond length or numeric bounds (email
 addresses, phone numbers, SKUs) pass a callable to `validators`:
 
 ```python
-from protean.fields import String
-from protean.exceptions import ValidationError
-
-class EmailDomainValidator:
-    def __init__(self, allowed_domain: str):
-        self.allowed_domain = allowed_domain
-
-    def __call__(self, value: str) -> None:
-        if not value.endswith(f"@{self.allowed_domain}"):
-            raise ValidationError(
-                f"Email does not belong to {self.allowed_domain}"
-            )
-
-@domain.aggregate
-class Employee:
-    email: String(validators=[EmailDomainValidator("mydomain.com")])
+--8<-- "guides/domain-definition/fields/007.py:aggregate"
 ```
 
 Validators run on every assignment and raise `ValidationError` if the
@@ -228,16 +179,7 @@ the cardinality you need:
   `HasMany`).
 
 ```python
-from protean.fields import HasMany
-
-@domain.aggregate
-class Post:
-    title: String(max_length=200, required=True)
-    comments = HasMany("Comment")
-
-@domain.entity(part_of=Post)
-class Comment:
-    content: String(max_length=500)
+--8<-- "guides/domain-definition/fields/008.py:aggregate"
 ```
 
 Aggregates never reference each other directly. Cross-aggregate links are
@@ -254,17 +196,7 @@ concept (money, an address, a coordinate), promote them to a
 [value object](./value-objects.md) and embed it with `ValueObject`:
 
 ```python
-from protean.fields import ValueObject
-
-@domain.value_object
-class Money:
-    currency: String(max_length=3, required=True)
-    amount: Float(min_value=0, required=True)
-
-@domain.aggregate
-class Account:
-    owner: String(max_length=100, required=True)
-    balance = ValueObject(Money)
+--8<-- "guides/domain-definition/fields/009.py:aggregate"
 ```
 
 You can hand in a `Money(...)` instance or the flattened attributes
@@ -279,10 +211,7 @@ from the Python attribute name, typically when matching an existing database
 schema:
 
 ```python
-@domain.aggregate
-class Person:
-    name: String(required=True, referenced_as="full_name")
-    email: String()
+--8<-- "guides/domain-definition/fields/010.py:aggregate"
 ```
 
 The attribute on the aggregate stays `name`, but the persisted field is
@@ -299,11 +228,8 @@ behaviour) use the helpers in `protean.utils.reflection`:
 ```shell
 In [1]: from protean.utils.reflection import declared_fields
 
-In [2]: declared_fields(Post)
-Out[2]:
-{'title': String(max_length=200, required=True),
- 'comments': HasMany('Comment'),
- 'id': Auto(identifier=True)}
+In [2]: list(declared_fields(Post))
+Out[2]: ['title', 'id', 'comments']
 ```
 
 `attributes()` additionally exposes shadow fields such as the foreign

@@ -20,21 +20,14 @@ If you don't declare an identifier field, Protean adds one for you. It's
 an `Auto` field named `id`, generated as a UUID rendered as a string:
 
 ```python
-from protean import Domain
-from protean.fields import String
-
-domain = Domain()
-
-@domain.aggregate
-class Customer:
-    name: String(max_length=100, required=True)
+--8<-- "guides/domain-definition/identity/001.py:aggregate"
 ```
 
 ```shell
 In [1]: customer = Customer(name="Jane Doe")
 
 In [2]: customer.to_dict()
-Out[2]: {'name': 'Jane Doe', 'id': '9cf4ddc4-2919-4021-bd1a-c8083b5fdda7'}
+Out[2]: {'name': 'Jane Doe', 'id': '9cf4ddc4-2919-4021-bd1a-c8083b5fdda7', '_version': -1}
 ```
 
 This is the right choice for most aggregates: UUIDs are globally unique,
@@ -49,19 +42,14 @@ When you want the identifier to have a domain-meaningful name, declare
 it explicitly with `Auto(identifier=True)`:
 
 ```python
-from protean.fields import Auto, String
-
-@domain.aggregate
-class User:
-    user_id: Auto(identifier=True)
-    name: String(required=True)
+--8<-- "guides/domain-definition/identity/002.py:aggregate"
 ```
 
 ```shell
 In [1]: user = User(name="John Doe")
 
 In [2]: user.to_dict()
-Out[2]: {'user_id': '9cf4ddc4-2919-4021-bd1a-c8083b5fdda7', 'name': 'John Doe'}
+Out[2]: {'user_id': '9cf4ddc4-2919-4021-bd1a-c8083b5fdda7', 'name': 'John Doe', '_version': -1}
 ```
 
 The default `id` field is dropped once you declare your own identifier.
@@ -98,10 +86,7 @@ You can also override the type for a single aggregate without changing
 the domain default:
 
 ```python
-@domain.aggregate
-class Reading:
-    reading_id: Auto(identifier=True, identity_type="integer")
-    value: String(max_length=50)
+--8<-- "guides/domain-definition/identity/003.py:aggregate"
 ```
 
 See [`identity_strategy`](../../reference/configuration/index.md#identity_strategy)
@@ -122,30 +107,14 @@ Set the strategy in config and pass `identity_function=` when constructing
 the domain. Every aggregate in the domain will use this function:
 
 ```python
-import time
-from protean import Domain
-
-def epoch_ms_id() -> int:
-    return int(time.time() * 1000)
-
-domain = Domain(
-    config={
-        "identity_strategy": "function",
-        "identity_type": "integer",
-    },
-    identity_function=epoch_ms_id,
-)
-
-@domain.aggregate
-class Event:
-    name: String(max_length=100, required=True)
+--8<-- "guides/domain-definition/identity/004.py:domain"
 ```
 
 ```shell
 In [1]: event = Event(name="launch")
 
 In [2]: event.to_dict()
-Out[2]: {'name': 'launch', 'id': 1718139167980}
+Out[2]: {'name': 'launch', 'id': 1718139167980, '_version': -1}
 ```
 
 The function's return type must match `identity_type`. Returning a
@@ -158,26 +127,12 @@ To override the default for one aggregate (for example, to mint a prefixed key)
 set the strategy and function directly on the field:
 
 ```python
-import uuid
-from protean.fields import Auto, String
-
-def invoice_number() -> str:
-    return f"INV-{uuid.uuid4().hex[:12].upper()}"
-
-@domain.aggregate
-class Invoice:
-    invoice_number: Auto(
-        identifier=True,
-        identity_strategy="function",
-        identity_function=invoice_number,
-        identity_type="string",
-    )
-    customer_name: String(max_length=100, required=True)
+--8<-- "guides/domain-definition/identity/005.py:aggregate"
 ```
 
 ```shell
 In [1]: Invoice(customer_name="Acme Corp").to_dict()
-Out[1]: {'invoice_number': 'INV-A3F2B9C81D4E', 'customer_name': 'Acme Corp'}
+Out[1]: {'invoice_number': 'INV-A3F2B9C81D4E', 'customer_name': 'Acme Corp', '_version': -1}
 ```
 
 Field-level settings take precedence over domain configuration, so this
@@ -193,12 +148,7 @@ identity (email addresses, SKUs, tax IDs, tenant-assigned tokens), declare the
 field by its own type and mark it `identifier=True`:
 
 ```python
-from protean.fields import String
-
-@domain.aggregate
-class User:
-    email: String(identifier=True, required=True, max_length=254)
-    name: String(required=True)
+--8<-- "guides/domain-definition/identity/006.py:aggregate"
 ```
 
 Nothing generates a value for that field. If you construct a `User` without an
@@ -210,7 +160,7 @@ In [1]: User(name="John Doe")
 ValidationError: {'email': ['is required']}
 
 In [2]: User(email="john@example.com", name="John Doe").to_dict()
-Out[2]: {'email': 'john@example.com', 'name': 'John Doe'}
+Out[2]: {'email': 'john@example.com', 'name': 'John Doe', '_version': -1}
 ```
 
 Do not use `Identifier(identifier=True)` for a natural key. That field behaves
@@ -232,10 +182,7 @@ itself. Set `increment=True` on the `Auto` field. The value is left unset at
 construction time and assigned on persistence:
 
 ```python
-@domain.aggregate
-class AuditEntry:
-    entry_id: Auto(identifier=True, increment=True, identity_type="integer")
-    message: String(max_length=500, required=True)
+--8<-- "guides/domain-definition/identity/007.py:aggregate"
 ```
 
 This only works when:

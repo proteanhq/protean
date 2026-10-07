@@ -33,7 +33,7 @@ class UserActivated:
     __version__ = 2
 
     user_id: Identifier(required=True)
-    activated_at: DateTime(required=True, default=lambda: datetime.now(UTC))
+    activated_at: DateTime(default=lambda: datetime.now(UTC))
 
 
 domain.init(traverse=False)
@@ -45,18 +45,37 @@ with domain.domain_context():
 
     """ Output:
     {
+        "user_id": "1",
         "_metadata": {
-            "id": "authentication::user-1-0.1",
-            "type": "Authentication.UserLoggedIn.v1",
-            "fqn": "__main__.UserLoggedIn",
-            "kind": "EVENT",
-            "stream": "authentication::user-1",
-            "origin_stream": null,
-            "timestamp": "2024-07-18 22:06:10.148226+00:00",
-            "version": "v1",
-            "sequence_id": "0.1"
-        },
-        "user_id": "1"
+            "headers": {
+                "id": "authentication::user-1-0.1",
+                "time": "2026-10-07T03:40:39.873068+00:00",
+                "type": "Authentication.UserLoggedIn.v1",
+                "stream": "authentication::user-1",
+                "traceparent": null,
+                "idempotency_key": null,
+                "deadline": null
+            },
+            "envelope": {
+                "specversion": "1.0",
+                "checksum": "cd9d7b681c5e44fab98ffa379db7c5ee5a143824dc235117339b54221ab2e2c8"
+            },
+            "domain": {
+                "fqn": "__main__.UserLoggedIn",
+                "kind": "EVENT",
+                "origin_stream": null,
+                "stream_category": "authentication::user",
+                "version": 1,
+                "sequence_id": "0.1",
+                "asynchronous": true,
+                "expected_version": null,
+                "priority": 0,
+                "correlation_id": null,
+                "causation_id": null
+            },
+            "event_store": null,
+            "extensions": {}
+        }
     }
     """
 
@@ -65,19 +84,38 @@ with domain.domain_context():
 
     """ Output:
     {
-        "_metadata": {
-            "id": "authentication::user-1-0.2",
-            "type": "Authentication.UserActivated.v2",
-            "fqn": "__main__.UserActivated",
-            "kind": "EVENT",
-            "stream": "authentication::user-1",
-            "origin_stream": null,
-            "timestamp": "2024-07-18 22:06:10.155603+00:00",
-            "version": "v2",
-            "sequence_id": "0.2"
-        },
         "user_id": "1",
-        "activated_at": "2024-07-18 22:06:10.155694+00:00"
+        "activated_at": "2026-10-07T03:40:39.873535+00:00",
+        "_metadata": {
+            "headers": {
+                "id": "authentication::user-1-0.2",
+                "time": "2026-10-07T03:40:39.873555+00:00",
+                "type": "Authentication.UserActivated.v2",
+                "stream": "authentication::user-1",
+                "traceparent": null,
+                "idempotency_key": null,
+                "deadline": null
+            },
+            "envelope": {
+                "specversion": "1.0",
+                "checksum": "3b7ed6cf91868701792caba1d9e948b0f3a5a47c74586b60f970cfeb32c8b12a"
+            },
+            "domain": {
+                "fqn": "__main__.UserActivated",
+                "kind": "EVENT",
+                "origin_stream": null,
+                "stream_category": "authentication::user",
+                "version": 2,
+                "sequence_id": "0.2",
+                "asynchronous": true,
+                "expected_version": null,
+                "priority": 0,
+                "correlation_id": null,
+                "causation_id": null
+            },
+            "event_store": null,
+            "extensions": {}
+        }
     }
     """
 # --8<-- [end:full]

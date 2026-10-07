@@ -20,15 +20,20 @@ Options are passed as parameters to the element decorator:
 ```ipython
 In [1]: User.meta_
 Out[1]:
-{'database_model': None,
- 'stream_category': 'user',
+{'stream_category': 'accounts::account',
+ 'abstract': False,
+ 'aggregate_cluster': User,
  'auto_add_id_field': True,
  'fact_events': False,
- 'abstract': False,
- 'schema_name': 'user',
- 'aggregate_cluster': User,
+ 'indexes': (),
  'is_event_sourced': False,
- 'provider': 'default'}
+ 'database_model': None,
+ 'provider': 'default',
+ 'schema_name': 'user',
+ 'limit': 100,
+ 'suppress_checks': (),
+ 'reserved': (),
+ 'deprecated': None}
 ```
 
 ### `abstract`
@@ -50,19 +55,19 @@ Returns `True` if the element encloses fields.
 
 ### `fields`
 
-Return a tuple of fields in the element, both explicitly defined and internally
-added.
+Return a dictionary of the fields in the element, keyed by field name, both
+explicitly defined and internally added.
 
 Raises `IncorrectUsageError` if called on non-container elements like
 Application Services or Command Handlers.
 
 ### `declared_fields`
 
-Return a tuple of the explicitly declared fields.
+Return a dictionary of the explicitly declared fields, keyed by field name.
 
 ### `data_fields`
 
-Return a tuple describing the data fields in this element. Does not include
+Return a dictionary of the data fields in this element, keyed by field name. Does not include
 metadata.
 
 Raises `IncorrectUsageError` if called on non-container elements like
@@ -74,7 +79,7 @@ Returns `True` if element contains associations.
 
 ### `association_fields`
 
-Return a tuple of the association fields.
+Return a dictionary of the association fields, keyed by field name.
 
 Raises `IncorrectUsageError` if called on non-container elements.
 
@@ -99,6 +104,7 @@ Raises `IncorrectUsageError` if called on non-container elements
 
 ### `unique_fields`
 
-Return fields marked as unique.
+Return a dictionary of the fields marked as unique, keyed by field name. The
+identity field is always unique.
 
 Raises `IncorrectUsageError` if called on non-container elements.

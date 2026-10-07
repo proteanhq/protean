@@ -89,22 +89,22 @@ in its properties.
 --8<-- "guides/compose-a-domain/023.py:full"
 ```
 
-```shell hl_lines="4 9 15"
-In [1]: from protean.utils.reflection import declared_fields, attributes
+```shell hl_lines="4 7 15"
+In [1]: from protean.utils.reflection import attributes, declared_fields, id_field
 
-In [2]: declared_fields(User)
-Out[2]: {'user_id': Auto(identifier=True), 'name': String(required=True)}
+In [2]: list(declared_fields(User))
+Out[2]: ['user_id', 'name']
 
-In [3]: attributes(User)
-Out[3]:
-{'_version': Integer(default=-1),
- 'user_id': Auto(identifier=True),
- 'name': String(required=True)}
+In [3]: id_field(User).field_name
+Out[3]: 'user_id'
 
-In [4]: user = User(name="John Doe")
+In [4]: list(attributes(User))
+Out[4]: ['user_id', 'name', '_version']
 
-In [5]: user.to_dict()
-Out[5]: {'user_id': '9cf4ddc4-2919-4021-bd1a-c8083b5fdda7', 'name': 'John Doe'}
+In [5]: user = User(name="John Doe")
+
+In [6]: user.to_dict()
+Out[6]: {'user_id': '9cf4ddc4-2919-4021-bd1a-c8083b5fdda7', 'name': 'John Doe', '_version': -1}
 ```
 
 ### Automatic Identity field
@@ -116,13 +116,14 @@ automatically added to the entity.
 --8<-- "guides/domain-definition/fields/simple-fields/001.py:full"
 ```
 
-```shell hl_lines="6"
-In [1]: from protean.utils.reflection import declared_fields
+```shell hl_lines="4 7"
+In [1]: from protean.utils.reflection import declared_fields, id_field
 
-In [2]: declared_fields(Person)
-Out[2]:
-{'name': String(required=True, max_length=50, min_length=2),
- 'id': Auto(identifier=True)}
+In [2]: list(declared_fields(Person))
+Out[2]: ['name', 'id']
+
+In [3]: id_field(Person).field_name
+Out[3]: 'id'
 ```
 
 ### No Composite keys
@@ -159,5 +160,8 @@ configuration of an `Auto` or `Identifier`:
 In [1]: user = User(name="John Doe")
 
 In [2]: user.to_dict()
-Out[2]: {'user_id': 1718139167980, 'name': 'John Doe'}
+Out[2]: {'user_id': '1718139167980', 'name': 'John Doe', '_version': -1}
 ```
+
+The function returns an integer, and the `Auto` field holds it as a string of
+digits.

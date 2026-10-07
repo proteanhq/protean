@@ -95,16 +95,7 @@ Protean's metaclass can process it, and the FieldSpec is never resolved.
 assignment style instead:
 
 ```python
-from __future__ import annotations
-
-@domain.aggregate
-class Product:
-    # Assignment style works correctly with deferred annotations
-    name = String(max_length=50, required=True)
-    price = Float(min_value=0)
-
-    # Raw Pydantic style also works
-    metadata: dict = {}
+--8<-- "guides/domain-definition/fields/defining-fields/005.py:full"
 ```
 
 Assignment style places the FieldSpec in the class namespace (not in

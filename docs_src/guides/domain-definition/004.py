@@ -3,21 +3,19 @@ from protean import Domain
 from protean.fields import String
 
 domain = Domain()
-domain.config["DATABASES"] = {
+domain.config["databases"] = {
     "default": {
-        "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
-        "DATABASE": "SQLITE",
-        "DATABASE_URI": "sqlite:///test.db",
+        "provider": "sqlite",
+        "database_uri": "sqlite:///test.db",
     },
-    "nosql": {
-        "PROVIDER": "protean.adapters.repository.elasticsearch.ESProvider",
-        "DATABASE": "ELASTICSEARCH",
-        "DATABASE_URI": {"hosts": ["localhost"]},
+    "archive": {
+        "provider": "sqlite",
+        "database_uri": "sqlite:///archive.db",
     },
 }
 
 
-@domain.aggregate(provider="nosql")
+@domain.aggregate(provider="archive")
 class User:
     name: String(max_length=30)
     email: String(required=True)

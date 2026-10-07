@@ -2,7 +2,7 @@
 from protean import Domain
 from protean.fields import Integer, String
 
-domain = Domain()
+domain = Domain(name="Accounts")
 
 
 @domain.aggregate(stream_category="account")
@@ -12,5 +12,4 @@ class User:
     age: Integer()
 
 
-domain.register(User)
 # --8<-- [end:full]

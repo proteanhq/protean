@@ -4,14 +4,7 @@ The `Domain` class is the central composition root of a Protean application.
 It manages element registration, configuration, and adapter lifecycle.
 
 ```python
-from protean import Domain
-
-domain = Domain(
-    root_path=None,
-    name=None,
-    config=None,
-    identity_function=None,
-)
+--8<-- "reference/domain-elements/domain-constructor/001.py:constructor"
 ```
 
 ## Parameters
@@ -34,15 +27,11 @@ Works under all execution contexts: standard scripts, Jupyter/IPython
 notebooks, REPL, and frozen/PyInstaller applications.
 
 ```python
-# Explicit root path
-domain = Domain(root_path="/path/to/domain")
+--8<-- "reference/domain-elements/domain-constructor/002.py:explicit"
 
-# Using environment variable
-# export DOMAIN_ROOT_PATH="/path/to/domain"
-domain = Domain()  # Will use DOMAIN_ROOT_PATH
+--8<-- "reference/domain-elements/domain-constructor/003.py:environment"
 
-# Auto-detection (uses the directory of the file where Domain is instantiated)
-domain = Domain()
+--8<-- "reference/domain-elements/domain-constructor/004.py:auto"
 ```
 
 ### `name`
@@ -53,11 +42,9 @@ The name of the domain, used in event type construction, logging, and
 stream naming.
 
 ```python
-# Explicit name
-domain = Domain(name="ecommerce")
+--8<-- "reference/domain-elements/domain-constructor/005.py:explicit"
 
-# Default name (uses module name)
-domain = Domain()  # If in module 'my_app', name will be 'my_app'
+--8<-- "reference/domain-elements/domain-constructor/006.py:default"
 ```
 
 ### `config`
@@ -71,6 +58,7 @@ If not provided, configuration is loaded from `.domain.toml`, `domain.toml`,
 or `pyproject.toml` files in the domain folder or its parent directories.
 
 ```python
+# fragment
 domain = Domain(config={
     "identity_strategy": "uuid",
     "databases": {
@@ -93,11 +81,5 @@ A custom function to generate identities for domain objects. Required when
 `identity_strategy` is set to `"function"` in configuration.
 
 ```python
-def generate_id():
-    return "custom-id-" + str(random.randint(1000, 9999))
-
-domain = Domain(
-    config={"identity_strategy": "function"},
-    identity_function=generate_id,
-)
+--8<-- "reference/domain-elements/domain-constructor/007.py:identity_function"
 ```

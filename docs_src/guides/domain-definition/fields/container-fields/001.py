@@ -8,7 +8,7 @@ domain = Domain()
 @domain.aggregate
 class User:
     email: String(max_length=255, required=True, unique=True)
-    roles: List()
+    roles: List(content_type=String)
 
 
 # --8<-- [end:full]

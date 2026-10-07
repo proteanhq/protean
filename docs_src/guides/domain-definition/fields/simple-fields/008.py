@@ -5,9 +5,8 @@ from protean.utils import IdentityType
 
 domain = Domain()
 
-# Customize Identity Strategy and Type and activate
-domain.config["IDENTITY_TYPE"] = IdentityType.INTEGER.value
-domain.domain_context().push()
+# Customize the identity type
+domain.config["identity_type"] = IdentityType.INTEGER.value
 
 
 @domain.aggregate

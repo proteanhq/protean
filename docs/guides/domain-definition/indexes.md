@@ -21,16 +21,7 @@ Pass a list of `Index` objects to the decorator. Each `Index` names the fields
 it covers:
 
 ```python
-from protean import Index
-
-
-@domain.aggregate(indexes=[
-    Index("email", unique=True),
-    Index("status"),
-])
-class Customer:
-    email = String(max_length=255, required=True)
-    status = String(max_length=32, default="active")
+--8<-- "guides/domain-definition/indexes/001.py:aggregate"
 ```
 
 `Index("email", unique=True)` enforces uniqueness; `Index("status")` is a
@@ -45,12 +36,7 @@ match how you filter and sort. Use `desc=` for the fields that are read in
 descending order:
 
 ```python
-@domain.aggregate(indexes=[
-    Index("status", "priority", desc=("priority",)),
-])
-class Job:
-    status = String(max_length=32)
-    priority = Integer(default=0)
+--8<-- "guides/domain-definition/indexes/002.py:aggregate"
 ```
 
 This backs a query that filters on `status` and returns the highest `priority`
@@ -65,14 +51,7 @@ query are a small slice of the table, this keeps the index tiny. Pass a
 [`Q`](../change-state/retrieve-aggregates.md) predicate as `where=`:
 
 ```python
-from protean import Index, Q
-
-
-@domain.aggregate(indexes=[
-    Index("status", where=Q(status__in=["pending", "failed"]), name="ix_active"),
-])
-class Task:
-    status = String(max_length=32)
+--8<-- "guides/domain-definition/indexes/003.py:aggregate"
 ```
 
 Only `pending` and `failed` rows are indexed, not the (usually far larger)
@@ -88,12 +67,7 @@ created instead, so your declaration stays portable.
 the index alone, without reading the row:
 
 ```python
-@domain.aggregate(indexes=[
-    Index("status", include=("priority",), name="ix_status_cover"),
-])
-class Job:
-    status = String(max_length=32)
-    priority = Integer()
+--8<-- "guides/domain-definition/indexes/004.py:aggregate"
 ```
 
 Covering columns are honored on PostgreSQL and SQL Server; elsewhere they are
@@ -106,10 +80,7 @@ dropped (with a warning).
 Entities accept the same `indexes=` option as aggregates:
 
 ```python
-@domain.entity(part_of=Order, indexes=[Index("sku", unique=True)])
-class LineItem:
-    sku = String(max_length=64)
-    quantity = Integer()
+--8<-- "guides/domain-definition/indexes/005.py:entity"
 ```
 
 ---
@@ -120,11 +91,7 @@ Projections are read-optimized query models, so they are often the most
 important place to declare indexes. They accept the same `indexes=` option:
 
 ```python
-@domain.projection(indexes=[Index("status"), Index("customer_id")])
-class OrderSummary:
-    id = Identifier(identifier=True)
-    status = String(max_length=32)
-    customer_id = String(max_length=64)
+--8<-- "guides/domain-definition/indexes/006.py:projection"
 ```
 
 Database-backed projections get the indexes at table creation. Cache-backed
@@ -136,17 +103,7 @@ projections (for example a Redis-backed projection) silently ignore them.
 for a shared convention or to keep a long decorator readable:
 
 ```python
-ACTIVE_TASKS = Index(
-    "status", "priority",
-    desc=("priority",),
-    where=Q(status__in=["pending", "failed"]),
-    name="ix_active",
-)
-
-
-@domain.aggregate(indexes=[ACTIVE_TASKS, Index("correlation_id")])
-class Task:
-    ...
+--8<-- "guides/domain-definition/indexes/007.py:aggregate"
 ```
 
 ---
@@ -158,14 +115,7 @@ expression index, a dialect-only option), drop down to raw DDL with
 `Index.from_sql`. It is emitted only when the configured dialect matches:
 
 ```python
-@domain.aggregate(indexes=[
-    Index.from_sql(
-        "postgresql",
-        "CREATE INDEX ix_doc_data_gin ON document USING gin (data jsonb_path_ops)",
-    ),
-])
-class Document:
-    data = Dict()
+--8<-- "guides/domain-definition/indexes/008.py:aggregate"
 ```
 
 Keep portable indexes (uniqueness, composite ordering) as `Index(...)` on the

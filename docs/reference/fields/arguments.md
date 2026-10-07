@@ -47,8 +47,8 @@ In [1]: from protean.utils.reflection import declared_fields
 
 In [2]: p = Person(email='john.doe@example.com', name='John Doe')
 
-In [3]: declared_fields(p)
-Out[3]: {'email': String(identifier=True), 'name': String(required=True)}
+In [3]: declared_fields(p)["email"].identifier
+Out[3]: True
 
 In [4]: p = Person(name='John Doe')
 ERROR: Error during initialization: {'email': ['is required']}
@@ -87,8 +87,9 @@ In [1]: post = Post(title='Foo')
 In [2]: post.to_dict()
 Out[2]:
 {'title': 'Foo',
- 'created_at': '2024-05-09 00:58:10.781744+00:00',
- 'id': '4f6b1fef-bc60-44c2-9ba6-6f844e0d31b0'}
+ 'created_at': '2024-05-09T00:58:10.781744+00:00',
+ 'id': '4f6b1fef-bc60-44c2-9ba6-6f844e0d31b0',
+ '_version': -1}
 ```
 
 ### Mutable object defaults
@@ -112,7 +113,8 @@ In [2]: adult.to_dict()
 Out[2]:
 {'name': 'John Doe',
  'topics': ['Music', 'Cinema', 'Politics'],
- 'id': '14381a6f-b62a-4135-a1d7-d50f68e2afba'}
+ 'id': '14381a6f-b62a-4135-a1d7-d50f68e2afba',
+ '_version': -1}
 ```
 
 ### Lambda expressions
@@ -127,7 +129,7 @@ You can use lambda expressions to specify an anonymous function:
 In [1]: dice = Dice()
 
 In [2]: dice.to_dict()
-Out[2]: {'sides': 6, 'id': '0536ade5-f3a4-4e94-8139-8024756659a7'}
+Out[2]: {'sides': 6, 'id': '0536ade5-f3a4-4e94-8139-8024756659a7', '_version': -1}
 
 In [3]: dice.throw()
 Out[3]: 3
@@ -184,12 +186,12 @@ Out[2]:
 {'name': 'Atlantis',
  'floors': 3,
  'status': 'WIP',
- 'id': 'c803c763-32d7-403f-b432-8835a258430e'}
+ 'id': 'c803c763-32d7-403f-b432-8835a258430e',
+ '_version': -1}
 
 In [3]: building.status = "COMPLETED"
-ERROR: Error during initialization: {'status': ["Value `'COMPLETED'` is not a valid choice. Must be among ['WIP', 'DONE']"]}
 ...
-ValidationError: {'status': ["Value `'COMPLETED'` is not a valid choice. Must be among ['WIP', 'DONE']"]}
+ValidationError: {'status': ["Input should be 'WIP' or 'DONE'"]}
 ```
 
 ## `referenced_as`
@@ -203,21 +205,14 @@ Defaults to the field's name.
 
 Protean will now persist the value under `fullname` instead of `name`.
 
-```shell hl_lines="6 13"
+```shell hl_lines="4 7"
 In [1]: from protean.utils.reflection import declared_fields, attributes
 
-In [2]: declared_fields(Person)
-Out[2]:
-{'email': String(),
- 'name': String(required=True, referenced_as='fullname'),
- 'id': Auto(identifier=True)}
+In [2]: list(declared_fields(Person))
+Out[2]: ['email', 'name', 'id']
 
-In [3]: attributes(Person)
-Out[3]:
-{'_version': Integer(default=-1),
- 'email': String(),
- 'fullname': String(required=True, referenced_as='fullname'),
- 'id': Auto(identifier=True)}
+In [3]: list(attributes(Person))
+Out[3]: ['email', 'fullname', 'id', '_version']
 ```
 
 ## `validators`
@@ -228,7 +223,7 @@ Validators are
 [callable `Class` instances](https://docs.python.org/3/reference/datamodel.html#class-instances)
 that are invoked whenever a field's value is changed. Protean's `String` field,
 for example, has two default validators: `MinLengthValidator` and
-`MaxLenghtValidator` classes associated with `min_length` and `max_length`
+`MaxLengthValidator` classes associated with `min_length` and `max_length`
 attributes.
 
 ```python hl_lines="9-16 21"
@@ -242,7 +237,7 @@ thrown with the custom error message.
 In [1]: e = Employee(email="john@mydomain.com")
 
 In [2]: e.to_dict()
-Out[2]: {'email': 'john@mydomain.com'}
+Out[2]: {'email': 'john@mydomain.com', '_version': -1}
 
 In [3]: e2 = Employee(email="john@otherdomain.com")
 ERROR: Error during initialization: {'email': ['Email does not belong to mydomain.com']}
@@ -266,9 +261,9 @@ Now the custom message will be available in `ValidationError`:
 
 ```shell hl_lines="4"
 In [1]: Building()
-ERROR: Error during initialization: {'doors': ['Every building needs doors.']}
+ERROR: Error during initialization: {'doors': ['Every building needs some!']}
 ...
-ValidationError: {'doors': ['Every building needs doors.']}
+ValidationError: {'doors': ['Every building needs some!']}
 ```
 
 ## `renamed_from`
@@ -278,11 +273,7 @@ rename lets a stored payload written under the old key deserialize into the
 renamed field without an upcaster.
 
 ```python
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id = Identifier(identifier=True)
-    customer_name = String(renamed_from="name")        # single old name
-    total = Float(renamed_from=["amount", "sum"])       # or a list of aliases
+--8<-- "guides/domain-definition/fields/options/012.py:renamed_from"
 ```
 
 A stored `OrderPlaced` payload carrying the old `name` key loads into

@@ -88,11 +88,7 @@ Value Objects can be embedded into Aggregates and Entities with the
     This can help avoid the problem of circular references.
 
     ```python
-    @domain.aggregate
-    class User:
-       email = ValueObject("Email")
-       name: String(max_length=30)
-       timezone: String(max_length=30)
+    --8<-- "guides/domain-definition/value-objects/001.py:aggregate"
     ```
 
 An email address can be supplied during user object creation, and the
@@ -197,17 +193,7 @@ Value objects can be composed of other value objects, forming richer domain
 concepts:
 
 ```python
-@domain.value_object
-class GeoLocation:
-    latitude: Float(required=True)
-    longitude: Float(required=True)
-
-@domain.value_object
-class Address:
-    street: String(max_length=200)
-    city: String(max_length=100)
-    zip_code: String(max_length=10)
-    location = ValueObject(GeoLocation)
+--8<-- "guides/domain-definition/value-objects/002.py:value_objects"
 ```
 
 When a value object is embedded in an aggregate, its fields are flattened
@@ -225,25 +211,7 @@ is not flattened further: it is stored whole in one column.
 Build a nested value object and pass it in:
 
 ```python
-@domain.aggregate
-class Store:
-    name: String(max_length=100)
-    address = ValueObject(Address)
-
-
-domain.init(traverse=False)
-
-with domain.domain_context():
-    store = Store(
-        name="Downtown",
-        address=Address(
-            street="123 Main St",
-            city="Springfield",
-            zip_code="62701",
-            location=GeoLocation(latitude=39.78, longitude=-89.65),
-        ),
-    )
-    assert store.address.location.latitude == 39.78
+--8<-- "guides/domain-definition/value-objects/002.py:nested"
 ```
 
 The aggregate also accepts the flattened names from the table, one level
@@ -251,15 +219,7 @@ deep. A nested value object is still passed as an object. Deeper names such
 as `address_location_latitude` are rejected with a `ValidationError`:
 
 ```python
-with domain.domain_context():
-    store = Store(
-        name="Downtown",
-        address_street="123 Main St",
-        address_city="Springfield",
-        address_zip_code="62701",
-        address_location=GeoLocation(latitude=39.78, longitude=-89.65),
-    )
-    assert store.address.city == "Springfield"
+--8<-- "guides/domain-definition/value-objects/002.py:flattened"
 ```
 
 ## Dict-Based Initialization
@@ -268,15 +228,7 @@ Value objects can be initialized from dictionaries, which is especially
 useful when receiving data from APIs or external sources:
 
 ```python
-from decimal import Decimal as D
-
-with domain.domain_context():
-    account = Account(
-        balance={"currency": "USD", "amount": D("100.00")},
-        name="Checking",
-    )
-    # Protean converts the dict to a Balance value object
-    assert account.balance == Balance(currency="USD", amount=D("100.00"))
+--8<-- "guides/domain-definition/value-objects/003.py:dict"
 ```
 
 This works for nested value objects too, any dict matching the value object's
@@ -323,15 +275,7 @@ Override the `defaults()` method when a value object attribute's default
 depends on other attribute values:
 
 ```python
-@domain.value_object
-class Duration:
-    start: DateTime(required=True)
-    end: DateTime(required=True)
-    total_seconds: Float()
-
-    def defaults(self):
-        if self.total_seconds is None and self.start and self.end:
-            self.total_seconds = (self.end - self.start).total_seconds()
+--8<-- "guides/domain-definition/value-objects/004.py:value_object"
 ```
 
 `defaults()` runs during initialization, after all field values have been
@@ -414,14 +358,7 @@ Instead, use `replace()` to create a new instance with selected fields
 changed, similar to `dataclasses.replace()`:
 
 ```python
-from decimal import Decimal as D
-
-balance = Balance(currency="USD", amount=D("100.00"))
-updated = balance.replace(amount=D("200.00"))
-
-assert updated.amount == D("200.00")
-assert updated.currency == "USD"  # unchanged fields are preserved
-assert balance.amount == D("100.00")  # original is not modified
+--8<-- "guides/domain-definition/value-objects/005.py:replace"
 ```
 
 `replace()` copies all current field values, overlays the provided keyword
@@ -433,38 +370,20 @@ USD amounts:
 ```python
 --8<-- "guides/domain-definition/012.py:full"
 
-balance = Balance(currency="USD", amount=D("100.00"))
-
-try:
-    balance.replace(amount=D("-100.00"))
-except ValidationError as exc:
-    print(exc.messages)  # {'balance': ['Balance cannot be negative for USD']}
+--8<-- "guides/domain-definition/value-objects/006.py:replace"
 ```
 
 Passing `field=None` explicitly sets the field to `None`. It does not keep the
 old value. Only omitted fields retain their original values:
 
 ```python
-@domain.value_object
-class Profile:
-    name: String(max_length=50, required=True)
-    nickname: String(max_length=50)
-
-profile = Profile(name="Alice", nickname="Ali")
-updated = profile.replace(nickname=None)
-
-assert updated.nickname is None  # explicitly set to None
+--8<-- "guides/domain-definition/value-objects/007.py:replace"
 ```
 
 Unknown field names raise `IncorrectUsageError`:
 
 ```python
-from protean.exceptions import IncorrectUsageError
-
-try:
-    balance.replace(nonexistent=42)
-except IncorrectUsageError as exc:
-    print(exc)  # Unknown field(s) for Balance: nonexistent
+--8<-- "guides/domain-definition/value-objects/006.py:unknown"
 ```
 
 `replace()` also works with nested value objects. Pass a new value object
@@ -477,12 +396,7 @@ they are hashable by default. This means you can use them as dictionary
 keys or in sets:
 
 ```python
-prices = {
-    Balance(currency="USD", amount=D("9.99")): "budget",
-    Balance(currency="USD", amount=D("99.99")): "premium",
-}
-
-unique_emails = {Email(address="a@b.com"), Email(address="c@d.com")}
+--8<-- "guides/domain-definition/value-objects/008.py:hash"
 ```
 
 ## Projecting Entities into Value Objects
@@ -493,23 +407,7 @@ Manually duplicating the fields is tedious and error-prone. Protean provides
 `value_object_from_entity()` to auto-generate the VO class:
 
 ```python
-from protean import value_object_from_entity
-from protean.fields import List, ValueObject
-
-@domain.aggregate
-class Order:
-    customer_id: Identifier(required=True)
-    items = HasMany("OrderItem")
-
-@domain.entity(part_of=Order)
-class OrderItem:
-    product_name: String(max_length=100)
-    quantity: Integer()
-    unit_price: Decimal(precision=19, scale=4)
-    internal_notes: String(max_length=500)
-
-# Auto-generate a VO mirroring OrderItem's fields
-OrderItemVO = value_object_from_entity(OrderItem)
+--8<-- "guides/domain-definition/value-objects/009.py:derive"
 ```
 
 The generated `OrderItemVO` has the same fields as `OrderItem`, with these
@@ -526,11 +424,7 @@ adjustments:
 You can customize the generated class name and exclude specific fields:
 
 ```python
-OrderItemVO = value_object_from_entity(
-    OrderItem,
-    name="OrderItemPayload",
-    exclude={"internal_notes"},
-)
+--8<-- "guides/domain-definition/value-objects/009.py:custom"
 ```
 
 ### Inline field descriptor
@@ -539,12 +433,7 @@ For inline use in commands and events, use the `ValueObjectFromEntity`
 field descriptor instead of calling the function separately:
 
 ```python
-from protean.fields import ValueObjectFromEntity
-
-@domain.command(part_of=Order)
-class PlaceOrder:
-    customer_id: Identifier(required=True)
-    items: List(content_type=ValueObjectFromEntity(OrderItem))
+--8<-- "guides/domain-definition/value-objects/009.py:command"
 ```
 
 This derives the VO class from the entity at class-body evaluation time, no
@@ -556,13 +445,7 @@ To convert a value object back into an entity instance (e.g., in a command
 handler), use the `from_value_object()` classmethod on the entity:
 
 ```python
-@domain.command_handler(part_of=Order)
-class PlaceOrderHandler:
-    @handle(PlaceOrder)
-    def handle_place_order(self, command: PlaceOrder):
-        items = [OrderItem.from_value_object(item) for item in command.items]
-        order = Order(customer_id=command.customer_id, items=items)
-        # ...
+--8<-- "guides/domain-definition/value-objects/009.py:handler"
 ```
 
 `from_value_object()` calls `vo.to_dict()`, strips `None` values for
