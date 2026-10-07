@@ -93,8 +93,8 @@ construction time:
 
 !!! note "List and dict defaults are copied for each instance"
     Protean turns `default=[]` and `default={}` into a fresh list or dict
-    for each instance. The copy is shallow, and other mutable objects such
-    as sets are not copied. A callable such as `default=list` gives the
+    for each instance. The copy is shallow, so objects nested inside the
+    default are still shared. A callable such as `default=list` gives the
     same result:
 
     ```python

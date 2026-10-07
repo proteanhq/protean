@@ -94,9 +94,8 @@ Out[2]:
 
 Protean copies a `list` or `dict` default for each instance, so
 `default=[]` and `default={}` are safe. The copy is shallow: objects nested
-inside the list or dict are still shared. Other mutable objects, such as a
-`set` or an entity instance, are not copied at all. For those, and for a
-non-empty default, wrap the default in a callable.
+inside the list or dict are still shared between instances. When the default
+holds mutable objects, wrap it in a callable that builds a new one each time.
 
 For example, to give a `List` field a default list of topics, use a function:
 
