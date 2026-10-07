@@ -59,9 +59,13 @@ def _pages() -> list[Path]:
 def _unlabelled_foreign_handlers(text: str) -> list[int]:
     """Line numbers of code blocks that show the foreign handler unlabelled."""
     lines = []
+    previous_end = 0
     for block in FENCE.finditer(text):
         code = block.group(2)
-        before = text[max(0, block.start() - LABEL_WINDOW) : block.start()]
+        # The label must sit between this block and the one before it.
+        start = max(previous_end, block.start() - LABEL_WINDOW)
+        before = text[start : block.start()]
+        previous_end = block.end()
         if CODE in code or CODE in before:
             continue
         handlers = list(EVENT_HANDLER.finditer(code))
@@ -123,6 +127,23 @@ def test_the_scan_accepts_a_labelled_anti_pattern_and_an_any_handler() -> None:
         "```\n"
     )
     assert _unlabelled_foreign_handlers(page) == []
+
+
+def test_a_label_does_not_carry_over_to_the_next_block() -> None:
+    page = (
+        f"Wrong: `check` reports this as `{CODE}`.\n\n"
+        "```python\n"
+        "@domain.event_handler(part_of=Inventory, stream_category='order')\n"
+        "class OrderEventsHandler: ...\n"
+        "```\n\n"
+        "```python\n"
+        "@domain.event_handler(part_of=Billing, stream_category='order')\n"
+        "class OrderBilling:\n"
+        "    @handle(OrderPlaced)\n"
+        "    def on_placed(self, event): ...\n"
+        "```\n"
+    )
+    assert _unlabelled_foreign_handlers(page) == [8]
 
 
 def test_the_scan_finds_a_foreign_event_beside_an_any_handler() -> None:
