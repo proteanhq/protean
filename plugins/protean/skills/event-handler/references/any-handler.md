@@ -64,11 +64,11 @@ class MyHandler:
 
 ## Combining $any with Specific Handlers
 
-You can mix `$any` with specific handlers. Specific handlers take precedence:
+You can mix `$any` with specific handlers. Specific handlers take precedence. A handler that names a specific event belongs to the cluster that owns that event, here Task (a handler in another cluster that names `TaskCreated` is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`):
 
 ```python
-@domain.event_handler(part_of=AuditLog, stream_category=Task.meta_.stream_category)
-class TaskAuditor:
+@domain.event_handler(part_of=Task)
+class TaskActivityHandler:
     @handle(TaskCreated)
     def on_task_created(self, event: TaskCreated):
         # This handles TaskCreated events specifically

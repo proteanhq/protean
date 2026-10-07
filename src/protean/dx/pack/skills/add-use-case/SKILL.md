@@ -136,7 +136,7 @@ class OrderCommandHandler:
 
 ### Step 5: Add the event handler (optional)
 
-Event handlers react to events for side effects: notifications, cross-aggregate updates, logging.
+Event handlers react to events for side effects: notifications, cross-aggregate updates, logging. The handler sits in the cluster that owns the event, here `Order`. To change another aggregate, it issues a command, and that aggregate's command handler does the write.
 
 The handler below records a `Notification`, so define that aggregate first:
 
@@ -147,15 +147,19 @@ class Notification:
 ```
 
 ```python
-@domain.event_handler(part_of=Notification, stream_category=Order.meta_.stream_category)
+@domain.event_handler(part_of=Order)
 class OrderNotificationHandler:
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):
-        notification = Notification(
-            message=f"Order {event.order_id} placed for customer {event.customer_id}"
+        current_domain.process(
+            SendNotification(
+                notification_id=f"{event.order_id}:placed",
+                message=f"Order {event.order_id} placed for customer {event.customer_id}",
+            )
         )
-        domain.repository_for(Notification).add(notification)
 ```
+
+`SendNotification` is `part_of="Notification"`. Events are delivered at least once, so the command carries an id built from the event, and Notification's command handler adds the notification only when `repository.get(command.notification_id)` raises `ObjectNotFoundError`. A handler that is `part_of=Notification` and reacts to `OrderPlaced` is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`. For a flow with several causally dependent steps, use a [process manager](../process-manager/SKILL.md).
 
 ### Step 6: Process the command
 
@@ -308,7 +312,7 @@ def handle_place_order(self, command):
     domain.repository_for(Inventory).add(inventory)  # cross-aggregate write
 ```
 
-Instead: persist one aggregate and coordinate the other via an event handler (eventual consistency); for an atomic cross-aggregate rule use a domain service.
+Instead: persist one aggregate. An event handler in its cluster reacts to the event and issues a command, and the other aggregate's command handler does the write (eventual consistency). For an atomic cross-aggregate rule use a domain service.
 
 ### Authorization inside the aggregate
 
@@ -324,9 +328,9 @@ Instead: guard authorization in the handler (Layer 4); keep the aggregate focuse
 
 ## Complete examples
 
-- [Basic use case](assets/use_case_basic.py) — Command → Handler → Aggregate → Event (create pattern)
-- [Use case with update](assets/use_case_with_update.py) — Load, mutate, and persist (update pattern with event handler)
-- [Use case with guards](assets/use_case_with_guards.py) — Authorization guard + existence check in handler
+- [Basic use case](assets/use_case_basic.py): Command → Handler → Aggregate → Event (create pattern)
+- [Use case with update](assets/use_case_with_update.py): Load, mutate, and persist (update pattern with an event handler that issues a command to the audit log)
+- [Use case with guards](assets/use_case_with_guards.py): Authorization guard + existence check in handler
 
 ## Detailed references
 

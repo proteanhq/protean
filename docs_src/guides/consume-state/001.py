@@ -1,9 +1,10 @@
 # --8<-- [start:full]
-from protean import Domain, handle
-from protean.fields import Identifier, Integer, String
+from protean import Domain, current_domain, handle
+from protean.fields import Identifier, Integer, List, String
 
 domain = Domain()
 domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
 
 
 @domain.event(part_of="Order")
@@ -12,6 +13,13 @@ class OrderShipped:
     book_id: Identifier(required=True)
     quantity: Integer(required=True)
     total_amount: Integer(required=True)
+
+
+@domain.command(part_of="Inventory")
+class ReduceStock:
+    order_id: Identifier(required=True)
+    book_id: Identifier(required=True)
+    quantity: Integer(required=True)
 
 
 @domain.aggregate
@@ -38,20 +46,37 @@ class Order:
 class Inventory:
     book_id: Identifier(required=True)
     in_stock: Integer(required=True)
+    applied_order_ids: List(content_type=String)
 
-    def reduce_stock(self, quantity: int) -> None:
+    def reduce_stock(self, order_id: str, quantity: int) -> None:
         self.in_stock -= quantity
+        self.applied_order_ids = [*self.applied_order_ids, order_id]
 
 
 @domain.event_handler(part_of=Order)  # (2)
 class ManageInventory:
     @handle(OrderShipped)
     def reduce_stock_level(self, event: OrderShipped):
-        repo = domain.repository_for(Inventory)
-        inventory = repo.find_by(book_id=event.book_id)
+        current_domain.process(
+            ReduceStock(
+                order_id=event.order_id,
+                book_id=event.book_id,
+                quantity=event.quantity,
+            )
+        )
 
-        inventory.reduce_stock(event.quantity)  # (3)
 
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    @handle(ReduceStock)
+    def reduce_stock(self, command: ReduceStock):
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.find_by(book_id=command.book_id)
+
+        if command.order_id in inventory.applied_order_ids:  # (3)
+            return
+
+        inventory.reduce_stock(command.order_id, command.quantity)  # (4)
         repo.add(inventory)
 
 
@@ -73,4 +98,8 @@ with domain.domain_context():
     stock = domain.repository_for(Inventory).get(inventory.id)
     print(stock.to_dict())
     assert stock.in_stock == 90
+
+    # A repeated delivery of the same order leaves the stock alone
+    domain.process(ReduceStock(order_id=order.id, book_id="book-1", quantity=10))
+    assert domain.repository_for(Inventory).get(inventory.id).in_stock == 90
 # --8<-- [end:full]

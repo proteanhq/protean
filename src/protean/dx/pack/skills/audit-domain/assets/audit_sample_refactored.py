@@ -6,14 +6,34 @@ Changes from audit_sample_codebase.py:
 2. Moved business logic into aggregate methods (fixes logic leak)
 3. Added invariants for business rules (fixes scattered validation)
 4. Added domain events (fixes missing events)
-5. Used event handler for cross-aggregate sync (fixes transaction boundary violation)
+5. Order's own event handler reacts to OrderPlaced and sends a ReserveStock
+   command, and Inventory's command handler reserves the stock (fixes
+   transaction boundary violation)
 6. Used string references for part_of (fixes circular import risk)
+
+Events are delivered at least once, so ReserveStock carries the order id and
+Inventory records the order ids it has already reserved stock for. A repeat
+returns without changes.
 """
 
-from protean import Domain, handle, invariant
-from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
+from protean import Domain, current_domain, handle, invariant
+from protean.fields import (
+    Float,
+    HasMany,
+    Identifier,
+    Integer,
+    List,
+    String,
+    ValueObject,
+)
 
 domain = Domain()
+
+# Run the hop in-process: OrderPlaced reaches its handler when the unit of work
+# that saves the order commits, and ReserveStock reaches its handler as soon as
+# it is issued.
+domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
 
 
 # --- Value Object: extracted from primitive fields ---
@@ -95,19 +115,28 @@ class Order:
 
 @domain.aggregate
 class Inventory:
+    """Stock for one product.
+
+    `reserved_order_ids` records which orders have already reserved stock.
+    Reserving is an update, so the stock level alone cannot show whether a given
+    order was applied; this list can.
+    """
+
     product_id = String(required=True, identifier=True)
     quantity_available = Integer(default=0)
+    reserved_order_ids = List(content_type=String)
 
-    def reserve(self, quantity: int) -> None:
-        """Reserve stock for an order."""
+    def reserve(self, order_id: str, quantity: int) -> None:
+        """Reserve stock for one order and record that the order was applied."""
         if self.quantity_available < quantity:
             from protean.exceptions import ValidationError
 
             raise ValidationError({"quantity": ["Insufficient stock"]})
         self.quantity_available -= quantity
+        self.reserved_order_ids = [*self.reserved_order_ids, order_id]
 
 
-# --- Command ---
+# --- Commands ---
 
 
 @domain.command(part_of="Order")
@@ -118,7 +147,20 @@ class PlaceOrder:
     unit_price = Float(required=True)
 
 
-# --- Thin command handler ---
+@domain.command(part_of="Inventory")
+class ReserveStock:
+    """Reserve stock for one placed order.
+
+    `order_id` comes from the event, so a redelivered event reissues the same
+    command and the handler can tell it has already applied it.
+    """
+
+    order_id = Identifier(required=True)
+    product_id = String(required=True)
+    quantity = Integer(required=True)
+
+
+# --- Thin command handlers (one aggregate each) ---
 
 
 @domain.command_handler(part_of=Order)
@@ -132,24 +174,51 @@ class OrderCommandHandler:
             quantity=command.quantity,
             unit_price=price,
         )
-        domain.repository_for(Order).add(order)
+        current_domain.repository_for(Order).add(order)
 
 
-# --- Event handler for cross-aggregate sync (separate transaction) ---
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    @handle(ReserveStock)
+    def reserve_stock(self, command: ReserveStock) -> None:
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.get(command.product_id)
+        if command.order_id in inventory.reserved_order_ids:
+            # Already applied. A redelivered OrderPlaced reissues ReserveStock,
+            # and reserving again would take the stock down twice.
+            return
+        inventory.reserve(command.order_id, command.quantity)
+        repo.add(inventory)
 
 
-@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
+# --- Event handler in Order's cluster (hands off with a command) ---
+
+
+@domain.event_handler(part_of=Order)
 class OrderEventsHandler:
+    """React to Order's own OrderPlaced event and ask Inventory to reserve stock.
+
+    The handler sits in Order's cluster, because it reacts to Order's own event.
+    Inventory's command handler does the write.
+    """
+
     @handle(OrderPlaced)
     def reserve_inventory(self, event: OrderPlaced) -> None:
-        inventory = domain.repository_for(Inventory).get(event.product_id)
-        inventory.reserve(event.quantity)
-        domain.repository_for(Inventory).add(inventory)
+        current_domain.process(
+            ReserveStock(
+                order_id=event.order_id,
+                product_id=event.product_id,
+                quantity=event.quantity,
+            )
+        )
 
 
 if __name__ == "__main__":
     domain.init(traverse=False)
     with domain.domain_context():
+        domain.repository_for(Inventory).add(
+            Inventory(product_id="PROD-001", quantity_available=10)
+        )
         domain.process(
             PlaceOrder(
                 customer_id="CUST-001",
@@ -157,5 +226,4 @@ if __name__ == "__main__":
                 quantity=2,
                 unit_price=29.99,
             ),
-            asynchronous=False,
         )

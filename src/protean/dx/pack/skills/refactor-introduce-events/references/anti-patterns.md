@@ -10,43 +10,45 @@ Inventory ──StockReserved──> Order  # Creates infinite loop!
 Fix: Use a process manager if you need bidirectional coordination, or reconsider
 whether the second event is actually needed.
 
-## Event handler modifying the source aggregate
-
-```python
-# Bad: event handler reaches back into the source
-@domain.event_handler(part_of=Order, stream_category=Payment.meta_.stream_category)
-class PaymentEventsHandler:
-    @handle(PaymentProcessed)
-    def on_payment(self, event):
-        order = domain.repository_for(Order).get(event.order_id)
-        order.mark_paid()
-        domain.repository_for(Order).add(order)
-        # This is OK! part_of=Order means this handler owns Order
-```
-
-This is actually correct — `part_of=Order` means the handler operates on Order.
-The anti-pattern is when `part_of=Inventory` but the handler also modifies Order.
-
-## Forgetting stream_category
+## Event handler in the target aggregate's cluster
 
 ```python
 # fragment
-# Bad: won't receive Order events
-@domain.event_handler(part_of=Inventory)
-class OrderEventsHandler:
-    @handle(OrderPlaced)
-    def reserve(self, event):
-        ...  # Never called! No stream_category specified
-```
-
-```python
-# Good: subscribes to Order's stream
+# Bad: Inventory's cluster handles Order's event. `check` reports this as
+# EVENT_HANDLER_FOREIGN_EVENT.
 @domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
 class OrderEventsHandler:
     @handle(OrderPlaced)
     def reserve(self, event):
-        ...  # Called when OrderPlaced is raised
+        inventory = current_domain.repository_for(Inventory).get(event.product_id)
+        inventory.reserve(event.order_id, event.quantity)
+        current_domain.repository_for(Inventory).add(inventory)
 ```
+
+The handler reacts to an event that another cluster owns. Put the handler in the
+cluster that owns the event, and hand off to the target aggregate with a command:
+
+```python
+# fragment
+# Good: the handler sits in Order's cluster and issues a command to Inventory
+@domain.event_handler(part_of=Order)
+class InventoryReservation:
+    @handle(OrderPlaced)
+    def on_order_placed(self, event):
+        current_domain.process(
+            ReserveStock(
+                order_id=event.order_id,
+                product_id=event.product_id,
+                quantity=event.quantity,
+            )
+        )
+```
+
+`ReserveStock` is `part_of=Inventory`, and `Inventory`'s command handler does the
+write. Events are delivered at least once, so that command handler returns without
+changes when the order id is already in `Inventory.reserved_order_ids`. For a flow
+with several causally dependent steps, use a
+[process manager](../../process-manager/SKILL.md).
 
 ## Events as commands (imperative naming)
 

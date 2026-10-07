@@ -173,21 +173,16 @@ class Order:
 
 ## With event handlers and projectors
 
-Upcasting also applies to asynchronous event processing. Old events are upcast before reaching `@handle`. The handler below belongs to an `Analytics` aggregate and records revenue through a helper. A handler listens to its own aggregate's stream by default, so it names the `Order` stream to receive `OrderPlaced`:
+Upcasting also applies to asynchronous event processing. Old events are upcast before reaching `@handle`. The handler below belongs to the `Order` aggregate, whose stream carries `OrderPlaced`, and records revenue through a helper:
 
 ```python
-@domain.aggregate
-class Analytics:
-    total_revenue = Float(default=0.0)
-
-
 def record_revenue(amount, currency):
     print(f"Revenue: {amount} {currency}")
 ```
 
 ```python
-@domain.event_handler(part_of=Analytics, stream_category=Order.meta_.stream_category)
-class AnalyticsHandler:
+@domain.event_handler(part_of=Order)
+class OrderRevenueHandler:
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):
         # Always receives current schema, even for historical replays

@@ -130,17 +130,19 @@ def place_order(self, command):
     current_domain.repository_for(Inventory).add(inventory)
 ```
 
-The fix keeps each handler to one aggregate. Order's own event handler reacts to `OrderPlaced` and sends a command, and Inventory's command handler changes Inventory:
+The fix keeps each handler to one aggregate. Order's own event handler reacts to `OrderPlaced` and sends a command, and Inventory's command handler changes Inventory. Events are delivered at least once, so the command carries the order id and Inventory's handler returns without changes for an order it has already reserved stock for:
 
 ```python
 @domain.aggregate
 class Inventory:
     available = Integer(default=0)
     reserved = Integer(default=0)
+    reserved_order_ids = List(content_type=String)
 
-    def reserve(self, quantity):
+    def reserve(self, order_id, quantity):
         self.available -= quantity
         self.reserved += quantity
+        self.reserved_order_ids = [*self.reserved_order_ids, order_id]
 
 
 @domain.event(part_of="Order")
@@ -152,6 +154,7 @@ class OrderPlaced:
 
 @domain.command(part_of="Inventory")
 class ReserveStock:
+    order_id = Identifier(required=True)
     product_id = Identifier(required=True)
     quantity = Integer(required=True)
 
@@ -172,7 +175,11 @@ class OrderEventHandler:
     @handle(OrderPlaced)
     def reserve_inventory(self, event):
         current_domain.process(
-            ReserveStock(product_id=event.product_id, quantity=event.quantity)
+            ReserveStock(
+                order_id=event.order_id,
+                product_id=event.product_id,
+                quantity=event.quantity,
+            )
         )
 
 
@@ -182,7 +189,9 @@ class InventoryCommandHandler:
     def reserve_stock(self, command):
         repo = current_domain.repository_for(Inventory)
         inventory = repo.get(command.product_id)
-        inventory.reserve(command.quantity)
+        if command.order_id in inventory.reserved_order_ids:
+            return  # already reserved for this order
+        inventory.reserve(command.order_id, command.quantity)
         repo.add(inventory)
 ```
 

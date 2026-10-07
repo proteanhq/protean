@@ -65,23 +65,6 @@ EXEMPT_NAMES = frozenset({"saga_before_unclosed.py", "audit_sample_codebase.py"}
 # finding the asset has today. Fix the asset, then delete the entry.
 ALLOWLIST = frozenset(
     {
-        (
-            "add-event/assets/add_event_cross_aggregate.py",
-            "EVENT_HANDLER_FOREIGN_EVENT",
-        ),
-        (
-            "add-event/assets/add_event_multiple_events.py",
-            "EVENT_HANDLER_FOREIGN_EVENT",
-        ),
-        ("add-use-case/assets/use_case_with_update.py", "EVENT_HANDLER_FOREIGN_EVENT"),
-        (
-            "audit-domain/assets/audit_sample_refactored.py",
-            "EVENT_HANDLER_FOREIGN_EVENT",
-        ),
-        (
-            "coverage-analysis/assets/coverage_domain_with_gaps.py",
-            "EVENT_HANDLER_FOREIGN_EVENT",
-        ),
         ("domain-service/assets/domain_service_callable.py", IR_BUILD_FAILED),
         ("domain-service/assets/domain_service_class_methods.py", IR_BUILD_FAILED),
         (
@@ -89,38 +72,6 @@ ALLOWLIST = frozenset(
             IR_BUILD_FAILED,
         ),
         ("domain-service/assets/domain_service_with_invariants.py", IR_BUILD_FAILED),
-        (
-            "event-handler/assets/cross_sync_multi_event.py",
-            "EVENT_HANDLER_FOREIGN_EVENT",
-        ),
-        (
-            "event-handler/assets/cross_sync_order_inventory.py",
-            "EVENT_HANDLER_FOREIGN_EVENT",
-        ),
-        (
-            "event-handler/assets/cross_sync_payment_subscription.py",
-            "EVENT_HANDLER_FOREIGN_EVENT",
-        ),
-        (
-            "event-handler/assets/event_handler_cross_aggregate.py",
-            "EVENT_HANDLER_FOREIGN_EVENT",
-        ),
-        (
-            "event-handler/assets/event_handler_error_handling.py",
-            "EVENT_HANDLER_FOREIGN_EVENT",
-        ),
-        (
-            "event-handler/assets/event_handler_multiple_events.py",
-            "EVENT_HANDLER_FOREIGN_EVENT",
-        ),
-        (
-            "generate-test-scaffold/assets/scaffold_event_driven_flow.py",
-            "EVENT_HANDLER_FOREIGN_EVENT",
-        ),
-        (
-            "refactor-introduce-events/assets/introduce_events_ecommerce_after.py",
-            "EVENT_HANDLER_FOREIGN_EVENT",
-        ),
         (
             "repository/assets/repository_counting_and_nulls.py",
             "UNINDEXED_FILTER_PATH",
