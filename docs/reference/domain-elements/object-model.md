@@ -63,7 +63,9 @@ Application Services or Command Handlers.
 
 ### `declared_fields`
 
-Return a dictionary of the explicitly declared fields, keyed by field name.
+Return a dictionary of the declared fields, keyed by field name. This
+includes the identity field Protean adds automatically, but leaves out the
+internal `_version` and `_metadata` fields.
 
 ### `data_fields`
 
