@@ -572,12 +572,12 @@ class QuerySet:
 
     @property
     def has_next(self) -> bool:
-        """Return True if there are more values present"""
+        """Return True if more pages exist beyond the current one."""
         return self._data.has_next
 
     @property
     def has_prev(self) -> bool:
-        """Return True if there are previous values present"""
+        """Return True if this page has items and starts after the first item (offset > 0)."""
         return self._data.has_prev
 
     @property
@@ -640,7 +640,7 @@ class ResultSet:
 
     @property
     def has_prev(self) -> bool:
-        """Is ``True`` if the results are a subset of all results."""
+        """Is ``True`` if this page has items and starts after the first item (offset > 0)."""
         return bool(self.items) and self.offset > 0
 
     @property
