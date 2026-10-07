@@ -270,15 +270,9 @@ The [Identity](../domain-elements/identity.md) section covers identities in Prot
 
 ## Identifier
 
-An Identifier. The identity type is String type by default, but can be changed
-with `identity_type` configuration attribute for all entities, or can be set
-per entity with the `identity_type` parameter.
-
-**Optional Arguments**
-
-- **`identity_type`**: The type of the identifier field. If not provided, it
-will be picked from the domain configuration. Defaults to `STRING`. Raises
-`ValidationError` if the provided identity type is not supported.
+An Identifier. It always stores its value as a string. The `identity_type`
+configuration attribute does not change that, and `Identifier` takes no
+`identity_type` argument.
 
 ```python hl_lines="13"
 --8<-- "guides/domain-definition/fields/simple-fields/008.py:full"
@@ -288,7 +282,7 @@ will be picked from the domain configuration. Defaults to `STRING`. Raises
 In [1]: user = User(user_id=1, name="John Doe")
 
 In [2]: user.to_dict()
-Out[2]: {'user_id': 1, 'name': 'John Doe', 'subscribed': False}
+Out[2]: {'user_id': '1', 'name': 'John Doe', 'subscribed': False, '_version': -1}
 ```
 
 Refer to [Identity](../domain-elements/identity.md) section for more on identities

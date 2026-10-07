@@ -190,29 +190,23 @@ def test_identifier_user_id_is_the_identity():
     assert user.subscribed is False
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="Identifier always stores a string; the identity_type config does "
-    "not change the field's type.",
-)
-def test_integer_identity_type_keeps_user_id_an_integer():
+def test_identifier_stores_a_string_under_integer_identity_type():
     example = load_example("guides/domain-definition/fields/simple-fields/008.py")
     example.domain.init(traverse=False)
 
     with example.domain.domain_context():
         user = example.User(user_id=1, name="John Doe")
 
-    assert user.to_dict()["user_id"] == 1
+    assert user.to_dict() == {
+        "user_id": "1",
+        "name": "John Doe",
+        "subscribed": False,
+        "_version": -1,
+    }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=TypeError,
-    reason="Identifier takes no identity_type argument.",
-)
-def test_identifier_rejects_an_unsupported_identity_type():
-    with pytest.raises(ValidationError):
+def test_identifier_takes_no_identity_type_argument():
+    with pytest.raises(TypeError):
         Identifier(identity_type="foo")
 
 

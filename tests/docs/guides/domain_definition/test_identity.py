@@ -76,13 +76,7 @@ def test_domain_identity_function_gives_epoch_millisecond_ids():
     assert event.to_dict() == {"name": "launch", "id": event.id, "_version": -1}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="Protean does not check the identity function's return type "
-    "against identity_type.",
-)
-def test_a_string_identity_under_integer_identity_type_is_rejected():
+def test_the_identity_function_return_value_is_not_checked_against_identity_type():
     domain = Domain(
         name="Launches",
         config={"identity_strategy": "function", "identity_type": "integer"},
@@ -96,12 +90,9 @@ def test_a_string_identity_under_integer_identity_type_is_rejected():
     domain.init(traverse=False)
 
     with domain.domain_context():
-        try:
-            Event(name="launch")
-        except ValidationError:
-            return
+        event = Event(name="launch")
 
-    raise AssertionError("Event accepted a string id")
+    assert event.id == "abc"
 
 
 def test_invoice_number_is_a_prefixed_business_key():

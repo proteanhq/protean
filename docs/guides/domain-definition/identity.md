@@ -117,9 +117,9 @@ In [2]: event.to_dict()
 Out[2]: {'name': 'launch', 'id': 1718139167980, '_version': -1}
 ```
 
-The function's return type must match `identity_type`. Returning a
-string while `identity_type="integer"` raises `ValidationError` on
-construction.
+Protean does not check the function's return value against `identity_type`.
+Make the function return the type you configured: a function that returns a
+string while `identity_type="integer"` gives the aggregate a string `id`.
 
 ### Per aggregate
 
@@ -208,7 +208,6 @@ defer identity generation to the database.
 |---|---|
 | `NotSupportedError` | Two or more fields on the same aggregate are declared `identifier=True`. Protean doesn't support composite keys, use a value object for multi-attribute uniqueness. |
 | `ValidationError` | An identity field that generates nothing (for example `String(identifier=True, required=True)`) is left empty. The caller must supply a value. |
-| `ValidationError` | A custom `identity_function` returns a value that doesn't match `identity_type` (e.g. returns a string while `identity_type="integer"`). |
 | `ConfigurationError` | `identity_strategy="function"` is configured but no `identity_function` was passed to `Domain(...)` or `Auto(...)`. |
 | `ConfigurationError` | An unknown `identity_strategy` or `identity_type` value is set in configuration. |
 
