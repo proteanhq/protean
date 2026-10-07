@@ -245,22 +245,21 @@ ValidationError: {'email': ['Email does not belong to mydomain.com']}
 
 ## `error_messages`
 
-Custom error messages for different kinds of errors. If supplied, the default
-messages that the field will raise will be overridden. Default error message
-keys that apply to all field types are `required`, `invalid`, `unique`, and
-`invalid_choice`. Each field may have additional error message keys as
-detailed in their documentation.
+A dictionary of custom error messages, keyed by error kind such as `required`,
+`invalid`, `unique`, or `invalid_choice`. The field accepts the argument and
+records it, but the simple fields in `protean.fields` do not use it yet: a
+validation error still reports the default message.
 
 ```python hl_lines="9-11"
 --8<-- "guides/domain-definition/fields/options/011.py:full"
 ```
 
-Now the custom message will be available in `ValidationError`:
+Leaving `doors` out still raises the default message, not the custom one:
 
 ```shell hl_lines="3"
 In [1]: Building()
 ...
-ValidationError: {'doors': ['Every building needs some!']}
+ValidationError: {'doors': ['is required']}
 ```
 
 ## `renamed_from`

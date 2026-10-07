@@ -133,6 +133,12 @@ def test_via_stores_the_product_id_in_product_sku():
         repo.add(product)
         stored = repo.get(product.id)
 
+    assert list(attributes(example.Review)) == [
+        "content",
+        "product_sku",
+        "id",
+        "product_id",
+    ]
     assert len(stored.reviews) == 1
     assert stored.reviews[0].content == "Bright"
     assert stored.reviews[0].product_sku == product.id

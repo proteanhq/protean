@@ -178,10 +178,10 @@ The same name has to be specified on the `HasOne` or `HasMany` field with the `v
 
 ## Customizing Foreign Keys with `via`
 
-By default, association fields create foreign keys following the pattern `<aggregate_name>_id`. The `via` parameter allows you to specify a custom field name for the foreign key relationship:
+By default, association fields name the foreign key `<aggregate_name>_<identifier_name>`, such as `product_id` for a `Product` whose identifier is `id`. The `via` parameter allows you to specify a custom field name for the foreign key relationship:
 
 ```python hl_lines="4 10"
 --8<-- "guides/domain-definition/fields/association-fields/005.py:via"
 ```
 
-Use it when the foreign key has to match a column name in an existing schema. The value stored in the `via` field is still the parent's identifier, and Protean still adds the default `<aggregate_name>_id` field next to it.
+Use it when the foreign key has to match a column name in an existing schema. The value stored in the `via` field is still the parent's identifier, and Protean still adds the default `<aggregate_name>_<identifier_name>` field (`product_id` here) next to it.

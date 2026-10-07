@@ -141,20 +141,14 @@ def test_custom_validator_accepts_mydomain_and_rejects_other_domains():
     assert exc.value.messages == {"email": ["Email does not belong to mydomain.com"]}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="Protean ignores error_messages on a FieldSpec field and reports "
-    "'is required' instead of the custom message.",
-)
-def test_custom_required_message_replaces_the_default():
+def test_custom_required_message_is_not_used_yet():
     example = load_example("guides/domain-definition/fields/options/011.py")
     example.domain.init(traverse=False)
 
     with example.domain.domain_context(), pytest.raises(ValidationError) as exc:
         example.Building()
 
-    assert exc.value.messages == {"doors": ["Every building needs some!"]}
+    assert exc.value.messages == {"doors": ["is required"]}
 
 
 def _stored_order_placed(event_type: str, data: dict) -> dict:
