@@ -633,6 +633,25 @@ assert invoice.line_items == []
     )
 
 
+def test_failed_withdrawal_leaves_the_balance_unchanged():
+    _run_asset_check(
+        "aggregate/assets/aggregate_with_invariants.py",
+        """
+from decimal import Decimal
+
+account = Account(account_number="ACC-1", balance="100.00", overdraft_limit="50.00")
+try:
+    account.withdraw("200.00")
+except ValidationError:
+    pass
+else:
+    raise AssertionError("withdrawing past the overdraft limit must raise")
+
+assert account.balance == Decimal("100.00")
+""",
+    )
+
+
 def test_warehouse_ships_part_of_its_reserved_stock():
     _run_asset_check(
         "aggregate/assets/aggregate_with_invariants.py",

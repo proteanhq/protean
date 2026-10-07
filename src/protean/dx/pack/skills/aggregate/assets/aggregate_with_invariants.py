@@ -190,14 +190,12 @@ if __name__ == "__main__":
             account.withdraw("200.00")
         except ValidationError as e:
             print(f"Failed: {dict(e.messages)}")
-            # The account now holds the invalid balance. Discard it, don't persist it.
+            # The failed assignment was rolled back, so the balance is unchanged.
 
         print(
             f"Balance before failed withdrawal: ${balance_before_failed_withdrawal:.2f}"
         )
-        print(
-            f"Balance after failed withdrawal: ${account.balance:.2f} (invalid state!)"
-        )
+        print(f"Balance after failed withdrawal: ${account.balance:.2f}")
 
         print("\n=== Warehouse Example ===")
 
