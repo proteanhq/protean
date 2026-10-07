@@ -23,7 +23,8 @@ initializes the package's domains.
 A file that needs a running service or an optional package is listed in
 ``MARKERS`` with a pytest marker. Each marker group runs in its own child, under
 a test that carries the marker. A service marker with a ``--<service>`` option
-(``postgresql``) is skipped in the core lane and runs in the FULL leg. The
+(``postgresql``, ``redis``, ``elasticsearch``, ``mysql``, ``mssql``,
+``sqlite``) is skipped in the core lane and runs in the FULL leg. The
 ``fastapi`` marker has no such option, so its group runs in both.
 A file that shows an error on purpose is listed in ``EXPECTED_EXCEPTIONS``, and
 passes only if it raises that exception.
@@ -51,13 +52,29 @@ from tests.docs.support import (
     module_name_for,
     package_dirs,
 )
-from tests.shared import POSTGRES_URI
+from tests.shared import (
+    ELASTICSEARCH_URI,
+    MSSQL_URI,
+    MYSQL_URI,
+    POSTGRES_URI,
+    REDIS_URI,
+)
 
 pytestmark = pytest.mark.no_test_domain
 
 # Example path (relative to docs_src) -> the pytest marker of the service it needs.
 MARKERS: dict[str, str] = {
+    "adapters/broker/redis-pubsub/001.py": "redis",
+    "adapters/broker/redis/001.py": "redis",
+    "adapters/cache/redis/001.py": "redis",
+    "adapters/database/elasticsearch/001.py": "elasticsearch",
+    "adapters/database/mssql/001.py": "mssql",
+    "adapters/database/mssql/002.py": "mssql",
+    "adapters/database/mysql/001.py": "mysql",
+    "adapters/database/mysql/002.py": "mysql",
     "adapters/database/postgresql/001.py": "postgresql",
+    "adapters/database/postgresql/002.py": "postgresql",
+    "adapters/database/sqlite/001.py": "sqlite",
     "guides/getting-started/tutorial/ch10.py": "fastapi",
 }
 
@@ -65,7 +82,12 @@ MARKERS: dict[str, str] = {
 # examples default to the service's standard port; the test suite's Docker
 # services listen on other ports (see tests/shared.py).
 SERVICE_ENV: dict[str, dict[str, str]] = {
+    "elasticsearch": {"ELASTICSEARCH_HOST": ELASTICSEARCH_URI["hosts"][0]},
+    "mssql": {"MSSQL_URL": MSSQL_URI},
+    "mysql": {"MYSQL_URL": MYSQL_URI},
     "postgresql": {"DATABASE_URL": POSTGRES_URI},
+    # Database 7 keeps the examples' keys apart from the adapter tests' keys.
+    "redis": {"REDIS_URL": f"{REDIS_URI}/7"},
 }
 
 # Example path (relative to docs_src) -> the exception it raises on purpose.

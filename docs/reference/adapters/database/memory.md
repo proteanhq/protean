@@ -81,10 +81,10 @@ The Memory provider supports raw queries through JSON-string criteria that are
 evaluated against in-memory records:
 
 ```python
-results = domain.providers["default"].raw(
-    '{"age__gt": 21, "status": "active"}'
-)
+--8<-- "adapters/database/memory/001.py:full"
 ```
+
+`results` holds one record, Ada's. Tim is too young and Lin is inactive.
 
 The query string is parsed as JSON and interpreted as filter criteria using the
 same lookup syntax as the QuerySet API.

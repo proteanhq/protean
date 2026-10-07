@@ -164,14 +164,10 @@ what a primary key or a unique constraint needs. Protean raises
 `IncorrectUsageError` naming the field at schema-generation time:
 
 ```python
-@domain.aggregate
-class User:
-    email: String(max_length=255, unique=True)   # fine
-    bio: String(max_length=4000)                 # fine, not a key column
-    token: String(max_length=1000, unique=True)  # raises: past the key limit
+--8<-- "adapters/database/mysql/001.py:key_columns"
 ```
 
-A `String` field with no `max_length` becomes a `TEXT` column, because MySQL
+A `String` field with `max_length=None` becomes a `TEXT` column, because MySQL
 cannot create a `VARCHAR` without a length. `TEXT` cannot be a key column
 either without an index prefix length, so that combination raises the same
 error. A `ValueObjectList(..., pickled=True)` is stored as a BLOB, which has
@@ -182,10 +178,7 @@ and InnoDB measures the whole key, so a composite index is the sum of its string
 columns:
 
 ```python
-@domain.aggregate(indexes=[Index("tenant", "slug")])
-class Document:
-    tenant: String(max_length=500)   # 2000 bytes
-    slug: String(max_length=500)     # 2000 bytes, and 4000 together: raises
+--8<-- "adapters/database/mysql/001.py:composite_index"
 ```
 
 Each field fits on its own; together they overrun the key.
@@ -294,18 +287,8 @@ which gives you control over column types and constraints. The pattern is the
 same as for [PostgreSQL](./postgresql.md#sqlalchemy-model).
 
 ```python
-import sqlalchemy as sa
-from sqlalchemy.dialects import mysql
-
-@domain.aggregate
-class User:
-    name: String(max_length=100)
-    preferences: Dict()
-
-@domain.database_model(part_of=User)
-class UserModel:
-    name = sa.Column(mysql.VARCHAR(100))
-    preferences = sa.Column(mysql.JSON)
+# fragment
+--8<-- "adapters/database/mysql/002.py:full"
 ```
 
 !!!note

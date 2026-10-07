@@ -73,14 +73,13 @@ constraint. Protean catches this at schema-generation time and raises
 with its own message about a column being invalid as a key:
 
 ```python
-@domain.aggregate
-class User:
-    email: String(max_length=255, unique=True)  # length is required here
+--8<-- "adapters/database/mssql/002.py:key_columns"
 ```
 
-A `String` field without `max_length` is fine on MSSQL as an ordinary column.
-The length is only required when the column is a primary key, is `unique=True`,
-or takes part in a unique index.
+`String()` has a default `max_length` of 255, so it is a valid key column. The
+error comes from a column with no length, such as `max_length=None`. A column
+with no length is fine on MSSQL as an ordinary column. Protean raises only when
+that column is a primary key or is `unique=True`.
 
 ## SQLAlchemy model
 
@@ -89,18 +88,8 @@ which gives you control over column types and constraints. The pattern is the
 same as for [PostgreSQL](./postgresql.md#sqlalchemy-model).
 
 ```python
-import sqlalchemy as sa
-from sqlalchemy.dialects import mssql
-
-@domain.aggregate
-class User:
-    name: String(max_length=100)
-    email: String(max_length=255)
-
-@domain.database_model(part_of=User)
-class UserModel:
-    name = sa.Column(mssql.NVARCHAR(100))
-    email = sa.Column(mssql.NVARCHAR(255), unique=True)
+# fragment
+--8<-- "adapters/database/mssql/001.py:full"
 ```
 
 !!!note

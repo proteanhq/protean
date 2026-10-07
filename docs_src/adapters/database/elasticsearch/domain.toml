@@ -1,0 +1,9 @@
+[databases.default]
+provider = "memory"
+
+[databases.search]
+provider = "elasticsearch"
+database_uri = { hosts = ["${ELASTICSEARCH_HOST|http://localhost:9200}"] }
+NAMESPACE_PREFIX = "${PROTEAN_ENV}"
+NAMESPACE_SEPARATOR = "-"
+SETTINGS = { number_of_shards = 3 }

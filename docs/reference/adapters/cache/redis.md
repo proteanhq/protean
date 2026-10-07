@@ -18,7 +18,7 @@ The Redis cache is designed for:
 pip install "protean[redis]"
 
 # Or install the Redis package separately
-pip install redis>=5.0.0
+pip install "redis>=8.0.0,<8.2.0"
 ```
 
 ## Configuration
@@ -77,27 +77,19 @@ redis://:password@redis.prod:6379  # With password
 ## Usage
 
 Projections are automatically stored in the cache when a projector writes to a
-cache-backed projection. You can also interact with the cache directly:
+cache-backed projection. You can also interact with the cache directly. This
+example needs a running Redis server:
 
 ```python
-# Get the cache instance
-cache = domain.caches["default"]
-
-# Check connectivity
-cache.ping()  # Returns True if Redis is reachable
-
-# Retrieve a cached projection
-entry = cache.get("order_summary:::ord-123")
-
-# Count cached entries
-count = cache.count("order_summary:::*")
-
-# Set a custom TTL on a specific key
-cache.set_ttl("order_summary:::ord-123", ttl=600)  # 10 minutes
-
-# Remove all entries
-cache.flush_all()
+# fragment
+--8<-- "adapters/cache/redis/001.py:setup"
+--8<-- "adapters/cache/redis/001.py:usage"
 ```
+
+`domain.cache_for(OrderSummary)` returns the cache that holds the projection.
+Each entry's key is the projection's name in snake case, then `:::`, then its
+identifier. `get_ttl` returns the seconds left as a float, so right after
+`set_ttl(..., ttl=600)` it returns a value just under or equal to `600.0`.
 
 ## Limitations
 

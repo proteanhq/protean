@@ -1,8 +1,9 @@
 # Elasticsearch
 
-The Elasticsearch provider uses
-[elasticsearch-dsl](https://elasticsearch-dsl-py.readthedocs.io/) for document
-store operations, making it suitable for search and analytics workloads.
+The Elasticsearch provider uses the
+[DSL module](https://elasticsearch-py.readthedocs.io/en/stable/dsl.html) that
+ships with the `elasticsearch` client (`elasticsearch.dsl`) for document store
+operations, making it suitable for search and analytics workloads.
 
 ## Overview
 
@@ -22,42 +23,45 @@ operations.
 ```bash
 pip install "protean[elasticsearch]"
 
-# Or install packages separately
-pip install elasticsearch elasticsearch-dsl
+# Or install the client separately
+pip install "elasticsearch>=8.18.0,<9.0.0"
 ```
 
 ## Configuration
 
 ```toml
-[databases.elasticsearch]
-provider = "elasticsearch"
-database_uri = "{'hosts': ['localhost']}"
-namespace_prefix = "${PROTEAN_ENV}"
-settings = "{'number_of_shards': 3}"
+--8<-- "adapters/database/elasticsearch/domain.toml"
 ```
+
+Aggregates declared with `provider="search"` are stored in Elasticsearch.
+`${ELASTICSEARCH_HOST|...}` reads the host from the `ELASTICSEARCH_HOST`
+environment variable, and uses the value after `|` when it is not set.
+
+The provider reads `NAMESPACE_PREFIX`, `NAMESPACE_SEPARATOR` and `SETTINGS` in
+upper case only. In lower case they are ignored.
 
 ### Configuration Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `provider` | Required | Must be `"elasticsearch"` for Elasticsearch |
-| `database_uri` | Required | Elasticsearch connection info (hosts dict) |
-| `namespace_prefix` | `None` | Prefix for index names (e.g. `prod` → `prod-person`) |
-| `namespace_separator` | `"-"` | Character joining prefix and index name |
-| `settings` | `None` | Index settings passed as-is to Elasticsearch |
+| `database_uri` | Required | A table with a `hosts` list. Each host is a `scheme://host:port` URL, or `host:port` (the scheme is then `http`) |
+| `NAMESPACE_PREFIX` | `None` | Prefix for index names (e.g. `prod` → `prod_person`) |
+| `NAMESPACE_SEPARATOR` | `"_"` | Character joining prefix and index name |
+| `SETTINGS` | `None` | Index settings passed as-is to Elasticsearch |
 
 ### Namespace Prefixing
 
-Index names are derived from aggregate class names. When `namespace_prefix` is
+Index names are derived from aggregate class names. When `NAMESPACE_PREFIX` is
 set, it is prepended to every index name:
 
 | Prefix | Separator | Aggregate | Index Name |
 |--------|-----------|-----------|------------|
+| `prod` | `_` (default) | `Person` | `prod_person` |
 | `prod` | `-` | `Person` | `prod-person` |
-| `prod` | `_` | `Person` | `prod_person` |
 | (none) | —  | `Person` | `person` |
 
-Using `namespace_prefix = "${PROTEAN_ENV}"` lets you share a single
+Using `NAMESPACE_PREFIX = "${PROTEAN_ENV}"` lets you share a single
 Elasticsearch cluster across environments by giving each environment a distinct
 prefix.
 
@@ -93,7 +97,7 @@ honored by SQL providers); they are not applied by this adapter.
 
 Protean auto-generates an explicit Elasticsearch mapping for every
 aggregate. Each Protean field type is mapped to an appropriate
-`elasticsearch_dsl` field type:
+`elasticsearch.dsl` field type:
 
 | Protean Field | ES Mapping Type | Notes |
 |---|---|---|
@@ -114,41 +118,25 @@ Elasticsearch Model (see below).
 
 ## Custom Elasticsearch Model
 
-Supply a custom `@domain.model` when you need ES-specific field tuning
-(analyzers, multi-fields, normalizers, etc.) or custom `Index` settings.
-User-defined fields take precedence; unmapped attributes are filled in
-automatically from the aggregate.
+Supply a custom `@domain.database_model` when you need ES-specific field tuning
+(analyzers, multi-fields, normalizers, etc.). User-defined fields take
+precedence; unmapped attributes are filled in automatically from the aggregate.
+This example needs a running Elasticsearch server:
 
 ```python
-import elasticsearch_dsl
-
-@domain.aggregate
-class Article:
-    title: String()
-    body: String()
-    category: String()
-
-    class Meta:
-        schema_name = "articles"
-
-@domain.model(part_of=Article)
-class ArticleModel:
-    # Full-text search with .keyword subfield for exact match
-    title = elasticsearch_dsl.Text(
-        analyzer="standard",
-        fields={"keyword": elasticsearch_dsl.Keyword()}
-    )
-    # Full-text search only
-    body = elasticsearch_dsl.Text(analyzer="english")
-    # category is not listed — auto-mapped as Keyword from the aggregate
-
-    class Index:
-        settings = {"number_of_shards": 1}
+# fragment
+--8<-- "adapters/database/elasticsearch/001.py:full"
 ```
 
+The index is named `articles`, from the aggregate's `schema_name` option.
+`title` and `body` are mapped as `text`, and `category` as `keyword`.
+
 !!! note
-    When a custom model defines an `Index` inner class, its settings override
-    the global `settings` from the configuration file.
+    Index settings come from the `SETTINGS` configuration option. For a
+    custom model written as a plain class, as above, Protean builds the
+    model's `Index` inner class itself, so `settings` declared on that class
+    are not used. A custom model that already subclasses Protean's
+    `ElasticsearchModel` keeps its own `Index` class.
 
 !!! note
     When a custom model defines `Text`-type fields, lookups like `exact`,

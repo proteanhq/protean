@@ -20,8 +20,13 @@ All database adapters are built from five components that work together:
 **Extends**: `protean.port.provider.BaseProvider`
 
 The Provider is the central coordinator. It manages connections, sessions, and
-the database lifecycle. You implement 12 abstract methods plus a `capabilities`
-property.
+the database lifecycle. You implement the abstract methods and the `capabilities`
+property in this table.
+
+The provider class also sets a `__database__` attribute to the database's
+name. Protean reads it when it picks a custom repository or database model
+registered for one database (`database="..."`). Without it, getting a
+repository fails with an `AttributeError`.
 
 | Method | Purpose |
 |--------|---------|
@@ -75,6 +80,7 @@ into a flat dictionary. This helper handles value objects, shadow fields, and
 nested associations consistently across all adapters:
 
 ```python
+# fragment
 @classmethod
 def from_entity(cls, entity):
     item_dict = cls._entity_to_dict(entity)
@@ -94,6 +100,7 @@ outbox poll path relies on. Register them with the
 `@YourProvider.register_lookup` decorator:
 
 ```python
+# fragment
 @YourProvider.register_lookup
 class Exact(BaseLookup):
     lookup_name = "exact"
@@ -109,6 +116,7 @@ A `register()` function that registers the provider class with Protean's
 silently skipped if dependencies are not installed:
 
 ```python
+# fragment
 def register():
     """Register with Protean if dependencies are available."""
     try:
@@ -118,6 +126,22 @@ def register():
         registry.register("dynamodb", "my_package.provider.DynamoDBProvider")
     except ImportError:
         pass  # DynamoDB SDK not installed, skip registration
+```
+
+## Example: A Delegating Provider
+
+The provider below implements every abstract method by handing it to the
+in-memory `MemoryProvider`, and copies its lookups. Replace those calls with
+calls to your database client:
+
+```python
+--8<-- "adapters/database/custom-databases/delegating_provider/__init__.py:provider"
+```
+
+Once registered, the provider is configured by its name like any other:
+
+```python
+--8<-- "adapters/database/custom-databases/delegating_provider/__init__.py:usage"
 ```
 
 ## Example: DynamoDB Adapter
@@ -161,6 +185,7 @@ dynamodb = "protean_dynamodb:register"
 ### Registration Function
 
 ```python
+# fragment
 # src/protean_dynamodb/__init__.py
 """DynamoDB database adapter for Protean."""
 
@@ -181,6 +206,7 @@ def register():
 ### Provider Implementation
 
 ```python
+# fragment
 # src/protean_dynamodb/provider.py
 """DynamoDB provider implementation."""
 
@@ -209,6 +235,8 @@ class DynamoDBSession:
 
 class DynamoDBProvider(BaseProvider):
     """DynamoDB database provider for Protean."""
+
+    __database__ = "dynamodb"
 
     def __init__(self, name, domain, conn_info: dict):
         super().__init__(name, domain, conn_info)
@@ -374,6 +402,7 @@ Choose the `DatabaseCapabilities` flags that accurately represent what your
 adapter supports. Capabilities are orthogonal, combine them freely:
 
 ```python
+# fragment
 from protean.port.provider import DatabaseCapabilities
 
 @property
@@ -413,6 +442,7 @@ reference.
 For more control, use the conformance pytest plugin in your own test suite:
 
 ```python
+# fragment
 # tests/conftest.py
 pytest_plugins = ["protean.integrations.pytest.adapter_conformance"]
 ```

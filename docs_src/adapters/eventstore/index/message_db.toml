@@ -1,0 +1,3 @@
+[event_store]
+provider = "message_db"
+database_uri = "${MESSAGE_DB_URL|postgresql://message_store@localhost:5433/message_store}"

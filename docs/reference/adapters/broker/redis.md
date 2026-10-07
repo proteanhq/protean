@@ -21,7 +21,7 @@ The Redis broker requires the `redis` Python package:
 pip install "protean[redis]"
 
 # Or install Redis package separately
-pip install redis>=5.0.0
+pip install "redis>=8.0.0,<8.2.0"
 ```
 
 ## Configuration
@@ -30,7 +30,10 @@ pip install redis>=5.0.0
 [brokers.default]
 provider = "redis"
 URI = "redis://localhost:6379/0"
-IS_ASYNC = true  # Optional: Use async processing (default: false)
+
+# Optional connection pool settings
+max_connections = 10
+socket_timeout = 5
 ```
 
 ### Configuration Options
@@ -39,7 +42,13 @@ IS_ASYNC = true  # Optional: Use async processing (default: false)
 |--------|---------|-------------|
 | `provider` | Required | Must be `"redis"` for Redis Streams broker |
 | `URI` | Required | Redis connection string |
-| `IS_ASYNC` | `false` | Enable asynchronous message processing |
+| `max_connections` | Redis client default | Largest number of connections in the pool |
+| `socket_timeout` | `None` | Seconds to wait when reading from a connection |
+| `socket_connect_timeout` | `None` | Seconds to wait when connecting to Redis |
+| `retry_on_timeout` | `false` | Retry a command when it times out |
+
+The four pool settings are passed to the Redis client's connection pool as
+they are. Leave a setting out to use the Redis client's default.
 
 ### Connection String Format
 
@@ -52,6 +61,18 @@ redis://:password@redis.example.com:6379/1  # With password
 redis://username:password@redis.example.com:6379  # With username and password
 ```
 
+## Usage
+
+The broker maps each operation to a Redis Streams command. This example needs
+a running Redis server:
+
+```python
+# fragment
+--8<-- "adapters/broker/redis/001.py:full"
+```
+
+`ack` returns `True`, and the next `get_next` for the group returns `None`.
+
 ## Capabilities
 
 The Redis Stream broker provides the following capabilities:
@@ -59,6 +80,8 @@ The Redis Stream broker provides the following capabilities:
 - ✅ **ORDERED_MESSAGING** - Reliable messaging with ordering guarantees within streams
 - ✅ **BLOCKING_READ** - Efficient blocking reads for new messages
 - ✅ **DEAD_LETTER_QUEUE** - Failed messages routed to DLQ streams for inspection and replay
+- ✅ **STREAM_PARTITIONING** - Partition-per-key streams for
+  [`sequential_by`](../../server/sequential-by.md)
 
 This includes:
 
@@ -80,10 +103,6 @@ This includes:
   behind). Both are approximate (Redis's `~`), trimming a node at a time. See
   [Stream retention](../../server/subscription-types.md#stream-retention) for the
   full caveats.
-
-Not supported:
-
-- ❌ **Stream partitioning** - Not a native feature
 
 ## Monitoring and Debugging
 
@@ -113,28 +132,9 @@ redis-cli MONITOR
 
 ### Logging
 
-Enable detailed logging for troubleshooting:
-
-```python
-import logging
-
-# Enable Redis broker logging
-logging.getLogger('protean.adapters.broker.redis').setLevel(logging.DEBUG)
-logging.getLogger('redis').setLevel(logging.DEBUG)
-
-# Custom instrumentation
-class InstrumentedRedisBroker(RedisBroker):
-    def _publish(self, stream: str, message: dict) -> str:
-        start = time.time()
-        try:
-            result = super()._publish(stream, message)
-            duration = time.time() - start
-            metrics.histogram('broker.publish.duration', duration, tags={'stream': stream})
-            return result
-        except Exception as e:
-            metrics.increment('broker.publish.error', tags={'stream': stream, 'error': str(e)})
-            raise
-```
+The broker logs through the `protean.adapters.broker.redis` logger, and the
+Redis client logs through the `redis` logger. Set either to `DEBUG` with the
+standard `logging` module when you troubleshoot.
 
 ## Related pages
 

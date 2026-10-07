@@ -29,13 +29,7 @@ exist, and a way to **own** one safely while other workers are running.
 A broker opts in by advertising the capability:
 
 ```python
-from protean.port.broker import BaseBroker, BrokerCapabilities
-
-
-class MyBroker(BaseBroker):
-    @property
-    def capabilities(self) -> BrokerCapabilities:
-        return BrokerCapabilities.ORDERED_MESSAGING | BrokerCapabilities.STREAM_PARTITIONING
+--8<-- "adapters/broker/partitioning/001.py:declare"
 ```
 
 Without `STREAM_PARTITIONING`, `sequential_by` is a **no-op**: the publisher does
@@ -96,7 +90,7 @@ partition and let the next cycle re-acquire.
 ### `LeaseLostError`
 
 ```python
-from protean.port.broker import LeaseLostError
+--8<-- "adapters/broker/partitioning/001.py:lease_lost"
 ```
 
 Raised when a fenced operation is refused because the caller no longer owns the
