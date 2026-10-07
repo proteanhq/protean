@@ -259,7 +259,14 @@ class TestCleanupStaleConsumersErrors:
             removed = redis_broker._cleanup_stale_consumers(stream, group, current)
 
         assert removed == 0
-        assert f"Failed to remove stale consumer {stale}: NOGROUP gone" in caplog.text
+        records = [
+            r
+            for r in caplog.records
+            if r.getMessage()
+            == f"Failed to remove stale consumer {stale}: NOGROUP gone"
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
 
     def test_redis_error_listing_consumers_is_logged(
         self, redis_broker, monkeypatch, caplog
@@ -277,10 +284,17 @@ class TestCleanupStaleConsumersErrors:
             )
 
         assert removed == 0
-        assert (
-            "Error cleaning stale consumers for ListErrorGroup on "
-            "test::cleanup-list-error: Connection lost"
-        ) in caplog.text
+        records = [
+            r
+            for r in caplog.records
+            if r.getMessage()
+            == (
+                "Error cleaning stale consumers for ListErrorGroup on "
+                "test::cleanup-list-error: Connection lost"
+            )
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
 
     def test_other_errors_reach_the_caller(self, redis_broker, monkeypatch):
         def broken_xinfo_consumers(*args, **kwargs):

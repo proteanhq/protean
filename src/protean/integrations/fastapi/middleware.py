@@ -332,6 +332,14 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
                 app_context=app_context,
                 config=http_config,
             )
+        elif error_info is not None:
+            # No wide event records the error, so log it here.
+            logging.getLogger(__name__).error(
+                "Unhandled error in %s %s",
+                request.method,
+                request.url.path,
+                exc_info=(type(error_info), error_info, error_info.__traceback__),
+            )
 
         return response
 
@@ -344,14 +352,14 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
 
         Returns a ``(response, status_code, error)`` tuple. When the
         downstream raises, ``response`` is ``None``, ``status_code`` is
-        ``500``, and ``error`` carries the exception for later re-raising
-        after the wide event has been emitted. ``Exception`` is caught (not
+        ``500``, and ``error`` carries the exception so the caller can log
+        it. The caller answers with a plain 500 response. ``Exception`` is caught (not
         ``BaseException``) so ``SystemExit`` and ``KeyboardInterrupt`` still
         propagate immediately as intended.
         """
         try:
             response = await call_next(request)
-        except Exception as exc:  # noqa: BLE001 - re-raised after the wide event
+        except Exception as exc:
             return None, 500, exc
         return response, response.status_code, None
 

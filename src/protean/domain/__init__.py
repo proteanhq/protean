@@ -327,7 +327,8 @@ class Domain:
         # Regular Python script
         try:
             return str(Path(filename).resolve().parent)
-        # A symlink loop raises RuntimeError before Python 3.13 and OSError after.
+        # A symlink loop raises RuntimeError before Python 3.13. A working
+        # directory that no longer exists raises OSError.
         except (TypeError, ValueError, OSError, RuntimeError):
             # Fallback to CWD if unable to determine path
             return str(Path.cwd())
@@ -729,7 +730,7 @@ class Domain:
                 return
 
             self.configure_logging()
-        except Exception as exc:  # noqa: BLE001 - logging setup must never break Domain.init()
+        except Exception as exc:
             # Degrade gracefully — never let logging setup break Domain.init()
             print(
                 f"Warning: auto-configuration of logging failed: {exc}",

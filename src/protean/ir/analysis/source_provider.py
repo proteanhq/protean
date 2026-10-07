@@ -127,7 +127,7 @@ class SourceProvider:
         # ``find_spec`` may import a not-yet-loaded parent package and re-run
         # its ``__init__``, which can raise anything. Skip the module and keep
         # the diagnostics pass going.
-        except Exception as exc:  # noqa: BLE001 - find_spec runs user package code
+        except Exception as exc:
             logger.debug("Cannot locate module %s: %r", module_name, exc)
             return None
 
@@ -147,9 +147,10 @@ class SourceProvider:
             # UTF-8 BOM and a PEP 263 coding declaration. Reading as UTF-8
             # text would fail on both.
             return ast.parse(Path(path).read_bytes(), filename=str(path))
-        # An unreadable file (OSError), invalid source (SyntaxError, and
-        # ValueError for a NUL byte or a bad encoding) and parser exhaustion on
-        # pathological input (RecursionError, MemoryError) all mean "no tree".
+        # An unreadable file (OSError), invalid source (SyntaxError, or the
+        # ValueError that older Python releases raised for a NUL byte) and
+        # parser exhaustion on pathological input (RecursionError,
+        # MemoryError) all mean "no tree".
         except (OSError, SyntaxError, ValueError, RecursionError, MemoryError):
             return None
 

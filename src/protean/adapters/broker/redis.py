@@ -1058,9 +1058,9 @@ class RedisBroker(BaseBroker):
                     removed += 1
                     logger.debug(f"Removed stale consumer {name} from {group_name}")
                 except redis.RedisError as e:
-                    logger.debug(f"Failed to remove stale consumer {name}: {e}")
+                    logger.warning(f"Failed to remove stale consumer {name}: {e}")
         except redis.RedisError as e:
-            logger.debug(
+            logger.warning(
                 f"Error cleaning stale consumers for {group_name} on {stream}: {e}"
             )
 
