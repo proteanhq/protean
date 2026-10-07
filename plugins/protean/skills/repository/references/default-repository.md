@@ -25,8 +25,28 @@ Key highlights:
 
 ### Accessing the Default Repository
 
+The examples on this page use this aggregate:
+
 ```python
-repo = domain.repository_for(Order)
+@domain.aggregate
+class Order:
+    order_id: Identifier(identifier=True)
+    customer_id: Identifier(required=True)
+    status: String(max_length=20, default="draft")
+    total_amount: Float(default=0.0)
+
+    def place(self, total_amount):
+        self.total_amount = total_amount
+        self.status = "placed"
+```
+
+Ask the domain for the repository, inside a domain context:
+
+```python
+domain.init(traverse=False)
+
+with domain.domain_context():
+    repo = domain.repository_for(Order)
 ```
 
 Protean resolves this by:
@@ -37,11 +57,14 @@ Protean resolves this by:
 ### The `add()` Method
 
 ```python
-order = Order(order_id="ORD-001", customer_id="CUST-123")
-repo.add(order)  # Creates the record
+with domain.domain_context():
+    repo = domain.repository_for(Order)
 
-order.place(total_amount=99.99)
-repo.add(order)  # Updates the record (same method)
+    order = Order(order_id="ORD-001", customer_id="CUST-123")
+    repo.add(order)  # Creates the record
+
+    order.place(total_amount=99.99)
+    repo.add(order)  # Updates the record (same method)
 ```
 
 The `add()` method:
@@ -54,7 +77,8 @@ The `add()` method:
 ### The `get()` Method
 
 ```python
-order = repo.get("ORD-001")
+with domain.domain_context():
+    order = domain.repository_for(Order).get("ORD-001")
 ```
 
 The `get()` method:

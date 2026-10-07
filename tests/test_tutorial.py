@@ -542,7 +542,10 @@ class TestTutorialCh13(_TutorialBase):
             service.confirm_order()
 
             assert order.status == "CONFIRMED"
-            assert inv.quantity == 8  # 10 - 2
+            # The service only confirms; Inventory reserves through the event
+            assert inv.quantity == 10
+            assert [type(e) for e in order._events] == [ch13.OrderConfirmed]
+            assert order._events[0].items == [{"book_title": "Dune", "quantity": 2}]
 
     def test_domain_service_rejects_insufficient_stock(self):
         """Ch13: OrderFulfillmentService rejects when stock is insufficient."""
@@ -594,8 +597,83 @@ class TestTutorialCh13(_TutorialBase):
             confirmed = order_repo.get(order.id)
             assert confirmed.status == "CONFIRMED"
 
+            # OrderConfirmed -> ReserveInventory -> InventoryCommandHandler
             updated_inv = inv_repo.get(inv.id)
             assert updated_inv.quantity == 7  # 10 - 3
+            assert updated_inv.reserved_order_ids == [order.id]
+
+    def test_confirm_order_handler_persists_only_the_order(self, monkeypatch):
+        """Ch13: the ConfirmOrder handler leaves Inventory to the event flow."""
+        domain = ch13.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch13.Inventory)
+            inv = ch13.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+            order_repo = domain.repository_for(ch13.Order)
+            order = ch13.Order(
+                customer_name="Alice",
+                items=[
+                    ch13.OrderItem(
+                        book_title="Dune",
+                        quantity=3,
+                        unit_price=ch13.Money(amount=15.99),
+                    )
+                ],
+            )
+            order_repo.add(order)
+
+            # With async event processing the OrderConfirmed reaction does not
+            # run here, so only what the command handler wrote is visible.
+            monkeypatch.setitem(domain.config, "event_processing", "async")
+            domain.process(ch13.ConfirmOrder(order_id=order.id))
+
+            assert order_repo.get(order.id).status == "CONFIRMED"
+            assert inv_repo.get(inv.id).quantity == 10
+
+    def test_redelivered_reservation_is_skipped(self):
+        """Ch13: a second ReserveInventory for the same order changes nothing."""
+        domain = ch13.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch13.Inventory)
+            inv = ch13.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+
+            command = ch13.ReserveInventory(
+                order_id="order-1", book_title="Dune", quantity=3
+            )
+            domain.process(command)
+            domain.process(command)
+
+            updated = inv_repo.get(inv.id)
+            assert updated.quantity == 7
+            assert updated.reserved_order_ids == ["order-1"]
+
+    def test_out_of_stock_command_leaves_both_unchanged(self):
+        """Ch13: the pre-invariant rejects the command before anything changes."""
+        domain = ch13.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch13.Inventory)
+            inv = ch13.Inventory(book_id="book-1", title="Dune", quantity=1)
+            inv_repo.add(inv)
+            order_repo = domain.repository_for(ch13.Order)
+            order = ch13.Order(
+                customer_name="Alice",
+                items=[
+                    ch13.OrderItem(
+                        book_title="Dune",
+                        quantity=5,
+                        unit_price=ch13.Money(amount=15.99),
+                    )
+                ],
+            )
+            order_repo.add(order)
+
+            with pytest.raises(ValidationError) as exc_info:
+                domain.process(ch13.ConfirmOrder(order_id=order.id))
+            assert "Insufficient stock" in str(exc_info.value.messages)
+
+            assert order_repo.get(order.id).status == "PENDING"
+            assert inv_repo.get(inv.id).quantity == 1
 
 
 @pytest.mark.no_test_domain

@@ -6,7 +6,7 @@ This example demonstrates:
 - Association with two aggregates via part_of
 - Pre invariant that applies to all public methods
 - Multiple aggregates mutated during the operation
-- Proper super().__init__() call with aggregate unpacking
+- super().__init__() storing the aggregates on the service
 
 Usage:
     service = OrderPlacementService(order, [inventory])
@@ -17,7 +17,6 @@ from datetime import UTC, datetime
 from enum import Enum
 
 from protean import Domain, invariant
-from protean.core.domain_service import BaseDomainService
 from protean.exceptions import ValidationError
 from protean.fields import (
     DateTime,
@@ -94,7 +93,7 @@ class Inventory:
         )
 
 
-@domain.domain_service(part_of=["Order", "Inventory"])
+@domain.domain_service(part_of=[Order, Inventory])
 class OrderPlacementService:
     """Domain service with instance methods for order placement.
 
@@ -104,10 +103,7 @@ class OrderPlacementService:
     """
 
     def __init__(self, order, inventories):
-        # Note: Use explicit base class call instead of super() because the
-        # @domain.domain_service decorator replaces the class via derive_element_class,
-        # which breaks super()'s __class__ cell reference.
-        BaseDomainService.__init__(self, *(order, inventories))
+        super().__init__(order, inventories)
 
         self.order = order
         self.inventories = inventories

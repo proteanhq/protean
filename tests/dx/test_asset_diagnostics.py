@@ -63,23 +63,7 @@ EXEMPT_NAMES = frozenset({"saga_before_unclosed.py", "audit_sample_codebase.py"}
 
 # (asset path relative to the skills root, diagnostic code). Each entry is a
 # finding the asset has today. Fix the asset, then delete the entry.
-ALLOWLIST = frozenset(
-    {
-        ("domain-service/assets/domain_service_callable.py", IR_BUILD_FAILED),
-        ("domain-service/assets/domain_service_class_methods.py", IR_BUILD_FAILED),
-        (
-            "domain-service/assets/domain_service_instance_methods.py",
-            IR_BUILD_FAILED,
-        ),
-        ("domain-service/assets/domain_service_with_invariants.py", IR_BUILD_FAILED),
-        (
-            "repository/assets/repository_counting_and_nulls.py",
-            "UNINDEXED_FILTER_PATH",
-        ),
-        ("repository/assets/repository_custom.py", "UNINDEXED_FILTER_PATH"),
-        ("repository/assets/repository_with_database.py", "UNINDEXED_FILTER_PATH"),
-    }
-)
+ALLOWLIST: frozenset[tuple[str, str]] = frozenset()
 
 
 def is_exempt(path: Path) -> bool:

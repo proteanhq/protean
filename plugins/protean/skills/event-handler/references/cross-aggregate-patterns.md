@@ -6,6 +6,94 @@ write. Events are delivered at least once, so each command carries a
 deterministic id taken from the event, and the command handler returns without
 changes when it has already done that work.
 
+The patterns use these elements, shortened from the skill's assets:
+
+```python
+# Pattern 1
+@domain.aggregate
+class Order:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+
+@domain.event(part_of=Order)
+class OrderShipped:
+    order_id: Identifier(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+
+@domain.aggregate
+class Inventory:
+    product_id: Identifier(required=True)
+    stock_level: Integer(required=True)
+    applied_order_ids: List(content_type=String)
+
+    def reduce_stock(self, order_id, quantity):
+        self.stock_level -= quantity
+        self.applied_order_ids = [*self.applied_order_ids, order_id]
+
+@domain.command(part_of=Inventory)
+class ReduceStock:
+    order_id: Identifier(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+
+# Pattern 2
+@domain.aggregate
+class Payment:
+    customer_id: Identifier(required=True)
+    plan_name: String(required=True)
+
+@domain.event(part_of=Payment)
+class PaymentConfirmed:
+    payment_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    plan_name: String(required=True)
+
+@domain.aggregate
+class Subscription:
+    customer_id: Identifier(required=True)
+    plan_name: String(required=True)
+    status: String(default="inactive")
+    applied_payment_ids: List(content_type=String)
+
+    def activate(self, payment_id, plan_name):
+        self.plan_name = plan_name
+        self.status = "active"
+        self.applied_payment_ids = [*self.applied_payment_ids, payment_id]
+
+@domain.command(part_of=Subscription)
+class ActivateSubscription:
+    payment_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    plan_name: String(required=True)
+
+# Pattern 3
+@domain.aggregate
+class Task:
+    title: String(required=True)
+    assignee_id: Identifier()
+
+@domain.event(part_of=Task)
+class TaskAssigned:
+    task_id: Identifier(required=True)
+    assignee_id: Identifier(required=True)
+
+@domain.aggregate
+class TeamMember:
+    member_id: Identifier(identifier=True)
+    assigned_count: Integer(default=0)
+    applied_change_ids: List(content_type=String)
+
+    def record_assignment(self, change_id):
+        self.assigned_count += 1
+        self.applied_change_ids = [*self.applied_change_ids, change_id]
+
+@domain.command(part_of=TeamMember)
+class RecordAssignment:
+    member_id: Identifier(required=True)
+    change_id: Identifier(required=True)
+```
+
 ## Pattern 1: State sync
 
 Source aggregate changes state → target aggregate updates its state.

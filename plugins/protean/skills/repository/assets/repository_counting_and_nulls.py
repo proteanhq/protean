@@ -11,6 +11,8 @@ This example demonstrates the QuerySet features for efficient reads:
 - the isnull lookup — filter on whether a field is set:
   filter(field__isnull=True)  -> field IS NULL
   filter(field__isnull=False) -> field IS NOT NULL
+- indexes on the fields the repository filters on (status, assignee), so
+  the queries do not scan the whole table
 
 Usage:
     repo = domain.repository_for(Ticket)
@@ -18,14 +20,14 @@ Usage:
     unassigned = repo.unassigned()
 """
 
-from protean import Domain
+from protean import Domain, Index
 from protean.fields import Identifier, String
 
 # Domain setup
 domain = Domain()
 
 
-@domain.aggregate
+@domain.aggregate(indexes=[Index("status"), Index("assignee")])
 class Ticket:
     """A support ticket. `assignee` is optional — unset means unassigned."""
 

@@ -1,7 +1,16 @@
 # --8<-- [start:full]
 from protean import Domain, handle, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
+from protean.fields import (
+    Dict,
+    Float,
+    HasMany,
+    Identifier,
+    Integer,
+    List,
+    String,
+    ValueObject,
+)
 from protean.utils.globals import current_domain
 
 domain = Domain("bookshelf")
@@ -20,8 +29,9 @@ class Inventory:
     book_id: Identifier(required=True)
     title: String(max_length=200, required=True)
     quantity: Integer(default=0)
+    reserved_order_ids = List(content_type=String)
 
-    def reserve(self, amount: int):
+    def reserve(self, order_id: str, amount: int):
         if self.quantity < amount:
             raise ValidationError(
                 {
@@ -31,6 +41,7 @@ class Inventory:
                 }
             )
         self.quantity -= amount
+        self.reserved_order_ids = [*self.reserved_order_ids, order_id]
 
 
 @domain.aggregate
@@ -41,6 +52,15 @@ class Order:
 
     def confirm(self):
         self.status = "CONFIRMED"
+        self.raise_(
+            OrderConfirmed(
+                order_id=self.id,
+                items=[
+                    {"book_title": item.book_title, "quantity": item.quantity}
+                    for item in self.items
+                ],
+            )
+        )
 
 
 @domain.entity(part_of=Order)
@@ -48,6 +68,12 @@ class OrderItem:
     book_title: String(max_length=200, required=True)
     quantity: Integer(required=True)
     unit_price = ValueObject(Money)
+
+
+@domain.event(part_of=Order)
+class OrderConfirmed:
+    order_id: Identifier(required=True)
+    items = List(content_type=Dict)
 
 
 # --8<-- [start:service]
@@ -84,13 +110,7 @@ class OrderFulfillmentService:
                 )
 
     def confirm_order(self):
-        """Reserve inventory and confirm the order."""
-        inventory_by_title = {inv.title: inv for inv in self.inventories}
-
-        for item in self.order.items:
-            inv = inventory_by_title[item.book_title]
-            inv.reserve(item.quantity)
-
+        """Confirm the order. The pre-invariant has already checked stock."""
         self.order.confirm()
         return self.order
 
@@ -101,6 +121,13 @@ class OrderFulfillmentService:
 @domain.command(part_of=Order)
 class ConfirmOrder:
     order_id: Identifier(required=True)
+
+
+@domain.command(part_of=Inventory)
+class ReserveInventory:
+    order_id: Identifier(required=True)
+    book_title: String(max_length=200, required=True)
+    quantity: Integer(required=True)
 
 
 # --8<-- [start:handler]
@@ -123,13 +150,41 @@ class OrderCommandHandler:
         service = OrderFulfillmentService(order, inventories)
         service.confirm_order()
 
-        # Persist changes
+        # Persist only the order. Inventory reserves through OrderConfirmed.
         repo.add(order)
-        for inv in inventories:
-            inv_repo.add(inv)
 
 
 # --8<-- [end:handler]
+
+
+# --8<-- [start:reservation]
+@domain.event_handler(part_of=Order)
+class OrderEventHandler:
+    @handle(OrderConfirmed)
+    def reserve_inventory(self, event: OrderConfirmed) -> None:
+        for item in event.items:
+            current_domain.process(
+                ReserveInventory(
+                    order_id=event.order_id,
+                    book_title=item["book_title"],
+                    quantity=item["quantity"],
+                )
+            )
+
+
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    @handle(ReserveInventory)
+    def reserve(self, command: ReserveInventory) -> None:
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.find_by(title=command.book_title)
+        if command.order_id in inventory.reserved_order_ids:
+            return  # already reserved; a redelivered event must not reserve twice
+        inventory.reserve(command.order_id, command.quantity)
+        repo.add(inventory)
+
+
+# --8<-- [end:reservation]
 
 
 domain.init(traverse=False)
@@ -141,37 +196,39 @@ domain.init(traverse=False)
 
 def test_confirm_order_with_stock():
     """Order is confirmed when inventory is sufficient."""
-    inv = Inventory(book_id="book-1", title="Dune", quantity=10)
-    order = Order(
-        customer_name="Alice",
-        items=[
-            OrderItem(book_title="Dune", quantity=2, unit_price=Money(amount=15.99))
-        ],
-    )
+    with domain.domain_context():
+        inv = Inventory(book_id="book-1", title="Dune", quantity=10)
+        order = Order(
+            customer_name="Alice",
+            items=[
+                OrderItem(book_title="Dune", quantity=2, unit_price=Money(amount=15.99))
+            ],
+        )
 
-    service = OrderFulfillmentService(order, [inv])
-    service.confirm_order()
+        service = OrderFulfillmentService(order, [inv])
+        service.confirm_order()
 
-    assert order.status == "CONFIRMED"
-    assert inv.quantity == 8  # 10 - 2
+        assert order.status == "CONFIRMED"
+        assert inv.quantity == 10  # the service checks stock; reserving comes later
 
 
 def test_confirm_order_out_of_stock():
     """Order fails when inventory is insufficient."""
-    inv = Inventory(book_id="book-1", title="Dune", quantity=1)
-    order = Order(
-        customer_name="Alice",
-        items=[
-            OrderItem(book_title="Dune", quantity=5, unit_price=Money(amount=15.99))
-        ],
-    )
+    with domain.domain_context():
+        inv = Inventory(book_id="book-1", title="Dune", quantity=1)
+        order = Order(
+            customer_name="Alice",
+            items=[
+                OrderItem(book_title="Dune", quantity=5, unit_price=Money(amount=15.99))
+            ],
+        )
 
-    try:
-        service = OrderFulfillmentService(order, [inv])
-        service.confirm_order()
-        raise AssertionError("Should have raised ValidationError")
-    except ValidationError as e:
-        assert "Insufficient stock" in str(e.messages)
+        try:
+            service = OrderFulfillmentService(order, [inv])
+            service.confirm_order()
+            raise AssertionError("Should have raised ValidationError")
+        except ValidationError as e:
+            assert "Insufficient stock" in str(e.messages)
 
 
 # --8<-- [end:tests]

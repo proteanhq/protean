@@ -25,6 +25,48 @@ Key highlights:
 
 ## Walkthrough
 
+The examples on this page use these elements, a shortened version of the asset:
+
+```python
+@domain.aggregate
+class Order:
+    book_id: Identifier(required=True)
+    quantity: Integer(required=True)
+    status: String(default="PENDING")
+
+@domain.event(part_of=Order)
+class OrderPlaced:
+    order_id: Identifier(required=True)
+
+@domain.event(part_of=Order)
+class OrderShipped:
+    order_id: Identifier(required=True)
+    book_id: Identifier(required=True)
+    quantity: Integer(required=True)
+
+@domain.aggregate
+class Inventory:
+    book_id: Identifier(required=True)
+    in_stock: Integer(required=True)
+    applied_order_ids: List(content_type=String)
+
+    def reduce_stock(self, order_id, quantity):
+        self.in_stock -= quantity
+        self.applied_order_ids = [*self.applied_order_ids, order_id]
+
+@domain.command(part_of=Inventory)
+class ReserveStock:
+    order_id: Identifier(required=True)
+
+@domain.aggregate
+class Notification:
+    order_id: Identifier(required=True)
+
+@domain.command(part_of=Notification)
+class SendConfirmation:
+    order_id: Identifier(required=True)
+```
+
 ### The Event Handler
 
 ```python
@@ -108,7 +150,7 @@ Unlike commands (one handler per command), multiple event handlers can react to 
 
 ```python
 @domain.event_handler(part_of=Order)
-class ManageInventory:
+class ReserveInventory:
     @handle(OrderPlaced)
     def reserve_stock(self, event):
         current_domain.process(ReserveStock(order_id=event.order_id))

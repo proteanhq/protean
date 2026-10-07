@@ -233,6 +233,53 @@ def _coverage_domain_with_gaps(ns: Namespace, domain: Domain) -> None:
     ]
 
 
+def _domain_service_flow_basic(ns: Namespace, domain: Domain) -> None:
+    repo = domain.repository_for(ns["Account"])
+    repo.add(ns["Account"](account_id="A-1", owner="Ann", balance=100.0))
+    repo.add(ns["Account"](account_id="B-1", owner="Bob", balance=0.0))
+    for transfer_id in ("T-1", "T-2"):
+        domain.process(
+            ns["TransferFunds"](
+                transfer_id=transfer_id, source_id="A-1", target_id="B-1", amount=30.0
+            )
+        )
+
+    assert (repo.get("A-1").balance, repo.get("B-1").balance) == (40.0, 60.0)
+
+
+def _domain_service_flow_in_handler(ns: Namespace, domain: Domain) -> None:
+    domain.repository_for(ns["Course"]).add(
+        ns["Course"](course_id="C-1", title="Algebra", capacity=30)
+    )
+    for student_id in ("S-1", "S-2"):
+        domain.repository_for(ns["Student"]).add(
+            ns["Student"](student_id=student_id, name=student_id)
+        )
+        domain.process(ns["EnrollStudent"](course_id="C-1", student_id=student_id))
+
+    assert domain.repository_for(ns["Course"]).get("C-1").enrolled_count == 2
+    students = _all(ns, domain, "Student")
+    assert [student.enrolled_course_id for student in students] == ["C-1", "C-1"]
+
+
+def _domain_service_flow_invariants(ns: Namespace, domain: Domain) -> None:
+    domain.repository_for(ns["Requester"]).add(
+        ns["Requester"](requester_id="P-1", name="Ann", authorization_level=2)
+    )
+    for room_id, reservation_id in (("R-1", "RES-1"), ("R-2", "RES-2")):
+        domain.repository_for(ns["Room"]).add(
+            ns["Room"](room_id=room_id, name=room_id, capacity=8)
+        )
+        domain.process(
+            ns["ReserveRoom"](
+                reservation_id=reservation_id, room_id=room_id, requester_id="P-1"
+            )
+        )
+
+    requester = domain.repository_for(ns["Requester"]).get("P-1")
+    assert requester.reservation_ids == ["RES-1", "RES-2"]
+
+
 SCENARIOS: dict[str, Callable[[Namespace, Domain], None]] = {
     "event-handler/assets/cross_sync_order_inventory.py": _cross_sync_order_inventory,
     "event-handler/assets/cross_sync_multi_event.py": _cross_sync_multi_event,
@@ -260,6 +307,15 @@ SCENARIOS: dict[str, Callable[[Namespace, Domain], None]] = {
     ),
     "coverage-analysis/assets/coverage_domain_with_gaps.py": (
         _coverage_domain_with_gaps
+    ),
+    "add-domain-service-flow/assets/domain_service_flow_basic.py": (
+        _domain_service_flow_basic
+    ),
+    "add-domain-service-flow/assets/domain_service_flow_in_handler.py": (
+        _domain_service_flow_in_handler
+    ),
+    "add-domain-service-flow/assets/domain_service_flow_invariants.py": (
+        _domain_service_flow_invariants
     ),
 }
 

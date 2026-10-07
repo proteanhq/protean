@@ -60,42 +60,7 @@ def discover_files(skills_root: Path) -> list[Path]:
 
 # Files with a block that fails today, relative to the skills root. Fix the
 # file, then delete its entry.
-ALLOWLIST: frozenset[str] = frozenset(
-    {
-        "add-domain-service-flow/SKILL.md",
-        "add-domain-service-flow/references/domain-service-patterns.md",
-        "application-service/SKILL.md",
-        "application-service/references/anti-patterns.md",
-        "application-service/references/error-handling.md",
-        "application-service/references/return-values.md",
-        "application-service/references/unit-of-work.md",
-        "application-service/references/use-case-decorator.md",
-        "command-handler/SKILL.md",
-        "command-handler/references/anti-patterns.md",
-        "command-handler/references/error-handling.md",
-        "command-handler/references/loading-aggregates.md",
-        "command-handler/references/return-values.md",
-        "command-handler/references/unit-of-work.md",
-        "domain-service/SKILL.md",
-        "domain-service/references/callable-class.md",
-        "domain-service/references/class-methods.md",
-        "domain-service/references/instance-methods.md",
-        "domain-service/references/invariants.md",
-        "event-handler/SKILL.md",
-        "event-handler/references/anti-patterns.md",
-        "event-handler/references/any-handler.md",
-        "event-handler/references/cross-aggregate-patterns.md",
-        "event-handler/references/cross-aggregate.md",
-        "event-handler/references/error-handling.md",
-        "message-enrichment/SKILL.md",
-        "repository/SKILL.md",
-        "repository/references/anti-patterns.md",
-        "repository/references/custom-queries.md",
-        "repository/references/database-specific.md",
-        "repository/references/default-repository.md",
-        "repository/references/unit-of-work.md",
-    }
-)
+ALLOWLIST: frozenset[str] = frozenset()
 
 
 def test_snippet_discovery_is_not_vacuous():

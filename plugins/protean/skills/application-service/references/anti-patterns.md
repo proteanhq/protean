@@ -2,6 +2,79 @@
 
 Common mistakes when implementing application services and how to avoid them.
 
+The examples on this page use these aggregates and services. Each "Correct" method below is one of these methods:
+
+```python
+from protean.exceptions import ValidationError
+from protean.fields import Float, Identifier, List, String
+
+@domain.aggregate
+class User:
+    email: String(required=True)
+    name: String()
+    status: String(default="INACTIVE")
+
+    def activate(self):
+        self.status = "ACTIVE"
+
+@domain.aggregate
+class Order:
+    customer_id: Identifier(required=True)
+    items: List(content_type=String)
+
+    @classmethod
+    def place(cls, customer_id, items):
+        if not items:
+            raise ValidationError({"items": ["Order must have items"]})
+        return cls(customer_id=customer_id, items=items)
+
+@domain.event(part_of="Account")
+class FundsDebited:
+    account_id: Identifier(required=True)
+    to_account_id: Identifier(required=True)
+    amount: Float(required=True)
+
+@domain.aggregate
+class Account:
+    balance: Float(default=0.0)
+
+    def debit(self, amount, to_account_id):
+        self.balance -= amount
+        self.raise_(
+            FundsDebited(account_id=self.id, to_account_id=to_account_id, amount=amount)
+        )
+
+@domain.application_service(part_of=User)
+class UserServices:
+    @use_case
+    def register_user(self, email, name):
+        user = User(email=email, name=name)
+        current_domain.repository_for(User).add(user)
+        return user.id
+
+    @use_case
+    def activate_user(self, user_id):
+        user = current_domain.repository_for(User).get(user_id)
+        user.activate()
+        current_domain.repository_for(User).add(user)
+
+@domain.application_service(part_of=Order)
+class OrderServices:
+    @use_case
+    def place_order(self, items, customer_id):
+        order = Order.place(customer_id=customer_id, items=items)
+        current_domain.repository_for(Order).add(order)
+        return order.id
+
+@domain.application_service(part_of=Account)
+class AccountServices:
+    @use_case
+    def transfer_funds(self, from_id, to_id, amount):
+        from_acct = current_domain.repository_for(Account).get(from_id)
+        from_acct.debit(amount, to_account_id=to_id)
+        current_domain.repository_for(Account).add(from_acct)
+```
+
 ## 1. Business Logic in the Service
 
 Application services should orchestrate, not decide. Business rules belong in aggregates or domain services.
@@ -22,6 +95,7 @@ def place_order(self, items, customer_id):
 ```
 
 ```python
+# fragment
 # Correct - delegate to aggregate
 @use_case
 def place_order(self, items, customer_id):
@@ -32,7 +106,7 @@ def place_order(self, items, customer_id):
 
 ## 2. Persisting Multiple Aggregates
 
-A use case method should persist only one aggregate root. Use domain events for cross-aggregate coordination.
+A use case method should persist only one aggregate root, and two instances of the same type count as two. The Unit of Work does not stop you: it can hold changes to several aggregates and commits them in one transaction. One aggregate per transaction is a design rule. Use domain events for cross-aggregate coordination.
 
 ```python
 # fragment
@@ -48,18 +122,20 @@ def transfer_funds(self, from_id, to_id, amount):
 ```
 
 ```python
+# fragment
 # Correct - persist one, use events for the other
 @use_case
 def transfer_funds(self, from_id, to_id, amount):
     from_acct = current_domain.repository_for(Account).get(from_id)
-    from_acct.debit(amount, to_account_id=to_id)
-    # Aggregate raises FundsDebited event, event handler credits to_acct
+    from_acct.debit(amount, to_account_id=to_id)  # raises FundsDebited
     current_domain.repository_for(Account).add(from_acct)
 ```
 
+An event handler in Account's cluster reacts to `FundsDebited` and issues a command (for example `CreditFunds`). That command's handler credits the other account and skips a transfer it has already applied, because an event can be delivered more than once. The `event-handler` skill's cross-aggregate reference shows the full pattern.
+
 ## 3. Manual UnitOfWork Wrapping
 
-The `@use_case` decorator already wraps the method in a UnitOfWork.
+The `@use_case` decorator already wraps the method in a UnitOfWork. A Unit of Work opened inside it joins the outer one, so the inner one adds nothing.
 
 ```python
 # fragment
@@ -73,6 +149,7 @@ def register_user(self, email, name):
 ```
 
 ```python
+# fragment
 # Correct - UoW is implicit
 @use_case
 def register_user(self, email, name):
@@ -92,9 +169,12 @@ result = domain.process(some_command, asynchronous=False)
 ```
 
 ```python
-# Correct - direct invocation
-svc = UserServices()
-user_id = svc.register_user(email="user@example.com", name="User")
+# Correct - direct invocation, inside a domain context
+domain.init(traverse=False)
+
+with domain.domain_context():
+    svc = UserServices()
+    user_id = svc.register_user(email="user@example.com", name="User")
 ```
 
 ## 5. Missing part_of Association
@@ -105,15 +185,15 @@ Every application service must declare which aggregate it operates on.
 # fragment
 # Wrong - will raise IncorrectUsageError
 @domain.application_service
-class UserServices:
+class ProfileServices:
     ...
 ```
 
 ```python
 # Correct
 @domain.application_service(part_of=User)
-class UserServices:
-    ...
+class ProfileServices:
+    pass
 ```
 
 ## 6. Multiple Use Cases in One Method
@@ -132,6 +212,7 @@ def register_and_activate(self, email, name):
 ```
 
 ```python
+# fragment
 # Correct - separate use case methods
 @use_case
 def register_user(self, email, name):
@@ -148,7 +229,7 @@ def activate_user(self, user_id):
 
 ## 7. Catching and Swallowing Exceptions
 
-Let exceptions propagate — the UoW handles rollback, and the caller handles the error.
+Let exceptions propagate. The UoW handles rollback, and the caller handles the error.
 
 ```python
 # fragment
@@ -164,6 +245,7 @@ def register_user(self, email, name):
 ```
 
 ```python
+# fragment
 # Correct - let exceptions propagate
 @use_case
 def register_user(self, email, name):

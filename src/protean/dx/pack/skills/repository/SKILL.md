@@ -19,17 +19,54 @@ Repositories are the **gateway between your domain model and the persistence lay
 
 ## Basic structure: Default repository (no code needed)
 
+The examples on this page use this aggregate and these commands. The custom
+repositories below filter on `status`, `customer_id` and `assignee`, so the
+aggregate declares an index led by each of them:
+
 ```python
-@domain.aggregate
+@domain.aggregate(
+    indexes=[Index("status"), Index("customer_id"), Index("assignee")]
+)
 class Order:
     order_id: Identifier(identifier=True)
-    status: String(default="draft")
+    customer_id: Identifier()
+    status: String(max_length=20, default="draft")
+    assignee: String(max_length=80)
+    items = HasMany("LineItem")
 
-# No repository class needed — Protean auto-generates one
-# Use it directly:
-repo = domain.repository_for(Order)
-repo.add(order)
-order = repo.get("ORD-001")
+    def place(self):
+        self.status = "placed"
+
+    def cancel(self):
+        self.status = "cancelled"
+
+
+@domain.entity(part_of=Order)
+class LineItem:
+    product_id: String(required=True, max_length=50)
+    quantity: Integer(default=1)
+
+
+@domain.command(part_of=Order)
+class PlaceOrder:
+    order_id: Identifier(identifier=True)
+    customer_id: Identifier(required=True)
+
+
+@domain.command(part_of=Order)
+class CancelOrder:
+    order_id: Identifier(identifier=True)
+```
+
+No repository class is needed. Protean generates one, and you use it directly:
+
+```python
+domain.init(traverse=False)
+
+with domain.domain_context():
+    repo = domain.repository_for(Order)
+    repo.add(Order(order_id="ORD-001", customer_id="CUST-1"))
+    order = repo.get("ORD-001")
 ```
 
 ## Basic structure: Custom repository
@@ -66,12 +103,18 @@ class OrderRepository:
 
 ## Quick example: Custom repository with queries
 
+Every field a query method filters on gets an index, and every indexed `String`
+gets a `max_length`. Without them, `check` reports `UNINDEXED_FILTER_PATH` and
+`UNBOUNDED_INDEXED_STRING`:
+
 ```python
-@domain.aggregate
+@domain.aggregate(
+    indexes=[Index("category"), Index("is_active"), Index("price")]
+)
 class Product:
     product_id: Identifier(identifier=True)
-    name: String(required=True)
-    category: String()
+    name: String(required=True, max_length=200)
+    category: String(max_length=50)
     price: Float()
     is_active: Boolean(default=True)
 
@@ -102,6 +145,7 @@ class OrderRepository:
 Filter on whether a field is set with the `isnull` lookup:
 
 ```python
+# fragment
 # Orders with no assignee (assignee IS NULL)
 self.query.filter(assignee__isnull=True).all().items
 # Orders that have an assignee (assignee IS NOT NULL)
@@ -112,6 +156,7 @@ When you need the page of items but not the total match count, pass
 `with_total=False` so the adapter can skip the separate count round-trip:
 
 ```python
+# fragment
 items = self.query.filter(status="open").all(with_total=False).items
 ```
 
@@ -140,6 +185,7 @@ class OrderCommandHandler:
 ### Writing a repository when the default suffices
 
 ```python
+# fragment
 # Unnecessary! Protean provides this automatically
 @domain.repository(part_of=Order)
 class OrderRepository:
@@ -161,13 +207,16 @@ class LineItemRepository:
 Instead: Persist at the aggregate level; child entities are synced automatically
 
 ```python
-order.add_items(LineItem(product_id="PROD-1", quantity=2))
-domain.repository_for(Order).add(order)  # LineItem is saved with the order
+with domain.domain_context():
+    order = domain.repository_for(Order).get("ORD-001")
+    order.add_items(LineItem(product_id="PROD-1", quantity=2))
+    domain.repository_for(Order).add(order)  # LineItem is saved with the order
 ```
 
 ### Forgetting part_of
 
 ```python
+# fragment
 @domain.repository  # Wrong! Missing part_of
 class OrderRepository:
     pass
@@ -184,14 +233,17 @@ class OrderRepository:
 ### Wrapping repository calls in manual UnitOfWork inside handlers
 
 ```python
+# fragment
 @handle(PlaceOrder)
 def handle_place_order(self, command):
     with UnitOfWork():  # Unnecessary! Handler has implicit UoW
-        order = Order(...)
+        order = Order(order_id=command.order_id, customer_id=command.customer_id)
         domain.repository_for(Order).add(order)
 ```
 
-Instead: Let the implicit UnitOfWork handle transactional behavior
+Instead: Let the handler's own Unit of Work do it. A Unit of Work started inside
+another one joins it, so the inner `with UnitOfWork()` opens no transaction of its
+own: its commit and rollback defer to the handler's.
 
 ## Detailed references
 

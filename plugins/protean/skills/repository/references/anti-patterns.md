@@ -2,11 +2,41 @@
 
 Common mistakes when working with Protean repositories and how to avoid them.
 
+The examples on this page use these aggregates and this command:
+
+```python
+@domain.aggregate
+class Order:
+    order_id: Identifier(identifier=True)
+    status: String(max_length=20, default="draft")
+    items = HasMany("LineItem")
+
+    def place(self):
+        self.status = "placed"
+
+
+@domain.aggregate
+class Inventory:
+    product_id: Identifier(identifier=True)
+    reserved: Integer(default=0)
+
+    def reserve(self, quantity):
+        self.reserved += quantity
+
+
+@domain.command(part_of=Order)
+class PlaceOrder:
+    order_id: Identifier(identifier=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(default=1)
+```
+
 ## 1. Creating a Repository for Child Entities
 
 **Wrong**: Creating a repository for an entity that's enclosed within an aggregate.
 
 ```python
+# fragment
 @domain.entity(part_of="Order")
 class LineItem:
     item_id: Identifier(identifier=True)
@@ -22,8 +52,18 @@ class LineItemRepository:
 **Instead**: Persist child entities through the aggregate's repository.
 
 ```python
-order.add_items(LineItem(product_id="PROD-1", quantity=2))
-domain.repository_for(Order).add(order)  # LineItem saved with the order
+@domain.entity(part_of=Order)
+class LineItem:
+    product_id: String(required=True, max_length=50)
+    quantity: Integer(default=1)
+
+
+domain.init(traverse=False)
+
+with domain.domain_context():
+    order = Order(order_id="ORD-001")
+    order.add_items(LineItem(product_id="PROD-1", quantity=2))
+    domain.repository_for(Order).add(order)  # LineItem saved with the order
 ```
 
 ## 2. Writing a Custom Repository Without Custom Methods
@@ -31,6 +71,7 @@ domain.repository_for(Order).add(order)  # LineItem saved with the order
 **Wrong**: Creating an empty custom repository when the default suffices.
 
 ```python
+# fragment
 @domain.repository(part_of=Order)
 class OrderRepository:
     pass  # No custom methods — why does this exist?
@@ -45,6 +86,7 @@ class OrderRepository:
 **Wrong**: Manually creating a UoW inside a command handler.
 
 ```python
+# fragment
 @handle(PlaceOrder)
 def handle_place_order(self, command):
     with UnitOfWork():  # Unnecessary! Handler already has implicit UoW
@@ -52,7 +94,7 @@ def handle_place_order(self, command):
         domain.repository_for(Order).add(order)
 ```
 
-**Why it's wrong**: Command handlers and event handlers are already wrapped in an implicit UoW. Adding a manual one creates nested transactions, which can lead to unexpected behavior.
+**Why it's wrong**: `@handle` already wraps every handler call in its own Unit of Work, which is one real database transaction. A Unit of Work started while another is active does not open a second transaction. It joins the outer one: there are no savepoints, so its commit does nothing, and only the handler's Unit of Work commits. A rollback inside it dooms the whole transaction. The manual block adds code that changes nothing and suggests a separate commit that never happens. See ADR-0027 ([The Unit of Work is a real database transaction](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/)) and ADR-0031 ([A handler method persists or calls out, never both](https://docs.proteanhq.com/adr/0031-handlers-persist-or-call-out/)).
 
 **Instead**: Let the implicit UoW handle it.
 
@@ -68,6 +110,7 @@ def handle_place_order(self, command):
 **Wrong**: Declaring a repository without associating it with an aggregate.
 
 ```python
+# fragment
 @domain.repository  # Missing part_of!
 class OrderRepository:
     pass
@@ -83,11 +126,12 @@ class OrderRepository:
     pass
 ```
 
-## 5. Persisting Aggregates from Different Bounded Contexts in One Transaction
+## 5. Changing Two Aggregates in One Transaction
 
-**Wrong**: Loading and persisting aggregates from two different aggregates in one handler.
+**Wrong**: Loading and persisting two different aggregates in one handler.
 
 ```python
+# fragment
 @handle(PlaceOrder)
 def handle_place_order(self, command):
     order = Order(order_id=command.order_id)
@@ -99,9 +143,9 @@ def handle_place_order(self, command):
     domain.repository_for(Inventory).add(inventory)
 ```
 
-**Why it's wrong**: A command handler should modify only ONE aggregate per operation. Cross-aggregate coordination should happen through domain events.
+**Why it's wrong**: A command handler should modify only ONE aggregate per transaction, even two instances of the same type. The Unit of Work can hold changes to several aggregates, so it will not stop you: this is a design rule you keep yourself. Cross-aggregate coordination happens through domain events.
 
-**Instead**: Use events for cross-aggregate side effects.
+**Instead**: Raise an event and change the other aggregate in its own transaction.
 
 ```python
 @handle(PlaceOrder)
@@ -109,7 +153,8 @@ def handle_place_order(self, command):
     order = Order(order_id=command.order_id)
     order.place()  # Raises OrderPlaced event
     domain.repository_for(Order).add(order)
-    # OrderPlaced event triggers InventoryHandler to reserve stock
+    # An event handler reacts to OrderPlaced and issues a ReserveStock command;
+    # Inventory's command handler reserves the stock in its own transaction
 ```
 
 ## 6. Using Repository Outside Domain Context
@@ -117,6 +162,7 @@ def handle_place_order(self, command):
 **Wrong**: Using `domain.repository_for()` without initializing the domain.
 
 ```python
+# fragment
 domain = Domain()
 
 @domain.aggregate
@@ -133,7 +179,7 @@ repo = domain.repository_for(Order)  # Will fail
 domain.init(traverse=False)
 with domain.domain_context():
     repo = domain.repository_for(Order)
-    repo.add(order)
+    repo.add(Order(order_id="ORD-002"))
 ```
 
 ## 7. Bypassing the Repository to Access the Database Directly
@@ -141,6 +187,7 @@ with domain.domain_context():
 **Wrong**: Using the DAO or database connection directly from handler code.
 
 ```python
+# fragment
 @handle(PlaceOrder)
 def handle_place_order(self, command):
     # Wrong! Bypassing the repository

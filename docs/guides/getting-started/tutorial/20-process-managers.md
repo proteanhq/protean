@@ -7,16 +7,17 @@ long-running workflow that spans multiple aggregates and must handle
 failures gracefully.
 
 A **domain service** (Chapter 13) handles synchronous, single-step
-cross-aggregate validation. A **process manager** handles asynchronous,
-multi-step workflows with compensation logic.
+cross-aggregate validation: it checks the rule before one aggregate changes.
+A **process manager** handles asynchronous, multi-step workflows with
+compensation logic.
 
 ### Domain Service vs. Process Manager
 
 | | Domain Service | Process Manager |
 |---|---------------|----------------|
-| **When** | Synchronous, same transaction | Asynchronous, across multiple transactions |
+| **When** | Synchronous, before the one aggregate the command changes | Asynchronous, across multiple transactions |
 | **State** | Stateless | Stateful, remembers what happened so far |
-| **Failure** | Rolls back the transaction | Issues compensating commands |
+| **Failure** | Rejects the command, so nothing is saved | Issues compensating commands |
 | **Use case** | "Check inventory before confirming" | "Confirm → reserve → ship → complete" |
 
 ## The Shipping Aggregate

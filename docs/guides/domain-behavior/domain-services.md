@@ -104,11 +104,12 @@ way to model the Domain Service.
 
 !!!note
     Invariants only wrap public methods and `__call__`. They skip dunder
-    methods (other than `__call__`) and private methods (prefixed with `_`). If
-    you encounter a `RecursionError: maximum recursion depth exceeded`, it is
-    likely that a public method is calling another public method on the same
-    instance. Extract the shared logic into a private method (prefixed with
-    `_`) to break the cycle.
+    methods (other than `__call__`) and private methods (prefixed with `_`).
+    A public method that calls another public method on the same instance
+    runs the invariants again around the inner call. An invariant that calls
+    a public method never ends, because that method's wrapper runs the
+    invariant again. Put helpers in private methods (prefixed with `_`) so
+    they are not wrapped.
 
 ## Domain Service vs Application Service vs Command Handler
 

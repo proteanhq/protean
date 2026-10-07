@@ -20,11 +20,34 @@ See [assets/command_handler_error_handling.py](../assets/command_handler_error_h
 The default `handle_error` implementation (from `HandlerMixin`) does nothing. Override it to add custom behavior:
 
 ```python
+import logging
+
+from protean import handle
+from protean.fields import Float, Identifier, String
+
+logger = logging.getLogger(__name__)
+
+@domain.aggregate
+class Payment:
+    payment_id: Identifier(identifier=True)
+    amount: Float(required=True)
+    status: String(default="pending")
+
+    def execute(self):
+        if self.amount <= 0:
+            raise ValueError("Transfer amount must be positive")
+        self.status = "completed"
+
+@domain.command(part_of="Payment")
+class TransferFunds:
+    payment_id: Identifier(required=True)
+    amount: Float(required=True)
+
 @domain.command_handler(part_of=Payment)
 class PaymentCommandHandler:
     @handle(TransferFunds)
     def handle_transfer(self, command: TransferFunds):
-        payment = Payment(...)
+        payment = Payment(payment_id=command.payment_id, amount=command.amount)
         payment.execute()
         domain.repository_for(Payment).add(payment)
 
@@ -52,11 +75,24 @@ def handle_error(cls, exc: Exception, message) -> None:
 - **Asynchronous processing**: `handle_error` is called by the Protean Engine. The engine catches the exception, logs it, calls `handle_error`, and continues.
 - **Synchronous processing** (`domain.process(cmd, asynchronous=False)`): Exceptions propagate directly to the caller. `handle_error` is NOT called in this case -- the caller is responsible for catching exceptions.
 
+```python
+domain.init(traverse=False)
+
+with domain.domain_context():
+    try:
+        domain.process(
+            TransferFunds(payment_id="PAY-001", amount=0), asynchronous=False
+        )
+    except ValueError as exc:
+        print(f"Transfer rejected: {exc}")  # Transfer amount must be positive
+```
+
 ## Error Handler Safety
 
 If `handle_error` itself raises an exception, the Protean Engine catches that too and logs it. The engine never shuts down due to handler errors:
 
 ```python
+# fragment
 @classmethod
 def handle_error(cls, exc: Exception, message) -> None:
     # Even if this raises, the engine continues

@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from enum import Enum
 
 from protean import Domain
+from protean.exceptions import ValidationError
 from protean.fields import (
     DateTime,
     Float,
@@ -91,7 +92,7 @@ class Inventory:
         )
 
 
-@domain.domain_service(part_of=["Order", "Inventory"])
+@domain.domain_service(part_of=[Order, Inventory])
 class OrderPlacementService:
     """Domain service with class methods for order placement.
 
@@ -111,7 +112,7 @@ class OrderPlacementService:
                 (i for i in inventories if i.product_id == item.product_id), None
             )
             if inventory is None or inventory.quantity < item.quantity:
-                raise Exception("Product is out of stock")
+                raise ValidationError({"_service": ["Product is out of stock"]})
 
             inventory.reserve_stock(item.quantity)
 

@@ -24,18 +24,63 @@ Key highlights:
 
 ### Multiple methods
 
+The service works on these aggregates:
+
+```python
+@domain.aggregate
+class Order:
+    customer_id: Identifier(required=True)
+    items = HasMany("OrderItem")
+    status: String(default="PENDING")
+
+    def confirm(self):
+        self.status = "CONFIRMED"
+
+    def cancel(self):
+        self.status = "CANCELLED"
+
+@domain.entity(part_of=Order)
+class OrderItem:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+    price: Float(default=0.0)
+
+@domain.aggregate
+class Inventory:
+    product_id: Identifier(required=True)
+    quantity: Integer(default=0)
+
+    def reserve_stock(self, quantity):
+        self.quantity -= quantity
+
+    def release_stock(self, quantity):
+        self.quantity += quantity
+```
+
 Each method represents a distinct business operation:
 
 ```python
+@domain.domain_service(part_of=[Order, Inventory])
 class OrderPlacementService:
     def __init__(self, order, inventories):
-        super().__init__(*(order, inventories))
+        super().__init__(order, inventories)
         self.order = order
         self.inventories = inventories
 
     def place_order(self):
         # Place the order and reserve stock
-        ...
+        for item in self.order.items:
+            self._inventory_for(item).reserve_stock(item.quantity)
+        self.order.confirm()
+
+    def cancel_order(self):
+        # Cancel the order and release the reserved stock
+        for item in self.order.items:
+            self._inventory_for(item).release_stock(item.quantity)
+        self.order.cancel()
+
+    def _inventory_for(self, item):
+        return next(i for i in self.inventories if i.product_id == item.product_id)
 ```
 
 ### Method wrapping
@@ -48,8 +93,17 @@ Protean automatically wraps all public methods (those not starting with `_`) wit
 ### Invocation
 
 ```python
-service = OrderPlacementService(order, [inventory])
-service.place_order()
+domain.init(traverse=False)
+
+with domain.domain_context():
+    order = Order(
+        customer_id="CUST-1",
+        items=[OrderItem(product_id="PROD-1", quantity=2, price=10.0)],
+    )
+    inventory = Inventory(product_id="PROD-1", quantity=10)
+
+    service = OrderPlacementService(order, [inventory])
+    service.place_order()
 ```
 
 ## Choosing between callable and instance methods
@@ -57,6 +111,7 @@ service.place_order()
 If your domain service starts with one operation (callable) and grows to need more, refactor to instance methods:
 
 ```python
+# fragment
 # Before: single callable
 class place_order:
     def __call__(self): ...
@@ -64,14 +119,15 @@ class place_order:
 # After: multiple methods
 class OrderPlacementService:
     def place_order(self): ...
-    def validate_order(self): ...
+    def cancel_order(self): ...
 ```
 
 ## Important: Private methods
 
-Helper methods used internally must be prefixed with `_` to prevent invariant wrapping:
+Helper methods used internally should be prefixed with `_` so they are not wrapped with the invariant checks:
 
 ```python
+# fragment
 class OrderPlacementService:
     def place_order(self):
         total = self._calculate_total()  # private helper
@@ -81,7 +137,7 @@ class OrderPlacementService:
         return sum(item.quantity * item.price for item in self.order.items)
 ```
 
-Without the underscore prefix, calling `calculate_total` would trigger invariant checks recursively, causing a `RecursionError`.
+Without the underscore prefix, `calculate_total` is wrapped like any public method. Calling it from `place_order` runs every invariant again around the helper: extra checks, not an error. An invariant that calls a public helper is different: the helper's wrapper runs the invariant again, which calls the helper again, and the calls never end.
 
 ## Related
 - [Callable class pattern](./callable-class.md) - Single-operation alternative

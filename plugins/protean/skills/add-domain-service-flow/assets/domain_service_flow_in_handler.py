@@ -3,21 +3,59 @@ Domain service wired through a command handler.
 
 This example demonstrates:
 - Domain service called from within a command handler
-- Handler loads aggregates, runs service, persists results
-- Command carries the intent, service executes the logic
-- Full flow: Command → Handler → Domain Service → Persist
+- The service validates both aggregates but changes only Course
+- The handler loads both aggregates, runs the service, and persists only Course
+- Course raises StudentEnrolled; an event handler in Course's cluster issues
+  AssignCourse, and Student's command handler applies it
+- Student's command handler skips an assignment it has already made
+- Full flow: Command → Handler → Domain Service → Persist Course → Event →
+  Command → Persist Student
 
-Domain: A course enrollment system where enrolling a student
-requires checking both course capacity and student eligibility.
-The EnrollStudentService validates and mutates both aggregates.
+Domain: A course enrollment system where enrolling a student requires checking
+both course capacity and student eligibility. The EnrollStudentService checks
+both aggregates in one step and changes the Course. The Student is updated in
+its own transaction afterwards, so it is eventually consistent with the Course.
+
+Processing is synchronous, so one EnrollStudent command runs the whole flow
+in-process, with no broker and no server. A deployed domain leaves both
+asynchronous and lets the server deliver the event and the command.
+
+Usage:
+    from domain_service_flow_in_handler import Course, EnrollStudent, Student, domain
+
+    domain.init(traverse=False)
+    with domain.domain_context():
+        domain.repository_for(Course).add(
+            Course(course_id="C-1", title="Algebra", capacity=30)
+        )
+        domain.repository_for(Student).add(Student(student_id="S-1", name="Ann"))
+
+        domain.process(EnrollStudent(course_id="C-1", student_id="S-1"))
+        # Course C-1 has one enrollment, and S-1 is assigned to C-1.
 """
 
-from protean import Domain, handle, invariant
-from protean.core.domain_service import BaseDomainService
+from protean import Domain, current_domain, handle, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Identifier, Integer, String
 
 domain = Domain(__name__)
+
+# Run the whole flow in-process: StudentEnrolled reaches the event handler when
+# the unit of work that saves the course commits, and AssignCourse reaches its
+# handler as soon as it is issued.
+domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
+
+
+# --- Events ---
+
+
+@domain.event(part_of="Course")
+class StudentEnrolled:
+    """Raised when a course accepts a student."""
+
+    course_id: Identifier(required=True)
+    student_id: Identifier(required=True)
 
 
 # --- Aggregates ---
@@ -32,9 +70,10 @@ class Course:
     capacity: Integer(required=True)
     enrolled_count: Integer(default=0)
 
-    def enroll_one(self):
-        """Increment enrollment count."""
+    def enroll(self, student_id):
+        """Take one seat for the student and announce it."""
         self.enrolled_count += 1
+        self.raise_(StudentEnrolled(course_id=self.course_id, student_id=student_id))
 
 
 @domain.aggregate
@@ -62,13 +101,13 @@ class EnrollStudentService:
     - Course has available capacity
     - Student is active (not suspended)
 
-    Mutates:
-    - Course.enrolled_count incremented
-    - Student.enrolled_course_id set
+    Changes:
+    - Course.enrolled_count incremented, and StudentEnrolled raised
+
+    The Student is not changed here. It is updated through StudentEnrolled.
     """
 
     def __init__(self, course, student):
-        BaseDomainService.__init__(self, *(course, student))
         self.course = course
         self.student = student
 
@@ -85,12 +124,11 @@ class EnrollStudentService:
             raise ValidationError({"_service": ["Only active students can enroll"]})
 
     def __call__(self):
-        """Execute enrollment: update both aggregates."""
-        self.course.enroll_one()
-        self.student.assign_course(self.course.course_id)
+        """Execute enrollment on the Course."""
+        self.course.enroll(self.student.student_id)
 
 
-# --- Command ---
+# --- Commands ---
 
 
 @domain.command(part_of="Course")
@@ -101,7 +139,15 @@ class EnrollStudent:
     student_id: Identifier(required=True)
 
 
-# --- Command Handler ---
+@domain.command(part_of="Student")
+class AssignCourse:
+    """Command to record a student's course on the Student."""
+
+    student_id: Identifier(required=True)
+    course_id: Identifier(required=True)
+
+
+# --- Command Handlers ---
 
 
 @domain.command_handler(part_of=Course)
@@ -110,13 +156,48 @@ class CourseCommandHandler:
 
     @handle(EnrollStudent)
     def handle_enroll(self, command: EnrollStudent):
-        """Load aggregates, run domain service, persist."""
-        course = domain.repository_for(Course).get(command.course_id)
-        student = domain.repository_for(Student).get(command.student_id)
+        """Load both aggregates, run the domain service, persist the Course."""
+        course_repo = current_domain.repository_for(Course)
+        course = course_repo.get(command.course_id)
+        student = current_domain.repository_for(Student).get(command.student_id)
 
-        # Run domain service (validates and mutates)
+        # Run domain service (validates both, changes the Course)
         EnrollStudentService(course, student)()
 
-        # Handler is responsible for persisting
-        domain.repository_for(Course).add(course)
-        domain.repository_for(Student).add(student)
+        # Persist only the aggregate the service changed
+        course_repo.add(course)
+
+
+@domain.command_handler(part_of=Student)
+class StudentCommandHandler:
+    """Handles student-related commands."""
+
+    @handle(AssignCourse)
+    def handle_assign(self, command: AssignCourse):
+        """Record the course on the Student, once."""
+        repo = current_domain.repository_for(Student)
+        student = repo.get(command.student_id)
+        if student.enrolled_course_id == command.course_id:
+            # Already applied. A redelivered StudentEnrolled reissues
+            # AssignCourse, and there is nothing left to change.
+            return
+        student.assign_course(command.course_id)
+        repo.add(student)
+
+
+# --- The cross-aggregate link: an event handler in Course's cluster ---
+
+
+@domain.event_handler(part_of=Course)
+class AssignEnrolledStudent:
+    """React to Course's own StudentEnrolled event and update the Student.
+
+    The handler sits in Course's cluster, which owns StudentEnrolled. It hands
+    off to Student with a command, and Student's command handler does the write.
+    """
+
+    @handle(StudentEnrolled)
+    def on_student_enrolled(self, event: StudentEnrolled):
+        current_domain.process(
+            AssignCourse(student_id=event.student_id, course_id=event.course_id)
+        )

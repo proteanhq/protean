@@ -25,6 +25,28 @@ Key highlights:
 
 ### Handler Registration
 
+The examples on this page use these elements:
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+@domain.aggregate
+class Task:
+    title: String(required=True)
+
+@domain.event(part_of=Task)
+class TaskCreated:
+    task_id: Identifier(required=True)
+    title: String(required=True)
+
+@domain.aggregate
+class AuditLog:
+    event_type: String(required=True)
+    details: String()
+```
+
 ```python
 @domain.event_handler(part_of=AuditLog, stream_category=Task.meta_.stream_category)
 class TaskAuditor:
@@ -72,12 +94,12 @@ class TaskActivityHandler:
     @handle(TaskCreated)
     def on_task_created(self, event: TaskCreated):
         # This handles TaskCreated events specifically
-        ...
+        logger.info("Task created: %s", event.title)
 
     @handle("$any")
     def on_any_event(self, event):
         # This handles all OTHER events (not TaskCreated)
-        ...
+        logger.info("Task event: %s", event.__class__.__name__)
 ```
 
 ## Related

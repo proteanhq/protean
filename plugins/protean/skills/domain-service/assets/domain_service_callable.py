@@ -20,7 +20,6 @@ from datetime import UTC, datetime
 from enum import Enum
 
 from protean import Domain, invariant
-from protean.core.domain_service import BaseDomainService
 from protean.exceptions import ValidationError
 from protean.fields import (
     DateTime,
@@ -97,7 +96,7 @@ class Inventory:
         )
 
 
-@domain.domain_service(part_of=["Order", "Inventory"])
+@domain.domain_service(part_of=[Order, Inventory])
 class place_order:
     """Callable domain service that places an order and reserves inventory.
 
@@ -106,10 +105,7 @@ class place_order:
     """
 
     def __init__(self, order, inventories):
-        # Note: Use explicit base class call instead of super() because the
-        # @domain.domain_service decorator replaces the class via derive_element_class,
-        # which breaks super()'s __class__ cell reference.
-        BaseDomainService.__init__(self, *(order, inventories))
+        super().__init__(order, inventories)
 
         self.order = order
         self.inventories = inventories

@@ -25,6 +25,34 @@ Key highlights:
 
 ### Class method structure
 
+The service works on these aggregates:
+
+```python
+from protean.exceptions import ValidationError
+
+@domain.aggregate
+class Order:
+    customer_id: Identifier(required=True)
+    items = HasMany("OrderItem")
+    status: String(default="PENDING")
+
+    def confirm(self):
+        self.status = "CONFIRMED"
+
+@domain.entity(part_of=Order)
+class OrderItem:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+
+@domain.aggregate
+class Inventory:
+    product_id: Identifier(required=True)
+    quantity: Integer(default=0)
+
+    def reserve_stock(self, quantity):
+        self.quantity -= quantity
+```
+
 ```python
 @domain.domain_service(part_of=[Order, Inventory])
 class OrderPlacementService:
@@ -36,7 +64,7 @@ class OrderPlacementService:
                 (i for i in inventories if i.product_id == item.product_id), None
             )
             if inventory is None or inventory.quantity < item.quantity:
-                raise Exception("Product is out of stock")
+                raise ValidationError({"_service": ["Product is out of stock"]})
             inventory.reserve_stock(item.quantity)
 
         order.confirm()
@@ -48,7 +76,16 @@ class OrderPlacementService:
 Class methods commonly return the modified aggregates, since there's no instance state to inspect:
 
 ```python
-order, inventories = OrderPlacementService.place_order(order, [inventory])
+domain.init(traverse=False)
+
+with domain.domain_context():
+    order = Order(
+        customer_id="CUST-1",
+        items=[OrderItem(product_id="PROD-1", quantity=2)],
+    )
+    inventory = Inventory(product_id="PROD-1", quantity=10)
+
+    order, inventories = OrderPlacementService.place_order(order, [inventory])
 ```
 
 ### Invocation
@@ -56,7 +93,8 @@ order, inventories = OrderPlacementService.place_order(order, [inventory])
 Direct class method call - no instantiation:
 
 ```python
-OrderPlacementService.place_order(order, inventories)
+with domain.domain_context():
+    OrderPlacementService.place_order(order, inventories)
 ```
 
 ## Trade-offs

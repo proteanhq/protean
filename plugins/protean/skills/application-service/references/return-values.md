@@ -2,11 +2,49 @@
 
 Application services execute synchronously and always return values directly to the caller. This is one of their key advantages over command handlers for request-response workflows.
 
+The examples on this page use this aggregate and service. Each pattern below is one of its methods:
+
+```python
+from protean.fields import Identifier, String
+
+@domain.aggregate
+class User:
+    email: String(required=True)
+    name: String()
+    status: String(default="INACTIVE")
+
+    @classmethod
+    def register(cls, email, name):
+        return cls(email=email, name=name)
+
+    def activate(self):
+        self.status = "ACTIVE"
+
+@domain.application_service(part_of=User)
+class UserServices:
+    @use_case
+    def register_user(self, email: str, name: str) -> Identifier:
+        user = User.register(email, name)
+        current_domain.repository_for(User).add(user)
+        return user.id
+
+    @use_case
+    def activate_user(self, user_id: Identifier) -> None:
+        user = current_domain.repository_for(User).get(user_id)
+        user.activate()
+        current_domain.repository_for(User).add(user)
+
+    @use_case
+    def get_user(self, user_id: Identifier) -> User:
+        return current_domain.repository_for(User).get(user_id)
+```
+
 ## Common Patterns
 
 ### Returning a new entity ID
 
 ```python
+# fragment
 @use_case
 def register_user(self, email: str, name: str) -> Identifier:
     user = User.register(email, name)
@@ -17,6 +55,7 @@ def register_user(self, email: str, name: str) -> Identifier:
 ### No return value for mutative operations
 
 ```python
+# fragment
 @use_case
 def activate_user(self, user_id: Identifier) -> None:
     user = current_domain.repository_for(User).get(user_id)
@@ -28,9 +67,25 @@ def activate_user(self, user_id: Identifier) -> None:
 ### Returning loaded entities
 
 ```python
+# fragment
 @use_case
 def get_user(self, user_id: Identifier) -> User:
     return current_domain.repository_for(User).get(user_id)
+```
+
+### Using the return values
+
+The caller gets each value back as soon as the method returns. Call the service inside a domain context:
+
+```python
+domain.init(traverse=False)
+
+with domain.domain_context():
+    svc = UserServices()
+    user_id = svc.register_user(email="jane@example.com", name="Jane")
+    svc.activate_user(user_id)
+    user = svc.get_user(user_id)
+    assert user.status == "ACTIVE"
 ```
 
 ## Comparison with Command Handlers
@@ -41,7 +96,7 @@ def get_user(self, user_id: Identifier) -> User:
 | Caller always gets result | Yes | Only in synchronous mode |
 | Suitable for | Request-response | Event-driven / async workflows |
 
-Application services are ideal for workflows where the caller needs immediate feedback — returning a newly created ID, a status update, or an authentication token.
+Application services are ideal for workflows where the caller needs immediate feedback, such as a newly created ID, a status update, or an authentication token.
 
 ## Best Practices
 
