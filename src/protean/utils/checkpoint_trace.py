@@ -40,6 +40,8 @@ class CheckpointEvent(TypedDict):
     ``abandoned`` is the sorted set of holes this batch stepped over after their
     gap timer elapsed; ``safe`` is the settled watermark the cursor advances to.
     All positions are raw ``global_position`` values, never a derived verdict.
+    ``cursor`` and ``safe`` are floored at 0: a fresh subscription starts at -1,
+    and -1 and 0 both mean "nothing processed yet".
     """
 
     cursor: int

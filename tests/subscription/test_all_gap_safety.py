@@ -253,6 +253,21 @@ class TestGapSafeBatchTracing:
         assert _positions(out) == []  # held at the gap below position 2
         assert events == [{"cursor": 0, "present": [2, 3], "abandoned": [], "safe": 0}]
 
+    def test_records_a_fresh_subscription_advance_with_only_the_cursor_floored(
+        self, all_subscription
+    ):
+        # When a fresh subscription's first batch does advance, only ``cursor`` is
+        # clamped (-1 to 0). ``safe`` carries the real watermark, so recording the
+        # floor or the entry cursor as ``safe`` would fail here.
+        sub = all_subscription
+        assert sub.current_position == -1  # fresh, nothing processed yet
+
+        with checkpoint_trace.capture() as events:
+            out = sub._gap_safe_batch([_msg(1), _msg(2)])
+
+        assert _positions(out) == [1, 2]
+        assert events == [{"cursor": 0, "present": [1, 2], "abandoned": [], "safe": 2}]
+
     def test_records_an_abandoned_hole(self, all_subscription):
         sub = all_subscription
         sub.current_position = 0

@@ -89,6 +89,21 @@ def test_no_progress_tick_is_dropped(tmp_path):
     assert '[kind |-> "advance", safe |-> 3]' in text
 
 
+def test_fresh_subscription_hold_at_the_0_floor_is_dropped(tmp_path):
+    # A fresh subscription's capture starts this way: its first batch holds at a gap
+    # with both watermarks floored at 0, so it makes no progress and adds no advance.
+    log = _write(
+        tmp_path / "fresh.jsonl",
+        [_batch(0, [2, 3], 0), _batch(0, [1, 2, 3], 3)],
+    )
+    out = tmp_path / "o.tla"
+    assert checkpoint_trace_script._to_tla(log, out) == 0
+    text = out.read_text(encoding="utf-8")
+    assert text.count('kind |-> "commit"') == 3
+    assert text.count('kind |-> "advance"') == 1
+    assert '[kind |-> "advance", safe |-> 3]' in text
+
+
 def test_empty_log_is_rejected(tmp_path, capsys):
     log = _write(tmp_path / "empty.jsonl", [])
     _reject(log, tmp_path / "o.tla", capsys, "has no events")
