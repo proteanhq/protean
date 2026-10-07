@@ -8,10 +8,11 @@
 ## Forum
 
 If you've hit a problem with something you're working on and could use some
-help, the best place to ask is on GitHub Discussions where we use issues as a
-message board. These discussions are indexed by search engines which means
-asking your questions here will make it easier for others to find the answer
-if they have a similar problem in the future.
+help, ask on GitHub Discussions. That is the place for questions: they are
+answered there, and the threads are indexed by search engines, so your question
+makes it easier for the next person with the same problem to find the answer.
+
+Keep the issue tracker for bugs and feature requests.
 
 [Get help on the forum →](https://github.com/proteanhq/protean/discussions)
 
