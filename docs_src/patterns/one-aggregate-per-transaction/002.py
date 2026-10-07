@@ -8,7 +8,7 @@ domain.config["command_processing"] = "sync"
 # --8<-- [start:transfer]
 from protean import current_domain, handle
 from protean.exceptions import ValidationError
-from protean.fields import Auto, Float, Identifier
+from protean.fields import Auto, Float, Identifier, List, String
 
 
 @domain.event(part_of="Account")
@@ -32,6 +32,7 @@ class Account:
     account_id: Auto(identifier=True)
     balance: Float(default=0.0)
     overdraft_limit: Float(default=0.0)
+    applied_transfer_ids: List(content_type=String)
 
     def debit(self, amount, transfer_id, target_account_id):
         if self.balance - amount < -self.overdraft_limit:
@@ -46,8 +47,9 @@ class Account:
             )
         )
 
-    def credit(self, amount):
+    def credit(self, amount, transfer_id):
         self.balance += amount
+        self.applied_transfer_ids = [*self.applied_transfer_ids, transfer_id]
 
 
 @domain.command_handler(part_of=Account)
@@ -72,7 +74,9 @@ class AccountEventHandler:
     def on_money_debited(self, event: MoneyDebited):
         repo = current_domain.repository_for(Account)
         target = repo.get(event.target_account_id)
-        target.credit(event.amount)
+        if event.transfer_id in target.applied_transfer_ids:
+            return  # This transfer was already credited
+        target.credit(event.amount, transfer_id=event.transfer_id)
         repo.add(target)
 
 

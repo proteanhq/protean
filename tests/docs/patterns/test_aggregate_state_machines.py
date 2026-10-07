@@ -1,5 +1,6 @@
 """Run the examples on ``docs/patterns/aggregate-state-machines.md``."""
 
+import re
 import subprocess
 import sys
 
@@ -161,6 +162,33 @@ def test_handlers_load_call_and_save(example):
     assert repo.get(order.order_id).status == "cancelled"
 
 
+def test_ship_order_handler_saves_the_shipped_order(example):
+    domain = example.domain
+    repo = domain.repository_for(example.Order)
+    order = example.Order(customer_id="cust-1", total=10.0, status="paid")
+    repo.add(order)
+
+    domain.process(
+        example.ShipOrder(order_id=order.order_id, tracking_number="TRK-7"),
+        asynchronous=False,
+    )
+
+    shipped = repo.get(order.order_id)
+    assert shipped.status == "shipped"
+    assert shipped.tracking_number == "TRK-7"
+    assert shipped.shipped_at is not None
+
+
+def test_deliver_records_the_delivery_time(example):
+    order = example.Order(customer_id="cust-1", status="shipped")
+    assert order.delivered_at is None
+
+    order.deliver()
+
+    assert order.status == "delivered"
+    assert order.delivered_at is not None
+
+
 def test_page_tests_pass_under_pytest():
     # Run the tests the page shows the way a reader would: as a pytest module.
     result = subprocess.run(
@@ -185,7 +213,7 @@ def test_page_tests_pass_under_pytest():
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "5 passed" in result.stdout
+    assert re.search(r"\b5 passed\b", result.stdout), result.stdout
 
 
 @pytest.fixture

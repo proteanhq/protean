@@ -1,5 +1,6 @@
 """Run the examples on ``docs/patterns/factory-methods-for-aggregate-creation.md``."""
 
+import re
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -359,7 +360,7 @@ def test_the_page_tests_pass_under_pytest():
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "4 passed" in result.stdout
+    assert re.search(r"\b4 passed\b", result.stdout), result.stdout
 
 
 # --- PaymentFactory (anti-corruption layer) -----------------------------------

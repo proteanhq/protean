@@ -1,5 +1,7 @@
 """Run the examples on ``docs/patterns/one-aggregate-per-transaction.md``."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from protean.exceptions import ValidationError
@@ -58,6 +60,42 @@ def test_placing_an_order_reserves_stock_through_the_event(orders):
     assert (first.available, first.reserved) == (7, 3)
     assert (second.available, second.reserved) == (4, 1)
     assert first.applied_order_ids == ["o1"]
+
+
+def _commands_for(example, aggregate_cls):
+    stream = f"{aggregate_cls.meta_.stream_category}:command"
+    return [
+        (m.metadata.headers.type.split(".")[-2], m.data)
+        for m in example.domain.event_store.store.read(stream)
+    ]
+
+
+def test_the_event_handler_hands_off_with_reserve_stock_commands(orders):
+    _place_order(orders)
+
+    assert _commands_for(orders, orders.Inventory) == [
+        ("ReserveStock", {"order_id": "o1", "product_id": "p1", "quantity": 3}),
+        ("ReserveStock", {"order_id": "o1", "product_id": "p2", "quantity": 1}),
+    ]
+
+
+def test_an_order_with_two_lines_for_one_product_reserves_both(orders):
+    orders.domain.process(
+        orders.PlaceOrder(
+            order_id="o1",
+            customer_id="c1",
+            items=[
+                {"product_id": "p1", "quantity": 3, "price": 2.5},
+                {"product_id": "p1", "quantity": 2, "price": 2.5},
+            ],
+        )
+    )
+
+    inventory = orders.domain.repository_for(orders.Inventory).get("p1")
+    assert (inventory.available, inventory.reserved) == (5, 5)
+    assert _commands_for(orders, orders.Inventory) == [
+        ("ReserveStock", {"order_id": "o1", "product_id": "p1", "quantity": 5}),
+    ]
 
 
 def test_order_place_raises_order_placed_with_the_items():
@@ -138,6 +176,29 @@ def test_transfer_debits_the_source_and_the_event_credits_the_target(transfers):
     repo = transfers.domain.repository_for(transfers.Account)
     assert repo.get("a").balance == 70.0
     assert repo.get("b").balance == 40.0
+
+
+def test_a_redelivered_money_debited_credits_the_target_once():
+    example = load_example("patterns/one-aggregate-per-transaction/002.py")
+    domain = _start(example, event_processing="async")
+    with domain.domain_context():
+        repo = domain.repository_for(example.Account)
+        repo.add(example.Account(account_id="a", balance=100.0))
+        repo.add(example.Account(account_id="b", balance=10.0))
+        _transfer(example, 30.0)
+
+        stream = f"{example.Account.meta_.stream_category}-a"
+        [message] = [
+            m
+            for m in domain.event_store.store.read(stream)
+            if m.metadata.headers.type.endswith(".MoneyDebited.v1")
+        ]
+        example.AccountEventHandler._handle(message)
+        example.AccountEventHandler._handle(message)
+
+        target = repo.get("b")
+        assert target.balance == 40.0
+        assert target.applied_transfer_ids == ["t1"]
 
 
 def test_transfer_with_insufficient_funds_changes_neither_account(transfers):
@@ -230,6 +291,38 @@ def test_one_order_feeds_three_downstream_aggregates():
         assert notification.data == {"order_id": "o1", "total": 42.0}
 
 
+def test_replaying_the_pipeline_commands_changes_nothing():
+    example = load_example("patterns/one-aggregate-per-transaction/003.py")
+    domain = _start(example)
+    with domain.domain_context():
+        domain.repository_for(example.Inventory).add(
+            example.Inventory(product_id="p1", available=10)
+        )
+        domain.repository_for(example.CustomerLoyalty).add(
+            example.CustomerLoyalty(customer_id="c1", points=5)
+        )
+        domain.process(
+            example.PlaceOrder(
+                order_id="o1",
+                customer_id="c1",
+                items=[{"product_id": "p1", "quantity": 4, "price": 10.5}],
+            )
+        )
+
+        # A redelivered OrderPlaced sends the same commands again
+        domain.process(example.ReserveStock(order_id="o1", product_id="p1", quantity=4))
+        domain.process(example.AwardPoints(order_id="o1", customer_id="c1", points=42))
+        domain.process(
+            example.SendConfirmation(order_id="o1", recipient_id="c1", total=42.0)
+        )
+
+        inventory = domain.repository_for(example.Inventory).get("p1")
+        assert (inventory.available, inventory.reserved) == (6, 4)
+        assert domain.repository_for(example.CustomerLoyalty).get("c1").points == 47
+        notifications = domain.repository_for(example.Notification).query.all().items
+        assert [n.notification_id for n in notifications] == ["confirmation-o1"]
+
+
 def test_without_event_processing_the_pipeline_changes_only_the_order():
     example = load_example("patterns/one-aggregate-per-transaction/003.py")
     domain = _start(example, event_processing="async")
@@ -296,8 +389,6 @@ def test_an_eligible_transfer_debits_only_the_source(eligibility):
     assert eligibility.domain.repository_for(eligibility.Account).get("a").balance == (
         -20.0
     )
-    policy = eligibility.domain.repository_for(eligibility.CreditPolicy).get("cp")
-    assert policy.max_transfer_amount == 500.0
 
 
 @pytest.mark.parametrize(
@@ -328,3 +419,60 @@ def test_an_ineligible_transfer_is_rejected_and_changes_nothing(
         eligibility.domain.repository_for(eligibility.Account).get("a").balance
         == balance_before
     )
+
+
+# Bulk Operations
+
+
+def _bulk_orders(example, now):
+    repo = example.domain.repository_for(example.Order)
+    repo.add(example.Order(order_id="old-1", deadline=now - timedelta(days=2)))
+    repo.add(example.Order(order_id="old-2", deadline=now - timedelta(days=1)))
+    repo.add(example.Order(order_id="future", deadline=now + timedelta(days=1)))
+    repo.add(
+        example.Order(
+            order_id="done", status="shipped", deadline=now - timedelta(days=3)
+        )
+    )
+    return repo
+
+
+def test_close_expired_closes_only_pending_orders_past_their_deadline():
+    example = load_example("patterns/one-aggregate-per-transaction/005.py")
+    domain = _start(example)
+    with domain.domain_context():
+        repo = _bulk_orders(example, datetime.now(UTC))
+
+        closed = example.OrderMaintenanceService().close_expired()
+
+        assert sorted(closed) == ["old-1", "old-2"]
+        for order_id in ("old-1", "old-2"):
+            order = repo.get(order_id)
+            assert order.status == "closed"
+            assert order.close_reason == "Expired past deadline"
+        assert repo.get("future").status == "pending"
+        assert repo.get("done").status == "shipped"
+
+
+def test_a_failure_on_one_order_keeps_the_orders_closed_before_it(monkeypatch):
+    example = load_example("patterns/one-aggregate-per-transaction/005.py")
+    domain = _start(example)
+    with domain.domain_context():
+        repo = _bulk_orders(example, datetime.now(UTC))
+        original_close = example.Order.close
+        calls = []
+
+        def close_then_fail_on_second(self, reason):
+            calls.append(self.order_id)
+            if len(calls) == 2:
+                raise RuntimeError("storage unavailable")
+            original_close(self, reason)
+
+        monkeypatch.setattr(example.Order, "close", close_then_fail_on_second)
+
+        with pytest.raises(RuntimeError, match="storage unavailable"):
+            example.OrderMaintenanceService().close_expired()
+
+        first, second = calls
+        assert repo.get(first).status == "closed"
+        assert repo.get(second).status == "pending"

@@ -3,7 +3,9 @@
 import threading
 
 import pytest
+from fastapi.testclient import TestClient
 
+from protean import UnitOfWork
 from protean.exceptions import ExpectedVersionError, ValidationError
 from tests.docs.support import load_example
 
@@ -60,7 +62,6 @@ def preferences():
 @pytest.fixture
 def seats():
     example = load_example("patterns/optimistic-concurrency-as-design-tool/002.py")
-    example.domain.config["command_processing"] = "sync"
     example.domain.init(traverse=False)
     with example.domain.domain_context():
         yield example
@@ -209,6 +210,35 @@ class TestUserPreferences:
         assert (saved.theme, saved.notifications_enabled) == ("dark", False)
         assert saved._version == 2
 
+    def test_inside_an_outer_unit_of_work_the_service_does_not_retry(
+        self, preferences, monkeypatch
+    ):
+        domain = preferences.domain
+        repo = domain.repository_for(preferences.UserPreferences)
+        repo.add(preferences.UserPreferences(user_id="u1"))
+
+        def toggle_notifications():
+            other = domain.repository_for(preferences.UserPreferences)
+            prefs = other.get("u1")
+            prefs.toggle_notifications(False)
+            other.add(prefs)
+
+        calls = interleave_once(
+            monkeypatch,
+            preferences.UserPreferences,
+            "update_theme",
+            domain,
+            toggle_notifications,
+        )
+
+        with pytest.raises(ExpectedVersionError):
+            with UnitOfWork():
+                preferences.PreferencesService().update_theme("u1", "dark")
+
+        assert calls == [("dark",)]
+        saved = repo.get("u1")
+        assert (saved.theme, saved.notifications_enabled) == ("light", False)
+
     def test_service_gives_up_after_max_retries(self, preferences, monkeypatch):
         domain = preferences.domain
         repo = domain.repository_for(preferences.UserPreferences)
@@ -283,21 +313,107 @@ class TestSeatReservation:
             seats.ReserveSeat(reservation_id="E1-A1", customer_id="alice")
         )
 
-        with pytest.raises(ValidationError) as exc:
+        with pytest.raises(seats.SeatAlreadyTaken) as exc:
             seats.domain.process(
                 seats.ReserveSeat(reservation_id="E1-A1", customer_id="bob")
             )
 
-        assert exc.value.messages == {"seat": ["Seat A1 is already taken"]}
+        assert exc.value.seat_number == "A1"
+        assert str(exc.value) == "Seat A1 was just reserved by another customer"
         seat = repo.get("E1-A1")
         assert seat.reserved_by == "alice"
         assert seat._version == 1
 
-    def test_seat_already_taken_names_the_seat(self, seats):
-        exc = seats.SeatAlreadyTaken("A1")
+    def _race_bob_ahead_of_alice(self, seats, monkeypatch):
+        repo = seats.domain.repository_for(seats.SeatReservation)
+        repo.add(
+            seats.SeatReservation(
+                reservation_id="E1-A1", event_id="E1", seat_number="A1"
+            )
+        )
+        return interleave_once(
+            monkeypatch,
+            seats.SeatReservation,
+            "reserve",
+            seats.domain,
+            lambda: seats.domain.process(
+                seats.ReserveSeat(reservation_id="E1-A1", customer_id="bob")
+            ),
+        )
 
-        assert exc.seat_number == "A1"
-        assert str(exc) == "Seat A1 was just reserved by another customer"
+    def test_a_concurrent_reservation_reaches_the_caller_as_seat_already_taken(
+        self, seats, monkeypatch
+    ):
+        calls = self._race_bob_ahead_of_alice(seats, monkeypatch)
+
+        with pytest.raises(seats.SeatAlreadyTaken) as exc:
+            seats.domain.process(
+                seats.ReserveSeat(reservation_id="E1-A1", customer_id="alice")
+            )
+
+        # Alice's first attempt lost at commit; the framework reran the
+        # handler, and the reload saw Bob's reservation.
+        assert calls == [("alice",), ("bob",), ("alice",)]
+        assert exc.value.seat_number == "A1"
+        seat = seats.domain.repository_for(seats.SeatReservation).get("E1-A1")
+        assert seat.reserved_by == "bob"
+        assert seat._version == 1
+
+    def test_without_auto_retry_the_caller_gets_the_raw_conflict(
+        self, seats, monkeypatch
+    ):
+        monkeypatch.setitem(
+            seats.domain.config, "server", {"version_retry": {"enabled": False}}
+        )
+        calls = self._race_bob_ahead_of_alice(seats, monkeypatch)
+
+        with pytest.raises(ExpectedVersionError):
+            seats.domain.process(
+                seats.ReserveSeat(reservation_id="E1-A1", customer_id="alice")
+            )
+
+        assert calls == [("alice",), ("bob",)]
+        seat = seats.domain.repository_for(seats.SeatReservation).get("E1-A1")
+        assert seat.reserved_by == "bob"
+
+
+class TestSeatReservationApi:
+    def _seat(self, seats):
+        seats.domain.repository_for(seats.SeatReservation).add(
+            seats.SeatReservation(
+                reservation_id="E1-A1", event_id="E1", seat_number="A1"
+            )
+        )
+
+    def test_reserving_a_free_seat_returns_reserved(self, seats):
+        self._seat(seats)
+        client = TestClient(seats.app)
+
+        response = client.post(
+            "/events/E1/seats/A1/reserve", params={"customer_id": "alice"}
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "reserved"}
+        seat = seats.domain.repository_for(seats.SeatReservation).get("E1-A1")
+        assert seat.reserved_by == "alice"
+
+    def test_reserving_a_taken_seat_returns_409_with_a_suggestion(self, seats):
+        self._seat(seats)
+        client = TestClient(seats.app)
+        client.post("/events/E1/seats/A1/reserve", params={"customer_id": "alice"})
+
+        response = client.post(
+            "/events/E1/seats/A1/reserve", params={"customer_id": "bob"}
+        )
+
+        assert response.status_code == 409
+        assert response.json() == {
+            "error": "Seat A1 was just reserved by another customer",
+            "suggestion": "Please choose a different seat.",
+        }
+        seat = seats.domain.repository_for(seats.SeatReservation).get("E1-A1")
+        assert seat.reserved_by == "alice"
 
 
 class TestSharedCart:

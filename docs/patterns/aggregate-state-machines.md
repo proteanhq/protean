@@ -106,7 +106,7 @@ Transitions:
   pay()       placed   → paid         (guard: must be placed)
   ship()      paid     → shipped      (guard: must be paid)
   deliver()   shipped  → delivered    (guard: must be shipped)
-  cancel()    draft/placed → cancelled (guard: must not be shipped/delivered)
+  cancel()    draft/placed → cancelled (guard: must be draft or placed)
   refund()    paid     → refunded     (guard: must be paid)
 ```
 

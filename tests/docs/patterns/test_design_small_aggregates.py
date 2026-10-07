@@ -258,7 +258,22 @@ def test_only_draft_orders_can_be_placed():
         assert len(order._events) == 1
 
 
-def test_order_placed_adds_loyalty_points_in_the_other_aggregate():
+def _commands_for(example, aggregate_cls):
+    stream = f"{aggregate_cls.meta_.stream_category}:command"
+    return [
+        (m.metadata.headers.type.split(".")[-2], m.data)
+        for m in example.domain.event_store.store.read(stream)
+    ]
+
+
+def _check_codes(example):
+    report = example.domain.check(traverse=False)
+    return {entry["code"] for entry in report["errors"]} | {
+        entry["code"] for entry in report["diagnostics"]
+    }
+
+
+def test_order_placed_adds_loyalty_points_through_a_command():
     example = load_example("patterns/design-small-aggregates/006.py")
     with _context(example):
         domain = example.domain
@@ -269,15 +284,37 @@ def test_order_placed_adds_loyalty_points_in_the_other_aggregate():
         order.place()
         domain.repository_for(example.Order).add(order)
 
+        loyalty = loyalty_repo.get("c1")
+        assert loyalty.points == 5 + 42
+        assert loyalty.applied_order_ids == ["o1"]
+        assert _commands_for(example, example.CustomerLoyalty) == [
+            ("AwardPoints", {"order_id": "o1", "customer_id": "c1", "points": 42})
+        ]
+
+
+def test_a_repeated_award_points_for_the_same_order_is_skipped():
+    example = load_example("patterns/design-small-aggregates/006.py")
+    with _context(example):
+        domain = example.domain
+        loyalty_repo = domain.repository_for(example.CustomerLoyalty)
+        loyalty_repo.add(example.CustomerLoyalty(customer_id="c1", points=5))
+        order = _draft_order(example)
+        order.place()
+        domain.repository_for(example.Order).add(order)
+
+        domain.process(example.AwardPoints(order_id="o1", customer_id="c1", points=42))
+
         assert loyalty_repo.get("c1").points == 5 + 42
 
 
-def test_loyalty_handler_listens_on_the_order_stream():
+def test_the_loyalty_hand_off_stays_with_the_order():
     example = load_example("patterns/design-small-aggregates/006.py")
     with _context(example):
-        handler = example.CustomerLoyaltyEventHandler
-        assert handler.meta_.stream_category == "smallaggregatesevents::order"
+        handler = example.OrderEventHandler
+        assert handler.meta_.part_of is example.Order
         assert handler.meta_.stream_category == example.Order.meta_.stream_category
+        assert example.LoyaltyCommandHandler.meta_.part_of is example.CustomerLoyalty
+        assert "EVENT_HANDLER_FOREIGN_EVENT" not in _check_codes(example)
         _no_cross_aggregate_associations(example.Order)
         assert not any(
             isinstance(f, (HasMany, HasOne))
@@ -288,13 +325,18 @@ def test_loyalty_handler_listens_on_the_order_stream():
 # The two-aggregate rule
 
 
-def test_place_order_changes_order_and_event_reserves_inventory():
+def _inventory(example):
+    inventory_repo = example.domain.repository_for(example.Inventory)
+    inventory_repo.add(example.Inventory(product_id="p1", available=10))
+    inventory_repo.add(example.Inventory(product_id="p2", available=4))
+    return inventory_repo
+
+
+def test_place_order_changes_order_and_a_command_reserves_inventory():
     example = load_example("patterns/design-small-aggregates/007.py")
     with _context(example):
         domain = example.domain
-        inventory_repo = domain.repository_for(example.Inventory)
-        inventory_repo.add(example.Inventory(product_id="p1", available=10))
-        inventory_repo.add(example.Inventory(product_id="p2", available=4))
+        inventory_repo = _inventory(example)
 
         domain.process(
             example.PlaceOrder(
@@ -311,17 +353,45 @@ def test_place_order_changes_order_and_event_reserves_inventory():
         p2 = inventory_repo.get("p2")
         assert (p1.available, p1.reserved) == (7, 3)
         assert (p2.available, p2.reserved) == (3, 1)
+        assert _commands_for(example, example.Inventory) == [
+            ("ReserveStock", {"order_id": "o1", "product_id": "p1", "quantity": 3}),
+            ("ReserveStock", {"order_id": "o1", "product_id": "p2", "quantity": 1}),
+        ]
 
 
-def test_command_handler_touches_only_the_order():
+def test_two_lines_for_one_product_reserve_both_and_a_repeat_is_skipped():
+    example = load_example("patterns/design-small-aggregates/007.py")
+    with _context(example):
+        domain = example.domain
+        inventory_repo = _inventory(example)
+
+        domain.process(
+            example.PlaceOrder(
+                order_id="o1",
+                items=[
+                    {"product_id": "p1", "quantity": 3},
+                    {"product_id": "p1", "quantity": 2},
+                ],
+            )
+        )
+        domain.process(example.ReserveStock(order_id="o1", product_id="p1", quantity=5))
+
+        p1 = inventory_repo.get("p1")
+        assert (p1.available, p1.reserved) == (5, 5)
+        assert p1.applied_order_ids == ["o1"]
+
+
+def test_each_handler_touches_only_its_own_aggregate():
     example = load_example("patterns/design-small-aggregates/007.py")
     with _context(example):
         assert example.OrderCommandHandler.meta_.part_of is example.Order
-        assert example.InventoryEventHandler.meta_.part_of is example.Inventory
+        assert example.OrderEventHandler.meta_.part_of is example.Order
         assert (
-            example.InventoryEventHandler.meta_.stream_category
+            example.OrderEventHandler.meta_.stream_category
             == example.Order.meta_.stream_category
         )
+        assert example.InventoryCommandHandler.meta_.part_of is example.Inventory
+        assert "EVENT_HANDLER_FOREIGN_EVENT" not in _check_codes(example)
 
 
 # The worked example
@@ -403,6 +473,25 @@ def test_completing_tasks_updates_project_progress():
             domain.repository_for(example.Project).get(project.project_id).progress
             == 50.0
         )
+        assert [name for name, _ in _commands_for(example, example.Project)] == [
+            "RecalculateProgress",
+            "RecalculateProgress",
+        ]
+
+        # Recounting again for the same project gives the same progress
+        domain.process(example.RecalculateProgress(project_id=project.project_id))
+        assert (
+            domain.repository_for(example.Project).get(project.project_id).progress
+            == 50.0
+        )
+
+
+def test_the_progress_hand_off_stays_with_the_task():
+    example = load_example("patterns/design-small-aggregates/008.py")
+    with _context(example):
+        assert example.TaskEventHandler.meta_.part_of is example.Task
+        assert example.ProjectCommandHandler.meta_.part_of is example.Project
+        assert "EVENT_HANDLER_FOREIGN_EVENT" not in _check_codes(example)
 
 
 def test_completing_a_completed_task_raises_no_event():

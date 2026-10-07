@@ -14,6 +14,7 @@ from protean.utils.globals import current_domain
 
 domain = Domain(name="SmallAggregatesEvents")
 domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
 
 
 @domain.value_object
@@ -57,25 +58,47 @@ class Order:
         )
 
 
-# A separate aggregate, with its own event handler
+# A separate aggregate, changed only by its own command handler
 @domain.aggregate
 class CustomerLoyalty:
     customer_id: Identifier(identifier=True)
     points: Integer(default=0)
+    applied_order_ids: List(content_type=String)
 
-    def add_points(self, points):
+    def add_points(self, order_id, points):
         self.points += points
+        self.applied_order_ids = [*self.applied_order_ids, order_id]
 
 
-@domain.event_handler(
-    part_of=CustomerLoyalty, stream_category=Order.meta_.stream_category
-)
-class CustomerLoyaltyEventHandler:
+@domain.command(part_of=CustomerLoyalty)
+class AwardPoints:
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    points: Integer(required=True)
+
+
+@domain.event_handler(part_of=Order)
+class OrderEventHandler:
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):
+        current_domain.process(
+            AwardPoints(
+                order_id=event.order_id,
+                customer_id=event.customer_id,
+                points=int(event.total_amount),
+            )
+        )
+
+
+@domain.command_handler(part_of=CustomerLoyalty)
+class LoyaltyCommandHandler:
+    @handle(AwardPoints)
+    def award_points(self, command: AwardPoints):
         repo = current_domain.repository_for(CustomerLoyalty)
-        loyalty = repo.get(event.customer_id)
-        loyalty.add_points(int(event.total_amount))
+        loyalty = repo.get(command.customer_id)
+        if command.order_id in loyalty.applied_order_ids:
+            return  # This order was already applied
+        loyalty.add_points(command.order_id, command.points)
         repo.add(loyalty)
 
 

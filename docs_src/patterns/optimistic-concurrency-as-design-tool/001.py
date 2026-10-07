@@ -57,9 +57,9 @@ class PreferencesService:
     def update_theme(self, user_id: str, theme: str) -> UserPreferences:
         for attempt in range(MAX_RETRIES):
             try:
-                # Each attempt is its own transaction. The version check
-                # runs when the unit of work commits, so the except clause
-                # must sit outside the `with` block.
+                # Each attempt is its own transaction. A conflict can surface
+                # when the unit of work commits, so the except clause must
+                # sit outside the `with` block.
                 with UnitOfWork():
                     repo = current_domain.repository_for(UserPreferences)
                     prefs = repo.get(user_id)

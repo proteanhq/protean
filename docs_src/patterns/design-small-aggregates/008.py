@@ -4,6 +4,7 @@ from protean.utils.globals import current_domain
 
 domain = Domain(name="SmallAggregatesProjects")
 domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
 
 
 # --8<-- [start:aggregates]
@@ -80,16 +81,28 @@ class TimeEntry:
 
 
 # --8<-- [start:progress_handler]
-@domain.event_handler(part_of=Project, stream_category=Task.meta_.stream_category)
-class ProjectEventHandler:
+@domain.command(part_of=Project)
+class RecalculateProgress:
+    project_id: Identifier(required=True)
+
+
+@domain.event_handler(part_of=Task)
+class TaskEventHandler:
     @handle(TaskCompleted)
     def on_task_completed(self, event: TaskCompleted):
+        current_domain.process(RecalculateProgress(project_id=event.project_id))
+
+
+@domain.command_handler(part_of=Project)
+class ProjectCommandHandler:
+    @handle(RecalculateProgress)
+    def recalculate_progress(self, command: RecalculateProgress):
         # `count()` issues a SELECT COUNT(*); it does not load the tasks
         tasks = current_domain.repository_for(Task).query.filter(
-            project_id=event.project_id
+            project_id=command.project_id
         )
         repo = current_domain.repository_for(Project)
-        project = repo.get(event.project_id)
+        project = repo.get(command.project_id)
         project.update_progress(
             tasks.filter(status="completed").count(),
             tasks.count(),

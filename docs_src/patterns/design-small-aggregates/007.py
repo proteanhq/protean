@@ -43,7 +43,7 @@ class OrderItem:
 
 
 # --8<-- [start:split]
-# Pattern: one aggregate per handler, events for the rest
+# Pattern: one aggregate per handler, an event and a command for the rest
 @domain.command(part_of=Order)
 class PlaceOrder:
     order_id: Identifier(identifier=True)
@@ -68,21 +68,51 @@ class Inventory:
     product_id: Identifier(identifier=True)
     available: Integer(default=0)
     reserved: Integer(default=0)
+    applied_order_ids: List(content_type=String)
 
-    def reserve(self, quantity):
+    def reserve(self, order_id, quantity):
         self.available -= quantity
         self.reserved += quantity
+        self.applied_order_ids = [*self.applied_order_ids, order_id]
 
 
-@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
-class InventoryEventHandler:
+@domain.command(part_of=Inventory)
+class ReserveStock:
+    order_id: Identifier(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+
+
+@domain.event_handler(part_of=Order)
+class OrderEventHandler:
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):
-        inventory_repo = current_domain.repository_for(Inventory)
+        # One ReserveStock per product, so the order id alone marks it applied
+        quantities = {}
         for item in event.items:
-            inventory = inventory_repo.get(item["product_id"])
-            inventory.reserve(item["quantity"])
-            inventory_repo.add(inventory)
+            product_id = item["product_id"]
+            quantities[product_id] = quantities.get(product_id, 0) + item["quantity"]
+
+        for product_id, quantity in quantities.items():
+            current_domain.process(
+                ReserveStock(
+                    order_id=event.order_id,
+                    product_id=product_id,
+                    quantity=quantity,
+                )
+            )
+
+
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    @handle(ReserveStock)
+    def reserve_stock(self, command: ReserveStock):
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.get(command.product_id)
+        if command.order_id in inventory.applied_order_ids:
+            return  # This order was already applied
+        inventory.reserve(command.order_id, command.quantity)
+        repo.add(inventory)
 
 
 # --8<-- [end:split]

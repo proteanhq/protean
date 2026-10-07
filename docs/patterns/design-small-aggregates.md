@@ -217,19 +217,16 @@ When something in one aggregate has to change another, raise a domain event:
 --8<-- "patterns/design-small-aggregates/006.py:events"
 ```
 
-`Order` knows nothing about `CustomerLoyalty`. It raises an event, and a
-separate handler updates the points. You can deploy, scale, and test the two on
-their own.
+`Order` knows nothing about `CustomerLoyalty`. It raises an event. The event
+handler stays with `Order`, the aggregate that owns the event, and issues an
+`AwardPoints` command. `CustomerLoyalty`'s own command handler updates the
+points. You can deploy, scale, and test the two on their own.
 
-The `stream_category` is what makes the handler listen. A handler reads its own
-aggregate's stream by default, so `CustomerLoyaltyEventHandler` would watch
-`CustomerLoyalty` and never see `OrderPlaced`. Point it at the stream the event
-is written to.
-
-Read that value off the source aggregate rather than typing it out. Protean
-prefixes a category with the domain name, so `Order` in a domain named `Shop`
-writes to `shop::order`. A hand-written `"order"` subscribes to a stream nothing
-writes to, and the handler stays silent.
+Events are delivered at least once, so the same `OrderPlaced` can arrive
+twice. The command carries the order id, and the loyalty command handler
+returns without changes when it has already applied that order. The
+[event handlers guide](../guides/consume-state/event-handlers.md) covers this
+hand-off in detail.
 
 ---
 
@@ -258,15 +255,16 @@ def place_order(self, command: PlaceOrder):
         inventory_repo.add(inventory)
 ```
 
-Split it. The command handler changes only the Order, and an event handler
-reacts to `OrderPlaced` by reserving the inventory:
+Split it. The command handler changes only the Order. An event handler on
+`Order` reacts to `OrderPlaced` by issuing a `ReserveStock` command for each
+product, and `Inventory`'s command handler does the write:
 
 ```python
 --8<-- "patterns/design-small-aggregates/007.py:split"
 ```
 
 That is the shape a well-designed DDD system settles into: small aggregates,
-joined by events.
+joined by events and the commands their handlers issue.
 
 ---
 
@@ -326,13 +324,16 @@ Each aggregate is now small:
   to the task's consistency boundary)
 - **TimeEntry**: Standalone records (no invariant ties them to the task's state)
 
-Completing a task raises an event, and the project's progress follows:
+Completing a task raises an event. The event handler on `Task` issues a
+`RecalculateProgress` command, and `Project`'s command handler recounts the
+tasks:
 
 ```python
 --8<-- "patterns/design-small-aggregates/008.py:progress_handler"
 ```
 
-The handler counts the rows itself. Do not take those counts from a projection
+The command handler counts the rows itself, so running it twice for the same
+event gives the same progress. Do not take those counts from a projection
 that a projector updates from `TaskCompleted` as well. The two consume the event
 through separate subscriptions, in no fixed order. Adding one to the
 projection's count double-counts the task when the projector got there first,

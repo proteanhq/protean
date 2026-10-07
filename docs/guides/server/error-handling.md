@@ -264,10 +264,15 @@ acceptable (e.g., updating user preferences). But not all version
 conflicts are equal. Some mean a real business problem (e.g., two customers
 booking the same seat), and others require merge logic.
 
-If your handler needs to distinguish between conflict types, catch
-`ExpectedVersionError` **inside** the handler method and handle it
-explicitly. When you catch it inside the handler, the framework's
-auto-retry does not trigger.
+A handler cannot tell these apart by catching `ExpectedVersionError`
+itself. Depending on the adapter and the aggregate, the conflict surfaces
+inside `repo.add` or when the handler's unit of work commits, after the
+handler method returns. A `try`/`except` inside the method either never
+sees the conflict or catches it and stops the retry. Put the decision in
+the aggregate instead. Each
+retry reloads the aggregate, and its preconditions run again: a seat that
+is now taken raises a domain exception, and a cart that has changed is
+merged or rejected.
 
 For a full treatment of the three conflict categories (last writer wins,
 business rejection, conditional merge), see

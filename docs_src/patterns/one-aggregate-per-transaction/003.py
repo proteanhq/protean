@@ -159,12 +159,18 @@ class OrderCommandHandler:
 class InventoryEventHandler:
     @handle(OrderPlaced)
     def reserve_inventory(self, event: OrderPlaced):
+        # One ReserveStock per product, so the order id alone marks it applied
+        quantities = {}
         for item in event.items:
+            product_id = item["product_id"]
+            quantities[product_id] = quantities.get(product_id, 0) + item["quantity"]
+
+        for product_id, quantity in quantities.items():
             current_domain.process(
                 ReserveStock(
                     order_id=event.order_id,
-                    product_id=item["product_id"],
-                    quantity=item["quantity"],
+                    product_id=product_id,
+                    quantity=quantity,
                 )
             )
 

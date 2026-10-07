@@ -120,9 +120,11 @@ The application service implements a retry loop. If a version conflict
 occurs, the operation is safe to retry because each change is independent
 and idempotent, setting the theme to "dark" produces the same result regardless
 of how many times it runs.
-Each attempt runs in its own `UnitOfWork`. The version check happens when
-the unit of work commits, so the `except` clause sits outside the `with`
-block.
+Each attempt runs in its own `UnitOfWork`. A conflict with a concurrent
+write can surface when the unit of work commits, so the `except` clause sits
+outside the `with` block. Call the service outside any other unit of work.
+Inside one, each attempt joins the outer unit of work, and the conflict
+surfaces at the outer commit with no retry.
 
 ```python
 --8<-- "patterns/optimistic-concurrency-as-design-tool/001.py:service"
@@ -137,18 +139,24 @@ block.
 
 ### Category 2: Conflict means a real problem (business exception)
 
-When a version conflict means the operation is no longer valid, catch the
-error and translate it into a domain-specific exception. The caller gets a
-clear, actionable message instead of a generic "try again."
+When a version conflict means the operation is no longer valid, the caller
+should get a domain-specific exception instead of a generic "try again."
+The aggregate's own precondition gives that answer. It raises
+`SeatAlreadyTaken` when the seat is no longer available.
 
 ```python
 --8<-- "patterns/optimistic-concurrency-as-design-tool/002.py:aggregate"
 ```
 
-The command handler translates the version conflict into a business-level
-exception. If two customers try to reserve the same seat simultaneously, one
-succeeds and the other learns that the seat is taken, not that a vague
-"conflict" occurred.
+The command handler does not catch `ExpectedVersionError`. Depending on the
+adapter and the aggregate, the conflict surfaces inside `repo.add` or when
+the handler's unit of work commits, after the handler method has returned.
+An `except` clause in the handler either never runs or stops the retry that
+follows. Instead, the framework catches the conflict and runs the handler
+again in a fresh unit of work. The reload sees that the seat is reserved, and `reserve()`
+raises `SeatAlreadyTaken`. If two customers try to reserve the same seat
+simultaneously, one succeeds and the other learns that the seat is taken,
+not that a vague "conflict" occurred.
 
 ```python
 --8<-- "patterns/optimistic-concurrency-as-design-tool/002.py:handler"
@@ -157,28 +165,16 @@ succeeds and the other learns that the seat is taken, not that a vague
 The API layer can now give the customer a meaningful response:
 
 ```python
-# fragment
-@app.post("/events/{event_id}/seats/{seat_number}/reserve")
-async def reserve_seat(event_id: str, seat_number: str, customer_id: str):
-    try:
-        domain.process(ReserveSeat(
-            reservation_id=f"{event_id}-{seat_number}",
-            customer_id=customer_id,
-        ))
-        return {"status": "reserved"}
-    except SeatAlreadyTaken as exc:
-        return {
-            "error": str(exc),
-            "suggestion": "Please choose a different seat.",
-        }, 409
+--8<-- "patterns/optimistic-concurrency-as-design-tool/002.py:api"
 ```
 
-!!! warning "Do not retry category 2 conflicts"
-    Retrying a seat reservation after an `ExpectedVersionError` will either
-    fail again (because the seat is now marked as reserved and the aggregate's
-    precondition check will reject it) or, worse, succeed and double-book the
-    seat if the precondition logic has a gap. The conflict *is* the answer:
-    someone else got there first.
+!!! warning "The precondition must be complete"
+    The framework's retry is safe here only because `reserve()` checks the
+    seat's status on the reloaded aggregate. If the precondition has a gap,
+    the retry succeeds and double-books the seat. The conflict *is* the
+    answer: someone else got there first, and the precondition is what
+    turns that into `SeatAlreadyTaken`. If you turn auto-retry off, the
+    caller gets the raw `ExpectedVersionError` and must translate it.
 
 ### Category 3: Merge if possible (conditional retry)
 
@@ -248,15 +244,14 @@ is safe because either value is acceptable. In many cases, you do not need to
 write manual retry loops for category 1 scenarios because the framework handles
 it.
 
-However, auto-retry alone is **not sufficient** for categories 2 and 3:
+Auto-retry also serves categories 2 and 3, but only when the handler
+re-checks its preconditions against the reloaded aggregate:
 
-- **Category 2** (conflict means a real problem): The handler should
-  catch `ExpectedVersionError` *inside* the handler method and translate
-  it into a domain-specific exception (e.g., `SeatAlreadyTaken`). The
-  framework's auto-retry will re-execute the handler, but the handler
-  itself must recognize that the operation is no longer valid and raise
-  accordingly. If the handler does not catch the error, the framework
-  retries blindly, which is exactly what category 2 conflicts should avoid.
+- **Category 2** (conflict means a real problem): The retry reloads the
+  aggregate, and the aggregate's precondition raises a domain-specific
+  exception (e.g., `SeatAlreadyTaken`). The handler does not need to
+  catch anything. Without that precondition, the retry would apply the
+  change again, which is exactly what category 2 conflicts should avoid.
 
 - **Category 3** (merge if possible): The handler must reload the
   aggregate and re-evaluate preconditions. The framework's fresh
@@ -264,16 +259,15 @@ However, auto-retry alone is **not sufficient** for categories 2 and 3:
   code must implement the merge logic. Simple re-execution works only
   when the operation is idempotent.
 
-!!! note "When to catch `ExpectedVersionError` inside your handler"
-    If your handler deals with category 2 or 3 conflicts, catch
-    `ExpectedVersionError` inside the handler method and handle it
-    explicitly. When you catch it inside the handler, the framework's
-    auto-retry does not trigger (because no exception propagates out of
-    the handler).
-
-    If you do **not** catch it, the framework retries the entire handler
-    automatically. This is safe for category 1 conflicts but may produce
-    incorrect results for categories 2 and 3.
+!!! note "Why a handler should not catch `ExpectedVersionError` itself"
+    Depending on the adapter and the aggregate, a conflict surfaces inside
+    `repo.add` or when the handler's unit of work commits, after the
+    method returns. A `try`/`except` inside the handler either never sees
+    the conflict or catches it and stops the framework's retry. Put the
+    decision in the aggregate's preconditions, which run again on every
+    retry. Code that needs its own retry loop, like the application
+    services in categories 1 and 3, opens a `UnitOfWork` for each attempt
+    and catches the error outside the `with` block.
 
 For auto-retry configuration, see
 [Version conflict auto-retry](../guides/server/error-handling.md#version-conflict-auto-retry).
@@ -371,9 +365,9 @@ on the reloaded aggregate.
 !!! note "How this differs from framework auto-retry"
     Protean's built-in auto-retry at the `@handle` level **also** retries
     blindly, which is correct for category 1 conflicts (the vast majority). For
-    categories 2 and 3, your handler must catch `ExpectedVersionError` inside
-    the handler method and apply the appropriate strategy. When you catch it
-    inside the handler, the framework's retry does not trigger.
+    categories 2 and 3, the retry is safe only because each attempt reloads
+    the aggregate and runs its preconditions again. Keep those checks in the
+    aggregate, as `reserve()` does in category 2.
 
 ### Ignoring version conflicts entirely
 
@@ -382,13 +376,13 @@ Suppressing the error and returning success.
 ```python
 # fragment
 # Anti-pattern: swallowing the error
-@handle(UpdateInventory)
-def update_inventory(self, command):
+def adjust_inventory(product_id, delta):
     try:
-        repo = current_domain.repository_for(Inventory)
-        inv = repo.get(command.product_id)
-        inv.adjust_quantity(command.delta)
-        repo.add(inv)
+        with UnitOfWork():
+            repo = current_domain.repository_for(Inventory)
+            inv = repo.get(product_id)
+            inv.adjust_quantity(delta)
+            repo.add(inv)
     except ExpectedVersionError:
         pass  # "It'll sort itself out"
 ```

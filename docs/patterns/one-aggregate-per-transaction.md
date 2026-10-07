@@ -164,7 +164,7 @@ raises an event, Protean stores it and delivers it to registered handlers.
 
 The event carries all the data the downstream handler needs. The handler
 stays with `Order`, the aggregate that owns the event, and does not write
-`Inventory` itself. It issues a `ReserveStock` command for each item, and
+`Inventory` itself. It issues one `ReserveStock` command for each product, and
 `Inventory`'s command handler does the write:
 
 ```python
@@ -287,20 +287,13 @@ must be atomically consistent, you have a modeling tension. Options:
 
 Some operations naturally batch changes to many instances of the same aggregate
 type (e.g., closing all orders past a deadline). These are still
-one-aggregate-per-transaction if each instance is processed in its own UoW. The
-command handler iterates, but each iteration is a separate transaction:
+one-aggregate-per-transaction if each instance is processed in its own UoW.
+A command handler cannot do this, because everything inside one `@handle`
+method shares the handler's UoW. An application service method can open a
+`UnitOfWork` for each order:
 
 ```python
-# fragment
-@handle(CloseExpiredOrders)
-def close_expired(self, command: CloseExpiredOrders):
-    repo = current_domain.repository_for(Order)
-    expired_orders = repo.query(Order.status == "pending", Order.deadline < now())
-
-    for order in expired_orders:
-        # Each order is processed in its own conceptual transaction
-        order.close("Expired past deadline")
-        repo.add(order)
+--8<-- "patterns/one-aggregate-per-transaction/005.py:bulk"
 ```
 
 ---

@@ -1,5 +1,6 @@
 """Run the examples on ``docs/patterns/encapsulate-state-changes.md``."""
 
+import re
 import subprocess
 import sys
 
@@ -206,6 +207,9 @@ def test_page_tests_pass_under_pytest():
             "-p",
             "no:randomly",
             "-q",
+            "--import-mode=importlib",
+            "-W",
+            "error::pytest.PytestCollectionWarning",
         ],
         cwd=REPO_ROOT,
         capture_output=True,
@@ -214,7 +218,7 @@ def test_page_tests_pass_under_pytest():
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "3 passed" in result.stdout
+    assert re.search(r"\b3 passed\b", result.stdout), result.stdout
 
 
 # Account with an invariant (002.py)
