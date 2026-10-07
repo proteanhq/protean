@@ -63,11 +63,12 @@ class OrderEventsHandler:
 class InventoryCommandHandler:
     @handle(ReserveStock)
     def reserve_stock(self, command):
-        inventory = self.repository.get(command.product_id)
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.get(command.product_id)
         if command.order_id in inventory.applied_order_ids:
             return  # this order was already applied
         inventory.reserve(command.order_id, command.quantity)
-        self.repository.add(inventory)
+        repo.add(inventory)
 ```
 
 Events are delivered at least once, so the command carries an id taken from the event, and the

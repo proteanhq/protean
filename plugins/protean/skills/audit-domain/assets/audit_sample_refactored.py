@@ -199,7 +199,7 @@ class OrderEventsHandler:
     """React to Order's own OrderPlaced event and ask Inventory to reserve stock.
 
     The handler sits in Order's cluster, because it reacts to Order's own event.
-    Inventory's command handler does the write, in its own transaction.
+    Inventory's command handler does the write.
     """
 
     @handle(OrderPlaced)

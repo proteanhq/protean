@@ -205,7 +205,7 @@ class ShipmentNotifier:
     The handler sits in Shipment's cluster, because it reacts to Shipment's own
     events (a handler that reacts to another cluster's event is what `check`
     reports as EVENT_HANDLER_FOREIGN_EVENT). It hands off to Notification with
-    a command. It also shows two handlers processing the same events
+    a command. It also shows separate handlers processing the same events
     independently.
     """
 

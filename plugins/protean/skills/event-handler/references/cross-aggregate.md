@@ -4,7 +4,7 @@ An event handler that reacts to one aggregate's event and changes a different ag
 
 ## Overview
 
-The handler sits in the cluster that owns the event. It does not write the other aggregate itself. It issues a command that belongs to the other aggregate, and that aggregate's command handler does the write. Each aggregate changes in its own transaction.
+The handler sits in the cluster that owns the event. It does not write the other aggregate itself. It issues a command that belongs to the other aggregate, and that aggregate's command handler does the write. With async command processing, each aggregate changes in its own transaction. With sync command processing, as in tests, the command runs inside the event handler's unit of work and commits with it.
 
 The pattern:
 1. Aggregate A raises an event on its stream

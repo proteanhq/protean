@@ -270,7 +270,8 @@ class WorkloadSyncHandler:
 
     `event._metadata.headers.id` is the event's message id, the same on
     every delivery of that event.
-    It has the form `<stream>-<version>.<n>`, so it names one change only
+    On an aggregate that is not event sourced it has the form
+    `<stream>-<version>.<n>`, so it names one change only
     while the task is loaded fresh before each change, as the command
     handlers here do. An instance saved twice without reloading raises its
     second event under the same id.

@@ -161,12 +161,14 @@ Never modify two aggregates in the same handler. Instead:
 1. **Aggregate A** raises a domain event when its state changes
 2. An **event handler in A's cluster** (`part_of=A`) reacts to that event
 3. The handler issues a **command** that belongs to **Aggregate B**
-4. B's **command handler** loads B and updates it in a **separate transaction** (eventual consistency)
+4. B's **command handler** loads B and updates it. With async command processing it runs in a
+   **separate transaction** (eventual consistency). With sync command processing, as in tests, it
+   runs inside the event handler's unit of work and commits with it
 
 | Approach | Correct? | Why |
 |----------|----------|-----|
 | Handler modifies source + target in one call | No | Two aggregates in one transaction |
-| Handler in A's cluster issues a command to B | Yes | Each aggregate changes in its own transaction, through its own command handler |
+| Handler in A's cluster issues a command to B | Yes | Each aggregate changes only through its own command handler |
 | Handler in B's cluster listens to A's stream and writes B | No | `check` reports `EVENT_HANDLER_FOREIGN_EVENT`: the two clusters are coupled directly |
 | Command handler loads and modifies two aggregates | No | Violates consistency boundary |
 
@@ -195,10 +197,11 @@ because a redelivered event would then look like new work.
 
 Prefer an id from the event's payload. When the same kind of event can recur
 for one source and the payload has no id for each occurrence, use the event's
-message id, `event._metadata.headers.id`. It has the form
-`<stream>-<version>.<n>` and stays the same on every delivery. It names one
-change only when the source aggregate is loaded fresh before each change, as
-a command handler does, and when an aggregate id is never reused. An instance
+message id, `event._metadata.headers.id`. On an aggregate that is not event
+sourced it has the form `<stream>-<version>.<n>` and stays the same on every
+delivery. It names one change only when the source aggregate is loaded fresh
+before each change, as a command handler does, and when an aggregate id is
+never reused. An instance
 saved twice without reloading raises its second event under the same id, and
 the guard then drops that real change.
 

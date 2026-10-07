@@ -13,7 +13,8 @@ Domain: A support ticket system where tickets can be created and assigned,
 with an audit log tracking assignments.
 
 Events are delivered at least once, so each audit entry takes the event's
-message id (`<stream>-<version>.<n>`) as its id, and the command handler skips
+message id as its id (`<stream>-<version>.<n>`, because `Ticket` is not
+event sourced), and the command handler skips
 an entry that already exists. The message id names one change only while the
 ticket is loaded fresh before each change, as the command handlers here do.
 The entry id is a string, so this guard needs the default `identity_type`.

@@ -50,7 +50,9 @@ a simplified example of an Event Handler that syncs stock levels in
 `OrderShipped`. It does not write to `Inventory` itself. It issues a
 `ReduceStock` command, which is `part_of=Inventory`, and Inventory's command
 handler does the write. `Inventory` changes only through its own command
-handler, in its own transaction.
+handler. This example sets `command_processing` to `"sync"`, so the command
+runs inside the event handler's unit of work and commits with it. With async
+command processing, the command runs later in its own transaction.
 
 3. The command carries the order id taken from the event. Events are delivered
 at least once, so the same `OrderShipped` can arrive twice. `Inventory`
@@ -283,10 +285,10 @@ different contexts and you only want to react to a specific trigger.
 transient infrastructure exceptions, applied inside the handler before any
 subscription-level retry. See [Transient-failure retries](#transient-failure-retries).
 
-!!! note "Required: `part_of`"
-    Every event handler must specify `part_of`, the aggregate it belongs to.
-    This association determines the default stream category. Set `part_of`
-    to the aggregate that raises the events the handler reacts to.
+!!! note "Set `part_of`"
+    An event handler needs `part_of` or `stream_category`, or registration
+    fails. Set `part_of` to the aggregate that raises the events the handler
+    reacts to. This association determines the default stream category.
 
 ### Subscription Options
 

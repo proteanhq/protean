@@ -100,8 +100,9 @@ class TeamMemberCommandHandler:
 ```
 
 A task can be assigned, unassigned and assigned again, so the task id cannot
-name one change. `event._metadata.headers.id` is the event's message id,
-`<stream>-<version>.<n>`, and it is the same on every delivery of that event.
+name one change. `event._metadata.headers.id` is the event's message id.
+Task is not event sourced, so the id has the form `<stream>-<version>.<n>`,
+and it is the same on every delivery of that event.
 It names one change only when the task is loaded fresh before each change, as
 the command handlers here do. An instance saved twice without reloading raises
 its second event under the same id, and the guard then drops that change.

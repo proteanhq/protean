@@ -146,7 +146,7 @@ def handle(self, event):
     domain.repository_for(Notification).add(notification)
 ```
 
-**Better:** Have the handler issue one command per target aggregate. Each target's command handler then changes its own aggregate in its own transaction. See [Cross-Aggregate](./cross-aggregate.md).
+**Better:** Have the handler issue one command per target aggregate. Each target's command handler then changes its own aggregate. With async command processing, each runs in its own transaction. See [Cross-Aggregate](./cross-aggregate.md).
 
 ## 8. Using Plain Strings for stream_category
 

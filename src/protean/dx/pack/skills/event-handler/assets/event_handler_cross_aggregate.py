@@ -7,7 +7,7 @@ This example demonstrates:
 - The handler hands off to Inventory by issuing a ReduceStock command
 - Inventory's command handler looks the inventory up by a non-identity field
   (book_id) with find_by and reduces the stock
-- Each aggregate changes in its own transaction
+- Each aggregate changes only through its own command handler
 - A redelivered event is a no-op: events are delivered at least once, so the
   command carries the order id and Inventory records the orders it has applied
 - Synchronous event and command processing for testing
