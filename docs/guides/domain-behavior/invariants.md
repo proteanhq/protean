@@ -95,7 +95,15 @@ When `withdraw()` is called, the flow is:
    frozen, `ValidationError` is raised and the assignment `self.balance -= amount` never happens.
 2. The attribute assignment `self.balance -= amount` executes.
 3. **Post-invariants** fire, `balance_must_not_be_negative` checks the resulting state. If the balance
-   went negative, `ValidationError` is raised and the assignment is rolled back.
+   went negative, `ValidationError` is raised and the assignment is rolled back: `balance` keeps
+   its previous value and the account is not marked as changed.
+
+The rollback undoes only the assignment that failed. If a method changes two
+fields and the second change breaks a post-invariant, the first change stays.
+
+Rollback applies to plain fields, `ValueObject` fields (with their embedded
+attributes) and `Reference` fields, on the aggregate and on its child
+entities. Assigning a `HasOne` or `HasMany` field is not rolled back.
 
 !!!note
     `pre` invariants are not applicable when aggregates and entities are being
@@ -205,7 +213,9 @@ Within the `atomic_change` context manager, the cycle works as follows:
 1. **Pre-invariants fire on entry**: The current state is validated.
 2. **Invariant checks are suspended** during the block. Individual assignments
    do not trigger pre/post checks.
-3. **Post-invariants fire on exit**: The final state is validated.
+3. **Post-invariants fire on exit**: The final state is validated. If a
+   check fails, `ValidationError` is raised and the changes made inside the
+   block stay applied. Nothing is rolled back.
 
 ```shell hl_lines="14"
 In [1]: from protean import atomic_change

@@ -88,7 +88,8 @@ intercepted by `__setattr__`, which runs a full validation cycle:
    fails, a `ValidationError` is raised and the assignment never takes
    effect.
 3. **Post-invariants fire**: `@invariant.post` methods verify the aggregate
-   remains in a valid state after the change.
+   remains in a valid state after the change. If one fails, a
+   `ValidationError` is raised and the field goes back to its previous value.
 4. **The entity is marked as changed**: Protean's internal `_EntityState`
    tracks the mutation so the Unit of Work knows to persist it.
 

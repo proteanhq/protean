@@ -14,6 +14,7 @@ from typing import (
     Annotated,
     Any,
     ClassVar,
+    NamedTuple,
     Self,
     TypeVar,
     cast,
@@ -90,6 +91,20 @@ _DESCRIPTOR_TYPES = (
     _ReferenceField,
     _ShadowField,
 )
+
+
+# Marks an attribute that was absent from ``__dict__`` when a snapshot was taken.
+_ABSENT: Any = object()
+
+
+class _AssignmentSnapshot(NamedTuple):
+    """State an attribute assignment can change, kept to undo it."""
+
+    values: dict[str, Any]
+    cached: Any
+    name: str
+    fields_set: set[str]
+    changed: bool
 
 
 class _FieldsCacheDescriptor:
@@ -949,6 +964,59 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     # ------------------------------------------------------------------
     # Mutation with validation + invariant checks
     # ------------------------------------------------------------------
+    def _take_assignment_snapshot(
+        self, name: str, descriptor: Any
+    ) -> "_AssignmentSnapshot":
+        """Capture what an assignment to ``name`` can change on this entity.
+
+        Covers the attribute itself, the shadow attributes a value object or
+        reference descriptor writes next to it, the descriptor's cached value,
+        the Pydantic fields-set and the changed flag. Values are read straight
+        from ``__dict__``, so no descriptor ``__get__`` runs.
+        """
+        keys = [name]
+        if isinstance(descriptor, ValueObject):
+            keys.extend(
+                field.attribute_name
+                for field in descriptor.embedded_fields.values()
+                if field.attribute_name is not None
+            )
+        elif isinstance(descriptor, Reference):
+            keys.append(descriptor.get_attribute_name())
+
+        cache = self._state.fields_cache
+        assert isinstance(cache, dict)
+        return _AssignmentSnapshot(
+            values={key: self.__dict__.get(key, _ABSENT) for key in keys},
+            cached=cache.get(name, _ABSENT),
+            name=name,
+            fields_set=set(self.__pydantic_fields_set__),
+            changed=self._state._changed,
+        )
+
+    def _restore_assignment_snapshot(self, snapshot: "_AssignmentSnapshot") -> None:
+        """Put back what ``_take_assignment_snapshot`` captured.
+
+        Writes into the current ``__dict__`` key by key, because Pydantic's
+        assignment validation replaces the ``__dict__`` object. Runs no
+        validation and no invariants.
+        """
+        for key, old_value in snapshot.values.items():
+            if old_value is _ABSENT:
+                self.__dict__.pop(key, None)
+            else:
+                self.__dict__[key] = old_value  # pyright: ignore[reportIndexIssue]
+
+        cache = self._state.fields_cache
+        assert isinstance(cache, dict)
+        if snapshot.cached is _ABSENT:
+            cache.pop(snapshot.name, None)
+        else:
+            cache[snapshot.name] = snapshot.cached
+
+        object.__setattr__(self, "__pydantic_fields_set__", snapshot.fields_set)
+        self._state._changed = snapshot.changed
+
     def __setattr__(self, name: str, value: Any) -> None:
         # During event replay only, drop an assignment to a reserved (removed)
         # field name. A retained ``@apply`` handler for a retired event can
@@ -984,25 +1052,44 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             # Pre-check invariants
             target._precheck()
 
+            snapshot = self._take_assignment_snapshot(name, None)
+
             # Delegate to Pydantic (validates via validate_assignment)
             try:
                 super().__setattr__(name, value)
             except PydanticValidationError as e:
                 raise ValidationError(convert_pydantic_errors(e)) from e
 
-            # Post-check invariants
-            target._postcheck()
+            # Post-check invariants. A failure undoes this one assignment.
+            try:
+                target._postcheck()
+            except ValidationError:
+                self._restore_assignment_snapshot(snapshot)
+                raise
 
             # Mark entity state as changed
             self._state.mark_changed()
         elif getattr(self, "_initialized", False) and (
-            self._get_class_descriptor(type(self), name) is not None
+            (descriptor := self._get_class_descriptor(type(self), name)) is not None
         ):
             # Descriptor field: use object.__setattr__ to trigger descriptor protocol
             target = self._root if self._root is not None else self
             target._precheck()
+            # Only value-object and reference assignments are undone on a
+            # failed post-check. Association assignments re-link children,
+            # which a snapshot of this entity's attributes cannot undo.
+            descriptor_snapshot = (
+                self._take_assignment_snapshot(name, descriptor)
+                if isinstance(descriptor, (ValueObject, Reference))
+                else None
+            )
             object.__setattr__(self, name, value)
-            target._postcheck()
+            try:
+                target._postcheck()
+            except ValidationError:
+                if descriptor_snapshot is not None:
+                    self._restore_assignment_snapshot(descriptor_snapshot)
+                raise
             self._state.mark_changed()
         elif name.startswith(("add_", "remove_", "get_one_from_", "filter_")):
             # Association pseudo-methods set during model_post_init
