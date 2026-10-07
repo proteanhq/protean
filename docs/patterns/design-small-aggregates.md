@@ -93,6 +93,7 @@ relationships between them.
 ### The anti-pattern: embedding aggregates
 
 ```python
+# fragment
 # Anti-pattern: Customer embedded inside Order
 @domain.aggregate
 class Order:
@@ -113,14 +114,7 @@ Which gives you:
 ### The pattern: reference by identity
 
 ```python
-# Pattern: Order references Customer by identity
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)  # Just the identity
-    items = HasMany(OrderItem)
-    status: String(default="pending")
-    total: Float(default=0.0)
+--8<-- "patterns/design-small-aggregates/001.py:order"
 ```
 
 Now the Order knows *which* customer placed it without owning or embedding
@@ -137,13 +131,7 @@ instinct is to embed it. You have three better options.
 The caller already holds the data, so it goes in the command:
 
 ```python
-@domain.command(part_of=Order)
-class PlaceOrder(BaseCommand):
-    order_id: Identifier(identifier=True)
-    customer_id: Identifier(required=True)
-    customer_name: String(required=True)    # Included by the caller
-    customer_email: String(required=True)   # Included by the caller
-    items: List(required=True)
+--8<-- "patterns/design-small-aggregates/001.py:command"
 ```
 
 The handler never loads the Customer. The command carries everything the Order
@@ -154,20 +142,7 @@ needs.
 When you want another aggregate's data frozen as it was:
 
 ```python
-@domain.value_object
-class CustomerSnapshot:
-    customer_id: String(required=True)
-    name: String(required=True)
-    email: String(required=True)
-
-
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    customer = ValueObject(CustomerSnapshot)  # Snapshot, not the live aggregate
-    items = HasMany(OrderItem)
-    status: String(default="pending")
-    total: Float(default=0.0)
+--8<-- "patterns/design-small-aggregates/002.py:snapshot"
 ```
 
 `CustomerSnapshot` is a value object: immutable, embedded, and holding the
@@ -180,25 +155,7 @@ When the decision needs the other aggregate's data and can live with it being
 slightly behind, query a projection:
 
 ```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler(BaseCommandHandler):
-
-    @handle(PlaceOrder)
-    def place_order(self, command: PlaceOrder):
-        # Check customer's credit status via a read model
-        customer_view = current_domain.repository_for(CustomerCreditView).get(
-            command.customer_id
-        )
-
-        if customer_view.credit_status == "suspended":
-            raise BusinessRuleViolation("Customer credit is suspended")
-
-        order = Order(
-            order_id=command.order_id,
-            customer_id=command.customer_id,
-            items=command.items,
-        )
-        current_domain.repository_for(Order).add(order)
+--8<-- "patterns/design-small-aggregates/001.py:read_model"
 ```
 
 You read what you need without tying Order to Customer. A projector runs after
@@ -218,17 +175,7 @@ Protean gives you four pieces for this:
 without embedding it:
 
 ```python
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)  # References Customer aggregate
-    product_id: Identifier(required=True)   # References Product aggregate
-
-@domain.aggregate
-class Shipment:
-    shipment_id: Auto(identifier=True)
-    order_id: Identifier(required=True)     # References Order aggregate
-    carrier_id: Identifier(required=True)   # References Carrier aggregate
+--8<-- "patterns/design-small-aggregates/003.py:identifiers"
 ```
 
 Each aggregate stands alone, and the relationships between them are
@@ -240,34 +187,7 @@ When data really does belong inside the aggregate, because it has to be
 consistent in the same transaction, use entities:
 
 ```python
-@domain.entity(part_of=Order)
-class OrderItem:
-    product_id: Identifier(required=True)
-    product_name: String(required=True)
-    quantity: Integer(min_value=1, required=True)
-    unit_price: Float(required=True)
-
-
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)
-    items = HasMany(OrderItem)
-    status: String(default="pending")
-
-    def add_item(self, product_id, product_name, quantity, unit_price):
-        item = OrderItem(
-            product_id=product_id,
-            product_name=product_name,
-            quantity=quantity,
-            unit_price=unit_price,
-        )
-        self.items.add(item)
-
-    @invariant.post
-    def order_must_have_items(self):
-        if self.status != "draft" and not self.items:
-            raise ValidationError({"items": ["Order must have at least one item"]})
+--8<-- "patterns/design-small-aggregates/004.py:entities"
 ```
 
 `OrderItem` sits inside `Order` because:
@@ -281,28 +201,7 @@ class Order:
 When data describes part of the aggregate but has no identity of its own:
 
 ```python
-@domain.value_object
-class Money:
-    amount: Float(required=True)
-    currency: String(max_length=3, required=True)
-
-
-@domain.value_object
-class ShippingAddress:
-    street: String(required=True)
-    city: String(required=True)
-    state: String(required=True)
-    postal_code: String(required=True)
-    country: String(required=True)
-
-
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)
-    items = HasMany(OrderItem)
-    total = ValueObject(Money)
-    shipping_address = ValueObject(ShippingAddress)  # Snapshot at order time
+--8<-- "patterns/design-small-aggregates/005.py:value_objects"
 ```
 
 `ShippingAddress` is embedded as a value object, a frozen record of where this
@@ -315,46 +214,7 @@ today.
 When something in one aggregate has to change another, raise a domain event:
 
 ```python
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    total_amount: Float(required=True)
-    items: List(required=True)  # Each item: product_id, quantity
-
-
-@domain.aggregate
-class Order:
-    # ... fields ...
-
-    def place(self):
-        if self.status != "draft":
-            raise ValidationError({"status": ["Only draft orders can be placed"]})
-
-        self.status = "placed"
-        self.raise_(OrderPlaced(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            total_amount=self.total.amount,
-            items=[
-                {"product_id": item.product_id, "quantity": item.quantity}
-                for item in self.items
-            ],
-        ))
-
-
-# In a separate aggregate's event handler
-@domain.event_handler(
-    part_of=CustomerLoyalty, stream_category=Order.meta_.stream_category
-)
-class CustomerLoyaltyEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(CustomerLoyalty)
-        loyalty = repo.get(event.customer_id)
-        loyalty.add_points(int(event.total_amount))
-        repo.add(loyalty)
+--8<-- "patterns/design-small-aggregates/006.py:events"
 ```
 
 `Order` knows nothing about `CustomerLoyalty`. It raises an event, and a
@@ -381,6 +241,7 @@ it probably wants an event instead**.
 When you catch yourself loading and changing two aggregates in one handler:
 
 ```python
+# fragment
 # Anti-pattern: modifying two aggregates in one handler
 @handle(PlaceOrder)
 def place_order(self, command: PlaceOrder):
@@ -401,28 +262,7 @@ Split it. The command handler changes only the Order, and an event handler
 reacts to `OrderPlaced` by reserving the inventory:
 
 ```python
-# Pattern: one aggregate per handler, events for the rest
-@handle(PlaceOrder)
-def place_order(self, command: PlaceOrder):
-    order_repo = current_domain.repository_for(Order)
-    order = Order(
-        order_id=command.order_id,
-        items=command.items,
-    )
-    order.place()  # Raises OrderPlaced event
-    order_repo.add(order)
-
-
-@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
-class InventoryEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        inventory_repo = current_domain.repository_for(Inventory)
-        for item in event.items:
-            inventory = inventory_repo.get(item["product_id"])
-            inventory.reserve(item["quantity"])
-            inventory_repo.add(inventory)
+--8<-- "patterns/design-small-aggregates/007.py:split"
 ```
 
 That is the shape a well-designed DDD system settles into: small aggregates,
@@ -444,6 +284,7 @@ Take a project management system with these requirements:
 ### The naive design
 
 ```python
+# fragment
 # Anti-pattern: everything in one aggregate
 @domain.aggregate
 class Project:
@@ -474,65 +315,7 @@ Put each relationship through the consistency boundary test:
 | Progress | Derived, can be eventually consistent | Updated via events |
 
 ```python
-@domain.aggregate
-class Project:
-    project_id: Auto(identifier=True)
-    name: String(required=True)
-    description: Text()
-    status: String(default="active")
-    progress: Float(default=0.0)
-
-    def update_progress(self, completed_count, total_count):
-        if total_count > 0:
-            self.progress = (completed_count / total_count) * 100
-
-
-@domain.aggregate
-class Team:
-    team_id: Auto(identifier=True)
-    project_id: Identifier(required=True)  # References Project
-    members = HasMany(TeamMember)
-
-
-@domain.entity(part_of=Team)
-class TeamMember:
-    user_id: Identifier(required=True)
-    role: String(default="member")
-
-
-@domain.aggregate
-class Task:
-    task_id: Auto(identifier=True)
-    project_id: Identifier(required=True)  # References Project
-    assignee_id: Identifier()               # References a User
-    title: String(required=True)
-    status: String(default="open")
-    comments = HasMany(Comment)
-
-    def complete(self):
-        if self.status == "completed":
-            return
-        self.status = "completed"
-        self.raise_(TaskCompleted(
-            task_id=self.task_id,
-            project_id=self.project_id,
-        ))
-
-
-@domain.entity(part_of=Task)
-class Comment:
-    author_id: Identifier(required=True)
-    content: Text(required=True)
-    posted_at: DateTime()
-
-
-@domain.aggregate
-class TimeEntry:
-    entry_id: Auto(identifier=True)
-    task_id: Identifier(required=True)    # References Task
-    user_id: Identifier(required=True)    # References User
-    hours: Float(required=True)
-    description: Text()
+--8<-- "patterns/design-small-aggregates/008.py:aggregates"
 ```
 
 Each aggregate is now small:
@@ -546,22 +329,7 @@ Each aggregate is now small:
 Completing a task raises an event, and the project's progress follows:
 
 ```python
-@domain.event_handler(part_of=Project, stream_category=Task.meta_.stream_category)
-class ProjectEventHandler(BaseEventHandler):
-
-    @handle(TaskCompleted)
-    def on_task_completed(self, event: TaskCompleted):
-        # `count()` issues a SELECT COUNT(*); it does not load the tasks
-        tasks = current_domain.repository_for(Task).query.filter(
-            project_id=event.project_id
-        )
-        repo = current_domain.repository_for(Project)
-        project = repo.get(event.project_id)
-        project.update_progress(
-            tasks.filter(status="completed").count(),
-            tasks.count(),
-        )
-        repo.add(project)
+--8<-- "patterns/design-small-aggregates/008.py:progress_handler"
 ```
 
 The handler counts the rows itself. Do not take those counts from a projection
@@ -618,6 +386,7 @@ orders and customers on one page tomorrow and the boundaries should not move.
 ### Mistake 2: using HasOne/HasMany across aggregates
 
 ```python
+# fragment
 # Mistake: using association fields for separate aggregates
 @domain.aggregate
 class Order:
@@ -628,10 +397,7 @@ class Order:
 another aggregate, use `Identifier`:
 
 ```python
-# Correct: identity reference to another aggregate
-@domain.aggregate
-class Order:
-    customer_id: Identifier(required=True)  # References Customer
+--8<-- "patterns/design-small-aggregates/009.py:correct"
 ```
 
 ### Mistake 3: splitting too early

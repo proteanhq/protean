@@ -5,6 +5,7 @@
 A developer writes a command handler to ship an order:
 
 ```python
+# fragment
 @handle(ShipOrder)
 def ship_order(self, command: ShipOrder):
     repo = current_domain.repository_for(Order)
@@ -107,6 +108,7 @@ without needing to understand the field-level mechanics.
 ### Before: Direct Field Manipulation
 
 ```python
+# fragment
 @domain.aggregate
 class Order:
     order_id: Auto(identifier=True)
@@ -185,96 +187,7 @@ Problems with this approach:
 ### After: Named Methods on the Aggregate
 
 ```python
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)
-    items = HasMany(OrderItem)
-    status: String(default="draft")
-    total: Float(default=0.0)
-    shipped_at: DateTime()
-    tracking_number: String()
-    cancelled_at: DateTime()
-    cancellation_reason: String()
-
-    def ship(self, tracking_number: str) -> None:
-        """Ship this order with the given tracking number."""
-        if self.status != "paid":
-            raise ValidationError(
-                {"status": ["Only paid orders can be shipped"]}
-            )
-
-        if not self.items:
-            raise ValidationError(
-                {"items": ["Cannot ship an order with no items"]}
-            )
-
-        self.status = "shipped"
-        self.shipped_at = datetime.now(timezone.utc)
-        self.tracking_number = tracking_number
-
-        self.raise_(OrderShipped(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            tracking_number=tracking_number,
-        ))
-
-    def cancel(self, reason: str) -> None:
-        """Cancel this order with the given reason."""
-        if self.status in ("shipped", "cancelled"):
-            raise ValidationError(
-                {"status": ["Cannot cancel a shipped or already cancelled order"]}
-            )
-
-        self.status = "cancelled"
-        self.cancelled_at = datetime.now(timezone.utc)
-        self.cancellation_reason = reason
-
-        self.raise_(OrderCancelled(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            reason=reason,
-        ))
-
-    def pay(self) -> None:
-        """Mark this order as paid."""
-        if self.status != "draft":
-            raise ValidationError(
-                {"status": ["Only draft orders can be paid"]}
-            )
-
-        self.status = "paid"
-
-        self.raise_(OrderPaid(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            total=self.total,
-        ))
-
-
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler(BaseCommandHandler):
-
-    @handle(ShipOrder)
-    def ship_order(self, command: ShipOrder):
-        repo = current_domain.repository_for(Order)
-        order = repo.get(command.order_id)
-        order.ship(command.tracking_number)
-        repo.add(order)
-
-    @handle(CancelOrder)
-    def cancel_order(self, command: CancelOrder):
-        repo = current_domain.repository_for(Order)
-        order = repo.get(command.order_id)
-        order.cancel(command.reason)
-        repo.add(order)
-
-    @handle(PayOrder)
-    def pay_order(self, command: PayOrder):
-        repo = current_domain.repository_for(Order)
-        order = repo.get(command.order_id)
-        order.pay()
-        repo.add(order)
+--8<-- "patterns/encapsulate-state-changes/001.py:after"
 ```
 
 Now the handler is three lines: load, call, save. All business logic
@@ -292,12 +205,11 @@ Every state-changing method on an aggregate should handle three things:
 Check whether the operation is allowed given the aggregate's current state:
 
 ```python
+# fragment
 def ship(self, tracking_number: str) -> None:
     # Precondition: order must be in "paid" status
     if self.status != "paid":
-        raise ValidationError(
-            {"status": ["Only paid orders can be shipped"]}
-        )
+        raise ValidationError({"status": ["Only paid orders can be shipped"]})
 ```
 
 Preconditions are different from invariants. Preconditions check whether the
@@ -310,8 +222,9 @@ at the top of the method.
 Perform the actual field changes:
 
 ```python
+# fragment
     self.status = "shipped"
-    self.shipped_at = datetime.now(timezone.utc)
+    self.shipped_at = datetime.now(UTC)
     self.tracking_number = tracking_number
 ```
 
@@ -324,11 +237,14 @@ when handlers manage field assignments independently.
 Record what happened as a domain event:
 
 ```python
-    self.raise_(OrderShipped(
-        order_id=self.order_id,
-        customer_id=self.customer_id,
-        tracking_number=tracking_number,
-    ))
+# fragment
+    self.raise_(
+        OrderShipped(
+            order_id=self.order_id,
+            customer_id=self.customer_id,
+            tracking_number=tracking_number,
+        )
+    )
 ```
 
 The event is raised as part of the business operation, not as an afterthought
@@ -346,31 +262,7 @@ Protean's `@invariant.post` decorator provides a safety net that works
 alongside named methods:
 
 ```python
-@domain.aggregate
-class Account:
-    account_id: Auto(identifier=True)
-    balance: Float(default=0.0)
-    overdraft_limit: Float(default=50.0)
-
-    def withdraw(self, amount: float) -> None:
-        """Withdraw the specified amount."""
-        if amount <= 0:
-            raise ValidationError(
-                {"amount": ["Withdrawal amount must be positive"]}
-            )
-        self.balance -= amount
-        self.raise_(MoneyWithdrawn(
-            account_id=self.account_id,
-            amount=amount,
-            new_balance=self.balance,
-        ))
-
-    @invariant.post
-    def balance_must_be_above_overdraft_limit(self):
-        if self.balance < -self.overdraft_limit:
-            raise ValidationError(
-                {"balance": ["Balance cannot be below overdraft limit"]}
-            )
+--8<-- "patterns/encapsulate-state-changes/002.py:invariant"
 ```
 
 The `withdraw` method validates its own preconditions (positive amount). The
@@ -383,34 +275,15 @@ For event-sourced aggregates, methods and events are even more tightly coupled.
 The method raises an event, and the `@apply` handler mutates state:
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Account(BaseAggregate):
-    account_id: Auto(identifier=True)
-    balance: Float(default=0.0)
-
-    def withdraw(self, amount: float) -> None:
-        if amount <= 0:
-            raise ValidationError(
-                {"amount": ["Withdrawal amount must be positive"]}
-            )
-        if self.balance - amount < 0:
-            raise ValidationError(
-                {"balance": ["Insufficient funds"]}
-            )
-        self.raise_(MoneyWithdrawn(
-            account_id=self.account_id,
-            amount=amount,
-        ))
-
-    @apply
-    def on_money_withdrawn(self, event: MoneyWithdrawn):
-        self.balance -= event.amount
+--8<-- "patterns/encapsulate-state-changes/003.py:event_sourced"
 ```
 
 In event-sourced aggregates, the method validates and raises the event, while
 the `@apply` handler performs the actual mutation. This separation is essential:
 the same `@apply` handler replays events when reconstructing the aggregate from
-its event stream.
+its event stream. A replay starts from a blank aggregate, so the first event's
+handler sets every field. Here `open()` raises `AccountOpened`, and its handler
+sets `account_id` and `balance`.
 
 ### The `atomic_change` Context Manager
 
@@ -418,18 +291,12 @@ When multiple state changes must happen together without triggering intermediate
 invariant checks, Protean provides `atomic_change`:
 
 ```python
-from protean.core.aggregate import atomic_change
-
-
-def restructure_order(self, new_items: list, new_total: float) -> None:
-    """Replace all items and recalculate total atomically."""
-    with atomic_change(self):
-        self.items.clear()
-        for item_data in new_items:
-            self.items.add(OrderItem(**item_data))
-        self.total = new_total
-    # Invariants checked here, after all changes are applied
+--8<-- "patterns/encapsulate-state-changes/004.py:atomic_change"
 ```
+
+Without `atomic_change`, emptying `items` would fail the
+`total_must_match_items` invariant before the new items and total are in
+place. Inside the block the checks wait until the block ends.
 
 This is still an encapsulated method on the aggregate. The handler doesn't need
 to know about `atomic_change`. It calls `order.restructure_order(...)`, and the
@@ -476,6 +343,7 @@ business operation in different tenses: imperative (command), present
 ### Setter Methods Disguised as Business Methods
 
 ```python
+# fragment
 # Anti-pattern: setters with business names
 class Order:
     def set_shipped(self, tracking_number):
@@ -490,6 +358,7 @@ method captures the complete behavior.
 ### God Method That Does Everything
 
 ```python
+# fragment
 # Anti-pattern: one method handles all state transitions
 class Order:
     def update_status(self, new_status, **kwargs):
@@ -515,6 +384,7 @@ nightmare.
 ### Business Logic in Constructors
 
 ```python
+# fragment
 # Anti-pattern: complex logic in __init__ or creation
 class Order:
     def __init__(self, **kwargs):
@@ -532,17 +402,7 @@ separate `place()` / `create()` method that the handler calls after
 construction:
 
 ```python
-class Order:
-    def defaults(self):
-        """Set conditional defaults at initialization."""
-        if not self.total:
-            self.total = sum(item.line_total for item in self.items)
-
-    def place(self):
-        """Business operation: place the order."""
-        self.status = "placed"
-        self.placed_at = datetime.now(timezone.utc)
-        self.raise_(OrderPlaced(...))
+--8<-- "patterns/encapsulate-state-changes/005.py:defaults_and_place"
 ```
 
 ---
@@ -553,43 +413,7 @@ Encapsulated methods make domain logic directly testable without
 infrastructure:
 
 ```python
-class TestOrderShipping:
-
-    def test_shipping_a_paid_order(self, test_domain):
-        order = Order(
-            customer_id="cust-1",
-            items=[OrderItem(product_id="prod-1", quantity=1, unit_price=10.0)],
-            status="paid",
-        )
-
-        order.ship(tracking_number="TRK-123")
-
-        assert order.status == "shipped"
-        assert order.tracking_number == "TRK-123"
-        assert order.shipped_at is not None
-        assert len(order._events) == 1
-        assert isinstance(order._events[0], OrderShipped)
-
-    def test_cannot_ship_unpaid_order(self, test_domain):
-        order = Order(
-            customer_id="cust-1",
-            items=[OrderItem(product_id="prod-1", quantity=1, unit_price=10.0)],
-            status="draft",
-        )
-
-        with pytest.raises(ValidationError) as exc:
-            order.ship(tracking_number="TRK-123")
-
-        assert "Only paid orders can be shipped" in str(exc.value)
-        assert order.status == "draft"  # State unchanged
-
-    def test_cannot_ship_empty_order(self, test_domain):
-        order = Order(customer_id="cust-1", status="paid")
-
-        with pytest.raises(ValidationError) as exc:
-            order.ship(tracking_number="TRK-123")
-
-        assert "Cannot ship an order with no items" in str(exc.value)
+--8<-- "patterns/encapsulate-state-changes/001.py:tests"
 ```
 
 No repository, no command, no handler, no UoW. Just construct the aggregate,
@@ -618,6 +442,7 @@ Value objects are immutable. They don't have state-changing methods in the same
 sense. You replace a value object rather than mutating it:
 
 ```python
+# fragment
 # Value objects are replaced, not mutated
 order.shipping_address = ShippingAddress(
     street="456 Oak Ave",
@@ -632,12 +457,7 @@ This is not a business method because the aggregate might have a method that
 wraps this replacement with validation:
 
 ```python
-def update_shipping_address(self, new_address: ShippingAddress) -> None:
-    if self.status != "draft":
-        raise ValidationError(
-            {"status": ["Cannot change address after order is placed"]}
-        )
-    self.shipping_address = new_address
+--8<-- "patterns/encapsulate-state-changes/006.py:update_shipping_address"
 ```
 
 ---

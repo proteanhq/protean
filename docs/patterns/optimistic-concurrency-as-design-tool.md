@@ -12,6 +12,7 @@ Most teams treat this error as infrastructure noise, a generic "something went
 wrong, try again" situation:
 
 ```python
+# fragment
 from protean.exceptions import ExpectedVersionError
 
 
@@ -33,6 +34,7 @@ When two users edit the same order concurrently, one of them gets an
 HTTP 409:
 
 ```python
+# fragment
 # In the API layer
 try:
     order_service.update_order(order_id, data)
@@ -111,57 +113,19 @@ the version conflict, reload the aggregate with the latest version, reapply
 the operation, and commit.
 
 ```python
-from protean.exceptions import ExpectedVersionError
-
-
-@domain.aggregate
-class UserPreferences(BaseAggregate):
-    user_id: Auto(identifier=True)
-    theme: String(default="light")
-    language: String(default="en")
-    notifications_enabled: Boolean(default=True)
-    sidebar_collapsed: Boolean(default=False)
-
-    def update_theme(self, theme: str) -> None:
-        self.theme = theme
-        self.raise_(ThemeUpdated(
-            user_id=self.user_id,
-            theme=theme,
-        ))
-
-    def toggle_notifications(self, enabled: bool) -> None:
-        self.notifications_enabled = enabled
-        self.raise_(NotificationsToggled(
-            user_id=self.user_id,
-            enabled=enabled,
-        ))
+--8<-- "patterns/optimistic-concurrency-as-design-tool/001.py:aggregate"
 ```
 
 The application service implements a retry loop. If a version conflict
 occurs, the operation is safe to retry because each change is independent
 and idempotent, setting the theme to "dark" produces the same result regardless
 of how many times it runs.
+Each attempt runs in its own `UnitOfWork`. The version check happens when
+the unit of work commits, so the `except` clause sits outside the `with`
+block.
 
 ```python
-MAX_RETRIES = 3
-
-
-@domain.application_service(part_of=UserPreferences)
-class PreferencesService(BaseApplicationService):
-
-    @use_case
-    def update_theme(self, user_id: str, theme: str) -> UserPreferences:
-        for attempt in range(MAX_RETRIES):
-            try:
-                repo = current_domain.repository_for(UserPreferences)
-                prefs = repo.get(user_id)
-                prefs.update_theme(theme)
-                repo.add(prefs)
-                return prefs
-            except ExpectedVersionError:
-                if attempt == MAX_RETRIES - 1:
-                    raise
-                continue
+--8<-- "patterns/optimistic-concurrency-as-design-tool/001.py:service"
 ```
 
 !!! note "Why not retry everything?"
@@ -178,32 +142,7 @@ error and translate it into a domain-specific exception. The caller gets a
 clear, actionable message instead of a generic "try again."
 
 ```python
-@domain.aggregate
-class SeatReservation(BaseAggregate):
-    reservation_id: Auto(identifier=True)
-    event_id: Identifier(required=True)
-    seat_number: String(required=True)
-    status: String(default="available")
-    reserved_by: Identifier()
-    reserved_at: DateTime()
-
-    def reserve(self, customer_id: str) -> None:
-        """Reserve this seat for a customer."""
-        if self.status != "available":
-            raise ValidationError(
-                {"seat": [f"Seat {self.seat_number} is already taken"]}
-            )
-
-        self.status = "reserved"
-        self.reserved_by = customer_id
-        self.reserved_at = datetime.now(timezone.utc)
-
-        self.raise_(SeatReserved(
-            reservation_id=self.reservation_id,
-            event_id=self.event_id,
-            seat_number=self.seat_number,
-            customer_id=customer_id,
-        ))
+--8<-- "patterns/optimistic-concurrency-as-design-tool/002.py:aggregate"
 ```
 
 The command handler translates the version conflict into a business-level
@@ -212,38 +151,13 @@ succeeds and the other learns that the seat is taken, not that a vague
 "conflict" occurred.
 
 ```python
-class SeatAlreadyTaken(Exception):
-    """Raised when a seat reservation fails because
-    another customer reserved the seat first."""
-
-    def __init__(self, seat_number: str):
-        self.seat_number = seat_number
-        super().__init__(
-            f"Seat {seat_number} was just reserved by another customer"
-        )
-
-
-@domain.command_handler(part_of=SeatReservation)
-class ReservationCommandHandler(BaseCommandHandler):
-
-    @handle(ReserveSeat)
-    def reserve_seat(self, command: ReserveSeat):
-        repo = current_domain.repository_for(SeatReservation)
-        reservation = repo.get(command.reservation_id)
-
-        try:
-            reservation.reserve(command.customer_id)
-            repo.add(reservation)
-        except ExpectedVersionError:
-            # Another customer reserved this seat between our
-            # load and commit. This is not a transient failure --
-            # it means the seat is genuinely taken.
-            raise SeatAlreadyTaken(reservation.seat_number)
+--8<-- "patterns/optimistic-concurrency-as-design-tool/002.py:handler"
 ```
 
 The API layer can now give the customer a meaningful response:
 
 ```python
+# fragment
 @app.post("/events/{event_id}/seats/{seat_number}/reserve")
 async def reserve_seat(event_id: str, seat_number: str, customer_id: str):
     try:
@@ -273,40 +187,7 @@ aggregate, check whether the specific change is still applicable, and
 either apply it or reject it with a clear explanation.
 
 ```python
-@domain.aggregate
-class SharedCart(BaseAggregate):
-    cart_id: Auto(identifier=True)
-    team_id: Identifier(required=True)
-    items = HasMany(CartItem)
-    max_items: Integer(default=50)
-
-    def add_item(self, product_id: str, quantity: int) -> None:
-        """Add an item to the shared cart."""
-        if len(self.items) >= self.max_items:
-            raise ValidationError(
-                {"items": [f"Cart cannot exceed {self.max_items} items"]}
-            )
-
-        # Check if item already exists and update quantity
-        for item in self.items:
-            if item.product_id == product_id:
-                item.quantity += quantity
-                self.raise_(CartItemUpdated(
-                    cart_id=self.cart_id,
-                    product_id=product_id,
-                    new_quantity=item.quantity,
-                ))
-                return
-
-        self.items.add(CartItem(
-            product_id=product_id,
-            quantity=quantity,
-        ))
-        self.raise_(CartItemAdded(
-            cart_id=self.cart_id,
-            product_id=product_id,
-            quantity=quantity,
-        ))
+--8<-- "patterns/optimistic-concurrency-as-design-tool/003.py:aggregate"
 ```
 
 The application service reloads and checks whether the add-item operation
@@ -315,33 +196,7 @@ items simultaneously should both succeed. Two members adding the same item
 need the quantities merged correctly.
 
 ```python
-@domain.application_service(part_of=SharedCart)
-class SharedCartService(BaseApplicationService):
-
-    @use_case
-    def add_item(
-        self, cart_id: str, product_id: str, quantity: int
-    ) -> SharedCart:
-        for attempt in range(MAX_RETRIES):
-            try:
-                repo = current_domain.repository_for(SharedCart)
-                cart = repo.get(cart_id)
-
-                # Check if the operation still makes sense
-                # on the latest version
-                if len(cart.items) >= cart.max_items:
-                    raise ValidationError(
-                        {"items": ["Cart is full. Remove items first."]}
-                    )
-
-                cart.add_item(product_id, quantity)
-                repo.add(cart)
-                return cart
-            except ExpectedVersionError:
-                if attempt == MAX_RETRIES - 1:
-                    raise
-                # Reload and re-evaluate on next iteration
-                continue
+--8<-- "patterns/optimistic-concurrency-as-design-tool/003.py:service"
 ```
 
 The difference from a simple retry loop (category 1) is the
@@ -477,6 +332,7 @@ The most common anti-pattern: catching `ExpectedVersionError` at the API
 boundary and returning a generic message for all conflict types.
 
 ```python
+# fragment
 # Anti-pattern: one handler for all conflicts
 @app.exception_handler(ExpectedVersionError)
 async def handle_version_conflict(request, exc):
@@ -495,6 +351,7 @@ race condition and a fundamental problem.
 Wrapping every operation in a retry loop without considering the semantics.
 
 ```python
+# fragment
 # Anti-pattern: retry without considering the operation type
 def with_retry(func, max_retries=3):
     for attempt in range(max_retries):
@@ -523,6 +380,7 @@ on the reloaded aggregate.
 Suppressing the error and returning success.
 
 ```python
+# fragment
 # Anti-pattern: swallowing the error
 @handle(UpdateInventory)
 def update_inventory(self, command):
@@ -548,6 +406,7 @@ shipping address and adding a line item will conflict even though they have
 nothing to do with each other.
 
 ```python
+# fragment
 # Anti-pattern: large aggregate creates false conflicts
 @domain.aggregate
 class Order(BaseAggregate):

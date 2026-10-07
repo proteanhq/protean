@@ -85,6 +85,7 @@ That includes the identity of the aggregate it acts on. For a creation command,
 the caller decides it, not the handler and not the database:
 
 ```python
+# fragment
 # The command carries the identity of the aggregate it will create.
 # The caller generates this identity before submitting the command.
 PlaceOrder(
@@ -106,6 +107,7 @@ inside them to correlate and route.
 Generate the identity early and those references are stable from the first event:
 
 ```python
+# fragment
 # The event references the same order_id that the command carried.
 # Downstream handlers can immediately correlate this event.
 OrderPlaced(
@@ -127,31 +129,18 @@ asking any database.
 Create an aggregate or entity and it has its identity immediately:
 
 ```python
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    customer_id: Identifier()
-    total: Float()
-
-
-# Identity is assigned the moment the object is created
-order = Order(customer_id="cust-789", total=149.99)
-print(order.order_id)  # '9cf4ddc4-2919-4021-bd1a-c8083b5fdda7'
+--8<-- "patterns/creating-identities-early/001.py:aggregate"
 ```
 
 `Auto` generates a UUID at construction time. No database round-trip, no sequence
 query, no central coordinator.
+The aggregate reads the identity settings from the domain, so construct it
+inside `domain.domain_context()`.
 
 Declare no identity field and Protean adds an `Auto` field called `id`:
 
 ```python
-@domain.aggregate
-class Order:
-    customer_id: Identifier()
-    total: Float()
-
-order = Order(customer_id="cust-789", total=149.99)
-print(order.id)  # Auto-generated UUID
+--8<-- "patterns/creating-identities-early/002.py:default-id"
 ```
 
 ### You can supply your own
@@ -160,13 +149,7 @@ When you already have an identity, because the client made it, or the API layer
 did, or a command carried it in, pass it straight through:
 
 ```python
-# The caller provides the identity explicitly
-order = Order(
-    order_id="ord-a1b2c3d4",
-    customer_id="cust-789",
-    total=149.99,
-)
-print(order.order_id)  # 'ord-a1b2c3d4'
+--8<-- "patterns/creating-identities-early/001.py:supplied"
 ```
 
 `Auto` takes an explicit value and uses it as given. Leave it out and you get a
@@ -191,21 +174,7 @@ makes early identity possible at all.
 For one field with its own needs:
 
 ```python
-import time
-
-def gen_epoch_id():
-    return int(time.time() * 1000)
-
-
-@domain.aggregate
-class Measurement:
-    measurement_id: Auto(
-        identifier=True,
-        identity_strategy="function",
-        identity_function=gen_epoch_id,
-        identity_type="integer",
-    )
-    value: Float()
+--8<-- "patterns/creating-identities-early/003.py:function"
 ```
 
 ### `Identifier` on commands
@@ -217,12 +186,7 @@ when the caller leaves it out, a UUID by default. So pass the caller's identity
 in whenever it has to be preserved:
 
 ```python
-@domain.command(part_of=Order)
-class PlaceOrder(BaseCommand):
-    order_id: Identifier(identifier=True)
-    customer_id: Identifier()
-    items: List()
-    total: Float()
+--8<-- "patterns/creating-identities-early/001.py:command"
 ```
 
 The field type says what the pattern says: the identity starts at the caller and
@@ -238,34 +202,7 @@ The API layer is the usual place. When a creation request arrives, take the
 identity from the client or make one, then build the command:
 
 ```python
-import uuid
-
-from fastapi import FastAPI
-
-app = FastAPI()
-
-
-@app.post("/orders")
-async def create_order(request: CreateOrderRequest):
-    # Option 1: Accept the identity from the client
-    order_id = request.order_id
-
-    # Option 2: Generate at the API layer if not provided
-    if not order_id:
-        order_id = str(uuid.uuid4())
-
-    domain.process(
-        PlaceOrder(
-            order_id=order_id,
-            customer_id=request.customer_id,
-            items=request.items,
-            total=request.total,
-        )
-    )
-
-    # The API can return the identity immediately,
-    # without waiting for persistence to complete.
-    return {"order_id": order_id, "status": "accepted"}
+--8<-- "patterns/creating-identities-early/001.py:api"
 ```
 
 You return the `order_id` right away. If the command runs asynchronously the
@@ -299,6 +236,7 @@ existence. Every later command carries the identity anyway, because you have to
 say which aggregate you mean:
 
 ```python
+# fragment
 # Creation: identity generated at the caller
 order_id = str(uuid.uuid4())
 domain.process(PlaceOrder(order_id=order_id, items=[...]))
@@ -324,24 +262,7 @@ caught some other way, with a caller-supplied idempotency key.
 The command carries the identity, so the handler can look first:
 
 ```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler(BaseCommandHandler):
-
-    @handle(PlaceOrder)
-    def place_order(self, command: PlaceOrder):
-        repo = current_domain.repository_for(Order)
-
-        # If the order already exists, this is a duplicate command
-        existing = repo.get_or_none(command.order_id)
-        if existing:
-            return  # Idempotent: no-op on duplicate
-
-        order = Order(
-            order_id=command.order_id,
-            items=command.items,
-            total=command.total,
-        )
-        repo.add(order)
+--8<-- "patterns/creating-identities-early/001.py:handler"
 ```
 
 `get_or_none()` returns `None` only when the order is missing, so any other
@@ -363,6 +284,7 @@ fails, and the retry that follows finds the row. The
 Take the same handler without an identity in the command:
 
 ```python
+# fragment
 # Anti-pattern: identity generated by the database
 @handle(PlaceOrder)
 def place_order(self, command: PlaceOrder):
@@ -401,10 +323,7 @@ Start here by default, but two cases call for something different.
 Do not invent a second identity; mark the real one:
 
 ```python
-@domain.aggregate
-class Book:
-    isbn: String(max_length=13, identifier=True)
-    title: String(max_length=200, required=True)
+--8<-- "patterns/creating-identities-early/004.py:natural-key"
 ```
 
 The creation command carries the `isbn` from the caller, so you keep the benefits
@@ -417,10 +336,7 @@ run in order. Use `increment` on the `Auto` field, knowing you have handed
 identity back to the database:
 
 ```python
-@domain.aggregate
-class Invoice:
-    invoice_number: Auto(identifier=True, increment=True)
-    # ...
+--8<-- "patterns/creating-identities-early/005.py:sequence"
 ```
 
 Even then, consider giving the aggregate a UUID of its own and treating the
