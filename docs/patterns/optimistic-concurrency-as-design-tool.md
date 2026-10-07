@@ -80,9 +80,9 @@ profile descriptions.
 
 ### 2. Conflict means a real problem
 
-The conflict signals that the operation is no longer valid. Catch the error
-and raise a domain-specific exception that tells the user exactly what
-happened.
+The conflict signals that the operation is no longer valid. Reload the
+aggregate and let its precondition raise a domain-specific exception that
+tells the user exactly what happened.
 
 **Examples:** seat reservations, inventory allocation, one-time coupon
 redemption, unique username registration.
