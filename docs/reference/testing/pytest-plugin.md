@@ -34,19 +34,23 @@ behavior on their own.
 
 ## Protean's own `test_domain` fixture
 
-The session-scoped autouse `test_domain` fixture described in some
-Protean test suites is defined in
-`protean.integrations.pytest.adapter_conformance` and is **not**
-auto-loaded by this plugin. It activates only when a `conftest.py`
+The autouse `test_domain` fixture described in some Protean test suites
+is defined in `protean.integrations.pytest.adapter_conformance` and is
+**not** auto-loaded by this plugin. It is function-scoped: every test gets
+a fresh, initialized domain. It activates only when your root `conftest.py`
 opts in explicitly:
 
 ```python
-pytest_plugins = ["protean.integrations.pytest.adapter_conformance"]
+--8<-- "reference/testing/pytest-plugin/001.py:opt_in"
 ```
 
 When opted in, tests that construct their own `Domain(name="Test")`
-should add `@pytest.mark.no_test_domain` so the session fixture is
-skipped for that test.
+should add `@pytest.mark.no_test_domain`. The fixture then yields `None`
+for that test instead of building a domain:
+
+```python
+--8<-- "reference/testing/pytest-plugin/001.py:tests"
+```
 
 User application tests should construct their domain lifecycle with
 `DomainFixture` instead, see [Fixtures and

@@ -4,14 +4,21 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import os
 import re
+import subprocess
 import sys
+import tempfile
 import types
+from collections.abc import Sequence
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS_SRC = REPO_ROOT / "docs_src"
 DOCS = REPO_ROOT / "docs"
+
+# Seconds one child pytest run of an example may take before it is stopped.
+EXAMPLE_TESTS_TIMEOUT = 120
 
 
 def module_name_for(path: str) -> str:
@@ -54,6 +61,87 @@ def load_example(path: str, root: Path = DOCS_SRC) -> types.ModuleType:
         sys.modules.pop(name, None)
         raise
     return module
+
+
+def run_example_tests(
+    path: str,
+    *,
+    env: dict[str, str] | None = None,
+    args: Sequence[str] = (),
+    root: Path = DOCS_SRC,
+) -> subprocess.CompletedProcess[str]:
+    """Run the pytest tests in the example at ``path`` in a child process.
+
+    ``path`` is relative to ``root``, as in :func:`load_example`. The child runs
+    ``python -m pytest <file>`` from a fresh temporary folder, so files the
+    tests write (a SQLite database, say) land there and not in the repo.
+    ``root`` goes first on ``PYTHONPATH``, followed by the repo root and the
+    parent's ``PYTHONPATH``. ``env`` adds environment variables, and ``args``
+    adds pytest options after the file.
+
+    The child finds the repo's ``pyproject.toml`` as its ini file, so its
+    ``addopts``, markers and asyncio mode apply. Protean's pytest plugin loads
+    through its ``pytest11`` entry point. The cache plugin is off, so no
+    ``.pytest_cache`` folder is written next to the example, and no
+    ``__pycache__`` either.
+
+    Returns the finished process with its output. The caller checks
+    ``returncode``; pytest exits with 5 when it collects no tests.
+    ``test_docs_src_is_tested.py`` reads the string literal passed as ``path``,
+    so pass a literal.
+    """
+    filepath = root / path
+    if not filepath.is_file():
+        raise FileNotFoundError(f"no docs_src example at {path}")
+
+    pythonpath = [str(root), str(REPO_ROOT)]
+    if os.environ.get("PYTHONPATH"):
+        pythonpath.append(os.environ["PYTHONPATH"])
+    child_env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join(pythonpath),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        **(env or {}),
+    }
+    with tempfile.TemporaryDirectory() as workdir:
+        return subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-p",
+                "no:cacheprovider",
+                str(filepath),
+                *args,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=workdir,
+            env=child_env,
+            timeout=EXAMPLE_TESTS_TIMEOUT,
+        )
+
+
+# The counts on pytest's last summary line: "3 passed, 1 skipped in 0.12s".
+_SUMMARY_COUNT = re.compile(r"(\d+) (passed|failed|errors?|skipped|xfailed|xpassed)\b")
+
+
+def outcome_counts(result: subprocess.CompletedProcess[str]) -> dict[str, int]:
+    """Return the outcome counts from the summary line of a child pytest run.
+
+    ``{"passed": 3, "skipped": 1}`` for a run that ended with
+    ``3 passed, 1 skipped in 0.12s``. The count for ``error`` and ``errors``
+    is reported as ``"errors"``. A run with no summary line gives ``{}``.
+    """
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    if not lines:
+        return {}
+    counts: dict[str, int] = {}
+    for number, outcome in _SUMMARY_COUNT.findall(lines[-1]):
+        key = "errors" if outcome.startswith("error") else outcome
+        counts[key] = int(number)
+    return counts
 
 
 def package_dirs(root: Path) -> dict[str, Path]:

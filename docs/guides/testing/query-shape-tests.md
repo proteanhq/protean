@@ -15,12 +15,7 @@ production. A fourth, `capture_queries`, yields the raw statements for custom
 assertions the three do not cover (such as INSERT ordering):
 
 ```python
-from protean.integrations.pytest import (
-    assert_query_count,
-    assert_no_subquery_wrap,
-    assert_no_overfetch,
-    capture_queries,
-)
+--8<-- "guides/testing/query-shape-tests/001.py:imports"
 ```
 
 ## When to use these
@@ -36,20 +31,26 @@ nothing. Mark tests that use them with `@pytest.mark.database` (or a specific
 backend marker) so they run against a real SQL backend where the assertion is
 meaningful.
 
+The examples on this page run against SQLite, with this domain and these
+fixtures:
+
+??? example "The domain and fixtures under test"
+
+    ```python
+    --8<-- "guides/testing/query-shape-tests/001.py:domain"
+    ```
+
+    ```python
+    --8<-- "guides/testing/query-shape-tests/001.py:conftest"
+    ```
+
 ## `assert_query_count`
 
 Asserts an exact number of queries (data round trips) are issued in the block.
 Catches N+1 patterns and accidental extra round trips:
 
 ```python
-import pytest
-from protean.integrations.pytest import assert_query_count
-
-
-@pytest.mark.database
-def test_poll_issues_a_single_query(outbox_repo):
-    with assert_query_count(1):
-        outbox_repo.find_unprocessed(limit=10)
+--8<-- "guides/testing/query-shape-tests/001.py:query_count"
 ```
 
 A "query" is a `SELECT`, `INSERT`, `UPDATE`, `DELETE`, or `WITH` statement.
@@ -65,10 +66,7 @@ Fails if any query wraps a count around a subquery, the
 `.limit(1).all().total` emits instead of a flat `SELECT count(*)`:
 
 ```python
-@pytest.mark.database
-def test_count_uses_a_flat_count(outbox_repo):
-    with assert_no_subquery_wrap():
-        outbox_repo.count_by_status()
+--8<-- "guides/testing/query-shape-tests/001.py:subquery_wrap"
 ```
 
 ## `assert_no_overfetch`
@@ -77,10 +75,7 @@ Fails if any `LIMIT` exceeds the rows the caller actually needs. Pass the
 expected row count; the assertion allows headroom via `ratio` (default `1.5`):
 
 ```python
-@pytest.mark.database
-def test_poll_does_not_overfetch(outbox_repo, seeded_outbox):
-    with assert_no_overfetch(expected_returned=10):
-        outbox_repo.find_unprocessed(limit=10)
+--8<-- "guides/testing/query-shape-tests/001.py:overfetch"
 ```
 
 A `LIMIT 10` passes (`10 <= 10 * 1.5`); a `min(limit * 3, 1000)` over-fetch that
@@ -95,23 +90,7 @@ example, an insert-ordering check that a parent row is written before its
 children:
 
 ```python
-import re
-import pytest
-from protean.integrations.pytest import capture_queries
-
-
-@pytest.mark.database
-def test_parent_inserted_before_children(order_repo, order):
-    with capture_queries() as captured:
-        order_repo.add(order)
-
-    tables = [
-        re.search(r"INSERT INTO (\w+)", statement, re.IGNORECASE).group(1).lower()
-        for statement, _params in captured
-        if statement.lstrip().upper().startswith("INSERT")
-    ]
-    assert tables, "no INSERTs captured; the hook did not fire"
-    assert tables.index("order") < tables.index("order_item")
+--8<-- "guides/testing/query-shape-tests/001.py:capture_queries"
 ```
 
 `capture_queries` yields a list of `(statement, parameters)` tuples. Like the
@@ -127,8 +106,7 @@ provider. For tests that manage their own domain or target a non-default
 provider, pass the engine explicitly:
 
 ```python
-with assert_query_count(1, engine=my_engine):
-    ...
+--8<-- "guides/testing/query-shape-tests/001.py:explicit_engine"
 ```
 
 ## Avoiding false positives

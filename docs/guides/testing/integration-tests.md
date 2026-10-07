@@ -36,11 +36,11 @@ from myapp import domain
 @pytest.fixture(scope="session")
 def app_fixture():
     domain.config["databases"]["default"] = {
-        "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
+        "provider": "postgresql",
         "database_uri": "postgresql://postgres:postgres@localhost:5432/myapp_test",
     }
     domain.config["brokers"]["default"] = {
-        "provider": "protean.adapters.broker.redis.RedisBroker",
+        "provider": "redis",
         "URI": "redis://localhost:6379/0",
     }
     domain.config["event_processing"] = "sync"
@@ -74,50 +74,32 @@ def domain_initialized():
 
 For integration tests that exercise async message flows (event handlers,
 projectors, process managers), use the server's **test mode**. It processes
-all available messages and cascading events, then exits:
+all available messages and cascading events, then exits.
+
+The examples in this section test the domain below. Placing an order raises
+`OrderPlaced`. An event handler reserves stock and raises `InventoryReserved`,
+and a second handler marks the order shipped. The fixtures set both processing
+modes to `"async"`, so these handlers run only when the engine runs:
+
+??? example "The domain and fixtures under test"
+
+    ```python
+    --8<-- "guides/testing/integration-tests/001.py:domain"
+    ```
+
+    ```python
+    --8<-- "guides/testing/integration-tests/001.py:conftest"
+    ```
 
 ```python
-from protean.server import Engine
-
-def test_order_creates_inventory_reservation():
-    """Test that creating an order reserves inventory."""
-    # Arrange: Create order (raises events)
-    with domain.domain_context():
-        order = Order.create(
-            customer_id="123",
-            items=[OrderItem(product_id="ABC", quantity=5)]
-        )
-        domain.repository_for(Order).add(order)
-
-    # Act: Process events in test mode
-    engine = Engine(domain, test_mode=True)
-    engine.run()
-
-    # Assert: Verify inventory was reserved
-    with domain.domain_context():
-        reservation = domain.repository_for(Reservation).get_by_order(order.id)
-        assert reservation is not None
-        assert reservation.quantity == 5
+--8<-- "guides/testing/integration-tests/001.py:engine_test_mode"
 ```
 
-Test mode handles cascading events automatically, if processing one event
+Test mode handles cascading events automatically. If processing one event
 raises another, the engine continues until all chains are complete:
 
 ```python
-def test_order_fulfillment_flow():
-    """Test complete order fulfillment flow."""
-    # Order created -> Inventory reserved -> Payment processed -> Order shipped
-    with domain.domain_context():
-        order = Order.create(...)
-        domain.repository_for(Order).add(order)
-
-    # Process all cascading events
-    engine = Engine(domain, test_mode=True)
-    engine.run()
-
-    with domain.domain_context():
-        order = domain.repository_for(Order).get(order.id)
-        assert order.status == "shipped"
+--8<-- "guides/testing/integration-tests/001.py:cascade"
 ```
 
 You can also invoke test mode from the CLI:
@@ -143,20 +125,7 @@ inline; in async mode it drains a bounded test-mode engine before returning. It
 returns a `ProcessResult`:
 
 ```python
-from protean.testing import process_and_wait
-
-def test_placing_an_order_reserves_inventory():
-    outcome = process_and_wait(
-        PlaceOrder(order_id="o1", product_id="ABC", qty=5), domain
-    )
-
-    assert outcome.succeeded
-    assert OrderPlaced in outcome.events
-    assert outcome.events[OrderPlaced].order_id == "o1"
-
-    with domain.domain_context():
-        reservation = domain.repository_for(Reservation).get("o1")
-        assert reservation.quantity == 5
+--8<-- "guides/testing/integration-tests/001.py:process_and_wait"
 ```
 
 A `ProcessResult` exposes exactly what an integration test asserts on:
@@ -170,11 +139,7 @@ A `ProcessResult` exposes exactly what an integration test asserts on:
 `outcome.events` is an `EventLog` with Pythonic access by type or index:
 
 ```python
-assert OrderPlaced in outcome.events                 # membership by type
-assert outcome.events[OrderPlaced].order_id == "o1"  # first event of a type
-assert outcome.events.get(OrderCancelled) is None    # safe access, no KeyError
-assert outcome.events.types == [OrderPlaced, InventoryReserved]
-assert len(outcome.events) == 2
+--8<-- "guides/testing/integration-tests/001.py:event_log"
 ```
 
 ### Waiting for a condition with `drain`
@@ -184,15 +149,7 @@ When you drive the flow yourself, or need to wait for a later cascade to settle,
 the copy-pasted `for _ in range(N): Engine(...).run()` loop:
 
 ```python
-from protean.testing import drain
-
-def test_order_ships_after_payment():
-    process_and_wait(PlaceOrder(order_id="o1", product_id="ABC", qty=5), domain)
-    process_and_wait(ConfirmPayment(order_id="o1", amount=50.0), domain)
-
-    drain(domain, until=lambda: get_order("o1").status == "shipped")
-
-    assert get_order("o1").status == "shipped"
+--8<-- "guides/testing/integration-tests/001.py:drain"
 ```
 
 `drain` is bounded by `max_cycles` (default 5) so a never-satisfied `until`
@@ -387,48 +344,12 @@ tests/
     complete setup.
 
 For projects that need finer-grained control or want to switch individual
-adapters independently, use environment variables to switch configuration:
+adapters independently, use environment variables to switch configuration.
+This fixture goes in `tests/integration/conftest.py`, and `domain` is your
+application's domain (`from myapp import domain`):
 
 ```python
-# tests/integration/conftest.py
-import os
-
-import pytest
-
-from protean.integrations.pytest import DomainFixture
-
-from myapp import domain
-
-
-@pytest.fixture(scope="session")
-def app_fixture():
-    db_provider = os.environ.get("TEST_DB", "memory")
-
-    if db_provider == "postgresql":
-        domain.config["databases"]["default"] = {
-            "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
-            "database_uri": os.environ["DATABASE_URL"],
-        }
-    elif db_provider == "sqlite":
-        domain.config["databases"]["default"] = {
-            "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
-            "database_uri": "sqlite:///test.db",
-        }
-    # Default: in-memory (no override needed)
-
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-
-    fixture = DomainFixture(domain)
-    fixture.setup()    # domain.init() + create schema
-    yield fixture
-    fixture.teardown()  # drop schema
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():  # resets all data on exit
-        yield
+--8<-- "guides/testing/fixtures-and-patterns/002.py:conftest"
 ```
 
 Then switch adapters from the command line:

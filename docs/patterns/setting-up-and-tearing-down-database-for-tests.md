@@ -174,7 +174,7 @@ from myapp import domain
 def app_fixture():
     """Create schema once for the entire test session."""
     domain.config["databases"]["default"] = {
-        "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
+        "provider": "postgresql",
         "database_uri": "postgresql://postgres:postgres@localhost:5432/myapp_test",
     }
     domain.config["event_processing"] = "sync"
@@ -231,12 +231,12 @@ def app_fixture():
 
     if db_provider == "postgresql":
         domain.config["databases"]["default"] = {
-            "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
+            "provider": "postgresql",
             "database_uri": os.environ["DATABASE_URL"],
         }
     elif db_provider == "sqlite":
         domain.config["databases"]["default"] = {
-            "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
+            "provider": "sqlite",
             "database_uri": "sqlite:///test.db",
         }
     # Default: in-memory (no config override needed)
@@ -292,15 +292,15 @@ def app_fixture():
     """Set up all infrastructure for the test session."""
     if os.environ.get("TEST_INFRA") == "full":
         domain.config["databases"]["default"] = {
-            "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
+            "provider": "postgresql",
             "database_uri": os.environ["DATABASE_URL"],
         }
         domain.config["brokers"]["default"] = {
-            "provider": "protean.adapters.broker.redis.RedisBroker",
+            "provider": "redis",
             "URI": os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
         }
         domain.config["event_store"] = {
-            "provider": "protean.adapters.event_store.message_db.MessageDBStore",
+            "provider": "message_db",
             "database_uri": os.environ["MESSAGE_DB_URL"],
         }
 
@@ -392,7 +392,7 @@ from myapp import domain
 def app_fixture():
     """Override root conftest for integration tests."""
     domain.config["databases"]["default"] = {
-        "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
+        "provider": "postgresql",
         "database_uri": "postgresql://postgres:postgres@localhost:5432/myapp_test",
     }
     domain.config["event_processing"] = "sync"

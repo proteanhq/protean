@@ -110,8 +110,7 @@ The conformance plugin is **not auto-registered**. Load it explicitly in your
 `conftest.py`:
 
 ```python
-# conftest.py
-pytest_plugins = ["protean.integrations.pytest.adapter_conformance"]
+--8<-- "reference/testing/conformance/001.py:opt_in"
 ```
 
 ### CLI Options
@@ -154,6 +153,7 @@ External adapter packages can override the `db_config` fixture for full
 control:
 
 ```python
+# fragment
 # tests/conftest.py
 import pytest
 
@@ -232,6 +232,7 @@ pip install protean
 ### 2. Create `conftest.py`
 
 ```python
+# fragment
 import pytest
 
 pytest_plugins = ["protean.integrations.pytest.adapter_conformance"]
@@ -268,9 +269,7 @@ The same idea applies to custom fields built with
 field runs against itself, so you can prove your field before you depend on it.
 
 ```python
-from protean.integrations.pytest.custom_field_conformance import (
-    run_custom_field_conformance,
-)
+--8<-- "reference/testing/conformance/002.py:import"
 ```
 
 `run_custom_field_conformance(field, *, valid_input, expected, invalid_input)`
@@ -290,25 +289,14 @@ custom-field contract:
 It raises `AssertionError` on any violation, so drop it straight into a test:
 
 ```python
-from pydantic import PlainSerializer, PlainValidator
-
-from protean.fields import Custom
-
-
-def test_color_field_conformance():
-    field = Custom(
-        Color,
-        validators=[PlainValidator(parse_color)],
-        serializers=[PlainSerializer(lambda c: c.hex, return_type=str)],
-        required=True,
-    )
-    run_custom_field_conformance(
-        field,
-        valid_input="#3366ff",
-        expected=Color("#3366FF"),
-        invalid_input="not-a-color",
-    )
+--8<-- "reference/testing/conformance/002.py:test"
 ```
+
+??? example "The `Color` type under test"
+
+    ```python
+    --8<-- "reference/testing/conformance/002.py:color"
+    ```
 
 The custom type needs a meaningful `__eq__` (the harness compares with `==`) and a
 `to_dict()` that returns a value your parser accepts back, so the round-trip holds.

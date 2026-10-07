@@ -23,33 +23,20 @@ model should have a corresponding test.
 Domain model tests use Protean's `DomainFixture` to initialize the domain
 with in-memory adapters (the default) and manage per-test cleanup. Set
 processing to `"sync"` so that events and commands are handled immediately
-within tests:
+within tests. In your project these fixtures go in `tests/conftest.py`, and
+`domain` is your application's domain (`from myapp import domain`):
 
 ```python
-# tests/conftest.py
-import pytest
-
-from protean.integrations.pytest import DomainFixture
-
-from myapp import domain
-
-
-@pytest.fixture(scope="session")
-def app_fixture():
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-
-    fixture = DomainFixture(domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():
-        yield
+--8<-- "guides/testing/domain-model-tests/001.py:conftest"
 ```
+
+The tests on this page exercise this domain:
+
+??? example "The domain under test"
+
+    ```python
+    --8<-- "guides/testing/domain-model-tests/001.py:domain"
+    ```
 
 `DomainFixture.setup()` calls `domain.init()` to discover and wire all
 decorated domain elements, and creates database schema if needed.
@@ -71,18 +58,7 @@ Test that aggregate methods correctly mutate state. These are methods **you**
 wrote, your business logic:
 
 ```python
-from myapp.models import Book
-
-
-def test_publish_changes_status():
-    book = Book(
-        title="Dune",
-        author="Frank Herbert",
-        body="A lengthy description...",
-    )
-    book.publish()
-
-    assert book.status == "PUBLISHED"
+--8<-- "guides/testing/domain-model-tests/001.py:state_transition"
 ```
 
 ### Event Raising
@@ -90,21 +66,7 @@ def test_publish_changes_status():
 Verify that your aggregate methods raise the expected domain events:
 
 ```python
-from myapp.models import Book
-from myapp.events import BookPublished
-
-
-def test_publish_raises_event():
-    book = Book(
-        title="Dune",
-        author="Frank Herbert",
-        body="A lengthy description...",
-    )
-    book.publish()
-
-    assert len(book._events) == 1
-    assert isinstance(book._events[0], BookPublished)
-    assert book._events[0].book_id == book.id
+--8<-- "guides/testing/domain-model-tests/001.py:event_raising"
 ```
 
 ## Testing Entities
@@ -114,22 +76,7 @@ logic in entity methods, especially when they affect the parent aggregate's
 state:
 
 ```python
-from myapp.models import Order, OrderItem
-
-
-def test_cancel_item_recalculates_order_total():
-    order = Order(
-        customer_name="Alice",
-        total_amount=30.0,
-        items=[
-            OrderItem(product_id="prod-1", quantity=2, price=10.0, subtotal=20.0),
-            OrderItem(product_id="prod-2", quantity=1, price=10.0, subtotal=10.0),
-        ],
-    )
-    order.cancel_item("prod-2")
-
-    assert len(order.items) == 1
-    assert order.total_amount == 20.0
+--8<-- "guides/testing/domain-model-tests/001.py:entity"
 ```
 
 ## Testing Value Objects
@@ -139,26 +86,7 @@ do not need to test these properties. Instead, test any **custom logic** you
 define on your value objects:
 
 ```python
-from myapp.models import Money
-
-
-def test_money_addition():
-    m1 = Money(amount=12.99, currency="USD")
-    m2 = Money(amount=7.01, currency="USD")
-
-    total = m1.add(m2)
-
-    assert total.amount == 20.00
-    assert total.currency == "USD"
-
-
-def test_money_rejects_different_currencies():
-    usd = Money(amount=10.0, currency="USD")
-    eur = Money(amount=10.0, currency="EUR")
-
-    with pytest.raises(ValidationError) as exc:
-        usd.add(eur)
-    assert "Cannot add different currencies" in str(exc.value.messages)
+--8<-- "guides/testing/domain-model-tests/001.py:value_object"
 ```
 
 ## Testing Invariants
@@ -171,19 +99,7 @@ is correct** and catches the violations you intend.
 ### Testing That Invalid State Is Rejected
 
 ```python
-from myapp.models import Order, OrderItem
-
-
-def test_order_total_must_match_items():
-    with pytest.raises(ValidationError) as exc:
-        Order(
-            customer_id="1",
-            total_amount=100.0,  # Does not match items
-            items=[
-                OrderItem(product_id="1", quantity=2, price=10.0, subtotal=20.0),
-            ],
-        )
-    assert "Total should be sum of item prices" in str(exc.value.messages)
+--8<-- "guides/testing/domain-model-tests/001.py:invalid_state"
 ```
 
 ### Testing That Valid State Is Accepted
@@ -192,16 +108,7 @@ Don't just test the negative case, verify that correctly constructed aggregates
 pass your invariant:
 
 ```python
-def test_order_with_matching_total_is_valid():
-    order = Order(
-        customer_id="1",
-        total_amount=20.0,
-        items=[
-            OrderItem(product_id="1", quantity=2, price=10.0, subtotal=20.0),
-        ],
-    )
-    assert order is not None
-    assert order.total_amount == 20.0
+--8<-- "guides/testing/domain-model-tests/001.py:valid_state"
 ```
 
 ### Pre-Invariants
@@ -211,12 +118,7 @@ guard conditions, test that your guard logic correctly rejects invalid
 operations:
 
 ```python
-def test_cannot_modify_shipped_order():
-    order = Order(customer_name="Alice", status="SHIPPED")
-
-    with pytest.raises(ValidationError) as exc:
-        order.add_item("Another Book", 1, Money(amount=9.99))
-    assert "shipped" in str(exc.value.messages)
+--8<-- "guides/testing/domain-model-tests/001.py:pre_invariant"
 ```
 
 ## Testing Domain Services
@@ -225,22 +127,7 @@ Domain services hold business rules that span multiple aggregates. Test them
 by passing in the aggregates and checking the outcome.
 
 ```python
-from myapp.models import Inventory, Money, Order, OrderItem
-from myapp.services import OrderFulfillmentService
-
-
-def test_order_fulfillment():
-    order = Order(
-        customer_name="Alice",
-        items=[OrderItem(book_title="Dune", quantity=2, unit_price=Money(amount=15.99))],
-    )
-    inventory = Inventory(book_id="1", title="Dune", quantity=10)
-
-    service = OrderFulfillmentService(order, [inventory])
-    service.confirm_order()
-
-    assert order.status == "CONFIRMED"
-    assert inventory.quantity == 10  # the service checks stock; it does not reserve
+--8<-- "guides/testing/domain-model-tests/001.py:domain_service"
 ```
 
 The service confirms the order and leaves the inventory as it was. Reserving
@@ -253,18 +140,7 @@ Domain services can also have pre-invariants. Test that they reject invalid
 input:
 
 ```python
-def test_fulfillment_rejects_out_of_stock():
-    order = Order(
-        customer_name="Alice",
-        items=[OrderItem(book_title="Dune", quantity=20, unit_price=Money(amount=15.99))],
-    )
-    inventory = Inventory(book_id="1", title="Dune", quantity=5)
-
-    service = OrderFulfillmentService(order, [inventory])
-    with pytest.raises(ValidationError) as exc:
-        service.confirm_order()
-    assert "Insufficient stock" in str(exc.value.messages)
-    assert order.status == "PENDING"
+--8<-- "guides/testing/domain-model-tests/001.py:domain_service_invariant"
 ```
 
 ## Organizing Domain Model Tests

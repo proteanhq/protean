@@ -5,8 +5,9 @@ asks for more: a test that loads the example. It cannot tell whether the test
 then checks what the example does; it finds the loaded examples by reading test
 source for these calls and imports, without running it:
 
-- a ``load_example("<path>")`` call in any file under ``tests/docs/`` loads the
-  example at that path (relative to ``docs_src``);
+- a ``load_example("<path>")`` or ``run_example_tests("<path>")`` call in any
+  file under ``tests/docs/`` loads the example at that path (relative to
+  ``docs_src``);
 - a ``_load_chapter(<n>)`` call in a tutorial test loads ``ch<nn>.py`` from that
   tutorial's folder;
 - an import of a ``docs_src`` package in any of those files loads the modules
@@ -35,6 +36,9 @@ from tests.docs.support import (
 pytestmark = pytest.mark.no_test_domain
 
 TESTS_DOCS = REPO_ROOT / "tests" / "docs"
+
+# Calls whose first argument names a docs_src example the test loads.
+LOADERS = {"load_example", "run_example_tests"}
 
 # Test file -> the docs_src folder its `_load_chapter(n)` calls load from.
 CHAPTER_LOADERS: dict[Path, str] = {
@@ -73,12 +77,11 @@ def loaded_examples(
 ) -> set[str]:
     """Return the ``root``-relative paths the given test files load.
 
-    ``test_files`` are read for ``load_example`` calls; ``chapter_loaders``
-    maps more test files to the folder their ``_load_chapter`` calls read.
-    Both kinds are read for imports of a package under ``root``, which load
-    the package modules they name. A
-    ``load_example`` call that passes its own ``root=`` loads from somewhere
-    else, so it does not count.
+    ``test_files`` are read for ``load_example`` and ``run_example_tests``
+    calls; ``chapter_loaders`` maps more test files to the folder their
+    ``_load_chapter`` calls read. Both kinds are read for imports of a package
+    under ``root``, which load the package modules they name. A call that
+    passes its own ``root=`` loads from somewhere else, so it does not count.
     """
     packages = package_dirs(root)
     loaded: set[str] = set()
@@ -88,7 +91,7 @@ def loaded_examples(
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 name = _call_name(node)
-                if name == "load_example" and not any(
+                if name in LOADERS and not any(
                     kw.arg == "root" for kw in node.keywords
                 ):
                     path = _string_arg(node, "path")
@@ -247,6 +250,18 @@ class TestCoverageGuard:
         loaded = loaded_examples([], {tests / "test_tut.py": "tut"}, root)
 
         assert loaded == {"tut/shop/__init__.py", "tut/shop/models.py"}
+
+    def test_a_run_example_tests_call_counts(self, layout):
+        root, tests = layout
+        _write(tests / "test_a.py", 'run_example_tests("guides/b.py")\n')
+
+        assert loaded_examples([tests / "test_a.py"], {}, root) == {"guides/b.py"}
+
+    def test_a_run_example_tests_call_with_its_own_root_does_not_count(self, layout):
+        root, tests = layout
+        _write(tests / "test_a.py", 'run_example_tests("guides/b.py", root=tmp)\n')
+
+        assert loaded_examples([tests / "test_a.py"], {}, root) == set()
 
     def test_a_load_example_call_through_the_module_counts(self, layout):
         root, tests = layout
