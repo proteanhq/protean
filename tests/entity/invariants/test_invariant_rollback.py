@@ -373,6 +373,18 @@ class TestAssociationAssignmentRollsBack:
         assert order._temp_cache["note"].change == changes_before
         assert order.state_.is_changed is False
 
+    def test_never_assigned_has_one_returns_to_unset(self):
+        order = Order(total=0.0)
+        order.state_.mark_saved()
+        assert "note" not in order._temp_cache
+
+        with pytest.raises(ValidationError):
+            order.note = OrderNote(text="")
+
+        assert order.note is None
+        assert "note" not in order._temp_cache
+        assert order.state_.is_changed is False
+
     def test_has_many_assignment_keeps_the_old_children(self, order):
         old_items = list(order.items)
         added_before = dict(order._temp_cache["items"].added)
