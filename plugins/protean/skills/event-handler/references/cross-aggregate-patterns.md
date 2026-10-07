@@ -100,8 +100,11 @@ class TeamMemberCommandHandler:
 ```
 
 A task can be assigned, unassigned and assigned again, so the task id cannot
-name one change. `event._metadata.headers.id` is the event's own id, the same on
-every delivery of that event.
+name one change. `event._metadata.headers.id` is the event's message id,
+`<stream>-<version>.<n>`, and it is the same on every delivery of that event.
+It names one change only when the task is loaded fresh before each change, as
+the command handlers here do. An instance saved twice without reloading raises
+its second event under the same id, and the guard then drops that change.
 
 ## Choosing the deterministic id
 
@@ -109,7 +112,7 @@ every delivery of that event.
 |-----------|----------------------------|
 | One event causes one write to the target | An id from the event, such as `order_id` |
 | One event causes several writes to the target | A derived key, such as `f"{order_id}:{product_id}"` |
-| The same kind of event can recur for one source | The event's own id, `event._metadata.headers.id` |
+| The same kind of event can recur for one source, and the payload has no id per occurrence | The event's message id, `event._metadata.headers.id` (load the source fresh before each change) |
 
 Never generate a fresh `uuid4()` in the event handler, because a redelivered
 event would then look like new work.

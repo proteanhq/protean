@@ -35,8 +35,9 @@ from protean.fields import DateTime, Identifier, String
 # Domain setup
 domain = Domain()
 
-# Run each hop in-process: an event reaches its handlers as soon as the shipment
-# is saved, and SendNotification reaches its handler as soon as it is issued.
+# Run each hop in-process: an event reaches its handlers when the unit of work
+# that saves the shipment commits, and SendNotification reaches its handler as
+# soon as it is issued.
 domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 
@@ -115,6 +116,12 @@ class ShipmentEventHandler:
 
     Processes multiple event types from the same aggregate.
     Generates tracking info updates as the shipment progresses.
+
+    Events are delivered at least once, so a repeat of ShipmentDispatched can
+    arrive after the shipment was delivered. `on_dispatched` writes only while
+    the shipment is still dispatched, so that repeat cannot reset the tracking
+    info. `on_delivered` returns when the delivered tracking info is already
+    set, so a repeat does not save the shipment again.
     """
 
     @handle(ShipmentDispatched)
@@ -122,6 +129,8 @@ class ShipmentEventHandler:
         """Generate tracking info when shipment is dispatched."""
         repo = domain.repository_for(Shipment)
         shipment = repo.get(event.shipment_id)
+        if shipment.status != "dispatched":
+            return  # a late repeat; the shipment has moved on
         shipment.tracking_info = f"TRACK-{event.carrier}-{event.shipment_id}"
         repo.add(shipment)
 
@@ -130,7 +139,10 @@ class ShipmentEventHandler:
         """Update tracking info when shipment is delivered."""
         repo = domain.repository_for(Shipment)
         shipment = repo.get(event.shipment_id)
-        shipment.tracking_info = f"DELIVERED-{event.shipment_id}"
+        tracking_info = f"DELIVERED-{event.shipment_id}"
+        if shipment.tracking_info == tracking_info:
+            return  # already applied
+        shipment.tracking_info = tracking_info
         repo.add(shipment)
 
 

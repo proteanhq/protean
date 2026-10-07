@@ -12,8 +12,9 @@ Changes from introduce_events_ecommerce_before.py:
 
 Events are delivered at least once, so each receiving command handler is safe
 to repeat. ReserveStock carries the order id, and Inventory records the order
-ids it has already reserved stock for. NotifyCustomer writes the same message
-for the same order, so a repeat leaves the notification unchanged.
+ids it has already reserved stock for. NotifyCustomer carries the order id
+too, and CustomerNotification records the orders it has already notified, so a
+late repeat of an older order cannot overwrite a newer message.
 """
 
 from protean import Domain, current_domain, handle
@@ -21,8 +22,9 @@ from protean.fields import Identifier, Integer, List, String
 
 domain = Domain()
 
-# Run the hop in-process: the event reaches its handlers as soon as the order is
-# saved, and each command reaches its handler as soon as it is issued.
+# Run the hop in-process: the event reaches its handlers when the unit of work
+# that saved the order commits, and each command reaches its handler as soon as
+# it is issued.
 domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 
@@ -87,11 +89,18 @@ class Inventory:
 
 @domain.aggregate
 class CustomerNotification:
+    """The latest message sent to one customer.
+
+    `notified_order_ids` records which orders have already been notified.
+    """
+
     customer_id = String(required=True, identifier=True)
     last_message = String()
+    notified_order_ids = List(content_type=String)
 
-    def notify(self, message: str) -> None:
+    def notify(self, order_id: str, message: str) -> None:
         self.last_message = message
+        self.notified_order_ids = [*self.notified_order_ids, order_id]
 
 
 # --- Commands ---
@@ -158,11 +167,13 @@ class InventoryCommandHandler:
 class NotificationCommandHandler:
     @handle(NotifyCustomer)
     def notify_customer(self, command: NotifyCustomer) -> None:
-        # Writing the same message for the same order twice leaves the
-        # notification unchanged, so a repeat needs no guard here.
         repo = current_domain.repository_for(CustomerNotification)
         notification = repo.get(command.customer_id)
-        notification.notify(command.message)
+        if command.order_id in notification.notified_order_ids:
+            # Already applied. A late repeat of an older order's event would
+            # otherwise overwrite the newer message.
+            return
+        notification.notify(command.order_id, command.message)
         repo.add(notification)
 
 

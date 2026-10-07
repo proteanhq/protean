@@ -22,9 +22,9 @@ from protean.fields import Identifier, String, Text, ValueObject
 
 domain = Domain(__name__)
 
-# Run the hop in-process: TicketCreated reaches the event handler as soon as the
-# ticket is saved, and RecordNotification reaches its handler as soon as it is
-# issued.
+# Run the hop in-process: TicketCreated reaches the event handler when the unit
+# of work that saves the ticket commits, and RecordNotification reaches its
+# handler as soon as it is issued.
 domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 

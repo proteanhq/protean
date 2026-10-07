@@ -9,7 +9,7 @@ This example demonstrates:
   owns the events, and creates each Notification through a SendNotification
   command
 - A redelivered event is a no-op: events are delivered at least once, so the
-  command carries the event's own id as the notification id, and
+  command carries the event's message id as the notification id, and
   Notification's command handler skips one that already exists
 
 Usage:
@@ -208,9 +208,13 @@ class AccountNotifier:
     Multiple @handle methods allow one handler to react to different
     event types from the same stream.
 
-    `event._metadata.headers.id` is the event's own id, the same on every
-    delivery of that event. An account can be suspended more than once, so
-    the account id alone would not name one notification.
+    `event._metadata.headers.id` is the event's message id, the same on
+    every delivery of that event. An account can be suspended more than once,
+    so the account id alone would not name one notification.
+    It has the form `<stream>-<version>.<n>`, so it names one change only
+    while the account is loaded fresh before each change, as the command
+    handlers here do. An instance saved twice without reloading raises its
+    second event under the same id.
     """
 
     @handle(AccountRegistered)

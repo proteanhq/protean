@@ -12,7 +12,7 @@ metadata:
 
 # Add Event Flow
 
-This workflow adds a complete event flow to an existing aggregate. It creates three artifacts that work together:
+This workflow adds a complete event flow to an existing aggregate. It creates these artifacts, which work together:
 
 1. **Event** - An immutable fact representing a state change (e.g., `OrderPlaced`)
 2. **Aggregate method** - A method on the aggregate that performs the state change and raises the event via `self.raise_()`
@@ -175,7 +175,7 @@ class InventoryCommandHandler:
 
 ### Step 5: Wire together
 
-All three components connect through the domain's event system:
+The components connect through the domain's event system:
 1. Aggregate method performs state change and calls `self.raise_(event)`
 2. When aggregate is persisted via repository, events are dispatched
 3. Domain matches events to handlers based on stream category and `@handle` decorators
@@ -263,7 +263,7 @@ class OrderEventHandler:
 5. **Implicit UnitOfWork** - Do NOT wrap handler methods in manual UnitOfWork
 6. **Business logic in aggregates** - Handlers only orchestrate (load, call method, persist)
 7. **Raise events after state change** - Call `self.raise_()` after the aggregate state is updated
-8. **Cross-aggregate goes through a command** - The handler sits in the source's cluster and issues a command that the target's command handler processes. The command carries an id from the event, and the handler no-ops when the work is already done
+8. **Cross-aggregate goes through a command** - The handler sits in the source's cluster and issues a command that the target's command handler processes. The command carries an id from the event, and the target's command handler returns without changes when that work is already done
 9. **Sync processing for dev/test** - Set `domain.config["event_processing"] = "sync"`
 10. **Events carry minimal data** - Only IDs and data needed by consumers, not entire aggregate state
 

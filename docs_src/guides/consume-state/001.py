@@ -98,4 +98,8 @@ with domain.domain_context():
     stock = domain.repository_for(Inventory).get(inventory.id)
     print(stock.to_dict())
     assert stock.in_stock == 90
+
+    # A repeated delivery of the same order leaves the stock alone
+    domain.process(ReduceStock(order_id=order.id, book_id="book-1", quantity=10))
+    assert domain.repository_for(Inventory).get(inventory.id).in_stock == 90
 # --8<-- [end:full]

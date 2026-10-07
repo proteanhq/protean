@@ -1,5 +1,5 @@
 ---
-description: Event patterns — raising events, cross-aggregate streams, versioning, and immutability rules
+description: "Event patterns: raising events, reacting across aggregates, versioning, and immutability rules"
 globs: "**/*.py"
 ---
 
@@ -39,26 +39,43 @@ class OrderPlaced:
     line_items = HasMany(LineItem)  # Never do this
 ```
 
-## Cross-Aggregate Event Handling via `stream_category`
+## Reacting to Another Aggregate's Event
 
-When an event handler in one aggregate needs to react to events from another aggregate,
-use `stream_category` to subscribe to the source aggregate's event stream:
+When aggregate A raises an event and aggregate B must change, keep the event handler in A's
+cluster (`part_of=A`, no `stream_category`). The handler issues a command that is `part_of=B`,
+and B's command handler does the write:
 
 ```python
-@domain.event_handler(
-    part_of=Inventory,
-    stream_category=Order.meta_.stream_category,
-)
+@domain.event_handler(part_of=Order)
 class OrderEventsHandler:
     @handle(OrderPlaced)
     def on_order_placed(self, event):
-        inventory = self.repository.get(event.product_id)
-        inventory.reserve(event.quantity)
+        current_domain.process(
+            ReserveStock(
+                order_id=event.order_id,
+                product_id=event.product_id,
+                quantity=event.quantity,
+            )
+        )
+
+
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    @handle(ReserveStock)
+    def reserve_stock(self, command):
+        inventory = self.repository.get(command.product_id)
+        if command.order_id in inventory.applied_order_ids:
+            return  # this order was already applied
+        inventory.reserve(command.order_id, command.quantity)
         self.repository.add(inventory)
 ```
 
-The handler's `part_of` points to the **target** aggregate; `stream_category` points to the
-**source** aggregate's stream.
+Events are delivered at least once, so the command carries an id taken from the event, and the
+command handler returns without changes when it has already applied that id. For a flow with
+several dependent steps, use a process manager.
+
+Do not write `@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)`.
+`check` reports that handler as `EVENT_HANDLER_FOREIGN_EVENT`.
 
 ## Event Versioning
 
@@ -87,5 +104,5 @@ circular imports:
 
 # Handlers — class references are OK when in separate files
 @domain.command_handler(part_of=Order)
-@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
+@domain.event_handler(part_of=Order)
 ```

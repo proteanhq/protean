@@ -29,8 +29,9 @@ from protean.fields import (
 
 domain = Domain()
 
-# Run the hop in-process: OrderPlaced reaches its handler as soon as the order
-# is saved, and ReserveStock reaches its handler as soon as it is issued.
+# Run the hop in-process: OrderPlaced reaches its handler when the unit of work
+# that saves the order commits, and ReserveStock reaches its handler as soon as
+# it is issued.
 domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 

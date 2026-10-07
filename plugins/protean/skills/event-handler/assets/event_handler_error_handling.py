@@ -207,5 +207,8 @@ if __name__ == "__main__":
         try:
             domain.process(DispatchShipment(shipment_id="SHP-001"))
         except ValueError as e:
+            # The command handler raised this, before any event was raised,
+            # so ShipmentNotifier.handle_error is not involved. The engine
+            # calls handle_error only when ShipmentNotifier's own method fails
+            # while the server processes events asynchronously.
             print(f"Expected error: {e}")
-            # In async mode, handle_error would be called by the engine

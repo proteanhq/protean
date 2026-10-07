@@ -12,8 +12,11 @@ This example demonstrates:
 Domain: A support ticket system where tickets can be created and assigned,
 with an audit log tracking assignments.
 
-Events are delivered at least once, so each audit entry takes its id from the
-event's own id, and the command handler skips an entry that already exists.
+Events are delivered at least once, so each audit entry takes the event's
+message id (`<stream>-<version>.<n>`) as its id, and the command handler skips
+an entry that already exists. The message id names one change only while the
+ticket is loaded fresh before each change, as the command handlers here do.
+The entry id is a string, so this guard needs the default `identity_type`.
 """
 
 from protean import Domain, current_domain, handle
@@ -22,8 +25,9 @@ from protean.fields import Identifier, String
 
 domain = Domain(__name__)
 
-# Run the hop in-process: TicketAssigned reaches the event handler as soon as
-# the ticket is saved, and RecordAudit reaches its handler as soon as it is issued.
+# Run the hop in-process: TicketAssigned reaches the event handler when the unit
+# of work that saves the ticket commits, and RecordAudit reaches its handler as
+# soon as it is issued.
 domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 

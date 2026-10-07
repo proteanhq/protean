@@ -10,8 +10,10 @@ and execute side effects in their own transaction, keeping aggregates
 decoupled.
 
 Event handlers consume events raised in an aggregate and help sync the state of
-the aggregate with other aggregates and other systems. They are the preferred
-mechanism to update multiple aggregates.
+the aggregate with other aggregates and other systems. An event handler stays
+with the aggregate that raised the event. When another aggregate must change,
+the handler issues a command, and that aggregate's command handler does the
+write.
 
 ## Choosing the Right Consumer
 
@@ -47,8 +49,8 @@ a simplified example of an Event Handler that syncs stock levels in
 2. Event handler is registered with `part_of=Order`, the aggregate that owns
 `OrderShipped`. It does not write to `Inventory` itself. It issues a
 `ReduceStock` command, which is `part_of=Inventory`, and Inventory's command
-handler does the write. Each aggregate changes only through its own command
-handler, and each change runs in its own transaction.
+handler does the write. `Inventory` changes only through its own command
+handler, in its own transaction.
 
 3. The command carries the order id taken from the event. Events are delivered
 at least once, so the same `OrderShipped` can arrive twice. `Inventory`
@@ -255,9 +257,11 @@ because a projector has one known projection provider.
 - **`stream_category`**: The event handler listens to events on this [stream
 category](../../concepts/async-processing/stream-categories.md). The stream category defaults to the category of the aggregate associated with the handler.
 
-    An Event Handler can be part of an aggregate, and have the stream category of
-    a different aggregate. This is the mechanism for an aggregate to listen to
-    another aggregate's events to sync its own state. Learn more in the
+    Keep the default when the handler reacts to its own aggregate's events.
+    To change another aggregate, do not point `stream_category` at the other
+    aggregate's stream: `check` reports that handler as
+    `EVENT_HANDLER_FOREIGN_EVENT`. Put the handler in the aggregate that owns
+    the event and issue a command, as in the example above. Learn more in the
     [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
 
 - **`source_stream`**: When specified, the event handler only consumes events
@@ -281,9 +285,8 @@ subscription-level retry. See [Transient-failure retries](#transient-failure-ret
 
 !!! note "Required: `part_of`"
     Every event handler must specify `part_of`, the aggregate it belongs to.
-    This association determines the default stream category. You can override
-    the stream with `stream_category` to listen to a *different* aggregate's
-    events, but `part_of` is always required.
+    This association determines the default stream category. Set `part_of`
+    to the aggregate that raises the events the handler reacts to.
 
 ### Subscription Options
 

@@ -93,9 +93,11 @@ class ManageInventory:
 
 ## Quick example: Multiple events
 
-Each method issues a `SendNotification` command. The notification id is the
-event's own id (`event._metadata.headers.id`), which stays the same when the
-event is delivered again.
+Each method issues a `SendNotification` command. An account can be suspended
+more than once, so the account id cannot name one notification. The
+notification id is the event's message id (`event._metadata.headers.id`),
+which stays the same when the event is delivered again. See the caveat in
+"Making the receiving end safe to repeat" below.
 
 ```python
 @domain.event_handler(part_of=Account)
@@ -185,10 +187,25 @@ changes when that work is already done:
 - **When the command updates B**, keep a list of applied ids on B (for example
   `applied_order_ids: List(content_type=String)`). The command handler returns
   early when the id is already in the list, and the aggregate method appends it.
+  The list grows with every applied id and loads with B each time.
 
 When one event drives several writes to B, derive one id per write, such as
 `f"{order_id}:{product_id}"`. Never generate a fresh `uuid4()` in the handler,
 because a redelivered event would then look like new work.
+
+Prefer an id from the event's payload. When the same kind of event can recur
+for one source and the payload has no id for each occurrence, use the event's
+message id, `event._metadata.headers.id`. It has the form
+`<stream>-<version>.<n>` and stays the same on every delivery. It names one
+change only when the source aggregate is loaded fresh before each change, as
+a command handler does, and when an aggregate id is never reused. An instance
+saved twice without reloading raises its second event under the same id, and
+the guard then drops that real change.
+
+Keys like `f"{order_id}:{product_id}"` and message ids are strings, not UUIDs.
+A guard that stores them as B's identity needs the default
+`identity_type` (`"string"`). With `identity_type="uuid"`, the database
+rejects them.
 
 ### Designing for eventual consistency
 

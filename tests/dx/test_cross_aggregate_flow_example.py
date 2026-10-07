@@ -109,11 +109,13 @@ def test_a_second_order_still_reduces_stock():
 
     with domain.domain_context():
         _ship_one_order(namespace, domain)
-        order = namespace["Order"](product_id="SKU-1", quantity=2)
+        # Same quantity as the first order, so only the order id tells them
+        # apart.
+        order = namespace["Order"](product_id="SKU-1", quantity=3)
         domain.repository_for(namespace["Order"]).add(order)
         domain.process(namespace["ShipOrder"](order_id=order.id))
 
-        assert _stock(namespace, domain) == 5
+        assert _stock(namespace, domain) == 4
 
 
 def test_the_handler_sits_in_the_cluster_that_owns_the_event():

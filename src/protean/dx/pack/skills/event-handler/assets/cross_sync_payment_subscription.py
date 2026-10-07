@@ -37,9 +37,9 @@ from protean.fields import Float, Identifier, List, String
 
 domain = Domain(__name__)
 
-# Run the hop in-process: PaymentConfirmed reaches the event handler as soon as
-# the payment is saved, and ActivateSubscription reaches its handler as soon as
-# it is issued.
+# Run the hop in-process: PaymentConfirmed reaches the event handler when the
+# unit of work that saves the payment commits, and ActivateSubscription reaches
+# its handler as soon as it is issued.
 domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 
@@ -122,8 +122,10 @@ class Subscription:
     """Subscription aggregate (target of sync).
 
     `applied_payment_ids` records which payments have already activated this
-    subscription. Without it, a late redelivery of an old payment could switch
-    the subscription back to that payment's plan.
+    subscription. Without it, a repeat delivery of a payment already applied
+    could switch the subscription back to that payment's plan. The guard does
+    not order payments: the first delivery of an older payment that arrives
+    late still applies its plan.
     """
 
     customer_id: Identifier(required=True)

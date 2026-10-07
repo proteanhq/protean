@@ -39,8 +39,9 @@ from protean.fields import Identifier, Integer, List, String
 
 domain = Domain(__name__)
 
-# Run the hop in-process: OrderShipped reaches the event handler as soon as the
-# order is saved, and ReduceStock reaches its handler as soon as it is issued.
+# Run the hop in-process: OrderShipped reaches the event handler when the unit
+# of work that saves the order commits, and ReduceStock reaches its handler as
+# soon as it is issued.
 domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 
