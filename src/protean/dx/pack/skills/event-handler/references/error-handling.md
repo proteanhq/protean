@@ -25,7 +25,11 @@ class ShipmentNotifier:
     @handle(ShipmentDispatched)
     def on_shipment_dispatched(self, event: ShipmentDispatched):
         current_domain.process(
-            RecordShipmentLog(log_id=f"{event.shipment_id}:dispatched", ...)
+            RecordShipmentLog(
+                log_id=f"{event.shipment_id}:dispatched",
+                shipment_id=event.shipment_id,
+                message=f"Shipment {event.shipment_id} dispatched",
+            )
         )
 
     @classmethod

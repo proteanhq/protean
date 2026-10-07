@@ -37,7 +37,8 @@ SKILLS = ("event-handler", "add-event", "add-use-case", "refactor-introduce-even
 GUIDE = REPO_ROOT / "docs" / "guides" / "consume-state" / "event-handlers.md"
 
 FENCE = re.compile(r"^([ \t]*)```[^\n]*\n(.*?)^\1```", re.MULTILINE | re.DOTALL)
-EVENT_HANDLER = re.compile(r"event_handler\((.*?)\)\s*\n", re.DOTALL)
+EVENT_HANDLER = re.compile(r"event_handler\((.*?)\)[ \t]*(?:#[^\n]*)?\n", re.DOTALL)
+HANDLE = re.compile(r"@handle\((.*?)\)")
 CODE = "EVENT_HANDLER_FOREIGN_EVENT"
 # How much text before a block may carry its anti-pattern label.
 LABEL_WINDOW = 400
@@ -61,14 +62,23 @@ def _unlabelled_foreign_handlers(text: str) -> list[int]:
     for block in FENCE.finditer(text):
         code = block.group(2)
         before = text[max(0, block.start() - LABEL_WINDOW) : block.start()]
-        if CODE in code or CODE in before or '"$any"' in code:
+        if CODE in code or CODE in before:
             continue
-        if any(
-            "stream_category" in handler.group(1)
-            for handler in EVENT_HANDLER.finditer(code)
-        ):
-            lines.append(text.count("\n", 0, block.start()) + 1)
+        handlers = list(EVENT_HANDLER.finditer(code))
+        for index, handler in enumerate(handlers):
+            end = handlers[index + 1].start() if index + 1 < len(handlers) else None
+            if "stream_category" in handler.group(1) and not _wildcard_only(
+                code[handler.end() : end]
+            ):
+                lines.append(text.count("\n", 0, block.start()) + 1)
+                break
     return lines
+
+
+def _wildcard_only(body: str) -> bool:
+    """Whether every ``@handle`` in a handler class is ``@handle("$any")``."""
+    targets = HANDLE.findall(body)
+    return bool(targets) and all(target == '"$any"' for target in targets)
 
 
 def test_no_page_shows_an_unlabelled_foreign_handler() -> None:
@@ -113,3 +123,35 @@ def test_the_scan_accepts_a_labelled_anti_pattern_and_an_any_handler() -> None:
         "```\n"
     )
     assert _unlabelled_foreign_handlers(page) == []
+
+
+def test_the_scan_finds_a_foreign_event_beside_an_any_handler() -> None:
+    page = (
+        "```python\n"
+        "@domain.event_handler(part_of=AuditLog, stream_category='task')\n"
+        "class TaskAuditor:\n"
+        "    @handle(TaskCreated)\n"
+        "    def on_created(self, event): ...\n"
+        "\n"
+        '    @handle("$any")\n'
+        "    def on_any(self, event): ...\n"
+        "```\n"
+    )
+    assert _unlabelled_foreign_handlers(page) == [1]
+
+
+def test_the_scan_finds_a_foreign_handler_after_an_any_handler() -> None:
+    page = (
+        "```python\n"
+        "@domain.event_handler(part_of=AuditLog, stream_category='task')\n"
+        "class TaskAuditor:\n"
+        '    @handle("$any")\n'
+        "    def on_any(self, event): ...\n"
+        "\n"
+        "@domain.event_handler(part_of=Inventory, stream_category='order')\n"
+        "class OrderEventsHandler:\n"
+        "    @handle(OrderShipped)\n"
+        "    def on_shipped(self, event): ...\n"
+        "```\n"
+    )
+    assert _unlabelled_foreign_handlers(page) == [1]
