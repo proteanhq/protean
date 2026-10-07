@@ -338,6 +338,10 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     _temp_cache: AssociationCache = PrivateAttr(default_factory=AssociationCache)
     _events: list[Any] = PrivateAttr(default_factory=list)
     _disable_invariant_checks: bool = PrivateAttr(default=False)
+    # One snapshot list per open ``atomic_change`` block on this aggregate. An
+    # association change inside a block adds the children it links, so the
+    # block can undo the link when it fails.
+    _atomic_snapshots: list[list["_EntitySnapshot"]] = PrivateAttr(default_factory=list)
     # Set True only for the duration of an ``@apply`` handler during event
     # replay (by ``BaseAggregate._apply``). While set, ``__setattr__`` drops an
     # assignment to a reserved (removed) field name instead of raising, and
@@ -1100,6 +1104,14 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         elif isinstance(descriptor, Association):
             items = incoming if isinstance(incoming, list) else [incoming]
             entities = _snapshot_entity_trees([self, *items])
+            target = self._root if self._root is not None else self
+            for block in target._atomic_snapshots:
+                known = {id(snapshot.entity) for snapshot in block}
+                block.extend(
+                    snapshot
+                    for snapshot in entities
+                    if id(snapshot.entity) not in known
+                )
 
         cache = self._state.fields_cache
         assert isinstance(cache, dict)

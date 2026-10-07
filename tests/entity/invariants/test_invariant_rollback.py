@@ -554,6 +554,22 @@ class TestAtomicChangeRollsBack:
         assert order._temp_cache["items"].removed == {}
         assert order.state_.is_changed is False
 
+    def test_children_linked_in_the_block_are_unlinked(self, order):
+        new_item = OrderItem(quantity=1, price=1.0)
+        new_note = OrderNote(text="Ring twice")
+
+        with pytest.raises(ValidationError):
+            with atomic_change(order):
+                order.add_items(new_item)
+                order.note = new_note
+                order.total = -1.0
+
+        for child in (new_item, new_note):
+            assert child._root is None
+            assert child._owner is None
+            assert child.order_id is None
+            assert child.state_.is_changed is False
+
     def test_error_inside_the_block_also_rolls_back(self, account):
         with pytest.raises(RuntimeError):
             with atomic_change(account):

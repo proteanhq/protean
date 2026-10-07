@@ -482,6 +482,7 @@ class BaseAggregate(BaseEntity):
             "_temp_cache": AssociationCache(),
             "_events": [],
             "_disable_invariant_checks": True,  # Suppress during replay
+            "_atomic_snapshots": [],
             "_replaying": False,  # Set True per-event by `_apply`
             "_invariants": defaultdict(dict),
         }
@@ -869,9 +870,9 @@ class atomic_change:
     (and ``@apply`` handlers in ES aggregates) are validated as a single
     logical transition.
 
-    When the block raises, or the checks on exit fail, the aggregate and
-    the child entities loaded on entry go back to their state from block
-    entry.
+    When the block raises, or the checks on exit fail, the aggregate, the
+    child entities loaded on entry, and the children linked inside the block
+    go back to their state from block entry.
     """
 
     def __init__(self, aggregate: Any) -> None:
@@ -885,6 +886,7 @@ class atomic_change:
         # Temporary disable invariant checks
         self.aggregate._precheck()
         self._entity_snapshots = _snapshot_entity_trees([self.aggregate])
+        self.aggregate._atomic_snapshots.append(self._entity_snapshots)
         self.aggregate._disable_invariant_checks = True
 
     def __exit__(
@@ -895,6 +897,11 @@ class atomic_change:
     ) -> None:
         # Re-enable invariant checks
         self.aggregate._disable_invariant_checks = False
+        self.aggregate._atomic_snapshots = [
+            block
+            for block in self.aggregate._atomic_snapshots
+            if block is not self._entity_snapshots
+        ]
 
         # Validate status transitions (start -> end) before post-invariants.
         # Only validate when no exception is being propagated.
