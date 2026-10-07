@@ -7,11 +7,29 @@ globs: "**/*.py"
 
 ## Lifecycle Rules
 
-Every `@handle` method on a process manager must specify `correlate`. Exactly one handler
-must have `start=True`. Use `end=True` or `self.mark_as_complete()` for terminal states.
+Every `@handle` method on a process manager must specify `correlate`. At least one handler
+must have `start=True`. Mark the terminating handler `end=True`. `self.mark_as_complete()`
+also completes an instance, but `check` reports `PROCESS_MANAGER_UNCLOSED` for a process
+manager with no `end=True` handler.
 
 ```python
-@domain.process_manager(part_of=OrderFulfillment)
+@domain.aggregate
+class Order:
+    status = String(default="NEW")
+
+@domain.event(part_of=Order)
+class OrderPlaced:
+    order_id = String(required=True)
+
+@domain.event(part_of=Order)
+class PaymentProcessed:
+    order_id = String(required=True)
+
+@domain.event(part_of=Order)
+class OrderShipped:
+    order_id = String(required=True)
+
+@domain.process_manager(aggregates=[Order])
 class OrderFulfillmentProcess:
     order_id = String(identifier=True)
     status = String(default="STARTED")

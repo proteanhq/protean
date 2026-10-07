@@ -1,5 +1,28 @@
 # Projector Anti-Patterns
 
+The examples on this page use this aggregate, event, and projection:
+
+```python
+from protean.core.projector import on
+
+@domain.event(part_of="Product")
+class ProductAdded:
+    product_id: Identifier(required=True)
+    name: String(required=True)
+    stock_quantity: Integer(required=True)
+
+@domain.aggregate
+class Product:
+    name: String(required=True)
+    stock_quantity: Integer(default=0)
+
+@domain.projection
+class ProductInventory:
+    product_id: Identifier(identifier=True, required=True)
+    name: String(required=True)
+    stock_quantity: Integer(default=0)
+```
+
 ## 1. Missing projector_for
 
 ```python
@@ -57,7 +80,7 @@ class MyProjector:
 
 ```python
 @domain.projection
-class ProductInventory:
+class UnregisteredProjection:
     product_id: Identifier(identifier=True)
 ```
 
@@ -107,6 +130,7 @@ def on_order_placed(self, event):
 **Fix**: Keep business logic in aggregates. Projectors only transform and store data:
 
 ```python
+# fragment
 @on(OrderPlaced)
 def on_order_placed(self, event):
     # Just project the data as-is
@@ -147,6 +171,7 @@ class MyProjector:
 ## 7. Decorating with non-Event classes
 
 ```python
+# fragment
 from protean.core.projector import on
 
 @domain.projector(projector_for=ProductInventory, aggregates=[Product])
@@ -163,6 +188,7 @@ Protean raises `IncorrectUsageError: Projector method 'on_some_command' in 'MyPr
 ## 8. Manually wrapping in UnitOfWork
 
 ```python
+# fragment
 @on(ProductAdded)
 def on_product_added(self, event):
     with UnitOfWork():  # Unnecessary! Already implicit
@@ -173,6 +199,7 @@ def on_product_added(self, event):
 **Fix**: Let the implicit UnitOfWork handle persistence:
 
 ```python
+# fragment
 @on(ProductAdded)
 def on_product_added(self, event):
     inventory = ProductInventory(...)

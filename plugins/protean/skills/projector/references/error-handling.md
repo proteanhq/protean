@@ -6,7 +6,32 @@ Projectors may encounter errors while processing events - network failures, data
 
 ## The handle_error classmethod
 
-Override the `handle_error` classmethod on a projector class to define custom error recovery:
+Override the `handle_error` classmethod on a projector class to define custom error recovery. The example uses this aggregate, event, and projection:
+
+```python
+import logging
+
+from protean.core.projector import on
+
+logger = logging.getLogger(__name__)
+
+@domain.event(part_of="Product")
+class ProductAdded:
+    product_id: Identifier(required=True)
+    name: String(required=True)
+    stock_quantity: Integer(required=True)
+
+@domain.aggregate
+class Product:
+    name: String(required=True)
+    stock_quantity: Integer(default=0)
+
+@domain.projection
+class ProductInventory:
+    product_id: Identifier(identifier=True, required=True)
+    name: String(required=True)
+    stock_quantity: Integer(default=0)
+```
 
 ```python
 @domain.projector(projector_for=ProductInventory, aggregates=[Product])
@@ -60,6 +85,7 @@ def handle_error(cls, exc: Exception, message) -> None:
 4. **Handle missing projections**: Catch `ObjectNotFoundError` for a lookup that may miss; let other exceptions propagate so the engine can retry or record the failure
 
 ```python
+# fragment
 from protean.exceptions import ObjectNotFoundError
 
 

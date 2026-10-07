@@ -15,7 +15,7 @@ metadata:
 
 A read model is the query side of CQRS. It consists of three parts working together:
 
-1. **Projection** — A denormalized, query-optimized data structure with basic field types only
+1. **Projection**: A denormalized, query-optimized data structure built from basic fields and value objects
 2. **Projector** — An event listener that populates and updates the projection
 3. **Domain events** — The bridge between write-side aggregates and read-side projections
 
@@ -35,14 +35,14 @@ Before building a read model, understand:
 - [ ] **What query does this serve?** — What data does the UI/API need? (e.g., "product listing with stock levels")
 - [ ] **Which aggregates contribute data?** — Single aggregate or multiple? (determines projector configuration)
 - [ ] **What events trigger updates?** — Which state changes should update the read model?
-- [ ] **What fields are needed?** — Only basic types allowed: String, Integer, Float, Identifier, DateTime, Boolean, Text, Date
+- [ ] **What fields are needed?** Basic types (String, Integer, Float, Identifier, DateTime, Boolean, Text, Date) and `ValueObject`. No `Reference`, `HasOne` or `HasMany`
 - [ ] **What storage is appropriate?** — Database (durable, queryable) or cache (fast, ephemeral)?
 
 ## Process
 
 ### Step 1: Define the projection
 
-Create a flat data structure with only basic field types. Every projection needs at least one `identifier=True` field.
+Create a flat data structure from basic fields. A `ValueObject` field is also allowed. Every projection needs at least one `identifier=True` field.
 
 ```python
 from protean.fields import Float, Identifier, Integer, String
@@ -58,7 +58,8 @@ class ProductListing:
 Every field here is written by the Step 4 projector. Declare a field only once a projector handler fills it; a field no handler writes renders as a dead column, which `check` reports as `UNSOURCED_PROJECTION_FIELD`. To flatten a field from another aggregate (say a category name), source it from that aggregate's event in the projector, as the cross-aggregate example below shows.
 
 **Key rules for projections** (see [projection](../projection/SKILL.md)):
-- Basic field types only — no Reference, HasMany, HasOne, or ValueObject
+- Basic field types and `ValueObject` only. No `Reference`, `HasOne` or `HasMany`
+- A `ValueObject` field is stored as flattened columns (`address_city`, ...)
 - At least one field with `identifier=True`
 - Flatten nested data into basic fields
 - Use `@domain.projection` decorator
@@ -147,6 +148,37 @@ domain.config["event_processing"] = "sync"
 
 In production, events are processed asynchronously. For testing and development, set `event_processing` to `"sync"` so projectors run immediately when events are raised.
 
+### Step 6: Read the model back
+
+Answer reads with a query and a query handler (see [query](../query/SKILL.md) and [query-handler](../query-handler/SKILL.md)). The handler reads through `view_for`, which is read-only.
+
+```python
+from protean import current_domain, read
+
+@domain.query(part_of=ProductListing)
+class GetProductListing:
+    product_id: Identifier(required=True)
+
+@domain.query_handler(part_of=ProductListing)
+class ProductListingQueryHandler:
+    @read(GetProductListing)
+    def get_listing(self, query: GetProductListing):
+        return current_domain.view_for(ProductListing).get(query.product_id)
+
+domain.init(traverse=False)
+
+with domain.domain_context():
+    product = Product.create(name="Desk Lamp", price=39.0, stock_quantity=5)
+    domain.repository_for(Product).add(product)  # the projector runs here
+
+    listing = domain.dispatch(GetProductListing(product_id=product.id))
+    assert (listing.name, listing.price) == ("Desk Lamp", 39.0)
+```
+
+`view_for(...).get()` raises `ObjectNotFoundError` when no record has that id. With asynchronous event processing, that includes a read made right after the write, before the projector has run.
+
+Calling `domain.view_for(ProductListing)` directly works too, for example in a test.
+
 ## Single-aggregate vs cross-aggregate
 
 | Aspect | Single-aggregate | Cross-aggregate |
@@ -161,6 +193,31 @@ In production, events are processed asynchronously. For testing and development,
 When combining data from multiple aggregates, the projector listens to events from all contributing aggregates:
 
 ```python
+@domain.aggregate
+class User:
+    name: String(required=True)
+
+@domain.aggregate
+class Transaction:
+    user_id: Identifier(required=True)
+    amount: Float(required=True)
+
+@domain.event(part_of=User)
+class UserRegistered:
+    user_id: Identifier(required=True)
+    name: String(required=True)
+
+@domain.event(part_of=Transaction)
+class TransactionCompleted:
+    user_id: Identifier(required=True)
+    amount: Float(required=True)
+
+@domain.projection
+class UserBalance:
+    user_id: Identifier(identifier=True)
+    name: String()
+    balance: Float(default=0.0)
+
 @domain.projector(
     projector_for=UserBalance,
     aggregates=[User, Transaction],
@@ -177,6 +234,10 @@ class UserBalanceProjector:
         balance.balance += event.amount
         domain.repository_for(UserBalance).add(balance)
 ```
+
+### Redelivered events
+
+An event can be delivered more than once. As written, this projector adds the amount again when `TransactionCompleted` is redelivered, and a redelivered `UserRegistered` fails because the record already exists. Writing `on_user_registered` as an upsert (get the record, create it only if missing) fixes the second case. An upsert does not fix the first: adding to a running total is not safe to repeat, so set `idempotent=True` on the projector to have the framework skip an event it has already handled. That option is exactly-once only on a transactional database provider and does nothing for a cache-backed projection (see the `idempotent` option in [projector](../projector/SKILL.md)).
 
 ## Choosing storage
 
@@ -213,7 +274,7 @@ Need a queryable view of domain data?
 
 ```python
 # fragment
-# Wrong! Projections are flat — no associations or value objects
+# Wrong! Projections are flat: no references or associations
 @domain.projection
 class ProductListing:
     product_id: Identifier(identifier=True)

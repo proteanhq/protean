@@ -275,7 +275,8 @@ Guide: [Application Services](../../guides/change-state/application-services.md)
 ### `Domain.projection`
 
 A denormalized, query-optimized read model used on the read side of CQRS.
-Projections support only simple field types, no associations or value objects.
+Projections take simple field types and `ValueObject` fields. Association
+fields (`Reference`, `HasOne`, `HasMany`) are not allowed.
 
 | Option | Default | Description |
 |--------|---------|-------------|

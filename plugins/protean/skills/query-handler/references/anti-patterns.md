@@ -30,9 +30,20 @@ def get_by_id(self, query):
 
 ```python
 # RIGHT
-@read(GetOrderById)
-def get_by_id(self, query):
-    return current_domain.view_for(OrderSummary).get(query.order_id)
+@domain.projection
+class OrderSummary:
+    order_id: Identifier(identifier=True)
+    status: String(max_length=20)
+
+@domain.query(part_of="OrderSummary")
+class GetOrderById:
+    order_id: Identifier(required=True)
+
+@domain.query_handler(part_of="OrderSummary")
+class OrderQueryHandler:
+    @read(GetOrderById)
+    def get_by_id(self, query):
+        return current_domain.view_for(OrderSummary).get(query.order_id)
 ```
 
 ## Side effects in a read
@@ -67,6 +78,7 @@ def get_by_id(self, query):
 ```
 
 ```python
+# fragment
 # RIGHT — read the projection
 @read(GetOrderById)
 def get_by_id(self, query):

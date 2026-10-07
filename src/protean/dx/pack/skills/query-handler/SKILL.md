@@ -92,9 +92,16 @@ class OrderQueryHandler:
 ## Dispatching queries
 
 ```python
-# Returns the handler's return value directly (synchronous)
-order = domain.dispatch(GetOrderById(order_id="ORD-1"))
-placed = domain.dispatch(ListOrdersByStatus(status="placed"))
+domain.init(traverse=False)
+
+with domain.domain_context():
+    domain.repository_for(OrderSummary).add(
+        OrderSummary(order_id="ORD-1", status="placed")
+    )
+
+    # Returns the handler's return value directly (synchronous)
+    order = domain.dispatch(GetOrderById(order_id="ORD-1"))
+    placed = domain.dispatch(ListOrdersByStatus(status="placed"))
 ```
 
 ## Reading through view_for
@@ -102,11 +109,12 @@ placed = domain.dispatch(ListOrdersByStatus(status="placed"))
 `current_domain.view_for(Projection)` returns a read-only interface:
 
 ```python
-view = current_domain.view_for(OrderSummary)
-view.get("ORD-1")                                  # single record by id
-view.query.filter(status="placed").all().items     # filtered list
-view.query.filter(status="placed").count()         # flat count
-view.exists("ORD-1")                               # is there a record with this id?
+with domain.domain_context():
+    view = current_domain.view_for(OrderSummary)
+    view.get("ORD-1")                                  # single record by id
+    view.query.filter(status="placed").all().items     # filtered list
+    view.query.filter(status="placed").count()         # flat count
+    view.exists("ORD-1")                               # is there a record with this id?
 ```
 
 ## Common mistakes
@@ -114,6 +122,7 @@ view.exists("ORD-1")                               # is there a record with this
 ### Using @handle instead of @read
 
 ```python
+# fragment
 @domain.query_handler(part_of="OrderSummary")
 class OrderQueryHandler:
     @handle(GetOrderById)  # Wrong! Query handlers use @read
@@ -126,6 +135,7 @@ Instead: use `@read(QueryClass)`.
 ### Not returning a value
 
 ```python
+# fragment
 @read(GetOrderById)
 def get_by_id(self, query):
     current_domain.view_for(OrderSummary).get(query.order_id)  # Wrong! No return
@@ -136,6 +146,7 @@ Instead: `return` the result — the dispatcher hands it back to the caller.
 ### Mutating state in a query handler
 
 ```python
+# fragment
 @read(GetOrderById)
 def get_by_id(self, query):
     order = current_domain.view_for(OrderSummary).get(query.order_id)
@@ -148,6 +159,7 @@ Instead: queries are side-effect free. Change state through commands.
 ### Pointing part_of at an aggregate
 
 ```python
+# fragment
 @domain.query_handler(part_of="Order")  # Wrong! Use the projection
 class OrderQueryHandler:
     ...

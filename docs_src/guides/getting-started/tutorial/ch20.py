@@ -37,9 +37,11 @@ class Inventory:
     title: String(max_length=200, required=True)
     quantity: Integer(default=0)
 
-    def reserve(self, amount: int):
+    def reserve(self, order_id: str, amount: int):
         self.quantity -= amount
-        self.raise_(InventoryReserved(book_id=self.book_id, quantity=amount))
+        self.raise_(
+            InventoryReserved(order_id=order_id, book_id=self.book_id, quantity=amount)
+        )
 
     def release(self, amount: int):
         self.quantity += amount
@@ -81,6 +83,7 @@ class OrderConfirmed:
 
 @domain.event(part_of=Inventory)
 class InventoryReserved:
+    order_id: Identifier(required=True)
     book_id: Identifier(required=True)
     quantity: Integer(required=True)
 
@@ -137,6 +140,7 @@ class OrderFulfillmentPM:
     @handle(OrderConfirmed, start=True, correlate="order_id")
     def on_order_confirmed(self, event: OrderConfirmed):
         """Step 1: Order confirmed — reserve inventory."""
+        self.order_id = event.order_id
         current_domain.process(
             ReserveInventory(
                 order_id=event.order_id,
@@ -145,7 +149,7 @@ class OrderFulfillmentPM:
             )
         )
 
-    @handle(InventoryReserved, correlate={"order_id": "book_id"})
+    @handle(InventoryReserved, correlate="order_id")
     def on_inventory_reserved(self, event: InventoryReserved):
         """Step 2: Inventory reserved — create shipment."""
         order = current_domain.repository_for(Order).get(self.order_id)
@@ -156,18 +160,16 @@ class OrderFulfillmentPM:
             )
         )
 
-    @handle(ShipmentCreated, correlate="order_id")
+    @handle(ShipmentCreated, correlate="order_id", end=True)
     def on_shipment_created(self, event: ShipmentCreated):
         """Step 3: Shipment created — complete the order."""
         current_domain.process(CompleteOrder(order_id=event.order_id))
-        self.mark_as_complete()
 
-    @handle(ShipmentFailed, correlate="order_id")
+    @handle(ShipmentFailed, correlate="order_id", end=True)
     def on_shipment_failed(self, event: ShipmentFailed):
         """Compensation: Shipment failed — release inventory and cancel order."""
         current_domain.process(ReleaseInventory(book_id="placeholder", quantity=1))
         current_domain.process(CancelOrder(order_id=event.order_id))
-        self.mark_as_complete()
 
 
 # --8<-- [end:process_manager]

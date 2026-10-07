@@ -425,7 +425,8 @@ A projector using EventStoreSubscription:
 
 ```python
 @domain.projector(
-    stream_categories=["order", "inventory"],
+    projector_for=OrderSummary,
+    aggregates=[Order, Inventory],
     subscription_profile="projection",
 )
 class OrderSummaryProjector:

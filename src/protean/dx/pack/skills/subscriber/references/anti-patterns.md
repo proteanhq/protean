@@ -6,6 +6,7 @@ Common mistakes when implementing subscribers in Protean and how to avoid them.
 
 **Wrong:**
 ```python
+# fragment
 @domain.subscriber  # Missing stream!
 class MySubscriber:
     def __call__(self, payload: dict) -> None:
@@ -26,6 +27,7 @@ Protean raises `IncorrectUsageError` at class definition time, with the message 
 
 **Wrong:**
 ```python
+# fragment
 from protean import handle
 
 @domain.subscriber(stream="payment_gateway")
@@ -49,6 +51,7 @@ Subscribers use a single `__call__` method to receive all messages on their stre
 
 **Wrong:**
 ```python
+# fragment
 @domain.subscriber(stream="payment_gateway")
 class PaymentSubscriber:
     def __call__(self, event: PaymentConfirmed) -> None:  # Wrong type!
@@ -102,6 +105,23 @@ class OrderSubscriber:
 
 ## 6. Business Logic in the Subscriber
 
+The examples in this section use this aggregate:
+
+```python
+@domain.aggregate
+class Order:
+    total_amount: Float(default=0.0)
+    amount_paid: Float(default=0.0)
+    status: String(max_length=20, default="PENDING")
+
+    def process_payment(self, amount: float) -> None:
+        self.amount_paid = amount
+        if self.total_amount > 1000:
+            self.status = "REQUIRES_REVIEW"
+        else:
+            self.status = "PAID"
+```
+
 **Wrong:**
 ```python
 @domain.subscriber(stream="payment_gateway")
@@ -128,6 +148,20 @@ class PaymentSubscriber:
 ```
 
 ## 7. Letting External Schemas Leak into the Domain
+
+The examples in this section use this aggregate and command:
+
+```python
+@domain.aggregate
+class Customer:
+    name: String(required=True)
+    email: String(required=True)
+
+@domain.command(part_of="Customer")
+class RegisterCustomer:
+    name: String(required=True)
+    email: String(required=True)
+```
 
 **Wrong:**
 ```python

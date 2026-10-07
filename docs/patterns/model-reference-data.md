@@ -294,15 +294,21 @@ class CurrencyOption:
 class CurrencyCatalogProjector:
     @on(CurrencyAdded)
     def add_option(self, event: CurrencyAdded) -> None:
-        repo = current_domain.repository_for(CurrencyOption)
-        repo.add(CurrencyOption(code=event.code, name=event.name,
-                                symbol=event.symbol))
+        cache = current_domain.cache_for(CurrencyOption)
+        cache.add(CurrencyOption(code=event.code, name=event.name,
+                                 symbol=event.symbol))
 
     @on(CurrencyDeactivated)
     def remove_option(self, event: CurrencyDeactivated) -> None:
-        repo = current_domain.repository_for(CurrencyOption)
-        repo.remove(repo.get(event.code))
+        cache = current_domain.cache_for(CurrencyOption)
+        cache.remove_by_key(f"currency_option:::{event.code}")
 ```
+
+A cache-backed projection has no repository, so the projector writes through
+`cache_for()` and readers use `view_for()`. Cache keys have the form
+`<prefix>:::<identifier>`, where the prefix is the projection's class name in
+snake case (`CurrencyOption` becomes `currency_option`). Renaming the class
+changes the key the projector must remove.
 
 The read side is now a fast, cache-resident `code → option` catalog, decoupled
 from the write model, with a single invalidation point (the projector). When the

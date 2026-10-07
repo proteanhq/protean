@@ -205,12 +205,20 @@ class StockReserved(BaseEvent):
     quantity = Float()
 
 
+class StockUnavailable(BaseEvent):
+    order_id = Identifier(required=True)
+    inventory_item_id = Identifier(required=True)
+
+
 # Register external events with their type strings
 fulfillment_domain.register_external_event(
     PaymentReceived, "Billing.PaymentReceived.v1"
 )
 fulfillment_domain.register_external_event(
     StockReserved, "Inventory.StockReserved.v1"
+)
+fulfillment_domain.register_external_event(
+    StockUnavailable, "Inventory.StockUnavailable.v1"
 )
 ```
 
@@ -245,7 +253,16 @@ class OrderFulfillmentPM:
             return
         self.status = "completed"
         self.mark_as_complete()
+
+    @handle(StockUnavailable, correlate="order_id", end=True)
+    def on_stock_unavailable(self, event: StockUnavailable) -> None:
+        self.status = "stock_unavailable"
 ```
+
+`on_stock_reserved` completes the process only when the order is waiting for
+stock, so it calls `mark_as_complete()` inside its guard. `end=True` would
+complete the process even on the early return. `on_stock_unavailable` ends the
+process in any state, so it uses `end=True`.
 
 **Why this works for co-located domains:**
 

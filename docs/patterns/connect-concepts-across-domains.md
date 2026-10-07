@@ -371,7 +371,10 @@ class CustomerDashboard:
 
 @domain.projector(
     projector_for=CustomerDashboard,
-    stream_categories=["customer", "billing_account"]
+    stream_categories=[
+        Customer.meta_.stream_category,        # "<domain>::customer"
+        BillingAccount.meta_.stream_category,  # "<domain>::billing_account"
+    ],
 )
 class CustomerDashboardProjector:
 

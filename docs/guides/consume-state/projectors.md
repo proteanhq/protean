@@ -122,12 +122,19 @@ class CustomerOrderSummaryProjector:
 
 For more granular control, use
 [stream categories](../../concepts/async-processing/stream-categories.md)
-instead of aggregates:
+instead of aggregates. A stream category is qualified with the domain name
+(`<domain>::<aggregate>`), so read it from the registered aggregate's
+`meta_.stream_category` or write it in full. A bare `"order"` never matches:
 
 ```python
 @domain.projector(
     projector_for=SystemMetrics,
-    stream_categories=["user", "order", "payment", "inventory"]
+    stream_categories=[
+        User.meta_.stream_category,       # "<domain>::user"
+        Order.meta_.stream_category,      # "<domain>::order"
+        Payment.meta_.stream_category,    # "<domain>::payment"
+        Inventory.meta_.stream_category,  # "<domain>::inventory"
+    ],
 )
 class SystemMetricsProjector:
     @on(UserRegistered)
@@ -335,8 +342,9 @@ class ProductInventoryProjector:
 
 ## Handling Deletions
 
-When a projection record should be removed in response to an event, use
-`repository.remove()`:
+When a projection record should be removed in response to an event, filter
+the repository's query for it and call `delete()`. `delete()` returns the
+number of records it removed:
 
 ```python
 @domain.projector(projector_for=ActiveOrder, aggregates=[Order])
@@ -353,9 +361,12 @@ class ActiveOrderProjector:
     @on(OrderDelivered)
     def on_order_delivered(self, event: OrderDelivered):
         repository = current_domain.repository_for(ActiveOrder)
-        order = repository.get(event.order_id)
-        repository.remove(order)
+        repository.query.filter(order_id=event.order_id).delete()
 ```
+
+`delete()` removes only the records the query returns, and a query returns at
+most the projection's `limit` (100 by default). When a filter can match more
+records than that, call `.limit(None)` before `delete()`.
 
 ## Complete Example
 

@@ -67,6 +67,7 @@ list). Otherwise, the PM will never see the response event and the workflow
 will stall.
 
 ```python
+# fragment
 # The PM issues commands to Order, Payment, and Shipping aggregates.
 # Therefore, it subscribes to all three streams.
 @domain.process_manager(
@@ -86,7 +87,7 @@ lifecycle management and event correlation.
 --8<-- "guides/consume-state/process-managers/001.py:full"
 ```
 
-1. `start=True` marks this handler as the entry point. It creates a new PM
+1. `start=True` marks this handler as an entry point. It creates a new PM
    instance when the event arrives.
 
 2. `correlate="order_id"` extracts `event.order_id` to identify which PM
@@ -113,8 +114,12 @@ Process managers drive other aggregates forward by issuing commands:
 2. On payment failure, the handler issues `CancelOrder` to compensate,
    and `end=True` marks the PM as complete.
 
-Commands issued inside a handler are committed atomically as part of the same
-Unit of Work.
+If the handler fails after issuing a command, the PM's own state change rolls
+back. Whether the command is written at all depends on the event store. The
+memory store writes the command through the handler's Unit of Work, so the
+failure discards it. Message-DB writes straight through on its own connection,
+so there the command survives while the PM's transition does not. Do not rely
+on either behavior. Keep issued commands idempotent so re-issuing one is safe.
 
 ## Process Manager Workflow
 
@@ -153,9 +158,10 @@ declare a `correlate` parameter.
 
 ### String Correlation
 
-The simplest form, the PM field name matches the event field name:
+The simplest form names the event field that holds the correlation value:
 
 ```python
+# fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
@@ -165,21 +171,26 @@ Here, `event.order_id` is extracted and used to find or create the PM instance.
 
 ### Dictionary Correlation
 
-When the PM field name differs from the event field name, use a dictionary:
+When the event carries the value under a different name than the PM field,
+use a dictionary:
 
 ```python
+# fragment
 @handle(ExternalPaymentReceived, correlate={"order_id": "ext_order_ref"})
 def on_payment_received(self, event: ExternalPaymentReceived) -> None:
     ...
 ```
 
-This extracts `event.ext_order_ref` and maps it to the PM's `order_id` field.
+This reads `event.ext_order_ref` and routes the event by that value. The
+framework reads only the dictionary's value. The key, `order_id`, records which
+PM field the value belongs to. Events are matched by value, so two handlers can
+name different event fields as long as those fields hold the same value.
 
 ## Lifecycle Management
 
 ### Starting a Process
 
-Exactly one handler must be marked with `start=True`. When a start event
+At least one handler must be marked with `start=True`. When a start event
 arrives and no PM instance exists for that correlation value, a new instance
 is created. If a non-start event arrives with no existing PM, it is silently
 skipped.
@@ -191,6 +202,7 @@ There are two ways to mark a PM as complete:
 **Using `end=True`**. The PM is automatically marked complete after the handler runs:
 
 ```python
+# fragment
 @handle(PaymentFailed, correlate="order_id", end=True)
 def on_payment_failed(self, event: PaymentFailed) -> None:
     self.status = "cancelled"
@@ -199,11 +211,22 @@ def on_payment_failed(self, event: PaymentFailed) -> None:
 **Using `mark_as_complete()`**, call explicitly within a handler for conditional completion:
 
 ```python
+# fragment
 @handle(ShipmentDelivered, correlate="order_id")
 def on_shipment_delivered(self, event: ShipmentDelivered) -> None:
     self.status = "completed"
     self.mark_as_complete()
 ```
+
+`end=True` completes the PM after every normal return from the handler,
+including an early `return` from a guard. When a handler should complete the PM
+on some paths only, call `mark_as_complete()` on those paths and leave out
+`end=True`.
+
+`protean check` reports a process manager with no `end=True` handler as
+`PROCESS_MANAGER_UNCLOSED`. It reads only the `end=True` flag, so a process
+manager that completes through `mark_as_complete()` alone is reported too. Mark
+at least one terminating handler `end=True`.
 
 ### Completed Process Managers Skip Events
 
@@ -220,6 +243,7 @@ are silently skipped. No new transition is persisted and no handler runs.
   commands to.
 
     ```python
+    # fragment
     @domain.process_manager(
         stream_categories=["ecommerce::order", "ecommerce::payment", "ecommerce::shipping"]
     )
@@ -231,6 +255,7 @@ are silently skipped. No new transition is persisted and no handler runs.
   stream categories from their stream configurations.
 
     ```python
+    # fragment
     @domain.process_manager(aggregates=[Order, Payment, Shipping])
     class OrderFulfillmentPM:
         ...
@@ -274,9 +299,17 @@ class InventoryReserved(BaseEvent):
     product_id = Identifier(required=True)
 
 
+class InventoryUnavailable(BaseEvent):
+    order_id = Identifier(required=True)
+    product_id = Identifier(required=True)
+
+
 # Register them with the type strings used by the publishing domains
 domain.register_external_event(PaymentReceived, "Billing.PaymentReceived.v1")
 domain.register_external_event(InventoryReserved, "Inventory.InventoryReserved.v1")
+domain.register_external_event(
+    InventoryUnavailable, "Inventory.InventoryUnavailable.v1"
+)
 ```
 
 Then reference these events in the PM's handlers and include the external
@@ -312,7 +345,17 @@ class OrderFulfillmentPM:
             return
         self.status = "completed"
         self.mark_as_complete()
+
+    @handle(InventoryUnavailable, correlate="order_id", end=True)
+    def on_inventory_unavailable(self, event: InventoryUnavailable) -> None:
+        self.status = "inventory_unavailable"
 ```
+
+`on_inventory_reserved` completes the process only when the order is waiting
+for inventory, so it calls `mark_as_complete()` inside its guard. With
+`end=True` instead, an `InventoryReserved` that arrived before the payment
+would complete the process on the early return. `on_inventory_unavailable`
+ends the process whatever its state, so `end=True` fits it.
 
 When domains are **distributed as independent services**, use subscribers
 instead. The subscriber acts as an anti-corruption layer, translating raw
@@ -328,6 +371,7 @@ handling, following the same pattern as
 [event handlers](./event-handlers.md#error-handling):
 
 ```python
+# fragment
 @domain.process_manager(stream_categories=["ecommerce::order", "ecommerce::payment"])
 class OrderFulfillmentPM:
     ...

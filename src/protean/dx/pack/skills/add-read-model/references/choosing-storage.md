@@ -25,8 +25,9 @@ By default, projections use the `"default"` database provider. This is the most 
 
 ```python
 @domain.projection(provider="postgres")
-class ProductListing:
-    ...
+class ProductReport:
+    product_id: Identifier(identifier=True)
+    name: String(max_length=200)
 ```
 
 ## Cache-backed

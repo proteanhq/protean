@@ -6,15 +6,16 @@ Process managers have a defined lifecycle: they start when an initiating event a
 
 The lifecycle is controlled by three parameters on the `@handle` decorator:
 
-- **`start=True`** — Creates a new PM instance when no existing instance is found
-- **`end=True`** — Auto-marks the PM as complete after the handler runs
-- **`mark_as_complete()`** — Explicitly marks the PM as complete from within a handler
+- **`start=True`**: Creates a new PM instance when no existing instance is found
+- **`end=True`**: Auto-marks the PM as complete after the handler returns, on every path
+- **`mark_as_complete()`**: Explicitly marks the PM as complete from within a handler
 
 ## Starting a Process
 
-Exactly one handler must be marked with `start=True`:
+At least one handler must be marked with `start=True`. A PM with none fails at `domain.init()` with `IncorrectUsageError`:
 
 ```python
+# fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
@@ -37,26 +38,28 @@ If a **non-start event** arrives and no PM instance exists for the correlation v
 The PM is automatically marked complete after the handler runs:
 
 ```python
+# fragment
 @handle(PaymentFailed, correlate="order_id", end=True)
 def on_payment_failed(self, event: PaymentFailed) -> None:
     self.status = "cancelled"
     # PM is auto-completed after this handler returns
 ```
 
-Use `end=True` for unconditional terminal states — the handler always leads to completion.
+Use `end=True` for unconditional terminal states, where the handler always leads to completion. The PM completes after every normal return from the handler, including an early `return` from a guard, so do not put `end=True` on a handler that completes only on some paths. `check` reports a PM with no `end=True` handler as `PROCESS_MANAGER_UNCLOSED`, so every PM should mark at least one terminating handler this way.
 
 ### Using `mark_as_complete()`
 
 Call explicitly within a handler for conditional completion:
 
 ```python
+# fragment
 @handle(ShipmentDelivered, correlate="order_id")
 def on_shipment_delivered(self, event: ShipmentDelivered) -> None:
     self.status = "completed"
     self.mark_as_complete()  # Explicit completion
 ```
 
-Use `mark_as_complete()` when you need to decide whether to complete based on PM state or event data.
+Use `mark_as_complete()` when you need to decide whether to complete based on PM state or event data. It does not clear `PROCESS_MANAGER_UNCLOSED` on its own. The diagnostic reads only the `end=True` flag.
 
 ## Completed Process Managers
 
@@ -112,7 +115,7 @@ After `on_payment_confirmed` runs:
 
 ## Best Practices
 
-- **Always define at least one terminal state** — Without `end=True` or `mark_as_complete()`, the PM accepts events indefinitely
+- **Always define at least one terminal state**: Mark at least one handler `end=True`. Without a terminal state, the PM accepts events indefinitely
 - **Handle compensation on failure paths** — When a step fails, issue compensating commands to undo earlier steps
 - **Design for idempotency** — Events may be delivered more than once; handlers should produce the same outcome
 

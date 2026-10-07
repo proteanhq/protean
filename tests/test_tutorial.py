@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 import types
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -716,10 +717,12 @@ class TestTutorialCh20(_TutorialBase):
 
             # Inventory reserve raises InventoryReserved
             inv = ch20.Inventory(book_id="book-1", title="Dune", quantity=10)
-            inv.reserve(3)
+            inv.reserve("order-1", 3)
             assert inv.quantity == 7
             assert len(inv._events) == 1
             assert inv._events[0].__class__.__name__ == "InventoryReserved"
+            assert inv._events[0].order_id == "order-1"
+            assert inv._events[0].book_id == "book-1"
 
             # Shipment success path
             shipment = ch20.Shipment(order_id=order.id)
@@ -738,6 +741,17 @@ class TestTutorialCh20(_TutorialBase):
             assert shipment.status == "FAILED"
             assert len(shipment._events) == 1
             assert shipment._events[0].__class__.__name__ == "ShipmentFailed"
+
+    def test_process_manager_start_stores_order_id(self):
+        """Ch20: the start handler keeps the order ID for the later steps."""
+        domain = ch20.domain
+        with domain.domain_context():
+            pm = ch20.OrderFulfillmentPM._load_or_create("order-1", is_start=True)
+            event = ch20.OrderConfirmed(order_id="order-1", customer_name="Alice")
+            with patch.object(domain, "process") as process:
+                ch20.OrderFulfillmentPM.on_order_confirmed.__wrapped__(pm, event)
+            assert pm.order_id == "order-1"
+            assert process.call_args.args[0].order_id == "order-1"
 
 
 @pytest.mark.no_test_domain

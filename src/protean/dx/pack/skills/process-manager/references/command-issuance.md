@@ -7,6 +7,7 @@ Process managers drive other aggregates forward by issuing commands. This is the
 Inside any PM handler method, call `current_domain.process()` to issue a command:
 
 ```python
+# fragment
 from protean import current_domain
 
 @handle(OrderPlaced, start=True, correlate="order_id")
@@ -38,13 +39,12 @@ Do NOT import from `protean.utils.globals` — that is an internal module.
 
 ## Command persistence
 
-`current_domain.process()` appends the command to the event store as soon as it is called. This append is independent of the enclosing Unit of Work:
+Each PM handler runs inside a Unit of Work:
 
 1. Handler runs, updating PM state and calling `current_domain.process()` to issue commands
-2. Each `process()` call appends its command to the event store right away
-3. When the handler returns, the PM's own transition event is appended directly to the event store, on the PM's stream, still inside the Unit of Work block
+2. When the handler returns, the framework appends the PM's transition event to the PM's own stream
 
-If the handler raises after issuing a command, the Unit of Work rolls back the PM's state changes. Commands appended by earlier `process()` calls stay in the store.
+If the handler raises after issuing a command, the Unit of Work rolls back the PM's state change. Whether the command is written at all depends on the event store. The memory store writes the command through the handler's Unit of Work, so the failure discards it. Message-DB writes straight through on its own connection, so there the command survives while the transition does not. Do not rely on either behavior. Keep issued commands idempotent so re-issuing one is safe.
 
 ## The Coordinator Pattern
 
@@ -52,6 +52,7 @@ Process managers should act purely as coordinators:
 
 **Right** — PM decides WHAT, aggregate decides HOW:
 ```python
+# fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
@@ -64,6 +65,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
 
 **Wrong** — PM contains business logic:
 ```python
+# fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event: OrderPlaced) -> None:
     # Business rule validation belongs in the aggregate, not the PM
@@ -78,6 +80,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
 A single handler can issue multiple commands:
 
 ```python
+# fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
@@ -86,7 +89,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     current_domain.process(ReserveInventory(order_id=event.order_id))
 ```
 
-Each `process()` call appends its command to the event store at the point it is called.
+Each `process()` call issues one command. [Command persistence](#command-persistence) covers what happens to them if the handler fails.
 
 ## Related
 

@@ -62,20 +62,22 @@ The subscriber:
 
 ```python
 domain.config["message_processing"] = "sync"
+domain.init(traverse=False)
 
-# Create prerequisite data
-payment = Payment(order_id="ORD-001", amount=99.99)
-domain.repository_for(Payment).add(payment)
+with domain.domain_context():
+    # Create prerequisite data
+    payment = Payment(order_id="ORD-001", amount=99.99)
+    domain.repository_for(Payment).add(payment)
 
-# Publish to broker stream (triggers subscriber in sync mode)
-domain.brokers["default"].publish(
-    "payment_gateway",
-    {"order_id": "ORD-001", "transaction_id": "txn-789"},
-)
+    # Publish to broker stream (triggers subscriber in sync mode)
+    domain.brokers["default"].publish(
+        "payment_gateway",
+        {"order_id": "ORD-001", "transaction_id": "txn-789"},
+    )
 
-# Verify subscriber processed the message
-updated = domain.repository_for(Payment).find_by(order_id="ORD-001")
-assert updated.status == "CONFIRMED"
+    # Verify subscriber processed the message
+    updated = domain.repository_for(Payment).find_by(order_id="ORD-001")
+    assert updated.status == "CONFIRMED"
 ```
 
 ## Subscriber vs Event Handler

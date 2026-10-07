@@ -40,9 +40,18 @@ Key highlights:
 
 The external system uses camelCase, nested `data` objects, and its own naming conventions (`emailAddress` vs `email`, separate first/last name).
 
-### Domain Command
+### Domain Aggregate and Command
 
 ```python
+@domain.aggregate
+class Customer:
+    name: String(required=True)
+    email: String(required=True)
+    source: String(default="direct")
+
+    def update_email(self, email: str) -> None:
+        self.email = email
+
 @domain.command(part_of="Customer")
 class RegisterCustomer:
     customer_id: Identifier(required=True)
@@ -51,7 +60,7 @@ class RegisterCustomer:
     source: String(default="erp")
 ```
 
-The domain command uses the domain's own language. No traces of the external format.
+The aggregate and the command use the domain's own language and carry nothing from the external format.
 
 ### The Subscriber (ACL)
 
