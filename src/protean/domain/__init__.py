@@ -730,7 +730,7 @@ class Domain:
                 return
 
             self.configure_logging()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - logging is broken, so warn on stderr
             # Degrade gracefully — never let logging setup break Domain.init()
             print(
                 f"Warning: auto-configuration of logging failed: {exc}",

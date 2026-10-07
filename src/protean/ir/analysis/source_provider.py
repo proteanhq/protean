@@ -127,7 +127,7 @@ class SourceProvider:
         # ``find_spec`` may import a not-yet-loaded parent package and re-run
         # its ``__init__``, which can raise anything. Skip the module and keep
         # the diagnostics pass going.
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a package __init__ can raise anything
             logger.debug("Cannot locate module %s: %r", module_name, exc)
             return None
 
