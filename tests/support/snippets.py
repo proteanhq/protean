@@ -20,6 +20,10 @@ must resolve by the end of the file. A reference that is still unresolved there
 fails the file at the ``init`` step. A file that binds its own ``domain``
 replaces the prelude's, and its domain is initialized the same way.
 
+A block that registers an upcaster under a name an earlier block used for a
+different edge (event, from-version, to-version) fails at that block, because
+the registry would drop the earlier upcaster before init checks the chains.
+
 A block whose first line is ``# fragment`` is not run and does not touch the
 namespace.
 
@@ -350,6 +354,43 @@ def evaluate_annotations(obj, module):
             if isinstance(member, types.FunctionType):
                 evaluate_annotations(member, module)
 
+
+# The registry keys an element by its qualified name and silently replaces an
+# earlier class registered under the same name. Most elements are checked when
+# their class body runs, so a block may redefine ``Order`` to show it growing.
+# An upcaster is checked only at init, when its chain is built from each
+# upcaster's edge: the event it targets and the versions it maps between. A
+# block that reuses an upcaster name for a different edge drops the earlier
+# edge from that check, so the file fails at that block. Reusing a name for the
+# same edge drops nothing init would check, and passes.
+class DuplicateElement(Exception):
+    pass
+
+
+def edge(cls):
+    meta = cls.meta_
+    target = meta.event_type
+    return (getattr(target, "__name__", target), meta.from_version, meta.to_version)
+
+
+def registered():
+    records = {}
+    for candidate in built:
+        upcasters = candidate.registry._elements.get("UPCASTER", {})
+        for qualname, record in upcasters.items():
+            records[(id(candidate), qualname)] = record.cls
+    return records
+
+
+def check_no_replacement(earlier):
+    for key, cls in registered().items():
+        if key in earlier and edge(earlier[key]) != edge(cls):
+            raise DuplicateElement(
+                "%s replaces an upcaster of the same name for %s v%s to v%s;"
+                " give each upcaster its own class name"
+                % ((key[1],) + edge(earlier[key]))
+            )
+
 with open(sys.argv[1], encoding="utf-8") as handle:
     job = json.load(handle)
 timeout = job["timeout"]
@@ -406,7 +447,9 @@ for index, item in enumerate(job["files"], start=job["first_index"]):
                 emit({"step": step, "not_run": not_run})
                 padded = "\\n" * (block["line"] - 1) + block["source"]
                 before = {key: id(value) for key, value in namespace.items()}
+                earlier = registered()
                 exec(compile(padded, label, "exec"), namespace)
+                check_no_replacement(earlier)
                 annotate = namespace.pop("__annotate__", None)
                 if annotate is not None:
                     annotate(1)

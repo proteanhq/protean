@@ -10,6 +10,7 @@ blocks and assets and fail when one of those comes back.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -123,9 +124,7 @@ def test_no_event_class_carries_a_version_in_its_name():
     ]
     assert events
     versioned = [
-        f"{label}: {name}"
-        for label, name in events
-        if name[-1].isdigit() and "V" in name
+        f"{label}: {name}" for label, name in events if re.search(r"V\d", name)
     ]
     assert versioned == []
 

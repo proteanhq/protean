@@ -113,7 +113,7 @@ class Customer:
 
 ```python
 @domain.upcaster(event_type=CustomerRegistered, from_version=1, to_version=2)
-class UpcastV1ToV2(BaseUpcaster):
+class UpcastCustomerRegisteredV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["address"] = {
             "street": data.pop("street", ""),
@@ -173,7 +173,7 @@ class Order:
 
 ## With event handlers and projectors
 
-Upcasting also applies to asynchronous event processing. Old events are upcast before reaching `@handle`. The handler below belongs to an `Analytics` aggregate and records revenue through a helper:
+Upcasting also applies to asynchronous event processing. Old events are upcast before reaching `@handle`. The handler below belongs to an `Analytics` aggregate and records revenue through a helper. A handler listens to its own aggregate's stream by default, so it names the `Order` stream to receive `OrderPlaced`:
 
 ```python
 @domain.aggregate
@@ -186,7 +186,7 @@ def record_revenue(amount, currency):
 ```
 
 ```python
-@domain.event_handler(part_of=Analytics)
+@domain.event_handler(part_of=Analytics, stream_category=Order.meta_.stream_category)
 class AnalyticsHandler:
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):

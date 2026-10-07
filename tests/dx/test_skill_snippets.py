@@ -283,6 +283,47 @@ def test_a_domain_the_blocks_declare_is_initialized_too(tmp_path):
     assert _run(root, tmp_path)[0]["failure"].startswith("init: ConfigurationError")
 
 
+_UPCASTER_PRELUDE = (
+    "from protean.core.upcaster import BaseUpcaster\n"
+    "@domain.aggregate\nclass Order:\n    name = String()\n"
+    "@domain.event(part_of=Order)\nclass OrderPlaced:\n"
+    "    __version__ = 2\n    order_id = Identifier()\n"
+    "@domain.event(part_of=Order)\nclass OrderShipped:\n"
+    "    __version__ = 2\n    order_id = Identifier()"
+)
+
+
+def _upcaster(event: str) -> str:
+    return (
+        f"@domain.upcaster(event_type={event}, from_version=1, to_version=2)\n"
+        "class UpcastV1ToV2(BaseUpcaster):\n"
+        "    def upcast(self, data):\n        return data"
+    )
+
+
+def test_an_upcaster_name_reused_for_another_edge_fails_at_that_block(tmp_path):
+    root = _skill(
+        tmp_path,
+        _UPCASTER_PRELUDE,
+        _upcaster("OrderPlaced"),
+        _upcaster("OrderShipped"),
+    )
+    failure = _run(root, tmp_path)[0]["failure"]
+    assert failure.startswith("line 26: DuplicateElement: ")
+    assert "UpcastV1ToV2 replaces an upcaster of the same name" in failure
+    assert "for OrderPlaced v1 to v2" in failure
+
+
+def test_an_upcaster_name_reused_for_the_same_edge_passes(tmp_path):
+    root = _skill(
+        tmp_path,
+        _UPCASTER_PRELUDE,
+        _upcaster("OrderPlaced"),
+        _upcaster("OrderPlaced"),
+    )
+    assert _run(root, tmp_path)[0]["failure"] is None
+
+
 def test_a_fragment_is_skipped_and_the_next_block_runs(tmp_path):
     root = _skill(
         tmp_path,
