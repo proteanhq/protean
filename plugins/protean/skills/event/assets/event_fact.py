@@ -80,7 +80,8 @@ class OrderShipped:
 class Order:
     """Order aggregate.
 
-    Every save writes an ``OrderFactEvent`` with the complete order state.
+    Saving a new or changed order writes an ``OrderFactEvent`` with the
+    complete order state. Saving an unchanged order writes none.
     """
 
     customer_id: String(required=True)
