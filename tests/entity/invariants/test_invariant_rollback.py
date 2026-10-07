@@ -94,6 +94,54 @@ class Invoice(BaseAggregate):
         if self.customer is not None and self.customer.name == "blocked":
             raise ValidationError({"customer": ["Customer is blocked"]})
 
+    @invariant.post
+    def large_invoice_needs_a_customer(self):
+        if self.amount is not None and self.amount > 100 and self.customer is None:
+            raise ValidationError({"customer": ["Large invoices need a customer"]})
+
+
+class CreditLine(BaseAggregate):
+    limit = ValueObject(Money)
+
+    @invariant.post
+    def limit_is_required(self):
+        if self.limit is None:
+            raise ValidationError({"limit": ["Limit is required"]})
+
+
+class Basket(BaseAggregate):
+    lines = HasMany("BasketLine")
+
+    @invariant.post
+    def must_have_a_line(self):
+        if not self.lines:
+            raise ValidationError({"_entity": ["Basket needs a line"]})
+
+    @invariant.post
+    def line_price_must_not_be_negative(self):
+        for line in self.lines:
+            if line.price is not None and line.price.amount < 0:
+                raise ValidationError({"_entity": ["Price cannot be negative"]})
+
+
+class BasketLine(BaseEntity):
+    price = ValueObject(Money)
+    tags = HasMany("LineTag")
+
+
+class LineTag(BaseEntity):
+    label: String(max_length=20)
+
+
+class Score(BaseAggregate):
+    points: Integer()
+
+    @invariant.post
+    def points_must_not_be_negative(self):
+        # Fails with TypeError when points is None.
+        if self.points < 0:
+            raise ValidationError({"points": ["Points cannot be negative"]})
+
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
@@ -104,6 +152,11 @@ def register_elements(test_domain):
     test_domain.register(OrderNote, part_of=Order)
     test_domain.register(Customer)
     test_domain.register(Invoice)
+    test_domain.register(CreditLine)
+    test_domain.register(Basket)
+    test_domain.register(BasketLine, part_of=Basket)
+    test_domain.register(LineTag, part_of=BasketLine)
+    test_domain.register(Score)
     test_domain.init(traverse=False)
 
 
@@ -251,6 +304,163 @@ class TestReferenceAssignmentRollsBack:
         assert invoice.customer is good
         assert invoice.customer_id == good.id
         assert invoice.state_.is_changed is False
+
+    def test_never_set_reference_returns_to_unset(self):
+        blocked = Customer(name="blocked")
+        invoice = Invoice(amount=10.0)
+        invoice.state_.mark_saved()
+
+        with pytest.raises(ValidationError):
+            invoice.customer = blocked
+
+        assert invoice.customer is None
+        assert invoice.customer_id is None
+        assert invoice.state_.is_changed is False
+
+    def test_reference_set_to_none_keeps_old_values(self):
+        good = Customer(name="Good")
+        invoice = Invoice(amount=500.0, customer=good)
+        invoice.state_.mark_saved()
+
+        with pytest.raises(ValidationError) as exc:
+            invoice.customer = None
+
+        assert exc.value.messages == {"customer": ["Large invoices need a customer"]}
+        assert invoice.customer is good
+        assert invoice.customer_id == good.id
+        assert invoice.state_.is_changed is False
+
+
+class TestValueObjectSetToNoneRollsBack:
+    def test_value_object_set_to_none_keeps_old_values(self):
+        old_limit = Money(amount=50.0, currency="USD")
+        credit = CreditLine(limit=old_limit)
+        credit.state_.mark_saved()
+
+        with pytest.raises(ValidationError):
+            credit.limit = None
+
+        assert credit.limit is old_limit
+        assert credit.limit_amount == 50.0
+        assert credit.state_.is_changed is False
+
+
+@pytest.fixture
+def basket():
+    basket = Basket(
+        lines=[
+            BasketLine(
+                price=Money(amount=5.0, currency="USD"),
+                tags=[LineTag(label="gift")],
+            )
+        ]
+    )
+    basket.state_.mark_saved()
+    return basket
+
+
+class TestAssociationAssignmentRollsBack:
+    def test_has_one_assignment_keeps_the_old_child(self, order):
+        old_note = order.note
+        changes_before = order._temp_cache["note"].change
+
+        with pytest.raises(ValidationError) as exc:
+            order.note = OrderNote(text="")
+
+        assert exc.value.messages == {"_entity": ["Note cannot be blank"]}
+        assert order.note is old_note
+        assert order.note.text == "Leave at the door"
+        assert order._temp_cache["note"].change == changes_before
+        assert order.state_.is_changed is False
+
+    def test_has_many_assignment_keeps_the_old_children(self, order):
+        old_items = list(order.items)
+        added_before = dict(order._temp_cache["items"].added)
+
+        with pytest.raises(ValidationError):
+            order.items = [OrderItem(quantity=1, price=1.0)]
+
+        assert order.items == old_items
+        assert order._temp_cache["items"].added == added_before
+        assert order.state_.is_changed is False
+
+    def test_has_many_assignment_to_empty_list_keeps_the_children(self, order):
+        old_items = list(order.items)
+
+        with pytest.raises(ValidationError):
+            order.items = []
+
+        assert order.items == old_items
+        assert order._temp_cache["items"].removed == {}
+
+    def test_failed_add_keeps_the_old_children(self, order):
+        old_items = list(order.items)
+
+        with pytest.raises(ValidationError):
+            order.add_items(OrderItem(quantity=1, price=1.0))
+
+        assert order.items == old_items
+        assert len(order._temp_cache["items"].added) == 2
+
+    def test_failed_remove_keeps_the_children(self, order):
+        old_items = list(order.items)
+
+        with pytest.raises(ValidationError):
+            order.remove_items(order.items[0])
+
+        assert order.items == old_items
+        assert order._temp_cache["items"].removed == {}
+
+    def test_failed_remove_keeps_the_grandchildren(self, basket):
+        line = basket.lines[0]
+        tag = line.tags[0]
+
+        with pytest.raises(ValidationError) as exc:
+            basket.remove_lines(line)
+
+        assert exc.value.messages == {"_entity": ["Basket needs a line"]}
+        assert basket.lines == [line]
+        assert line.tags == [tag]
+        assert line._temp_cache["tags"].removed == {}
+
+    def test_successful_add_and_remove_still_apply(self, order):
+        new_item = OrderItem(quantity=0, price=1.0)
+
+        order.add_items(new_item)
+        assert new_item in order.items
+
+        order.remove_items(new_item)
+        assert new_item not in order.items
+
+
+class TestValueObjectOnChildEntityRollsBack:
+    def test_child_value_object_keeps_the_old_value(self, basket):
+        line = basket.lines[0]
+        old_price = line.price
+        line.state_.mark_saved()
+
+        with pytest.raises(ValidationError) as exc:
+            line.price = Money(amount=-1.0, currency="USD")
+
+        assert exc.value.messages == {"_entity": ["Price cannot be negative"]}
+        assert line.price is old_price
+        assert line.price_amount == 5.0
+        assert line.state_.is_changed is False
+
+
+class TestNonValidationErrorRollsBack:
+    def test_invariant_raising_another_error_still_undoes_the_assignment(self):
+        score = Score(points=1)
+        score.state_.mark_saved()
+
+        with pytest.raises(TypeError):
+            score.points = None
+
+        assert score.points == 1
+        assert score.state_.is_changed is False
+
+        score.points = 2
+        assert score.points == 2
 
 
 class TestControls:

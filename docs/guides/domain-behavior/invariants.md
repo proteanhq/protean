@@ -101,9 +101,19 @@ When `withdraw()` is called, the flow is:
 The rollback undoes only the assignment that failed. If a method changes two
 fields and the second change breaks a post-invariant, the first change stays.
 
-Rollback applies to plain fields, `ValueObject` fields (with their embedded
-attributes) and `Reference` fields, on the aggregate and on its child
-entities. Assigning a `HasOne` or `HasMany` field is not rolled back.
+Rollback applies to every kind of field, on the aggregate and on its child
+entities: plain fields, `ValueObject` fields with their embedded attributes,
+`Reference` fields with their `<name>_id` attribute, and `HasOne` and
+`HasMany` fields. A failed `add_<field>()` or `remove_<field>()` call is undone
+the same way, including the removal of the child's own children. The
+assignment is also undone when an invariant fails with an error other than
+`ValidationError`, such as a `TypeError` from comparing `None`.
+
+Two cases are not rolled back. Changes made inside an `atomic_change` block
+stay applied when the check at the end of the block fails (see below). On an
+event-sourced aggregate, a failed `raise_()` discards the event, but the field
+changes its `@apply` handler made stay on the object. Discard the aggregate
+after that error instead of persisting it.
 
 !!!note
     `pre` invariants are not applicable when aggregates and entities are being
@@ -215,7 +225,7 @@ Within the `atomic_change` context manager, the cycle works as follows:
    do not trigger pre/post checks.
 3. **Post-invariants fire on exit**: The final state is validated. If a
    check fails, `ValidationError` is raised and the changes made inside the
-   block stay applied. Nothing is rolled back.
+   block stay applied.
 
 ```shell hl_lines="14"
 In [1]: from protean import atomic_change
