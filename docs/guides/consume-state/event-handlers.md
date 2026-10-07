@@ -38,20 +38,28 @@ Event Handlers are defined with the `Domain.event_handler` decorator. Below is
 a simplified example of an Event Handler that syncs stock levels in
 `Inventory` in response to changes in the `Order` aggregate.
 
-```python hl_lines="26-27 49"
+```python hl_lines="34-35 59-65 75-76 78"
 --8<-- "guides/consume-state/001.py:full"
 ```
 
 1. `Order` aggregate fires `OrderShipped` event on book being shipped.
 
-2. Event handler is registered with `part_of=Order` so it subscribes to the
-Order aggregate's event stream. In production with async processing, you would
-typically use `part_of=Inventory, stream_category="order"` to keep the handler
-associated with its owning aggregate while listening to another aggregate's
-stream.
+2. Event handler is registered with `part_of=Order`, the aggregate that owns
+`OrderShipped`. It does not write to `Inventory` itself. It issues a
+`ReduceStock` command, which is `part_of=Inventory`, and Inventory's command
+handler does the write. Each aggregate changes only through its own command
+handler, and each change runs in its own transaction.
 
-3. Event handler calls `reduce_stock()` on the `Inventory` aggregate
-delegating to a domain method rather than mutating state directly.
+3. The command carries the order id taken from the event. Events are delivered
+at least once, so the same `OrderShipped` can arrive twice. `Inventory`
+records the order ids it has applied, and the command handler returns without
+changes when it has already seen this one.
+
+4. The command handler calls the `reduce_stock()` domain method, so
+`Inventory` changes its own state.
+
+When one event starts several steps that depend on each other, use a
+[process manager](process-managers.md) to coordinate them.
 
 Simulating the example, we can see that the stock levels were decreased in
 response to the `OrderShipped` event.
@@ -60,17 +68,17 @@ response to the `OrderShipped` event.
 In [1]: order = Order(book_id="book-1", quantity=10, total_amount=100)
 
 In [2]: domain.repository_for(Order).add(order)
-Out[2]: <Order: Order object (id: 62f8fa8d-2963-4539-bd21-860d3bab639e)>
+Out[2]: <Order: Order object (id: 635014d2-0471-49d9-bcdc-cc7f180d166f)>
 
 In [3]: inventory = Inventory(book_id="book-1", in_stock=100)
 
 In [4]: domain.repository_for(Inventory).add(inventory)
-Out[4]: <Inventory: Inventory object (id: 9272d70f-b796-417d-8f30-e01302d9f1a9)>
+Out[4]: <Inventory: Inventory object (id: 79380336-c485-463a-af8d-6508e28eed13)>
 
 In [5]: order.ship_order()
 
 In [6]: domain.repository_for(Order).add(order)
-Out[6]: <Order: Order object (id: 62f8fa8d-2963-4539-bd21-860d3bab639e)>
+Out[6]: <Order: Order object (id: 635014d2-0471-49d9-bcdc-cc7f180d166f)>
 
 In [7]: stock = domain.repository_for(Inventory).get(inventory.id)
 
@@ -78,7 +86,9 @@ In [8]: stock.to_dict()
 Out[8]: {
  'book_id': 'book-1',
  'in_stock': 90,
- 'id': '9272d70f-b796-417d-8f30-e01302d9f1a9'
+ 'applied_order_ids': ['635014d2-0471-49d9-bcdc-cc7f180d166f'],
+ 'id': '79380336-c485-463a-af8d-6508e28eed13',
+ '_version': 1
  }
 ```
 
@@ -132,21 +142,27 @@ A single event handler class can contain multiple `@handle` methods, each
 processing a different event type:
 
 ```python
-@domain.event_handler(part_of=Inventory, stream_category="order")
+@domain.event_handler(part_of=Order)
 class ManageInventory:
     @handle(OrderShipped)
     def reduce_stock(self, event: OrderShipped):
-        repo = current_domain.repository_for(Inventory)
-        inventory = repo.find_by(book_id=event.book_id)
-        inventory.reduce_stock(event.quantity)
-        repo.add(inventory)
+        current_domain.process(
+            ReduceStock(
+                order_id=event.order_id,
+                book_id=event.book_id,
+                quantity=event.quantity,
+            )
+        )
 
     @handle(OrderCancelled)
     def restore_stock(self, event: OrderCancelled):
-        repo = current_domain.repository_for(Inventory)
-        inventory = repo.find_by(book_id=event.book_id)
-        inventory.increase_stock(event.quantity)
-        repo.add(inventory)
+        current_domain.process(
+            RestoreStock(
+                order_id=event.order_id,
+                book_id=event.book_id,
+                quantity=event.quantity,
+            )
+        )
 ```
 
 Each `@handle` method runs within its own Unit of Work. If the handler
@@ -250,11 +266,7 @@ originally triggered them, useful when the same event type can be raised from
 different contexts and you only want to react to a specific trigger.
 
     ```python
-    @domain.event_handler(
-        part_of=Notification,
-        stream_category="order",
-        source_stream="manage_order",
-    )
+    @domain.event_handler(part_of=Order, source_stream="manage_order")
     class EmailNotifications:
         @handle(OrderShipped)
         def send_shipping_email(self, event: OrderShipped):
@@ -387,10 +399,10 @@ Protean provides error handling for event handlers through the optional `handle_
 You can add a `handle_error` class method to your event handler to implement custom error handling:
 
 ```python
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler:
+@domain.event_handler(part_of=Order)
+class OrderEventHandler:
     @handle(OrderShipped)
-    def update_inventory(self, event):
+    def reduce_stock_for_order(self, event):
         # Event handling logic that might raise exceptions
         ...
 

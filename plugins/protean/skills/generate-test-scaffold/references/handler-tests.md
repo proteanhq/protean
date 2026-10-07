@@ -63,7 +63,24 @@ class TestEventHandlerSideEffects:
         assert updated.reserved == 5
 ```
 
-**Key pattern**: The target aggregate (Inventory) must exist in the repository **before** the source aggregate (Order) is persisted, because the event handler needs to load it.
+**Key pattern**: The target aggregate (Inventory) must exist in the repository **before** the source aggregate (Order) is persisted. The event handler issues a `ReserveStock` command, and the command handler loads the Inventory.
+
+The event handler sits in Order's cluster (`part_of=Order`) and hands off with a command, so the command handler is where the write and its guard live. Events are delivered at least once, so test that a repeated command changes nothing:
+
+```python
+class TestReserveStockHandler:
+    def test_a_repeated_command_reserves_once(self):
+        inventory = Inventory(product_id="p-1", available=100)
+        domain.repository_for(Inventory).add(inventory)
+
+        command = ReserveStock(order_id="o-1", product_id="p-1", quantity=5)
+        InventoryCommandHandler().reserve_stock(command)
+        InventoryCommandHandler().reserve_stock(command)
+
+        updated = domain.repository_for(Inventory).get(inventory.id)
+        assert updated.available == 95
+        assert updated.applied_order_ids == ["o-1"]
+```
 
 ## Testing FastAPI endpoints
 

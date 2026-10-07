@@ -7,7 +7,7 @@ An aggregate that raises different events from different lifecycle methods, with
 Most aggregates raise multiple events throughout their lifecycle:
 1. Each state transition raises a different event
 2. Same-aggregate handlers process some events (internal side effects)
-3. Cross-aggregate handlers process other events (external side effects)
+3. Other handlers in the same cluster hand off to other aggregates with commands (external side effects)
 4. The same event can be handled by multiple independent handlers
 
 Common use cases:
@@ -22,7 +22,8 @@ The complete implementation is in [assets/add_event_multiple_events.py](../asset
 Key highlights:
 - Shipment aggregate with `dispatch()` and `deliver()` methods, each raising a distinct event
 - Same-aggregate `ShipmentEventHandler` with multiple `@handle` methods for tracking
-- Cross-aggregate `NotificationHandler` that sends alerts for shipment events
+- A second handler, `ShipmentNotifier`, also `part_of=Shipment`, that issues a `SendNotification` command for each shipment event
+- `Notification`'s command handler creates the alert, and skips one that already exists
 - Both handlers independently process the same events
 
 ## Walkthrough
@@ -75,16 +76,26 @@ class ShipmentEventHandler:
     @handle(ShipmentDispatched)
     def on_dispatched(self, event): ...
 
-# Handler 2: Cross-aggregate (notifications)
-@domain.event_handler(part_of=Notification, stream_category=Shipment.meta_.stream_category)
-class NotificationHandler:
+# Handler 2: Cross-aggregate (notifications), still in Shipment's cluster
+@domain.event_handler(part_of=Shipment)
+class ShipmentNotifier:
     @handle(ShipmentDispatched)
-    def on_dispatched(self, event): ...
+    def on_dispatched(self, event):
+        current_domain.process(
+            SendNotification(
+                notification_id=f"{event.shipment_id}:dispatch",
+                recipient=event.order_id,
+                message=f"Shipment {event.shipment_id} dispatched",
+                notification_type="dispatch",
+            )
+        )
 ```
 
 - Unlike commands (which have exactly one handler), events support multiple handlers
-- Both `ShipmentEventHandler` and `NotificationHandler` process `ShipmentDispatched`
+- Both `ShipmentEventHandler` and `ShipmentNotifier` process `ShipmentDispatched`
 - Each handler runs independently in its own UnitOfWork
+- `ShipmentNotifier` sits in Shipment's cluster because it reacts to Shipment's events. `SendNotification` is `part_of="Notification"`, and Notification's command handler does the write
+- Events are delivered at least once, so `notification_id` is built from the shipment id and the event type. Notification's command handler adds the alert only when `repository.get` raises `ObjectNotFoundError`
 
 ## Adding a New Event to an Existing Flow
 
@@ -93,7 +104,7 @@ When adding a new event to an aggregate that already has events and handlers:
 1. **Define the new event** with `part_of` pointing to the aggregate
 2. **Add the aggregate method** that raises the event
 3. **Add a `@handle` method** to the existing handler class (don't create a new handler class for the same aggregate)
-4. **Optionally add cross-aggregate handlers** for the new event
+4. **Optionally hand off to another aggregate** for the new event: a handler in this cluster issues a command, and the other aggregate's command handler does the write (see [cross-aggregate flow](./cross-aggregate-flow.md))
 
 ```python
 # New event
@@ -128,11 +139,12 @@ src/myapp/shipment/
 ├── shipment.py                  # Aggregate with dispatch(), deliver()
 ├── shipment_dispatched.py       # ShipmentDispatched event + ShipmentEventHandler
 ├── shipment_delivered.py        # ShipmentDelivered event (handler in dispatched file)
+├── handle_shipment_events.py    # ShipmentNotifier (issues SendNotification)
 └── ...
 
 src/myapp/notification/
 ├── notification.py              # Notification aggregate
-└── handle_shipment_events.py   # Cross-aggregate handler for Shipment events
+└── send_notification.py         # SendNotification command + its command handler
 ```
 
 ## Testing
@@ -141,7 +153,7 @@ When testing multiple events:
 1. Test each aggregate method independently (verify event is raised)
 2. Test each handler method independently
 3. Test the full lifecycle (create → dispatch → deliver) end-to-end
-4. Verify both same-aggregate and cross-aggregate handlers fire
+4. Verify both handlers fire: tracking info changes and one notification exists per event
 
 ## Related
 - [Same-aggregate event flow](./same-aggregate-flow.md) - Single event, same-aggregate handler

@@ -5,25 +5,67 @@ This example demonstrates:
 - A single event handler class with multiple @handle decorated methods
 - Each method handles a different event type from the same aggregate
 - Multiple events can be handled by one handler or spread across handlers
-- Event handlers update aggregate state in response to different domain events
+- The handler sits in Account's cluster (part_of=Account), the cluster that
+  owns the events, and creates each Notification through a SendNotification
+  command
+- A redelivered event is a no-op: events are delivered at least once, so the
+  command carries the event's own id as the notification id, and
+  Notification's command handler skips one that already exists
 
 Usage:
     account = Account(account_id="ACC-001", email="alice@example.com", name="Alice")
-    account.register()
     domain.repository_for(Account).add(account)
+    domain.process(RegisterAccount(account_id="ACC-001"))
     # AccountNotifier handles AccountRegistered event
 
-    account.suspend(reason="Suspicious activity")
-    domain.repository_for(Account).add(account)
+    domain.process(SuspendAccount(account_id="ACC-001", reason="Suspicious activity"))
     # AccountNotifier handles AccountSuspended event
 """
 
-from protean import Domain, handle
+from protean import Domain, current_domain, handle
+from protean.exceptions import ObjectNotFoundError
 from protean.fields import Identifier, String, Text
 
 # Domain setup
 domain = Domain()
 domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
+
+
+@domain.command(part_of="Account")
+class RegisterAccount:
+    """Command to register an account."""
+
+    account_id: Identifier(required=True)
+
+
+@domain.command(part_of="Account")
+class SuspendAccount:
+    """Command to suspend an account."""
+
+    account_id: Identifier(required=True)
+    reason: String(required=True)
+
+
+@domain.command(part_of="Account")
+class ReactivateAccount:
+    """Command to reactivate a suspended account."""
+
+    account_id: Identifier(required=True)
+
+
+@domain.command(part_of="Notification")
+class SendNotification:
+    """Command to create one notification.
+
+    `notification_id` is the id of the event that caused it, so a redelivered
+    event reissues the same command and the handler can tell it already ran.
+    """
+
+    notification_id: Identifier(required=True)
+    account_id: Identifier(required=True)
+    notification_type: String(required=True)
+    message: Text(required=True)
 
 
 @domain.event(part_of="Account")
@@ -97,58 +139,116 @@ class Account:
 class Notification:
     """Notification aggregate for tracking sent notifications.
 
-    Uses the default auto-generated `id` field since notifications
-    don't have a natural business identifier.
+    `notification_id` is set by the caller from the event that caused the
+    notification, so one event produces at most one notification.
     """
 
+    notification_id: Identifier(identifier=True)
     account_id: Identifier(required=True)
     notification_type: String(required=True)
     message: Text(required=True)
 
 
-@domain.event_handler(
-    part_of=Notification, stream_category=Account.meta_.stream_category
-)
+@domain.command_handler(part_of=Account)
+class AccountCommandHandler:
+    """The write path for Account."""
+
+    @handle(RegisterAccount)
+    def register_account(self, command: RegisterAccount):
+        repo = current_domain.repository_for(Account)
+        account = repo.get(command.account_id)
+        account.register()
+        repo.add(account)
+
+    @handle(SuspendAccount)
+    def suspend_account(self, command: SuspendAccount):
+        repo = current_domain.repository_for(Account)
+        account = repo.get(command.account_id)
+        account.suspend(reason=command.reason)
+        repo.add(account)
+
+    @handle(ReactivateAccount)
+    def reactivate_account(self, command: ReactivateAccount):
+        repo = current_domain.repository_for(Account)
+        account = repo.get(command.account_id)
+        account.reactivate()
+        repo.add(account)
+
+
+@domain.command_handler(part_of=Notification)
+class NotificationCommandHandler:
+    """The write path for Notification."""
+
+    @handle(SendNotification)
+    def send_notification(self, command: SendNotification):
+        repo = current_domain.repository_for(Notification)
+        try:
+            repo.get(command.notification_id)
+        except ObjectNotFoundError:
+            repo.add(
+                Notification(
+                    notification_id=command.notification_id,
+                    account_id=command.account_id,
+                    notification_type=command.notification_type,
+                    message=command.message,
+                )
+            )
+        else:
+            return  # already sent; a second one would notify the user twice
+
+
+@domain.event_handler(part_of=Account)
 class AccountNotifier:
     """Event handler that sends notifications for account events.
 
-    This handler listens to the Account aggregate's event stream
-    (stream_category=Account.meta_.stream_category) and creates
-    Notification records for important account lifecycle events.
+    This handler sits in Account's cluster because the events belong to
+    Account. It reacts to each lifecycle event by issuing a SendNotification
+    command, and Notification's command handler creates the record.
 
     Multiple @handle methods allow one handler to react to different
     event types from the same stream.
+
+    `event._metadata.headers.id` is the event's own id, the same on every
+    delivery of that event. An account can be suspended more than once, so
+    the account id alone would not name one notification.
     """
 
     @handle(AccountRegistered)
     def on_account_registered(self, event: AccountRegistered):
-        """Handle AccountRegistered by creating a welcome notification."""
-        notification = Notification(
-            account_id=event.account_id,
-            notification_type="welcome",
-            message=f"Welcome {event.name}! Your account ({event.email}) is now active.",
+        """Handle AccountRegistered by sending a welcome notification."""
+        current_domain.process(
+            SendNotification(
+                notification_id=event._metadata.headers.id,
+                account_id=event.account_id,
+                notification_type="welcome",
+                message=f"Welcome {event.name}! Your account ({event.email}) "
+                "is now active.",
+            )
         )
-        domain.repository_for(Notification).add(notification)
 
     @handle(AccountSuspended)
     def on_account_suspended(self, event: AccountSuspended):
-        """Handle AccountSuspended by creating a suspension notification."""
-        notification = Notification(
-            account_id=event.account_id,
-            notification_type="suspension",
-            message=f"Your account has been suspended. Reason: {event.reason}",
+        """Handle AccountSuspended by sending a suspension notification."""
+        current_domain.process(
+            SendNotification(
+                notification_id=event._metadata.headers.id,
+                account_id=event.account_id,
+                notification_type="suspension",
+                message=f"Your account has been suspended. Reason: {event.reason}",
+            )
         )
-        domain.repository_for(Notification).add(notification)
 
     @handle(AccountReactivated)
     def on_account_reactivated(self, event: AccountReactivated):
-        """Handle AccountReactivated by creating a reactivation notification."""
-        notification = Notification(
-            account_id=event.account_id,
-            notification_type="reactivation",
-            message="Your account has been reactivated. Welcome back!",
+        """Handle AccountReactivated by sending a reactivation notification."""
+        current_domain.process(
+            SendNotification(
+                notification_id=event._metadata.headers.id,
+                account_id=event.account_id,
+                notification_type="reactivation",
+                message="Your account has been reactivated. Welcome back!",
+            )
         )
-        domain.repository_for(Notification).add(notification)
 
 
 # Example usage
@@ -162,16 +262,23 @@ if __name__ == "__main__":
             email="alice@example.com",
             name="Alice Smith",
         )
-        account.register()
         domain.repository_for(Account).add(account)
+        domain.process(RegisterAccount(account_id="ACC-001"))
         print("Account registered - welcome notification sent")
 
         # Suspend the account
-        account.suspend(reason="Suspicious activity detected")
-        domain.repository_for(Account).add(account)
+        domain.process(
+            SuspendAccount(account_id="ACC-001", reason="Suspicious activity detected")
+        )
         print("Account suspended - suspension notification sent")
 
         # Reactivate the account
-        account.reactivate()
-        domain.repository_for(Account).add(account)
+        domain.process(ReactivateAccount(account_id="ACC-001"))
         print("Account reactivated - reactivation notification sent")
+
+        notifications = domain.repository_for(Notification).query.all().items
+        assert sorted(n.notification_type for n in notifications) == [
+            "reactivation",
+            "suspension",
+            "welcome",
+        ]

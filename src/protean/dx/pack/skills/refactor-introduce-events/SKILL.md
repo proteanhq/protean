@@ -147,25 +147,57 @@ and entity method bodies, so an event raised from a command handler, a subscribe
 module-level factory still shows up; that is the signal to move the raise onto the aggregate
 method, which is the refactor this skill performs.
 
-### Step 4: Create an event handler for the target aggregate
+### Step 4: React in the source cluster and hand off with a command
+
+The event handler sits in `Order`'s cluster, because it reacts to `Order`'s own
+event. It issues a command to `Inventory`, and `Inventory`'s command handler does
+the write:
 
 ```python
-@domain.event_handler(
-    part_of=Inventory,
-    stream_category=Order.meta_.stream_category,
-)
-class OrderEventsHandler:
+@domain.event_handler(part_of=Order)
+class InventoryReservation:
     @handle(OrderPlaced)
-    def reserve_inventory(self, event: OrderPlaced) -> None:
-        inventory = domain.repository_for(Inventory).get(event.product_id)
-        inventory.reserve(event.quantity)
-        domain.repository_for(Inventory).add(inventory)
+    def on_order_placed(self, event: OrderPlaced) -> None:
+        current_domain.process(
+            ReserveStock(
+                order_id=event.order_id,
+                product_id=event.product_id,
+                quantity=event.quantity,
+            )
+        )
 ```
 
+Events are delivered at least once, so the receiving command handler must be safe
+to repeat. `ReserveStock` carries the order id from the event. `Inventory` keeps
+the order ids it has already reserved stock for, and the handler returns without
+changes when it sees one again:
+
+```python
+# fragment
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    @handle(ReserveStock)
+    def reserve_stock(self, command: ReserveStock) -> None:
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.get(command.product_id)
+        if command.order_id in inventory.reserved_order_ids:
+            return   # already reserved for this order
+        inventory.reserve(command.order_id, command.quantity)
+        repo.add(inventory)
+```
+
+`Inventory.reserve()` reduces the stock and appends the order id to
+`reserved_order_ids`. Use the order id from the event, never a fresh `uuid4()`,
+or a repeat cannot be recognized.
+
 Key points:
-- `part_of` = the **target** aggregate (Inventory)
-- `stream_category` = the **source** aggregate's stream (Order)
-- Handler loads and mutates only its own aggregate
+- `part_of` = the cluster that owns the event (Order), with no `stream_category`
+- The command is `part_of` the **target** aggregate (Inventory)
+- Each handler loads and mutates only its own aggregate
+
+A handler in `Inventory`'s cluster that handles `OrderPlaced` is what `check`
+reports as `EVENT_HANDLER_FOREIGN_EVENT`. For a flow with several causally
+dependent steps, use a [process manager](../process-manager/SKILL.md).
 
 ### Step 5: Slim down the command handler
 
@@ -191,9 +223,11 @@ class OrderCommandHandler:
 ```python
 # In conftest.py or test setup
 domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
 ```
 
-This ensures events are processed inline during tests.
+This ensures events, and the commands their handlers issue, are processed inline
+during tests.
 
 ## Common mistakes
 
@@ -203,8 +237,10 @@ This ensures events are processed inline during tests.
 2. **Event too fat** — Including the entire aggregate state in every event wastes space
    and couples consumers to the full schema. Include only what changed and context needed.
 
-3. **Forgetting stream_category** — Without `stream_category=Source.meta_.stream_category`,
-   the event handler won't receive events from the other aggregate.
+3. **Putting the event handler in the target's cluster.** A handler with
+   `part_of=Inventory` that handles `OrderPlaced` is what `check` reports as
+   `EVENT_HANDLER_FOREIGN_EVENT`. Keep the handler in `Order`'s cluster and hand
+   off to `Inventory` with a command.
 
 4. **Returning values from event handlers** — Event handlers are fire-and-forget. They
    don't return values. If you need a return, use a command handler.
@@ -233,10 +269,22 @@ def ship_order(self, command):
     order.ship(tracking_number=command.tracking)  # Raises OrderShipped
     domain.repository_for(Order).add(order)
 
-@handle(OrderShipped)  # In separate event handler
+@handle(OrderShipped)  # In an event handler with part_of=Order
 def notify_customer(self, event):
-    notification = domain.repository_for(Notification).get(event.customer_id)
-    notification.add_message(f"Order {event.order_id} shipped!")
+    domain.process(
+        AddNotificationMessage(
+            order_id=event.order_id,
+            customer_id=event.customer_id,
+            message=f"Order {event.order_id} shipped!",
+        )
+    )
+
+@handle(AddNotificationMessage)  # In Notification's command handler
+def add_message(self, command):
+    notification = domain.repository_for(Notification).get(command.customer_id)
+    if command.order_id in notification.notified_order_ids:
+        return  # already notified for this order
+    notification.add_message(command.order_id, command.message)
     domain.repository_for(Notification).add(notification)
 ```
 

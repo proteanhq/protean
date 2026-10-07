@@ -5,19 +5,28 @@ This example provides a Protean domain with multiple testable elements
 across all categories:
 - Aggregate with factory method, state transitions, invariants, and event raising
 - Value object with custom operation
-- Command + command handler
-- Event handler for cross-aggregate side effects
+- Commands + command handlers
+- Event handler for a cross-aggregate side effect: it sits in Ticket's cluster,
+  reacts to TicketCreated, and issues a RecordNotification command that
+  NotificationLog's command handler writes
+- A redelivered event is a no-op: the notification log uses the ticket id as
+  its identity, so the handler can tell the entry already exists
 - Business rules guarding invalid transitions
 
 Used to demonstrate coverage gap identification and missing test generation.
 """
 
-from protean import Domain, handle, invariant
-from protean.exceptions import ValidationError
+from protean import Domain, current_domain, handle, invariant
+from protean.exceptions import ObjectNotFoundError, ValidationError
 from protean.fields import Identifier, String, Text, ValueObject
 
 domain = Domain(__name__)
+
+# Run the hop in-process: TicketCreated reaches the event handler as soon as the
+# ticket is saved, and RecordNotification reaches its handler as soon as it is
+# issued.
 domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
 
 
 # --- Value Object ---
@@ -148,13 +157,16 @@ class Ticket:
 
 @domain.aggregate
 class NotificationLog:
-    """Simple aggregate to record notifications triggered by ticket events."""
+    """Simple aggregate to record notifications triggered by ticket events.
 
-    ticket_id: Identifier(required=True)
+    The ticket id is the identity, so there is one entry per created ticket.
+    """
+
+    ticket_id: Identifier(identifier=True)
     message: String(required=True, max_length=500)
 
 
-# --- Command ---
+# --- Commands ---
 
 
 @domain.command(part_of="Ticket")
@@ -166,7 +178,19 @@ class CreateTicket:
     priority_level: String(max_length=10, default="low")
 
 
-# --- Command Handler ---
+@domain.command(part_of="NotificationLog")
+class RecordNotification:
+    """Record the notification for one created ticket.
+
+    `ticket_id` comes from the event, so a redelivered event reissues the same
+    command and the handler can tell the entry already exists.
+    """
+
+    ticket_id: Identifier(required=True)
+    message: String(required=True, max_length=500)
+
+
+# --- Command Handlers ---
 
 
 @domain.command_handler(part_of=Ticket)
@@ -185,23 +209,44 @@ class TicketCommandHandler:
         return ticket.id
 
 
-# --- Event Handler (cross-aggregate) ---
+@domain.command_handler(part_of=NotificationLog)
+class NotificationLogCommandHandler:
+    """The write path for NotificationLog."""
+
+    @handle(RecordNotification)
+    def record_notification(self, command: RecordNotification):
+        """Add the notification entry unless it already exists."""
+        repo = current_domain.repository_for(NotificationLog)
+        try:
+            repo.get(command.ticket_id)
+        except ObjectNotFoundError:
+            repo.add(
+                NotificationLog(ticket_id=command.ticket_id, message=command.message)
+            )
+        else:
+            # The entry already exists. A redelivered TicketCreated reissues
+            # RecordNotification, and adding again would log it twice.
+            return
 
 
-@domain.event_handler(
-    part_of=NotificationLog, stream_category=Ticket.meta_.stream_category
-)
+# --- Event Handler (the cross-aggregate link, in Ticket's cluster) ---
+
+
+@domain.event_handler(part_of=Ticket)
 class TicketNotificationHandler:
-    """Handles Ticket events to create notification log entries.
+    """React to Ticket's own TicketCreated event and record a notification.
 
-    Belongs to NotificationLog aggregate but listens to Ticket's event stream.
+    The handler sits in Ticket's cluster, because it reacts to Ticket's own
+    event. It hands off to NotificationLog with a command, and NotificationLog's
+    command handler does the write.
     """
 
     @handle(TicketCreated)
     def on_ticket_created(self, event: TicketCreated):
-        """When a ticket is created, log a notification."""
-        notification = NotificationLog(
-            ticket_id=event.ticket_id,
-            message=f"New ticket: {event.title} (priority: {event.priority_level})",
+        """When a ticket is created, ask NotificationLog to record it."""
+        current_domain.process(
+            RecordNotification(
+                ticket_id=event.ticket_id,
+                message=f"New ticket: {event.title} (priority: {event.priority_level})",
+            )
         )
-        domain.repository_for(NotificationLog).add(notification)

@@ -4,30 +4,41 @@ Multiple events from one aggregate with multiple event handlers.
 This example demonstrates:
 - An aggregate raising different events from different methods
 - Same-aggregate handler processing multiple event types
-- Cross-aggregate handler reacting to selected events
+- A second handler in Shipment's cluster that hands off to Notification with
+  a command
 - Multiple handlers processing the same event independently
 - Complete lifecycle: create → ship → deliver with events at each step
 
 Scenario:
     A Shipment aggregate transitions through statuses (created → dispatched → delivered).
     Each transition raises a distinct event. A same-aggregate handler generates
-    tracking updates, while a cross-aggregate Notification handler sends alerts.
+    tracking updates. A second handler, also in Shipment's cluster, issues a
+    SendNotification command, and Notification's command handler creates the alert.
 
 Workflow:
     Shipment.dispatch() → ShipmentDispatched → ShipmentEventHandler (tracking)
-                                              → NotificationHandler (alert)
+                                              → ShipmentNotifier → SendNotification
     Shipment.deliver()  → ShipmentDelivered  → ShipmentEventHandler (tracking)
-                                              → NotificationHandler (alert)
+                                              → ShipmentNotifier → SendNotification
+
+Events are delivered at least once, so each notification gets an id built from
+the shipment id and the event type, and the command handler skips a
+notification that already exists.
 """
 
 from datetime import UTC
 
-from protean import Domain, handle
+from protean import Domain, current_domain, handle
+from protean.exceptions import ObjectNotFoundError
 from protean.fields import DateTime, Identifier, String
 
 # Domain setup
 domain = Domain()
+
+# Run each hop in-process: an event reaches its handlers as soon as the shipment
+# is saved, and SendNotification reaches its handler as soon as it is issued.
 domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
 
 
 # --- Events ---
@@ -123,47 +134,92 @@ class ShipmentEventHandler:
         repo.add(shipment)
 
 
-# --- Cross-aggregate Event Handler (Notification) ---
+# --- Notification (the aggregate that receives the alerts) ---
 
 
 @domain.aggregate
 class Notification:
     """Notification aggregate for user-facing alerts."""
 
+    notification_id: Identifier(identifier=True)
     recipient: String(required=True)
     message: String(required=True)
     notification_type: String(required=True)
 
 
-@domain.event_handler(
-    part_of=Notification, stream_category=Shipment.meta_.stream_category
-)
-class NotificationHandler:
-    """Cross-aggregate handler that sends notifications for shipment events.
+@domain.command(part_of="Notification")
+class SendNotification:
+    """Send one alert about a shipment.
 
-    Belongs to Notification aggregate but listens to Shipment's stream.
-    Demonstrates multiple handlers processing the same events independently.
+    `notification_id` is built from the event, so a redelivered event reissues
+    the same command and the handler can tell the alert already exists.
+    """
+
+    notification_id: Identifier(required=True)
+    recipient: String(required=True)
+    message: String(required=True)
+    notification_type: String(required=True)
+
+
+@domain.command_handler(part_of=Notification)
+class NotificationCommandHandler:
+    """The write path for Notification."""
+
+    @handle(SendNotification)
+    def send_notification(self, command: SendNotification):
+        repo = current_domain.repository_for(Notification)
+        try:
+            repo.get(command.notification_id)
+        except ObjectNotFoundError:
+            repo.add(
+                Notification(
+                    notification_id=command.notification_id,
+                    recipient=command.recipient,
+                    message=command.message,
+                    notification_type=command.notification_type,
+                )
+            )
+        else:
+            return  # already sent; a redelivered event must not alert twice
+
+
+# --- Second Shipment handler (hands off to Notification) ---
+
+
+@domain.event_handler(part_of=Shipment)
+class ShipmentNotifier:
+    """Send an alert for each shipment event.
+
+    The handler sits in Shipment's cluster, because it reacts to Shipment's own
+    events (a handler that reacts to another cluster's event is what `check`
+    reports as EVENT_HANDLER_FOREIGN_EVENT). It hands off to Notification with
+    a command. It also shows two handlers processing the same events
+    independently.
     """
 
     @handle(ShipmentDispatched)
     def on_dispatched(self, event: ShipmentDispatched):
-        """Send dispatch notification."""
-        notification = Notification(
-            recipient=event.order_id,
-            message=f"Shipment {event.shipment_id} dispatched via {event.carrier}",
-            notification_type="dispatch",
+        """Ask Notification to send a dispatch alert."""
+        current_domain.process(
+            SendNotification(
+                notification_id=f"{event.shipment_id}:dispatch",
+                recipient=event.order_id,
+                message=f"Shipment {event.shipment_id} dispatched via {event.carrier}",
+                notification_type="dispatch",
+            )
         )
-        domain.repository_for(Notification).add(notification)
 
     @handle(ShipmentDelivered)
     def on_delivered(self, event: ShipmentDelivered):
-        """Send delivery notification."""
-        notification = Notification(
-            recipient=event.order_id,
-            message=f"Shipment {event.shipment_id} delivered",
-            notification_type="delivery",
+        """Ask Notification to send a delivery alert."""
+        current_domain.process(
+            SendNotification(
+                notification_id=f"{event.shipment_id}:delivery",
+                recipient=event.order_id,
+                message=f"Shipment {event.shipment_id} delivered",
+                notification_type="delivery",
+            )
         )
-        domain.repository_for(Notification).add(notification)
 
 
 # Example usage

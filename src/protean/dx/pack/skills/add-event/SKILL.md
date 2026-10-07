@@ -7,7 +7,7 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: workflow
-  composes: [event, aggregate, event-handler]
+  composes: [event, aggregate, event-handler, command, command-handler]
 ---
 
 # Add Event Flow
@@ -17,6 +17,7 @@ This workflow adds a complete event flow to an existing aggregate. It creates th
 1. **Event** - An immutable fact representing a state change (e.g., `OrderPlaced`)
 2. **Aggregate method** - A method on the aggregate that performs the state change and raises the event via `self.raise_()`
 3. **Event Handler** - A class that consumes the event and orchestrates side effects
+4. **Command and command handler** (cross-aggregate only) - The command the event handler issues, and the target aggregate's handler that does the write
 
 ## What this creates
 
@@ -24,7 +25,8 @@ This workflow adds a complete event flow to an existing aggregate. It creates th
 |----------|------|---------------|
 | Event class | Captures what happened (immutable fact) | `<aggregate_folder>/<event_name_snake>.py` |
 | Aggregate method | Performs state change, raises the event | `<aggregate_folder>/<aggregate>.py` (existing file) |
-| Event Handler | Reacts to event, orchestrates side effects | Same file as event (same-aggregate) or `<aggregate_folder>/handle_<event_name_snake>.py` (cross-aggregate) |
+| Event Handler | Reacts to event, orchestrates side effects | Same file as event (same-aggregate) or `<aggregate_folder>/handle_<event_name_snake>.py` (cross-aggregate), always in the source aggregate's folder |
+| Command + command handler (cross-aggregate) | Carries the change to the target aggregate, which does the write | `<target_folder>/<command_name_snake>.py` |
 
 ## Information to gather
 
@@ -36,7 +38,7 @@ Before generating, ensure you know the following. **If any item is unknown, ask 
 - [ ] **Event fields** - What data should the event carry? (IDs, relevant state at time of change)
 - [ ] **Side effect(s)** - What should happen when the event occurs? (update state, sync aggregates, send notification, etc.)
 - [ ] **Handler location** - Does the side effect target the same aggregate or a different one?
-- [ ] **Target aggregate** - If cross-aggregate, which aggregate does the handler belong to? (must already exist)
+- [ ] **Target aggregate** - If cross-aggregate, which aggregate does the change land on? (must already exist; it receives a command)
 
 ### Questions to ask when context is missing
 
@@ -51,7 +53,7 @@ If the user describes a full scenario like "when an order is placed, reduce inve
 - Source aggregate: Order
 - Event: OrderPlaced
 - Side effect: reduce stock in Inventory
-- Handler location: cross-aggregate (Inventory handler listening to Order stream)
+- Handler location: cross-aggregate (a handler in Order's cluster issues a `ReduceStock` command to Inventory)
 
 ## Process
 
@@ -111,8 +113,10 @@ Follow the patterns in [event-handler](../event-handler/SKILL.md).
 Key points for this workflow:
 - Use `part_of=AggregateClass` when the class is in scope. A string reference also works and resolves at `init`
 - Use `@handle(EventClass)` decorator on handler methods
-- **Same-aggregate handler**: `@domain.event_handler(part_of=Order)` - listens to Order's own stream
-- **Cross-aggregate handler**: `@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)` - Inventory handler listens to Order stream
+- The handler always sits in the cluster that owns the event: `@domain.event_handler(part_of=Order)` for an `Order` event
+- **Same-aggregate handler**: loads the aggregate, calls a method, persists
+- **Cross-aggregate handler**: issues a command with `current_domain.process(...)`. The command is `part_of` the target aggregate, and the target's command handler does the write
+- Events are delivered at least once, so the command carries an id taken from the event, and the target's command handler returns without changes when that work is already done
 - Event handlers do NOT return values (fire-and-forget)
 - Each handler runs within an implicit UnitOfWork - no manual wrapping
 - Multiple handlers can process the same event (unlike commands)
@@ -127,23 +131,55 @@ class OrderEventHandler:
         order.confirmation_number = f"CONF-{event.order_id}"
         domain.repository_for(Order).add(order)
 
-# Cross-aggregate handler
-@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
-class InventoryHandler:
+# Cross-aggregate handler: still in Order's cluster, hands off with a command
+@domain.event_handler(part_of=Order)
+class InventorySyncHandler:
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):
-        inventory = domain.repository_for(Inventory).find_by(product_id=event.product_id)
-        inventory.reduce_stock(event.quantity)
-        domain.repository_for(Inventory).add(inventory)
+        current_domain.process(
+            ReduceStock(
+                order_id=event.order_id,
+                product_id=event.product_id,
+                quantity=event.quantity,
+            )
+        )
 ```
 
-### Step 4: Wire together
+### Step 4 (cross-aggregate only): Add the command and the target's command handler
+
+Follow the patterns in [command](../command/SKILL.md) and [command-handler](../command-handler/SKILL.md).
+
+The command is `part_of` the target aggregate. It carries the source's id (here `order_id`), so a redelivered event reissues the same command. Reducing stock is an update, so `Inventory` keeps a list of the order ids it has applied, and its command handler returns early for one it has seen:
+
+```python
+@domain.command(part_of="Inventory")
+class ReduceStock:
+    order_id: Identifier(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+
+
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    @handle(ReduceStock)
+    def reduce_stock(self, command: ReduceStock):
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.find_by(product_id=command.product_id)
+        if command.order_id in inventory.applied_order_ids:
+            return  # already applied; a redelivered event must not reduce twice
+        inventory.reduce_stock(command.order_id, command.quantity)
+        repo.add(inventory)
+```
+
+`Inventory.reduce_stock` lowers the stock and appends the order id to `applied_order_ids: List(content_type=String)`. When the command creates an aggregate, give the new aggregate an id taken from the event and skip the add when `repository.get` finds it (see [split-aggregate](../split-aggregate/SKILL.md)). For a flow with several causally dependent steps, use a [process manager](../process-manager/SKILL.md).
+
+### Step 5: Wire together
 
 All three components connect through the domain's event system:
 1. Aggregate method performs state change and calls `self.raise_(event)`
 2. When aggregate is persisted via repository, events are dispatched
 3. Domain matches events to handlers based on stream category and `@handle` decorators
-4. Handler loads target aggregate, performs side effect, persists
+4. Handler performs the side effect. A same-aggregate handler loads, mutates and persists. A cross-aggregate handler issues a command, and the target's command handler loads, mutates and persists
 
 ```
 Aggregate Method → self.raise_(Event) → repository.add(aggregate)
@@ -152,48 +188,54 @@ Aggregate Method → self.raise_(Event) → repository.add(aggregate)
                                               ↓
                                     Event Handler receives event
                                               ↓
-                                    Load target aggregate from repo
+                          (cross-aggregate) domain.process(Command)
+                                              ↓
+                          Target's command handler loads target aggregate
                                               ↓
                                     Perform side effect
                                               ↓
                                     Persist target aggregate
 ```
 
-### Step 5: Configure event processing
+### Step 6: Configure event processing
 
 For synchronous processing (recommended for testing and simple flows):
 
 ```python
 domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"  # for the cross-aggregate command
 ```
 
 For asynchronous processing (production with message broker):
 
 ```python
 domain.config["event_processing"] = "async"
+domain.config["command_processing"] = "async"
 ```
 
 ## File organization (Screaming Architecture)
 
-Colocate event definitions with their aggregate. Place event handlers based on which aggregate they belong to:
+Colocate event definitions with their aggregate. Event handlers live with the aggregate that owns the event. Commands and command handlers live with the aggregate they change:
 
 ```
 src/myapp/order/
 ├── order.py                    # Aggregate (with raise_() calls)
 ├── order_placed.py             # OrderPlaced event + same-aggregate handler (if any)
+├── handle_order_placed.py      # Cross-aggregate handler (issues ReduceStock)
 ├── order_shipped.py            # OrderShipped event
 └── order_api.py                # API endpoints
 
 src/myapp/inventory/
 ├── inventory.py                # Inventory aggregate
-├── handle_order_placed.py      # Cross-aggregate handler (listens to Order events)
+├── reduce_stock.py             # ReduceStock command + its command handler
 └── inventory_api.py
 ```
 
 **Naming conventions**:
 - Event file: `<event_name_snake>.py` (e.g., `order_placed.py`)
 - Same-aggregate handler: colocated in event file
-- Cross-aggregate handler: `handle_<event_name_snake>.py` in the **target** aggregate's folder
+- Cross-aggregate handler: `handle_<event_name_snake>.py` in the **source** aggregate's folder
+- Command the handler issues: `<command_name_snake>.py` in the **target** aggregate's folder
 
 ## Adding to an existing event handler
 
@@ -221,7 +263,7 @@ class OrderEventHandler:
 5. **Implicit UnitOfWork** - Do NOT wrap handler methods in manual UnitOfWork
 6. **Business logic in aggregates** - Handlers only orchestrate (load, call method, persist)
 7. **Raise events after state change** - Call `self.raise_()` after the aggregate state is updated
-8. **Cross-aggregate uses stream_category** - `stream_category=SourceAggregate.meta_.stream_category`
+8. **Cross-aggregate goes through a command** - The handler sits in the source's cluster and issues a command that the target's command handler processes. The command carries an id from the event, and the handler no-ops when the work is already done
 9. **Sync processing for dev/test** - Set `domain.config["event_processing"] = "sync"`
 10. **Events carry minimal data** - Only IDs and data needed by consumers, not entire aggregate state
 
@@ -232,13 +274,14 @@ class OrderEventHandler:
 - **Business logic in event handlers** - Keep logic in aggregates; handlers only orchestrate
 - **Returning values from event handlers** - Event handlers are fire-and-forget
 - **Manual UnitOfWork in handlers** - It's implicit, don't wrap
-- **Missing stream_category for cross-aggregate** - Without it, handler only sees its own aggregate's events
+- **Putting the handler in the target's cluster** - A handler that is `part_of` the target aggregate and reacts to the source's event is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`. Keep the handler in the source's cluster and issue a command
+- **Generating a fresh id in the handler** - Events are delivered at least once, so a `uuid4()` per delivery writes the change twice. Take the id from the event
 - **Raising events before state change** - State should change first, then raise the event
 
 ## Complete examples
 
 - [Same-aggregate event flow](references/same-aggregate-flow.md) - Event + handler within one aggregate
-- [Cross-aggregate event flow](references/cross-aggregate-flow.md) - Event triggers side effect in another aggregate
+- [Cross-aggregate event flow](references/cross-aggregate-flow.md) - Event triggers a command to another aggregate
 - [Multiple events flow](references/multiple-events-flow.md) - Multiple events from one aggregate with multiple handlers
 
 ### Asset files
@@ -248,9 +291,11 @@ class OrderEventHandler:
 
 ## Related skills
 
-- [event](../event/SKILL.md) — Event definition, fields, and past-tense naming
-- [event-handler](../event-handler/SKILL.md) — Reacting to events and orchestrating side effects
-- [aggregate](../aggregate/SKILL.md) — Raising events from aggregate methods
+- [event](../event/SKILL.md): Event definition, fields, and past-tense naming
+- [event-handler](../event-handler/SKILL.md): Reacting to events and orchestrating side effects
+- [aggregate](../aggregate/SKILL.md): Raising events from aggregate methods
+- [command](../command/SKILL.md) and [command-handler](../command-handler/SKILL.md): The command a cross-aggregate handler issues, and its handler
+- [process-manager](../process-manager/SKILL.md): Flows with several causally dependent steps
 
 ## Verify your work
 

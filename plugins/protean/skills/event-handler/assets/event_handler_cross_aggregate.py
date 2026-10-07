@@ -1,27 +1,51 @@
 """
-Event handler that belongs to one aggregate but listens to another aggregate's events.
+Event handler that reacts to one aggregate's event and changes another aggregate.
 
 This example demonstrates:
-- Cross-aggregate event handling using stream_category parameter
-- Event handler with part_of pointing to one aggregate (Inventory)
-  but stream_category pointing to the Order aggregate's stream
-- The core DDD pattern: reacting to state changes in one aggregate
-  to update another aggregate
-- Synchronous event processing for testing
+- The event handler sits in Order's cluster (part_of=Order), the cluster that
+  owns OrderShipped, so it needs no stream_category
+- The handler hands off to Inventory by issuing a ReduceStock command
+- Inventory's command handler looks the inventory up by a non-identity field
+  (book_id) with find_by and reduces the stock
+- Each aggregate changes in its own transaction
+- A redelivered event is a no-op: events are delivered at least once, so the
+  command carries the order id and Inventory records the orders it has applied
+- Synchronous event and command processing for testing
 
 Usage:
     order = Order(book_id="BOOK-1", quantity=5, total_amount=50)
-    order.ship_order()
     domain.repository_for(Order).add(order)
-    # ManageInventory handler automatically processes OrderShipped event
+    domain.process(ShipOrder(order_id=order.id))
+    # ManageInventory reacts to OrderShipped and issues ReduceStock
 """
 
-from protean import Domain, handle
-from protean.fields import Identifier, Integer, String
+from protean import Domain, current_domain, handle
+from protean.fields import Identifier, Integer, List, String
 
 # Domain setup
 domain = Domain()
 domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
+
+
+@domain.command(part_of="Order")
+class ShipOrder:
+    """Command to ship an order."""
+
+    order_id: Identifier(required=True)
+
+
+@domain.command(part_of="Inventory")
+class ReduceStock:
+    """Command to reduce a book's stock for one shipped order.
+
+    `order_id` comes from the event, so a redelivered event reissues the same
+    command and the handler can tell it has already applied it.
+    """
+
+    order_id: Identifier(required=True)
+    book_id: Identifier(required=True)
+    quantity: Integer(required=True)
 
 
 @domain.event(part_of="Order")
@@ -58,38 +82,75 @@ class Order:
 
 @domain.aggregate
 class Inventory:
-    """Inventory aggregate tracking stock levels."""
+    """Inventory aggregate tracking stock levels.
+
+    `applied_order_ids` records which shipped orders have already reduced this
+    stock, so a repeated ReduceStock for the same order changes nothing.
+    """
 
     book_id: Identifier(required=True)
     in_stock: Integer(required=True)
+    applied_order_ids: List(content_type=String)
+
+    def reduce_stock(self, order_id, quantity):
+        """Reduce stock for one order and record that the order was applied."""
+        self.in_stock -= quantity
+        self.applied_order_ids = [*self.applied_order_ids, order_id]
 
 
-@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
+@domain.command_handler(part_of=Order)
+class OrderCommandHandler:
+    """The write path for Order."""
+
+    @handle(ShipOrder)
+    def ship_order(self, command: ShipOrder):
+        repo = current_domain.repository_for(Order)
+        order = repo.get(command.order_id)
+        order.ship_order()
+        repo.add(order)
+
+
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    """The write path for Inventory."""
+
+    @handle(ReduceStock)
+    def reduce_stock(self, command: ReduceStock):
+        """Reduce the stock of the book in the command.
+
+        The command carries the book id, which is not Inventory's identity, so
+        the handler looks the inventory up with find_by.
+        """
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.find_by(book_id=command.book_id)
+        if command.order_id in inventory.applied_order_ids:
+            # Already applied. A redelivered OrderShipped reissues ReduceStock,
+            # and reducing again would take the stock down twice.
+            return
+        inventory.reduce_stock(command.order_id, command.quantity)
+        repo.add(inventory)
+
+
+@domain.event_handler(part_of=Order)
 class ManageInventory:
-    """Event handler that syncs Inventory state with Order events.
+    """React to Order's own OrderShipped event and reduce stock.
 
-    This handler belongs to the Inventory aggregate (part_of=Inventory)
-    but listens to events from the Order aggregate's stream
-    (stream_category=Order.meta_.stream_category).
-
-    This is the core cross-aggregate coordination pattern in DDD:
-    - Order aggregate raises OrderShipped event
-    - ManageInventory handler picks up the event
-    - Handler updates Inventory aggregate's stock levels
-    - No direct coupling between Order and Inventory aggregates
+    The handler sits in Order's cluster because OrderShipped belongs to Order
+    (a handler that reacts to another cluster's event is what `check` reports
+    as EVENT_HANDLER_FOREIGN_EVENT). It changes Inventory only through the
+    ReduceStock command, so Order and Inventory never share a transaction.
     """
 
     @handle(OrderShipped)
     def reduce_stock_level(self, event: OrderShipped):
-        """Handle OrderShipped by reducing inventory stock level.
-
-        Loads the inventory record matching the shipped book,
-        decreases stock by the ordered quantity, and persists.
-        """
-        repo = domain.repository_for(Inventory)
-        inventory = repo.find_by(book_id=event.book_id)
-        inventory.in_stock -= event.quantity
-        repo.add(inventory)
+        """Ask Inventory to reduce stock for the shipped book."""
+        current_domain.process(
+            ReduceStock(
+                order_id=event.order_id,
+                book_id=event.book_id,
+                quantity=event.quantity,
+            )
+        )
 
 
 # Example usage
@@ -104,9 +165,9 @@ if __name__ == "__main__":
         inventory = Inventory(book_id="BOOK-1", in_stock=100)
         domain.repository_for(Inventory).add(inventory)
 
-        # Ship the order - triggers event handler
-        order.ship_order()
-        domain.repository_for(Order).add(order)
+        # Ship the order: OrderShipped reaches ManageInventory, which issues
+        # ReduceStock
+        domain.process(ShipOrder(order_id=order.id))
 
         # Verify inventory was reduced
         stock = domain.repository_for(Inventory).get(inventory.id)

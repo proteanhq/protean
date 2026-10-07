@@ -279,7 +279,7 @@ To use an asset in a project, copy only the part below `# --- Tests ---` into `t
 - [Scaffold conftest](assets/conftest.py): runs the assets exactly as written, in a folder of their own. Each test module there must define `domain`, so do not use this conftest as a project's root conftest. Use the Step 7 conftest there.
 - [Aggregate unit tests](assets/scaffold_aggregate_unit.py): Order with entities, value objects, invariants
 - [Command flow tests](assets/scaffold_command_flow.py): User registration with handler and API (the API test needs `fastapi` and `httpx`)
-- [Event-driven flow tests](assets/scaffold_event_driven_flow.py): Cross-aggregate Order → Inventory sync
+- [Event-driven flow tests](assets/scaffold_event_driven_flow.py): Cross-aggregate Order → Inventory sync, where an event handler in Order's cluster issues a command to Inventory, and a repeated command reserves stock once
 
 ## Detailed references
 

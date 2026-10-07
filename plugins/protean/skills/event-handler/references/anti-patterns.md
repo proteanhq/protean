@@ -24,7 +24,7 @@ class OrderEventHandler:
 
 Protean raises `IncorrectUsageError: Event Handler 'OrderEventHandler' needs to be associated with an aggregate or a stream`.
 
-An event handler must specify at least one of `part_of` or `stream_category` (or both for cross-aggregate handlers).
+An event handler must specify at least one of `part_of` or `stream_category`.
 
 ## 2. Returning Values from Event Handlers
 
@@ -59,9 +59,9 @@ Event handlers follow fire-and-forget. Return values are discarded. If you need 
 @handle(OrderPlaced)
 def handle_order_placed(self, event):
     with UnitOfWork():  # Redundant!
-        inventory = domain.repository_for(Inventory).get(event.inventory_id)
-        inventory.reserve()
-        domain.repository_for(Inventory).add(inventory)
+        order = domain.repository_for(Order).get(event.order_id)
+        order.confirm()
+        domain.repository_for(Order).add(order)
 ```
 
 **Correct:** The `@handle` decorator already wraps the method in a UnitOfWork.
@@ -69,33 +69,33 @@ def handle_order_placed(self, event):
 ```python
 @handle(OrderPlaced)
 def handle_order_placed(self, event):
-    inventory = domain.repository_for(Inventory).get(event.inventory_id)
-    inventory.reserve()
-    domain.repository_for(Inventory).add(inventory)
+    order = domain.repository_for(Order).get(event.order_id)
+    order.confirm()
+    domain.repository_for(Order).add(order)
 ```
 
 ## 4. Business Logic in the Handler Instead of the Aggregate
 
 **Wrong:**
 ```python
-@handle(OrderShipped)
-def reduce_stock(self, event):
-    inventory = domain.repository_for(Inventory).get(event.inventory_id)
+@handle(OrderPlaced)
+def confirm_order(self, event):
+    order = domain.repository_for(Order).get(event.order_id)
     # Business logic leaking into handler!
-    if inventory.in_stock < event.quantity:
-        raise ValueError("Not enough stock")
-    inventory.in_stock -= event.quantity
-    domain.repository_for(Inventory).add(inventory)
+    if order.status != "placed":
+        raise ValueError("Only placed orders can be confirmed")
+    order.status = "confirmed"
+    domain.repository_for(Order).add(order)
 ```
 
 **Correct:** Keep business logic in the aggregate. Handler only orchestrates.
 
 ```python
-@handle(OrderShipped)
-def reduce_stock(self, event):
-    inventory = domain.repository_for(Inventory).get(event.inventory_id)
-    inventory.reduce_stock(event.quantity)  # Business logic in aggregate
-    domain.repository_for(Inventory).add(inventory)
+@handle(OrderPlaced)
+def confirm_order(self, event):
+    order = domain.repository_for(Order).get(event.order_id)
+    order.confirm()  # Business logic in aggregate
+    domain.repository_for(Order).add(order)
 ```
 
 ## 5. Using @handle with Command Classes in Event Handler
@@ -146,26 +146,77 @@ def handle(self, event):
     domain.repository_for(Notification).add(notification)
 ```
 
-**Better:** Use separate event handlers for separate aggregate updates, or have the handler update only the aggregate it belongs to and raise further events if needed.
+**Better:** Have the handler issue one command per target aggregate. Each target's command handler then changes its own aggregate in its own transaction. See [Cross-Aggregate](./cross-aggregate.md).
 
 ## 8. Using Plain Strings for stream_category
 
 **Wrong:**
 ```python
-@domain.event_handler(part_of=Inventory, stream_category="order")  # Plain string - may not match!
-class ManageInventory:
-    ...
+# fragment
+@domain.event_handler(part_of=AuditLog, stream_category="task")  # Plain string - may not match!
+class TaskAuditor:
+    @handle("$any")
+    def on_any_task_event(self, event): ...
 ```
 
 **Correct:** Use `Aggregate.meta_.stream_category` to get the fully-qualified stream name.
 
 ```python
-@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
-class ManageInventory:
-    ...
+@domain.event_handler(part_of=AuditLog, stream_category=Task.meta_.stream_category)
+class TaskAuditor:
+    @handle("$any")
+    def on_any_task_event(self, event): ...
 ```
 
 Stream categories are module-qualified internally. Using a plain string like `"order"` may not match the actual stream name, which includes the module path. Always use `Aggregate.meta_.stream_category` for reliable event routing.
+
+## 9. Handling Another Cluster's Event (`EVENT_HANDLER_FOREIGN_EVENT`)
+
+**Wrong:** `check` reports this handler as `EVENT_HANDLER_FOREIGN_EVENT`.
+
+```python
+# fragment
+@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
+class InventorySyncHandler:
+    @handle(OrderShipped)
+    def on_order_shipped(self, event: OrderShipped):
+        repo = domain.repository_for(Inventory)
+        inventory = repo.find_by(product_id=event.product_id)
+        inventory.reduce_stock(event.quantity)
+        repo.add(inventory)
+```
+
+The handler belongs to Inventory but reacts to `OrderShipped`, which belongs to Order. The two clusters are coupled directly: Inventory's handler depends on the shape of Order's event, and nothing in Inventory's write path sees the change.
+
+**Correct:** Put the handler in the cluster that owns the event and hand off with a command. Inventory's command handler does the write, and returns without changes for an order it has already applied, because events are delivered at least once.
+
+```python
+# fragment
+@domain.event_handler(part_of=Order)
+class InventorySyncHandler:
+    @handle(OrderShipped)
+    def on_order_shipped(self, event: OrderShipped):
+        current_domain.process(
+            ReduceStock(
+                order_id=event.order_id,
+                product_id=event.product_id,
+                quantity=event.quantity,
+            )
+        )
+
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    @handle(ReduceStock)
+    def reduce_stock(self, command: ReduceStock):
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.find_by(product_id=command.product_id)
+        if command.order_id in inventory.applied_order_ids:
+            return  # already applied
+        inventory.reduce_stock(command.order_id, command.quantity)
+        repo.add(inventory)
+```
+
+For a flow with several causally dependent steps, use a process manager. See [process-manager](../../process-manager/SKILL.md).
 
 ## Related
 

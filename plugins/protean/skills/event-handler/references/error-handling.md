@@ -20,12 +20,13 @@ See [assets/event_handler_error_handling.py](../assets/event_handler_error_handl
 The default `handle_error` implementation (from `HandlerMixin`) does nothing. Override it to add custom behavior:
 
 ```python
-@domain.event_handler(part_of=ShipmentLog, stream_category=Shipment.meta_.stream_category)
+@domain.event_handler(part_of=Shipment)
 class ShipmentNotifier:
     @handle(ShipmentDispatched)
     def on_shipment_dispatched(self, event: ShipmentDispatched):
-        log_entry = ShipmentLog(...)
-        domain.repository_for(ShipmentLog).add(log_entry)
+        current_domain.process(
+            RecordShipmentLog(log_id=f"{event.shipment_id}:dispatched", ...)
+        )
 
     @classmethod
     def handle_error(cls, exc: Exception, message) -> None:
@@ -33,6 +34,8 @@ class ShipmentNotifier:
         logger.error(f"Shipment event failed: {exc}")
         # Send alert, record failure metrics, etc.
 ```
+
+The handler sits in Shipment's cluster, which owns `ShipmentDispatched`, and writes the log entry through a `RecordShipmentLog` command to ShipmentLog.
 
 ## Method Signature
 
