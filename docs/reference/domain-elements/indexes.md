@@ -10,16 +10,7 @@ read-optimized query models, are an especially natural place to declare
 indexes.)
 
 ```python
-from protean import Index, Q
-
-
-@domain.aggregate(indexes=[
-    Index("status", "priority", desc=("priority",)),
-    Index("email", unique=True),
-    Index("status", where=Q(status__in=["pending", "failed"]), name="ix_active"),
-])
-class Order:
-    ...
+--8<-- "reference/domain-elements/indexes/001.py:aggregate"
 ```
 
 For the design rationale (why indexes are decorator parameters rather than a
@@ -32,6 +23,7 @@ storage-specific tuning on the model) see
 ## `Index`
 
 ```python
+# fragment
 Index(*fields, name=None, unique=False, desc=(), where=None, include=())
 ```
 
@@ -76,14 +68,7 @@ and the SQLAlchemy adapter emit the verbatim `ddl` **only** when the configured
 dialect matches `dialect`.
 
 ```python
-@domain.aggregate(indexes=[
-    Index.from_sql(
-        "postgresql",
-        "CREATE INDEX ix_order_data_gin ON order USING gin (data jsonb_path_ops)",
-    ),
-])
-class Order:
-    ...
+--8<-- "reference/domain-elements/indexes/002.py:from_sql"
 ```
 
 | Parameter | Type | Description |

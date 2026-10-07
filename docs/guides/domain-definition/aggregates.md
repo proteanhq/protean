@@ -87,24 +87,7 @@ create a blank aggregate with auto-generated identity, then raise a
 creation event whose `@apply` handler populates the remaining state:
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Order:
-    customer_name: String(max_length=150, required=True)
-    status: String(max_length=20, default="PENDING")
-
-    @classmethod
-    def place(cls, customer_name):
-        order = cls._create_new()
-        order.raise_(OrderPlaced(
-            order_id=str(order.id),
-            customer_name=customer_name,
-        ))
-        return order
-
-    @apply
-    def when_placed(self, event: OrderPlaced):
-        self.customer_name = event.customer_name
-        self.status = "PENDING"
+--8<-- "guides/domain-definition/aggregates/001.py:aggregate"
 ```
 
 This ensures the creation event's `@apply` handler is the single source of
@@ -118,7 +101,7 @@ Often, you may want to have common attributes across aggregates in your domain.
 `created_at` and `updated_at` are great examples. You can declare these common
 attributes in a base aggregate and inherit it in concrete classes:
 
-```python hl_lines="9-10 16"
+```python hl_lines="9-10 15-16"
 --8<-- "guides/domain-definition/003.py:full"
 ```
 
@@ -136,14 +119,10 @@ class for other aggregates.
 The `User` aggregate will inherit the two fields from the parent `TimeStamped`
 class:
 
-```shell hl_lines="3 4"
+```shell
 >>> from protean.utils.reflection import declared_fields
->>> declared_fields(User)
-{'created_at': DateTime(default=utc_now),
- 'updated_at': DateTime(default=utc_now),
- 'id': Auto(),
- 'name': String(max_length=30),
- 'timezone': String(max_length=30)}
+>>> list(declared_fields(User))
+['created_at', 'updated_at', 'name', 'timezone', 'id']
 ```
 
 ---
@@ -161,7 +140,7 @@ complete reference.
 Marks an Aggregate as abstract if `True`. If abstract, the aggregate
 cannot be instantiated and needs to be subclassed.
 
-```python hl_lines="12"
+```python hl_lines="13"
 --8<-- "guides/domain-definition/003.py:full"
 ```
 
@@ -169,7 +148,7 @@ cannot be instantiated and needs to be subclassed.
 
 Specifies the database that the aggregate is persisted in:
 
-```python hl_lines="5-16 19"
+```python hl_lines="5-14 17"
 --8<-- "guides/domain-definition/004.py:full"
 ```
 
@@ -184,10 +163,7 @@ The [stream category](../../concepts/async-processing/stream-categories.md)
 defines the logical grouping for all messages related to an aggregate:
 
 ```python
-@domain.aggregate(stream_category="customer_orders")
-class Order:
-    ...
-# Stream category: "customer_orders"
+--8<-- "guides/domain-definition/aggregates/002.py:aggregate"
 ```
 
 By default, it is the snake_case version of the class name.
@@ -202,10 +178,7 @@ integration where consumers need the complete state rather than individual
 deltas.
 
 ```python
-@domain.aggregate(fact_events=True)
-class Customer:
-    name: String(max_length=100)
-    email: String(max_length=255)
+--8<-- "guides/domain-definition/aggregates/003.py:aggregate"
 ```
 
 See [Fact Events](../domain-behavior/raising-events.md#fact-events) and
@@ -218,13 +191,7 @@ The maximum number of records returned by default queries (default: `100`).
 Set to `None` or a negative value to remove the limit:
 
 ```python
-@domain.aggregate(limit=500)
-class Product:
-    ...
-
-@domain.aggregate(limit=None)  # No limit
-class AuditLog:
-    ...
+--8<-- "guides/domain-definition/aggregates/004.py:aggregates"
 ```
 
 ### `indexes`
@@ -235,18 +202,7 @@ per query path beyond primary-key lookup (a uniqueness invariant, a composite
 filter-plus-sort, a correlation lookup):
 
 ```python
-from protean import Index, Q
-
-
-@domain.aggregate(indexes=[
-    Index("email", unique=True),
-    Index("status", "priority", desc=("priority",),
-          where=Q(status__in=["pending", "failed"]), name="ix_active"),
-])
-class Order:
-    email = String(max_length=255, required=True)
-    status = String(max_length=32, default="pending")
-    priority = Integer(default=0)
+--8<-- "guides/domain-definition/aggregates/005.py:aggregate"
 ```
 
 The portable options (composite, `desc`, `unique`) are honored by every SQL
@@ -280,15 +236,7 @@ Override the `defaults()` method when an attribute's default depends on
 other attribute values:
 
 ```python
-@domain.aggregate
-class Invoice:
-    subtotal: Float(required=True)
-    tax_rate: Float(default=0.1)
-    total: Float()
-
-    def defaults(self):
-        if self.total is None:
-            self.total = self.subtotal * (1 + self.tax_rate)
+--8<-- "guides/domain-definition/aggregates/006.py:aggregate"
 ```
 
 `defaults()` runs during initialization, after all field values have been
@@ -343,10 +291,12 @@ Out[6]: <Post: Post object (id: 19031285-6e27-4b7e-8b06-47ba6766208a)>
 In [7]: post.to_dict()
 Out[7]:
 {'title': 'Foo',
- 'created_on': '2024-05-06 14:29:22.946329+00:00',
- 'comments': [{'content': 'bar', 'id': 'af238f7b-5225-41fc-ae37-36cd4cface66'},
-  {'content': 'baz', 'id': '5b7fa5ad-7b64-4194-ade7-fb7a4b3a8a15'}],
- 'id': '19031285-6e27-4b7e-8b06-47ba6766208a'}
+ 'created_at': '2024-05-06T14:29:22.946329+00:00',
+ 'id': '19031285-6e27-4b7e-8b06-47ba6766208a',
+ 'stats': None,
+ 'comments': [{'content': 'bar', 'added_at': None, 'id': 'af238f7b-5225-41fc-ae37-36cd4cface66'},
+  {'content': 'baz', 'added_at': None, 'id': '5b7fa5ad-7b64-4194-ade7-fb7a4b3a8a15'}],
+ '_version': 0}
 ```
 
 ### Bidirectional Relationships

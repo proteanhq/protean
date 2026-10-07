@@ -95,12 +95,7 @@ rounding is unacceptable. With `precision`/`scale` it is fixed-precision;
 without them it is arbitrary-precision where the backend supports it.
 
 ```python
-from protean.fields import Decimal
-
-
-@domain.aggregate
-class Product:
-    price = Decimal(precision=19, scale=4, min_value=0)
+--8<-- "guides/domain-definition/fields/simple-fields/009.py:decimal"
 ```
 
 On SQL providers the field maps to `NUMERIC(precision, scale)`; values are
@@ -131,12 +126,12 @@ In [2]: p.to_dict()
 Out[2]:
 {'title': 'It',
  'published_on': '2024-05-09',
- 'id': '88a21815-7d9b-4138-9cac-5a06889d4318'}
+ 'id': '88a21815-7d9b-4138-9cac-5a06889d4318',
+ '_version': -1}
 ```
 
-Protean will intelligently convert a valid date string into a date object, with
-the help of the venerable
-[`dateutil`](https://dateutil.readthedocs.io/en/stable/) module.
+Protean converts a valid date string into a date object and rejects a string
+that is not a real date.
 
 ```shell
 In [1]: post = Post(title='Foo', published_on="2020-01-01")
@@ -145,12 +140,12 @@ In [2]: post.to_dict()
 Out[2]:
 {'title': 'Foo',
  'published_on': '2020-01-01',
- 'id': 'ffcb3b26-71f0-45d0-8ca0-b71a9603f792'}
+ 'id': 'ffcb3b26-71f0-45d0-8ca0-b71a9603f792',
+ '_version': -1}
 
 In [3]: Post(title='Foo', published_on="2019-02-29")
-ERROR: Error during initialization: {'published_on': ['"2019-02-29" has an invalid date format.']}
 ...
-ValidationError: {'published_on': ['"2019-02-29" has an invalid date format.']}
+ValidationError: {'published_on': ['Input should be a valid date or datetime, day value is outside expected range']}
 ```
 
 
@@ -168,8 +163,9 @@ In [1]: p = Post(title="It")
 In [2]: p.to_dict()
 Out[2]:
 {'title': 'It',
- 'created_at': '2024-05-09 17:12:11.373300+00:00',
- 'id': '3a96e434-06ab-4244-80a8-76edbd621a27'}
+ 'created_at': '2024-05-09T17:12:11.373300+00:00',
+ 'id': '3a96e434-06ab-4244-80a8-76edbd621a27',
+ '_version': -1}
 ```
 
 ### Auto-populated timestamps
@@ -183,13 +179,7 @@ layer stamp the field on save:
   update). Use it for `updated_at`.
 
 ```python
-from protean.fields import DateTime, String
-
-@domain.aggregate
-class Article:
-    title: String(max_length=100)
-    created_at: DateTime(auto_now_add=True)
-    updated_at: DateTime(auto_now=True)
+--8<-- "guides/domain-definition/fields/simple-fields/010.py:auto_now"
 ```
 
 The two flags are mutually exclusive, are only valid on `DateTime`/`Date`
@@ -218,7 +208,8 @@ In [2]: u.to_dict()
 Out[2]:
 {'name': 'John Doe',
  'subscribed': False,
- 'id': '69190dd4-12a6-4666-a799-9409ddab39cd'}
+ 'id': '69190dd4-12a6-4666-a799-9409ddab39cd',
+ '_version': -1}
 ```
 
 ## Auto
@@ -259,18 +250,17 @@ that represents their unique identifier.
 --8<-- "guides/domain-definition/fields/simple-fields/001.py:full"
 ```
 
-```shell hl_lines="4 11"
-In [1]: declared_fields(Person)
-Out[1]:
-{'name': String(required=True, max_length=50, min_length=2),
- 'id': Auto(identifier=True)}
+```shell hl_lines="2 9"
+In [1]: list(declared_fields(Person))
+Out[1]: ['name', 'id']
 
 In [2]: p = Person(name='John Doe')
 
 In [3]: p.to_dict()
 Out[3]:
 {'name': 'John Doe',
- 'id': '7d32e929-e5c5-4856-a6e7-1ebf12e6259e'}
+ 'id': '7d32e929-e5c5-4856-a6e7-1ebf12e6259e',
+ '_version': -1}
 ```
 
 Identity values are UUIDs by default. You can customize this behavior with
@@ -280,17 +270,11 @@ The [Identity](../domain-elements/identity.md) section covers identities in Prot
 
 ## Identifier
 
-An Identifier. The identity type is String type by default, but can be changed
-with `identity_type` configuration attribute for all entities, or can be set
-per entity with the `identity_type` parameter.
+An Identifier. It always stores its value as a string. The `identity_type`
+configuration attribute does not change that, and `Identifier` takes no
+`identity_type` argument.
 
-**Optional Arguments**
-
-- **`identity_type`**: The type of the identifier field. If not provided, it
-will be picked from the domain configuration. Defaults to `STRING`. Raises
-`ValidationError` if the provided identity type is not supported.
-
-```python hl_lines="14"
+```python hl_lines="13"
 --8<-- "guides/domain-definition/fields/simple-fields/008.py:full"
 ```
 
@@ -298,7 +282,7 @@ will be picked from the domain configuration. Defaults to `STRING`. Raises
 In [1]: user = User(user_id=1, name="John Doe")
 
 In [2]: user.to_dict()
-Out[2]: {'user_id': 1, 'name': 'John Doe', 'subscribed': False}
+Out[2]: {'user_id': '1', 'name': 'John Doe', 'subscribed': False, '_version': -1}
 ```
 
 Refer to [Identity](../domain-elements/identity.md) section for more on identities
@@ -311,20 +295,7 @@ Requires an Enum class as the first argument. Valid values are the Enum members'
 `value` attributes.
 
 ```python
-from enum import Enum
-from protean.fields import Status
-
-class OrderStatus(Enum):
-    DRAFT = "DRAFT"
-    PLACED = "PLACED"
-    CONFIRMED = "CONFIRMED"
-    SHIPPED = "SHIPPED"
-    DELIVERED = "DELIVERED"
-    CANCELLED = "CANCELLED"
-
-@domain.aggregate
-class Order:
-    status = Status(OrderStatus, default="DRAFT")
+--8<-- "guides/domain-definition/fields/simple-fields/011.py:status"
 ```
 
 Without `transitions`, `Status` behaves like `String(choices=Enum)`. It
@@ -335,15 +306,7 @@ constrains values but does not enforce transition rules.
 Pass a `transitions` dict mapping each state to its allowed next states:
 
 ```python
-@domain.aggregate
-class Order:
-    status = Status(OrderStatus, default="DRAFT", transitions={
-        OrderStatus.DRAFT: [OrderStatus.PLACED, OrderStatus.CANCELLED],
-        OrderStatus.PLACED: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-        OrderStatus.CONFIRMED: [OrderStatus.SHIPPED],
-        OrderStatus.SHIPPED: [OrderStatus.DELIVERED],
-        # DELIVERED and CANCELLED are terminal — absent from keys
-    })
+--8<-- "guides/domain-definition/fields/simple-fields/012.py:transitions"
 ```
 
 States not appearing as keys in the transitions dict are **terminal states**,
@@ -357,13 +320,12 @@ Same-value assignments are also validated against the map. To make a state
 OrderStatus.CANCELLED: [OrderStatus.CANCELLED],  # cancel() is idempotent
 ```
 
-```shell hl_lines="6 11"
+```shell hl_lines="3 6"
 In [1]: order = Order()
 
 In [2]: order.status = "PLACED"  # DRAFT → PLACED: allowed
 
 In [3]: order.status = "SHIPPED"
-ERROR: ...
 ValidationError: {'status': ["Invalid status transition from 'PLACED' to 'SHIPPED'. Allowed transitions: CONFIRMED, CANCELLED"]}
 ```
 
@@ -372,8 +334,7 @@ ValidationError: {'status': ["Invalid status transition from 'PLACED' to 'SHIPPE
 Use `can_transition_to()` to check whether a transition is valid without raising:
 
 ```python
-order.can_transition_to("status", OrderStatus.SHIPPED)  # False
-order.can_transition_to("status", OrderStatus.CONFIRMED)  # True
+--8<-- "guides/domain-definition/fields/simple-fields/012.py:can_transition_to"
 ```
 
 **Optional Arguments**

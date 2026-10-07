@@ -35,22 +35,12 @@ Use the `abstract` option to define a base event with shared fields that
 concrete events can inherit:
 
 ```python
-@domain.event(abstract=True)
-class BaseOrderEvent:
-    order_id = Identifier(required=True)
-    occurred_at = DateTime(required=True)
-
-@domain.event(part_of=Order)
-class OrderPlaced(BaseOrderEvent):
-    customer_name = String(max_length=100)
-
-@domain.event(part_of=Order)
-class OrderCancelled(BaseOrderEvent):
-    reason = String(max_length=500)
+--8<-- "guides/domain-definition/events/004.py:events"
 ```
 
-Abstract events cannot be instantiated or raised directly. They don't
-require `part_of` since they are never emitted to a stream.
+Abstract events cannot be raised directly: raising one throws
+`ConfigurationError`. They don't require `part_of` since they are never
+emitted to a stream.
 
 ---
 
@@ -66,8 +56,7 @@ Events in Protean can be processed either synchronously or asynchronously:
 You can configure the event processing mode through the domain configuration:
 
 ```python
-# Configure events to be processed synchronously
-domain.config["event_processing"] = "sync"  # or "async"
+--8<-- "guides/domain-definition/events/005.py:config"
 ```
 
 In domain.toml:
@@ -155,9 +144,7 @@ Protean offers similar configuration options for commands through:
 Both events and commands in Protean follow similar processing patterns, enabling you to build consistent, predictable workflows. You can configure both to suit your specific domain needs:
 
 ```python
-# Domain-wide configuration
-domain.config["event_processing"] = "async"   # or "sync"
-domain.config["command_processing"] = "sync"  # or "async"
+--8<-- "guides/domain-definition/events/006.py:config"
 ```
 
 This flexibility allows you to implement various architectural patterns like CQRS, Event Sourcing, and Event-Driven Architecture within your Protean applications.
@@ -170,13 +157,13 @@ An event is made of three parts:
 
 ### Headers
 
-#### `trace_id`
+#### `traceparent`
 
-The `trace_id` is a unique identifier of UUID format, that connects all
-processing originating from a request. Trace IDs provide a detailed view of
-the request's journey through the system. It helps in understanding the
-complete flow of a request, showing each service interaction, the time taken,
-and where any delays occur.
+The `traceparent` header holds the W3C Trace Context of the request that led
+to the event. A tracing backend uses it to connect all the processing that
+started from one request: each service call, the time it took, and where
+delays happened. Protean fills it from the current OpenTelemetry span when the
+event is created. It is `null` when no trace is active.
 
 ### Metadata
 
@@ -186,20 +173,40 @@ Sample metadata from an event:
 
 ```json
 {
-    "id": "test::user-411b2ceb-9513-45d7-9e03-bbc0846fae93-0",
-    "type": "Test.UserLoggedIn.v1",
-    "fqn": "tests.event.test_event_metadata.UserLoggedIn",
-    "kind": "EVENT",
-    "stream": "test::user-411b2ceb-9513-45d7-9e03-bbc0846fae93",
-    "origin_stream": null,
-    "timestamp": "2024-08-16 15:30:27.977101+00:00",
-    "version": 1,
-    "sequence_id": "0",
-    "asynchronous": true,
-    "correlation_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
-    "causation_id": "test::user:command-411b2ceb-9513-45d7-9e03-bbc0846fae93"
+    "headers": {
+        "id": "test::user-411b2ceb-9513-45d7-9e03-bbc0846fae93-0",
+        "time": "2024-08-16T15:30:27.977101+00:00",
+        "type": "Test.UserLoggedIn.v1",
+        "stream": "test::user-411b2ceb-9513-45d7-9e03-bbc0846fae93",
+        "traceparent": null,
+        "idempotency_key": null,
+        "deadline": null
+    },
+    "envelope": {
+        "specversion": "1.0",
+        "checksum": "<SHA-256 hex digest of the event payload>"
+    },
+    "domain": {
+        "fqn": "tests.event.test_event_metadata.UserLoggedIn",
+        "kind": "EVENT",
+        "origin_stream": null,
+        "stream_category": "test::user",
+        "version": 1,
+        "sequence_id": "0",
+        "asynchronous": true,
+        "expected_version": null,
+        "priority": 0,
+        "correlation_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+        "causation_id": "test::user:command-411b2ceb-9513-45d7-9e03-bbc0846fae93"
+    },
+    "event_store": null,
+    "extensions": {}
 }
 ```
+
+The `headers` group holds the message `id`, `type`, `time` and `stream`, plus
+`traceparent`, `idempotency_key` and `deadline`. The `domain` group holds the
+other fields described below.
 
 #### `id`
 
@@ -217,7 +224,7 @@ For e.g. `Shipping.OrderShipped.v1`.
 #### `fqn`
 
 Internal. The fully qualified name of the event. This is used by Protean to
-resconstruct objects from messages.
+reconstruct objects from messages.
 
 #### `kind`
 
@@ -245,9 +252,9 @@ See the [Stream Categories](../../concepts/async-processing/stream-categories.md
 Name of the stream that originated this event or command. `origin_stream` comes
 handy when correlating related events or understanding causality.
 
-#### `timestamp`
+#### `time`
 
-The timestamp of event generation in ISO 8601 format.
+The time the event was generated, in ISO 8601 format.
 
 #### `version`
 
@@ -286,6 +293,7 @@ the API gateway or frontend) and passed into `domain.process()`. If no external
 ID is provided, Protean auto-generates one (UUID4 hex, 32 characters).
 
 ```python
+# fragment
 # Pass an external correlation ID
 domain.process(
     PlaceOrder(customer_id="cust-123"),
@@ -318,7 +326,7 @@ The payload is made available as the body of the event, which also includes
 the event metadata. If you want to extract just the payload, you can use the
 `payload` property of the event.
 
-```shell hl_lines="22 24-25"
+```shell hl_lines="12 36-37"
 In [1]: user = User(id="1", email="<EMAIL>", name="<NAME>")
 
 In [2]: user.login()
@@ -326,20 +334,33 @@ In [2]: user.login()
 In [3]: event = user._events[0]
 
 In [4]: event
-Out[4]: <UserLoggedIn: UserLoggedIn object ({'_metadata': {'id': '002::user-1-0.1', 'type': '002.UserLoggedIn.v1', 'fqn': '002.UserLoggedIn', 'kind': 'EVENT', 'stream': '002::user-1', 'origin_stream': None, 'timestamp': '2024-07-18 22:02:32.522360+00:00', 'version': 1, 'sequence_id': '0.1'}, 'user_id': '1'})>
+Out[4]: UserLoggedIn(user_id='1')
 
 In [5]: event.to_dict()
 Out[5]:
-{'_metadata': {'id': '002::user-1-0.1',
-  'type': '002.UserLoggedIn.v1',
-  'fqn': '002.UserLoggedIn',
-  'kind': 'EVENT',
-  'stream': '002::user-1',
-  'origin_stream': None,
-  'timestamp': '2024-07-18 22:02:32.522360+00:00',
-  'version': 1,
-  'sequence_id': '0.1'},
- 'user_id': '1'}
+{'user_id': '1',
+ '_metadata': {'headers': {'id': 'authentication::user-1-0.1',
+                           'time': '2026-10-07T03:44:25.153399+00:00',
+                           'type': 'Authentication.UserLoggedIn.v1',
+                           'stream': 'authentication::user-1',
+                           'traceparent': None,
+                           'idempotency_key': None,
+                           'deadline': None},
+               'envelope': {'specversion': '1.0',
+                            'checksum': 'cd9d7b681c5e44fab98ffa379db7c5ee5a143824dc235117339b54221ab2e2c8'},
+               'domain': {'fqn': '__main__.UserLoggedIn',
+                          'kind': 'EVENT',
+                          'origin_stream': None,
+                          'stream_category': 'authentication::user',
+                          'version': 1,
+                          'sequence_id': '0.1',
+                          'asynchronous': True,
+                          'expected_version': None,
+                          'priority': 0,
+                          'correlation_id': None,
+                          'causation_id': None},
+               'event_store': None,
+               'extensions': {}}}
 
 In [6]: event.payload
 Out[6]: {'user_id': '1'}
@@ -356,22 +377,14 @@ You can override and customize the version with the `__version__` class
 attribute:
 
 ```python hl_lines="3"
-@domain.event(part_of=User)
-class UserActivated:
-    __version__ = 2
-
-    user_id: Identifier(required=True)
-    activated_at: DateTime(required=True)
+--8<-- "guides/domain-definition/events/007.py:event"
 ```
 
 Equivalently, pass `version=` to the decorator, keeping the version alongside the
 other options rather than inside the class body:
 
 ```python hl_lines="1"
-@domain.event(part_of=User, version=2)
-class UserActivated:
-    user_id: Identifier(required=True)
-    activated_at: DateTime(required=True)
+--8<-- "guides/domain-definition/events/008.py:event"
 ```
 
 Use whichever reads better; declaring the version both ways on the same class
@@ -392,7 +405,7 @@ pattern for broader versioning strategies.
 The configured version is reflected in `version` and `type` attributes of the
 generated event's metadata:
 
-```python hl_lines="32 49 55 70 76"
+```python hl_lines="32 52 67 92 107"
 --8<-- "guides/domain-definition/events/002.py:full"
 ```
 
@@ -402,35 +415,7 @@ Here is a complete example showing the full lifecycle: defining an event,
 raising it from an aggregate, and handling it in an event handler.
 
 ```python
-from protean import Domain, handle
-from protean.fields import Identifier, String, DateTime
-
-domain = Domain(__file__, "Ordering")
-
-# 1. Define the aggregate and event
-@domain.aggregate
-class Order:
-    customer_name: String(max_length=100, required=True)
-    status: String(max_length=20, default="DRAFT")
-
-    def place(self):
-        self.status = "PLACED"
-        self.raise_(OrderPlaced(
-            order_id=str(self.id),
-            customer_name=self.customer_name,
-        ))
-
-@domain.event(part_of=Order)
-class OrderPlaced:
-    order_id = Identifier(required=True)
-    customer_name = String(max_length=100)
-
-# 2. Define a handler that reacts to the event
-@domain.event_handler(part_of=Order)
-class OrderPlacedNotification:
-    @handle(OrderPlaced)
-    def send_confirmation(self, event: OrderPlaced):
-        print(f"Order {event.order_id} placed for {event.customer_name}")
+--8<-- "guides/domain-definition/events/009.py:full"
 ```
 
 When `order.place()` is called, the `OrderPlaced` event is raised and
@@ -477,7 +462,7 @@ Event objects are immutable - they cannot be changed once created. This is
 important because events are meant to be used as a snapshot of the domain
 state at a specific point in time.
 
-```shell hl_lines="5 7-11"
+```shell hl_lines="5 7"
 In [1]: user = User(name='John Doe', email='john@doe.com', status='ACTIVE')
 
 In [2]: renamed = UserRenamed(user_id=user.id, name="John Doe Jr.")

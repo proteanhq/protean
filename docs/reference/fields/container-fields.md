@@ -19,7 +19,7 @@ Value Object within an entity.
 You can provide an instance of the Value Object as input to the value object
 field:
 
-```shell hl_lines="2 8"
+```shell hl_lines="2 10"
 In [1]: account = Account(
    ...:     balance=Balance(currency="USD", amount=100.0),
    ...:     name="Checking"
@@ -27,9 +27,10 @@ In [1]: account = Account(
 
 In [2]: account.to_dict()
 Out[2]:
-{'balance': {'currency': 'USD', 'amount': 100.0},
- 'name': 'Checking',
- 'id': '513b8a78-e00f-45ce-bb6f-11ef0cccbec6'}
+{'name': 'Checking',
+ 'id': '513b8a78-e00f-45ce-bb6f-11ef0cccbec6',
+ 'balance': {'currency': 'USD', 'amount': 100.0},
+ '_version': -1}
 ```
 
 ## `ValueObjectFromEntity`
@@ -45,12 +46,7 @@ entity's fields, this descriptor derives it at class-body evaluation time.
   excluded, and `HasOne`/`HasMany` associations are recursively converted.
 
 ```python
-from protean.fields import List, ValueObjectFromEntity
-
-@domain.command(part_of=Order)
-class PlaceOrder:
-    customer_id: Identifier(required=True)
-    items: List(content_type=ValueObjectFromEntity(OrderItem))
+--8<-- "guides/domain-definition/fields/container-fields/005.py:place_order"
 ```
 
 This is equivalent to calling `value_object_from_entity(OrderItem)` and
@@ -66,9 +62,12 @@ A field that represents a list of values.
 
 **Optional Arguments**
 
-- **`content_type`**: The type of items in the list. Defaults to `String`.
-Accepted field types are `Boolean`, `Date`, `DateTime`, `Float`, `Identifier`,
-`Integer`, `String`, and `Text`.
+- **`content_type`**: The type of items in the list. It can be a simple field
+such as `String`, `Integer`, `Float`, `Decimal`, `Boolean`, `Date`,
+`DateTime`, `Identifier`, `Text` or `Dict`, or a `ValueObject` field (see
+[List of Value Objects](#list-of-value-objects)). `Auto` raises a
+`ValidationError`. Association fields such as `HasMany` and `Reference` are not
+supported. When you leave it out, the list accepts items of any type.
 
 ```python hl_lines="10"
 --8<-- "guides/domain-definition/fields/container-fields/001.py:full"
@@ -84,12 +83,12 @@ In [2]: user.to_dict()
 Out[2]:
 {'email': 'john.doe@gmail.com',
  'roles': ['ADMIN', 'EDITOR'],
- 'id': '582d946b-409b-4b15-b3be-6a90284264b3'}
+ 'id': '582d946b-409b-4b15-b3be-6a90284264b3',
+ '_version': -1}
 
 In [3]: user2 = User(email="jane.doe@gmail.com", roles=[1, 2])
-ERROR: Error during initialization: {'roles': ['Invalid value [1, 2]']}
 ...
-ValidationError: {'roles': ['Invalid value [1, 2]']}
+ValidationError: {'roles': ['Input should be a valid string', 'Input should be a valid string']}
 ```
 
 ### List of Value Objects
@@ -117,7 +116,8 @@ In [1]: order = Order(
 
 In [2]: order.to_dict()
 Out[2]:
-{'customer': {'name': 'John Doe',
+{'id': '4a9538bf-1eb1-4621-8ced-86bcc4362a51',
+ 'customer': {'name': 'John Doe',
   'email': 'john@doe.com',
   'addresses': [{'street': '123 Main St',
     'city': 'Anytown',
@@ -128,7 +128,7 @@ Out[2]:
     'state': 'CA',
     'country': 'USA'}],
   'id': 'f5c5a750-e9fe-47db-877e-44b7c0ca1dfc'},
- 'id': '4a9538bf-1eb1-4621-8ced-86bcc4362a51'}
+ '_version': -1}
 
 In [3]: domain.repository_for(Order).add(order)
 Out[3]: <Order: Order object (id: 4a9538bf-1eb1-4621-8ced-86bcc4362a51)>
@@ -139,37 +139,22 @@ In [5]: len(retrieved_order.customer.addresses)
 Out[5]: 2
 ```
 
-Note that unlike `HasMany` fields, you have to supply a new entire list of
-Value Objects if you want to update the field. Appendind to the list will not
-work.
+To change the list, append to it or assign a new list, then save the
+aggregate through its repository. The change is stored only when you save.
 
 ```shell
 In [6]: retrieved_order.customer.addresses.append(
    ...:     Address(street="456 Side St", city="Anytown", state="CA", country="USA")
    ...: )
 
-In [7]: domain.repository_for(Order).add(retrieved_order)
-Out[7]: <Order: Order object (id: 4a9538bf-1eb1-4621-8ced-86bcc4362a51)>
+In [7]: len(domain.repository_for(Order).get(order.id).customer.addresses)
+Out[7]: 2
 
-In [8]: updated_order = domain.repository_for(Order).get(order.id)
+In [8]: domain.repository_for(Order).add(retrieved_order)
+Out[8]: <Order: Order object (id: 4a9538bf-1eb1-4621-8ced-86bcc4362a51)>
 
-In [9]: len(updated_order.customer.addresses)
-Out[9]: 2
-# This did not work!
-In [10]: updated_order.customer.addresses = [
-    ...:     Address(street="123 Main St", city="Anytown", state="CA", country="USA"),
-    ...:     Address(street="321 Side St", city="Anytown", state="CA", country="USA"),
-    ...:     Address(street="456 Side St", city="Anytown", state="CA", country="USA"),
-    ...: ]
-
-In [11]: domain.repository_for(Order).add(updated_order)
-Out[11]: <Order: Order object (id: 4a9538bf-1eb1-4621-8ced-86bcc4362a51)>
-
-In [12]: refreshed_order = domain.repository_for(Order).get(order.id)
-
-In [13]: len(refreshed_order.customer.addresses)
-Out[13]: 3
-# This worked!
+In [9]: len(domain.repository_for(Order).get(order.id).customer.addresses)
+Out[9]: 3
 ```
 
 ## `Dict`
@@ -198,7 +183,8 @@ In [2]: event.to_dict()
 Out[2]:
 {'name': 'UserRegistered',
  'payload': {'name': 'John Doe', 'email': 'john.doe@example.com'},
- 'id': '44e9143f-f4a6-40da-9128-4b6c013420d4'}
+ 'id': '44e9143f-f4a6-40da-9128-4b6c013420d4',
+ '_version': -1}
 ```
 
 !!!note
@@ -215,19 +201,7 @@ on load and serialized to a plain dict for storage (a single JSON column), just
 like a [list of value objects](#list-of-value-objects):
 
 ```python
-from protean.fields import Dict, String, ValueObject
-
-
-@domain.value_object
-class Address:
-    street: String(max_length=100)
-    city: String(max_length=25)
-
-
-@domain.aggregate
-class Customer:
-    name: String(max_length=50)
-    addresses: Dict(value_type=ValueObject(Address))   # {"home": Address(...), ...}
+--8<-- "guides/domain-definition/fields/container-fields/006.py:dict_of_value_objects"
 ```
 
 The values must be value objects; use the untyped `Dict()` for loose JSON of

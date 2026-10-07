@@ -1,15 +1,13 @@
 # --8<-- [start:full]
-import re
-
-from pydantic import PlainSerializer, PlainValidator
-
 from protean import Domain
-from protean.fields import Custom, String
 
 domain = Domain()
 
 
 # --8<-- [start:type]
+import re
+
+
 class Color:
     """An RGB color stored as a ``#RRGGBB`` hex string."""
 
@@ -47,6 +45,11 @@ def parse_color(value: object) -> Color:
 
 
 # --8<-- [start:field]
+from pydantic import PlainSerializer, PlainValidator
+
+from protean.fields import Custom, String
+
+
 @domain.aggregate(fact_events=True)
 class Palette:
     name: String(required=True)

@@ -33,7 +33,7 @@ with at most one instance of a child entity.
 
 The `Author` entity can now be persisted along with the `Book` aggregate:
 
-```shell hl_lines="3 12-13"
+```shell hl_lines="3 13-14"
 In [1]: book = Book(
    ...:     title="The Great Gatsby",
    ...:     author=Author(name="F. Scott Fitzgerald")
@@ -45,9 +45,10 @@ Out[2]: <Book: Book object (id: a4a642d9-87ed-44de-9889-c687466f171b)>
 In [3]: domain.repository_for(Book).query.all().items[0].to_dict()
 Out[3]:
 {'title': 'The Great Gatsby',
+ 'id': 'a4a642d9-87ed-44de-9889-c687466f171b',
  'author': {'name': 'F. Scott Fitzgerald',
   'id': '1f275e92-9872-4d96-b999-4ef0fbe61013'},
- 'id': 'a4a642d9-87ed-44de-9889-c687466f171b'}
+ '_version': 0}
 ```
 
 !!!note
@@ -55,20 +56,14 @@ Out[3]:
     relationship - from child entity to aggregate - when persisted. This is
     visible if you introspect the fields of the Child Entity.
 
-    ```shell hl_lines="7 13"
+    ```shell hl_lines="4 7"
     In [1]: from protean.utils.reflection import declared_fields, attributes
 
-    In [2]: declared_fields(Author)
-    Out[2]:
-    {'name': String(required=True, max_length=50),
-    'id': Auto(identifier=True),
-    'book': Reference()}
+    In [2]: list(declared_fields(Author))
+    Out[2]: ['name', 'id', 'book']
 
-    In [3]: attributes(Author)
-    Out[3]:
-    {'name': String(required=True, max_length=50),
-    'id': Auto(identifier=True),
-    'book_id': _ReferenceField()}
+    In [3]: list(attributes(Author))
+    Out[3]: ['name', 'id', 'book_id']
     ```
 
 We will further review persistence related aspects around associations in the
@@ -88,7 +83,7 @@ entity.
 Protean provides helper methods that begin with `add_` and `remove_` to add
 and remove child entities from the `HasMany` relationship.
 
-```shell hl_lines="4-5 12-13 16 23"
+```shell hl_lines="4-5 14-15 18 27"
 In [1]: post = Post(
    ...:     title="Foo",
    ...:     comments=[
@@ -100,19 +95,23 @@ In [1]: post = Post(
 In [2]: post.to_dict()
 Out[2]:
 {'title': 'Foo',
- 'comments': [{'content': 'Bar', 'id': '085ed011-15b3-48e3-9363-99a53bc9362a'},
-  {'content': 'Baz', 'id': '4790cf87-c234-42b6-bb03-1e0599bd6c0f'}],
- 'id': '29943ac9-a9eb-497b-b6d2-466b30ecd5f5'}
+ 'body': None,
+ 'id': '29943ac9-a9eb-497b-b6d2-466b30ecd5f5',
+ 'comments': [{'content': 'Bar', 'rating': None, 'id': '085ed011-15b3-48e3-9363-99a53bc9362a'},
+  {'content': 'Baz', 'rating': None, 'id': '4790cf87-c234-42b6-bb03-1e0599bd6c0f'}],
+ '_version': -1}
 
 In [3]: post.add_comments(Comment(content="Qux"))
 
 In [4]: post.to_dict()
 Out[4]:
 {'title': 'Foo',
- 'comments': [{'content': 'Bar', 'id': '085ed011-15b3-48e3-9363-99a53bc9362a'},
-  {'content': 'Baz', 'id': '4790cf87-c234-42b6-bb03-1e0599bd6c0f'},
-  {'content': 'Qux', 'id': 'b1a7aeda-81ca-4d0b-9d7e-6fe0c000b8af'}],
- 'id': '29943ac9-a9eb-497b-b6d2-466b30ecd5f5'}
+ 'body': None,
+ 'id': '29943ac9-a9eb-497b-b6d2-466b30ecd5f5',
+ 'comments': [{'content': 'Bar', 'rating': None, 'id': '085ed011-15b3-48e3-9363-99a53bc9362a'},
+  {'content': 'Baz', 'rating': None, 'id': '4790cf87-c234-42b6-bb03-1e0599bd6c0f'},
+  {'content': 'Qux', 'rating': None, 'id': 'b1a7aeda-81ca-4d0b-9d7e-6fe0c000b8af'}],
+ '_version': -1}
 ```
 
 You can also use helper methods that begin with `get_one_from_` and `filter_` to filter
@@ -148,25 +147,19 @@ A `Reference` field establishes the inverse relationship from child entities to 
 
 Every entity associated with an aggregate automatically gets a `Reference` field created for it, unless explicitly defined. The field name is derived from the aggregate's name (e.g., `Post` becomes `post`).
 
-```python hl_lines="4"
-@domain.entity(part_of=Post)
-class Comment:
-    content: String(max_length=500)
-    post = Reference(Post)  # Explicit reference field
+```python hl_lines="10"
+--8<-- "guides/domain-definition/fields/association-fields/003.py:explicit_reference"
 ```
 
 ### Shadow Fields
 
 Reference fields automatically create shadow fields (foreign key attributes) that store the actual identifier values. These shadow fields follow the naming convention `<field_name>_<id_field>`:
 
-```shell hl_lines="6"
+```shell hl_lines="4"
 In [1]: from protean.utils.reflection import attributes
-In [2]: attributes(Comment)
-Out[2]:
-{'content': String(max_length=500),
- 'id': Auto(identifier=True),
- 'post': Reference(),
- 'post_id': _ReferenceField()}
+
+In [2]: list(attributes(Comment))
+Out[2]: ['content', 'id', 'post_id']
 ```
 
 ### Custom Shadow Field Names
@@ -174,36 +167,21 @@ Out[2]:
 Use `referenced_as` to specify a custom name for the shadow field:
 
 ```python
-@domain.entity(part_of=Order)
-class OrderItem:
-    quantity: Integer()
-    order = Reference(Order, referenced_as="order_number")
-    # Creates shadow field 'order_number' instead of 'order_id'
+--8<-- "guides/domain-definition/fields/association-fields/004.py:order_item"
 ```
 
 The same name has to be specified on the `HasOne` or `HasMany` field with the `via` option, to establish the two-way relationship.
 
 ```python
-@domain.aggregate
-class Order:
-   ordered_at: DateTime()
-   items = HasMany(OrderItem, via="order_number")
+--8<-- "guides/domain-definition/fields/association-fields/004.py:order"
 ```
 
 ## Customizing Foreign Keys with `via`
 
-By default, association fields create foreign keys following the pattern `<aggregate_name>_id`. The `via` parameter allows you to specify a custom field name for the foreign key relationship:
+By default, association fields name the foreign key `<aggregate_name>_<identifier_name>`, such as `product_id` for a `Product` whose identifier is `id`. The `via` parameter allows you to specify a custom field name for the foreign key relationship:
 
-```python hl_lines="4 9"
-@domain.aggregate
-class Product:
-    name: String(max_length=100)
-    reviews = HasMany("Review", via="product_sku")
-
-@domain.entity(part_of=Product)
-class Review:
-    content: String(max_length=1000)
-    product_sku: String()  # Custom foreign key field
+```python hl_lines="4 10"
+--8<-- "guides/domain-definition/fields/association-fields/005.py:via"
 ```
 
-This is particularly useful when you want to link entities using fields other than the default identifier, or when you need specific naming conventions for your foreign key relationships.
+Use it when the foreign key has to match a column name in an existing schema. The value stored in the `via` field is still the parent's identifier, and Protean still adds the default `<aggregate_name>_<identifier_name>` field (`product_id` here) next to it.

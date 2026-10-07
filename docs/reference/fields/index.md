@@ -23,10 +23,7 @@ Protean supports three styles for declaring fields: annotation style
 fully supported and can be mixed within a single class.
 
 ```python
-@domain.aggregate
-class Product:
-    name: String(max_length=50, required=True)   # annotation (recommended)
-    price: Float(min_value=0)                    # assignment
+--8<-- "guides/domain-definition/fields/index-page/001.py:product"
 ```
 
 Read more in [Defining fields](./defining-fields.md).
@@ -34,8 +31,8 @@ Read more in [Defining fields](./defining-fields.md).
 ## Field arguments
 
 Protean fields come with various options to model real-world scenarios effectively.
-These include `required`, `default`, `choices`, and `unique`, among others, which let you describe a field precisely and
-domain model definition.
+These include `required`, `default`, `choices`, and `unique`, among others,
+which let you describe each field precisely in the domain model.
 
 Read more in [Arguments](./arguments.md) section.
 

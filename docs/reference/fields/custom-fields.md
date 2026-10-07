@@ -108,27 +108,7 @@ the field, a raw value that should parse, the value it should parse to, and a ra
 value it should reject:
 
 ```python
-from pydantic import PlainSerializer, PlainValidator
-
-from protean.fields import Custom
-from protean.integrations.pytest.custom_field_conformance import (
-    run_custom_field_conformance,
-)
-
-
-def test_color_field_conformance():
-    field = Custom(
-        Color,
-        validators=[PlainValidator(parse_color)],
-        serializers=[PlainSerializer(lambda c: c.hex, return_type=str)],
-        required=True,
-    )
-    run_custom_field_conformance(
-        field,
-        valid_input="#3366ff",
-        expected=Color("#3366FF"),
-        invalid_input="not-a-color",
-    )
+--8<-- "guides/domain-definition/fields/custom-fields/002.py:conformance"
 ```
 
 The harness declares a throwaway aggregate carrying the field, then asserts the

@@ -25,15 +25,7 @@ bidirectional linkages.
 A `HasOne` relationship represents a one-to-one association between an aggregate and a child entity. The aggregate can have at most one instance of the related entity.
 
 ```python
-@domain.aggregate
-class Blog:
-    title: String(max_length=100)
-    settings = HasOne("BlogSettings")
-
-@domain.entity(part_of=Blog)
-class BlogSettings:
-    theme: String(max_length=50)
-    allow_comments: Boolean(default=True)
+--8<-- "guides/domain-definition/relationships/001.py:aggregate"
 ```
 
 ### One-to-Many (HasMany)
@@ -41,15 +33,7 @@ class BlogSettings:
 A `HasMany` relationship represents a one-to-many association where an aggregate can contain multiple instances of a child entity.
 
 ```python
-@domain.aggregate
-class Post:
-    title: String(max_length=100)
-    comments = HasMany("Comment")
-
-@domain.entity(part_of=Post)
-class Comment:
-    content: String(max_length=500)
-    author: String(max_length=50)
+--8<-- "guides/domain-definition/relationships/002.py:aggregate"
 ```
 
 ### Value Object Embedding
@@ -59,16 +43,7 @@ Value objects are embedded using the `ValueObject` field type, not
 with the parent. They don't have their own identity or separate table.
 
 ```python
-@domain.value_object
-class Address:
-    street: String(max_length=200)
-    city: String(max_length=100)
-    zip_code: String(max_length=10)
-
-@domain.aggregate
-class Customer:
-    name: String(max_length=100)
-    billing_address = ValueObject(Address)
+--8<-- "guides/domain-definition/relationships/009.py:aggregate"
 ```
 
 See the [Value Objects](./value-objects.md) guide for details on embedding
@@ -83,6 +58,7 @@ Every association automatically creates a corresponding `Reference` field in the
 Protean automatically adds a `Reference` field to entities based on the aggregate they belong to:
 
 ```python
+# fragment
 # After registration, Comment automatically gets:
 # post = Reference(Post)  # Field name derived from aggregate name
 # post_id = String()      # Shadow field for the foreign key
@@ -93,10 +69,7 @@ Protean automatically adds a `Reference` field to entities based on the aggregat
 You can explicitly define reference fields for more control:
 
 ```python
-@domain.entity(part_of=Post)
-class Comment:
-    content: String(max_length=500)
-    post = Reference(Post)  # Explicit reference field
+--8<-- "guides/domain-definition/relationships/003.py:entity"
 ```
 
 ### Shadow Fields
@@ -113,31 +86,21 @@ Reference fields automatically create shadow fields (foreign key attributes) tha
 The `via` parameter allows you to specify which field in the child entity should be used as the foreign key, instead of the default naming convention:
 
 ```python
-@domain.aggregate
-class Product:
-    name: String(max_length=100)
-    sku: String(identifier=True, max_length=20)
-    reviews = HasMany("Review", via="product_sku")
-
-@domain.entity(part_of=Product)
-class Review:
-    content: String(max_length=1000)
-    rating: Integer(min_value=1, max_value=5)
-    product_sku: String()  # Custom foreign key field
+--8<-- "guides/domain-definition/relationships/004.py:aggregate"
 ```
 
-Without `via`, the foreign key would be `product_id`. With `via="product_sku"`, it uses `product_sku` instead.
+Without `via`, the foreign key would be `product_sku`: the aggregate name joined
+to its identifier field, `sku`. With `via="reviewed_sku"`, Protean stores the
+product's `sku` in `reviewed_sku` and loads a product's reviews by that field.
+It still adds the default `product_sku` field to `Review` and fills it with
+the same value.
 
 ### The `referenced_as` Parameter
 
 The `referenced_as` parameter in Reference fields allows you to specify a custom name for the shadow field:
 
 ```python
-@domain.entity(part_of=Order)
-class OrderItem:
-    product_name: String(max_length=100)
-    order = Reference(Order, referenced_as="order_number")
-    # Creates shadow field named 'order_number' instead of 'order_id'
+--8<-- "guides/domain-definition/relationships/005.py:entity"
 ```
 
 When using both `via` and `referenced_as`, they must agree: the `via`
@@ -161,21 +124,7 @@ The method names are derived from the field name: `add_<field>`,
 `remove_<field>`, `get_one_from_<field>`, `filter_<field>`.
 
 ```python
-post = Post(title="New Post")
-
-# Add comments
-post.add_comments(Comment(content="First comment", author="alice"))
-post.add_comments([
-    Comment(content="Second comment", author="bob"),
-    Comment(content="Third comment", author="alice"),
-])
-
-# Query within the collection
-alice_comments = post.filter_comments(author="alice")
-bob_comment = post.get_one_from_comments(author="bob")
-
-# Remove
-post.remove_comments(bob_comment)
+--8<-- "guides/domain-definition/relationships/002.py:helpers"
 ```
 
 !!!note
@@ -186,14 +135,7 @@ post.remove_comments(bob_comment)
 Relationships in Protean are bidirectional, allowing navigation in both directions:
 
 ```python
-# From parent to child
-post = Post(title="My Post")
-comments = post.comments  # List of Comment objects
-
-# From child to parent
-comment = Comment(content="Great post!")
-post = comment.post  # Post object
-post_id = comment.post_id  # Post's ID value
+--8<-- "guides/domain-definition/relationships/002.py:navigation"
 ```
 
 ## Dictionary Assignment
@@ -202,8 +144,7 @@ You can assign a plain dictionary where an entity or value object is
 expected. Protean will automatically convert it:
 
 ```python
-post.stats = {"likes": 10, "dislikes": 1}
-# Equivalent to: post.stats = Statistic(likes=10, dislikes=1)
+--8<-- "guides/domain-definition/relationships/006.py:dict"
 ```
 
 This also works during aggregate initialization for nested structures.
@@ -216,14 +157,7 @@ make an association required at the field level; enforce mandatory children
 through aggregate invariants instead:
 
 ```python
-@domain.aggregate
-class Order:
-    items = HasMany("OrderItem")
-
-    @invariant.post
-    def must_have_at_least_one_item(self):
-        if not self.items:
-            raise ValidationError({"items": ["Order must have at least one item"]})
+--8<-- "guides/domain-definition/relationships/007.py:aggregate"
 ```
 
 ## Cross-Aggregate References
@@ -236,22 +170,14 @@ Instead, reference another aggregate by storing its identity as a simple
 `Identifier` or `String` field:
 
 ```python
-@domain.aggregate
-class Order:
-    customer_id = Identifier(required=True)  # References Customer aggregate
-    items = HasMany("OrderItem")
-
-@domain.aggregate
-class Customer:
-    name: String(max_length=100)
-    email = ValueObject("Email")
+--8<-- "guides/domain-definition/relationships/008.py:aggregates"
 ```
 
 When you need to load the referenced aggregate, do so explicitly through
 its repository:
 
 ```python
-customer = domain.repository_for(Customer).get(order.customer_id)
+--8<-- "guides/domain-definition/relationships/008.py:load"
 ```
 
 This keeps each aggregate independently loadable, persistable, and
