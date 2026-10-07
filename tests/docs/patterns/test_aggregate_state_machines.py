@@ -45,11 +45,12 @@ FORBIDDEN = [
     if method not in moves
 ]
 
-# The event each transition raises; ``deliver`` raises none.
+# The event each transition raises.
 EVENTS = {
     "place": "OrderPlaced",
     "pay": "OrderPaid",
     "ship": "OrderShipped",
+    "deliver": "OrderDelivered",
     "cancel": "OrderCancelled",
     "refund": "OrderRefunded",
 }
@@ -80,11 +81,8 @@ def test_allowed_transition_changes_the_state(example, source, method, target):
     getattr(order, method)(**METHODS[method])
 
     assert order.status == target
-    if method in EVENTS:
-        assert [type(event).__name__ for event in order._events] == [EVENTS[method]]
-        assert order._events[0].order_id == order.order_id
-    else:
-        assert order._events == []
+    assert [type(event).__name__ for event in order._events] == [EVENTS[method]]
+    assert order._events[0].order_id == order.order_id
 
 
 @pytest.mark.parametrize(("source", "method"), FORBIDDEN)
@@ -187,6 +185,7 @@ def test_deliver_records_the_delivery_time(example):
 
     assert order.status == "delivered"
     assert order.delivered_at is not None
+    assert order._events[0].delivered_at == order.delivered_at
 
 
 def test_page_tests_pass_under_pytest():

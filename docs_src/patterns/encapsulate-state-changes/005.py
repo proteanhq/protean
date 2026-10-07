@@ -35,7 +35,7 @@ class Order:
 
     def defaults(self):
         """Set conditional defaults at initialization."""
-        if not self.total:
+        if self.total is None:
             self.total = sum(item.line_total for item in self.items)
 
     def place(self):

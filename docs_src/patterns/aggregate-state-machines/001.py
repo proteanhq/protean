@@ -45,6 +45,12 @@ class OrderShipped:
 
 
 @domain.event(part_of="Order")
+class OrderDelivered:
+    order_id = Identifier(required=True)
+    delivered_at = DateTime()
+
+
+@domain.event(part_of="Order")
 class OrderCancelled:
     order_id = Identifier(required=True)
     reason = String()
@@ -143,6 +149,13 @@ class Order:
 
         self.status = OrderStatus.DELIVERED.value
         self.delivered_at = datetime.now(UTC)
+
+        self.raise_(
+            OrderDelivered(
+                order_id=self.order_id,
+                delivered_at=self.delivered_at,
+            )
+        )
 
     # --- Transition: draft|placed → cancelled ---
 

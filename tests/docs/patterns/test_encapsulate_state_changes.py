@@ -413,6 +413,15 @@ def test_defaults_keeps_a_total_that_was_given(placement):
     assert order.total == 4.0
 
 
+def test_defaults_keeps_a_zero_total_that_was_given(placement):
+    order = placement.Order(
+        items=[placement.OrderItem(product_id="p1", quantity=2, unit_price=5.0)],
+        total=0.0,
+    )
+
+    assert order.total == 0.0
+
+
 def test_place_sets_status_and_raises_order_placed(placement):
     order = placement.Order(
         items=[placement.OrderItem(product_id="p1", quantity=2, unit_price=5.0)]
