@@ -78,8 +78,8 @@ with its own message about a column being invalid as a key:
 
 `String()` has a default `max_length` of 255, so it is a valid key column. The
 error comes from a column with no length, such as `max_length=None`. A column
-with no length is fine on MSSQL as an ordinary column. The length is only required when the
-column is a primary key, is `unique=True`, or takes part in a unique index.
+with no length is fine on MSSQL as an ordinary column. Protean raises only when
+that column is a primary key or is `unique=True`.
 
 ## SQLAlchemy model
 

@@ -9,7 +9,9 @@ from protean.fields import String
 domain = Domain(name="Articles")
 domain.config["databases"]["default"] = {
     "provider": "elasticsearch",
-    "database_uri": {"hosts": [os.environ.get("ELASTICSEARCH_HOST", "localhost")]},
+    "database_uri": {
+        "hosts": [os.environ.get("ELASTICSEARCH_HOST", "http://localhost:9200")]
+    },
 }
 
 

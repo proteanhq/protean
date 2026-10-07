@@ -100,7 +100,7 @@ provider = "memory"
 # Additional named databases
 [databases.analytics]
 provider = "elasticsearch"
-database_uri = "{'hosts': ['localhost']}"
+database_uri = { hosts = ["http://localhost:9200"] }
 
 [databases.reporting]
 provider = "postgresql"
@@ -306,7 +306,7 @@ Providers may register additional lookups beyond this required set.
     - Elasticsearch for search-heavy read models
 
 5. **Let Protean auto-generate database models**: Only supply a custom
-   `@domain.model` when you need to customize column types, indices, or other
+   `@domain.database_model` when you need to customize column types, indices, or other
    database-specific details.
 
 6. **Monitor provider health**: Use `provider.is_alive()` to verify

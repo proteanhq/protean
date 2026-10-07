@@ -10,7 +10,7 @@ with domain.domain_context():
     broker = domain.brokers["default"]
     broker.publish("orders", {"order_id": "A1"})
 
-    # Check for specific capabilities
+    # Check for one capability
     if broker.has_capability(BrokerCapabilities.CONSUMER_GROUPS):
         # Read up to 10 messages as the "order-processor" group
         messages = broker.read(
@@ -19,9 +19,9 @@ with domain.domain_context():
             no_of_messages=10,
         )
 
-    # Check for any of multiple capabilities
-    if broker.has_any_capability(
-        BrokerCapabilities.ACK_NACK | BrokerCapabilities.DEAD_LETTER_QUEUE
+    # Check for all of several capabilities
+    if broker.has_all_capabilities(
+        BrokerCapabilities.CONSUMER_GROUPS | BrokerCapabilities.ACK_NACK
     ):
         # Acknowledge each message once it is handled
         for identifier, _message in messages:

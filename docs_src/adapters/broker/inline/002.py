@@ -4,23 +4,23 @@ import pytest
 from protean import Domain
 from protean.integrations.pytest import DomainFixture
 
-domain = Domain(name="InlineTesting")
-domain.config["brokers"] = {"default": {"provider": "inline"}}
-domain.config["message_processing"] = "sync"
+testing_domain = Domain(name="InlineTesting")
+testing_domain.config["brokers"] = {"default": {"provider": "inline"}}
+testing_domain.config["message_processing"] = "sync"
 
 # Track processed messages
 processed = []
 
 
-@domain.subscriber(stream="test-stream")
-class TestSubscriber:
+@testing_domain.subscriber(stream="test-stream")
+class RecordingSubscriber:
     def __call__(self, payload: dict) -> None:
         processed.append(payload)
 
 
 @pytest.fixture(scope="session")
 def app_fixture():
-    fixture = DomainFixture(domain)
+    fixture = DomainFixture(testing_domain)
     fixture.setup()
     yield fixture
     fixture.teardown()
@@ -34,7 +34,7 @@ def _ctx(app_fixture):
 
 def test_message_processing():
     # Publish a message
-    domain.brokers.publish(
+    testing_domain.brokers.publish(
         stream="test-stream",
         message={"type": "test.event", "data": "test"},
     )

@@ -143,10 +143,16 @@ the broker:
 
 Here `error` is `{"message": ["Message cannot be empty"]}`.
 
-On a connection error, Protean tries to reconnect. If it reconnects, it retries
-the operation once. If it cannot reconnect, or the retry fails, the error from
-the broker's client library is raised (for Redis, a
-`redis.exceptions.ConnectionError`).
+When the broker's client library raises a connection error, Protean tries to
+reconnect. If it reconnects, it retries the operation once. If it cannot
+reconnect, or the retry fails, the client library's error is raised (for
+Redis, a `redis.exceptions.ConnectionError`).
+
+This covers only the errors that reach Protean. An adapter can handle errors
+itself: the Redis broker's `get_next`, `ack` and `nack` log any error and
+return `None` or `False`. Inside a Unit of Work, `publish` does not contact the
+broker at all. It records the message, which is sent when the Unit of Work
+commits.
 
 ## Health Checks
 

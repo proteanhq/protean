@@ -13,7 +13,7 @@ Custom brokers allow you to:
 ## Architecture
 
 All brokers must inherit from `BaseBroker` and implement its abstract methods.
-`BaseBroker` declares sixteen of them, plus the `capabilities` property:
+They are these, plus the `capabilities` property:
 
 - Publishing and reading: `_publish`, `_get_next`, `_read`
 - Acknowledgment: `_ack`, `_nack`

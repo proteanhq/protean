@@ -95,7 +95,6 @@ with domain.domain_context():
     broker.publish("orders", {"order_id": "1"})
 
     identifier, message = broker.get_next("orders", "order-processor")
-    assert message == {"order_id": "1"}
-    broker.ack("orders", identifier, "order-processor")
+    acknowledged = broker.ack("orders", identifier, "order-processor")
 # --8<-- [end:usage]
 # --8<-- [end:full]

@@ -197,6 +197,8 @@ paths = [
     "tests/outbox/test_reconciliation.py",
     "tests/unit_of_work/test_stale_event_sourced_outbox.py",
     "tests/workflows/test_event_flows.py",
+    "docs_src/adapters/eventstore/index/",
+    "tests/docs/reference/adapters/eventstore/test_index.py",
 ]
 markers = ["message_db"]
 stores = ["MESSAGE_DB"]

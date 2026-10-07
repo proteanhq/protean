@@ -167,7 +167,7 @@ what a primary key or a unique constraint needs. Protean raises
 --8<-- "adapters/database/mysql/001.py:key_columns"
 ```
 
-A `String` field with no `max_length` becomes a `TEXT` column, because MySQL
+A `String` field with `max_length=None` becomes a `TEXT` column, because MySQL
 cannot create a `VARCHAR` without a length. `TEXT` cannot be a key column
 either without an index prefix length, so that combination raises the same
 error. A `ValueObjectList(..., pickled=True)` is stored as a BLOB, which has

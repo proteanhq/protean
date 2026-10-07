@@ -5,11 +5,12 @@ broker by its dotted import path, so the package's folder goes on ``sys.path``
 and the test imports it by name.
 """
 
+import re
 import sys
 
 import pytest
 
-from tests.docs.support import DOCS_SRC
+from tests.docs.support import DOCS, DOCS_SRC
 
 _PACKAGE_PARENT = str(DOCS_SRC / "adapters" / "broker" / "custom-brokers")
 if _PACKAGE_PARENT not in sys.path:
@@ -18,12 +19,32 @@ if _PACKAGE_PARENT not in sys.path:
 import delegating_broker
 
 from protean.adapters.broker.inline import InlineBroker
+from protean.port.broker import BaseBroker
 
 pytestmark = pytest.mark.no_test_domain
 
 
-def test_broker_implements_every_abstract_method():
-    assert delegating_broker.DelegatingBroker.__abstractmethods__ == frozenset()
+def test_page_lists_every_abstract_method():
+    page = (DOCS / "reference/adapters/broker/custom-brokers.md").read_text()
+    section = page.split("## Architecture")[1].split("A broker that does not")[0]
+    listed = set(re.findall(r"`(_\w+)`", section)) | {"capabilities"}
+
+    assert listed == BaseBroker.__abstractmethods__
+
+
+def test_example_reads_back_and_acknowledges_the_message():
+    assert delegating_broker.message == {"order_id": "1"}
+    assert delegating_broker.acknowledged is True
+
+
+def test_second_ack_of_the_same_message_fails():
+    with delegating_broker.domain.domain_context():
+        broker = delegating_broker.domain.brokers["default"]
+
+        assert (
+            broker.ack("orders", delegating_broker.identifier, "order-processor")
+            is False
+        )
 
 
 def test_domain_uses_the_custom_broker():

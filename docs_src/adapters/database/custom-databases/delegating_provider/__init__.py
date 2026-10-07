@@ -93,6 +93,5 @@ with domain.domain_context():
     repo.add(Customer(id="c-1", name="Ada"))
 
     customer = repo.get("c-1")
-    assert customer.name == "Ada"
 # --8<-- [end:usage]
 # --8<-- [end:full]

@@ -373,22 +373,22 @@ This section holds configurations for message brokers.
 
 ```toml
 [brokers.default]
-provider = "memory"
+provider = "inline"
 
 [brokers.redis]
-provider = "redis_pubsub"
+provider = "redis"
 URI = "redis://127.0.0.1:6379/0"
-IS_ASYNC = true
 max_connections = 50
 socket_timeout = 5
 socket_connect_timeout = 5
 retry_on_timeout = true
 ```
 
-Default provider: `memory`
+Default provider: `inline`
 
-Redis brokers (`redis_pubsub`, `redis_stream`) forward the same pool
-keys as the Redis cache to `redis.ConnectionPool`.
+The Redis Streams broker (`redis`) forwards the same pool keys as the Redis
+cache to `redis.ConnectionPool`. The Redis PubSub broker (`redis_pubsub`)
+reads only `URI`.
 
 Read more in [Adapters → Broker](../adapters/broker/index.md) section.
 

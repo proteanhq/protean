@@ -20,8 +20,8 @@ All database adapters are built from five components that work together:
 **Extends**: `protean.port.provider.BaseProvider`
 
 The Provider is the central coordinator. It manages connections, sessions, and
-the database lifecycle. You implement 11 abstract methods plus a `capabilities`
-property.
+the database lifecycle. You implement the abstract methods and the `capabilities`
+property in this table.
 
 The provider class also sets a `__database__` attribute to the database's
 name. Protean reads it when it picks a custom repository or database model

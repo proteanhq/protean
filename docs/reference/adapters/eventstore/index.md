@@ -55,10 +55,11 @@ provider = "memory"
 For production, point it at Message DB instead:
 
 ```toml
-[event_store]
-provider = "message_db"
-database_uri = "postgresql://postgres:postgres@localhost:5433/message_store"
+--8<-- "adapters/eventstore/index/message_db.toml"
 ```
+
+`${MESSAGE_DB_URL|...}` reads the URI from the `MESSAGE_DB_URL` environment
+variable, and uses the value after `|` when it is not set.
 
 ### Configuration Options
 

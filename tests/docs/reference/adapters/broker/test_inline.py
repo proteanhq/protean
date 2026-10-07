@@ -1,9 +1,11 @@
 """Run the examples on ``docs/reference/adapters/broker/inline.md``."""
 
+import subprocess
+import sys
+
 import pytest
 
-from protean.integrations.pytest import DomainFixture
-from tests.docs.support import load_example
+from tests.docs.support import DOCS_SRC, REPO_ROOT, load_example
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -36,15 +38,36 @@ def test_a_group_gets_each_message_once():
         assert broker.ack("invoices", identifier, "billing") is True
 
 
-def test_domain_fixture_example_processes_the_message():
+def test_domain_fixture_example_defines_a_subscriber():
     example = load_example("adapters/broker/inline/002.py")
 
-    fixture = DomainFixture(example.domain)
-    fixture.setup()
-    try:
-        with fixture.domain_context():
-            example.test_message_processing()
-    finally:
-        fixture.teardown()
+    assert example.processed == []
+    assert example.testing_domain.config["message_processing"] == "sync"
 
-    assert example.processed == [{"type": "test.event", "data": "test"}]
+
+def test_domain_fixture_example_passes_under_pytest():
+    # Run the file the way a reader would: as a pytest module, with its own
+    # fixtures. A collection warning (for example a class named Test*) fails it.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            str(DOCS_SRC / "adapters/broker/inline/002.py"),
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "no:randomly",
+            "-q",
+            "--import-mode=importlib",
+            "-W",
+            "error::pytest.PytestCollectionWarning",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "1 passed" in result.stdout

@@ -1,8 +1,15 @@
 """Run the example on ``docs/reference/adapters/eventstore/index.md``."""
 
+from uuid import uuid4
+
 import pytest
 
-from tests.docs.support import load_example
+from protean import Domain
+from protean.adapters.event_store.message_db import MessageDBStore
+from tests.docs.support import DOCS_SRC, load_example
+from tests.shared import MESSAGE_DB_URI
+
+MESSAGE_DB_CONFIG = DOCS_SRC / "adapters/eventstore/index/message_db.toml"
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -35,6 +42,15 @@ def test_snapshots_are_created(example):
     assert example.created is True
     assert example.count == 1
 
+    # One snapshot from each call, both holding the state after two deposits
+    snapshot_stream = f"banking::account:snapshot-{example.account.id}"
+    with example.domain.domain_context():
+        # Snapshots are raw records, not domain messages, so read them raw
+        snapshots = example.domain.event_store.store._read(snapshot_stream)
+
+    assert len(snapshots) == 2
+    assert [m["data"]["balance"] for m in snapshots] == [150.0, 150.0]
+
 
 def test_causation_links_the_command_to_its_event(example):
     assert [m.metadata.headers.type for m in example.chain] == [
@@ -48,3 +64,19 @@ def test_causation_links_the_command_to_its_event(example):
     assert [child.message_type for child in example.tree.children] == [
         "Banking.Deposited.v1"
     ]
+
+
+@pytest.mark.message_db
+def test_message_db_configuration_connects(tmp_path, monkeypatch):
+    (tmp_path / "domain.toml").write_text(MESSAGE_DB_CONFIG.read_text())
+    monkeypatch.setenv("MESSAGE_DB_URL", MESSAGE_DB_URI)
+    domain = Domain(root_path=str(tmp_path), name="Banking")
+    domain.init(traverse=False)
+
+    stream = f"doc_check-{uuid4()}"
+    with domain.domain_context():
+        store = domain.event_store.store
+        store._write(stream, "Checked", {"n": 1})
+
+        assert isinstance(store, MessageDBStore)
+        assert [m["data"] for m in store._read(stream)] == [{"n": 1}]

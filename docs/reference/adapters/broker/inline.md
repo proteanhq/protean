@@ -71,7 +71,6 @@ The subscriber prints `User created: John Doe`.
 The Inline broker is ideal for testing as it provides deterministic, synchronous behavior. Use Protean's `DomainFixture` to manage the domain lifecycle:
 
 ```python
-# fragment
 --8<-- "adapters/broker/inline/002.py:full"
 ```
 

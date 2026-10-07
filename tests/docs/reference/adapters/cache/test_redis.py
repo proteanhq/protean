@@ -43,3 +43,14 @@ def test_flush_all_empties_the_cache(example):
 
         assert cache.get("order_summary:::ord-123") is None
         assert cache.count("order_summary:::*") == 0
+
+
+def test_entries_land_in_redis_with_the_default_ttl(example):
+    with example.domain.domain_context():
+        cache = example.domain.cache_for(example.OrderSummary)
+        cache.add(example.OrderSummary(order_id="ord-456", total=10.0))
+
+    client = redis.Redis.from_url(REDIS_URL)
+    assert client.exists("order_summary:::ord-456") == 1
+    # The "TTL": 300 in the config applies to every new entry
+    assert 299_000 < client.pttl("order_summary:::ord-456") <= 300_000
