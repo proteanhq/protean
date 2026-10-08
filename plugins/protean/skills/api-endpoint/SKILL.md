@@ -170,9 +170,10 @@ uvicorn.run(create_app(domain), host="127.0.0.1", port=8000)
 | `InvalidStateError` | 409 | `{"error": "<message>"}` |
 | `InvalidOperationError` | 422 | `{"error": "<message>"}` |
 
-When a domain context is active, which it is for every request the middleware
-handles, the body also carries `correlation_id`. It matches the response's
-`X-Correlation-ID` header.
+When a domain context is active, the body also carries `correlation_id`. It
+matches the response's `X-Correlation-ID` header. The middleware pushes a
+domain context only for paths that match one of its mapped prefixes, so a
+request outside them has no `correlation_id` in its error body.
 
 Two different things can return 422:
 

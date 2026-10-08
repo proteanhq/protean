@@ -127,8 +127,9 @@ They map each Protean exception to a status code and a JSON body:
 
 When a domain context is active, every error body also carries
 `correlation_id`, the same value as the `X-Correlation-ID` response header.
-The middleware pushes that context for each request, so behind
-`DomainContextMiddleware` the field is always there:
+`DomainContextMiddleware` pushes that context for each request whose path
+matches one of its mapped prefixes. A request outside those prefixes runs
+without a domain context, and its error body has no `correlation_id`:
 
 ```json
 {
