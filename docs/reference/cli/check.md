@@ -132,7 +132,7 @@ check report under `data`, and the diagnostics list at the top level.
 |-------|------|-------------|
 | `domain` | str | The domain name. |
 | `status` | str | Fine-grained status: `pass`, `info`, `warn`, or `fail`. |
-| `errors` | list | Validator errors (malformed domains). Each has `code` and `message` and is always fatal. Present only when the domain fails to build; when non-empty, `diagnostics` is empty. |
+| `errors` | list | Fatal errors. Each has `code` and `message`. Holds validator errors when the domain is malformed, or one IR-build error (`element` `to_ir`, `level` `error`, the exception class name as `code`) when the domain is valid but its IR cannot be built. Empty when neither happens; when non-empty, `diagnostics` is empty. |
 | `counts` | object | `{errors, warnings, infos}` tallies. |
 
 On a usage/environment error (`status: "error"`, exit 2) `data` carries a single
