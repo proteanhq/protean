@@ -1159,6 +1159,22 @@ def test_reverse_index_tolerates_pack_absent(monkeypatch):
     assert pack.diagnostic_code_skills() == {}
 
 
+def test_reverse_index_logs_a_pack_that_cannot_be_listed(monkeypatch, caplog):
+    caplog.set_level(logging.DEBUG, logger="protean.dx.pack")
+
+    def _stripped():
+        raise FileNotFoundError("pack data stripped from the install")
+
+    monkeypatch.setattr(pack, "pack_files", _stripped)
+
+    assert pack.diagnostic_code_skills() == {}
+    records = [r for r in caplog.records if r.name == "protean.dx.pack"]
+    assert len(records) == 1
+    assert records[0].levelno == logging.DEBUG
+    assert records[0].getMessage() == "Could not list the skills in the pack"
+    assert str(records[0].exc_info[1]) == "pack data stripped from the install"
+
+
 def test_skill_diagnostic_codes_raises_when_the_manifest_is_absent(
     tmp_path, monkeypatch
 ):

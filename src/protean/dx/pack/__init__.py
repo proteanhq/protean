@@ -332,6 +332,7 @@ def diagnostic_code_skills() -> dict[str, list[str]]:
     try:
         skills = iter_skills()
     except Exception:
+        logger.debug("Could not list the skills in the pack", exc_info=True)
         return {}
     for skill in skills:
         try:
