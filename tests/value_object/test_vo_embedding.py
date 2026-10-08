@@ -16,6 +16,7 @@ from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
+from protean.exceptions import ValidationError
 from protean.fields import ValueObject
 from protean.utils import _fully_qualified_name
 from protean.utils.reflection import (
@@ -43,6 +44,25 @@ class Customer(BaseAggregate):
     billing_address = ValueObject(Address)
 
 
+class Location(BaseValueObject):
+    latitude: float = 0.0
+    longitude: float = 0.0
+
+
+class ShippingAddress(BaseValueObject):
+    street: str = ""
+    location = ValueObject(Location)
+
+
+class Store(BaseAggregate):
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    name: str = ""
+    shipping_address = ValueObject(ShippingAddress)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -50,6 +70,9 @@ class Customer(BaseAggregate):
 def register_elements(test_domain):
     test_domain.register(Address)
     test_domain.register(Customer)
+    test_domain.register(Location)
+    test_domain.register(ShippingAddress)
+    test_domain.register(Store)
     test_domain.init(traverse=False)
 
 
@@ -155,6 +178,45 @@ class TestVOFlattenedInit:
         outer = Outer(label="origin", point=Inner(x=1.0, y=2.0))
         assert outer.point.x == 1.0
         assert outer.point.y == 2.0
+
+
+class TestNestedVOFlattenedInit:
+    """Flattened arguments stop at one level. A value object nested inside
+    an embedded value object is passed as an object, not as a two-level
+    flattened argument.
+    """
+
+    def test_one_level_flattened_argument_sets_the_field(self):
+        store = Store(name="Corner", shipping_address_street="1 Main St")
+
+        assert store.shipping_address.street == "1 Main St"
+        assert store.shipping_address.location is None
+
+    def test_nested_vo_passed_as_object(self):
+        store = Store(
+            name="Corner",
+            shipping_address=ShippingAddress(
+                street="1 Main St",
+                location=Location(latitude=12.5, longitude=77.6),
+            ),
+        )
+
+        assert store.shipping_address.street == "1 Main St"
+        assert store.shipping_address.location == Location(
+            latitude=12.5, longitude=77.6
+        )
+
+    def test_two_level_flattened_argument_is_rejected(self):
+        with pytest.raises(ValidationError) as exc:
+            Store(name="Corner", shipping_address_location_latitude=12.5)
+
+        assert "shipping_address_location_latitude" in exc.value.messages
+
+    def test_vo_rejects_flattened_argument_for_nested_vo(self):
+        with pytest.raises(ValidationError) as exc:
+            ShippingAddress(street="1 Main St", location_latitude=12.5)
+
+        assert "location_latitude" in exc.value.messages
 
 
 # ---------------------------------------------------------------------------
