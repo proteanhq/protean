@@ -467,6 +467,7 @@ class Engine:
             for provider_name, outbox_repo in self.domain._outbox_repos.items():
                 try:
                     outbox_repo._dao  # noqa: B018
+                # Any DAO error is reported as a missing outbox table.
                 except Exception as e:
                     raise ConfigurationError(
                         f"Outbox table not found for provider '{provider_name}'. "
@@ -486,6 +487,7 @@ class Engine:
             )
             if dlq_enabled and self._has_dlq_capable_broker():
                 self._dlq_maintenance = DLQMaintenanceTask(self)
+        # DLQ upkeep is optional; the engine starts without it; logged.
         except Exception:
             logger.debug("engine.dlq_maintenance_init_skipped", exc_info=True)
 
@@ -803,6 +805,7 @@ class Engine:
                     extra={"subscriber": subscriber_cls.__name__},
                 )
                 return True
+            # One failing subscriber must not stop the engine; logged.
             except Exception as exc:
                 logger.exception(
                     "broker.message_failed",
@@ -810,6 +813,7 @@ class Engine:
                 )
                 try:
                     subscriber_cls.handle_error(exc, message)
+                # A broken error handler must not stop the engine; logged.
                 except Exception:
                     logger.exception("broker.error_handler_failed")
                 # Continue processing instead of shutting down
@@ -997,7 +1001,7 @@ class Engine:
                             )
                         with processing_priority(msg_priority):
                             handler_cls._handle(message)
-                    except Exception as exc:
+                    except Exception as exc:  # marks the span as failed, then re-raises
                         set_span_error(span, exc)
                         raise
 
@@ -1082,6 +1086,7 @@ class Engine:
                 try:
                     # Call the error handler if it exists
                     handler_cls.handle_error(exc, message)
+                # A broken error handler must not stop the engine; logged.
                 except Exception:
                     logger.exception("engine.error_handler_failed")
                 # Continue processing instead of shutting down
@@ -1296,7 +1301,7 @@ class Engine:
             # Step 3: Close domain infrastructure connections
             try:
                 self.domain.close()
-            except Exception:
+            except Exception:  # shutdown must finish even if closing fails; logged
                 logger.exception("engine.cleanup_failed")
 
             # Step 4: Clean up signal handlers

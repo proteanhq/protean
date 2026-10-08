@@ -118,7 +118,7 @@ def _load_live_ir(domain_path: str) -> dict[str, Any]:
     try:
         domain.init()
         return domain.to_ir()
-    except Exception as exc:
+    except Exception as exc:  # any IR failure becomes a printed error and exit 1
         print(f"Error generating IR: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 

@@ -233,7 +233,7 @@ def _render_managed_files() -> tuple[ManagedFile, ...]:
     # surface one clean line and exit 2 rather than a raw traceback.
     try:
         return managed_files(PACK_VERSION)
-    except Exception as exc:
+    except Exception as exc:  # a broken pack exits 2 with one clean line
         print(f"[red]error[/red] could not render the dx files — {escape(str(exc))}")
         raise typer.Exit(code=EXIT_USAGE) from exc
 

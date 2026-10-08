@@ -243,7 +243,7 @@ def collect_all_events(
                     # shared MessageDB get the correct domain attribution
                     msg_domain = _domain_from_stream(stream) or domain.name
                     all_events.append((msg, msg_domain))
-        except Exception:
+        except Exception:  # one unreadable store must not empty the timeline; logged
             logger.debug("Failed to read events from %s", domain.name, exc_info=True)
 
     # Sort by global_position (ascending)
@@ -309,7 +309,7 @@ def find_event_by_id(domains: list[Domain], message_id: str) -> dict[str, Any] |
                 for msg in raw_messages:
                     if _extract_message_id(msg) == message_id:
                         return _serialize_message_detail(msg, domain.name)
-        except Exception:
+        except Exception:  # a failing store is skipped, the search goes on; logged
             logger.debug("Failed to search events in %s", domain.name, exc_info=True)
 
     return None
@@ -376,7 +376,7 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
                             or msg_dt < first_event_datetime
                         ):
                             first_event_datetime = msg_dt
-        except Exception:
+        except Exception:  # stats skip a failing store instead of failing; logged
             logger.debug("Failed to collect stats from %s", domain.name, exc_info=True)
 
     # Calculate events per minute
@@ -544,7 +544,7 @@ def _load_traces_for_correlation(
                     # dynamically after the ``hasattr`` guard.
                     redis_conn = broker.redis_instance
                     break
-        except Exception:
+        except Exception:  # a broken domain is skipped while looking for Redis; logged
             logger.debug(
                 "Could not get the Redis broker of domain %s", d.name, exc_info=True
             )
@@ -558,7 +558,7 @@ def _load_traces_for_correlation(
 
     try:
         raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
-    except Exception:
+    except Exception:  # trace enrichment is optional; events show without it, logged
         logger.debug("Failed to read trace stream for enrichment", exc_info=True)
         return traces
 
@@ -647,7 +647,7 @@ def build_correlation_response(
                     "total_duration_ms": total_duration_ms,
                     "event_count": len(events),
                 }
-        except Exception:
+        except Exception:  # try the next store instead of failing the endpoint; logged
             logger.debug(
                 "Failed to build correlation chain from %s",
                 domain.name,
@@ -697,7 +697,7 @@ def collect_aggregate_history(
                     "events": events,
                     "event_count": len(events),
                 }
-        except Exception:
+        except Exception:  # try the next store instead of failing the endpoint; logged
             logger.debug(
                 "Failed to read aggregate history from %s",
                 domain.name,
@@ -751,7 +751,7 @@ def _group_by_correlation(
                     if cid:
                         msg_domain = _domain_from_stream(stream) or domain.name
                         groups[cid].append((msg, msg_domain))
-        except Exception:
+        except Exception:  # one unreadable store must not break grouping; logged
             logger.debug(
                 "Failed to read events from %s for grouping",
                 domain.name,

@@ -410,6 +410,44 @@ class TestRedisErrorHandling:
         assert "Redis connection attempt 1 failed: Connection refused" in caplog.text
         assert "Failed to create new Redis connection: bad URI scheme" in caplog.text
 
+    @pytest.mark.parametrize(
+        "error",
+        [OSError("socket closed"), ValueError("malformed reply")],
+        ids=["socket-error", "malformed-reply"],
+    )
+    def test_ping_returns_false_on_a_socket_error_or_a_malformed_reply(
+        self, broker, error
+    ):
+        with patch.object(broker.redis_instance, "ping", side_effect=error):
+            assert broker._ping() is False
+
+    def test_ensure_connection_retries_after_a_malformed_reply(self, broker):
+        with (
+            patch.object(
+                broker.redis_instance,
+                "ping",
+                side_effect=[ValueError("malformed reply"), True],
+            ),
+            patch("redis.Redis.from_url", return_value=broker.redis_instance),
+        ):
+            assert broker._ensure_connection() is True
+
+    def test_ensure_connection_lets_other_reconnect_errors_through(self, broker):
+        """from_url() raises only ValueError for a bad URI; other errors reach the caller"""
+        with (
+            patch.object(
+                broker.redis_instance,
+                "ping",
+                side_effect=redis.ConnectionError("Connection refused"),
+            ),
+            patch(
+                "redis.Redis.from_url",
+                side_effect=redis.ConnectionError("from_url connected"),
+            ),
+        ):
+            with pytest.raises(redis.ConnectionError, match="from_url connected"):
+                broker._ensure_connection()
+
     def test_ensure_connection_lets_other_errors_through(self, broker):
         """A ping error that is neither a Redis nor a socket error reaches the caller"""
         with patch.object(broker.redis_instance, "ping") as mock_ping:

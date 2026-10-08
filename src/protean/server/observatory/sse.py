@@ -71,7 +71,7 @@ def create_sse_endpoint(
                         if broker and hasattr(broker, "redis_instance"):
                             redis_conn = cast(_RedisStyleBroker, broker).redis_instance
                             break
-                except Exception:
+                except Exception:  # one broken domain must not stop the stream; logged
                     logger.debug(
                         "Could not get the Redis broker of domain %s",
                         d.name,

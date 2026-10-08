@@ -1187,7 +1187,7 @@ def test_adapter(
     # 1. Verify provider is registered
     try:
         ProviderRegistry.get(provider)
-    except Exception as e:
+    except Exception as e:  # any lookup error exits 1 with the message
         print(f"Error: {e}")
         raise typer.Exit(code=1) from e
 
@@ -1208,7 +1208,7 @@ def test_adapter(
             provider_instance = domain.providers["default"]
             provider_capabilities = provider_instance.capabilities
             provider_class_name = provider_instance.__class__.__name__
-    except Exception as e:
+    except Exception as e:  # any setup error exits 1 with the message
         print(f"Error initializing provider '{provider}': {e}")
         raise typer.Exit(code=1) from e
 

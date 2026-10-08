@@ -97,6 +97,7 @@ class InfrastructureManager:
                 domain.providers._register_repository(new_cls, new_repo_cls)
 
                 target[provider_name] = domain.repository_for(new_cls)
+            # re-raised as ConfigurationError naming the provider
             except Exception as e:
                 raise ConfigurationError(
                     f"Failed to initialize {label} for provider "

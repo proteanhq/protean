@@ -19,7 +19,6 @@ from protean.exceptions import (
     DeserializationError,
     IncorrectUsageError,
     InvalidDataError,
-    ValidationError,
 )
 from protean.fields.association import Association, Reference
 from protean.fields.base import FieldBase
@@ -106,7 +105,7 @@ class TraceParent(BaseValueObject):
             # be misread as unsampled.
             sampled = bool(int(trace_flags, 16) & 0x01)
             return cls(trace_id=trace_id, parent_id=parent_id, sampled=sampled)
-        except (ValueError, ValidationError) as e:
+        except ValueError as e:
             logger.error(f"Error parsing traceparent: {e}")
             logger.error(f"Provided traceparent: {traceparent}")
             return None
@@ -1045,6 +1044,7 @@ class Message(Element, BaseModel, OptionsMixin):
             )
             return element_factory(_metadata=metadata, **data)
 
+        # any failure is re-raised as DeserializationError with context
         except Exception as e:
             context = self._build_error_context(e)
 

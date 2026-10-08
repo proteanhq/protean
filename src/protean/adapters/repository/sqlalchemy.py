@@ -1628,7 +1628,7 @@ class SADAO(BaseDAO):
             # ``ExpectedVersionError`` for the version-retry path, matching
             # ``_flush`` and the UnitOfWork commit.
             raise ExpectedVersionError(str(exc)) from None
-        except Exception:
+        except Exception:  # logs any query failure, then re-raises
             logger.exception("repository.sqlalchemy.filter_failed")
             raise
         finally:

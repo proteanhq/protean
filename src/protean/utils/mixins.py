@@ -673,6 +673,7 @@ class HandlerMixin:
 
             try:
                 result = cls._dispatch_handlers(handlers, item)
+            # records error metrics on the span, then re-raises
             except Exception as exc:
                 set_span_error(span, exc)
 

@@ -380,7 +380,7 @@ def _collect_partitioned_stream_status(
             logger.debug("Could not read length of %s: %r", partition, exc)
         try:
             groups = redis_conn.xinfo_groups(partition)
-        except Exception:
+        except Exception:  # a status probe skips a partition it cannot read; logged
             logger.debug(
                 "Could not read groups of partition %s", partition, exc_info=True
             )
@@ -529,6 +529,7 @@ def _collect_stream_status(
                             or 0
                         )
                         break
+            # a status probe reports unknown lag instead of raising; logged
             except Exception:
                 logger.debug(
                     "Could not read group %s on stream %s",
@@ -648,6 +649,7 @@ def _collect_broker_status(
                                 or 0
                             )
                             break
+                # a status probe reports unknown lag instead of raising; logged
                 except Exception:
                     logger.debug(
                         "Could not read group %s on stream %s",

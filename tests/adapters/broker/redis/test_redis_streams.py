@@ -768,6 +768,19 @@ def test_extract_group_data_with_redis_error(redis_broker, monkeypatch):
 
 
 @pytest.mark.redis
+def test_extract_group_data_skips_a_group_with_a_name_that_is_not_utf8(redis_broker):
+    """Another client can join a group under a consumer name that is not UTF-8"""
+    stream = "test::bad-consumer-name"
+    redis_broker._ensure_group("BadNameGroup", stream)
+    redis_broker.redis_instance.xgroup_createconsumer(
+        stream, "BadNameGroup", b"\xff\xfe-bad"
+    )
+
+    group_info = {b"name": b"BadNameGroup", b"pending": b"0"}
+    assert redis_broker._extract_group_data(group_info, stream) is None
+
+
+@pytest.mark.redis
 def test_extract_group_data_lets_other_errors_through(redis_broker, monkeypatch):
     """An error that is not a Redis error reaches the caller"""
 
@@ -801,6 +814,23 @@ def test_ping_with_exception(redis_broker, monkeypatch):
 
     result = redis_broker._ping()
     assert result is False
+
+
+@pytest.mark.redis
+@pytest.mark.parametrize(
+    "error",
+    [OSError("socket closed"), ValueError("malformed reply")],
+    ids=["socket-error", "malformed-reply"],
+)
+def test_ping_returns_false_on_a_socket_error_or_a_malformed_reply(
+    redis_broker, monkeypatch, error
+):
+    def mock_ping():
+        raise error
+
+    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+
+    assert redis_broker._ping() is False
 
 
 @pytest.mark.redis
@@ -1079,6 +1109,32 @@ def test_ensure_connection_with_complete_failure(redis_broker, monkeypatch):
 
     result = redis_broker._ensure_connection()
     assert result is False
+
+
+@pytest.mark.redis
+@pytest.mark.parametrize(
+    "error",
+    [OSError("socket closed"), ValueError("malformed reply")],
+    ids=["socket-error", "malformed-reply"],
+)
+def test_ensure_connection_retries_after_a_socket_error_or_a_malformed_reply(
+    redis_broker, monkeypatch, error
+):
+    calls = []
+
+    def mock_ping():
+        calls.append(1)
+        if len(calls) == 1:
+            raise error
+        return True
+
+    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+    monkeypatch.setattr(
+        redis.Redis, "from_url", lambda url: redis_broker.redis_instance
+    )
+
+    assert redis_broker._ensure_connection() is True
+    assert len(calls) == 2
 
 
 @pytest.mark.redis

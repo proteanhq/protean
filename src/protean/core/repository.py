@@ -246,7 +246,7 @@ class BaseRepository(Element, OptionsMixin):
 
             try:
                 return self._do_add(item)
-            except Exception as exc:
+            except Exception as exc:  # marks the span as failed, then re-raises
                 set_span_error(span, exc)
                 raise
 
@@ -522,7 +522,7 @@ class BaseRepository(Element, OptionsMixin):
                 item = self._dao.get(identifier)
                 self._prewarm_associations(item)
                 return item
-            except Exception as exc:
+            except Exception as exc:  # marks the span as failed, then re-raises
                 set_span_error(span, exc)
                 raise
 
@@ -557,7 +557,7 @@ class BaseRepository(Element, OptionsMixin):
                 return item
             except ObjectNotFoundError:
                 return None
-            except Exception as exc:
+            except Exception as exc:  # marks the span as failed, then re-raises
                 set_span_error(span, exc)
                 raise
 

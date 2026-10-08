@@ -119,7 +119,7 @@ class UnitOfWork:
 
         try:
             self.commit()  # happy path
-        except Exception:
+        except Exception:  # a failed commit rolls back, then re-raises
             self.rollback()  # commit itself failed
             raise
         finally:
@@ -631,7 +631,7 @@ class UnitOfWork:
                 session.rollback()
 
             logger.debug("uow.rollback_successful")
-        except Exception:
+        except Exception:  # a failed rollback still resets the UoW; logged
             logger.exception("uow.rollback_failed")
 
         self._reset()

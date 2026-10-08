@@ -384,7 +384,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
                 span.set_attribute("protean.event_store.position", position)
                 return position
-            except Exception as exc:
+            except Exception as exc:  # marks the span as failed, then re-raises
                 set_span_error(span, exc)
                 raise
 

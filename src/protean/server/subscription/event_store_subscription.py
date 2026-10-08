@@ -1544,7 +1544,7 @@ class EventStoreSubscription(BaseSubscription):
                 logger.info(f"Subscription cancelled: {self.subscriber_name}")
                 break
 
-            except Exception:
+            except Exception:  # keep the subscription alive; logged, then back off
                 self._forget_idle_tick()
                 consecutive_errors += 1
                 logger.exception(

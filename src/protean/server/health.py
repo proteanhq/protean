@@ -445,7 +445,7 @@ def _subscription_total(engine: Engine) -> int:
             + len(engine._broker_subscriptions)
             + len(engine._outbox_processors)
         )
-    except Exception:
+    except Exception:  # health reports zero instead of raising; logged
         logger.debug("Counting engine subscriptions failed", exc_info=True)
         return 0
 
@@ -460,7 +460,7 @@ async def _snapshot_and_collect(engine: Engine) -> dict[str, Any]:
     total = _subscription_total(engine)
     try:
         breakers = _circuit_states(engine)
-    except Exception:
+    except Exception:  # health reports a collection error instead of raising
         logger.debug("Reading circuit-breaker state failed", exc_info=True)
         return {"total": total, "collection_error": True, "details": []}
 

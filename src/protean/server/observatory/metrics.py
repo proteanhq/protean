@@ -763,6 +763,7 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
                                 lines.append(
                                     f"protean_consumer_idle_ms{{{labels}}} {int(cidle)}"
                                 )
+                        # one unreadable group must not drop other metrics; logged
                         except Exception:
                             logger.debug(
                                 "Metrics: could not read consumers of group %s on stream %s",
@@ -770,6 +771,7 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
                                 stream_name,
                                 exc_info=True,
                             )
+                # one unreadable stream must not drop other metrics; logged
                 except Exception:
                     logger.debug(
                         "Metrics: could not read groups of stream %s",

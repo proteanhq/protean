@@ -137,7 +137,8 @@ class RedisPubSubBroker(BaseBroker):
         """Test basic connectivity to Redis broker"""
         try:
             return self.redis_instance.ping()
-        except (redis.RedisError, OSError) as e:
+        # ping() raises a plain ValueError for a malformed reply.
+        except (redis.RedisError, OSError, ValueError) as e:
             logger.debug(f"Redis PubSub ping failed: {e}")
             return False
 
@@ -188,6 +189,7 @@ class RedisPubSubBroker(BaseBroker):
 
             return stats
 
+        # a health check reports failure instead of raising; logged
         except Exception as e:
             logger.exception("broker.redis_pubsub.health_check_failed")
             return {
@@ -241,7 +243,8 @@ class RedisPubSubBroker(BaseBroker):
                             f"Redis connection restored on attempt {attempt + 1}"
                         )
                     return True
-            except (redis.RedisError, OSError) as e:
+            # ping() raises a plain ValueError for a malformed reply.
+            except (redis.RedisError, OSError, ValueError) as e:
                 logger.debug(f"Redis connection attempt {attempt + 1} failed: {e}")
 
             # Connection failed, try to reconnect
@@ -254,7 +257,7 @@ class RedisPubSubBroker(BaseBroker):
                     self.redis_instance = redis.Redis.from_url(
                         cast(str, self.conn_info["URI"])
                     )
-                except (redis.RedisError, ValueError) as reconnect_error:
+                except ValueError as reconnect_error:
                     logger.error(
                         f"Failed to create new Redis connection: {reconnect_error}"
                     )
@@ -267,7 +270,7 @@ class RedisPubSubBroker(BaseBroker):
         try:
             self.redis_instance.flushall()
             self._consumer_groups.clear()
-        except Exception:
+        except Exception:  # a failed test reset is logged, not raised
             logger.exception("broker.redis_pubsub.data_reset_failed")
 
     # DLQ methods — not supported by PubSub broker (no DEAD_LETTER_QUEUE capability).

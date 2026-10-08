@@ -254,7 +254,7 @@ class PartitionedStreamSubscription(StreamSubscription):
                     extra={"subscriber": self.subscriber_name},
                 )
                 break
-            except Exception:
+            except Exception:  # keep discovery running; logged, then back off
                 consecutive_errors += 1
                 logger.exception(
                     "partition.discovery_error",
@@ -299,7 +299,7 @@ class PartitionedStreamSubscription(StreamSubscription):
         for category in self._categories:
             try:
                 keys = self.broker.partition_keys(category)
-            except Exception:
+            except Exception:  # one unreadable category must not stop discovery; logged
                 logger.exception(
                     "partition.discovery_read_failed",
                     extra={"category": category},
@@ -732,7 +732,7 @@ class PartitionedStreamSubscription(StreamSubscription):
                     self.reap_idle_ms,
                     backfill_suffix,
                 )
-            except Exception:
+            except Exception:  # a failed reap keeps the partition owned; logged
                 logger.exception(
                     "partition.reap_failed",
                     extra={"partition": owned.partition_id, "category": category},

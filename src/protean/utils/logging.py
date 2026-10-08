@@ -670,7 +670,7 @@ def access_log_handler(
     error_info: Exception | None = None
     try:
         yield
-    except Exception as exc:
+    except Exception as exc:  # keeps the error for the wide event, then re-raises
         error_info = exc
         raise
     finally:
@@ -822,6 +822,7 @@ def log_method_call(func: Callable[..., Any]) -> Callable[..., Any]:
                 result=result,
             )
             return result
+        # Logs the failed call with the traceback, then re-raises.
         except Exception as e:
             logger.exception(
                 "method_call_error",

@@ -287,7 +287,7 @@ class StreamSubscription(BaseSubscription):
         # Ensure consumer group exists for primary stream
         try:
             self.broker._ensure_group(self.consumer_group, self.stream_category)
-        except Exception as e:
+        except Exception as e:  # logs which group failed, then re-raises
             logger.error(f"Failed to ensure consumer group {self.consumer_group}: {e}")
             raise
 
@@ -320,7 +320,7 @@ class StreamSubscription(BaseSubscription):
         if self._lanes_enabled:
             try:
                 self.broker._ensure_group(self.consumer_group, self.backfill_stream)
-            except Exception as e:
+            except Exception as e:  # logs which backfill group failed, then re-raises
                 logger.error(
                     f"Failed to ensure backfill consumer group "
                     f"{self.consumer_group} on {self.backfill_stream}: {e}"
@@ -461,7 +461,7 @@ class StreamSubscription(BaseSubscription):
             except asyncio.CancelledError:
                 logger.info(f"Subscription cancelled: {self.subscriber_name}")
                 break
-            except Exception:
+            except Exception:  # keep the subscription alive; logged, then back off
                 self._forget_idle_tick()
                 consecutive_errors += 1
                 logger.exception(
@@ -821,7 +821,7 @@ class StreamSubscription(BaseSubscription):
         """Deserialize a message payload, handling errors by moving to DLQ."""
         try:
             return Message.deserialize(payload)
-        except Exception as e:  # noqa: BLE001 - a bad payload goes to the DLQ, not up
+        except Exception as e:  # noqa: BLE001 - logged, then sent to the DLQ if enabled
             logger.error(f"Deserialization failed for message {identifier}: {e}")
             await self.move_to_dlq(identifier, payload, stream)
             return None
@@ -1052,7 +1052,7 @@ class StreamSubscription(BaseSubscription):
                 causation_id=domain_meta.get("causation_id"),
             )
             return True
-        except Exception:
+        except Exception:  # a failed DLQ move returns False to the caller; logged
             logger.exception(f"Failed to move message {identifier} to DLQ")
             return False
 

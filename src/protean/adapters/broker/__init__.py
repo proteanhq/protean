@@ -40,6 +40,7 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
             for name, broker in self._brokers.items():
                 try:
                     broker.close()
+                # one broker failing to close must not stop the others; logged
                 except Exception:
                     logger.exception("Error closing broker '%s'", name)
             logger.debug("All brokers closed")
@@ -94,6 +95,7 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
             for broker in newly_created:
                 try:
                     broker.close()
+                # a close failure must not mask the original error; logged
                 except Exception:
                     logger.exception("broker.reinit.rollback_close_failed")
             raise
@@ -104,6 +106,7 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
             if broker_objects.get(broker_name) is not broker:
                 try:
                     broker.close()
+                # one failed close must not block the new brokers; logged
                 except Exception:
                     logger.exception("Error closing broker '%s'", broker_name)
 

@@ -103,7 +103,7 @@ def _get_redis(domains: list[Domain]) -> "redis.Redis[Any] | None":
                     # the Redis broker subclasses, not the ``BaseBroker`` port.
                     instance: redis.Redis[Any] = broker.redis_instance
                     return instance
-        except Exception:
+        except Exception:  # try the next domain; logged at debug
             logger.debug(
                 "Could not get the Redis broker of domain %s", d.name, exc_info=True
             )
@@ -145,7 +145,7 @@ def _outbox_status(domain: Domain) -> dict[str, Any]:
             outbox_repo = domain._get_outbox_repo("default")
             counts = outbox_repo.count_by_status()
             return {"status": "ok", "counts": counts}
-    except Exception:
+    except Exception:  # an outbox error becomes an error status; logged
         logger.exception(f"Error querying outbox for {domain.name}")
         return {"status": "error", "error": "Failed to query outbox"}
 
@@ -159,7 +159,7 @@ def _broker_health(domain: Domain) -> dict[str, Any]:
                 return {"status": "error", "error": "No default broker configured"}
             stats = broker.health_stats()
             return {"status": "ok", **stats}
-    except Exception:
+    except Exception:  # any broker error becomes an error status; logged
         logger.exception(f"Error querying broker for {domain.name}")
         return {"status": "error", "error": "Failed to query broker health"}
 
@@ -173,7 +173,7 @@ def _broker_info(domain: Domain) -> dict[str, Any]:
                 return {"status": "error", "error": "No default broker configured"}
             info = broker.info()
             return {"status": "ok", **info}
-    except Exception:
+    except Exception:  # any broker error becomes an error status; logged
         logger.exception(f"Error querying broker info for {domain.name}")
         return {"status": "error", "error": "Failed to query broker info"}
 
@@ -279,7 +279,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                             "pending": int(gpending),
                             "lag": int(glag),
                         }
-            except Exception:
+            except Exception:  # one unreadable stream must not fail the endpoint
                 logger.debug("Could not read stream %s", name, exc_info=True)
 
         return JSONResponse(
@@ -345,14 +345,14 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                                     "idle_ms": int(cidle),
                                 }
                             )
-                    except Exception:
+                    except Exception:  # one unreadable group must not drop the others
                         logger.debug(
                             "Could not read consumers of group %s on stream %s",
                             gname,
                             stream_name,
                             exc_info=True,
                         )
-            except Exception:
+            except Exception:  # one unreadable stream must not fail the endpoint
                 logger.debug(
                     "Could not read groups of stream %s", stream_name, exc_info=True
                 )
@@ -415,14 +415,14 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                                     "idle_ms": int(cidle),
                                 }
                             )
-                    except Exception:
+                    except Exception:  # one unreadable group must not drop the others
                         logger.debug(
                             "Could not read consumers of group %s on stream %s",
                             gname,
                             stream_name,
                             exc_info=True,
                         )
-            except Exception:
+            except Exception:  # one unreadable stream must not fail the endpoint
                 logger.debug(
                     "Could not read groups of stream %s", stream_name, exc_info=True
                 )
@@ -598,6 +598,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                                 }
                                 result["totals"]["consumer_pending"] += int(gpending)
                                 max_lag = max(max_lag, int(glag))
+                    # keep the stream entry without group data; logged
                     except Exception:
                         logger.debug(
                             "Could not read groups of stream %s",
@@ -607,7 +608,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
 
                     result["totals"]["stream_depth"] += max_lag
                     result["streams"][stream_name] = stream_entry
-                except Exception:
+                except Exception:  # one unreadable stream must not fail the endpoint
                     logger.debug("Could not read stream %s", stream_name, exc_info=True)
 
         return JSONResponse(content=result)
@@ -633,7 +634,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                     if isinstance(g, dict):
                         gpending = g.get("pending") or g.get(b"pending") or 0
                         message_counts["in_flight"] += int(gpending)
-            except Exception:
+            except Exception:  # one unreadable stream must not fail the endpoint
                 logger.debug("Could not read stream %s", name, exc_info=True)
 
         return JSONResponse(
@@ -676,7 +677,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
             raw_entries = redis_conn.xrevrange(
                 TRACE_STREAM, count=min(fetch_count, 5000)
             )
-        except Exception:
+        except Exception:  # any read error becomes a 500 response; logged
             logger.exception("Error reading trace stream")
             return JSONResponse(
                 content={"traces": [], "count": 0, "error": "Failed to read traces"},
@@ -797,7 +798,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
 
         try:
             raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
-        except Exception:
+        except Exception:  # any read error becomes a 500 response; logged
             logger.exception("Error reading trace stream")
             return JSONResponse(
                 content={"error": "Failed to read traces"}, status_code=500
@@ -927,7 +928,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
 
         try:
             raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id, max=max_id)
-        except Exception:
+        except Exception:  # any read error becomes a 500 response; logged
             logger.exception("Error reading trace stream for failed traces")
             return JSONResponse(
                 content={
@@ -976,7 +977,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
 
         try:
             entries = redis_conn.xrange(TRACE_STREAM, min=stream_id, max=stream_id)
-        except Exception:
+        except Exception:  # any read error becomes a 500 response; logged
             logger.exception(f"Error reading trace {stream_id}")
             return JSONResponse(
                 content={"error": "Failed to read trace"}, status_code=500
@@ -1022,7 +1023,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                         "total_dlq": sum(s.dlq_depth for s in statuses),
                     },
                 }
-            except Exception:
+            except Exception:  # one domain's error must not hide the others; logged
                 logger.exception(
                     f"Error collecting subscription status for {domain.name}"
                 )
@@ -1106,7 +1107,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                         "total_count": total_count,
                     }
                 )
-        except Exception:
+        except Exception:  # any DLQ error becomes a 500 response; logged
             logger.exception("Error listing DLQ")
             return JSONResponse(
                 content={"error": "Failed to list DLQ messages"},
@@ -1158,7 +1159,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                     content={"error": f"DLQ message '{dlq_id}' not found"},
                     status_code=404,
                 )
-        except Exception:
+        except Exception:  # any DLQ error becomes a 500 response; logged
             logger.exception("Error inspecting DLQ message")
             return JSONResponse(
                 content={"error": "Failed to inspect DLQ message"},
@@ -1204,7 +1205,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                     content={"error": f"DLQ message '{dlq_id}' not found"},
                     status_code=404,
                 )
-        except Exception:
+        except Exception:  # any DLQ error becomes a 500 response; logged
             logger.exception("Error replaying DLQ message")
             return JSONResponse(
                 content={"error": "Failed to replay DLQ message"},
@@ -1255,7 +1256,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                         "target_stream": subscription,
                     }
                 )
-        except Exception:
+        except Exception:  # any DLQ error becomes a 500 response; logged
             logger.exception("Error replaying all DLQ messages")
             return JSONResponse(
                 content={"error": "Failed to replay DLQ messages"},
@@ -1300,7 +1301,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
                     total += broker.dlq_purge(dlq_stream)
 
                 return JSONResponse(content={"status": "ok", "purged": total})
-        except Exception:
+        except Exception:  # any DLQ error becomes a 500 response; logged
             logger.exception("Error purging DLQ")
             return JSONResponse(
                 content={"error": "Failed to purge DLQ"},
@@ -1319,7 +1320,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         try:
             deleted = redis_conn.delete(TRACE_STREAM)
             return JSONResponse(content={"status": "ok", "deleted": bool(deleted)})
-        except Exception:
+        except Exception:  # a Redis delete error becomes a 500 response; logged
             logger.exception("Error deleting trace stream")
             return JSONResponse(
                 content={"error": "Failed to delete traces"}, status_code=500

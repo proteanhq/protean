@@ -327,9 +327,10 @@ class Domain:
         # Regular Python script
         try:
             return str(Path(filename).resolve().parent)
-        # A symlink loop raises RuntimeError before Python 3.13. A working
-        # directory that no longer exists raises OSError.
-        except (TypeError, ValueError, OSError, RuntimeError):
+        # A NUL byte in the filename raises ValueError. A symlink loop raises
+        # RuntimeError before Python 3.13. OSError is left out: a deleted working
+        # directory raises it here and in Path.cwd() alike, so no fallback works.
+        except (TypeError, ValueError, RuntimeError):
             # Fallback to CWD if unable to determine path
             return str(Path.cwd())
 
@@ -792,6 +793,7 @@ class Domain:
             try:
                 ir = self.to_ir()
                 diagnostics = ir.get("diagnostics", [])
+            # an IR build failure drops only the IR diagnostics; logged
             except Exception:
                 logger.warning(
                     "Could not build the IR for domain '%s'; "
@@ -949,7 +951,7 @@ class Domain:
         for name, closeable in closeables:
             try:
                 closeable.close()
-            except Exception:
+            except Exception:  # one failed close must not skip the rest; logged
                 logger.exception("Error closing %s", name)
 
         logger.info("Domain infrastructure closed")

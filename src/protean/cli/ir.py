@@ -640,6 +640,7 @@ def check(
     except NoDomainException as exc:
         print(f"[red]Error:[/red] {exc.args[0]}")
         raise typer.Exit(code=2) from exc
+    # any check failure becomes a printed error and exit code 2
     except Exception as exc:
         print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(code=2) from exc

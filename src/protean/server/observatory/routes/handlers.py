@@ -66,7 +66,7 @@ def _get_redis(domains: list[Domain]) -> Any:
                 broker = d.brokers.get("default")
                 if broker and hasattr(broker, "redis_instance"):
                     return cast(_RedisStyleBroker, broker).redis_instance
-        except Exception:
+        except Exception:  # a broken domain is skipped while looking for Redis; logged
             logger.debug(
                 "Could not get the Redis broker of domain %s", d.name, exc_info=True
             )
@@ -523,7 +523,7 @@ def create_handlers_router(domains: list[Domain]) -> APIRouter:
         # 2. Merge subscription status (degrades gracefully)
         try:
             merge_subscription_status(handlers, domains)
-        except Exception:
+        except Exception:  # status is optional; the list still renders, logged
             logger.debug("Failed to merge subscription status", exc_info=True)
 
         # 3. Merge trace metrics (requires Redis)
@@ -533,7 +533,7 @@ def create_handlers_router(domains: list[Domain]) -> APIRouter:
                 trace_metrics = collect_per_handler_trace_metrics(redis_conn, window_ms)
                 for h in handlers:
                     h["metrics"] = trace_metrics.get(h["name"])
-            except Exception:
+            except Exception:  # metrics are optional; the list still renders, logged
                 logger.debug("Failed to collect trace metrics", exc_info=True)
 
         # 4. Build summary
@@ -579,7 +579,7 @@ def create_handlers_router(domains: list[Domain]) -> APIRouter:
         # Merge subscription status
         try:
             merge_subscription_status([handler], domains)
-        except Exception:
+        except Exception:  # status is optional; the handler still renders, logged
             logger.debug("Failed to merge subscription status", exc_info=True)
 
         # Merge trace metrics + recent messages
@@ -588,14 +588,14 @@ def create_handlers_router(domains: list[Domain]) -> APIRouter:
             try:
                 trace_metrics = collect_per_handler_trace_metrics(redis_conn, window_ms)
                 handler["metrics"] = trace_metrics.get(name)
-            except Exception:
+            except Exception:  # metrics are optional; the handler still renders, logged
                 logger.debug("Failed to collect trace metrics", exc_info=True)
 
             try:
                 handler["recent_messages"] = collect_recent_messages(
                     redis_conn, name, count=message_count
                 )
-            except Exception:
+            except Exception:  # recent messages fall back to an empty list; logged
                 logger.debug("Failed to collect recent messages", exc_info=True)
                 handler["recent_messages"] = []
         else:

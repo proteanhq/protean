@@ -308,3 +308,23 @@ class TestCleanupStaleConsumersErrors:
             redis_broker._cleanup_stale_consumers(
                 "test::cleanup-bug", "BugGroup", "Handler-host1-1-abc"
             )
+
+    def test_a_consumer_name_that_is_not_utf8_is_skipped(self, redis_broker):
+        stream = "test::cleanup-bad-name"
+        group = "BadNameGroup"
+        current = "Handler-host1-1000-current"
+        stale = "Handler-host1-1000-old001"
+        self._stale_setup(redis_broker, stream, group, stale)
+        # Another client joins the group under a name that is not UTF-8.
+        redis_broker.redis_instance.xgroup_createconsumer(
+            stream, group, b"\xff\xfe-bad"
+        )
+
+        removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+
+        assert removed == 1
+        names = [
+            c["name"]
+            for c in redis_broker.redis_instance.xinfo_consumers(stream, group)
+        ]
+        assert names == [b"\xff\xfe-bad"]

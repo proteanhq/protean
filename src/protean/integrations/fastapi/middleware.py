@@ -381,7 +381,8 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
 
         Never raises — emission failures fall back to a DEBUG log on the
         internal logger so broken observability cannot crash an otherwise
-        successful request.
+        successful request. When the request failed, the endpoint error is
+        then logged at ERROR on the same logger.
         """
         try:
             route = request.scope.get("route")
@@ -447,7 +448,14 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
                 http_access_logger.warning("access.http_completed", extra=extra)
             else:
                 http_access_logger.info("access.http_completed", extra=extra)
-        except Exception:
-            logging.getLogger(__name__).debug(
-                "http_wide_event_emission_failed", exc_info=True
-            )
+        except Exception:  # a failed access log must not break the response
+            logger = logging.getLogger(__name__)
+            logger.debug("http_wide_event_emission_failed", exc_info=True)
+            # The wide event never recorded the endpoint error, so log it here.
+            if error_info is not None:
+                logger.error(
+                    "Unhandled error in %s %s",
+                    request.method,
+                    request.url.path,
+                    exc_info=(type(error_info), error_info, error_info.__traceback__),
+                )

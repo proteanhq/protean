@@ -321,7 +321,7 @@ class DataflowAnalyzer:
         # Fail open: the substrate must not abort a diagnostics pass over one
         # pathological body. A genuine interpreter limit (deep nesting) is as
         # much "cannot analyze" here as anything else.
-        except Exception as exc:  # noqa: BLE001  # pragma: no cover - defensive fail-open
+        except Exception as exc:  # noqa: BLE001 - logged; the body counts as unanalyzable  # pragma: no cover
             logger.debug("Cannot analyze a body in module %s: %r", module, exc)
             return MethodFlow(module, node, (), {}, {}, {}, ())
 

@@ -66,7 +66,7 @@ class RedisCache(BaseCache):
                 self.r.close()
                 self.r = None
                 logger.debug("Closed Redis cache connection: %s", self.name)
-        except Exception:
+        except Exception:  # closing must not raise during shutdown; logged
             logger.exception("Error closing Redis cache %s", self.name)
 
     def ping(self) -> bool:

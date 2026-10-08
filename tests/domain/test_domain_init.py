@@ -204,20 +204,14 @@ def test_guess_caller_path_lets_unexpected_errors_through(monkeypatch):
 
 
 def test_guess_caller_path_falls_back_on_an_unresolvable_path(monkeypatch):
-    """An OSError from resolving the caller's file falls back to cwd."""
+    """A filename that cannot be resolved falls back to cwd."""
     domain = Domain()
 
-    mock_frame = type(
-        "MockFrame",
-        (),
-        {"f_code": type("MockCode", (), {"co_filename": "/path/to/file.py"})},
+    # A NUL byte makes Path.resolve() raise ValueError.
+    mock_frame = SimpleNamespace(f_code=SimpleNamespace(co_filename="/path/\0/file.py"))
+    monkeypatch.setattr(
+        domain_module, "sys", SimpleNamespace(_getframe=lambda depth: mock_frame)
     )
-    monkeypatch.setattr(sys, "_getframe", lambda depth: mock_frame)
-
-    def mock_resolve(self, *args, **kwargs):
-        raise OSError("Symlink loop")
-
-    monkeypatch.setattr(Path, "resolve", mock_resolve)
 
     assert domain._guess_caller_path() == str(Path.cwd())
 

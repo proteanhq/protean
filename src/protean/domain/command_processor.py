@@ -468,6 +468,7 @@ class CommandProcessor:
                         # can read it when creating outbox records
                         with processing_priority(resolved_priority):
                             result = handler_class._handle(command_with_metadata)
+                    # records the failure on span and metrics, then re-raises
                     except Exception as exc:
                         duration_ms = (time.monotonic() - start_time) * 1000
                         duration_s = time.monotonic() - process_start

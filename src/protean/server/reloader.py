@@ -253,7 +253,7 @@ class Reloader:
             if isinstance(value, bool):
                 return 0.0
             window = float(value)
-        except Exception:
+        except Exception:  # a bad config falls back to the default budget; logged
             logger.debug(
                 "Could not read server.drain_timeout from the project config; "
                 "using the default termination budget",

@@ -57,7 +57,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
             try:
                 self._do_add(aggregate)
-            except Exception as exc:
+            except Exception as exc:  # marks the span as failed, then re-raises
                 set_span_error(span, exc)
                 raise
 
@@ -150,7 +150,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
             try:
                 return self._do_get(identifier, at_version=at_version, as_of=as_of)
-            except Exception as exc:
+            except Exception as exc:  # marks the span as failed, then re-raises
                 set_span_error(span, exc)
                 raise
 

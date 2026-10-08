@@ -61,7 +61,7 @@ def _get_redis(domains: list[Domain]) -> Any:
                 broker = d.brokers.get("default")
                 if broker and hasattr(broker, "redis_instance"):
                     return broker.redis_instance
-        except Exception:
+        except Exception:  # one broken domain must not hide the others; logged
             logger.debug(
                 "Could not get the Redis broker of domain %s", d.name, exc_info=True
             )
@@ -302,7 +302,7 @@ def get_pm_instance_count(domain: Domain, pm_cls: type) -> int | None:
                 return None
             identifiers = store._stream_identifiers(stream_category)
             return len(identifiers)
-    except Exception:
+    except Exception:  # the count is optional on the dashboard; logged
         logger.debug(
             "Failed to get instance count for %s", pm_cls.__name__, exc_info=True
         )
@@ -331,7 +331,7 @@ def get_pm_instances(
             if store is None:
                 return []
             identifiers = store._stream_identifiers(stream_category)
-    except Exception:
+    except Exception:  # a failed store read lists no instances; logged
         logger.debug(
             "Failed to enumerate instances for %s",
             pm_cls.__name__,
@@ -345,7 +345,7 @@ def get_pm_instances(
         try:
             with domain.domain_context():
                 messages = store.read(stream_name)
-        except Exception:
+        except Exception:  # skip one unreadable stream, list the rest; logged
             logger.debug("Failed to read stream %s", stream_name, exc_info=True)
             continue
 
@@ -472,7 +472,7 @@ def create_processes_router(domains: list[Domain]) -> APIRouter:
         # 2. Merge subscription status
         try:
             merge_pm_subscription_status(pms, domains)
-        except Exception:
+        except Exception:  # status is optional; the list still renders; logged
             logger.debug("Failed to merge PM subscription status", exc_info=True)
 
         # 3. Merge trace metrics
@@ -485,14 +485,14 @@ def create_processes_router(domains: list[Domain]) -> APIRouter:
                 )
                 for pm in pms:
                     pm["metrics"] = trace_metrics.get(pm["name"])
-            except Exception:
+            except Exception:  # metrics are optional; the list still renders; logged
                 logger.debug("Failed to collect PM trace metrics", exc_info=True)
 
         # 4. Get instance counts
         for pm in pms:
             try:
                 pm["instance_count"] = get_pm_instance_count(pm["_domain"], pm["_cls"])
-            except Exception:
+            except Exception:  # one failed count must not break the list; logged
                 logger.debug(
                     "Failed to get instance count for %s", pm["name"], exc_info=True
                 )
@@ -531,7 +531,7 @@ def create_processes_router(domains: list[Domain]) -> APIRouter:
         # Get instances from event store
         try:
             instances = get_pm_instances(target["_domain"], target["_cls"], limit=limit)
-        except Exception:
+        except Exception:  # the detail view still answers, with no instances; logged
             logger.debug("Failed to get instances for %s", name, exc_info=True)
             instances = []
 

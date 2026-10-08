@@ -104,7 +104,7 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
             for name, provider in self._providers.items():
                 try:
                     provider.close()
-                except Exception:
+                except Exception:  # one failing provider must not stop closing the rest
                     logger.exception("Error closing provider '%s'", name)
             logger.debug("All providers closed")
 

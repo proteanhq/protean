@@ -458,6 +458,7 @@ class ElasticsearchDAO(BaseDAO):
                         total=_hits_total(response),
                         items=model_items,
                     )
+                # Any client error on the retry becomes DatabaseError; logged.
                 except Exception as retry_exc:
                     logger.exception("repository.elasticsearch.filter_retry_failed")
                     raise DatabaseError(
@@ -483,6 +484,7 @@ class ElasticsearchDAO(BaseDAO):
                 index=self.database_model_cls._index._name,
                 using=conn,
             )
+        # Any client error on save becomes DatabaseError; logged.
         except Exception as exc:
             logger.exception("repository.elasticsearch.create_failed")
             raise DatabaseError(
@@ -555,7 +557,7 @@ class ElasticsearchDAO(BaseDAO):
                 f"Wrong expected version: {expected_version} "
                 f"(Aggregate: {self.entity_cls.__name__}({identifier}))"
             ) from exc
-        except Exception as exc:
+        except Exception as exc:  # any other client error becomes DatabaseError; logged
             logger.exception("repository.elasticsearch.update_failed")
             raise DatabaseError(
                 f"Database error during update: {exc!s}", original_exception=exc
@@ -603,7 +605,7 @@ class ElasticsearchDAO(BaseDAO):
             )
 
             return response.get("updated", 0)
-        except Exception as exc:
+        except Exception as exc:  # any client error becomes DatabaseError; logged
             logger.exception("repository.elasticsearch.update_all_failed")
             raise DatabaseError(
                 f"Database error during update_all: {exc!s}", original_exception=exc
@@ -629,7 +631,7 @@ class ElasticsearchDAO(BaseDAO):
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."
             ) from exc
-        except Exception as exc:
+        except Exception as exc:  # any other client error becomes DatabaseError; logged
             logger.exception("repository.elasticsearch.delete_failed")
             raise DatabaseError(
                 f"Database error during deletion: {exc!s}", original_exception=exc
@@ -682,7 +684,7 @@ class ElasticsearchDAO(BaseDAO):
             # the deletion is visible to the next batch.
             index = Index(name=self.entity_cls.meta_.schema_name, using=conn)
             index.refresh()
-        except Exception as exc:
+        except Exception as exc:  # any client error becomes DatabaseError; logged
             logger.exception("repository.elasticsearch.delete_top_failed")
             raise DatabaseError(
                 f"Database error during delete_top: {exc!s}", original_exception=exc
@@ -709,7 +711,7 @@ class ElasticsearchDAO(BaseDAO):
             # `Search.delete` does not refresh index, so we have to manually refresh
             index = Index(name=self.entity_cls.meta_.schema_name, using=conn)
             index.refresh()
-        except Exception as exc:
+        except Exception as exc:  # any client error becomes DatabaseError; logged
             logger.exception("repository.elasticsearch.delete_all_failed")
             raise DatabaseError(
                 f"Database error during delete_all: {exc!s}", original_exception=exc
