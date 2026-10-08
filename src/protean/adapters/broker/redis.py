@@ -43,17 +43,19 @@ _STREAM_ID_PATTERN = re.compile(r"([0-9]+)(?:-([0-9]+))?")
 # Redis rejects a stream ID part above an unsigned 64-bit integer.
 _STREAM_ID_PART_MAX = 2**64 - 1
 
+# Redis rejects a stream ID longer than 127 characters, leading zeroes included.
+_STREAM_ID_MAX_LENGTH = 127
+
 
 def _is_stream_id(dlq_id: str) -> bool:
+    # The length check also keeps ``int()`` below its 4300-digit limit.
+    if len(dlq_id) > _STREAM_ID_MAX_LENGTH:
+        return False
     match = _STREAM_ID_PATTERN.fullmatch(dlq_id)
     if match is None:
         return False
-    # The length check comes first because ``int()`` refuses a string of more
-    # than 4300 digits.
     return all(
-        len(part.lstrip("0")) <= 20 and int(part) <= _STREAM_ID_PART_MAX
-        for part in match.groups()
-        if part is not None
+        int(part) <= _STREAM_ID_PART_MAX for part in match.groups() if part is not None
     )
 
 

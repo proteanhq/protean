@@ -9,7 +9,7 @@ tests. Covers the core DLQ operations also tested in the inline broker's
 import pytest
 import redis
 
-from protean.adapters.broker.redis import RedisBroker
+from protean.adapters.broker.redis import RedisBroker, _is_stream_id
 from tests.shared import REDIS_URI
 
 
@@ -239,8 +239,9 @@ class TestRedisDLQManagement:
         assert broker.dlq_replay_all("nonexistent:dlq", "orders") == 0
 
 
-# Range bounds, non-ASCII digits and parts above 2**64 - 1 (including one too
-# long for ``int()``), all of which XRANGE would treat as a range or reject.
+# Range bounds, non-ASCII digits, parts above 2**64 - 1 and IDs longer than 127
+# characters (including ones too long for ``int()``), all of which XRANGE would
+# treat as a range or reject.
 MALFORMED_IDS = [
     "abc",
     "1-",
@@ -255,7 +256,28 @@ MALFORMED_IDS = [
     "18446744073709551616",
     "1-18446744073709551616",
     pytest.param("9" * 5000, id="5000-digits"),
+    pytest.param("0" * 5000 + "1-0", id="5000-zero-padded"),
+    pytest.param("0" * 127 + "1", id="128-chars"),
 ]
+
+
+@pytest.mark.parametrize(
+    "dlq_id",
+    [
+        "0",
+        "0-0",
+        "1-0",
+        "18446744073709551615-18446744073709551615",
+        pytest.param("0" * 126 + "1", id="127-chars"),
+    ],
+)
+def test_is_stream_id_accepts_a_valid_id(dlq_id):
+    assert _is_stream_id(dlq_id) is True
+
+
+@pytest.mark.parametrize("dlq_id", MALFORMED_IDS)
+def test_is_stream_id_rejects_a_malformed_id(dlq_id):
+    assert _is_stream_id(dlq_id) is False
 
 
 @pytest.mark.redis
