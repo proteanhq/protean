@@ -33,10 +33,29 @@ CONSUMER_GROUP_SEPARATOR = ":"
 NEW_MESSAGES_MARK = ">"
 PENDING_MESSAGES_MARK = "0"
 
-# A concrete stream entry ID, ``<ms>`` or ``<ms>-<seq>``. XRANGE also accepts
-# ``-``, ``+`` and ``(`` prefixes as range bounds, so a DLQ ID is checked
-# against this before it is passed as both bounds of a single-entry lookup.
-_STREAM_ID_PATTERN = re.compile(r"\d+(-\d+)?")
+# A stream entry ID, ``<ms>`` or ``<ms>-<seq>``, never a range bound. XRANGE
+# also accepts ``-``, ``+`` and ``(`` prefixes as range bounds, so a DLQ ID is
+# checked against this before it is passed as both bounds of a single-entry
+# lookup. ``[0-9]`` because ``\d`` also matches non-ASCII digits, which Redis
+# rejects.
+_STREAM_ID_PATTERN = re.compile(r"([0-9]+)(?:-([0-9]+))?")
+
+# Redis rejects a stream ID part above an unsigned 64-bit integer.
+_STREAM_ID_PART_MAX = 2**64 - 1
+
+
+def _is_stream_id(dlq_id: str) -> bool:
+    match = _STREAM_ID_PATTERN.fullmatch(dlq_id)
+    if match is None:
+        return False
+    # The length check comes first because ``int()`` refuses a string of more
+    # than 4300 digits.
+    return all(
+        len(part.lstrip("0")) <= 20 and int(part) <= _STREAM_ID_PART_MAX
+        for part in match.groups()
+        if part is not None
+    )
+
 
 # Partition-per-key internal key suffixes (ADR-0028). Each is a reserved
 # ``__name__`` sentinel, which partition keys can never equal (rejected at
@@ -753,7 +772,7 @@ class RedisBroker(BaseBroker):
 
     def _dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
         """Inspect a specific DLQ message by ID."""
-        if not _STREAM_ID_PATTERN.fullmatch(dlq_id):
+        if not _is_stream_id(dlq_id):
             return None
 
         # XRANGE returns an empty list for a stream that does not exist
@@ -767,7 +786,7 @@ class RedisBroker(BaseBroker):
 
     def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
         """Replay a single DLQ message back to its original stream."""
-        if not _STREAM_ID_PATTERN.fullmatch(dlq_id):
+        if not _is_stream_id(dlq_id):
             return False
 
         # XRANGE returns an empty list for a stream that does not exist

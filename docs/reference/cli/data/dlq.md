@@ -166,6 +166,7 @@ The Observatory exposes DLQ management endpoints for programmatic access:
 | Subscription not found | Aborts with "No subscription found for stream category" |
 | DLQ message not found (`inspect`, `replay`) | Aborts with "not found" |
 | No DLQ messages (`list`) | Prints "No DLQ messages found" |
+| Broker error, such as `WRONGTYPE` for a DLQ key that is not a stream | Logs `cli.command_failed` and exits with an error |
 
 ## How Messages Enter the DLQ
 

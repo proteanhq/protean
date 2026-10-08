@@ -239,6 +239,25 @@ class TestRedisDLQManagement:
         assert broker.dlq_replay_all("nonexistent:dlq", "orders") == 0
 
 
+# Range bounds, non-ASCII digits and parts above 2**64 - 1 (including one too
+# long for ``int()``), all of which XRANGE would treat as a range or reject.
+MALFORMED_IDS = [
+    "abc",
+    "1-",
+    "-",
+    "+",
+    "(1-0",
+    "1-0\n",
+    "",
+    "\u0661\u0662\u0663",
+    "\uff11",
+    "1-\uff10",
+    "18446744073709551616",
+    "1-18446744073709551616",
+    pytest.param("9" * 5000, id="5000-digits"),
+]
+
+
 @pytest.mark.redis
 class TestRedisDLQErrors:
     """A DLQ key that is not a stream raises instead of reading as empty."""
@@ -272,10 +291,22 @@ class TestRedisDLQErrors:
 
     # The key is not a stream, so any call that reached Redis would raise
     # WRONGTYPE. A plain return proves the ID check ran first.
-    @pytest.mark.parametrize("bad_id", ["abc", "1-", "-", "+", "(1-0", "1-0\n", ""])
+    @pytest.mark.parametrize("bad_id", MALFORMED_IDS)
     def test_dlq_inspect_of_a_malformed_id_returns_none(self, broker, bad_id):
         assert broker.dlq_inspect("orders:dlq", bad_id) is None
 
-    @pytest.mark.parametrize("bad_id", ["abc", "1-", "-", "+", "(1-0", "1-0\n", ""])
+    @pytest.mark.parametrize("bad_id", MALFORMED_IDS)
     def test_dlq_replay_of_a_malformed_id_returns_false(self, broker, bad_id):
         assert broker.dlq_replay("orders:dlq", bad_id, "orders") is False
+
+    @pytest.mark.parametrize(
+        "max_id",
+        [
+            "18446744073709551615",
+            "18446744073709551615-18446744073709551615",
+            "0018446744073709551615",
+        ],
+    )
+    def test_an_id_at_the_64_bit_limit_reaches_redis(self, broker, max_id):
+        with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
+            broker.dlq_inspect("orders:dlq", max_id)
