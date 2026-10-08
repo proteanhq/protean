@@ -7,6 +7,8 @@ import pytest
 from protean.adapters.event_store.message_db import MessageDBStore
 from protean.exceptions import ExpectedVersionError
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def _store_whose_write_raises(exc: Exception) -> MessageDBStore:
     store = MessageDBStore(Mock(), {"database_uri": "postgresql://unused"})
