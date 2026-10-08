@@ -3,7 +3,10 @@
 Integration tests that verify stale consumer cleanup using a real Redis instance.
 """
 
+import logging
+
 import pytest
+import redis
 
 from protean.adapters.broker.redis import RedisBroker
 
@@ -220,3 +223,108 @@ class TestCleanupStaleConsumers:
         # Run cleanup
         removed = redis_broker._cleanup_stale_consumers(stream, group, current)
         assert removed == 2
+
+
+@pytest.mark.redis
+class TestCleanupStaleConsumersErrors:
+    """Redis errors are logged and skipped; other errors reach the caller."""
+
+    def _stale_setup(self, redis_broker, stream, group, stale):
+        redis_broker._ensure_group(group, stream)
+        redis_broker.redis_instance.xadd(stream, {"data": "msg"})
+        redis_broker.redis_instance.xreadgroup(group, stale, {stream: ">"}, count=1)
+        for p in redis_broker.redis_instance.xpending_range(
+            stream, group, min="-", max="+", count=10
+        ):
+            mid = p.get("message_id") or p.get(b"message_id")
+            redis_broker.redis_instance.xack(stream, group, mid)
+
+    def test_redis_error_removing_one_consumer_is_logged(
+        self, redis_broker, monkeypatch, caplog
+    ):
+        stream = "test::cleanup-del-error"
+        group = "DelErrorGroup"
+        current = "Handler-host1-1000-current"
+        stale = "Handler-host1-1000-old001"
+        self._stale_setup(redis_broker, stream, group, stale)
+
+        def failing_delconsumer(*args, **kwargs):
+            raise redis.ResponseError("NOGROUP gone")
+
+        monkeypatch.setattr(
+            redis_broker.redis_instance, "xgroup_delconsumer", failing_delconsumer
+        )
+
+        with caplog.at_level(logging.DEBUG, logger="protean.adapters.broker.redis"):
+            removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+
+        assert removed == 0
+        records = [
+            r
+            for r in caplog.records
+            if r.getMessage()
+            == f"Failed to remove stale consumer {stale}: NOGROUP gone"
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
+
+    def test_redis_error_listing_consumers_is_logged(
+        self, redis_broker, monkeypatch, caplog
+    ):
+        def failing_xinfo_consumers(*args, **kwargs):
+            raise redis.ConnectionError("Connection lost")
+
+        monkeypatch.setattr(
+            redis_broker.redis_instance, "xinfo_consumers", failing_xinfo_consumers
+        )
+
+        with caplog.at_level(logging.DEBUG, logger="protean.adapters.broker.redis"):
+            removed = redis_broker._cleanup_stale_consumers(
+                "test::cleanup-list-error", "ListErrorGroup", "Handler-host1-1-abc"
+            )
+
+        assert removed == 0
+        records = [
+            r
+            for r in caplog.records
+            if r.getMessage()
+            == (
+                "Error cleaning stale consumers for ListErrorGroup on "
+                "test::cleanup-list-error: Connection lost"
+            )
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
+
+    def test_other_errors_reach_the_caller(self, redis_broker, monkeypatch):
+        def broken_xinfo_consumers(*args, **kwargs):
+            raise TypeError("bad consumer info")
+
+        monkeypatch.setattr(
+            redis_broker.redis_instance, "xinfo_consumers", broken_xinfo_consumers
+        )
+
+        with pytest.raises(TypeError, match="bad consumer info"):
+            redis_broker._cleanup_stale_consumers(
+                "test::cleanup-bug", "BugGroup", "Handler-host1-1-abc"
+            )
+
+    def test_a_consumer_name_that_is_not_utf8_is_skipped(self, redis_broker):
+        stream = "test::cleanup-bad-name"
+        group = "BadNameGroup"
+        current = "Handler-host1-1000-current"
+        stale = "Handler-host1-1000-old001"
+        self._stale_setup(redis_broker, stream, group, stale)
+        # Another client joins the group under a name that is not UTF-8.
+        redis_broker.redis_instance.xgroup_createconsumer(
+            stream, group, b"\xff\xfe-bad"
+        )
+
+        removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+
+        assert removed == 1
+        names = [
+            c["name"]
+            for c in redis_broker.redis_instance.xinfo_consumers(stream, group)
+        ]
+        assert names == [b"\xff\xfe-bad"]

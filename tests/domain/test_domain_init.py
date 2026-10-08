@@ -2,7 +2,11 @@
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
+
+import protean.domain as domain_module
 from protean import Domain
 
 
@@ -169,9 +173,9 @@ def test_guess_caller_path_outer_exception_handling(monkeypatch):
     """Test the outer exception handling in _guess_caller_path."""
     domain = Domain()
 
-    # Mock sys._getframe to raise an exception
+    # sys._getframe raises ValueError when the call stack is not that deep
     def mock_getframe(depth):
-        raise Exception("Mock error for testing the outer exception handler")
+        raise ValueError("call stack is not deep enough")
 
     # Patch sys._getframe
     monkeypatch.setattr(sys, "_getframe", mock_getframe)
@@ -182,6 +186,34 @@ def test_guess_caller_path_outer_exception_handling(monkeypatch):
 
     # Verify the fallback path is used (cwd)
     assert result == str(Path.cwd())
+
+
+def test_guess_caller_path_lets_unexpected_errors_through(monkeypatch):
+    """Only a shallow call stack falls back to cwd; any other error is raised."""
+    domain = Domain()
+
+    def mock_getframe(depth):
+        raise RuntimeError("frame inspection broke")
+
+    # Patch the module's own ``sys`` name: replacing the real sys._getframe
+    # would also break pytest, which calls it while handling the exception.
+    monkeypatch.setattr(domain_module, "sys", SimpleNamespace(_getframe=mock_getframe))
+
+    with pytest.raises(RuntimeError, match="frame inspection broke"):
+        domain._guess_caller_path()
+
+
+def test_guess_caller_path_falls_back_on_an_unresolvable_path(monkeypatch):
+    """A filename that cannot be resolved falls back to cwd."""
+    domain = Domain()
+
+    # A NUL byte makes Path.resolve() raise ValueError.
+    mock_frame = SimpleNamespace(f_code=SimpleNamespace(co_filename="/path/\0/file.py"))
+    monkeypatch.setattr(
+        domain_module, "sys", SimpleNamespace(_getframe=lambda depth: mock_frame)
+    )
+
+    assert domain._guess_caller_path() == str(Path.cwd())
 
 
 def test_guess_caller_path_interactive_return(monkeypatch):

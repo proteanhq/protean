@@ -4,6 +4,7 @@ Covers exit codes, output formats, error handling, --level filter, and --quiet m
 """
 
 import json
+import logging
 import os
 from types import SimpleNamespace
 
@@ -666,12 +667,15 @@ class TestCheckSarifOutput:
         """A mapped module that find_spec cannot locate degrades to None."""
         assert _resolve_sarif_location("x.Y", {"x.Y": "no_such_module_zzz"}) is None
 
-    def test_resolve_location_find_spec_error_returns_none(self):
+    def test_resolve_location_find_spec_error_returns_none(self, caplog):
         """A module name whose parent package cannot be imported makes find_spec
-        raise (ModuleNotFoundError); the failure degrades to None, never raises."""
-        assert (
-            _resolve_sarif_location("x.Y", {"x.Y": "no_such_parent_zzz.child"}) is None
-        )
+        raise (ModuleNotFoundError); the failure is logged and degrades to None."""
+        with caplog.at_level(logging.DEBUG, logger="protean.cli.check"):
+            assert (
+                _resolve_sarif_location("x.Y", {"x.Y": "no_such_parent_zzz.child"})
+                is None
+            )
+        assert "Cannot locate module no_such_parent_zzz.child" in caplog.text
 
     def test_resolve_location_spec_without_origin_returns_none(self, monkeypatch):
         """A module whose spec has no origin (e.g. a namespace package) resolves

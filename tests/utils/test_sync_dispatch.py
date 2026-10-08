@@ -7,6 +7,7 @@ import pytest
 from protean.exceptions import ExpectedVersionError
 from protean.utils.globals import g
 from protean.utils.sync_dispatch import (
+    _carry_discarded_failures,
     dispatch_events_sync,
     drain_sync_dispatch,
     enqueue_sync_dispatch,
@@ -348,7 +349,7 @@ def test_a_discarded_failure_with_a_broken_str_does_not_break_the_drain(test_dom
     """End-to-end robustness: a collected failure whose ``__str__`` raises does not
     stop the ExpectedVersionError from propagating as itself. (``describe_exception``
     renders the broken member as ``<unprintable>``, so this exercises the note path
-    without tripping the suppress guard — that is covered separately below.)"""
+    without tripping the guard around ``add_note``, which is covered separately below.)"""
     with test_domain.domain_context():
 
         class Nasty(Exception):
@@ -375,8 +376,8 @@ def test_a_discarded_failure_with_a_broken_str_does_not_break_the_drain(test_dom
 
 def test_a_failing_add_note_does_not_replace_the_propagating_exception(test_domain):
     """The note-attach is best-effort: if ``add_note`` on the propagating exception
-    raises — here because its ``__notes__`` is not a list — the ``suppress`` swallows
-    that, and the original ExpectedVersionError (whose type the commit needs) still
+    raises — here because its ``__notes__`` is not a list — the guard logs that at
+    debug level, and the original ExpectedVersionError (whose type the commit needs) still
     leaves the drain. Without the guard, ``add_note``'s ``TypeError`` would replace
     it and defeat the version-retry carve-out."""
     with test_domain.domain_context():
@@ -557,3 +558,37 @@ def test_no_discarded_log_on_the_normal_group_path(test_domain, caplog):
                 drain_sync_dispatch()
 
         assert "sync_dispatch.sibling_failures_discarded" not in caplog.text
+
+
+class _RaisingFilter(logging.Filter):
+    def filter(self, record):
+        raise RuntimeError("filter broke")
+
+
+def test_a_note_that_cannot_be_added_is_logged(caplog):
+    interrupt = KeyboardInterrupt("stop")
+    interrupt.__notes__ = "not a list"
+
+    with caplog.at_level(logging.DEBUG, logger="protean.utils.sync_dispatch"):
+        _carry_discarded_failures([ValueError("x")], interrupt)
+
+    assert interrupt.__notes__ == "not a list"
+    assert any(
+        record.getMessage().startswith("Could not note the discarded failures")
+        for record in caplog.records
+    )
+
+
+def test_a_log_call_that_fails_is_reported_on_stderr(capsys):
+    dispatch_logger = logging.getLogger("protean.utils.sync_dispatch")
+    broken = _RaisingFilter()
+    dispatch_logger.addFilter(broken)
+    try:
+        _carry_discarded_failures([ValueError("x")], KeyboardInterrupt("stop"))
+    finally:
+        dispatch_logger.removeFilter(broken)
+
+    assert capsys.readouterr().err == (
+        "Warning: could not log 1 discarded handler failures: "
+        "RuntimeError: filter broke\n"
+    )

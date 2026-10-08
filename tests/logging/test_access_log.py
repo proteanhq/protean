@@ -10,6 +10,7 @@ Verifies that:
 """
 
 import logging
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -23,8 +24,9 @@ from protean.core.projection import BaseProjection
 from protean.core.projector import BaseProjector, on
 from protean.core.query import BaseQuery
 from protean.core.query_handler import BaseQueryHandler
+from protean.domain.context import has_domain_context
 from protean.fields import Identifier, String
-from protean.utils.globals import current_domain
+from protean.utils.globals import current_domain, g
 from protean.utils.mixins import handle, read
 
 # --- Domain elements for testing ---
@@ -350,13 +352,29 @@ class TestAccessLogEmissionFailureSafety:
 class TestAccessLogHelperFallbacks:
     """Helper functions return safe defaults when no domain context exists."""
 
+    @pytest.mark.no_test_domain
     def test_get_correlation_context_without_domain(self):
         from protean.utils.logging import _get_correlation_context
 
+        assert not has_domain_context()
         corr, caus = _get_correlation_context()
         assert corr == ""
         assert caus == ""
 
+    def test_get_correlation_context_without_message_in_context(self, test_domain):
+        from protean.utils.logging import _get_correlation_context
+
+        with test_domain.domain_context():
+            assert _get_correlation_context() == ("", "")
+
+    def test_get_correlation_context_for_a_message_without_metadata(self, test_domain):
+        from protean.utils.logging import _get_correlation_context
+
+        with test_domain.domain_context():
+            g.message_in_context = SimpleNamespace(metadata=None)
+            assert _get_correlation_context() == ("", "")
+
+    @pytest.mark.no_test_domain
     def test_read_access_log_counters_without_domain(self):
         from protean.utils.logging import _read_access_log_counters
 
@@ -365,6 +383,7 @@ class TestAccessLogHelperFallbacks:
         assert ops == {"loads": 0, "saves": 0}
         assert outcome == "no_uow"
 
+    @pytest.mark.no_test_domain
     def test_get_slow_handler_threshold_without_domain(self):
         from protean.utils.logging import _get_slow_handler_threshold
 
@@ -378,3 +397,33 @@ class TestAccessLogHelperFallbacks:
         agg, agg_id = _extract_aggregate_info(object(), type)
         assert agg == ""
         assert agg_id == ""
+
+
+class TestReadAccessLogCounters:
+    """The counters come from ``g``, and a broken counter is not hidden."""
+
+    def test_counters_are_read_from_g(self, test_domain):
+        from protean.utils.globals import g
+        from protean.utils.logging import _read_access_log_counters
+
+        with test_domain.domain_context():
+            g._access_log_events_raised = ["Registered"]
+            g._access_log_repo_loads = 2
+            g._access_log_repo_saves = 1
+            g._access_log_uow_outcome = "committed"
+
+            events, ops, outcome = _read_access_log_counters()
+
+        assert events == ["Registered"]
+        assert ops == {"loads": 2, "saves": 1}
+        assert outcome == "committed"
+
+    def test_a_counter_that_is_not_a_list_raises(self, test_domain):
+        from protean.utils.globals import g
+        from protean.utils.logging import _read_access_log_counters
+
+        with test_domain.domain_context():
+            g._access_log_events_raised = 42
+
+            with pytest.raises(TypeError):
+                _read_access_log_counters()

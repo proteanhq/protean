@@ -207,7 +207,7 @@ def _row_count(domain: Domain, projection_cls: type) -> int | None:
     try:
         with domain.domain_context():
             return domain.repository_for(projection_cls).query.count()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - status probe: any store fault means "uncountable"
         logger.debug(
             "Could not count rows for projection %s: %s",
             projection_cls.__name__,

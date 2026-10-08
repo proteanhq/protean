@@ -1007,16 +1007,16 @@ def _teaching_skills_for(code: str) -> list[str]:
     The DX pack is an optional subsystem that can be stripped from an install,
     and core IR must not gain a hard dependency on ``protean.dx`` or an import
     cycle. So the reverse index is reached through a function-local, guarded
-    import; any failure (pack absent, read error) yields ``[]`` and the
-    diagnostic simply omits the key. The index itself is cached in
-    :func:`protean.dx.pack.diagnostic_code_skills`.
+    import. A missing module yields ``[]``. A pack whose data is stripped or
+    unreadable also yields ``[]``, because
+    :func:`protean.dx.pack.diagnostic_code_skills` degrades to an empty index
+    on its own. That function also caches the index.
     """
     try:
         from protean.dx.pack import diagnostic_code_skills  # noqa: PLC0415
-
-        return list(diagnostic_code_skills().get(code, []))
-    except Exception:
+    except ImportError:
         return []
+    return list(diagnostic_code_skills().get(code, []))
 
 
 def build_diagnostic(

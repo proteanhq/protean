@@ -382,20 +382,19 @@ def _reset_access_log_counters() -> None:
 
 def _get_correlation_context() -> tuple[str, str]:
     """Extract correlation_id and causation_id from the current message context."""
-    try:
-        msg = g.get("message_in_context")
-        if msg is None:
-            return ("", "")
-        metadata = getattr(msg, "metadata", None)
-        domain_meta = getattr(metadata, "domain", None) if metadata else None
-        if domain_meta is None:
-            return ("", "")
-        return (
-            domain_meta.correlation_id or "",
-            domain_meta.causation_id or "",
-        )
-    except Exception:
+    if not has_domain_context():
         return ("", "")
+    msg = g.get("message_in_context")
+    if msg is None:
+        return ("", "")
+    metadata = getattr(msg, "metadata", None)
+    domain_meta = getattr(metadata, "domain", None) if metadata else None
+    if domain_meta is None:
+        return ("", "")
+    return (
+        domain_meta.correlation_id or "",
+        domain_meta.causation_id or "",
+    )
 
 
 def _extract_aggregate_info(item: Any, handler_cls: type) -> tuple[str, str]:
@@ -437,18 +436,17 @@ def _read_access_log_counters() -> tuple[list[str], dict[str, int], str]:
     Returns:
         Tuple of (events_raised, repo_operations, uow_outcome)
     """
-    try:
-        events_raised = getattr(g, "_access_log_events_raised", []) or []
-        repo_loads = getattr(g, "_access_log_repo_loads", 0) or 0
-        repo_saves = getattr(g, "_access_log_repo_saves", 0) or 0
-        uow_outcome = getattr(g, "_access_log_uow_outcome", "no_uow") or "no_uow"
-        return (
-            list(events_raised),
-            {"loads": repo_loads, "saves": repo_saves},
-            uow_outcome,
-        )
-    except Exception:
-        return ([], {"loads": 0, "saves": 0}, "no_uow")
+    # ``g`` raises ``AttributeError`` outside a domain context, so the
+    # ``getattr`` defaults also cover that case.
+    events_raised = getattr(g, "_access_log_events_raised", []) or []
+    repo_loads = getattr(g, "_access_log_repo_loads", 0) or 0
+    repo_saves = getattr(g, "_access_log_repo_saves", 0) or 0
+    uow_outcome = getattr(g, "_access_log_uow_outcome", "no_uow") or "no_uow"
+    return (
+        list(events_raised),
+        {"loads": repo_loads, "saves": repo_saves},
+        uow_outcome,
+    )
 
 
 def get_logging_config_value(key: str, default: _T) -> _T:
@@ -672,7 +670,7 @@ def access_log_handler(
     error_info: Exception | None = None
     try:
         yield
-    except Exception as exc:
+    except Exception as exc:  # keeps the error for the wide event, then re-raises
         error_info = exc
         raise
     finally:
@@ -824,6 +822,7 @@ def log_method_call(func: Callable[..., Any]) -> Callable[..., Any]:
                 result=result,
             )
             return result
+        # Logs the failed call with the traceback, then re-raises.
         except Exception as e:
             logger.exception(
                 "method_call_error",

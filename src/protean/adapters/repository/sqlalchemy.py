@@ -44,7 +44,7 @@ from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.dialects.mysql import mariadb as mariadb_dialect
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL, make_url
-from sqlalchemy.exc import DatabaseError
+from sqlalchemy.exc import ArgumentError, DatabaseError
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.pool import QueuePool
@@ -1628,7 +1628,7 @@ class SADAO(BaseDAO):
             # ``ExpectedVersionError`` for the version-retry path, matching
             # ``_flush`` and the UnitOfWork commit.
             raise ExpectedVersionError(str(exc)) from None
-        except Exception:
+        except Exception:  # logs any query failure, then re-raises
             logger.exception("repository.sqlalchemy.filter_failed")
             raise
         finally:
@@ -2262,7 +2262,9 @@ class SAProvider(BaseProvider):
                 safe_uri = str(
                     make_url(self.conn_info["database_uri"]).set(password="***")
                 )
-            except Exception:
+            # make_url raises ArgumentError for a malformed URI and ValueError
+            # for a port that is not a number.
+            except (ArgumentError, ValueError):
                 safe_uri = "<unparseable>"
             logger.exception(
                 "repository.sqlalchemy.connection_failed",

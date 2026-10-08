@@ -1,7 +1,7 @@
-import contextlib
 import functools
 import importlib
 import logging
+import sys
 import time
 from collections import defaultdict
 from collections.abc import Callable, Collection
@@ -230,18 +230,23 @@ def _get_transient_retry_config(instance: Any = None) -> dict[str, Any]:
     try:
         if current_domain:
             raw = current_domain.config.get("server", {}).get("transient_retry", {})
-            if raw:
-                cfg["enabled"] = _coerce_bool(raw.get("enabled", cfg["enabled"]))
-                cfg["max_retries"] = int(raw.get("max_retries", cfg["max_retries"]))
-                cfg["backoff"] = raw.get("backoff", cfg["backoff"])
-                cfg["base_delay_seconds"] = float(
-                    raw.get("base_delay_seconds", cfg["base_delay_seconds"])
-                )
-                cfg["max_delay_seconds"] = float(
-                    raw.get("max_delay_seconds", cfg["max_delay_seconds"])
-                )
-                exception_spec = raw.get("exceptions")
-    except Exception:
+            cfg["enabled"] = _coerce_bool(raw.get("enabled", cfg["enabled"]))
+            cfg["max_retries"] = int(raw.get("max_retries", cfg["max_retries"]))
+            cfg["backoff"] = raw.get("backoff", cfg["backoff"])
+            cfg["base_delay_seconds"] = float(
+                raw.get("base_delay_seconds", cfg["base_delay_seconds"])
+            )
+            cfg["max_delay_seconds"] = float(
+                raw.get("max_delay_seconds", cfg["max_delay_seconds"])
+            )
+            exception_spec = raw.get("exceptions")
+    except (AttributeError, TypeError, ValueError, OverflowError) as exc:
+        # The section is not a table, or one of its values is not a number.
+        # TOML allows ``inf``, and ``int(inf)`` raises OverflowError.
+        logger.warning(
+            "Invalid [server.transient_retry] config (%r), using the defaults",
+            exc,
+        )
         cfg = dict(_TRANSIENT_RETRY_DEFAULTS)
         exception_spec = None
 
@@ -331,8 +336,9 @@ def _deadline_exceeded_after(delay: float) -> bool:
     """
     try:
         msg = g.get("message_in_context")
-    except Exception:
-        # No active domain/message context -> no deadline to honor.
+    except AttributeError:
+        # No active domain context, so ``g`` has nothing to read and there is
+        # no deadline to honor.
         return False
     headers = getattr(getattr(msg, "metadata", None), "headers", None)
     if headers is None or getattr(headers, "deadline", None) is None:
@@ -367,7 +373,7 @@ def _carry_discarded_failures(
     # one whose `__notes__` is not a list, would otherwise raise from this
     # helper and *replace* the exception it was annotating, swallowing an
     # interrupt or destroying the ExpectedVersionError carve-out above.
-    with contextlib.suppress(Exception):
+    try:
         # Described as one group rather than joined member by member, so the
         # note inherits `describe_exception`'s length bound. A handler can
         # register many methods for one event, and this runs on a path that is
@@ -382,8 +388,10 @@ def _carry_discarded_failures(
                 )
             )
         )
+    except Exception as note_error:  # noqa: BLE001 - must not replace the exception it annotates
+        logger.debug("Could not note the discarded failures: %r", note_error)
 
-    with contextlib.suppress(Exception):
+    try:
         logger.error(
             "handler.sibling_failures_discarded",
             extra={
@@ -392,6 +400,12 @@ def _carry_discarded_failures(
                 "discarded": len(failures),
             },
             exc_info=failures[0],
+        )
+    except Exception as log_error:  # noqa: BLE001 - logging is broken, so warn on stderr
+        print(
+            f"Warning: could not log {len(failures)} discarded handler failures: "
+            f"{describe_exception(log_error)}",
+            file=sys.stderr,
         )
 
 
@@ -658,6 +672,7 @@ class HandlerMixin:
 
             try:
                 result = cls._dispatch_handlers(handlers, item)
+            # records error metrics on the span, then re-raises
             except Exception as exc:
                 set_span_error(span, exc)
 
@@ -742,7 +757,7 @@ class HandlerMixin:
                 raise
             # `Exception` and not `BaseException`, so an interrupt or a
             # cancellation still stops dispatch where it is raised.
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - collected and re-raised below
                 failures.append(exc)
             except BaseException as exc:
                 _carry_discarded_failures(cls, item, failures, exc)

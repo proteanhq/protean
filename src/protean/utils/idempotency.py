@@ -43,6 +43,7 @@ class IdempotencyStore:
                 self._redis = redis.Redis.from_url(redis_url)
                 self._redis.ping()
                 logger.info("Idempotency store connected to Redis at %s", redis_url)
+            # an unreachable Redis disables dedup, not startup; logged
             except Exception:
                 logger.warning(
                     "Could not connect to Redis at %s — idempotency dedup is disabled",
@@ -77,7 +78,7 @@ class IdempotencyStore:
                 return None
             result: dict[str, Any] = json.loads(raw)
             return result
-        except Exception:
+        except Exception:  # a failed lookup skips dedup, not the command; logged
             logger.warning(
                 "Idempotency check failed for key %s — proceeding without dedup",
                 idempotency_key,
@@ -105,7 +106,7 @@ class IdempotencyStore:
         entry = json.dumps({"status": "success", "result": result})
         try:
             self._redis.setex(self._key(idempotency_key), ttl, entry)
-        except Exception:
+        except Exception:  # a failed write must not fail the handled command; logged
             logger.warning(
                 "Failed to record idempotency success for key %s",
                 idempotency_key,
@@ -134,7 +135,7 @@ class IdempotencyStore:
         entry = json.dumps({"status": "error", "error": error})
         try:
             self._redis.setex(self._key(idempotency_key), ttl, entry)
-        except Exception:
+        except Exception:  # a failed write must not hide the original error; logged
             logger.warning(
                 "Failed to record idempotency error for key %s",
                 idempotency_key,
@@ -148,5 +149,5 @@ class IdempotencyStore:
 
         try:
             self._redis.flushdb()
-        except Exception:
+        except Exception:  # a failed flush must not break test teardown; logged
             logger.warning("Failed to flush idempotency store", exc_info=True)

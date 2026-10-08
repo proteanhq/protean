@@ -1217,7 +1217,7 @@ class TestCollectBrokerStatus:
 
         assert result.status == "unknown"
 
-    def test_redis_broker_xlen_exception(self):
+    def test_redis_broker_xlen_exception(self, caplog):
         """When xlen raises on Redis broker, stream_length defaults to 0."""
         mock_domain = MagicMock()
         mock_broker = MagicMock()
@@ -1242,11 +1242,17 @@ class TestCollectBrokerStatus:
 
         mock_broker._get_field_value.side_effect = _get_field_value
 
-        result = _collect_broker_status(
-            mock_domain, "ext-handler", handler_cls, "external-events", "default"
-        )
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.server.subscription_status"
+        ):
+            result = _collect_broker_status(
+                mock_domain, "ext-handler", handler_cls, "external-events", "default"
+            )
 
         assert result.head_position == "0"
+        assert "Could not read length of external-events: Exception('stream gone')" in (
+            caplog.messages
+        )
 
     def test_redis_broker_non_dict_group_entries(self):
         """Non-dict entries in xinfo_groups are skipped for broker."""
@@ -1371,7 +1377,7 @@ class TestCollectBrokerStatus:
         assert result.pending == 2
         assert result.consumer_count == 1
 
-    def test_redis_broker_xrange_exception_leaves_lag_unknown(self):
+    def test_redis_broker_xrange_exception_leaves_lag_unknown(self, caplog):
         """When xrange fails, lag stays unknown rather than becoming pending.
 
         `lag = pending` reads like a conservative lower bound, but with nothing
@@ -1409,13 +1415,19 @@ class TestCollectBrokerStatus:
 
         mock_broker._get_field_value.side_effect = _get_field_value
 
-        result = _collect_broker_status(
-            mock_domain, "ext-handler", handler_cls, "external-events", "default"
-        )
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.server.subscription_status"
+        ):
+            result = _collect_broker_status(
+                mock_domain, "ext-handler", handler_cls, "external-events", "default"
+            )
 
         assert result.lag is None
         assert result.status == "unknown"
         assert result.pending == 3
+        assert "Could not count lag of external-events: Exception('xrange failed')" in (
+            caplog.messages
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1446,7 +1458,7 @@ class TestStreamStatusEdgeCases:
             return int(val)
         return val
 
-    def test_xlen_exception_sets_stream_length_to_zero(self):
+    def test_xlen_exception_sets_stream_length_to_zero(self, caplog):
         """When xlen raises, stream_length defaults to 0."""
         mock_domain, mock_broker, mock_redis = self._make_mock_domain_with_redis()
         handler_cls = self._make_handler()
@@ -1456,11 +1468,17 @@ class TestStreamStatusEdgeCases:
 
         mock_broker._get_field_value.side_effect = self._field_getter
 
-        result = _collect_stream_status(
-            mock_domain, "sub", handler_cls, "broken-stream"
-        )
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.server.subscription_status"
+        ):
+            result = _collect_stream_status(
+                mock_domain, "sub", handler_cls, "broken-stream"
+            )
 
         assert result.head_position == "0"
+        assert "Could not read length of broken-stream: Exception('stream gone')" in (
+            caplog.messages
+        )
 
     def test_xinfo_groups_exception_skips_group_data(self):
         """When xinfo_groups raises, no group info is available."""
@@ -1479,7 +1497,7 @@ class TestStreamStatusEdgeCases:
             result.lag is None
         )  # No group info, no last_delivered_id → lag stays None
 
-    def test_xrange_exception_leaves_lag_unknown(self):
+    def test_xrange_exception_leaves_lag_unknown(self, caplog):
         """An unreadable lag is null, not the pending count.
 
         Falling back to `pending` reported `lag: 0, status: "ok"` whenever
@@ -1502,14 +1520,22 @@ class TestStreamStatusEdgeCases:
 
         mock_broker._get_field_value.side_effect = self._field_getter
 
-        result = _collect_stream_status(mock_domain, "sub", handler_cls, "my-stream")
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.server.subscription_status"
+        ):
+            result = _collect_stream_status(
+                mock_domain, "sub", handler_cls, "my-stream"
+            )
 
+        assert "Could not count lag of my-stream: Exception('xrange failed')" in (
+            caplog.messages
+        )
         assert result.lag is None
         assert result.status == "unknown"
         # The pending count is still reported; it just is not passed off as lag.
         assert result.pending == 4
 
-    def test_dlq_xlen_exception_sets_dlq_to_zero(self):
+    def test_dlq_xlen_exception_sets_dlq_to_zero(self, caplog):
         """When DLQ xlen fails, dlq_depth stays 0."""
         mock_domain, mock_broker, mock_redis = self._make_mock_domain_with_redis()
         handler_cls = self._make_handler()
@@ -1532,9 +1558,18 @@ class TestStreamStatusEdgeCases:
 
         mock_broker._get_field_value.side_effect = self._field_getter
 
-        result = _collect_stream_status(mock_domain, "sub", handler_cls, "my-stream")
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.server.subscription_status"
+        ):
+            result = _collect_stream_status(
+                mock_domain, "sub", handler_cls, "my-stream"
+            )
 
         assert result.dlq_depth == 0
+        assert (
+            "Could not read DLQ depth of my-stream: Exception('dlq gone')"
+            in caplog.messages
+        )
 
     def test_top_level_exception_returns_unknown(self):
         """When the outer try/except catches, returns unknown."""

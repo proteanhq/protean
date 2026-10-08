@@ -142,6 +142,7 @@ class BaseSubscription(ABC):
                 )
                 break
 
+            # one bad tick must not stop the subscription; logged, retried
             except Exception:
                 self._forget_idle_tick()
                 consecutive_errors += 1

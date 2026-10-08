@@ -186,7 +186,7 @@ def run_verify(domain: str, path: str) -> VerifyResult:
             else _EXIT_USAGE
         )
         return _early_result(stages, exit_code, msg)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: importing user code can raise anything
         # ``derive_domain`` wraps the domain-not-found and most import-error
         # cases in ``NoDomainException`` (caught above), but a domain module
         # that raises during import — a ``SyntaxError``, or any exception its
@@ -208,7 +208,7 @@ def run_verify(domain: str, path: str) -> VerifyResult:
 
     try:
         derived_domain.init(traverse=True)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: user domain code can raise anything
         msg = f"Domain failed to initialize: {exc}"
         stages["init"] = {"status": "fail", "error": msg}
         return _early_result(stages, _EXIT_INIT, msg)
@@ -379,7 +379,7 @@ def _run_check(domain: Any) -> tuple[bool, dict[str, Any]]:
 
     try:
         result = domain.check()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: a crash must exit 4, not dump a traceback
         # Defensive: ``check()`` re-runs ``_prepare(traverse=True, validate=False)``
         # and builds the IR, neither wrapped here. init already succeeded above,
         # so no concrete trigger is known — but a crash must surface as the

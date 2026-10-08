@@ -232,6 +232,7 @@ class Supervisor:
             if self._queue_listener is not None:
                 try:
                     self._queue_listener.stop()
+                # a listener stop failure must not mask the monitor's exit; logged
                 except Exception:
                     logger.exception("supervisor.queue_listener_stop_failed")
                 self._queue_listener = None
@@ -533,6 +534,6 @@ def _worker_entry(
             engine.run()
 
         sys.exit(engine.exit_code)
-    except Exception:
+    except Exception:  # any worker crash exits with code 1 for the supervisor; logged
         worker_logger.exception(f"Worker {worker_id} failed")
         sys.exit(1)

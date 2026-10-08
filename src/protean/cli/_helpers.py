@@ -79,7 +79,7 @@ def cli_exception_handler(command: str) -> Iterator[None]:
         yield
     except (typer.Exit, typer.Abort, SystemExit, KeyboardInterrupt):
         raise
-    except Exception:
+    except Exception:  # logs any command failure, then re-raises for a non-zero exit
         logger.exception("cli.command_failed", command=command, argv=sys.argv)
         raise
 

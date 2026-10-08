@@ -965,7 +965,7 @@ def run_opportunity_checks(domain: Domain, pinned_version: str) -> list[UpgradeF
     for detector in _DETECTORS:
         try:
             findings.extend(detector(trees, pinned, domain))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - one failing check must not stop the report
             findings.append(
                 UpgradeFinding(
                     code="CHECK_FAILED",

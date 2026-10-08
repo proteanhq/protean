@@ -126,7 +126,7 @@ def _database_status(domain: Domain) -> dict[str, Any]:
                 result["status"] = "healthy"
             else:
                 result["status"] = "not_configured"
-    except Exception:
+    except Exception:  # a provider fault shows as unhealthy, not a 500; logged
         logger.debug("Failed to check database status", exc_info=True)
         result["status"] = "unhealthy"
 
@@ -178,7 +178,7 @@ def _broker_status(domain: Domain) -> dict[str, Any]:
                     else None
                 ),
             }
-    except Exception:
+    except Exception:  # a broker fault shows as unhealthy, not a 500; logged
         logger.debug("Failed to check broker status", exc_info=True)
         result["status"] = "unhealthy"
 
@@ -205,7 +205,7 @@ def _event_store_status(domain: Domain) -> dict[str, Any]:
                 result["status"] = "healthy"
             else:
                 result["status"] = "not_configured"
-    except Exception:
+    except Exception:  # an event store fault shows as unhealthy, not a 500; logged
         logger.debug("Failed to check event store status", exc_info=True)
         result["status"] = "unhealthy"
 
@@ -244,11 +244,12 @@ def _cache_status(domain: Domain) -> dict[str, Any]:
                 try:
                     cache.ping()
                     result["status"] = "healthy"
-                except Exception:
+                except Exception as exc:  # noqa: BLE001 - health probe: any fault is "unhealthy"
+                    logger.debug("Cache ping failed: %r", exc)
                     result["status"] = "unhealthy"
             else:
                 result["status"] = "healthy"
-    except Exception:
+    except Exception:  # a cache fault shows as unhealthy, not a 500; logged
         logger.debug("Failed to check cache status", exc_info=True)
         result["status"] = "unhealthy"
 

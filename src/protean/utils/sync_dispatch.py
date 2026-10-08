@@ -34,9 +34,10 @@ itself so version retry still fires, and a ``BaseException`` that is not an
 from __future__ import annotations
 
 import logging
+import sys
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from typing import Any
 
 from protean.exceptions import ExpectedVersionError
@@ -128,7 +129,7 @@ def drain_sync_dispatch() -> None:
                 # cancellation still stops the drain where it is raised. Keeping
                 # `failures` to `Exception` also matters below: the
                 # `ExceptionGroup` rejects a bare `BaseException` as a member.
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - collected and re-raised below
                     failures.append(exc)
                 except BaseException as exc:
                     _carry_discarded_failures(failures, exc)
@@ -167,7 +168,7 @@ def _carry_discarded_failures(
     # or one whose ``__notes__`` is not a list, would otherwise raise from this
     # helper and *replace* the exception it was annotating, swallowing an
     # interrupt or destroying the ExpectedVersionError exclusion above.
-    with suppress(Exception):
+    try:
         # Described as one group rather than joined member by member, so the note
         # inherits ``describe_exception``'s length bound.
         exc.add_note(
@@ -179,12 +180,20 @@ def _carry_discarded_failures(
                 )
             )
         )
+    except Exception as note_error:  # noqa: BLE001 - must not replace the exception it annotates
+        logger.debug("Could not note the discarded failures: %r", note_error)
 
-    with suppress(Exception):
+    try:
         logger.error(
             "sync_dispatch.sibling_failures_discarded",
             extra={"discarded": len(failures)},
             exc_info=failures[0],
+        )
+    except Exception as log_error:  # noqa: BLE001 - logging is broken, so warn on stderr
+        print(
+            f"Warning: could not log {len(failures)} discarded handler failures: "
+            f"{describe_exception(log_error)}",
+            file=sys.stderr,
         )
 
 

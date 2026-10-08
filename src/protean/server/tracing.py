@@ -11,7 +11,9 @@ checks subscriber count and short-circuits before any serialization.
 
 import json
 import logging
+import math
 import time
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -61,6 +63,54 @@ class MessageTrace:
         return json.dumps(asdict(self), default=str)
 
 
+def decode_trace_payload(raw: object) -> dict[str, Any] | None:
+    """Decode one JSON trace payload, as bytes or str.
+
+    Returns ``None`` when the payload is empty, is not UTF-8, is not JSON, or
+    is JSON but not an object. A reader skips such an entry. An integer longer
+    than Python's digit limit raises ``ValueError`` and very deep nesting raises
+    ``RecursionError`` inside ``json.loads``; both count as "not JSON".
+    """
+    if isinstance(raw, bytes):
+        try:
+            raw = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        trace = json.loads(raw)
+    except (ValueError, RecursionError):
+        return None
+    return trace if isinstance(trace, dict) else None
+
+
+def trace_number(value: object) -> float | None:
+    """Return a numeric trace value as a finite float, or ``None``.
+
+    A number or a numeric string such as ``"12.5"`` counts. A bool does not,
+    though Python treats it as an int. Infinity and NaN return ``None``,
+    because a JSON response cannot carry them.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return None
+    try:
+        number = float(value)
+    except (ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def decode_trace(fields: Mapping[Any, Any]) -> dict[str, Any] | None:
+    """Decode the trace held in the fields of one trace stream entry.
+
+    The trace is the JSON string under the ``data`` field. Redis returns the
+    field name as bytes or as str, depending on how the client decodes
+    responses. Returns ``None`` for an entry with no usable trace.
+    """
+    return decode_trace_payload(fields.get(b"data") or fields.get("data"))
+
+
 class TraceEmitter:
     """Lightweight emitter that publishes MessageTrace events to Redis.
 
@@ -103,7 +153,7 @@ class TraceEmitter:
             if broker and hasattr(broker, "redis_instance"):
                 self._redis = broker.redis_instance
                 return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - tracing must never break the engine
             logger.debug(f"TraceEmitter: Redis not available ({e})")
 
         return False
@@ -126,7 +176,8 @@ class TraceEmitter:
             # result is a list of tuples: [(channel, count)]
             count = result[0][1] if result else 0
             self._has_subscribers = count > 0
-        except Exception:
+        except Exception as e:  # noqa: BLE001 - tracing must never break the engine
+            logger.debug(f"TraceEmitter: subscriber check failed ({e})")
             self._has_subscribers = False
 
         return self._has_subscribers
@@ -193,6 +244,6 @@ class TraceEmitter:
             # Broadcast to Pub/Sub for real-time SSE clients
             if has_subscribers:
                 self._redis.publish(TRACE_CHANNEL, json_str)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - tracing must never break the engine
             # Never let tracing failures affect message processing
             logger.debug(f"TraceEmitter publish failed: {e}")

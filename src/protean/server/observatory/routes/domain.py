@@ -574,6 +574,7 @@ def create_domain_router(domains: list[Domain]) -> APIRouter:
             with domain.domain_context():
                 ir = IRBuilder(domain).build()
             _cached_graph = _build_graph(ir)
+        # the IR endpoint answers unavailable instead of crashing; logged
         except Exception:
             logger.warning("Failed to build domain IR graph", exc_info=True)
 

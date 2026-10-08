@@ -31,11 +31,11 @@ def check_providers(domain: Domain) -> tuple[dict[str, str], bool]:
                 statuses[name] = STATUS_OK if alive else STATUS_UNAVAILABLE
                 if not alive:
                     all_ok = False
-            except Exception:
+            except Exception:  # one failing provider is reported unavailable; logged
                 logger.debug("Provider %s health check failed", name, exc_info=True)
                 statuses[name] = STATUS_UNAVAILABLE
                 all_ok = False
-    except Exception:
+    except Exception:  # a broken provider registry reports unavailable; logged
         logger.debug("Error iterating providers", exc_info=True)
         statuses["_error"] = STATUS_UNAVAILABLE
         all_ok = False
@@ -53,11 +53,11 @@ def check_brokers(domain: Domain) -> tuple[dict[str, str], bool]:
                 statuses[name] = STATUS_OK if connected else STATUS_UNAVAILABLE
                 if not connected:
                     all_ok = False
-            except Exception:
+            except Exception:  # one failing broker is reported unavailable; logged
                 logger.debug("Broker %s health check failed", name, exc_info=True)
                 statuses[name] = STATUS_UNAVAILABLE
                 all_ok = False
-    except Exception:
+    except Exception:  # a broken broker registry reports unavailable; logged
         logger.debug("Error iterating brokers", exc_info=True)
         statuses["_error"] = STATUS_UNAVAILABLE
         all_ok = False
@@ -72,7 +72,7 @@ def check_event_store(domain: Domain) -> tuple[str, bool]:
             return STATUS_UNAVAILABLE, False
         store._read_last_message("__health_check__")
         return STATUS_OK, True
-    except Exception:
+    except Exception:  # a health check reports unavailable instead of raising; logged
         logger.debug("Event store health check failed", exc_info=True)
         return STATUS_UNAVAILABLE, False
 
@@ -91,11 +91,11 @@ def check_caches(domain: Domain) -> tuple[dict[str, str], bool]:
                         all_ok = False
                 else:
                     statuses[name] = STATUS_OK
-            except Exception:
+            except Exception:  # one failing cache is reported unavailable; logged
                 logger.debug("Cache %s health check failed", name, exc_info=True)
                 statuses[name] = STATUS_UNAVAILABLE
                 all_ok = False
-    except Exception:
+    except Exception:  # a broken cache registry reports unavailable; logged
         logger.debug("Error iterating caches", exc_info=True)
         statuses["_error"] = STATUS_UNAVAILABLE
         all_ok = False

@@ -19,8 +19,6 @@ Endpoints:
 
 from __future__ import annotations
 
-import contextlib
-import json
 import logging
 import time
 from collections import defaultdict
@@ -30,7 +28,7 @@ from fastapi import APIRouter, Path, Query
 from fastapi.responses import JSONResponse
 
 from protean.server.subscription_status import collect_subscription_statuses
-from protean.server.tracing import TRACE_STREAM
+from protean.server.tracing import TRACE_STREAM, decode_trace, trace_number
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -63,7 +61,7 @@ def _get_redis(domains: list[Domain]) -> Any:
                 broker = d.brokers.get("default")
                 if broker and hasattr(broker, "redis_instance"):
                     return broker.redis_instance
-        except Exception:
+        except Exception:  # one broken domain must not hide the others; logged
             logger.debug(
                 "Could not get the Redis broker of domain %s", d.name, exc_info=True
             )
@@ -152,8 +150,10 @@ def merge_pm_subscription_status(
         try:
             statuses = collect_subscription_statuses(domain)
             all_statuses.extend(statuses)
-        except Exception:
-            logger.debug("Failed to collect subscription statuses for %s", domain.name)
+        except Exception as exc:  # noqa: BLE001 - one domain's failure must not stop the page
+            logger.debug(
+                "Failed to collect subscription statuses for %s: %r", domain.name, exc
+            )
             continue
 
     status_by_handler: dict[str, list[Any]] = defaultdict(list)
@@ -221,46 +221,43 @@ def collect_pm_trace_metrics(
 
     try:
         raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - scrape: show no metrics when Redis fails
         logger.debug("Error reading trace stream for PM metrics: %s", e)
         return {}
 
     stats: dict[str, dict[str, Any]] = {}
 
     for _stream_id, fields in raw_entries:
-        with contextlib.suppress(json.JSONDecodeError, TypeError, ValueError):
-            data_raw = fields.get(b"data") or fields.get("data")
-            if not data_raw:
-                continue
-            if isinstance(data_raw, bytes):
-                data_raw = data_raw.decode("utf-8")
-            trace = json.loads(data_raw)
+        trace = decode_trace(fields)
+        if trace is None:
+            continue
 
-            handler_name = trace.get("handler")
-            if not handler_name or handler_name not in pm_names:
-                continue
+        handler_name = trace.get("handler")
+        event_type = trace.get("event", "")
+        if not isinstance(handler_name, str) or handler_name not in pm_names:
+            continue
+        if not isinstance(event_type, str):
+            continue
 
-            event_type = trace.get("event", "")
+        if handler_name not in stats:
+            stats[handler_name] = {
+                "processed": 0,
+                "failed": 0,
+                "latency_sum": 0.0,
+                "latency_count": 0,
+            }
 
-            if handler_name not in stats:
-                stats[handler_name] = {
-                    "processed": 0,
-                    "failed": 0,
-                    "latency_sum": 0.0,
-                    "latency_count": 0,
-                }
+        entry = stats[handler_name]
 
-            entry = stats[handler_name]
+        if event_type == "handler.completed":
+            entry["processed"] += 1
+            duration = trace_number(trace.get("duration_ms"))
+            if duration is not None:
+                entry["latency_sum"] += duration
+                entry["latency_count"] += 1
 
-            if event_type == "handler.completed":
-                entry["processed"] += 1
-                duration = trace.get("duration_ms")
-                if duration is not None:
-                    entry["latency_sum"] += float(duration)
-                    entry["latency_count"] += 1
-
-            elif event_type in _ERROR_EVENTS:
-                entry["failed"] += 1
+        elif event_type in _ERROR_EVENTS:
+            entry["failed"] += 1
 
     # Compute derived metrics
     result: dict[str, dict[str, Any]] = {}
@@ -305,7 +302,7 @@ def get_pm_instance_count(domain: Domain, pm_cls: type) -> int | None:
                 return None
             identifiers = store._stream_identifiers(stream_category)
             return len(identifiers)
-    except Exception:
+    except Exception:  # the count is optional on the dashboard; logged
         logger.debug(
             "Failed to get instance count for %s", pm_cls.__name__, exc_info=True
         )
@@ -334,7 +331,7 @@ def get_pm_instances(
             if store is None:
                 return []
             identifiers = store._stream_identifiers(stream_category)
-    except Exception:
+    except Exception:  # a failed store read lists no instances; logged
         logger.debug(
             "Failed to enumerate instances for %s",
             pm_cls.__name__,
@@ -348,7 +345,7 @@ def get_pm_instances(
         try:
             with domain.domain_context():
                 messages = store.read(stream_name)
-        except Exception:
+        except Exception:  # skip one unreadable stream, list the rest; logged
             logger.debug("Failed to read stream %s", stream_name, exc_info=True)
             continue
 
@@ -475,7 +472,7 @@ def create_processes_router(domains: list[Domain]) -> APIRouter:
         # 2. Merge subscription status
         try:
             merge_pm_subscription_status(pms, domains)
-        except Exception:
+        except Exception:  # status is optional; the list still renders; logged
             logger.debug("Failed to merge PM subscription status", exc_info=True)
 
         # 3. Merge trace metrics
@@ -488,14 +485,14 @@ def create_processes_router(domains: list[Domain]) -> APIRouter:
                 )
                 for pm in pms:
                     pm["metrics"] = trace_metrics.get(pm["name"])
-            except Exception:
+            except Exception:  # metrics are optional; the list still renders; logged
                 logger.debug("Failed to collect PM trace metrics", exc_info=True)
 
         # 4. Get instance counts
         for pm in pms:
             try:
                 pm["instance_count"] = get_pm_instance_count(pm["_domain"], pm["_cls"])
-            except Exception:
+            except Exception:  # one failed count must not break the list; logged
                 logger.debug(
                     "Failed to get instance count for %s", pm["name"], exc_info=True
                 )
@@ -534,7 +531,7 @@ def create_processes_router(domains: list[Domain]) -> APIRouter:
         # Get instances from event store
         try:
             instances = get_pm_instances(target["_domain"], target["_cls"], limit=limit)
-        except Exception:
+        except Exception:  # the detail view still answers, with no instances; logged
             logger.debug("Failed to get instances for %s", name, exc_info=True)
             instances = []
 

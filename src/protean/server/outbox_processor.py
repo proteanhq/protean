@@ -354,7 +354,7 @@ class OutboxProcessor(BaseSubscription):
                     },
                 )
 
-        except Exception:
+        except Exception:  # a failed cleanup must not stop the outbox processor; logged
             logger.exception("outbox.cleanup_failed")
 
     async def _process_single_message(self, message: Outbox) -> bool:
@@ -408,6 +408,7 @@ class OutboxProcessor(BaseSubscription):
                             cause="Invalid partition key",
                         )
                         self.outbox_repo.add(fresh)
+                # a failed abandon must not abort the batch; logged, row retried
                 except Exception:
                     logger.exception(
                         "outbox.invalid_partition_key_abandon_failed",
@@ -555,6 +556,7 @@ class OutboxProcessor(BaseSubscription):
                 )
                 return publish_success
 
+            # any publish failure marks the row failed; logged with traceback
             except Exception as exc:
                 set_span_error(span, exc)
                 logger.exception(
@@ -571,6 +573,7 @@ class OutboxProcessor(BaseSubscription):
                         if fresh_message:
                             self._mark_message_failed(fresh_message, exc)
                             self.outbox_repo.add(fresh_message)
+                # the row stays for the next claim; logged with traceback
                 except Exception:
                     logger.exception(
                         "outbox.status_save_failed",
@@ -683,6 +686,7 @@ class OutboxProcessor(BaseSubscription):
             )
             return True, None
 
+        # any broker error is a failed publish, returned to the caller; logged
         except Exception as exc:
             logger.exception(
                 "outbox.broker_publish_failed",

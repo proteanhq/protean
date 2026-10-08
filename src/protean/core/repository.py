@@ -1,10 +1,10 @@
-import contextlib
 import logging
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, cast
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
+from protean.domain.context import has_domain_context
 from protean.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
@@ -231,7 +231,7 @@ class BaseRepository(Element, OptionsMixin):
         is part of the DAO's design, and is automatically used wherever one tries to persist data.
         """
         # Increment access log repo save counter
-        with contextlib.suppress(Exception):
+        if has_domain_context():
             g._access_log_repo_saves = getattr(g, "_access_log_repo_saves", 0) + 1
 
         tracer = self._domain.tracer
@@ -246,7 +246,7 @@ class BaseRepository(Element, OptionsMixin):
 
             try:
                 return self._do_add(item)
-            except Exception as exc:
+            except Exception as exc:  # marks the span as failed, then re-raises
                 set_span_error(span, exc)
                 raise
 
@@ -505,7 +505,7 @@ class BaseRepository(Element, OptionsMixin):
         domain-friendly design patterns like the `Specification` pattern.
         """
         # Increment access log repo load counter
-        with contextlib.suppress(Exception):
+        if has_domain_context():
             g._access_log_repo_loads = getattr(g, "_access_log_repo_loads", 0) + 1
 
         tracer = self._domain.tracer
@@ -522,7 +522,7 @@ class BaseRepository(Element, OptionsMixin):
                 item = self._dao.get(identifier)
                 self._prewarm_associations(item)
                 return item
-            except Exception as exc:
+            except Exception as exc:  # marks the span as failed, then re-raises
                 set_span_error(span, exc)
                 raise
 
@@ -538,7 +538,7 @@ class BaseRepository(Element, OptionsMixin):
         Use `get()` instead when a missing identifier should be treated as a hard failure.
         """
         # Increment access log repo load counter
-        with contextlib.suppress(Exception):
+        if has_domain_context():
             g._access_log_repo_loads = getattr(g, "_access_log_repo_loads", 0) + 1
 
         tracer = self._domain.tracer
@@ -557,7 +557,7 @@ class BaseRepository(Element, OptionsMixin):
                 return item
             except ObjectNotFoundError:
                 return None
-            except Exception as exc:
+            except Exception as exc:  # marks the span as failed, then re-raises
                 set_span_error(span, exc)
                 raise
 

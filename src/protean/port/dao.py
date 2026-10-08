@@ -147,7 +147,7 @@ class BaseDAO(metaclass=ABCMeta):
         if self._is_standalone:
             try:
                 conn.commit()
-            except Exception:
+            except Exception:  # any commit error rolls back, then re-raises
                 conn.rollback()
                 raise
             finally:
@@ -992,7 +992,7 @@ class BaseDAO(metaclass=ABCMeta):
                 entity_obj.state_.mark_destroyed()
 
             return entity_obj
-        except Exception as exc:
+        except Exception as exc:  # logs any delete failure, then re-raises
             logger.error(f"Failed entity deletion because of {exc}")
             raise
 
@@ -1004,7 +1004,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
         try:
             self._delete_all()
-        except Exception as exc:
+        except Exception as exc:  # logs any delete failure, then re-raises
             logger.error(f"Failed deletion of all records because of {exc}")
             raise
 

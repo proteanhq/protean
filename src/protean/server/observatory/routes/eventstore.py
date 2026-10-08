@@ -93,7 +93,7 @@ def enrich_with_event_store_stats(
                 store = domain.event_store.store
                 identifiers = store._stream_identifiers(stream_category)
                 agg["instance_count"] = len(identifiers)
-        except Exception:
+        except Exception:  # a missing count must not fail the listing; logged
             logger.debug(
                 "Failed to get instance count for %s",
                 agg["name"],
@@ -105,7 +105,7 @@ def enrich_with_event_store_stats(
                 store = domain.event_store.store
                 head = store._stream_head_position(stream_category)
                 agg["head_position"] = head if head >= 0 else None
-        except Exception:
+        except Exception:  # a missing head position must not fail the listing
             logger.debug(
                 "Failed to get head position for %s",
                 agg["name"],
@@ -125,7 +125,7 @@ def collect_outbox_status(domains: list[Domain]) -> dict[str, dict[str, Any]]:
                 outbox_repo = domain._get_outbox_repo("default")
                 counts = outbox_repo.count_by_status()
                 result[domain.name] = {"status": "ok", "counts": counts}
-        except Exception:
+        except Exception:  # one domain's outbox error is reported, not raised
             logger.debug("Failed to query outbox for %s", domain.name, exc_info=True)
             result[domain.name] = {
                 "status": "error",
@@ -178,7 +178,7 @@ def create_eventstore_router(domains: list[Domain]) -> APIRouter:
         # 2. Enrich with event store stats
         try:
             enrich_with_event_store_stats(aggregates)
-        except Exception:
+        except Exception:  # stats are optional; list the streams without them
             logger.debug("Failed to enrich event store stats", exc_info=True)
 
         # 3. Build summary

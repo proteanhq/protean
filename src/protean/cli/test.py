@@ -379,7 +379,7 @@ class TestRunner:
                     result = future.result()
                     self.track_exit_code(result)
                     print(f"📊 Progress: {i}/{len(suites)} test suites completed")
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - one suite's crash must not stop the run
                     print(f"💥 Test suite '{suite.name}' generated an exception: {exc}")
                     self.track_exit_code(1)
 
@@ -508,7 +508,7 @@ class TestRunner:
                         print(
                             f"📊 Progress: {i}/{len(remaining_suites)} remaining test suites completed"
                         )
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 - one suite's crash must not stop the run
                         print(
                             f"💥 Test suite '{suite.name}' generated an exception: {exc}"
                         )
@@ -1187,7 +1187,7 @@ def test_adapter(
     # 1. Verify provider is registered
     try:
         ProviderRegistry.get(provider)
-    except Exception as e:
+    except Exception as e:  # any lookup error exits 1 with the message
         print(f"Error: {e}")
         raise typer.Exit(code=1) from e
 
@@ -1208,7 +1208,7 @@ def test_adapter(
             provider_instance = domain.providers["default"]
             provider_capabilities = provider_instance.capabilities
             provider_class_name = provider_instance.__class__.__name__
-    except Exception as e:
+    except Exception as e:  # any setup error exits 1 with the message
         print(f"Error initializing provider '{provider}': {e}")
         raise typer.Exit(code=1) from e
 

@@ -54,6 +54,7 @@ class Caches(MutableMapping[str, BaseCache]):
             for name, cache in self._caches.items():
                 try:
                     cache.close()
+                # One failing cache must not stop closing the rest; logged.
                 except Exception:
                     logger.exception("Error closing cache '%s'", name)
             logger.debug("All caches closed")

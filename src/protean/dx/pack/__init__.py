@@ -331,12 +331,13 @@ def diagnostic_code_skills() -> dict[str, list[str]]:
     index: dict[str, list[str]] = {}
     try:
         skills = iter_skills()
-    except Exception:
+    except Exception:  # a stripped or broken pack yields an empty index; logged
+        logger.debug("Could not list the skills in the pack", exc_info=True)
         return {}
     for skill in skills:
         try:
             codes = skill_diagnostic_codes(skill)
-        except Exception:
+        except Exception:  # one unreadable skill is skipped, not fatal; logged
             logger.debug(
                 "Could not read the diagnostic codes of skill %s", skill, exc_info=True
             )

@@ -46,9 +46,13 @@ Every `except` in `src/protean` handles an error in one of three ways.
    observatory scrape. Log at warning level when the user would want to know,
    such as a failed stale-consumer cleanup at subscription startup.
 3. **The site is a catch-all point.** One failing handler, endpoint or status
-   probe must not stop the others. Keep `except Exception`, add
-   `# noqa: BLE001` with a short reason on the same line, and log the error.
-   A catch-all point that drops the error is not allowed.
+   probe must not stop the others. Keep `except Exception` and give a short
+   reason on the same line or the line above. Log the error, or pass it on as
+   a finding, a stored result or a returned message. A catch-all point must not
+   drop the error. Ruff's `BLE001` does not flag a block that logs the
+   traceback or re-raises, so the reason there is a plain comment. Any other
+   catch-all needs `# noqa: BLE001 - <reason>`. A `noqa` on a block that ruff
+   does not flag fails `RUF100`.
 
 Two cases do not need an `except` at all:
 

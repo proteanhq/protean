@@ -23,7 +23,11 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.fields import Identifier, String
 from protean.integrations.fastapi import DomainContextMiddleware
 from protean.utils.globals import current_domain
-from protean.utils.logging import bind_event_context, unbind_event_context
+from protean.utils.logging import (
+    bind_event_context,
+    http_access_logger,
+    unbind_event_context,
+)
 from protean.utils.mixins import handle
 
 # ---------------------------------------------------------------------------
@@ -409,6 +413,67 @@ class TestExcludedPaths:
         assert response.status_code == 200
 
         assert _http_records(caplog) == []
+
+    def test_unhandled_error_is_logged_when_emission_is_disabled(
+        self, test_domain, caplog
+    ):
+        app = _make_app(test_domain, emit=False)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.integrations.fastapi.middleware"
+        ):
+            response = client.get("/orders/boom")
+        assert response.status_code == 500
+
+        records = [
+            r
+            for r in caplog.records
+            if r.name == "protean.integrations.fastapi.middleware"
+            and r.getMessage() == "Unhandled error in GET /orders/boom"
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.ERROR
+        assert records[0].exc_info is not None
+        assert str(records[0].exc_info[1]) == "deliberate failure"
+
+    def test_unhandled_error_is_not_logged_twice_when_emission_is_on(
+        self, client, caplog
+    ):
+        with caplog.at_level(logging.DEBUG):
+            response = client.get("/orders/boom")
+        assert response.status_code == 500
+
+        assert len(_http_records(caplog)) == 1
+        assert not [
+            r
+            for r in caplog.records
+            if r.name == "protean.integrations.fastapi.middleware"
+        ]
+
+    def test_unhandled_error_is_logged_when_emission_fails(
+        self, client, caplog, monkeypatch
+    ):
+        def broken_error(*args, **kwargs):
+            raise RuntimeError("access logger broke")
+
+        monkeypatch.setattr(http_access_logger, "error", broken_error)
+
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.integrations.fastapi.middleware"
+        ):
+            response = client.get("/orders/boom")
+        assert response.status_code == 500
+
+        records = [
+            r
+            for r in caplog.records
+            if r.name == "protean.integrations.fastapi.middleware"
+            and r.getMessage() == "Unhandled error in GET /orders/boom"
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.ERROR
+        assert str(records[0].exc_info[1]) == "deliberate failure"
 
     def test_domain_config_exclude_paths_honoured(self, test_domain, caplog):
         """[logging.http].exclude_paths from domain config is respected."""

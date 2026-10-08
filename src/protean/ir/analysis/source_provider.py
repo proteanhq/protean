@@ -47,6 +47,7 @@ thread-safe; give each thread its own.
 from __future__ import annotations
 
 import ast
+import logging
 import os
 from collections.abc import Iterator
 from importlib.util import find_spec
@@ -55,6 +56,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+
+logger = logging.getLogger(__name__)
 
 # A subdirectory carrying one of these is a domain of its own, so it is not
 # part of this domain's source. Same list ``Domain._traverse`` uses.
@@ -121,10 +124,11 @@ class SourceProvider:
         """Return the file a module name resolves to, or ``None``."""
         try:
             spec = find_spec(module_name)
-        # Broad by design: ``find_spec`` may import a not-yet-loaded parent
-        # package and re-execute its ``__init__``, which can raise anything.
-        # Fail open (skip the module) rather than abort the diagnostics pass.
-        except Exception:
+        # ``find_spec`` may import a not-yet-loaded parent package and re-run
+        # its ``__init__``, which can raise anything. Skip the module and keep
+        # the diagnostics pass going.
+        except Exception as exc:  # noqa: BLE001 - a package __init__ can raise anything
+            logger.debug("Cannot locate module %s: %r", module_name, exc)
             return None
 
         origin = getattr(spec, "origin", None) if spec else None
@@ -143,11 +147,11 @@ class SourceProvider:
             # UTF-8 BOM and a PEP 263 coding declaration. Reading as UTF-8
             # text would fail on both.
             return ast.parse(Path(path).read_bytes(), filename=str(path))
-        # Broad by design, because the fail-open contract admits no exception:
-        # an unreadable file (OSError), invalid source (SyntaxError,
-        # ValueError) and parser exhaustion on pathological input
-        # (RecursionError, MemoryError) all mean the same thing, "no tree".
-        except Exception:
+        # An unreadable file (OSError), invalid source (SyntaxError, or the
+        # ValueError that older Python releases raised for a NUL byte) and
+        # parser exhaustion on pathological input (RecursionError,
+        # MemoryError) all mean "no tree".
+        except (OSError, SyntaxError, ValueError, RecursionError, MemoryError):
             return None
 
     # ------------------------------------------------------------------

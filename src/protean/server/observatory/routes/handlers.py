@@ -12,8 +12,6 @@ Endpoints:
 
 from __future__ import annotations
 
-import contextlib
-import json
 import logging
 import time
 from collections import defaultdict
@@ -27,7 +25,7 @@ from protean.server.subscription_status import (
     _RedisStyleBroker,
     collect_subscription_statuses,
 )
-from protean.server.tracing import TRACE_STREAM
+from protean.server.tracing import TRACE_STREAM, decode_trace, trace_number
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -68,7 +66,7 @@ def _get_redis(domains: list[Domain]) -> Any:
                 broker = d.brokers.get("default")
                 if broker and hasattr(broker, "redis_instance"):
                     return cast(_RedisStyleBroker, broker).redis_instance
-        except Exception:
+        except Exception:  # a broken domain is skipped while looking for Redis; logged
             logger.debug(
                 "Could not get the Redis broker of domain %s", d.name, exc_info=True
             )
@@ -235,8 +233,10 @@ def merge_subscription_status(
         try:
             statuses = collect_subscription_statuses(domain)
             all_statuses.extend(statuses)
-        except Exception:
-            logger.debug("Failed to collect subscription statuses for %s", domain.name)
+        except Exception as exc:  # noqa: BLE001 - one domain's failure must not stop the page
+            logger.debug(
+                "Failed to collect subscription statuses for %s: %r", domain.name, exc
+            )
             continue
 
     # Build lookup: handler_name → list of SubscriptionStatus
@@ -351,7 +351,7 @@ def collect_per_handler_trace_metrics(
 
     try:
         raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - scrape: show no metrics when Redis fails
         logger.debug("Error reading trace stream for handler metrics: %s", e)
         return {}
 
@@ -359,47 +359,44 @@ def collect_per_handler_trace_metrics(
     stats: dict[str, dict[str, Any]] = {}
 
     for stream_id, fields in raw_entries:
-        with contextlib.suppress(json.JSONDecodeError, TypeError, ValueError):
-            data_raw = fields.get(b"data") or fields.get("data")
-            if not data_raw:
-                continue
-            if isinstance(data_raw, bytes):
-                data_raw = data_raw.decode("utf-8")
-            trace = json.loads(data_raw)
+        trace = decode_trace(fields)
+        if trace is None:
+            continue
 
-            handler_name = trace.get("handler")
-            if not handler_name:
-                continue
+        handler_name = trace.get("handler")
+        event_type = trace.get("event", "")
+        if not handler_name or not isinstance(handler_name, str):
+            continue
+        if not isinstance(event_type, str):
+            continue
 
-            event_type = trace.get("event", "")
+        if handler_name not in stats:
+            stats[handler_name] = {
+                "processed": 0,
+                "failed": 0,
+                "latency_sum": 0.0,
+                "latency_count": 0,
+                "throughput": [0] * bucket_count,
+            }
 
-            if handler_name not in stats:
-                stats[handler_name] = {
-                    "processed": 0,
-                    "failed": 0,
-                    "latency_sum": 0.0,
-                    "latency_count": 0,
-                    "throughput": [0] * bucket_count,
-                }
+        entry = stats[handler_name]
 
-            entry = stats[handler_name]
+        if event_type == "handler.completed":
+            entry["processed"] += 1
+            duration = trace_number(trace.get("duration_ms"))
+            if duration is not None:
+                entry["latency_sum"] += duration
+                entry["latency_count"] += 1
 
-            if event_type == "handler.completed":
-                entry["processed"] += 1
-                duration = trace.get("duration_ms")
-                if duration is not None:
-                    entry["latency_sum"] += float(duration)
-                    entry["latency_count"] += 1
+            # Bucket into throughput sparkline
+            sid = _decode_stream_id(stream_id)
+            ts_ms = int(sid.split("-")[0])
+            bucket_idx = (ts_ms - (now_ms - window_ms)) // bucket_ms
+            if 0 <= bucket_idx < bucket_count:
+                entry["throughput"][int(bucket_idx)] += 1
 
-                # Bucket into throughput sparkline
-                sid = _decode_stream_id(stream_id)
-                ts_ms = int(sid.split("-")[0])
-                bucket_idx = (ts_ms - (now_ms - window_ms)) // bucket_ms
-                if 0 <= bucket_idx < bucket_count:
-                    entry["throughput"][int(bucket_idx)] += 1
-
-            elif event_type in _ERROR_EVENTS:
-                entry["failed"] += 1
+        elif event_type in _ERROR_EVENTS:
+            entry["failed"] += 1
 
     # Compute derived metrics
     result: dict[str, dict[str, Any]] = {}
@@ -436,7 +433,7 @@ def collect_recent_messages(
 
     try:
         raw_entries = redis_conn.xrevrange(TRACE_STREAM, count=count * 5)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - scrape: show no messages when Redis fails
         logger.debug("Error reading trace stream for recent messages: %s", e)
         return []
 
@@ -444,19 +441,12 @@ def collect_recent_messages(
     for stream_id, fields in raw_entries:
         if len(messages) >= count:
             break
-        with contextlib.suppress(json.JSONDecodeError, TypeError):
-            data_raw = fields.get(b"data") or fields.get("data")
-            if not data_raw:
-                continue
-            if isinstance(data_raw, bytes):
-                data_raw = data_raw.decode("utf-8")
-            trace = json.loads(data_raw)
+        trace = decode_trace(fields)
+        if trace is None or trace.get("handler") != handler_name:
+            continue
 
-            if trace.get("handler") != handler_name:
-                continue
-
-            trace["_stream_id"] = _decode_stream_id(stream_id)
-            messages.append(trace)
+        trace["_stream_id"] = _decode_stream_id(stream_id)
+        messages.append(trace)
 
     return messages
 
@@ -533,7 +523,7 @@ def create_handlers_router(domains: list[Domain]) -> APIRouter:
         # 2. Merge subscription status (degrades gracefully)
         try:
             merge_subscription_status(handlers, domains)
-        except Exception:
+        except Exception:  # status is optional; the list still renders, logged
             logger.debug("Failed to merge subscription status", exc_info=True)
 
         # 3. Merge trace metrics (requires Redis)
@@ -543,7 +533,7 @@ def create_handlers_router(domains: list[Domain]) -> APIRouter:
                 trace_metrics = collect_per_handler_trace_metrics(redis_conn, window_ms)
                 for h in handlers:
                     h["metrics"] = trace_metrics.get(h["name"])
-            except Exception:
+            except Exception:  # metrics are optional; the list still renders, logged
                 logger.debug("Failed to collect trace metrics", exc_info=True)
 
         # 4. Build summary
@@ -589,7 +579,7 @@ def create_handlers_router(domains: list[Domain]) -> APIRouter:
         # Merge subscription status
         try:
             merge_subscription_status([handler], domains)
-        except Exception:
+        except Exception:  # status is optional; the handler still renders, logged
             logger.debug("Failed to merge subscription status", exc_info=True)
 
         # Merge trace metrics + recent messages
@@ -598,14 +588,14 @@ def create_handlers_router(domains: list[Domain]) -> APIRouter:
             try:
                 trace_metrics = collect_per_handler_trace_metrics(redis_conn, window_ms)
                 handler["metrics"] = trace_metrics.get(name)
-            except Exception:
+            except Exception:  # metrics are optional; the handler still renders, logged
                 logger.debug("Failed to collect trace metrics", exc_info=True)
 
             try:
                 handler["recent_messages"] = collect_recent_messages(
                     redis_conn, name, count=message_count
                 )
-            except Exception:
+            except Exception:  # recent messages fall back to an empty list; logged
                 logger.debug("Failed to collect recent messages", exc_info=True)
                 handler["recent_messages"] = []
         else:

@@ -20,7 +20,6 @@ Endpoints:
 
 from __future__ import annotations
 
-import json
 import logging
 import time as _time
 from collections import defaultdict
@@ -32,7 +31,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from protean.port.event_store import CausationNode
-from protean.server.tracing import TRACE_STREAM
+from protean.server.tracing import TRACE_STREAM, decode_trace, trace_number
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -67,8 +66,11 @@ def _unique_store_domains(domains: list[Domain]) -> list[Domain]:
             )
             if not store_key:
                 store_key = str(id(store))  # Fallback for stores without conn_info
-        except Exception:
-            store_key = str(id(domain))  # Fallback — treat as unique
+        except Exception as exc:  # noqa: BLE001 - the store is set up from user config
+            logger.debug(
+                "Cannot read the event store of domain %s: %r", domain.name, exc
+            )
+            store_key = str(id(domain))  # Fallback: treat as unique
         if store_key not in seen_stores:
             seen_stores.add(store_key)
             unique.append(domain)
@@ -241,7 +243,7 @@ def collect_all_events(
                     # shared MessageDB get the correct domain attribution
                     msg_domain = _domain_from_stream(stream) or domain.name
                     all_events.append((msg, msg_domain))
-        except Exception:
+        except Exception:  # one unreadable store must not empty the timeline; logged
             logger.debug("Failed to read events from %s", domain.name, exc_info=True)
 
     # Sort by global_position (ascending)
@@ -307,7 +309,7 @@ def find_event_by_id(domains: list[Domain], message_id: str) -> dict[str, Any] |
                 for msg in raw_messages:
                     if _extract_message_id(msg) == message_id:
                         return _serialize_message_detail(msg, domain.name)
-        except Exception:
+        except Exception:  # a failing store is skipped, the search goes on; logged
             logger.debug("Failed to search events in %s", domain.name, exc_info=True)
 
     return None
@@ -374,7 +376,7 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
                             or msg_dt < first_event_datetime
                         ):
                             first_event_datetime = msg_dt
-        except Exception:
+        except Exception:  # stats skip a failing store instead of failing; logged
             logger.debug("Failed to collect stats from %s", domain.name, exc_info=True)
 
     # Calculate events per minute
@@ -542,7 +544,7 @@ def _load_traces_for_correlation(
                     # dynamically after the ``hasattr`` guard.
                     redis_conn = broker.redis_instance
                     break
-        except Exception:
+        except Exception:  # a broken domain is skipped while looking for Redis; logged
             logger.debug(
                 "Could not get the Redis broker of domain %s", d.name, exc_info=True
             )
@@ -556,50 +558,29 @@ def _load_traces_for_correlation(
 
     try:
         raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
-    except Exception:
+    except Exception:  # trace enrichment is optional; events show without it, logged
         logger.debug("Failed to read trace stream for enrichment", exc_info=True)
         return traces
 
     for _stream_id, fields in raw_entries:
-        try:
-            data_raw = fields.get(b"data") or fields.get("data")
-            if not data_raw:
-                continue
-            if isinstance(data_raw, bytes):
-                data_raw = data_raw.decode("utf-8")
-            trace = json.loads(data_raw)
-
-            if trace.get("correlation_id") != correlation_id:
-                continue
-
-            event_type = trace.get("event", "")
-            if event_type not in ("handler.completed", "handler.failed"):
-                continue
-
-            mid = trace.get("message_id")
-            if mid:
-                raw_duration = trace.get("duration_ms")
-                duration_ms: float | None = None
-                if raw_duration is not None:
-                    try:
-                        duration_ms = float(raw_duration)
-                    except (ValueError, TypeError):
-                        duration_ms = None
-                traces[mid] = {
-                    "handler": trace.get("handler"),
-                    "duration_ms": duration_ms,
-                }
-        except (
-            AttributeError,
-            json.JSONDecodeError,
-            TypeError,
-            UnicodeDecodeError,
-        ):
-            logger.debug(
-                "Skipping malformed trace entry during correlation enrichment",
-                exc_info=True,
-            )
+        trace = decode_trace(fields)
+        if trace is None:
+            logger.debug("Skipping malformed trace entry during correlation enrichment")
             continue
+
+        if trace.get("correlation_id") != correlation_id:
+            continue
+
+        event_type = trace.get("event", "")
+        if event_type not in ("handler.completed", "handler.failed"):
+            continue
+
+        mid = trace.get("message_id")
+        if mid and isinstance(mid, str):
+            traces[mid] = {
+                "handler": trace.get("handler"),
+                "duration_ms": trace_number(trace.get("duration_ms")),
+            }
 
     return traces
 
@@ -666,7 +647,7 @@ def build_correlation_response(
                     "total_duration_ms": total_duration_ms,
                     "event_count": len(events),
                 }
-        except Exception:
+        except Exception:  # try the next store instead of failing the endpoint; logged
             logger.debug(
                 "Failed to build correlation chain from %s",
                 domain.name,
@@ -716,7 +697,7 @@ def collect_aggregate_history(
                     "events": events,
                     "event_count": len(events),
                 }
-        except Exception:
+        except Exception:  # try the next store instead of failing the endpoint; logged
             logger.debug(
                 "Failed to read aggregate history from %s",
                 domain.name,
@@ -770,7 +751,7 @@ def _group_by_correlation(
                     if cid:
                         msg_domain = _domain_from_stream(stream) or domain.name
                         groups[cid].append((msg, msg_domain))
-        except Exception:
+        except Exception:  # one unreadable store must not break grouping; logged
             logger.debug(
                 "Failed to read events from %s for grouping",
                 domain.name,

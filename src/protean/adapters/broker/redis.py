@@ -281,7 +281,7 @@ class RedisBroker(BaseBroker):
 
         except redis.ResponseError as e:
             return self._handle_redis_error(e, stream, consumer_group)
-        except Exception:
+        except Exception:  # a failed read returns no message; logged
             logger.exception("broker.redis.get_next_failed")
             return None
 
@@ -513,7 +513,7 @@ class RedisBroker(BaseBroker):
                             message = self._deserialize_message(fields)
                             messages.append((redis_id_str, message))
                     return messages
-                except Exception:
+                except Exception:  # the retry returns no messages; logged
                     logger.exception("broker.redis.nogroup_retry_failed")
                     return []
             logger.exception("broker.redis.read_blocking_failed")
@@ -608,7 +608,7 @@ class RedisBroker(BaseBroker):
                         block=block,
                     )
                     return self._group_stream_reply(streams, response)
-                except Exception:
+                except Exception:  # the retry returns empty streams; logged
                     logger.exception("broker.redis.nogroup_retry_failed")
                     return {stream: [] for stream in streams}
             logger.exception("broker.redis.read_blocking_failed")
@@ -666,7 +666,7 @@ class RedisBroker(BaseBroker):
         except redis.ResponseError as e:
             logger.warning(f"Failed to ack message {identifier} in {stream}: {e}")
             return False
-        except Exception:
+        except Exception:  # a failed ack reports False; logged
             logger.exception("broker.redis.ack_failed")
             return False
 
@@ -691,7 +691,7 @@ class RedisBroker(BaseBroker):
             )
             return True
 
-        except Exception:
+        except Exception:  # a failed nack reports False; logged
             logger.exception("broker.redis.nack_failed")
             return False
 
@@ -996,7 +996,7 @@ class RedisBroker(BaseBroker):
                 logger.warning(
                     f"Failed to create consumer group {group_name} for stream {stream}: {e}"
                 )
-        except Exception:
+        except Exception:  # a failed group setup must not stop reads; logged
             logger.exception(
                 "broker.redis.ensure_group_failed",
                 extra={"group": group_name, "stream": stream},
@@ -1033,7 +1033,12 @@ class RedisBroker(BaseBroker):
             for c in consumers_info:
                 if not isinstance(c, dict):
                     continue
-                name = self._get_field_value(c, "name")
+                try:
+                    name = self._get_field_value(c, "name")
+                except UnicodeDecodeError as e:
+                    # Another client can name a consumer with bytes that are not UTF-8.
+                    logger.debug(f"Skipping a consumer with an undecodable name: {e}")
+                    continue
                 if name is None or name == current_consumer_name:
                     continue
 
@@ -1057,10 +1062,10 @@ class RedisBroker(BaseBroker):
                     )
                     removed += 1
                     logger.debug(f"Removed stale consumer {name} from {group_name}")
-                except Exception as e:
-                    logger.debug(f"Failed to remove stale consumer {name}: {e}")
-        except Exception as e:
-            logger.debug(
+                except redis.RedisError as e:
+                    logger.warning(f"Failed to remove stale consumer {name}: {e}")
+        except redis.RedisError as e:
+            logger.warning(
                 f"Error cleaning stale consumers for {group_name} on {stream}: {e}"
             )
 
@@ -1094,7 +1099,7 @@ class RedisBroker(BaseBroker):
             # Add nested structure for Redis-specific tests
             info["consumer_groups"].update(stream_info_nested)
 
-        except Exception:
+        except Exception:  # info returns what it gathered so far; logged
             logger.exception("broker.redis.info_failed")
 
         return info
@@ -1167,7 +1172,8 @@ class RedisBroker(BaseBroker):
                 },
             )
 
-        except Exception as e:
+        # Another client can name a group or consumer with bytes that are not UTF-8.
+        except (redis.RedisError, UnicodeDecodeError) as e:
             logger.debug(f"Error extracting group data: {e}")
             return None
 
@@ -1232,7 +1238,8 @@ class RedisBroker(BaseBroker):
         """Test basic connectivity to Redis broker"""
         try:
             return self._client.ping()
-        except Exception as e:
+        # ping() raises a plain ValueError for a malformed reply.
+        except (redis.RedisError, OSError, ValueError) as e:
             logger.debug(f"Redis ping failed: {e}")
             return False
 
@@ -1272,7 +1279,7 @@ class RedisBroker(BaseBroker):
                 "dlq": 0,  # Redis Streams don't have explicit DLQ
             }
 
-        except Exception as e:
+        except redis.RedisError as e:
             logger.debug(f"Error calculating message counts: {e}")
             return {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
 
@@ -1285,31 +1292,23 @@ class RedisBroker(BaseBroker):
             ]
 
             return {"count": len(existing_streams), "names": sorted(existing_streams)}
-        except Exception as e:
+        except redis.RedisError as e:
             logger.debug(f"Error calculating streams info: {e}")
             return {"count": 0, "names": []}
 
     def _calculate_consumer_groups_info(self) -> dict[str, Any]:
         """Calculate consumer groups information"""
-        try:
-            # Get all unique consumer group names across all streams
-            consumer_groups = set()
+        # Get all unique consumer group names across all streams
+        consumer_groups = set()
+        for group_key in self._created_groups:
+            if CONSUMER_GROUP_SEPARATOR in group_key:
+                # Split off the LAST colon: the group name (a dotted handler
+                # FQN, no colons) is the final segment, while the stream part
+                # may itself carry colons for partition streams (ADR-0028).
+                group_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[1]
+                consumer_groups.add(group_name)
 
-            # Access _created_groups safely in case it's patched to raise an exception
-            created_groups = self._created_groups
-
-            for group_key in created_groups:
-                if CONSUMER_GROUP_SEPARATOR in group_key:
-                    # Split off the LAST colon: the group name (a dotted handler
-                    # FQN, no colons) is the final segment, while the stream part
-                    # may itself carry colons for partition streams (ADR-0028).
-                    group_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[1]
-                    consumer_groups.add(group_name)
-
-            return {"count": len(consumer_groups), "names": sorted(consumer_groups)}
-        except Exception as e:
-            logger.debug(f"Error calculating consumer groups info: {e}")
-            return {"count": 0, "names": []}
+        return {"count": len(consumer_groups), "names": sorted(consumer_groups)}
 
     def _health_stats(self) -> dict[str, Any]:
         """Get Redis-specific health and performance statistics"""
@@ -1385,6 +1384,7 @@ class RedisBroker(BaseBroker):
 
             return stats
 
+        # a health check reports unhealthy instead of raising; logged
         except Exception as e:
             logger.exception("broker.redis.health_check_failed")
             return {
@@ -1423,7 +1423,8 @@ class RedisBroker(BaseBroker):
                         )
                     return True
 
-            except Exception as e:
+            # ping() raises a plain ValueError for a malformed reply.
+            except (redis.RedisError, OSError, ValueError) as e:
                 logger.debug(f"Redis connection attempt {attempt + 1} failed: {e}")
 
             # Connection failed, try to reconnect (unless it's the last attempt)
@@ -1434,6 +1435,7 @@ class RedisBroker(BaseBroker):
                     )
                     # Create a new Redis instance with the same connection info
                     self._connect()
+                # a failed reconnect moves on to the next attempt; logged
                 except Exception:
                     logger.exception("broker.redis.reconnect_failed")
 
@@ -1449,7 +1451,7 @@ class RedisBroker(BaseBroker):
                 self.redis_instance.close()
                 self.redis_instance = None
                 logger.debug("Closed Redis broker connection: %s", self.name)
-        except Exception:
+        except Exception:  # closing must not raise during shutdown; logged
             logger.exception("Error closing Redis broker %s", self.name)
 
     # ------------------------------------------------------------------
@@ -1678,7 +1680,7 @@ class RedisBroker(BaseBroker):
             self._client.flushall()
             self._created_groups_set.clear()
             self._group_creation_times.clear()
-        except Exception:
+        except Exception:  # a failed test reset must not break teardown; logged
             logger.exception("broker.redis.data_reset_failed")
 
 

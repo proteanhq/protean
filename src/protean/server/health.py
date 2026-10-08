@@ -445,7 +445,7 @@ def _subscription_total(engine: Engine) -> int:
             + len(engine._broker_subscriptions)
             + len(engine._outbox_processors)
         )
-    except Exception:
+    except Exception:  # health reports zero instead of raising; logged
         logger.debug("Counting engine subscriptions failed", exc_info=True)
         return 0
 
@@ -460,7 +460,7 @@ async def _snapshot_and_collect(engine: Engine) -> dict[str, Any]:
     total = _subscription_total(engine)
     try:
         breakers = _circuit_states(engine)
-    except Exception:
+    except Exception:  # health reports a collection error instead of raising
         logger.debug("Reading circuit-breaker state failed", exc_info=True)
         return {"total": total, "collection_error": True, "details": []}
 
@@ -617,7 +617,7 @@ class HealthServer:
             # of rotation. A 503 says "not ready", which is at least true and
             # is what the caller can act on.
             logger.warning("Health server connection error", exc_info=True)
-            with contextlib.suppress(Exception):
+            try:
                 # `degraded`, not `unavailable`: the latter is reserved for
                 # the shutdown case and carries `shutting_down: true`, so
                 # reusing it here would read as "this pod is draining".
@@ -625,6 +625,8 @@ class HealthServer:
                     _json_response(503, {"status": STATUS_DEGRADED, "checks": {}})
                 )
                 await writer.drain()
+            except Exception as exc:  # noqa: BLE001 - the error above is logged; the client may be gone
+                logger.debug("Could not send the 503 health reply: %r", exc)
         finally:
             with contextlib.suppress(OSError):
                 writer.close()

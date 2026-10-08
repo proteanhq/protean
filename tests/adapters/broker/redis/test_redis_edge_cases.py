@@ -548,7 +548,7 @@ class TestRedisEdgeCases:
 
         # Mock redis instance that always fails ping
         mock_redis = MagicMock()
-        mock_redis.ping.side_effect = Exception("Connection refused")
+        mock_redis.ping.side_effect = redis.ConnectionError("Connection refused")
         broker.redis_instance = mock_redis
 
         # Mock Redis.from_url to also fail

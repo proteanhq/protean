@@ -273,7 +273,7 @@ class InlineBroker(BaseBroker):
 
             return True
 
-        except Exception:
+        except Exception:  # ack reports False on any failure and clears state; logged
             logger.exception(
                 "broker.inline.ack_failed", extra={"identifier": identifier}
             )
@@ -346,7 +346,7 @@ class InlineBroker(BaseBroker):
                     stream, identifier, consumer_group, message, new_retry_count
                 )
 
-        except Exception:
+        except Exception:  # nack reports False on any failure and clears state; logged
             logger.exception(
                 "broker.inline.nack_failed", extra={"identifier": identifier}
             )
@@ -420,7 +420,7 @@ class InlineBroker(BaseBroker):
 
             return True
 
-        except Exception:
+        except Exception:  # retry setup reports False and clears state; logged
             logger.exception(
                 "broker.inline.nack_retry_failed", extra={"identifier": identifier}
             )
@@ -465,7 +465,7 @@ class InlineBroker(BaseBroker):
 
             return True
 
-        except Exception:
+        except Exception:  # discard step reports False and clears state; logged
             logger.exception(
                 "broker.inline.max_retries_failed", extra={"identifier": identifier}
             )
@@ -478,7 +478,7 @@ class InlineBroker(BaseBroker):
             ready_messages = self._get_retry_ready_messages(stream, consumer_group)
             if ready_messages:
                 self._requeue_messages(stream, consumer_group, ready_messages)
-        except Exception:
+        except Exception:  # a failed requeue must not stop message reads; logged
             logger.exception(
                 "broker.inline.requeue_failed",
                 extra={"consumer_group": consumer_group, "stream": stream},
@@ -787,7 +787,7 @@ class InlineBroker(BaseBroker):
                     return True
 
             return False
-        except Exception:
+        except Exception:  # a failed nack lookup reports False; logged with traceback
             logger.exception(
                 "broker.inline.nack_handle_failed", extra={"identifier": identifier}
             )
@@ -862,7 +862,7 @@ class InlineBroker(BaseBroker):
                     logger.info(f"Message '{identifier}' reprocessed from DLQ")
                     return True
             return False
-        except Exception:
+        except Exception:  # a failed DLQ reprocess reports False; logged with traceback
             logger.exception(
                 "broker.inline.dlq_reprocess_failed", extra={"identifier": identifier}
             )

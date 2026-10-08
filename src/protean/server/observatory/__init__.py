@@ -17,7 +17,6 @@ Usage:
 """
 
 import asyncio
-import contextlib
 import ipaddress
 import logging
 from pathlib import Path
@@ -75,10 +74,12 @@ class _GracefulShutdownMiddleware:
             # the final empty body so uvicorn doesn't log
             # "ASGI callable returned without completing response."
             if response_started:
-                with contextlib.suppress(Exception):
+                try:
                     await send(
                         {"type": "http.response.body", "body": b"", "more_body": False}
                     )
+                except Exception as exc:  # noqa: BLE001 - the client is gone during shutdown
+                    logger.debug("Could not end the response on shutdown: %r", exc)
 
 
 class Observatory:

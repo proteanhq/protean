@@ -119,7 +119,7 @@ def _load(domain: str | None) -> Domain:
     derived = _derive(domain)
     try:
         derived.init()
-    except Exception as exc:
+    except Exception as exc:  # any init error goes back to the client as McpToolError
         raise McpToolError(f"Error initialising Protean domain: {exc}") from exc
     return derived
 
@@ -135,7 +135,7 @@ def check(domain: str | None = None) -> dict[str, Any]:
         # ``check`` prepares the domain, which imports the rest of its package;
         # a broken sibling module raises here, so translate it like a load error.
         return derived.check()
-    except Exception as exc:
+    except Exception as exc:  # any check error goes back to the client as McpToolError
         raise McpToolError(f"Error checking Protean domain: {exc}") from exc
 
 
@@ -165,7 +165,7 @@ def introspect(domain: str | None = None) -> dict[str, Any]:
     derived = _load(domain)
     try:
         return derived.to_ir()
-    except Exception as exc:
+    except Exception as exc:  # any IR error goes back to the client as McpToolError
         raise McpToolError(f"Error introspecting Protean domain: {exc}") from exc
 
 

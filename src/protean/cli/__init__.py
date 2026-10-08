@@ -310,6 +310,7 @@ def server(
                         offenders = event_store_subscription_handlers(derived_domain)
                     finally:
                         derived_domain.close()
+                # The guard is best effort; workers report init errors; logged.
                 except Exception:
                     logger.debug(
                         "Event-store single-writer guard skipped: domain '%s' could "

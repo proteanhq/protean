@@ -1,3 +1,4 @@
+import logging
 from uuid import uuid4
 
 import pytest
@@ -98,6 +99,24 @@ class TestTraceParent:
         for invalid_format in invalid_formats:
             result = TraceParent.build(invalid_format)
             assert result is None
+
+    def test_traceparent_build_with_bad_flags_returns_none(self, caplog):
+        with caplog.at_level(logging.ERROR, logger="protean.utils.eventing"):
+            result = TraceParent.build(
+                "00-1234567890abcdef1234567890abcdef-abcdef1234567890-zz"
+            )
+
+        assert result is None
+        assert "Error parsing traceparent" in caplog.text
+
+    def test_traceparent_build_lets_an_unexpected_error_through(self, monkeypatch):
+        def broken_init(self, *args, **kwargs):
+            raise RuntimeError("broken value object")
+
+        monkeypatch.setattr(TraceParent, "__init__", broken_init)
+
+        with pytest.raises(RuntimeError, match="broken value object"):
+            TraceParent.build("00-1234567890abcdef1234567890abcdef-abcdef1234567890-01")
 
     def test_traceparent_to_dict_sampled(self):
         """Test to_dict returns dict with fields when sampled=True"""

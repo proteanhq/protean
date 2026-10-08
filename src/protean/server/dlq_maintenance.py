@@ -156,7 +156,7 @@ class DLQMaintenanceTask:
                     await self._maintenance_cycle()
             except asyncio.CancelledError:
                 break
-            except Exception:
+            except Exception:  # one failed cycle must not stop the loop; logged
                 logger.exception("dlq_maintenance.cycle_failed")
 
     async def _maintenance_cycle(self) -> None:
@@ -195,7 +195,7 @@ class DLQMaintenanceTask:
                     )
                     metrics.dlq_alerts.add(1, {"dlq_stream": dlq_stream})
                     self._invoke_callback(dlq_stream, depth, threshold)
-            except Exception:
+            except Exception:  # one bad DLQ stream must not skip the rest; logged
                 logger.exception(
                     "dlq_maintenance.stream_maintenance_failed",
                     extra={"dlq_stream": dlq_stream},
@@ -231,7 +231,7 @@ class DLQMaintenanceTask:
             return
         try:
             self.alert_callback(dlq_stream=dlq_stream, depth=depth, threshold=threshold)
-        except Exception:
+        except Exception:  # a user callback error must not stop maintenance; logged
             logger.exception(
                 "dlq_maintenance.callback_failed",
                 extra={"dlq_stream": dlq_stream},

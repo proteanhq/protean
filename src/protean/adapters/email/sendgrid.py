@@ -45,7 +45,7 @@ class SendgridEmailProvider(BaseEmailProvider):
             raise SendError(
                 f"Exception: HTTPError - Failed to send email - {e!s}"
             ) from e
-        except Exception as e:
+        except Exception as e:  # any client error becomes SendError; logged
             logger.error(f"Exception: Error while sending email: {e}")
             raise SendError(f"Exception: Failed to send email - {e!s}") from e
 

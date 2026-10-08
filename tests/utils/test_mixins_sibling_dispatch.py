@@ -12,6 +12,8 @@ call ``_dispatch_handlers`` with an explicit list so they can pin what runs afte
 a failure; each of those says why in its own docstring.
 """
 
+import logging
+
 import pytest
 
 from protean.core.aggregate import BaseAggregate
@@ -354,3 +356,44 @@ class TestTheDiscardedFailureNoteIsBounded:
         assert len(note) <= _DESCRIBE_MAX_LENGTH + 20
         assert "<truncated>" in note
         assert "OneSiblingFails" in note
+
+
+class _RaisingFilter(logging.Filter):
+    def filter(self, record):
+        raise RuntimeError("filter broke")
+
+
+class TestCarryingFailuresWhenReportingFails:
+    def test_a_note_that_cannot_be_added_is_logged(self, caplog):
+        interrupt = KeyboardInterrupt("stop")
+        interrupt.__notes__ = "not a list"
+
+        with caplog.at_level(logging.DEBUG, logger="protean.utils.mixins"):
+            _carry_discarded_failures(
+                OneSiblingFails, Placed(order_id="1"), [ValueError("x")], interrupt
+            )
+
+        assert interrupt.__notes__ == "not a list"
+        assert any(
+            record.getMessage().startswith("Could not note the discarded failures")
+            for record in caplog.records
+        )
+
+    def test_a_log_call_that_fails_is_reported_on_stderr(self, capsys):
+        handler_logger = logging.getLogger("protean.utils.mixins")
+        broken = _RaisingFilter()
+        handler_logger.addFilter(broken)
+        try:
+            _carry_discarded_failures(
+                OneSiblingFails,
+                Placed(order_id="1"),
+                [ValueError("x")],
+                KeyboardInterrupt("stop"),
+            )
+        finally:
+            handler_logger.removeFilter(broken)
+
+        assert capsys.readouterr().err == (
+            "Warning: could not log 1 discarded handler failures: "
+            "RuntimeError: filter broke\n"
+        )

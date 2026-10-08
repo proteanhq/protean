@@ -549,6 +549,43 @@ class TestPartitionLagFallsBackToXrange:
         assert status.lag is None
 
 
+class TestPartitionReadFailuresAreLogged:
+    def test_each_failed_read_is_logged_and_the_rest_still_counts(self, caplog):
+        broker = MagicMock()
+        broker._partition_keys.return_value = {"a"}
+        redis = broker.redis_instance
+        redis.xlen.side_effect = ConnectionError("length gone")
+        redis.xinfo_groups.return_value = [
+            {"name": "grp", "pending": 2, "last-delivered-id": "5-0"}
+        ]
+        redis.xrange.side_effect = ConnectionError("range gone")
+        redis.xinfo_consumers.side_effect = ConnectionError("consumers gone")
+        broker._get_field_value.side_effect = lambda d, f, convert_to_int=False: d.get(
+            f
+        )
+        domain = MagicMock()
+        domain.brokers.get.return_value = broker
+        handler = MagicMock()
+        handler.__name__ = "H"
+
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.server.subscription_status"
+        ):
+            status = _collect_partitioned_stream_status(
+                domain, "orders", handler, "order", "grp"
+            )
+
+        assert status.pending == 2
+        assert status.lag is None
+        assert status.dlq_depth == 0
+        assert caplog.messages == [
+            "Could not read length of order:a: ConnectionError('length gone')",
+            "Could not count lag of order:a: ConnectionError('range gone')",
+            "Could not read consumers of order:a: ConnectionError('consumers gone')",
+            "Could not read DLQ depth of order: ConnectionError('length gone')",
+        ]
+
+
 class TestEachOutboxRowCountsItsOwnBroker:
     """One combined backlog repeated on every row is not per-processor status.
 

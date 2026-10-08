@@ -5,6 +5,7 @@ Unit tests for edge cases use mock domains.
 """
 
 import json
+import logging
 import time
 from unittest.mock import MagicMock
 
@@ -359,3 +360,19 @@ class TestEmitterInitializationEdgeCases:
         assert result is False
         assert emitter._initialized is True
         assert emitter._redis is None
+
+    def test_subscriber_check_failure_is_logged_and_reads_as_none(self, caplog):
+        mock_domain = MagicMock()
+        mock_domain.name = "test-domain"
+        redis_conn = MagicMock()
+        redis_conn.pubsub_numsub.side_effect = ConnectionError("Redis is down")
+        mock_domain.brokers.get.return_value.redis_instance = redis_conn
+
+        emitter = TraceEmitter(mock_domain)
+        with caplog.at_level(logging.DEBUG, logger="protean.server.tracing"):
+            result = emitter._check_subscribers()
+
+        assert result is False
+        assert (
+            "TraceEmitter: subscriber check failed (Redis is down)" in caplog.messages
+        )

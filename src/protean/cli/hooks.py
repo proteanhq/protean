@@ -118,7 +118,7 @@ def _load_live_ir(domain_path: str) -> dict[str, Any]:
     try:
         domain.init()
         return domain.to_ir()
-    except Exception as exc:
+    except Exception as exc:  # any IR failure becomes a printed error and exit 1
         print(f"Error generating IR: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
@@ -213,7 +213,7 @@ def _check_staleness_single(
     except NoDomainException as exc:
         print(f"Error ({domain_module}): {exc.args[0]}", file=sys.stderr)
         return False
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - hook boundary: loading user code can raise anything
         print(f"Error ({domain_module}): {exc}", file=sys.stderr)
         return False
 
@@ -226,7 +226,7 @@ def _check_staleness_single(
     if fix:
         try:
             _regenerate_ir(domain_module, protean_dir)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - hook boundary: report any IR build failure
             print(
                 f"Error: failed to regenerate IR for {domain_module}: {exc}",
                 file=sys.stderr,

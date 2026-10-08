@@ -464,6 +464,12 @@ middleware always echoes `X-Request-ID` on the response (including on
 synthesised 500s) so operators can pivot from an HTTP failure back into the log
 aggregator.
 
+When no `access.http_failed` event records an unhandled exception, the
+middleware logs `Unhandled error in <METHOD> <path>` at ERROR level, with the
+traceback, on the `protean.integrations.fastapi.middleware` logger. That
+happens when `[logging.http].enabled = false`, when the path is in
+`exclude_paths`, or when writing the wide event fails.
+
 ---
 
 ### `protean.perf`

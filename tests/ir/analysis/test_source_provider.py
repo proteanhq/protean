@@ -2,6 +2,7 @@
 
 import ast
 import importlib
+import logging
 import os
 import sys
 from pathlib import Path
@@ -135,13 +136,36 @@ class TestFailOpen:
         # ``os`` is a module, not a package, so find_spec raises here.
         assert provider.tree("os.no_such_sub") is None
 
-    def test_find_spec_raising(self, provider, monkeypatch):
+    def test_find_spec_raising(self, provider, monkeypatch, caplog):
         def boom(name, *args, **kwargs):
             raise RuntimeError("parent __init__ blew up")
 
         monkeypatch.setattr(source_provider_module, "find_spec", boom)
 
-        assert provider.tree(REAL_MODULE) is None
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.ir.analysis.source_provider"
+        ):
+            assert provider.tree(REAL_MODULE) is None
+
+        assert (
+            f"Cannot locate module {REAL_MODULE}: "
+            "RuntimeError('parent __init__ blew up')"
+        ) in caplog.text
+
+    def test_unexpected_read_error_reaches_the_caller(self, provider, monkeypatch):
+        """Only read, decode and parse failures mean "no tree"; a bug does not."""
+
+        class BrokenPath:
+            def __init__(self, path):
+                self.path = path
+
+            def read_bytes(self):
+                raise TypeError("not a readable path")
+
+        monkeypatch.setattr(source_provider_module, "Path", BrokenPath)
+
+        with pytest.raises(TypeError, match="not a readable path"):
+            provider.tree(REAL_MODULE)
 
     @pytest.mark.parametrize("origin", [None, "built-in", "frozen"])
     def test_spec_without_usable_origin_is_never_opened(

@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime as dt
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -1389,16 +1389,22 @@ class TestUniqueStoreDomains:
     def test_empty_list_returns_empty(self):
         assert _unique_store_domains([]) == []
 
-    def test_broken_domain_treated_as_unique(self):
+    def test_broken_domain_treated_as_unique(self, caplog):
         """A domain that raises on event_store access is treated as unique."""
         d1 = MagicMock()
         d1.event_store.store.conn_info = {"database_uri": "postgresql://shared"}
 
         d2 = MagicMock()
-        d2.event_store.side_effect = Exception("broken")
+        d2.name = "broken"
+        type(d2).event_store = PropertyMock(side_effect=RuntimeError("no store"))
 
-        result = _unique_store_domains([d1, d2])
-        assert len(result) == 2
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.server.observatory.routes.timeline"
+        ):
+            result = _unique_store_domains([d1, d2])
+
+        assert result == [d1, d2]
+        assert "Cannot read the event store of domain broken" in caplog.text
 
     def test_same_conn_info_deduplicates(self):
         """Two mock domains with the same database_uri produce one entry."""

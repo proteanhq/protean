@@ -4146,18 +4146,18 @@ class IRBuilder:
         for path in rule_paths:
             try:
                 callable_fn = self._import_callable(path)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - importing a rule runs user code
                 logger.warning(
-                    "Custom lint rule %r could not be imported — skipped", path
+                    "Custom lint rule %r could not be imported (%r), skipped",
+                    path,
+                    exc,
                 )
                 continue
 
             try:
                 results = callable_fn(ir)
-            except Exception:
-                logger.warning(
-                    "Custom lint rule %r raised an exception — skipped", path
-                )
+            except Exception as exc:  # noqa: BLE001 - a rule is user code
+                logger.warning("Custom lint rule %r raised %r, skipped", path, exc)
                 continue
 
             if not isinstance(results, list):

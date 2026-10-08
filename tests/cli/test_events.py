@@ -1,6 +1,7 @@
 """Tests for CLI events commands (protean events ...)."""
 
 import json
+import logging
 import os
 import sys
 from datetime import UTC, datetime
@@ -716,7 +717,7 @@ class TestEventsStatsExceptions:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_stats_handles_stream_identifiers_exception(self):
+    def test_stats_handles_stream_identifiers_exception(self, caplog):
         change_working_directory_to("test7")
 
         user_record = _make_aggregate_record("User", "test::user")
@@ -727,7 +728,10 @@ class TestEventsStatsExceptions:
         store._stream_identifiers.side_effect = Exception("Connection error")
         store._read.return_value = [_make_raw_event(0, 1)]
 
-        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
+        with (
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
+            caplog.at_level(logging.WARNING, logger="protean.cli.events"),
+        ):
             result = runner.invoke(
                 app,
                 ["events", "stats", "--domain", "publishing7.py"],
@@ -735,7 +739,12 @@ class TestEventsStatsExceptions:
             assert result.exit_code == 0
             assert "User" in result.output
 
-    def test_stats_handles_read_exception(self):
+        assert (
+            "Cannot count instances in stream test::user: Connection error"
+            in caplog.text
+        )
+
+    def test_stats_handles_read_exception(self, caplog):
         change_working_directory_to("test7")
 
         user_record = _make_aggregate_record("User", "test::user")
@@ -746,13 +755,20 @@ class TestEventsStatsExceptions:
         store._stream_identifiers.return_value = ["id1"]
         store._read.side_effect = Exception("Connection error")
 
-        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
+        with (
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
+            caplog.at_level(logging.WARNING, logger="protean.cli.events"),
+        ):
             result = runner.invoke(
                 app,
                 ["events", "stats", "--domain", "publishing7.py"],
             )
             assert result.exit_code == 0
             assert "User" in result.output
+
+        assert "Cannot read events in stream test::user: Connection error" in (
+            caplog.text
+        )
 
 
 # ---------------------------------------------------------------------------

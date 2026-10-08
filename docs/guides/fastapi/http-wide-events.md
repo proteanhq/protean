@@ -56,6 +56,12 @@ Level ladders match severity, INFO for 2xx/3xx, WARNING for 4xx, ERROR for 5xx
 or unhandled exceptions. A 5xx event carries `error_type` and `error_message` plus the inlined
 traceback under `exception`.
 
+An unhandled exception is still logged when no wide event records it. That
+happens when `enabled = false`, when the path is in `exclude_paths`, or when
+writing the wide event fails. The middleware then logs
+`Unhandled error in <METHOD> <path>` at ERROR level, with the traceback, on the
+`protean.integrations.fastapi.middleware` logger.
+
 ---
 
 ## Enable it

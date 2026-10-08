@@ -1159,6 +1159,22 @@ def test_reverse_index_tolerates_pack_absent(monkeypatch):
     assert pack.diagnostic_code_skills() == {}
 
 
+def test_reverse_index_logs_a_pack_that_cannot_be_listed(monkeypatch, caplog):
+    caplog.set_level(logging.DEBUG, logger="protean.dx.pack")
+
+    def _stripped():
+        raise FileNotFoundError("pack data stripped from the install")
+
+    monkeypatch.setattr(pack, "pack_files", _stripped)
+
+    assert pack.diagnostic_code_skills() == {}
+    records = [r for r in caplog.records if r.name == "protean.dx.pack"]
+    assert len(records) == 1
+    assert records[0].levelno == logging.DEBUG
+    assert records[0].getMessage() == "Could not list the skills in the pack"
+    assert str(records[0].exc_info[1]) == "pack data stripped from the install"
+
+
 def test_skill_diagnostic_codes_raises_when_the_manifest_is_absent(
     tmp_path, monkeypatch
 ):
@@ -1187,18 +1203,18 @@ def test_build_diagnostic_tolerates_pack_absent(monkeypatch):
     assert "teaching_skills" not in diag
 
 
-def test_build_diagnostic_tolerates_a_reverse_index_that_raises(monkeypatch):
-    # The reverse-index lookup itself blowing up (not just a stripped pack) is
-    # swallowed by build_diagnostic: the key is omitted, the diagnostic stands.
+def test_build_diagnostic_propagates_a_reverse_index_that_raises(monkeypatch):
+    # Only a missing DX pack module is tolerated. A stripped or unreadable pack
+    # already degrades to an empty index inside ``diagnostic_code_skills``, so
+    # an error raised by the lookup itself is a real fault and reaches the caller.
     def _boom():
         raise RuntimeError("reverse index build failed")
 
     monkeypatch.setattr(pack, "diagnostic_code_skills", _boom)
 
-    diag = build_diagnostic(
-        DiagnosticCode.AGGREGATE_NO_INVARIANTS,
-        element="my_app.Order",
-        message="Order declares no invariants.",
-    )
-
-    assert "teaching_skills" not in diag
+    with pytest.raises(RuntimeError, match="reverse index build failed"):
+        build_diagnostic(
+            DiagnosticCode.AGGREGATE_NO_INVARIANTS,
+            element="my_app.Order",
+            message="Order declares no invariants.",
+        )

@@ -26,6 +26,7 @@ Usage::
 """
 
 import json
+import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -42,6 +43,8 @@ from protean.utils import DomainObjects
 if TYPE_CHECKING:
     from protean.domain import Domain
     from protean.port.event_store import CausationNode
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -280,19 +283,25 @@ def stats(
             stream_category = agg_cls.meta_.stream_category
             is_es = "Yes" if agg_cls.meta_.is_event_sourced else "No"
 
-            # Count unique instances
+            # A failed read on one aggregate leaves its row at zero and the
+            # rest of the table still renders.
             try:
                 identifiers = store._stream_identifiers(stream_category)
                 instance_count = len(identifiers)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - one stream's failure must not stop the table
+                logger.warning(
+                    "Cannot count instances in stream %s: %s", stream_category, exc
+                )
                 instance_count = 0
 
-            # Count total events and find latest
             try:
                 all_events = store._read(stream_category, no_of_messages=1_000_000)
                 event_count = len(all_events)
                 latest = all_events[-1] if all_events else None
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - one stream's failure must not stop the table
+                logger.warning(
+                    "Cannot read events in stream %s: %s", stream_category, exc
+                )
                 event_count = 0
                 latest = None
 

@@ -309,26 +309,29 @@ class Domain:
         try:
             # Get the frame of the caller of the Domain constructor (2 frames up)
             frame = sys._getframe(2)
-            filename = frame.f_code.co_filename
+        except ValueError:
+            # The call stack is not that deep
+            return str(Path.cwd())
+        filename = frame.f_code.co_filename
 
-            # Handle special cases
-            if self._is_interactive_context(filename):
-                # Interactive shell or Jupyter notebook
-                return str(Path.cwd())
+        # Handle special cases
+        if self._is_interactive_context(filename):
+            # Interactive shell or Jupyter notebook
+            return str(Path.cwd())
 
-            # Handle frozen applications (PyInstaller, etc.)
-            if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-                # PyInstaller creates a temp folder and stores path in _MEIPASS
-                return str(sys._MEIPASS)
+        # Handle frozen applications (PyInstaller, etc.)
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            return str(sys._MEIPASS)
 
-            # Regular Python script
-            try:
-                return str(Path(filename).resolve().parent)
-            except (TypeError, ValueError):
-                # Fallback to CWD if unable to determine path
-                return str(Path.cwd())
-        except Exception:
-            # Final fallback for any other unexpected errors
+        # Regular Python script
+        try:
+            return str(Path(filename).resolve().parent)
+        # A NUL byte in the filename raises ValueError. A symlink loop raises
+        # RuntimeError before Python 3.13. OSError is left out: a deleted working
+        # directory raises it here and in Path.cwd() alike, so no fallback works.
+        except (TypeError, ValueError, RuntimeError):
+            # Fallback to CWD if unable to determine path
             return str(Path.cwd())
 
     def __init__(
@@ -728,7 +731,7 @@ class Domain:
                 return
 
             self.configure_logging()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - logging is broken, so warn on stderr
             # Degrade gracefully — never let logging setup break Domain.init()
             print(
                 f"Warning: auto-configuration of logging failed: {exc}",
@@ -790,6 +793,7 @@ class Domain:
             try:
                 ir = self.to_ir()
                 diagnostics = ir.get("diagnostics", [])
+            # an IR build failure drops only the IR diagnostics; logged
             except Exception:
                 logger.warning(
                     "Could not build the IR for domain '%s'; "
@@ -947,7 +951,7 @@ class Domain:
         for name, closeable in closeables:
             try:
                 closeable.close()
-            except Exception:
+            except Exception:  # one failed close must not skip the rest; logged
                 logger.exception("Error closing %s", name)
 
         logger.info("Domain infrastructure closed")

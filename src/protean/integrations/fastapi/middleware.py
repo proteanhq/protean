@@ -332,6 +332,14 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
                 app_context=app_context,
                 config=http_config,
             )
+        elif error_info is not None:
+            # No wide event records the error, so log it here.
+            logging.getLogger(__name__).error(
+                "Unhandled error in %s %s",
+                request.method,
+                request.url.path,
+                exc_info=(type(error_info), error_info, error_info.__traceback__),
+            )
 
         return response
 
@@ -344,14 +352,14 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
 
         Returns a ``(response, status_code, error)`` tuple. When the
         downstream raises, ``response`` is ``None``, ``status_code`` is
-        ``500``, and ``error`` carries the exception for later re-raising
-        after the wide event has been emitted. ``Exception`` is caught (not
+        ``500``, and ``error`` carries the exception so the caller can log
+        it. The caller answers with a plain 500 response. ``Exception`` is caught (not
         ``BaseException``) so ``SystemExit`` and ``KeyboardInterrupt`` still
         propagate immediately as intended.
         """
         try:
             response = await call_next(request)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - the caller logs it and answers 500
             return None, 500, exc
         return response, response.status_code, None
 
@@ -373,7 +381,8 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
 
         Never raises — emission failures fall back to a DEBUG log on the
         internal logger so broken observability cannot crash an otherwise
-        successful request.
+        successful request. When the request failed, the endpoint error is
+        then logged at ERROR on the same logger.
         """
         try:
             route = request.scope.get("route")
@@ -439,7 +448,14 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
                 http_access_logger.warning("access.http_completed", extra=extra)
             else:
                 http_access_logger.info("access.http_completed", extra=extra)
-        except Exception:
-            logging.getLogger(__name__).debug(
-                "http_wide_event_emission_failed", exc_info=True
-            )
+        except Exception:  # a failed access log must not break the response
+            logger = logging.getLogger(__name__)
+            logger.debug("http_wide_event_emission_failed", exc_info=True)
+            # The wide event never recorded the endpoint error, so log it here.
+            if error_info is not None:
+                logger.error(
+                    "Unhandled error in %s %s",
+                    request.method,
+                    request.url.path,
+                    exc_info=(type(error_info), error_info, error_info.__traceback__),
+                )

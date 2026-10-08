@@ -42,6 +42,7 @@ that fails CI; ``--level`` only affects display.
 
 import importlib.util
 import json
+import logging
 import os
 from typing import Annotated, Any, NoReturn
 
@@ -58,6 +59,8 @@ from protean.cli.result import (
 )
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
+
+logger = logging.getLogger(__name__)
 
 # Valid ``--format`` values. An unknown format is a usage error (exit 2), not a
 # silent fall-through to the rich renderer.
@@ -424,10 +427,11 @@ def _resolve_sarif_location(
     try:
         spec = importlib.util.find_spec(module)
         origin = spec.origin if spec else None
-    # Broad by design, matching ``SourceProvider``: ``find_spec`` may import a
-    # not-yet-loaded parent package and re-execute its ``__init__``, which can
-    # raise anything. A report should lose a location, not fail to render.
-    except Exception:
+    # ``find_spec`` may import a not-yet-loaded parent package and re-run its
+    # ``__init__``, which can raise anything. A report should lose a location,
+    # not fail to render.
+    except Exception as exc:  # noqa: BLE001 - find_spec runs user package code
+        logger.debug("Cannot locate module %s: %r", module, exc)
         return None
     if not origin:
         return None

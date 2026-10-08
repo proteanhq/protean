@@ -84,6 +84,7 @@ Contracts
 from __future__ import annotations
 
 import ast
+import logging
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -95,6 +96,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
     from protean.domain import Domain
+
+logger = logging.getLogger(__name__)
 
 #: A method body node, sync or async. Every walk must admit both: Protean
 #: handlers are commonly ``async def``, and matching only ``ast.FunctionDef``
@@ -318,7 +321,8 @@ class DataflowAnalyzer:
         # Fail open: the substrate must not abort a diagnostics pass over one
         # pathological body. A genuine interpreter limit (deep nesting) is as
         # much "cannot analyze" here as anything else.
-        except Exception:  # pragma: no cover - defensive fail-open
+        except Exception as exc:  # noqa: BLE001 - logged; the body counts as unanalyzable  # pragma: no cover
+            logger.debug("Cannot analyze a body in module %s: %r", module, exc)
             return MethodFlow(module, node, (), {}, {}, {}, ())
 
 
