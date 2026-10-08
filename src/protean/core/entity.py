@@ -14,6 +14,7 @@ from typing import (
     Annotated,
     Any,
     ClassVar,
+    NamedTuple,
     Self,
     TypeVar,
     cast,
@@ -45,7 +46,7 @@ from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import _ShadowField
 from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
-from protean.fields.tempdata import AssociationCache
+from protean.fields.tempdata import AssociationCache, HasManyChanges, HasOneChanges
 from protean.integrations.logging import (
     SECURITY_EVENT_INVARIANT_FAILED,
     log_security_event,
@@ -90,6 +91,145 @@ _DESCRIPTOR_TYPES = (
     _ReferenceField,
     _ShadowField,
 )
+
+
+# Marks an attribute that was absent from ``__dict__`` when a snapshot was taken.
+_ABSENT: Any = object()
+
+
+class _EntitySnapshot(NamedTuple):
+    """The state of one entity, kept to undo a change to it."""
+
+    entity: Any
+    values: dict[str, Any]
+    fields_set: set[str]
+    root: Any
+    owner: Any
+    flags: tuple[bool, bool, bool]
+    cache: dict[str, Any]
+    cache_items: dict[str, list[Any]]
+    changes: dict[str, tuple[HasManyChanges | HasOneChanges, tuple[Any, ...]]]
+
+
+class _AssignmentSnapshot(NamedTuple):
+    """State an attribute assignment can change, kept to undo it."""
+
+    values: dict[str, Any]
+    cached: Any
+    name: str
+    fields_set: set[str]
+    changed: bool
+    entities: list[_EntitySnapshot]
+
+
+def _changes_state(changes: HasManyChanges | HasOneChanges) -> tuple[Any, ...]:
+    if isinstance(changes, HasManyChanges):
+        return (dict(changes.added), dict(changes.updated), dict(changes.removed))
+    return (changes.change, changes.old_value)
+
+
+def _copy_containers(value: Any) -> Any:
+    """Copy nested lists and dicts, sharing the values inside them.
+
+    A snapshot has to survive in-place changes such as ``tags.append(...)``,
+    which a plain ``dict(__dict__)`` copy would share with the live entity.
+    """
+    if isinstance(value, list):
+        return [_copy_containers(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _copy_containers(item) for key, item in value.items()}
+    return value
+
+
+def _copy_values(entity: Any, values: dict[str, Any]) -> dict[str, Any]:
+    # An association's list in ``__dict__`` is the same object as the one in
+    # the fields cache, and ``_restore_entities`` relies on that, so it is not
+    # copied here.
+    associations = association_fields(entity)
+    return {
+        name: value if name in associations else _copy_containers(value)
+        for name, value in values.items()
+    }
+
+
+def _snapshot_entity(entity: Any) -> _EntitySnapshot:
+    state = entity._state
+    cache = state.fields_cache
+    return _EntitySnapshot(
+        entity=entity,
+        values=_copy_values(entity, entity.__dict__),
+        fields_set=set(entity.__pydantic_fields_set__),
+        root=entity._root,
+        owner=entity._owner,
+        flags=(state._new, state._changed, state._destroyed),
+        cache=dict(cache),
+        cache_items={
+            name: list(value)
+            for name, value in cache.items()
+            if isinstance(value, list)
+        },
+        changes={
+            name: (changes, _changes_state(changes))
+            for name, changes in entity._temp_cache.items()
+        },
+    )
+
+
+def _snapshot_entity_trees(entities: list[Any]) -> list[_EntitySnapshot]:
+    """Snapshot each entity in ``entities`` and every child loaded below it.
+
+    An association change touches the owner, the children it adds or removes,
+    and the children of a removed child. Only values already in the fields
+    cache are walked, so taking the snapshot never loads from the database.
+    """
+    seen: dict[int, Any] = {}
+    pending = list(entities)
+    while pending:
+        entity = pending.pop()
+        if not isinstance(entity, BaseEntity) or id(entity) in seen:
+            continue
+        seen[id(entity)] = entity
+        cache = entity._state.fields_cache
+        assert isinstance(cache, dict)
+        for name in association_fields(entity):
+            loaded = cache.get(name)
+            pending.extend(loaded if isinstance(loaded, list) else [loaded])
+    return [_snapshot_entity(entity) for entity in seen.values()]
+
+
+def _restore_entities(snapshots: list[_EntitySnapshot]) -> None:
+    """Put back what ``_snapshot_entity_trees`` captured.
+
+    Writes into the current ``__dict__``, because Pydantic's assignment
+    validation replaces the ``__dict__`` object. Runs no validation and no
+    invariants.
+    """
+    for snapshot in snapshots:
+        entity = snapshot.entity
+        entity.__dict__.clear()
+        entity.__dict__.update(_copy_values(entity, snapshot.values))
+        object.__setattr__(entity, "__pydantic_fields_set__", set(snapshot.fields_set))
+        entity._root = snapshot.root
+        entity._owner = snapshot.owner
+
+        state = entity._state
+        state._new, state._changed, state._destroyed = snapshot.flags
+
+        cache = state.fields_cache
+        cache.clear()
+        cache.update(snapshot.cache)
+        for name, items in snapshot.cache_items.items():
+            cache[name][:] = items
+
+        entity._temp_cache.clear()
+        for name, (changes, changes_state) in snapshot.changes.items():
+            if isinstance(changes, HasManyChanges):
+                changes.added, changes.updated, changes.removed = (
+                    dict(part) for part in changes_state
+                )
+            else:
+                changes.change, changes.old_value = changes_state
+            entity._temp_cache[name] = changes
 
 
 class _FieldsCacheDescriptor:
@@ -222,6 +362,10 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     _temp_cache: AssociationCache = PrivateAttr(default_factory=AssociationCache)
     _events: list[Any] = PrivateAttr(default_factory=list)
     _disable_invariant_checks: bool = PrivateAttr(default=False)
+    # One snapshot list per open ``atomic_change`` block on this aggregate. An
+    # association change inside a block adds the children it links, so the
+    # block can undo the link when it fails.
+    _atomic_snapshots: list[list["_EntitySnapshot"]] = PrivateAttr(default_factory=list)
     # Set True only for the duration of an ``@apply`` handler during event
     # replay (by ``BaseAggregate._apply``). While set, ``__setattr__`` drops an
     # assignment to a reserved (removed) field name instead of raising, and
@@ -647,8 +791,16 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             getattr(self, field_name)  # Initialize/refresh associations
 
             if isinstance(assoc_obj, HasMany):
-                setattr(self, f"add_{field_name}", partial(assoc_obj.add, self))
-                setattr(self, f"remove_{field_name}", partial(assoc_obj.remove, self))
+                setattr(
+                    self,
+                    f"add_{field_name}",
+                    partial(self._change_association, field_name, assoc_obj.add),
+                )
+                setattr(
+                    self,
+                    f"remove_{field_name}",
+                    partial(self._change_association, field_name, assoc_obj.remove),
+                )
                 setattr(
                     self, f"get_one_from_{field_name}", partial(assoc_obj.get, self)
                 )
@@ -949,6 +1101,102 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     # ------------------------------------------------------------------
     # Mutation with validation + invariant checks
     # ------------------------------------------------------------------
+    def _take_assignment_snapshot(
+        self, name: str, descriptor: Any, incoming: Any = None
+    ) -> "_AssignmentSnapshot":
+        """Capture what an assignment to ``name`` can change on this entity.
+
+        Covers the attribute itself, the shadow attributes a value object or
+        reference descriptor writes next to it, the descriptor's cached value,
+        the Pydantic fields-set and the changed flag. For a ``HasOne`` or
+        ``HasMany`` field it also covers this entity and the ``incoming``
+        children with their own children, because the association links each
+        incoming child to this entity. A ``HasOne`` replacement or an empty
+        ``HasMany`` assignment also drops the current children and their own
+        children, so those are covered too. Children the change cannot touch
+        are left out, so repeated ``add_<field>()`` calls do not copy the
+        whole aggregate each time. Values are read straight from
+        ``__dict__``, so no descriptor ``__get__`` runs.
+        """
+        keys = [name]
+        entities: list[_EntitySnapshot] = []
+        cache = self._state.fields_cache
+        assert isinstance(cache, dict)
+        if isinstance(descriptor, ValueObject):
+            keys.extend(
+                field.attribute_name
+                for field in descriptor.embedded_fields.values()
+                if field.attribute_name is not None
+            )
+        elif isinstance(descriptor, Reference):
+            keys.append(descriptor.get_attribute_name())
+        elif isinstance(descriptor, Association):
+            items = incoming if isinstance(incoming, list) else [incoming]
+            if isinstance(descriptor, HasOne) or all(item is None for item in items):
+                current = cache.get(name)
+                items = [*items, *(current if isinstance(current, list) else [current])]
+            entities = [_snapshot_entity(self), *_snapshot_entity_trees(items)]
+            target = self._root if self._root is not None else self
+            for block in target._atomic_snapshots:
+                known = {id(snapshot.entity) for snapshot in block}
+                block.extend(
+                    snapshot
+                    for snapshot in entities
+                    if id(snapshot.entity) not in known
+                )
+
+        return _AssignmentSnapshot(
+            values={key: self.__dict__.get(key, _ABSENT) for key in keys},
+            cached=cache.get(name, _ABSENT),
+            name=name,
+            fields_set=set(self.__pydantic_fields_set__),
+            changed=self._state._changed,
+            entities=entities,
+        )
+
+    def _restore_assignment_snapshot(self, snapshot: "_AssignmentSnapshot") -> None:
+        """Put back what ``_take_assignment_snapshot`` captured.
+
+        Writes into the current ``__dict__`` key by key, because Pydantic's
+        assignment validation replaces the ``__dict__`` object. Runs no
+        validation and no invariants.
+        """
+        _restore_entities(snapshot.entities)
+
+        for key, old_value in snapshot.values.items():
+            if old_value is _ABSENT:
+                self.__dict__.pop(key, None)  # pyright: ignore[reportAttributeAccessIssue]
+            else:
+                self.__dict__[key] = old_value  # pyright: ignore[reportIndexIssue]
+
+        cache = self._state.fields_cache
+        assert isinstance(cache, dict)
+        if snapshot.cached is _ABSENT:
+            cache.pop(snapshot.name, None)
+        else:
+            cache[snapshot.name] = snapshot.cached
+
+        object.__setattr__(self, "__pydantic_fields_set__", snapshot.fields_set)
+        self._state._changed = snapshot.changed
+
+    def _change_association(
+        self, name: str, operation: Callable[[Any, Any], None], items: Any
+    ) -> None:
+        """Run an ``add_<name>`` or ``remove_<name>`` call, undoing it on failure.
+
+        The association methods run the root's invariant checks themselves.
+        When one of them fails, the field's children and pending changes go
+        back to what they were before the call.
+        """
+        snapshot = self._take_assignment_snapshot(
+            name, self._get_class_descriptor(type(self), name), items
+        )
+        try:
+            operation(self, items)
+        except BaseException:
+            self._restore_assignment_snapshot(snapshot)
+            raise
+
     def __setattr__(self, name: str, value: Any) -> None:
         # During event replay only, drop an assignment to a reserved (removed)
         # field name. A retained ``@apply`` handler for a retired event can
@@ -984,25 +1232,38 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             # Pre-check invariants
             target._precheck()
 
+            snapshot = self._take_assignment_snapshot(name, None)
+
             # Delegate to Pydantic (validates via validate_assignment)
             try:
                 super().__setattr__(name, value)
             except PydanticValidationError as e:
                 raise ValidationError(convert_pydantic_errors(e)) from e
 
-            # Post-check invariants
-            target._postcheck()
+            # Post-check invariants. A failure undoes this one assignment.
+            try:
+                target._postcheck()
+            except BaseException:
+                self._restore_assignment_snapshot(snapshot)
+                raise
 
             # Mark entity state as changed
             self._state.mark_changed()
         elif getattr(self, "_initialized", False) and (
-            self._get_class_descriptor(type(self), name) is not None
+            (descriptor := self._get_class_descriptor(type(self), name)) is not None
         ):
             # Descriptor field: use object.__setattr__ to trigger descriptor protocol
             target = self._root if self._root is not None else self
             target._precheck()
-            object.__setattr__(self, name, value)
-            target._postcheck()
+            # Association descriptors run the root's post-check inside their
+            # own ``__set__``, so the write sits inside the ``try`` as well.
+            snapshot = self._take_assignment_snapshot(name, descriptor, value)
+            try:
+                object.__setattr__(self, name, value)
+                target._postcheck()
+            except BaseException:
+                self._restore_assignment_snapshot(snapshot)
+                raise
             self._state.mark_changed()
         elif name.startswith(("add_", "remove_", "get_one_from_", "filter_")):
             # Association pseudo-methods set during model_post_init

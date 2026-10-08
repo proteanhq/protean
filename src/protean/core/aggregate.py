@@ -19,7 +19,13 @@ from protean._deprecation import (
     warn_deprecated,
     warn_from_registry,
 )
-from protean.core.entity import BaseEntity, _EntityState
+from protean.core.entity import (
+    BaseEntity,
+    _EntitySnapshot,
+    _EntityState,
+    _restore_entities,
+    _snapshot_entity_trees,
+)
 from protean.core.event import BaseEvent
 from protean.core.value_object import value_object_from_entity
 from protean.exceptions import (
@@ -195,7 +201,9 @@ class BaseAggregate(BaseEntity):
         runs. If any step raises (an enricher, the handler, or an invariant
         check around it), ``_events``, ``_version`` and ``_event_position``
         go back to their values from before the call and the error
-        propagates. Field changes the handler made are not undone.
+        propagates. When an invariant check fails, ``atomic_change`` also
+        undoes the field changes the handler made. When the handler raises
+        its own error, its field changes stay.
         """
         # Guard: temporal aggregates are read-only
         if self._is_temporal:
@@ -476,6 +484,7 @@ class BaseAggregate(BaseEntity):
             "_temp_cache": AssociationCache(),
             "_events": [],
             "_disable_invariant_checks": True,  # Suppress during replay
+            "_atomic_snapshots": [],
             "_replaying": False,  # Set True per-event by `_apply`
             "_invariants": defaultdict(dict),
         }
@@ -514,12 +523,14 @@ class BaseAggregate(BaseEntity):
                 setattr(
                     aggregate,
                     f"add_{field_name}",
-                    partial(field_obj.add, aggregate),
+                    partial(aggregate._change_association, field_name, field_obj.add),
                 )
                 setattr(
                     aggregate,
                     f"remove_{field_name}",
-                    partial(field_obj.remove, aggregate),
+                    partial(
+                        aggregate._change_association, field_name, field_obj.remove
+                    ),
                 )
                 setattr(
                     aggregate,
@@ -862,17 +873,32 @@ class atomic_change:
     overall start-to-end transition on exit, so batched mutations
     (and ``@apply`` handlers in ES aggregates) are validated as a single
     logical transition.
+
+    When the checks on exit fail, the aggregate, its child entities, and the
+    children linked inside the block go back to their state from block entry.
+    Events raised inside the block are discarded, and ``_version`` and
+    ``_event_position`` go back to their values from block entry.
+    An exception raised by the block body does not undo the block's changes.
     """
 
     def __init__(self, aggregate: Any) -> None:
         self.aggregate = aggregate
         self._status_snapshots: dict[str, Any] = {}
+        self._entity_snapshots: list[_EntitySnapshot] = []
+        self._events_count = 0
+        self._version = 0
+        self._event_position = 0
 
     def __enter__(self) -> None:
         # Capture status field snapshots BEFORE precheck
         self._capture_status_snapshots()
         # Temporary disable invariant checks
         self.aggregate._precheck()
+        self._entity_snapshots = _snapshot_entity_trees([self.aggregate])
+        self.aggregate._atomic_snapshots.append(self._entity_snapshots)
+        self._events_count = len(self.aggregate._events)
+        self._version = self.aggregate._version
+        self._event_position = self.aggregate._event_position
         self.aggregate._disable_invariant_checks = True
 
     def __exit__(
@@ -881,15 +907,38 @@ class atomic_change:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        # Re-enable invariant checks
+        # Re-enable invariant checks for this block's own exit validation
         self.aggregate._disable_invariant_checks = False
+        self.aggregate._atomic_snapshots = [
+            block
+            for block in self.aggregate._atomic_snapshots
+            if block is not self._entity_snapshots
+        ]
 
         # Validate status transitions (start -> end) before post-invariants.
         # Only validate when no exception is being propagated.
-        if exc_type is None:
-            self._validate_status_transitions()
+        # Only a failed check on exit undoes the block. An exception raised by
+        # the block body leaves its changes in place.
+        try:
+            if exc_type is None:
+                self._validate_status_transitions()
 
-        self.aggregate._postcheck()
+            self.aggregate._postcheck()
+        except BaseException:
+            _restore_entities(self._entity_snapshots)
+            # Events raised inside the block describe changes that were just
+            # undone, so they go too.
+            del self.aggregate._events[self._events_count :]
+            self.aggregate._version = self._version
+            self.aggregate._event_position = self._event_position
+            raise
+        finally:
+            # An enclosing block, such as the one around an ``@apply`` handler
+            # that raises another event, is still open. Its changes must stay
+            # unchecked until it exits, so its own exit check can fail and
+            # undo the whole block.
+            if self.aggregate._atomic_snapshots:
+                self.aggregate._disable_invariant_checks = True
 
     def _capture_status_snapshots(self) -> None:
         """Snapshot all status fields with transition rules."""

@@ -166,8 +166,8 @@ class DateRange:
 - After any attribute change (on the aggregate root too, when a child entity changes)
 - At the end of a `with atomic_change(obj):` block, when you group several changes
 
-`repository.add()` does not re-check them. A failed post invariant raises at the change, but
-the invalid value stays on the object, so discard the object instead of persisting it.
+`repository.add()` does not re-check them. A failed post invariant raises at the change and
+rolls it back, so the object keeps the values it had before the change.
 
 ### Pre Invariants
 

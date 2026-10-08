@@ -95,7 +95,36 @@ When `withdraw()` is called, the flow is:
    frozen, `ValidationError` is raised and the assignment `self.balance -= amount` never happens.
 2. The attribute assignment `self.balance -= amount` executes.
 3. **Post-invariants** fire, `balance_must_not_be_negative` checks the resulting state. If the balance
-   went negative, `ValidationError` is raised and the assignment is rolled back.
+   went negative, `ValidationError` is raised and the assignment is rolled back: `balance` keeps
+   its previous value and the account's changed flag goes back to what it was before the
+   assignment.
+
+The rollback undoes only the assignment that failed. If a method changes two
+fields and the second change breaks a post-invariant, the first change stays.
+
+Rollback applies to every kind of field, on the aggregate and on its child
+entities: plain fields, `ValueObject` fields with their embedded attributes,
+`Reference` fields with their `<name>_id` attribute, and `HasOne` and
+`HasMany` fields. A failed `add_<field>()` or `remove_<field>()` call is undone
+the same way, including the removal of the child's own children. The
+assignment is also undone when an invariant fails with an error other than
+`ValidationError`, such as a `TypeError` from comparing `None`.
+
+A change made to a `List` or `Dict` field in place, such as
+`self.tags.append("x")` or `self.tags += ["x"]`, alters the existing value
+before Protean sees an assignment, so a failed check cannot undo it. To make
+the change undoable, assign a new value: `self.tags = [*self.tags, "x"]`.
+Inside an `atomic_change` block, in-place changes are undone as well, because
+the block keeps a copy of every field from block entry.
+
+An `atomic_change` block is rolled back as a whole: when the check at its end
+fails, the aggregate and its child entities go back to their state from block
+entry, including association changes (see below). Events raised inside the
+block are discarded too. An exception raised by the code inside the block does
+not roll it back. On an event-sourced aggregate,
+`raise_()` runs the `@apply` handler inside `atomic_change`, so when a check
+fails after the handler, `raise_()` undoes the handler's field changes and
+also discards the event.
 
 !!!note
     `pre` invariants are not applicable when aggregates and entities are being
@@ -205,7 +234,9 @@ Within the `atomic_change` context manager, the cycle works as follows:
 1. **Pre-invariants fire on entry**: The current state is validated.
 2. **Invariant checks are suspended** during the block. Individual assignments
    do not trigger pre/post checks.
-3. **Post-invariants fire on exit**: The final state is validated.
+3. **Post-invariants fire on exit**: The final state is validated. If a
+   check fails, `ValidationError` is raised and every change made inside the
+   block is undone.
 
 ```shell hl_lines="14"
 In [1]: from protean import atomic_change

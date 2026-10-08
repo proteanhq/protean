@@ -174,8 +174,13 @@ class Warehouse:
 ```
 
 All post-invariants are checked on every field assignment. If any fails, the
-assignment raises `ValidationError`. The change is not undone: the object keeps
-the invalid value, so discard it instead of persisting it.
+assignment raises `ValidationError` and is undone: the field keeps its previous
+value and the aggregate's changed flag goes back to what it was before the
+change. This holds for every kind of
+field, for `add_<field>()` and `remove_<field>()` calls, for every change in
+an `atomic_change` block whose end check fails, and for the field changes an
+`@apply` handler made when a check after it fails in `raise_()` on an
+event-sourced aggregate.
 
 ### Combining Pre and Post Invariants
 

@@ -35,8 +35,9 @@ Here is how they work:
     - Records the event
     - Calls the matching `@apply` handler (state is mutated)
     - Runs all `@invariant.post` methods
-    - If any invariant raises `ValidationError`, the event is rejected
-      and state is rolled back
+    - If any invariant raises `ValidationError`, the event is rejected:
+      it is not recorded, the version does not move, and the field changes
+      the handler made are undone
 
 2. **`balance_must_not_be_negative`** ensures no operation can leave
    the account with a negative balance. We no longer need the manual
@@ -90,7 +91,7 @@ All checks passed!
 ```
 
 The overdraft attempt was caught by `balance_must_not_be_negative`, the `@apply` handler reduced the balance to
--$100, the invariant detected the violation, and Protean rolled back the event.
+-$100, the invariant detected the violation, and Protean rejected the event.
 
 The close attempt was caught by `closed_account_must_have_zero_balance`:
 The `@apply` handler set `status = "CLOSED"`, but the invariant
