@@ -201,13 +201,13 @@ class TestCommandNotImperative:
         assert findings == []
 
     def test_new_verb_prefix_requires_camelcase_boundary(self):
-        """`Closure` and `Openness` start with the letters of `close` and
+        """`Closeness` and `Openness` start with the letters of `close` and
         `open` but have no CamelCase boundary after them, so they are still
         flagged."""
         domain = Domain(name="CommandNamingNewVerbBoundary", root_path=".")
 
         @domain.command(part_of="Ticket")
-        class Closure:
+        class Closeness:
             ticket_id = Identifier(identifier=True)
 
         @domain.command(part_of="Ticket")
@@ -225,5 +225,5 @@ class TestCommandNotImperative:
             for d in ir["diagnostics"]
             if d["code"] == "COMMAND_NOT_IMPERATIVE"
         }
-        assert any("Closure" in f for f in flagged)
+        assert any("Closeness" in f for f in flagged)
         assert any("Openness" in f for f in flagged)
