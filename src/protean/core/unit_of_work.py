@@ -403,10 +403,6 @@ class UnitOfWork:
         # Record final session count after all lazy sessions have been initialised
         span.set_attribute("protean.uow.session_count", len(self._sessions))
 
-        # Set while the outbox rows are saved, so a ValueError raised there is
-        # reported as a failed commit and never as a version conflict.
-        saving_outbox = False
-
         # Process each provider session separately
         try:
             # Append events to the event store FIRST, while this UnitOfWork is
@@ -451,10 +447,8 @@ class UnitOfWork:
             # Save the outbox rows while this UnitOfWork is still the active
             # context, so they enlist in its sessions and commit with them. Their
             # hooks already ran when they were built.
-            saving_outbox = True
             for outbox_repo, outbox_row in outbox_rows:
                 outbox_repo._dao.save(outbox_row, apply_hooks=False)
-            saving_outbox = False
 
             # Exit the UnitOfWork context: the relational commit below (and any
             # further operations) are no longer part of this transaction. Guard
@@ -504,31 +498,16 @@ class UnitOfWork:
             logger.debug("uow.commit_successful")
         except ExpectedVersionError as exc:
             # An adapter may detect an optimistic-concurrency conflict directly
-            # at commit time and raise ExpectedVersionError itself — the
-            # in-memory provider does this in its compare-and-set commit. That
-            # is a concurrency conflict, not a generic transaction failure, so
+            # at commit time and raise ExpectedVersionError itself. The
+            # in-memory provider does this in its compare-and-set commit, and
+            # the memory and Message DB event stores on a wrong expected
+            # version. That is a concurrency conflict, not a generic transaction failure, so
             # propagate it unchanged for the version-retry machinery (mirrors
             # the StaleDataError translation below). Without this, the generic
             # handler would wrap it in TransactionError.
             logger.exception("uow.commit_failed")
             set_span_error(span, exc)
             raise
-        except ValueError as exc:
-            logger.exception("uow.commit_failed")
-            set_span_error(span, exc)
-
-            # The events are already appended, so this is not a version
-            # conflict. Reporting it as one would make the handler's version
-            # retry run the command again and append its events a second time.
-            if saving_outbox:
-                raise self._transaction_error(exc, all_events) from exc
-
-            # Extact message based on message store platform in use
-            if str(exc).startswith("P0001-ERROR"):
-                msg = str(exc).split("P0001-ERROR:  ")[1]
-            else:
-                msg = str(exc)
-            raise ExpectedVersionError(msg) from None
         except ConfigurationError as exc:
             # Configuration errors can be raised if events are misconfigured
             #   We just re-raise it for the client to handle.
@@ -538,7 +517,7 @@ class UnitOfWork:
             # A SQLAlchemy version_id_col mismatch surfaces at flush/commit as
             # StaleDataError. That is an optimistic-concurrency conflict, not a
             # generic transaction failure, so translate it to ExpectedVersionError
-            # (matching the event-store P0001 path above) for the retry machinery.
+            # (matching what the event stores raise) for the retry machinery.
             if type(exc).__name__ == "StaleDataError":
                 logger.exception("uow.commit_failed")
                 set_span_error(span, exc)

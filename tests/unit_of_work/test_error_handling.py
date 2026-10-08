@@ -5,7 +5,6 @@ import pytest
 from protean import UnitOfWork
 from protean.exceptions import (
     ConfigurationError,
-    ExpectedVersionError,
     InvalidOperationError,
     TransactionError,
 )
@@ -73,45 +72,42 @@ class TestUnitOfWorkErrorHandling:
             == "Database connection failed"
         )
 
-    def test_expected_version_error_handling_with_p0001_message(self, test_domain):
-        """Test ExpectedVersionError handling when ValueError has P0001 prefix"""
+    def test_p0001_value_error_from_session_commit_raises_transaction_error(
+        self, test_domain
+    ):
+        """Only the Message DB adapter reports a P0001 conflict; the commit does not guess one"""
+        raw = "P0001-ERROR:  Wrong expected version: 5 (Stream: s, Stream Version: 0)"
+        with pytest.raises(TransactionError) as exc_info:
+            with UnitOfWork() as uow:
+                repo = test_domain.repository_for(Person)
+                repo.add(Person(first_name="Jane", last_name="Doe"))
+
+                for session in uow._sessions.values():
+                    session.commit = Mock(side_effect=ValueError(raw))
+
+        assert exc_info.value.extra_info["original_exception"] == "ValueError"
+        assert isinstance(exc_info.value.__cause__, ValueError)
+
+    def test_value_error_without_p0001_prefix_raises_transaction_error(
+        self, test_domain
+    ):
+        """A ValueError raised during commit is a failed commit"""
         repo = test_domain.repository_for(Person)
         person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
-        with pytest.raises(ExpectedVersionError) as exc_info:
+        with pytest.raises(TransactionError) as exc_info:
             with UnitOfWork() as uow:
                 repo = test_domain.repository_for(Person)
                 person = Person(first_name="Jane", last_name="Doe")
                 repo.add(person)
 
-                # Mock session.commit to raise ValueError with P0001 prefix
                 for session in uow._sessions.values():
-                    session.commit = Mock(
-                        side_effect=ValueError(
-                            "P0001-ERROR:  Expected version mismatch"
-                        )
-                    )
+                    session.commit = Mock(side_effect=ValueError("boom"))
 
-        assert str(exc_info.value) == "Expected version mismatch"
-
-    def test_expected_version_error_handling_without_p0001_prefix(self, test_domain):
-        """Test ExpectedVersionError handling when ValueError doesn't have P0001 prefix"""
-        repo = test_domain.repository_for(Person)
-        person = Person(first_name="John", last_name="Doe")
-        repo.add(person)
-
-        with pytest.raises(ExpectedVersionError) as exc_info:
-            with UnitOfWork() as uow:
-                repo = test_domain.repository_for(Person)
-                person = Person(first_name="Jane", last_name="Doe")
-                repo.add(person)
-
-                # Mock session.commit to raise ValueError without P0001 prefix
-                for session in uow._sessions.values():
-                    session.commit = Mock(side_effect=ValueError("Version conflict"))
-
-        assert str(exc_info.value) == "Version conflict"
+        assert exc_info.value.extra_info["original_exception"] == "ValueError"
+        assert exc_info.value.extra_info["original_message"] == "boom"
+        assert isinstance(exc_info.value.__cause__, ValueError)
 
     def test_exception_during_rollback_is_logged_but_not_raised(self, test_domain):
         """Test that exceptions during rollback are logged but don't prevent cleanup"""

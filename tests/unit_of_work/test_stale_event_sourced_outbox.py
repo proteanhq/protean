@@ -1,6 +1,6 @@
-"""A stale write on an event-sourced aggregate, with the outbox on, must fail
-with ``ExpectedVersionError`` and leave the outbox and the event store as the
-winner left them.
+"""A stale write on an event-sourced aggregate must fail with
+``ExpectedVersionError`` and leave the event store (and the outbox, when it is
+on) as the winner left them.
 
 Outbox rows carry the event's message id, keyed on the stream and version, so a
 stale writer's rows reuse the winner's ids. The commit appends to the event
@@ -80,14 +80,15 @@ class Wallet(BaseAggregate):
         self.raise_(Renamed(wallet_id=self.id, name=name))
 
 
-def _make_domain(databases=None, event_store=None, external_brokers=None):
+def _make_domain(databases=None, event_store=None, external_brokers=None, outbox=True):
     domain = Domain(name="StaleOutbox")
     if databases is not None:
         domain.config["databases"]["default"] = databases
     if event_store is not None:
         domain.config["event_store"] = event_store
-    domain.config["enable_outbox"] = True
-    domain.config["server"]["default_subscription_type"] = "stream"
+    if outbox:
+        domain.config["enable_outbox"] = True
+        domain.config["server"]["default_subscription_type"] = "stream"
     if external_brokers:
         domain.config["outbox"]["external_brokers"] = external_brokers
         for broker in external_brokers:
@@ -108,14 +109,15 @@ def make_domain(request, tmp_path):
     backend = request.param
     contexts = []
 
-    def factory(external_brokers=None):
+    def factory(external_brokers=None, outbox=True):
         if backend == "memory":
-            domain = _make_domain(external_brokers=external_brokers)
+            domain = _make_domain(external_brokers=external_brokers, outbox=outbox)
         elif backend == "postgresql":
             domain = _make_domain(
                 databases={"provider": "postgresql", "database_uri": POSTGRES_URI},
                 event_store={"provider": "message_db", "database_uri": MESSAGE_DB_URI},
                 external_brokers=external_brokers,
+                outbox=outbox,
             )
         else:
             domain = _make_domain(
@@ -125,13 +127,15 @@ def make_domain(request, tmp_path):
                 },
                 event_store={"provider": "message_db", "database_uri": MESSAGE_DB_URI},
                 external_brokers=external_brokers,
+                outbox=outbox,
             )
         ctx = domain.domain_context()
         ctx.push()
         contexts.append((domain, ctx))
         if backend != "memory":
             provider = domain.providers["default"]
-            domain._get_outbox_repo("default")._dao  # register the outbox table
+            if outbox:
+                domain._get_outbox_repo("default")._dao  # register the outbox table
             domain.repository_for(Wallet)._dao  # and the wallet table
             provider._metadata.drop_all(provider._engine)
             provider._metadata.create_all(provider._engine)
@@ -379,3 +383,23 @@ class TestStaleWriteWithOutbox:
         assert domain.event_store.store.read(stream) == []
         assert _outbox_ids(domain) == outbox_before
         assert repo.get(wallet.id).name == "winner"
+
+
+@pytest.mark.no_test_domain
+@pytest.mark.parametrize("make_domain", BACKENDS, indirect=True)
+class TestStaleWriteWithoutOutbox:
+    def test_stale_commit_raises_expected_version_error(self, make_domain):
+        domain = make_domain(outbox=False)
+        assert domain.has_outbox is False
+        winner, loser = _open_and_load_twice(domain)
+
+        _commit_deposits(domain, winner, 10)
+        stream_before = _stream(domain, winner.account_id)
+
+        with pytest.raises(ExpectedVersionError) as exc_info:
+            _commit_deposits(domain, loser, 5)
+
+        assert str(exc_info.value).startswith("Wrong expected version: 0")
+        assert [m.metadata.headers.id for m in _stream(domain, winner.account_id)] == [
+            m.metadata.headers.id for m in stream_before
+        ]
