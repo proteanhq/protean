@@ -15,7 +15,7 @@ import pytest
 from pydantic import ValidationError
 
 from protean import Domain
-from protean.exceptions import ExpectedVersionError
+from protean.exceptions import TransactionError
 from protean.fields import Identifier, String
 from protean.utils.globals import g
 
@@ -108,6 +108,5 @@ def test_without_the_outbox_an_unguarded_enricher_fails_the_commit():
     with domain.domain_context(current_user="alice"):
         order = Order(customer_id="c-1")
         order.place()
-        # The commit reports the enricher's error as a version conflict.
-        with pytest.raises(ExpectedVersionError, match="updated_by"):
+        with pytest.raises(TransactionError, match="updated_by"):
             domain.repository_for(Order).add(order)

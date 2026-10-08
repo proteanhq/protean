@@ -12,6 +12,7 @@ called without the service's invariants.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -250,10 +251,15 @@ def test_no_page_claims_a_recursion_error():
     pages = sorted(PACK_ROOT.rglob("*.md")) + sorted((REPO_ROOT / "docs").rglob("*.md"))
     assert pages, "found no Markdown pages to scan"
 
+    # Other pages name RecursionError for unrelated reasons (a source file too
+    # deep to parse), so only a paragraph that also talks about domain
+    # services, helpers or invariants counts.
+    topic = re.compile(r"domain service|helper|invariant", re.IGNORECASE)
     offenders = [
         str(page.relative_to(REPO_ROOT))
         for page in pages
-        if "RecursionError" in page.read_text(encoding="utf-8")
+        for paragraph in re.split(r"\n\s*\n", page.read_text(encoding="utf-8"))
+        if "RecursionError" in paragraph and topic.search(paragraph)
     ]
 
     assert offenders == []
