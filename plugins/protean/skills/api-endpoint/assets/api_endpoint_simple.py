@@ -2,16 +2,19 @@
 Simple POST endpoint that constructs a command and processes it synchronously.
 
 This example demonstrates:
-- Basic FastAPI POST endpoint integrated with Protean
-- Domain context middleware setup for request handling
-- Constructing a domain command from JSON request payload
-- Synchronous command processing via domain.process(command, asynchronous=False)
-- Returning an appropriate HTTP response with status code 201
+- A FastAPI ``APIRouter`` with one POST endpoint
+- Constructing a domain command from the JSON request body
+- Synchronous command processing via
+  ``current_domain.process(command, asynchronous=False)``
+- A plain ``def`` endpoint, which FastAPI runs in its thread pool so the
+  blocking ``process`` call stays off the event loop
+- Returning 201 with the created id
 
-Usage:
-    # Start the server
-    python api_endpoint_simple.py
+This file holds the router only. Build the app with the ``create_app`` factory
+in ``api_endpoint_complete_router.py``: it adds ``DomainContextMiddleware`` and
+``register_exception_handlers``. Add ``app.include_router(router)`` there.
 
+Usage, once the app is running:
     # POST /orders with JSON payload
     curl -X POST http://localhost:8000/orders \\
         -H "Content-Type: application/json" \\
@@ -20,14 +23,12 @@ Usage:
 
 from datetime import UTC, datetime
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter
 
 from protean import Domain, handle
 from protean.fields import DateTime, Float, Identifier, String
 from protean.utils.globals import current_domain
 
-# Domain setup
 domain = Domain()
 
 
@@ -69,48 +70,25 @@ class OrderCommandHandler:
             customer_id=command.customer_id,
         )
         order.place(total_amount=command.total_amount)
-        domain.repository_for(Order).add(order)
+        current_domain.repository_for(Order).add(order)
         return order.order_id
 
 
-# FastAPI app setup
-app = FastAPI(title="Simple API Endpoint Example")
+router = APIRouter(prefix="/orders", tags=["orders"])
 
 
-@app.middleware("http")
-async def domain_context_middleware(request: Request, call_next):
-    """Middleware to provide domain context for every request."""
-    with domain.domain_context():
-        response = await call_next(request)
-    return response
-
-
-@app.post("/orders", status_code=201)
-async def create_order(request: Request):
+@router.post("", status_code=201)
+def create_order(payload: dict):
     """Create a new order.
 
-    Accepts a JSON payload, constructs a PlaceOrder command,
-    and processes it synchronously via the domain.
+    A missing or invalid field makes the ``PlaceOrder`` constructor raise
+    ``ValidationError``, which the registered exception handlers turn into a
+    400 with the messages for each field.
     """
-    payload = await request.json()
-
     command = PlaceOrder(
-        order_id=payload["order_id"],
-        customer_id=payload["customer_id"],
-        total_amount=payload["total_amount"],
+        order_id=payload.get("order_id"),
+        customer_id=payload.get("customer_id"),
+        total_amount=payload.get("total_amount"),
     )
-
     result = current_domain.process(command, asynchronous=False)
-
-    return JSONResponse(
-        status_code=201,
-        content={"order_id": result, "status": "placed"},
-    )
-
-
-# Example usage
-if __name__ == "__main__":  # pragma: no cover
-    import uvicorn
-
-    domain.init(traverse=False)
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    return {"order_id": result, "status": "placed"}

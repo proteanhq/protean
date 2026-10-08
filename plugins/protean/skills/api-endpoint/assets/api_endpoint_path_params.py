@@ -1,17 +1,21 @@
 """
-Endpoint with URL path parameters for targeting specific aggregates.
+Endpoints with URL path parameters for targeting specific aggregates.
 
 This example demonstrates:
-- FastAPI endpoint with path parameters (e.g., /orders/{order_id}/cancel)
-- Using path parameters to identify the target aggregate
-- Constructing a command that includes data from both path and body
-- PUT endpoint pattern for state-change operations on existing aggregates
-- Synchronous command processing via domain.process()
+- A path parameter that names the target aggregate
+  (``PUT /orders/{order_id}/cancel``)
+- A command built from both the path and the request body
+- A PUT endpoint for a state change on an existing aggregate
+- A handler that loads the aggregate with ``repository.get``, so an unknown id
+  raises ``ObjectNotFoundError`` and the client gets a 404
+- An aggregate that raises ``InvalidStateError`` for a wrong state, which the
+  client gets as a 409
 
-Usage:
-    # Start the server
-    python api_endpoint_path_params.py
+This file holds the router only. Build the app with the ``create_app`` factory
+in ``api_endpoint_complete_router.py`` and add ``app.include_router(router)``
+there.
 
+Usage, once the app is running:
     # POST to create an order first
     curl -X POST http://localhost:8000/orders \\
         -H "Content-Type: application/json" \\
@@ -25,14 +29,13 @@ Usage:
 
 from datetime import UTC, datetime
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter
 
 from protean import Domain, handle
+from protean.exceptions import InvalidStateError
 from protean.fields import DateTime, Float, Identifier, String
 from protean.utils.globals import current_domain
 
-# Domain setup
 domain = Domain()
 
 
@@ -57,7 +60,7 @@ class Order:
     def cancel(self, reason: str):
         """Cancel the order."""
         if self.status not in ("draft", "placed"):
-            raise ValueError(f"Cannot cancel order in '{self.status}' status")
+            raise InvalidStateError(f"Cannot cancel order in '{self.status}' status")
         self.status = "cancelled"
         self.cancelled_at = datetime.now(UTC)
         self.cancel_reason = reason
@@ -92,75 +95,40 @@ class OrderCommandHandler:
             customer_id=command.customer_id,
         )
         order.place(total_amount=command.total_amount)
-        domain.repository_for(Order).add(order)
+        current_domain.repository_for(Order).add(order)
         return order.order_id
 
     @handle(CancelOrder)
     def handle_cancel_order(self, command: CancelOrder):
         """Load an existing order and cancel it."""
-        order = domain.repository_for(Order).get(command.order_id)
+        order = current_domain.repository_for(Order).get(command.order_id)
         order.cancel(reason=command.reason)
-        domain.repository_for(Order).add(order)
+        current_domain.repository_for(Order).add(order)
         return order.order_id
 
 
-# FastAPI app setup
-app = FastAPI(title="Path Parameters Endpoint Example")
+router = APIRouter(prefix="/orders", tags=["orders"])
 
 
-@app.middleware("http")
-async def domain_context_middleware(request: Request, call_next):
-    """Middleware to provide domain context for every request."""
-    with domain.domain_context():
-        response = await call_next(request)
-    return response
-
-
-@app.post("/orders", status_code=201)
-async def create_order(request: Request):
-    """Create a new order from JSON payload."""
-    payload = await request.json()
-
+@router.post("", status_code=201)
+def create_order(payload: dict):
+    """Create a new order from the JSON body."""
     command = PlaceOrder(
-        order_id=payload["order_id"],
-        customer_id=payload["customer_id"],
-        total_amount=payload["total_amount"],
+        order_id=payload.get("order_id"),
+        customer_id=payload.get("customer_id"),
+        total_amount=payload.get("total_amount"),
     )
-
     result = current_domain.process(command, asynchronous=False)
-
-    return JSONResponse(
-        status_code=201,
-        content={"order_id": result, "status": "placed"},
-    )
+    return {"order_id": result, "status": "placed"}
 
 
-@app.put("/orders/{order_id}/cancel")
-async def cancel_order(order_id: str, request: Request):
+@router.put("/{order_id}/cancel")
+def cancel_order(order_id: str, payload: dict):
     """Cancel an existing order.
 
-    The order_id comes from the URL path parameter,
-    while the cancellation reason comes from the request body.
-    This shows how path parameters and body data combine
-    into a single command.
+    The order id comes from the URL path and the reason from the body. Both go
+    into one command.
     """
-    payload = await request.json()
-
-    command = CancelOrder(
-        order_id=order_id,
-        reason=payload["reason"],
-    )
-
+    command = CancelOrder(order_id=order_id, reason=payload.get("reason"))
     result = current_domain.process(command, asynchronous=False)
-
-    return JSONResponse(
-        content={"order_id": result, "status": "cancelled"},
-    )
-
-
-# Example usage
-if __name__ == "__main__":  # pragma: no cover
-    import uvicorn
-
-    domain.init(traverse=False)
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    return {"order_id": result, "status": "cancelled"}

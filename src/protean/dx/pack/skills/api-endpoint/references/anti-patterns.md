@@ -1,142 +1,216 @@
 # API Endpoint Anti-patterns
 
-Common mistakes when implementing API endpoints in Protean and how to avoid them.
+Common mistakes when implementing API endpoints in Protean and how to avoid
+them. Each **Wrong** block is shown on purpose and does not run. The
+**Correct** blocks build on this domain:
+
+```python
+from fastapi import APIRouter
+from pydantic import BaseModel
+from protean.utils.globals import current_domain
+
+
+@domain.aggregate
+class Order:
+    order_id = Identifier(identifier=True)
+    customer_id = String(required=True)
+    total_amount = Float(min_value=0, max_value=10000)
+
+
+@domain.command(part_of=Order)
+class PlaceOrder:
+    order_id = Identifier(required=True)
+    customer_id = String(required=True)
+    total_amount = Float(required=True)
+
+
+@domain.command_handler(part_of=Order)
+class OrderCommandHandler:
+    @handle(PlaceOrder)
+    def place(self, command: PlaceOrder) -> str:
+        order = Order(
+            order_id=command.order_id,
+            customer_id=command.customer_id,
+            total_amount=command.total_amount,
+        )
+        current_domain.repository_for(Order).add(order)
+        return order.order_id
+
+
+class PlaceOrderRequest(BaseModel):
+    order_id: str
+    customer_id: str
+    total_amount: float
+
+
+router = APIRouter(prefix="/orders")
+```
 
 ## 1. Business Logic in the Endpoint
 
 **Wrong:**
 ```python
-@app.post("/orders")
-async def create_order(request: Request):
-    payload = await request.json()
-    if payload["total_amount"] <= 0:
+# fragment
+@router.post("")
+def place_order(body: PlaceOrderRequest):
+    if body.total_amount <= 0:
         return JSONResponse(status_code=400, content={"error": "Invalid amount"})
-    if payload["total_amount"] > 10000:
+    if body.total_amount > 10000:
         return JSONResponse(status_code=400, content={"error": "Amount too high"})
     command = PlaceOrder(...)
     current_domain.process(command, asynchronous=False)
 ```
 
-**Correct:** Business rules belong in the aggregate. The endpoint only constructs the command.
+**Correct:** Business rules belong in the aggregate. The endpoint only builds
+the command.
 
 ```python
-@app.post("/orders", status_code=201)
-async def create_order(request: Request):
-    payload = await request.json()
+@router.post("", status_code=201)
+def place_order(body: PlaceOrderRequest):
     command = PlaceOrder(
-        order_id=payload["order_id"],
-        customer_id=payload["customer_id"],
-        total_amount=payload["total_amount"],
+        order_id=body.order_id,
+        customer_id=body.customer_id,
+        total_amount=body.total_amount,
     )
-    result = current_domain.process(command, asynchronous=False)
-    return JSONResponse(status_code=201, content={"order_id": result})
+    order_id = current_domain.process(command, asynchronous=False)
+    return {"order_id": order_id, "status": "placed"}
 ```
 
-The aggregate's `place()` method enforces amount rules.
+The aggregate's `total_amount` field enforces the range. A value outside it
+raises `ValidationError`, and the client gets a 400.
 
 ## 2. Direct Repository Access
 
 **Wrong:**
 ```python
-@app.post("/orders")
-async def create_order(request: Request):
-    payload = await request.json()
-    order = Order(
-        order_id=payload["order_id"],
-        customer_id=payload["customer_id"],
-    )
-    order.place(total_amount=payload["total_amount"])
+# fragment
+@router.post("")
+def place_order(body: PlaceOrderRequest):
+    order = Order(order_id=body.order_id, customer_id=body.customer_id)
     current_domain.repository_for(Order).add(order)  # Direct repo access!
 ```
 
-**Correct:** Always go through `domain.process()`. The endpoint constructs a command and lets the domain handle persistence.
+**Correct:** Always go through `current_domain.process()`. The endpoint builds
+a command and lets the handler do the persistence.
 
-## 3. Missing Domain Context Middleware
+## 3. Hand-rolled Middleware or Exception Handlers
 
 **Wrong:**
 ```python
+# fragment
 app = FastAPI()
 
-@app.post("/orders")
-async def create_order(request: Request):
-    current_domain.process(command)  # Fails! No domain context
-```
-
-**Correct:** Always register domain context middleware.
-
-```python
-app = FastAPI()
 
 @app.middleware("http")
 async def domain_context_middleware(request: Request, call_next):
     with domain.domain_context():
-        response = await call_next(request)
-    return response
+        return await call_next(request)
+
+
+@app.exception_handler(ObjectNotFoundError)
+async def not_found_handler(request: Request, exc: ObjectNotFoundError):
+    return JSONResponse(status_code=404, content={"message": str(exc)})
 ```
 
-## 4. Calling Handlers Directly
+These copy what the integration already does, with less: no correlation IDs,
+no HTTP wide event, and an error body shape that differs from the rest of the
+app.
+
+**Correct:** Use the integration in the app factory.
+
+```python
+from fastapi import FastAPI
+from protean.integrations.fastapi import (
+    DomainContextMiddleware,
+    register_exception_handlers,
+)
+
+
+def create_app(domain: Domain) -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(DomainContextMiddleware, route_domain_map={"/": domain})
+    register_exception_handlers(app)
+    app.include_router(router)
+    return app
+```
+
+## 4. An `async def` Endpoint That Calls `process()`
 
 **Wrong:**
 ```python
-@app.post("/orders")
-async def create_order(request: Request):
-    handler = OrderCommandHandler()
-    handler.handle_place_order(command)  # Bypasses domain.process!
+# fragment
+@router.post("", status_code=201)
+async def place_order(body: PlaceOrderRequest):
+    command = PlaceOrder(**body.model_dump())
+    order_id = current_domain.process(command, asynchronous=False)  # Blocks the loop!
+    return {"order_id": order_id}
 ```
 
-**Correct:** Always use `current_domain.process(command)`. Direct handler invocation bypasses command enrichment, event store persistence, and the UnitOfWork.
+`process(..., asynchronous=False)` runs the handler and its database calls
+synchronously. Inside an `async def` endpoint that runs on the event loop, so
+every other request waits until it finishes.
 
-## 5. Importing Domain Instead of Using current_domain
+**Correct:** Write the endpoint as plain `def`, as in pattern 1. FastAPI runs a
+`def` endpoint in its thread pool, and the middleware's domain context reaches
+it there.
+
+## 5. Calling Handlers Directly
 
 **Wrong:**
 ```python
+# fragment
+@router.post("")
+def place_order(body: PlaceOrderRequest):
+    OrderCommandHandler().place(command)  # Bypasses domain.process!
+```
+
+**Correct:** Always use `current_domain.process(command)`. Calling the handler
+directly skips command enrichment, event store persistence and the unit of
+work.
+
+## 6. Importing the Domain Instead of Using `current_domain`
+
+**Wrong:**
+```python
+# fragment
 from my_app import domain  # Module-level import
 
-@app.post("/orders")
-async def create_order(request: Request):
-    domain.process(command)  # Uses module-level reference
+
+@router.post("")
+def place_order(body: PlaceOrderRequest):
+    domain.process(command)  # Uses the module-level reference
 ```
 
-**Correct:** Use `current_domain` from globals, which is set by the domain context middleware.
+**Correct:** Use `current_domain` from `protean.utils.globals`. The middleware
+sets it for each request, so the same router works for whichever domain the
+request is routed to, and in tests that build their own domain.
 
-```python
-from protean.utils.globals import current_domain
-
-@app.post("/orders")
-async def create_order(request: Request):
-    current_domain.process(command)  # Uses context-local domain
-```
-
-## 6. Mixing Pydantic and Domain Validation
+## 7. Domain Rules in the Pydantic Model
 
 **Wrong:**
 ```python
-class OrderRequest(BaseModel):
+# fragment
+class PlaceOrderRequest(BaseModel):
     total_amount: float = Field(..., gt=0, lt=10000)  # Business rule in Pydantic!
 ```
 
-**Correct:** Pydantic validates format (types, required fields, email format). Business rules (amount limits, status transitions) belong in the aggregate.
+**Correct:** Pydantic checks format: types, required keys, an email pattern.
+Business rules such as amount limits and status changes belong on the command
+and the aggregate. The request model at the top of this page checks types only.
 
-```python
-class OrderRequest(BaseModel):
-    total_amount: float  # Only type validation at boundary
-```
-
-## 7. Fat Endpoints with Multiple Operations
+## 8. Fat Endpoints with Multiple Operations
 
 **Wrong:**
 ```python
-@app.post("/orders")
-async def create_order(request: Request):
-    payload = await request.json()
-    order_cmd = PlaceOrder(...)
-    current_domain.process(order_cmd, asynchronous=False)
-    # Also update inventory!
-    inventory_cmd = ReserveStock(...)
-    current_domain.process(inventory_cmd, asynchronous=False)
+# fragment
+@router.post("")
+def place_order(body: PlaceOrderRequest):
+    current_domain.process(PlaceOrder(...), asynchronous=False)
+    current_domain.process(ReserveStock(...), asynchronous=False)  # Second aggregate!
 ```
 
-**Correct:** One endpoint, one command. Cross-aggregate coordination happens via domain events, not in endpoints.
+**Correct:** One endpoint, one command. Cross-aggregate work happens through
+domain events, not in endpoints.
 
 ## Related
 
