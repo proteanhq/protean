@@ -18,7 +18,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.unit_of_work import UnitOfWork
-from protean.exceptions import ExpectedVersionError
+from protean.exceptions import ExpectedVersionError, TransactionError
 from protean.fields import Identifier, String
 from protean.utils import mixins
 from protean.utils.globals import current_domain
@@ -647,6 +647,95 @@ class TestRealVersionConflict:
         repo = test_domain.repository_for(User)
         user = repo.get(identifier)
         assert user.name == "Jane"
+
+
+@pytest.fixture(params=[False, True], ids=["outbox-off", "outbox-on"])
+def outbox(request, test_domain):
+    if request.param:
+        test_domain.config["enable_outbox"] = True
+        test_domain.config["server"]["default_subscription_type"] = "stream"
+        test_domain.init(traverse=False)
+    return request.param
+
+
+class TestCommitFailureRetry:
+    """Only a version conflict at commit is retried. Any other failure at
+    commit surfaces after one run of the handler."""
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_value_error_at_commit_is_not_retried(
+        self, mock_sleep, test_domain, outbox
+    ):
+        attempt_count = 0
+
+        class RegisteringHandler(BaseCommandHandler):
+            @handle(RenameUser)
+            def rename(self, command: RenameUser) -> None:
+                nonlocal attempt_count
+                attempt_count += 1
+                user = User.register(
+                    user_id=command.user_id, name=command.name, email="j@example.com"
+                )
+                current_domain.repository_for(User).add(user)
+
+        test_domain.register(RegisteringHandler, part_of=User)
+        test_domain.init(traverse=False)
+        assert test_domain.has_outbox is outbox
+
+        command = RenameUser(user_id=str(uuid4()), name="Jane")
+        enriched = test_domain._enrich_command(command, True)
+        with patch.object(
+            test_domain.event_store.store, "append", side_effect=ValueError("boom")
+        ):
+            with pytest.raises(TransactionError) as exc_info:
+                RegisteringHandler._handle(enriched)
+
+        assert exc_info.value.extra_info["original_exception"] == "ValueError"
+        assert exc_info.value.extra_info["original_message"] == "boom"
+        assert attempt_count == 1
+        mock_sleep.assert_not_called()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_event_store_conflict_at_commit_is_retried(
+        self, mock_sleep, test_domain, outbox
+    ):
+        attempt_count = 0
+        stale = None
+
+        class StaleHandler(BaseCommandHandler):
+            @handle(RenameUser)
+            def rename(self, command: RenameUser) -> None:
+                nonlocal attempt_count
+                attempt_count += 1
+                repo = current_domain.repository_for(User)
+                # The first attempt writes the copy loaded before the winner
+                # committed, so its append hits a real version conflict.
+                if attempt_count == 1:
+                    assert stale is not None
+                    user = stale
+                else:
+                    user = repo.get(command.user_id)
+                user.change_name(command.name)
+                repo.add(user)
+
+        test_domain.register(StaleHandler, part_of=User)
+        test_domain.init(traverse=False)
+        assert test_domain.has_outbox is outbox
+
+        identifier = _create_user(test_domain)
+        stale = test_domain.repository_for(User).get(identifier)
+        with UnitOfWork():
+            winner = test_domain.repository_for(User).get(identifier)
+            winner.change_name("Winner")
+            test_domain.repository_for(User).add(winner)
+
+        command = RenameUser(user_id=identifier, name="Jane")
+        enriched = test_domain._enrich_command(command, True)
+        StaleHandler._handle(enriched)
+
+        assert attempt_count == 2
+        mock_sleep.assert_called_once()
+        assert test_domain.repository_for(User).get(identifier).name == "Jane"
 
 
 # ---------------------------------------------------------------------------

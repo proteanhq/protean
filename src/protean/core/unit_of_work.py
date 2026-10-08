@@ -505,7 +505,8 @@ class UnitOfWork:
         except ExpectedVersionError as exc:
             # An adapter may detect an optimistic-concurrency conflict directly
             # at commit time and raise ExpectedVersionError itself — the
-            # in-memory provider does this in its compare-and-set commit. That
+            # in-memory provider does this in its compare-and-set commit, and
+            # the in-memory event store on a wrong expected version. That
             # is a concurrency conflict, not a generic transaction failure, so
             # propagate it unchanged for the version-retry machinery (mirrors
             # the StaleDataError translation below). Without this, the generic
@@ -523,12 +524,14 @@ class UnitOfWork:
             if saving_outbox:
                 raise self._transaction_error(exc, all_events) from exc
 
-            # Extact message based on message store platform in use
+            # Message DB rejects a wrong expected version with a P0001 error,
+            # which its client re-raises as a ValueError carrying that prefix.
+            # That is the only ValueError that is a version conflict: any other
+            # one is a failed commit, and retrying it would rerun the handler.
             if str(exc).startswith("P0001-ERROR"):
                 msg = str(exc).split("P0001-ERROR:  ")[1]
-            else:
-                msg = str(exc)
-            raise ExpectedVersionError(msg) from None
+                raise ExpectedVersionError(msg) from None
+            raise self._transaction_error(exc, all_events) from exc
         except ConfigurationError as exc:
             # Configuration errors can be raised if events are misconfigured
             #   We just re-raise it for the client to handle.

@@ -7,6 +7,7 @@ from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
+from protean.exceptions import ExpectedVersionError
 from protean.port.event_store import BaseEventStore
 from protean.utils.eventing import Metadata
 from protean.utils.globals import _domain_now, current_domain
@@ -82,7 +83,7 @@ class MemoryMessageRepository(BaseRepository):
             _stream_version = self.stream_version(stream_name)
 
             if expected_version is not None and expected_version != _stream_version:
-                raise ValueError(
+                raise ExpectedVersionError(
                     f"Wrong expected version: {expected_version} "
                     f"(Stream: {stream_name}, Stream Version: {_stream_version})"
                 )

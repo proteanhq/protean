@@ -95,23 +95,42 @@ class TestUnitOfWorkErrorHandling:
 
         assert str(exc_info.value) == "Expected version mismatch"
 
-    def test_expected_version_error_handling_without_p0001_prefix(self, test_domain):
-        """Test ExpectedVersionError handling when ValueError doesn't have P0001 prefix"""
+    def test_value_error_without_p0001_prefix_raises_transaction_error(
+        self, test_domain
+    ):
+        """A ValueError without the Message DB P0001 prefix is a failed commit"""
         repo = test_domain.repository_for(Person)
         person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
-        with pytest.raises(ExpectedVersionError) as exc_info:
+        with pytest.raises(TransactionError) as exc_info:
             with UnitOfWork() as uow:
                 repo = test_domain.repository_for(Person)
                 person = Person(first_name="Jane", last_name="Doe")
                 repo.add(person)
 
-                # Mock session.commit to raise ValueError without P0001 prefix
                 for session in uow._sessions.values():
-                    session.commit = Mock(side_effect=ValueError("Version conflict"))
+                    session.commit = Mock(side_effect=ValueError("boom"))
 
-        assert str(exc_info.value) == "Version conflict"
+        assert exc_info.value.extra_info["original_exception"] == "ValueError"
+        assert exc_info.value.extra_info["original_message"] == "boom"
+        assert isinstance(exc_info.value.__cause__, ValueError)
+
+    def test_unprefixed_wrong_expected_version_text_raises_transaction_error(
+        self, test_domain
+    ):
+        """The commit matches on the P0001 prefix, never on the message text"""
+        message = "Wrong expected version: 0 (Stream: test, Stream Version: 1)"
+        with pytest.raises(TransactionError) as exc_info:
+            with UnitOfWork() as uow:
+                repo = test_domain.repository_for(Person)
+                repo.add(Person(first_name="Jane", last_name="Doe"))
+
+                for session in uow._sessions.values():
+                    session.commit = Mock(side_effect=ValueError(message))
+
+        assert exc_info.value.extra_info["original_exception"] == "ValueError"
+        assert exc_info.value.extra_info["original_message"] == message
 
     def test_exception_during_rollback_is_logged_but_not_raised(self, test_domain):
         """Test that exceptions during rollback are logged but don't prevent cleanup"""
