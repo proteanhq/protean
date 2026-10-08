@@ -154,7 +154,8 @@ def handle_place_order(self, command):
     order.place()  # Raises OrderPlaced event
     domain.repository_for(Order).add(order)
     # An event handler reacts to OrderPlaced and issues a ReserveStock command;
-    # Inventory's command handler reserves the stock in its own transaction
+    # Inventory's command handler reserves the stock in a transaction
+    # separate from this one
 ```
 
 ## 6. Using Repository Outside Domain Context

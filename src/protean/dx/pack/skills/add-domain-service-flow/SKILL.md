@@ -38,7 +38,7 @@ Do NOT use for:
 
 ## One aggregate per transaction
 
-A domain service reads several aggregates, but a handler persists only one of them. The service checks the rule across all the aggregates and changes only the **primary** aggregate, the one the command belongs to. The command handler persists that aggregate. The primary aggregate raises an event, and an event handler in its cluster issues a command to the other aggregate. That aggregate's command handler applies the change in its own transaction.
+A domain service reads several aggregates, but a handler persists only one of them. The service checks the rule across all the aggregates and changes only the **primary** aggregate, the one the command belongs to. The command handler persists that aggregate. The primary aggregate raises an event, and an event handler in its cluster issues a command to the other aggregate. That aggregate's command handler applies the change in a transaction separate from the primary aggregate's. With async command processing, the default, the command handler commits on its own. With sync command processing, it joins the event handler's transaction.
 
 So the validation is atomic: the service checks every aggregate in one step, before anything changes. The change to the other aggregate is eventually consistent: it happens after the primary aggregate commits, and there is a short window where the two disagree.
 

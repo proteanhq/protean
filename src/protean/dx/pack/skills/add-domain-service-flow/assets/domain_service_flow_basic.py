@@ -213,7 +213,9 @@ class CreditTransferTarget:
 
     The handler sits in Account's cluster, which owns FundsDebited. It does not
     write the destination itself; it issues CreditAccount, and the Account
-    command handler does the write in its own transaction.
+    command handler does the write in a transaction separate from the debit.
+    With sync command processing, as in this file, that write joins this
+    handler's transaction.
     """
 
     @handle(FundsDebited)

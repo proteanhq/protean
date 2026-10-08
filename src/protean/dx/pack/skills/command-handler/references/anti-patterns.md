@@ -150,7 +150,7 @@ def handle_place_order(self, command):
 
 Protean does not raise an error here. The Unit of Work can hold changes to several aggregates, and both writes commit together. "One aggregate per transaction" is a design rule that the Unit of Work does not enforce. Breaking it ties the two aggregates' writes to one handler, outside each aggregate's own boundary.
 
-**Correct:** Persist only one aggregate root. The handler in section 1 places the order, and `Order.place()` raises `OrderPlaced`. An event handler in Order's cluster reacts to `OrderPlaced` and issues a command that belongs to Inventory. Inventory's command handler does the write in its own transaction, and skips an order it has already applied, so a redelivered event does not reserve stock twice:
+**Correct:** Persist only one aggregate root. The handler in section 1 places the order, and `Order.place()` raises `OrderPlaced`. An event handler in Order's cluster reacts to `OrderPlaced` and issues a command that belongs to Inventory. Inventory's command handler does the write in a transaction separate from the order's, and skips an order it has already applied, so a redelivered event does not reserve stock twice:
 
 ```python
 from protean import current_domain, handle
