@@ -7,10 +7,12 @@ from protean.core.entity import BaseEntity, invariant
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import (
+    Dict,
     Float,
     HasMany,
     HasOne,
     Integer,
+    List,
     Reference,
     String,
     ValueObject,
@@ -143,6 +145,16 @@ class Score(BaseAggregate):
             raise ValidationError({"points": ["Points cannot be negative"]})
 
 
+class Playlist(BaseAggregate):
+    tags = List(content_type=String)
+    settings = Dict()
+
+    @invariant.post
+    def tags_must_not_be_banned(self):
+        if "banned" in (self.tags or []):
+            raise ValidationError({"tags": ["Tag is banned"]})
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Money)
@@ -157,6 +169,7 @@ def register_elements(test_domain):
     test_domain.register(BasketLine, part_of=Basket)
     test_domain.register(LineTag, part_of=BasketLine)
     test_domain.register(Score)
+    test_domain.register(Playlist)
     test_domain.init(traverse=False)
 
 
@@ -570,14 +583,44 @@ class TestAtomicChangeRollsBack:
             assert child.order_id is None
             assert child.state_.is_changed is False
 
-    def test_error_inside_the_block_also_rolls_back(self, account):
+    def test_error_inside_the_block_keeps_its_changes(self, account):
         with pytest.raises(RuntimeError):
             with atomic_change(account):
                 account.balance = 3.0
                 raise RuntimeError("stop")
 
-        assert account.balance == 10.0
-        assert account.state_.is_changed is False
+        assert account.balance == 3.0
+        assert account.state_.is_changed is True
+
+    def test_in_place_changes_to_list_and_dict_fields_are_undone(self):
+        playlist = Playlist(tags=["rock"], settings={"shuffle": True})
+        playlist.state_.mark_saved()
+
+        with pytest.raises(ValidationError):
+            with atomic_change(playlist):
+                playlist.tags.append("banned")
+                playlist.settings["shuffle"] = False
+
+        assert playlist.tags == ["rock"]
+        assert playlist.settings == {"shuffle": True}
+        assert playlist.state_.is_changed is False
+
+    def test_child_missing_from_the_cache_on_entry_is_restored(self, test_domain):
+        repository = test_domain.repository_for(Order)
+        stored = Order(total=5.0, items=[OrderItem(quantity=1, price=5.0)])
+        repository.add(stored)
+        order = repository.get(stored.id)
+        # The block's entry checks walk every association, which loads the
+        # children again before the entry snapshot is taken.
+        order._state.fields_cache.pop("items")
+
+        with pytest.raises(ValidationError):
+            with atomic_change(order):
+                item = order.items[0]
+                item.quantity = 3
+
+        assert item.quantity == 1
+        assert item.state_.is_changed is False
 
     def test_passing_block_keeps_its_changes(self, order):
         with atomic_change(order):

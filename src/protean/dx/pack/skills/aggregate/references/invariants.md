@@ -178,7 +178,8 @@ assignment raises `ValidationError` and is undone: the field keeps its previous
 value and the aggregate is not marked as changed. This holds for every kind of
 field, for `add_<field>()` and `remove_<field>()` calls, for every change in
 an `atomic_change` block whose end check fails, and for the field changes an
-`@apply` handler made when `raise_()` fails on an event-sourced aggregate.
+`@apply` handler made when a check after it fails in `raise_()` on an
+event-sourced aggregate.
 
 ### Combining Pre and Post Invariants
 

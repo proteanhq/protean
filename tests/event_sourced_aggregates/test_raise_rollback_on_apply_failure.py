@@ -312,10 +312,12 @@ class TestRejectedEventUndoesFieldChanges:
         assert wallet._version == version
         assert wallet._event_position == position
 
-    def test_failing_handler_undoes_changes_from_a_chained_event(self):
+    def test_failing_handler_keeps_changes_from_a_chained_event(self):
+        # The handler raising its own error is not a failed invariant check,
+        # so the field changes made before it stay.
         wallet = Wallet.open(wallet_id=str(uuid4()))
 
         with pytest.raises(ValueError, match="chain rejected"):
             wallet.raise_(ChainStarted(wallet_id=wallet.wallet_id))
 
-        assert wallet.note is None
+        assert wallet.note == "chained"

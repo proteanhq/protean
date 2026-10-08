@@ -109,11 +109,12 @@ the same way, including the removal of the child's own children. The
 assignment is also undone when an invariant fails with an error other than
 `ValidationError`, such as a `TypeError` from comparing `None`.
 
-An `atomic_change` block is rolled back as a whole: when the block raises or
-the check at its end fails, the aggregate and its child entities go back to
-their state from block entry, including association changes (see below). On
-an event-sourced aggregate, `raise_()` runs the `@apply` handler inside
-`atomic_change`, so a failed `raise_()` undoes the handler's field changes and
+An `atomic_change` block is rolled back as a whole: when the check at its end
+fails, the aggregate and its child entities go back to their state from block
+entry, including association changes (see below). An exception raised by the
+code inside the block does not roll it back. On an event-sourced aggregate,
+`raise_()` runs the `@apply` handler inside `atomic_change`, so when a check
+fails after the handler, `raise_()` undoes the handler's field changes and
 also discards the event.
 
 !!!note

@@ -200,8 +200,10 @@ class BaseAggregate(BaseEntity):
         On an event-sourced aggregate, the event's ``@apply`` handler then
         runs. If any step raises (an enricher, the handler, or an invariant
         check around it), ``_events``, ``_version`` and ``_event_position``
-        go back to their values from before the call, ``atomic_change``
-        undoes the field changes the handler made, and the error propagates.
+        go back to their values from before the call and the error
+        propagates. When an invariant check fails, ``atomic_change`` also
+        undoes the field changes the handler made. When the handler raises
+        its own error, its field changes stay.
         """
         # Guard: temporal aggregates are read-only
         if self._is_temporal:
@@ -870,9 +872,9 @@ class atomic_change:
     (and ``@apply`` handlers in ES aggregates) are validated as a single
     logical transition.
 
-    When the block raises, or the checks on exit fail, the aggregate, the
-    child entities loaded on entry, and the children linked inside the block
-    go back to their state from block entry.
+    When the checks on exit fail, the aggregate, its child entities, and the
+    children linked inside the block go back to their state from block entry.
+    An exception raised by the block body does not undo the block's changes.
     """
 
     def __init__(self, aggregate: Any) -> None:
@@ -905,6 +907,8 @@ class atomic_change:
 
         # Validate status transitions (start -> end) before post-invariants.
         # Only validate when no exception is being propagated.
+        # Only a failed check on exit undoes the block. An exception raised by
+        # the block body leaves its changes in place.
         try:
             if exc_type is None:
                 self._validate_status_transitions()
@@ -913,9 +917,6 @@ class atomic_change:
         except BaseException:
             _restore_entities(self._entity_snapshots)
             raise
-
-        if exc_type is not None:
-            _restore_entities(self._entity_snapshots)
 
     def _capture_status_snapshots(self) -> None:
         """Snapshot all status fields with transition rules."""

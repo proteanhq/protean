@@ -128,12 +128,36 @@ def _changes_state(changes: HasManyChanges | HasOneChanges) -> tuple[Any, ...]:
     return (changes.change, changes.old_value)
 
 
+def _copy_containers(value: Any) -> Any:
+    """Copy nested lists and dicts, sharing the values inside them.
+
+    A snapshot has to survive in-place changes such as ``tags.append(...)``,
+    which a plain ``dict(__dict__)`` copy would share with the live entity.
+    """
+    if isinstance(value, list):
+        return [_copy_containers(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _copy_containers(item) for key, item in value.items()}
+    return value
+
+
+def _copy_values(entity: Any, values: dict[str, Any]) -> dict[str, Any]:
+    # An association's list in ``__dict__`` is the same object as the one in
+    # the fields cache, and ``_restore_entities`` relies on that, so it is not
+    # copied here.
+    associations = association_fields(entity)
+    return {
+        name: value if name in associations else _copy_containers(value)
+        for name, value in values.items()
+    }
+
+
 def _snapshot_entity(entity: Any) -> _EntitySnapshot:
     state = entity._state
     cache = state.fields_cache
     return _EntitySnapshot(
         entity=entity,
-        values=dict(entity.__dict__),
+        values=_copy_values(entity, entity.__dict__),
         fields_set=set(entity.__pydantic_fields_set__),
         root=entity._root,
         owner=entity._owner,
@@ -183,7 +207,7 @@ def _restore_entities(snapshots: list[_EntitySnapshot]) -> None:
     for snapshot in snapshots:
         entity = snapshot.entity
         entity.__dict__.clear()
-        entity.__dict__.update(snapshot.values)
+        entity.__dict__.update(_copy_values(entity, snapshot.values))
         object.__setattr__(entity, "__pydantic_fields_set__", set(snapshot.fields_set))
         entity._root = snapshot.root
         entity._owner = snapshot.owner
