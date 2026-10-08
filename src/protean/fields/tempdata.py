@@ -36,6 +36,14 @@ class HasManyChanges:
         self.updated = {}
         self.removed = {}
 
+    def copy(self) -> HasManyChanges:
+        """Return a copy that later changes to this tracker do not affect."""
+        other = HasManyChanges()
+        other.added = dict(self.added)
+        other.updated = dict(self.updated)
+        other.removed = dict(self.removed)
+        return other
+
 
 class HasOneChanges:
     """Track pending relationship state for a HasOne association field.
@@ -60,6 +68,13 @@ class HasOneChanges:
         """Reset tracked change state."""
         self.change = None
         self.old_value = None
+
+    def copy(self) -> HasOneChanges:
+        """Return a copy that later changes to this tracker do not affect."""
+        other = HasOneChanges()
+        other.change = self.change
+        other.old_value = self.old_value
+        return other
 
 
 class AssociationCache(dict[str, HasManyChanges | HasOneChanges]):

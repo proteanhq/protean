@@ -6,7 +6,8 @@ import inspect
 import logging
 import threading
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from enum import Enum
 from functools import partial
 from typing import (
@@ -93,10 +94,6 @@ _DESCRIPTOR_TYPES = (
 )
 
 
-# Marks an attribute that was absent from ``__dict__`` when a snapshot was taken.
-_ABSENT: Any = object()
-
-
 class _EntitySnapshot(NamedTuple):
     """The state of one entity, kept to undo a change to it."""
 
@@ -108,24 +105,7 @@ class _EntitySnapshot(NamedTuple):
     flags: tuple[bool, bool, bool]
     cache: dict[str, Any]
     cache_items: dict[str, list[Any]]
-    changes: dict[str, tuple[HasManyChanges | HasOneChanges, tuple[Any, ...]]]
-
-
-class _AssignmentSnapshot(NamedTuple):
-    """State an attribute assignment can change, kept to undo it."""
-
-    values: dict[str, Any]
-    cached: Any
-    name: str
-    fields_set: set[str]
-    changed: bool
-    entities: list[_EntitySnapshot]
-
-
-def _changes_state(changes: HasManyChanges | HasOneChanges) -> tuple[Any, ...]:
-    if isinstance(changes, HasManyChanges):
-        return (dict(changes.added), dict(changes.updated), dict(changes.removed))
-    return (changes.change, changes.old_value)
+    changes: dict[str, HasManyChanges | HasOneChanges]
 
 
 def _copy_containers(value: Any) -> Any:
@@ -152,12 +132,23 @@ def _copy_values(entity: Any, values: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _snapshot_entity(entity: Any) -> _EntitySnapshot:
+def _snapshot_entity(entity: Any, copy_containers: bool = True) -> _EntitySnapshot:
+    """Capture what a change can alter on ``entity``.
+
+    Pass ``copy_containers=False`` when the snapshot is restored right after
+    one assignment. An assignment replaces a value and never changes a list
+    or dict in place, so the copy is only needed for a snapshot that has to
+    outlast arbitrary code, such as an ``atomic_change`` block.
+    """
     state = entity._state
     cache = state.fields_cache
     return _EntitySnapshot(
         entity=entity,
-        values=_copy_values(entity, entity.__dict__),
+        values=(
+            _copy_values(entity, entity.__dict__)
+            if copy_containers
+            else dict(entity.__dict__)
+        ),
         fields_set=set(entity.__pydantic_fields_set__),
         root=entity._root,
         owner=entity._owner,
@@ -168,22 +159,20 @@ def _snapshot_entity(entity: Any) -> _EntitySnapshot:
             for name, value in cache.items()
             if isinstance(value, list)
         },
-        changes={
-            name: (changes, _changes_state(changes))
-            for name, changes in entity._temp_cache.items()
-        },
+        changes={name: changes.copy() for name, changes in entity._temp_cache.items()},
     )
 
 
 def _snapshot_entity_trees(entities: list[Any]) -> list[_EntitySnapshot]:
     """Snapshot each entity in ``entities`` and every child loaded below it.
 
-    An association change touches the owner, the children it adds or removes,
-    and the children of a removed child. Only values already in the fields
-    cache are walked, so taking the snapshot never loads from the database.
+    The first snapshot is for ``entities[0]``. An association change touches
+    the owner, the children it adds or removes, and the children of a removed
+    child. Only values already in the fields cache are walked, so taking the
+    snapshot never loads from the database.
     """
     seen: dict[int, Any] = {}
-    pending = list(entities)
+    pending = list(reversed(entities))
     while pending:
         entity = pending.pop()
         if not isinstance(entity, BaseEntity) or id(entity) in seen:
@@ -198,11 +187,12 @@ def _snapshot_entity_trees(entities: list[Any]) -> list[_EntitySnapshot]:
 
 
 def _restore_entities(snapshots: list[_EntitySnapshot]) -> None:
-    """Put back what ``_snapshot_entity_trees`` captured.
+    """Put back what ``_snapshot_entity`` captured.
 
     Writes into the current ``__dict__``, because Pydantic's assignment
-    validation replaces the ``__dict__`` object. Runs no validation and no
-    invariants.
+    validation replaces the ``__dict__`` object. Copies again on the way back,
+    because one snapshot can sit in nested ``atomic_change`` blocks and be
+    restored by each. Runs no validation and no invariants.
     """
     for snapshot in snapshots:
         entity = snapshot.entity
@@ -222,14 +212,19 @@ def _restore_entities(snapshots: list[_EntitySnapshot]) -> None:
             cache[name][:] = items
 
         entity._temp_cache.clear()
-        for name, (changes, changes_state) in snapshot.changes.items():
-            if isinstance(changes, HasManyChanges):
-                changes.added, changes.updated, changes.removed = (
-                    dict(part) for part in changes_state
-                )
-            else:
-                changes.change, changes.old_value = changes_state
-            entity._temp_cache[name] = changes
+        entity._temp_cache.update(
+            {name: changes.copy() for name, changes in snapshot.changes.items()}
+        )
+
+
+@contextmanager
+def _undo_on_failure(snapshots: list[_EntitySnapshot]) -> Iterator[None]:
+    """Restore ``snapshots`` when the block raises, then re-raise."""
+    try:
+        yield
+    except BaseException:
+        _restore_entities(snapshots)
+        raise
 
 
 class _FieldsCacheDescriptor:
@@ -1101,83 +1096,55 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     # ------------------------------------------------------------------
     # Mutation with validation + invariant checks
     # ------------------------------------------------------------------
-    def _take_assignment_snapshot(
-        self, name: str, descriptor: Any, incoming: Any = None
-    ) -> "_AssignmentSnapshot":
-        """Capture what an assignment to ``name`` can change on this entity.
+    def _snapshot_assignment(self, target: "BaseEntity") -> list[_EntitySnapshot]:
+        """Snapshot this entity before a plain, value object or ``Reference`` write.
 
-        Covers the attribute itself, the shadow attributes a value object or
-        reference descriptor writes next to it, the descriptor's cached value,
-        the Pydantic fields-set and the changed flag. For a ``HasOne`` or
-        ``HasMany`` field it also covers this entity and the ``incoming``
-        children with their own children, because the association links each
-        incoming child to this entity. A ``HasOne`` replacement or an empty
-        ``HasMany`` assignment also drops the current children and their own
-        children, so those are covered too. Children the change cannot touch
-        are left out, so repeated ``add_<field>()`` calls do not copy the
-        whole aggregate each time. Values are read straight from
-        ``__dict__``, so no descriptor ``__get__`` runs.
+        With invariant checks off on ``target``, the post-check after the
+        assignment does nothing, so there is nothing to undo. That covers
+        event replay, and every assignment inside an ``atomic_change`` block,
+        whose entry snapshot already holds this entity.
         """
-        keys = [name]
-        entities: list[_EntitySnapshot] = []
+        if target._disable_invariant_checks:
+            return []
+        return [_snapshot_entity(self, copy_containers=False)]
+
+    def _snapshot_association_change(
+        self, target: "BaseEntity", name: str, descriptor: Any, incoming: Any
+    ) -> list[_EntitySnapshot]:
+        """Snapshot what a change to the association ``name`` can touch.
+
+        That is this entity and the ``incoming`` children with their own
+        children, because the association links each incoming child to this
+        entity. A ``HasOne`` replacement or an empty ``HasMany`` assignment
+        also drops the current children, so those and their own children are
+        included too. Children the change cannot touch are left out, so
+        repeated ``add_<field>()`` calls do not copy the whole aggregate each
+        time.
+
+        With invariant checks off and no ``atomic_change`` block open, as in
+        event replay, nothing can use the snapshot, so none is taken.
+        """
+        if target._disable_invariant_checks and not target._atomic_snapshots:
+            return []
         cache = self._state.fields_cache
         assert isinstance(cache, dict)
-        if isinstance(descriptor, ValueObject):
-            keys.extend(
-                field.attribute_name
-                for field in descriptor.embedded_fields.values()
-                if field.attribute_name is not None
+        items = incoming if isinstance(incoming, list) else [incoming]
+        if isinstance(descriptor, HasOne) or all(item is None for item in items):
+            current = cache.get(name)
+            items = [*items, *(current if isinstance(current, list) else [current])]
+        return [_snapshot_entity(self), *_snapshot_entity_trees(items)]
+
+    def _add_to_open_blocks(self, snapshots: list[_EntitySnapshot]) -> None:
+        """Add ``snapshots`` to every ``atomic_change`` block open on this aggregate.
+
+        A block's entry snapshot holds only the entities present at entry, so
+        a child linked inside the block is added here for the block to undo.
+        """
+        for block in self._atomic_snapshots:
+            known = {id(snapshot.entity) for snapshot in block}
+            block.extend(
+                snapshot for snapshot in snapshots if id(snapshot.entity) not in known
             )
-        elif isinstance(descriptor, Reference):
-            keys.append(descriptor.get_attribute_name())
-        elif isinstance(descriptor, Association):
-            items = incoming if isinstance(incoming, list) else [incoming]
-            if isinstance(descriptor, HasOne) or all(item is None for item in items):
-                current = cache.get(name)
-                items = [*items, *(current if isinstance(current, list) else [current])]
-            entities = [_snapshot_entity(self), *_snapshot_entity_trees(items)]
-            target = self._root if self._root is not None else self
-            for block in target._atomic_snapshots:
-                known = {id(snapshot.entity) for snapshot in block}
-                block.extend(
-                    snapshot
-                    for snapshot in entities
-                    if id(snapshot.entity) not in known
-                )
-
-        return _AssignmentSnapshot(
-            values={key: self.__dict__.get(key, _ABSENT) for key in keys},
-            cached=cache.get(name, _ABSENT),
-            name=name,
-            fields_set=set(self.__pydantic_fields_set__),
-            changed=self._state._changed,
-            entities=entities,
-        )
-
-    def _restore_assignment_snapshot(self, snapshot: "_AssignmentSnapshot") -> None:
-        """Put back what ``_take_assignment_snapshot`` captured.
-
-        Writes into the current ``__dict__`` key by key, because Pydantic's
-        assignment validation replaces the ``__dict__`` object. Runs no
-        validation and no invariants.
-        """
-        _restore_entities(snapshot.entities)
-
-        for key, old_value in snapshot.values.items():
-            if old_value is _ABSENT:
-                self.__dict__.pop(key, None)  # pyright: ignore[reportAttributeAccessIssue]
-            else:
-                self.__dict__[key] = old_value  # pyright: ignore[reportIndexIssue]
-
-        cache = self._state.fields_cache
-        assert isinstance(cache, dict)
-        if snapshot.cached is _ABSENT:
-            cache.pop(snapshot.name, None)
-        else:
-            cache[snapshot.name] = snapshot.cached
-
-        object.__setattr__(self, "__pydantic_fields_set__", snapshot.fields_set)
-        self._state._changed = snapshot.changed
 
     def _change_association(
         self, name: str, operation: Callable[[Any, Any], None], items: Any
@@ -1188,14 +1155,13 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         When one of them fails, the field's children and pending changes go
         back to what they were before the call.
         """
-        snapshot = self._take_assignment_snapshot(
-            name, self._get_class_descriptor(type(self), name), items
+        target = self._root if self._root is not None else self
+        snapshots = self._snapshot_association_change(
+            target, name, self._get_class_descriptor(type(self), name), items
         )
-        try:
+        target._add_to_open_blocks(snapshots)
+        with _undo_on_failure(snapshots):
             operation(self, items)
-        except BaseException:
-            self._restore_assignment_snapshot(snapshot)
-            raise
 
     def __setattr__(self, name: str, value: Any) -> None:
         # During event replay only, drop an assignment to a reserved (removed)
@@ -1232,7 +1198,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             # Pre-check invariants
             target._precheck()
 
-            snapshot = self._take_assignment_snapshot(name, None)
+            snapshots = self._snapshot_assignment(target)
 
             # Delegate to Pydantic (validates via validate_assignment)
             try:
@@ -1241,11 +1207,8 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                 raise ValidationError(convert_pydantic_errors(e)) from e
 
             # Post-check invariants. A failure undoes this one assignment.
-            try:
+            with _undo_on_failure(snapshots):
                 target._postcheck()
-            except BaseException:
-                self._restore_assignment_snapshot(snapshot)
-                raise
 
             # Mark entity state as changed
             self._state.mark_changed()
@@ -1255,15 +1218,18 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             # Descriptor field: use object.__setattr__ to trigger descriptor protocol
             target = self._root if self._root is not None else self
             target._precheck()
+            if isinstance(descriptor, Association):
+                snapshots = self._snapshot_association_change(
+                    target, name, descriptor, value
+                )
+                target._add_to_open_blocks(snapshots)
+            else:
+                snapshots = self._snapshot_assignment(target)
             # Association descriptors run the root's post-check inside their
-            # own ``__set__``, so the write sits inside the ``try`` as well.
-            snapshot = self._take_assignment_snapshot(name, descriptor, value)
-            try:
+            # own ``__set__``, so the write sits inside the block as well.
+            with _undo_on_failure(snapshots):
                 object.__setattr__(self, name, value)
                 target._postcheck()
-            except BaseException:
-                self._restore_assignment_snapshot(snapshot)
-                raise
             self._state.mark_changed()
         elif name.startswith(("add_", "remove_", "get_one_from_", "filter_")):
             # Association pseudo-methods set during model_post_init

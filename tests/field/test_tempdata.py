@@ -70,6 +70,17 @@ class TestHasManyChanges:
         assert cache.added["id-1"] == "second"
         assert len(cache.added) == 1
 
+    def test_copy_does_not_follow_later_changes(self):
+        cache = HasManyChanges()
+        cache.added["id-1"] = "entity-1"
+
+        copied = cache.copy()
+        cache.added["id-2"] = "entity-2"
+        cache.removed["id-3"] = "entity-3"
+
+        assert copied.added == {"id-1": "entity-1"}
+        assert copied.removed == {}
+
 
 class TestHasOneChanges:
     def test_initial_state(self):
@@ -135,6 +146,17 @@ class TestHasOneChanges:
 
         cache.change = None
         assert not cache.change
+
+    def test_copy_does_not_follow_later_changes(self):
+        cache = HasOneChanges()
+        cache.change = "UPDATED"
+        cache.old_value = "entity-1"
+
+        copied = cache.copy()
+        cache.clear()
+
+        assert copied.change == "UPDATED"
+        assert copied.old_value == "entity-1"
 
 
 class TestAssociationCache:

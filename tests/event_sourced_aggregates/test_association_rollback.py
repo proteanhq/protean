@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 
+import protean.core.entity as entity_module
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.entity import BaseEntity, invariant
 from protean.core.event import BaseEvent
@@ -85,3 +86,19 @@ def test_rejected_event_leaves_the_lines_as_they_were(cart):
     assert cart.lines == lines_before
     assert cart._events == events_before
     assert cart._temp_cache["lines"].added.keys() == {lines_before[0].id}
+
+
+def test_replay_takes_no_snapshots(cart, monkeypatch):
+    taken = []
+    real_snapshot = entity_module._snapshot_entity
+
+    def counting_snapshot(*args, **kwargs):
+        taken.append(args[0])
+        return real_snapshot(*args, **kwargs)
+
+    monkeypatch.setattr(entity_module, "_snapshot_entity", counting_snapshot)
+
+    replayed = Cart.from_events(list(cart._events))
+
+    assert [line.name for line in replayed.lines] == ["first"]
+    assert taken == []

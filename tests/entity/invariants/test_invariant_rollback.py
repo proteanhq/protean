@@ -479,9 +479,11 @@ class TestAssociationAssignmentRollsBack:
         new_item = OrderItem(quantity=1, price=1.0)
         descriptor = order._get_class_descriptor(Order, "items")
 
-        snapshot = order._take_assignment_snapshot("items", descriptor, new_item)
+        snapshots = order._snapshot_association_change(
+            order, "items", descriptor, new_item
+        )
 
-        assert [entry.entity for entry in snapshot.entities] == [order, new_item]
+        assert [entry.entity for entry in snapshots] == [order, new_item]
 
     def test_successful_add_and_remove_still_apply(self, order):
         new_item = OrderItem(quantity=0, price=1.0)
@@ -663,3 +665,57 @@ class TestAtomicChangeRollsBack:
 
         assert order.total == 21.0
         assert len(order.items) == 3
+
+
+class TestSnapshotsAreTakenOnlyWhenUsable:
+    def test_assignment_outside_a_block_takes_a_snapshot(self, account):
+        snapshots = account._snapshot_assignment(account)
+
+        assert [entry.entity for entry in snapshots] == [account]
+
+    def test_assignment_inside_a_block_takes_no_snapshot(self, account):
+        with atomic_change(account):
+            assert account._snapshot_assignment(account) == []
+
+    def test_association_change_inside_a_block_takes_a_snapshot(self, order):
+        new_item = OrderItem(quantity=1, price=1.0)
+        descriptor = order._get_class_descriptor(Order, "items")
+
+        with atomic_change(order):
+            snapshots = order._snapshot_association_change(
+                order, "items", descriptor, new_item
+            )
+
+        assert [entry.entity for entry in snapshots] == [order, new_item]
+
+    def test_association_change_with_checks_off_and_no_block_takes_none(self, order):
+        new_item = OrderItem(quantity=1, price=1.0)
+        descriptor = order._get_class_descriptor(Order, "items")
+        order._disable_invariant_checks = True
+
+        snapshots = order._snapshot_association_change(
+            order, "items", descriptor, new_item
+        )
+
+        assert snapshots == []
+
+
+class TestNestedAtomicChange:
+    def test_inner_block_leaves_checks_off_for_the_outer_block(self, account):
+        with atomic_change(account):
+            with atomic_change(account):
+                pass
+            assert account._disable_invariant_checks is True
+
+        assert account._disable_invariant_checks is False
+        assert account._atomic_snapshots == []
+
+    def test_outer_block_undoes_changes_the_inner_block_passed(self, account):
+        with pytest.raises(ValidationError):
+            with atomic_change(account):
+                with atomic_change(account):
+                    account.balance = 4.0
+                account.balance = -1.0
+
+        assert account.balance == 10.0
+        assert account._disable_invariant_checks is False
