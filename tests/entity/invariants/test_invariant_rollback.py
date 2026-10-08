@@ -508,6 +508,16 @@ class TestValueObjectOnChildEntityRollsBack:
         assert line.state_.is_changed is False
 
 
+class TestListFieldAssignmentRollsBack:
+    def test_assigning_a_new_list_keeps_the_old_one(self):
+        playlist = Playlist(tags=["rock"])
+
+        with pytest.raises(ValidationError):
+            playlist.tags = [*playlist.tags, "banned"]
+
+        assert playlist.tags == ["rock"]
+
+
 class TestNonValidationErrorRollsBack:
     def test_invariant_raising_another_error_still_undoes_the_assignment(self):
         score = Score(points=1)

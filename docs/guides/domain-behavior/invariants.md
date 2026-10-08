@@ -110,6 +110,13 @@ the same way, including the removal of the child's own children. The
 assignment is also undone when an invariant fails with an error other than
 `ValidationError`, such as a `TypeError` from comparing `None`.
 
+A change made to a `List` or `Dict` field in place, such as
+`self.tags.append("x")` or `self.tags += ["x"]`, alters the existing value
+before Protean sees an assignment, so a failed check cannot undo it. To make
+the change undoable, assign a new value: `self.tags = [*self.tags, "x"]`.
+Inside an `atomic_change` block, in-place changes are undone as well, because
+the block keeps a copy of every field from block entry.
+
 An `atomic_change` block is rolled back as a whole: when the check at its end
 fails, the aggregate and its child entities go back to their state from block
 entry, including association changes (see below). Events raised inside the
