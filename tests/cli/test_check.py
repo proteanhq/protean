@@ -6,6 +6,9 @@ Covers exit codes, output formats, error handling, --level filter, and --quiet m
 import json
 import logging
 import os
+import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -892,3 +895,164 @@ class TestEscapeProperty:
         assert (
             _escape_property("C:\\proj\\a,b\\model.py") == "C%3A\\proj\\a%2Cb\\model.py"
         )
+
+
+_SKILLS_ROOT = Path(protean.__file__).parent / "dx" / "pack" / "skills"
+
+_ONE_AGGREGATE = """
+from protean import Domain
+from protean.fields import String
+
+domain = Domain({args})
+
+
+@domain.aggregate
+class {name}:
+    title = String()
+"""
+
+_STRING_PART_OF = """
+from protean import Domain
+from protean.fields import String
+
+domain = Domain(__name__)
+
+
+@domain.aggregate
+class Order:
+    title = String()
+
+
+@domain.aggregate
+class Inventory:
+    sku = String()
+
+
+@domain.domain_service(part_of=["Order", "Inventory"])
+class Placement:
+    pass
+"""
+
+# Loads ``argv[1]`` under the module name ``protean check`` gives it, then prints
+# ``Domain.check(traverse=False)`` as JSON. A fresh interpreter, so the asset's
+# elements are not registered a second time in the test process.
+_CHECK_WITHOUT_TRAVERSAL = """
+import importlib
+import json
+import sys
+
+from protean.domain import Domain
+from protean.utils.domain_discovery import prepare_import
+
+module = importlib.import_module(prepare_import(sys.argv[1]))
+(domain,) = [v for v in vars(module).values() if isinstance(v, Domain)]
+print(json.dumps(domain.check(traverse=False)))
+"""
+
+
+def _check_in_child(*args: str) -> subprocess.CompletedProcess[str]:
+    env = {k: v for k, v in os.environ.items() if k != "PROTEAN_DOMAIN"}
+    return subprocess.run(
+        [sys.executable, *args], capture_output=True, text=True, env=env, check=False
+    )
+
+
+@pytest.mark.no_test_domain
+class TestCheckSingleFileDomain:
+    """``check`` on a file path reports, or exits with one line, never a traceback."""
+
+    def test_module_name_root_path_is_checked_without_traversal(self, tmp_path):
+        path = tmp_path / "single_file_1685.py"
+        path.write_text(_ONE_AGGREGATE.format(args="__name__", name="Ledger1685"))
+
+        result = runner.invoke(app, ["check", "-d", str(path), "-f", "json"])
+
+        assert result.exit_code in (0, 1)
+        assert "Traceback" not in result.output
+        data = json.loads(result.stdout)
+        assert data["data"]["domain"] == "single_file_1685"
+        assert data["data"]["errors"] == []
+
+    def test_file_root_path_still_traverses_siblings(self, tmp_path):
+        path = tmp_path / "file_root_1685.py"
+        path.write_text(_ONE_AGGREGATE.format(args="", name="Ledger1685b"))
+        (tmp_path / "sibling_1685.py").write_text(
+            "import pathlib\n"
+            f"pathlib.Path({str(tmp_path / 'traversed')!r}).write_text('yes')\n"
+        )
+
+        result = runner.invoke(app, ["check", "-d", str(path), "-f", "json"])
+
+        assert result.exit_code in (0, 1)
+        assert json.loads(result.stdout)["data"]["errors"] == []
+        assert (tmp_path / "traversed").read_text() == "yes"
+
+    def test_failing_ir_build_fails_the_check(self, tmp_path):
+        path = tmp_path / "string_part_of_1685.py"
+        path.write_text(_STRING_PART_OF)
+
+        result = runner.invoke(app, ["check", "-d", str(path), "-f", "json"])
+
+        assert result.exit_code == 1
+        errors = json.loads(result.stdout)["data"]["errors"]
+        assert errors == [
+            {
+                "code": "AttributeError",
+                "element": "to_ir",
+                "level": "error",
+                "message": (
+                    "Could not build the IR: AttributeError: 'str' object has no "
+                    "attribute '__module__'"
+                ),
+            }
+        ]
+
+    def test_failing_ir_build_does_not_print_all_checks_passed(self, tmp_path):
+        path = tmp_path / "string_part_of_rich_1685.py"
+        path.write_text(_STRING_PART_OF)
+
+        result = runner.invoke(app, ["check", "-d", str(path)])
+
+        assert result.exit_code == 1
+        assert "FAIL" in result.output
+        assert "Could not build the IR" in result.output
+        assert "All checks passed" not in result.output
+        assert "Traceback" not in result.output
+
+    def test_sibling_that_raises_on_import_exits_with_one_line(self, tmp_path):
+        path = tmp_path / "broken_sibling_1685.py"
+        path.write_text(_ONE_AGGREGATE.format(args="", name="Ledger1685c"))
+        (tmp_path / "explodes_1685.py").write_text(
+            "raise RuntimeError('sibling exploded')\n"
+        )
+
+        result = runner.invoke(app, ["check", "-d", str(path)])
+
+        assert result.exit_code == 2
+        assert "Traceback" not in result.output
+        message = " ".join(result.output.split())
+        assert f"Error checking domain '{path}':" in message
+        assert "sibling exploded" in message
+
+
+@pytest.mark.no_test_domain
+@pytest.mark.parametrize(
+    "asset",
+    [
+        "add-use-case/assets/use_case_basic.py",
+        "domain-service/assets/domain_service_callable.py",
+    ],
+)
+def test_asset_check_matches_check_without_traversal(asset):
+    path = str(_SKILLS_ROOT / asset)
+
+    cli = _check_in_child("-m", "protean", "check", "-d", path, "-f", "json")
+    direct = _check_in_child("-c", _CHECK_WITHOUT_TRAVERSAL, path)
+
+    assert direct.returncode == 0, direct.stderr
+    assert "Traceback" not in cli.stderr
+    reported = json.loads(cli.stdout)
+    expected = json.loads(direct.stdout)
+    assert reported["data"]["errors"] == expected["errors"]
+    assert reported["diagnostics"] == expected["diagnostics"]
+    assert reported["data"]["errors"] or reported["diagnostics"]

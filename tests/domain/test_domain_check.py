@@ -227,10 +227,10 @@ class TestDomainCheckDiagnostics:
 
 
 class TestDomainCheckIRFailure:
-    """A failure while building the IR is logged, and the check still reports."""
+    """A failure while building the IR fails the check with one error."""
 
     @pytest.mark.no_test_domain
-    def test_ir_failure_is_logged_and_diagnostics_left_empty(self, monkeypatch, caplog):
+    def test_ir_failure_is_reported_as_an_error(self, monkeypatch, caplog):
         domain = Domain(name="IRFails", root_path=__file__)
         domain.register(Order)
 
@@ -238,21 +238,35 @@ class TestDomainCheckIRFailure:
             raise RuntimeError("IR builder crashed")
 
         monkeypatch.setattr(domain, "to_ir", _broken_to_ir)
-        caplog.set_level(logging.WARNING, logger="protean.domain")
+        caplog.set_level(logging.DEBUG, logger="protean.domain")
 
         result = domain.check(traverse=False)
 
-        assert result["status"] == "pass"
-        assert result["errors"] == []
+        assert result["status"] == "fail"
+        assert result["counts"] == {"errors": 1, "warnings": 0, "infos": 0}
+        assert result["errors"] == [
+            {
+                "code": "RuntimeError",
+                "element": "to_ir",
+                "level": "error",
+                "message": "Could not build the IR: RuntimeError: IR builder crashed",
+            }
+        ]
         assert result["diagnostics"] == []
-        records = [r for r in caplog.records if r.name == "protean.domain"]
+        records = [
+            r
+            for r in caplog.records
+            if r.name == "protean.domain" and r.levelno >= logging.WARNING
+        ]
         assert len(records) == 1
-        assert records[0].levelno == logging.WARNING
         assert records[0].getMessage() == (
-            "Could not build the IR for domain 'IRFails'; "
-            "IR diagnostics are left out of the check result"
+            "Could not build the IR for domain 'IRFails': "
+            "RuntimeError: IR builder crashed"
         )
-        assert str(records[0].exc_info[1]) == "IR builder crashed"
+        # No record carries a traceback, at any level.
+        assert all(
+            r.exc_info is None for r in caplog.records if r.name == "protean.domain"
+        )
 
     @pytest.mark.no_test_domain
     def test_no_warning_when_ir_builds(self, caplog):
@@ -263,6 +277,63 @@ class TestDomainCheckIRFailure:
         domain.check(traverse=False)
 
         assert [r for r in caplog.records if r.name == "protean.domain"] == []
+
+
+class TestDomainCheckRootPathFallback:
+    """A root path that names no directory is checked without traversal."""
+
+    @pytest.mark.no_test_domain
+    def test_module_name_root_path_checks_without_traversal(self, caplog):
+        domain = Domain(name="ModuleRoot", root_path="no_such_dir_1685")
+        domain.register(Order)
+        caplog.set_level(logging.DEBUG, logger="protean.domain")
+
+        result = domain.check()
+
+        assert result["errors"] == []
+        records = [
+            r
+            for r in caplog.records
+            if r.name == "protean.domain" and r.levelno >= logging.WARNING
+        ]
+        assert len(records) == 1
+        assert records[0].getMessage() == (
+            "Root path 'no_such_dir_1685' of domain 'ModuleRoot' is not a "
+            "directory or file; checking the domain without traversal"
+        )
+        assert records[0].exc_info is None
+
+    @pytest.mark.no_test_domain
+    def test_matches_check_without_traversal(self):
+        traversed = Domain(name="ModuleRoot", root_path="no_such_dir_1685")
+        traversed.register(Order)
+        untraversed = Domain(name="ModuleRoot", root_path="no_such_dir_1685")
+        untraversed.register(Order)
+
+        assert traversed.check() == untraversed.check(traverse=False)
+
+    @pytest.mark.no_test_domain
+    def test_existing_root_directory_still_traverses(self, tmp_path, caplog):
+        (tmp_path / "sibling.py").write_text("LOADED = True\n")
+        domain = Domain(name="DirRoot", root_path=str(tmp_path))
+        domain.register(Order)
+        caplog.set_level(logging.DEBUG, logger="protean.domain")
+
+        domain.check()
+
+        messages = [
+            r.getMessage() for r in caplog.records if r.name == "protean.domain"
+        ]
+        assert f"Loading domain from {tmp_path}..." in messages
+        assert not any("without traversal" in m for m in messages)
+
+    @pytest.mark.no_test_domain
+    def test_init_still_fails_on_a_missing_root_path(self):
+        domain = Domain(name="ModuleRoot", root_path="no_such_dir_1685")
+        domain.register(Order)
+
+        with pytest.raises(FileNotFoundError):
+            domain.init()
 
 
 class TestDomainCheckInfoStatus:

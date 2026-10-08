@@ -18,6 +18,18 @@ protean check --format=json
 protean check --format=sarif > protean.sarif
 ```
 
+When `--domain` names a file, `check` imports it and walks the directory that
+holds it, the same way `Domain.init()` does. A domain declared as
+`Domain(__name__)` has a module name as its root path, which names no
+directory. `check` then checks the domain without walking any directory and
+logs a warning. If another module in that directory raises when it is
+imported, `check` exits `2` with one line that names the `--domain` value and
+the error.
+
+If the IR cannot be built, `check` reports the failure as one error, with
+`element` set to `to_ir` and the exception class name as its `code`, and
+exits `1`.
+
 ## Options
 
 | Option | Short | Default | Description |

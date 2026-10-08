@@ -183,7 +183,14 @@ def check(
     if suppressions_error:
         _fail_usage(format, f"Invalid config: {suppressions_error}")
 
-    result = derived_domain.check()
+    try:
+        result = derived_domain.check()
+    # Traversal imports every sibling module of the domain file, and any of them
+    # can raise. Report it as one line, never a traceback.
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: check runs user code
+        _fail_usage(
+            format, f"Error checking domain '{domain}': {type(exc).__name__}: {exc}"
+        )
 
     # Exit code and every machine format come from the UNFILTERED result;
     # ``--level`` is a display filter that shapes only the human rich/quiet views

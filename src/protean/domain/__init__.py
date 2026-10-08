@@ -773,9 +773,27 @@ class Domain:
         Raises:
             ConfigurationError: If the ``[lint]`` table holds a value the IR
                 builder rejects, such as ``rules = 5``. This holds even when
-                validation errors skip the IR build. Any other IR build
-                failure leaves ``diagnostics`` empty.
+                validation errors skip the IR build.
+
+        Any other IR build failure is reported as one entry in ``errors``
+        (``element`` is ``"to_ir"``, ``code`` is the exception class name), so
+        the status is ``"fail"``.
+
+        When ``traverse`` is true but ``root_path`` names neither a directory
+        nor a file (``Domain(__name__)`` passes a module name), the domain is
+        checked without traversal and a warning is logged.
         """
+        if traverse and not self._root_dir().is_dir():
+            # ``Domain(__name__)`` passes a module name as ``root_path``, which
+            # names no directory, so ``_traverse`` would fail on ``os.listdir``.
+            logger.warning(
+                "Root path '%s' of domain '%s' is not a directory or file; "
+                "checking the domain without traversal",
+                self.root_path,
+                self.name,
+            )
+            traverse = False
+
         self._prepare(traverse=traverse, validate=False)
 
         # Run the collect-all validator (does not raise)
@@ -798,13 +816,23 @@ class Domain:
             try:
                 ir = self.to_ir()
                 diagnostics = ir.get("diagnostics", [])
-            # an IR build failure drops only the IR diagnostics; logged
-            except Exception:
+            # A failed IR build is a finding, so the check fails with it as an
+            # error. No ``exc_info``: the CLI logs at DEBUG by default in
+            # development, so even a DEBUG traceback would reach the user.
+            except Exception as exc:  # noqa: BLE001 - IR build runs over user elements
                 logger.warning(
-                    "Could not build the IR for domain '%s'; "
-                    "IR diagnostics are left out of the check result",
+                    "Could not build the IR for domain '%s': %s: %s",
                     self.name,
-                    exc_info=True,
+                    type(exc).__name__,
+                    exc,
+                )
+                errors.append(
+                    {
+                        "code": type(exc).__name__,
+                        "element": "to_ir",
+                        "level": "error",
+                        "message": f"Could not build the IR: {type(exc).__name__}: {exc}",
+                    }
                 )
 
         total_errors = len(errors)
@@ -832,15 +860,14 @@ class Domain:
             },
         }
 
-    def _traverse(self) -> None:
-        # Ensure root_path is a directory path
+    def _root_dir(self) -> Path:
+        """The directory ``_traverse`` walks: ``root_path`` itself, or its
+        parent when ``root_path`` is a file (e.g. from ``__file__``)."""
         root_path = Path(self.root_path)
-        if root_path.is_file():
-            # If it's a file path (e.g. from __file__), get the parent directory
-            root_dir = root_path.parent
-        else:
-            # It's already a directory
-            root_dir = root_path
+        return root_path.parent if root_path.is_file() else root_path
+
+    def _traverse(self) -> None:
+        root_dir = self._root_dir()
 
         # Parent Directory of the directory containing the domain file
         #

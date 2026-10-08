@@ -54,9 +54,8 @@ COMPLETENESS_CODES = frozenset(
     }
 )
 
-# Recorded, in place of a diagnostic code, for a domain whose validation passes
-# but whose IR fails to build. ``Domain.check`` returns no diagnostics then, so
-# without this code the asset would look clean.
+# Recorded, in place of the exception class name ``Domain.check`` reports as the
+# error code, for a domain whose validation passes but whose IR fails to build.
 IR_BUILD_FAILED = "IR_BUILD_FAILED"
 
 EXEMPT_NAMES = frozenset({"saga_before_unclosed.py", "audit_sample_codebase.py"})
@@ -121,20 +120,19 @@ for index, path in enumerate(assets):
         found = set()
         for domain in domains.values():
             report = domain.check(traverse=False)
-            found.update(entry["code"] for entry in report["errors"])
+            for entry in report["errors"]:
+                if entry["element"] == "to_ir":
+                    found.add("IR_BUILD_FAILED")
+                    ir_failures[label] = entry["message"].removeprefix(
+                        "Could not build the IR: "
+                    )
+                else:
+                    found.add(entry["code"])
             found.update(
                 entry["code"]
                 for entry in report["diagnostics"]
                 if entry.get("level") in ("warning", "error")
             )
-            if not report["errors"]:
-                # ``check`` drops an IR build failure and returns no
-                # diagnostics, so build the IR again to see the failure.
-                try:
-                    domain.to_ir()
-                except Exception as exc:
-                    found.add("IR_BUILD_FAILED")
-                    ir_failures[label] = "%s: %s" % (type(exc).__name__, exc)
         codes[label] = sorted(found)
     except Exception as exc:  # report the asset, then keep going
         crashes[label] = "%s: %s" % (type(exc).__name__, exc)
