@@ -60,7 +60,9 @@ def test_check_naming_passes_a_pascal_case_aggregate():
     assert _codes_for(ir, "AGGREGATE_NOT_PASCAL_CASE") == []
 
 
-@pytest.mark.parametrize("name", ["order_line", "Order_Line", "orderLine"])
+@pytest.mark.parametrize(
+    "name", ["order_line", "Order_Line", "orderLine", "Order-Line", "Order Line"]
+)
 def test_check_naming_flags_an_aggregate_that_is_not_pascal_case(name):
     example = load_example("guides/architecture-fitness-functions/002.py")
 

@@ -38,7 +38,7 @@ class LargeReport:
 
 # Or override per-query
 view = domain.view_for(LargeReport)
-results = view.query.limit(1000).all()
+reports = view.query.limit(1000).all()
 # --8<-- [end:limit]
 
 
@@ -60,8 +60,22 @@ class OrderSummary:
 # --8<-- [end:value-object-field]
 
 
+domain.init(traverse=False)
+
+with domain.domain_context():
+    for order_id, city in (("order-1", "Springfield"), ("order-2", "Shelbyville")):
+        domain.repository_for(OrderSummary).add(
+            OrderSummary(
+                order_id=order_id,
+                customer_name="Ann",
+                total_amount=30.0,
+                shipping_address=Address(street="1 Main St", city=city),
+            )
+        )
+
+
 # --8<-- [start:shadow-field-query]
-results = (
+springfield_orders = (
     domain.view_for(OrderSummary)
     .query.filter(shipping_address_city="Springfield")
     .all()

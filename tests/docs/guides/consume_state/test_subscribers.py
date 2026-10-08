@@ -89,6 +89,8 @@ def test_subscribers_listen_on_their_streams_and_brokers():
     example.domain.init(traverse=False)
 
     assert example.ExternalOrderSubscriber.meta_.stream == "external_orders"
+    assert example.ExternalOrderSubscriber.meta_.broker == "default"
+    assert example.OrderSubscriber.meta_.stream == "order_events"
     assert example.OrderSubscriber.meta_.broker == "default"
     assert example.AnalyticsSubscriber.meta_.stream == "analytics_events"
     assert example.AnalyticsSubscriber.meta_.broker == "analytics"
@@ -116,6 +118,60 @@ def test_handle_error_logs_the_failure(caplog):
         )
 
     assert "Failed to process payment message: card declined" in caplog.text
+
+
+def test_the_engine_calls_handle_error_when_the_subscriber_raises(caplog):
+    example = load_example("guides/consume-state/subscribers/002.py")
+
+    @example.domain.subscriber(stream="payment_gateway")
+    class DecliningPaymentSubscriber(example.PaymentSubscriber):
+        def __call__(self, payload: dict) -> None:
+            raise ValueError("card declined")
+
+    example.domain.init(traverse=False)
+    engine = Engine(domain=example.domain, test_mode=True)
+
+    with caplog.at_level(logging.ERROR):
+        handled = asyncio.run(
+            engine.handle_broker_message(
+                DecliningPaymentSubscriber,
+                {"order_id": "order-1"},
+                message_id="msg-1",
+                stream="payment_gateway",
+            )
+        )
+
+    assert handled is False
+    assert "Failed to process payment message: card declined" in caplog.text
+
+
+def test_the_engine_survives_a_failing_handle_error(caplog):
+    example = load_example("guides/consume-state/subscribers/002.py")
+
+    @example.domain.subscriber(stream="payment_gateway")
+    class BrokenRecoverySubscriber(example.PaymentSubscriber):
+        def __call__(self, payload: dict) -> None:
+            raise ValueError("card declined")
+
+        @classmethod
+        def handle_error(cls, exc: Exception, message: dict) -> None:
+            raise RuntimeError("recovery store is down")
+
+    example.domain.init(traverse=False)
+    engine = Engine(domain=example.domain, test_mode=True)
+
+    with caplog.at_level(logging.ERROR):
+        handled = asyncio.run(
+            engine.handle_broker_message(
+                BrokenRecoverySubscriber,
+                {"order_id": "order-1"},
+                message_id="msg-2",
+                stream="payment_gateway",
+            )
+        )
+
+    assert handled is False
+    assert "recovery store is down" in caplog.text
 
 
 def test_valid_payload_issues_record_payment():

@@ -54,6 +54,8 @@ handler.
 ### Step 3: Add events for side effects
 
 Move cross-aggregate coordination from service methods to domain events.
+The command handler in Step 1 calls `order.place()`, which raises
+`OrderPlaced`:
 
 ```python
 # fragment

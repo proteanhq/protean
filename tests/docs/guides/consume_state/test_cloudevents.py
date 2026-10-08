@@ -77,13 +77,20 @@ def test_a_registered_type_reconstructs_the_domain_event(orders):
     assert event.total == 99.99
 
 
-def test_round_tripping_keeps_data_id_and_correlation(orders):
+def test_round_tripping_keeps_data_and_id(orders):
     assert orders.restored.data == orders.original.data
     assert orders.restored.metadata.headers.id == "myapp::order-abc123-0.1"
-    assert (
-        orders.restored.metadata.domain.correlation_id
-        == orders.original.metadata.domain.correlation_id
-    )
+
+
+def test_round_tripping_keeps_a_correlation_id(orders):
+    # The page's event has no correlation ID, so give the message one.
+    incoming = {**orders.cloud_event, "proteancorrelationid": "corr-1"}
+    original = Message.from_cloudevent(incoming)
+
+    restored = Message.from_cloudevent(original.to_cloudevent())
+
+    assert original.metadata.domain.correlation_id == "corr-1"
+    assert restored.metadata.domain.correlation_id == "corr-1"
 
 
 @pytest.mark.parametrize(

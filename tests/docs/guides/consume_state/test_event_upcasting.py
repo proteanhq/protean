@@ -3,7 +3,11 @@
 import pytest
 
 from protean.core.upcaster import BaseUpcaster
-from protean.exceptions import ConfigurationError, ValidationError
+from protean.exceptions import (
+    ConfigurationError,
+    DeserializationError,
+    ValidationError,
+)
 from protean.utils.eventing import Message
 from tests.docs.support import load_example
 
@@ -140,6 +144,31 @@ class TestSplittingAndNestingCustomerFields:
 
         assert upcast == {"customer_id": "c-1", "first_name": "Ada", "last_name": ""}
 
+    def test_a_name_of_three_words_keeps_the_last_two_as_the_last_name(self, customers):
+        upcast = customers.UpcastCustomerRegisteredV1ToV2().upcast(
+            {"customer_id": "c-1", "customer_name": "Mary Ann Evans"}
+        )
+
+        assert upcast["first_name"] == "Mary"
+        assert upcast["last_name"] == "Ann Evans"
+
+    def test_a_stored_v1_event_without_a_name_fails_and_names_the_field(
+        self, customers
+    ):
+        with pytest.raises(DeserializationError, match="customer_name"):
+            _read("Customers.CustomerRegistered.v1", 1, {"customer_id": "c-1"})
+
+    def test_a_missing_address_part_becomes_an_empty_string(self, customers):
+        event = _read(
+            "Customers.CustomerRegistered.v2",
+            2,
+            {"customer_id": "c-1", "first_name": "Ada", "city": "London"},
+        )
+
+        assert event.address == customers.Address(
+            street="", city="London", state="", zip_code=""
+        )
+
     def test_a_stored_v2_event_only_nests_the_address(self, customers):
         event = _read(
             "Customers.CustomerRegistered.v2",
@@ -186,6 +215,10 @@ class TestMultiStepChain:
 
         assert event.total_amount == 50.0
         assert event.currency == "EUR"
+
+    def test_a_stored_v1_event_without_an_amount_fails_and_names_the_field(self, chain):
+        with pytest.raises(DeserializationError, match="amount"):
+            _read("Ordering.OrderPlaced.v1", 1, {"order_id": "1"})
 
     def test_an_event_sourced_order_replays_a_v1_event(self, chain):
         stream = f"{chain.Order.meta_.stream_category}-1"
@@ -238,6 +271,17 @@ class TestRemovingAndDerivingFields:
 
         assert event.items == items
         assert event.line_item_count == 2
+
+    def test_the_count_follows_the_number_of_items(self, derived_field):
+        items = [{"sku": "A"}, {"sku": "B"}, {"sku": "C"}]
+        event = _read("Ordering.OrderPlaced.v1", 1, {"order_id": "o-1", "items": items})
+
+        assert event.line_item_count == 3
+
+    def test_a_stored_v1_event_without_items_counts_zero(self, derived_field):
+        event = _read("Ordering.OrderPlaced.v1", 1, {"order_id": "o-1"})
+
+        assert event.line_item_count == 0
 
 
 class TestValidationAtStartup:

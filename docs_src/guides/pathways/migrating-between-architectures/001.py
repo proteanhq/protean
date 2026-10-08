@@ -3,6 +3,7 @@ from fastapi import FastAPI
 
 from protean import Domain, current_domain, use_case
 from protean.fields import Float, HasMany, Identifier, Integer, String
+from protean.integrations.fastapi import DomainContextMiddleware
 
 domain = Domain(name="Shop")
 
@@ -44,6 +45,7 @@ class OrderService:
 
 # --8<-- [start:endpoint]
 app = FastAPI()
+app.add_middleware(DomainContextMiddleware, route_domain_map={"/": domain})
 
 
 @app.post("/orders")

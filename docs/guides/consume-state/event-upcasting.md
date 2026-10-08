@@ -124,6 +124,12 @@ The field `customer_name` was split into `first_name` and `last_name`.
 --8<-- "guides/consume-state/event-upcasting/003.py:split-name"
 ```
 
+`split(" ", 1)` splits on the first space only, so "Mary Ann Evans" becomes
+`first_name="Mary"` and `last_name="Ann Evans"`. Every v1 event stored a
+`customer_name`, so the upcaster reads it without a default. A stored event
+that lacks it fails to load with a `DeserializationError` that names
+`customer_name`.
+
 ### Scenario 3: Changing Data Structure
 
 An address was stored as flat fields and is now a nested dict (to match a
@@ -146,6 +152,8 @@ The framework chains them automatically.
 A stored v1 event automatically passes through both upcasters: v1→v2→v3.
 A stored v2 event passes through only v2→v3.
 A stored v3 event skips upcasting entirely (zero overhead).
+The v2→v3 step reads `amount` without a default, so a stored event that
+lacks it fails to load with a `DeserializationError` that names `amount`.
 
 The `amount → total_amount` step renames a field inside a version bump to show
 how the chain composes. A rename on its own uses `renamed_from` and needs no

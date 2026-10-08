@@ -38,7 +38,7 @@ class CustomerRegistered(BaseEvent):
 @domain.upcaster(event_type=CustomerRegistered, from_version=1, to_version=2)
 class UpcastCustomerRegisteredV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
-        full_name = data.pop("customer_name", "")
+        full_name = data.pop("customer_name")
         parts = full_name.split(" ", 1)
         data["first_name"] = parts[0]
         data["last_name"] = parts[1] if len(parts) > 1 else ""

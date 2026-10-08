@@ -200,6 +200,19 @@ class CreateRecipient:
     address = Text()
 
 
+@fulfillment_domain.command_handler(part_of="Recipient")
+class RecipientCommandHandler:
+    @handle(CreateRecipient)
+    def create_recipient(self, command: CreateRecipient) -> None:
+        current_domain.repository_for(Recipient).add(
+            Recipient(
+                customer_id=command.customer_id,
+                name=command.name,
+                delivery_address=command.address,
+            )
+        )
+
+
 @fulfillment_domain.subscriber(stream="identity_customer_events")
 class CustomerEventSubscriber:
     """Anti-corruption layer: translates external customer events."""

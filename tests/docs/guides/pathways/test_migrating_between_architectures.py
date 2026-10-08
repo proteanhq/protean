@@ -3,7 +3,6 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from protean.integrations.fastapi import DomainContextMiddleware
 from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -32,9 +31,6 @@ def test_ddd_service_places_the_order_with_its_items():
 def test_ddd_endpoint_returns_the_new_order_id():
     example = load_example("guides/pathways/migrating-between-architectures/001.py")
     example.domain.init(traverse=False)
-    example.app.add_middleware(
-        DomainContextMiddleware, route_domain_map={"/": example.domain}
-    )
 
     response = TestClient(example.app).post(
         "/orders", json={"customer_id": "cust-1", "items": ITEMS, "total": 30.0}
@@ -59,15 +55,33 @@ def test_cqrs_command_handler_places_the_order():
         )
 
     assert saved.total == 30.0
+    assert saved.status == "placed"
     assert sorted(i.product_id for i in saved.items) == ["book-1", "pen-7"]
+
+
+def test_processing_place_order_builds_the_order_summary():
+    example = load_example("guides/pathways/migrating-between-architectures/002.py")
+    example.domain.init(traverse=False)
+    three_items = [*ITEMS, {"product_id": "ink-3", "quantity": 4}]
+
+    with example.domain.domain_context():
+        example.domain.process(
+            example.PlaceOrder(customer_id="cust-7", items=three_items, total=55.0)
+        )
+        order = example.domain.repository_for(example.Order).find_by(
+            customer_id="cust-7"
+        )
+        summary = example.domain.repository_for(example.OrderSummary).get(order.id)
+
+    assert summary.customer_id == "cust-7"
+    assert summary.total == 55.0
+    assert summary.status == "placed"
+    assert summary.item_count == 3
 
 
 def test_cqrs_endpoint_accepts_the_command():
     example = load_example("guides/pathways/migrating-between-architectures/002.py")
     example.domain.init(traverse=False)
-    example.app.add_middleware(
-        DomainContextMiddleware, route_domain_map={"/": example.domain}
-    )
 
     response = TestClient(example.app).post(
         "/orders", json={"customer_id": "cust-3", "items": ITEMS, "total": 12.5}

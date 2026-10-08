@@ -10,10 +10,9 @@ pytestmark = pytest.mark.no_test_domain
 
 @pytest.fixture
 def inventory():
+    """The example module after its own sections ran, records included."""
     example = load_example("guides/consume-state/projections/001.py")
-    example.domain.init(traverse=False)
     with example.domain.domain_context():
-        _add_the_page_records(example)
         yield example
 
 
@@ -23,29 +22,6 @@ def catalog():
     example.domain.init(traverse=False)
     with example.domain.domain_context():
         yield example
-
-
-def _add_the_page_records(example):
-    """Add the two records the page writes, since init starts the store empty."""
-    repo = example.domain.repository_for(example.ProductInventory)
-    repo.add(
-        example.ProductInventory(
-            product_id="abc-123",
-            name="Keyboard",
-            description="Mechanical keyboard",
-            price=89.0,
-            stock_quantity=4,
-        )
-    )
-    repo.add(
-        example.ProductInventory(
-            product_id="def-456",
-            name="Mouse",
-            description="Wireless mouse",
-            price=25.0,
-            stock_quantity=12,
-        )
-    )
 
 
 def test_projector_writes_the_product_added_values_to_the_projection(catalog):
@@ -144,6 +120,20 @@ def test_limit_defaults_to_100_and_the_decorator_overrides_it(inventory):
     assert inventory.LargeReport.meta_.limit == 500
 
 
+def test_the_per_query_limit_overrides_the_decorator(inventory):
+    assert inventory.reports.page_size == 1000
+
+
+def test_the_pages_pagination_query_lands_past_its_one_record(inventory):
+    # The pagination section runs before the write section adds the mouse.
+    assert inventory.page.page == 3
+    assert inventory.page_size == 20
+    assert inventory.number == 3
+    assert inventory.page.total == 1
+    assert inventory.items == []
+    assert inventory.total_pages == 1
+
+
 def test_pagination_reports_the_page_position(inventory):
     page = (
         inventory.domain.view_for(inventory.ProductInventory)
@@ -163,29 +153,6 @@ def test_pagination_reports_the_page_position(inventory):
 
 
 def test_value_object_field_is_queryable_by_its_shadow_field(inventory):
-    repo = inventory.domain.repository_for(inventory.OrderSummary)
-    repo.add(
-        inventory.OrderSummary(
-            order_id="order-1",
-            customer_name="Ann",
-            total_amount=30.0,
-            shipping_address=inventory.Address(street="1 Main St", city="Springfield"),
-        )
-    )
-    repo.add(
-        inventory.OrderSummary(
-            order_id="order-2",
-            customer_name="Bob",
-            total_amount=12.0,
-            shipping_address=inventory.Address(street="2 Elm St", city="Shelbyville"),
-        )
-    )
-
-    results = (
-        inventory.domain.view_for(inventory.OrderSummary)
-        .query.filter(shipping_address_city="Springfield")
-        .all()
-    )
-
-    assert [order.order_id for order in results] == ["order-1"]
-    assert results.first.shipping_address.street == "1 Main St"
+    assert [order.order_id for order in inventory.springfield_orders] == ["order-1"]
+    assert inventory.springfield_orders.first.shipping_address.city == "Springfield"
+    assert inventory.springfield_orders.first.shipping_address.street == "1 Main St"

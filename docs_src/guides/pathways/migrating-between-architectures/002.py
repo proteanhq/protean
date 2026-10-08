@@ -2,12 +2,12 @@ from fastapi import FastAPI
 
 from protean import Domain, current_domain, handle
 from protean.fields import Float, HasMany, Identifier, Integer, List, String
+from protean.integrations.fastapi import DomainContextMiddleware
 
 domain = Domain(
     name="Shop",
     config={"command_processing": "sync", "event_processing": "sync"},
 )
-app = FastAPI()
 
 
 @domain.entity(part_of="Order")
@@ -58,6 +58,7 @@ class OrderCommandHandler:
         )
         for item in command.items:
             order.add_item(**item)
+        order.place()
         current_domain.repository_for(Order).add(order)
 
 
@@ -65,6 +66,10 @@ class OrderCommandHandler:
 
 
 # --8<-- [start:endpoint]
+app = FastAPI()
+app.add_middleware(DomainContextMiddleware, route_domain_map={"/": domain})
+
+
 @app.post("/orders", status_code=201)
 async def create_order(payload: dict):
     current_domain.process(PlaceOrder(**payload))

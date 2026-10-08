@@ -2,12 +2,13 @@
 
 import pytest
 
-from protean import handle
+from protean import Domain, handle
 from protean.exceptions import (
     IncorrectUsageError,
     ObjectNotFoundError,
     ValidationError,
 )
+from protean.fields import Identifier, String
 from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -66,9 +67,11 @@ def test_dispatch_by_id_returns_the_projection_record(orders):
     assert order.status == "shipped"
 
 
-def test_the_page_dispatch_returns_an_empty_result_on_an_empty_store(orders):
-    assert orders.result.items == []
-    assert orders.result.total == 0
+def test_the_page_dispatch_returns_only_the_shipped_order():
+    example = load_example("guides/consume-state/query-handlers/001.py")
+
+    assert [order.order_id for order in example.result.items] == ["order-1"]
+    assert example.result.total == 1
 
 
 def test_query_defaults_apply(orders):
@@ -113,6 +116,33 @@ def test_the_page_typed_dispatch_returns_the_record_it_wrote(typed):
 def test_dispatch_for_a_missing_record_raises_object_not_found(typed):
     with pytest.raises(ObjectNotFoundError):
         typed.domain.dispatch(typed.GetOrderById(order_id="nonexistent"))
+
+
+def test_dispatch_of_a_query_with_no_handler_raises_incorrect_usage():
+    example = load_example("guides/consume-state/query-handlers/002.py")
+
+    @example.domain.query(part_of=example.OrderSummary)
+    class GetOrdersByStatus:
+        status = String()
+
+    example.domain.init(traverse=False)
+
+    with (
+        example.domain.domain_context(),
+        pytest.raises(IncorrectUsageError, match="No Query Handler registered"),
+    ):
+        example.domain.dispatch(GetOrdersByStatus(status="shipped"))
+
+
+def test_dispatch_of_an_unregistered_query_raises_incorrect_usage(typed):
+    other = Domain(name="Other")
+
+    @other.query(part_of="Report")
+    class GetReport:
+        report_id = Identifier()
+
+    with pytest.raises(IncorrectUsageError, match="is not registered"):
+        typed.domain.dispatch(GetReport(report_id="r-1"))
 
 
 def test_dispatch_rejects_a_value_that_is_not_a_query(typed):

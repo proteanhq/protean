@@ -54,6 +54,19 @@ class OrderSummaryQueryHandler:
 domain.init(traverse=False)
 
 with domain.domain_context():
+    # Records a projector has already written
+    repo = domain.repository_for(OrderSummary)
+    for order_id, status in (("order-1", "shipped"), ("order-2", "pending")):
+        repo.add(
+            OrderSummary(
+                order_id=order_id,
+                customer_id="cust-123",
+                customer_name="Ann",
+                status=status,
+                total_amount=42.0,
+            )
+        )
+
     # From an API endpoint or application layer
     result = domain.dispatch(
         GetOrdersByCustomer(customer_id="cust-123", status="shipped")

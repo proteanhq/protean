@@ -79,7 +79,7 @@ URI = "redis://localhost:6379/0"
 # my_app/catalogue/domain.toml
 [databases.default]
 provider = "elasticsearch"
-database_uri = "http://localhost:9200"
+database_uri = { hosts = ["http://localhost:9200"] }
 
 [brokers.default]
 provider = "redis"
@@ -190,7 +190,9 @@ you can also use event handlers with `stream_category`:
 When domains run as independent services with separate brokers (or when you
 consume events from external systems you don't control) use subscribers.
 Subscribers receive raw `dict` payloads and translate them into your domain's
-language, acting as an anti-corruption layer:
+language, acting as an anti-corruption layer. Here the subscriber turns a
+customer payload into a `CreateRecipient` command, and a command handler
+stores the recipient:
 
 ```python
 --8<-- "guides/multi-domain-applications/001.py:subscriber"

@@ -8,7 +8,7 @@ from tests.docs.support import load_example
 pytestmark = pytest.mark.no_test_domain
 
 
-def test_init_with_traversal_connects_the_default_provider():
+def test_init_connects_the_default_provider():
     example = load_example("guides/compose-a-domain/initialize-domain/001.py")
 
     assert "default" in example.domain.providers
