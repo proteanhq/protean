@@ -270,6 +270,19 @@ class TestTestRunner:
             "🔄 Phase 2: Running 2 remaining test suites in parallel..." in captured.out
         )
 
+    def test_matrix_first_reports_a_suite_that_crashes(self, mock_runner, capsys):
+        suites = [TestSuite("Database: MEMORY", ["echo", "db1"])]
+        mock_runner.run_single_suite = Mock(side_effect=RuntimeError("worker died"))
+
+        result = mock_runner.run_full_suite_with_matrix_first(suites)
+
+        assert result != 0
+        captured = capsys.readouterr()
+        assert (
+            "💥 Test suite 'Database: MEMORY' generated an exception: worker died"
+            in captured.out
+        )
+
 
 class TestTestSuite:
     """Test the TestSuite dataclass."""
@@ -1431,6 +1444,20 @@ class TestTestAdapterCommand:
 
         captured = capsys.readouterr()
         assert "Error" in captured.out
+
+    def test_provider_setup_failure_exits(self, capsys):
+        with (
+            patch(
+                "protean.domain.Domain._initialize",
+                side_effect=RuntimeError("cannot connect"),
+            ),
+            pytest.raises(typer.Exit) as exc_info,
+        ):
+            cli_test_adapter(provider="memory")
+        assert exc_info.value.exit_code == 1
+
+        captured = capsys.readouterr()
+        assert "Error initializing provider 'memory': cannot connect" in captured.out
 
     def test_invalid_capability_exits(self, capsys):
         """Unknown capability name exits with code 1."""

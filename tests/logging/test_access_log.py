@@ -10,6 +10,7 @@ Verifies that:
 """
 
 import logging
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -25,7 +26,7 @@ from protean.core.query import BaseQuery
 from protean.core.query_handler import BaseQueryHandler
 from protean.domain.context import has_domain_context
 from protean.fields import Identifier, String
-from protean.utils.globals import current_domain
+from protean.utils.globals import current_domain, g
 from protean.utils.mixins import handle, read
 
 # --- Domain elements for testing ---
@@ -364,6 +365,13 @@ class TestAccessLogHelperFallbacks:
         from protean.utils.logging import _get_correlation_context
 
         with test_domain.domain_context():
+            assert _get_correlation_context() == ("", "")
+
+    def test_get_correlation_context_for_a_message_without_metadata(self, test_domain):
+        from protean.utils.logging import _get_correlation_context
+
+        with test_domain.domain_context():
+            g.message_in_context = SimpleNamespace(metadata=None)
             assert _get_correlation_context() == ("", "")
 
     @pytest.mark.no_test_domain

@@ -250,10 +250,11 @@ class TestTransientRetryDefaults:
         assert cfg["max_retries"] == 0
         assert "Invalid [server.transient_retry] config" in caplog.text
 
+    @pytest.mark.parametrize("section", ["on", False, 0, ""])
     def test_falls_back_to_defaults_when_section_is_not_a_table(
-        self, test_domain, caplog
+        self, test_domain, caplog, section
     ):
-        test_domain.config["server"]["transient_retry"] = "on"
+        test_domain.config["server"]["transient_retry"] = section
         with caplog.at_level(logging.WARNING, logger="protean.utils.mixins"):
             cfg = _get_transient_retry_config(None)
         assert cfg["max_retries"] == 0

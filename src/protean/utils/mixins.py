@@ -230,17 +230,16 @@ def _get_transient_retry_config(instance: Any = None) -> dict[str, Any]:
     try:
         if current_domain:
             raw = current_domain.config.get("server", {}).get("transient_retry", {})
-            if raw:
-                cfg["enabled"] = _coerce_bool(raw.get("enabled", cfg["enabled"]))
-                cfg["max_retries"] = int(raw.get("max_retries", cfg["max_retries"]))
-                cfg["backoff"] = raw.get("backoff", cfg["backoff"])
-                cfg["base_delay_seconds"] = float(
-                    raw.get("base_delay_seconds", cfg["base_delay_seconds"])
-                )
-                cfg["max_delay_seconds"] = float(
-                    raw.get("max_delay_seconds", cfg["max_delay_seconds"])
-                )
-                exception_spec = raw.get("exceptions")
+            cfg["enabled"] = _coerce_bool(raw.get("enabled", cfg["enabled"]))
+            cfg["max_retries"] = int(raw.get("max_retries", cfg["max_retries"]))
+            cfg["backoff"] = raw.get("backoff", cfg["backoff"])
+            cfg["base_delay_seconds"] = float(
+                raw.get("base_delay_seconds", cfg["base_delay_seconds"])
+            )
+            cfg["max_delay_seconds"] = float(
+                raw.get("max_delay_seconds", cfg["max_delay_seconds"])
+            )
+            exception_spec = raw.get("exceptions")
     except (AttributeError, TypeError, ValueError, OverflowError) as exc:
         # The section is not a table, or one of its values is not a number.
         # TOML allows ``inf``, and ``int(inf)`` raises OverflowError.

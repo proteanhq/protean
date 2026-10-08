@@ -1,3 +1,6 @@
+import logging
+from unittest.mock import patch
+
 import pytest
 
 from protean import Q
@@ -24,6 +27,17 @@ class TestDAODeleteFunctionality:
 
         with pytest.raises(ObjectNotFoundError):
             test_domain.repository_for(Person)._dao.get(3)
+
+    def test_delete_all_logs_and_reraises_a_store_error(self, test_domain, caplog):
+        dao = test_domain.repository_for(Person)._dao
+        with (
+            patch.object(dao, "_delete_all", side_effect=RuntimeError("store down")),
+            caplog.at_level(logging.ERROR, logger="protean.port.dao"),
+            pytest.raises(RuntimeError, match="store down"),
+        ):
+            dao.delete_all()
+
+        assert "Failed deletion of all records because of store down" in caplog.text
 
     def test_delete_all_records_in_repository(self, test_domain):
         """Delete all objects in a repository"""

@@ -173,6 +173,16 @@ class TestWorkerThroughput:
         assert len(workers) == 1
         assert workers[0]["throughput"]["total"] == 1
 
+    def test_a_trace_from_an_unknown_worker_is_not_counted(self):
+        entries = [
+            _entry(_completed(worker_id="Handler-host-1-abc")),
+            _entry(_completed(worker_id="Handler-other-2-xyz")),
+        ]
+
+        response = _client(self._redis(entries)).get("/api/workers")
+
+        assert response.json()["workers"][0]["throughput"]["total"] == 1
+
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
         monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
         entries = [_entry(_completed(worker_id="Handler-host-1-abc"))]
@@ -205,6 +215,36 @@ class TestTraceListing:
         traces = response.json()["traces"]
         assert [t["handler"] for t in traces] == ["OrderHandler"]
 
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "domain=sales",
+            "stream=sales::order",
+            "event=handler.failed",
+            "message_id=m2",
+        ],
+    )
+    def test_filters_drop_traces_that_do_not_match(self, query):
+        redis_conn = MagicMock()
+        redis_conn.xrevrange.return_value = [
+            _entry(
+                _completed(domain="billing", stream="billing::invoice", message_id="m1")
+            ),
+            _entry(_failed(domain="sales", stream="sales::order", message_id="m2")),
+        ]
+
+        response = _client(redis_conn).get(f"/api/traces?{query}")
+
+        assert [t["event"] for t in response.json()["traces"]] == ["handler.failed"]
+
+    def test_stops_at_the_requested_count(self):
+        redis_conn = MagicMock()
+        redis_conn.xrevrange.return_value = [_entry(_completed()), _entry(_failed())]
+
+        response = _client(redis_conn).get("/api/traces?count=1")
+
+        assert response.json()["count"] == 1
+
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
         monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
         redis_conn = MagicMock()
@@ -233,6 +273,17 @@ class TestTraceOverview:
         assert body["counts"] == {"handler.completed": 2}
         assert body["avg_latency_ms"] == 10.0
 
+    def test_counts_errors_in_the_totals_and_the_timeline(self):
+        redis_conn = MagicMock()
+        redis_conn.xrange.return_value = [_entry(_completed()), _entry(_failed())]
+
+        response = _client(redis_conn).get("/api/traces/overview?window=15m")
+
+        body = response.json()
+        assert body["error_count"] == 1
+        assert sum(b["errors"] for b in body["buckets"]) == 1
+        assert sum(b["success"] for b in body["buckets"]) == 1
+
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
         monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
         redis_conn = MagicMock()
@@ -258,6 +309,22 @@ class TestFailedTraces:
         body = response.json()
         assert body["total_count"] == 1
         assert body["traces"][0]["event"] == "handler.failed"
+
+    @pytest.mark.parametrize(
+        "query", ["handler=PaymentHandler", "message_type=PaymentFailed"]
+    )
+    def test_filters_drop_traces_that_do_not_match(self, query):
+        redis_conn = MagicMock()
+        redis_conn.xrange.return_value = [
+            _entry(_failed()),
+            _entry(_failed(handler="PaymentHandler", message_type="PaymentFailed")),
+        ]
+
+        response = _client(redis_conn).get(f"/api/traces/failed?{query}")
+
+        body = response.json()
+        assert body["total_count"] == 1
+        assert body["traces"][0]["handler"] == "PaymentHandler"
 
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
         monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
