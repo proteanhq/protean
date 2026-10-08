@@ -174,6 +174,11 @@ class TestExplain:
         result = tools.explain("AGGREGATE_TOO_LARGE")
         assert "split-aggregate" in result["teaching_skills"]
 
+    def test_aggregate_too_large_meaning_describes_entities(self):
+        result = tools.explain("AGGREGATE_TOO_LARGE")
+        assert "entities" in result["meaning"]
+        assert "field" not in result["meaning"].lower()
+
     def test_mutating_the_returned_list_does_not_poison_the_shared_cache(self):
         # pack.diagnostic_code_skills() is lru_cache-d, so explain() must copy
         # the list before returning it. Otherwise a caller mutating the result

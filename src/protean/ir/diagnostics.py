@@ -265,7 +265,7 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
     DiagnosticCode.AGGREGATE_TOO_LARGE: CodeMeta(
         category="aggregate_design",
         level="info",
-        meaning="An aggregate has more fields than the configured size limit.",
+        meaning="An aggregate's cluster has more entities than the configured size limit.",
         rationale=(
             "A large aggregate is a consistency boundary and contention "
             "hotspot; oversized clusters are hard to keep transactionally "
