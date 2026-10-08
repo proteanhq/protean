@@ -142,8 +142,9 @@ does not match the Pydantic model. That body is `{"detail": [...]}` and has no
 `error` key. See [Request Validation](./request-validation.md).
 
 A 404 needs two things in the handler path. The handler must load the
-aggregate with `repository.get(id)`, which raises `ObjectNotFoundError`
-(`filter` and `first` return nothing instead). And the endpoint must pass
+aggregate with `repository.get(id)` or `repository.find_by(...)`, which
+raise `ObjectNotFoundError` when nothing matches. A query through
+`repository.query` returns an empty result instead. And the endpoint must pass
 `asynchronous=False`, so the handler runs inside the request.
 
 ## Related

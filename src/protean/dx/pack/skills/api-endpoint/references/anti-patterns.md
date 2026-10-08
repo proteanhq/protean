@@ -165,8 +165,7 @@ def place_order(body: PlaceOrderRequest):
 ```
 
 **Correct:** Always use `current_domain.process(command)`. Calling the handler
-directly skips command enrichment, event store persistence and the unit of
-work.
+directly skips command enrichment and event store persistence.
 
 ## 6. Importing the Domain Instead of Using `current_domain`
 
