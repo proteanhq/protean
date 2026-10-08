@@ -242,6 +242,21 @@ class TestNestedVOFlattenedInit:
             "Extra inputs are not permitted"
         ]
 
+    def test_omitted_nullable_member_gets_its_default(self, test_domain):
+        class Venue(BaseValueObject):
+            street: str = ""
+            city: str | None = "Unknown"
+
+        class Event(BaseAggregate):
+            venue = ValueObject(Venue)
+
+        test_domain.register(Venue)
+        test_domain.register(Event)
+        test_domain.init(traverse=False)
+
+        assert Event(venue_street="1 Main St").venue.city == "Unknown"
+        assert Event(venue_street="1 Main St", venue_city=None).venue.city is None
+
 
 # ---------------------------------------------------------------------------
 # Tests: Assignment and access
