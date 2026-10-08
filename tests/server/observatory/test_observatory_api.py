@@ -7,6 +7,7 @@ Unit tests for error paths use mock domains and need no infrastructure.
 import asyncio
 import contextlib
 import json
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -318,7 +319,7 @@ class TestGracefulShutdownMiddleware:
         # Should not raise
         asyncio.run(middleware({"type": "http"}, None, None))
 
-    def test_cancelled_error_with_broken_send(self):
+    def test_cancelled_error_with_broken_send(self, caplog):
         """CancelledError handling tolerates send() failures."""
 
         async def inner_app(scope, receive, send):
@@ -331,7 +332,13 @@ class TestGracefulShutdownMiddleware:
 
         middleware = _GracefulShutdownMiddleware(inner_app)
         # Should not raise despite broken send
-        asyncio.run(middleware({"type": "http"}, None, broken_send))
+        with caplog.at_level(logging.DEBUG, logger="protean.server.observatory"):
+            asyncio.run(middleware({"type": "http"}, None, broken_send))
+
+        assert (
+            "Could not end the response on shutdown: "
+            "ConnectionResetError('client gone')"
+        ) in caplog.messages
 
 
 class TestObservatoryRun:

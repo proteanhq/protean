@@ -16,7 +16,6 @@ Usage::
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 from collections import defaultdict
@@ -375,8 +374,10 @@ def _collect_partitioned_stream_status(
 
     for key in sorted(keys):
         partition = f"{stream_category}:{key}"
-        with contextlib.suppress(Exception):
+        try:
             total_len += redis_conn.xlen(partition)
+        except Exception as exc:  # noqa: BLE001 - status probe: count length 0
+            logger.debug("Could not read length of %s: %r", partition, exc)
         try:
             groups = redis_conn.xinfo_groups(partition)
         except Exception:
@@ -410,10 +411,13 @@ def _collect_partitioned_stream_status(
                 # identical unpartitioned one reports a number.
                 last_delivered_id = broker._get_field_value(group, "last-delivered-id")
                 if last_delivered_id is not None:
-                    with contextlib.suppress(Exception):
+                    try:
                         remaining = redis_conn.xrange(
                             partition, min=f"({last_delivered_id}"
                         )
+                    except Exception as exc:  # noqa: BLE001 - status probe: lag stays unknown
+                        logger.debug("Could not count lag of %s: %r", partition, exc)
+                    else:
                         any_lag_known = True
                         total_lag += len(remaining)
             break
@@ -423,17 +427,23 @@ def _collect_partitioned_stream_status(
         # reading five partitions is five consumers by `XINFO GROUPS` and one
         # worker in reality. Summing reports the partition count dressed up as a
         # consumer count. The names are what identify a worker across streams.
-        with contextlib.suppress(Exception):
-            for consumer in redis_conn.xinfo_consumers(partition, consumer_group):
-                if not isinstance(consumer, dict):
-                    continue
-                consumer_name = broker._get_field_value(consumer, "name")
-                if consumer_name is not None:
-                    consumer_names.add(consumer_name)
+        try:
+            consumers = redis_conn.xinfo_consumers(partition, consumer_group)
+        except Exception as exc:  # noqa: BLE001 - status probe: count no consumers
+            logger.debug("Could not read consumers of %s: %r", partition, exc)
+            consumers = []
+        for consumer in consumers:
+            if not isinstance(consumer, dict):
+                continue
+            consumer_name = broker._get_field_value(consumer, "name")
+            if consumer_name is not None:
+                consumer_names.add(consumer_name)
 
     dlq_depth = 0
-    with contextlib.suppress(Exception):
+    try:
         dlq_depth = redis_conn.xlen(f"{stream_category}:dlq")
+    except Exception as exc:  # noqa: BLE001 - status probe: show DLQ depth 0
+        logger.debug("Could not read DLQ depth of %s: %r", stream_category, exc)
 
     lag = total_lag if any_lag_known else None
     return SubscriptionStatus(
@@ -544,8 +554,10 @@ def _collect_stream_status(
 
             # DLQ depth
             dlq_depth = 0
-            with contextlib.suppress(Exception):
+            try:
                 dlq_depth = redis_conn.xlen(f"{stream_category}:dlq")
+            except Exception as exc:  # noqa: BLE001 - status probe: show DLQ depth 0
+                logger.debug("Could not read DLQ depth of %s: %r", stream_category, exc)
 
             status = _classify_status(lag, pending)
 

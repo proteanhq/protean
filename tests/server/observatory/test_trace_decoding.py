@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 import protean.server.observatory.api as api_module
 import protean.server.observatory.routes.handlers as handlers_module
 import protean.server.observatory.routes.processes as processes_module
+import protean.server.observatory.routes.timeline as timeline_module
 import protean.server.observatory.sse as sse_module
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.timeline import _load_traces_for_correlation
@@ -59,8 +60,10 @@ def _failed(handler: str = "OrderHandler", **extra) -> dict:
     }
 
 
-def _raise_value_error(*args, **kwargs):
-    raise ValueError("bug after decoding")
+def _raise_type_error(*args, **kwargs):
+    # A catch for malformed entries that wraps more than the decoding would
+    # swallow a TypeError, so this is the error that tells the two apart.
+    raise TypeError("bug after decoding")
 
 
 def _domain_with_redis(redis_conn: MagicMock) -> MagicMock:
@@ -92,6 +95,13 @@ class TestDecodeTracePayload:
     def test_returns_none_for_a_payload_without_a_json_object(self, raw):
         assert decode_trace_payload(raw) is None
 
+    def test_returns_none_for_an_integer_past_the_digit_limit(self):
+        assert decode_trace_payload('{"duration_ms": ' + "1" * 5000 + "}") is None
+
+    def test_returns_none_for_nesting_too_deep_to_decode(self):
+        depth = 1_000_000
+        assert decode_trace_payload("[" * depth + "]" * depth) is None
+
 
 class TestDecodeTrace:
     def test_reads_the_bytes_data_key(self):
@@ -111,11 +121,26 @@ class TestDecodeTrace:
 
 
 class TestTraceNumber:
-    @pytest.mark.parametrize("value, expected", [(3, 3.0), (2.5, 2.5), (0, 0.0)])
+    @pytest.mark.parametrize(
+        "value, expected", [(3, 3.0), (2.5, 2.5), (0, 0.0), ("12.5", 12.5)]
+    )
     def test_returns_a_float_for_a_number(self, value, expected):
         assert trace_number(value) == expected
 
-    @pytest.mark.parametrize("value", [None, True, "12.5", [1], {"a": 1}])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            None,
+            True,
+            "n/a",
+            [1],
+            {"a": 1},
+            float("inf"),
+            float("nan"),
+            "inf",
+            10**400,
+        ],
+    )
     def test_returns_none_for_anything_else(self, value):
         assert trace_number(value) is None
 
@@ -149,10 +174,10 @@ class TestWorkerThroughput:
         assert workers[0]["throughput"]["total"] == 1
 
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
-        monkeypatch.setattr(api_module, "_decode_stream_id", _raise_value_error)
+        monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
         entries = [_entry(_completed(worker_id="Handler-host-1-abc"))]
 
-        with pytest.raises(ValueError, match="bug after decoding"):
+        with pytest.raises(TypeError, match="bug after decoding"):
             _client(self._redis(entries)).get("/api/workers")
 
     def test_a_trace_read_failure_shows_zero_throughput(self):
@@ -181,19 +206,16 @@ class TestTraceListing:
         assert [t["handler"] for t in traces] == ["OrderHandler"]
 
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
-        monkeypatch.setattr(api_module, "_decode_stream_id", _raise_value_error)
+        monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
         redis_conn = MagicMock()
         redis_conn.xrevrange.return_value = [_entry(_completed())]
 
-        with pytest.raises(ValueError, match="bug after decoding"):
+        with pytest.raises(TypeError, match="bug after decoding"):
             _client(redis_conn).get("/api/traces")
 
 
 @pytest.mark.no_test_domain
 class TestTraceOverview:
-    # Each test uses its own window, because the endpoint caches its result
-    # per window for a few seconds.
-
     def test_malformed_entries_are_skipped(self):
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [
@@ -212,11 +234,11 @@ class TestTraceOverview:
         assert body["avg_latency_ms"] == 10.0
 
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
-        monkeypatch.setattr(api_module, "_decode_stream_id", _raise_value_error)
+        monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [_entry(_completed())]
 
-        with pytest.raises(ValueError, match="bug after decoding"):
+        with pytest.raises(TypeError, match="bug after decoding"):
             _client(redis_conn).get("/api/traces/overview?window=1h")
 
 
@@ -238,11 +260,11 @@ class TestFailedTraces:
         assert body["traces"][0]["event"] == "handler.failed"
 
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
-        monkeypatch.setattr(api_module, "_decode_stream_id", _raise_value_error)
+        monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [_entry(_failed())]
 
-        with pytest.raises(ValueError, match="bug after decoding"):
+        with pytest.raises(TypeError, match="bug after decoding"):
             _client(redis_conn).get("/api/traces/failed")
 
 
@@ -289,11 +311,11 @@ class TestHandlerTraceMetrics:
         assert metrics["OrderHandler"]["avg_latency_ms"] == 10.0
 
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
-        monkeypatch.setattr(handlers_module, "_decode_stream_id", _raise_value_error)
+        monkeypatch.setattr(handlers_module, "_decode_stream_id", _raise_type_error)
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [_entry(_completed())]
 
-        with pytest.raises(ValueError, match="bug after decoding"):
+        with pytest.raises(TypeError, match="bug after decoding"):
             handlers_module.collect_per_handler_trace_metrics(redis_conn, 300_000)
 
 
@@ -311,11 +333,11 @@ class TestRecentHandlerMessages:
         assert [m["handler"] for m in messages] == ["OrderHandler"]
 
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
-        monkeypatch.setattr(handlers_module, "_decode_stream_id", _raise_value_error)
+        monkeypatch.setattr(handlers_module, "_decode_stream_id", _raise_type_error)
         redis_conn = MagicMock()
         redis_conn.xrevrange.return_value = [_entry(_completed())]
 
-        with pytest.raises(ValueError, match="bug after decoding"):
+        with pytest.raises(TypeError, match="bug after decoding"):
             handlers_module.collect_recent_messages(redis_conn, "OrderHandler")
 
 
@@ -340,11 +362,11 @@ class TestProcessManagerTraceMetrics:
         assert metrics["OrderPM"]["avg_latency_ms"] == 10.0
 
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
-        monkeypatch.setattr(processes_module, "trace_number", _raise_value_error)
+        monkeypatch.setattr(processes_module, "trace_number", _raise_type_error)
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [_entry(_completed(handler="OrderPM"))]
 
-        with pytest.raises(ValueError, match="bug after decoding"):
+        with pytest.raises(TypeError, match="bug after decoding"):
             processes_module.collect_pm_trace_metrics(redis_conn, {"OrderPM"}, 300_000)
 
 
@@ -362,6 +384,24 @@ class TestCorrelationTraces:
         )
 
         assert traces == {"m-1": {"handler": "OrderHandler", "duration_ms": 10.0}}
+
+    def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
+        class BrokenTrace(dict):
+            def get(self, key, default=None):
+                if key == "message_id":
+                    raise TypeError("bug after decoding")
+                return super().get(key, default)
+
+        monkeypatch.setattr(
+            timeline_module,
+            "decode_trace",
+            lambda fields: BrokenTrace(_completed(correlation_id="corr-1")),
+        )
+        redis_conn = MagicMock()
+        redis_conn.xrange.return_value = [_entry(_completed(correlation_id="corr-1"))]
+
+        with pytest.raises(TypeError, match="bug after decoding"):
+            _load_traces_for_correlation([_domain_with_redis(redis_conn)], "corr-1")
 
 
 @pytest.mark.no_test_domain
@@ -418,9 +458,9 @@ class TestSseTraceFeed:
         assert [t["event"] for t in sent] == ["handler.completed"]
 
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
-        monkeypatch.setattr(sse_module, "_format_sse", _raise_value_error)
+        monkeypatch.setattr(sse_module, "_format_sse", _raise_type_error)
 
-        with pytest.raises(ValueError, match="bug after decoding"):
+        with pytest.raises(TypeError, match="bug after decoding"):
             self._sent_traces(
                 monkeypatch,
                 [{"type": "message", "data": json.dumps(_completed()).encode()}],

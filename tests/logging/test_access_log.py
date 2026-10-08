@@ -23,6 +23,7 @@ from protean.core.projection import BaseProjection
 from protean.core.projector import BaseProjector, on
 from protean.core.query import BaseQuery
 from protean.core.query_handler import BaseQueryHandler
+from protean.domain.context import has_domain_context
 from protean.fields import Identifier, String
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle, read
@@ -350,9 +351,11 @@ class TestAccessLogEmissionFailureSafety:
 class TestAccessLogHelperFallbacks:
     """Helper functions return safe defaults when no domain context exists."""
 
+    @pytest.mark.no_test_domain
     def test_get_correlation_context_without_domain(self):
         from protean.utils.logging import _get_correlation_context
 
+        assert not has_domain_context()
         corr, caus = _get_correlation_context()
         assert corr == ""
         assert caus == ""
@@ -363,6 +366,7 @@ class TestAccessLogHelperFallbacks:
         with test_domain.domain_context():
             assert _get_correlation_context() == ("", "")
 
+    @pytest.mark.no_test_domain
     def test_read_access_log_counters_without_domain(self):
         from protean.utils.logging import _read_access_log_counters
 
@@ -371,6 +375,7 @@ class TestAccessLogHelperFallbacks:
         assert ops == {"loads": 0, "saves": 0}
         assert outcome == "no_uow"
 
+    @pytest.mark.no_test_domain
     def test_get_slow_handler_threshold_without_domain(self):
         from protean.utils.logging import _get_slow_handler_threshold
 

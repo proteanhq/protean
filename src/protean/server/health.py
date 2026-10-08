@@ -617,7 +617,7 @@ class HealthServer:
             # of rotation. A 503 says "not ready", which is at least true and
             # is what the caller can act on.
             logger.warning("Health server connection error", exc_info=True)
-            with contextlib.suppress(Exception):
+            try:
                 # `degraded`, not `unavailable`: the latter is reserved for
                 # the shutdown case and carries `shutting_down: true`, so
                 # reusing it here would read as "this pod is draining".
@@ -625,6 +625,8 @@ class HealthServer:
                     _json_response(503, {"status": STATUS_DEGRADED, "checks": {}})
                 )
                 await writer.drain()
+            except Exception as exc:  # noqa: BLE001 - the error above is logged; the client may be gone
+                logger.debug("Could not send the 503 health reply: %r", exc)
         finally:
             with contextlib.suppress(OSError):
                 writer.close()

@@ -1,5 +1,6 @@
 """Tests for OpenTelemetry integration in utils/telemetry.py."""
 
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -483,6 +484,18 @@ class TestDescribeExceptionNeverRaises:
                 raise RuntimeError("str exploded")
 
         assert describe_exception(Unprintable()) == "Unprintable: <unprintable>"
+
+    def test_the_error_from_a_broken_str_is_logged(self, caplog):
+        class Unprintable(Exception):
+            def __str__(self):
+                raise RuntimeError("str exploded")
+
+        with caplog.at_level(logging.DEBUG, logger="protean.utils.telemetry"):
+            describe_exception(Unprintable())
+
+        assert [r.getMessage() for r in caplog.records] == [
+            "Could not render a Unprintable: RuntimeError('str exploded')"
+        ]
 
     def test_a_self_referencing_group_does_not_recurse_forever(self):
         class Recursive(ExceptionGroup):

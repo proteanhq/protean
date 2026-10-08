@@ -236,6 +236,20 @@ class TestTransientRetryDefaults:
         assert "Invalid [server.transient_retry] config" in caplog.text
         assert "many" in caplog.text
 
+    @pytest.mark.parametrize(
+        "setting",
+        [{"max_retries": float("inf")}, {"base_delay_seconds": None}],
+        ids=["infinite-retries", "missing-delay"],
+    )
+    def test_falls_back_to_defaults_on_a_value_that_does_not_convert(
+        self, test_domain, caplog, setting
+    ):
+        test_domain.config["server"]["transient_retry"] = {"enabled": True, **setting}
+        with caplog.at_level(logging.WARNING, logger="protean.utils.mixins"):
+            cfg = _get_transient_retry_config(None)
+        assert cfg["max_retries"] == 0
+        assert "Invalid [server.transient_retry] config" in caplog.text
+
     def test_falls_back_to_defaults_when_section_is_not_a_table(
         self, test_domain, caplog
     ):

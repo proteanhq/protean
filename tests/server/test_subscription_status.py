@@ -1535,7 +1535,7 @@ class TestStreamStatusEdgeCases:
         # The pending count is still reported; it just is not passed off as lag.
         assert result.pending == 4
 
-    def test_dlq_xlen_exception_sets_dlq_to_zero(self):
+    def test_dlq_xlen_exception_sets_dlq_to_zero(self, caplog):
         """When DLQ xlen fails, dlq_depth stays 0."""
         mock_domain, mock_broker, mock_redis = self._make_mock_domain_with_redis()
         handler_cls = self._make_handler()
@@ -1558,9 +1558,18 @@ class TestStreamStatusEdgeCases:
 
         mock_broker._get_field_value.side_effect = self._field_getter
 
-        result = _collect_stream_status(mock_domain, "sub", handler_cls, "my-stream")
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.server.subscription_status"
+        ):
+            result = _collect_stream_status(
+                mock_domain, "sub", handler_cls, "my-stream"
+            )
 
         assert result.dlq_depth == 0
+        assert (
+            "Could not read DLQ depth of my-stream: Exception('dlq gone')"
+            in caplog.messages
+        )
 
     def test_top_level_exception_returns_unknown(self):
         """When the outer try/except catches, returns unknown."""

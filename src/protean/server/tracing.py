@@ -11,6 +11,7 @@ checks subscriber count and short-circuits before any serialization.
 
 import json
 import logging
+import math
 import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
@@ -66,7 +67,9 @@ def decode_trace_payload(raw: object) -> dict[str, Any] | None:
     """Decode one JSON trace payload, as bytes or str.
 
     Returns ``None`` when the payload is empty, is not UTF-8, is not JSON, or
-    is JSON but not an object. A reader skips such an entry.
+    is JSON but not an object. A reader skips such an entry. An integer longer
+    than Python's digit limit raises ``ValueError`` and very deep nesting raises
+    ``RecursionError`` inside ``json.loads``; both count as "not JSON".
     """
     if isinstance(raw, bytes):
         try:
@@ -77,19 +80,25 @@ def decode_trace_payload(raw: object) -> dict[str, Any] | None:
         return None
     try:
         trace = json.loads(raw)
-    except json.JSONDecodeError:
+    except (ValueError, RecursionError):
         return None
     return trace if isinstance(trace, dict) else None
 
 
 def trace_number(value: object) -> float | None:
-    """Return a numeric trace value as a float, or ``None`` if it is not a number.
+    """Return a numeric trace value as a finite float, or ``None``.
 
-    A bool is not a number here, though Python treats it as an int.
+    A number or a numeric string such as ``"12.5"`` counts. A bool does not,
+    though Python treats it as an int. Infinity and NaN return ``None``,
+    because a JSON response cannot carry them.
     """
-    if isinstance(value, bool) or not isinstance(value, int | float):
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
         return None
-    return float(value)
+    try:
+        number = float(value)
+    except (ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
 
 
 def decode_trace(fields: Mapping[Any, Any]) -> dict[str, Any] | None:

@@ -432,7 +432,8 @@ def describe_exception(exc: BaseException, _depth: int = 0) -> str:
             described = f"{exc.message}: " + "; ".join(parts)
         else:
             described = f"{type(exc).__name__}: {exc}"
-    except Exception:  # noqa: BLE001 - a __str__ is user code; the result says it failed
+    except Exception as render_error:  # noqa: BLE001 - a __str__ is user code; the result says it failed
+        logger.debug("Could not render a %s: %r", type(exc).__name__, render_error)
         return f"{type(exc).__name__}: <unprintable>"
 
     if len(described) > _DESCRIBE_MAX_LENGTH:

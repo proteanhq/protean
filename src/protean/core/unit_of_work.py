@@ -1,4 +1,3 @@
-import contextlib
 import logging
 from collections import defaultdict
 from types import TracebackType
@@ -498,7 +497,7 @@ class UnitOfWork:
             metrics.uow_events_per_commit.record(total_events)
 
             # Record UoW outcome for the access log wide event
-            with contextlib.suppress(Exception):
+            if has_domain_context():
                 g._access_log_uow_outcome = "committed"
 
             logger.debug("uow.commit_successful")
@@ -616,7 +615,9 @@ class UnitOfWork:
             return
 
         # Record UoW outcome for the access log wide event
-        with contextlib.suppress(Exception):
+        from protean.domain.context import has_domain_context  # noqa: PLC0415
+
+        if has_domain_context():
             g._access_log_uow_outcome = "rolled_back"
 
         # Exit from Unit of Work. Guarded on identity so a double-pop (when the

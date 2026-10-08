@@ -1748,3 +1748,23 @@ class TestHandleConnectionErrors:
         # a client must not read a handler bug as "this pod is draining".
         assert b'"degraded"' in written
         assert b'"unavailable"' not in written
+
+    def test_a_503_that_cannot_be_sent_is_logged(self, health_server, caplog):
+        _, hs, loop, _ = health_server
+        writer = self._make_mock_writer(
+            drain=AsyncMock(side_effect=ConnectionResetError("client gone"))
+        )
+
+        async def _test():
+            mock_reader = MagicMock()
+            mock_reader.read = AsyncMock(side_effect=ValueError("unexpected"))
+            await hs._handle_connection(mock_reader, writer)
+
+        with caplog.at_level(logging.DEBUG, logger="protean.server.health"):
+            loop.run_until_complete(_test())
+
+        assert (
+            "Could not send the 503 health reply: ConnectionResetError('client gone')"
+            in caplog.messages
+        )
+        writer.close.assert_called_once()

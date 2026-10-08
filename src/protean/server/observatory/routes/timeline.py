@@ -31,7 +31,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from protean.port.event_store import CausationNode
-from protean.server.tracing import TRACE_STREAM, decode_trace
+from protean.server.tracing import TRACE_STREAM, decode_trace, trace_number
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -577,16 +577,9 @@ def _load_traces_for_correlation(
 
         mid = trace.get("message_id")
         if mid and isinstance(mid, str):
-            raw_duration = trace.get("duration_ms")
-            duration_ms: float | None = None
-            if raw_duration is not None:
-                try:
-                    duration_ms = float(raw_duration)
-                except (ValueError, TypeError):
-                    duration_ms = None
             traces[mid] = {
                 "handler": trace.get("handler"),
-                "duration_ms": duration_ms,
+                "duration_ms": trace_number(trace.get("duration_ms")),
             }
 
     return traces
