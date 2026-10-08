@@ -96,7 +96,8 @@ When `withdraw()` is called, the flow is:
 2. The attribute assignment `self.balance -= amount` executes.
 3. **Post-invariants** fire, `balance_must_not_be_negative` checks the resulting state. If the balance
    went negative, `ValidationError` is raised and the assignment is rolled back: `balance` keeps
-   its previous value and the account is not marked as changed.
+   its previous value and the account's changed flag goes back to what it was before the
+   assignment.
 
 The rollback undoes only the assignment that failed. If a method changes two
 fields and the second change breaks a post-invariant, the first change stays.

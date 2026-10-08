@@ -523,12 +523,14 @@ class BaseAggregate(BaseEntity):
                 setattr(
                     aggregate,
                     f"add_{field_name}",
-                    partial(field_obj.add, aggregate),
+                    partial(aggregate._change_association, field_name, field_obj.add),
                 )
                 setattr(
                     aggregate,
                     f"remove_{field_name}",
-                    partial(field_obj.remove, aggregate),
+                    partial(
+                        aggregate._change_association, field_name, field_obj.remove
+                    ),
                 )
                 setattr(
                     aggregate,
