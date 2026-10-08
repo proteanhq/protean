@@ -99,6 +99,10 @@ def block_problems(text: str) -> list[str]:
     return problems
 
 
+def test_pages_are_sorted_and_unique():
+    assert list(PAGES) == sorted(set(PAGES))
+
+
 @pytest.mark.parametrize("page", PAGES)
 def test_page_blocks_are_fragments_or_section_includes(page: str):
     text = (DOCS / page).read_text(encoding="utf-8")
