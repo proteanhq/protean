@@ -146,21 +146,7 @@ to aggregates within that UoW are persisted atomically.
 The intended usage: one aggregate per UoW.
 
 ```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler(BaseCommandHandler):
-
-    @handle(PlaceOrder)
-    def place_order(self, command: PlaceOrder):
-        # The @handle decorator wraps this method in a UoW
-        repo = current_domain.repository_for(Order)
-        order = Order(
-            order_id=command.order_id,
-            customer_id=command.customer_id,
-            items=command.items,
-        )
-        order.place()  # Mutates and raises OrderPlaced event
-        repo.add(order)
-        # UoW commits: Order is persisted, OrderPlaced event is published
+--8<-- "patterns/one-aggregate-per-transaction/001.py:command_handler"
 ```
 
 The UoW commits the Order and publishes its events in a single atomic
@@ -169,57 +155,39 @@ operation. The events are then processed in their own separate UoW contexts.
 ### Domain Events
 
 Events are the mechanism for cross-aggregate communication. When an aggregate
-raises an event, Protean stores it and delivers it to registered handlers:
+raises an event, Protean stores it and delivers it to registered handlers.
+`Order.place()` above raises this event:
 
 ```python
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    items: List(required=True)
-    total: Float(required=True)
-
-
-@domain.aggregate
-class Order:
-    # ... fields ...
-
-    def place(self):
-        self.status = "placed"
-        self.raise_(OrderPlaced(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            items=[item.to_dict() for item in self.items],
-            total=self.total,
-        ))
+--8<-- "patterns/one-aggregate-per-transaction/001.py:event"
 ```
 
-The event carries all the data the downstream handler needs. The handler runs
-in its own transaction:
+The event carries all the data the downstream handler needs. The handler
+stays with `Order`, the aggregate that owns the event, and does not write
+`Inventory` itself. It issues one `ReserveStock` command for each product, and
+`Inventory`'s command handler does the write:
 
 ```python
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        # This runs in its own UoW -- separate transaction
-        repo = current_domain.repository_for(Inventory)
-        for item in event.items:
-            inventory = repo.get(item["product_id"])
-            inventory.reserve(item["quantity"])
-            repo.add(inventory)
+--8<-- "patterns/one-aggregate-per-transaction/001.py:event_handler"
 ```
 
 ### Event Handlers Run Independently
 
-Each event handler invocation runs in its own UoW context. If the inventory
-reservation fails, the Order is already placed. The failure is isolated. The
+Each event handler invocation runs in its own UoW context. With async command
+processing, each `ReserveStock` command also runs later in its own
+transaction. With sync command processing, as in tests, the command runs
+inside the event handler's UoW and commits with it. Either way, the Order's
+transaction has already committed. If the inventory reservation fails, the
+Order is already placed. The failure is isolated. The
 event handler can retry, and if it ultimately fails, the system can raise a
 compensating event or alert for manual intervention.
 
 This is the natural architecture: aggregates are modified one at a time, events
 carry information between them, and failures are contained.
+
+Events are delivered at least once, so the same `OrderPlaced` can arrive
+twice. The command carries the order id, and the inventory command handler
+returns without changes when it has already applied that order.
 
 ---
 
@@ -233,6 +201,7 @@ two accounts.
 **Anti-pattern: both accounts in one transaction**
 
 ```python
+# fragment
 # Anti-pattern: modifying two aggregates
 @handle(TransferMoney)
 def transfer(self, command: TransferMoney):
@@ -251,63 +220,7 @@ def transfer(self, command: TransferMoney):
 **Pattern: debit first, event triggers credit**
 
 ```python
-@domain.event(part_of=Account)
-class MoneyDebited(BaseEvent):
-    account_id: Identifier(required=True)
-    amount: Float(required=True)
-    transfer_id: Identifier(required=True)
-    target_account_id: Identifier(required=True)
-
-
-@domain.aggregate
-class Account:
-    account_id: Auto(identifier=True)
-    balance: Float(default=0.0)
-    overdraft_limit: Float(default=0.0)
-
-    def debit(self, amount, transfer_id, target_account_id):
-        if self.balance - amount < -self.overdraft_limit:
-            raise ValidationError(
-                {"balance": ["Insufficient funds for transfer"]}
-            )
-        self.balance -= amount
-        self.raise_(MoneyDebited(
-            account_id=self.account_id,
-            amount=amount,
-            transfer_id=transfer_id,
-            target_account_id=target_account_id,
-        ))
-
-    def credit(self, amount):
-        self.balance += amount
-
-
-@domain.command_handler(part_of=Account)
-class AccountCommandHandler(BaseCommandHandler):
-
-    @handle(TransferMoney)
-    def transfer(self, command: TransferMoney):
-        repo = current_domain.repository_for(Account)
-        source = repo.get(command.from_account_id)
-        source.debit(
-            command.amount,
-            transfer_id=command.transfer_id,
-            target_account_id=command.to_account_id,
-        )
-        repo.add(source)
-        # Only the source account is modified here.
-        # The MoneyDebited event will trigger the credit.
-
-
-@domain.event_handler(part_of=Account)
-class AccountEventHandler(BaseEventHandler):
-
-    @handle(MoneyDebited)
-    def on_money_debited(self, event: MoneyDebited):
-        repo = current_domain.repository_for(Account)
-        target = repo.get(event.target_account_id)
-        target.credit(event.amount)
-        repo.add(target)
+--8<-- "patterns/one-aggregate-per-transaction/002.py:transfer"
 ```
 
 **What about failure?** If the credit fails (target account doesn't exist,
@@ -321,62 +234,12 @@ transaction, making failures predictable and recoverable.
 A more realistic example with multiple downstream aggregates:
 
 ```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler(BaseCommandHandler):
-
-    @handle(PlaceOrder)
-    def place_order(self, command: PlaceOrder):
-        repo = current_domain.repository_for(Order)
-        order = Order(
-            order_id=command.order_id,
-            customer_id=command.customer_id,
-            items=command.items,
-        )
-        order.place()
-        repo.add(order)
-        # OrderPlaced event is raised by order.place()
-
-
-# Each downstream concern handles the event independently
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def reserve_inventory(self, event: OrderPlaced):
-        repo = current_domain.repository_for(Inventory)
-        for item in event.items:
-            inventory = repo.get(item["product_id"])
-            inventory.reserve(item["quantity"])
-            repo.add(inventory)
-
-
-@domain.event_handler(part_of=CustomerLoyalty)
-class LoyaltyEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def award_points(self, event: OrderPlaced):
-        repo = current_domain.repository_for(CustomerLoyalty)
-        loyalty = repo.get(event.customer_id)
-        loyalty.add_points(int(event.total))
-        repo.add(loyalty)
-
-
-@domain.event_handler(part_of=Notification)
-class NotificationEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def send_confirmation(self, event: OrderPlaced):
-        repo = current_domain.repository_for(Notification)
-        notification = Notification(
-            recipient_id=event.customer_id,
-            template="order_confirmation",
-            data={"order_id": event.order_id, "total": event.total},
-        )
-        repo.add(notification)
+--8<-- "patterns/one-aggregate-per-transaction/003.py:pipeline"
 ```
 
 One command, one aggregate mutation, one transaction. Three downstream
-handlers, each modifying their own aggregate in their own transaction. If
+handlers, each issuing a command that modifies its own aggregate in its own
+transaction. If
 the notification fails, the order is still placed and inventory is still
 reserved. Each concern is independent.
 
@@ -391,55 +254,7 @@ A domain service can validate a business rule that requires data from multiple
 aggregates, and then the command handler modifies only one:
 
 ```python
-@domain.domain_service(part_of=[Account, CreditPolicy])
-class TransferEligibilityService:
-    """Validates whether a transfer is allowed based on account state
-    and credit policies. Does NOT modify any aggregates."""
-
-    @classmethod
-    def validate_transfer(cls, source_account, credit_policy, amount):
-        if source_account.is_frozen:
-            raise ValidationError(
-                {"account": ["Source account is frozen"]}
-            )
-
-        if amount > credit_policy.max_transfer_amount:
-            raise ValidationError(
-                {"amount": [
-                    f"Transfer exceeds maximum of "
-                    f"{credit_policy.max_transfer_amount}"
-                ]}
-            )
-
-        if source_account.balance - amount < -source_account.overdraft_limit:
-            raise ValidationError(
-                {"balance": ["Insufficient funds"]}
-            )
-
-
-@domain.command_handler(part_of=Account)
-class AccountCommandHandler(BaseCommandHandler):
-
-    @handle(TransferMoney)
-    def transfer(self, command: TransferMoney):
-        repo = current_domain.repository_for(Account)
-        source = repo.get(command.from_account_id)
-
-        policy_repo = current_domain.repository_for(CreditPolicy)
-        policy = policy_repo.get(source.credit_policy_id)
-
-        # Domain service validates using both aggregates
-        TransferEligibilityService.validate_transfer(
-            source, policy, command.amount,
-        )
-
-        # But only the source account is modified
-        source.debit(
-            command.amount,
-            transfer_id=command.transfer_id,
-            target_account_id=command.to_account_id,
-        )
-        repo.add(source)
+--8<-- "patterns/one-aggregate-per-transaction/004.py:domain_service"
 ```
 
 The domain service reads from `Account` and `CreditPolicy` but modifies
@@ -472,19 +287,13 @@ must be atomically consistent, you have a modeling tension. Options:
 
 Some operations naturally batch changes to many instances of the same aggregate
 type (e.g., closing all orders past a deadline). These are still
-one-aggregate-per-transaction if each instance is processed in its own UoW. The
-command handler iterates, but each iteration is a separate transaction:
+one-aggregate-per-transaction if each instance is processed in its own UoW.
+A command handler cannot do this, because everything inside one `@handle`
+method shares the handler's UoW. An application service method can open a
+`UnitOfWork` for each order:
 
 ```python
-@handle(CloseExpiredOrders)
-def close_expired(self, command: CloseExpiredOrders):
-    repo = current_domain.repository_for(Order)
-    expired_orders = repo.query(Order.status == "pending", Order.deadline < now())
-
-    for order in expired_orders:
-        # Each order is processed in its own conceptual transaction
-        order.close("Expired past deadline")
-        repo.add(order)
+--8<-- "patterns/one-aggregate-per-transaction/005.py:bulk"
 ```
 
 ---

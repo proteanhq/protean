@@ -6,6 +6,7 @@ A developer adds a `status` field to an `Order` aggregate and scatters
 transition logic across multiple command handlers:
 
 ```python
+# fragment
 from __future__ import annotations
 
 from protean.fields import Auto, Float, Identifier, String
@@ -105,7 +106,7 @@ Transitions:
   pay()       placed   → paid         (guard: must be placed)
   ship()      paid     → shipped      (guard: must be paid)
   deliver()   shipped  → delivered    (guard: must be shipped)
-  cancel()    draft/placed → cancelled (guard: must not be shipped/delivered)
+  cancel()    draft/placed → cancelled (guard: must be draft or placed)
   refund()    paid     → refunded     (guard: must be paid)
 ```
 
@@ -125,19 +126,7 @@ Use `String(choices=...)` to restrict the status field to a known set of
 values. Protean rejects any value not in the list at the field level.
 
 ```python
-from __future__ import annotations
-
-from enum import Enum
-
-
-class OrderStatus(Enum):
-    DRAFT = "draft"
-    PLACED = "placed"
-    PAID = "paid"
-    SHIPPED = "shipped"
-    DELIVERED = "delivered"
-    CANCELLED = "cancelled"
-    REFUNDED = "refunded"
+--8<-- "patterns/aggregate-state-machines/001.py:states"
 ```
 
 Using an enum makes the valid states discoverable, importable, and usable
@@ -149,157 +138,7 @@ Each lifecycle transition is a named method. The method validates the
 current state, performs the transition, and raises a domain event.
 
 ```python
-from __future__ import annotations
-
-from datetime import datetime, timezone
-
-from protean import domain
-from protean.fields import Auto, DateTime, Float, Identifier, String
-
-
-@domain.event(part_of="Order")
-class OrderPlaced:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
-    total = Float()
-
-
-@domain.event(part_of="Order")
-class OrderShipped:
-    order_id = Auto(identifier=True)
-    tracking_number = String()
-
-
-@domain.event(part_of="Order")
-class OrderCancelled:
-    order_id = Auto(identifier=True)
-    reason = String()
-
-
-@domain.event(part_of="Order")
-class OrderRefunded:
-    order_id = Auto(identifier=True)
-    refund_amount = Float()
-
-
-@domain.aggregate
-class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
-    status = String(
-        choices=OrderStatus,
-        default=OrderStatus.DRAFT.value,
-    )
-    total = Float(default=0.0)
-    tracking_number = String()
-    shipped_at = DateTime()
-    delivered_at = DateTime()
-    cancelled_at = DateTime()
-    cancellation_reason = String()
-    refunded_at = DateTime()
-
-    # --- Transition: draft → placed ---
-
-    def place(self) -> None:
-        """Place this order, moving it from draft to placed."""
-        if self.status != OrderStatus.DRAFT.value:
-            raise ValidationError(
-                {"status": [f"Cannot place an order in '{self.status}' status"]}
-            )
-
-        self.status = OrderStatus.PLACED.value
-
-        self.raise_(OrderPlaced(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            total=self.total,
-        ))
-
-    # --- Transition: placed → paid ---
-
-    def pay(self) -> None:
-        """Record payment, moving the order from placed to paid."""
-        if self.status != OrderStatus.PLACED.value:
-            raise ValidationError(
-                {"status": [f"Cannot pay an order in '{self.status}' status"]}
-            )
-
-        self.status = OrderStatus.PAID.value
-
-        self.raise_(OrderPaid(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            total=self.total,
-        ))
-
-    # --- Transition: paid → shipped ---
-
-    def ship(self, tracking_number: str) -> None:
-        """Ship this order with the given tracking number."""
-        if self.status != OrderStatus.PAID.value:
-            raise ValidationError(
-                {"status": [f"Cannot ship an order in '{self.status}' status"]}
-            )
-
-        self.status = OrderStatus.SHIPPED.value
-        self.tracking_number = tracking_number
-        self.shipped_at = datetime.now(timezone.utc)
-
-        self.raise_(OrderShipped(
-            order_id=self.order_id,
-            tracking_number=tracking_number,
-        ))
-
-    # --- Transition: shipped → delivered ---
-
-    def deliver(self) -> None:
-        """Mark this order as delivered."""
-        if self.status != OrderStatus.SHIPPED.value:
-            raise ValidationError(
-                {"status": [f"Cannot deliver an order in '{self.status}' status"]}
-            )
-
-        self.status = OrderStatus.DELIVERED.value
-        self.delivered_at = datetime.now(timezone.utc)
-
-    # --- Transition: draft|placed → cancelled ---
-
-    def cancel(self, reason: str) -> None:
-        """Cancel this order. Only draft or placed orders can be cancelled."""
-        allowed = {OrderStatus.DRAFT.value, OrderStatus.PLACED.value}
-        if self.status not in allowed:
-            raise ValidationError(
-                {"status": [
-                    f"Cannot cancel an order in '{self.status}' status; "
-                    f"only draft or placed orders can be cancelled"
-                ]}
-            )
-
-        self.status = OrderStatus.CANCELLED.value
-        self.cancelled_at = datetime.now(timezone.utc)
-        self.cancellation_reason = reason
-
-        self.raise_(OrderCancelled(
-            order_id=self.order_id,
-            reason=reason,
-        ))
-
-    # --- Transition: paid → refunded ---
-
-    def refund(self) -> None:
-        """Refund this order. Only paid orders can be refunded."""
-        if self.status != OrderStatus.PAID.value:
-            raise ValidationError(
-                {"status": [f"Cannot refund an order in '{self.status}' status"]}
-            )
-
-        self.status = OrderStatus.REFUNDED.value
-        self.refunded_at = datetime.now(timezone.utc)
-
-        self.raise_(OrderRefunded(
-            order_id=self.order_id,
-            refund_amount=self.total,
-        ))
+--8<-- "patterns/aggregate-state-machines/001.py:aggregate"
 ```
 
 !!! note "Guard placement"
@@ -314,29 +153,7 @@ class Order:
 With the state machine inside the aggregate, handlers become orchestrators:
 
 ```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-
-    @handle(PlaceOrder)
-    def place_order(self, command: PlaceOrder):
-        repo = current_domain.repository_for(Order)
-        order = repo.get(command.order_id)
-        order.place()
-        repo.add(order)
-
-    @handle(ShipOrder)
-    def ship_order(self, command: ShipOrder):
-        repo = current_domain.repository_for(Order)
-        order = repo.get(command.order_id)
-        order.ship(command.tracking_number)
-        repo.add(order)
-
-    @handle(CancelOrder)
-    def cancel_order(self, command: CancelOrder):
-        repo = current_domain.repository_for(Order)
-        order = repo.get(command.order_id)
-        order.cancel(command.reason)
-        repo.add(order)
+--8<-- "patterns/aggregate-state-machines/001.py:handlers"
 ```
 
 Every handler follows the same three-line pattern: load, call, save. The
@@ -348,61 +165,7 @@ Because the lifecycle rules live in the aggregate, tests are simple and
 infrastructure-free:
 
 ```python
-import pytest
-
-from protean.exceptions import ValidationError
-
-
-class TestOrderStateMachine:
-
-    def test_place_draft_order(self, test_domain):
-        order = Order(customer_id="cust-1", total=99.99)
-
-        order.place()
-
-        assert order.status == OrderStatus.PLACED.value
-        assert len(order._events) == 1
-        assert isinstance(order._events[0], OrderPlaced)
-
-    def test_cannot_place_already_placed_order(self, test_domain):
-        order = Order(customer_id="cust-1", status=OrderStatus.PLACED.value)
-
-        with pytest.raises(ValidationError) as exc:
-            order.place()
-
-        assert "Cannot place an order in 'placed' status" in str(exc.value)
-
-    def test_full_happy_path(self, test_domain):
-        order = Order(customer_id="cust-1", total=49.99)
-
-        order.place()
-        assert order.status == OrderStatus.PLACED.value
-
-        order.pay()
-        assert order.status == OrderStatus.PAID.value
-
-        order.ship(tracking_number="TRK-001")
-        assert order.status == OrderStatus.SHIPPED.value
-
-        order.deliver()
-        assert order.status == OrderStatus.DELIVERED.value
-
-    def test_cannot_ship_cancelled_order(self, test_domain):
-        order = Order(customer_id="cust-1", status=OrderStatus.PLACED.value)
-        order.cancel(reason="Customer changed mind")
-
-        with pytest.raises(ValidationError) as exc:
-            order.ship(tracking_number="TRK-001")
-
-        assert "Cannot ship an order in 'cancelled' status" in str(exc.value)
-
-    def test_cancel_not_allowed_after_shipping(self, test_domain):
-        order = Order(customer_id="cust-1", status=OrderStatus.SHIPPED.value)
-
-        with pytest.raises(ValidationError) as exc:
-            order.cancel(reason="Too late")
-
-        assert "only draft or placed orders can be cancelled" in str(exc.value)
+--8<-- "patterns/aggregate-state-machines/001.py:tests"
 ```
 
 Each test verifies a specific transition rule. The state machine's behavior
@@ -416,28 +179,7 @@ For complex lifecycles, a transition map makes the state machine scannable
 at a glance:
 
 ```python
-@domain.aggregate
-class Order:
-    """
-    State machine:
-
-        draft ──place()──→ placed ──pay()──→ paid ──ship()──→ shipped ──deliver()──→ delivered
-          │                   │                │
-          └──cancel()──→ cancelled        refund()──→ refunded
-                              │
-                              └──cancel()──→ cancelled
-    """
-
-    # Transition map: source_state → {method_name: target_state}
-    TRANSITIONS = {
-        "draft":     {"place": "placed", "cancel": "cancelled"},
-        "placed":    {"pay": "paid", "cancel": "cancelled"},
-        "paid":      {"ship": "shipped", "refund": "refunded"},
-        "shipped":   {"deliver": "delivered"},
-        "delivered": {},
-        "cancelled": {},
-        "refunded":  {},
-    }
+--8<-- "patterns/aggregate-state-machines/002.py:transition_map"
 ```
 
 !!! tip "Use the `Status` field for automatic enforcement"
@@ -461,63 +203,13 @@ For aggregates where you want a belt-and-suspenders approach, add
 invariants that run on every mutation to catch anything that slips through:
 
 ```python
-from protean.utils import invariant
-
-
-@domain.aggregate
-class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
-    status = String(choices=OrderStatus, default=OrderStatus.DRAFT.value)
-    tracking_number = String()
-    shipped_at = DateTime()
-
-    TERMINAL_STATES = {
-        OrderStatus.DELIVERED.value,
-        OrderStatus.CANCELLED.value,
-        OrderStatus.REFUNDED.value,
-    }
-
-    @invariant.pre
-    def cannot_modify_terminal_order(self):
-        """Safety net: no mutations allowed on orders in terminal states."""
-        if self.status in self.TERMINAL_STATES:
-            raise ValidationError(
-                {"status": [
-                    f"Order in '{self.status}' status cannot be modified"
-                ]}
-            )
-
-    @invariant.post
-    def shipped_order_must_have_tracking(self):
-        """A shipped order must always have a tracking number."""
-        if (
-            self.status == OrderStatus.SHIPPED.value
-            and not self.tracking_number
-        ):
-            raise ValidationError(
-                {"tracking_number": [
-                    "Shipped orders must have a tracking number"
-                ]}
-            )
-
-    @invariant.post
-    def shipped_order_must_have_timestamp(self):
-        """A shipped order must always have a shipped_at timestamp."""
-        if (
-            self.status == OrderStatus.SHIPPED.value
-            and not self.shipped_at
-        ):
-            raise ValidationError(
-                {"shipped_at": [
-                    "Shipped orders must have a shipped_at timestamp"
-                ]}
-            )
+--8<-- "patterns/aggregate-state-machines/003.py:invariants"
 ```
 
-The pre-invariant prevents invalid transitions on terminal states. The
-post-invariants ensure that every state has the data it requires. Together
-they make impossible states truly impossible.
+The pre-invariant blocks any change to an order in a terminal state. The
+post-invariants check that a shipped order has a tracking number and a
+`shipped_at` time. Add a post-invariant like these for each state that needs
+its own data.
 
 !!! note "Pre vs post invariants for state machines"
     `@invariant.pre` runs **before** state changes and is ideal for
@@ -533,6 +225,7 @@ they make impossible states truly impossible.
 ### Bare string assignments without guards
 
 ```python
+# fragment
 # Anti-pattern: no guard, any transition is allowed
 def ship(self, tracking_number: str) -> None:
     self.status = "shipped"  # Works even if status is "cancelled"
@@ -544,6 +237,7 @@ Without a guard, the method silently permits impossible transitions.
 **Fix:** Add a guard at the top of every transition method:
 
 ```python
+# fragment
 def ship(self, tracking_number: str) -> None:
     if self.status != OrderStatus.PAID.value:
         raise ValidationError(
@@ -556,6 +250,7 @@ def ship(self, tracking_number: str) -> None:
 ### Open-ended status field
 
 ```python
+# fragment
 # Anti-pattern: status accepts any string
 @domain.aggregate
 class Order:
@@ -567,17 +262,13 @@ case), or `"pending_review"` (invented state). Use an enum:
 
 ```python
 # Correct: constrained to known states
-@domain.aggregate
-class Order:
-    status = String(
-        choices=OrderStatus,
-        default=OrderStatus.DRAFT.value,
-    )
+--8<-- "patterns/aggregate-state-machines/001.py:status_field"
 ```
 
 ### Generic `update_status` method
 
 ```python
+# fragment
 # Anti-pattern: one method for all transitions
 def update_status(self, new_status: str) -> None:
     self.status = new_status
@@ -593,6 +284,7 @@ different events. They deserve separate methods.
 ### Transition logic in handlers
 
 ```python
+# fragment
 # Anti-pattern: handler knows the state machine
 @handle(ShipOrder)
 def ship_order(self, command: ShipOrder):
@@ -622,6 +314,7 @@ into the aggregate.
 ### Status checks scattered across consumers
 
 ```python
+# fragment
 # Anti-pattern: consumers guard against impossible states
 @handle(OrderShipped)
 def on_order_shipped(self, event: OrderShipped):

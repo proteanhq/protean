@@ -12,6 +12,7 @@ Most teams treat this error as infrastructure noise, a generic "something went
 wrong, try again" situation:
 
 ```python
+# fragment
 from protean.exceptions import ExpectedVersionError
 
 
@@ -33,6 +34,7 @@ When two users edit the same order concurrently, one of them gets an
 HTTP 409:
 
 ```python
+# fragment
 # In the API layer
 try:
     order_service.update_order(order_id, data)
@@ -78,9 +80,9 @@ profile descriptions.
 
 ### 2. Conflict means a real problem
 
-The conflict signals that the operation is no longer valid. Catch the error
-and raise a domain-specific exception that tells the user exactly what
-happened.
+The conflict signals that the operation is no longer valid. Reload the
+aggregate and let its precondition raise a domain-specific exception that
+tells the user exactly what happened.
 
 **Examples:** seat reservations, inventory allocation, one-time coupon
 redemption, unique username registration.
@@ -111,57 +113,21 @@ the version conflict, reload the aggregate with the latest version, reapply
 the operation, and commit.
 
 ```python
-from protean.exceptions import ExpectedVersionError
-
-
-@domain.aggregate
-class UserPreferences(BaseAggregate):
-    user_id: Auto(identifier=True)
-    theme: String(default="light")
-    language: String(default="en")
-    notifications_enabled: Boolean(default=True)
-    sidebar_collapsed: Boolean(default=False)
-
-    def update_theme(self, theme: str) -> None:
-        self.theme = theme
-        self.raise_(ThemeUpdated(
-            user_id=self.user_id,
-            theme=theme,
-        ))
-
-    def toggle_notifications(self, enabled: bool) -> None:
-        self.notifications_enabled = enabled
-        self.raise_(NotificationsToggled(
-            user_id=self.user_id,
-            enabled=enabled,
-        ))
+--8<-- "patterns/optimistic-concurrency-as-design-tool/001.py:aggregate"
 ```
 
 The application service implements a retry loop. If a version conflict
 occurs, the operation is safe to retry because each change is independent
 and idempotent, setting the theme to "dark" produces the same result regardless
 of how many times it runs.
+Each attempt runs in its own `UnitOfWork`. A conflict with a concurrent
+write can surface when the unit of work commits, so the `except` clause sits
+outside the `with` block. Call the service outside any other unit of work.
+Inside one, each attempt joins the outer unit of work, and the conflict
+surfaces at the outer commit with no retry.
 
 ```python
-MAX_RETRIES = 3
-
-
-@domain.application_service(part_of=UserPreferences)
-class PreferencesService(BaseApplicationService):
-
-    @use_case
-    def update_theme(self, user_id: str, theme: str) -> UserPreferences:
-        for attempt in range(MAX_RETRIES):
-            try:
-                repo = current_domain.repository_for(UserPreferences)
-                prefs = repo.get(user_id)
-                prefs.update_theme(theme)
-                repo.add(prefs)
-                return prefs
-            except ExpectedVersionError:
-                if attempt == MAX_RETRIES - 1:
-                    raise
-                continue
+--8<-- "patterns/optimistic-concurrency-as-design-tool/001.py:service"
 ```
 
 !!! note "Why not retry everything?"
@@ -173,98 +139,42 @@ class PreferencesService(BaseApplicationService):
 
 ### Category 2: Conflict means a real problem (business exception)
 
-When a version conflict means the operation is no longer valid, catch the
-error and translate it into a domain-specific exception. The caller gets a
-clear, actionable message instead of a generic "try again."
+When a version conflict means the operation is no longer valid, the caller
+should get a domain-specific exception instead of a generic "try again."
+The aggregate's own precondition gives that answer. It raises
+`SeatAlreadyTaken` when the seat is no longer available.
 
 ```python
-@domain.aggregate
-class SeatReservation(BaseAggregate):
-    reservation_id: Auto(identifier=True)
-    event_id: Identifier(required=True)
-    seat_number: String(required=True)
-    status: String(default="available")
-    reserved_by: Identifier()
-    reserved_at: DateTime()
-
-    def reserve(self, customer_id: str) -> None:
-        """Reserve this seat for a customer."""
-        if self.status != "available":
-            raise ValidationError(
-                {"seat": [f"Seat {self.seat_number} is already taken"]}
-            )
-
-        self.status = "reserved"
-        self.reserved_by = customer_id
-        self.reserved_at = datetime.now(timezone.utc)
-
-        self.raise_(SeatReserved(
-            reservation_id=self.reservation_id,
-            event_id=self.event_id,
-            seat_number=self.seat_number,
-            customer_id=customer_id,
-        ))
+--8<-- "patterns/optimistic-concurrency-as-design-tool/002.py:aggregate"
 ```
 
-The command handler translates the version conflict into a business-level
-exception. If two customers try to reserve the same seat simultaneously, one
-succeeds and the other learns that the seat is taken, not that a vague
-"conflict" occurred.
+The command handler does not catch `ExpectedVersionError`. Depending on the
+adapter and the aggregate, the conflict surfaces inside `repo.add` or when
+the handler's unit of work commits, after the handler method has returned.
+An `except` clause in the handler either never runs or stops the retry that
+follows. Instead, the framework catches the conflict and runs the handler
+again in a fresh unit of work. The reload sees that the seat is reserved, and `reserve()`
+raises `SeatAlreadyTaken`. If two customers try to reserve the same seat
+simultaneously, one succeeds and the other learns that the seat is taken,
+not that a vague "conflict" occurred.
 
 ```python
-class SeatAlreadyTaken(Exception):
-    """Raised when a seat reservation fails because
-    another customer reserved the seat first."""
-
-    def __init__(self, seat_number: str):
-        self.seat_number = seat_number
-        super().__init__(
-            f"Seat {seat_number} was just reserved by another customer"
-        )
-
-
-@domain.command_handler(part_of=SeatReservation)
-class ReservationCommandHandler(BaseCommandHandler):
-
-    @handle(ReserveSeat)
-    def reserve_seat(self, command: ReserveSeat):
-        repo = current_domain.repository_for(SeatReservation)
-        reservation = repo.get(command.reservation_id)
-
-        try:
-            reservation.reserve(command.customer_id)
-            repo.add(reservation)
-        except ExpectedVersionError:
-            # Another customer reserved this seat between our
-            # load and commit. This is not a transient failure --
-            # it means the seat is genuinely taken.
-            raise SeatAlreadyTaken(reservation.seat_number)
+--8<-- "patterns/optimistic-concurrency-as-design-tool/002.py:handler"
 ```
 
 The API layer can now give the customer a meaningful response:
 
 ```python
-@app.post("/events/{event_id}/seats/{seat_number}/reserve")
-async def reserve_seat(event_id: str, seat_number: str, customer_id: str):
-    try:
-        domain.process(ReserveSeat(
-            reservation_id=f"{event_id}-{seat_number}",
-            customer_id=customer_id,
-        ))
-        return {"status": "reserved"}
-    except SeatAlreadyTaken as exc:
-        return {
-            "error": str(exc),
-            "suggestion": "Please choose a different seat.",
-        }, 409
+--8<-- "patterns/optimistic-concurrency-as-design-tool/002.py:api"
 ```
 
-!!! warning "Do not retry category 2 conflicts"
-    Retrying a seat reservation after an `ExpectedVersionError` will either
-    fail again (because the seat is now marked as reserved and the aggregate's
-    precondition check will reject it) or, worse, succeed and double-book the
-    seat if the precondition logic has a gap. The conflict *is* the answer:
-    someone else got there first.
+!!! warning "The precondition must be complete"
+    The framework's retry is safe here only because `reserve()` checks the
+    seat's status on the reloaded aggregate. If the precondition has a gap,
+    the retry succeeds and double-books the seat. The conflict *is* the
+    answer: someone else got there first, and the precondition is what
+    turns that into `SeatAlreadyTaken`. If you turn auto-retry off, the
+    caller gets the raw `ExpectedVersionError` and must translate it.
 
 ### Category 3: Merge if possible (conditional retry)
 
@@ -273,40 +183,7 @@ aggregate, check whether the specific change is still applicable, and
 either apply it or reject it with a clear explanation.
 
 ```python
-@domain.aggregate
-class SharedCart(BaseAggregate):
-    cart_id: Auto(identifier=True)
-    team_id: Identifier(required=True)
-    items = HasMany(CartItem)
-    max_items: Integer(default=50)
-
-    def add_item(self, product_id: str, quantity: int) -> None:
-        """Add an item to the shared cart."""
-        if len(self.items) >= self.max_items:
-            raise ValidationError(
-                {"items": [f"Cart cannot exceed {self.max_items} items"]}
-            )
-
-        # Check if item already exists and update quantity
-        for item in self.items:
-            if item.product_id == product_id:
-                item.quantity += quantity
-                self.raise_(CartItemUpdated(
-                    cart_id=self.cart_id,
-                    product_id=product_id,
-                    new_quantity=item.quantity,
-                ))
-                return
-
-        self.items.add(CartItem(
-            product_id=product_id,
-            quantity=quantity,
-        ))
-        self.raise_(CartItemAdded(
-            cart_id=self.cart_id,
-            product_id=product_id,
-            quantity=quantity,
-        ))
+--8<-- "patterns/optimistic-concurrency-as-design-tool/003.py:aggregate"
 ```
 
 The application service reloads and checks whether the add-item operation
@@ -315,33 +192,7 @@ items simultaneously should both succeed. Two members adding the same item
 need the quantities merged correctly.
 
 ```python
-@domain.application_service(part_of=SharedCart)
-class SharedCartService(BaseApplicationService):
-
-    @use_case
-    def add_item(
-        self, cart_id: str, product_id: str, quantity: int
-    ) -> SharedCart:
-        for attempt in range(MAX_RETRIES):
-            try:
-                repo = current_domain.repository_for(SharedCart)
-                cart = repo.get(cart_id)
-
-                # Check if the operation still makes sense
-                # on the latest version
-                if len(cart.items) >= cart.max_items:
-                    raise ValidationError(
-                        {"items": ["Cart is full. Remove items first."]}
-                    )
-
-                cart.add_item(product_id, quantity)
-                repo.add(cart)
-                return cart
-            except ExpectedVersionError:
-                if attempt == MAX_RETRIES - 1:
-                    raise
-                # Reload and re-evaluate on next iteration
-                continue
+--8<-- "patterns/optimistic-concurrency-as-design-tool/003.py:service"
 ```
 
 The difference from a simple retry loop (category 1) is the
@@ -393,15 +244,14 @@ is safe because either value is acceptable. In many cases, you do not need to
 write manual retry loops for category 1 scenarios because the framework handles
 it.
 
-However, auto-retry alone is **not sufficient** for categories 2 and 3:
+Auto-retry also serves categories 2 and 3, but only when the handler
+re-checks its preconditions against the reloaded aggregate:
 
-- **Category 2** (conflict means a real problem): The handler should
-  catch `ExpectedVersionError` *inside* the handler method and translate
-  it into a domain-specific exception (e.g., `SeatAlreadyTaken`). The
-  framework's auto-retry will re-execute the handler, but the handler
-  itself must recognize that the operation is no longer valid and raise
-  accordingly. If the handler does not catch the error, the framework
-  retries blindly, which is exactly what category 2 conflicts should avoid.
+- **Category 2** (conflict means a real problem): The retry reloads the
+  aggregate, and the aggregate's precondition raises a domain-specific
+  exception (e.g., `SeatAlreadyTaken`). The handler does not need to
+  catch anything. Without that precondition, the retry would apply the
+  change again, which is exactly what category 2 conflicts should avoid.
 
 - **Category 3** (merge if possible): The handler must reload the
   aggregate and re-evaluate preconditions. The framework's fresh
@@ -409,16 +259,15 @@ However, auto-retry alone is **not sufficient** for categories 2 and 3:
   code must implement the merge logic. Simple re-execution works only
   when the operation is idempotent.
 
-!!! note "When to catch `ExpectedVersionError` inside your handler"
-    If your handler deals with category 2 or 3 conflicts, catch
-    `ExpectedVersionError` inside the handler method and handle it
-    explicitly. When you catch it inside the handler, the framework's
-    auto-retry does not trigger (because no exception propagates out of
-    the handler).
-
-    If you do **not** catch it, the framework retries the entire handler
-    automatically. This is safe for category 1 conflicts but may produce
-    incorrect results for categories 2 and 3.
+!!! note "Why a handler should not catch `ExpectedVersionError` itself"
+    Depending on the adapter and the aggregate, a conflict surfaces inside
+    `repo.add` or when the handler's unit of work commits, after the
+    method returns. A `try`/`except` inside the handler either never sees
+    the conflict or catches it and stops the framework's retry. Put the
+    decision in the aggregate's preconditions, which run again on every
+    retry. Code that needs its own retry loop, like the application
+    services in categories 1 and 3, opens a `UnitOfWork` for each attempt
+    and catches the error outside the `with` block.
 
 For auto-retry configuration, see
 [Version conflict auto-retry](../guides/server/error-handling.md#version-conflict-auto-retry).
@@ -477,6 +326,7 @@ The most common anti-pattern: catching `ExpectedVersionError` at the API
 boundary and returning a generic message for all conflict types.
 
 ```python
+# fragment
 # Anti-pattern: one handler for all conflicts
 @app.exception_handler(ExpectedVersionError)
 async def handle_version_conflict(request, exc):
@@ -495,6 +345,7 @@ race condition and a fundamental problem.
 Wrapping every operation in a retry loop without considering the semantics.
 
 ```python
+# fragment
 # Anti-pattern: retry without considering the operation type
 def with_retry(func, max_retries=3):
     for attempt in range(max_retries):
@@ -514,23 +365,24 @@ on the reloaded aggregate.
 !!! note "How this differs from framework auto-retry"
     Protean's built-in auto-retry at the `@handle` level **also** retries
     blindly, which is correct for category 1 conflicts (the vast majority). For
-    categories 2 and 3, your handler must catch `ExpectedVersionError` inside
-    the handler method and apply the appropriate strategy. When you catch it
-    inside the handler, the framework's retry does not trigger.
+    categories 2 and 3, the retry is safe only because each attempt reloads
+    the aggregate and runs its preconditions again. Keep those checks in the
+    aggregate, as `reserve()` does in category 2.
 
 ### Ignoring version conflicts entirely
 
 Suppressing the error and returning success.
 
 ```python
+# fragment
 # Anti-pattern: swallowing the error
-@handle(UpdateInventory)
-def update_inventory(self, command):
+def adjust_inventory(product_id, delta):
     try:
-        repo = current_domain.repository_for(Inventory)
-        inv = repo.get(command.product_id)
-        inv.adjust_quantity(command.delta)
-        repo.add(inv)
+        with UnitOfWork():
+            repo = current_domain.repository_for(Inventory)
+            inv = repo.get(product_id)
+            inv.adjust_quantity(delta)
+            repo.add(inv)
     except ExpectedVersionError:
         pass  # "It'll sort itself out"
 ```
@@ -548,6 +400,7 @@ shipping address and adding a line item will conflict even though they have
 nothing to do with each other.
 
 ```python
+# fragment
 # Anti-pattern: large aggregate creates false conflicts
 @domain.aggregate
 class Order(BaseAggregate):
