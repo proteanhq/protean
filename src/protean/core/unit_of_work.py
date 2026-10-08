@@ -500,30 +500,14 @@ class UnitOfWork:
             # An adapter may detect an optimistic-concurrency conflict directly
             # at commit time and raise ExpectedVersionError itself. The
             # in-memory provider does this in its compare-and-set commit, and
-            # the in-memory event store on a wrong expected version. That
-            # is a concurrency conflict, not a generic transaction failure, so
+            # the memory and Message DB event stores on a wrong expected
+            # version. That is a concurrency conflict, not a generic transaction failure, so
             # propagate it unchanged for the version-retry machinery (mirrors
             # the StaleDataError translation below). Without this, the generic
             # handler would wrap it in TransactionError.
             logger.exception("uow.commit_failed")
             set_span_error(span, exc)
             raise
-        except ValueError as exc:
-            logger.exception("uow.commit_failed")
-            set_span_error(span, exc)
-
-            # Message DB rejects a wrong expected version with a P0001 error,
-            # which its client re-raises as a ValueError carrying that prefix.
-            # That is the only ValueError that is a version conflict: any other
-            # one is a failed commit, and retrying it would rerun the handler.
-            # The match stops at the code because PostgreSQL translates the
-            # severity word after it ("P0001-FEHLER" on a German server), and
-            # write_message raises P0001 for nothing but this conflict.
-            text = str(exc)
-            if text.startswith("P0001-"):
-                msg = text.partition(":")[2].strip() or text
-                raise ExpectedVersionError(msg) from None
-            raise self._transaction_error(exc, all_events) from exc
         except ConfigurationError as exc:
             # Configuration errors can be raised if events are misconfigured
             #   We just re-raise it for the client to handle.
@@ -533,7 +517,7 @@ class UnitOfWork:
             # A SQLAlchemy version_id_col mismatch surfaces at flush/commit as
             # StaleDataError. That is an optimistic-concurrency conflict, not a
             # generic transaction failure, so translate it to ExpectedVersionError
-            # (matching the event-store P0001 path above) for the retry machinery.
+            # (matching what the event stores raise) for the retry machinery.
             if type(exc).__name__ == "StaleDataError":
                 logger.exception("uow.commit_failed")
                 set_span_error(span, exc)

@@ -13,7 +13,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
-from protean.exceptions import ExpectedVersionError, TransactionError
+from protean.exceptions import TransactionError
 from protean.fields import Identifier, String
 
 
@@ -36,15 +36,11 @@ class TestUoWCommitFailedLogs:
             uow = UnitOfWork()
             uow.start()
 
-            # Add a session that will raise ValueError on commit
-            # (simulates a version conflict from the event store)
             mock_session = MagicMock()
-            mock_session.commit.side_effect = ValueError(
-                "P0001-ERROR:  expected version conflict"
-            )
+            mock_session.commit.side_effect = ValueError("bad value")
             uow._sessions["default"] = mock_session
 
-            with pytest.raises(ExpectedVersionError):
+            with pytest.raises(TransactionError):
                 uow.commit()
 
         commit_failed_records = [

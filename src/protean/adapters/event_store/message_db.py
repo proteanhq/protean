@@ -6,7 +6,7 @@ from urllib.parse import parse_qsl, urlparse
 import psycopg2
 from message_db.client import MessageDB
 
-from protean.exceptions import ConfigurationError
+from protean.exceptions import ConfigurationError, ExpectedVersionError
 from protean.port.event_store import BaseEventStore
 
 if TYPE_CHECKING:
@@ -85,9 +85,21 @@ class MessageDBStore(BaseEventStore):
         expected_version: int | None = None,
     ) -> int:
         """Write a message to the event store."""
-        position: int = self.client.write(
-            stream_name, message_type, data, metadata, expected_version
-        )
+        try:
+            position: int = self.client.write(
+                stream_name, message_type, data, metadata, expected_version
+            )
+        except ValueError as exc:
+            # The client re-raises every database error as a ValueError and
+            # keeps the psycopg2 error as its cause. write_message raises
+            # P0001 for nothing but a wrong expected version, so read the code
+            # off the cause instead of matching the localized message text.
+            if getattr(exc.__cause__, "pgcode", None) == "P0001":
+                text = str(exc)
+                raise ExpectedVersionError(
+                    text.partition(":")[2].strip() or text
+                ) from exc
+            raise
         return position
 
     # The message-db client's built-in ``$all`` query is a strict, unordered
