@@ -51,7 +51,7 @@ class OrderCommandHandler:
 3. **One handler per command** - A command can only be processed by ONE handler (Protean enforces this)
 4. **Use @handle decorator** - Each handler method is decorated with `@handle(CommandClass)`
 5. **Handler methods take self and command** - Signature: `def method_name(self, command: CommandClass)`
-6. **Implicit Unit of Work** - `@handle` wraps every handler call in its own Unit of Work, which is one real database transaction ([ADR-0027](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/)). Do not wrap the body yourself. See [Unit of Work](references/unit-of-work.md)
+6. **Implicit Unit of Work** - `@handle` wraps every handler call in its own Unit of Work, which is one real database transaction on a provider with transactions, such as the SQL databases ([ADR-0027](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/)). Do not wrap the body yourself. See [Unit of Work](references/unit-of-work.md)
 7. **Change one aggregate per transaction** - A handler should persist one aggregate root. This is a design rule: the Unit of Work can hold changes to several aggregates and does not stop you. To change another aggregate, raise an event; an event handler in the owning aggregate's cluster issues a command to the other aggregate
 8. **Import handle from protean** - `from protean import handle` (not from protean.core)
 9. **part_of on a handler takes the class or a string** - A handler usually passes the class, `part_of=AggregateClass`. A string, `part_of="AggregateName"`, also works on the handler and resolves at `init`, so the aggregate may be defined after the handler. Commands use the string form

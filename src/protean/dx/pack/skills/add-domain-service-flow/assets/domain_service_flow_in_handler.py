@@ -86,9 +86,10 @@ class Course:
 class Student:
     """Student aggregate with enrollment status.
 
-    `course_ids` lists the courses this student is enrolled in. Adding a course
-    that is already listed changes nothing, so a StudentEnrolled delivered
-    twice, or late after another enrollment, leaves the list as it is.
+    `course_ids` lists the courses this student is enrolled in. The
+    AssignCourse handler skips a course that is already listed, so a
+    StudentEnrolled delivered twice, or late after another enrollment, leaves
+    the list as it is.
     """
 
     student_id: Identifier(identifier=True)
