@@ -261,7 +261,6 @@ Without `choices`, the field accepts `"shiped"` (typo), `"DRAFT"` (wrong
 case), or `"pending_review"` (invented state). Use an enum:
 
 ```python
-# Correct: constrained to known states
 --8<-- "patterns/aggregate-state-machines/001.py:status_field"
 ```
 
