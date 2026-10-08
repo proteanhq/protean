@@ -74,7 +74,7 @@ from protean.utils.globals import g
 
 @domain.aggregate_enricher
 def stamp_audit_user(aggregate):
-    if not hasattr(aggregate, "updated_by"):  # e.g. an outbox row
+    if not hasattr(aggregate, "updated_by"):  # a framework record, such as an outbox row
         return
     user = g.get("current_user")
     aggregate.updated_by = user
@@ -85,9 +85,10 @@ def stamp_audit_user(aggregate):
 Setting `created_by` only when it is unset keeps it stable across later
 updates, while `updated_by` refreshes every time. The enricher runs each time a
 repository saves an aggregate to a database. Event-sourced aggregates are stored
-as events, so the enricher never runs for them. When the outbox is on, the
-enricher also runs for the outbox rows written when an aggregate raises an
-event. The `hasattr` check skips any aggregate without audit fields.
+as events, so the enricher never runs for them. The enricher also runs for the
+records Protean itself saves through repositories, such as outbox rows and the
+message records of the in-memory event store. The `hasattr` check skips any
+aggregate without audit fields.
 
 ### Supplying the acting user
 

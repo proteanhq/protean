@@ -12,10 +12,15 @@ Invariants in domain services serve two purposes:
 
 The complete implementation is in [assets/domain_service_with_invariants.py](../assets/domain_service_with_invariants.py).
 
-A condensed version, with two pre invariants, and the aggregates it works on:
+A condensed version, with two pre invariants, and the aggregates it works on. The service reads the inventory and changes only the order. The inventory reserves stock later, when an event handler reacts to `OrderConfirmed` and issues it a command:
 
 ```python
 from protean.exceptions import ValidationError
+
+@domain.event(part_of="Order")
+class OrderConfirmed:
+    order_id: Identifier(required=True)
+    items = List(content_type=Dict)
 
 @domain.aggregate
 class Order:
@@ -26,6 +31,15 @@ class Order:
 
     def confirm(self):
         self.status = "CONFIRMED"
+        self.raise_(
+            OrderConfirmed(
+                order_id=self.id,
+                items=[
+                    {"product_id": item.product_id, "quantity": item.quantity}
+                    for item in self.items
+                ],
+            )
+        )
 
 @domain.entity(part_of=Order)
 class OrderItem:
@@ -37,9 +51,6 @@ class OrderItem:
 class Inventory:
     product_id: Identifier(required=True)
     quantity: Integer(default=0)
-
-    def reserve_stock(self, quantity):
-        self.quantity -= quantity
 
 @domain.domain_service(part_of=[Order, Inventory])
 class OrderPlacementService:
@@ -65,11 +76,6 @@ class OrderPlacementService:
             )
 
     def __call__(self):
-        for item in self.order.items:
-            inventory = next(
-                i for i in self.inventories if i.product_id == item.product_id
-            )
-            inventory.reserve_stock(item.quantity)
         self.order.confirm()
 ```
 
@@ -98,17 +104,9 @@ Post invariants run **after** the service method completes. They validate the re
 ```python
 # fragment
 @invariant.post
-def total_reserved_value_should_match_order_value(self):
-    order_total = sum(item.quantity * item.price for item in self.order.items)
-    reserved_total = sum(
-        inventory._events[0].quantity * item.price
-        for item, inventory in zip(self.order.items, self.inventories)
-        if inventory._events
-    )
-    if order_total != reserved_total:
-        raise ValidationError(
-            {"_service": ["Total reserved value does not match order value"]}
-        )
+def order_should_be_confirmed(self):
+    if self.order.status != "CONFIRMED":
+        raise ValidationError({"_service": ["Order was not confirmed"]})
 ```
 
 ### Error collection
@@ -136,6 +134,9 @@ with domain.domain_context():
                 "Order must have a valid payment method",
             ]
         }
+    else:
+        raise AssertionError("expected both pre invariants to fail")
+    assert order.status == "PENDING"
 ```
 
 ## Invariant method wrapping
@@ -144,7 +145,7 @@ Protean automatically wraps public methods with invariant calls during domain re
 
 1. All methods marked with `@invariant.pre` are recorded
 2. All methods marked with `@invariant.post` are recorded
-3. Public methods (not starting with `_`, not dunder methods except `__call__`) are wrapped
+3. Public instance methods (not starting with `_`, not dunder methods except `__call__`) are wrapped. Protean does not run the service's invariants around a class method
 4. The wrapper runs pre invariants → original method → post invariants
 
 Registration does this, not `__init__`, so a service whose `__init__` does not call `super().__init__()` still runs its invariants.

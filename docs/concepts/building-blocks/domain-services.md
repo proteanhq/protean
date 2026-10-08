@@ -16,8 +16,9 @@ inventory. Where does this logic live?
 - **In the command handler?** Then business rules (like "sufficient stock must
   be available") leak into the application layer, bypassing the domain model.
 - **In a domain service?** The service receives both aggregates, validates
-  cross-aggregate invariants, and mutates both, keeping the business logic in
-  the domain layer where it belongs.
+  cross-aggregate invariants, and confirms the order. The business logic stays
+  in the domain layer where it belongs. The order's event then tells the
+  inventory to reserve stock, in a separate transaction.
 
 Domain services solve the specific problem of **cross-aggregate business logic
 that doesn't belong to any single aggregate**.

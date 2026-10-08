@@ -77,8 +77,8 @@ class AccountCommandHandler:
     def handle_open_account(self, command: OpenAccount):
         """Open a new account with optional initial deposit.
 
-        The implicit UoW ensures both the account creation and
-        the deposit (if any) are committed atomically.
+        The implicit UoW commits the account creation and the deposit
+        (if any) together, atomically on providers with transactions.
         """
         account = Account(
             account_id=command.account_id,

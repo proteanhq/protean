@@ -221,27 +221,31 @@ def test_cannot_modify_shipped_order():
 
 ## Testing Domain Services
 
-Domain services encapsulate business rules that span multiple aggregates. Test
-them by providing the required aggregates and verifying the outcome.
+Domain services hold business rules that span multiple aggregates. Test them
+by passing in the aggregates and checking the outcome.
 
 ```python
-from myapp.models import Order, OrderItem, Inventory
+from myapp.models import Inventory, Money, Order, OrderItem
 from myapp.services import OrderFulfillmentService
 
 
 def test_order_fulfillment():
     order = Order(
         customer_name="Alice",
-        items=[OrderItem(book_title="Dune", quantity=2)],
+        items=[OrderItem(book_title="Dune", quantity=2, unit_price=Money(amount=15.99))],
     )
     inventory = Inventory(book_id="1", title="Dune", quantity=10)
 
     service = OrderFulfillmentService(order, [inventory])
-    service.fulfill()
+    service.confirm_order()
 
     assert order.status == "CONFIRMED"
-    assert inventory.quantity == 8  # 10 - 2
+    assert inventory.quantity == 10  # the service checks stock; it does not reserve
 ```
+
+The service confirms the order and leaves the inventory as it was. Reserving
+the stock happens later, through the `OrderConfirmed` event, so test that
+reaction separately.
 
 ### Domain Service Invariants
 
@@ -252,14 +256,15 @@ input:
 def test_fulfillment_rejects_out_of_stock():
     order = Order(
         customer_name="Alice",
-        items=[OrderItem(book_title="Dune", quantity=20)],
+        items=[OrderItem(book_title="Dune", quantity=20, unit_price=Money(amount=15.99))],
     )
     inventory = Inventory(book_id="1", title="Dune", quantity=5)
 
+    service = OrderFulfillmentService(order, [inventory])
     with pytest.raises(ValidationError) as exc:
-        service = OrderFulfillmentService(order, [inventory])
-        service.fulfill()
-    assert "not in stock" in str(exc.value.messages)
+        service.confirm_order()
+    assert "Insufficient stock" in str(exc.value.messages)
+    assert order.status == "PENDING"
 ```
 
 ## Organizing Domain Model Tests

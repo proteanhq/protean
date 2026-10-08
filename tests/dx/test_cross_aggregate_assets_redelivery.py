@@ -15,7 +15,11 @@ Each asset runs under its own ``run_name`` so registrations cannot collide.
 
 from __future__ import annotations
 
+import ast
+import json
 import runpy
+import subprocess
+import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -243,6 +247,12 @@ def _domain_service_flow_basic(ns: Namespace, domain: Domain) -> None:
                 transfer_id=transfer_id, source_id="A-1", target_id="B-1", amount=30.0
             )
         )
+    # A repeated command for T-2 moves no money.
+    domain.process(
+        ns["TransferFunds"](
+            transfer_id="T-2", source_id="A-1", target_id="B-1", amount=30.0
+        )
+    )
 
     assert (repo.get("A-1").balance, repo.get("B-1").balance) == (40.0, 60.0)
 
@@ -257,9 +267,16 @@ def _domain_service_flow_in_handler(ns: Namespace, domain: Domain) -> None:
         )
         domain.process(ns["EnrollStudent"](course_id="C-1", student_id=student_id))
 
-    assert domain.repository_for(ns["Course"]).get("C-1").enrolled_count == 2
-    students = _all(ns, domain, "Student")
-    assert [student.enrolled_course_id for student in students] == ["C-1", "C-1"]
+    domain.repository_for(ns["Course"]).add(
+        ns["Course"](course_id="C-2", title="Geometry", capacity=30)
+    )
+    domain.process(ns["EnrollStudent"](course_id="C-2", student_id="S-1"))
+
+    course = domain.repository_for(ns["Course"]).get("C-1")
+    assert course.student_ids == ["S-1", "S-2"]
+    student_repo = domain.repository_for(ns["Student"])
+    assert student_repo.get("S-1").course_ids == ["C-1", "C-2"]
+    assert student_repo.get("S-2").course_ids == ["C-1"]
 
 
 def _domain_service_flow_invariants(ns: Namespace, domain: Domain) -> None:
@@ -276,8 +293,12 @@ def _domain_service_flow_invariants(ns: Namespace, domain: Domain) -> None:
             )
         )
 
+    domain.process(ns["ReleaseRoom"](room_id="R-1", reservation_id="RES-1"))
+
     requester = domain.repository_for(ns["Requester"]).get("P-1")
     assert requester.reservation_ids == ["RES-1", "RES-2"]
+    assert requester.released_reservation_ids == ["RES-1"]
+    assert domain.repository_for(ns["Room"]).get("R-1").status == "available"
 
 
 SCENARIOS: dict[str, Callable[[Namespace, Domain], None]] = {
@@ -367,14 +388,82 @@ def test_redelivering_every_event_changes_nothing(asset: str) -> None:
         assert _snapshot(domain) == before
 
 
-def test_every_rewritten_asset_has_a_scenario() -> None:
-    """A new asset that hands off to another aggregate needs a scenario here."""
-    handing_off = sorted(
-        str(path.relative_to(SKILLS))
+# Runs in a child interpreter so the assets' registrations stay out of this
+# process. Prints, for each asset, every registered event handler class name
+# and the name of the aggregate it is part of.
+_LIST_EVENT_HANDLERS = """
+import json, runpy, sys
+from protean.domain import Domain
+
+found = {}
+for index, path in enumerate(sys.argv[1:]):
+    ns = runpy.run_path(path, run_name=f"_handoff_scan_{index}_")
+    found[path] = [
+        (record.cls.__name__, getattr(part_of, "__name__", part_of))
+        for value in ns.values()
+        if isinstance(value, Domain)
+        for record in value.registry.event_handlers.values()
+        for part_of in [record.cls.meta_.part_of]
+    ]
+print(json.dumps(found))
+"""
+
+
+def _reaches_another_aggregate(class_def: ast.ClassDef, part_of: str) -> bool:
+    """True when the handler issues a command or loads a different aggregate."""
+    for node in ast.walk(class_def):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+            continue
+        if node.func.attr == "process":
+            return True
+        if node.func.attr == "repository_for" and node.args:
+            target = node.args[0]
+            if isinstance(target, ast.Name) and target.id != part_of:
+                return True
+    return False
+
+
+def _assets_handing_off() -> list[str]:
+    paths = sorted(
+        path
         for path in SKILLS.glob("*/assets/*.py")
-        if "current_domain.process(" in path.read_text()
-        and "@domain.event_handler(part_of=" in path.read_text()
-        and path.parent.parent.name not in ("split-aggregate", "add-saga-flow")
+        if path.name not in ("__init__.py", "conftest.py")
     )
+    result = subprocess.run(
+        [sys.executable, "-c", _LIST_EVENT_HANDLERS, *map(str, paths)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    handlers = json.loads(result.stdout.strip().splitlines()[-1])
+
+    handing_off = []
+    for path in paths:
+        by_name = dict(handlers[str(path)])
+        if not by_name:
+            continue
+        classes = [
+            node
+            for node in ast.walk(ast.parse(path.read_text()))
+            if isinstance(node, ast.ClassDef) and node.name in by_name
+        ]
+        assert classes, f"{path}: no class definition for {sorted(by_name)}"
+        if any(_reaches_another_aggregate(c, by_name[c.name]) for c in classes):
+            handing_off.append(str(path.relative_to(SKILLS)))
+    return handing_off
+
+
+def test_every_rewritten_asset_has_a_scenario() -> None:
+    """A new asset that hands off to another aggregate needs a scenario here.
+
+    The event handlers come from each asset's registry, so every way of
+    registering one counts. A handler hands off when its class issues a command
+    or loads an aggregate other than the one it is part of.
+    """
+    handing_off = [
+        asset
+        for asset in _assets_handing_off()
+        if Path(asset).parts[0] not in ("split-aggregate", "add-saga-flow")
+    ]
     assert handing_off, "the pack must contain assets that hand off with a command"
-    assert [asset for asset in handing_off if asset not in SCENARIOS] == []
+    assert sorted(SCENARIOS) == handing_off

@@ -17,6 +17,7 @@ import pytest
 from protean import dx
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
+from protean.utils.container import DerivedDefault
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -29,29 +30,40 @@ if not SKILLS_ROOT.is_dir():
     )
 
 # ``stream_category`` has no fixed default: it comes from the aggregate named
-# in ``part_of``, so the table describes it in words.
+# in ``part_of``, so the table describes it in words. The words stand in only
+# for a class default that is ``None`` or a ``DerivedDefault``. A concrete
+# default must appear in the table as its value.
 DERIVED = {"stream_category": "derived from part_of"}
 
 
 def option_table(text: str) -> dict[str, str]:
-    """Return ``{option: default cell}`` from the first table headed ``Option``.
+    """Return ``{option: default cell}`` from the page's one ``Option`` table.
 
     The table needs a ``Default`` column. Backticks around a cell are removed.
+    A page with more than one such table, or a table that lists an option
+    twice, fails: either would let a wrong row hide behind a right one.
     """
     lines = text.splitlines()
+    tables = []
     for index, line in enumerate(lines):
         cells = _cells(line)
         if not cells or cells[0] != "Option" or "Default" not in cells:
             continue
         default_column = cells.index("Default")
-        rows = {}
+        rows: dict[str, str] = {}
         for row in lines[index + 2 :]:
             if not row.strip().startswith("|"):
                 break
             row_cells = _cells(row)
+            if row_cells[0] in rows:
+                raise AssertionError(f"option {row_cells[0]} is listed twice")
             rows[row_cells[0]] = row_cells[default_column]
-        return rows
-    raise AssertionError("no table with an Option and a Default column")
+        tables.append(rows)
+    if not tables:
+        raise AssertionError("no table with an Option and a Default column")
+    if len(tables) > 1:
+        raise AssertionError(f"{len(tables)} tables with an Option column, expected 1")
+    return tables[0]
 
 
 def _cells(line: str) -> list[str]:
@@ -63,7 +75,7 @@ def _cells(line: str) -> list[str]:
 
 def render_default(name: str, value: Any) -> str:
     """The text a table's Default cell holds for ``value``."""
-    if name in DERIVED:
+    if name in DERIVED and (value is None or isinstance(value, DerivedDefault)):
         return DERIVED[name]
     return repr(value)
 
@@ -157,3 +169,41 @@ def test_a_table_with_a_wrong_default_fails():
 def test_a_page_without_an_option_table_fails():
     with pytest.raises(AssertionError, match="no table"):
         option_table("| Name | Value |\n|---|---|\n| a | b |\n")
+
+
+def test_a_page_with_two_option_tables_fails():
+    with pytest.raises(AssertionError, match="2 tables"):
+        option_table(TABLE + TABLE)
+
+
+def test_a_table_listing_an_option_twice_fails():
+    doubled = TABLE.replace(
+        "| `suppress_checks` | `()` | Codes to skip |",
+        "| `suppress_checks` | `[]` | Codes to skip |\n"
+        "| `suppress_checks` | `()` | Codes to skip |",
+    )
+
+    with pytest.raises(AssertionError, match="suppress_checks is listed twice"):
+        option_table(doubled)
+
+
+def test_a_concrete_stream_category_default_is_not_exempt():
+    options = [
+        ("part_of", None),
+        ("stream_category", "orders"),
+        ("suppress_checks", ()),
+    ]
+
+    assert table_problems(option_table(TABLE), options) == [
+        "stream_category: Default is 'derived from part_of', the class has \"'orders'\""
+    ]
+
+
+def test_a_derived_stream_category_default_is_exempt():
+    options = [
+        ("part_of", None),
+        ("stream_category", DerivedDefault(lambda cls: None)),
+        ("suppress_checks", ()),
+    ]
+
+    assert table_problems(option_table(TABLE), options) == []

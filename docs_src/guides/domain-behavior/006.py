@@ -6,10 +6,12 @@ from protean import Domain, invariant
 from protean.exceptions import ValidationError
 from protean.fields import (
     DateTime,
+    Dict,
     Float,
     HasMany,
     Identifier,
     Integer,
+    List,
     String,
     ValueObject,
 )
@@ -38,12 +40,22 @@ class Order:
 
     def confirm(self):
         self.status = OrderStatus.CONFIRMED.value
-        self.raise_(OrderConfirmed(order_id=self.id, confirmed_at=datetime.now(UTC)))
+        self.raise_(
+            OrderConfirmed(
+                order_id=self.id,
+                items=[
+                    {"product_id": item.product_id, "quantity": item.quantity}
+                    for item in self.items
+                ],
+                confirmed_at=datetime.now(UTC),
+            )
+        )
 
 
 @domain.event(part_of=Order)
 class OrderConfirmed:
     order_id: Identifier(required=True)
+    items = List(content_type=Dict)
     confirmed_at: DateTime(required=True)
 
 
@@ -93,12 +105,6 @@ class place_order:
         self.inventories = inventories
 
     def __call__(self):
-        for item in self.order.items:
-            inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
-            )
-            inventory.reserve_stock(item.quantity)
-
         self.order.confirm()
 
     @invariant.pre
@@ -118,33 +124,21 @@ class place_order:
             )
 
     @invariant.post
-    def total_reserved_value_should_match_order_value(self):
-        order_total = sum(item.quantity * item.price for item in self.order.items)
-        reserved_total = 0
-        for item in self.order.items:
-            inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
-            )
-            if inventory:
-                reserved_total += inventory._events[0].quantity * item.price
-
-        if order_total != reserved_total:
-            raise ValidationError(
-                {"_service": ["Total reserved value does not match order value"]}
-            )
+    def order_should_be_confirmed(self):
+        if self.order.status != OrderStatus.CONFIRMED.value:
+            raise ValidationError({"_service": ["Order was not confirmed"]})
 
     @invariant.post
-    def total_quantity_reserved_should_match_order_quantity(self):
-        order_quantity = sum(item.quantity for item in self.order.items)
-        reserved_quantity = sum(
-            inventory._events[0].quantity
-            for inventory in self.inventories
-            if inventory._events
-        )
+    def confirmation_should_list_every_ordered_item(self):
+        confirmations = [e for e in self.order._events if isinstance(e, OrderConfirmed)]
+        ordered = {item.product_id: item.quantity for item in self.order.items}
+        listed = {}
+        if confirmations:
+            listed = {i["product_id"]: i["quantity"] for i in confirmations[-1].items}
 
-        if order_quantity != reserved_quantity:
+        if listed != ordered:
             raise ValidationError(
-                {"_service": ["Total reserved quantity does not match order quantity"]}
+                {"_service": ["The confirmation does not list every ordered item"]}
             )
 
 

@@ -34,6 +34,17 @@ reacts to these events to decide the next step.
 
 ## The Process Manager
 
+In Chapter 13, the `reserve_inventory` method on `OrderEventHandler` sent a
+`ReserveInventory` command for each title in `OrderConfirmed`. The process
+manager now sends those commands, so remove `reserve_inventory` from
+`OrderEventHandler`. Then one place starts the reservation: the process
+manager, which also releases the stock if a later step fails. If both stay,
+Inventory's command handler finds the order in `reserved_order_ids` and skips
+the second command, so the stock is still reserved once.
+`OrderConfirmed`, `ReserveInventory` and Inventory's reservation check stay as
+Chapter 13 defined them. `Inventory.reserve()` now also raises
+`InventoryReserved`, which tells the process manager a title is reserved.
+
 The `OrderFulfillmentPM` coordinates the fulfillment workflow:
 
 ```python
@@ -45,9 +56,11 @@ The `OrderFulfillmentPM` coordinates the fulfillment workflow:
 **`stream_categories`**, The process manager subscribes to events from the `order`, `inventory`, and `shipment`
 streams. It sees all events from these three aggregates.
 
-**`order_id` field**, Process managers are stateful. The `order_id` field is persisted
-between events, so the PM remembers which order it is tracking across the
-entire workflow.
+**`order_id`, `items` and `awaiting_titles` fields**, Process managers are
+stateful. These fields are saved between events. `order_id` says which order
+the PM is tracking. `items` keeps the titles and quantities, so the PM knows
+what to release if shipping fails. `awaiting_titles` lists the titles not yet
+reserved, so the PM creates the shipment only after the last one.
 
 **`start=True`**, The `on_order_confirmed` handler is marked as the start event. When an `OrderConfirmed` event
 arrives, Protean creates a *new* PM instance and stores the correlated `order_id`.
@@ -69,9 +82,10 @@ the compensation handler end the workflow.
 
 ### How It Works
 
-1. **`OrderConfirmed`** fires → PM starts (via `start=True`), issues
-   `ReserveInventory` command.
-2. **`InventoryReserved`** fires → PM issues `CreateShipment` command.
+1. **`OrderConfirmed`** fires → PM starts (via `start=True`), issues one
+   `ReserveInventory` command per title.
+2. **`InventoryReserved`** fires for each title → once every title is
+   reserved, PM issues `CreateShipment` command.
 3. **`ShipmentCreated`** fires → PM issues `CompleteOrder` command and
    completes (`end=True`).
 4. **`ShipmentFailed`** fires → PM issues `ReleaseInventory` and
@@ -91,6 +105,9 @@ OrderConfirmed ──► ReserveInventory ──► CreateShipment
                           ReleaseInventory          CancelOrder
 ```
 
+The PM sends one `ReleaseInventory` per title, with the quantities it saved
+when the order was confirmed.
+
 This is the **saga pattern**. Each step has a compensating action that undoes
 it if a subsequent step fails. The process manager is the coordinator that
 decides when to compensate.
@@ -98,6 +115,13 @@ decides when to compensate.
 Design compensating actions to be **idempotent**. If `ReleaseInventory` is
 processed twice (e.g., due to a retry), the second invocation should be
 harmless. This is critical for reliability in asynchronous systems.
+`Inventory.release()` returns stock only for an order in
+`reserved_order_ids`, and then removes the order from the list, so a second
+release changes nothing.
+
+The full source below also has the command handlers that carry out each
+command: reserving and releasing stock, creating the shipment, and completing
+or cancelling the order.
 
 ## Testing the Process Manager
 
@@ -108,8 +132,8 @@ harmless. This is critical for reliability in asynchronous systems.
 Process managers are best tested through integration tests that verify
 the full event chain. In sync processing mode
 (`domain.config["event_processing"] = "sync"`), events are processed
-immediately, making it straightforward to assert the final state after
-triggering the initial event.
+immediately. Saving the confirmed order runs the whole chain, and the test
+then checks the final state of the order and the stock.
 
 ## What We Built
 

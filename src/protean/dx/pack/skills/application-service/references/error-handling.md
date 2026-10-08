@@ -34,7 +34,7 @@ class UserServices:
 
 ## Caller-Side Error Handling
 
-Handle exceptions in the API layer (controller), not in the application service. The use case needs an initialized domain and an active domain context, so the controller opens one:
+Catch exceptions in the API layer (controller), and let the use case raise them. A use case needs an initialized domain and an active domain context, so the controller opens one:
 
 ```python
 domain.init(traverse=False)
@@ -55,7 +55,7 @@ assert register_user_endpoint(email=None, name="John Doe")[0] == 400
 
 ## No Retry on Version Conflicts
 
-`@use_case` runs the method once. If a save hits a version conflict (`ExpectedVersionError`, raised when another writer changed the aggregate first), the Unit of Work rolls back and the exception reaches the caller. Command and event handlers behave differently: `@handle` retries a version conflict up to 3 more times by default. A caller that wants a retry calls the use case again, which loads the aggregate fresh.
+`@use_case` runs the method once. If a save hits a version conflict (`ExpectedVersionError`, raised when another writer changed the aggregate first), the Unit of Work rolls back and the exception reaches the caller. Command and event handlers behave differently: on a version conflict, `@handle` re-runs the handler body, up to 4 times in total by default. A caller that wants a retry calls the use case again, which loads the aggregate fresh.
 
 ## No handle_error Hook
 

@@ -173,7 +173,7 @@ class OrderEventHandler:
         pass
 ```
 
-Event handlers handle events. Command handlers handle commands. Protean does not reject this at `init`: it only warns that `PlaceOrder` has no registered handler, and `domain.process(PlaceOrder(...))` never reaches the event handler's method. Move the method to a command handler.
+An event handler's `@handle` takes an event class, and a command class belongs in a command handler. Protean does not reject this at `init`: it only warns that `PlaceOrder` has no registered handler, and `domain.process(PlaceOrder(...))` never reaches the event handler's method. Move the method to a command handler.
 
 ## 6. Expecting Synchronous Execution in Production
 

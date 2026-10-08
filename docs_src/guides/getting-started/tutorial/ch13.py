@@ -50,14 +50,22 @@ class Order:
     status: String(max_length=20, default="PENDING")
     items = HasMany("OrderItem")
 
+    def quantities_by_title(self) -> dict[str, int]:
+        """Total quantity per book, adding up lines for the same title."""
+        totals: dict[str, int] = {}
+        for item in self.items:
+            totals[item.book_title] = totals.get(item.book_title, 0) + item.quantity
+        return totals
+
     def confirm(self):
         self.status = "CONFIRMED"
         self.raise_(
             OrderConfirmed(
                 order_id=self.id,
+                customer_name=self.customer_name,
                 items=[
-                    {"book_title": item.book_title, "quantity": item.quantity}
-                    for item in self.items
+                    {"book_title": title, "quantity": quantity}
+                    for title, quantity in self.quantities_by_title().items()
                 ],
             )
         )
@@ -73,6 +81,7 @@ class OrderItem:
 @domain.event(part_of=Order)
 class OrderConfirmed:
     order_id: Identifier(required=True)
+    customer_name: String(max_length=150, required=True)
     items = List(content_type=Dict)
 
 
@@ -91,19 +100,19 @@ class OrderFulfillmentService:
         """Check that every order item has sufficient inventory."""
         inventory_by_title = {inv.title: inv for inv in self.inventories}
 
-        for item in self.order.items:
-            inv = inventory_by_title.get(item.book_title)
+        for title, quantity in self.order.quantities_by_title().items():
+            inv = inventory_by_title.get(title)
             if inv is None:
                 raise ValidationError(
-                    {"_entity": [f"No inventory record for '{item.book_title}'"]}
+                    {"_entity": [f"No inventory record for '{title}'"]}
                 )
-            if inv.quantity < item.quantity:
+            if inv.quantity < quantity:
                 raise ValidationError(
                     {
                         "_entity": [
                             (
-                                f"Insufficient stock for '{item.book_title}': "
-                                f"{inv.quantity} available, {item.quantity} requested"
+                                f"Insufficient stock for '{title}': "
+                                f"{inv.quantity} available, {quantity} requested"
                             )
                         ]
                     }
@@ -141,8 +150,8 @@ class OrderCommandHandler:
         # Load inventory records for all items in the order
         inv_repo = current_domain.repository_for(Inventory)
         inventories = []
-        for item in order.items:
-            inv_results = inv_repo.query.filter(title=item.book_title).all()
+        for title in order.quantities_by_title():
+            inv_results = inv_repo.query.filter(title=title).all()
             if inv_results.items:
                 inventories.append(inv_results.items[0])
 
@@ -161,6 +170,12 @@ class OrderCommandHandler:
 @domain.event_handler(part_of=Order)
 class OrderEventHandler:
     @handle(OrderConfirmed)
+    def on_order_confirmed(self, event: OrderConfirmed) -> None:
+        print(
+            f"  [Notification] Order {event.order_id} confirmed for {event.customer_name}"
+        )
+
+    @handle(OrderConfirmed)
     def reserve_inventory(self, event: OrderConfirmed) -> None:
         for item in event.items:
             current_domain.process(
@@ -178,8 +193,10 @@ class InventoryCommandHandler:
     def reserve(self, command: ReserveInventory) -> None:
         repo = current_domain.repository_for(Inventory)
         inventory = repo.find_by(title=command.book_title)
+        # OrderConfirmed lists each title once, so an order reserves a given
+        # book once. A redelivered event finds its order here and stops.
         if command.order_id in inventory.reserved_order_ids:
-            return  # already reserved; a redelivered event must not reserve twice
+            return
         inventory.reserve(command.order_id, command.quantity)
         repo.add(inventory)
 

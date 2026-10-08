@@ -4,12 +4,14 @@ Domain service with class methods for stateless operations.
 This example demonstrates:
 - Domain service using @classmethod for a functional style
 - No __init__ required - aggregates passed directly to methods
-- Inline validation (no @invariant support with class methods)
-- Explicit return of modified aggregates
+- Inline validation. Protean does not run a service's invariants around a
+  class method, so this service declares none
+- Reading the inventory to validate, and changing only the order
+- Explicit return of the changed order
 - Direct class method invocation without instantiation
 
 Usage:
-    order, inventories = OrderPlacementService.place_order(order, [inventory])
+    order = OrderPlacementService.place_order(order, [inventory])
 """
 
 from datetime import UTC, datetime
@@ -19,10 +21,12 @@ from protean import Domain
 from protean.exceptions import ValidationError
 from protean.fields import (
     DateTime,
+    Dict,
     Float,
     HasMany,
     Identifier,
     Integer,
+    List,
     String,
     ValueObject,
 )
@@ -39,7 +43,10 @@ class OrderStatus(Enum):
 
 @domain.event(part_of="Order")
 class OrderConfirmed:
+    """Carries the items, so the inventory side can reserve stock for them."""
+
     order_id: Identifier(required=True)
+    items = List(content_type=Dict)
     confirmed_at: DateTime(required=True)
 
 
@@ -52,7 +59,16 @@ class Order:
 
     def confirm(self):
         self.status = OrderStatus.CONFIRMED.value
-        self.raise_(OrderConfirmed(order_id=self.id, confirmed_at=datetime.now(UTC)))
+        self.raise_(
+            OrderConfirmed(
+                order_id=self.id,
+                items=[
+                    {"product_id": item.product_id, "quantity": item.quantity}
+                    for item in self.items
+                ],
+                confirmed_at=datetime.now(UTC),
+            )
+        )
 
 
 @domain.entity(part_of="Order")
@@ -81,6 +97,9 @@ class Inventory:
     quantity: Integer()
     warehouse = ValueObject(Warehouse)
 
+    # The inventory's own command handler calls this, when an event handler
+    # reacting to OrderConfirmed issues it a command. The domain service
+    # never does.
     def reserve_stock(self, quantity: int):
         self.quantity -= quantity
         self.raise_(
@@ -97,15 +116,15 @@ class OrderPlacementService:
     """Domain service with class methods for order placement.
 
     Call directly without instantiation:
-        order, inventories = OrderPlacementService.place_order(order, [inventory])
+        order = OrderPlacementService.place_order(order, [inventory])
     """
 
     @classmethod
     def place_order(cls, order: Order, inventories: list[Inventory]):
-        """Place the order and reserve inventory stock.
+        """Check the stock and confirm the order.
 
-        Validates stock availability inline, then mutates aggregates.
-        Returns the modified aggregates.
+        Validates stock availability inline, then changes only the order.
+        Returns the order.
         """
         for item in order.items:
             inventory = next(
@@ -114,11 +133,9 @@ class OrderPlacementService:
             if inventory is None or inventory.quantity < item.quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
-            inventory.reserve_stock(item.quantity)
-
         order.confirm()
 
-        return order, inventories
+        return order
 
 
 # Example usage
@@ -147,10 +164,11 @@ if __name__ == "__main__":
         )
 
         # Class method pattern: call directly without instantiation
-        order, inventories = OrderPlacementService.place_order(
-            order, [inventory1, inventory2]
-        )
+        order = OrderPlacementService.place_order(order, [inventory1, inventory2])
 
+        # The service changed only the order. The inventory is unchanged
+        # until its own command handler reserves the stock.
         print(f"Order status: {order.status}")
-        print(f"Inventory 1 remaining: {inventory1.quantity}")
-        print(f"Inventory 2 remaining: {inventory2.quantity}")
+        print(f"Items to reserve: {order._events[-1].items}")
+        print(f"Inventory 1 quantity: {inventory1.quantity}")
+        print(f"Inventory 2 quantity: {inventory2.quantity}")

@@ -116,7 +116,7 @@ In tests, the `test_domain` fixture activates a domain context for you.
 
 ## The @use_case decorator
 
-The `@use_case` decorator has three responsibilities:
+The `@use_case` decorator does the following:
 
 1. **UnitOfWork wrapping**: The method body executes inside a `UnitOfWork` context. Commits on success, rolls back on exception.
 2. **Execution logging**: Logs invocation at INFO level for traceability.
@@ -281,7 +281,7 @@ def transfer_funds(self, from_id, to_id, amount):
     current_domain.repository_for(Account).add(to_acct)  # Wrong!
 ```
 
-This code runs: the Unit of Work would commit both accounts in one transaction. It is still wrong, because one aggregate per transaction is a design rule that the Unit of Work does not enforce. Two instances of the same aggregate type count as two aggregates.
+This code runs, and the Unit of Work commits both accounts in one transaction. One aggregate per transaction is a design rule you follow yourself, so this code breaks it. Two instances of the same aggregate type count as two aggregates.
 
 Instead: Change one account in the use case. The account raises an event (for example `FundsDebited`). An event handler in Account's cluster reacts to it and issues a command (for example `CreditFunds`). That command's handler credits the other account, and skips a transfer it has already applied, because events can be delivered more than once. The `event-handler` skill's cross-aggregate reference shows this pattern in full.
 

@@ -34,6 +34,7 @@ class Account:
 
     def debit_for_transfer(self, transfer_id, target_id, amount):
         self.balance -= amount
+        self.applied_transfer_ids = [*self.applied_transfer_ids, transfer_id]
         self.raise_(
             FundsDebited(
                 transfer_id=transfer_id,
@@ -124,6 +125,8 @@ class AccountCommandHandler:
     def handle_transfer(self, command):
         repo = current_domain.repository_for(Account)
         source = repo.get(command.source_id)
+        if command.transfer_id in source.applied_transfer_ids:
+            return  # already debited; debiting again would take the money twice
         target = repo.get(command.target_id)
 
         FundsTransferService(source, target, command.transfer_id, command.amount)()
@@ -142,7 +145,7 @@ class AccountCommandHandler:
 
 ## Changing the second aggregate through an event
 
-The source account raises `FundsDebited`. An event handler in the Account cluster, which owns the event, issues `CreditAccount` for the destination. The `CreditAccount` handler above skips a transfer id it has already applied, so a redelivered event does not credit the money twice.
+The source account raises `FundsDebited`. An event handler in the Account cluster, which owns the event, issues `CreditAccount` for the destination. Both handlers above skip a transfer id the account has already applied. A repeated `TransferFunds` does not debit the source twice, and a redelivered event does not credit the destination twice.
 
 ```python
 @domain.event_handler(part_of=Account)
@@ -158,6 +161,8 @@ class CreditTransferTarget:
         )
 ```
 
-The validation is atomic: the service checks both accounts in one step, before the source changes. The credit is eventually consistent: it runs in its own transaction after the source commits, so for a short time the money has left the source and not yet reached the destination.
+The service checks both accounts in one step, before the source changes. The credit is eventually consistent: it runs in its own transaction after the source commits, so for a short time the money has left the source and not yet reached the destination. If the credit fails, the debit stays committed. Nothing undoes it on its own. Undoing it takes a compensating command, for example one sent by a process manager.
 
-The caller supplies `transfer_id` in the command, and the event carries it to `CreditAccount`. A redelivered event then reissues the same `CreditAccount`, and the handler can tell it is a repeat. Never generate a fresh `uuid4()` in the event handler, because a redelivered event would then look like a new transfer.
+The caller supplies `transfer_id` in the command. The source records it with the debit, and the event carries it to `CreditAccount`. A repeated command or a redelivered event then carries the same id, and the handler can tell it is a repeat. A `TransferFunds` that reuses the id with a different amount moves no money either. Each account checks only its own list, so the caller must give every transfer its own id. Never generate a fresh `uuid4()` in the event handler, because a redelivered event would then look like a new transfer.
+
+`applied_transfer_ids` grows with every transfer and loads with the account each time.

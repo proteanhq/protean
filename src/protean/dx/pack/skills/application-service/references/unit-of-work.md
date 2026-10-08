@@ -1,6 +1,6 @@
 # Unit of Work in Application Services
 
-Use case methods always execute within a `UnitOfWork` context. A Unit of Work is one real database transaction: see [ADR-0027 (The Unit of Work is a real database transaction)](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/). Every write the use case makes commits together, or none of them does.
+Use case methods always execute within a `UnitOfWork` context. On a provider with transactions, a Unit of Work is one real database transaction: see [ADR-0027 (The Unit of Work is a real database transaction)](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/). There, every write the use case makes commits together, or none of them does.
 
 ## Automatic Wrapping
 
@@ -61,8 +61,12 @@ When an exception is raised inside a `@use_case` method:
 2. No partial state is persisted
 3. The exception propagates to the caller
 
+Steps 1 and 2 hold on providers with real transactions, such as the SQL providers ADR-0027 covers, and on the in-memory provider, which keeps writes in the Unit of Work until it commits. Elasticsearch has no transactions. There the Unit of Work logs a warning that commit and rollback are not atomic, and a rollback does not undo writes already sent.
+
 ### No Retry
-`@use_case` runs the method once. A version conflict (`ExpectedVersionError`, raised when another writer changed the aggregate first) rolls back and reaches the caller like any other exception. Command and event handlers are different: `@handle` retries a version conflict up to 3 more times by default, re-running the whole handler in a fresh Unit of Work each time. A use case caller that wants a retry calls the method again.
+`@use_case` runs the method once. A version conflict (`ExpectedVersionError`, raised when another writer changed the aggregate first) rolls back and reaches the caller like any other exception. A use case caller that wants a retry calls the method again.
+
+Command and event handlers behave differently. On a version conflict, `@handle` re-runs the whole handler body. The default is `max_retries=3`, so the body runs up to 4 times in total, with waits between runs that double each time. Each run opens its own Unit of Work. A use case that calls `domain.process()` synchronously runs the handler inside the use case's Unit of Work, so every run joins it. The first failed run has already doomed that transaction, so the later runs cannot save it.
 
 ## Scope
 

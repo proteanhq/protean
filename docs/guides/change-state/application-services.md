@@ -34,8 +34,11 @@ use case method represents a distinct business operation, receives plain Python
 arguments, and can return values directly to the caller.
 
 Unlike command handlers (which are dispatched via `domain.process()`),
-application services are instantiated and called directly, with the domain
-active (for example inside `with auth.domain_context():`):
+application services are instantiated and called directly. A use case runs
+inside a Unit of Work, so call it after the domain is initialized (the example
+above ends with `auth.init(traverse=False)`) and inside a domain context, such
+as `with auth.domain_context():`. Without one, the call raises
+`ConfigurationError`:
 
 ```python
 --8<-- "guides/change-state/008.py:call"
@@ -53,7 +56,7 @@ mechanism for marking methods as use case entry points:
 --8<-- "guides/change-state/application-services/001.py:import"
 ```
 
-It has two responsibilities:
+It does the following:
 
 1. **Unit of Work wrapping**: Every method decorated with `@use_case` is
 automatically enclosed in a `UnitOfWork` context. If the method completes
@@ -62,6 +65,10 @@ the UoW rolls back all changes.
 
 2. **Execution logging**: The decorator logs the invocation of each use case
 at the INFO level, providing traceability for debugging and auditing.
+
+3. **Domain context check**: The decorator raises `ConfigurationError` when no
+domain context is active, because the Unit of Work needs a domain to open
+against.
 
 ```python
 --8<-- "guides/change-state/application-services/001.py:service"

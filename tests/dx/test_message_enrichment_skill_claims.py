@@ -1,10 +1,12 @@
-"""The message-enrichment skill's audit enricher survives the outbox.
+"""The message-enrichment skill's audit enricher survives framework records.
 
 An aggregate enricher runs when a repository saves an aggregate to a database,
-and never for an event-sourced aggregate. With the outbox on, the outbox rows
-written when an aggregate raises an event are saved the same way, so the
-enricher runs for them too. The skill, the message enrichment guide and the audit fields pattern skip an aggregate without the
-audit field. These tests show why the check is needed and that it works.
+and never for an event-sourced aggregate. Protean also saves some of its own
+records through repositories: outbox rows when the outbox is on, and message
+records in the in-memory event store when it is off. The enricher runs for
+those records too. The skill, the message enrichment guide and the audit fields
+pattern skip an aggregate without the audit field. These tests show why the
+check is needed and that it works.
 """
 
 from __future__ import annotations
@@ -13,16 +15,18 @@ import pytest
 from pydantic import ValidationError
 
 from protean import Domain
+from protean.exceptions import ExpectedVersionError
 from protean.fields import Identifier, String
 from protean.utils.globals import g
 
 pytestmark = pytest.mark.no_test_domain
 
 
-def _domain_with_enricher(guarded: bool):
+def _domain_with_enricher(guarded: bool, outbox: bool = True):
     domain = Domain(name="EnrichmentClaims")
-    domain.config["enable_outbox"] = True
-    domain.config["server"]["default_subscription_type"] = "stream"
+    if outbox:
+        domain.config["enable_outbox"] = True
+        domain.config["server"]["default_subscription_type"] = "stream"
     stamped: list[str] = []
 
     @domain.event(part_of="Order")
@@ -85,3 +89,25 @@ def test_the_guarded_enricher_stamps_the_aggregate():
 
     assert stored.created_by == "alice"
     assert stored.updated_by == "alice"
+
+
+def test_without_the_outbox_the_enricher_runs_on_event_store_records():
+    domain, Order, stamped = _domain_with_enricher(guarded=True, outbox=False)
+
+    with domain.domain_context(current_user="alice"):
+        order = Order(customer_id="c-1")
+        order.place()
+        domain.repository_for(Order).add(order)
+
+    assert stamped == ["Order", "MemoryMessage"]
+
+
+def test_without_the_outbox_an_unguarded_enricher_fails_the_commit():
+    domain, Order, _ = _domain_with_enricher(guarded=False, outbox=False)
+
+    with domain.domain_context(current_user="alice"):
+        order = Order(customer_id="c-1")
+        order.place()
+        # The commit reports the enricher's error as a version conflict.
+        with pytest.raises(ExpectedVersionError, match="updated_by"):
+            domain.repository_for(Order).add(order)

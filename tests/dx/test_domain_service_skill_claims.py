@@ -5,8 +5,9 @@ invariants wrap a domain service's methods. These tests run each rule against
 the framework, and check that no page in the pack or the docs claims a public
 helper raises ``RecursionError``. A public method calling another public method
 runs the invariants again against the state reached so far, which raises
-``ValidationError`` when that state breaks one; only an invariant calling a
-public helper recurses.
+``ValidationError`` when that state breaks one, for pre and post invariants
+alike; only an invariant calling a public helper recurses. A class method is
+called without the service's invariants.
 """
 
 from __future__ import annotations
@@ -104,6 +105,103 @@ def test_public_helper_checks_the_state_the_outer_method_reached():
     assert exc_info.value.messages == {"_service": ["Out of stock"]}
     # Passed around reserve_all(), failed around the helper after the change
     assert calls == ["in_stock", "in_stock"]
+
+
+def _domain_with_post_invariant(helper_name: str):
+    domain = Domain(name="DomainServicePostInvariant")
+    calls: list[int] = []
+
+    @domain.aggregate
+    class Order:
+        total = Integer(default=0)
+
+    @domain.aggregate
+    class Inventory:
+        quantity = Integer(default=0)
+
+    class Pricing:
+        def __init__(self, order, inventory):
+            self.order = order
+            self.inventory = inventory
+
+        @invariant.post
+        def total_within_stock(self):
+            calls.append(self.order.total)
+            if self.order.total > self.inventory.quantity:
+                raise ValidationError({"_service": ["Total exceeds stock"]})
+
+        def reprice(self):
+            # Passes through a state that breaks the invariant, then ends valid
+            self.order.total = 20
+            getattr(self, helper_name)()
+            self.order.total = 5
+
+    def helper(self):
+        return None
+
+    setattr(Pricing, helper_name, helper)
+    Pricing = domain.domain_service(part_of=[Order, Inventory])(Pricing)
+    domain.init(traverse=False)
+    return domain, Order, Inventory, Pricing, calls
+
+
+def test_post_invariant_runs_around_a_public_helper_on_the_state_reached():
+    domain, Order, Inventory, Pricing, calls = _domain_with_post_invariant("helper")
+
+    with domain.domain_context():
+        order = Order(total=0)
+        with pytest.raises(ValidationError) as exc_info:
+            Pricing(order, Inventory(quantity=10)).reprice()
+
+    assert exc_info.value.messages == {"_service": ["Total exceeds stock"]}
+    # The post invariant ran once, around the helper, while the total was 20
+    assert calls == [20]
+    assert order.total == 20
+
+
+def test_post_invariant_skips_an_underscore_helper():
+    domain, Order, Inventory, Pricing, calls = _domain_with_post_invariant("_helper")
+
+    with domain.domain_context():
+        order = Order(total=0)
+        Pricing(order, Inventory(quantity=10)).reprice()
+
+    # Only around reprice() itself, on the final total
+    assert calls == [5]
+    assert order.total == 5
+
+
+def test_class_method_does_not_run_the_service_invariants():
+    domain = Domain(name="DomainServiceClassMethod")
+    calls: list[str] = []
+
+    @domain.aggregate
+    class Order:
+        total = Integer(default=0)
+
+    @domain.aggregate
+    class Inventory:
+        quantity = Integer(default=0)
+
+    @domain.domain_service(part_of=[Order, Inventory])
+    class Pricing:
+        @invariant.pre
+        def always_fails(self):
+            calls.append("always_fails")
+            raise ValidationError({"_service": ["Blocked"]})
+
+        @classmethod
+        def reprice(cls, order, inventory):
+            order.total = inventory.quantity
+            return order
+
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        order = Pricing.reprice(Order(total=0), Inventory(quantity=7))
+
+    assert order.total == 7
+    assert calls == []
 
 
 def test_underscore_helper_is_not_wrapped():

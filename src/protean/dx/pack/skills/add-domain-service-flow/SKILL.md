@@ -40,9 +40,11 @@ Do NOT use for:
 
 A domain service reads several aggregates, but a handler persists only one of them. The service checks the rule across all the aggregates and changes only the **primary** aggregate, the one the command belongs to. The command handler persists that aggregate. The primary aggregate raises an event, and an event handler in its cluster issues a command to the other aggregate. That aggregate's command handler applies the change in a transaction separate from the primary aggregate's. With async command processing, the default, the command handler commits on its own. With sync command processing, it joins the event handler's transaction.
 
-So the validation is atomic: the service checks every aggregate in one step, before anything changes. The change to the other aggregate is eventually consistent: it happens after the primary aggregate commits, and there is a short window where the two disagree.
+The service checks every aggregate in one step, before anything changes. The change to the other aggregate is eventually consistent: it happens after the primary aggregate commits, and there is a short window where the two disagree. If that change fails, the primary aggregate stays changed. Nothing undoes it on its own. Undoing it takes a compensating command, for example one sent by a process manager.
 
-A Unit of Work is one real database transaction, and it can hold changes to several aggregates. "One aggregate per transaction" is a design rule; the Unit of Work does not enforce it. See ADR-0027 ([The Unit of Work is a real database transaction](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/)) and ADR-0031 ([A handler method persists or calls out, never both](https://docs.proteanhq.com/adr/0031-handlers-persist-or-call-out/)).
+The service sees each other aggregate as it was last saved. Two commands that arrive before the first one's event is delivered both pass a check such as "enough stock" or "at most three reservations", so the rule can be broken during that window. A rule that must never be broken belongs inside one aggregate.
+
+On the SQL providers, a Unit of Work is one real database transaction, and it can hold changes to several aggregates. Elasticsearch has no transactions, so there the Unit of Work logs a warning that commit and rollback are not atomic. "One aggregate per transaction" is a design rule, and the Unit of Work does not enforce it. See ADR-0027 ([The Unit of Work is a real database transaction](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/)) and ADR-0031 ([A handler method persists or calls out, never both](https://docs.proteanhq.com/adr/0031-handlers-persist-or-call-out/)).
 
 ## Information to gather
 
@@ -169,7 +171,7 @@ class OrderCommandHandler:
         order_repo.add(order)
 ```
 
-**Important:** The command handler persists, not the service. It persists only the Order; the Inventory was read for the check and is changed in Step 4.
+**Important:** The command handler persists the Order. The service changes the Order and saves nothing. The Inventory was read for the check, and it changes in Step 4.
 
 ### Step 4: Change the other aggregate through an event
 
@@ -203,6 +205,8 @@ class InventoryCommandHandler:
 
 - `part_of=Order`: the event handler sits in the cluster that owns `OrderConfirmed`, with no `stream_category`
 - The command carries the order id from the event, so a redelivered event reissues the same command and the handler can tell it is a repeat
+- An order has one product, so the order id names exactly one reservation. When one event drives several writes to the same aggregate, such as one per order line, derive one id per write, such as `f"{order_id}:{product_id}"`
+- `reserved_order_ids` grows with every order and loads with the Inventory each time
 
 This is the cross-aggregate pattern from the [event-handler](../event-handler/SKILL.md) skill.
 
@@ -294,9 +298,9 @@ The call to `stock_for()` runs the pre-invariants again, which call `stock_for()
 
 ## Complete examples
 
-- [Basic domain service](assets/domain_service_flow_basic.py): Fund transfer between two accounts: debit the source, credit the destination through an event
+- [Basic domain service](assets/domain_service_flow_basic.py): Fund transfer between two accounts: debit the source, credit the destination through an event, and apply each transfer id once on each side
 - [Domain service in handler](assets/domain_service_flow_in_handler.py): Course enrollment wired through a command handler, with the Student updated through an event
-- [Domain service with invariants](assets/domain_service_flow_invariants.py): Pre and post invariants for cross-aggregate validation
+- [Domain service with invariants](assets/domain_service_flow_invariants.py): Pre and post invariants for cross-aggregate validation, and a reservation limit that can be exceeded until the Requester catches up
 
 ## Detailed references
 

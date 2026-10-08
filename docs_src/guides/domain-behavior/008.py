@@ -5,10 +5,12 @@ from protean import Domain, invariant
 from protean.exceptions import ValidationError
 from protean.fields import (
     DateTime,
+    Dict,
     Float,
     HasMany,
     Identifier,
     Integer,
+    List,
     String,
     ValueObject,
 )
@@ -26,6 +28,7 @@ class OrderStatus(Enum):
 @domain.event(part_of="Order")
 class OrderConfirmed:
     order_id: Identifier(required=True)
+    items = List(content_type=Dict)
     confirmed_at: DateTime(required=True)
 
 
@@ -43,7 +46,16 @@ class Order:
 
     def confirm(self):
         self.status = OrderStatus.CONFIRMED.value
-        self.raise_(OrderConfirmed(order_id=self.id, confirmed_at=datetime.now(UTC)))
+        self.raise_(
+            OrderConfirmed(
+                order_id=self.id,
+                items=[
+                    {"product_id": item.product_id, "quantity": item.quantity}
+                    for item in self.items
+                ],
+                confirmed_at=datetime.now(UTC),
+            )
+        )
 
 
 @domain.entity(part_of=Order)
@@ -91,6 +103,8 @@ class OrderPlacementService:
             inventory = next(
                 (i for i in inventories if i.product_id == item.product_id), None
             )
-            inventory.reserve_stock(item.quantity)
+            if inventory is None or inventory.quantity < item.quantity:
+                raise ValidationError({"_service": ["Product is out of stock"]})
 
         order.confirm()
+        return order

@@ -19,10 +19,15 @@ Key highlights:
 - `__call__` contains the business logic
 - `@invariant.pre` validates preconditions before `__call__` runs
 
-A condensed version, with the aggregates it works on:
+A condensed version, with the aggregates it works on. The service reads the inventory to check stock and changes only the order. `Order.confirm()` raises `OrderConfirmed` with the items, and the inventory reserves stock later, when an event handler issues it a command:
 
 ```python
 from protean.exceptions import ValidationError
+
+@domain.event(part_of="Order")
+class OrderConfirmed:
+    order_id: Identifier(required=True)
+    items = List(content_type=Dict)
 
 @domain.aggregate
 class Order:
@@ -32,6 +37,15 @@ class Order:
 
     def confirm(self):
         self.status = "CONFIRMED"
+        self.raise_(
+            OrderConfirmed(
+                order_id=self.id,
+                items=[
+                    {"product_id": item.product_id, "quantity": item.quantity}
+                    for item in self.items
+                ],
+            )
+        )
 
 @domain.entity(part_of=Order)
 class OrderItem:
@@ -42,9 +56,6 @@ class OrderItem:
 class Inventory:
     product_id: Identifier(required=True)
     quantity: Integer(default=0)
-
-    def reserve_stock(self, quantity):
-        self.quantity -= quantity
 
 @domain.domain_service(part_of=[Order, Inventory])
 class place_order:
@@ -63,11 +74,6 @@ class place_order:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
     def __call__(self):
-        for item in self.order.items:
-            inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
-            )
-            inventory.reserve_stock(item.quantity)
         self.order.confirm()
 ```
 
@@ -89,18 +95,15 @@ def __init__(self, order, inventories):
 
 ### The `__call__` method
 
-This is where the business logic lives. It mutates the aggregates:
+This is where the business logic lives. By the time it runs, the pre invariant has checked the stock, so it only changes the order:
 
 ```python
 # fragment
 def __call__(self):
-    for item in self.order.items:
-        inventory = next(
-            (i for i in self.inventories if i.product_id == item.product_id), None
-        )
-        inventory.reserve_stock(item.quantity)
     self.order.confirm()
 ```
+
+The command handler that calls the service persists only the order. The `add-domain-service-flow` skill shows the event handler and the inventory command that reserve the stock.
 
 ### Invocation
 
@@ -119,6 +122,9 @@ with domain.domain_context():
     inventory2 = Inventory(product_id="PROD-2", quantity=10)
 
     place_order(order, [inventory1, inventory2])()
+
+    assert order.status == "CONFIRMED"
+    assert inventory1.quantity == 10  # read by the service, not changed
 ```
 
 This is equivalent to:

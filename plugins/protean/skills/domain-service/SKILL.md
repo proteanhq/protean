@@ -1,6 +1,6 @@
 ---
 name: domain-service
-description: "Define a Protean domain service - a stateless orchestrator that encapsulates complex business logic spanning multiple aggregates. Domain services centralize cross-aggregate operations that don't naturally fit within any single aggregate, while keeping aggregates focused on their core state and behavior. Use when you need to coordinate logic across two or more aggregates, implement a cross-aggregate business rule, orchestrate a domain operation that validates and changes two or more aggregates together, define invariants that span aggregate boundaries, or implement the DDD Domain Service pattern. Domain services are always associated with at least two aggregates via part_of. Supports three flavors: callable class (__call__), class with instance methods, and class with class methods. Supports pre and post invariants for cross-aggregate validation."
+description: "Define a Protean domain service - a stateless orchestrator that encapsulates complex business logic spanning multiple aggregates. Domain services centralize cross-aggregate operations that don't naturally fit within any single aggregate, while keeping aggregates focused on their core state and behavior. Use when you need to coordinate logic across two or more aggregates, implement a cross-aggregate business rule, orchestrate a domain operation that validates two or more aggregates together and changes one of them, define invariants that span aggregate boundaries, or implement the DDD Domain Service pattern. Domain services are always associated with at least two aggregates via part_of. Supports three flavors: callable class (__call__), class with instance methods, and class with class methods. Supports pre and post invariants for cross-aggregate validation."
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -15,21 +15,21 @@ metadata:
 
 Domain services are **stateless orchestrators** for complex business logic that spans multiple aggregates. They exist because some domain operations naturally involve more than one aggregate and shouldn't be forced into either.
 
-- **Stateless**: No internal state between method calls; operate on state provided through parameters
+- **Stateless**: Holds no state between calls. The caller passes the aggregates in for each operation
 - **Cross-aggregate**: Must be associated with at least two aggregates via `part_of`
 - **Pure domain logic**: Focus on domain rules only; no persistence, messaging, or technical concerns
-- **Aggregate mutation**: Mutate aggregates to the desired state; persistence is handled by the calling layer (command handlers, application services)
+- **Reads many, changes one**: Validate against every aggregate passed in, then change only the primary aggregate, the one the command belongs to. The calling layer (a command handler or application service) persists it. The other aggregates change later, through the primary aggregate's event
 
 ### Typical workflow
 
 1. Application layer loads aggregates via repositories
 2. Application layer invokes the domain service, passing aggregates
-3. Domain service executes business logic, mutating aggregates
-4. Application layer persists one aggregate, the primary one. The other aggregates change through events (see rule 9)
+3. Domain service validates across all the aggregates and changes the primary one, which raises an event
+4. Application layer persists the primary aggregate. An event handler reacts to its event and issues a command to each other aggregate (see rule 9)
 
 ## Basic structure
 
-The examples on this page use these aggregates:
+The examples on this page use these aggregates. `Order.confirm()` raises `OrderConfirmed` with the items, so the inventory side can reserve stock when it handles the event. `Order.cancel()` does the same with `OrderCancelled`, so the inventory side can release the stock.
 
 ```python
 from protean.exceptions import ValidationError
@@ -37,6 +37,12 @@ from protean.exceptions import ValidationError
 @domain.event(part_of="Order")
 class OrderConfirmed:
     order_id: Identifier(required=True)
+    items = List(content_type=Dict)
+
+@domain.event(part_of="Order")
+class OrderCancelled:
+    order_id: Identifier(required=True)
+    items = List(content_type=Dict)
 
 @domain.aggregate
 class Order:
@@ -47,10 +53,17 @@ class Order:
 
     def confirm(self):
         self.status = "CONFIRMED"
-        self.raise_(OrderConfirmed(order_id=self.id))
+        self.raise_(OrderConfirmed(order_id=self.id, items=self._item_quantities()))
 
     def cancel(self):
         self.status = "CANCELLED"
+        self.raise_(OrderCancelled(order_id=self.id, items=self._item_quantities()))
+
+    def _item_quantities(self):
+        return [
+            {"product_id": item.product_id, "quantity": item.quantity}
+            for item in self.items
+        ]
 
 @domain.entity(part_of=Order)
 class OrderItem:
@@ -70,6 +83,8 @@ class Inventory:
         self.quantity += quantity
 ```
 
+`Inventory.reserve_stock()` and `release_stock()` are called by the inventory's own command handler, never by the domain service. An event handler in the order's cluster reacts to `OrderConfirmed` or `OrderCancelled` and issues a command to the inventory. The `add-domain-service-flow` skill builds that whole flow, and the `event-handler` skill's cross-aggregate reference shows the event handler.
+
 A domain service is registered with the aggregate classes it works on:
 
 ```python
@@ -80,12 +95,14 @@ class OrderPlacementService:
         self.order = order
         self.inventories = inventories
 
-    def place_order(self):
+    @invariant.pre
+    def inventory_should_have_sufficient_stock(self):
+        stock = {i.product_id: i.quantity for i in self.inventories}
         for item in self.order.items:
-            inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
-            )
-            inventory.reserve_stock(item.quantity)
+            if stock.get(item.product_id, 0) < item.quantity:
+                raise ValidationError({"_service": ["Product is out of stock"]})
+
+    def place_order(self):
         self.order.confirm()
 ```
 
@@ -103,12 +120,14 @@ class place_order:
         self.order = order
         self.inventories = inventories
 
-    def __call__(self):
+    @invariant.pre
+    def inventory_should_have_sufficient_stock(self):
+        stock = {i.product_id: i.quantity for i in self.inventories}
         for item in self.order.items:
-            inventory = next(
-                i for i in self.inventories if i.product_id == item.product_id
-            )
-            inventory.reserve_stock(item.quantity)
+            if stock.get(item.product_id, 0) < item.quantity:
+                raise ValidationError({"_service": ["Product is out of stock"]})
+
+    def __call__(self):
         self.order.confirm()
 
 # Usage: place_order(order, [inventory])()
@@ -116,7 +135,7 @@ class place_order:
 
 ### 2. Class with instance methods
 
-Best for multiple related operations on the same aggregates:
+Best for multiple related operations on the same aggregates. A pre invariant runs before every public method, so a check that applies to one operation only goes in a `_` helper that the operation calls:
 
 ```python
 @domain.domain_service(part_of=[Order, Inventory])
@@ -127,17 +146,17 @@ class OrderFulfillmentService:
         self.inventories = inventories
 
     def place_order(self):
-        for item in self.order.items:
-            self._inventory_for(item).reserve_stock(item.quantity)
+        self._check_stock()
         self.order.confirm()
 
     def cancel_order(self):
-        for item in self.order.items:
-            self._inventory_for(item).release_stock(item.quantity)
         self.order.cancel()
 
-    def _inventory_for(self, item):
-        return next(i for i in self.inventories if i.product_id == item.product_id)
+    def _check_stock(self):
+        stock = {i.product_id: i.quantity for i in self.inventories}
+        for item in self.order.items:
+            if stock.get(item.product_id, 0) < item.quantity:
+                raise ValidationError({"_service": ["Product is out of stock"]})
 
 # Usage:
 #   service = OrderFulfillmentService(order, [inventory])
@@ -146,25 +165,22 @@ class OrderFulfillmentService:
 
 ### 3. Class with class methods
 
-Best when no invariants are needed; stateless functional style:
+Best for a stateless, functional style with no invariants. Protean does not run the service's `@invariant.pre` or `@invariant.post` methods around a class method, so a class-method service should not declare any. Validate inside the method, and call it on the class:
 
 ```python
 @domain.domain_service(part_of=[Order, Inventory])
 class StockReservationService:
     @classmethod
     def place_order(cls, order, inventories):
+        stock = {i.product_id: i.quantity for i in inventories}
         for item in order.items:
-            inventory = next(
-                (i for i in inventories if i.product_id == item.product_id), None
-            )
-            if inventory is None or inventory.quantity < item.quantity:
+            if stock.get(item.product_id, 0) < item.quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
-            inventory.reserve_stock(item.quantity)
         order.confirm()
-        return order, inventories
+        return order
 
 # Usage:
-#   order, inventories = StockReservationService.place_order(order, [inventory])
+#   order = StockReservationService.place_order(order, [inventory])
 ```
 
 ## Key rules
@@ -173,18 +189,19 @@ class StockReservationService:
 2. **Use `@domain.domain_service` decorator**: Or register with `domain.register(MyService, part_of=[Agg1, Agg2])`.
 3. **`super().__init__()` stores the aggregates**: `BaseDomainService.__init__` saves the aggregates it receives on `self._aggregates`, and does nothing else. Call it when your code reads `self._aggregates`. Protean wires invariants when it registers the service, so a service whose `__init__` leaves the call out still runs its invariants.
 4. **Stateless between calls**: Domain services hold no state between invocations. State comes from aggregates passed in.
-5. **Don't persist**: Domain services mutate aggregates but never call repositories. The calling layer handles persistence.
+5. **Don't persist**: Domain services change the primary aggregate but never call repositories. The calling layer handles persistence.
 6. **Invariants span aggregates**: Use `@invariant.pre` and `@invariant.post` for validations that involve multiple aggregates.
-7. **Prefix helper methods with `_`**: Protean wraps every public method and `__call__` with the invariant checks. A public helper called from another public method runs the pre and post invariants again, against the state the outer method has reached so far. If that half-finished state breaks an invariant, the helper raises `ValidationError` before the outer method completes. An invariant that calls a public helper fails: the helper's wrapper runs the invariant again, which calls the helper again, until Python's recursion limit stops the call. A method whose name starts with `_` is not wrapped.
-8. **Choose flavor based on needs**: Callable class for single operation, instance methods for multiple operations, class methods when no invariants needed.
-9. **Don't propagate state changes in more than one aggregate**: Even though domain services can access multiple aggregates, use events and eventual consistency for cross-aggregate state synchronization. The command handler should only persist the primary aggregate. The other aggregate changes through an event handler in the cluster that owns the event, which issues a command to the other aggregate. See the `event-handler` skill's cross-aggregate reference.
+7. **Prefix helper methods with `_`**: Protean wraps every public instance method and `__call__` with the invariant checks. A public helper called from another public method runs the pre and post invariants again, against the state the outer method has reached so far. If that half-finished state breaks an invariant, the helper raises `ValidationError` before the outer method completes. An invariant that calls a public helper fails: the helper's wrapper runs the invariant again, which calls the helper again, until Python's recursion limit stops the call. A method whose name starts with `_` is not wrapped.
+8. **Choose flavor based on needs**: Callable class for a single operation, instance methods for multiple operations, class methods for a service with no invariants. Protean does not run a service's invariants around its class methods.
+9. **Change only the primary aggregate**: A domain service reads several aggregates but changes one, the aggregate the command belongs to. The command handler persists only that aggregate. The other aggregate changes through an event handler in the cluster that owns the event, which issues a command to the other aggregate. See the `event-handler` skill's cross-aggregate reference and the `add-domain-service-flow` skill.
 10. **Review regularly**: As the domain model matures, revisit whether logic in a domain service should be moved to an aggregate or vice versa.
 
 ## Domain service options
 
 | Option | Purpose | Required | Default |
 |--------|---------|----------|---------|
-| `part_of` | List of 2+ aggregate classes this service orchestrates | Yes | None |
+| `part_of` | List of 2+ aggregate classes this service orchestrates | Yes | `None` |
+| `suppress_checks` | Diagnostic codes `protean check` should not report for this service | No | `()` |
 
 ## Invariants
 
@@ -200,11 +217,9 @@ class PlaceOrderService:
 
     @invariant.pre
     def inventory_should_have_sufficient_stock(self):
+        stock = {i.product_id: i.quantity for i in self.inventories}
         for item in self.order.items:
-            inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
-            )
-            if inventory is None or inventory.quantity < item.quantity:
+            if stock.get(item.product_id, 0) < item.quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
     @invariant.post
@@ -213,11 +228,6 @@ class PlaceOrderService:
             raise ValidationError({"_service": ["Order was not confirmed"]})
 
     def __call__(self):
-        for item in self.order.items:
-            inventory = next(
-                i for i in self.inventories if i.product_id == item.product_id
-            )
-            inventory.reserve_stock(item.quantity)
         self.order.confirm()
 ```
 
@@ -243,12 +253,30 @@ with domain.domain_context():
         PlaceOrderService(order, [inventory])()
     except ValidationError as exc:
         assert exc.messages == {"_service": ["Product is out of stock"]}
+    else:
+        raise AssertionError("expected the pre invariant to fail")
     assert order.status == "PENDING"
 
     inventory = Inventory(product_id="PROD-1", quantity=5)
     PlaceOrderService(order, [inventory])()
     assert order.status == "CONFIRMED"
-    assert inventory.quantity == 3
+    # The service reads the inventory but does not change it
+    assert inventory.quantity == 5
+    # The event carries what the inventory side needs to reserve stock
+    assert order._events[-1].items == [{"product_id": "PROD-1", "quantity": 2}]
+
+    # The class-method flavor validates inline
+    order = Order(
+        customer_id="CUST-1",
+        items=[OrderItem(product_id="PROD-1", quantity=9)],
+    )
+    try:
+        StockReservationService.place_order(order, [inventory])
+    except ValidationError as exc:
+        assert exc.messages == {"_service": ["Product is out of stock"]}
+    else:
+        raise AssertionError("expected the inline check to fail")
+    assert order.status == "PENDING"
 ```
 
 ## Common mistakes
@@ -287,7 +315,7 @@ def place_order(self):
 
 ```python
 # fragment
-# Correct - mutate the aggregates, let the caller persist
+# Correct - change the primary aggregate, let the caller persist it
 def place_order(self):
     self.order.confirm()
     # The calling command handler persists the order
@@ -299,7 +327,7 @@ def place_order(self):
 # fragment
 # Wrong - calculate_total is public, so it is wrapped with the invariant
 # checks. The invariant calls it, its wrapper runs the invariant again, and
-# the calls never end.
+# so on until Python's recursion limit stops the calls.
 @invariant.post
 def total_should_be_positive(self):
     if self.calculate_total() <= 0:
@@ -321,7 +349,7 @@ def _calculate_total(self):
     return sum(item.quantity * item.price for item in self.order.items)
 ```
 
-A public helper called from another public method does not loop, but it runs every invariant again around the helper. Prefix it with `_` too.
+A public helper called from another public method runs every invariant again around the helper call. Prefix it with `_` too.
 
 ## Detailed references
 
@@ -340,6 +368,8 @@ A public helper called from another public method does not loop, but it runs eve
 ### Related skills
 - `aggregate` - Domain aggregates that domain services orchestrate
 - `command-handler` - Where domain services are typically invoked from
+- `add-domain-service-flow` - The whole flow: the service, the command handler that persists the primary aggregate, and the event handler and command that change the other aggregate
+- `event-handler` - Its cross-aggregate reference shows the event handler that issues a command to the other aggregate
 - `event` - Events raised by aggregates during domain service operations
 - `value-object` - Value objects used within aggregates passed to domain services
 

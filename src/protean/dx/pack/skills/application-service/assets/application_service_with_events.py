@@ -8,9 +8,11 @@ This example demonstrates:
 - Factory classmethod on aggregate for encapsulating creation logic
 
 Usage:
-    svc = UserApplicationServices()
-    user_id = svc.register_user(email="john@example.com", name="John Doe")
-    svc.activate_user(user_id=user_id)
+    domain.init(traverse=False)
+    with domain.domain_context():
+        svc = UserApplicationServices()
+        user_id = svc.register_user(email="john@example.com", name="John Doe")
+        svc.activate_user(user_id=user_id)
 """
 
 from protean import Domain, current_domain, use_case

@@ -8,8 +8,9 @@ This example demonstrates:
 - Callable pattern: instantiate with aggregates, call to execute
 - The service validates both accounts but changes only the source account
 - One aggregate per transaction: the command handler persists only the source
-- The destination is credited through an event and a command, and the credit
-  is skipped when the same transfer arrives again
+- The destination is credited through an event and a command
+- Each account records the transfer ids it has applied, so a repeated debit or
+  credit for the same transfer changes nothing
 
 Domain: A banking system where transferring funds requires checking the
 source balance before debiting. The rule spans two Account aggregates and
@@ -63,8 +64,12 @@ domain.config["command_processing"] = "sync"
 class TransferFunds:
     """Move money from one account to another.
 
-    The caller supplies `transfer_id`, so the event and the credit command
-    carry the same id and a repeated credit can be recognized.
+    The caller supplies `transfer_id`. The source account records it with the
+    debit, and the event and the credit command carry it to the destination.
+    A repeated TransferFunds, or one that reuses the id with another amount,
+    then moves no money. Each account sees only its own list, so the caller
+    must give every transfer its own id: an id reused from another source
+    account is debited and then skipped at the destination.
     """
 
     transfer_id: Identifier(required=True)
@@ -102,8 +107,11 @@ class FundsDebited:
 class Account:
     """Bank account aggregate.
 
-    `applied_transfer_ids` records the transfers already credited to this
-    account, so a repeated CreditAccount for the same transfer changes nothing.
+    `applied_transfer_ids` records the transfers already debited from or
+    credited to this account. A transfer touches each account once, so one
+    list serves both sides, and a repeated command for the same transfer
+    changes nothing. The list grows with every transfer and loads with the
+    account each time.
     """
 
     account_id: Identifier(identifier=True)
@@ -112,8 +120,9 @@ class Account:
     applied_transfer_ids: List(content_type=String)
 
     def debit_for_transfer(self, transfer_id, target_id, amount):
-        """Remove funds for a transfer and announce it."""
+        """Remove funds for a transfer, record it, and announce it."""
         self.balance -= amount
+        self.applied_transfer_ids = [*self.applied_transfer_ids, transfer_id]
         self.raise_(
             FundsDebited(
                 transfer_id=transfer_id,
@@ -185,6 +194,10 @@ class AccountCommandHandler:
         """Validate across both accounts, then persist only the source."""
         repo = current_domain.repository_for(Account)
         source = repo.get(command.source_id)
+        if command.transfer_id in source.applied_transfer_ids:
+            # Already debited. Debiting again would take the money twice, even
+            # when the repeat carries a different amount.
+            return
         target = repo.get(command.target_id)
 
         FundsTransferService(source, target, command.transfer_id, command.amount)()

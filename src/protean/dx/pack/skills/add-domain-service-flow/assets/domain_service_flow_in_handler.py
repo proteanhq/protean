@@ -7,7 +7,8 @@ This example demonstrates:
 - The handler loads both aggregates, runs the service, and persists only Course
 - Course raises StudentEnrolled; an event handler in Course's cluster issues
   AssignCourse, and Student's command handler applies it
-- Student's command handler skips an assignment it has already made
+- Both aggregates keep a list of what they have applied, so a repeated
+  EnrollStudent takes no second seat and a late StudentEnrolled changes nothing
 - Full flow: Command → Handler → Domain Service → Persist Course → Event →
   Command → Persist Student
 
@@ -31,12 +32,12 @@ Usage:
         domain.repository_for(Student).add(Student(student_id="S-1", name="Ann"))
 
         domain.process(EnrollStudent(course_id="C-1", student_id="S-1"))
-        # Course C-1 has one enrollment, and S-1 is assigned to C-1.
+        # Course C-1 lists S-1, and S-1 lists C-1.
 """
 
 from protean import Domain, current_domain, handle, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Identifier, Integer, String
+from protean.fields import Identifier, Integer, List, String
 
 domain = Domain(__name__)
 
@@ -63,31 +64,41 @@ class StudentEnrolled:
 
 @domain.aggregate
 class Course:
-    """Course aggregate with enrollment capacity."""
+    """Course aggregate with enrollment capacity.
+
+    `student_ids` lists the enrolled students. Its length is the number of
+    seats taken, and the command handler checks it so that a repeated
+    EnrollStudent takes no second seat.
+    """
 
     course_id: Identifier(identifier=True)
     title: String(required=True, max_length=200)
     capacity: Integer(required=True)
-    enrolled_count: Integer(default=0)
+    student_ids: List(content_type=String)
 
     def enroll(self, student_id):
         """Take one seat for the student and announce it."""
-        self.enrolled_count += 1
+        self.student_ids = [*self.student_ids, student_id]
         self.raise_(StudentEnrolled(course_id=self.course_id, student_id=student_id))
 
 
 @domain.aggregate
 class Student:
-    """Student aggregate with enrollment status."""
+    """Student aggregate with enrollment status.
+
+    `course_ids` lists the courses this student is enrolled in. Adding a course
+    that is already listed changes nothing, so a StudentEnrolled delivered
+    twice, or late after another enrollment, leaves the list as it is.
+    """
 
     student_id: Identifier(identifier=True)
     name: String(required=True, max_length=100)
     status: String(default="active")
-    enrolled_course_id: Identifier()
+    course_ids: List(content_type=String)
 
     def assign_course(self, course_id):
-        """Assign a course to this student."""
-        self.enrolled_course_id = course_id
+        """Add a course to this student's courses."""
+        self.course_ids = [*self.course_ids, course_id]
 
 
 # --- Domain Service ---
@@ -102,7 +113,7 @@ class EnrollStudentService:
     - Student is active (not suspended)
 
     Changes:
-    - Course.enrolled_count incremented, and StudentEnrolled raised
+    - The student added to Course.student_ids, and StudentEnrolled raised
 
     The Student is not changed here. It is updated through StudentEnrolled.
     """
@@ -114,7 +125,7 @@ class EnrollStudentService:
     @invariant.pre
     def course_must_have_capacity(self):
         """Course must have available seats."""
-        if self.course.enrolled_count >= self.course.capacity:
+        if len(self.course.student_ids) >= self.course.capacity:
             raise ValidationError({"_service": ["Course is at full capacity"]})
 
     @invariant.pre
@@ -159,6 +170,9 @@ class CourseCommandHandler:
         """Load both aggregates, run the domain service, persist the Course."""
         course_repo = current_domain.repository_for(Course)
         course = course_repo.get(command.course_id)
+        if command.student_id in course.student_ids:
+            # Already enrolled. Enrolling again would take a second seat.
+            return
         student = current_domain.repository_for(Student).get(command.student_id)
 
         # Run domain service (validates both, changes the Course)
@@ -177,7 +191,7 @@ class StudentCommandHandler:
         """Record the course on the Student, once."""
         repo = current_domain.repository_for(Student)
         student = repo.get(command.student_id)
-        if student.enrolled_course_id == command.course_id:
+        if command.course_id in student.course_ids:
             # Already applied. A redelivered StudentEnrolled reissues
             # AssignCourse, and there is nothing left to change.
             return

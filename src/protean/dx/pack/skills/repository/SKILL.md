@@ -89,7 +89,7 @@ class OrderRepository:
 4. **Use `add()` for both create and update** - The repository's `add()` method handles both new and modified aggregates (collection semantics)
 5. **Use `get()` to load by identifier** - Loads the aggregate with all its children from the persistence store
 6. **Use the query helpers for custom queries** - Inside a custom repository, use `self.query` for filtering, sorting, and paging. `self.find_by()` loads one aggregate by its field values, `self.find()` runs a composable `Q` expression and returns one `ResultSet` page of matches, capped at the aggregate's `limit` (100 by default), with `total` carrying the full count. `self.exists()` returns a bool. Below these helpers sits a private data access object, kept for infrastructure work such as hard deletion and test teardown. [Custom Queries](references/custom-queries.md) names it and says when to use it
-7. **Repositories respect Unit of Work** - When inside a UoW (e.g., command handlers), changes are committed atomically at UoW commit
+7. **Repositories respect Unit of Work** - When inside a UoW (e.g., command handlers), changes commit together at UoW commit, atomically on providers with transactions
 8. **Database option controls provider binding** - Use `database` option to lock a repository to a specific database type (default is `"ALL"`)
 9. **Children are synced automatically** - HasMany/HasOne child entities are persisted/removed automatically when the aggregate is added
 10. **Custom repos inherit base methods** - Custom repositories still have `add()` and `get()` from `BaseRepository`; only add new methods

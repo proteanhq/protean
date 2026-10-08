@@ -1,16 +1,16 @@
 # Unit of Work
 
-Each command handler method in Protean runs inside a Unit of Work, and a Unit of Work is one real database transaction.
+Each command handler method in Protean runs inside a Unit of Work, and a Unit of Work is one real database transaction on providers that support transactions.
 
 ## Overview
 
 The `@handle` decorator wraps every handler call in its own Unit of Work. This means:
 
-- All changes within a handler method commit together, or not at all
-- If an error occurs, all changes are rolled back
+- On a provider with transactions, all changes within a handler method commit together, or not at all
+- If an error occurs, the changes are rolled back
 - You do NOT need to wrap handler logic in `with UnitOfWork():` yourself
 
-Two decisions record this behavior:
+These decisions record this behavior:
 
 - [ADR-0027 (The Unit of Work is a real database transaction)](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/)
 - [ADR-0031 (A handler method persists or calls out, never both)](https://docs.proteanhq.com/adr/0031-handlers-persist-or-call-out/)
@@ -80,6 +80,8 @@ A handler method that reaches no repository opens no transaction.
 
 Writes reach the database inside the transaction. The session flushes before each query, so reads in the same Unit of Work see earlier writes. Nothing is committed or visible to other connections until the Unit of Work commits, and a rollback undoes every write.
 
+That holds on providers with real transactions, such as the SQL providers ADR-0027 covers. The in-memory provider keeps writes in the Unit of Work until it commits, so a rollback also leaves nothing behind. Elasticsearch has no transactions. There the Unit of Work logs a warning that commit and rollback are not atomic, and a rollback does not undo writes already sent.
+
 A Unit of Work can hold changes to several aggregates. "One aggregate per transaction" is a design rule, and the Unit of Work does not enforce it. Follow the rule anyway:
 
 - Persist one aggregate root, with its entities and value objects, per handler call
@@ -106,7 +108,9 @@ Write the body directly, as `OrderCommandHandler` above does.
 
 ## Retries on Version Conflicts
 
-When a save hits a version conflict, because another writer changed the same aggregate first, Protean raises `ExpectedVersionError`. By default `@handle` then retries the handler up to 3 more times (`max_retries=3`). Each retry re-runs the whole handler body in a fresh Unit of Work, so the body runs up to 4 times.
+When a save hits a version conflict, because another writer changed the same aggregate first, Protean raises `ExpectedVersionError`. `@handle` then re-runs the whole handler body. The default is `max_retries=3`, so the body runs up to 4 times in total. The wait between runs doubles each time, from 0.05 seconds up to a cap of 1 second. The retries stop early if the next run would start after the command's deadline. Change these settings, or turn the retry off, under `server.version_retry` in the domain config.
+
+Each run opens its own Unit of Work. When the handler runs inside an outer Unit of Work, for example a use case that calls `domain.process()` synchronously, every run joins that outer one. The first failed run has already doomed the outer transaction, so the later runs cannot save it.
 
 Keep the body safe to re-run. Do not call an external system after the first repository access: a retry calls it again, and the call holds the transaction open while it waits. ADR-0031 covers this, and `check` reports it as `HANDLER_PERSISTS_AND_CALLS_OUT`.
 

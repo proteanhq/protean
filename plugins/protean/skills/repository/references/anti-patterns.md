@@ -94,7 +94,7 @@ def handle_place_order(self, command):
         domain.repository_for(Order).add(order)
 ```
 
-**Why it's wrong**: `@handle` already wraps every handler call in its own Unit of Work, which is one real database transaction. A Unit of Work started while another is active does not open a second transaction. It joins the outer one: there are no savepoints, so its commit does nothing, and only the handler's Unit of Work commits. A rollback inside it dooms the whole transaction. The manual block adds code that changes nothing and suggests a separate commit that never happens. See ADR-0027 ([The Unit of Work is a real database transaction](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/)) and ADR-0031 ([A handler method persists or calls out, never both](https://docs.proteanhq.com/adr/0031-handlers-persist-or-call-out/)).
+**Why it's wrong**: `@handle` already wraps every handler call in its own Unit of Work, which is one real database transaction. A Unit of Work started while another is active does not open a second transaction. It joins the outer one: there are no savepoints, so its commit does nothing, and only the handler's Unit of Work commits. A rollback inside it dooms the whole transaction. The manual block adds code that changes nothing and suggests a separate commit that never happens. On a version conflict, `@handle` re-runs the whole handler body, manual block included: with the default `max_retries=3`, the body runs up to 4 times in total. See ADR-0027 ([The Unit of Work is a real database transaction](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/)) and ADR-0031 ([A handler method persists or calls out, never both](https://docs.proteanhq.com/adr/0031-handlers-persist-or-call-out/)).
 
 **Instead**: Let the implicit UoW handle it.
 
@@ -143,7 +143,7 @@ def handle_place_order(self, command):
     domain.repository_for(Inventory).add(inventory)
 ```
 
-**Why it's wrong**: A command handler should modify only ONE aggregate per transaction, even two instances of the same type. The Unit of Work can hold changes to several aggregates, so it will not stop you: this is a design rule you keep yourself. Cross-aggregate coordination happens through domain events.
+**Why it's wrong**: A command handler should modify only ONE aggregate per transaction, even two instances of the same type. The Unit of Work can hold changes to several aggregates and commits them all, so keeping to one is a design rule you follow yourself. Cross-aggregate coordination happens through domain events.
 
 **Instead**: Raise an event and change the other aggregate in its own transaction.
 

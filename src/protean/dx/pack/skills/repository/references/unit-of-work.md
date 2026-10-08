@@ -1,6 +1,6 @@
 # Unit of Work Integration
 
-Repositories respect Protean's Unit of Work (UoW) pattern, which ensures that all changes within a business transaction are committed atomically — either everything succeeds, or nothing does.
+Repositories respect Protean's Unit of Work (UoW) pattern. On a provider with transactions, all changes within a Unit of Work commit together, or none of them does.
 
 ## Overview
 
@@ -8,7 +8,9 @@ A Unit of Work is one real database transaction. It can hold changes to several 
 
 - **Command handlers and event handlers** have an **implicit UoW**: `@handle` wraps every handler call in its own Unit of Work, so no manual wrapping is needed
 - **Outside handlers** (scripts, tests, migrations), you use an **explicit UoW**
-- The UoW manages database sessions, ensures atomic commits, and handles rollbacks
+- The UoW manages database sessions, commits, and rollbacks
+
+Commits and rollbacks are atomic on providers with real transactions, such as the SQL providers ADR-0027 covers. The in-memory provider keeps writes in the Unit of Work until it commits, so a rollback also leaves nothing behind. Elasticsearch has no transactions. There the Unit of Work logs a warning that commit and rollback are not atomic, and a rollback does not undo writes already sent.
 
 ## Code
 
@@ -126,11 +128,19 @@ The UoW keeps an **identity map**: a record of the aggregates it loads and saves
 
 | Scenario | Behavior |
 |----------|----------|
-| Handler succeeds | All changes committed atomically |
+| Handler succeeds | All changes committed together (atomic on providers with transactions) |
 | Handler raises exception | All changes rolled back |
 | Multiple `repo.add()` calls | All committed together |
 | Events raised during handler | Dispatched after successful commit |
-| Optimistic concurrency conflict | `ExpectedVersionError` raised, changes rolled back. A handler is retried by default up to 3 more times (`max_retries=3`), each retry re-running the whole handler body in a fresh UoW |
+| Optimistic concurrency conflict | `ExpectedVersionError` raised, changes rolled back. `@handle` re-runs the whole handler body: with the default `max_retries=3`, the body runs up to 4 times in total |
+
+## Retries on Version Conflicts
+
+On a version conflict, `@handle` re-runs the whole handler body. The default is `max_retries=3`, so the body runs up to 4 times in total. The wait between runs doubles each time, from 0.05 seconds up to a cap of 1 second. The retries stop early if the next run would start after the command's deadline. Change these settings, or turn the retry off, under `server.version_retry` in the domain config.
+
+Each run opens its own Unit of Work. When the handler runs inside an outer Unit of Work, for example a use case that calls `domain.process()` synchronously, every run joins that outer one. The first failed run has already doomed the outer transaction, so the later runs cannot save it.
+
+`@use_case` in an application service does not retry. It runs the method once.
 
 ## Related
 - [Default Repository](./default-repository.md) - Repository fundamentals

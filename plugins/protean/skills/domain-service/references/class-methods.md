@@ -5,7 +5,7 @@ A domain service with class methods provides a stateless, functional approach. N
 ## Overview
 
 Use this pattern when:
-- No invariants are needed (class methods don't support `@invariant.pre`/`@invariant.post`)
+- No invariants are needed. Protean does not run the service's `@invariant.pre` or `@invariant.post` methods around a class method, so a class-method service should not declare any
 - You prefer a functional style
 - Each method receives all input as parameters
 - Validation is done inline within the method
@@ -18,17 +18,23 @@ Key highlights:
 - Methods decorated with `@classmethod`
 - No `__init__` needed
 - Aggregates passed as method parameters, not stored on instance
-- Validation done inline (no invariant decorators)
-- Typically returns the modified aggregates
+- Validation done inline, with no invariant decorators on the service
+- Changes only the order, and returns it
+- Called on the class, never on an instance
 
 ## Walkthrough
 
 ### Class method structure
 
-The service works on these aggregates:
+The service works on these aggregates. `Order.confirm()` raises `OrderConfirmed` with the items, so the inventory can reserve stock later, when an event handler issues it a command:
 
 ```python
 from protean.exceptions import ValidationError
+
+@domain.event(part_of="Order")
+class OrderConfirmed:
+    order_id: Identifier(required=True)
+    items = List(content_type=Dict)
 
 @domain.aggregate
 class Order:
@@ -38,6 +44,15 @@ class Order:
 
     def confirm(self):
         self.status = "CONFIRMED"
+        self.raise_(
+            OrderConfirmed(
+                order_id=self.id,
+                items=[
+                    {"product_id": item.product_id, "quantity": item.quantity}
+                    for item in self.items
+                ],
+            )
+        )
 
 @domain.entity(part_of=Order)
 class OrderItem:
@@ -48,9 +63,6 @@ class OrderItem:
 class Inventory:
     product_id: Identifier(required=True)
     quantity: Integer(default=0)
-
-    def reserve_stock(self, quantity):
-        self.quantity -= quantity
 ```
 
 ```python
@@ -58,22 +70,21 @@ class Inventory:
 class OrderPlacementService:
     @classmethod
     def place_order(cls, order, inventories):
-        # Inline validation
+        # Inline validation: read the inventory, change only the order
         for item in order.items:
             inventory = next(
                 (i for i in inventories if i.product_id == item.product_id), None
             )
             if inventory is None or inventory.quantity < item.quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
-            inventory.reserve_stock(item.quantity)
 
         order.confirm()
-        return order, inventories
+        return order
 ```
 
 ### Return values
 
-Class methods commonly return the modified aggregates, since there's no instance state to inspect:
+Class methods commonly return the changed aggregate, since there's no instance state to inspect:
 
 ```python
 domain.init(traverse=False)
@@ -85,7 +96,10 @@ with domain.domain_context():
     )
     inventory = Inventory(product_id="PROD-1", quantity=10)
 
-    order, inventories = OrderPlacementService.place_order(order, [inventory])
+    order = OrderPlacementService.place_order(order, [inventory])
+
+    assert order.status == "CONFIRMED"
+    assert inventory.quantity == 10  # read by the service, not changed
 ```
 
 ### Invocation
@@ -94,7 +108,7 @@ Direct class method call - no instantiation:
 
 ```python
 with domain.domain_context():
-    OrderPlacementService.place_order(order, inventories)
+    OrderPlacementService.place_order(order, [inventory])
 ```
 
 ## Trade-offs
@@ -105,7 +119,7 @@ with domain.domain_context():
 | Instantiation | Not needed | Required |
 | State management | Stateless | Instance attributes |
 | Validation | Inline in method | Via `@invariant` decorators |
-| Return pattern | Explicit return | Mutation in place |
+| Return pattern | Explicit return | Changes the order in place |
 
 ## When NOT to use class methods
 
