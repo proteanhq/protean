@@ -44,7 +44,7 @@ class OrderSubscriber:
     def __call__(self, payload: dict) -> None:
         msg = g.message_in_context
 
-        # Use the broker message ID for idempotency
+        # Use the message ID for idempotency
         message_id = msg.metadata.headers.id
         repo = current_domain.repository_for(ProcessedMessage)
         if repo.exists(Q(message_id=message_id)):

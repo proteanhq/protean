@@ -222,7 +222,7 @@ before trusting the data:
 
 The Protean Engine sets `g.message_in_context` during subscriber processing,
 using the same mechanism as event and command handlers. This gives subscribers
-access to the broker message ID and stream name, useful for idempotency checks,
+access to the message ID and stream name, useful for idempotency checks,
 audit logging, and debugging:
 
 ```python
@@ -234,13 +234,13 @@ The context `Message` wraps the broker metadata:
 
 | Attribute | Description |
 |-----------|-------------|
-| `msg.metadata.headers.id` | The broker-assigned message identifier |
+| `msg.metadata.headers.id` | The message identifier: the source message's ID when the payload carries one at `metadata.headers.id` (as messages Protean publishes do), otherwise the broker-assigned ID |
 | `msg.metadata.headers.stream` | The broker stream from which the message was consumed |
 | `msg.data` | The raw payload `dict` |
 
 Because this is the same `message_in_context` used for domain events and
 commands, any commands dispatched by the subscriber via `domain.process()`
-automatically inherit the broker message ID as their `causation_id`, linking
+automatically inherit this message ID as their `causation_id`, linking
 the full trace chain back to the original external message. The
 `correlation_id` from the source service is also preserved automatically,
 stitching the causal chain across service boundaries.
