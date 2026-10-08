@@ -27,6 +27,9 @@ settled on. ``to-tla`` expands each batch into the atomic transitions the model
 replays: a ``commit`` the first time a position is seen present, an ``abandon`` the
 first time a hole is stepped over, and an ``advance`` for each real cursor move
 (no-progress ticks, where ``safe`` did not pass the running cursor, are dropped).
+
+Both ``cursor`` and ``safe`` are floored at 0. A fresh subscription starts at -1,
+and -1 and 0 both mean "nothing processed yet"; the replay starts its cursor at 0.
 """
 
 from __future__ import annotations
