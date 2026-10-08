@@ -48,6 +48,10 @@ class ChainStarted(BaseEvent):
     wallet_id: Identifier(required=True)
 
 
+class ChainThenForbid(BaseEvent):
+    wallet_id: Identifier(required=True)
+
+
 class WalletAborted(BaseEvent):
     wallet_id: Identifier(required=True)
 
@@ -108,6 +112,13 @@ class Wallet(BaseAggregate):
         raise ValueError("chain rejected")
 
     @apply
+    def chain_then_forbid(self, event: ChainThenForbid):
+        # Raise a second event that its own handler accepts, then break a
+        # post-invariant
+        self.raise_(NoteAdded(wallet_id=self.wallet_id, note="chained"))
+        self.label = "forbidden"
+
+    @apply
     def wallet_aborted(self, event: WalletAborted):
         raise Abort("aborted")
 
@@ -122,6 +133,7 @@ def register_elements(test_domain):
     test_domain.register(LabelChanged, part_of=Wallet)
     test_domain.register(Unhandled, part_of=Wallet)
     test_domain.register(ChainStarted, part_of=Wallet)
+    test_domain.register(ChainThenForbid, part_of=Wallet)
     test_domain.register(WalletAborted, part_of=Wallet)
     test_domain.init(traverse=False)
 
@@ -321,3 +333,19 @@ class TestRejectedEventUndoesFieldChanges:
             wallet.raise_(ChainStarted(wallet_id=wallet.wallet_id))
 
         assert wallet.note == "chained"
+
+    def test_post_invariant_failure_after_a_chained_event_undoes_both(self):
+        wallet = Wallet.open(wallet_id=str(uuid4()))
+        changed_before = wallet.state_.is_changed
+        events, version, position = _state(wallet)
+
+        with pytest.raises(ValidationError):
+            wallet.raise_(ChainThenForbid(wallet_id=wallet.wallet_id))
+
+        assert wallet.note is None
+        assert wallet.label is None
+        assert wallet.state_.is_changed is changed_before
+        assert wallet._events == events
+        assert wallet._version == version
+        assert wallet._event_position == position
+        assert wallet._disable_invariant_checks is False

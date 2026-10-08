@@ -897,7 +897,7 @@ class atomic_change:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        # Re-enable invariant checks
+        # Re-enable invariant checks for this block's own exit validation
         self.aggregate._disable_invariant_checks = False
         self.aggregate._atomic_snapshots = [
             block
@@ -917,6 +917,13 @@ class atomic_change:
         except BaseException:
             _restore_entities(self._entity_snapshots)
             raise
+        finally:
+            # An enclosing block, such as the one around an ``@apply`` handler
+            # that raises another event, is still open. Its changes must stay
+            # unchecked until it exits, so its own exit check can fail and
+            # undo the whole block.
+            if self.aggregate._atomic_snapshots:
+                self.aggregate._disable_invariant_checks = True
 
     def _capture_status_snapshots(self) -> None:
         """Snapshot all status fields with transition rules."""
