@@ -876,6 +876,8 @@ class atomic_change:
 
     When the checks on exit fail, the aggregate, its child entities, and the
     children linked inside the block go back to their state from block entry.
+    Events raised inside the block are discarded, and ``_version`` and
+    ``_event_position`` go back to their values from block entry.
     An exception raised by the block body does not undo the block's changes.
     """
 
@@ -883,6 +885,9 @@ class atomic_change:
         self.aggregate = aggregate
         self._status_snapshots: dict[str, Any] = {}
         self._entity_snapshots: list[_EntitySnapshot] = []
+        self._events_count = 0
+        self._version = 0
+        self._event_position = 0
 
     def __enter__(self) -> None:
         # Capture status field snapshots BEFORE precheck
@@ -891,6 +896,9 @@ class atomic_change:
         self.aggregate._precheck()
         self._entity_snapshots = _snapshot_entity_trees([self.aggregate])
         self.aggregate._atomic_snapshots.append(self._entity_snapshots)
+        self._events_count = len(self.aggregate._events)
+        self._version = self.aggregate._version
+        self._event_position = self.aggregate._event_position
         self.aggregate._disable_invariant_checks = True
 
     def __exit__(
@@ -918,6 +926,11 @@ class atomic_change:
             self.aggregate._postcheck()
         except BaseException:
             _restore_entities(self._entity_snapshots)
+            # Events raised inside the block describe changes that were just
+            # undone, so they go too.
+            del self.aggregate._events[self._events_count :]
+            self.aggregate._version = self._version
+            self.aggregate._event_position = self._event_position
             raise
         finally:
             # An enclosing block, such as the one around an ``@apply`` handler

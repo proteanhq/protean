@@ -112,8 +112,9 @@ assignment is also undone when an invariant fails with an error other than
 
 An `atomic_change` block is rolled back as a whole: when the check at its end
 fails, the aggregate and its child entities go back to their state from block
-entry, including association changes (see below). An exception raised by the
-code inside the block does not roll it back. On an event-sourced aggregate,
+entry, including association changes (see below). Events raised inside the
+block are discarded too. An exception raised by the code inside the block does
+not roll it back. On an event-sourced aggregate,
 `raise_()` runs the `@apply` handler inside `atomic_change`, so when a check
 fails after the handler, `raise_()` undoes the handler's field changes and
 also discards the event.

@@ -4,6 +4,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate, atomic_change
 from protean.core.entity import BaseEntity, invariant
+from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import (
@@ -56,6 +57,10 @@ class Account(BaseAggregate):
     def rename_and_withdraw(self, name: str, amount: float) -> None:
         self.name = name
         self.balance -= amount
+
+
+class AccountRenamed(BaseEvent):
+    name: String(max_length=50)
 
 
 class Order(BaseAggregate):
@@ -159,6 +164,7 @@ class Playlist(BaseAggregate):
 def register_elements(test_domain):
     test_domain.register(Money)
     test_domain.register(Account)
+    test_domain.register(AccountRenamed, part_of=Account)
     test_domain.register(Order)
     test_domain.register(OrderItem, part_of=Order)
     test_domain.register(OrderNote, part_of=Order)
@@ -582,6 +588,16 @@ class TestAtomicChangeRollsBack:
             assert child._owner is None
             assert child.order_id is None
             assert child.state_.is_changed is False
+
+    def test_events_raised_in_the_block_are_discarded(self, account):
+        with pytest.raises(ValidationError):
+            with atomic_change(account):
+                account.name = "Renamed"
+                account.raise_(AccountRenamed(name="Renamed"))
+                account.balance = -5.0
+
+        assert account.name == "Main"
+        assert account._events == []
 
     def test_error_inside_the_block_keeps_its_changes(self, account):
         with pytest.raises(RuntimeError):

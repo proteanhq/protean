@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate, apply
+from protean.core.aggregate import BaseAggregate, apply, atomic_change
 from protean.core.entity import invariant
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError, ValidationError
@@ -349,3 +349,18 @@ class TestRejectedEventUndoesFieldChanges:
         assert wallet._version == version
         assert wallet._event_position == position
         assert wallet._disable_invariant_checks is False
+
+    def test_failed_outer_block_discards_an_event_raised_inside_it(self):
+        wallet = Wallet.open(wallet_id=str(uuid4()))
+        events, version, position = _state(wallet)
+
+        with pytest.raises(ValidationError):
+            with atomic_change(wallet):
+                wallet.raise_(NoteAdded(wallet_id=wallet.wallet_id, note="inside"))
+                wallet.label = "forbidden"
+
+        assert wallet.note is None
+        assert wallet.label is None
+        assert wallet._events == events
+        assert wallet._version == version
+        assert wallet._event_position == position
