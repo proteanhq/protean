@@ -112,27 +112,13 @@ async def not_found_handler(request: Request, exc: ObjectNotFoundError):
     return JSONResponse(status_code=404, content={"message": str(exc)})
 ```
 
-These copy what the integration already does, with less: no correlation IDs,
-no HTTP wide event, and an error body shape that differs from the rest of the
-app.
+The integration already provides both. The hand-written versions leave out
+correlation IDs and the HTTP wide event, and their error body has a different
+shape from the rest of the app.
 
-**Correct:** Use the integration in the app factory.
-
-```python
-from fastapi import FastAPI
-from protean.integrations.fastapi import (
-    DomainContextMiddleware,
-    register_exception_handlers,
-)
-
-
-def create_app(domain: Domain) -> FastAPI:
-    app = FastAPI()
-    app.add_middleware(DomainContextMiddleware, route_domain_map={"/": domain})
-    register_exception_handlers(app)
-    app.include_router(router)
-    return app
-```
+**Correct:** Add `DomainContextMiddleware` and call
+`register_exception_handlers(app)` in the app factory, as in
+[assets/api_endpoint_complete_router.py](../assets/api_endpoint_complete_router.py).
 
 ## 4. An `async def` Endpoint That Calls `process()`
 
@@ -164,7 +150,7 @@ def place_order(body: PlaceOrderRequest):
     OrderCommandHandler().place(command)  # Bypasses domain.process!
 ```
 
-**Correct:** Always use `current_domain.process(command)`. Calling the handler
+**Correct:** Always use `current_domain.process(command, asynchronous=False)`. Calling the handler
 directly skips command enrichment and event store persistence.
 
 ## 6. Importing the Domain Instead of Using `current_domain`
@@ -209,7 +195,8 @@ def place_order(body: PlaceOrderRequest):
 ```
 
 **Correct:** One endpoint, one command. Cross-aggregate work happens through
-domain events, not in endpoints.
+domain events. An event handler reacts to the first aggregate's event and
+changes the second.
 
 ## Related
 

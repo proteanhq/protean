@@ -20,8 +20,11 @@ pip install "protean[server]"
 
 The integration gives you two pieces. `DomainContextMiddleware` pushes the
 domain context for each request, so `current_domain` works inside an endpoint.
-`register_exception_handlers` turns Protean exceptions into HTTP responses, so
-an endpoint never needs a `try`/`except` for a domain error.
+`register_exception_handlers` turns six exceptions, five from Protean and
+Python's `ValueError`, into HTTP responses. They are listed under
+[Status codes](#status-codes). An endpoint needs no `try`/`except` for those.
+Any other exception gives a plain 500. One example is `TooManyObjectsError`,
+which `repository.find_by` raises when more than one row matches.
 
 ## The domain the endpoints use
 
@@ -148,18 +151,19 @@ uvicorn.run(create_app(domain), host="127.0.0.1", port=8000)
 
 ## Key rules
 
-1. **Endpoints are thin adapters.** They translate HTTP into a command. No business logic, no repository access, no aggregate changes.
+1. **Endpoints are thin adapters.** A write endpoint translates HTTP into a command. It holds no business logic, and it does not change or save aggregates itself. This skill covers write endpoints. For read endpoints, see the `query` and `projection` skills.
 2. **Write endpoints as plain `def`.** `current_domain.process(..., asynchronous=False)` is a blocking call. FastAPI runs a `def` endpoint in its thread pool, which keeps that call off the event loop. The domain context from the middleware still reaches the endpoint there. An `async def` endpoint that calls `process()` blocks every other request while it runs.
 3. **Use the integration's middleware and exception handlers.** Add `DomainContextMiddleware` and call `register_exception_handlers(app)` in the app factory. Do not write your own.
 4. **Always go through `current_domain.process()`.** Never call a handler directly. Import `current_domain` from `protean.utils.globals`.
 5. **Pass `asynchronous=False`.** The endpoint then gets the handler's return value, and a domain error such as a missing aggregate is raised inside the request, where the exception handlers can turn it into a 404 or 409.
 6. **Build the command from the request.** Map the body fields, and the path parameters, to command fields one by one.
 7. **Return the right success code.** 201 for creation, 200 for a change to an existing aggregate.
-8. **Let Pydantic check the shape and Protean check the rules.** A Pydantic request model checks types and required keys. Length limits, ranges and state rules belong on the command and the aggregate.
+8. **Let Pydantic check the shape and Protean check the rules.** A Pydantic request model checks types, required keys and formats such as an email pattern. Domain limits, such as a maximum length or a value range, and state rules belong on the command and the aggregate.
 
 ## Status codes
 
-`register_exception_handlers` maps Protean exceptions to these responses:
+`register_exception_handlers` maps these exceptions, and only these, to a
+response. Any other exception gives a plain-text 500.
 
 | Exception | Status | Body |
 |-----------|:------:|------|
@@ -170,7 +174,11 @@ uvicorn.run(create_app(domain), host="127.0.0.1", port=8000)
 | `InvalidStateError` | 409 | `{"error": "<message>"}` |
 | `InvalidOperationError` | 422 | `{"error": "<message>"}` |
 
-When a domain context is active, the body also carries `correlation_id`. It
+A `ValidationError` also comes from the repository: adding an aggregate whose
+id is already stored gives a 400 keyed by the id field.
+
+When a domain context is active, each body in the table also carries
+`correlation_id`. It
 matches the response's `X-Correlation-ID` header. The middleware pushes a
 domain context only for paths that match one of its mapped prefixes, so a
 request outside them has no `correlation_id` in its error body.
@@ -179,8 +187,11 @@ Two different things can return 422:
 
 - **Protean's `InvalidOperationError`** gives `{"error": "<message>"}`.
 - **FastAPI itself** returns 422 before your endpoint runs, when the body does
-  not match the Pydantic model (a missing key, a wrong type). That body is
-  `{"detail": [...]}`, with no `error` key.
+  not match the Pydantic model (a missing key, or a value Pydantic cannot
+  convert to the field's type). That body is `{"detail": [...]}`, with no
+  `error` key and no `correlation_id`. Pydantic converts some values in its
+  default mode, so `"5"` and `true` pass a `float` field as `5.0` and `1.0`.
+  Use `Field(strict=True)` on a field that must reject them.
 
 A value that passes the Pydantic model but breaks a command field rule, such
 as a `customer_id` longer than `max_length=50`, gives Protean's 400.
@@ -238,17 +249,18 @@ def place_order(body: PlaceOrderRequest):
 
 Instead: let the command and the aggregate enforce the rule. The endpoint only builds the command.
 
-### Accessing repositories directly
+### Saving aggregates in the endpoint
 
 ```python
 # fragment
-# Wrong! Endpoints should not access repositories
-@router.get("/{order_id}")
-def get_order(order_id: str):
-    order = current_domain.repository_for(Order).get(order_id)  # Direct repo access!
+# Wrong! The endpoint persists the aggregate itself
+@router.post("")
+def place_order(body: PlaceOrderRequest):
+    order = Order(order_id=body.order_id, customer_id=body.customer_id)
+    current_domain.repository_for(Order).add(order)  # Direct repo access!
 ```
 
-Instead: use commands and `domain.process()` for writes. For reads, use the query and projection patterns.
+Instead: build a command and pass it to `current_domain.process()`. The handler saves the aggregate.
 
 ### An `async def` endpoint that calls `process()`
 
@@ -285,7 +297,7 @@ def place_order(body: PlaceOrderRequest):
     OrderCommandHandler().place(command)  # Skips enrichment and the event store!
 ```
 
-Instead: always use `current_domain.process(command)`.
+Instead: always use `current_domain.process(command, asynchronous=False)`.
 
 ## Detailed references
 

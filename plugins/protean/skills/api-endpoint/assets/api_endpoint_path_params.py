@@ -11,9 +11,9 @@ This example demonstrates:
 - An aggregate that raises ``InvalidStateError`` for a wrong state, which the
   client gets as a 409
 
-This file holds the router only. Build the app with the ``create_app`` factory
-in ``api_endpoint_complete_router.py`` and add ``app.include_router(router)``
-there.
+This file holds the router only. Build the app the way the ``create_app``
+factory in ``api_endpoint_complete_router.py`` does, and include this router.
+Pass the factory this file's ``domain``, which registers the router's commands.
 
 Usage, once the app is running:
     # POST to create an order first

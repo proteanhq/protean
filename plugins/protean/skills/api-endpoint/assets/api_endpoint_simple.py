@@ -10,9 +10,11 @@ This example demonstrates:
   blocking ``process`` call stays off the event loop
 - Returning 201 with the created id
 
-This file holds the router only. Build the app with the ``create_app`` factory
-in ``api_endpoint_complete_router.py``: it adds ``DomainContextMiddleware`` and
-``register_exception_handlers``. Add ``app.include_router(router)`` there.
+This file holds the router only. Build the app the way the ``create_app``
+factory in ``api_endpoint_complete_router.py`` does: add
+``DomainContextMiddleware`` and ``register_exception_handlers``, and include
+this router. Pass the factory this file's ``domain``, which registers the
+router's commands.
 
 Usage, once the app is running:
     # POST /orders with JSON payload

@@ -68,7 +68,7 @@ class RegisterAccountRequest(BaseModel):
 ```
 
 - `pattern` checks the email format at the HTTP boundary.
-- `min_length=1` rejects empty strings.
+- `min_length=1` rejects an empty string. A string of spaces still passes it.
 - The name's 50-character limit is a domain rule. It lives on the command.
 - FastAPI builds the OpenAPI schema from this model, so it documents the API
   for clients.
@@ -138,8 +138,12 @@ propagate to the registered handler.
 | Pydantic model | Public APIs, format checks such as email, a documented schema |
 | `payload: dict` | Internal APIs and small payloads, where the command's fields do all the checking |
 
-With `payload: dict`, every bad value reaches the command and gives a 400.
-Pydantic models are recommended for public-facing APIs.
+With `payload: dict`, FastAPI checks only that the body is a JSON object. A
+body that is not, such as a JSON array or malformed JSON, still gets FastAPI's
+422. Every value inside the object goes to the command, which rejects what its
+fields reject, with a 400. A field also converts what it can. An `Identifier`
+field stores `5` or `true` as a string, so those ids get through. Pydantic
+models are recommended for public-facing APIs.
 
 ## Related
 

@@ -5,8 +5,10 @@ HTTP response structure and status codes for Protean API endpoints.
 ## Overview
 
 An endpoint returns a short confirmation on success. On failure it returns
-nothing itself: a domain exception propagates out of the endpoint, and the
+nothing itself. A domain exception propagates out of the endpoint, and the
 handlers that `register_exception_handlers` adds turn it into the response.
+Those handlers cover the six exceptions in the table below. Any other
+exception gives a plain-text 500.
 
 The examples on this page use this aggregate, command and handler:
 
@@ -77,7 +79,7 @@ def place_order(body: PlaceOrderRequest):
 The handler's return value, here the order id, comes back from `process()`.
 FastAPI serializes the returned dict and uses the decorator's `status_code`.
 
-### Asynchronous processing (the default)
+### Asynchronous processing
 
 ```python
 @router.post("/async", status_code=202)
@@ -91,30 +93,20 @@ def place_order_async(body: PlaceOrderRequest):
     return {"status": "accepted", "position": position}
 ```
 
-The return value is the command's position in the event store, not the handler
-result. The handler runs later, so a failure in it does not reach this response.
+`process(command)` with no `asynchronous` argument follows the domain's
+`command_processing` setting. Protean's default is `"async"`. Then the return
+value is the command's position in the event store, not the handler result.
+The handler runs later, so a failure in it does not reach this response. A
+domain configured with `command_processing = "sync"` runs the handler during
+the request and returns its result, as `asynchronous=False` does.
 
 ## Error responses
 
-Register the integration's exception handlers in the app factory:
-
-```python
-from fastapi import FastAPI
-from protean.integrations.fastapi import (
-    DomainContextMiddleware,
-    register_exception_handlers,
-)
-
-
-def create_app(domain: Domain) -> FastAPI:
-    app = FastAPI()
-    app.add_middleware(DomainContextMiddleware, route_domain_map={"/": domain})
-    register_exception_handlers(app)
-    app.include_router(router)
-    return app
-```
-
-They map each Protean exception to a status code and a JSON body:
+Register the integration's exception handlers in the app factory. The
+factory is in
+[assets/api_endpoint_complete_router.py](../assets/api_endpoint_complete_router.py).
+The handlers map these exceptions, and only these, to a status code and a JSON
+body:
 
 | Exception | Status | Body |
 |-----------|:------:|------|
@@ -125,7 +117,10 @@ They map each Protean exception to a status code and a JSON body:
 | `InvalidStateError` | 409 | `{"error": "<message>"}` |
 | `InvalidOperationError` | 422 | `{"error": "<message>"}` |
 
-When a domain context is active, every error body also carries
+A `ValidationError` also comes from the repository: adding an aggregate whose
+id is already stored gives a 400 keyed by the id field.
+
+When a domain context is active, each error body in the table also carries
 `correlation_id`, the same value as the `X-Correlation-ID` response header.
 `DomainContextMiddleware` pushes that context for each request whose path
 matches one of its mapped prefixes. A request outside those prefixes runs
@@ -140,13 +135,17 @@ without a domain context, and its error body has no `correlation_id`:
 
 FastAPI also returns 422 on its own, before the endpoint runs, when the body
 does not match the Pydantic model. That body is `{"detail": [...]}` and has no
-`error` key. See [Request Validation](./request-validation.md).
+`error` key and no `correlation_id`. See
+[Request Validation](./request-validation.md).
 
 A 404 needs two things in the handler path. The handler must load the
 aggregate with `repository.get(id)` or `repository.find_by(...)`, which
 raise `ObjectNotFoundError` when nothing matches. A query through
 `repository.query` returns an empty result instead. And the endpoint must pass
 `asynchronous=False`, so the handler runs inside the request.
+
+`find_by` raises `TooManyObjectsError` when more than one row matches. The
+exception handlers do not map that exception, so the client gets a 500.
 
 ## Related
 

@@ -13,9 +13,9 @@ This example demonstrates:
 - Pydantic checks the shape of the request; the command and the aggregate
   enforce the domain rules
 
-This file holds the router only. Build the app with the ``create_app`` factory
-in ``api_endpoint_complete_router.py`` and add ``app.include_router(router)``
-there.
+This file holds the router only. Build the app the way the ``create_app``
+factory in ``api_endpoint_complete_router.py`` does, and include this router.
+Pass the factory this file's ``domain``, which registers the router's commands.
 
 Usage, once the app is running:
     # POST /accounts/register with a valid payload

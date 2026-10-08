@@ -13,8 +13,8 @@ This example demonstrates:
 - Pydantic request models that check types only, while the command's fields
   and the aggregate enforce the domain rules
 
-The other api-endpoint assets show routers only. Mount any of them with this
-same factory.
+The other api-endpoint assets show routers only. Build their app the same way,
+passing the domain that registers the router's commands.
 
 Status codes this app returns:
 - 201 / 200 on success
