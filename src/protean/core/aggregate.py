@@ -231,20 +231,23 @@ class BaseAggregate(BaseEntity):
         else:
             stream = f"{self.meta_.stream_category}-{identifier}"
 
-        # Snapshot so a failed raise can be undone. Anything below can raise:
-        # an enricher, the metadata build, the @apply handler or an
-        # invariant check around it.
-        version_before = self._version
-        position_before = self._event_position
-        events_count_before = len(self._events)
-
+        # Anything below can raise: an enricher, the metadata build, the
+        # @apply handler or an invariant check around it.
+        mark = self._event_mark()
         try:
             self._record_event(event, stream)
         except BaseException:
-            self._version = version_before
-            self._event_position = position_before
-            del self._events[events_count_before:]
+            self._rewind_events(mark)
             raise
+
+    def _event_mark(self) -> tuple[int, int, int]:
+        """Record the event bookkeeping so ``_rewind_events`` can go back to it."""
+        return len(self._events), self._version, self._event_position
+
+    def _rewind_events(self, mark: tuple[int, int, int]) -> None:
+        """Drop events raised since ``mark`` and restore the version counters."""
+        events_count, self._version, self._event_position = mark
+        del self._events[events_count:]
 
     def _record_event(self, event: Any, stream: str) -> None:
         """Enrich ``event`` with metadata and append it to ``_events``.
@@ -869,10 +872,9 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
 class atomic_change:
     """Context manager to temporarily disable invariant checks on aggregate.
 
-    Also captures status field snapshots on entry and validates the
-    overall start-to-end transition on exit, so batched mutations
-    (and ``@apply`` handlers in ES aggregates) are validated as a single
-    logical transition.
+    Also validates each status field's overall start-to-end transition on
+    exit, so batched mutations (and ``@apply`` handlers in ES aggregates) are
+    validated as a single logical transition.
 
     When the checks on exit fail, the aggregate, its child entities, and the
     children linked inside the block go back to their state from block entry.
@@ -883,22 +885,20 @@ class atomic_change:
 
     def __init__(self, aggregate: Any) -> None:
         self.aggregate = aggregate
-        self._status_snapshots: dict[str, Any] = {}
         self._entity_snapshots: list[_EntitySnapshot] = []
-        self._events_count = 0
-        self._version = 0
-        self._event_position = 0
+        self._event_mark: tuple[int, int, int] = (0, 0, 0)
+        self._checks_were_disabled = False
 
     def __enter__(self) -> None:
-        # Capture status field snapshots BEFORE precheck
-        self._capture_status_snapshots()
-        # Temporary disable invariant checks
         self.aggregate._precheck()
         self._entity_snapshots = _snapshot_entity_trees([self.aggregate])
         self.aggregate._atomic_snapshots.append(self._entity_snapshots)
-        self._events_count = len(self.aggregate._events)
-        self._version = self.aggregate._version
-        self._event_position = self.aggregate._event_position
+        self._event_mark = self.aggregate._event_mark()
+        # An enclosing block, such as the one around an ``@apply`` handler
+        # that raises another event, has already turned checks off. This
+        # block must leave them off on exit, so the enclosing block's own exit
+        # check can still fail and undo the whole block.
+        self._checks_were_disabled = self.aggregate._disable_invariant_checks
         self.aggregate._disable_invariant_checks = True
 
     def __exit__(
@@ -909,11 +909,7 @@ class atomic_change:
     ) -> None:
         # Re-enable invariant checks for this block's own exit validation
         self.aggregate._disable_invariant_checks = False
-        self.aggregate._atomic_snapshots = [
-            block
-            for block in self.aggregate._atomic_snapshots
-            if block is not self._entity_snapshots
-        ]
+        self.aggregate._atomic_snapshots.pop()
 
         # Validate status transitions (start -> end) before post-invariants.
         # Only validate when no exception is being propagated.
@@ -928,34 +924,22 @@ class atomic_change:
             _restore_entities(self._entity_snapshots)
             # Events raised inside the block describe changes that were just
             # undone, so they go too.
-            del self.aggregate._events[self._events_count :]
-            self.aggregate._version = self._version
-            self.aggregate._event_position = self._event_position
+            self.aggregate._rewind_events(self._event_mark)
             raise
         finally:
-            # An enclosing block, such as the one around an ``@apply`` handler
-            # that raises another event, is still open. Its changes must stay
-            # unchecked until it exits, so its own exit check can fail and
-            # undo the whole block.
-            if self.aggregate._atomic_snapshots:
-                self.aggregate._disable_invariant_checks = True
-
-    def _capture_status_snapshots(self) -> None:
-        """Snapshot all status fields with transition rules."""
-        fields_dict = getattr(self.aggregate.__class__, _FIELDS, {})
-        for fname, fobj in fields_dict.items():
-            if isinstance(fobj, ResolvedField) and getattr(fobj, "transitions", None):
-                self._status_snapshots[fname] = getattr(self.aggregate, fname, None)
+            self.aggregate._disable_invariant_checks = self._checks_were_disabled
 
     def _validate_status_transitions(self) -> None:
         """Validate start-to-end status transitions within the atomic block."""
         fields_dict = getattr(self.aggregate.__class__, _FIELDS, {})
+        # The first entry snapshot is the aggregate's own, taken on entry.
+        start_values = self._entity_snapshots[0].values
 
-        for fname, start_value in self._status_snapshots.items():
-            fobj = fields_dict.get(fname)
-            if fobj is None or not isinstance(fobj, ResolvedField):
+        for fname, fobj in fields_dict.items():
+            if not isinstance(fobj, ResolvedField) or not fobj.transitions:
                 continue
 
+            start_value = start_values.get(fname)
             end_value = getattr(self.aggregate, fname, None)
 
             start = start_value.value if isinstance(start_value, Enum) else start_value
@@ -965,8 +949,6 @@ class atomic_change:
                 continue
 
             transitions = fobj.transitions
-            if transitions is None:
-                continue
 
             if start not in transitions:
                 raise ValidationError(
