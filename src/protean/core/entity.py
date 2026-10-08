@@ -1109,14 +1109,19 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         Covers the attribute itself, the shadow attributes a value object or
         reference descriptor writes next to it, the descriptor's cached value,
         the Pydantic fields-set and the changed flag. For a ``HasOne`` or
-        ``HasMany`` field it also covers this entity, the loaded children
-        below it, and the ``incoming`` children with their own children,
-        because the association links each incoming child to this entity.
-        Values are read straight from ``__dict__``, so no descriptor
-        ``__get__`` runs.
+        ``HasMany`` field it also covers this entity and the ``incoming``
+        children with their own children, because the association links each
+        incoming child to this entity. A ``HasOne`` replacement or an empty
+        ``HasMany`` assignment also drops the current children and their own
+        children, so those are covered too. Children the change cannot touch
+        are left out, so repeated ``add_<field>()`` calls do not copy the
+        whole aggregate each time. Values are read straight from
+        ``__dict__``, so no descriptor ``__get__`` runs.
         """
         keys = [name]
         entities: list[_EntitySnapshot] = []
+        cache = self._state.fields_cache
+        assert isinstance(cache, dict)
         if isinstance(descriptor, ValueObject):
             keys.extend(
                 field.attribute_name
@@ -1127,7 +1132,10 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             keys.append(descriptor.get_attribute_name())
         elif isinstance(descriptor, Association):
             items = incoming if isinstance(incoming, list) else [incoming]
-            entities = _snapshot_entity_trees([self, *items])
+            if isinstance(descriptor, HasOne) or all(item is None for item in items):
+                current = cache.get(name)
+                items = [*items, *(current if isinstance(current, list) else [current])]
+            entities = [_snapshot_entity(self), *_snapshot_entity_trees(items)]
             target = self._root if self._root is not None else self
             for block in target._atomic_snapshots:
                 known = {id(snapshot.entity) for snapshot in block}
@@ -1137,8 +1145,6 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                     if id(snapshot.entity) not in known
                 )
 
-        cache = self._state.fields_cache
-        assert isinstance(cache, dict)
         return _AssignmentSnapshot(
             values={key: self.__dict__.get(key, _ABSENT) for key in keys},
             cached=cache.get(name, _ABSENT),

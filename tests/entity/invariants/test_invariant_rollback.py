@@ -475,6 +475,14 @@ class TestAssociationAssignmentRollsBack:
         assert rejected._owner is None
         assert rejected.order_id is None
 
+    def test_add_snapshots_only_the_owner_and_the_new_child(self, order):
+        new_item = OrderItem(quantity=1, price=1.0)
+        descriptor = order._get_class_descriptor(Order, "items")
+
+        snapshot = order._take_assignment_snapshot("items", descriptor, new_item)
+
+        assert [entry.entity for entry in snapshot.entities] == [order, new_item]
+
     def test_successful_add_and_remove_still_apply(self, order):
         new_item = OrderItem(quantity=0, price=1.0)
 
