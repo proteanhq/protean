@@ -239,3 +239,28 @@ def test_message_context_gives_the_broker_message_id_for_idempotency():
     assert shipments.total == 1
     assert shipments.items[0].items == ["book", "pen"]
     assert processed.total == 1
+
+
+def test_a_long_message_id_is_recorded_and_deduplicated():
+    example = load_example("guides/consume-state/subscribers/004.py")
+    example.domain.init(traverse=False)
+    engine = Engine(domain=example.domain, test_mode=True)
+    message_id = "fulfillment::international_shipment_request-" + "x" * 200 + "-1"
+
+    for _ in range(2):
+        handled = asyncio.run(
+            engine.handle_broker_message(
+                example.OrderSubscriber,
+                {"order_id": "order-6", "items": ["lamp"]},
+                message_id=message_id,
+                stream="orders",
+            )
+        )
+        assert handled is True
+
+    with example.domain.domain_context():
+        shipments = example.domain.repository_for(example.Shipment).find(
+            Q(order_id="order-6")
+        )
+
+    assert shipments.total == 1

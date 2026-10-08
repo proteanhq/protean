@@ -2,7 +2,7 @@
 import logging
 
 from protean import Domain, handle
-from protean.fields import Identifier, List, String
+from protean.fields import Identifier, List, String, Text
 from protean.utils.globals import current_domain, g
 from protean.utils.query import Q
 
@@ -20,7 +20,7 @@ class Shipment:
 
 @domain.aggregate
 class ProcessedMessage:
-    message_id: String(max_length=100, required=True)
+    message_id: Text(required=True)
 
 
 @domain.command(part_of=Shipment)
