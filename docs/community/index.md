@@ -61,7 +61,7 @@ to reproduce the problem.
 
 Tell us where Protean fits your domain awkwardly, where an abstraction leaks, or
 where the docs mislead you. Open a
-[Discussion](https://github.com/proteanhq/protean/discussions) or an issue.
+[Discussion](https://github.com/proteanhq/protean/discussions).
 
 ### Build adapters
 
