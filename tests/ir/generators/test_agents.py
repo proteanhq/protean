@@ -122,3 +122,15 @@ def test_codes_render_in_sorted_order():
     assert rendered == sorted(rendered)
     # Non-vacuous: more than one code, so the ordering claim has teeth.
     assert len(rendered) > 1
+
+
+def test_aggregate_too_large_old_field_text_is_absent():
+    """AGGREGATE_TOO_LARGE is info-level, so the generated file carries no rule
+    for it. Neither its code nor the old "more fields than" wording may appear.
+    """
+    out = generate_agents_md(version="9.9.9")
+
+    meta = REGISTRY[DiagnosticCode.AGGREGATE_TOO_LARGE]
+    assert meta.level == "info"
+    assert DiagnosticCode.AGGREGATE_TOO_LARGE.value not in out
+    assert "more fields than" not in out

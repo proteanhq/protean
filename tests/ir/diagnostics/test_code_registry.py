@@ -281,7 +281,7 @@ class TestMetadataSnapshot:
         "ADAPTER_CALL_IN_DOMAIN": "b709063b030e4922",
         "AGGREGATE_NOT_NOUN": "9b8de4a5ad83aec8",
         "AGGREGATE_NO_INVARIANTS": "dcd39a6b24d9fb7b",
-        "AGGREGATE_TOO_LARGE": "65f3c1889382fd95",
+        "AGGREGATE_TOO_LARGE": "1cfc039ec20879c6",
         "AGGREGATE_WITHOUT_COMMAND_HANDLER": "5a62e88120c81a8b",
         "CIRCULAR_CLUSTER_DEPENDENCY": "88531b85d6e29964",
         "COMMAND_HANDLER_CROSS_CLUSTER": "4f576d68764bd53c",
@@ -361,6 +361,15 @@ class TestMetadataSnapshot:
             fix=meta.fix + " (edited)",
         )
         assert _meta_digest(tweaked) != _meta_digest(meta)
+
+
+class TestAggregateTooLargeText:
+    def test_meaning_describes_an_entity_count(self):
+        # The builder counts the entities in the aggregate's cluster, so the
+        # text must say entities and must not say fields.
+        meaning = REGISTRY[DiagnosticCode.AGGREGATE_TOO_LARGE].meaning
+        assert "entities" in meaning
+        assert "field" not in meaning.lower()
 
 
 class TestResolve:

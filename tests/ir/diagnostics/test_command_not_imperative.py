@@ -158,3 +158,72 @@ class TestCommandNotImperative:
         flagged = {d["element"] for d in findings}
         assert any("AddressChange" in f for f in flagged)
         assert not any("AddItem" in f for f in flagged)
+
+    def test_common_command_verbs_not_flagged(self):
+        """Ordinary imperative commands such as `CloseTicket` and
+        `RestockProduct` must pass. The verb list once lacked these verbs and
+        reported them as non-imperative."""
+        domain = Domain(name="CommandNamingCommonVerbs", root_path=".")
+
+        @domain.command(part_of="Ticket")
+        class CloseTicket:
+            ticket_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Ticket")
+        class EscalateTicket:
+            ticket_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Ticket")
+        class RestockProduct:
+            ticket_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Ticket")
+        class ReopenTicket:
+            ticket_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Ticket")
+        class SuspendAccount:
+            ticket_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Ticket")
+        class ShipOrder:
+            ticket_id = Identifier(identifier=True)
+
+        @domain.aggregate
+        class Ticket:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [
+            d for d in ir["diagnostics"] if d["code"] == "COMMAND_NOT_IMPERATIVE"
+        ]
+        assert findings == []
+
+    def test_new_verb_prefix_requires_camelcase_boundary(self):
+        """`Closure` and `Openness` start with the letters of `close` and
+        `open` but have no CamelCase boundary after them, so they are still
+        flagged."""
+        domain = Domain(name="CommandNamingNewVerbBoundary", root_path=".")
+
+        @domain.command(part_of="Ticket")
+        class Closure:
+            ticket_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Ticket")
+        class Openness:
+            ticket_id = Identifier(identifier=True)
+
+        @domain.aggregate
+        class Ticket:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        flagged = {
+            d["element"]
+            for d in ir["diagnostics"]
+            if d["code"] == "COMMAND_NOT_IMPERATIVE"
+        }
+        assert any("Closure" in f for f in flagged)
+        assert any("Openness" in f for f in flagged)
