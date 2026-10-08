@@ -1,7 +1,5 @@
 # --8<-- [start:full]
-import logging.config
-
-from flask import Flask
+from flask import Flask, g
 
 from protean import Domain
 from protean.domain.context import has_domain_context
@@ -21,22 +19,22 @@ def create_app(config):
     app = Flask(__name__, static_folder=None)
 
     domain.config.from_object(config)
-    logging.config.dictConfig(domain.config["LOGGING_CONFIG"])
 
-    domain.init()
+    domain.init(traverse=False)
 
     @app.before_request
-    def set_context():
+    def push_context():
         if not has_domain_context():
-            # Push up a Domain Context
-            domain.domain_context().push()
+            # Push up a Domain Context and keep it to pop later
+            g.domain_context = domain.domain_context()
+            g.domain_context.push()
 
-    @app.after_request
-    def pop_context(response):
-        # Pop the Domain Context
-        domain.domain_context().pop()
-
-        return response
+    @app.teardown_request
+    def pop_context(exc):
+        # Pop the Domain Context this request pushed, even on an error
+        context = g.pop("domain_context", None)
+        if context is not None:
+            context.pop(exc)
 
     return app
 

@@ -55,15 +55,13 @@ database_uri = "${DATABASE_URL}"
 
 [databases.search]
 provider = "elasticsearch"
-database_uri = "{'hosts': ['${ES_HOST}']}"
+database_uri = { hosts = ["${ES_HOST}"] }
 ```
 
 Then route specific aggregates or projections to the named database:
 
 ```python
-@domain.projection(provider="search")
-class ProductSearchIndex:
-    ...
+--8<-- "guides/compose-a-domain/choosing-adapters/001.py:named-database"
 ```
 
 See the [Database capability matrix](../../reference/adapters/database/index.md#provider-capability-matrix)

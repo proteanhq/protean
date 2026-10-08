@@ -54,17 +54,6 @@ ALLOWLIST: set[str] = {
     "guides/change-state/007.py",
     "guides/change-state/008.py",
     "guides/change-state/009.py",
-    "guides/compose-a-domain/002.py",
-    "guides/compose-a-domain/014.py",
-    "guides/compose-a-domain/015.py",
-    "guides/compose-a-domain/016.py",
-    "guides/compose-a-domain/017.py",
-    "guides/compose-a-domain/018.py",
-    "guides/compose-a-domain/019.py",
-    "guides/consume-state/001.py",
-    "guides/consume-state/002.py",
-    "guides/consume-state/003.py",
-    "guides/consume-state/004.py",
     "guides/consume-state/process-managers/001.py",
     "guides/consume-state/process-managers/003.py",
     "guides/domain-behavior/001.py",
@@ -76,8 +65,6 @@ ALLOWLIST: set[str] = {
     "guides/domain-behavior/007.py",
     "guides/domain-behavior/008.py",
     "guides/domain-behavior/010.py",
-    "guides/evolving-events/001.py",
-    "guides/evolving-events/002.py",
 }
 
 

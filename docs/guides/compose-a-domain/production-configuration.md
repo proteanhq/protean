@@ -115,7 +115,7 @@ database_uri = "sqlite:///path/to/db.sqlite3"
 # Elasticsearch
 [databases.default]
 provider = "elasticsearch"
-database_uri = "{'hosts': ['localhost']}"
+database_uri = { hosts = ["localhost"] }
 ```
 
 ### Brokers
@@ -177,15 +177,13 @@ database_uri = "${DATABASE_URL}"
 
 [databases.analytics]
 provider = "elasticsearch"
-database_uri = "{'hosts': ['${ES_HOST|localhost}']}"
+database_uri = { hosts = ["${ES_HOST|localhost}"] }
 ```
 
 Then associate elements with specific databases in your domain:
 
 ```python
-@domain.aggregate(provider="analytics")
-class ProductSearch:
-    ...
+--8<-- "guides/compose-a-domain/production-configuration/001.py:aggregate"
 ```
 
 ---

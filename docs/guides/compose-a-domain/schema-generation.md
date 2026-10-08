@@ -122,8 +122,8 @@ metadata in `x-protean-*` extension fields:
   "title": "OrderPlaced",
   "type": "object",
   "properties": {
-    "order_id": { "type": "string" },
-    "customer_name": { "type": "string" },
+    "order_id": { "type": "string", "minLength": 1 },
+    "customer_name": { "type": "string", "maxLength": 255, "minLength": 1 },
     "total": { "type": "number" }
   },
   "required": ["customer_name", "order_id", "total"],
@@ -164,8 +164,8 @@ with `$ref` pointers:
     "ShippingAddress": {
       "type": "object",
       "properties": {
-        "street": { "type": "string", "maxLength": 255 },
-        "city": { "type": "string", "maxLength": 100 }
+        "street": { "type": "string", "maxLength": 255, "minLength": 1 },
+        "city": { "type": "string", "maxLength": 100, "minLength": 1 }
       },
       "required": ["city", "street"]
     }
@@ -192,23 +192,25 @@ Optional fields use the `anyOf` pattern with `null`:
 
 ## Validating payloads
 
-Generated schemas work with any JSON Schema validator.  For example, using
+Generated schemas work with any JSON Schema validator. Take this ordering
+domain:
+
+```python
+--8<-- "guides/compose-a-domain/schema-generation/001.py:domain"
+```
+
+`protean schema generate` writes its files with `write_schemas`. You can call it
+from Python too:
+
+```python
+--8<-- "guides/compose-a-domain/schema-generation/001.py:generate"
+```
+
+Then validate a payload against the `OrderPlaced` schema, for example with
 Python's `jsonschema` library:
 
 ```python
-import json
-import jsonschema
-
-with open(".protean/schemas/Order/events/OrderPlaced.v1.json") as f:
-    schema = json.load(f)
-
-payload = {
-    "order_id": "order-123",
-    "customer_name": "Alice",
-    "total": 99.99,
-}
-
-jsonschema.validate(payload, schema)  # Passes
+--8<-- "guides/compose-a-domain/schema-generation/001.py:validate"
 ```
 
 ---

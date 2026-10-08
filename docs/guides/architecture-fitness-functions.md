@@ -131,12 +131,7 @@ its decorator. This is the right tool when a violation is a deliberate,
 documented exception for that element:
 
 ```python
-@domain.aggregate(
-    indexes=[Index("body")],
-    suppress_checks=["UNBOUNDED_INDEXED_STRING"],
-)
-class Note:
-    body = Text()
+--8<-- "guides/architecture-fitness-functions/001.py:full"
 ```
 
 `suppress_checks` accepts a list of rule codes (a bare string is treated as a
@@ -260,21 +255,7 @@ rules = ["my_app.lint.check_naming"]
 ```
 
 ```python
-# my_app/lint.py
-def check_naming(ir: dict) -> list[dict]:
-    """Flag aggregates whose short name is not PascalCase."""
-    findings = []
-    # ir["elements"] is a flat index of element type -> list of FQNs.
-    for fqn in ir.get("elements", {}).get("AGGREGATE", []):
-        name = fqn.rsplit(".", 1)[-1]
-        if not (name[:1].isupper() and name.isalnum()):
-            findings.append({
-                "code": "AGGREGATE_NOT_PASCAL_CASE",
-                "element": fqn,
-                "level": "info",
-                "message": f"{name} should be PascalCase",
-            })
-    return findings
+--8<-- "guides/architecture-fitness-functions/002.py:rule"
 ```
 
 The `ir` argument is the full IR document, see the [IR

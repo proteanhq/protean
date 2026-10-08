@@ -10,6 +10,7 @@ Two rounds of change land here:
 `OrderPlaced`.
 """
 
+# --8<-- [start:v3]
 from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
@@ -36,6 +37,10 @@ class OrderPlaced(BaseEvent):
     placed_at = DateTime()
 
 
+# --8<-- [end:v3]
+
+
+# --8<-- [start:deprecated]
 @domain.event(
     part_of=Order,
     deprecated={"since": "0.16", "removal": "0.19"},
@@ -45,6 +50,9 @@ class OrderCreated(BaseEvent):
     order_id = Identifier(identifier=True)
 
 
+# --8<-- [end:deprecated]
+
+
 @domain.event_handler(part_of=Order)
 class OrderNotifications(BaseEventHandler):
     @handle(OrderPlaced)
@@ -52,6 +60,7 @@ class OrderNotifications(BaseEventHandler):
         pass
 
 
+# --8<-- [start:upcasters]
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class OrderPlacedV1toV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
@@ -65,3 +74,6 @@ class OrderPlacedV2toV3(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data.setdefault("placed_at", None)
         return data
+
+
+# --8<-- [end:upcasters]

@@ -135,7 +135,7 @@ The `@handle` decorator binds a handler method to a specific event type.
 Import it from `protean`:
 
 ```python
-from protean import handle
+--8<-- "guides/consume-state/event-handlers/001.py:import-handle"
 ```
 
 Each `@handle`-decorated method receives exactly one event class as its
@@ -146,27 +146,7 @@ A single event handler class can contain multiple `@handle` methods, each
 processing a different event type:
 
 ```python
-@domain.event_handler(part_of=Order)
-class ManageInventory:
-    @handle(OrderShipped)
-    def reduce_stock(self, event: OrderShipped):
-        current_domain.process(
-            ReduceStock(
-                order_id=event.order_id,
-                book_id=event.book_id,
-                quantity=event.quantity,
-            )
-        )
-
-    @handle(OrderCancelled)
-    def restore_stock(self, event: OrderCancelled):
-        current_domain.process(
-            RestoreStock(
-                order_id=event.order_id,
-                book_id=event.book_id,
-                quantity=event.quantity,
-            )
-        )
+--8<-- "guides/consume-state/event-handlers/001.py:multiple-handlers"
 ```
 
 Each `@handle` method runs within its own Unit of Work. If the handler
@@ -209,13 +189,7 @@ wildcard string `"$any"` to `@handle` instead of a specific event class. This is
 useful for cross-cutting concerns such as an audit trail:
 
 ```python
-@domain.event_handler(part_of=Order)
-class OrderAudit:
-    @handle("$any")
-    def record(self, event):
-        current_domain.repository_for(AuditEntry).add(
-            AuditEntry.from_event(event)
-        )
+--8<-- "guides/consume-state/event-handlers/002.py:audit"
 ```
 
 A `$any` handler stays scoped to its aggregate's stream: it receives all events
@@ -272,13 +246,7 @@ originally triggered them, useful when the same event type can be raised from
 different contexts and you only want to react to a specific trigger.
 
     ```python
-    @domain.event_handler(part_of=Order, source_stream="manage_order")
-    class EmailNotifications:
-        @handle(OrderShipped)
-        def send_shipping_email(self, event: OrderShipped):
-            # Only invoked when OrderShipped was triggered by a command
-            # in the manage_order stream — not by a bulk import or replay.
-            ...
+    --8<-- "guides/consume-state/event-handlers/002.py:source-stream"
     ```
 
 - **`retries`**, **`backoff`**, **`retry_exceptions`**: Opt-in auto-retry on
@@ -317,18 +285,7 @@ messages are consumed when running the [Protean server](../../concepts/async-pro
 #### Example with Subscription Configuration
 
 ```python
-@domain.event_handler(
-    part_of=Order,
-    subscription_profile="production",
-    subscription_config={
-        "messages_per_tick": 100,
-        "enable_dlq": True,
-    }
-)
-class OrderEventHandler:
-    @handle(OrderCreated)
-    def send_confirmation(self, event):
-        ...
+--8<-- "guides/consume-state/event-handlers/002.py:subscription-config"
 ```
 
 ### Retry and Dead Letter Queue (DLQ)
@@ -346,18 +303,7 @@ automatic retries and dead-letter queuing for failed messages:
   reprocess DLQ messages manually or with a scheduled job.
 
 ```python
-@domain.event_handler(
-    part_of=Order,
-    subscription_config={
-        "max_retries": 5,
-        "enable_dlq": True,
-    }
-)
-class CriticalOrderHandler:
-    @handle(OrderPlaced)
-    def process_order(self, event: OrderPlaced):
-        # If this fails 5 times, the message moves to the DLQ
-        ...
+--8<-- "guides/consume-state/event-handlers/002.py:dlq"
 ```
 
 !!! note "Event store subscriptions"
@@ -376,13 +322,7 @@ a timeout). These fast retries happen inside the handler, before the message is
 ever re-delivered or routed to the DLQ:
 
 ```python
-@domain.event_handler(part_of=Order, retries=3, backoff="exponential")
-class InventorySync:
-    @handle(OrderPlaced)
-    def reserve_stock(self, event: OrderPlaced):
-        # A ConnectionError here is retried up to 3 times with exponential
-        # backoff before the failure surfaces to the subscription.
-        ...
+--8<-- "guides/consume-state/event-handlers/002.py:transient-retries"
 ```
 
 Each attempt runs in a fresh Unit of Work. Only genuinely transient exceptions
@@ -404,22 +344,7 @@ Protean provides error handling for event handlers through the optional `handle_
 You can add a `handle_error` class method to your event handler to implement custom error handling:
 
 ```python
-@domain.event_handler(part_of=Order)
-class OrderEventHandler:
-    @handle(OrderShipped)
-    def reduce_stock_for_order(self, event):
-        # Event handling logic that might raise exceptions
-        ...
-
-    @classmethod
-    def handle_error(cls, exc: Exception, message):
-        """Custom error handling for event processing failures"""
-        # Log the error
-        logger.error(f"Failed to process event {message.type}: {exc}")
-
-        # Perform recovery operations
-        # Example: store failed events for retry, trigger compensating actions, etc.
-        ...
+--8<-- "guides/consume-state/event-handlers/003.py:handle-error"
 ```
 
 ### How It Works
@@ -436,6 +361,7 @@ class OrderEventHandler:
 If an exception occurs within the `handle_error` method itself, the Protean Engine will catch and log that exception as well, ensuring that the event processing pipeline continues to function. This provides an additional layer of resilience:
 
 ```python
+# fragment
 @classmethod
 def handle_error(cls, exc: Exception, message):
     try:

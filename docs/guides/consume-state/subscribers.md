@@ -90,29 +90,18 @@ The name of the broker stream this subscriber listens to. This must be
 specified; omitting it raises an `IncorrectUsageError`.
 
 ```python
-@domain.subscriber(stream="external_orders")
-class ExternalOrderSubscriber:
-    def __call__(self, payload: dict) -> None:
-        ...
+--8<-- "guides/consume-state/subscribers/001.py:stream"
 ```
 
 ### `broker` (optional, default: `"default"`)
 
 The name of the broker to use, as configured in the domain configuration. If
-not specified, the subscriber uses the `"default"` broker.
+not specified, the subscriber uses the `"default"` broker. The domain below
+configures an `analytics` broker next to the default one:
 
 ```python
-# Uses the default broker
-@domain.subscriber(stream="order_events")
-class OrderSubscriber:
-    def __call__(self, payload: dict) -> None:
-        ...
-
-# Uses a specific named broker
-@domain.subscriber(stream="analytics_events", broker="analytics")
-class AnalyticsSubscriber:
-    def __call__(self, payload: dict) -> None:
-        ...
+--8<-- "guides/consume-state/subscribers/001.py:config"
+--8<-- "guides/consume-state/subscribers/001.py:broker"
 ```
 
 !!!note
@@ -175,18 +164,7 @@ You can define a `handle_error` class method in your subscriber to handle
 exceptions:
 
 ```python
-@domain.subscriber(stream="payment_gateway")
-class PaymentSubscriber:
-    def __call__(self, payload: dict) -> None:
-        # Processing logic that might raise exceptions
-        ...
-
-    @classmethod
-    def handle_error(cls, exc: Exception, message: dict) -> None:
-        """Custom error handling for message processing failures."""
-        logger.error(f"Failed to process payment message: {exc}")
-        # Perform recovery: store for retry, notify monitoring, etc.
-        ...
+--8<-- "guides/consume-state/subscribers/002.py:handle-error"
 ```
 
 ### How It Works
@@ -209,6 +187,7 @@ processing pipeline continues to function. This provides an additional layer
 of resilience:
 
 ```python
+# fragment
 @classmethod
 def handle_error(cls, exc: Exception, message: dict) -> None:
     try:
@@ -236,76 +215,32 @@ Subscribers receive raw dicts from external systems. Validate shape and types
 before trusting the data:
 
 ```python
-@domain.subscriber(stream="payments")
-class PaymentWebhookSubscriber:
-
-    REQUIRED_FIELDS = ("order_id", "status", "amount")
-
-    def __call__(self, payload: dict) -> None:
-        # Validate required fields
-        missing = [f for f in self.REQUIRED_FIELDS if f not in payload]
-        if missing:
-            logger.warning(f"Missing fields {missing}, skipping message")
-            return
-
-        # Validate types
-        if not isinstance(payload["amount"], (int, float)):
-            logger.warning(f"Invalid amount type: {type(payload['amount'])}")
-            return
-
-        # Safe to process
-        current_domain.process(
-            RecordPayment(
-                order_id=payload["order_id"],
-                status=payload["status"],
-                amount=payload["amount"],
-            )
-        )
+--8<-- "guides/consume-state/subscribers/003.py:subscriber"
 ```
 
 ### Accessing Message Context
 
 The Protean Engine sets `g.message_in_context` during subscriber processing,
 using the same mechanism as event and command handlers. This gives subscribers
-access to the broker message ID and stream name, useful for idempotency checks,
+access to the message ID and stream name, useful for idempotency checks,
 audit logging, and debugging:
 
 ```python
-from protean.utils.globals import g
-
-@domain.subscriber(stream="orders")
-class OrderSubscriber:
-
-    def __call__(self, payload: dict) -> None:
-        msg = g.message_in_context
-
-        # Use the broker message ID for idempotency
-        message_id = msg.metadata.headers.id
-        repo = current_domain.repository_for(ProcessedMessage)
-        if repo.find(message_id=message_id):
-            logger.info(f"Already processed {message_id}, skipping")
-            return
-
-        # Process the message
-        current_domain.process(
-            CreateShipment(order_id=payload["order_id"], items=payload["items"])
-        )
-
-        # Record that we processed this message
-        repo.add(ProcessedMessage(message_id=message_id))
+--8<-- "guides/consume-state/subscribers/004.py:imports"
+--8<-- "guides/consume-state/subscribers/004.py:subscriber"
 ```
 
 The context `Message` wraps the broker metadata:
 
 | Attribute | Description |
 |-----------|-------------|
-| `msg.metadata.headers.id` | The broker-assigned message identifier |
+| `msg.metadata.headers.id` | The message identifier: the source message's ID when the payload carries one at `metadata.headers.id` (as messages Protean publishes do), otherwise the broker-assigned ID |
 | `msg.metadata.headers.stream` | The broker stream from which the message was consumed |
 | `msg.data` | The raw payload `dict` |
 
 Because this is the same `message_in_context` used for domain events and
 commands, any commands dispatched by the subscriber via `domain.process()`
-automatically inherit the broker message ID as their `causation_id`, linking
+automatically inherit this message ID as their `causation_id`, linking
 the full trace chain back to the original external message. The
 `correlation_id` from the source service is also preserved automatically,
 stitching the causal chain across service boundaries.

@@ -26,7 +26,7 @@ flowchart LR
 Here is where we start, `OrderPlaced` at its original, implicit **version 1**:
 
 ```python
---8<-- "guides/evolving-events/001.py:20:24"
+--8<-- "guides/evolving-events/001.py:v1"
 ```
 
 Over the rest of this guide we evolve it to version 3. Here is where we are
@@ -34,9 +34,7 @@ headed, the version-3 event; the sections below explain each change and add the
 upcasters that make it work:
 
 ```python
---8<-- "guides/evolving-events/002.py:13:19"
-
---8<-- "guides/evolving-events/002.py:21:36"
+--8<-- "guides/evolving-events/002.py:v3"
 ```
 
 ## Add a field with a default (a backward-compatible change)
@@ -46,6 +44,7 @@ were written without it still decode, the default fills the gap. We add a
 `currency`:
 
 ```python
+# fragment
 currency = String(default="USD")
 ```
 
@@ -78,6 +77,7 @@ rename instead, with `renamed_from`, and Protean treats it as a
 operation:
 
 ```python
+# fragment
 customer = String(required=True, renamed_from=["customer_name"])
 ```
 
@@ -109,10 +109,7 @@ defaulted fields would load under weak schema without a bump, so the version bum
 here illustrates the mechanism; those two changes do not require it.
 
 ```python
---8<-- "guides/evolving-events/002.py:55:60"
-
-
---8<-- "guides/evolving-events/002.py:63:67"
+--8<-- "guides/evolving-events/002.py:upcasters"
 ```
 
 Protean validates the chain at `domain.init()`: a *broken* chain, upcasters that exist but
@@ -136,7 +133,7 @@ Sometimes an event is replaced wholesale rather than versioned. Mark it
 `deprecated` and point `superseded_by` at its replacement:
 
 ```python
---8<-- "guides/evolving-events/002.py:39:45"
+--8<-- "guides/evolving-events/002.py:deprecated"
 ```
 
 Raising a deprecated event emits a `DeprecationWarning` at runtime that names the
@@ -163,9 +160,7 @@ lenient_deserialization = true
 …or per event, which overrides the config either way:
 
 ```python
-@domain.event(part_of=Order, lenient=True)
-class OrderPlaced(BaseEvent):
-    ...
+--8<-- "guides/evolving-events/003.py:lenient"
 ```
 
 Reach for lenience only for the read path of genuinely legacy data, for

@@ -54,10 +54,7 @@ my_app/
 Each domain's `__init__.py` creates its own `Domain` instance:
 
 ```python
-# my_app/identity/__init__.py
-from protean import Domain
-
-identity_domain = Domain(name="Identity")
+--8<-- "guides/multi-domain-applications/001.py:domains"
 ```
 
 ---
@@ -82,7 +79,7 @@ URI = "redis://localhost:6379/0"
 # my_app/catalogue/domain.toml
 [databases.default]
 provider = "elasticsearch"
-database_uri = "http://localhost:9200"
+database_uri = { hosts = ["http://localhost:9200"] }
 
 [brokers.default]
 provider = "redis"
@@ -92,6 +89,7 @@ URI = "redis://localhost:6379/1"
 Alternatively, pass configuration programmatically:
 
 ```python
+# fragment
 identity_domain = Domain(
     name="Identity",
     config={
@@ -113,41 +111,7 @@ Use `DomainContextMiddleware` to route HTTP requests to the correct domain
 context based on URL prefix:
 
 ```python
-# my_app/api/app.py
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI
-from protean.integrations.fastapi import (
-    DomainContextMiddleware,
-    register_exception_handlers,
-)
-
-from my_app.identity import identity_domain
-from my_app.catalogue import catalogue_domain
-from my_app.fulfillment import fulfillment_domain
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Initialize all domains at startup
-    for d in [identity_domain, catalogue_domain, fulfillment_domain]:
-        d.init()
-        with d.domain_context():
-            d.setup_database()
-    yield
-
-
-app = FastAPI(lifespan=lifespan)
-
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={
-        "/customers": identity_domain,
-        "/products": catalogue_domain,
-        "/shipments": fulfillment_domain,
-    },
-)
-register_exception_handlers(app)
+--8<-- "guides/multi-domain-applications/001.py:fastapi-app"
 ```
 
 Requests to `/customers/...` automatically activate `identity_domain`;
@@ -187,76 +151,13 @@ another domain's events. This is especially useful for **process managers**
 that coordinate workflows spanning multiple bounded contexts.
 
 ```python
-from protean.core.event import BaseEvent
-from protean.fields import Float, Identifier, String
-
-# Define the external event class in your domain.
-# This is YOUR domain's representation of the external event —
-# it does not import from the other domain's package.
-class PaymentReceived(BaseEvent):
-    payment_id = Identifier(required=True)
-    order_id = Identifier(required=True)
-    amount = Float()
-
-
-class StockReserved(BaseEvent):
-    order_id = Identifier(required=True)
-    inventory_item_id = Identifier(required=True)
-    quantity = Float()
-
-
-class StockUnavailable(BaseEvent):
-    order_id = Identifier(required=True)
-    inventory_item_id = Identifier(required=True)
-
-
-# Register external events with their type strings
-fulfillment_domain.register_external_event(
-    PaymentReceived, "Billing.PaymentReceived.v1"
-)
-fulfillment_domain.register_external_event(
-    StockReserved, "Inventory.StockReserved.v1"
-)
-fulfillment_domain.register_external_event(
-    StockUnavailable, "Inventory.StockUnavailable.v1"
-)
+--8<-- "guides/multi-domain-applications/001.py:external-events"
 ```
 
 Now process managers and event handlers can use these typed events directly:
 
 ```python
-@fulfillment_domain.process_manager(
-    stream_categories=[
-        "fulfillment::order",          # Own domain
-        "billing::payment",            # External domain stream
-        "inventory::inventory_item",   # External domain stream
-    ]
-)
-class OrderFulfillmentPM:
-    order_id = Identifier()
-    status = String(default="new")
-
-    @handle(OrderPlaced, start=True, correlate="order_id")
-    def on_order_placed(self, event: OrderPlaced) -> None:
-        self.order_id = event.order_id
-        self.status = "awaiting_payment"
-
-    @handle(PaymentReceived, correlate="order_id")
-    def on_payment_received(self, event: PaymentReceived) -> None:
-        if self.status != "awaiting_payment":
-            return
-        self.status = "awaiting_stock"
-
-    @handle(StockReserved, correlate="order_id")
-    def on_stock_reserved(self, event: StockReserved) -> None:
-        if self.status != "awaiting_stock":
-            return
-        self.status = "completed"
-        self.mark_as_complete()
-
-    @handle(StockUnavailable, correlate="order_id", end=True)
-    def on_stock_unavailable(self, event: StockUnavailable) -> None:
-        self.status = "stock_unavailable"
+--8<-- "guides/multi-domain-applications/001.py:process-manager"
 ```
 
 `on_stock_reserved` completes the process only when the order is waiting for
@@ -281,18 +182,7 @@ For syncing state across co-located contexts (without a process manager),
 you can also use event handlers with `stream_category`:
 
 ```python
-@fulfillment_domain.event_handler(
-    part_of=Shipment,
-    stream_category="identity::customer",
-)
-class CustomerSyncHandler:
-    @handle(CustomerRegistered)
-    def on_registered(self, event: CustomerRegistered):
-        recipient = Recipient(
-            customer_id=event.customer_id,
-            name=event.name,
-        )
-        current_domain.repository_for(Recipient).add(recipient)
+--8<-- "guides/multi-domain-applications/001.py:event-handler"
 ```
 
 ### Distributed domains: Subscribers as anti-corruption layers
@@ -300,24 +190,12 @@ class CustomerSyncHandler:
 When domains run as independent services with separate brokers (or when you
 consume events from external systems you don't control) use subscribers.
 Subscribers receive raw `dict` payloads and translate them into your domain's
-language, acting as an anti-corruption layer:
+language, acting as an anti-corruption layer. Here the subscriber turns a
+customer payload into a `CreateRecipient` command, and a command handler
+stores the recipient:
 
 ```python
-@fulfillment_domain.subscriber(stream="identity_customer_events")
-class CustomerEventSubscriber:
-    """Anti-corruption layer: translates external customer events."""
-
-    def __call__(self, payload: dict) -> None:
-        event_type = payload.get("type")
-
-        if event_type == "CustomerRegistered":
-            current_domain.process(
-                CreateRecipient(
-                    customer_id=payload["customer_id"],
-                    name=payload["full_name"],  # Field name translation
-                    address=payload.get("shipping_address"),
-                )
-            )
+--8<-- "guides/multi-domain-applications/001.py:subscriber"
 ```
 
 **Why this works for distributed domains:**
@@ -349,11 +227,7 @@ When an external consumer needs complete aggregate state (not granular
 deltas), enable fact events on the source aggregate:
 
 ```python
-@identity_domain.aggregate(fact_events=True)
-class Customer(BaseAggregate):
-    name = String(required=True)
-    email = String(required=True)
-    segment = String()
+--8<-- "guides/multi-domain-applications/002.py:fact-events"
 ```
 
 Fact events publish a full snapshot with every change, making downstream
@@ -371,20 +245,7 @@ bounded contexts with different names and shapes. Link them using a shared
 identifier:
 
 ```python
-# Identity context: the authority for customer data
-@identity_domain.aggregate
-class Customer(BaseAggregate):
-    customer_id = Auto(identifier=True)
-    name = String(required=True)
-    email = String(required=True)
-
-# Fulfillment context: local representation with only relevant fields
-@fulfillment_domain.aggregate
-class Recipient(BaseAggregate):
-    recipient_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)  # Correlation ID
-    name = String(required=True)
-    delivery_address = Text()
+--8<-- "guides/multi-domain-applications/001.py:correlation"
 ```
 
 The `customer_id` in `Recipient` is a correlation ID. It links back to the
@@ -430,75 +291,28 @@ protean observatory \
 Create independent test fixtures for each domain:
 
 ```python
-import pytest
-from protean.integrations.pytest import DomainFixture
-
-from my_app.identity import identity_domain
-from my_app.fulfillment import fulfillment_domain
-
-
-@pytest.fixture(scope="session")
-def identity_fixture():
-    identity_domain.config["command_processing"] = "sync"
-    identity_domain.config["event_processing"] = "sync"
-    fixture = DomainFixture(identity_domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(scope="session")
-def fulfillment_fixture():
-    fulfillment_domain.config["command_processing"] = "sync"
-    fulfillment_domain.config["event_processing"] = "sync"
-    fixture = DomainFixture(fulfillment_domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
+--8<-- "guides/multi-domain-applications/001.py:fixtures"
 ```
 
 ### Testing cross-domain flows
 
-Test the boundary between domains by verifying that events from one domain
-trigger the expected effects in another:
+In tests the domains run in sync mode, and a domain in sync mode runs only its
+own handlers. An event raised in the identity domain never reaches a
+fulfillment handler, so a test cannot follow a flow across the boundary. Test
+each side of the boundary instead. On the receiving side, hand the event the
+other domain publishes to your handler, and check the effect in your domain:
 
 ```python
-def test_customer_registration_creates_recipient(
-    identity_fixture, fulfillment_fixture
-):
-    # Act in the identity domain
-    with identity_fixture.domain_context():
-        identity_domain.process(
-            RegisterCustomer(name="Alice", email="alice@example.com")
-        )
-
-    # Verify effect in the fulfillment domain
-    with fulfillment_fixture.domain_context():
-        repo = fulfillment_domain.repository_for(Recipient)
-        recipients = repo.find(Q(name="Alice"))
-        assert recipients.total == 1
+--8<-- "guides/multi-domain-applications/001.py:cross-domain-test"
 ```
+
+To run a flow end to end across domains, run each domain's engine against a
+shared event store, as in production.
 
 ### Testing FastAPI endpoints across domains
 
 ```python
-from fastapi.testclient import TestClient
-from my_app.api.app import app
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
-
-
-def test_customer_endpoint_uses_identity_domain(client):
-    response = client.post("/customers", json={"name": "Alice"})
-    assert response.status_code == 201
-
-
-def test_product_endpoint_uses_catalogue_domain(client):
-    response = client.get("/products")
-    assert response.status_code == 200
+--8<-- "guides/multi-domain-applications/001.py:api-tests"
 ```
 
 ---

@@ -5,7 +5,7 @@
 The domain is initialized by calling the `init` method.
 
 ```python
-domain.init()
+--8<-- "guides/compose-a-domain/initialize-domain/001.py:init"
 ```
 
 ## `Domain.init()`
@@ -19,7 +19,7 @@ to discover domain elements. You can control this behavior with the `traverse`
 flag:
 
 ```python
-domain.init(traverse=False)
+--8<-- "guides/compose-a-domain/initialize-domain/002.py:init-without-traversal"
 ```
 
 If you choose to not traverse, Protean will not be able to detect domain
@@ -66,9 +66,7 @@ Examples of checks include:
 1. Resolving references that were specified as Strings, like:
 
 ```python
-@domain.entity(part_of="User")
-class Account:
-    ...
+--8<-- "guides/compose-a-domain/initialize-domain/003.py:string-reference"
 ```
 
 1. Setting up Aggregate clusters and their shared settings. The object graph

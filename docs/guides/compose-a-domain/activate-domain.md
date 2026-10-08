@@ -55,17 +55,7 @@ You can also activate the context manually by using the `push` and `pop`
 methods of the domain context:
 
 ```python
-context = domain.domain_context()
-
-# Activate the domain
-context.push()
-
-# Do something interesting
-# ...
-# ...
-
-# Reset domain stack when done
-context.pop()
+--8<-- "guides/compose-a-domain/activate-domain/001.py:manual"
 ```
 
 !!! warning
@@ -94,20 +84,7 @@ Using this pattern, you can, for example, manage a file connection for the
 lifetime of a domain call:
 
 ```python
-from protean import g
-
-def get_log():
-    if 'log' not in g:
-        g.log = open_log_file()
-
-    return g.log
-
-@domain.teardown_appcontext
-def teardown_log_file(exception):
-    file_obj = g.pop('log', None)
-
-    if not file_obj.closed:
-        file_obj.close()
+--8<-- "guides/compose-a-domain/activate-domain/002.py:g-resource"
 ```
 
 Now, every call to `get_log()` during the domain call will return the same file

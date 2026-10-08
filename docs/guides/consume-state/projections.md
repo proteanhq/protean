@@ -15,8 +15,8 @@ Projections are populated in response to domain events by
 
 Projections are defined with the `Domain.projection` decorator.
 
-```python hl_lines="1-2"
---8<-- "guides/consume-state/002.py:66:75"
+```python hl_lines="15-16"
+--8<-- "guides/consume-state/projections/001.py:projection"
 ```
 
 ### Configuration Options
@@ -42,14 +42,7 @@ and schema behavior:
     or use `.limit(n)` in queries:
 
     ```python
-    # Override the default limit on the projection
-    @domain.projection(limit=500)
-    class LargeReport:
-        ...
-
-    # Or override per-query
-    view = domain.view_for(LargeReport)
-    results = view.query.limit(1000).all()
+    --8<-- "guides/consume-state/projections/001.py:limit"
     ```
 
 ### Storage Options
@@ -58,6 +51,7 @@ Projections can be stored in either a database or a cache, but not both
 simultaneously:
 
 ```python
+# fragment
 # Database storage (default)
 @domain.projection(provider="postgres")
 class ProductInventory:
@@ -84,20 +78,13 @@ ValueObject fields preserve domain semantics while being stored as flattened
 shadow fields for efficient querying:
 
 ```python
-@domain.projection
-class OrderSummary:
-    order_id = Identifier(identifier=True)
-    customer_name = String(max_length=100)
-    total_amount = Float()
-    shipping_address = ValueObject(Address)  # Stored as shipping_address_street, etc.
+--8<-- "guides/consume-state/projections/001.py:value-object-field"
 ```
 
 You can query on individual shadow fields:
 
 ```python
-results = domain.view_for(OrderSummary).query.filter(
-    shipping_address_city="Springfield"
-).all()
+--8<-- "guides/consume-state/projections/001.py:shadow-field-query"
 ```
 
 ## Querying Projections
@@ -105,25 +92,7 @@ results = domain.view_for(OrderSummary).query.filter(
 Use `domain.view_for()` to get a read-only interface for any projection:
 
 ```python
-view = domain.view_for(ProductInventory)
-
-# Single lookup by identifier
-item = view.get("abc-123")
-
-# Fluent filtering via ReadOnlyQuerySet
-results = view.query.filter(
-    stock_quantity__lt=10
-).order_by("name").all()
-
-for item in results:
-    print(f"{item.name}: {item.stock_quantity} remaining")
-
-# Convenience single-item lookup by criteria
-item = view.find_by(product_id="abc-123")
-
-# Total count and existence checks
-total = view.count()
-found = view.exists("abc-123")
+--8<-- "guides/consume-state/projections/001.py:query"
 ```
 
 ### ReadView API
@@ -152,15 +121,7 @@ to enforce CQRS read/write separation.
 The `ResultSet` returned by `.all()` includes pagination properties:
 
 ```python
-page = view.query.order_by("name").limit(20).offset(40).all()
-
-page.items        # The actual result items
-page.total        # Total matching records across all pages
-page.has_next     # True if more pages exist
-page.has_prev     # True if previous pages exist
-page.page         # Current page number
-page.page_size    # Items per page
-page.total_pages  # Total number of pages
+--8<-- "guides/consume-state/projections/001.py:pagination"
 ```
 
 `ReadView` does not expose `add()`, `_dao`, or any mutation methods. It is safe
@@ -170,8 +131,7 @@ For write operations (used inside projectors), continue using
 `domain.repository_for()`:
 
 ```python
-repo = domain.repository_for(ProductInventory)
-repo.add(inventory_record)
+--8<-- "guides/consume-state/projections/001.py:write"
 ```
 
 !!! note
@@ -210,9 +170,7 @@ through `QuerySet` (such as SQL aggregations, Elasticsearch DSL, or Redis
 `SCAN` commands) use `domain.connection_for()`:
 
 ```python
-conn = domain.connection_for(OrderSummary)
-# conn is the raw SQLAlchemy session, Elasticsearch client,
-# Redis client, etc., depending on the projection's backing store
+--8<-- "guides/consume-state/projections/001.py:connection"
 ```
 
 The method automatically routes to the correct provider or cache based on
