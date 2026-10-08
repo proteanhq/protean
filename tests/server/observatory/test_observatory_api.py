@@ -13,6 +13,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from protean import handle
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
+from protean.fields import String
 from protean.port.broker import DLQEntry
 from protean.server.observatory import (
     Observatory,
@@ -27,6 +32,7 @@ from protean.server.observatory.api import (
     _outbox_status,
     _parse_worker_key,
 )
+from protean.utils.dlq import collect_dlq_streams
 
 
 @pytest.fixture
@@ -1560,6 +1566,45 @@ class TestDLQInspectEndpoint:
 
 
 # --- Tests for DLQ replay endpoint ---
+
+
+class _DLQAggregate(BaseAggregate):
+    name: String()
+
+
+class _DLQEvent(BaseEvent):
+    name: String()
+
+
+class _DLQEventHandler(BaseEventHandler):
+    @handle(_DLQEvent)
+    def on_event(self, event: _DLQEvent) -> None:
+        pass
+
+
+@pytest.mark.redis
+class TestDLQInspectEndpointWithRedis:
+    def test_a_dlq_key_that_is_not_a_stream_returns_500(self, test_domain):
+        test_domain.register(_DLQAggregate)
+        test_domain.register(_DLQEvent, part_of=_DLQAggregate)
+        test_domain.register(_DLQEventHandler, part_of=_DLQAggregate)
+        test_domain.init(traverse=False)
+
+        dlq_streams = collect_dlq_streams(test_domain)
+        assert dlq_streams
+
+        redis_client = test_domain.brokers["default"]._client
+        try:
+            for dlq_stream in dlq_streams:
+                redis_client.set(dlq_stream, "not-a-stream")
+
+            client = TestClient(Observatory(domains=[test_domain]).app)
+            response = client.get("/api/dlq/1-0")
+
+            assert response.status_code == 500
+            assert response.json() == {"error": "Failed to inspect DLQ message"}
+        finally:
+            redis_client.delete(*dlq_streams)
 
 
 class TestDLQReplayEndpoint:

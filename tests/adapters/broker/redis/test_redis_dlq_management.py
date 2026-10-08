@@ -218,3 +218,64 @@ class TestRedisDLQManagement:
         # far-future cutoff makes every entry eligible, so all are removed.
         assert broker.dlq_trim("orders:dlq", "9999999999999-0") == 3
         assert broker.dlq_depth("orders:dlq") == 0
+
+    def test_dlq_inspect_finds_an_entry_by_its_millisecond_id(self, test_domain):
+        broker = _broker(test_domain)
+        dlq_id = _seed(
+            broker, "orders:dlq", {"k": "v"}, original_stream="orders", original_id="o1"
+        )
+        millisecond_id = dlq_id.split("-")[0]
+
+        entry = broker.dlq_inspect("orders:dlq", millisecond_id)
+        assert entry is not None
+        assert entry.dlq_id == dlq_id
+
+    def test_dlq_replay_of_a_missing_stream_returns_false(self, test_domain):
+        broker = _broker(test_domain)
+        assert broker.dlq_replay("nonexistent:dlq", "1-0", "orders") is False
+
+    def test_dlq_replay_all_of_a_missing_stream_returns_zero(self, test_domain):
+        broker = _broker(test_domain)
+        assert broker.dlq_replay_all("nonexistent:dlq", "orders") == 0
+
+
+@pytest.mark.redis
+class TestRedisDLQErrors:
+    """A DLQ key that is not a stream raises instead of reading as empty."""
+
+    @pytest.fixture
+    def broker(self, test_domain) -> RedisBroker:
+        broker = _broker(test_domain)
+        broker._client.set("orders:dlq", "not-a-stream")
+        return broker
+
+    def test_dlq_inspect_raises(self, broker):
+        with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
+            broker.dlq_inspect("orders:dlq", "1-0")
+
+    def test_dlq_replay_raises(self, broker):
+        with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
+            broker.dlq_replay("orders:dlq", "1-0", "orders")
+
+    def test_dlq_replay_all_raises(self, broker):
+        with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
+            broker.dlq_replay_all("orders:dlq", "orders")
+
+    def test_dlq_purge_raises_and_keeps_the_key(self, broker):
+        with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
+            broker.dlq_purge("orders:dlq")
+        assert broker._client.get("orders:dlq") == b"not-a-stream"
+
+    def test_dlq_depth_raises(self, broker):
+        with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
+            broker.dlq_depth("orders:dlq")
+
+    # The key is not a stream, so any call that reached Redis would raise
+    # WRONGTYPE. A plain return proves the ID check ran first.
+    @pytest.mark.parametrize("bad_id", ["abc", "1-", "-", "+", "(1-0", "1-0\n", ""])
+    def test_dlq_inspect_of_a_malformed_id_returns_none(self, broker, bad_id):
+        assert broker.dlq_inspect("orders:dlq", bad_id) is None
+
+    @pytest.mark.parametrize("bad_id", ["abc", "1-", "-", "+", "(1-0", "1-0\n", ""])
+    def test_dlq_replay_of_a_malformed_id_returns_false(self, broker, bad_id):
+        assert broker.dlq_replay("orders:dlq", bad_id, "orders") is False
