@@ -4,8 +4,9 @@ The domain-service and add-domain-service-flow skills tell a reader how
 invariants wrap a domain service's methods. These tests run each rule against
 the framework, and check that no page in the pack or the docs claims a public
 helper raises ``RecursionError``. A public method calling another public method
-only runs the invariants again; only an invariant calling a public helper
-recurses.
+runs the invariants again against the state reached so far, which raises
+``ValidationError`` when that state breaks one; only an invariant calling a
+public helper recurses.
 """
 
 from __future__ import annotations
@@ -58,6 +59,10 @@ def _domain_with_service():
         def confirm(self):
             return self.helper()
 
+        def reserve_all(self):
+            self.inventory.quantity = 0
+            return self.helper()
+
         def helper(self):
             return "confirmed"
 
@@ -86,6 +91,18 @@ def test_public_helper_runs_the_invariants_again_without_failing():
 
     assert result == "confirmed"
     # Once around confirm(), once around the public helper it calls
+    assert calls == ["in_stock", "in_stock"]
+
+
+def test_public_helper_checks_the_state_the_outer_method_reached():
+    domain, Order, Inventory, Fulfillment, calls = _domain_with_service()
+
+    with domain.domain_context():
+        with pytest.raises(ValidationError) as exc_info:
+            Fulfillment(Order(), Inventory(quantity=5)).reserve_all()
+
+    assert exc_info.value.messages == {"_service": ["Out of stock"]}
+    # Passed around reserve_all(), failed around the helper after the change
     assert calls == ["in_stock", "in_stock"]
 
 

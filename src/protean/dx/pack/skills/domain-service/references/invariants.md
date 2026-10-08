@@ -164,7 +164,7 @@ class OrderPlacementService:
         return sum(item.quantity * item.price for item in self.order.items)
 ```
 
-If you forget the underscore, `calculate_total` is wrapped like any public method. Calling it from a public method runs every invariant again around the helper: extra checks, not an error. Calling it from an invariant fails: the helper's wrapper runs the invariant, which calls the helper again, until Python's recursion limit stops the call.
+If you forget the underscore, `calculate_total` is wrapped like any public method. Calling it from a public method runs every invariant again around the helper, against the state the outer method has reached so far. If that half-finished state breaks an invariant, the helper raises `ValidationError` before the outer method completes. Calling it from an invariant fails: the helper's wrapper runs the invariant, which calls the helper again, until Python's recursion limit stops the call.
 
 ## Best practices
 

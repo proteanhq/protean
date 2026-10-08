@@ -3,7 +3,8 @@ Basic domain service: Fund transfer between two accounts.
 
 This example demonstrates:
 - Domain service spanning two Account aggregates
-- Pre-invariants: the amount is positive and the source has enough funds
+- Pre-invariants: the amount is positive, the source has enough funds, and
+  the source and target are different accounts
 - Callable pattern: instantiate with aggregates, call to execute
 - The service validates both accounts but changes only the source account
 - One aggregate per transaction: the command handler persists only the source

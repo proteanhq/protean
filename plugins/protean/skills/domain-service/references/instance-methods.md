@@ -137,7 +137,7 @@ class OrderPlacementService:
         return sum(item.quantity * item.price for item in self.order.items)
 ```
 
-Without the underscore prefix, `calculate_total` is wrapped like any public method. Calling it from `place_order` runs every invariant again around the helper: extra checks, not an error. An invariant that calls a public helper is different: the helper's wrapper runs the invariant again, which calls the helper again, and the calls never end.
+Without the underscore prefix, `calculate_total` is wrapped like any public method. Calling it from `place_order` runs every invariant again around the helper, against the state `place_order` has reached so far. If that half-finished state breaks an invariant, the helper raises `ValidationError` and `place_order` stops there. An invariant that calls a public helper is different: the helper's wrapper runs the invariant again, which calls the helper again, and the calls never end.
 
 ## Related
 - [Callable class pattern](./callable-class.md) - Single-operation alternative
