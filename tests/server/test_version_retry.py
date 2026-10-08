@@ -692,12 +692,54 @@ class TestCommitFailureRetry:
 
         assert exc_info.value.extra_info["original_exception"] == "ValueError"
         assert exc_info.value.extra_info["original_message"] == "boom"
+        assert isinstance(exc_info.value.__cause__, ValueError)
         assert attempt_count == 1
         mock_sleep.assert_not_called()
 
     @patch("protean.utils.mixins.time.sleep")
+    def test_value_error_from_sync_event_handler_is_not_retried(
+        self, mock_sleep, test_domain
+    ):
+        # Under sync processing the event handler runs inside the commit,
+        # after the events are durable. Retrying would append them again.
+        attempt_count = 0
+
+        class RegisteringHandler(BaseCommandHandler):
+            @handle(RenameUser)
+            def rename(self, command: RenameUser) -> None:
+                nonlocal attempt_count
+                attempt_count += 1
+                user = User.register(
+                    user_id=command.user_id, name=command.name, email="j@example.com"
+                )
+                current_domain.repository_for(User).add(user)
+
+        class FailingReaction(BaseEventHandler):
+            @handle(UserRegistered)
+            def on_registered(self, event: UserRegistered) -> None:
+                raise ValueError("reaction failed")
+
+        test_domain.register(RegisteringHandler, part_of=User)
+        test_domain.register(FailingReaction, part_of=User)
+        test_domain.init(traverse=False)
+        assert test_domain.config["event_processing"] == "sync"
+
+        user_id = str(uuid4())
+        command = RenameUser(user_id=user_id, name="Jane")
+        enriched = test_domain._enrich_command(command, True)
+        with pytest.raises(TransactionError) as exc_info:
+            RegisteringHandler._handle(enriched)
+
+        assert isinstance(exc_info.value.__cause__, ValueError)
+        assert str(exc_info.value.__cause__) == "reaction failed"
+        assert attempt_count == 1
+        mock_sleep.assert_not_called()
+        messages = test_domain.event_store.store.read(f"test::user-{user_id}")
+        assert [m.metadata.headers.type for m in messages] == ["Test.UserRegistered.v1"]
+
+    @patch("protean.utils.mixins.time.sleep")
     def test_event_store_conflict_at_commit_is_retried(
-        self, mock_sleep, test_domain, outbox
+        self, mock_sleep, test_domain, outbox, caplog
     ):
         attempt_count = 0
         stale = None
@@ -731,10 +773,15 @@ class TestCommitFailureRetry:
 
         command = RenameUser(user_id=identifier, name="Jane")
         enriched = test_domain._enrich_command(command, True)
-        StaleHandler._handle(enriched)
+        with caplog.at_level(logging.ERROR, logger="protean.core.unit_of_work"):
+            StaleHandler._handle(enriched)
 
         assert attempt_count == 2
         mock_sleep.assert_called_once()
+        failed = [r for r in caplog.records if r.getMessage() == "uow.commit_failed"]
+        assert len(failed) == 1
+        assert failed[0].exc_info is not None
+        assert failed[0].exc_info[0] is ExpectedVersionError
         assert test_domain.repository_for(User).get(identifier).name == "Jane"
 
 

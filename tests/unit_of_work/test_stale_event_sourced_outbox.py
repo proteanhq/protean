@@ -1,6 +1,6 @@
-"""A stale write on an event-sourced aggregate, with the outbox on, must fail
-with ``ExpectedVersionError`` and leave the outbox and the event store as the
-winner left them.
+"""A stale write on an event-sourced aggregate must fail with
+``ExpectedVersionError`` and leave the event store (and the outbox, when it is
+on) as the winner left them.
 
 Outbox rows carry the event's message id, keyed on the stream and version, so a
 stale writer's rows reuse the winner's ids. The commit appends to the event

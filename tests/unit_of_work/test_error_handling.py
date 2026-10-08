@@ -95,6 +95,31 @@ class TestUnitOfWorkErrorHandling:
 
         assert str(exc_info.value) == "Expected version mismatch"
 
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            # PostgreSQL with German lc_messages translates the severity word
+            "P0001-FEHLER:  Wrong expected version: 5 (Stream: s, Stream Version: 0)",
+            "P0001-ERROR: Wrong expected version: 5 (Stream: s, Stream Version: 0)",
+        ],
+        ids=["localized-severity", "single-space"],
+    )
+    def test_p0001_conflict_in_other_formats_raises_expected_version_error(
+        self, test_domain, raw
+    ):
+        with pytest.raises(ExpectedVersionError) as exc_info:
+            with UnitOfWork() as uow:
+                repo = test_domain.repository_for(Person)
+                repo.add(Person(first_name="Jane", last_name="Doe"))
+
+                for session in uow._sessions.values():
+                    session.commit = Mock(side_effect=ValueError(raw))
+
+        assert (
+            str(exc_info.value)
+            == "Wrong expected version: 5 (Stream: s, Stream Version: 0)"
+        )
+
     def test_value_error_without_p0001_prefix_raises_transaction_error(
         self, test_domain
     ):
@@ -119,7 +144,7 @@ class TestUnitOfWorkErrorHandling:
     def test_unprefixed_wrong_expected_version_text_raises_transaction_error(
         self, test_domain
     ):
-        """The commit matches on the P0001 prefix, never on the message text"""
+        """The commit matches the P0001 code and ignores the conflict wording"""
         message = "Wrong expected version: 0 (Stream: test, Stream Version: 1)"
         with pytest.raises(TransactionError) as exc_info:
             with UnitOfWork() as uow:

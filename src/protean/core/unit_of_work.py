@@ -403,10 +403,6 @@ class UnitOfWork:
         # Record final session count after all lazy sessions have been initialised
         span.set_attribute("protean.uow.session_count", len(self._sessions))
 
-        # Set while the outbox rows are saved, so a ValueError raised there is
-        # reported as a failed commit and never as a version conflict.
-        saving_outbox = False
-
         # Process each provider session separately
         try:
             # Append events to the event store FIRST, while this UnitOfWork is
@@ -451,10 +447,8 @@ class UnitOfWork:
             # Save the outbox rows while this UnitOfWork is still the active
             # context, so they enlist in its sessions and commit with them. Their
             # hooks already ran when they were built.
-            saving_outbox = True
             for outbox_repo, outbox_row in outbox_rows:
                 outbox_repo._dao.save(outbox_row, apply_hooks=False)
-            saving_outbox = False
 
             # Exit the UnitOfWork context: the relational commit below (and any
             # further operations) are no longer part of this transaction. Guard
@@ -504,7 +498,7 @@ class UnitOfWork:
             logger.debug("uow.commit_successful")
         except ExpectedVersionError as exc:
             # An adapter may detect an optimistic-concurrency conflict directly
-            # at commit time and raise ExpectedVersionError itself — the
+            # at commit time and raise ExpectedVersionError itself. The
             # in-memory provider does this in its compare-and-set commit, and
             # the in-memory event store on a wrong expected version. That
             # is a concurrency conflict, not a generic transaction failure, so
@@ -518,18 +512,16 @@ class UnitOfWork:
             logger.exception("uow.commit_failed")
             set_span_error(span, exc)
 
-            # The events are already appended, so this is not a version
-            # conflict. Reporting it as one would make the handler's version
-            # retry run the command again and append its events a second time.
-            if saving_outbox:
-                raise self._transaction_error(exc, all_events) from exc
-
             # Message DB rejects a wrong expected version with a P0001 error,
             # which its client re-raises as a ValueError carrying that prefix.
             # That is the only ValueError that is a version conflict: any other
             # one is a failed commit, and retrying it would rerun the handler.
-            if str(exc).startswith("P0001-ERROR"):
-                msg = str(exc).split("P0001-ERROR:  ")[1]
+            # The match stops at the code because PostgreSQL translates the
+            # severity word after it ("P0001-FEHLER" on a German server), and
+            # write_message raises P0001 for nothing but this conflict.
+            text = str(exc)
+            if text.startswith("P0001-"):
+                msg = text.partition(":")[2].strip() or text
                 raise ExpectedVersionError(msg) from None
             raise self._transaction_error(exc, all_events) from exc
         except ConfigurationError as exc:
