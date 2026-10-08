@@ -4,6 +4,7 @@ This is the baseline the rest of the "Evolving events over time" guide evolves
 away from. `OrderPlaced` is at its implicit version 1.
 """
 
+# --8<-- [start:v1]
 from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
@@ -22,3 +23,6 @@ class OrderPlaced(BaseEvent):
     order_id = Identifier(identifier=True)
     amount = Integer(required=True)
     customer_name = String(required=True)
+
+
+# --8<-- [end:v1]

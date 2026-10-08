@@ -164,28 +164,14 @@ by `raise_()` during live operations and during event replay, making them the **
 source of truth** for all state mutations:
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Order:
-    status: String(default="draft")
-    total: Float(default=0.0)
-
-    def place(self):
-        self.raise_(OrderPlaced(order_id=self.id, total=self.total))
-
-    @apply
-    def placed(self, event: OrderPlaced):
-        self.status = "placed"
-        self.total = event.total
-
-    @apply
-    def cancelled(self, event: OrderCancelled):
-        self.status = "cancelled"
+--8<-- "guides/pathways/event-sourcing/001.py:aggregate"
 ```
 
 When `place()` calls `raise_()`, the framework automatically invokes
 `placed()` to apply the state change. The same `placed()` method runs
-during replay when the aggregate is loaded from the event store. Every
-event raised by an ES aggregate **must** have a corresponding `@apply`
+during replay when the aggregate is loaded from the event store. Replay
+starts from a blank aggregate, so `placed()` also sets `id` from the event.
+Every event raised by an ES aggregate **must** have a corresponding `@apply`
 handler. If one is missing, `raise_()` raises `IncorrectUsageError`.
 
 ### Fact Events
@@ -202,13 +188,7 @@ the same domain. Some aggregates can use standard repositories while others use
 event sourcing. The decision is explicit and per-aggregate:
 
 ```python
-@domain.aggregate  # Standard CQRS — state stored as snapshots
-class Product:
-    ...
-
-@domain.aggregate(event_sourced=True)  # Event Sourced — state from events
-class Order:
-    ...
+--8<-- "guides/pathways/event-sourcing/002.py:mixing"
 ```
 
 See the [Architecture Decision](../../concepts/architecture/architecture-decision.md)

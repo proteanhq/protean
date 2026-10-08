@@ -21,41 +21,15 @@ projections.
 directly.
 
 ```python
-@domain.application_service(part_of=Order)
-class OrderService:
-    @use_case
-    def place_order(self, customer_id, items, total):
-        order = Order(customer_id=customer_id, total=total)
-        for item in items:
-            order.add_item(**item)
-        current_domain.repository_for(Order).add(order)
-        return order
+--8<-- "guides/pathways/migrating-between-architectures/001.py:model"
+--8<-- "guides/pathways/migrating-between-architectures/001.py:service"
 ```
 
 **After (CQRS):** Define an explicit command and move the logic to a command
 handler.
 
 ```python
-# 1. Define the command
-@domain.command(part_of=Order)
-class PlaceOrder:
-    customer_id = Identifier(required=True)
-    items = List(required=True)
-    total = Float(required=True)
-
-
-# 2. Create a command handler
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(PlaceOrder)
-    def place_order(self, command: PlaceOrder):
-        order = Order(
-            customer_id=command.customer_id,
-            total=command.total,
-        )
-        for item in command.items:
-            order.add_item(**item)
-        current_domain.repository_for(Order).add(order)
+--8<-- "guides/pathways/migrating-between-architectures/002.py:command-handler"
 ```
 
 ### Step 2: Route through domain.process()
@@ -63,20 +37,13 @@ class OrderCommandHandler:
 **Before:** Calling the application service directly from your endpoint.
 
 ```python
-@app.post("/orders")
-async def create_order(payload: dict):
-    service = OrderService()
-    order = service.place_order(**payload)
-    return {"id": order.id}
+--8<-- "guides/pathways/migrating-between-architectures/001.py:endpoint"
 ```
 
 **After:** Build a command and hand it to the domain.
 
 ```python
-@app.post("/orders", status_code=201)
-async def create_order(payload: dict):
-    current_domain.process(PlaceOrder(**payload))
-    return {"status": "accepted"}
+--8<-- "guides/pathways/migrating-between-architectures/002.py:endpoint"
 ```
 
 !!! note
@@ -89,13 +56,22 @@ async def create_order(payload: dict):
 Move cross-aggregate coordination from service methods to domain events.
 
 ```python
+# fragment
 # On the aggregate
-class Order(BaseAggregate):
+@domain.aggregate
+class Order:
     # ... fields ...
 
     def place(self):
         self.status = "placed"
-        self.raise_(OrderPlaced(order_id=self.id, total=self.total))
+        self.raise_(
+            OrderPlaced(
+                order_id=self.id,
+                customer_id=self.customer_id,
+                total=self.total,
+                item_count=len(self.items),
+            )
+        )
 
 
 # React in a separate handler
@@ -112,30 +88,8 @@ class InventoryHandler:
 Replace direct aggregate queries with purpose-built projections.
 
 ```python
-# Define a read model
-@domain.projection
-class OrderSummary:
-    order_id = Identifier(identifier=True)
-    customer_id = Identifier()
-    total = Float()
-    status = String()
-    item_count = Integer()
-
-
-# Populate it with a projector
-@domain.projector(projector_for=OrderSummary, aggregates=[Order])
-class OrderSummaryProjector:
-    @handle(OrderPlaced)
-    def on_placed(self, event: OrderPlaced):
-        current_domain.repository_for(OrderSummary).add(
-            OrderSummary(
-                order_id=event.order_id,
-                customer_id=event.customer_id,
-                total=event.total,
-                status="placed",
-                item_count=event.item_count,
-            )
-        )
+--8<-- "guides/pathways/migrating-between-architectures/002.py:event"
+--8<-- "guides/pathways/migrating-between-architectures/002.py:projection"
 ```
 
 ### Migration checklist
@@ -160,19 +114,11 @@ replaying events.
 ### Step 1: Mark the aggregate as event-sourced
 
 ```python
-# Before (CQRS)
-@domain.aggregate
-class Order(BaseAggregate):
-    customer_id = Identifier(required=True)
-    status = String(default="draft")
-    total = Float()
+--8<-- "guides/pathways/migrating-between-architectures/003.py:setup"
 
-# After (Event Sourcing)
-@domain.aggregate(event_sourced=True)
-class Order(BaseAggregate):
-    customer_id = Identifier(required=True)
-    status = String(default="draft")
-    total = Float()
+--8<-- "guides/pathways/migrating-between-architectures/003.py:before"
+
+--8<-- "guides/pathways/migrating-between-architectures/004.py:after"
 ```
 
 ### Step 2: Add @apply methods
@@ -181,29 +127,18 @@ Event-sourced aggregates must define `@apply` methods that reconstruct state
 from events. These are the **only** place where state changes happen.
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Order(BaseAggregate):
-    customer_id = Identifier(required=True)
-    status = String(default="draft")
-    total = Float()
-
-    def place(self, customer_id, total):
-        self.raise_(OrderPlaced(
-            order_id=self.id,
-            customer_id=customer_id,
-            total=total,
-        ))
-
-    @apply(OrderPlaced)
-    def on_placed(self, event: OrderPlaced):
-        self.customer_id = event.customer_id
-        self.total = event.total
-        self.status = "placed"
+--8<-- "guides/pathways/migrating-between-architectures/005.py:event"
+--8<-- "guides/pathways/migrating-between-architectures/005.py:aggregate"
 ```
 
 The pattern is: **command method raises an event, `@apply` method mutates
 state**. This separation ensures that replaying events from the store
 produces the same aggregate state.
+
+`place()` is a class method. `_create_new()` gives the new order only its
+identity, so the constructor's required-field check does not run before the
+event. The `@apply` method then sets every field, `id` included, because
+replay starts from a blank aggregate.
 
 ### Step 3: Update command handlers
 
@@ -212,16 +147,8 @@ repository automatically loads from the event store and saves by appending
 events.
 
 ```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(PlaceOrder)
-    def place_order(self, command: PlaceOrder):
-        order = Order(id=command.order_id)
-        order.place(
-            customer_id=command.customer_id,
-            total=command.total,
-        )
-        current_domain.repository_for(Order).add(order)
+--8<-- "guides/pathways/migrating-between-architectures/005.py:command"
+--8<-- "guides/pathways/migrating-between-architectures/005.py:handler"
 ```
 
 ### Step 4: Configure the event store
@@ -241,15 +168,7 @@ Event Sourcing within the same domain. Each aggregate chooses its own
 persistence strategy.
 
 ```python
-# This aggregate uses event sourcing (full audit trail needed)
-@domain.aggregate(event_sourced=True)
-class Account(BaseAggregate):
-    ...
-
-# This aggregate uses regular CQRS (simple CRUD is sufficient)
-@domain.aggregate
-class CustomerProfile(BaseAggregate):
-    ...
+--8<-- "guides/pathways/migrating-between-architectures/006.py:mixing"
 ```
 
 See the

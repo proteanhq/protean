@@ -68,13 +68,7 @@ An upcaster is a class that extends `BaseUpcaster` and implements a single
 method: `upcast(self, data: dict) -> dict`.
 
 ```python
-from protean.core.upcaster import BaseUpcaster
-
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class UpcastOrderPlacedV1ToV2(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["currency"] = "USD"
-        return data
+--8<-- "guides/consume-state/event-upcasting/001.py:full"
 ```
 
 ### Decorator Options
@@ -106,46 +100,28 @@ track currency, and it's required for correct calculations.
 
 **Before (v1):**
 ```python
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    amount = Float(required=True)
+--8<-- "guides/consume-state/event-upcasting/002.py:before"
 ```
 
 **After (v2):**
 ```python
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    __version__ = 2
-    order_id = Identifier(required=True)
-    amount = Float(required=True)
-    currency = String(required=True)
+--8<-- "guides/consume-state/event-upcasting/001.py:after"
 ```
 
 **Upcaster:**
 ```python
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class UpcastOrderPlacedV1ToV2(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        # All orders before v2 were in USD
-        data["currency"] = "USD"
-        return data
+--8<-- "guides/consume-state/event-upcasting/001.py:upcaster"
 ```
 
 ### Scenario 2: Renaming a Field
 
 The field `customer_name` was split into `first_name` and `last_name`.
 
-**Upcaster:**
+**Current event and upcaster:**
 ```python
-@domain.upcaster(event_type=CustomerRegistered, from_version=1, to_version=2)
-class UpcastCustomerRegisteredV1ToV2(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        full_name = data.pop("customer_name", "")
-        parts = full_name.split(" ", 1)
-        data["first_name"] = parts[0]
-        data["last_name"] = parts[1] if len(parts) > 1 else ""
-        return data
+--8<-- "guides/consume-state/event-upcasting/003.py:current"
+
+--8<-- "guides/consume-state/event-upcasting/003.py:split-name"
 ```
 
 ### Scenario 3: Changing Data Structure
@@ -155,16 +131,7 @@ new `Address` value object).
 
 **Upcaster:**
 ```python
-@domain.upcaster(event_type=CustomerRegistered, from_version=2, to_version=3)
-class UpcastCustomerRegisteredV2ToV3(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["address"] = {
-            "street": data.pop("street", ""),
-            "city": data.pop("city", ""),
-            "state": data.pop("state", ""),
-            "zip_code": data.pop("zip_code", ""),
-        }
-        return data
+--8<-- "guides/consume-state/event-upcasting/003.py:nest-address"
 ```
 
 ### Scenario 4: Multi-Step Chain
@@ -173,30 +140,7 @@ When events evolve through multiple versions, each step gets its own upcaster.
 The framework chains them automatically.
 
 ```python
-# v1: original schema
-# v2: added currency
-# v3: renamed amount → total_amount
-
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    __version__ = 3
-    order_id = Identifier(required=True)
-    total_amount = Float(required=True)
-    currency = String(required=True)
-
-
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class UpcastV1ToV2(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["currency"] = "USD"
-        return data
-
-
-@domain.upcaster(event_type=OrderPlaced, from_version=2, to_version=3)
-class UpcastV2ToV3(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["total_amount"] = data.pop("amount")
-        return data
+--8<-- "guides/consume-state/event-upcasting/004.py:chain"
 ```
 
 A stored v1 event automatically passes through both upcasters: v1→v2→v3.
@@ -214,11 +158,7 @@ events. In v2, the event schema no longer includes it. The upcaster strips
 it out so the current constructor doesn't receive unknown fields:
 
 ```python
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class UpcastOrderPlacedV1ToV2(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data.pop("legacy_code", None)
-        return data
+--8<-- "guides/consume-state/event-upcasting/005.py:upcaster"
 ```
 
 ### Scenario 6: Computing a Derived Field
@@ -227,11 +167,7 @@ The v2 schema adds a `line_item_count` field that can be computed from existing
 data:
 
 ```python
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class UpcastOrderPlacedV1ToV2(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["line_item_count"] = len(data.get("items", []))
-        return data
+--8<-- "guides/consume-state/event-upcasting/006.py:upcaster"
 ```
 
 ---
@@ -249,18 +185,7 @@ for what happens to a snapshot taken under an old schema.
 schema:
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Order(BaseAggregate):
-    order_id = Identifier(identifier=True)
-    total_amount = Float()
-    currency = String()
-
-    @apply
-    def on_placed(self, event: OrderPlaced) -> None:
-        # Always receives current v3 schema
-        self.order_id = event.order_id
-        self.total_amount = event.total_amount
-        self.currency = event.currency
+--8<-- "guides/consume-state/event-upcasting/004.py:aggregate"
 ```
 
 When the event store contains events from different eras:
@@ -284,12 +209,7 @@ or projector reads events from a subscription, old events are upcast before
 reaching the `@handle` method:
 
 ```python
-@domain.event_handler(part_of=Analytics)
-class AnalyticsHandler(BaseEventHandler):
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        # Always receives current schema, even for historical replays
-        record_revenue(event.total_amount, event.currency)
+--8<-- "guides/consume-state/event-upcasting/004.py:handler"
 ```
 
 This means you can rebuild projections from scratch (replaying all events) and
@@ -305,6 +225,7 @@ The following errors are caught at startup (not at runtime):
 ### Duplicate upcasters
 
 ```python
+# fragment
 # ERROR: Two upcasters for the same (event_type, from_version)
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcasterA(BaseUpcaster): ...
@@ -317,6 +238,7 @@ class UpcasterB(BaseUpcaster): ...
 ### Version cycles
 
 ```python
+# fragment
 # ERROR: v1→v2 and v2→v1 creates a cycle
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class Forward(BaseUpcaster): ...
@@ -329,7 +251,8 @@ class Backward(BaseUpcaster): ...
 ### Non-convergent chains
 
 ```python
-# ERROR: 1→2 and 3→4 — two terminal versions
+# fragment
+# ERROR: 1→2 and 3→4 leave two terminal versions
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class BranchA(BaseUpcaster): ...
 
@@ -341,6 +264,7 @@ class BranchB(BaseUpcaster): ...
 ### Missing event class for terminal version
 
 ```python
+# fragment
 # ERROR: Chain ends at 99, but OrderPlaced.__version__ is 2
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=99)
 class WrongTarget(BaseUpcaster): ...

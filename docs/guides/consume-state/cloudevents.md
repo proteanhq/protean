@@ -16,16 +16,12 @@ standards-compliant event format.
 
 ## Producing CloudEvents
 
-Any Protean `Message` can be serialized to a CloudEvents v1.0 JSON object:
+Any Protean `Message` can be serialized to a CloudEvents v1.0 JSON object.
+Here an `Order` raises an `OrderPlaced` event, and the event goes out as a
+CloudEvent:
 
 ```python
-from protean.utils.eventing import Message
-
-# Create a message from a domain event (as usual)
-message = Message.from_domain_object(event)
-
-# Serialize to CloudEvents format
-cloud_event = message.to_cloudevent()
+--8<-- "guides/consume-state/cloudevents/001.py:produce"
 ```
 
 The resulting dict is a valid CloudEvents v1.0 JSON object:
@@ -33,16 +29,16 @@ The resulting dict is a valid CloudEvents v1.0 JSON object:
 ```json
 {
     "specversion": "1.0",
-    "id": "myapp::order-abc123-1",
+    "id": "myapp::order-abc123-0.1",
     "type": "MyApp.OrderPlaced.v1",
     "source": "https://orders.example.com",
     "time": "2026-03-02T10:30:00+00:00",
     "subject": "abc123",
     "datacontenttype": "application/json",
     "proteankind": "EVENT",
-    "proteancorrelationid": "a1b2c3d4e5f6...",
     "proteanchecksum": "sha256...",
-    "sequence": "1",
+    "sequence": "0.1",
+    "proteansequencetype": "DotNotation",
     "data": {
         "order_id": "abc123",
         "customer_id": "cust-456",
@@ -52,7 +48,9 @@ The resulting dict is a valid CloudEvents v1.0 JSON object:
 ```
 
 Every CloudEvents attribute is **derived** from existing Protean metadata.
-Nothing is stored redundantly.
+Nothing is stored redundantly. Attributes with no value are left out. Here
+the event was raised outside a command handler, so it has no
+`proteancorrelationid` or `proteancausationid`.
 
 ## Attribute Mapping
 
@@ -115,11 +113,7 @@ so external consumers see a meaningful, stable identifier.
 Parse an incoming CloudEvents JSON object into a Protean `Message`:
 
 ```python
-from protean.utils.eventing import Message
-
-# In a subscriber or API endpoint
-cloud_event_dict = json.loads(request.body)
-message = Message.from_cloudevent(cloud_event_dict)
+--8<-- "guides/consume-state/cloudevents/001.py:consume"
 ```
 
 ### External events
@@ -128,23 +122,7 @@ When consuming events from a non-Protean system, the `type` string won't match
 any registered Protean event. Access the data directly:
 
 ```python
-@domain.subscriber(stream="external-orders")
-class ExternalOrderSubscriber:
-
-    def __call__(self, payload: dict) -> None:
-        message = Message.from_cloudevent(payload)
-
-        # Access the event data
-        order_id = message.data["order_id"]
-
-        # Access CloudEvents-specific attributes
-        source = message.metadata.extensions["ce_source"]
-        subject = message.metadata.extensions.get("ce_subject")
-
-        # Translate into a domain command
-        current_domain.process(
-            ImportOrder(external_id=order_id, source=source)
-        )
+--8<-- "guides/consume-state/cloudevents/002.py:subscriber"
 ```
 
 ### Protean-to-Protean round-trip
@@ -153,10 +131,7 @@ When two Protean services communicate via CloudEvents, the type string
 is in Protean format and can be resolved back to the original domain object:
 
 ```python
-message = Message.from_cloudevent(cloud_event_dict)
-
-# If the type is registered in this domain, reconstruct the event
-event = message.to_domain_object()
+--8<-- "guides/consume-state/cloudevents/001.py:to-domain-object"
 ```
 
 ### What gets preserved
@@ -184,15 +159,7 @@ locations:
 A CloudEvent produced by Protean can be consumed back with full fidelity:
 
 ```python
-original = Message.from_domain_object(event)
-ce = original.to_cloudevent()
-
-# ... send over the wire ...
-
-restored = Message.from_cloudevent(ce)
-assert restored.data == original.data
-assert restored.metadata.headers.id == original.metadata.headers.id
-assert restored.metadata.domain.correlation_id == original.metadata.domain.correlation_id
+--8<-- "guides/consume-state/cloudevents/001.py:round-trip"
 ```
 
 The `source` attribute is re-derived during the next `to_cloudevent()` call

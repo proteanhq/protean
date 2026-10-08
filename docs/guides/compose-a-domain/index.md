@@ -11,9 +11,7 @@ lifecycle. Every Protean project starts by creating a `Domain` instance.
 The simplest way to create a domain:
 
 ```python
-from protean import Domain
-
-domain = Domain()
+--8<-- "guides/compose-a-domain/index/001.py:create"
 ```
 
 Protean auto-detects the root path from the caller's file location and
@@ -23,6 +21,7 @@ searches that directory and its parent directories for configuration in
 For named domains or explicit configuration:
 
 ```python
+# fragment
 domain = Domain(
     name="ecommerce",
     config={

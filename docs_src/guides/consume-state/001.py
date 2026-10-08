@@ -80,7 +80,7 @@ class InventoryCommandHandler:
         repo.add(inventory)
 
 
-domain.init()
+domain.init(traverse=False)
 with domain.domain_context():
     # Persist Order
     order = Order(book_id="book-1", quantity=10, total_amount=100)

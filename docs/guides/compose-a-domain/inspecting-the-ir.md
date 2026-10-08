@@ -20,33 +20,19 @@ The IR is useful for:
 Call `domain.to_ir()` on an initialized domain to get a Python dict:
 
 ```python
-from protean import Domain
-
-domain = Domain(__name__)
-
-# ... register aggregates, commands, events, handlers ...
-
-domain.init()
-
-ir = domain.to_ir()
+--8<-- "guides/compose-a-domain/inspecting-the-ir/001.py:to-ir"
 ```
 
 The returned dict contains the full IR. You can serialize it to JSON:
 
 ```python
-import json
-
-print(json.dumps(ir, indent=2))
+--8<-- "guides/compose-a-domain/inspecting-the-ir/001.py:print"
 ```
 
 Or write it to a file for version control:
 
 ```python
-from pathlib import Path
-
-Path("domain-ir.json").write_text(
-    json.dumps(ir, indent=2, sort_keys=True)
-)
+--8<-- "guides/compose-a-domain/inspecting-the-ir/001.py:write"
 ```
 
 ---
@@ -79,6 +65,7 @@ Every IR document has the same shape:
   "checksum": "sha256:a1b2c3...",
 
   "domain": { },
+  "contracts": { },
   "clusters": { },
   "projections": { },
   "flows": { },
@@ -90,6 +77,7 @@ Every IR document has the same shape:
 | Section | What it contains |
 |---------|-----------------|
 | `domain` | Bounded context name and global config (identity strategy, processing mode) |
+| `contracts` | Events marked `published=True`, the events other bounded contexts can rely on |
 | `clusters` | Aggregate clusters, each aggregate with its entities, value objects, commands, events, handlers, and repositories |
 | `projections` | Read-side projections with their projectors, queries, and query handlers |
 | `flows` | Cross-aggregate elements: domain services, process managers, subscribers |
@@ -101,11 +89,19 @@ Every IR document has the same shape:
 ## Behavioral edges (`method_edges`)
 
 Alongside its structure, the IR records what causes what. An element that owns
-methods can carry a `method_edges` map, keyed by method name:
+methods can carry a `method_edges` map, keyed by method name. If the domain
+above lives in `ecommerce/ordering.py`, the `Order` aggregate carries:
 
 ```json
 "method_edges": {
-  "place_order": { "raises": ["ecommerce.ordering.OrderPlaced"] },
+  "place_order": { "raises": ["ecommerce.ordering.OrderPlaced"] }
+}
+```
+
+and `OrderCommandHandler` carries:
+
+```json
+"method_edges": {
   "handle_place_order": {
     "invokes": [{ "element": "ecommerce.ordering.Order", "method": "place_order" }]
   }
@@ -157,11 +153,7 @@ with the Protean package at `protean.ir.SCHEMA_PATH`.
 To validate an IR document programmatically:
 
 ```python
-from jsonschema import validate
-from protean.ir import load_schema
-
-schema = load_schema()
-validate(instance=ir, schema=schema)
+--8<-- "guides/compose-a-domain/inspecting-the-ir/001.py:validate"
 ```
 
 ---

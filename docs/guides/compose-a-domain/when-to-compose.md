@@ -20,30 +20,11 @@ The exact integration point depends on your application framework.
 ## FastAPI (recommended)
 
 Protean provides built-in middleware for FastAPI that handles domain context
-management automatically:
+management automatically. This example defines the domain in the same file. In
+a larger app you would import it from its own module instead:
 
 ```python
-from fastapi import FastAPI
-from protean.integrations.fastapi import (
-    DomainContextMiddleware,
-    register_exception_handlers,
-)
-
-from my_app.domain import domain
-
-# Initialize the domain at module load time
-domain.init()
-
-app = FastAPI()
-
-# Middleware pushes/pops domain context per request
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={"/": domain},
-)
-
-# Map domain exceptions to HTTP status codes
-register_exception_handlers(app)
+--8<-- "guides/compose-a-domain/when-to-compose/001.py:full"
 ```
 
 The middleware ensures every request runs inside a domain context, and the
@@ -54,37 +35,24 @@ See [FastAPI Integration](../fastapi/index.md) for the full guide.
 
 ## Flask
 
-For Flask, use `before_request` and `after_request` hooks to manage the
-domain context:
+For Flask, use `before_request` and `teardown_request` hooks to manage the
+domain context. Keep the context you push on Flask's `g`, so the teardown hook
+pops that same context:
 
-```python hl_lines="29 33 35 38"
+```python hl_lines="24 29 31 36"
 --8<-- "guides/compose-a-domain/019.py:full"
 ```
 
-The domain is initialized once during `create_app()`, and the context is
-pushed before each request and popped after.
+The domain is initialized once during `create_app()`. The context is pushed
+before each request and popped when the request ends, even if it fails.
 
 ## Console applications and scripts
 
-In simple console applications, compose the domain in `main` and use
+In simple console applications, compose the domain in a `main` function and use
 a `with` block for the domain context:
 
 ```python
-from protean import Domain
-from protean.fields import String
-
-domain = Domain()
-
-@domain.aggregate
-class Task:
-    title: String(max_length=200, required=True)
-
-if __name__ == "__main__":
-    domain.init()
-
-    with domain.domain_context():
-        repo = domain.repository_for(Task)
-        repo.add(Task(title="Write documentation"))
+--8<-- "guides/compose-a-domain/when-to-compose/002.py:full"
 ```
 
 ## Background workers and the Protean server

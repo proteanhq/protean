@@ -17,15 +17,7 @@ with the `@domain.query` decorator and must be associated with a projection
 via `part_of`:
 
 ```python
-from protean.fields import Identifier, Integer, String
-
-
-@domain.query(part_of=OrderSummary)
-class GetOrdersByCustomer:
-    customer_id = Identifier(required=True)
-    status = String()
-    page = Integer(default=1)
-    page_size = Integer(default=20)
+--8<-- "guides/consume-state/query-handlers/001.py:query"
 ```
 
 Queries are immutable once created, attempting to modify a field after
@@ -57,47 +49,7 @@ Name queries with the intent they represent, typically starting with `Get`,
 Query handlers are defined with the `@domain.query_handler` decorator:
 
 ```python
-from protean import current_domain, read
-from protean.fields import Float, Identifier, Integer, String
-
-
-@domain.projection
-class OrderSummary:
-    order_id = Identifier(identifier=True)
-    customer_name = String(max_length=100)
-    status = String(max_length=20)
-    total_amount = Float()
-
-
-@domain.query(part_of=OrderSummary)
-class GetOrdersByCustomer:
-    customer_id = Identifier(required=True)
-    status = String()
-    page = Integer(default=1)
-    page_size = Integer(default=20)
-
-
-@domain.query(part_of=OrderSummary)
-class GetOrderById:
-    order_id = Identifier(required=True)
-
-
-@domain.query_handler(part_of=OrderSummary)
-class OrderSummaryQueryHandler:
-    @read(GetOrdersByCustomer)
-    def get_by_customer(self, query):
-        view = current_domain.view_for(OrderSummary)
-        results = view.query.filter(
-            customer_id=query.customer_id
-        )
-        if query.status:
-            results = results.filter(status=query.status)
-        return results.all()
-
-    @read(GetOrderById)
-    def get_by_id(self, query):
-        view = current_domain.view_for(OrderSummary)
-        return view.get(query.order_id)
+--8<-- "guides/consume-state/query-handlers/001.py:handler"
 ```
 
 ### The `@read` Decorator
@@ -106,6 +58,7 @@ The `@read` decorator marks methods as query handlers. It accepts a single
 argument, the query class to handle:
 
 ```python
+# fragment
 @read(GetOrdersByCustomer)
 def get_by_customer(self, query):
     ...
@@ -122,10 +75,7 @@ Unlike `@handle`, the `@read` decorator:
 Dispatch queries with `domain.dispatch()`:
 
 ```python
-# From an API endpoint or application layer
-result = domain.dispatch(
-    GetOrdersByCustomer(customer_id="cust-123", status="shipped")
-)
+--8<-- "guides/consume-state/query-handlers/001.py:dispatch"
 ```
 
 `domain.dispatch()` resolves the registered query handler, invokes the
@@ -137,17 +87,8 @@ By default `domain.dispatch()` returns `Any`. A query can declare the type its
 handler returns by subscripting `BaseQuery`, and then `dispatch` resolves to
 that type at the call site:
 
-```python
-from protean.core.query import BaseQuery
-
-
-@domain.query(part_of=OrderSummary)
-class GetOrderById(BaseQuery[OrderSummary]):
-    order_id = Identifier(required=True)
-
-
-order = domain.dispatch(GetOrderById(order_id="order-1"))
-# order is typed as OrderSummary, not Any
+```python hl_lines="16 34-35"
+--8<-- "guides/consume-state/query-handlers/002.py:typed"
 ```
 
 The result type must match what the handler returns; the query declares it once,
@@ -226,16 +167,7 @@ Within handler methods, common runtime errors include:
 | `NotSupportedError` | `view.query` or `view.find_by()` called on a cache-backed projection |
 
 ```python
-from protean.exceptions import IncorrectUsageError, ObjectNotFoundError
-
-try:
-    result = domain.dispatch(GetOrderById(order_id="nonexistent"))
-except ObjectNotFoundError:
-    # No projection record with this identifier
-    ...
-except IncorrectUsageError as e:
-    # Handle missing handler or unregistered query
-    ...
+--8<-- "guides/consume-state/query-handlers/002.py:errors"
 ```
 
 ### `@handle` vs. `@read`
