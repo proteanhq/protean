@@ -952,8 +952,14 @@ print(json.dumps(domain.check(traverse=False)))
 
 def _check_in_child(*args: str) -> subprocess.CompletedProcess[str]:
     env = {k: v for k, v in os.environ.items() if k != "PROTEAN_DOMAIN"}
+    # No bytecode: the assets load as file-backed modules, and a ``__pycache__``
+    # beside them would land in the shipped pack.
     return subprocess.run(
-        [sys.executable, *args], capture_output=True, text=True, env=env, check=False
+        [sys.executable, "-B", *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
     )
 
 

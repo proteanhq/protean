@@ -165,7 +165,7 @@ class TestDomainCheckRaisesOnBadLintOption:
         ):
             domain.check(traverse=False)
 
-    def test_other_ir_build_failure_leaves_diagnostics_empty(self, monkeypatch):
+    def test_other_ir_build_failure_is_reported_as_an_error(self, monkeypatch):
         domain = Domain(name="CheckIRBuildFails", root_path=".")
 
         @domain.aggregate
@@ -179,5 +179,13 @@ class TestDomainCheckRaisesOnBadLintOption:
 
         result = domain.check(traverse=False)
 
-        assert result["status"] == "pass"
+        assert result["status"] == "fail"
         assert result["diagnostics"] == []
+        assert result["errors"] == [
+            {
+                "code": "RuntimeError",
+                "element": "to_ir",
+                "level": "error",
+                "message": "Could not build the IR: RuntimeError: IR build failed",
+            }
+        ]
