@@ -1,7 +1,7 @@
 """Flattened value object arguments on an entity stop at one level.
 
 An entity accepts ``address_street=...`` for an embedded ``Address`` value
-object. A value object nested inside ``Address`` is passed as an object; a
+object. A value object nested inside ``Address`` is passed as an object. A
 two-level flattened argument such as ``address_location_latitude`` is rejected.
 """
 
@@ -24,6 +24,7 @@ class Location(BaseValueObject):
 
 class Address(BaseValueObject):
     street: str = ""
+    city: str = ""
     location = ValueObject(Location)
 
 
@@ -54,7 +55,15 @@ def test_one_level_flattened_argument_sets_the_field():
     shop = Shop(name="Books", address_street="1 Main St")
 
     assert shop.address.street == "1 Main St"
+    assert shop.address.city == ""
     assert shop.address.location is None
+
+
+def test_one_level_flattened_argument_through_the_aggregate():
+    mall = Mall(name="Central", shops=[Shop(name="Books", address_street="1 Main St")])
+
+    assert mall.shops[0].address.street == "1 Main St"
+    assert mall.shops[0].address.city == ""
 
 
 def test_nested_vo_passed_as_object():
@@ -74,4 +83,6 @@ def test_two_level_flattened_argument_is_rejected():
     with pytest.raises(ValidationError) as exc:
         Shop(name="Books", address_location_latitude=12.5)
 
-    assert "address_location_latitude" in exc.value.messages
+    assert exc.value.messages["address_location_latitude"] == [
+        "Extra inputs are not permitted"
+    ]

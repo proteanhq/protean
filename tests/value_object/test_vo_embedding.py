@@ -51,6 +51,7 @@ class Location(BaseValueObject):
 
 class ShippingAddress(BaseValueObject):
     street: str = ""
+    city: str = ""
     location = ValueObject(Location)
 
 
@@ -160,8 +161,8 @@ class TestVOFlattenedInit:
         with pytest.raises(ValidationError) as exc:
             Outer(label="origin", point_x=1.0, point_y=2.0)
 
-        # Flattened kwargs are rejected as extra inputs
-        assert "point_x" in str(exc.value)
+        assert exc.value.messages["point_x"] == ["Extra inputs are not permitted"]
+        assert exc.value.messages["point_y"] == ["Extra inputs are not permitted"]
 
     def test_vo_to_vo_instance_init_works(self):
         """Nested VOs must be passed as instances, not flattened kwargs."""
@@ -182,15 +183,42 @@ class TestVOFlattenedInit:
 
 class TestNestedVOFlattenedInit:
     """Flattened arguments stop at one level. A value object nested inside
-    an embedded value object is passed as an object, not as a two-level
-    flattened argument.
+    an embedded value object is passed as an object. A two-level flattened
+    argument is rejected.
     """
 
     def test_one_level_flattened_argument_sets_the_field(self):
         store = Store(name="Corner", shipping_address_street="1 Main St")
 
         assert store.shipping_address.street == "1 Main St"
+        assert store.shipping_address.city == ""
         assert store.shipping_address.location is None
+
+    def test_one_level_flattened_argument_on_billing_address(self):
+        customer = Customer(name="Alice", billing_address_street="123 Main St")
+
+        assert customer.billing_address == Address(street="123 Main St")
+
+    def test_nested_vo_passed_as_flattened_argument(self):
+        store = Store(
+            name="Corner",
+            shipping_address_location=Location(latitude=12.5, longitude=77.6),
+        )
+
+        assert store.shipping_address.street == ""
+        assert store.shipping_address.location == Location(
+            latitude=12.5, longitude=77.6
+        )
+
+    def test_nested_vo_passed_as_dict_in_flattened_argument(self):
+        store = Store(
+            name="Corner",
+            shipping_address_location={"latitude": 12.5, "longitude": 77.6},
+        )
+
+        assert store.shipping_address.location == Location(
+            latitude=12.5, longitude=77.6
+        )
 
     def test_nested_vo_passed_as_object(self):
         store = Store(
@@ -210,13 +238,9 @@ class TestNestedVOFlattenedInit:
         with pytest.raises(ValidationError) as exc:
             Store(name="Corner", shipping_address_location_latitude=12.5)
 
-        assert "shipping_address_location_latitude" in exc.value.messages
-
-    def test_vo_rejects_flattened_argument_for_nested_vo(self):
-        with pytest.raises(ValidationError) as exc:
-            ShippingAddress(street="1 Main St", location_latitude=12.5)
-
-        assert "location_latitude" in exc.value.messages
+        assert exc.value.messages["shipping_address_location_latitude"] == [
+            "Extra inputs are not permitted"
+        ]
 
 
 # ---------------------------------------------------------------------------

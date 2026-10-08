@@ -144,6 +144,13 @@ class TestVOInitialization:
         assert view.billing_address.street == "123 Main St"
         assert view.billing_address.city == "Springfield"
 
+    def test_partial_shadow_kwargs_use_vo_defaults(self):
+        view = CustomerView(
+            customer_id="c1", name="Alice", billing_address_street="123 Main St"
+        )
+
+        assert view.billing_address == Address(street="123 Main St")
+
     def test_shadow_kwargs_and_instance_are_equivalent(self):
         addr = Address(street="123 Main St", city="Springfield", zip_code="62704")
         via_instance = CustomerView(
