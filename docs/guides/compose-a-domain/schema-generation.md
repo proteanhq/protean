@@ -212,6 +212,8 @@ string, for example `"0"`.
 A `List(content_type=Decimal(precision=5, scale=2))` records only the item type
 `Decimal`. The item's precision and scale are not in the IR, so no generated
 contract carries them, and Protean does not check them on list items either.
+A fact event copies only each field's type and default from its aggregate, so a
+`Decimal` field on a fact event records no precision or scale.
 
 ---
 
