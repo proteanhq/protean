@@ -191,10 +191,10 @@ def configure_logging(
     When called with no arguments, auto-detects ``PROTEAN_ENV`` and sets up
     environment-appropriate structured logging:
 
-    - **production / staging** — JSON output, INFO level
-    - **development** — colored console output with rich tracebacks, DEBUG level
-    - **test** — WARNING level, minimal output
-    - **unset** (no ``PROTEAN_ENV``, ``ENV`` or ``ENVIRONMENT``) — colored
+    - **production / staging**: JSON output, INFO level
+    - **development**: colored console output with rich tracebacks, DEBUG level
+    - **test**: WARNING level, minimal output
+    - **unset** (no ``PROTEAN_ENV``, ``ENV`` or ``ENVIRONMENT``): colored
       console output, INFO level
 
     Args:
