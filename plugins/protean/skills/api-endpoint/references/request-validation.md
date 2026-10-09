@@ -1,89 +1,152 @@
 # Request Validation
 
-How to validate incoming HTTP request payloads using Pydantic models before constructing domain commands.
+How incoming request bodies are checked before and after they become domain
+commands.
 
 ## Overview
 
-API endpoints need two layers of validation:
+A request is checked in two places, and each gives its own status code:
 
-1. **HTTP/format validation** (Pydantic) - Is the request well-formed? Are required fields present? Are types correct?
-2. **Domain validation** (Protean commands/aggregates) - Does the data satisfy business rules?
-
-Pydantic handles layer 1 at the API boundary. Protean handles layer 2 inside the domain.
+1. **Pydantic, at the HTTP boundary.** Is the body well formed? Are the
+   required keys there, with the right types? FastAPI checks this before the
+   endpoint runs and returns **422** when it fails.
+2. **Protean, in the domain.** Do the values satisfy the command's field
+   rules (length, range, required) and the aggregate's rules? A failed field
+   rule raises `ValidationError`, which `register_exception_handlers` turns
+   into **400**.
 
 ## Code
 
-The complete implementation is in [assets/api_endpoint_with_pydantic.py](../assets/api_endpoint_with_pydantic.py).
-
-Key highlights:
-- Pydantic `BaseModel` subclass defines the expected request shape
-- FastAPI automatically validates and returns 422 for invalid input
-- Validated data is mapped to Protean command fields
-- Domain commands carry the validated intent into the domain
+The complete implementation is in
+[assets/api_endpoint_with_pydantic.py](../assets/api_endpoint_with_pydantic.py).
 
 ## Walkthrough
 
-### Pydantic Request Model
+### The command carries the domain rules
+
+```python
+from protean.utils.globals import current_domain
+
+
+@domain.aggregate
+class Account:
+    account_id = Identifier(identifier=True)
+    email = String(required=True)
+    name = String(required=True, max_length=50)
+
+
+@domain.command(part_of=Account)
+class RegisterAccount:
+    account_id = Identifier(required=True)
+    email = String(required=True)
+    name = String(required=True, max_length=50)
+
+
+@domain.command_handler(part_of=Account)
+class AccountCommandHandler:
+    @handle(RegisterAccount)
+    def register(self, command: RegisterAccount) -> str:
+        account = Account(
+            account_id=command.account_id,
+            email=command.email,
+            name=command.name,
+        )
+        current_domain.repository_for(Account).add(account)
+        return account.account_id
+```
+
+### The Pydantic model checks the shape
 
 ```python
 from pydantic import BaseModel, Field
 
+
 class RegisterAccountRequest(BaseModel):
     account_id: str = Field(..., min_length=1)
     email: str = Field(..., pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-    name: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1)
 ```
 
-Key design decisions:
-- `pattern` constraint validates email format at the HTTP boundary using a regex
-- `Field(..., min_length=1)` ensures non-empty strings
-- The model documents the API contract for clients (FastAPI generates OpenAPI schema from it)
+- `pattern` checks the email format at the HTTP boundary.
+- `min_length=1` rejects an empty string. A string of spaces still passes it.
+- The name's 50-character limit is a domain rule. It lives on the command.
+- FastAPI builds the OpenAPI schema from this model, so it documents the API
+  for clients.
 
-### From Pydantic Model to Command
+### From the Pydantic model to the command
 
 ```python
-@app.post("/accounts/register", status_code=201)
-async def register_account(body: RegisterAccountRequest):
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/accounts")
+
+
+@router.post("/register", status_code=201)
+def register_account(body: RegisterAccountRequest):
     command = RegisterAccount(
         account_id=body.account_id,
         email=body.email,
         name=body.name,
     )
-    result = current_domain.process(command, asynchronous=False)
+    account_id = current_domain.process(command, asynchronous=False)
+    return {"account_id": account_id, "status": "registered"}
 ```
 
-The endpoint receives the validated `body` and maps fields one-to-one to the domain command. This mapping is intentionally explicit -- it makes the translation visible and keeps the Pydantic model decoupled from the command.
+The endpoint maps each field of the validated `body` to the command by hand.
+This keeps the translation visible, and the Pydantic model and the command can
+change separately.
 
-### Automatic 422 Responses
+### FastAPI's 422
 
-FastAPI returns a 422 Unprocessable Entity when validation fails:
+When the body does not match the model, FastAPI returns 422 before the
+endpoint runs:
 
 ```json
 {
   "detail": [
     {
-      "type": "value_error",
+      "type": "string_pattern_mismatch",
       "loc": ["body", "email"],
-      "msg": "value is not a valid email address",
-      "input": "not-an-email"
+      "msg": "String should match pattern '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'",
+      "input": "not-an-email",
+      "ctx": {"pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"}
     }
   ]
 }
 ```
 
-No custom error handling code is needed for input validation -- FastAPI handles it.
+### Protean's 400
 
-## When to Use Pydantic vs Raw JSON
+A name of 60 characters passes the model and fails the command's
+`max_length=50`. The `RegisterAccount` constructor raises `ValidationError`,
+and the client gets 400 with the messages for each failing field:
 
-| Approach | Use When |
+```json
+{
+  "error": {"name": ["String should have at most 50 characters"]},
+  "correlation_id": "94068d166ee746f892cf5aa38746dc9a"
+}
+```
+
+Neither case needs error handling code in the endpoint. Let `ValidationError`
+propagate to the registered handler.
+
+## When to use Pydantic vs a raw dict
+
+| Approach | Use when |
 |----------|----------|
-| Pydantic model | Complex payloads, email/URL validation, documented API |
-| Raw `request.json()` | Simple payloads, internal APIs, rapid prototyping |
+| Pydantic model | Public APIs, format checks such as email, a documented schema |
+| `payload: dict` | Internal APIs and small payloads, where the command's fields do all the checking |
 
-Both are valid. Pydantic models are recommended for public-facing APIs.
+With `payload: dict`, FastAPI checks only that the body is a JSON object. A
+body that is not, such as a JSON array or malformed JSON, still gets FastAPI's
+422. Every value inside the object goes to the command, which rejects what its
+fields reject, with a 400. A field also converts what it can. An `Identifier`
+field stores `5` or `true` as a string, so those ids get through. Pydantic
+models are recommended for public-facing APIs.
 
 ## Related
 
-- [Response Patterns](./response-patterns.md) - Structuring HTTP responses
+- [Response Patterns](./response-patterns.md) - The full exception-to-status map
 - [Anti-patterns](./anti-patterns.md) - Common validation mistakes
 - [command skill](../../command/SKILL.md) - Domain command definitions

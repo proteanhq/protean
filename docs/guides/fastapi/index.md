@@ -112,7 +112,7 @@ This means no manual header extraction is needed in your endpoints:
 
 ```python
 @app.post("/orders")
-async def place_order(payload: dict):
+def place_order(payload: dict):
     # Correlation ID from X-Correlation-ID header is picked up automatically.
     current_domain.process(PlaceOrder(**payload))
     return {"status": "accepted"}
@@ -166,7 +166,7 @@ from protean.utils.globals import current_domain
 from protean.exceptions import ObjectNotFoundError
 
 @app.get("/customers/{customer_id}")
-async def get_customer(customer_id: str):
+def get_customer(customer_id: str):
     repo = current_domain.repository_for(Customer)
     customer = repo.get(customer_id)  # Raises ObjectNotFoundError → 404
     return {"id": customer.id, "name": customer.name}
@@ -201,10 +201,15 @@ register_exception_handlers(app)
 
 
 @app.post("/orders")
-async def place_order(payload: dict):
+def place_order(payload: dict):
     current_domain.process(PlaceOrder(**payload))
     return {"status": "accepted"}
 ```
+
+The endpoints on this page are plain `def` functions. `domain.process()` is a
+blocking call, and FastAPI runs a `def` endpoint in its thread pool, so the
+call does not hold up the event loop. The domain context that the middleware
+pushes reaches the endpoint in that thread.
 
 ## Startup and shutdown lifecycle
 
