@@ -264,6 +264,60 @@ class TestAvroGenerator:
 
         assert self._avro_field(ir, "prices") == {"type": "array", "items": "string"}
 
+    def _avro_entry(self, **field_spec: Any) -> dict[str, Any]:
+        # The builder drops ``required`` from a field with a default, so the
+        # required-with-default shape is written out by hand.
+        element = {
+            "name": "Account",
+            "fqn": "accounts.Account",
+            "fields": {
+                "x": {"kind": "standard", "type": "Decimal", "required": True}
+                | field_spec
+            },
+        }
+        return generate_avro_schema(element)["fields"][0]
+
+    @pytest.mark.parametrize(
+        "default, scale, expected",
+        [
+            (0, 4, "\x00"),
+            (1.5, 4, "\x3a\x98"),
+            (128, 0, "\x00\x80"),
+            (-1, 0, "\xff"),
+            (-129, 0, "\xff\x7f"),
+        ],
+    )
+    def test_default_is_encoded_as_decimal_bytes(self, default, scale, expected):
+        entry = self._avro_entry(precision=19, scale=scale, default=default)
+
+        assert entry["default"] == expected
+        unscaled = int.from_bytes(expected.encode("latin-1"), "big", signed=True)
+        assert decimal.Decimal(unscaled).scaleb(-scale) == decimal.Decimal(str(default))
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"precision": 5, "scale": 1, "default": 1.25},
+            {"precision": 3, "scale": 2, "default": 10},
+            {"precision": 5, "scale": 1, "default": None},
+            {"precision": 5, "scale": 1, "default": "abc"},
+        ],
+        ids=[
+            "more-digits-than-scale",
+            "more-digits-than-precision",
+            "null",
+            "not-a-number",
+        ],
+    )
+    def test_default_the_decimal_type_cannot_hold_is_left_off(self, kwargs):
+        assert "default" not in self._avro_entry(**kwargs)
+
+    def test_default_of_a_string_decimal_is_a_string(self):
+        entry = self._avro_entry(default=0)
+
+        assert entry["type"] == "string"
+        assert entry["default"] == "0"
+
 
 class TestProtobufGenerator:
     def test_decimal_is_a_string(self):

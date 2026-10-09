@@ -27,6 +27,7 @@ Conventions:
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from protean.ir.generators.base import module_path, short_name
@@ -77,6 +78,35 @@ def _scalar_avro_type(field: dict[str, Any]) -> Any:
                 "scale": scale,
             }
     return _TYPE_MAP.get(ir_type, "string")
+
+
+_NO_DEFAULT = object()
+
+
+def _decimal_avro_default(default: Any, avro_type: Any) -> Any:
+    """Encode a Decimal field's IR default for its Avro representation.
+
+    Returns ``_NO_DEFAULT`` when the Avro type cannot hold the value, because
+    an Avro default must match the field's type.
+    """
+    if default is None:
+        return _NO_DEFAULT
+    if avro_type == "string":
+        return str(default)
+    try:
+        unscaled = Decimal(str(default)).scaleb(avro_type["scale"])
+        if unscaled != unscaled.to_integral_value():
+            return _NO_DEFAULT
+        unscaled_int = int(unscaled)
+    except (InvalidOperation, ValueError):
+        return _NO_DEFAULT
+    if len(str(abs(unscaled_int))) > avro_type["precision"]:
+        return _NO_DEFAULT
+    # Avro stores a decimal as the two's-complement big-endian bytes of its
+    # unscaled value, and a ``bytes`` default is a JSON string whose code
+    # points 0-255 are those bytes.
+    length = (unscaled_int + (unscaled_int < 0)).bit_length() // 8 + 1
+    return unscaled_int.to_bytes(length, "big", signed=True).decode("latin-1")
 
 
 def _field_to_avro_type(
@@ -165,8 +195,11 @@ def _build_avro_fields(
 
         if is_required:
             entry["type"] = avro_type
-            if has_default:
-                entry["default"] = fspec["default"]
+            default = fspec.get("default")
+            if has_default and fspec.get("type") == "Decimal":
+                default = _decimal_avro_default(default, avro_type)
+            if has_default and default is not _NO_DEFAULT:
+                entry["default"] = default
         else:
             # Optional: null-first union. Avro requires a union default to match
             # the first branch, so the default is always null — a non-null IR
