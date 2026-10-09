@@ -1,4 +1,5 @@
 import inspect
+import logging
 import pickle
 
 import pytest
@@ -286,6 +287,14 @@ class TestProteanExceptionWithMessage:
         assert exception_instance.traceback is None
         assert exception_instance.extra_info == extra_info
 
+    def test_creating_an_exception_writes_no_log_record(self, caplog):
+        caplog.set_level(logging.DEBUG)
+
+        ValidationError({"name": ["is required"]})
+        ProteanExceptionWithMessage("some error")
+
+        assert caplog.records == []
+
 
 class TestPublicSurface:
     """`protean.exceptions.__all__` freezes the module's star-export."""
@@ -338,10 +347,9 @@ class TestPublicSurface:
                 assert issubclass(obj, exceptions.ProteanException)
 
     def test_incidental_imports_are_not_exported(self):
-        # `logging`, `datetime`, and `Any` are non-underscore module-level
-        # imports that `import *` would drag in without an explicit `__all__`;
-        # their absence proves the guard actually filters.
+        # `datetime` and `Any` are non-underscore module-level imports that
+        # `import *` would drag in without an explicit `__all__`; their
+        # absence proves the guard actually filters.
         exported = self._star_import()
-        assert "logging" not in exported
         assert "datetime" not in exported
         assert "Any" not in exported

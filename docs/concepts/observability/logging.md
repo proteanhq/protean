@@ -106,7 +106,7 @@ flowchart LR
     D --> E
     E --> F{PROTEAN_ENV}
     F -->|production / staging| G[JSONRenderer]
-    F -->|development / test| H[ConsoleRenderer]
+    F -->|any other value or unset| H[ConsoleRenderer]
 ```
 
 The shared processor chain applies correlation injection, OpenTelemetry trace
@@ -219,7 +219,8 @@ from highest to lowest:
    tune during deployment.
 4. **Environment-based defaults**: `PROTEAN_ENV=production` picks INFO +
    JSON; `development` picks DEBUG + console; `test` picks WARNING +
-   console.
+   console. With no environment variable set, or any other value,
+   Protean picks INFO + console.
 
 This precedence matches every other resolvable setting in Protean
 (`server`, `telemetry`, `databases`) so operators don't need to memorize

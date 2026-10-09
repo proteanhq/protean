@@ -9,6 +9,10 @@ from protean.exceptions import ConfigurationError
 from protean.port.broker import BrokerRegistry, registry
 
 
+def _records_naming(caplog, plugin_name):
+    return [r for r in caplog.records if f"'{plugin_name}'" in r.getMessage()]
+
+
 @pytest.mark.no_test_domain
 class TestBrokerRegistry:
     """Test suite for BrokerRegistry functionality."""
@@ -181,7 +185,9 @@ class TestBrokerRegistry:
 
         mock_bad_entry = Mock()
         mock_bad_entry.name = "bad_broker"
-        mock_bad_entry.load.side_effect = ImportError("Missing dependency")
+        mock_bad_entry.load.side_effect = ModuleNotFoundError(
+            "No module named 'sqlalchemy'", name="sqlalchemy"
+        )
 
         with patch("importlib.metadata.entry_points") as mock_entry_points:
             mock_eps = Mock()
@@ -200,9 +206,41 @@ class TestBrokerRegistry:
             # Bad broker should not be registered
             assert "bad_broker" not in registry._brokers
 
-            # Check that the failure was logged
-            assert "Failed to load broker plugin 'bad_broker'" in caplog.text
-            assert "Missing dependency" in caplog.text
+            # A missing extra is a quiet skip, not a failure
+            records = _records_naming(caplog, "bad_broker")
+            assert len(records) == 1
+            assert records[0].levelno == logging.DEBUG
+            message = records[0].getMessage()
+            assert "Skipping broker plugin 'bad_broker'" in message
+            assert "No module named 'sqlalchemy'" in message
+            assert "Failed" not in message
+
+    def test_discover_plugins_skips_import_error_from_registration(self, caplog):
+        """A register() that imports its driver lazily is skipped at DEBUG."""
+        caplog.set_level(logging.DEBUG, logger="protean.port.broker")
+
+        mock_entry = Mock()
+        mock_entry.name = "lazy_broker"
+
+        def lazy_register():
+            raise ModuleNotFoundError("No module named 'redis'", name="redis")
+
+        mock_entry.load.return_value = lazy_register
+
+        with patch("importlib.metadata.entry_points") as mock_entry_points:
+            mock_eps = Mock()
+            mock_eps.select.return_value = [mock_entry]
+            mock_entry_points.return_value = mock_eps
+
+            BrokerRegistry._initialized = False
+            registry._discover_plugins()
+
+            records = _records_naming(caplog, "lazy_broker")
+            assert len(records) == 1
+            assert records[0].levelno == logging.DEBUG
+            message = records[0].getMessage()
+            assert "Skipping broker plugin 'lazy_broker'" in message
+            assert "No module named 'redis'" in message
 
     def test_discover_plugins_handles_registration_function_error(self, caplog):
         """Test handling when the registration function itself raises an error."""
@@ -232,8 +270,12 @@ class TestBrokerRegistry:
             assert "error_broker" not in registry._brokers
 
             # Check that the failure was logged
-            assert "Failed to load broker plugin 'error_broker'" in caplog.text
-            assert "Registration function failed" in caplog.text
+            records = _records_naming(caplog, "error_broker")
+            assert len(records) == 1
+            assert records[0].levelno == logging.WARNING
+            message = records[0].getMessage()
+            assert "Failed to load broker plugin 'error_broker'" in message
+            assert "Registration function failed" in message
 
     def test_discover_plugins_handles_attribute_error(self, caplog):
         """Test handling when entry point load raises AttributeError."""
@@ -254,8 +296,12 @@ class TestBrokerRegistry:
             registry._discover_plugins()
 
             assert "attr_error_broker" not in registry._brokers
-            assert "Failed to load broker plugin 'attr_error_broker'" in caplog.text
-            assert "Module has no attribute 'register'" in caplog.text
+            records = _records_naming(caplog, "attr_error_broker")
+            assert len(records) == 1
+            assert records[0].levelno == logging.WARNING
+            message = records[0].getMessage()
+            assert "Failed to load broker plugin 'attr_error_broker'" in message
+            assert "Module has no attribute 'register'" in message
 
     def test_discover_plugins_continues_after_multiple_failures(self, caplog):
         """Test that discovery continues processing after multiple failures."""
@@ -319,13 +365,19 @@ class TestBrokerRegistry:
             assert "broker2" not in registry._brokers
             assert "broker4" not in registry._brokers
 
-            # Check that all failures were logged
-            assert "Failed to load broker plugin 'broker2'" in caplog.text
-            assert "Failed to load broker plugin 'broker4'" in caplog.text
+            skipped = _records_naming(caplog, "broker2")
+            assert len(skipped) == 1
+            assert skipped[0].levelno == logging.DEBUG
+            assert "Skipping broker plugin 'broker2': No module" in (
+                skipped[0].getMessage()
+            )
 
-            # Verify specific error messages
-            assert "No module" in caplog.text
-            assert "Boom!" in caplog.text
+            failed = _records_naming(caplog, "broker4")
+            assert len(failed) == 1
+            assert failed[0].levelno == logging.WARNING
+            assert "Failed to load broker plugin 'broker4': Boom!" in (
+                failed[0].getMessage()
+            )
 
     def test_discover_plugins_python311(self):
         """Test plugin discovery with Python 3.11+ entry_points API."""

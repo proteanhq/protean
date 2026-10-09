@@ -1186,8 +1186,13 @@ class BrokerRegistry:
                 register_func = entry_point.load()
                 register_func()
                 logger.debug(f"Loaded broker plugin: {entry_point.name}")
+            except ImportError as e:
+                # Usually a missing optional extra, which is a normal install.
+                logger.debug(f"Skipping broker plugin '{entry_point.name}': {e}")
             except Exception as e:  # noqa: BLE001 - a plugin is third-party code
-                logger.debug(f"Failed to load broker plugin '{entry_point.name}': {e}")
+                logger.warning(
+                    f"Failed to load broker plugin '{entry_point.name}': {e}"
+                )
 
         cls._initialized = True
 

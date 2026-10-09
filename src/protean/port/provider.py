@@ -470,8 +470,11 @@ class ProviderRegistry:
                 register_func = entry_point.load()
                 register_func()
                 logger.debug(f"Loaded provider plugin: {entry_point.name}")
+            except ImportError as e:
+                # Usually a missing optional extra, which is a normal install.
+                logger.debug(f"Skipping provider plugin '{entry_point.name}': {e}")
             except Exception as e:  # noqa: BLE001 - a plugin is third-party code
-                logger.debug(
+                logger.warning(
                     f"Failed to load provider plugin '{entry_point.name}': {e}"
                 )
 

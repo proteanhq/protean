@@ -109,6 +109,16 @@ class TestSingleWorkerServer:
 
         assert logging.getLogger().level == logging.ERROR
 
+    def test_logs_at_info_with_no_environment_set(self, tmp_path, monkeypatch):
+        for var in ("PROTEAN_ENV", "ENV", "ENVIRONMENT"):
+            monkeypatch.delenv(var, raising=False)
+        domain = _write_domain(tmp_path, "")
+
+        _run_server("server", "--domain", domain)
+
+        assert logging.getLogger().level == logging.INFO
+        assert logging.getLogger("protean").getEffectiveLevel() == logging.INFO
+
     def test_applies_redaction_correlation_and_per_logger(self, tmp_path):
         domain = _write_domain(
             tmp_path,

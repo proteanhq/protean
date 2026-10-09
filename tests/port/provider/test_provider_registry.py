@@ -10,6 +10,10 @@ from protean.port.provider import ProviderRegistry, registry
 from tests.shared import module_unavailable
 
 
+def _records_naming(caplog, plugin_name):
+    return [r for r in caplog.records if f"'{plugin_name}'" in r.getMessage()]
+
+
 @pytest.mark.no_test_domain
 class TestProviderRegistry:
     """Test suite for ProviderRegistry functionality."""
@@ -279,7 +283,9 @@ class TestProviderRegistryDiscovery:
 
         mock_bad_entry = Mock()
         mock_bad_entry.name = "bad_provider"
-        mock_bad_entry.load.side_effect = ImportError("Missing dependency")
+        mock_bad_entry.load.side_effect = ModuleNotFoundError(
+            "No module named 'sqlalchemy'", name="sqlalchemy"
+        )
 
         with patch("importlib.metadata.entry_points") as mock_entry_points:
             mock_eps = Mock()
@@ -291,8 +297,41 @@ class TestProviderRegistryDiscovery:
 
             assert "good_provider" in registry._providers
             assert "bad_provider" not in registry._providers
-            assert "Failed to load provider plugin 'bad_provider'" in caplog.text
-            assert "Missing dependency" in caplog.text
+            # A missing extra is a quiet skip, not a failure
+            records = _records_naming(caplog, "bad_provider")
+            assert len(records) == 1
+            assert records[0].levelno == logging.DEBUG
+            message = records[0].getMessage()
+            assert "Skipping provider plugin 'bad_provider'" in message
+            assert "No module named 'sqlalchemy'" in message
+            assert "Failed" not in message
+
+    def test_discover_plugins_skips_import_error_from_registration(self, caplog):
+        """A register() that imports its driver lazily is skipped at DEBUG."""
+        caplog.set_level(logging.DEBUG, logger="protean.port.provider")
+
+        mock_entry = Mock()
+        mock_entry.name = "lazy_provider"
+
+        def lazy_register():
+            raise ModuleNotFoundError("No module named 'redis'", name="redis")
+
+        mock_entry.load.return_value = lazy_register
+
+        with patch("importlib.metadata.entry_points") as mock_entry_points:
+            mock_eps = Mock()
+            mock_eps.select.return_value = [mock_entry]
+            mock_entry_points.return_value = mock_eps
+
+            ProviderRegistry._initialized = False
+            registry._discover_plugins()
+
+            records = _records_naming(caplog, "lazy_provider")
+            assert len(records) == 1
+            assert records[0].levelno == logging.DEBUG
+            message = records[0].getMessage()
+            assert "Skipping provider plugin 'lazy_provider'" in message
+            assert "No module named 'redis'" in message
 
     def test_discover_plugins_handles_registration_function_error(self, caplog):
         """Test handling when the registration function itself raises an error."""
@@ -315,8 +354,12 @@ class TestProviderRegistryDiscovery:
             registry._discover_plugins()
 
             assert "error_provider" not in registry._providers
-            assert "Failed to load provider plugin 'error_provider'" in caplog.text
-            assert "Registration function failed" in caplog.text
+            records = _records_naming(caplog, "error_provider")
+            assert len(records) == 1
+            assert records[0].levelno == logging.WARNING
+            message = records[0].getMessage()
+            assert "Failed to load provider plugin 'error_provider'" in message
+            assert "Registration function failed" in message
 
     def test_discover_plugins_handles_attribute_error(self, caplog):
         """Test handling when entry point load raises AttributeError."""
@@ -337,8 +380,12 @@ class TestProviderRegistryDiscovery:
             registry._discover_plugins()
 
             assert "attr_error_provider" not in registry._providers
-            assert "Failed to load provider plugin 'attr_error_provider'" in caplog.text
-            assert "Module has no attribute 'register'" in caplog.text
+            records = _records_naming(caplog, "attr_error_provider")
+            assert len(records) == 1
+            assert records[0].levelno == logging.WARNING
+            message = records[0].getMessage()
+            assert "Failed to load provider plugin 'attr_error_provider'" in message
+            assert "Module has no attribute 'register'" in message
 
     def test_discover_plugins_continues_after_multiple_failures(self, caplog):
         """Test that discovery continues processing after multiple failures."""
@@ -398,10 +445,19 @@ class TestProviderRegistryDiscovery:
             assert "provider2" not in registry._providers
             assert "provider4" not in registry._providers
 
-            assert "Failed to load provider plugin 'provider2'" in caplog.text
-            assert "Failed to load provider plugin 'provider4'" in caplog.text
-            assert "No module" in caplog.text
-            assert "Boom!" in caplog.text
+            skipped = _records_naming(caplog, "provider2")
+            assert len(skipped) == 1
+            assert skipped[0].levelno == logging.DEBUG
+            assert "Skipping provider plugin 'provider2': No module" in (
+                skipped[0].getMessage()
+            )
+
+            failed = _records_naming(caplog, "provider4")
+            assert len(failed) == 1
+            assert failed[0].levelno == logging.WARNING
+            assert "Failed to load provider plugin 'provider4': Boom!" in (
+                failed[0].getMessage()
+            )
 
     def test_get_triggers_discovery(self):
         """Test that get() triggers plugin discovery on first access."""
