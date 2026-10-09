@@ -65,15 +65,17 @@ def _scalar_avro_type(field: dict[str, Any]) -> Any:
     ir_type = field.get("type", "")
     if field.get("kind") == "auto" or ir_type == "Auto":
         return "long" if field.get("increment") else "string"
-    # Avro's ``decimal`` logical type requires a precision, so a Decimal without
-    # one stays a string.
+    # Avro's ``decimal`` logical type requires a positive precision no smaller
+    # than the scale, so any other Decimal stays a string.
     if ir_type == "Decimal" and field.get("precision") is not None:
-        return {
-            "type": "bytes",
-            "logicalType": "decimal",
-            "precision": field["precision"],
-            "scale": field.get("scale", 0),
-        }
+        precision, scale = field["precision"], field.get("scale", 0)
+        if precision > 0 and 0 <= scale <= precision:
+            return {
+                "type": "bytes",
+                "logicalType": "decimal",
+                "precision": precision,
+                "scale": scale,
+            }
     return _TYPE_MAP.get(ir_type, "string")
 
 

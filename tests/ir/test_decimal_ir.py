@@ -236,6 +236,16 @@ class TestAvroGenerator:
             "scale": 0,
         }
 
+    @pytest.mark.parametrize(
+        "kwargs",
+        [{"precision": 2, "scale": 4}, {"precision": 0}],
+        ids=["scale-above-precision", "zero-precision"],
+    )
+    def test_a_shape_avro_cannot_hold_is_a_string(self, kwargs):
+        ir = _build(x=Decimal(required=True, **kwargs))
+
+        assert self._avro_field(ir, "x") == "string"
+
     def test_decimal_without_precision_is_a_string(self):
         ir = _build(x=Decimal(scale=2, required=True))
 
