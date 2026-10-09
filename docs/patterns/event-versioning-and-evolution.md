@@ -168,7 +168,7 @@ A stored payload written with the old `name` key now deserializes into
 `customer_name` without an upcaster. `renamed_from` also accepts a list of
 aliases (`renamed_from=["name", "full_name"]`) when a field has been renamed
 more than once. The compatibility checker reads the declared rename and reports
-a single safe `field_renamed` change rather than a breaking remove + add. Keep
+a safe `field_renamed` change rather than a breaking remove + add. Keep
 the `renamed_from` declaration for as long as payloads written under the old
 name may still be read.
 
