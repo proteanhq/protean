@@ -142,7 +142,12 @@ default from `PROTEAN_ENV` (falling back to `ENV` / `ENVIRONMENT`):
 | `production` | `INFO` | JSON |
 | `staging` | `INFO` | JSON |
 | `test` | `WARNING` | colored console |
-| (unset) | `DEBUG` | colored console (treated as development) |
+| (unset) | `INFO` | colored console |
+
+Only an explicit `development` environment selects `DEBUG`. To see the
+framework's `DEBUG` lines with no environment set, set `PROTEAN_ENV=development`
+or `PROTEAN_LOG_LEVEL=DEBUG`, pass `--log-level DEBUG` to a `protean` command,
+or set `level = "DEBUG"` under `[logging]` in `domain.toml`.
 
 ---
 
@@ -194,7 +199,7 @@ handlers on the root logger.
 
 | Variable | Purpose | Accepted values |
 |----------|---------|-----------------|
-| `PROTEAN_ENV` | Deployment environment; drives default level and format. | `development`, `staging`, `production`, `test` (case-insensitive). Falls back to `ENV`, then `ENVIRONMENT`. Default: `development`. |
+| `PROTEAN_ENV` | Deployment environment; drives default level and format. | `development`, `staging`, `production`, `test` (case-insensitive). Falls back to `ENV`, then `ENVIRONMENT`. When all three are unset, the level is `INFO` and the format is colored console. |
 | `PROTEAN_LOG_LEVEL` | Overrides the resolved level (but not an explicit `level` kwarg). | Same as `--log-level`. |
 | `PROTEAN_NO_AUTO_LOGGING` | Disables `Domain.init()` auto-configuration. `protean server` and `protean observatory` also skip their `Domain.configure_logging()` call, so logging you set up yourself stays in place. Multi-worker and `--reload` worker processes do not read it. | `1` or `true` (case-insensitive). Anything else is ignored. |
 

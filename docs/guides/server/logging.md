@@ -28,6 +28,25 @@ record is queryable by `correlation_id`. When `telemetry.enabled = true`,
 Protean additionally injects OpenTelemetry `trace_id`, `span_id`, and
 `trace_flags` so logs line up with traces in your APM tool.
 
+The default level and format depend on the environment. Protean reads
+`PROTEAN_ENV`, then `ENV`, then `ENVIRONMENT`:
+
+| Environment | Level | Format |
+|-------------|-------|--------|
+| `development` | `DEBUG` | colored console |
+| `production`, `staging` | `INFO` | JSON |
+| `test` | `WARNING` | colored console |
+| unset | `INFO` | colored console |
+
+With no environment variable set, a script or a REPL session shows `INFO`
+lines and above, so `domain.init()` writes nothing. To see the framework's
+`DEBUG` lines, do one of these:
+
+- set `PROTEAN_ENV=development`
+- set `PROTEAN_LOG_LEVEL=DEBUG`
+- pass `--log-level DEBUG` to a `protean` command
+- set `level = "DEBUG"` under `[logging]` in `domain.toml`
+
 To log from application code:
 
 ```python

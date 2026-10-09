@@ -1,8 +1,9 @@
 """Structured logging for Protean applications.
 
 Provides environment-aware structured logging built on structlog. Out of the box:
-- JSON output in production/staging, colored console in development
-- Environment-based log levels (DEBUG dev, INFO production, WARNING test)
+- JSON output in production/staging, colored console otherwise
+- Environment-based log levels (DEBUG development, INFO production and when
+  no environment is set, WARNING test)
 - Context variable support for enriching logs across async boundaries
 - Method call tracing decorator for debugging handlers
 - Third-party and framework logger noise suppression
@@ -64,12 +65,14 @@ _T = TypeVar("_T")
 
 
 def _detect_env() -> str:
-    """Detect the runtime environment from standard env vars."""
+    """Detect the runtime environment from standard env vars.
+
+    Returns an empty string when ``PROTEAN_ENV``, ``ENV`` and ``ENVIRONMENT``
+    are all unset. An unset environment logs at INFO with the colored console
+    renderer; only an explicit ``development`` selects DEBUG.
+    """
     return (
-        os.getenv("PROTEAN_ENV")
-        or os.getenv("ENV")
-        or os.getenv("ENVIRONMENT")
-        or "development"
+        os.getenv("PROTEAN_ENV") or os.getenv("ENV") or os.getenv("ENVIRONMENT") or ""
     ).lower()
 
 
@@ -191,6 +194,8 @@ def configure_logging(
     - **production / staging** — JSON output, INFO level
     - **development** — colored console output with rich tracebacks, DEBUG level
     - **test** — WARNING level, minimal output
+    - **unset** (no ``PROTEAN_ENV``, ``ENV`` or ``ENVIRONMENT``) — colored
+      console output, INFO level
 
     Args:
         level: Logging level override (``DEBUG``, ``INFO``, ``WARNING``,

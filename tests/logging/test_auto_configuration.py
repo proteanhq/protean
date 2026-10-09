@@ -53,7 +53,23 @@ class TestAutoConfigureLogging:
             domain.init(traverse=False)
 
         assert len(root.handlers) > 0, "Auto-config should add handlers"
-        assert root.level == logging.DEBUG  # development default
+        assert root.level == logging.INFO  # unset environment default
+        assert logging.getLogger("protean").getEffectiveLevel() == logging.INFO
+
+    def test_domain_init_with_development_env_logs_at_debug(self):
+        domain = Domain(
+            root_path=str(Path(__file__).parent),
+            name="TestAutoConfigDev",
+        )
+
+        _clear_root_logger()
+        root = logging.getLogger()
+
+        with patch.dict(os.environ, {"PROTEAN_ENV": "development"}, clear=True):
+            domain.init(traverse=False)
+
+        assert len(root.handlers) > 0, "Auto-config should add handlers"
+        assert root.level == logging.DEBUG
 
     @pytest.mark.parametrize("env_value", ["1", "true", "True", "TRUE"])
     def test_protean_no_auto_logging_env_var(self, env_value: str):

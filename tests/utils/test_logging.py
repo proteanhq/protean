@@ -29,16 +29,38 @@ class TestConfigureLogging:
         root.handlers = []
         root.setLevel(logging.WARNING)
 
-    def test_default_development_setup(self):
-        """Default (no args) configures for development: DEBUG level, console renderer."""
+    def test_unset_env_defaults_to_info_with_console_renderer(self):
+        """With no environment variable set: INFO level, colored console output."""
         with patch.dict(os.environ, {}, clear=True):
             configure_logging()
 
         root = logging.getLogger()
-        assert root.level == logging.DEBUG
+        assert root.level == logging.INFO
+        assert logging.getLogger("protean").getEffectiveLevel() == logging.INFO
         # Should have exactly one handler (console)
         assert len(root.handlers) == 1
-        assert isinstance(root.handlers[0], logging.StreamHandler)
+        handler = root.handlers[0]
+        assert isinstance(handler, logging.StreamHandler)
+        assert isinstance(handler.formatter, structlog.stdlib.ProcessorFormatter)
+        assert isinstance(
+            handler.formatter.processors[-1], structlog.dev.ConsoleRenderer
+        )
+
+    @pytest.mark.parametrize("var", ["PROTEAN_ENV", "ENV", "ENVIRONMENT"])
+    def test_explicit_development_env_sets_debug_level(self, var):
+        """Only an explicit development environment selects DEBUG."""
+        with patch.dict(os.environ, {var: "development"}, clear=True):
+            configure_logging()
+
+        assert logging.getLogger().level == logging.DEBUG
+        assert logging.getLogger("protean").getEffectiveLevel() == logging.DEBUG
+
+    def test_log_level_env_var_raises_unset_env_to_debug(self):
+        """PROTEAN_LOG_LEVEL=DEBUG with no environment set gives DEBUG."""
+        with patch.dict(os.environ, {"PROTEAN_LOG_LEVEL": "DEBUG"}, clear=True):
+            configure_logging()
+
+        assert logging.getLogger().level == logging.DEBUG
 
     @pytest.mark.no_test_domain
     def test_asks_structlog_to_cache_loggers(self, monkeypatch):

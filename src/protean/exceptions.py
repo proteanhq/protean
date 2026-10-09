@@ -4,7 +4,6 @@ Custom Protean exception classes
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -43,9 +42,6 @@ __all__ = [
     "TransactionError",
     "ValidationError",
 ]
-
-logger = logging.getLogger(__name__)
-
 
 _SECURITY_DETAIL_MAX_LEN = 256
 
@@ -183,8 +179,6 @@ class ProteanExceptionWithMessage(ProteanException):
         traceback: str | None = None,
         **kwargs: Any,
     ) -> None:
-        logger.debug(f"Exception:: {messages}")
-
         self.messages = messages
         self.traceback = traceback
 
