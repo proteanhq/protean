@@ -181,6 +181,20 @@ class TestConfigureLogging:
 
         assert logging.getLogger("protean").level == logging.DEBUG
 
+    def test_reconfiguring_from_debug_to_unset_env_returns_to_info(self):
+        with patch.dict(os.environ, {}, clear=True):
+            configure_logging(level="DEBUG")
+            configure_logging()
+
+        assert logging.getLogger("protean").getEffectiveLevel() == logging.INFO
+
+    def test_reconfiguring_from_info_to_debug_clears_framework_levels(self):
+        with patch.dict(os.environ, {}, clear=True):
+            configure_logging()
+            configure_logging(level="DEBUG")
+
+        assert logging.getLogger("protean.core").getEffectiveLevel() == logging.DEBUG
+
     def test_reconfiguration_removes_old_handlers(self, tmp_path):
         """Calling configure_logging twice doesn't duplicate handlers."""
         with patch.dict(os.environ, {}, clear=True):

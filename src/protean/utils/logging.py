@@ -987,10 +987,15 @@ def _setup_stdlib_logging(
     for logger_name, logger_level in _NOISY_LOGGERS.items():
         logging.getLogger(logger_name).setLevel(logger_level)
 
-    # Set Protean framework loggers to sensible levels
+    # Set Protean framework loggers to sensible levels. Each branch clears the
+    # levels the other one sets, so reconfiguring between DEBUG and a quieter
+    # level does not keep the previous call's framework levels.
     if numeric_level == logging.DEBUG:
+        for logger_name in _FRAMEWORK_LOGGERS_NORMAL:
+            logging.getLogger(logger_name).setLevel(logging.NOTSET)
         logging.getLogger("protean").setLevel(logging.DEBUG)
     else:
+        logging.getLogger("protean").setLevel(logging.NOTSET)
         for logger_name, logger_level in _FRAMEWORK_LOGGERS_NORMAL.items():
             logging.getLogger(logger_name).setLevel(logger_level)
 
