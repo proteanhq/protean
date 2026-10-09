@@ -32,12 +32,18 @@ from protean.ir.generators.base import short_name
 # IR type → JSON Schema type mapping
 # ---------------------------------------------------------------------------
 
+# A Decimal value travels in a JSON payload as str(Decimal), which switches
+# to exponent notation (1E+2, 0E-8) for some values, so the pattern
+# accepts an optional exponent.
+DECIMAL_PATTERN = r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+
 _TYPE_MAP: dict[str, dict[str, Any]] = {
     "String": {"type": "string"},
     "Text": {"type": "string"},
     "Identifier": {"type": "string"},
     "Integer": {"type": "integer"},
     "Float": {"type": "number"},
+    "Decimal": {"type": "string", "pattern": DECIMAL_PATTERN},
     "Boolean": {"type": "boolean"},
     "Date": {"type": "string", "format": "date"},
     "DateTime": {"type": "string", "format": "date-time"},
@@ -116,10 +122,18 @@ def _field_to_schema(field: dict[str, Any]) -> dict[str, Any]:
         base["maxLength"] = field["max_length"]
     if field.get("min_length") is not None:
         base["minLength"] = field["min_length"]
-    if field.get("max_value") is not None:
-        base["maximum"] = field["max_value"]
-    if field.get("min_value") is not None:
-        base["minimum"] = field["min_value"]
+    if ir_type == "Decimal":
+        # minimum/maximum only constrain numbers, and a Decimal is
+        # published as a string, so its bounds are left out.
+        if field.get("precision") is not None:
+            base["x-precision"] = field["precision"]
+        if field.get("scale") is not None:
+            base["x-scale"] = field["scale"]
+    else:
+        if field.get("max_value") is not None:
+            base["maximum"] = field["max_value"]
+        if field.get("min_value") is not None:
+            base["minimum"] = field["min_value"]
     if field.get("choices"):
         base["enum"] = field["choices"]
 

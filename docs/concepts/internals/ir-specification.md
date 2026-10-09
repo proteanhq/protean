@@ -119,8 +119,8 @@ clear it.
 
 ```json
 {
-  "$schema": "https://protean.dev/ir/v0.2.0/schema.json",
-  "ir_version": "0.2.0",
+  "$schema": "https://protean.dev/ir/v0.3.0/schema.json",
+  "ir_version": "0.3.0",
   "generated_at": "2026-03-01T12:00:00Z",
   "checksum": "sha256:a1b2c3...",
 
@@ -390,7 +390,7 @@ rules govern field representation:
 
 | `kind` | Source | Description |
 |--------|--------|-------------|
-| `"standard"` | `String`, `Integer`, `Float`, `Boolean`, `Date`, `DateTime` | Basic data field |
+| `"standard"` | `String`, `Integer`, `Float`, `Decimal`, `Boolean`, `Date`, `DateTime` | Basic data field |
 | `"text"` | `Text` | Unbounded text |
 | `"identifier"` | `Identifier` | Identity-capable field |
 | `"auto"` | `Auto` | Auto-generated identity |
@@ -419,6 +419,7 @@ All possible keys (no single field has all of them):
 | `description` | Human-readable description |
 | `max_length`, `min_length` | String length constraints |
 | `max_value`, `min_value` | Numeric bounds |
+| `precision`, `scale` | Total digits and digits after the decimal point, on a `Decimal` field that sets them (added in v0.3.0) |
 | `choices` | Sorted list of allowed values |
 | `sanitize` | Present only for an explicit `sanitize=True` (declared intent); absent for an unset field, even one sanitized via a domain default |
 | `increment` | Auto-increment flag |
@@ -440,7 +441,9 @@ All possible keys (no single field has all of them):
 ### Type Names
 
 Data fields use Protean type names: `String`, `Text`, `Integer`, `Float`,
-`Boolean`, `Date`, `DateTime`, `Identifier`, `Auto`, `List`, `Dict`.
+`Decimal`, `Boolean`, `Date`, `DateTime`, `Identifier`, `Auto`, `List`, `Dict`.
+`Decimal` was added in v0.3.0; earlier versions recorded a `Decimal` field as
+`String`.
 Association fields omit `type`, the `target` FQN provides type information.
 
 ---

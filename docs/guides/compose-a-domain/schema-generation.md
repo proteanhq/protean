@@ -188,6 +188,26 @@ Optional fields use the `anyOf` pattern with `null`:
 }
 ```
 
+### Decimal fields
+
+Protean writes a `Decimal` value as a string in a JSON payload, so a `Decimal`
+field becomes a string with a pattern that accepts decimal numbers. The field's
+`precision` and `scale`, when set, go into `x-precision` and `x-scale`:
+
+```json
+{
+  "price": {
+    "type": "string",
+    "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+    "x-precision": 19,
+    "x-scale": 4
+  }
+}
+```
+
+`minimum` and `maximum` apply only to numbers, so a `Decimal` field's
+`min_value` and `max_value` are not written.
+
 ---
 
 ## Validating payloads

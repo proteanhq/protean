@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import datetime as _dt
+import decimal
 import hashlib
 import importlib
 import json
@@ -540,6 +541,11 @@ class IRBuilder:
             entry["min_value"] = field.min_value
         if field.max_value is not None:
             entry["max_value"] = field.max_value
+        if entry["type"] == "Decimal":
+            if field.precision is not None:
+                entry["precision"] = field.precision
+            if field.scale is not None:
+                entry["scale"] = field.scale
         if field.sanitize:
             entry["sanitize"] = True
         if field.increment:
@@ -682,6 +688,7 @@ class IRBuilder:
             (int, "standard"): "Integer",
             (int, "auto"): "Auto",
             (float, "standard"): "Float",
+            (decimal.Decimal, "standard"): "Decimal",
             (bool, "standard"): "Boolean",
             (_dt.date, "standard"): "Date",
             (_dt.datetime, "standard"): "DateTime",
@@ -711,6 +718,7 @@ class IRBuilder:
             str: "String",
             int: "Integer",
             float: "Float",
+            decimal.Decimal: "Decimal",
             bool: "Boolean",
             dict: "dict",
             _dt.date: "Date",

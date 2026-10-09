@@ -851,6 +851,10 @@ _AVRO_CHANGE_SAFETY: dict[str, tuple[bool, bool]] = {
     "field_removed": (True, False),
     "field_renamed": (True, False),
     "field_type_changed": (False, False),
+    # Every old value fits a Decimal with wider precision, so the report calls
+    # this safe. Avro resolves two ``decimal`` types only when precision and
+    # scale both match, so its verdict differs from the report's.
+    "field_precision_widened": (False, False),
     "type_string_changed": (False, False),
     # Visibility flips change the publication contract, not the payload bytes,
     # so they are neutral for Avro decode. They remain breaking in the report
@@ -1560,7 +1564,26 @@ def _classify_field_changes(
     for old_name, new_name in renames.items():
         old_type = removed[old_name].get("type")
         new_type = added[new_name].get("type")
-        if old_type != new_type:
+        decimal_change = (
+            _classify_decimal_shape(removed[old_name], added[new_name])
+            if old_type == new_type == "Decimal"
+            else None
+        )
+        if decimal_change == "breaking":
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="field_type_changed",
+                    message=(
+                        f"Field '{old_name}' renamed to '{new_name}' with a "
+                        f"Decimal shape change "
+                        f"({_decimal_shape_delta(removed[old_name], added[new_name])})"
+                        f" in {element_type} '{fqn}'"
+                    ),
+                )
+            )
+        elif old_type != new_type:
             report.breaking_changes.append(
                 CompatibilityChange(
                     severity="breaking",
@@ -1589,6 +1612,12 @@ def _classify_field_changes(
                     forward_safe=_removal_forward_safe(removed[old_name]),
                 )
             )
+            if decimal_change == "widened":
+                report.safe_changes.append(
+                    _precision_widened_change(
+                        new_name, removed[old_name], added[new_name], fqn, element_type
+                    )
+                )
 
     for field_name, field_dict in added.items():
         if field_name in renamed_new:
@@ -1705,6 +1734,80 @@ def _classify_field_changes(
                     ),
                 )
             )
+        elif "precision" in field_changes or "scale" in field_changes:
+            # Only a Decimal field carries ``precision`` and ``scale``, and its
+            # type is unchanged here. The delta holds only the keys that
+            # differ; a key left out is equal on both sides, so comparing the
+            # delta alone gives the same answer as comparing the full fields.
+            left = {k: v.get("left") for k, v in field_changes.items()}
+            right = {k: v.get("right") for k, v in field_changes.items()}
+            if _classify_decimal_shape(left, right) == "widened":
+                report.safe_changes.append(
+                    _precision_widened_change(
+                        field_name, left, right, fqn, element_type
+                    )
+                )
+            else:
+                report.breaking_changes.append(
+                    CompatibilityChange(
+                        severity="breaking",
+                        element_fqn=fqn,
+                        change_type="field_type_changed",
+                        message=(
+                            f"Field '{field_name}' Decimal shape changed "
+                            f"({_decimal_shape_delta(left, right)}) "
+                            f"in {element_type} '{fqn}'"
+                        ),
+                    )
+                )
+
+
+def _classify_decimal_shape(left: dict[str, Any], right: dict[str, Any]) -> str | None:
+    """Compare the ``precision`` and ``scale`` of two Decimal field dicts.
+
+    Returns ``None`` when both match, ``"widened"`` when every old value still
+    fits the new field (precision raised or removed, scale unchanged), and
+    ``"breaking"`` otherwise: a scale change, or precision lowered or added.
+    """
+    left_precision, right_precision = left.get("precision"), right.get("precision")
+    if left_precision == right_precision and left.get("scale") == right.get("scale"):
+        return None
+    if left.get("scale") != right.get("scale") or left_precision is None:
+        return "breaking"
+    if right_precision is None or right_precision > left_precision:
+        return "widened"
+    return "breaking"
+
+
+def _decimal_shape_delta(left: dict[str, Any], right: dict[str, Any]) -> str:
+    """Describe how ``precision`` and ``scale`` differ, e.g. ``precision from 10 to 19``."""
+
+    def shown(value: Any) -> str:
+        return "unset" if value is None else str(value)
+
+    return ", ".join(
+        f"{key} from {shown(left.get(key))} to {shown(right.get(key))}"
+        for key in ("precision", "scale")
+        if left.get(key) != right.get(key)
+    )
+
+
+def _precision_widened_change(
+    field_name: str,
+    left: dict[str, Any],
+    right: dict[str, Any],
+    fqn: str,
+    element_type: str,
+) -> CompatibilityChange:
+    return CompatibilityChange(
+        severity="safe",
+        element_fqn=fqn,
+        change_type="field_precision_widened",
+        message=(
+            f"Field '{field_name}' precision widened "
+            f"({_decimal_shape_delta(left, right)}) in {element_type} '{fqn}'"
+        ),
+    )
 
 
 def _classify_attribute_changes(

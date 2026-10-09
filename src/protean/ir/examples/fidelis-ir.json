@@ -1,5 +1,5 @@
 {
-  "$schema": "https://protean.dev/ir/v0.2.0/schema.json",
+  "$schema": "https://protean.dev/ir/v0.3.0/schema.json",
   "checksum": "sha256:3efb381bb5a5018ebe5f06b216bd13303a248252d18cd86754fe7ec22599b6d6",
   "clusters": {
     "banking.accounts.Account": {
@@ -527,7 +527,7 @@
     "subscribers": {}
   },
   "generated_at": "2026-03-01T12:00:00Z",
-  "ir_version": "0.2.0",
+  "ir_version": "0.3.0",
   "projections": {
     "banking.reporting.AccountSummary": {
       "projection": {

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://protean.dev/ir/v0.2.0/schema.json",
+  "$schema": "https://protean.dev/ir/v0.3.0/schema.json",
   "checksum": "sha256:5372a9b078d2a372f9e455df3fdf7d3529b785d47b8d7fca986a5b16300bdaab",
   "clusters": {
     "ecommerce.ordering.Order": {
@@ -717,7 +717,7 @@
     }
   },
   "generated_at": "2026-03-01T12:00:00Z",
-  "ir_version": "0.2.0",
+  "ir_version": "0.3.0",
   "projections": {
     "ecommerce.reporting.OrderDashboard": {
       "projection": {

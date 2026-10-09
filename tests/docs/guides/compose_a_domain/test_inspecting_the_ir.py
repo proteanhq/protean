@@ -36,8 +36,8 @@ def test_ir_has_the_top_level_sections_the_page_shows(example):
         "elements",
         "diagnostics",
     }
-    assert example.ir["$schema"] == "https://protean.dev/ir/v0.2.0/schema.json"
-    assert example.ir["ir_version"] == "0.2.0"
+    assert example.ir["$schema"] == "https://protean.dev/ir/v0.3.0/schema.json"
+    assert example.ir["ir_version"] == "0.3.0"
     assert example.ir["checksum"].startswith("sha256:")
     assert example.ir["domain"]["name"] == "Ecommerce"
 
@@ -46,7 +46,7 @@ def test_ir_prints_as_json(example, capsys):
     load_example("guides/compose-a-domain/inspecting-the-ir/001.py")
 
     printed = json.loads(capsys.readouterr().out)
-    assert printed["ir_version"] == "0.2.0"
+    assert printed["ir_version"] == "0.3.0"
     assert _name(example, example.Order) in printed["clusters"]
 
 
