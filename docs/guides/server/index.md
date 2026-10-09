@@ -169,6 +169,7 @@ For examples of using test mode in your test suite, see
 You can also start the engine programmatically:
 
 ```python
+# fragment
 from protean.server import Engine
 from my_domain import domain
 
@@ -180,6 +181,7 @@ engine.run()  # Blocking call
 ### With Custom Options
 
 ```python
+# fragment
 engine = Engine(
     domain,
     test_mode=False,

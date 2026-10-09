@@ -331,9 +331,9 @@ Protean provides a one-line integration to instrument your FastAPI application
 with OpenTelemetry:
 
 ```python
-from protean.integrations.fastapi import instrument_app
-
-instrument_app(app, domain)
+--8<-- "guides/server/opentelemetry/001.py:fastapi-import"
+--8<-- "guides/server/opentelemetry/001.py:instrument-import"
+--8<-- "guides/server/opentelemetry/001.py:instrument"
 ```
 
 This wraps `opentelemetry-instrumentation-fastapi` and uses the domain's
@@ -351,11 +351,7 @@ of any command/event processing spans created during the request.
 ### Options
 
 ```python
-instrument_app(
-    app,
-    domain,
-    excluded_urls="health,ready",  # Skip health check endpoints
-)
+--8<-- "guides/server/opentelemetry/002.py:options"
 ```
 
 The call is safe even when `opentelemetry` is not installed. It returns `False`
@@ -367,7 +363,7 @@ When the Observatory runs alongside your application, you may want to exclude
 its endpoints from tracing to avoid noise:
 
 ```python
-instrument_app(app, domain, excluded_urls="metrics,stream,api/health")
+--8<-- "guides/server/opentelemetry/003.py:observatory"
 ```
 
 ---
@@ -519,21 +515,8 @@ for the rationale.
 Use this pattern at every instrumented callsite:
 
 ```python
-from protean.utils.telemetry import get_tracer, set_span_error
-
-tracer = get_tracer(domain)  # or self._domain.tracer, current_domain.tracer
-
-with tracer.start_as_current_span(
-    "protean.<subsystem>.<operation>",
-    record_exception=False,
-    set_status_on_exception=False,
-) as span:
-    span.set_attribute("protean.<subsystem>.<attribute>", value)
-    try:
-        ...  # the actual work
-    except Exception as exc:
-        set_span_error(span, exc)
-        raise
+--8<-- "guides/server/opentelemetry/004.py:imports"
+--8<-- "guides/server/opentelemetry/004.py:span"
 ```
 
 Key rules:
@@ -572,6 +555,7 @@ class (`src/protean/utils/telemetry.py`). To add a new metric:
 1. **Add the instrument** to `DomainMetrics.__init__()`:
 
     ```python
+    # fragment
     self.my_new_counter = meter.create_counter(
         name="protean.subsystem.metric_name",
         unit="{item}",          # OTEL unit string
@@ -582,6 +566,7 @@ class (`src/protean/utils/telemetry.py`). To add a new metric:
 2. **Record at the callsite** using `get_domain_metrics()`:
 
     ```python
+    # fragment
     from protean.utils.telemetry import get_domain_metrics
 
     metrics = get_domain_metrics(domain)

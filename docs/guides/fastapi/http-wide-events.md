@@ -70,20 +70,8 @@ writing the wide event fails. The middleware then logs
 `domain.init()` has auto-configured logging:
 
 ```python
-from fastapi import FastAPI
-from protean.integrations.fastapi import DomainContextMiddleware
-
-from my_app.identity import identity_domain
-from my_app.catalogue import catalogue_domain
-
-app = FastAPI()
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={
-        "/customers": identity_domain,
-        "/products": catalogue_domain,
-    },
-)
+--8<-- "guides/fastapi/http-wide-events/001.py:enable-imports"
+--8<-- "guides/fastapi/http-wide-events/001.py:enable"
 ```
 
 No other wiring is required. The logger name (`protean.access.http`) is
@@ -117,13 +105,8 @@ Explicit constructor arguments on `DomainContextMiddleware` override the
 domain config for that middleware instance:
 
 ```python
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={"/api": my_domain},
-    emit_http_wide_event=True,
-    exclude_paths=["/api/internal/ping"],
-    log_request_headers=True,
-)
+--8<-- "guides/fastapi/http-wide-events/002.py:domain"
+--8<-- "guides/fastapi/http-wide-events/002.py:override"
 ```
 
 Passing `None` (the default) defers to `[logging.http]`. Passing an
@@ -139,21 +122,9 @@ any domain wide events emitted by commands dispatched during the
 request:
 
 ```python
-from fastapi import APIRouter
-from protean.utils.globals import current_domain
-from protean.utils.logging import bind_event_context
-
-router = APIRouter()
-
-@router.post("/orders")
-async def place_order(request: PlaceOrderRequest, user=Depends(get_user)):
-    bind_event_context(
-        user_id=user.id,
-        user_tier=user.tier,
-        device_platform=request.device_platform,
-    )
-    current_domain.process(PlaceOrder(**request.model_dump()))
-    return {"ok": True}
+--8<-- "guides/fastapi/http-wide-events/003.py:imports"
+--8<-- "guides/fastapi/http-wide-events/003.py:context"
+--8<-- "guides/fastapi/http-wide-events/003.py:endpoint"
 ```
 
 The resulting `access.http_completed` event now carries `user_id`,

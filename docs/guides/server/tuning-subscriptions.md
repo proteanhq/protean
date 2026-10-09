@@ -137,9 +137,8 @@ that events sharing that key are handled one at a time, while different keys
 still run in parallel:
 
 ```python
-@domain.event_handler(part_of=Order, sequential_by="order_id")
-class OrderHandler:
-    ...
+--8<-- "guides/server/tuning-subscriptions/001.py:model"
+--8<-- "guides/server/tuning-subscriptions/001.py:handler"
 ```
 
 Events for `order_id=A` are serialised against each other; events for

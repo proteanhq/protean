@@ -139,11 +139,8 @@ API pods serving HTTP traffic should mount the equivalent router on
 their FastAPI app:
 
 ```python
-from fastapi import FastAPI
-from protean.integrations.fastapi.health import create_health_router
-
-app = FastAPI()
-app.include_router(create_health_router(domain))
+--8<-- "guides/server/production-deployment/001.py:imports"
+--8<-- "guides/server/production-deployment/001.py:health"
 ```
 
 Point the probes at the same ports your API already exposes, no separate health

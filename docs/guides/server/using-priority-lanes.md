@@ -62,14 +62,8 @@ Wrap a block of `domain.process()` calls in `processing_priority()`. Every
 event produced inside the block is tagged with the specified priority:
 
 ```python
-from protean.utils.processing import processing_priority, Priority
-
-with processing_priority(Priority.LOW):
-    for record in records_to_process:
-        domain.process(UpdateCustomer(
-            customer_id=record["id"],
-            loyalty_tier=record["tier"],
-        ))
+--8<-- "guides/server/using-priority-lanes/001.py:import"
+--8<-- "guides/server/using-priority-lanes/001.py:context_manager"
 ```
 
 Use `Priority.LOW` for most batch jobs. Use `Priority.BULK` for the lowest
@@ -80,12 +74,8 @@ priority work (mass imports, full re-projections).
 Pass `priority` directly to a single `domain.process()` call:
 
 ```python
-from protean.utils.processing import Priority
-
-domain.process(
-    ReindexProduct(product_id="SKU-001"),
-    priority=Priority.BULK,
-)
+--8<-- "guides/server/using-priority-lanes/001.py:import"
+--8<-- "guides/server/using-priority-lanes/001.py:explicit"
 ```
 
 The explicit parameter takes precedence over any active context manager.

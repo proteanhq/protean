@@ -23,11 +23,8 @@ Add `published=True` to any event that is part of your bounded context's
 public API:
 
 ```python
-@domain.event(part_of=Order, published=True)
-class OrderShipped(BaseEvent):
-    order_id: Identifier(required=True)
-    shipped_at: DateTime(required=True)
-    tracking_number: String(max_length=50)
+--8<-- "guides/server/external-event-dispatch/001.py:aggregate"
+--8<-- "guides/server/external-event-dispatch/001.py:event"
 ```
 
 Events without `published=True` are dispatched only to the internal broker.

@@ -16,10 +16,7 @@ behind the wide event pattern, see
 ## Quick start
 
 ```python
-from protean import Domain
-
-domain = Domain()
-domain.init()  # auto-configures logging
+--8<-- "guides/server/logging/quick-start/001.py:quick-start"
 ```
 
 That is the whole setup. `Domain.init()` auto-detects `PROTEAN_ENV`, picks a
@@ -52,10 +49,7 @@ lines, do one of these:
 To log from application code:
 
 ```python
-from protean.utils.logging import get_logger
-
-logger = get_logger(__name__)
-logger.info("order_placed", order_id="ord-123", total=99.95)
+--8<-- "guides/server/logging/002.py:get-logger"
 ```
 
 Keyword arguments become structured fields in JSON output and colored
@@ -188,7 +182,7 @@ override `domain.toml` but still read `PROTEAN_LOG_LEVEL` as an override for
 `level` unless `level=` is passed:
 
 ```python
-domain.configure_logging(level="DEBUG", format="json")
+--8<-- "guides/server/logging/003.py:configure"
 ```
 
 If you already called `domain.init()`, calling `configure_logging()` again
@@ -205,19 +199,8 @@ context automatically; application code adds business-specific fields
 with `bind_event_context()`:
 
 ```python
-from protean import handle
-from protean.utils.logging import bind_event_context
-
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(PlaceOrder)
-    def place(self, command: PlaceOrder) -> None:
-        bind_event_context(
-            user_tier=command.user_tier,
-            order_total=float(command.total),
-            coupon_applied=command.coupon_code is not None,
-        )
-        # ... handler logic ...
+--8<-- "guides/server/logging/004.py:model"
+--8<-- "guides/server/logging/004.py:handler"
 ```
 
 The framework and application fields merge into the single wide event
@@ -234,24 +217,14 @@ for guidance on choosing queryable dimensions.
 given name. Events are keyword arguments, not f-strings:
 
 ```python
-from protean.utils.logging import get_logger
-
-logger = get_logger(__name__)
-logger.info("payment_refunded", order_id="ord-123", amount=19.99, reason="customer_request")
+--8<-- "guides/server/logging/002.py:refund"
 ```
 
 For context that should appear on every record inside a scope, use
 `add_context()`:
 
 ```python
-from protean.utils.logging import add_context, clear_context
-
-add_context(request_id="abc-123", tenant_id="tenant-42")
-try:
-    logger.info("processing")          # includes request_id and tenant_id
-    logger.info("processed")
-finally:
-    clear_context()
+--8<-- "guides/server/logging/002.py:context"
 ```
 
 `add_context()` uses `contextvars`, so it propagates correctly across
@@ -313,21 +286,7 @@ to this channel automatically for aggregate invariant violations and the
 three `Invalid*` exceptions. To emit from application code:
 
 ```python
-from protean.integrations.logging import (
-    SECURITY_EVENT_VALIDATION_FAILED,
-    log_security_event,
-)
-
-def check_admin_access(user, resource):
-    if not user.can_access(resource):
-        log_security_event(
-            SECURITY_EVENT_VALIDATION_FAILED,
-            aggregate="Resource",
-            aggregate_id=resource.id,
-            user_id=user.id,
-            reason="not_authorized",
-        )
-        raise PermissionDenied()
+--8<-- "guides/server/logging/005.py:security"
 ```
 
 `correlation_id` and `causation_id` are auto-injected from the active
@@ -357,11 +316,7 @@ You can then wire whichever parts of Protean's integration you want
 manually:
 
 ```python
-import logging
-from protean.integrations.logging import ProteanCorrelationFilter
-
-for handler in logging.getLogger().handlers:
-    handler.addFilter(ProteanCorrelationFilter())
+--8<-- "guides/server/logging/006.py:filter"
 ```
 
 Attach the filter to each handler on the root logger. A filter on a logger
@@ -379,9 +334,7 @@ embedded setups no env var is needed.
 In `conftest.py`:
 
 ```python
-from protean.utils.logging import configure_for_testing
-
-configure_for_testing()
+--8<-- "guides/server/logging/007.py:testing"
 ```
 
 This sets the root logger to WARNING and removes file handlers. Tests that

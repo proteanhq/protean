@@ -207,17 +207,12 @@ Use the runtime options available:
 counts by state. See [Observatory
 Dashboard](../../reference/cli/runtime/observatory.md#endpoints).
 
-**A shell session**, query the outbox repository directly:
+**A shell session**, query the outbox repository directly. Each database
+provider has its own outbox repository, looked up by the provider's name:
 
 ```python
-from protean import current_domain
-from protean.utils.outbox import OutboxStatus
-
-with domain.domain_context():
-    repo = current_domain.repository_for("Outbox")
-    abandoned = repo.query.filter(status=OutboxStatus.ABANDONED.value).all()
-    for msg in abandoned.items:
-        print(msg.id, msg.stream_name, msg.last_error)
+--8<-- "guides/server/outbox/001.py:domain"
+--8<-- "guides/server/outbox/001.py:inspect"
 ```
 
 **The database**: abandoned rows can be inspected, re-queued, or deleted with

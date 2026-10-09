@@ -21,21 +21,7 @@ matching the request URL path to a `Domain` instance.
 ### Basic setup
 
 ```python
-from fastapi import FastAPI
-from protean.integrations.fastapi import DomainContextMiddleware
-
-from my_app.identity import identity_domain
-from my_app.catalogue import catalogue_domain
-
-app = FastAPI()
-
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={
-        "/customers": identity_domain,
-        "/products": catalogue_domain,
-    },
-)
+--8<-- "guides/fastapi/index/001.py:basic"
 ```
 
 With this configuration:
@@ -50,13 +36,7 @@ With this configuration:
 When multiple prefixes overlap, the longest match wins:
 
 ```python
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={
-        "/api": core_domain,
-        "/api/v2": v2_domain,
-    },
-)
+--8<-- "guides/fastapi/index/002.py:longest-prefix"
 ```
 
 A request to `/api/v2/items` matches `/api/v2` (the longer prefix) and uses
@@ -70,20 +50,8 @@ database-driven resolution), provide a `resolver` callable instead of a
 static map:
 
 ```python
-from protean.domain import Domain
-
-def resolve_domain(path: str) -> Domain | None:
-    """Route /tenant-a/* and /tenant-b/* to separate domains."""
-    if path.startswith("/tenant-a"):
-        return tenant_a_domain
-    if path.startswith("/tenant-b"):
-        return tenant_b_domain
-    return None  # No domain context for other paths
-
-app.add_middleware(
-    DomainContextMiddleware,
-    resolver=resolve_domain,
-)
+--8<-- "guides/fastapi/index/003.py:resolver"
+--8<-- "guides/fastapi/index/003.py:register"
 ```
 
 When a resolver is provided, `route_domain_map` is ignored. Returning `None`
@@ -94,10 +62,7 @@ from the resolver means the request proceeds without a domain context.
 For applications with only one domain, you can map the root prefix:
 
 ```python
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={"/": my_domain},
-)
+--8<-- "guides/fastapi/index/004.py:single-domain"
 ```
 
 ### Correlation ID header
@@ -111,11 +76,7 @@ explicit `domain.process()` parameter, or an auto-generated UUID.
 This means no manual header extraction is needed in your endpoints:
 
 ```python
-@app.post("/orders")
-def place_order(payload: dict):
-    # Correlation ID from X-Correlation-ID header is picked up automatically.
-    current_domain.process(PlaceOrder(**payload))
-    return {"status": "accepted"}
+--8<-- "guides/fastapi/index/006.py:endpoint"
 ```
 
 For the full story on how correlation IDs propagate through commands, events,
@@ -141,11 +102,7 @@ directly without manual try/except blocks.
 ### Setup
 
 ```python
-from fastapi import FastAPI
-from protean.integrations.fastapi import register_exception_handlers
-
-app = FastAPI()
-register_exception_handlers(app)
+--8<-- "guides/fastapi/index/005.py:setup"
 ```
 
 ### Exception mapping
@@ -162,14 +119,8 @@ register_exception_handlers(app)
 ### Example
 
 ```python
-from protean.utils.globals import current_domain
-from protean.exceptions import ObjectNotFoundError
-
-@app.get("/customers/{customer_id}")
-def get_customer(customer_id: str):
-    repo = current_domain.repository_for(Customer)
-    customer = repo.get(customer_id)  # Raises ObjectNotFoundError → 404
-    return {"id": customer.id, "name": customer.name}
+--8<-- "guides/fastapi/index/005.py:example-imports"
+--8<-- "guides/fastapi/index/005.py:example"
 ```
 
 ---
@@ -179,31 +130,10 @@ def get_customer(customer_id: str):
 A typical FastAPI application using both utilities:
 
 ```python
-from fastapi import FastAPI
-from protean.integrations.fastapi import (
-    DomainContextMiddleware,
-    register_exception_handlers,
-)
-from protean.utils.globals import current_domain
-
-from my_app.domain import domain
-
-app = FastAPI()
-
-# 1. Middleware: push domain context per request
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={"/": domain},
-)
-
-# 2. Exception handlers: map domain exceptions to HTTP responses
-register_exception_handlers(app)
-
-
-@app.post("/orders")
-def place_order(payload: dict):
-    current_domain.process(PlaceOrder(**payload))
-    return {"status": "accepted"}
+--8<-- "guides/fastapi/index/006.py:imports"
+--8<-- "guides/fastapi/index/006.py:domain"
+--8<-- "guides/fastapi/index/006.py:app"
+--8<-- "guides/fastapi/index/006.py:endpoint"
 ```
 
 The endpoints on this page are plain `def` functions. `domain.process()` is a
@@ -221,39 +151,8 @@ database schemas, and clean up on shutdown.
 ### Using the lifespan context manager
 
 ```python
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI
-from protean.integrations.fastapi import (
-    DomainContextMiddleware,
-    register_exception_handlers,
-)
-
-from my_app.domain import domain
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: initialize domain and prepare infrastructure
-    domain.init()
-    with domain.domain_context():
-        domain.setup_database()
-
-    yield
-
-    # Shutdown: release resources
-    with domain.domain_context():
-        # Any cleanup logic here
-        pass
-
-
-app = FastAPI(lifespan=lifespan)
-
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={"/": domain},
-)
-register_exception_handlers(app)
+--8<-- "guides/fastapi/index/007.py:lifespan-imports"
+--8<-- "guides/fastapi/index/007.py:lifespan"
 ```
 
 ### What belongs in startup vs. middleware
@@ -271,35 +170,7 @@ When your application serves multiple bounded contexts, initialize each
 domain in the lifespan:
 
 ```python
-from my_app.identity import identity_domain
-from my_app.catalogue import catalogue_domain
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Initialize all domains
-    for d in [identity_domain, catalogue_domain]:
-        d.init()
-        with d.domain_context():
-            d.setup_database()
-
-    yield
-
-    # Shutdown
-    for d in [identity_domain, catalogue_domain]:
-        with d.domain_context():
-            pass  # Cleanup if needed
-
-
-app = FastAPI(lifespan=lifespan)
-
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={
-        "/customers": identity_domain,
-        "/products": catalogue_domain,
-    },
-)
+--8<-- "guides/fastapi/index/008.py:multi-domain"
 ```
 
 ### Simple single-domain apps
@@ -308,15 +179,7 @@ For simple applications where startup overhead isn't a concern, calling
 `domain.init()` at module level remains a valid approach:
 
 ```python
-from my_app.domain import domain
-
-domain.init()  # Called once at import time
-
-app = FastAPI()
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={"/": domain},
-)
+--8<-- "guides/fastapi/index/009.py:module-level"
 ```
 
 This works well for small applications. Use the lifespan approach when you
@@ -332,22 +195,8 @@ framework. For Flask, Django, or other WSGI/ASGI frameworks, manually push the
 domain context in your request middleware:
 
 ```python
-# Flask example
-from flask import Flask, g
-from my_app.domain import domain
-
-app = Flask(__name__)
-
-@app.before_request
-def push_domain_context() -> None:
-    ctx = domain.domain_context()
-    ctx.push()
-    g.domain_ctx = ctx
-
-@app.teardown_request
-def pop_domain_context(exc: Exception | None) -> None:
-    if hasattr(g, "domain_ctx"):
-        g.domain_ctx.pop(exc)
+--8<-- "guides/fastapi/index/010.py:flask-imports"
+--8<-- "guides/fastapi/index/010.py:flask"
 ```
 
 See [Activate Domain](../compose-a-domain/activate-domain.md) for details
