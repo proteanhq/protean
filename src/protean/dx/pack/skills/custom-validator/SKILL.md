@@ -136,11 +136,11 @@ Chain validators for layered validation. They run in list order, and validation 
 class ReservedWordValidator:
     """Rejects reserved words, ignoring case."""
 
-    def __init__(self, reserved):
-        self.reserved = [word.lower() for word in reserved]
+    def __init__(self, reserved_words):
+        self.reserved_words = [word.lower() for word in reserved_words]
 
     def __call__(self, value):
-        if value.lower() in self.reserved:
+        if value.lower() in self.reserved_words:
             raise ValidationError(f"'{value}' is reserved and cannot be used")
 
 
@@ -155,7 +155,7 @@ class Username:
                 regex=r"^[a-zA-Z][a-zA-Z0-9_]*$",
                 message="Username must start with a letter, only letters/digits/underscores"
             ),
-            ReservedWordValidator(reserved=["admin", "root", "system"]),
+            ReservedWordValidator(reserved_words=["admin", "root", "system"]),
         ]
     )
 ```

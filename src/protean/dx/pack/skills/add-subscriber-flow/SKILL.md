@@ -65,6 +65,7 @@ class PaymentSubscriber:
 The subscriber translates external data formats into domain language. This is the key DDD concept: the **Anti-Corruption Layer (ACL)**.
 
 ```python
+# fragment
 def _handle_payment_confirmed(self, data: dict) -> None:
     # External format (camelCase, external IDs):
     #   {"orderId": "ext-123", "amountPaid": 99.99, "paymentMethod": "card"}
@@ -136,14 +137,20 @@ domain.init(traverse=False)
 
 with domain.domain_context():
     domain.repository_for(Order).add(Order(id="ORD-001"))
+    domain.repository_for(Order).add(Order(id="ORD-002"))
 
     # Publish to the broker stream (triggers the subscriber in sync mode)
     domain.brokers["default"].publish(
         "payment_gateway",
         {"order_id": "ORD-001", "status": "SUCCESS"},
     )
+    domain.brokers["default"].publish(
+        "payment_gateway",
+        {"order_id": "ORD-002", "status": "FAILED"},
+    )
 
     assert domain.repository_for(Order).get("ORD-001").status == "PAID"
+    assert domain.repository_for(Order).get("ORD-002").status == "PENDING"
 ```
 
 ## The anti-corruption layer (ACL)

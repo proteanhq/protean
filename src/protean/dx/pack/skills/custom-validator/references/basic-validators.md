@@ -50,21 +50,22 @@ Design decisions:
 - Requires international prefix (+) for unambiguous formatting
 - Validates digit count range (10-15) per E.164 standard
 
-Call it on a valid number and an invalid one. `"+1 (555) 123-4567"` passes once
-the separators are stripped. `"1-555-123-4567"` has the right digits but no `+`
-prefix, so it raises:
+Call it on two valid numbers and two invalid ones. `"+1 (555) 123-4567"` passes
+once the separators are stripped. `"1-555-123-4567"` has the right digits but no
+`+` prefix, and `"+1234"` has the prefix but too few digits, so both raise:
 
 ```python
 validator = PhoneValidator()
 validator("+1-555-123-4567")  # passes
 validator("+1 (555) 123-4567")  # passes: parens and spaces are stripped
 
-try:
-    validator("1-555-123-4567")
-except ValidationError:
-    pass
-else:
-    raise AssertionError("1-555-123-4567 has no + prefix and should be rejected")
+for invalid in ["1-555-123-4567", "+1234"]:
+    try:
+        validator(invalid)
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError(f"{invalid} should be rejected")
 ```
 
 Attach it to a field with the `validators` parameter:
@@ -72,7 +73,7 @@ Attach it to a field with the `validators` parameter:
 ```python
 @domain.value_object
 class Phone:
-    number: String(required=True, max_length=20, validators=[PhoneValidator()])
+    number: String(required=True, max_length=30, validators=[PhoneValidator()])
 ```
 
 ### UrlValidator
