@@ -94,12 +94,24 @@ def _decimal_avro_default(default: Any, avro_type: Any) -> Any:
     if avro_type == "string":
         return str(default)
     try:
-        unscaled = Decimal(str(default)).scaleb(avro_type["scale"])
-        if unscaled != unscaled.to_integral_value():
-            return _NO_DEFAULT
-        unscaled_int = int(unscaled)
-    except (InvalidOperation, ValueError):
+        value = Decimal(str(default))
+    except InvalidOperation:
         return _NO_DEFAULT
+    if not value.is_finite():
+        return _NO_DEFAULT
+    # Integer arithmetic, because Decimal operations round to the context
+    # precision (28 digits by default) and a decimal type can be wider.
+    sign, digits, exponent = value.as_tuple()
+    coefficient = int("".join(map(str, digits)))
+    shift = int(exponent) + avro_type["scale"]
+    if shift >= 0:
+        unscaled_int = coefficient * 10**shift
+    else:
+        unscaled_int, remainder = divmod(coefficient, 10**-shift)
+        if remainder:
+            return _NO_DEFAULT
+    if sign:
+        unscaled_int = -unscaled_int
     if len(str(abs(unscaled_int))) > avro_type["precision"]:
         return _NO_DEFAULT
     # Avro stores a decimal as the two's-complement big-endian bytes of its

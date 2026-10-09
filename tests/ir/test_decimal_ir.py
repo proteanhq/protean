@@ -294,6 +294,15 @@ class TestAvroGenerator:
         unscaled = int.from_bytes(expected.encode("latin-1"), "big", signed=True)
         assert decimal.Decimal(unscaled).scaleb(-scale) == decimal.Decimal(str(default))
 
+    def test_default_wider_than_the_decimal_context_is_encoded_exactly(self):
+        default = "123456789012345678901234567890.1234"
+        entry = self._avro_entry(precision=34, scale=4, default=default)
+
+        unscaled = int.from_bytes(
+            entry["default"].encode("latin-1"), "big", signed=True
+        )
+        assert unscaled == 1234567890123456789012345678901234
+
     @pytest.mark.parametrize(
         "kwargs",
         [
@@ -301,12 +310,14 @@ class TestAvroGenerator:
             {"precision": 3, "scale": 2, "default": 10},
             {"precision": 5, "scale": 1, "default": None},
             {"precision": 5, "scale": 1, "default": "abc"},
+            {"precision": 5, "scale": 1, "default": "Infinity"},
         ],
         ids=[
             "more-digits-than-scale",
             "more-digits-than-precision",
             "null",
             "not-a-number",
+            "infinite",
         ],
     )
     def test_default_the_decimal_type_cannot_hold_is_left_off(self, kwargs):
