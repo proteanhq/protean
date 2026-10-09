@@ -93,8 +93,9 @@ same lookup syntax as the QuerySet API.
 
 - **No Persistence**: Data is lost on process restart. The Memory provider
   is purely ephemeral.
-- **No Real Transactions**: Simulated transactions track changes but cannot
-  provide true rollback or ACID guarantees.
+- **No Real Transactions**: Simulated transactions commit atomically and
+  roll back uncommitted changes, but only within one Python process, and
+  nothing is durable.
 - **No Distribution**: All data lives in a single Python process. Cannot
   scale across multiple processes or machines.
 - **No Schema Management**: There are no tables or indices to create or

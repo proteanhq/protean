@@ -31,7 +31,7 @@ class DatabaseCapabilities(Flag):
 
     # Tier 2: Data Integrity
     TRANSACTIONS = auto()  # Real commit/rollback atomicity
-    SIMULATED_TRANSACTIONS = auto()  # Copy-on-write UoW semantics (no true rollback)
+    SIMULATED_TRANSACTIONS = auto()  # In-process commit/rollback, not durable
     OPTIMISTIC_LOCKING = auto()  # Version-based concurrency control
 
     # Tier 3: Query Power

@@ -187,7 +187,8 @@ class UnitOfWork:
                 if provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS):
                     logger.debug(
                         "Provider '%s' uses simulated transactions. "
-                        "Rollback will not undo persisted changes.",
+                        "Commit and rollback hold only within this process; "
+                        "nothing is durable.",
                         provider_name,
                     )
                 else:
