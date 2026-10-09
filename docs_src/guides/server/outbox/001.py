@@ -13,7 +13,7 @@ domain = Domain(
 def print_abandoned():
     with domain.domain_context():
         repo = domain._get_outbox_repo("default")
-        for msg in repo.find_abandoned(limit=None):
+        for msg in repo.find_abandoned(limit=500):
             print(msg.id, msg.stream_name, msg.last_error)
 
 

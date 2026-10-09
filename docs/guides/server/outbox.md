@@ -212,8 +212,8 @@ provider has its own outbox repository, looked up by the provider's name.
 Protean has no public method for this lookup yet, so the example calls the
 internal `_get_outbox_repo()`, which may change between releases.
 `find_abandoned()` returns the 50 most recently processed rows unless you pass
-a `limit`;
-`limit=None` returns them all:
+a larger `limit`. `limit=None` does not lift the cap: it still returns at most
+100 rows, the outbox's default query limit.
 
 ```python
 --8<-- "guides/server/outbox/001.py:domain"
