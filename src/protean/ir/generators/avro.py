@@ -104,9 +104,17 @@ def _decimal_avro_default(default: Any, avro_type: Any) -> Any:
     sign, digits, exponent = value.as_tuple()
     coefficient = int("".join(map(str, digits)))
     shift = int(exponent) + avro_type["scale"]
-    if shift >= 0:
+    # Check the digit count before building a power of ten, because an
+    # exponent such as 1E+1000000000 would otherwise allocate a huge integer.
+    if coefficient == 0:
+        unscaled_int = 0
+    elif shift >= 0:
+        if len(digits) + shift > avro_type["precision"]:
+            return _NO_DEFAULT
         unscaled_int = coefficient * 10**shift
     else:
+        if -shift > len(digits):
+            return _NO_DEFAULT
         unscaled_int, remainder = divmod(coefficient, 10**-shift)
         if remainder:
             return _NO_DEFAULT

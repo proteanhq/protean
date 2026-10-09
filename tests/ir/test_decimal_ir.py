@@ -297,6 +297,8 @@ class TestAvroGenerator:
             (-1, 0, "\xff"),
             (-129, 0, "\xff\x7f"),
             ("1.23", 4, "\x30\x0c"),
+            ("0E+1000000000", 4, "\x00"),
+            ("0E-1000000000", 4, "\x00"),
         ],
     )
     def test_default_is_encoded_as_decimal_bytes(self, default, scale, expected):
@@ -323,6 +325,8 @@ class TestAvroGenerator:
             {"precision": 5, "scale": 1, "default": None},
             {"precision": 5, "scale": 1, "default": "abc"},
             {"precision": 5, "scale": 1, "default": "Infinity"},
+            {"precision": 5, "scale": 1, "default": "1E+1000000000"},
+            {"precision": 5, "scale": 1, "default": "1E-1000000000"},
         ],
         ids=[
             "more-digits-than-scale",
@@ -330,6 +334,8 @@ class TestAvroGenerator:
             "null",
             "not-a-number",
             "infinite",
+            "huge-exponent",
+            "huge-negative-exponent",
         ],
     )
     def test_default_the_decimal_type_cannot_hold_is_left_off(self, kwargs):
