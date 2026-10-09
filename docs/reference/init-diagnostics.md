@@ -22,6 +22,7 @@ design time under the same code.
 A coded exception exposes these attributes:
 
 ```python
+# fragment
 from protean.exceptions import IncorrectUsageError
 
 try:

@@ -72,6 +72,16 @@ class Order:
     customer_id = String(required=True, max_length=50)
     address = String(required=True, max_length=200)
     status = String(default="placed", max_length=20)
+
+    def place(self) -> None:
+        self.status = "placed"
+        self.raise_(
+            OrderPlaced(
+                order_id=self.id,
+                customer_id=self.customer_id,
+                address=self.address,
+            )
+        )
 ```
 
 Create a second `Domain` for the aggregates you are extracting, and move them and
@@ -162,9 +172,14 @@ class OrderPlacedSubscriber:
         )
 ```
 
+Broker delivery is at-least-once, so a redelivered `OrderPlaced` runs the
+subscriber again and `ShipmentCommandHandler` opens a second shipment for the same
+order.
+
 The [event-integration reference](references/event-integration.md) covers
 `published=True`, the outbox and `outbox.external_brokers` wiring, the stream and
-envelope the outbox delivers on, and holding the far side by identity in full.
+envelope the outbox delivers on, guarding against redelivery, and holding the far
+side by identity in full.
 
 ## What the extraction clears
 

@@ -57,9 +57,14 @@ the limit, so `AGGREGATE_TOO_LARGE` is gone.
 ### 1. Move the second concern into its own aggregate
 
 Create the new aggregate and move the extracted entities under it with
-`part_of`. The entity classes are unchanged; only their parent changes.
+`part_of`. The entity classes are unchanged; only their parent changes. The rule
+that nothing goes out for delivery before it is packed spans two of the moved
+entities, which is why they share one aggregate:
 
 ```python
+from protean.exceptions import ValidationError
+
+
 @domain.aggregate
 class Shipment:
     order_id: Identifier(identifier=True)   # identity link back to Order
@@ -72,6 +77,17 @@ class Shipment:
     @classmethod
     def start(cls, order_id: str) -> "Shipment":
         return cls(order_id=order_id, status="pending")
+
+    @invariant.post
+    def cannot_be_delivered_before_it_is_packed(self) -> None:
+        if self.delivery_attempts and not self.packages:
+            raise ValidationError(
+                {
+                    "delivery_attempts": [
+                        "A shipment cannot be delivered before it is packed"
+                    ]
+                }
+            )
 
 
 @domain.entity(part_of="Shipment")
@@ -123,8 +139,9 @@ happens as two writes joined by an event. `Order` raises `OrderPlaced` when it i
 placed. An event handler in `Order`'s own cluster reacts and issues a
 `StartShipment` command, and `Shipment`'s command handler starts the shipment.
 
-After the split, `Order` keeps only the order concern. It raises `OrderPlaced`,
-and `StartShipment` is a command on `Shipment`:
+After the split, `Order` keeps only the order concern: its items, discounts and
+gift wraps. It raises `OrderPlaced`, and `StartShipment` is a command on
+`Shipment`:
 
 ```python
 @domain.event(part_of="Order")
@@ -140,6 +157,10 @@ class Order:
     total: Float(default=0.0)
     status: String(default="draft")
 
+    items = HasMany("OrderItem")
+    discounts = HasMany("Discount")
+    gift_wraps = HasMany("GiftWrap")
+
     @classmethod
     def place(cls, order_id: str, customer_id: str, total: float) -> "Order":
         order = cls(id=order_id, customer_id=customer_id, total=total, status="placed")
@@ -147,6 +168,29 @@ class Order:
             OrderPlaced(order_id=order.id, customer_id=customer_id, total=total)
         )
         return order
+
+    @invariant.post
+    def total_must_not_be_negative(self) -> None:
+        if self.total < 0:
+            raise ValidationError({"total": ["Order total cannot be negative"]})
+
+
+@domain.entity(part_of="Order")
+class OrderItem:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True, min_value=1)
+    unit_price: Float(required=True, min_value=0.0)
+
+
+@domain.entity(part_of="Order")
+class Discount:
+    code: String(required=True, max_length=50)
+    amount: Float(required=True, min_value=0.0)
+
+
+@domain.entity(part_of="Order")
+class GiftWrap:
+    style: String(required=True, max_length=50)
 
 
 @domain.command(part_of="Shipment")

@@ -110,7 +110,7 @@ it reaches into, and the `ReserveStock` command that `Inventory` will handle:
 class PlaceOrder:
     customer_id = String(required=True)
     product_id = String(required=True)
-    quantity = Integer(required=True)
+    quantity = Integer(required=True, min_value=1)
     unit_price = Float(required=True)
 
 
@@ -131,7 +131,7 @@ class Inventory:
 class ReserveStock:
     order_id = Identifier(required=True)
     product_id = String(required=True)
-    quantity = Integer(required=True)
+    quantity = Integer(required=True, min_value=1)
 ```
 
 ### Step 2: Define the domain event
@@ -288,43 +288,104 @@ during tests.
 
 ## Quick example
 
+Here a `Shipment` handler also writes to the customer's `Notification`:
+
 ```python
 # fragment
 # BEFORE: direct coupling
-@handle(ShipOrder)
-def ship_order(self, command):
-    order = domain.repository_for(Order).get(command.order_id)
-    order.ship(tracking_number=command.tracking)
-    domain.repository_for(Order).add(order)
+@handle(DispatchShipment)
+def dispatch_shipment(self, command):
+    shipment = domain.repository_for(Shipment).get(command.shipment_id)
+    shipment.dispatch(tracking_number=command.tracking_number)
+    domain.repository_for(Shipment).add(shipment)
     # VIOLATION
-    notification = domain.repository_for(Notification).get(order.customer_id)
-    notification.add_message(f"Order {order.id} shipped!")
+    notification = domain.repository_for(Notification).get(shipment.customer_id)
+    notification.add_message(f"Shipment {shipment.id} dispatched!")
     domain.repository_for(Notification).add(notification)
+```
 
+After the refactor, `Shipment.dispatch()` raises `ShipmentDispatched`. An event
+handler in `Shipment`'s cluster turns it into a command, and `Notification`'s own
+command handler does the write:
+
+```python
 # AFTER: event-driven
-@handle(ShipOrder)
-def ship_order(self, command):
-    order = domain.repository_for(Order).get(command.order_id)
-    order.ship(tracking_number=command.tracking)  # Raises OrderShipped
-    domain.repository_for(Order).add(order)
+@domain.event(part_of="Shipment")
+class ShipmentDispatched:
+    shipment_id = Identifier(required=True)
+    customer_id = String(required=True)
 
-@handle(OrderShipped)  # In an event handler with part_of=Order
-def notify_customer(self, event):
-    domain.process(
-        AddNotificationMessage(
-            order_id=event.order_id,
-            customer_id=event.customer_id,
-            message=f"Order {event.order_id} shipped!",
+
+@domain.aggregate
+class Shipment:
+    customer_id = String(required=True)
+    status = String(default="PACKED")
+    tracking_number = String()
+
+    def dispatch(self, tracking_number: str) -> None:
+        self.status = "DISPATCHED"
+        self.tracking_number = tracking_number
+        self.raise_(
+            ShipmentDispatched(shipment_id=self.id, customer_id=self.customer_id)
         )
-    )
 
-@handle(AddNotificationMessage)  # In Notification's command handler
-def add_message(self, command):
-    notification = domain.repository_for(Notification).get(command.customer_id)
-    if command.order_id in notification.notified_order_ids:
-        return  # already notified for this order
-    notification.add_message(command.order_id, command.message)
-    domain.repository_for(Notification).add(notification)
+
+@domain.aggregate
+class Notification:
+    customer_id = String(required=True, identifier=True)
+    messages = List(content_type=String)
+    notified_shipment_ids = List(content_type=String)
+
+    def add_message(self, shipment_id: str, message: str) -> None:
+        self.messages = [*self.messages, message]
+        self.notified_shipment_ids = [*self.notified_shipment_ids, shipment_id]
+
+
+@domain.command(part_of=Shipment)
+class DispatchShipment:
+    shipment_id = Identifier(required=True)
+    tracking_number = String(required=True)
+
+
+@domain.command(part_of=Notification)
+class AddNotificationMessage:
+    shipment_id = Identifier(required=True)
+    customer_id = String(required=True)
+    message = String(required=True)
+
+
+@domain.command_handler(part_of=Shipment)
+class ShipmentCommandHandler:
+    @handle(DispatchShipment)
+    def dispatch_shipment(self, command: DispatchShipment) -> None:
+        shipment = domain.repository_for(Shipment).get(command.shipment_id)
+        shipment.dispatch(tracking_number=command.tracking_number)
+        domain.repository_for(Shipment).add(shipment)
+
+
+@domain.event_handler(part_of=Shipment)
+class CustomerNotifications:
+    @handle(ShipmentDispatched)
+    def notify_customer(self, event: ShipmentDispatched) -> None:
+        current_domain.process(
+            AddNotificationMessage(
+                shipment_id=event.shipment_id,
+                customer_id=event.customer_id,
+                message=f"Shipment {event.shipment_id} dispatched!",
+            )
+        )
+
+
+@domain.command_handler(part_of=Notification)
+class NotificationCommandHandler:
+    @handle(AddNotificationMessage)
+    def add_message(self, command: AddNotificationMessage) -> None:
+        repo = domain.repository_for(Notification)
+        notification = repo.get(command.customer_id)
+        if command.shipment_id in notification.notified_shipment_ids:
+            return  # already notified for this shipment
+        notification.add_message(command.shipment_id, command.message)
+        repo.add(notification)
 ```
 
 ## Examples

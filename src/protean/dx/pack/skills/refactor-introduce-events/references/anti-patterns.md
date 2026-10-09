@@ -20,12 +20,18 @@ class Inventory:
     available = Integer(default=0)
     reserved_order_ids = List(content_type=String)
 
+    def reserve(self, order_id: str, quantity: int) -> None:
+        if self.available < quantity:
+            raise ValueError("Insufficient stock")
+        self.available -= quantity
+        self.reserved_order_ids = [*self.reserved_order_ids, order_id]
+
 
 @domain.command(part_of="Inventory")
 class ReserveStock:
     order_id = Identifier(required=True)
     product_id = String(required=True)
-    quantity = Integer(required=True)
+    quantity = Integer(required=True, min_value=1)
 ```
 
 ## Circular event flows
@@ -96,8 +102,22 @@ class InventoryReservation:
 
 `ReserveStock` is `part_of=Inventory`, and `Inventory`'s command handler does the
 write. Events are delivered at least once, so that command handler returns without
-changes when the order id is already in `Inventory.reserved_order_ids`. For a flow
-with several causally dependent steps, use a
+changes when the order id is already in `Inventory.reserved_order_ids`:
+
+```python
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    @handle(ReserveStock)
+    def reserve_stock(self, command):
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.get(command.product_id)
+        if command.order_id in inventory.reserved_order_ids:
+            return  # already reserved for this order
+        inventory.reserve(command.order_id, command.quantity)
+        repo.add(inventory)
+```
+
+For a flow with several causally dependent steps, use a
 [process manager](../../process-manager/SKILL.md).
 
 ## Synchronous expectations with async processing
