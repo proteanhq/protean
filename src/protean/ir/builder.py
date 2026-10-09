@@ -541,11 +541,11 @@ class IRBuilder:
             entry["min_value"] = field.min_value
         if field.max_value is not None:
             entry["max_value"] = field.max_value
-        if entry["type"] == "Decimal":
-            if field.precision is not None:
-                entry["precision"] = field.precision
-            if field.scale is not None:
-                entry["scale"] = field.scale
+        # Only a Decimal field's spec carries precision and scale.
+        if field.precision is not None:
+            entry["precision"] = field.precision
+        if field.scale is not None:
+            entry["scale"] = field.scale
         if field.sanitize:
             entry["sanitize"] = True
         if field.increment:

@@ -175,7 +175,9 @@ name may still be read.
 A rename only stays safe when the field type is unchanged: renaming *and*
 changing the type (say `String` to `Integer`) is still breaking, because an
 old payload's value cannot satisfy the new type. The checker reports that as a
-`field_type_changed` change; handle the type change with an upcaster.
+`field_type_changed` change; handle the type change with an upcaster. A
+`Decimal` field renamed with a lower or newly added `precision`, or a different
+`scale`, is breaking the same way.
 
 ---
 

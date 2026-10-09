@@ -599,7 +599,32 @@ def _diff_contracts(
         for old_name, new_name in contract_renames.items():
             old_type = left_fields[old_name].get("type")
             new_type = right_fields[new_name].get("type")
-            if old_type != new_type:
+            if (
+                old_type == new_type == "Decimal"
+                and _classify_decimal_shape(
+                    left_fields[old_name], right_fields[new_name]
+                )
+                == "breaking"
+            ):
+                shape_delta = _decimal_shape_delta(
+                    left_fields[old_name], right_fields[new_name]
+                )
+                breaking.append(
+                    {
+                        "type": "contract_field_type_changed",
+                        "fqn": event_fqn,
+                        "field": old_name,
+                        "renamed_to": new_name,
+                        "left": old_type,
+                        "right": new_type,
+                        "message": (
+                            f"Field '{old_name}' renamed to '{new_name}' with a "
+                            f"Decimal shape change ({shape_delta}) in "
+                            f"published event '{left_type}'"
+                        ),
+                    }
+                )
+            elif old_type != new_type:
                 # A rename that also changes type breaks old payloads.
                 breaking.append(
                     {

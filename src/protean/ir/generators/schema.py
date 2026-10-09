@@ -234,6 +234,10 @@ def _build_properties(
         if "default" in fspec:
             default_val = fspec["default"]
             if default_val != "<callable>":
+                if fspec.get("type") == "Decimal" and default_val is not None:
+                    # A Decimal is published as a string, so a numeric
+                    # default must be a string too to pass the field's schema.
+                    default_val = str(default_val)
                 prop_schema["default"] = default_val
 
         properties[fname] = dict(sorted(prop_schema.items()))

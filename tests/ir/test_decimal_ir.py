@@ -14,7 +14,7 @@ from protean import Domain
 from protean.fields import Custom, Decimal, Float, List, String
 from protean.ir import SCHEMA_PATH
 from protean.ir.builder import IRBuilder
-from protean.ir.diff import classify_changes, diff_ir
+from protean.ir.diff import _AVRO_CHANGE_SAFETY, classify_changes, diff_ir
 from protean.ir.generators.avro import generate_avro_schema
 from protean.ir.generators.protobuf import generate_proto_schema
 from protean.ir.generators.schema import DECIMAL_PATTERN, generate_element_schema
@@ -84,12 +84,12 @@ class TestBuilder:
             assert "precision" not in entry
             assert "scale" not in entry
 
-    def test_python_type_name_reads_the_explicit_map_entry(self):
+    def test_python_type_name_names_decimal(self):
         class Money(decimal.Decimal):
             pass
 
-        # A subclass misses the map and falls back to its own ``__name__``, so
-        # ``decimal.Decimal`` resolving to "Decimal" comes from the map entry.
+        # The ``__name__`` fallback gives the same string as the map entry, so
+        # this pins the result, and that a subclass is not matched as Decimal.
         assert IRBuilder._python_type_name(Money) == "Money"
         assert IRBuilder._python_type_name(decimal.Decimal) == "Decimal"
 
@@ -146,6 +146,37 @@ class TestJsonSchemaGenerator:
 
         assert "maximum" not in prop
         assert "minimum" not in prop
+
+    @pytest.mark.parametrize(
+        ("kwargs", "expected"),
+        [
+            ({"precision": 10}, {"x-precision": 10}),
+            ({"scale": 2}, {"x-scale": 2}),
+        ],
+        ids=["precision-only", "scale-only"],
+    )
+    def test_each_shape_key_is_written_alone(self, kwargs, expected):
+        ir = _build(x=Decimal(required=True, **kwargs))
+
+        prop = generate_element_schema(_aggregate(ir))["properties"]["x"]
+
+        assert prop == {"pattern": DECIMAL_PATTERN, "type": "string", **expected}
+
+    def test_a_numeric_default_is_written_as_a_string(self):
+        ir = _build(x=Decimal(precision=19, scale=4, default=0))
+        assert _field(ir, "x")["default"] == 0
+
+        prop = generate_element_schema(_aggregate(ir))["properties"]["x"]
+
+        assert prop["default"] == "0"
+        jsonschema.validate(prop["default"], prop)
+
+    def test_a_float_default_stays_a_number(self):
+        ir = _build(x=Float(default=1.5))
+
+        prop = generate_element_schema(_aggregate(ir))["properties"]["x"]
+
+        assert prop["default"] == 1.5
 
     def test_list_items_use_the_decimal_mapping(self):
         ir = _build(prices=List(content_type=Decimal, required=True))
@@ -247,6 +278,11 @@ class TestDiff:
 
         assert _kinds(report.breaking_changes) == ["field_type_changed"]
         assert report.safe_changes == []
+        change = report.breaking_changes[0]
+        assert change.message == (
+            "Field 'x' type changed from 'Float' to 'Decimal' "
+            f"in AGGREGATE '{change.element_fqn}'"
+        )
 
     def test_raising_precision_is_a_safe_widening(self):
         report = _report(
@@ -262,6 +298,7 @@ class TestDiff:
             f"in AGGREGATE '{change.element_fqn}'"
         )
         assert report.avro_verdict == "NONE"
+        assert _AVRO_CHANGE_SAFETY["field_precision_widened"] == (False, False)
 
     def test_removing_precision_is_a_safe_widening(self):
         report = _report(
@@ -274,21 +311,55 @@ class TestDiff:
         assert "(precision from 10 to unset)" in report.safe_changes[0].message
 
     @pytest.mark.parametrize(
-        ("left", "right"),
+        ("left", "right", "delta"),
         [
-            ({"precision": 19, "scale": 2}, {"precision": 10, "scale": 2}),
-            ({"precision": 19, "scale": 2}, {"precision": 19, "scale": 4}),
-            ({"scale": 2}, {"precision": 19, "scale": 2}),
-            ({"precision": 19, "scale": 2}, {"precision": 19}),
+            (
+                {"precision": 19, "scale": 2},
+                {"precision": 10, "scale": 2},
+                "precision from 19 to 10",
+            ),
+            (
+                {"precision": 19, "scale": 2},
+                {"precision": 19, "scale": 4},
+                "scale from 2 to 4",
+            ),
+            (
+                {"scale": 2},
+                {"precision": 19, "scale": 2},
+                "precision from unset to 19",
+            ),
+            ({"precision": 19, "scale": 2}, {"precision": 19}, "scale from 2 to unset"),
+            # Widening precision does not excuse a scale change made with it.
+            (
+                {"precision": 10, "scale": 2},
+                {"precision": 19, "scale": 4},
+                "precision from 10 to 19, scale from 2 to 4",
+            ),
+            (
+                {"precision": 10, "scale": 2},
+                {"scale": 4},
+                "precision from 10 to unset, scale from 2 to 4",
+            ),
         ],
-        ids=["narrowed", "scale-changed", "precision-added", "scale-removed"],
+        ids=[
+            "narrowed",
+            "scale-changed",
+            "precision-added",
+            "scale-removed",
+            "widened-with-scale-change",
+            "removed-with-scale-change",
+        ],
     )
-    def test_other_shape_changes_are_breaking(self, left, right):
+    def test_other_shape_changes_are_breaking(self, left, right, delta):
         report = _report(_build(x=Decimal(**left)), _build(x=Decimal(**right)))
 
         assert _kinds(report.breaking_changes) == ["field_type_changed"]
         assert report.safe_changes == []
-        assert "Decimal shape changed" in report.breaking_changes[0].message
+        change = report.breaking_changes[0]
+        assert change.message == (
+            f"Field 'x' Decimal shape changed ({delta}) "
+            f"in AGGREGATE '{change.element_fqn}'"
+        )
 
     def test_unchanged_decimal_reports_nothing(self):
         report = _report(
@@ -318,6 +389,16 @@ class TestDiff:
         assert "field_renamed" not in _kinds(report.safe_changes)
         assert "(precision from 19 to 10)" in report.breaking_changes[0].message
 
+    def test_rename_that_changes_scale_is_breaking(self):
+        report = _report(
+            _build(x=Decimal(precision=19, scale=2)),
+            _build(amount=Decimal(precision=19, scale=4, renamed_from="x")),
+        )
+
+        assert _kinds(report.breaking_changes) == ["field_type_changed"]
+        assert "field_renamed" not in _kinds(report.safe_changes)
+        assert "(scale from 2 to 4)" in report.breaking_changes[0].message
+
     def test_rename_that_widens_precision_reports_both(self):
         report = _report(
             _build(x=Decimal(precision=10, scale=2)),
@@ -338,3 +419,56 @@ class TestDiff:
 
         assert report.breaking_changes == []
         assert _kinds(report.safe_changes) == ["field_renamed"]
+
+
+def _contract_ir(fields: dict[str, Any]) -> dict[str, Any]:
+    """An IR holding one published event with *fields*."""
+    return {
+        "clusters": {},
+        "projections": {},
+        "flows": {"domain_services": {}, "process_managers": {}, "subscribers": {}},
+        "contracts": {
+            "events": [
+                {
+                    "fqn": "app.Paid",
+                    "type": "App.Paid.v1",
+                    "fields": fields,
+                }
+            ]
+        },
+        "diagnostics": [],
+        "domain": {"name": "Test"},
+    }
+
+
+def _decimal(**extra: Any) -> dict[str, Any]:
+    return {"kind": "standard", "type": "Decimal", **extra}
+
+
+class TestPublishedContractDiff:
+    def test_rename_with_a_breaking_shape_change_is_breaking(self):
+        contracts = diff_ir(
+            _contract_ir({"amt": _decimal(precision=19, scale=2)}),
+            _contract_ir(
+                {"total": _decimal(precision=19, scale=4, renamed_from=["amt"])}
+            ),
+        )["contracts"]
+
+        assert contracts.get("renamed_fields", []) == []
+        breaking = contracts["breaking_changes"]
+        assert [b["type"] for b in breaking] == ["contract_field_type_changed"]
+        assert breaking[0]["message"] == (
+            "Field 'amt' renamed to 'total' with a Decimal shape change "
+            "(scale from 2 to 4) in published event 'App.Paid.v1'"
+        )
+
+    def test_rename_that_widens_precision_is_a_rename(self):
+        contracts = diff_ir(
+            _contract_ir({"amt": _decimal(precision=10, scale=2)}),
+            _contract_ir(
+                {"total": _decimal(precision=19, scale=2, renamed_from=["amt"])}
+            ),
+        )["contracts"]
+
+        assert contracts.get("breaking_changes", []) == []
+        assert [r["renamed_to"] for r in contracts["renamed_fields"]] == ["total"]

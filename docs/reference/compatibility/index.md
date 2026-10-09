@@ -66,8 +66,8 @@ in a wider `NUMERIC(p, s)` column. The same rules apply to a field renamed with
 
 The Avro verdict for `field_precision_widened` is `NONE`, even though the report
 calls it safe. Avro matches two `decimal` types only when precision and scale
-are both equal. A change of visibility from public to internal also splits the
-two, the other way round: the report calls it breaking and the Avro verdict is
+are both equal. A change of visibility from public to internal also gives
+two different verdicts: the report calls it breaking, and the Avro verdict is
 `FULL`.
 
 ### Replay hazards on an event-sourced aggregate
