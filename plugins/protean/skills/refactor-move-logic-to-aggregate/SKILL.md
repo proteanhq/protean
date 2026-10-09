@@ -61,6 +61,7 @@ def place_order(self, command):
 Aggregate is a data bag — no methods, no invariants:
 
 ```python
+# fragment
 # RED FLAG: only fields, no behavior
 @domain.aggregate
 class Order:
@@ -96,6 +97,35 @@ Read the handler and categorize each line:
 | `order = Order(...)` | Construction | Stays in handler (or factory) |
 
 ### Step 2: Create aggregate methods
+
+The order's methods use a `Money` value object, a `LineItem` entity and an
+`OrderPlaced` event. The handler in Step 4 takes a `PlaceOrder` command:
+
+```python
+@domain.value_object
+class Money:
+    amount = Float(required=True)
+    currency = String(max_length=3, default="USD")
+
+
+@domain.entity(part_of="Order")
+class LineItem:
+    product_id = String(required=True)
+    quantity = Integer(required=True, min_value=1)
+    unit_price = ValueObject(Money, required=True)
+
+
+@domain.event(part_of="Order")
+class OrderPlaced:
+    order_id = Identifier(required=True)
+    total = Float(required=True)
+
+
+@domain.command(part_of="Order")
+class PlaceOrder:
+    customer_id = String(required=True)
+    items = List(content_type=Dict)
+```
 
 For each group of logic, create an aggregate method:
 
@@ -165,11 +195,21 @@ class OrderCommandHandler:
 
 ### Step 5: Move tests to aggregate level
 
+A test that drives the handler checks the rule through its internals:
+
 ```python
+# fragment
 # Before: testing handler internals
 def test_place_order_validates_items():
     with pytest.raises(ValidationError):
         handler.place_order(PlaceOrder(items=[]))
+```
+
+Test the aggregate's behavior directly instead:
+
+```python
+import pytest
+
 
 # After: testing aggregate behavior
 def test_order_must_have_items_when_placed():
@@ -198,6 +238,7 @@ def test_order_must_have_items_when_placed():
 ## Quick example
 
 ```python
+# fragment
 # BEFORE: fat handler, anemic aggregate
 @handle(CloseTicket)
 def close_ticket(self, command):

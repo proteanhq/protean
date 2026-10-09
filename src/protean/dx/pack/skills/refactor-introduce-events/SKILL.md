@@ -43,6 +43,7 @@ proper transaction boundaries and enabling eventual consistency.
 The primary signal — a handler that modifies two or more aggregate types:
 
 ```python
+# fragment
 # RED FLAG: two aggregates modified in one handler
 @handle(PlaceOrder)
 def place_order(self, command):
@@ -60,6 +61,7 @@ def place_order(self, command):
 Operations that should be reactions to events but are coded as direct calls:
 
 ```python
+# fragment
 # RED FLAG: side effects in command handler
 @handle(CompleteOrder)
 def complete_order(self, command):
@@ -78,6 +80,7 @@ def complete_order(self, command):
 Aggregate methods that reference other aggregates:
 
 ```python
+# fragment
 # RED FLAG: aggregate knows about another aggregate
 class Order:
     def place(self):
@@ -97,6 +100,38 @@ Map which aggregates are modified in the handler:
 place_order handler:
   ├── Order (create + persist)     ← Source aggregate
   └── Inventory (load + mutate + persist)  ← Should be event-driven
+```
+
+The steps below use the handler's `PlaceOrder` command, the `Inventory` aggregate
+it reaches into, and the `ReserveStock` command that `Inventory` will handle:
+
+```python
+@domain.command(part_of="Order")
+class PlaceOrder:
+    customer_id = String(required=True)
+    product_id = String(required=True)
+    quantity = Integer(required=True)
+    unit_price = Float(required=True)
+
+
+@domain.aggregate
+class Inventory:
+    product_id = String(required=True, identifier=True)
+    available = Integer(default=0)
+    reserved_order_ids = List(content_type=String)
+
+    def reserve(self, order_id: str, quantity: int) -> None:
+        if self.available < quantity:
+            raise ValueError("Insufficient stock")
+        self.available -= quantity
+        self.reserved_order_ids = [*self.reserved_order_ids, order_id]
+
+
+@domain.command(part_of="Inventory")
+class ReserveStock:
+    order_id = Identifier(required=True)
+    product_id = String(required=True)
+    quantity = Integer(required=True)
 ```
 
 ### Step 2: Define the domain event
@@ -127,6 +162,10 @@ the change, or confirm the event is meant as a bare signal.
 ```python
 @domain.aggregate
 class Order:
+    customer_id = String(required=True)
+    status = String(default="DRAFT")
+    total = Float(default=0.0)
+
     def place(self, product_id: str, quantity: int, price: float) -> None:
         self.status = "PLACED"
         self.total = price * quantity
@@ -173,7 +212,6 @@ the order ids it has already reserved stock for, and the handler returns without
 changes when it sees one again:
 
 ```python
-# fragment
 @domain.command_handler(part_of=Inventory)
 class InventoryCommandHandler:
     @handle(ReserveStock)
@@ -251,6 +289,7 @@ during tests.
 ## Quick example
 
 ```python
+# fragment
 # BEFORE: direct coupling
 @handle(ShipOrder)
 def ship_order(self, command):

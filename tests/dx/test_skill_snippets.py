@@ -87,22 +87,13 @@ ALLOWLIST: frozenset[str] = frozenset(
         "event-handler/references/cross-aggregate-patterns.md",
         "event-handler/references/cross-aggregate.md",
         "event-handler/references/error-handling.md",
-        "extract-bounded-context/SKILL.md",
-        "extract-bounded-context/references/event-integration.md",
         "message-enrichment/SKILL.md",
-        "refactor-introduce-events/SKILL.md",
-        "refactor-introduce-events/references/anti-patterns.md",
-        "refactor-introduce-events/references/event-design-guide.md",
-        "refactor-move-logic-to-aggregate/SKILL.md",
-        "refactor-move-logic-to-aggregate/references/anti-patterns.md",
-        "refactor-move-logic-to-aggregate/references/identifying-logic-leaks.md",
         "repository/SKILL.md",
         "repository/references/anti-patterns.md",
         "repository/references/custom-queries.md",
         "repository/references/database-specific.md",
         "repository/references/default-repository.md",
         "repository/references/unit-of-work.md",
-        "split-aggregate/SKILL.md",
     }
 )
 

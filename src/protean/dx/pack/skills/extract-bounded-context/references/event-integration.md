@@ -5,6 +5,33 @@ sending events across the seam. The context that owns a change publishes an even
 as a fact about what happened. The other context reads that event and acts on it.
 A message broker carries the event from one to the other.
 
+## The two contexts
+
+The examples below use the two domains from the
+[worked example](../SKILL.md#worked-example-sales-and-fulfilment). Sales owns
+`Order`. Fulfilment owns `Shipment`, shown at the end of this page, and the
+`CreateShipment` command its subscriber sends:
+
+```python
+sales = Domain(name="Sales")
+
+
+@sales.aggregate
+class Order:
+    customer_id = String(required=True, max_length=50)
+    address = String(required=True, max_length=200)
+    status = String(default="placed", max_length=20)
+
+
+fulfilment = Domain(name="Fulfilment")
+
+
+@fulfilment.command(part_of="Shipment")
+class CreateShipment:
+    order_id = Identifier(required=True)
+    address = String(required=True)
+```
+
 ## The moves
 
 ### 1. The owning context publishes an event

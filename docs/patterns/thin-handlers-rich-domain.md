@@ -110,6 +110,7 @@ Rich domain:
 The handler pattern is almost always three lines:
 
 ```python
+# fragment
 @handle(SomeCommand)
 def handle_command(self, command: SomeCommand):
     repo = current_domain.repository_for(Aggregate)

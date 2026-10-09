@@ -57,6 +57,7 @@ def place_order(self, command):
 ```
 
 ```python
+# fragment
 # Good: event raised inside aggregate method
 @handle(PlaceOrder)
 def place_order(self, command):

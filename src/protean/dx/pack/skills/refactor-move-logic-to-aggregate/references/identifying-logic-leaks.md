@@ -7,6 +7,7 @@ How to recognize business logic that doesn't belong where it is.
 An ideal handler is 3 lines:
 
 ```python
+# fragment
 @handle(SomeCommand)
 def handle_it(self, command):
     aggregate = domain.repository_for(Agg).get(command.id)  # 1. Load
