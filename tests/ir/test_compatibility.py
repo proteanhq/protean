@@ -2781,6 +2781,21 @@ class TestAvroVerdict:
         )
         assert report.avro_verdict == "BACKWARD"
 
+    @pytest.mark.parametrize(
+        ("default", "verdict"), [("1.5", "FULL"), ("1.25", "FORWARD")]
+    )
+    def test_add_required_decimal_follows_the_emitted_default(self, default, verdict):
+        # A default a ``decimal(5, 1)`` cannot hold is left off the schema, so
+        # a new reader has no value for old data.
+        field = _fld("Decimal", required=True, precision=5, scale=1, default=default)
+        report = _run(self._agg({}), self._agg({"price": field}))
+        assert report.avro_verdict == verdict
+
+    def test_remove_required_decimal_with_unemitted_default_is_backward(self):
+        field = _fld("Decimal", required=True, precision=5, scale=1, default="1.25")
+        report = _run(self._agg({"price": field}), self._agg({}))
+        assert report.avro_verdict == "BACKWARD"
+
     def test_remove_identifier_field_is_backward(self):
         # Avro encodes identifier fields as required, so removing one is not
         # forward-safe even though the IR spec carries no `required` flag.
@@ -2966,4 +2981,15 @@ class TestVerdictMatchesFastavro:
         }
         assert _run(self._agg(old), self._agg(new)).avro_verdict == "FORWARD"
         # not BACKWARD: the new reader needs `amount`, absent from old data.
+        assert self._resolves(old, new, {"a": "x"}) is False
+
+    def test_add_required_decimal_with_unemitted_default_matches_fastavro(self):
+        old = {"a": _fld("String", required=True)}
+        new = {
+            "a": _fld("String", required=True),
+            "price": _fld(
+                "Decimal", required=True, precision=5, scale=1, default="1.25"
+            ),
+        }
+        assert _run(self._agg(old), self._agg(new)).avro_verdict == "FORWARD"
         assert self._resolves(old, new, {"a": "x"}) is False

@@ -16,14 +16,11 @@ from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from protean.ir.generators.avro import has_emittable_default
 from protean.utils.upcasting import missing_upcaster_source_versions
 
 # The Avro compatibility verdict vocabulary (matches Confluent/Avro terms).
 AvroVerdict = Literal["FULL", "BACKWARD", "FORWARD", "NONE"]
-
-# The IR field-spec sentinel for a default produced by a callable (which cannot
-# be emitted as a static schema default). Mirrors ``generators/avro.py``.
-_CALLABLE_DEFAULT = "<callable>"
 
 # The version segment a ``__type__`` string ends with, e.g. the ``.v2`` of
 # ``"Ordering.OrderPlaced.v2"``. Stripping it leaves the base the runtime
@@ -1554,10 +1551,10 @@ def _detect_field_renames(
 def _has_static_default(field: dict[str, Any]) -> bool:
     """Whether *field* carries a default Avro can emit as a schema default.
 
-    A callable default (the ``<callable>`` IR sentinel) is not emittable, so it
-    does not count — matching ``generators/avro.py``'s ``has_default`` rule.
+    A callable default (the ``<callable>`` IR sentinel) is not emittable, and
+    neither is a Decimal default the field's Avro decimal type cannot hold.
     """
-    return "default" in field and field["default"] != _CALLABLE_DEFAULT
+    return has_emittable_default(field)
 
 
 def _removal_forward_safe(old_field: dict[str, Any]) -> bool:

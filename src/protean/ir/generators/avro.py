@@ -121,6 +121,24 @@ def _decimal_avro_default(default: Any, avro_type: Any) -> Any:
     return unscaled_int.to_bytes(length, "big", signed=True).decode("latin-1")
 
 
+def _required_field_default(field: dict[str, Any], avro_type: Any) -> Any:
+    """Return the Avro default for a required IR field, or ``_NO_DEFAULT``."""
+    if "default" not in field or field["default"] == "<callable>":
+        return _NO_DEFAULT
+    if field.get("type") == "Decimal":
+        return _decimal_avro_default(field["default"], avro_type)
+    return field["default"]
+
+
+def has_emittable_default(field: dict[str, Any]) -> bool:
+    """Whether the Avro schema for a required *field* carries a default.
+
+    The compatibility classifier uses this so its verdict matches the schema
+    this generator emits.
+    """
+    return _required_field_default(field, _scalar_avro_type(field)) is not _NO_DEFAULT
+
+
 def _field_to_avro_type(
     field: dict[str, Any],
     all_elements: dict[str, dict[str, Any]],
@@ -203,14 +221,11 @@ def _build_avro_fields(
         entry: dict[str, Any] = {"name": fname}
 
         is_required = fspec.get("required") or fspec.get("identifier")
-        has_default = "default" in fspec and fspec["default"] != "<callable>"
 
         if is_required:
             entry["type"] = avro_type
-            default = fspec.get("default")
-            if has_default and fspec.get("type") == "Decimal":
-                default = _decimal_avro_default(default, avro_type)
-            if has_default and default is not _NO_DEFAULT:
+            default = _required_field_default(fspec, avro_type)
+            if default is not _NO_DEFAULT:
                 entry["default"] = default
         else:
             # Optional: null-first union. Avro requires a union default to match
