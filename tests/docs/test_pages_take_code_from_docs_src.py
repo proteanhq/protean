@@ -25,6 +25,7 @@ PAGES = (
     "guides/compose-a-domain/initialize-domain.md",
     "guides/compose-a-domain/inspecting-the-ir.md",
     "guides/compose-a-domain/production-configuration.md",
+    "guides/compose-a-domain/register-elements.md",
     "guides/compose-a-domain/schema-generation.md",
     "guides/compose-a-domain/when-to-compose.md",
     "guides/consume-state/cloudevents.md",
@@ -44,6 +45,30 @@ PAGES = (
     "guides/multi-domain-applications.md",
     "guides/pathways/event-sourcing.md",
     "guides/pathways/migrating-between-architectures.md",
+    "patterns/aggregate-state-machines.md",
+    "patterns/creating-identities-early.md",
+    "patterns/design-small-aggregates.md",
+    "patterns/encapsulate-state-changes.md",
+    "patterns/factory-methods-for-aggregate-creation.md",
+    "patterns/one-aggregate-per-transaction.md",
+    "patterns/optimistic-concurrency-as-design-tool.md",
+    "reference/adapters/broker/custom-brokers.md",
+    "reference/adapters/broker/index.md",
+    "reference/adapters/broker/inline.md",
+    "reference/adapters/broker/partitioning.md",
+    "reference/adapters/broker/redis-pubsub.md",
+    "reference/adapters/broker/redis.md",
+    "reference/adapters/cache/index.md",
+    "reference/adapters/cache/redis.md",
+    "reference/adapters/database/custom-databases.md",
+    "reference/adapters/database/elasticsearch.md",
+    "reference/adapters/database/index.md",
+    "reference/adapters/database/memory.md",
+    "reference/adapters/database/mssql.md",
+    "reference/adapters/database/mysql.md",
+    "reference/adapters/database/postgresql.md",
+    "reference/adapters/database/sqlite.md",
+    "reference/adapters/eventstore/index.md",
     "reference/domain-elements/domain-constructor.md",
     "reference/domain-elements/element-decorators.md",
     "reference/domain-elements/identity.md",
@@ -72,6 +97,10 @@ def block_problems(text: str) -> list[str]:
         if not lines or bad:
             problems.append(f"line {block.line}: {bad[0] if bad else 'empty block'}")
     return problems
+
+
+def test_pages_are_sorted_and_unique():
+    assert list(PAGES) == sorted(set(PAGES))
 
 
 @pytest.mark.parametrize("page", PAGES)
