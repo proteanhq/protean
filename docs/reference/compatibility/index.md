@@ -21,7 +21,7 @@ Protean classifies changes to persisted domain elements using these rules:
 | Remove field from any persisted element | **Breaking** |
 | Remove a field deprecated past its removal version | Safe (expected removal) |
 | Remove a field from an event-sourced aggregate that declares the name `reserved` | Safe (`reserved`) |
-| Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`) |
+| Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`), unless it is a `Decimal` field with a breaking precision or scale change (see the `Decimal` rows below) |
 | Rename a field *and* change its type | **Breaking** (`field_type_changed`) |
 | Change field type | **Breaking** |
 | Raise or remove a `Decimal` field's `precision`, same `scale` | Safe (`field_precision_widened`) |
@@ -66,8 +66,9 @@ in a wider `NUMERIC(p, s)` column. The same rules apply to a field renamed with
 
 The Avro verdict for `field_precision_widened` is `NONE`, even though the report
 calls it safe. Avro matches two `decimal` types only when precision and scale
-are both equal. A visibility flip has the same split between the report and the
-Avro verdict.
+are both equal. A change of visibility from public to internal also splits the
+two, the other way round: the report calls it breaking and the Avro verdict is
+`FULL`.
 
 ### Replay hazards on an event-sourced aggregate
 

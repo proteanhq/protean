@@ -1558,7 +1558,8 @@ def _classify_field_changes(
 
     # Declared renames are safe (the alias covers old payloads) and suppress
     # the remove+add pair they would otherwise be diffed as — unless the rename
-    # also changes the field type, which old payloads cannot satisfy.
+    # also changes the field type, or a Decimal field's precision or scale in
+    # a breaking way, which old payloads cannot satisfy.
     renames = _detect_field_renames(added, removed)
     renamed_new = set(renames.values())
     for old_name, new_name in renames.items():
