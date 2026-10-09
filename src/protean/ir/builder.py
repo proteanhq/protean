@@ -578,9 +578,9 @@ class IRBuilder:
         if spec is not None and getattr(spec, "_pickled_deprecated", False):
             entry["deprecated_pickled"] = True
 
-        # Default — from FieldSpec for accurate representation. A custom field's
-        # default is an instance of the custom type, which JSON cannot encode, so
-        # it goes through the field's ``as_dict`` — the same serialization the
+        # Default — from FieldSpec for accurate representation. A default JSON
+        # cannot encode (a custom type instance, a ``decimal.Decimal``) goes
+        # through the field's ``as_dict``, the same serialization the
         # persistence and event paths use.
         if spec is not None:
             if spec.default is not _UNSET:
@@ -605,13 +605,12 @@ class IRBuilder:
     def _serialize_default(field: Any, default: Any) -> Any:
         """Return a JSON-encodable form of a field's default.
 
-        Only a custom field needs this: its default is an instance of the custom
-        type, and the IR is written out as JSON (and hashed into the canonical
-        baselines). Every other field kind keeps its default verbatim.
+        The IR is written out as JSON (and hashed into the canonical baselines),
+        so a default that JSON cannot encode, such as a custom type instance or
+        a ``decimal.Decimal``, goes through the field's ``as_dict``. JSON-native
+        defaults come back unchanged.
         """
-        if field.field_kind == "custom":
-            return field.as_dict(default)
-        return default
+        return field.as_dict(default)
 
     @staticmethod
     def _unwrap_type(python_type: type | None) -> type | None:

@@ -56,6 +56,17 @@ class TestBuilder:
         assert _field(ir, "y") == {"kind": "standard", "type": "Float"}
         jsonschema.validate(ir, json.loads(SCHEMA_PATH.read_text()))
 
+    def test_decimal_default_is_recorded_as_a_string(self):
+        ir = _build(x=Decimal(precision=19, scale=4, default=decimal.Decimal("1.23")))
+
+        assert _field(ir, "x")["default"] == "1.23"
+        jsonschema.validate(ir, json.loads(SCHEMA_PATH.read_text()))
+
+        element = _aggregate(ir)
+        prop = generate_element_schema(element)["properties"]["x"]
+        assert prop["default"] == "1.23"
+        jsonschema.validate(prop["default"], prop)
+
     def test_bare_decimal_carries_neither_key(self):
         ir = _build(x=Decimal())
 
@@ -285,6 +296,7 @@ class TestAvroGenerator:
             (128, 0, "\x00\x80"),
             (-1, 0, "\xff"),
             (-129, 0, "\xff\x7f"),
+            ("1.23", 4, "\x30\x0c"),
         ],
     )
     def test_default_is_encoded_as_decimal_bytes(self, default, scale, expected):
