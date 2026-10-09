@@ -38,9 +38,11 @@ The default level and format depend on the environment. Protean reads
 | `test` | `WARNING` | colored console |
 | unset, or any other value | `INFO` | colored console |
 
-With no environment variable set, a script or a REPL session shows `INFO`
-lines and above, so `domain.init()` writes no `DEBUG` lines. To see the framework's
-`DEBUG` lines, do one of these:
+With no environment variable set, a script or a REPL session logs at `INFO`,
+so `domain.init()` writes no `DEBUG` lines. At `INFO`, Protean holds
+`protean.core` and `protean.adapters` at `WARNING`, so their `INFO` lines, such
+as `Executing use case`, do not show either. To see the framework's `DEBUG`
+lines, do one of these:
 
 - set `PROTEAN_ENV=development`
 - set `PROTEAN_LOG_LEVEL=DEBUG`
