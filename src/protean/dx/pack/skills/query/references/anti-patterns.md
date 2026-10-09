@@ -1,5 +1,22 @@
 # Query Anti-Patterns
 
+The examples on this page read from an `OrderSummary` projection through a
+`SearchOrders` query:
+
+```python
+@domain.projection
+class OrderSummary:
+    order_id: Identifier(identifier=True)
+    status: String(max_length=20)
+    total: Integer(default=0)
+
+
+@domain.query(part_of="OrderSummary")
+class SearchOrders:
+    status: String()
+    min_total: Integer(default=0)
+```
+
 ## Targeting an aggregate instead of a projection
 
 Queries belong to the **read** side. Their `part_of` is a projection, never an

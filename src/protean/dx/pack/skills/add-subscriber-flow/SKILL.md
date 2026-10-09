@@ -102,6 +102,14 @@ class ERPSubscriber:
 For simpler flows where the subscriber can directly update the aggregate:
 
 ```python
+@domain.aggregate
+class Order:
+    status: String(default="PENDING")
+
+    def mark_paid(self) -> None:
+        self.status = "PAID"
+
+
 @domain.subscriber(stream="payment_gateway")
 class PaymentSubscriber:
     def __call__(self, payload: dict) -> None:
@@ -120,13 +128,22 @@ domain.config["command_processing"] = "sync"  # if dispatching commands
 
 ### Step 5: Publish test messages
 
-In tests, use the broker to simulate external messages:
+In tests, use the broker to simulate external messages. Initialize the domain
+first, and publish inside a domain context:
 
 ```python
-domain.brokers["default"].publish(
-    "payment_gateway",
-    {"order_id": "ORD-001", "status": "SUCCESS"},
-)
+domain.init(traverse=False)
+
+with domain.domain_context():
+    domain.repository_for(Order).add(Order(id="ORD-001"))
+
+    # Publish to the broker stream (triggers the subscriber in sync mode)
+    domain.brokers["default"].publish(
+        "payment_gateway",
+        {"order_id": "ORD-001", "status": "SUCCESS"},
+    )
+
+    assert domain.repository_for(Order).get("ORD-001").status == "PAID"
 ```
 
 ## The anti-corruption layer (ACL)

@@ -27,6 +27,7 @@ External System  →  [Broker Stream]  →  Subscriber (ACL)  →  Domain
 ### Field renaming
 
 ```python
+# fragment
 # External: {"emailAddr": "alice@test.com"}
 # Domain:   email="alice@test.com"
 email = data["emailAddr"]
@@ -35,6 +36,7 @@ email = data["emailAddr"]
 ### Field combination
 
 ```python
+# fragment
 # External: {"firstName": "Alice", "lastName": "Johnson"}
 # Domain:   full_name="Alice Johnson"
 full_name = f"{data['firstName']} {data['lastName']}"
@@ -51,6 +53,7 @@ STATUS_MAP = {"COMPLETED": "confirm", "FAILED": "fail"}
 ### Nested unwrapping
 
 ```python
+# fragment
 # External: {"data": {"user": {"id": "123"}}}
 # Domain:   user_id="123"
 user_id = data["data"]["user"]["id"]

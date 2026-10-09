@@ -133,6 +133,17 @@ partner_email: String(validators=[AllowedDomainValidator(["partner.org", "vendor
 Chain validators for layered validation. They run in list order, and validation stops at the first failing validator, so put the most basic check first:
 
 ```python
+class ReservedWordValidator:
+    """Rejects reserved words, ignoring case."""
+
+    def __init__(self, reserved):
+        self.reserved = [word.lower() for word in reserved]
+
+    def __call__(self, value):
+        if value.lower() in self.reserved:
+            raise ValidationError(f"'{value}' is reserved and cannot be used")
+
+
 @domain.value_object
 class Username:
     value: String(

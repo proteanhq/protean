@@ -17,6 +17,53 @@ Key highlights:
 
 ## How Composition Works
 
+The username field uses four validators: a format regex and three custom
+classes. Define them first:
+
+```python
+from protean.exceptions import ValidationError
+from protean.fields.validators import RegexValidator
+
+
+class ReservedWordValidator:
+    def __init__(self, reserved_words):
+        self.reserved_words = [w.lower() for w in reserved_words]
+
+    def __call__(self, value):
+        if value.lower() in self.reserved_words:
+            raise ValidationError(f"'{value}' is reserved and cannot be used")
+
+
+class NoProfanityValidator:
+    def __init__(self, blocked_words):
+        self.blocked_words = [w.lower() for w in blocked_words]
+
+    def __call__(self, value):
+        if any(word in value.lower() for word in self.blocked_words):
+            raise ValidationError("Value contains prohibited content")
+
+
+class NoConsecutiveSpecialCharsValidator:
+    def __init__(self, special_chars="_-."):
+        self.special_chars = special_chars
+
+    def __call__(self, value):
+        for current, following in zip(value, value[1:]):
+            if current in self.special_chars and following in self.special_chars:
+                raise ValidationError("Cannot contain consecutive special characters")
+
+
+format_validator = RegexValidator(
+    regex=r"^[a-zA-Z][a-zA-Z0-9_.-]{2,29}$",
+    message="Username must start with a letter, 3-30 chars",
+)
+reserved_validator = ReservedWordValidator(["admin", "root", "system"])
+profanity_validator = NoProfanityValidator(["spam", "hack"])
+consecutive_validator = NoConsecutiveSpecialCharsValidator()
+```
+
+Then list them on the field in the order they should run:
+
 ```python
 @domain.aggregate
 class UserAccount:
@@ -29,6 +76,7 @@ class UserAccount:
             consecutive_validator, # Step 4: Check consecutive specials
         ],
     )
+    display_name: String(required=True, max_length=100)
 ```
 
 **Execution order**:
@@ -55,8 +103,19 @@ Layer 4: Style rules                → "No consecutive special chars"
 
 ## Combining RegexValidator with Custom Validators
 
+`PrefixValidator` is a custom validator that checks a business rule: the code
+must start with one of the allowed prefixes.
+
 ```python
-from protean.fields.validators import RegexValidator
+class PrefixValidator:
+    def __init__(self, prefixes):
+        self.prefixes = prefixes
+        self.error = f"Must start with one of: {', '.join(prefixes)}"
+
+    def __call__(self, value):
+        if not any(value.startswith(prefix) for prefix in self.prefixes):
+            raise ValidationError(self.error)
+
 
 coupon_validators = [
     # RegexValidator for structural format
@@ -76,8 +135,15 @@ code: String(validators=coupon_validators)
 `"spam__bot"` breaks two rules: it contains a blocked word, and it has two underscores in a row. The profanity validator comes first in the list, so only its error is raised:
 
 ```python
-UserAccount(username="spam__bot", display_name="Spam Bot")
-# ValidationError: {'username': ['Value contains prohibited content']}
+domain.init(traverse=False)
+
+with domain.domain_context():
+    try:
+        UserAccount(username="spam__bot", display_name="Spam Bot")
+    except ValidationError as exc:
+        assert exc.messages == {"username": ["Value contains prohibited content"]}
+    else:
+        raise AssertionError("spam__bot should be rejected")
 ```
 
 The consecutive-characters validator never runs for this value.

@@ -15,6 +15,7 @@ every event that can begin the flow `start=True`, and whichever arrives first
 creates the instance.
 
 ```python
+# fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
@@ -30,6 +31,7 @@ issues the command for the next step. It does not open or close the saga, so it
 carries only `correlate`.
 
 ```python
+# fragment
 @handle(StockReserved, correlate="order_id")
 def on_stock_reserved(self, event: StockReserved) -> None:
     self.status = "awaiting_payment"
@@ -43,6 +45,7 @@ framework marks the instance complete, and any later event for that correlation
 value is skipped.
 
 ```python
+# fragment
 @handle(ShipmentDispatched, correlate="order_id", end=True)
 def on_shipment_dispatched(self, event: ShipmentDispatched) -> None:
     self.status = "fulfilled"
