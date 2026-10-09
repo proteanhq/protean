@@ -781,11 +781,11 @@ checksum. The expected workflow: upgrade → regenerate IR → review diff → c
 
 ## JSON Schema
 
-The complete JSON Schema (Draft 2020-12) for IR v0.1.0 is available at:
+The complete JSON Schema (Draft 2020-12) for IR v0.3.0 is available at:
 
 - **In the package**: `protean.ir.SCHEMA_PATH`
-  (`src/protean/ir/schema/v0.1.0/schema.json`)
-- **Canonical URL**: `https://protean.dev/ir/v0.1.0/schema.json`
+  (`src/protean/ir/schema/v0.3.0/schema.json`)
+- **Canonical URL**: `https://protean.dev/ir/v0.3.0/schema.json`
 
 ### Reference Examples
 
