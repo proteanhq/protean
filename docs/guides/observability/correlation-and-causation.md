@@ -20,9 +20,8 @@ both IDs:
 - **`causation_id`**: The `headers.id` of the *immediate parent* message.
   It answers: "What directly caused this message?"
 
-The examples on this page use a small order domain. Handling `PlaceOrder`
-raises `OrderPlaced`, and an event handler reacts to `OrderPlaced` by
-dispatching `ConfirmOrder`:
+Take a small order domain. Handling `PlaceOrder` raises `OrderPlaced`, and an
+event handler reacts to `OrderPlaced` by dispatching `ConfirmOrder`:
 
 ```python
 --8<-- "guides/observability/correlation-and-causation/001.py:model"
@@ -182,6 +181,11 @@ metadata:
 ```python
 --8<-- "guides/observability/correlation-and-causation/001.py:ids"
 ```
+
+!!! warning "Known issue: a rebuilt event loses both IDs"
+    An event rebuilt from a stored message with `message.to_domain_object()`
+    has `None` for `correlation_id` and `causation_id`. A rebuilt command keeps
+    both. Read the IDs from the `Message` when you start from the store.
 
 ### Traversing the chain programmatically
 
@@ -353,7 +357,7 @@ in an application that manages its own logging, wire the integrations
 explicitly:
 
 ```python
---8<-- "guides/server/logging/006.py:filter"
+--8<-- "guides/server/logging/005.py:filter"
 ```
 
 Attach the filter to each handler on the root logger. A filter on a logger

@@ -16,6 +16,7 @@ Add the `[server.priority_lanes]` section to your domain configuration:
 
 ```toml
 # domain.toml
+command_processing = "sync"
 
 [server]
 default_subscription_type = "stream"
@@ -25,6 +26,11 @@ enabled = true
 threshold = 0              # Priority < 0 goes to backfill
 backfill_suffix = "backfill"
 ```
+
+The command handlers run in the calling process (`command_processing =
+"sync"`). With `default_subscription_type = "stream"`, the engine reads
+commands from a broker stream that asynchronous commands never reach, so an
+asynchronous command is stored and never handled.
 
 If you use environment overlays, you can enable lanes only in production:
 

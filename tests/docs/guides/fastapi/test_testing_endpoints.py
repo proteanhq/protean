@@ -31,7 +31,7 @@ def bookstore():
             yield example, example.client.__wrapped__()
 
 
-def test_the_conftest_recipe_makes_processing_sync_and_cleans_up_after_each_test():
+def test_the_conftest_recipe_makes_processing_sync_and_resets_data_between_tests():
     example = load_example("guides/fastapi/testing-endpoints/001.py")
     Customer = example.Customer
 
@@ -91,7 +91,8 @@ def test_the_auth_client_sends_the_bearer_token():
     with bookstore() as (example, client):
         auth_client = example.auth_client.__wrapped__(client)
 
-        assert auth_client.headers["Authorization"] == "Bearer test-token-for-alice"
+        request = auth_client.build_request("GET", "/customers/42")
+        assert request.headers["Authorization"] == "Bearer test-token-for-alice"
 
 
 def test_the_error_helper_checks_the_status_and_the_message():

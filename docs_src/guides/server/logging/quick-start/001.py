@@ -2,10 +2,5 @@
 from protean import Domain
 
 domain = Domain()
-
-
-def main():
-    domain.init()  # auto-configures logging
-
-
+domain.init()  # auto-configures logging
 # --8<-- [end:quick-start]

@@ -208,7 +208,12 @@ counts by state. See [Observatory
 Dashboard](../../reference/cli/runtime/observatory.md#endpoints).
 
 **A shell session**, query the outbox repository directly. Each database
-provider has its own outbox repository, looked up by the provider's name:
+provider has its own outbox repository, looked up by the provider's name.
+Protean has no public method for this lookup yet, so the example calls the
+internal `_get_outbox_repo()`, which may change between releases.
+`find_abandoned()` returns the 50 most recently processed rows unless you pass
+a `limit`;
+`limit=None` returns them all:
 
 ```python
 --8<-- "guides/server/outbox/001.py:domain"

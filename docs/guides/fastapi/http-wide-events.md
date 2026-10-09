@@ -52,6 +52,13 @@ produces a wide event like this (production JSON renderer):
 }
 ```
 
+!!! warning "Known issue: the correlation ID is empty with Protean's own logging setup"
+    The middleware writes the wide event after the request's domain context
+    has closed. The correlation filter that `domain.init()` installs on the
+    log handlers then finds no correlation ID and sets `correlation_id` to
+    `""`. The `request_id` field is not affected. A logging setup without
+    Protean's correlation filter keeps the ID shown above.
+
 Level ladders match severity, INFO for 2xx/3xx, WARNING for 4xx, ERROR for 5xx
 or unhandled exceptions. A 5xx event carries `error_type` and `error_message` plus the inlined
 traceback under `exception`.
@@ -66,8 +73,8 @@ writing the wide event fails. The middleware then logs
 
 ## Enable it
 
-`DomainContextMiddleware` emits HTTP wide events by default once
-`domain.init()` has auto-configured logging:
+`DomainContextMiddleware` emits HTTP wide events by default. They appear once
+logging is configured, which `domain.init()` does on its own:
 
 ```python
 --8<-- "guides/fastapi/http-wide-events/001.py:enable-imports"

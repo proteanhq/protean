@@ -59,9 +59,7 @@ def _has_correlation_filter(filterer):
 
 def test_domain_init_configures_logging_at_info_with_correlation(no_env_hints):
     bare_root = _bare_root()
-    example = load_example("guides/server/logging/quick-start/001.py")
-
-    example.main()
+    load_example("guides/server/logging/quick-start/001.py")
 
     assert bare_root.handlers
     assert bare_root.level == logging.INFO
@@ -76,9 +74,7 @@ def test_domain_init_configures_logging_at_info_with_correlation(no_env_hints):
 def test_domain_init_logs_at_debug_in_development(no_env_hints, monkeypatch):
     bare_root = _bare_root()
     monkeypatch.setenv("PROTEAN_ENV", "development")
-    example = load_example("guides/server/logging/quick-start/001.py")
-
-    example.main()
+    load_example("guides/server/logging/quick-start/001.py")
 
     assert bare_root.level == logging.DEBUG
 
@@ -88,9 +84,7 @@ def test_domain_init_leaves_logging_alone_when_auto_logging_is_off(
 ):
     bare_root = _bare_root()
     monkeypatch.setenv("PROTEAN_NO_AUTO_LOGGING", "1")
-    example = load_example("guides/server/logging/quick-start/001.py")
-
-    example.main()
+    load_example("guides/server/logging/quick-start/001.py")
 
     assert bare_root.handlers == []
     assert bare_root.level == logging.WARNING
@@ -98,7 +92,7 @@ def test_domain_init_leaves_logging_alone_when_auto_logging_is_off(
 
 def test_get_logger_passes_keyword_arguments_as_event_fields():
     with structlog.testing.capture_logs() as logs:
-        load_example("guides/server/logging/002.py")
+        load_example("guides/server/logging/001.py")
 
     events = {e["event"]: e for e in logs}
     assert events["order_placed"]["order_id"] == "ord-123"
@@ -121,7 +115,7 @@ def test_get_logger_writes_keyword_arguments_as_top_level_json_fields(
     _bare_root()
     configure_logging(level="INFO", format="json")
 
-    load_example("guides/server/logging/002.py")
+    load_example("guides/server/logging/001.py")
 
     events = {e["event"]: e for e in _json_lines(capsys.readouterr().err)}
     assert events["order_placed"]["order_id"] == "ord-123"
@@ -132,7 +126,7 @@ def test_add_context_tags_records_until_clear_context():
     with structlog.testing.capture_logs(
         processors=[structlog.contextvars.merge_contextvars]
     ) as logs:
-        example = load_example("guides/server/logging/002.py")
+        example = load_example("guides/server/logging/001.py")
         example.logger.info("after_scope")
 
     events = {e["event"]: e for e in logs}
@@ -145,7 +139,7 @@ def test_add_context_tags_records_until_clear_context():
 
 def test_configure_logging_sets_debug_level_and_json_output(no_env_hints, capsys):
     bare_root = _bare_root()
-    load_example("guides/server/logging/003.py")
+    load_example("guides/server/logging/002.py")
 
     assert bare_root.level == logging.DEBUG
     assert bare_root.handlers
@@ -162,7 +156,7 @@ def test_configure_logging_sets_debug_level_and_json_output(no_env_hints, capsys
 
 def test_configure_logging_again_replaces_the_handlers(no_env_hints):
     bare_root = _bare_root()
-    example = load_example("guides/server/logging/003.py")
+    example = load_example("guides/server/logging/002.py")
     first_handlers = list(bare_root.handlers)
     assert first_handlers
 
@@ -192,7 +186,7 @@ def _access_record(caplog, example, **command_fields):
 
 
 def test_bind_event_context_adds_business_fields_to_the_wide_event(caplog):
-    example = load_example("guides/server/logging/004.py")
+    example = load_example("guides/server/logging/003.py")
 
     record = _access_record(caplog, example, user_tier="gold")
 
@@ -205,7 +199,7 @@ def test_bind_event_context_adds_business_fields_to_the_wide_event(caplog):
 
 
 def test_bind_event_context_reports_an_applied_coupon(caplog):
-    example = load_example("guides/server/logging/004.py")
+    example = load_example("guides/server/logging/003.py")
 
     record = _access_record(caplog, example, coupon_code="SPRING10")
 
@@ -227,7 +221,7 @@ class _Resource:
 
 
 def test_denied_access_logs_a_security_event_and_raises(caplog):
-    example = load_example("guides/server/logging/005.py")
+    example = load_example("guides/server/logging/004.py")
     example.domain.init(traverse=False)
 
     with (
@@ -251,7 +245,7 @@ def test_denied_access_logs_a_security_event_and_raises(caplog):
 
 
 def test_allowed_access_logs_no_security_event(caplog):
-    example = load_example("guides/server/logging/005.py")
+    example = load_example("guides/server/logging/004.py")
 
     with caplog.at_level(logging.WARNING, logger="protean.security"):
         example.check_admin_access(_User("user-1", allowed=True), _Resource())
@@ -264,7 +258,7 @@ def test_manual_wiring_puts_the_filter_on_each_root_handler(no_env_hints):
     handlers = [logging.StreamHandler(), logging.StreamHandler()]
     bare_root.handlers = list(handlers)
 
-    load_example("guides/server/logging/006.py")
+    load_example("guides/server/logging/005.py")
 
     for handler in handlers:
         assert _has_correlation_filter(handler)
@@ -280,7 +274,7 @@ def test_configure_for_testing_sets_warning_and_drops_file_handlers(
     bare_root.handlers = [file_handler, stream_handler]
     bare_root.setLevel(logging.DEBUG)
 
-    load_example("guides/server/logging/007.py")
+    load_example("guides/server/logging/006.py")
     file_handler.close()
 
     assert bare_root.level == logging.WARNING

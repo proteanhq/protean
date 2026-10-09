@@ -85,7 +85,7 @@ def trace_ids(event, message):
     # On a command or event object
     event_ids = (
         event._metadata.domain.correlation_id,  # "ext-123"
-        event._metadata.domain.causation_id,  # "myapp::order:command-abc123-0"
+        event._metadata.domain.causation_id,  # the causing message's headers.id
     )
 
     # On a deserialized Message

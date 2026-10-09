@@ -5,7 +5,6 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from protean.domain.context import has_domain_context
 from tests.docs.support import load_example
 
 pytestmark = [pytest.mark.no_test_domain, pytest.mark.fastapi]
@@ -65,7 +64,10 @@ def test_each_domain_exception_maps_to_the_status_in_the_table(kind, status, err
     response = client.get(f"/raise/{kind}")
 
     assert response.status_code == status
-    assert response.json()["error"] == error
+    assert response.json() == {
+        "error": error,
+        "correlation_id": response.headers["X-Correlation-ID"],
+    }
 
 
 def test_a_missing_customer_becomes_a_404_and_a_stored_one_a_200():
@@ -83,7 +85,10 @@ def test_a_missing_customer_becomes_a_404_and_a_stored_one_a_200():
     assert found.status_code == 200
     assert found.json() == {"id": customer.id, "name": "Alice"}
     assert missing.status_code == 404
-    assert "error" in missing.json()
+    assert missing.json() == {
+        "error": "`Customer` object with identifier does-not-exist does not exist.",
+        "correlation_id": missing.headers["X-Correlation-ID"],
+    }
 
 
 def _commands(example):
@@ -108,6 +113,21 @@ def test_place_order_accepts_and_the_command_carries_the_header_correlation_id()
     commands = _commands(example)
     assert len(commands) == 1
     assert commands[0].metadata.domain.correlation_id == "req-abc-123"
+
+
+def test_an_invalid_command_comes_back_as_a_400_through_the_exception_handlers():
+    example = load_example("guides/fastapi/index/006.py")
+    example.domain.init(traverse=False)
+    client = TestClient(example.app, raise_server_exceptions=False)
+
+    response = client.post("/orders", json={})
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {"customer_id": ["is required"]},
+        "correlation_id": response.headers["X-Correlation-ID"],
+    }
+    assert _commands(example) == []
 
 
 def test_x_request_id_is_the_fallback_and_no_header_gets_a_generated_id():
@@ -159,13 +179,3 @@ def test_module_level_init_lets_requests_use_the_domain_at_once():
     with example.domain.domain_context():
         order = example.domain.repository_for(example.Order).get(response.json()["id"])
     assert order.customer_name == "Bob"
-
-
-def test_the_flask_hooks_push_the_context_per_request_and_pop_it_after():
-    example = load_example("guides/fastapi/index/010.py")
-    client = example.app.test_client()
-
-    response = client.get("/whoami")
-
-    assert response.json == {"domain": "Ordering"}
-    assert not has_domain_context()

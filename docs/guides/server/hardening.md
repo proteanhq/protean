@@ -150,6 +150,15 @@ failures:
 --8<-- "guides/server/hardening/003.py:audit"
 ```
 
+!!! warning "Known issue: per-handler DLQ overrides have no effect yet"
+    The subscription config Protean builds for a handler does not carry
+    `dlq_retention_hours` or `dlq_alert_threshold`, so the engine applies the
+    `[server.dlq]` values to every handler. The dead-letter queue also needs a
+    stream subscription. A handler with no profile, like `AuditHandler`
+    above, uses `server.default_subscription_type`. That is `"event_store"`
+    unless you change it, and an event store subscription has no dead-letter
+    queue.
+
 For discovery, inspection, and replay of individual DLQ messages, see
 [Dead Letter Queues](./dead-letter-queues.md).
 

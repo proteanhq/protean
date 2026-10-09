@@ -1,29 +1,14 @@
 from protean import Domain
 
-domain = Domain(name="Access")
+# isort: split
 
+# --8<-- [start:filter]
+import logging
 
-class PermissionDenied(Exception):
-    pass
+from protean.integrations.logging import ProteanCorrelationFilter
 
+for handler in logging.getLogger().handlers:
+    handler.addFilter(ProteanCorrelationFilter())
+# --8<-- [end:filter]
 
-# --8<-- [start:security]
-from protean.integrations.logging import (
-    SECURITY_EVENT_VALIDATION_FAILED,
-    log_security_event,
-)
-
-
-def check_admin_access(user, resource):
-    if not user.can_access(resource):
-        log_security_event(
-            SECURITY_EVENT_VALIDATION_FAILED,
-            aggregate="Resource",
-            aggregate_id=resource.id,
-            user_id=user.id,
-            reason="not_authorized",
-        )
-        raise PermissionDenied()
-
-
-# --8<-- [end:security]
+domain = Domain(name="Embedded")

@@ -6,6 +6,7 @@ import pytest
 import structlog
 from fastapi.testclient import TestClient
 
+from protean.integrations.logging import ProteanCorrelationFilter
 from tests.docs.support import load_example
 
 pytestmark = [pytest.mark.no_test_domain, pytest.mark.fastapi]
@@ -50,6 +51,38 @@ def test_every_request_emits_one_wide_event_with_the_request_envelope(http_event
     assert event.commands_dispatched == []
     assert event.commands_dispatched_count == 0
     assert event.user_agent == "testclient"
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="The middleware writes the wide event after the domain context is "
+    "popped, so the correlation filter Protean installs blanks the id",
+)
+def test_the_correlation_id_survives_the_handler_that_auto_configuration_installs(
+    caplog,
+):
+    caplog.set_level(logging.INFO, logger="protean.access.http")
+    example = load_example("guides/fastapi/http-wide-events/001.py")
+    records = []
+
+    class Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    # domain.init() puts this filter on every root handler it configures.
+    capture = Capture()
+    capture.addFilter(ProteanCorrelationFilter())
+    http_logger = logging.getLogger("protean.access.http")
+    http_logger.addHandler(capture)
+    try:
+        TestClient(example.app).get(
+            "/customers/42", headers={"X-Correlation-ID": "req-abc-123"}
+        )
+    finally:
+        http_logger.removeHandler(capture)
+
+    [event] = [r for r in records if r.getMessage() == "access.http_completed"]
+    assert event.correlation_id == "req-abc-123"
 
 
 def test_the_level_follows_the_status(http_events):

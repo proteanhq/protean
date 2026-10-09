@@ -9,7 +9,7 @@ pytestmark = pytest.mark.no_test_domain
 
 
 @pytest.mark.fastapi
-def test_api_app_serves_the_probe_paths_on_its_own_port():
+def test_api_app_serves_the_liveness_and_readiness_paths():
     example = load_example("guides/server/production-deployment/001.py")
     example.domain.init(traverse=False)
 

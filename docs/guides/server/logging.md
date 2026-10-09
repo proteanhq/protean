@@ -49,7 +49,7 @@ lines, do one of these:
 To log from application code:
 
 ```python
---8<-- "guides/server/logging/002.py:get-logger"
+--8<-- "guides/server/logging/001.py:get-logger"
 ```
 
 Keyword arguments become structured fields in JSON output and colored
@@ -57,6 +57,11 @@ key-value pairs in console output. Prefer keyword arguments over
 f-strings so values remain queryable downstream, see [why structured
 logs?](../../concepts/observability/logging.md#why-structured-logs) for the
 rationale.
+
+!!! warning "Known issue: keyword arguments nest inside `event` in JSON output"
+    With the JSON format, a `get_logger()` call is rendered to JSON twice. The
+    keyword arguments end up inside the outer `"event"` string, not as
+    top-level fields. Console output is not affected.
 
 ### What a wide event looks like
 
@@ -182,7 +187,7 @@ override `domain.toml` but still read `PROTEAN_LOG_LEVEL` as an override for
 `level` unless `level=` is passed:
 
 ```python
---8<-- "guides/server/logging/003.py:configure"
+--8<-- "guides/server/logging/002.py:configure"
 ```
 
 If you already called `domain.init()`, calling `configure_logging()` again
@@ -199,8 +204,8 @@ context automatically; application code adds business-specific fields
 with `bind_event_context()`:
 
 ```python
---8<-- "guides/server/logging/004.py:model"
---8<-- "guides/server/logging/004.py:handler"
+--8<-- "guides/server/logging/003.py:model"
+--8<-- "guides/server/logging/003.py:handler"
 ```
 
 The framework and application fields merge into the single wide event
@@ -217,14 +222,14 @@ for guidance on choosing queryable dimensions.
 given name. Events are keyword arguments, not f-strings:
 
 ```python
---8<-- "guides/server/logging/002.py:refund"
+--8<-- "guides/server/logging/001.py:refund"
 ```
 
 For context that should appear on every record inside a scope, use
 `add_context()`:
 
 ```python
---8<-- "guides/server/logging/002.py:context"
+--8<-- "guides/server/logging/001.py:context"
 ```
 
 `add_context()` uses `contextvars`, so it propagates correctly across
@@ -286,7 +291,7 @@ to this channel automatically for aggregate invariant violations and the
 three `Invalid*` exceptions. To emit from application code:
 
 ```python
---8<-- "guides/server/logging/005.py:security"
+--8<-- "guides/server/logging/004.py:security"
 ```
 
 `correlation_id` and `causation_id` are auto-injected from the active
@@ -316,7 +321,7 @@ You can then wire whichever parts of Protean's integration you want
 manually:
 
 ```python
---8<-- "guides/server/logging/006.py:filter"
+--8<-- "guides/server/logging/005.py:filter"
 ```
 
 Attach the filter to each handler on the root logger. A filter on a logger
@@ -334,7 +339,7 @@ embedded setups no env var is needed.
 In `conftest.py`:
 
 ```python
---8<-- "guides/server/logging/007.py:testing"
+--8<-- "guides/server/logging/006.py:testing"
 ```
 
 This sets the root logger to WARNING and removes file handlers. Tests that

@@ -63,8 +63,8 @@ tests/
 
 ### The example app
 
-The examples on this page test a small bookstore. A customer places an order
-for books, and an event handler takes the ordered books out of stock:
+Take a small bookstore app. A customer places an order for books, and an event
+handler takes the ordered books out of stock:
 
 ```python
 --8<-- "guides/fastapi/testing-endpoints/001.py:domain-imports"

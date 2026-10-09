@@ -21,7 +21,7 @@ def on_dlq_alert(dlq_stream: str, depth: int, threshold: int) -> None:
         return
 
     try:
-        httpx.post(
+        response = httpx.post(
             _SLACK_WEBHOOK,
             json={
                 "text": (
@@ -31,6 +31,7 @@ def on_dlq_alert(dlq_stream: str, depth: int, threshold: int) -> None:
             },
             timeout=2.0,
         )
+        response.raise_for_status()
     except httpx.HTTPError:
         logger.exception("Failed to post DLQ alert to Slack")
 

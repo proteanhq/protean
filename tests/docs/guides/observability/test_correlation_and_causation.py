@@ -325,7 +325,7 @@ def test_filter_goes_on_every_root_handler():
     handlers = [logging.StreamHandler(), logging.StreamHandler()]
     root.handlers = handlers
 
-    load_example("guides/server/logging/006.py")
+    load_example("guides/server/logging/005.py")
 
     for handler in handlers:
         assert any(isinstance(f, ProteanCorrelationFilter) for f in handler.filters)
@@ -343,7 +343,7 @@ def test_filter_tags_a_record_from_a_child_logger():
             records.append(record)
 
     root.handlers = [Collect()]
-    load_example("guides/server/logging/006.py")
+    load_example("guides/server/logging/005.py")
 
     with example.domain.domain_context():
         g.correlation_id = "job-9"

@@ -93,6 +93,7 @@ MARKERS: dict[str, str] = {
     "guides/observability/correlation-and-causation/002.py": "fastapi",
     "guides/getting-started/tutorial/ch10.py": "fastapi",
     "guides/server/hardening/001.py": "fastapi",
+    "guides/server/monitoring/001.py": "fastapi",
     "guides/server/opentelemetry/001.py": "fastapi",
     "guides/server/opentelemetry/002.py": "fastapi",
     "guides/server/opentelemetry/003.py": "fastapi",

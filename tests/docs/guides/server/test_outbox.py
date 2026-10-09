@@ -66,3 +66,23 @@ def test_print_abandoned_lists_only_abandoned_rows(capsys):
     assert "shop::order-order-2" in lines[0]
     assert "broker rejected the message" in lines[0]
     assert "shop::order-order-1" not in lines[0]
+
+
+def test_print_abandoned_lists_every_abandoned_row_past_the_default_page(capsys):
+    example = load_example("guides/server/outbox/001.py")
+    example.domain.init(traverse=False)
+    for number in range(51):
+        _place_order(example, f"order-{number}")
+
+    with example.domain.domain_context():
+        repo = example.domain._get_outbox_repo("default")
+        rows = repo.query.limit(None).all().items
+        assert len(rows) == 51
+        for row in rows:
+            row.mark_abandoned("broker rejected the message")
+            repo.add(row)
+
+    example.print_abandoned()
+
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 51

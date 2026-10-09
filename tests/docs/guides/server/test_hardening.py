@@ -1,6 +1,8 @@
 """The examples on the hardening guide behave as the page says."""
 
 import logging
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 from fastapi.testclient import TestClient
@@ -119,8 +121,61 @@ def test_per_handler_dlq_overrides_reach_the_subscription_config():
 
 
 def test_closing_the_domain_runs_after_the_work(caplog):
+    example = load_example("guides/server/hardening/004.py")
+    example.domain.init(traverse=False)
+
+    def work():
+        logging.getLogger("tooling").info("work ran")
+
+    example.do_the_work = work
+    with caplog.at_level(logging.INFO):
+        example.run_tool()
+
+    messages = caplog.messages
+    assert messages.index("work ran") < messages.index("Domain infrastructure closed")
+
+
+def test_closing_the_domain_runs_when_the_work_fails(caplog):
+    example = load_example("guides/server/hardening/004.py")
+    example.domain.init(traverse=False)
+
+    def failing_work():
+        raise RuntimeError("tool failed")
+
+    example.do_the_work = failing_work
     with caplog.at_level(logging.INFO, logger="protean.domain"):
-        example = load_example("guides/server/hardening/004.py")
+        with pytest.raises(RuntimeError, match="tool failed"):
+            example.run_tool()
 
     assert "Domain infrastructure closed" in caplog.messages
-    example.domain.init(traverse=False)
+
+
+class _RejectingWebhook(BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.rfile.read(int(self.headers["Content-Length"]))
+        self.send_response(500)
+        self.end_headers()
+
+    def log_message(self, *args):
+        pass
+
+
+def test_dlq_alert_logs_the_failure_when_the_webhook_rejects_the_post(
+    monkeypatch, caplog
+):
+    server = HTTPServer(("127.0.0.1", 0), _RejectingWebhook)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        monkeypatch.setenv(
+            "SLACK_DLQ_WEBHOOK", f"http://127.0.0.1:{server.server_port}/hook"
+        )
+        example = load_example("guides/server/hardening/002.py")
+
+        with caplog.at_level(logging.ERROR, logger=example.__name__):
+            example.on_dlq_alert(dlq_stream="orders:dlq", depth=150, threshold=100)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert "Failed to post DLQ alert to Slack" in caplog.messages

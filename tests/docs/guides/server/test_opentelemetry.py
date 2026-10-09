@@ -10,7 +10,8 @@ from opentelemetry.trace import SpanKind, StatusCode
 from protean.utils.telemetry import get_tracer_provider, shutdown_telemetry
 from tests.docs.support import load_example
 
-pytestmark = pytest.mark.no_test_domain
+# The module imports FastAPI, so every test in it needs the extra.
+pytestmark = [pytest.mark.no_test_domain, pytest.mark.fastapi]
 
 
 def capture_spans(domain) -> InMemorySpanExporter:
@@ -50,7 +51,6 @@ def otel_example():
         shutdown_telemetry(module.domain)
 
 
-@pytest.mark.fastapi
 def test_instrumented_app_uses_the_configured_service_name(otel_example):
     example = otel_example(load_example("guides/server/opentelemetry/001.py"))
 
@@ -60,7 +60,6 @@ def test_instrumented_app_uses_the_configured_service_name(otel_example):
     assert provider.resource.attributes["service.name"] == "orders-api"
 
 
-@pytest.mark.fastapi
 def test_http_span_parents_the_command_and_handler_spans(otel_example):
     example = otel_example(load_example("guides/server/opentelemetry/001.py"))
     exporter = capture_spans(example.domain)
@@ -83,14 +82,12 @@ def test_http_span_parents_the_command_and_handler_spans(otel_example):
     assert handler_span.attributes["protean.handler.name"] == "OrderCommandHandler"
 
 
-@pytest.mark.fastapi
 def test_instrumenting_the_same_app_twice_is_skipped(otel_example):
     example = otel_example(load_example("guides/server/opentelemetry/001.py"))
 
     assert example.instrument_app(example.app, example.domain) is False
 
 
-@pytest.mark.fastapi
 def test_instrument_app_does_nothing_when_telemetry_is_disabled(otel_example):
     example = otel_example(load_example("guides/server/opentelemetry/001.py"))
     example.domain.config["telemetry"]["enabled"] = False
@@ -98,7 +95,6 @@ def test_instrument_app_does_nothing_when_telemetry_is_disabled(otel_example):
     assert example.instrument_app(FastAPI(), example.domain) is False
 
 
-@pytest.mark.fastapi
 def test_excluded_health_paths_produce_no_spans(otel_example):
     example = otel_example(load_example("guides/server/opentelemetry/002.py"))
     exporter = capture_spans(example.domain)
@@ -113,7 +109,6 @@ def test_excluded_health_paths_produce_no_spans(otel_example):
     assert span.attributes["http.route"] == "/orders"
 
 
-@pytest.mark.fastapi
 def test_excluded_observatory_paths_produce_no_spans(otel_example):
     example = otel_example(load_example("guides/server/opentelemetry/003.py"))
     exporter = capture_spans(example.domain)

@@ -116,6 +116,10 @@ directly without manual try/except blocks.
 | `InvalidStateError`   | 409         | `{"error": "<message>"}`        |
 | `InvalidOperationError` | 422      | `{"error": "<message>"}`        |
 
+When the request runs inside `DomainContextMiddleware`, the body also carries
+the request's `correlation_id`, the same value the `X-Correlation-ID` response
+header holds.
+
 ### Example
 
 ```python

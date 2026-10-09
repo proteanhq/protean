@@ -1,42 +1,29 @@
-# --8<-- [start:model]
 from protean import Domain
-from protean.fields import Float, Identifier, String
 
-domain = Domain(name="Orders")
-
-
-@domain.aggregate
-class Order:
-    customer_id: Identifier(required=True)
-    total: Float(required=True)
+domain = Domain(name="Access")
 
 
-@domain.command(part_of=Order)
-class PlaceOrder:
-    customer_id: Identifier(required=True)
-    total: Float(required=True)
-    user_tier: String(default="standard")
-    coupon_code: String()
+class PermissionDenied(Exception):
+    pass
 
 
-# --8<-- [end:model]
+# --8<-- [start:security]
+from protean.integrations.logging import (
+    SECURITY_EVENT_VALIDATION_FAILED,
+    log_security_event,
+)
 
 
-# --8<-- [start:handler]
-from protean import handle
-from protean.utils.logging import bind_event_context
-
-
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(PlaceOrder)
-    def place(self, command: PlaceOrder) -> None:
-        bind_event_context(
-            user_tier=command.user_tier,
-            order_total=float(command.total),
-            coupon_applied=command.coupon_code is not None,
+def check_admin_access(user, resource):
+    if not user.can_access(resource):
+        log_security_event(
+            SECURITY_EVENT_VALIDATION_FAILED,
+            aggregate="Resource",
+            aggregate_id=resource.id,
+            user_id=user.id,
+            reason="not_authorized",
         )
-        # ... handler logic ...
+        raise PermissionDenied()
 
 
-# --8<-- [end:handler]
+# --8<-- [end:security]

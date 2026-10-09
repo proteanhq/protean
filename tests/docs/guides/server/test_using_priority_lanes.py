@@ -74,3 +74,18 @@ def test_with_lanes_disabled_low_priority_work_stays_on_the_primary_stream():
 
     assert len(published["crm::customer"]) == 2
     assert published["crm::customer:backfill"] == []
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="With stream subscriptions, the engine reads commands from a broker "
+    "stream that asynchronous commands are never published to",
+)
+def test_asynchronous_commands_also_reach_the_backfill_stream():
+    example = load_example("guides/server/using-priority-lanes/001.py")
+    example.domain.config["command_processing"] = "async"
+    example.domain.init(traverse=False)
+
+    published = _published(example, lambda ex: ex.backfill_loyalty_tiers())
+
+    assert len(published["crm::customer:backfill"]) == 2
