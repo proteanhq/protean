@@ -16,6 +16,7 @@ from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
+from protean.exceptions import ValidationError
 from protean.fields import ValueObject
 from protean.utils import _fully_qualified_name
 from protean.utils.reflection import (
@@ -43,6 +44,26 @@ class Customer(BaseAggregate):
     billing_address = ValueObject(Address)
 
 
+class Location(BaseValueObject):
+    latitude: float = 0.0
+    longitude: float = 0.0
+
+
+class ShippingAddress(BaseValueObject):
+    street: str = ""
+    city: str = ""
+    location = ValueObject(Location)
+
+
+class Store(BaseAggregate):
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    name: str = ""
+    shipping_address = ValueObject(ShippingAddress)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -50,6 +71,9 @@ class Customer(BaseAggregate):
 def register_elements(test_domain):
     test_domain.register(Address)
     test_domain.register(Customer)
+    test_domain.register(Location)
+    test_domain.register(ShippingAddress)
+    test_domain.register(Store)
     test_domain.init(traverse=False)
 
 
@@ -137,8 +161,8 @@ class TestVOFlattenedInit:
         with pytest.raises(ValidationError) as exc:
             Outer(label="origin", point_x=1.0, point_y=2.0)
 
-        # Flattened kwargs are rejected as extra inputs
-        assert "point_x" in str(exc.value)
+        assert exc.value.messages["point_x"] == ["Extra inputs are not permitted"]
+        assert exc.value.messages["point_y"] == ["Extra inputs are not permitted"]
 
     def test_vo_to_vo_instance_init_works(self):
         """Nested VOs must be passed as instances, not flattened kwargs."""
@@ -155,6 +179,83 @@ class TestVOFlattenedInit:
         outer = Outer(label="origin", point=Inner(x=1.0, y=2.0))
         assert outer.point.x == 1.0
         assert outer.point.y == 2.0
+
+
+class TestNestedVOFlattenedInit:
+    """Flattened arguments stop at one level. A value object nested inside
+    an embedded value object is passed as an object. A two-level flattened
+    argument is rejected.
+    """
+
+    def test_one_level_flattened_argument_sets_the_field(self):
+        store = Store(name="Corner", shipping_address_street="1 Main St")
+
+        assert store.shipping_address.street == "1 Main St"
+        assert store.shipping_address.city == ""
+        assert store.shipping_address.location is None
+
+    def test_one_level_flattened_argument_on_billing_address(self):
+        customer = Customer(name="Alice", billing_address_street="123 Main St")
+
+        assert customer.billing_address == Address(street="123 Main St")
+
+    def test_nested_vo_passed_as_flattened_argument(self):
+        store = Store(
+            name="Corner",
+            shipping_address_location=Location(latitude=12.5, longitude=77.6),
+        )
+
+        assert store.shipping_address.street == ""
+        assert store.shipping_address.location == Location(
+            latitude=12.5, longitude=77.6
+        )
+
+    def test_nested_vo_passed_as_dict_in_flattened_argument(self):
+        store = Store(
+            name="Corner",
+            shipping_address_location={"latitude": 12.5, "longitude": 77.6},
+        )
+
+        assert store.shipping_address.location == Location(
+            latitude=12.5, longitude=77.6
+        )
+
+    def test_nested_vo_passed_as_object(self):
+        store = Store(
+            name="Corner",
+            shipping_address=ShippingAddress(
+                street="1 Main St",
+                location=Location(latitude=12.5, longitude=77.6),
+            ),
+        )
+
+        assert store.shipping_address.street == "1 Main St"
+        assert store.shipping_address.location == Location(
+            latitude=12.5, longitude=77.6
+        )
+
+    def test_two_level_flattened_argument_is_rejected(self):
+        with pytest.raises(ValidationError) as exc:
+            Store(name="Corner", shipping_address_location_latitude=12.5)
+
+        assert exc.value.messages["shipping_address_location_latitude"] == [
+            "Extra inputs are not permitted"
+        ]
+
+    def test_omitted_nullable_member_gets_its_default(self, test_domain):
+        class Venue(BaseValueObject):
+            street: str = ""
+            city: str | None = "Unknown"
+
+        class Event(BaseAggregate):
+            venue = ValueObject(Venue)
+
+        test_domain.register(Venue)
+        test_domain.register(Event)
+        test_domain.init(traverse=False)
+
+        assert Event(venue_street="1 Main St").venue.city == "Unknown"
+        assert Event(venue_street="1 Main St", venue_city=None).venue.city is None
 
 
 # ---------------------------------------------------------------------------
