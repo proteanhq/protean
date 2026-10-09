@@ -205,11 +205,13 @@ The generated logging module provides structured logging with:
 
 **Environment Configuration:**
 
-The logging level is determined by the `ENVIRONMENT` variable:
+The logging level is determined by `PROTEAN_ENV`, then `ENV`, then
+`ENVIRONMENT`:
 
 - `production`/`staging`: INFO level
 - `development`: DEBUG level
 - `test`: WARNING level
+- unset, or any other value: INFO level
 
 Override with the `PROTEAN_LOG_LEVEL` environment variable.
 

@@ -36,15 +36,15 @@ The default level and format depend on the environment. Protean reads
 | `development` | `DEBUG` | colored console |
 | `production`, `staging` | `INFO` | JSON |
 | `test` | `WARNING` | colored console |
-| unset | `INFO` | colored console |
+| unset, or any other value | `INFO` | colored console |
 
 With no environment variable set, a script or a REPL session shows `INFO`
-lines and above, so `domain.init()` writes nothing. To see the framework's
+lines and above, so `domain.init()` writes no `DEBUG` lines. To see the framework's
 `DEBUG` lines, do one of these:
 
 - set `PROTEAN_ENV=development`
 - set `PROTEAN_LOG_LEVEL=DEBUG`
-- pass `--log-level DEBUG` to a `protean` command
+- pass the global flag before the command: `protean --log-level DEBUG <command>`
 - set `level = "DEBUG"` under `[logging]` in `domain.toml`
 
 To log from application code:

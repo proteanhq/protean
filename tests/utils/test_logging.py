@@ -55,6 +55,31 @@ class TestConfigureLogging:
         assert logging.getLogger().level == logging.DEBUG
         assert logging.getLogger("protean").getEffectiveLevel() == logging.DEBUG
 
+    @pytest.mark.parametrize(
+        "env",
+        [
+            {"PROTEAN_ENV": "Development"},
+            {"PROTEAN_ENV": "", "ENV": "development"},
+        ],
+        ids=["mixed_case", "empty_protean_env_falls_through"],
+    )
+    def test_development_env_variants_set_debug_level(self, env):
+        with patch.dict(os.environ, env, clear=True):
+            configure_logging()
+
+        assert logging.getLogger().level == logging.DEBUG
+
+    @pytest.mark.parametrize("value", ["dev", "local"])
+    def test_unmapped_env_value_defaults_to_info_with_console_renderer(self, value):
+        with patch.dict(os.environ, {"PROTEAN_ENV": value}, clear=True):
+            configure_logging()
+
+        root = logging.getLogger()
+        assert root.level == logging.INFO
+        assert isinstance(
+            root.handlers[0].formatter.processors[-1], structlog.dev.ConsoleRenderer
+        )
+
     def test_log_level_env_var_raises_unset_env_to_debug(self):
         """PROTEAN_LOG_LEVEL=DEBUG with no environment set gives DEBUG."""
         with patch.dict(os.environ, {"PROTEAN_LOG_LEVEL": "DEBUG"}, clear=True):

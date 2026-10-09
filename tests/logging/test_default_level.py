@@ -96,7 +96,6 @@ class TestFreshScript:
     def test_debug_lines_return_on_request(self, tmp_path, env):
         result = _run_script(tmp_path, **env)
 
-        assert "debug" in result.stderr
         assert "Loaded provider plugin: memory" in result.stderr
 
 

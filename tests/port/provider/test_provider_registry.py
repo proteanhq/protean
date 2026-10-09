@@ -306,6 +306,33 @@ class TestProviderRegistryDiscovery:
             assert "No module named 'sqlalchemy'" in message
             assert "Failed" not in message
 
+    def test_discover_plugins_skips_import_error_from_registration(self, caplog):
+        """A register() that imports its driver lazily is skipped at DEBUG."""
+        caplog.set_level(logging.DEBUG, logger="protean.port.provider")
+
+        mock_entry = Mock()
+        mock_entry.name = "lazy_provider"
+
+        def lazy_register():
+            raise ModuleNotFoundError("No module named 'redis'", name="redis")
+
+        mock_entry.load.return_value = lazy_register
+
+        with patch("importlib.metadata.entry_points") as mock_entry_points:
+            mock_eps = Mock()
+            mock_eps.select.return_value = [mock_entry]
+            mock_entry_points.return_value = mock_eps
+
+            ProviderRegistry._initialized = False
+            registry._discover_plugins()
+
+            records = _records_naming(caplog, "lazy_provider")
+            assert len(records) == 1
+            assert records[0].levelno == logging.DEBUG
+            message = records[0].getMessage()
+            assert "Skipping provider plugin 'lazy_provider'" in message
+            assert "No module named 'redis'" in message
+
     def test_discover_plugins_handles_registration_function_error(self, caplog):
         """Test handling when the registration function itself raises an error."""
         caplog.set_level(logging.DEBUG, logger="protean.port.provider")

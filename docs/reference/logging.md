@@ -142,12 +142,13 @@ default from `PROTEAN_ENV` (falling back to `ENV` / `ENVIRONMENT`):
 | `production` | `INFO` | JSON |
 | `staging` | `INFO` | JSON |
 | `test` | `WARNING` | colored console |
-| (unset) | `INFO` | colored console |
+| (unset, or any other value) | `INFO` | colored console |
 
 Only an explicit `development` environment selects `DEBUG`. To see the
 framework's `DEBUG` lines with no environment set, set `PROTEAN_ENV=development`
-or `PROTEAN_LOG_LEVEL=DEBUG`, pass `--log-level DEBUG` to a `protean` command,
-or set `level = "DEBUG"` under `[logging]` in `domain.toml`.
+or `PROTEAN_LOG_LEVEL=DEBUG`, pass the global flag as
+`protean --log-level DEBUG <command>`, or set `level = "DEBUG"` under
+`[logging]` in `domain.toml`.
 
 ---
 
