@@ -4,6 +4,7 @@ import signal
 import subprocess
 import sys
 import textwrap
+import threading
 from pathlib import Path
 
 import pytest
@@ -37,17 +38,23 @@ def _serve_until_handled_then_signal(function_name, sig):
         stderr=subprocess.STDOUT,
         text=True,
     )
+    # Killing the child closes its stdout, which ends the read loop below if
+    # the engine never prints the line it is waiting for.
+    deadline = threading.Timer(60, process.kill)
+    deadline.start()
     try:
         lines = []
         for line in process.stdout:
             lines.append(line)
             if line.strip() == "Handled ord-1":
                 break
+        deadline.cancel()
         assert "Handled ord-1\n" in lines, "".join(lines)
         assert process.poll() is None, "the engine stopped without a signal"
         process.send_signal(sig)
         process.communicate(timeout=30)
     finally:
+        deadline.cancel()
         if process.poll() is None:
             process.kill()
             process.wait()

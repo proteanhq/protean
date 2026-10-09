@@ -4,6 +4,7 @@ import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -69,9 +70,13 @@ def test_dlq_alert_logs_a_warning_when_no_webhook_is_set(monkeypatch, caplog):
 
 
 def test_dlq_alert_logs_the_failure_when_the_webhook_post_fails(monkeypatch, caplog):
-    # Port 9 on loopback refuses the connection, so httpx raises ConnectError.
     monkeypatch.setenv("SLACK_DLQ_WEBHOOK", "http://127.0.0.1:9/hook")
     example = load_example("guides/server/hardening/002.py")
+
+    def refuse(url, **kwargs):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(example.httpx, "post", refuse)
 
     with caplog.at_level(logging.ERROR, logger=example.__name__):
         example.on_dlq_alert(dlq_stream="orders:dlq", depth=150, threshold=100)
