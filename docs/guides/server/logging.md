@@ -61,7 +61,9 @@ rationale.
 !!! warning "Known issue: keyword arguments nest inside `event` in JSON output"
     With the JSON format, a `get_logger()` call is rendered to JSON twice. The
     keyword arguments end up inside the outer `"event"` string, not as
-    top-level fields. Console output is not affected.
+    top-level fields. Console output is rendered twice as well, so each line
+    shows the timestamp, level and logger name twice. The keyword arguments
+    still appear there as key-value pairs.
 
 ### What a wide event looks like
 
