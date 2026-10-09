@@ -10,6 +10,7 @@ Add a handler for the failure event. It issues a compensating command for each
 step already taken, then ends the saga.
 
 ```python
+# fragment
 @handle(PaymentFailed, correlate="order_id", end=True)
 def on_payment_failed(self, event: PaymentFailed) -> None:
     self.status = "cancelled"

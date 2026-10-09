@@ -66,7 +66,7 @@ Queries cannot use `HasOne`, `HasMany`, or `Reference` fields.
 ## Quick example
 
 ```python
-from protean import Domain
+from protean import Domain, current_domain, read
 from protean.fields import Identifier, Integer, String
 
 domain = Domain()
@@ -80,12 +80,38 @@ class OrderSummary:
 @domain.query(part_of="OrderSummary")
 class SearchOrders:
     status: String()
-    page: Integer(default=1)
-    page_size: Integer(default=20)
+    page: Integer(default=1, min_value=1)
+    page_size: Integer(default=20, min_value=1)
 
-# Construct (validated, immutable); dispatch via a query handler
-query = SearchOrders(status="placed")
-result = domain.dispatch(query)  # requires a registered query handler
+@domain.query_handler(part_of="OrderSummary")
+class OrderSummaryQueryHandler:
+    @read(SearchOrders)
+    def search(self, query: SearchOrders):
+        view = current_domain.view_for(OrderSummary)
+        return (
+            view.query.filter(status=query.status)
+            .order_by("order_id")
+            .offset((query.page - 1) * query.page_size)
+            .limit(query.page_size)
+            .all()
+            .items
+        )
+
+domain.init(traverse=False)
+
+with domain.domain_context():
+    repo = domain.repository_for(OrderSummary)
+    repo.add(OrderSummary(order_id="ORD-001", customer_name="Ada", status="placed"))
+    repo.add(OrderSummary(order_id="ORD-002", customer_name="Bo", status="shipped"))
+    repo.add(OrderSummary(order_id="ORD-003", customer_name="Cy", status="placed"))
+
+    # Construct (validated, immutable); dispatch returns the handler's result
+    query = SearchOrders(status="placed")
+    result = domain.dispatch(query)
+    assert [summary.order_id for summary in result] == ["ORD-001", "ORD-003"]
+
+    page_two = domain.dispatch(SearchOrders(status="placed", page=2, page_size=1))
+    assert [summary.order_id for summary in page_two] == ["ORD-003"]
 ```
 
 ## Common mistakes
@@ -93,6 +119,7 @@ result = domain.dispatch(query)  # requires a registered query handler
 ### Targeting an aggregate instead of a projection
 
 ```python
+# fragment
 @domain.query(part_of="Order")  # Wrong! Queries target a read model
 class GetOrderById:
     order_id: Identifier(required=True)
@@ -119,6 +146,7 @@ Instead: name it for what it returns — `GetOrderById`, `SearchOrders`.
 ### Mutating a query after construction
 
 ```python
+# fragment
 query = GetOrderById(order_id="ORD-001")
 query.order_id = "ORD-002"  # Raises IncorrectUsageError!
 ```
@@ -128,6 +156,7 @@ Instead: create a new query instance.
 ### Putting associations in a query
 
 ```python
+# fragment
 @domain.query(part_of="OrderSummary")
 class SearchOrders:
     lines = HasMany("OrderLine")  # Wrong! No associations in queries

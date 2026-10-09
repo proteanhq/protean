@@ -28,6 +28,14 @@ class ERPSubscriber:
 The subscriber loads the aggregate from repository and calls methods directly.
 
 ```python
+@domain.aggregate
+class Order:
+    status: String(default="PENDING")
+
+    def mark_paid(self) -> None:
+        self.status = "PAID"
+
+
 @domain.subscriber(stream="payment_gateway")
 class PaymentSubscriber:
     def __call__(self, payload: dict) -> None:
@@ -59,11 +67,19 @@ domain.config["command_processing"] = "sync"
 
 ## Publishing test messages
 
-Use the broker to simulate external messages in tests:
+Use the broker to simulate external messages in tests. Initialize the domain
+first, and publish inside a domain context:
 
 ```python
-domain.brokers["default"].publish(
-    "stream_name",
-    {"key": "value"},
-)
+domain.init(traverse=False)
+
+with domain.domain_context():
+    domain.repository_for(Order).add(Order(id="ORD-001"))
+
+    domain.brokers["default"].publish(
+        "payment_gateway",
+        {"orderId": "ORD-001"},
+    )
+
+    assert domain.repository_for(Order).get("ORD-001").status == "PAID"
 ```

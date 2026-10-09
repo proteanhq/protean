@@ -27,12 +27,17 @@ Key highlights:
 The phone validator demonstrates a common pattern: **strip formatting, then validate structure**.
 
 ```python
+from protean.exceptions import ValidationError
+
+
 class PhoneValidator:
     def __init__(self):
-        self.error = "Invalid phone number..."
+        self.error = "Invalid phone number. Must start with + followed by 10-15 digits"
 
     def __call__(self, value):
-        cleaned = value.replace("-", "").replace(" ", "")...
+        cleaned = (
+            value.replace("-", "").replace(" ", "").replace("(", "").replace(")", "")
+        )
         if not cleaned.startswith("+"):
             raise ValidationError(self.error)
         digits = cleaned[1:]
@@ -45,6 +50,32 @@ Design decisions:
 - Requires international prefix (+) for unambiguous formatting
 - Validates digit count range (10-15) per E.164 standard
 
+Call it on two valid numbers and two invalid ones. `"+1 (555) 123-4567"` passes
+once the separators are stripped. `"1-555-123-4567"` has the right digits but no
+`+` prefix, and `"+1234"` has the prefix but too few digits, so both raise:
+
+```python
+validator = PhoneValidator()
+validator("+1-555-123-4567")  # passes
+validator("+1 (555) 123-4567")  # passes: parens and spaces are stripped
+
+for invalid in ["1-555-123-4567", "+1234"]:
+    try:
+        validator(invalid)
+    except ValidationError:
+        pass
+    else:
+        raise AssertionError(f"{invalid} should be rejected")
+```
+
+Attach it to a field with the `validators` parameter:
+
+```python
+@domain.value_object
+class Phone:
+    number: String(required=True, max_length=30, validators=[PhoneValidator()])
+```
+
 ### UrlValidator
 
 The URL validator checks structural validity without external libraries:
@@ -52,6 +83,9 @@ The URL validator checks structural validity without external libraries:
 ```python
 class UrlValidator:
     VALID_SCHEMES = ("http://", "https://")
+
+    def __init__(self):
+        self.error = "Invalid URL. Must start with http:// or https://"
 
     def __call__(self, value):
         if not any(value.startswith(scheme) for scheme in self.VALID_SCHEMES):
@@ -93,6 +127,10 @@ class MyValidator:
 Test validators both in isolation and within domain elements:
 
 ```python
+import pytest
+from protean.exceptions import ValidationError
+
+
 # Test validator directly
 def test_valid_phone():
     validator = PhoneValidator()
@@ -101,7 +139,7 @@ def test_valid_phone():
 def test_invalid_phone():
     validator = PhoneValidator()
     with pytest.raises(ValidationError):
-        validator("555-1234")  # Missing + prefix
+        validator("1-555-123-4567")  # Missing + prefix
 
 # Test via value object
 def test_phone_value_object():

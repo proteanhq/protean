@@ -73,6 +73,7 @@ later steps need and issues the first command. A saga needs at least one; give i
 one per event that can begin the flow.
 
 ```python
+# fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
@@ -89,6 +90,7 @@ aggregate's [command-handler](../command-handler/SKILL.md), which does the actua
 work.
 
 ```python
+# fragment
 @handle(StockReserved, correlate="order_id")
 def on_stock_reserved(self, event: StockReserved) -> None:
     # Remember the reservation: the failure path needs it to compensate.
@@ -103,6 +105,7 @@ Mark a terminating handler `end=True` on every path that ends the flow. The
 success path closes when the shipment goes out:
 
 ```python
+# fragment
 @handle(ShipmentDispatched, correlate="order_id", end=True)
 def on_shipment_dispatched(self, event: ShipmentDispatched) -> None:
     self.status = "fulfilled"
@@ -118,6 +121,7 @@ compensating commands, then end the saga. Here, a failed payment releases the
 stock reservation and cancels the order:
 
 ```python
+# fragment
 @handle(PaymentFailed, correlate="order_id", end=True)
 def on_payment_failed(self, event: PaymentFailed) -> None:
     self.status = "cancelled"
