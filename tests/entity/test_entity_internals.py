@@ -95,7 +95,10 @@ class TestEntityUpdateData:
         order = Order(name="Test")
         with pytest.raises(TypeError) as exc_info:
             order._update_data("not a dict")
-        assert "must be a dict" in str(exc_info.value)
+        assert str(exc_info.value) == (
+            "Positional argument not a dict passed must be a dict. "
+            "This argument serves as a template for loading common values."
+        )
 
     def test_validation_error_collection_in_update_data(self, test_domain):
         """Validation errors collected during _update_data."""

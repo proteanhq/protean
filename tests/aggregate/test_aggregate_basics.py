@@ -153,7 +153,18 @@ class TestAggregateInitialization:
     def test_template_must_be_dict(self):
         with pytest.raises(TypeError) as exc:
             Person(["John", "Doe", 23])
-        assert "must be a dict" in str(exc.value)
+        assert str(exc.value) == (
+            "Positional argument ['John', 'Doe', 23] passed must be a dict. "
+            "This argument serves as a template for loading common values."
+        )
+
+    def test_non_dict_after_dict_template_raises(self):
+        with pytest.raises(TypeError) as exc:
+            Person({"first_name": "John"}, "Doe")
+        assert str(exc.value) == (
+            "Positional argument Doe passed must be a dict. "
+            "This argument serves as a template for loading common values."
+        )
 
     def test_extra_fields_rejected(self):
         with pytest.raises(ValidationError):

@@ -40,5 +40,9 @@ def test_non_dict_positional_arg_raises_type_error(test_domain):
     test_domain.register(Register, part_of=User)
     test_domain.init(traverse=False)
 
-    with pytest.raises(TypeError, match="must be a dict"):
+    with pytest.raises(TypeError) as exc:
         Register("not-a-dict")
+    assert str(exc.value) == (
+        "Positional argument not-a-dict passed must be a dict. "
+        "This argument serves as a template for loading common values."
+    )

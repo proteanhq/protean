@@ -327,8 +327,12 @@ class TestTemplateDictInit:
 
     def test_init_with_invalid_positional_arg(self):
         """Non-dict positional args should raise TypeError."""
-        with pytest.raises(TypeError, match="must be a dict"):
+        with pytest.raises(TypeError) as exc:
             OrderFulfillmentPM("not-a-dict")
+        assert str(exc.value) == (
+            "Positional argument not-a-dict passed must be a dict. "
+            "This argument serves as a template for loading common values."
+        )
 
 
 class TestDefaultFactory:

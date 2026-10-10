@@ -37,7 +37,10 @@ class TestEventTemplateDictPattern:
 
         with pytest.raises(TypeError) as exc_info:
             OrderPlaced("not a dict")
-        assert "must be a dict" in str(exc_info.value)
+        assert str(exc_info.value) == (
+            "Positional argument not a dict passed must be a dict. "
+            "This argument serves as a template for loading common values."
+        )
 
     def test_dict_positional_arg_merged(self, test_domain):
         """Positional dict merged with kwargs."""

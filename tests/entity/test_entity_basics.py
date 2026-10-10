@@ -143,7 +143,10 @@ class TestEntityInitialization:
     def test_template_must_be_dict(self):
         with pytest.raises(TypeError) as exc:
             Product(["Widget", 10.0, 3])
-        assert "must be a dict" in str(exc.value)
+        assert str(exc.value) == (
+            "Positional argument ['Widget', 10.0, 3] passed must be a dict. "
+            "This argument serves as a template for loading common values."
+        )
 
     def test_extra_fields_rejected(self):
         with pytest.raises(ValidationError):
