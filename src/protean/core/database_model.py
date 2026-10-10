@@ -33,7 +33,7 @@ class BaseDatabaseModel(Element, OptionsMixin):
     | Option | Type | Description |
     |--------|------|-------------|
     | ``part_of`` | ``type`` | The aggregate or entity this model maps. Required. |
-    | ``database`` | ``str`` | The database provider name (default: ``"default"``). |
+    | ``database`` | ``str`` | The database type this model applies to (e.g. ``"sqlite"``, ``"elasticsearch"``), not a provider name. Without it, the model is used for any database type that has no model of its own. |
     | ``schema_name`` | ``str`` | Override the storage table/collection name. |
     """
 
