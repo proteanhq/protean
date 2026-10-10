@@ -60,7 +60,7 @@ handled by auto-generation:
 |--------|------|-------------|
 | `part_of` | class | **Required.** The aggregate or entity this model maps to |
 | `schema_name` | str | Override the storage table/collection name |
-| `database` | str | The database type this model applies to: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or `elasticsearch`. This is not a provider name. Without it, the model is used for any database type that has no model of its own. |
+| `database` | str | The database type this model applies to: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or `elasticsearch`. This is not a provider name. It has no default: without it, the model is used for any database type that has no model of its own. |
 
 ```python
 --8<-- "guides/change-state/database-models/001.py:options"
