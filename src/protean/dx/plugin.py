@@ -78,6 +78,11 @@ PLUGIN_REFERENCES_ROOT = f"{PLUGIN_ROOT}/{REFERENCES_DIR}"
 # not part of a skill, so the plugin render drops every one.
 _PACKAGE_MARKER = "__init__.py"
 
+# Python writes a bytecode cache next to any pack asset that gets imported as a
+# module, for example while trying a skill's example by hand. The cache is local
+# build output, so neither the render nor the committed-tree scan counts it.
+_BYTECODE_CACHE = "__pycache__"
+
 # The plain-language descriptions the manifests carry. This cut ships skills
 # only: no commands, agents, or hooks, and the MCP registration stays with the
 # ``.mcp.json`` renderer.
@@ -146,10 +151,13 @@ def _iter_pack_files(root: Traversable) -> Iterator[tuple[str, bytes]]:
     """Yield ``(relative_posix_path, bytes)`` for every file under a pack subtree.
 
     Walks the subtree in sorted order (so the render is deterministic), reads
-    each file's exact bytes, and drops any ``__init__.py`` package marker.
+    each file's exact bytes, and drops any ``__init__.py`` package marker and
+    any ``__pycache__`` directory.
     """
     for child in sorted(root.iterdir(), key=lambda entry: entry.name):
         if child.is_dir():
+            if child.name == _BYTECODE_CACHE:
+                continue
             for relative, data in _iter_pack_files(child):
                 yield f"{child.name}/{relative}", data
         elif child.name != _PACKAGE_MARKER:
@@ -194,7 +202,7 @@ def _committed_paths(root: Path) -> set[str]:
     plugin_root = root / PLUGIN_ROOT
     if plugin_root.is_dir():
         for path in plugin_root.rglob("*"):
-            if path.is_file():
+            if path.is_file() and _BYTECODE_CACHE not in path.parts:
                 paths.add(path.relative_to(root).as_posix())
     return paths
 

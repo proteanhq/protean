@@ -28,6 +28,7 @@ from protean.dx.plugin import (
     PLUGIN_ROOT,
     PLUGIN_SKILLS_ROOT,
     PLUGIN_SOURCE,
+    _iter_pack_files,
     _prune_empty_dirs,
     marketplace_manifest,
     plugin_drift,
@@ -187,6 +188,18 @@ def test_no_package_marker_is_projected() -> None:
     assert not any(path.endswith("/__init__.py") for path in rendered)
 
 
+def test_bytecode_cache_is_not_projected(tmp_path: Path) -> None:
+    """A ``__pycache__`` left beside a pack asset never reaches the render."""
+    assets = tmp_path / "assets"
+    (assets / "__pycache__").mkdir(parents=True)
+    (assets / "example.py").write_text("x = 1\n", encoding="utf-8")
+    (assets / "__pycache__" / "example.cpython-314.pyc").write_bytes(b"\x00")
+
+    assert [relative for relative, _ in _iter_pack_files(tmp_path)] == [
+        "assets/example.py"
+    ]
+
+
 def test_skill_files_are_copied_verbatim() -> None:
     """A projected skill file carries the pack source's exact bytes.
 
@@ -287,6 +300,16 @@ def test_build_prunes_a_file_the_render_no_longer_produces(tmp_path: Path) -> No
     assert result.exit_code == 0, result.output
     assert not orphan.exists()
     assert not orphan.parent.exists()
+
+
+def test_check_ignores_a_bytecode_cache_in_the_tree(tmp_path: Path) -> None:
+    """A ``__pycache__`` inside the committed tree is not ``extra`` drift."""
+    write_plugin(tmp_path, PACK_VERSION)
+    cache = tmp_path / PLUGIN_SKILLS_ROOT / "aggregate" / "__pycache__"
+    cache.mkdir(parents=True)
+    (cache / "example.cpython-314.pyc").write_bytes(b"\x00")
+
+    assert plugin_drift(tmp_path, PACK_VERSION) == []
 
 
 def test_drift_reports_a_missing_file(tmp_path: Path) -> None:
