@@ -103,8 +103,9 @@ class OrderRepository:
 
 ## Quick example: Custom repository with queries
 
-Every field a query method filters on gets an index. Without one, `check`
-reports `UNINDEXED_FILTER_PATH`. Index `String` fields, not `Text`: an index on
+Every field a query method filters on needs an index. The identifier field and
+any field marked `unique=True` already have one. For any other field, add an
+`Index`; without one, `check` reports `UNINDEXED_FILTER_PATH`. Index `String` fields, not `Text`: an index on
 a `Text` field makes `check` report `UNBOUNDED_INDEXED_STRING`:
 
 ```python
