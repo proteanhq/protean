@@ -61,49 +61,35 @@ tests/
     └── test_get_customer.py
 ```
 
+### The example app
+
+Take a small bookstore app. A customer places an order for books, and an event
+handler takes the ordered books out of stock:
+
+```python
+--8<-- "guides/fastapi/testing-endpoints/001.py:domain-imports"
+--8<-- "guides/fastapi/testing-endpoints/001.py:domain"
+```
+
+In the layout above, this code lives in `myapp/`, and each example below goes
+in the file named in its title. The examples leave out the imports of `domain`
+and the elements from `myapp`, so each block shows only the new code.
+
 ### The `conftest.py` recipe
 
 Endpoint tests need two things: a domain that processes commands synchronously,
 and a FastAPI `TestClient` wired to that domain.
 
-```python
-# tests/conftest.py
-import pytest
-
-from protean.integrations.pytest import DomainFixture
-
-from myapp.domain import domain
-
-
-@pytest.fixture(scope="session")
-def app_fixture():
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-
-    fixture = DomainFixture(domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():
-        yield
+```python title="tests/conftest.py"
+--8<-- "guides/fastapi/testing-endpoints/001.py:pytest-import"
+--8<-- "guides/fastapi/testing-endpoints/001.py:fixture-import"
+--8<-- "guides/fastapi/testing-endpoints/001.py:conftest"
 ```
 
-```python
-# tests/api/conftest.py
-import pytest
-
-from fastapi.testclient import TestClient
-
-from myapp.api import app
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
+```python title="tests/api/conftest.py"
+--8<-- "guides/fastapi/testing-endpoints/001.py:pytest-import"
+--8<-- "guides/fastapi/testing-endpoints/001.py:client-import"
+--8<-- "guides/fastapi/testing-endpoints/001.py:client"
 ```
 
 That's it. The root `conftest.py` handles domain lifecycle and per-test cleanup
@@ -121,62 +107,15 @@ Every test starts with a clean slate, no leftover data from previous tests.
 The most common Protean endpoint pattern accepts a request, builds a command,
 and hands it to `domain.process()`:
 
-```python
-# myapp/api.py
-from fastapi import FastAPI
-from pydantic import BaseModel
-
-from protean.integrations.fastapi import (
-    DomainContextMiddleware,
-    register_exception_handlers,
-)
-from protean.utils.globals import current_domain
-
-from myapp.commands import PlaceOrder, OrderItemVO
-from myapp.domain import domain
-
-app = FastAPI()
-app.add_middleware(DomainContextMiddleware, route_domain_map={"/": domain})
-register_exception_handlers(app)
-
-
-class PlaceOrderRequest(BaseModel):
-    customer_id: str
-    items: list[dict]
-
-
-@app.post("/orders", status_code=201)
-def place_order(payload: PlaceOrderRequest):
-    order_id = current_domain.process(
-        PlaceOrder(
-            customer_id=payload.customer_id,
-            items=[OrderItemVO(**item) for item in payload.items],
-        )
-    )
-    return {"order_id": order_id}
+```python title="myapp/api.py"
+--8<-- "guides/fastapi/testing-endpoints/001.py:api-imports"
+--8<-- "guides/fastapi/testing-endpoints/001.py:api"
 ```
 
 ### The happy path
 
-```python
-# tests/api/test_create_order.py
-from myapp.models import Customer, Order
-
-
-def test_place_order_returns_201(client):
-    # Seed the customer that the order references
-    from myapp.domain import domain
-
-    customer = Customer(name="Alice")
-    domain.repository_for(Customer).add(customer)
-
-    response = client.post("/orders", json={
-        "customer_id": customer.id,
-        "items": [{"book_id": "book-1", "quantity": 2}],
-    })
-
-    assert response.status_code == 201
-    assert "order_id" in response.json()
+```python title="tests/api/test_create_order.py"
+--8<-- "guides/fastapi/testing-endpoints/001.py:happy-path"
 ```
 
 Notice the pattern:
@@ -197,21 +136,7 @@ Sometimes you want to verify what happened *inside* the domain after the
 endpoint returns. Query the repository directly:
 
 ```python
-def test_place_order_creates_order(client):
-    from myapp.domain import domain
-
-    customer = Customer(name="Bob")
-    domain.repository_for(Customer).add(customer)
-
-    response = client.post("/orders", json={
-        "customer_id": customer.id,
-        "items": [{"book_id": "book-1", "quantity": 3}],
-    })
-
-    order_id = response.json()["order_id"]
-    order = domain.repository_for(Order).get(order_id)
-    assert order.customer_id == customer.id
-    assert order.status == "PENDING"
+--8<-- "guides/fastapi/testing-endpoints/001.py:side-effects"
 ```
 
 ### Testing error responses
@@ -220,23 +145,7 @@ With `register_exception_handlers` in place, domain exceptions become
 proper HTTP errors automatically:
 
 ```python
-def test_place_order_for_nonexistent_customer_returns_404(client):
-    response = client.post("/orders", json={
-        "customer_id": "nonexistent",
-        "items": [{"book_id": "book-1", "quantity": 1}],
-    })
-
-    assert response.status_code == 404
-    assert "error" in response.json()
-
-
-def test_place_order_with_invalid_data_returns_400(client):
-    response = client.post("/orders", json={
-        "customer_id": "",
-        "items": [],
-    })
-
-    assert response.status_code == 400
+--8<-- "guides/fastapi/testing-endpoints/001.py:errors"
 ```
 
 The endpoint code doesn't need try/except. It raises domain exceptions
@@ -248,42 +157,12 @@ keeps endpoints thin and tests focused on behavior.
 Query endpoints read from repositories or projections. They don't process
 commands:
 
-```python
-# myapp/api.py
-from myapp.models import Customer
-
-@app.get("/customers/{customer_id}")
-def get_customer(customer_id: str):
-    customer = current_domain.repository_for(Customer).get(customer_id)
-    return {
-        "id": customer.id,
-        "name": customer.name,
-        "email": customer.email,
-    }
+```python title="myapp/api.py"
+--8<-- "guides/fastapi/testing-endpoints/001.py:query-endpoint"
 ```
 
-```python
-# tests/api/test_get_customer.py
-from myapp.domain import domain
-from myapp.models import Customer
-
-
-def test_get_customer_returns_200(client):
-    customer = Customer(name="Alice", email="alice@example.com")
-    domain.repository_for(Customer).add(customer)
-
-    response = client.get(f"/customers/{customer.id}")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["name"] == "Alice"
-    assert data["email"] == "alice@example.com"
-
-
-def test_get_nonexistent_customer_returns_404(client):
-    response = client.get("/customers/does-not-exist")
-
-    assert response.status_code == 404
+```python title="tests/api/test_get_customer.py"
+--8<-- "guides/fastapi/testing-endpoints/001.py:query-tests"
 ```
 
 ## Testing event-driven side effects through endpoints
@@ -292,24 +171,7 @@ When a command triggers events that cause cross-aggregate side effects,
 sync processing ensures everything completes before the response returns:
 
 ```python
-def test_placing_order_updates_inventory(client):
-    from myapp.domain import domain
-    from myapp.models import Customer, Inventory
-
-    customer = Customer(name="Alice")
-    domain.repository_for(Customer).add(customer)
-
-    inventory = Inventory(book_id="book-1", quantity=10)
-    domain.repository_for(Inventory).add(inventory)
-
-    client.post("/orders", json={
-        "customer_id": customer.id,
-        "items": [{"book_id": "book-1", "quantity": 3}],
-    })
-
-    # The OrderPlaced event handler has already run (sync processing)
-    updated = domain.repository_for(Inventory).get(inventory.id)
-    assert updated.quantity == 7
+--8<-- "guides/fastapi/testing-endpoints/001.py:event-side-effects"
 ```
 
 With `event_processing = "sync"`, event handlers and projectors fire
@@ -322,38 +184,15 @@ confidence without needing to poll or wait.
 
 When multiple tests need the same preconditions:
 
-```python
-# tests/api/conftest.py
-import pytest
-
-from fastapi.testclient import TestClient
-
-from myapp.api import app
-from myapp.domain import domain
-from myapp.models import Customer
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
-
-
-@pytest.fixture
-def alice():
-    """A pre-existing customer for order tests."""
-    customer = Customer(name="Alice", email="alice@example.com")
-    domain.repository_for(Customer).add(customer)
-    return customer
+```python title="tests/api/conftest.py"
+--8<-- "guides/fastapi/testing-endpoints/001.py:pytest-import"
+--8<-- "guides/fastapi/testing-endpoints/001.py:client-import"
+--8<-- "guides/fastapi/testing-endpoints/001.py:client"
+--8<-- "guides/fastapi/testing-endpoints/001.py:alice"
 ```
 
-```python
-# tests/api/test_create_order.py
-def test_place_order(client, alice):
-    response = client.post("/orders", json={
-        "customer_id": alice.id,
-        "items": [{"book_id": "book-1", "quantity": 1}],
-    })
-    assert response.status_code == 201
+```python title="tests/api/test_create_order.py"
+--8<-- "guides/fastapi/testing-endpoints/001.py:seed-fixture-test"
 ```
 
 ### Authenticated request fixture
@@ -361,11 +200,7 @@ def test_place_order(client, alice):
 For endpoints behind authentication:
 
 ```python
-@pytest.fixture
-def auth_client(client):
-    """Client with a valid auth token."""
-    client.headers["Authorization"] = "Bearer test-token-for-alice"
-    return client
+--8<-- "guides/fastapi/testing-endpoints/001.py:auth-client"
 ```
 
 ### Response assertion helpers
@@ -373,14 +208,7 @@ def auth_client(client):
 For repeated response shape checks:
 
 ```python
-def assert_error_response(response, status_code, message_fragment=None):
-    """Assert that the response is an error with the expected status."""
-    assert response.status_code == status_code
-    data = response.json()
-    assert "error" in data
-    if message_fragment:
-        error_text = str(data["error"])
-        assert message_fragment in error_text
+--8<-- "guides/fastapi/testing-endpoints/001.py:assert-helper"
 ```
 
 ## Multi-domain applications
@@ -389,56 +217,14 @@ When your application has multiple bounded contexts, the middleware maps
 URL prefixes to domains. Tests create separate clients or use the same
 client with different URL paths:
 
-```python
-# myapp/api.py
-from myapp.identity import identity_domain
-from myapp.ordering import ordering_domain
-
-app = FastAPI()
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={
-        "/customers": identity_domain,
-        "/orders": ordering_domain,
-    },
-)
+```python title="myapp/api.py"
+--8<-- "guides/fastapi/testing-endpoints/002.py:api-imports"
+--8<-- "guides/fastapi/testing-endpoints/002.py:api"
 ```
 
-```python
-# tests/api/conftest.py
-import pytest
-
-from protean.integrations.pytest import DomainFixture
-
-from myapp.identity import identity_domain
-from myapp.ordering import ordering_domain
-
-
-@pytest.fixture(scope="session")
-def identity_fixture():
-    identity_domain.config["command_processing"] = "sync"
-    identity_domain.config["event_processing"] = "sync"
-    fixture = DomainFixture(identity_domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(scope="session")
-def ordering_fixture():
-    ordering_domain.config["command_processing"] = "sync"
-    ordering_domain.config["event_processing"] = "sync"
-    fixture = DomainFixture(ordering_domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(autouse=True)
-def _ctx(identity_fixture, ordering_fixture):
-    with identity_fixture.domain_context():
-        with ordering_fixture.domain_context():
-            yield
+```python title="tests/api/conftest.py"
+--8<-- "guides/fastapi/testing-endpoints/002.py:conftest-imports"
+--8<-- "guides/fastapi/testing-endpoints/002.py:conftest"
 ```
 
 Each request path activates the correct domain context automatically. The test

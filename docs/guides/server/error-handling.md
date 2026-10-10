@@ -286,32 +286,8 @@ Every handler and subscriber class can override `handle_error()` to
 implement custom error logic:
 
 ```python
-@domain.event_handler(part_of=Order)
-class OrderEventHandler:
-    @handle(OrderPlaced)
-    def on_order_placed(self, event):
-        # ... processing logic
-        pass
-
-    @classmethod
-    def handle_error(cls, exc, message):
-        """Called when the handler raises an exception."""
-        for failure in _each(exc):
-            if isinstance(failure, ExternalServiceUnavailable):
-                alert_ops_team(failure, message)
-        # `{exc}` on a group prints a count and drops every cause.
-        logger.error("OrderEventHandler failed: %s", "; ".join(
-            f"{type(f).__name__}: {f}" for f in _each(exc)
-        ))
-
-
-def _each(exc):
-    """Yield each failure, flattening an exception group."""
-    if isinstance(exc, BaseExceptionGroup):
-        for inner in exc.exceptions:
-            yield from _each(inner)
-    else:
-        yield exc
+--8<-- "guides/server/error-handling/001.py:model"
+--8<-- "guides/server/error-handling/001.py:handler"
 ```
 
 The `handle_error()` callback receives the exception and the original message.

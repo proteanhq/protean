@@ -20,9 +20,17 @@ both IDs:
 - **`causation_id`**: The `headers.id` of the *immediate parent* message.
   It answers: "What directly caused this message?"
 
+Take a small order domain. Handling `PlaceOrder` raises `OrderPlaced`, and an
+event handler reacts to `OrderPlaced` by dispatching `ConfirmOrder`:
+
 ```python
-# This is all you need. Both IDs are set automatically.
-domain.process(PlaceOrder(customer_id="cust-123", items=items))
+--8<-- "guides/observability/correlation-and-causation/001.py:model"
+```
+
+Placing an order takes one call:
+
+```python
+--8<-- "guides/observability/correlation-and-causation/001.py:process"
 ```
 
 When no external `correlation_id` is provided, Protean generates a UUID4 hex
@@ -42,10 +50,7 @@ in.
 Pass the `correlation_id` parameter directly:
 
 ```python
-domain.process(
-    PlaceOrder(customer_id="cust-123", items=items),
-    correlation_id="req-abc-123-from-gateway",
-)
+--8<-- "guides/observability/correlation-and-causation/001.py:explicit"
 ```
 
 ### Automatically via HTTP headers
@@ -56,19 +61,8 @@ incoming request and stores it in the global context. `current_domain.process()`
 picks it up automatically:
 
 ```python
-from protean import current_domain
-from protean.integrations.fastapi import DomainContextMiddleware
-
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={"/orders": order_domain},
-)
-
-@router.post("/orders")
-async def place_order(request: PlaceOrderRequest):
-    # No need to extract headers -- the middleware already did it.
-    # The correlation ID flows through automatically.
-    current_domain.process(PlaceOrder(**request.model_dump()))
+--8<-- "guides/observability/correlation-and-causation/002.py:imports"
+--8<-- "guides/observability/correlation-and-causation/002.py:middleware"
 ```
 
 The middleware also injects `X-Correlation-ID` into the response, reflecting
@@ -185,33 +179,20 @@ Both IDs are stored in `DomainMeta`, the domain-specific section of message
 metadata:
 
 ```python
-# On a command or event object
-event._metadata.domain.correlation_id  # "ext-123"
-event._metadata.domain.causation_id    # "myapp::order:command-abc123-0"
-
-# On a deserialized Message
-message.metadata.domain.correlation_id
-message.metadata.domain.causation_id
+--8<-- "guides/observability/correlation-and-causation/001.py:ids"
 ```
+
+!!! warning "Known issue: a rebuilt event loses both IDs"
+    An event rebuilt from a stored message with `message.to_domain_object()`
+    has `None` for `correlation_id` and `causation_id`. A rebuilt command keeps
+    both. Read the IDs from the `Message` when you start from the store.
 
 ### Traversing the chain programmatically
 
 The event store provides three methods for causation chain traversal:
 
 ```python
-store = domain.event_store.store
-
-# Walk UP from a message to the root command
-chain = store.trace_causation(some_message)
-# Returns [root_command, ..., target_message]
-
-# Walk DOWN from a command to find all its effects
-effects = store.trace_effects(command_message)
-# Returns downstream events/commands in chronological order
-
-# Build the full tree for a correlation ID
-root = store.build_causation_tree("ext-123")
-# Returns a CausationNode with .children recursively populated
+--8<-- "guides/observability/correlation-and-causation/001.py:traverse"
 ```
 
 For the common case of "give me the whole chain in causal order",
@@ -219,10 +200,7 @@ For the common case of "give me the whole chain in causal order",
 into a depth-first, pre-order list (each parent appears before its effects):
 
 ```python
-chain = domain.correlation_trace("ext-123")
-for node in chain:
-    print(f"{node.kind}: {node.message_type}")
-# Returns [] when no messages match the correlation ID.
+--8<-- "guides/observability/correlation-and-causation/001.py:correlation-trace"
 ```
 
 ### Asserting a chain in tests
@@ -232,18 +210,7 @@ exact sequence of message types, in order. Pass type names or the element
 classes themselves (their `__type__` is used):
 
 ```python
-from protean.testing import assert_chain
-
-chain = domain.correlation_trace(correlation_id)
-
-# Compare against element classes...
-assert_chain(chain, [PlaceOrder, OrderPlaced, ConfirmOrder, OrderConfirmed])
-
-# ...or against fully-qualified type strings:
-assert_chain(chain, [
-    "Shipping.PlaceOrder.v1",
-    "Shipping.OrderPlaced.v1",
-])
+--8<-- "guides/observability/correlation-and-causation/001.py:assert-chain"
 ```
 
 It raises `AssertionError` with the expected and actual sequences when the
@@ -279,14 +246,7 @@ correlation ID, a fresh UUID is generated so the chain within the consuming
 service is still fully traced.
 
 ```python
-@domain.subscriber(channel="payments")
-class PaymentSubscriber:
-    def __call__(self, message):
-        # The correlation_id from the source service is already in context.
-        # Any commands dispatched here inherit it automatically.
-        domain.process(
-            ConfirmPayment(order_id=message["order_id"]),
-        )
+--8<-- "guides/observability/correlation-and-causation/003.py:payments"
 ```
 
 ### Nested command preservation
@@ -297,12 +257,7 @@ call. This prevents the second command from losing the original correlation
 chain:
 
 ```python
-@domain.subscriber(channel="fulfillment")
-class FulfillmentSubscriber:
-    def __call__(self, message):
-        # Both commands inherit the same correlation_id from the broker message.
-        domain.process(ReserveInventory(order_id=message["order_id"]))
-        domain.process(NotifyWarehouse(order_id=message["order_id"]))
+--8<-- "guides/observability/correlation-and-causation/003.py:fulfillment"
 ```
 
 ---
@@ -402,11 +357,7 @@ in an application that manages its own logging, wire the integrations
 explicitly:
 
 ```python
-import logging
-from protean.integrations.logging import ProteanCorrelationFilter
-
-for handler in logging.getLogger().handlers:
-    handler.addFilter(ProteanCorrelationFilter())
+--8<-- "guides/server/logging/005.py:filter"
 ```
 
 Attach the filter to each handler on the root logger. A filter on a logger
@@ -414,15 +365,7 @@ runs only for records logged on that logger, so a filter on the root logger
 misses records from child loggers such as `logging.getLogger("myapp.orders")`.
 
 ```python
-import structlog
-from protean.integrations.logging import protean_correlation_processor
-
-structlog.configure(
-    processors=[
-        protean_correlation_processor,
-        structlog.dev.ConsoleRenderer(),
-    ]
-)
+--8<-- "guides/observability/correlation-and-causation/004.py:structlog"
 ```
 
 ### Safe when no context is active

@@ -104,11 +104,8 @@ any component is unhealthy or the engine is shutting down.
 Mount the equivalent router on your API process:
 
 ```python
-from fastapi import FastAPI
-from protean.integrations.fastapi.health import create_health_router
-
-app = FastAPI()
-app.include_router(create_health_router(domain))
+--8<-- "guides/server/hardening/001.py:imports"
+--8<-- "guides/server/hardening/001.py:health"
 ```
 
 The router exposes the same `/healthz`, `/livez`, and `/readyz` paths
@@ -135,36 +132,8 @@ ticket). Time-based trimming requires a Redis Streams broker.
 A minimal Slack webhook alert:
 
 ```python
-# myapp/alerts.py
-import logging
-import os
-import httpx
-
-logger = logging.getLogger(__name__)
-_SLACK_WEBHOOK = os.environ.get("SLACK_DLQ_WEBHOOK")
-
-
-def on_dlq_alert(dlq_stream: str, depth: int, threshold: int) -> None:
-    """Post a Slack message when a DLQ crosses its depth threshold."""
-    if not _SLACK_WEBHOOK:
-        logger.warning(
-            "DLQ alert: %s depth=%d threshold=%d", dlq_stream, depth, threshold
-        )
-        return
-
-    try:
-        httpx.post(
-            _SLACK_WEBHOOK,
-            json={
-                "text": (
-                    f":warning: DLQ `{dlq_stream}` has {depth} messages "
-                    f"(threshold {threshold}). Investigate before replaying."
-                )
-            },
-            timeout=2.0,
-        )
-    except httpx.HTTPError:
-        logger.exception("Failed to post DLQ alert to Slack")
+--8<-- "guides/server/hardening/002.py:imports"
+--8<-- "guides/server/hardening/002.py:alert"
 ```
 
 The callback fires once per maintenance cycle while the threshold is breached.
@@ -176,16 +145,19 @@ different SLAs, for example, an auditing handler that must keep 30 days of
 failures:
 
 ```python
-@domain.event_handler(
-    part_of=Order,
-    subscription_config={
-        "dlq_retention_hours": 720,
-        "dlq_alert_threshold": 10,
-    },
-)
-class AuditHandler(BaseEventHandler):
-    ...
+--8<-- "guides/server/hardening/003.py:imports"
+--8<-- "guides/server/hardening/003.py:order"
+--8<-- "guides/server/hardening/003.py:audit"
 ```
+
+!!! warning "Known issue: per-handler DLQ overrides have no effect yet"
+    The subscription config Protean builds for a handler does not carry
+    `dlq_retention_hours` or `dlq_alert_threshold`, so the engine applies the
+    `[server.dlq]` values to every handler. The dead-letter queue also needs a
+    stream subscription. A handler with no profile, like `AuditHandler`
+    above, uses `server.default_subscription_type`. That is `"event_store"`
+    unless you change it, and an event store subscription has no dead-letter
+    queue.
 
 For discovery, inspection, and replay of individual DLQ messages, see
 [Dead Letter Queues](./dead-letter-queues.md).
@@ -197,26 +169,14 @@ profile that matches its workload instead of tuning fields one at a
 time:
 
 ```python
-from protean.server.subscription.profiles import SubscriptionProfile
-
-@domain.event_handler(
-    part_of=Order,
-    subscription_profile=SubscriptionProfile.PRODUCTION,
-)
-class OrderEventHandler(BaseEventHandler):
-    ...
+--8<-- "guides/server/hardening/003.py:profile-imports"
+--8<-- "guides/server/hardening/003.py:profile"
 ```
 
 Override individual fields without abandoning the profile:
 
 ```python
-@domain.event_handler(
-    part_of=Order,
-    subscription_profile=SubscriptionProfile.PRODUCTION,
-    subscription_config={"messages_per_tick": 50},
-)
-class BulkOrderHandler(BaseEventHandler):
-    ...
+--8<-- "guides/server/hardening/003.py:override"
 ```
 
 ## Emit OpenTelemetry metrics
@@ -274,13 +234,7 @@ When you create and tear down domains from test or tooling code, call
 `domain.close()` yourself:
 
 ```python
-from my_domain import domain
-
-try:
-    with domain.domain_context():
-        ...  # do the work
-finally:
-    domain.close()
+--8<-- "guides/server/hardening/004.py:close"
 ```
 
 Custom adapters inherit a no-op `close()`; override it when your

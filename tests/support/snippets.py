@@ -448,7 +448,9 @@ for index, item in enumerate(job["files"], start=job["first_index"]):
                 padded = "\\n" * (block["line"] - 1) + block["source"]
                 before = {key: id(value) for key, value in namespace.items()}
                 earlier = registered()
-                exec(compile(padded, label, "exec"), namespace)
+                # Domain() takes its root folder from the caller's file name;
+                # a relative name would resolve against the scratch folder.
+                exec(compile(padded, item["path"], "exec"), namespace)
                 check_no_replacement(earlier)
                 annotate = namespace.pop("__annotate__", None)
                 if annotate is not None:

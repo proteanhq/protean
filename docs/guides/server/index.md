@@ -166,26 +166,17 @@ For examples of using test mode in your test suite, see
 
 ## Programmatic Usage
 
-You can also start the engine programmatically:
+You can also start the engine programmatically. Here `domain` is your
+`Domain` object:
 
 ```python
-from protean.server import Engine
-from my_domain import domain
-
-# Create and run the engine
-engine = Engine(domain)
-engine.run()  # Blocking call
+--8<-- "guides/server/index/001.py:engine"
 ```
 
 ### With Custom Options
 
 ```python
-engine = Engine(
-    domain,
-    test_mode=False,
-    debug=True,
-)
-engine.run()
+--8<-- "guides/server/index/001.py:options"
 ```
 
 ## Signal Handling

@@ -231,12 +231,7 @@ alert_callback = "myapp.alerts.page_oncall"
 ```
 
 ```python
-# myapp/alerts.py
-def page_oncall(dlq_stream: str, depth: int, threshold: int) -> None:
-    send_pagerduty_event(
-        summary=f"DLQ {dlq_stream} has {depth} entries (threshold {threshold})",
-        severity="warning",
-    )
+--8<-- "guides/server/dead-letter-queues/001.py:page_oncall"
 ```
 
 Exceptions raised by the callback are caught and logged. They never crash the
