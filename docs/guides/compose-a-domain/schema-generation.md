@@ -188,6 +188,33 @@ Optional fields use the `anyOf` pattern with `null`:
 }
 ```
 
+### Decimal fields
+
+Protean writes a `Decimal` value as a string in a JSON payload, so a `Decimal`
+field becomes a string with a pattern that accepts decimal numbers. The field's
+`precision` and `scale`, when set, go into `x-precision` and `x-scale`:
+
+```json
+{
+  "price": {
+    "type": "string",
+    "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+    "x-precision": 19,
+    "x-scale": 4
+  }
+}
+```
+
+`minimum` and `maximum` apply only to numbers, so a `Decimal` field's
+`min_value` and `max_value` are not written. A numeric `default` is written as a
+string, for example `"0"`.
+
+A `List(content_type=Decimal(precision=5, scale=2))` records only the item type
+`Decimal`. The item's precision and scale are not in the IR, so no generated
+contract carries them, and Protean does not check them on list items either.
+A fact event copies only each field's type and default from its aggregate, so a
+`Decimal` field on a fact event records no precision or scale.
+
 ---
 
 ## Validating payloads

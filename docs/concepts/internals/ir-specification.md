@@ -69,8 +69,8 @@ The `ir_version` field uses semantic versioning (`MAJOR.MINOR.PATCH`):
 
 - **Patch** (0.1.0 → 0.1.1): Bug fixes in IR generation. No schema changes.
 - **Minor** (0.1.0 → 0.2.0): Additive changes only. New optional keys, new
-  sections, new element types. **Consumers of 0.1.0 can read 0.2.0 by ignoring
-  unknown keys.**
+  sections, new element types, new field `type` values. **Consumers of 0.1.0
+  can read 0.2.0 by ignoring unknown keys and handling unknown `type` values.**
 - **Major** (0.x → 1.0): Breaking changes. Keys may be removed, renamed, or
   change meaning.
 
@@ -80,12 +80,14 @@ The `ir_version` field uses semantic versioning (`MAJOR.MINOR.PATCH`):
 2. **MUST NOT rely on key ordering** for semantics.
 3. **SHOULD provide defaults** for missing optional keys.
 4. **MUST check `ir_version`** and reject documents with a higher major version.
+5. **SHOULD treat an unknown field `type`** as an opaque value, not as an
+   error. For example, v0.3.0 added `Decimal`, which a v0.2.0 schema rejects.
 
 ### Producer Rules
 
 1. **MUST NOT remove or rename** existing keys in minor versions.
-2. **MAY add new keys**, top-level sections, or element type values in minor
-   versions.
+2. **MAY add new keys**, top-level sections, element type values, or field
+   `type` values in minor versions.
 3. **MUST include `ir_version`** in every document.
 4. **MUST bump the schema version on any structural change**: Any change to the
    JSON Schema (a new key, section, or element type) bumps the IR schema minor
@@ -119,8 +121,8 @@ clear it.
 
 ```json
 {
-  "$schema": "https://protean.dev/ir/v0.2.0/schema.json",
-  "ir_version": "0.2.0",
+  "$schema": "https://protean.dev/ir/v0.3.0/schema.json",
+  "ir_version": "0.3.0",
   "generated_at": "2026-03-01T12:00:00Z",
   "checksum": "sha256:a1b2c3...",
 
@@ -390,7 +392,7 @@ rules govern field representation:
 
 | `kind` | Source | Description |
 |--------|--------|-------------|
-| `"standard"` | `String`, `Integer`, `Float`, `Boolean`, `Date`, `DateTime` | Basic data field |
+| `"standard"` | `String`, `Integer`, `Float`, `Decimal`, `Boolean`, `Date`, `DateTime` | Basic data field |
 | `"text"` | `Text` | Unbounded text |
 | `"identifier"` | `Identifier` | Identity-capable field |
 | `"auto"` | `Auto` | Auto-generated identity |
@@ -419,6 +421,7 @@ All possible keys (no single field has all of them):
 | `description` | Human-readable description |
 | `max_length`, `min_length` | String length constraints |
 | `max_value`, `min_value` | Numeric bounds |
+| `precision`, `scale` | Total digits and digits after the decimal point, on a `Decimal` field that sets them (added in v0.3.0) |
 | `choices` | Sorted list of allowed values |
 | `sanitize` | Present only for an explicit `sanitize=True` (declared intent); absent for an unset field, even one sanitized via a domain default |
 | `increment` | Auto-increment flag |
@@ -440,7 +443,9 @@ All possible keys (no single field has all of them):
 ### Type Names
 
 Data fields use Protean type names: `String`, `Text`, `Integer`, `Float`,
-`Boolean`, `Date`, `DateTime`, `Identifier`, `Auto`, `List`, `Dict`.
+`Decimal`, `Boolean`, `Date`, `DateTime`, `Identifier`, `Auto`, `List`, `Dict`.
+`Decimal` was added in v0.3.0; earlier versions recorded a `Decimal` field as
+`String`.
 Association fields omit `type`, the `target` FQN provides type information.
 
 ---
@@ -776,11 +781,11 @@ checksum. The expected workflow: upgrade → regenerate IR → review diff → c
 
 ## JSON Schema
 
-The complete JSON Schema (Draft 2020-12) for IR v0.1.0 is available at:
+The complete JSON Schema (Draft 2020-12) for IR v0.3.0 is available at:
 
 - **In the package**: `protean.ir.SCHEMA_PATH`
-  (`src/protean/ir/schema/v0.1.0/schema.json`)
-- **Canonical URL**: `https://protean.dev/ir/v0.1.0/schema.json`
+  (`src/protean/ir/schema/v0.3.0/schema.json`)
+- **Canonical URL**: `https://protean.dev/ir/v0.3.0/schema.json`
 
 ### Reference Examples
 

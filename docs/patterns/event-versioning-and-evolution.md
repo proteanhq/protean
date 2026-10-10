@@ -168,14 +168,16 @@ A stored payload written with the old `name` key now deserializes into
 `customer_name` without an upcaster. `renamed_from` also accepts a list of
 aliases (`renamed_from=["name", "full_name"]`) when a field has been renamed
 more than once. The compatibility checker reads the declared rename and reports
-a single safe `field_renamed` change rather than a breaking remove + add. Keep
+a safe `field_renamed` change rather than a breaking remove + add. Keep
 the `renamed_from` declaration for as long as payloads written under the old
 name may still be read.
 
 A rename only stays safe when the field type is unchanged: renaming *and*
 changing the type (say `String` to `Integer`) is still breaking, because an
 old payload's value cannot satisfy the new type. The checker reports that as a
-`field_type_changed` change; handle the type change with an upcaster.
+`field_type_changed` change; handle the type change with an upcaster. A
+`Decimal` field renamed with a lower or newly added `precision`, or a different
+`scale`, is breaking the same way.
 
 ---
 

@@ -688,12 +688,13 @@ class TestCheckStalenessHookVersionMismatch:
         assert "no materialized ir" not in captured.err.lower()
 
     def test_prior_schema_version_reports_mismatch(self, capsys):
-        # A baseline stamped with the previous schema version (0.1.0, before
-        # method_edges landed) must report a version mismatch after the bump to
-        # 0.2.0, telling the user to regenerate rather than a misleading STALE.
+        # A baseline stamped with the previous schema version (0.2.0, before
+        # the Decimal type landed) must report a version mismatch after the
+        # bump to 0.3.0, telling the user to regenerate rather than a
+        # misleading STALE.
         _write_ir(
             self._protean_dir,
-            {"ir_version": "0.1.0", "checksum": "sha256:whatever"},
+            {"ir_version": "0.2.0", "checksum": "sha256:whatever"},
         )
         with (
             patch(
@@ -712,7 +713,7 @@ class TestCheckStalenessHookVersionMismatch:
 
         captured = capsys.readouterr()
         assert "version mismatch" in captured.err.lower()
-        assert "0.1.0" in captured.err
+        assert "0.2.0" in captured.err
 
 
 # ---------------------------------------------------------------------------

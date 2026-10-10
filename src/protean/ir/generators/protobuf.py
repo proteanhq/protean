@@ -50,6 +50,7 @@ _TYPE_MAP: dict[str, str] = {
     "Auto": "string",
     "Integer": "int64",
     "Float": "double",
+    "Decimal": "string",
     "Boolean": "bool",
     "Date": _TIMESTAMP,
     "DateTime": _TIMESTAMP,

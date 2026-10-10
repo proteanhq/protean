@@ -21,9 +21,11 @@ Protean classifies changes to persisted domain elements using these rules:
 | Remove field from any persisted element | **Breaking** |
 | Remove a field deprecated past its removal version | Safe (expected removal) |
 | Remove a field from an event-sourced aggregate that declares the name `reserved` | Safe (`reserved`) |
-| Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`) |
+| Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`), unless it is a `Decimal` field with a breaking precision or scale change (see the `Decimal` rows below) |
 | Rename a field *and* change its type | **Breaking** (`field_type_changed`) |
 | Change field type | **Breaking** |
+| Raise or remove a `Decimal` field's `precision`, same `scale` | Safe (`field_precision_widened`) |
+| Lower or add a `Decimal` field's `precision`, or change its `scale` | **Breaking** (`field_type_changed`) |
 | Remove an element | **Breaking** |
 | Add a new element | Safe |
 | Visibility public to internal | **Breaking** |
@@ -41,6 +43,32 @@ value objects, commands, events, database models, and projections. Six rows are
 the exception: the last five, and the `reserved` field-removal row above them.
 They read attributes only an aggregate has, so they are checked on event-sourced
 aggregates and nowhere else.
+
+### Decimal precision and scale
+
+A `Decimal` field that stays `Decimal` is compared on its `precision` and
+`scale`. A change from another type to `Decimal`, or back, is an ordinary
+`field_type_changed`.
+
+| From | To | Classification |
+|------|----|----------------|
+| `Decimal(precision=10, scale=2)` | `Decimal(precision=19, scale=2)` | Safe (`field_precision_widened`) |
+| `Decimal(precision=10, scale=2)` | `Decimal(scale=2)` | Safe (`field_precision_widened`) |
+| `Decimal(precision=19, scale=2)` | `Decimal(precision=10, scale=2)` | **Breaking** (`field_type_changed`) |
+| `Decimal(scale=2)` | `Decimal(precision=19, scale=2)` | **Breaking** (`field_type_changed`) |
+| `Decimal(precision=19, scale=2)` | `Decimal(precision=19, scale=4)` | **Breaking** (`field_type_changed`) |
+
+Widening is safe because every old value still fits, both in a JSON payload and
+in a wider `NUMERIC(p, s)` column. The same rules apply to a field renamed with
+`renamed_from`: a widening rename reports both `field_renamed` and
+`field_precision_widened`, and any other shape change reports only
+`field_type_changed`.
+
+The Avro verdict for `field_precision_widened` is `NONE`, even though the report
+calls it safe. Avro matches two `decimal` types only when precision and scale
+are both equal. A change of visibility from public to internal also gives
+two different verdicts: the report calls it breaking, and the Avro verdict is
+`FULL`.
 
 ### Replay hazards on an event-sourced aggregate
 

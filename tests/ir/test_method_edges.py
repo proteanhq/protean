@@ -281,7 +281,7 @@ class TestFailOpen:
 
 
 class TestSchemaConformance:
-    """The materialized ``method_edges`` validates against the v0.2.0 schema."""
+    """The materialized ``method_edges`` validates against the current schema."""
 
     def test_built_ir_validates(self, ir):
         jsonschema.validate(ir, load_schema())

@@ -59,8 +59,8 @@ Every IR document has the same shape:
 
 ```json
 {
-  "$schema": "https://protean.dev/ir/v0.2.0/schema.json",
-  "ir_version": "0.2.0",
+  "$schema": "https://protean.dev/ir/v0.3.0/schema.json",
+  "ir_version": "0.3.0",
   "generated_at": "2026-03-01T12:00:00Z",
   "checksum": "sha256:a1b2c3...",
 
@@ -146,7 +146,7 @@ breaking changes automatically.
 ## The `$schema` URI
 
 The `$schema` field contains a logical URI
-(`https://protean.dev/ir/v0.2.0/schema.json`). This URI identifies the
+(`https://protean.dev/ir/v0.3.0/schema.json`). This URI identifies the
 schema version but is **not a network endpoint**, the actual JSON Schema ships
 with the Protean package at `protean.ir.SCHEMA_PATH`.
 
