@@ -76,7 +76,7 @@ to go from here.
    A shipment that is created completes the order. A shipment that fails
    releases the stock and cancels the order.
 
-Each step changes one aggregate in its own transaction.
+Each step changes one aggregate.
 
 ### CLI Commands Used
 

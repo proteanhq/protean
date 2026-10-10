@@ -3,8 +3,8 @@
 An aggregate enricher runs when a repository saves an aggregate to a database,
 and never for an event-sourced aggregate. Protean also saves some of its own
 records through repositories: outbox rows when the outbox is on, and message
-records in the in-memory event store when it is off. The enricher runs for
-those records too. The skill, the message enrichment guide and the audit fields
+records in the in-memory event store whether the outbox is on or off. The
+enricher runs for those records too. The skill, the message enrichment guide and the audit fields
 pattern skip an aggregate without the audit field. These tests show why the
 check is needed and that it works.
 """
@@ -66,6 +66,7 @@ def test_the_enricher_runs_on_outbox_rows():
 
     assert stamped[0] == "Order"
     assert "Outbox" in stamped
+    assert "MemoryMessage" in stamped
 
 
 def test_an_unguarded_enricher_fails_on_the_outbox_row():
