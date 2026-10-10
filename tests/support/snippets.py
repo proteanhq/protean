@@ -476,12 +476,23 @@ for index, item in enumerate(job["files"], start=job["first_index"]):
     except BaseException as exc:
         failure = "%s: %s: %s" % (step, type(exc).__name__, exc)
     # A file may push a domain context or open a unit of work and leave it
-    # open. Clear both, so the next file cannot pass by using this file's
-    # domain.
-    while _uow_context_stack.pop() is not None:
-        pass
-    while _domain_context_stack.pop() is not None:
-        pass
+    # open. Close both, so the next file cannot pass by using this file's
+    # domain. Rolling back and popping through the objects releases any
+    # session and runs the domain's teardown callbacks.
+    while (uow := _uow_context_stack.top) is not None:
+        try:
+            uow.rollback()
+        except Exception:
+            pass
+        if _uow_context_stack.top is uow:
+            _uow_context_stack.pop()
+    while (context := _domain_context_stack.top) is not None:
+        try:
+            context.pop(None)
+        except Exception:
+            pass
+        if _domain_context_stack.top is context:
+            _domain_context_stack.pop()
     if failure is None:
         not_run = []
     emit({"result": {"file": label, "failure": failure, "not_run": not_run}})

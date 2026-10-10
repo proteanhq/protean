@@ -2,7 +2,7 @@
 
 Each example points its domain at Elasticsearch, so these tests need the
 service and run in the FULL leg. Every test builds the example's indexes under
-under a prefix (a model's own ``schema_name`` is used as given) and drops them
+a prefix (a model's own ``schema_name`` is used as given) and drops them
 afterwards.
 """
 
