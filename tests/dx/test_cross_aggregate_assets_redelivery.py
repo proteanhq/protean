@@ -1,8 +1,11 @@
-"""Every asset that reacts to another aggregate's event: the flow, and redelivery.
+"""Assets that react to another aggregate's event: the flow, and redelivery.
 
 ``test_cross_aggregate_flow_example.py`` covers the main cross-sync asset in
 detail. This module runs the same two checks over every asset that hands off
-to another aggregate with a command:
+to another aggregate with a command, except the assets under ``split-aggregate``
+and ``add-saga-flow``. Those two skills have their own modules,
+``test_split_aggregate_example.py`` and ``test_saga_flow_example.py``.
+The two checks:
 
 - Driving the source step changes the target aggregate as the asset says, so
   the hop from event handler to command handler runs.
@@ -455,6 +458,9 @@ def _assets_handing_off() -> list[str]:
 
 def test_every_rewritten_asset_has_a_scenario() -> None:
     """A new asset that hands off to another aggregate needs a scenario here.
+
+    The ``split-aggregate`` and ``add-saga-flow`` assets are left out because
+    their own test modules cover them.
 
     The event handlers come from each asset's registry, so every way of
     registering one counts. A handler hands off when its class issues a command
