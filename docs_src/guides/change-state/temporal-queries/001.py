@@ -80,6 +80,10 @@ with domain.domain_context():
     assert order_v5._version == 5
 # --8<-- [end:at_version]
 
+# --8<-- [start:is_temporal]
+assert order_v5._is_temporal is True
+# --8<-- [end:is_temporal]
+
 # --8<-- [start:as_of]
 with domain.domain_context():
     repo = domain.repository_for(Order)

@@ -5,10 +5,13 @@ own memory stores.
 """
 
 import logging
+import re
+import subprocess
+import sys
 
 import pytest
 
-from tests.docs.support import load_example
+from tests.docs.support import DOCS_SRC, REPO_ROOT, load_example
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -48,6 +51,14 @@ def error_handling():
 @pytest.fixture
 def retrying():
     module = load_example("guides/change-state/command-handlers/004.py")
+    module.domain.init(traverse=False)
+    with module.domain.domain_context():
+        yield module
+
+
+@pytest.fixture
+def narrow_retrying():
+    module = load_example("guides/change-state/command-handlers/005.py")
     module.domain.init(traverse=False)
     with module.domain.domain_context():
         yield module
@@ -161,3 +172,36 @@ def test_debit_command_reaches_the_retrying_handler(retrying):
     )
 
     assert result is None
+
+
+def test_retry_exceptions_narrow_the_retried_set(narrow_retrying):
+    meta = narrow_retrying.AccountCommandHandler.meta_
+
+    assert meta.retries == 2
+    assert meta.retry_exceptions == [ConnectionError]
+
+
+def test_page_test_passes_under_pytest():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            str(DOCS_SRC / "guides/change-state/007.py"),
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "no:randomly",
+            "-q",
+            "--import-mode=importlib",
+            "-W",
+            "error::pytest.PytestCollectionWarning",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert re.search(r"\b1 passed\b", result.stdout), result.stdout

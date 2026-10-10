@@ -50,7 +50,7 @@ The `@use_case` decorator is imported from `protean` and is the primary
 mechanism for marking methods as use case entry points:
 
 ```python
-from protean import use_case
+--8<-- "guides/change-state/application-services/001.py:import"
 ```
 
 It has two responsibilities:
@@ -188,14 +188,7 @@ Application services are tested by calling use case methods directly and
 asserting on the return values and persisted state:
 
 ```python
-def test_register_user(test_domain):
-    service = UserApplicationServices()
-    user_id = service.register_user(email="jane@example.com", name="Jane Doe")
-
-    assert user_id is not None
-    user = test_domain.repository_for(User).get(user_id)
-    assert user.email == "jane@example.com"
-    assert user.status == "INACTIVE"
+--8<-- "guides/change-state/application-services/002.py:tests"
 ```
 
 Because application services always execute synchronously, no special

@@ -82,11 +82,7 @@ The active UoW is accessible anywhere through the `current_uow` context
 variable:
 
 ```python
-from protean import current_uow
-
-if current_uow and current_uow.in_progress:
-    # A UoW is active, so changes will be committed when it exits
-    ...
+--8<-- "guides/change-state/unit-of-work/001.py:current_uow"
 ```
 
 This is a thread-local proxy backed by a context stack. The outermost `start()`
@@ -321,21 +317,7 @@ If the database commit fails for reasons other than version conflicts, the UoW
 raises a `TransactionError` with diagnostic information:
 
 ```python
-from protean.exceptions import TransactionError
-
-
-def run_in_a_transaction():
-    try:
-        with UnitOfWork():
-            ...
-    except TransactionError as exc:
-        # exc.extra_info contains:
-        #   - original_exception: exception class name
-        #   - original_message: error message
-        #   - sessions: list of provider names involved
-        #   - events_count: number of events that were pending
-        #   - messages_count: number of broker messages pending
-        ...
+--8<-- "guides/change-state/unit-of-work/002.py:commit_errors"
 ```
 
 ---

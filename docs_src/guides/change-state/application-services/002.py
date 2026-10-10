@@ -41,6 +41,29 @@ class UserApplicationServices:
 
 # --8<-- [end:service]
 
+import pytest
+
+
+@pytest.fixture
+def test_domain():
+    domain.init(traverse=False)
+    with domain.domain_context():
+        yield domain
+
+
+# --8<-- [start:tests]
+def test_register_user(test_domain):
+    service = UserApplicationServices()
+    user_id = service.register_user(email="jane@example.com", name="Jane Doe")
+
+    assert user_id is not None
+    user = test_domain.repository_for(User).get(user_id)
+    assert user.email == "jane@example.com"
+    assert user.status == "INACTIVE"
+
+
+# --8<-- [end:tests]
+
 
 if __name__ == "__main__":
     domain.init(traverse=False)

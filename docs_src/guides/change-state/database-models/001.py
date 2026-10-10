@@ -25,6 +25,20 @@ class ProductModel(BaseDatabaseModel):
 domain.register(ProductModel, part_of=Product, schema_name="products")
 # --8<-- [end:custom_model]
 
+
+# --8<-- [start:options]
+class ProductReportingModel(BaseDatabaseModel):
+    pass
+
+
+domain.register(
+    ProductReportingModel,
+    part_of=Product,
+    schema_name="product_reports",
+    database="postgresql",
+)
+# --8<-- [end:options]
+
 if __name__ == "__main__":
     domain.init(traverse=False)
     with domain.domain_context():

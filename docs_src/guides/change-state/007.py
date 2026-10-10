@@ -55,3 +55,32 @@ class ArticleCommandHandler:
 
 
 # --8<-- [end:full]
+
+import pytest
+
+
+@pytest.fixture
+def test_domain():
+    publishing.init(traverse=False)
+    with publishing.domain_context():
+        yield publishing
+
+
+# --8<-- [start:tests]
+def test_publish_article(test_domain):
+    # Arrange
+    article = Article(article_id="1", status="DRAFT")
+    test_domain.repository_for(Article).add(article)
+
+    # Act
+    test_domain.process(
+        PublishArticle(article_id="1"),
+        asynchronous=False,
+    )
+
+    # Assert
+    refreshed = test_domain.repository_for(Article).get("1")
+    assert refreshed.status == "PUBLISHED"
+
+
+# --8<-- [end:tests]

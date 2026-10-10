@@ -78,16 +78,7 @@ domain.register(ProductSearchModel, part_of=Product)
 | `database` | str | The database type this model applies to: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or `elasticsearch`. This is not a provider name. Without it, the model is used for any database type that has no model of its own. |
 
 ```python
-class ProductReportingModel(BaseDatabaseModel):
-    pass
-
-
-domain.register(
-    ProductReportingModel,
-    part_of=Product,
-    schema_name="product_reports",
-    database="postgresql",
-)
+--8<-- "guides/change-state/database-models/001.py:options"
 ```
 
 ---

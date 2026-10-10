@@ -1,4 +1,10 @@
-from protean import Domain, current_domain, use_case
+# --8<-- [start:import]
+from protean import use_case
+
+# --8<-- [end:import]
+# isort: split
+
+from protean import Domain, current_domain
 from protean.fields import Identifier, List, String
 
 domain = Domain(name="Ordering")

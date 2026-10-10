@@ -1,6 +1,12 @@
 from datetime import UTC, datetime
 
-from protean import Domain, F
+# --8<-- [start:import_f]
+from protean import F
+
+# --8<-- [end:import_f]
+# isort: split
+
+from protean import Domain
 from protean.fields import DateTime, Integer, String
 
 domain = Domain()

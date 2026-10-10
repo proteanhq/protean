@@ -1,10 +1,24 @@
-from abc import ABC, abstractmethod
+# --8<-- [start:import_q]
+from protean.utils.query import Q
+
+# --8<-- [end:import_q]
+# isort: split
+
+# --8<-- [start:import_datetime]
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+# --8<-- [end:import_datetime]
+# isort: split
+
+# --8<-- [start:import_abc]
+from abc import ABC, abstractmethod
+
+# --8<-- [end:import_abc]
+# isort: split
+
 from protean import Domain
 from protean.fields import DateTime, Float, String
-from protean.utils.query import Q
 
 domain = Domain()
 

@@ -12,6 +12,7 @@ import threading
 import pytest
 
 from protean import UnitOfWork, current_uow
+from protean.adapters.repository.memory import MemorySession
 from protean.exceptions import ObjectNotFoundError, ValidationError
 from tests.docs.support import load_example
 
@@ -235,3 +236,53 @@ class TestNestedUnitsOfWork:
         for order in (a, b, c):
             with pytest.raises(ObjectNotFoundError):
                 repo.get(order.id)
+
+
+class TestCurrentUow:
+    def test_current_uow_is_set_only_inside_a_unit_of_work(self, example):
+        assert example.describe_saving() == "changes are saved at once"
+
+        with UnitOfWork():
+            assert example.describe_saving() == "changes wait for the commit"
+            with UnitOfWork():
+                assert example.describe_saving() == "changes wait for the commit"
+
+        assert example.describe_saving() == "changes are saved at once"
+
+
+class CommitFails(Exception):
+    """The failure the memory session raises when it commits."""
+
+
+@pytest.fixture
+def commit_fails(monkeypatch):
+    def fail(session):
+        raise CommitFails("the database went away")
+
+    monkeypatch.setattr(MemorySession, "commit", fail)
+
+
+class TestErrorsDuringCommit:
+    def test_a_successful_commit_returns_nothing(self, rollback_example):
+        order = rollback_example.Order(total=25.0)
+
+        assert rollback_example.save_order(order) is None
+        assert status_of(rollback_example, order.id) == "PENDING"
+
+    def test_a_failed_commit_raises_transaction_error_with_the_listed_keys(
+        self, rollback_example, commit_fails
+    ):
+        order = rollback_example.Order(total=25.0)
+
+        extra_info = rollback_example.save_order(order)
+
+        assert extra_info == {
+            "original_exception": "CommitFails",
+            "original_message": "the database went away",
+            "sessions": ["default"],
+            "events_count": 0,
+            "messages_count": 0,
+        }
+        assert not current_uow
+        with pytest.raises(ObjectNotFoundError):
+            rollback_example.domain.repository_for(rollback_example.Order).get(order.id)

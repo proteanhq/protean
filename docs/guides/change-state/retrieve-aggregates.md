@@ -82,7 +82,7 @@ Use `find` to retrieve all aggregates matching a `Q` criteria expression.
 It accepts composable `Q` objects and returns a `ResultSet`:
 
 ```python
-from protean.utils.query import Q
+--8<-- "guides/change-state/retrieve-aggregates/001.py:import_q"
 ```
 
 ```shell
@@ -236,8 +236,7 @@ field against **another field of the same aggregate**, wrap the other field's
 name in `F`:
 
 ```python
-from protean import F
-
+--8<-- "guides/change-state/retrieve-aggregates/002.py:import_f"
 --8<-- "guides/change-state/retrieve-aggregates/002.py:notification"
 
 --8<-- "guides/change-state/retrieve-aggregates/002.py:field_reference"
@@ -269,7 +268,7 @@ For queries that require OR conditions or negation, use Q objects from
 `protean.utils.query`:
 
 ```python
-from protean.utils.query import Q
+--8<-- "guides/change-state/retrieve-aggregates/001.py:import_q"
 ```
 
 ### AND
@@ -324,10 +323,8 @@ Python function that returns a `Q` object. This gives you named, reusable,
 composable query criteria without any framework overhead:
 
 ```python
-from protean.utils.query import Q
-from datetime import UTC, datetime, timedelta
-from decimal import Decimal
-
+--8<-- "guides/change-state/retrieve-aggregates/003.py:import_q"
+--8<-- "guides/change-state/retrieve-aggregates/003.py:import_datetime"
 --8<-- "guides/change-state/retrieve-aggregates/003.py:functions"
 ```
 
@@ -363,9 +360,8 @@ checking whether a single order is overdue inside an event handler. You can
 structure your query criteria as specification classes:
 
 ```python
-from abc import ABC, abstractmethod
-from protean.utils.query import Q
-
+--8<-- "guides/change-state/retrieve-aggregates/003.py:import_abc"
+--8<-- "guides/change-state/retrieve-aggregates/003.py:import_q"
 --8<-- "guides/change-state/retrieve-aggregates/003.py:specification"
 ```
 
@@ -689,12 +685,7 @@ index to stay fast as the table grows, without one, the database falls back to
 a full scan. Declare the indexes a query path needs on the aggregate itself:
 
 ```python
-from protean import Index
-
-@domain.aggregate(indexes=[Index("country", "age", desc=("age",))])
-class Customer:
-    country = String(max_length=2)
-    age = Integer()
+--8<-- "guides/change-state/retrieve-aggregates/005.py:index"
 ```
 
 This backs `filter(country="US").order_by("-age")` with a single index. See

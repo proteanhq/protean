@@ -176,8 +176,7 @@ command_processing = "sync"  # or "async"
 In code:
 
 ```python
-# Configure default command processing as synchronous
-domain.config["command_processing"] = "sync"  # or "async"
+--8<-- "guides/change-state/commands/003.py:sync_config"
 ```
 
 By default, Protean sets `command_processing` to `async` in the domain configuration.
@@ -285,10 +284,7 @@ passing one on every call. Resolution precedence (highest wins):
 5. No deadline (the default, commands never expire)
 
 ```python
-# Per-handler default (seconds or a timedelta)
-@domain.command_handler(part_of=Order, timeout=30)
-class OrderCommandHandler:
-    ...
+--8<-- "guides/change-state/commands/005.py:handler_timeout"
 ```
 
 ```toml

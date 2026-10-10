@@ -38,3 +38,25 @@ def try_to_confirm_order(order_id):
 
 
 # --8<-- [end:rollback]
+
+
+# --8<-- [start:commit_errors]
+from protean.exceptions import TransactionError
+
+
+def save_order(order):
+    try:
+        with UnitOfWork():
+            domain.repository_for(Order).add(order)
+    except TransactionError as exc:
+        # exc.extra_info contains:
+        #   - original_exception: exception class name
+        #   - original_message: error message
+        #   - sessions: list of provider names involved
+        #   - events_count: number of events that were pending
+        #   - messages_count: number of broker messages pending
+        return exc.extra_info
+    return None
+
+
+# --8<-- [end:commit_errors]

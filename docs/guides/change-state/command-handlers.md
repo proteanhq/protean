@@ -35,7 +35,7 @@ Each method that processes a command is decorated with `@handle`, imported from
 `protean`:
 
 ```python
-from protean import handle
+--8<-- "guides/change-state/command-handlers/001.py:import"
 ```
 
 `@handle(CommandClass)` registers the method as the handler for that command
@@ -218,6 +218,7 @@ You can define a `handle_error` class method in your command handler to handle e
 If an exception occurs within the `handle_error` method itself, the Protean Engine will catch that exception too, log it, and continue processing. This ensures that even failures in error handling don't crash the system.
 
 ```python
+# fragment
 @classmethod
 def handle_error(cls, exc: Exception, message):
     try:
@@ -253,9 +254,7 @@ by default `ConnectionError`, `TimeoutError`, and `SendError`. Narrow or widen
 the set with `retry_exceptions`:
 
 ```python
-@domain.command_handler(part_of=Account, retries=2, retry_exceptions=[ConnectionError])
-class AccountCommandHandler:
-    ...
+--8<-- "guides/change-state/command-handlers/005.py:handler"
 ```
 
 This is distinct from the version-conflict (OCC) retry that handles
@@ -272,20 +271,7 @@ The simplest way to test a command handler is to submit a command
 synchronously and verify the resulting state:
 
 ```python
-def test_publish_article(test_domain):
-    # Arrange
-    article = Article(article_id="1", status="DRAFT")
-    test_domain.repository_for(Article).add(article)
-
-    # Act
-    test_domain.process(
-        PublishArticle(article_id="1"),
-        asynchronous=False,
-    )
-
-    # Assert
-    refreshed = test_domain.repository_for(Article).get("1")
-    assert refreshed.status == "PUBLISHED"
+--8<-- "guides/change-state/007.py:tests"
 ```
 
 Key points:

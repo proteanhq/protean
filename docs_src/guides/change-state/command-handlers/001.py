@@ -1,4 +1,10 @@
-from protean import Domain, handle
+# --8<-- [start:import]
+from protean import handle
+
+# --8<-- [end:import]
+# isort: split
+
+from protean import Domain
 from protean.fields import String
 from protean.utils.globals import current_domain
 

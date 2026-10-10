@@ -9,6 +9,7 @@ them against the same six people and check the output the page shows.
 
 import pytest
 
+from protean import Index
 from protean._deprecation import RemovedInProtean10Warning
 from protean.exceptions import (
     NotSupportedError,
@@ -41,6 +42,14 @@ def queries():
     with pytest.warns(RemovedInProtean10Warning):
         module = load_example("guides/change-state/retrieve-aggregates/001.py")
     return module
+
+
+@pytest.fixture
+def indexed():
+    module = load_example("guides/change-state/retrieve-aggregates/005.py")
+    module.domain.init(traverse=False)
+    with module.domain.domain_context():
+        yield module
 
 
 @pytest.fixture
@@ -122,6 +131,10 @@ class TestTheShownQueries:
         assert queries.page_size == 10
         assert queries.total_pages == 1
         assert queries.has_next is False
+        # Offset 10 is past the six people, so the page is empty and
+        # has_prev is False even though this is not the first page.
+        assert queries.result.items == []
+        assert queries.has_prev is False
 
     def test_all_without_total_still_returns_the_people_in_ca(self, queries):
         assert sorted(names(queries.items)) == [
@@ -195,6 +208,17 @@ class TestTheShownRepositoryMethods:
             "John Doe",
             "John Roe",
         ]
+
+    def test_a_page_past_the_end_is_empty_and_has_no_previous_page(self, queries):
+        with queries.domain.domain_context():
+            past_the_end = queries.get_page(queries.repository, 3, page_size=2)
+            via_query = queries.repository.query.offset(10).limit(2).all()
+
+        assert past_the_end.items == []
+        assert past_the_end.has_prev is False
+        assert past_the_end.has_next is False
+        assert via_query.items == []
+        assert via_query.has_prev is False
 
 
 class TestTheShownSessions:
@@ -400,3 +424,19 @@ class TestDefaultLimit:
             assert len(result.items) == 50
             assert result.total == 60
             assert len(repository.query.limit(None).all().items) == 60
+
+
+class TestIndexes:
+    def test_the_customer_declares_a_country_and_age_descending_index(self, indexed):
+        assert indexed.Customer.meta_.indexes == [
+            Index("country", "age", desc=("age",))
+        ]
+
+    def test_the_indexed_query_finds_us_customers_oldest_first(self, indexed):
+        repo = indexed.domain.repository_for(indexed.Customer)
+        for country, age in [("US", 30), ("CA", 50), ("US", 45)]:
+            repo.add(indexed.Customer(country=country, age=age))
+
+        customers = repo.query.filter(country="US").order_by("-age").all()
+
+        assert [customer.age for customer in customers.items] == [45, 30]

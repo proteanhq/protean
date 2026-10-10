@@ -2,7 +2,12 @@ from protean import Domain, current_domain, handle
 from protean.fields import Identifier, List, String
 
 domain = Domain(name="Sales")
-domain.config["command_processing"] = "sync"
+
+# --8<-- [start:sync_config]
+# Configure default command processing as synchronous
+domain.config["command_processing"] = "sync"  # or "async"
+
+# --8<-- [end:sync_config]
 
 
 @domain.aggregate

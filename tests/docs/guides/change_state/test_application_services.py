@@ -5,10 +5,14 @@ own memory store. ``008.py`` initializes its own ``auth`` domain; the other
 examples are initialized here.
 """
 
+import re
+import subprocess
+import sys
+
 import pytest
 
 from protean.exceptions import ObjectNotFoundError, ValidationError
-from tests.docs.support import load_example
+from tests.docs.support import DOCS_SRC, REPO_ROOT, load_example
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -142,3 +146,30 @@ class TestErrorHandling:
         assert [(user.id, user.name) for user in users.items] == [
             (first_id, "John Doe")
         ]
+
+
+class TestTestingApplicationServices:
+    def test_page_test_passes_under_pytest(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                str(DOCS_SRC / "guides/change-state/application-services/002.py"),
+                "-p",
+                "no:cacheprovider",
+                "-p",
+                "no:randomly",
+                "-q",
+                "--import-mode=importlib",
+                "-W",
+                "error::pytest.PytestCollectionWarning",
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert re.search(r"\b1 passed\b", result.stdout), result.stdout

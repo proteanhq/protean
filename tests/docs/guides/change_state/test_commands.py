@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from protean import Domain
 from protean.exceptions import (
     IncorrectUsageError,
     ObjectNotFoundError,
@@ -144,7 +145,20 @@ def config_example():
         yield module
 
 
+@pytest.fixture
+def handler_timeout_example():
+    module = load_example("guides/change-state/commands/005.py")
+    with activated(module.domain):
+        yield module
+
+
 class TestDomainConfiguration:
+    def test_the_code_setting_makes_command_processing_sync(self, deadlines_example):
+        assert deadlines_example.domain.config["command_processing"] == "sync"
+
+    def test_command_processing_is_async_by_default(self):
+        assert Domain(name="Defaults").config["command_processing"] == "async"
+
     def test_the_config_sets_the_default_modes(self, config_example):
         assert config_example.domain.config["command_processing"] == "sync"
         assert config_example.domain.config["event_processing"] == "async"
@@ -165,6 +179,11 @@ class TestDomainConfiguration:
 
 
 class TestDeadlines:
+    def test_the_handler_timeout_is_set_on_the_handler(self, handler_timeout_example):
+        meta = handler_timeout_example.OrderCommandHandler.meta_
+
+        assert meta.timeout == 30
+
     def test_an_absolute_deadline_reaches_the_handler(self, deadlines_example):
         before = datetime.now(UTC)
 

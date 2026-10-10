@@ -1,6 +1,11 @@
+# --8<-- [start:import_q]
+from protean.utils.query import Q
+
+# --8<-- [end:import_q]
+# isort: split
+
 from protean import Domain
 from protean.fields import Integer, String
-from protean.utils.query import Q
 
 domain = Domain()
 
@@ -136,7 +141,7 @@ page = result.page  # Current page number (1-indexed)
 page_size = result.page_size  # Number of items per page (alias for limit)
 total_pages = result.total_pages  # Total number of pages
 has_next = result.has_next  # True if more pages exist beyond the current one
-has_prev = result.has_prev  # True if this is not the first page
+has_prev = result.has_prev  # True if this page has items and is not the first page
 # --8<-- [end:pagination]
 
 # --8<-- [start:with_total]

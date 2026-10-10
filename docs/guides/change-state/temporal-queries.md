@@ -61,7 +61,7 @@ You can check whether an aggregate was loaded temporally via the
 `_is_temporal` attribute:
 
 ```python
-assert order_v5._is_temporal is True
+--8<-- "guides/change-state/temporal-queries/001.py:is_temporal"
 ```
 
 This safety guard prevents accidental writes to historical state. If you need

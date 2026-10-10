@@ -32,6 +32,7 @@ def repo(example):
 def test_page_examples_load_the_documented_states(example):
     assert example.order_v5._version == 5
     assert example.order_v5.item_count == 7  # 1 + 1 + 1 + 2 + 2
+    assert example.order_v5._is_temporal is True
     assert example.order_then._version == 3
     assert example.order_then.item_count == 3
     assert example.historical._version == 0

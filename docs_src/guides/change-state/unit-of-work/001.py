@@ -54,6 +54,20 @@ def confirm_order_step_by_step(order_id):
 # --8<-- [end:imperative]
 
 
+# --8<-- [start:current_uow]
+from protean import current_uow
+
+
+def describe_saving() -> str:
+    if current_uow and current_uow.in_progress:
+        # A UoW is active, so changes will be committed when it exits
+        return "changes wait for the commit"
+    return "changes are saved at once"
+
+
+# --8<-- [end:current_uow]
+
+
 # --8<-- [start:nested]
 def save_together(repo, a, b, c):
     with UnitOfWork():  # outermost: owns the transaction

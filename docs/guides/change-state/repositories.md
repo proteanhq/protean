@@ -16,16 +16,7 @@ Every aggregate gets a default repository. You access it with
 `domain.repository_for()`:
 
 ```python
-from protean import Domain
-from protean.fields import String
-
-domain = Domain()
-
-
-@domain.aggregate
-class Person:
-    name: String(required=True, max_length=50)
-    email: String(required=True, max_length=254)
+--8<-- "guides/change-state/repositories/002.py:default"
 ```
 
 ```shell
@@ -117,20 +108,7 @@ Every repository exposes these methods for building queries:
   expression. Returns `True` or `False`.
 
 ```python
-from protean.utils.query import Q
-
-@domain.repository(part_of=Person)
-class PersonRepository:
-    def adults_in_country(self, country_code: str) -> list:
-        return self.find(
-            Q(age__gte=18, country=country_code)
-        ).items
-
-    def find_by_email(self, email: str) -> Person:
-        return self.find_by(email=email)
-
-    def has_adults(self) -> bool:
-        return self.exists(Q(age__gte=18))
+--8<-- "guides/change-state/repositories/003.py:custom_queries"
 ```
 
 Internally, these delegate to the repository's Data Access Object (DAO), the
@@ -148,28 +126,13 @@ layer that talks to the database.
 `get()` and `find_by()` raise exceptions when the expected result is not found:
 
 ```python
-from protean.exceptions import ObjectNotFoundError, TooManyObjectsError
-
-repo = domain.repository_for(Person)
-
-# Raises ObjectNotFoundError if no aggregate matches the identity
-try:
-    person = repo.get("nonexistent-id")
-except ObjectNotFoundError:
-    ...
-
-# Raises ObjectNotFoundError if no match, TooManyObjectsError if multiple
-try:
-    person = repo.find_by(email="unknown@example.com")
-except ObjectNotFoundError:
-    ...
+--8<-- "guides/change-state/repositories/003.py:errors"
 ```
 
 `exists()` never raises. It returns `True` or `False`:
 
 ```python
-if repo.exists(Q(email="john@example.com")):
-    raise ValueError("Email already taken")
+--8<-- "guides/change-state/repositories/003.py:exists"
 ```
 
 Use `get_or_none()` when a miss is a normal outcome rather than an error, such
@@ -177,10 +140,7 @@ as resolving an optional reference by id (for example, an order's
 `referred_by` customer id that may not exist):
 
 ```python
-# Returns None instead of raising ObjectNotFoundError
-person = repo.get_or_none("nonexistent-id")
-if person is None:
-    ...
+--8<-- "guides/change-state/repositories/003.py:get_or_none"
 ```
 
 For a comprehensive guide on querying, see
@@ -220,13 +180,7 @@ repository instance. It accepts an aggregate class (not a string) and returns
 the repository associated with that aggregate:
 
 ```python
-domain.init(traverse=False)
-
-with domain.domain_context():
-    repo = domain.repository_for(Person)
-    repo.add(Person(id="42", name="John Doe"))
-
-    person = repo.get("42")
+--8<-- "guides/change-state/repositories/004.py:repository_for"
 ```
 
 How it works:
@@ -257,8 +211,7 @@ For infrastructure-level record removal (projection rebuilds, test teardown,
 GDPR right-to-erasure compliance), you can access the underlying DAO directly:
 
 ```python
-repo = domain.repository_for(Person)
-repo._dao.delete(person)
+--8<-- "guides/change-state/repositories/004.py:dao_delete"
 ```
 
 This is an intentional escape hatch, not a recommended domain operation. Use it
