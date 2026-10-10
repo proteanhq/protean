@@ -99,8 +99,10 @@ with domain.domain_context():
     repo = domain.repository_for(Order)
 
     with UnitOfWork():
-        current = repo.get("order-123")  # Loaded into identity map
+        current = repo.get("order-123")
         current.add_item("pencil", quantity=1)  # Mutated in memory
+        repo.add(current)  # Tracked in the identity map until commit
+        assert repo.get("order-123") is current  # Served from the identity map
 
         historical = repo.get("order-123", at_version=0)  # Fresh from events
         assert historical._version == 0  # Not affected by in-memory mutation

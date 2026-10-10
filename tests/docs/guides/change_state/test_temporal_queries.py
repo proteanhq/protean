@@ -3,9 +3,9 @@
 The page's example writes an event-sourced ``Order``, ``order-123``, with
 seven events: version 0 places it, versions 1 to 3 add one item each, and
 versions 4 to 6 add two items each. ``cutoff`` falls between versions 3 and 4.
-The page's last example adds one more item inside a unit of work but never
-saves it, so the order stays at version 6. Each test loads the example fresh, with its own
-memory event store.
+The page's last example adds one more item inside a unit of work and saves
+it when the unit of work commits, so the order ends at version 7. Each test
+loads the example fresh, with its own memory event store.
 """
 
 import pytest
@@ -37,7 +37,7 @@ def test_page_examples_load_the_documented_states(example):
     assert example.order_then.item_count == 3
     assert example.historical._version == 0
     assert example.historical.item_count == 0
-    assert example.current.item_count == 10  # the unsaved in-memory change
+    assert example.current.item_count == 10  # the pencil, saved on commit
 
 
 def test_at_version_returns_the_state_after_that_event(repo):
@@ -59,8 +59,8 @@ def test_at_version_zero_is_the_state_after_the_first_event(repo):
 def test_plain_get_returns_the_latest_writable_state(repo):
     order = repo.get("order-123")
 
-    assert order._version == 6
-    assert order.item_count == 9  # 3 + 6; the last example's pencil was not saved
+    assert order._version == 7
+    assert order.item_count == 10  # 3 + 6 + the last example's pencil
     assert order._is_temporal is False
 
 
@@ -77,7 +77,7 @@ def test_raise_on_a_current_aggregate_records_the_event(example, repo):
 
     order.add_item("eraser", quantity=1)
 
-    assert order.item_count == 10
+    assert order.item_count == 11
     assert [type(event) for event in order._events] == [example.ItemAdded]
 
 
@@ -102,7 +102,7 @@ def test_at_version_and_as_of_together_are_rejected(example, repo):
 
 
 def test_at_version_past_the_latest_names_the_latest_version(repo):
-    assert repo.get("order-123", at_version=6)._version == 6
+    assert repo.get("order-123", at_version=7)._version == 7
 
-    with pytest.raises(ObjectNotFoundError, match="Latest version is 6"):
-        repo.get("order-123", at_version=7)
+    with pytest.raises(ObjectNotFoundError, match="Latest version is 7"):
+        repo.get("order-123", at_version=8)
