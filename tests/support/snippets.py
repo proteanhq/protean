@@ -33,9 +33,9 @@ in a temporary directory, so a relative path in a block resolves inside it.
 Each file has a timeout, enforced with ``SIGALRM`` where the platform has it.
 Closing what a file left open (a unit of work or a domain context) gets the
 same timeout again, because a rollback or a teardown callback can hang. A file
-still running at twice its timeout (a block that catches the timeout, or a
-platform without ``SIGALRM``) stops the child; the file is reported as stuck
-and a new child runs the files after it.
+whose blocks, or whose closing, are still running at twice the timeout (code
+that catches the timeout, or a platform without ``SIGALRM``) stops the child;
+the file is reported as stuck and a new child runs the files after it.
 
 :func:`include_expander` builds a source transform that replaces
 ``--8<-- "<spec>"`` lines with the code they include, the way
@@ -456,6 +456,13 @@ def close_left_open():
     return problem
 
 
+def start_watchdog():
+    watchdog = threading.Timer(job["hard_timeout"], os._exit, args=(job["stuck_exit"],))
+    watchdog.daemon = True
+    watchdog.start()
+    return watchdog
+
+
 for index, item in enumerate(job["files"], start=job["first_index"]):
     label = item["file"]
     blocks = [b for b in item["blocks"] if not b["fragment"]]
@@ -486,9 +493,7 @@ for index, item in enumerate(job["files"], start=job["first_index"]):
     failure = None
     not_run = []
     step = None
-    watchdog = threading.Timer(job["hard_timeout"], os._exit, args=(job["stuck_exit"],))
-    watchdog.daemon = True
-    watchdog.start()
+    watchdog = start_watchdog()
     if has_alarm:
         # A block may replace the handler; put it back for every file.
         signal.signal(signal.SIGALRM, on_alarm)
@@ -531,8 +536,11 @@ for index, item in enumerate(job["files"], start=job["first_index"]):
             failure = "%s: %s: %s" % (step, type(exc).__name__, exc)
         if failure is None:
             not_run = []
-        # The watchdog stays armed, so a close that ignores the timeout still
-        # stops at the hard limit, reported as the cleanup step.
+        # Closing gets its own hard limit, so a page whose block ran to the
+        # timeout still has the full limit to close what it left open. A close
+        # that ignores the timeout stops there, reported as the cleanup step.
+        watchdog.cancel()
+        watchdog = start_watchdog()
         emit({"step": "cleanup", "not_run": not_run})
         problem = close_left_open()
         if failure is None and problem is not None:

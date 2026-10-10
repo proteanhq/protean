@@ -469,8 +469,9 @@ def test_a_page_left_open_is_rolled_back_and_torn_down_before_the_next_page(
 
 
 # What closing a page has to decide over: whether the page's own blocks
-# passed, what the page left open, and how closing it behaves. Every cell must
-# give the page one result and leave nothing open for the next page.
+# passed, raised or timed out, what the page left open, and how closing it
+# behaves. Every cell must give the page one result and leave nothing open for
+# the next page.
 CLOSE_TIMEOUT = 1.0
 
 LEFT_OPEN = {
@@ -526,7 +527,11 @@ CLOSING = {
     ),
 }
 
-BLOCKS = {"pass": "x = 1", "raise": "raise ValueError('block broke')"}
+BLOCKS = {
+    "pass": "x = 1",
+    "raise": "raise ValueError('block broke')",
+    "time out": "time.sleep(30)",
+}
 
 READER = (
     "```python\n"
@@ -576,6 +581,11 @@ def test_closing_what_a_page_left_open_gives_one_result_and_leaves_nothing_open(
         block_failure, block_not_run = None, []
         if block == "raise":
             block_failure = f"line {middle.line}: ValueError: block broke"
+            block_not_run = [last.line]
+        elif block == "time out":
+            block_failure = (
+                f"line {middle.line}: timed out after {CLOSE_TIMEOUT} seconds"
+            )
             block_not_run = [last.line]
         _, close_failure, replaces = CLOSING[closing]
         if block_failure is None or replaces:
