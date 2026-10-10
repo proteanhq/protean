@@ -57,6 +57,7 @@ from protean.utils import (
     DomainObjects,
     _coerce_uuid_to_str,
     _derive_element_class,
+    _ensure_template_dict,
     _generate_identity,
     inflection,
 )
@@ -606,12 +607,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         if args:
             merged: dict[str, Any] = {}
             for template in args:
-                if not isinstance(template, dict):
-                    raise AssertionError(
-                        f"Positional argument {template} passed must be a dict. "
-                        f"This argument serves as a template for loading common "
-                        f"values.",
-                    )
+                _ensure_template_dict(template)
                 # Also separate descriptor and shadow kwargs from template dicts
                 for tname in list(template):
                     if tname in _shadow_field_names:
@@ -845,12 +841,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         errors: dict[str, list[str]] = {}
 
         for data in data_dict:
-            if not isinstance(data, dict):
-                raise AssertionError(
-                    f"Positional argument {data} passed must be a dict. "
-                    f"This argument serves as a template for loading common "
-                    f"values.",
-                )
+            _ensure_template_dict(data)
             for field_name, val in data.items():
                 try:
                     setattr(self, field_name, val)

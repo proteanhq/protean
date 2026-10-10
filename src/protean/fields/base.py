@@ -31,8 +31,9 @@ def normalize_field_renamed_from(
     - ``"old_name"`` (single alias) → ``["old_name"]``
     - ``["a", "b"]`` / ``("a", "b")`` (aliases) → ``["a", "b"]``
 
-    Each alias must be a non-empty string. Raises :class:`ValueError` on
-    invalid input.
+    Each alias must be a non-empty string. Raises :class:`TypeError` when
+    ``value`` is not a string, list or tuple, and :class:`ValueError` when an
+    alias is not a non-empty string.
     """
     if value is None:
         return None
@@ -41,7 +42,7 @@ def normalize_field_renamed_from(
     elif isinstance(value, (list, tuple)):
         value = list(value)
     else:
-        raise ValueError(
+        raise TypeError(
             f"Invalid `renamed_from` value: {value!r}. "
             "Expected a field-name string or a list of field-name strings."
         )

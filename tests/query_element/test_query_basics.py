@@ -193,8 +193,12 @@ class TestQueryTemplateDictPattern:
         test_domain.register(GetOrdersByCustomer, part_of=OrderSummary)
         test_domain.init(traverse=False)
 
-        with pytest.raises(AssertionError, match="must be a dict"):
+        with pytest.raises(TypeError) as exc:
             GetOrdersByCustomer("not a dict")
+        assert str(exc.value) == (
+            "Positional argument not a dict passed must be a dict. "
+            "This argument serves as a template for loading common values."
+        )
 
 
 class TestQueryHasNoMessageInfrastructure:

@@ -52,6 +52,7 @@ from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import (
     DomainObjects,
     _derive_element_class,
+    _ensure_template_dict,
     fqn,
     inflection,
 )
@@ -263,10 +264,7 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
         if args:
             merged: dict[str, Any] = {}
             for template in args:
-                if not isinstance(template, dict):
-                    raise AssertionError(
-                        f"Positional argument {template} passed must be a dict."
-                    )
+                _ensure_template_dict(template)
                 merged.update(template)
             merged.update(kwargs)
             kwargs = merged
