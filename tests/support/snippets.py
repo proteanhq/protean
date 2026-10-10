@@ -414,6 +414,20 @@ def emit(record):
 # a rollback or a teardown callback is page code and can hang. Return the
 # first problem, because the page left something it could not close. Whatever
 # a timeout leaves on the stacks is dropped without running more page code.
+#
+# A rollback or teardown callback is page code, so its failure is read the way
+# a block's is: anything it raises, ``SystemExit`` included, is the page's
+# failure. Only the runner's own timeout and an interrupt pass through.
+def close_one(close):
+    try:
+        close()
+    except (SnippetTimeout, KeyboardInterrupt):
+        raise
+    except BaseException as exc:
+        return "%s: %s" % (type(exc).__name__, exc)
+    return None
+
+
 def close_left_open():
     problem = None
     if has_alarm:
@@ -421,17 +435,13 @@ def close_left_open():
         signal.setitimer(signal.ITIMER_REAL, timeout)
     try:
         while (uow := _uow_context_stack.top) is not None:
-            try:
-                uow.rollback()
-            except Exception as exc:
-                problem = problem or "%s: %s" % (type(exc).__name__, exc)
+            found = close_one(uow.rollback)
+            problem = problem or found
             if _uow_context_stack.top is uow:
                 _uow_context_stack.pop()
         while (context := _domain_context_stack.top) is not None:
-            try:
-                context.pop(None)
-            except Exception as exc:
-                problem = problem or "%s: %s" % (type(exc).__name__, exc)
+            found = close_one(lambda: context.pop(None))
+            problem = problem or found
             if _domain_context_stack.top is context:
                 _domain_context_stack.pop()
     except SnippetTimeout:

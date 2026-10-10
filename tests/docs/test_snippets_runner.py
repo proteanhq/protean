@@ -503,6 +503,11 @@ CLOSING = {
         "cleanup: RuntimeError: close broke",
         False,
     ),
+    "exits": (
+        "raise SystemExit('close exited')",
+        "cleanup: SystemExit: close exited",
+        False,
+    ),
     "hangs": (
         "time.sleep(30)",
         f"cleanup: timed out after {CLOSE_TIMEOUT} seconds",
