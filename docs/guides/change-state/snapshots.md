@@ -66,21 +66,17 @@ auto-created on the next load.
 
 ## Manual snapshot creation
 
+The examples below use this event-sourced `Account`, with one account
+`acc-001` that has three events:
+
+```python
+--8<-- "guides/change-state/snapshots/001.py:aggregate"
+```
+
 ### Programmatic API
 
 ```python
-with domain.domain_context():
-    # Snapshot a single aggregate instance
-    domain.create_snapshot(Account, "acc-001")
-
-    # Snapshot all instances of an aggregate
-    count = domain.create_snapshots(Account)
-    print(f"Created {count} snapshots")
-
-    # Snapshot all event-sourced aggregates
-    results = domain.create_all_snapshots()
-    for name, count in results.items():
-        print(f"{name}: {count} snapshots")
+--8<-- "guides/change-state/snapshots/001.py:manual"
 ```
 
 ### CLI

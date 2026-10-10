@@ -437,6 +437,174 @@ def test_a_domain_that_registers_an_element_is_initialized(tmp_path, bases):
     )
 
 
+def test_a_page_left_open_is_rolled_back_and_torn_down_before_the_next_page(
+    tmp_path, bases
+):
+    opener = _write(
+        tmp_path,
+        "```python\n"
+        "import builtins\n"
+        "builtins.closed = []\n"
+        "domain.teardown_domain_context(lambda exc: builtins.closed.append('ctx'))\n"
+        "domain.init(traverse=False)\n"
+        "domain.domain_context().push()\n"
+        "builtins.leaked = UnitOfWork()\n"
+        "builtins.leaked.start()\n"
+        "```\n",
+        name="a.md",
+    )
+    reader = _write(
+        tmp_path,
+        "```python\n"
+        "import builtins\n"
+        "assert not builtins.leaked.in_progress\n"
+        "assert builtins.closed == ['ctx'], builtins.closed\n"
+        "```\n",
+        name="b.md",
+    )
+    assert _run(tmp_path, [opener, reader], bases) == [
+        {"file": "a.md", "failure": None, "not_run": []},
+        {"file": "b.md", "failure": None, "not_run": []},
+    ]
+
+
+# What closing a page has to decide over: whether the page's own blocks
+# passed, raised or timed out, what the page left open, and how closing it
+# behaves. Every cell must give the page one result and leave nothing open for
+# the next page.
+CLOSE_TIMEOUT = 1.0
+
+LEFT_OPEN = {
+    "nothing": "",
+    "a unit of work": (
+        "class LeftOpen(UnitOfWork):\n"
+        "    def rollback(self):\n"
+        "        close()\n"
+        "        super().rollback()\n"
+        "\n"
+        "domain.init(traverse=False)\n"
+        "with domain.domain_context():\n"
+        "    LeftOpen().start()\n"
+    ),
+    "a domain context": (
+        "domain.teardown_domain_context(close)\ndomain.domain_context().push()\n"
+    ),
+}
+LEFT_OPEN["both"] = (
+    LEFT_OPEN["a unit of work"] + "domain.teardown_domain_context(close)\n"
+    "domain.domain_context().push()\n"
+)
+
+# How closing behaves: the body of ``close``, the page's failure when its
+# blocks pass, and whether that failure replaces a block's failure.
+CLOSING = {
+    "closes": ("pass", None, False),
+    "raises": (
+        "raise RuntimeError('close broke')",
+        "cleanup: RuntimeError: close broke",
+        False,
+    ),
+    "exits": (
+        "raise SystemExit('close exited')",
+        "cleanup: SystemExit: close exited",
+        False,
+    ),
+    "hangs": (
+        "time.sleep(30)",
+        f"cleanup: timed out after {CLOSE_TIMEOUT} seconds",
+        False,
+    ),
+    "catches the timeout": (
+        (
+            "while True:\n        try:\n            time.sleep(10)\n"
+            "        except BaseException:\n            pass"
+        ),
+        (
+            f"cleanup: still running at {CLOSE_TIMEOUT * 2} seconds, past the "
+            f"{CLOSE_TIMEOUT}-second timeout; the runner stopped it"
+        ),
+        True,
+    ),
+}
+
+BLOCKS = {
+    "pass": "x = 1",
+    "raise": "raise ValueError('block broke')",
+    "time out": "time.sleep(30)",
+}
+
+READER = (
+    "```python\n"
+    "from protean.utils.globals import current_domain, current_uow\n"
+    "assert not current_uow, 'a unit of work is still open'\n"
+    "assert not current_domain, current_domain.name\n"
+    "```\n"
+)
+
+
+def _close_page(left_open: str, closing: str, block: str) -> str:
+    setup = (
+        "import time\n\ndef close(*args):\n    "
+        + CLOSING[closing][0]
+        + "\n\n"
+        + LEFT_OPEN[left_open]
+    )
+    return (
+        f"```python\n{setup}```\n"
+        f"```python\n{BLOCKS[block]}\n```\n"
+        "```python\nlater = 1\n```\n"
+    )
+
+
+CLOSE_CASES = [
+    (left_open, closing, block)
+    for left_open in LEFT_OPEN
+    for closing in (CLOSING if left_open != "nothing" else ["closes"])
+    for block in BLOCKS
+]
+
+
+@pytest.mark.skipif(
+    not hasattr(signal, "setitimer"), reason="the close timeout needs SIGALRM"
+)
+def test_closing_what_a_page_left_open_gives_one_result_and_leaves_nothing_open(
+    tmp_path, bases
+):
+    pages = []
+    expected = []
+    for number, (left_open, closing, block) in enumerate(CLOSE_CASES):
+        name = f"{left_open} {closing} {block}".replace(" ", "-")
+        text = _close_page(left_open, closing, block)
+        pages.append(_write(tmp_path, text, f"{number}-{name}.md"))
+        pages.append(_write(tmp_path, READER, f"{number}-{name}-next.md"))
+        _, middle, last = extract_blocks(text)
+        block_failure, block_not_run = None, []
+        if block == "raise":
+            block_failure = f"line {middle.line}: ValueError: block broke"
+            block_not_run = [last.line]
+        elif block == "time out":
+            block_failure = (
+                f"line {middle.line}: timed out after {CLOSE_TIMEOUT} seconds"
+            )
+            block_not_run = [last.line]
+        _, close_failure, replaces = CLOSING[closing]
+        if block_failure is None or replaces:
+            failure = close_failure
+        else:
+            failure = block_failure
+        expected.append(
+            {
+                "file": f"{number}-{name}.md",
+                "failure": failure,
+                "not_run": block_not_run if failure is not None else [],
+            }
+        )
+        expected.append(
+            {"file": f"{number}-{name}-next.md", "failure": None, "not_run": []}
+        )
+    assert _run(tmp_path, pages, bases, timeout=CLOSE_TIMEOUT) == expected
+
+
 def test_an_allowlisted_page_that_passes_says_to_remove_the_entry(tmp_path, bases):
     page = _write(tmp_path, "```python\nx = 1\n```\n")
     (result,) = _run(tmp_path, [page], bases)

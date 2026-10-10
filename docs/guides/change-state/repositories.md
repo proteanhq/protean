@@ -16,23 +16,14 @@ Every aggregate gets a default repository. You access it with
 `domain.repository_for()`:
 
 ```python
-from protean import Domain
-from protean.fields import String
-
-domain = Domain()
-
-
-@domain.aggregate
-class Person:
-    name: String(required=True, max_length=50)
-    email: String(required=True, max_length=254)
+--8<-- "guides/change-state/repositories/002.py:default"
 ```
 
 ```shell
 In [1]: repo = domain.repository_for(Person)
 
 In [2]: repo
-Out[2]: <PersonRepository at 0x104f3a1d0>
+Out[2]: <protean.adapters.repository.PersonRepository object at 0x104f3a1d0>
 ```
 
 The default repository provides these methods:
@@ -66,7 +57,7 @@ repository:
 In [1]: repo = domain.repository_for(Person)
 
 In [2]: repo
-Out[2]: <CustomPersonRepository at 0x1079af290>
+Out[2]: <__main__.CustomPersonRepository object at 0x1079af290>
 
 In [3]: repo.add(Person(name="John Doe", email="john.doe@example.com"))
 Out[3]: <Person: Person object (id: 9ba6a890-e783-455e-9a6b-a0a16c0514df)>
@@ -117,20 +108,7 @@ Every repository exposes these methods for building queries:
   expression. Returns `True` or `False`.
 
 ```python
-from protean.utils.query import Q
-
-@domain.repository(part_of=Person)
-class PersonRepository:
-    def adults_in_country(self, country_code: str) -> list:
-        return self.find(
-            Q(age__gte=18, country=country_code)
-        ).items
-
-    def find_by_email(self, email: str) -> Person:
-        return self.find_by(email=email)
-
-    def has_adults(self) -> bool:
-        return self.exists(Q(age__gte=18))
+--8<-- "guides/change-state/repositories/003.py:custom_queries"
 ```
 
 Internally, these delegate to the repository's Data Access Object (DAO), the
@@ -148,28 +126,13 @@ layer that talks to the database.
 `get()` and `find_by()` raise exceptions when the expected result is not found:
 
 ```python
-from protean.exceptions import ObjectNotFoundError, TooManyObjectsError
-
-repo = domain.repository_for(Person)
-
-# Raises ObjectNotFoundError if no aggregate matches the identity
-try:
-    person = repo.get("nonexistent-id")
-except ObjectNotFoundError:
-    ...
-
-# Raises ObjectNotFoundError if no match, TooManyObjectsError if multiple
-try:
-    person = repo.find_by(email="unknown@example.com")
-except ObjectNotFoundError:
-    ...
+--8<-- "guides/change-state/repositories/003.py:errors"
 ```
 
 `exists()` never raises. It returns `True` or `False`:
 
 ```python
-if repo.exists(Q(email="john@example.com")):
-    raise ValueError("Email already taken")
+--8<-- "guides/change-state/repositories/003.py:exists"
 ```
 
 Use `get_or_none()` when a miss is a normal outcome rather than an error, such
@@ -177,10 +140,7 @@ as resolving an optional reference by id (for example, an order's
 `referred_by` customer id that may not exist):
 
 ```python
-# Returns None instead of raising ObjectNotFoundError
-person = repo.get_or_none("nonexistent-id")
-if person is None:
-    ...
+--8<-- "guides/change-state/repositories/003.py:get_or_none"
 ```
 
 For a comprehensive guide on querying, see
@@ -188,14 +148,18 @@ For a comprehensive guide on querying, see
 
 ## Connecting to a specific database
 
-When multiple database providers are configured, you can connect a repository
-to a specific one using the `database` parameter:
+The `database` parameter ties a repository to one kind of database. Its value
+is a database type: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or
+`elasticsearch`. It is not the name of a configured provider. Protean returns
+the repository only when the aggregate is stored in a provider of that type.
+
+The aggregate's `provider` option picks which configured provider stores it.
+Here `Person` is stored in the `reporting` provider. That provider is a memory
+database, so `domain.repository_for(Person)` returns
+`PersonReportingRepository`:
 
 ```python
-@domain.repository(part_of=Person, database="reporting")
-class PersonReportingRepository:
-    def active_users_summary(self) -> list:
-        return self.query.filter(active=True).all().items
+--8<-- "guides/change-state/repositories/001.py:reporting"
 ```
 
 When no `database` is specified, the default value is `"ALL"`, which means
@@ -204,9 +168,10 @@ the repository works with whichever provider the aggregate is assigned to
 `"default"` provider).
 
 !!!note
-    A repository can be connected to a specific persistence store by specifying
-    the `database` parameter. This is useful when you have separate databases
-    for different concerns (e.g., transactional vs. reporting).
+    Use `database` when an aggregate needs different query code on different
+    databases, for example a raw SQL query that only PostgreSQL understands.
+    If the aggregate's provider is a different type, Protean returns the
+    generic repository instead.
 
 ## `domain.repository_for()`
 
@@ -215,8 +180,7 @@ repository instance. It accepts an aggregate class (not a string) and returns
 the repository associated with that aggregate:
 
 ```python
-repo = domain.repository_for(Order)
-order = repo.get(order_id)
+--8<-- "guides/change-state/repositories/004.py:repository_for"
 ```
 
 How it works:
@@ -247,8 +211,7 @@ For infrastructure-level record removal (projection rebuilds, test teardown,
 GDPR right-to-erasure compliance), you can access the underlying DAO directly:
 
 ```python
-repo = domain.repository_for(Person)
-repo._dao.delete(person)
+--8<-- "guides/change-state/repositories/004.py:dao_delete"
 ```
 
 This is an intentional escape hatch, not a recommended domain operation. Use it

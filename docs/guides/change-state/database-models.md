@@ -5,7 +5,7 @@
 Protean auto-generates database models for every aggregate and entity.
 Custom database models let you override the default storage schema when
 you need adapter-specific tuning, custom table names, Elasticsearch analyzers,
-or multi-database deployments.
+or a different model for each database type.
 
 ---
 
@@ -16,8 +16,9 @@ Most applications **don't need** custom models. Use them when:
 - You need to override the table or collection name
 - You need adapter-specific field types (e.g., Elasticsearch `Text`
   with a custom analyzer)
-- You deploy one aggregate to multiple databases (e.g., PostgreSQL
-  for writes + Elasticsearch for search)
+- One aggregate runs on different database types in different deployments
+  (e.g., PostgreSQL in one, Elasticsearch in another), and each needs its
+  own model
 - You need partial field mapping (persist only a subset of fields)
 
 If your fields map 1:1 to standard database types, the auto-generated
@@ -30,18 +31,8 @@ model is sufficient.
 Subclass `BaseDatabaseModel` and register it with `part_of`:
 
 ```python
-from protean.core.database_model import BaseDatabaseModel
-
-@domain.aggregate
-class Product:
-    name = String(required=True)
-    description = Text()
-    price = Float()
-
-class ProductModel(BaseDatabaseModel):
-    pass  # Empty -- just override the schema name
-
-domain.register(ProductModel, part_of=Product, schema_name="products")
+--8<-- "guides/change-state/database-models/001.py:import"
+--8<-- "guides/change-state/database-models/001.py:custom_model"
 ```
 
 ### Overriding field types
@@ -49,17 +40,7 @@ domain.register(ProductModel, part_of=Product, schema_name="products")
 Map aggregate fields to adapter-specific types:
 
 ```python
-from elasticsearch_dsl import Text as ESText, Keyword
-
-class ProductSearchModel(BaseDatabaseModel):
-    name = Keyword()                          # Exact match, no analysis
-    description = ESText(analyzer="standard") # Full-text search
-
-domain.register(
-    ProductSearchModel,
-    part_of=Product,
-    database="search",
-)
+--8<-- "guides/change-state/database-models/002.py:field_types"
 ```
 
 ### Partial field mapping
@@ -68,11 +49,7 @@ A model can map fewer fields than the aggregate. Unmapped fields are
 handled by auto-generation:
 
 ```python
-class ProductSearchModel(BaseDatabaseModel):
-    name = Keyword()  # Override only this field
-    # description and price use default mapping
-
-domain.register(ProductSearchModel, part_of=Product)
+--8<-- "guides/change-state/database-models/003.py:partial"
 ```
 
 ---
@@ -83,15 +60,10 @@ domain.register(ProductSearchModel, part_of=Product)
 |--------|------|-------------|
 | `part_of` | class | **Required.** The aggregate or entity this model maps to |
 | `schema_name` | str | Override the storage table/collection name |
-| `database` | str | Provider name from `[databases.<name>]` config (default: `"default"`) |
+| `database` | str | The database type this model applies to: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or `elasticsearch`. This is not a provider name. It has no default: without it, the model is used for any database type that has no model of its own. |
 
 ```python
-domain.register(
-    CustomerModel,
-    part_of=Customer,
-    schema_name="clients",
-    database="reporting",
-)
+--8<-- "guides/change-state/database-models/001.py:options"
 ```
 
 ---
@@ -99,28 +71,16 @@ domain.register(
 ## Multi-database deployment
 
 Register multiple models for the same aggregate, each targeting a
-different database:
+different database type:
 
 ```python
-class CustomerWriteModel(BaseDatabaseModel):
-    pass
-
-class CustomerSearchModel(BaseDatabaseModel):
-    name = Keyword()
-
-domain.register(
-    CustomerWriteModel,
-    part_of=Customer,
-    database="default",
-    schema_name="customers",
-)
-domain.register(
-    CustomerSearchModel,
-    part_of=Customer,
-    database="search",
-    schema_name="customer_index",
-)
+--8<-- "guides/change-state/database-models/004.py:multi_database"
 ```
+
+An aggregate is stored in one provider, set with its `provider` option. Its
+repository uses the model whose `database` matches that provider's database
+type, so `Customer` above uses `CustomerSearchModel` on Elasticsearch and
+`CustomerWriteModel` on PostgreSQL. The aggregate is not written to both.
 
 ---
 
