@@ -212,7 +212,7 @@ def handle(self, event):
     domain.repository_for(Notification).add(notification)
 ```
 
-The Unit of Work does not stop this. It is one database transaction and can hold changes to several aggregates; one aggregate per transaction is a design rule.
+The Unit of Work does not stop this. On a provider with transactions, such as the SQL databases, it is one database transaction, and it can hold changes to several aggregates; one aggregate per transaction is a design rule.
 
 **Better:** Have the handler issue one command per target aggregate. Each target's command handler then changes its own aggregate. With async command processing, each runs in its own transaction. See [Cross-Aggregate](./cross-aggregate.md).
 

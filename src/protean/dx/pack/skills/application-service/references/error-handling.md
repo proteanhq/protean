@@ -78,7 +78,7 @@ This is because application services always have a synchronous caller present wh
 
 ## UnitOfWork Rollback Guarantee
 
-The Unit of Work is one real database transaction, as [ADR-0027 (The Unit of Work is a real database transaction)](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/) describes. Writes reach the database inside the transaction, but nothing is committed or visible to other connections until the Unit of Work commits. If any part of the use case fails, the rollback undoes ALL its writes:
+On a provider with transactions, such as the SQL databases, the Unit of Work is one real database transaction, as [ADR-0027 (The Unit of Work is a real database transaction)](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/) describes. Writes reach the database inside the transaction, but nothing is committed or visible to other connections until the Unit of Work commits. If any part of the use case fails, the rollback undoes ALL its writes:
 
 ```python
 # fragment
@@ -90,5 +90,7 @@ def register_user(self, email, name):
     user.raise_(Registered(user_id=user.id, email=email, name=name))
     return user.id
 ```
+
+The in-memory provider keeps writes in the Unit of Work until it commits, so a rollback there also leaves nothing behind. Elasticsearch has no transactions. There the Unit of Work logs a warning that commit and rollback are not atomic, and a rollback does not undo writes already sent.
 
 See [Error Handling Example](../assets/application_service_error_handling.py) for a complete runnable example.

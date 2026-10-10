@@ -4,7 +4,7 @@ Repositories respect Protean's Unit of Work (UoW) pattern. On a provider with tr
 
 ## Overview
 
-A Unit of Work is one real database transaction. It can hold changes to several aggregates; "one aggregate per transaction" is a design rule you keep, and the Unit of Work does not enforce it. In Protean:
+On a provider with transactions, such as the SQL databases, a Unit of Work is one real database transaction. It can hold changes to several aggregates; "one aggregate per transaction" is a design rule you keep, and the Unit of Work does not enforce it. In Protean:
 
 - **Command handlers and event handlers** have an **implicit UoW**: `@handle` wraps every handler call in its own Unit of Work, so no manual wrapping is needed
 - **Outside handlers** (scripts, tests, migrations), you use an **explicit UoW**
