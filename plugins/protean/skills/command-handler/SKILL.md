@@ -66,7 +66,7 @@ class OrderCommandHandler:
 | `retries` | `None` | Maximum retries when the handler fails with a transient exception. Overrides the domain's `server.transient_retry` setting; `None` uses that setting |
 | `backoff` | `None` | Delay strategy between transient retries: `"exponential"`, `"linear"` or `"fixed"`. `None` uses the domain setting |
 | `retry_exceptions` | `None` | Exception types treated as transient, as classes or dotted paths. `None` uses the domain setting |
-| `sequential_by` | `None` | Name of an attribute on every command this handler handles. Registration checks that the attribute exists, but the option has no runtime effect on a command handler yet: commands do not go through the outbox, so there is nothing to order |
+| `sequential_by` | `None` | Name of an attribute on every command this handler handles. Registration checks that every handled command has the attribute. Commands do not go through the outbox yet, so they are not split by this value. See [Sequential processing](https://docs.proteanhq.com/reference/server/sequential-by/) for what the option does on a command handler today |
 | `subscription_type` | `None` | `SubscriptionType` for the server's subscription. `None` uses the default |
 | `subscription_profile` | `None` | `SubscriptionProfile` preset for the subscription. `None` uses the default |
 | `subscription_config` | `{}` | Custom subscription settings that override the type and profile defaults |

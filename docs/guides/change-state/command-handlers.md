@@ -28,7 +28,7 @@ Command Handlers are defined with the `Domain.command_handler` decorator:
 | `retries` | `int` | `None` | Max auto-retry attempts on transient exceptions. Overrides the domain-level `server.transient_retry`; `None` defers to it. See [Retrying transient failures](#retrying-transient-failures). |
 | `backoff` | `str` | `None` | Backoff strategy between retries: `"exponential"`, `"linear"`, or `"fixed"`. `None` defers to config. |
 | `retry_exceptions` | exception types or dotted-path strings | `None` | Which exceptions count as transient. `None` uses the configured default (`ConnectionError`, `TimeoutError`, `SendError`). |
-| `sequential_by` | `str` | `None` | Name of an attribute on every command this handler handles. Registration checks that the attribute exists, but the option has no runtime effect on a command handler yet: commands do not go through the outbox, so there is nothing to order. See [Sequential processing](../../reference/server/sequential-by.md). |
+| `sequential_by` | `str` | `None` | Name of an attribute on every command this handler handles. Registration checks that every handled command has the attribute. Commands do not go through the outbox yet, so they are not split by this value. See [Sequential processing](../../reference/server/sequential-by.md) for what the option does on a command handler today. |
 | `subscription_type` | `SubscriptionType` | `None` | Subscription type for the server's subscription. `None` uses the default. |
 | `subscription_profile` | `SubscriptionProfile` | `None` | Subscription profile preset. `None` uses the default. |
 | `subscription_config` | `dict` | `{}` | Custom subscription settings that override the type and profile defaults. |
