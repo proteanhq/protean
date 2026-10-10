@@ -87,13 +87,13 @@ class TestEntityInitTemplateDict:
 # ---------------------------------------------------------------------------
 class TestEntityUpdateData:
     def test_non_dict_positional_arg_raises(self, test_domain):
-        """AssertionError for non-dict in _update_data."""
+        """TypeError for non-dict in _update_data."""
         test_domain.register(Order)
         test_domain.register(OrderItem, part_of=Order)
         test_domain.init(traverse=False)
 
         order = Order(name="Test")
-        with pytest.raises(AssertionError) as exc_info:
+        with pytest.raises(TypeError) as exc_info:
             order._update_data("not a dict")
         assert "must be a dict" in str(exc_info.value)
 

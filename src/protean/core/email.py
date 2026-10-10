@@ -10,6 +10,7 @@ from protean.utils import (
     DomainObjects,
     _convert_str_values_to_list,
     _derive_element_class,
+    _ensure_template_dict,
 )
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS
@@ -101,12 +102,7 @@ class BaseEmail(Element, BaseModel, OptionsMixin):
         if args:
             merged: dict[str, Any] = {}
             for template in args:
-                if not isinstance(template, dict):
-                    raise AssertionError(
-                        f"Positional argument {template} passed must be a dict. "
-                        f"This argument serves as a template for loading common "
-                        f"values.",
-                    )
+                _ensure_template_dict(template)
                 merged.update(template)
             merged.update(kwargs)
             kwargs = merged

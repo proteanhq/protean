@@ -190,7 +190,7 @@ class TestProjectionInitialization:
         assert person.age == 30
 
     def test_template_must_be_dict(self):
-        with pytest.raises(AssertionError) as exc:
+        with pytest.raises(TypeError) as exc:
             Person(["123", "John", "Doe"])
         assert "must be a dict" in str(exc.value)
 

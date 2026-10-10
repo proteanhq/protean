@@ -141,7 +141,7 @@ class TestEntityInitialization:
         assert product.quantity == 3
 
     def test_template_must_be_dict(self):
-        with pytest.raises(AssertionError) as exc:
+        with pytest.raises(TypeError) as exc:
             Product(["Widget", 10.0, 3])
         assert "must be a dict" in str(exc.value)
 

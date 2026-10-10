@@ -326,8 +326,8 @@ class TestTemplateDictInit:
         assert pm.payment_id == "PAY-1"
 
     def test_init_with_invalid_positional_arg(self):
-        """Non-dict positional args should raise AssertionError."""
-        with pytest.raises(AssertionError, match="must be a dict"):
+        """Non-dict positional args should raise TypeError."""
+        with pytest.raises(TypeError, match="must be a dict"):
             OrderFulfillmentPM("not-a-dict")
 
 

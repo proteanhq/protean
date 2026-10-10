@@ -32,7 +32,7 @@ def test_vo_marked_abstract_cannot_be_instantiated(test_domain):
 
 
 def test_template_param_is_a_dict():
-    with pytest.raises(AssertionError) as exc:
+    with pytest.raises(TypeError) as exc:
         Balance([Currency.CAD.value, 0.0])
 
     assert str(exc.value) == (

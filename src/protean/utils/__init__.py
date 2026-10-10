@@ -156,6 +156,19 @@ def _convert_str_values_to_list(value: Any) -> list[Any]:
         return list(value)
 
 
+def _ensure_template_dict(template: object) -> None:
+    """Raise ``TypeError`` if ``template`` is not a dict.
+
+    Elements accept dicts as positional arguments. Each one is a template of
+    common values, and keyword arguments override it.
+    """
+    if not isinstance(template, dict):
+        raise TypeError(
+            f"Positional argument {template} passed must be a dict. "
+            f"This argument serves as a template for loading common values."
+        )
+
+
 class DomainObjects(StrEnum):
     AGGREGATE = "AGGREGATE"
     APPLICATION_SERVICE = "APPLICATION_SERVICE"

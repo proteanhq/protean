@@ -151,7 +151,7 @@ class TestAggregateInitialization:
         assert person.age == 23
 
     def test_template_must_be_dict(self):
-        with pytest.raises(AssertionError) as exc:
+        with pytest.raises(TypeError) as exc:
             Person(["John", "Doe", 23])
         assert "must be a dict" in str(exc.value)
 

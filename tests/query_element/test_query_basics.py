@@ -193,7 +193,7 @@ class TestQueryTemplateDictPattern:
         test_domain.register(GetOrdersByCustomer, part_of=OrderSummary)
         test_domain.init(traverse=False)
 
-        with pytest.raises(AssertionError, match="must be a dict"):
+        with pytest.raises(TypeError, match="must be a dict"):
             GetOrdersByCustomer("not a dict")
 
 

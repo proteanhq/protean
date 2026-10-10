@@ -283,8 +283,8 @@ class TestEmailTemplateDictPattern:
         assert email.from_email == "sender@b.com"
 
     def test_non_dict_positional_arg_raises(self):
-        """AssertionError for non-dict positional arg."""
-        with pytest.raises(AssertionError) as exc_info:
+        """TypeError for non-dict positional arg."""
+        with pytest.raises(TypeError) as exc_info:
             NotificationEmail("not a dict")
         assert "must be a dict" in str(exc_info.value)
 

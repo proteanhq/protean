@@ -24,7 +24,11 @@ from protean.fields.base import FieldBase
 from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
-from protean.utils import DomainObjects, _derive_element_class
+from protean.utils import (
+    DomainObjects,
+    _derive_element_class,
+    _ensure_template_dict,
+)
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS
 
@@ -223,12 +227,7 @@ class BaseQuery(Element, BaseModel, OptionsMixin, Generic[TResult]):
         if args:
             merged: dict[str, Any] = {}
             for template in args:
-                if not isinstance(template, dict):
-                    raise AssertionError(
-                        f"Positional argument {template} passed must be a dict. "
-                        f"This argument serves as a template for loading common "
-                        f"values.",
-                    )
+                _ensure_template_dict(template)
                 merged.update(template)
             merged.update(kwargs)
             kwargs = merged
