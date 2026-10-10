@@ -95,6 +95,27 @@ def test_read_all_pages_through_the_whole_category(example):
     assert deposited == sum(DEPOSITS)
 
 
+def test_the_category_is_read_through_read_all_in_pages_of_1000(example, monkeypatch):
+    # Seven events fit in one page, so the sum alone cannot tell `read_all`
+    # from a single `read`. A stream long enough to need a second page takes
+    # minutes to write to the memory store, so record the call instead.
+    open_account(example, DEPOSITS)
+    store = example.domain.event_store.store
+    calls = []
+    read_all = store.read_all
+
+    def recording_read_all(stream, **kwargs):
+        calls.append((stream, kwargs))
+        return read_all(stream, **kwargs)
+
+    monkeypatch.setattr(store, "read_all", recording_read_all)
+
+    _, _, _, deposited = example.read_account_events()
+
+    assert calls == [("myapp::account", {"page_size": 1000})]
+    assert deposited == sum(DEPOSITS)
+
+
 def test_the_account_replays_from_its_events(example):
     open_account(example, DEPOSITS)
 

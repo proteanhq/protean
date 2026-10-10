@@ -140,7 +140,9 @@ command_processing = "sync"  # or "async"
 # ...
 ```
 
-When set to "sync", all commands will be processed synchronously by default unless explicitly specified as asynchronous, and vice versa.
+When set to `"sync"`, every command is handled at once, even one submitted with
+`asynchronous=True`. When set to `"async"`, commands are queued for the server
+unless submitted with `asynchronous=False`.
 
 ## Idempotency in Handlers
 
@@ -271,6 +273,7 @@ The simplest way to test a command handler is to submit a command
 synchronously and verify the resulting state:
 
 ```python
+# fragment
 --8<-- "guides/change-state/007.py:tests"
 ```
 

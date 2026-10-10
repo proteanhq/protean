@@ -73,13 +73,15 @@ def test_find_by_email_returns_the_matching_person(custom):
 
 @pytest.fixture
 def people(named_methods):
-    """Store two adults in different countries and one child."""
+    """Store three adults, one of them just 18, and two children, one just 17."""
     Person = named_methods.Person
     with named_methods.domain.domain_context():
         repo = named_methods.domain.repository_for(Person)
         repo.add(Person(name="Ann", email="ann@example.com", age=30, country="CA"))
         repo.add(Person(name="Bob", email="bob@example.com", age=40, country="US"))
         repo.add(Person(name="Cal", email="cal@example.com", age=12, country="CA"))
+        repo.add(Person(name="Dan", email="dan@example.com", age=17, country="US"))
+        repo.add(Person(name="Eve", email="eve@example.com", age=18, country="US"))
     return named_methods
 
 
@@ -88,7 +90,11 @@ def test_adults_returns_only_people_aged_18_or_more(people):
         repo = people.domain.repository_for(people.Person)
 
         assert isinstance(repo, people.PersonRepository)
-        assert sorted(person.name for person in repo.adults()) == ["Ann", "Bob"]
+        assert sorted(person.name for person in repo.adults()) == [
+            "Ann",
+            "Bob",
+            "Eve",
+        ]
 
 
 def test_by_country_returns_only_people_in_that_country(people):
@@ -120,6 +126,8 @@ def test_repository_for_returns_the_memory_repository(reporting):
         repo = reporting.domain.repository_for(reporting.Person)
 
         assert isinstance(repo, reporting.PersonReportingRepository)
+        # The repository is tied to memory databases only.
+        assert reporting.PersonReportingRepository.meta_.database == "memory"
 
 
 def test_active_users_summary_returns_only_active_people(reporting):
@@ -182,6 +190,9 @@ def querying():
         repo.add(
             module.Person(name="Dee", email="cal@example.com", age=12, country="CA")
         )
+        repo.add(
+            module.Person(name="Fay", email="fay@example.com", age=17, country="CA")
+        )
         yield module
 
 
@@ -202,10 +213,20 @@ def test_custom_find_by_email_returns_the_matching_person(querying):
 def test_has_adults_is_true_only_when_an_adult_is_stored(querying):
     assert repository(querying).has_adults() is True
 
-    empty = load_example("guides/change-state/repositories/003.py")
-    empty.domain.init(traverse=False)
-    with empty.domain.domain_context():
-        assert repository(empty).has_adults() is False
+    minors = load_example("guides/change-state/repositories/003.py")
+    minors.domain.init(traverse=False)
+    with minors.domain.domain_context():
+        assert repository(minors).has_adults() is False
+
+        repository(minors).add(
+            minors.Person(name="Gus", email="gus@example.com", age=17)
+        )
+        assert repository(minors).has_adults() is False
+
+        repository(minors).add(
+            minors.Person(name="Hal", email="hal@example.com", age=18)
+        )
+        assert repository(minors).has_adults() is True
 
 
 def test_get_raises_object_not_found_for_an_unknown_id(querying):
@@ -259,6 +280,8 @@ def entry_point():
 def test_repository_for_adds_and_gets_the_person(entry_point):
     assert entry_point.person.id == "42"
     assert entry_point.person.name == "John Doe"
+    # get() hands back the stored record, not a new object
+    assert entry_point.person.state_.is_persisted
     assert isinstance(entry_point.repo, BaseRepository)
 
 

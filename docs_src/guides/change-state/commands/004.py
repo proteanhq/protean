@@ -42,7 +42,7 @@ domain.config["event_processing"] = "async"  # or "sync"
 
 # Per-command control
 def place_now(command):
-    # Override the domain setting for a specific command
+    # Handle this command at once, even in an "async" domain
     return domain.process(command, asynchronous=False)
 
 

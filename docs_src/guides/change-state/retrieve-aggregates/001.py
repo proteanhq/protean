@@ -146,7 +146,10 @@ has_prev = result.has_prev  # True if this page has items and is not the first p
 
 # --8<-- [start:with_total]
 # Only the rows are needed, so the separate count query is skipped
-items = repository.query.filter(country="CA").all(with_total=False).items
+youngest = (
+    repository.query.filter(country="CA").order_by("age").limit(2).all(with_total=False)
+)
+items = youngest.items
 # --8<-- [end:with_total]
 
 # --8<-- [start:only]
@@ -163,8 +166,13 @@ count = repository.query.filter(country="XX").delete()
 # --8<-- [end:delete]
 deleted_count = count
 
+# A minor with the same name, so the age condition in the raw query matters
+minor = Person(name="John Doe", age=17, country="CA")
+repository.add(minor)
+
 # --8<-- [start:raw]
 results = repository.query.raw('{"name": "John Doe", "age__gte": 18}')
 # --8<-- [end:raw]
+repository.query.filter(id=minor.id).delete()
 
 context.pop()

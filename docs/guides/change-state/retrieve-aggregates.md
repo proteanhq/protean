@@ -35,7 +35,7 @@ Beyond `get`, every repository exposes convenience methods for querying:
 - **`.find(criteria)`**: Finds all aggregates matching a `Q` criteria
   expression. Returns a `ResultSet`.
 - **`.exists(criteria)`**: Checks if any aggregate matches a `Q` criteria
-  expression. Returns `True` or `False` without loading objects.
+  expression. Returns `True` or `False`.
 
 These are available both on the repository instance returned by
 `domain.repository_for()` and inside custom repository methods via `self`.
@@ -109,7 +109,9 @@ using `find()` with reusable, domain-named query criteria.
 
 ### `exists`
 
-Use `exists` to check whether matching aggregates exist without loading them:
+Use `exists` to check whether any aggregate matches. It runs the same query as
+`find` and checks whether any rows came back, so it still reads the matching
+aggregates:
 
 ```shell
 In [1]: repository.exists(Q(country="US"))
@@ -522,8 +524,9 @@ matching rows. On some adapters (SQLAlchemy) the total requires a second
 --8<-- "guides/change-state/retrieve-aggregates/001.py:with_total"
 ```
 
-Adapters that derive the total for free (memory, Elasticsearch) continue to
-populate `total` regardless.
+With `with_total=False`, the memory and SQLAlchemy adapters set `total` to the
+number of items on the page. Elasticsearch returns the full count with every
+search, so it still sets `total` to the number of matching rows.
 
 ## Projecting fields with `only`
 

@@ -179,10 +179,31 @@ class TestDomainConfiguration:
 
 
 class TestDeadlines:
-    def test_the_handler_timeout_is_set_on_the_handler(self, handler_timeout_example):
-        meta = handler_timeout_example.OrderCommandHandler.meta_
+    def test_the_handler_timeout_sets_the_default_deadline(
+        self, handler_timeout_example
+    ):
+        before = datetime.now(UTC)
 
-        assert meta.timeout == 30
+        deadline = handler_timeout_example.domain.process(
+            handler_timeout_example.PlaceOrder(order_id="ord-1"), asynchronous=False
+        )
+
+        assert before + timedelta(seconds=30) <= deadline
+        assert deadline <= datetime.now(UTC) + timedelta(seconds=30)
+
+    def test_an_explicit_timeout_wins_over_the_handler_timeout(
+        self, handler_timeout_example
+    ):
+        before = datetime.now(UTC)
+
+        deadline = handler_timeout_example.domain.process(
+            handler_timeout_example.PlaceOrder(order_id="ord-2"),
+            asynchronous=False,
+            timeout=timedelta(seconds=5),
+        )
+
+        assert before + timedelta(seconds=5) <= deadline
+        assert deadline <= datetime.now(UTC) + timedelta(seconds=5)
 
     def test_an_absolute_deadline_reaches_the_handler(self, deadlines_example):
         before = datetime.now(UTC)

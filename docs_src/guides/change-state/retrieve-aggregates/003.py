@@ -199,6 +199,14 @@ for order in [
         placed_at=now - timedelta(days=30),
         due_date=now - timedelta(days=10),
     ),
+    # Overdue by two days, inside the grace period, high value, shipping to the EU
+    Order(
+        id="E",
+        total=6000,
+        shipping_region="EU",
+        placed_at=now - timedelta(days=10),
+        due_date=now - timedelta(days=2),
+    ),
     # Not yet due, low value, placed recently
     Order(
         id="D",

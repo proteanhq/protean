@@ -12,6 +12,7 @@ import sys
 import pytest
 
 from protean.exceptions import ObjectNotFoundError, ValidationError
+from tests.docs.guides.change_state.failing import AddFails
 from tests.docs.support import DOCS_SRC, REPO_ROOT, load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -70,6 +71,21 @@ class TestDefiningAnApplicationService:
         assert user.name == "John Doe"
         assert user.status == "ACTIVE"
 
+    def test_activate_user_saves_nothing_when_saving_fails(
+        self, auth_example, add_fails
+    ):
+        service = auth_example.UserApplicationServices()
+        user_id = service.register_user(email="jane@example.com", name="Jane Doe")
+        add_fails(auth_example.auth)
+
+        # add() stores the active user and then raises. @use_case runs the
+        # method in a Unit of Work, so the stored change is rolled back.
+        with pytest.raises(AddFails):
+            service.activate_user(user_id)
+
+        user = auth_example.auth.repository_for(auth_example.User).get(user_id)
+        assert user.status == "INACTIVE"
+
 
 class TestUseCaseDecorator:
     def test_place_order_returns_the_id_of_the_saved_order(self, order_example):
@@ -93,6 +109,21 @@ class TestUseCaseDecorator:
         assert "customer_id" in exc_info.value.messages
         orders = repo.query.all().items
         assert [order.id for order in orders] == [saved_id]
+
+    def test_place_order_rolls_back_an_order_already_added(
+        self, order_example, add_fails
+    ):
+        repo = order_example.domain.repository_for(order_example.Order)
+        add_fails(order_example.domain)
+
+        # add() stores the order and then raises, inside the use case's
+        # Unit of Work, so the stored order is rolled back.
+        with pytest.raises(AddFails):
+            order_example.OrderApplicationServices().place_order(
+                customer_id="cust-1", items=["book"]
+            )
+
+        assert repo.query.all().items == []
 
 
 class TestReturnValues:
@@ -119,8 +150,9 @@ class TestReturnValues:
 
 class TestErrorHandling:
     def test_the_api_layer_gets_the_new_user_id(self, errors_example):
-        user_id = errors_example.register_john()
+        status, user_id = errors_example.register_john()
 
+        assert status == 201
         user = errors_example.domain.repository_for(errors_example.User).get(user_id)
         assert user.email == "john@example.com"
         assert user.name == "John Doe"
@@ -138,14 +170,29 @@ class TestErrorHandling:
     def test_the_api_layer_catches_the_error_and_nothing_new_is_saved(
         self, errors_example
     ):
-        first_id = errors_example.register_john()
+        _, first_id = errors_example.register_john()
 
-        assert errors_example.register_john() is None
+        status, messages = errors_example.register_john()
+
+        assert status == 400
+        assert "email" in messages
 
         users = errors_example.domain.repository_for(errors_example.User).query.all()
         assert [(user.id, user.name) for user in users.items] == [
             (first_id, "John Doe")
         ]
+
+    def test_the_api_layer_turns_an_unexpected_error_into_a_500(
+        self, errors_example, monkeypatch
+    ):
+        def register_user(self, email, name):
+            raise RuntimeError("database is down")
+
+        monkeypatch.setattr(
+            errors_example.UserApplicationServices, "register_user", register_user
+        )
+
+        assert errors_example.register_john() == (500, "Internal server error")
 
 
 class TestTestingApplicationServices:

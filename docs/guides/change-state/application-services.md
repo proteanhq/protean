@@ -188,6 +188,7 @@ Application services are tested by calling use case methods directly and
 asserting on the return values and persisted state:
 
 ```python
+# fragment
 --8<-- "guides/change-state/application-services/002.py:tests"
 ```
 

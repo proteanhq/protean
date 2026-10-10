@@ -33,13 +33,13 @@ def register_john():
     try:
         user_service = UserApplicationServices()
         user_id = user_service.register_user(email="john@example.com", name="John Doe")
-        return user_id
-    except ValidationError:
-        # Handle validation errors (e.g., return 400 response)
-        ...
+        return 201, user_id
+    except ValidationError as exc:
+        # The input broke a rule, such as a taken email
+        return 400, exc.messages
     except Exception:
-        # Handle unexpected errors (e.g., return 500 response)
-        ...
+        # Anything else is unexpected
+        return 500, "Internal server error"
 
 
 # --8<-- [end:errors]
@@ -48,5 +48,5 @@ def register_john():
 if __name__ == "__main__":
     domain.init(traverse=False)
     with domain.domain_context():
-        print(register_john())  # the new user's id
-        print(register_john())  # None: the email is already taken
+        print(register_john())  # (201, the new user's id)
+        print(register_john())  # (400, ...): the email is already taken

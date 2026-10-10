@@ -28,6 +28,12 @@ def last_snapshot(module, identifier):
     )
 
 
+def snapshot_rows(module, identifier):
+    """Return every row in the account's snapshot stream, oldest first."""
+    category = module.Account.meta_.stream_category
+    return module.domain.event_store.store._read(f"{category}:snapshot-{identifier}")
+
+
 def write_account(module, identifier, deposits):
     """Open an account and add ``deposits`` deposits of 10.0 in one write.
 
@@ -52,6 +58,15 @@ def test_manual_snapshot_stores_the_account_state(example):
         assert snapshot["data"]["holder"] == "Alice"
         assert snapshot["data"]["balance"] == 150.0
         assert snapshot["data"]["_version"] == 2
+
+
+def test_each_manual_call_writes_a_snapshot_of_acc_001(example):
+    # create_snapshot, create_snapshots and create_all_snapshots each wrote one.
+    with example.domain.domain_context():
+        rows = snapshot_rows(example, "acc-001")
+
+    assert len(rows) == 3
+    assert all(row["data"]["balance"] == 150.0 for row in rows)
 
 
 def test_create_snapshot_returns_true(example):
@@ -112,3 +127,19 @@ def test_load_from_a_snapshot_applies_the_later_events(example):
         assert loaded.holder == "Alice"
         assert loaded.balance == 175.0
         assert loaded._version == 3
+
+
+def test_load_starts_from_the_snapshot_not_from_the_first_event(example):
+    with example.domain.domain_context():
+        # A snapshot whose balance no replay of acc-001's events can produce.
+        # Loading returns it only if the repository starts from the snapshot.
+        category = example.Account.meta_.stream_category
+        data = dict(last_snapshot(example, "acc-001")["data"], balance=999.0)
+        example.domain.event_store.store._write(
+            f"{category}:snapshot-acc-001", "SNAPSHOT", data
+        )
+
+        loaded = example.domain.repository_for(example.Account).get("acc-001")
+
+        assert loaded.balance == 999.0
+        assert loaded._version == 2

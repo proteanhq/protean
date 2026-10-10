@@ -42,6 +42,8 @@ domain.repository_for(Article).add(
 )
 domain.repository_for(Notification).add(Notification(retry_count=1, max_retries=3))
 domain.repository_for(Notification).add(Notification(retry_count=3, max_retries=3))
+domain.repository_for(Notification).add(Notification(retry_count=4, max_retries=5))
+domain.repository_for(Notification).add(Notification(retry_count=2, max_retries=1))
 
 # --8<-- [start:isnull]
 articles = domain.repository_for(Article)

@@ -11,6 +11,7 @@ import sys
 
 import pytest
 
+from protean.core.unit_of_work import UnitOfWork
 from tests.docs.support import DOCS_SRC, REPO_ROOT, load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -48,9 +49,17 @@ def error_handling():
         yield module
 
 
+def no_backoff(module):
+    """Keep the handler's retry count but sleep zero seconds between attempts."""
+    module.domain.config["server"]["transient_retry"].update(
+        base_delay_seconds=0.0, max_delay_seconds=0.0
+    )
+
+
 @pytest.fixture
 def retrying():
     module = load_example("guides/change-state/command-handlers/004.py")
+    no_backoff(module)
     module.domain.init(traverse=False)
     with module.domain.domain_context():
         yield module
@@ -59,9 +68,36 @@ def retrying():
 @pytest.fixture
 def narrow_retrying():
     module = load_example("guides/change-state/command-handlers/005.py")
+    no_backoff(module)
     module.domain.init(traverse=False)
     with module.domain.domain_context():
         yield module
+
+
+@pytest.fixture
+def failing_attempts(monkeypatch):
+    """Make the first handler attempts fail with the given exceptions.
+
+    The example handlers have empty bodies, so the failure is raised where each
+    attempt opens its Unit of Work. Returns the list of attempts made.
+    """
+    attempts = []
+    failures = []
+
+    class UnitOfWorkThatFails(UnitOfWork):
+        def __enter__(self):
+            attempts.append(len(attempts) + 1)
+            if failures:
+                raise failures.pop(0)
+            return super().__enter__()
+
+    monkeypatch.setattr("protean.utils.mixins.UnitOfWork", UnitOfWorkThatFails)
+
+    def fail_with(*exceptions):
+        failures.extend(exceptions)
+        return attempts
+
+    return fail_with
 
 
 def test_publish_article_command_publishes_the_draft(publishing):
@@ -166,19 +202,51 @@ def test_retry_options_are_set_on_the_handler(retrying):
     assert meta.retry_exceptions is None
 
 
-def test_debit_command_reaches_the_retrying_handler(retrying):
+def test_connection_error_is_retried_up_to_three_times(retrying, failing_attempts):
+    attempts = failing_attempts(*[ConnectionError("database is down")] * 3)
+
     result = retrying.domain.process(
         retrying.DebitAccount(account_id="acc-1", amount=5.0), asynchronous=False
     )
 
     assert result is None
+    assert attempts == [1, 2, 3, 4]
 
 
-def test_retry_exceptions_narrow_the_retried_set(narrow_retrying):
-    meta = narrow_retrying.AccountCommandHandler.meta_
+def test_connection_error_propagates_after_three_retries(retrying, failing_attempts):
+    attempts = failing_attempts(*[ConnectionError("database is down")] * 4)
 
-    assert meta.retries == 2
-    assert meta.retry_exceptions == [ConnectionError]
+    with pytest.raises(ConnectionError, match="database is down"):
+        retrying.domain.process(
+            retrying.DebitAccount(account_id="acc-1", amount=5.0), asynchronous=False
+        )
+
+    assert attempts == [1, 2, 3, 4]
+
+
+def test_narrowed_handler_retries_a_connection_error(narrow_retrying, failing_attempts):
+    attempts = failing_attempts(*[ConnectionError("database is down")] * 2)
+
+    narrow_retrying.domain.process(
+        narrow_retrying.DebitAccount(account_id="acc-1", amount=5.0),
+        asynchronous=False,
+    )
+
+    assert attempts == [1, 2, 3]
+
+
+def test_narrowed_handler_does_not_retry_a_timeout_error(
+    narrow_retrying, failing_attempts
+):
+    attempts = failing_attempts(TimeoutError("gateway timed out"))
+
+    with pytest.raises(TimeoutError, match="gateway timed out"):
+        narrow_retrying.domain.process(
+            narrow_retrying.DebitAccount(account_id="acc-1", amount=5.0),
+            asynchronous=False,
+        )
+
+    assert attempts == [1]
 
 
 def test_page_test_passes_under_pytest():

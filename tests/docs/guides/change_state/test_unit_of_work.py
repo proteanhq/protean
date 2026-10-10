@@ -14,6 +14,10 @@ import pytest
 from protean import UnitOfWork, current_uow
 from protean.adapters.repository.memory import MemorySession
 from protean.exceptions import ObjectNotFoundError, ValidationError
+from tests.docs.guides.change_state.failing import (
+    AddFails,
+    RepositoryThatFailsAfterAdd,
+)
 from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -48,47 +52,6 @@ def status_of(module, order_id):
     return module.domain.repository_for(module.Order).get(order_id).status
 
 
-class AddFails(Exception):
-    """The failure a repository raises after it has stored the order."""
-
-
-class RepositoryThatFailsAfterAdd:
-    """Stores the aggregate, then raises, as a flush that fails part-way would.
-
-    Without a Unit of Work around the call, the real ``add()`` commits at once,
-    so the change survives the error. Inside one, the error rolls it back.
-    """
-
-    def __init__(self, repository, fail_on=None):
-        self._repository = repository
-        self._fail_on = fail_on
-
-    def add(self, item):
-        self._repository.add(item)
-        if self._fail_on is None or item is self._fail_on:
-            raise AddFails()
-        return item
-
-    def __getattr__(self, name):
-        return getattr(self._repository, name)
-
-
-@pytest.fixture
-def add_fails(monkeypatch):
-    """Make the example's ``repository_for`` hand out a repository whose
-    ``add()`` stores the order and then raises."""
-
-    def install(module):
-        real = module.domain.repository_for
-        monkeypatch.setattr(
-            module.domain,
-            "repository_for",
-            lambda cls: RepositoryThatFailsAfterAdd(real(cls)),
-        )
-
-    return install
-
-
 class TestContextManagerForm:
     def test_commits_the_change_when_the_block_exits(self, example):
         order_id = saved_order(example, 25.0)
@@ -109,7 +72,7 @@ class TestContextManagerForm:
         self, example, add_fails
     ):
         order_id = saved_order(example, 25.0)
-        add_fails(example)
+        add_fails(example.domain)
 
         with pytest.raises(AddFails):
             example.confirm_order(order_id)
@@ -139,7 +102,7 @@ class TestImperativeForm:
 
     def test_rollback_discards_a_change_already_added(self, example, add_fails):
         order_id = saved_order(example, 25.0)
-        add_fails(example)
+        add_fails(example.domain)
 
         with pytest.raises(AddFails):
             example.confirm_order_step_by_step(order_id)
@@ -165,7 +128,7 @@ class TestRollbackExample:
 
     def test_rolls_back_when_add_raises(self, rollback_example, add_fails):
         order_id = saved_order(rollback_example, 25.0)
-        add_fails(rollback_example)
+        add_fails(rollback_example.domain)
 
         # Only ValidationError is caught, so the add() failure propagates.
         with pytest.raises(AddFails):

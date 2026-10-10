@@ -5,7 +5,7 @@
 Protean auto-generates database models for every aggregate and entity.
 Custom database models let you override the default storage schema when
 you need adapter-specific tuning, custom table names, Elasticsearch analyzers,
-or multi-database deployments.
+or a different model for each database type.
 
 ---
 
@@ -16,8 +16,9 @@ Most applications **don't need** custom models. Use them when:
 - You need to override the table or collection name
 - You need adapter-specific field types (e.g., Elasticsearch `Text`
   with a custom analyzer)
-- You deploy one aggregate to multiple databases (e.g., PostgreSQL
-  for writes + Elasticsearch for search)
+- One aggregate runs on different database types in different deployments
+  (e.g., PostgreSQL in one, Elasticsearch in another), and each needs its
+  own model
 - You need partial field mapping (persist only a subset of fields)
 
 If your fields map 1:1 to standard database types, the auto-generated
@@ -39,18 +40,7 @@ Subclass `BaseDatabaseModel` and register it with `part_of`:
 Map aggregate fields to adapter-specific types:
 
 ```python
-# fragment
-from elasticsearch.dsl import Keyword, Text as ESText
-
-class ProductSearchModel(BaseDatabaseModel):
-    name = Keyword()                          # Exact match, no analysis
-    description = ESText(analyzer="standard") # Full-text search
-
-domain.register(
-    ProductSearchModel,
-    part_of=Product,
-    database="elasticsearch",
-)
+--8<-- "guides/change-state/database-models/002.py:field_types"
 ```
 
 ### Partial field mapping
@@ -59,12 +49,7 @@ A model can map fewer fields than the aggregate. Unmapped fields are
 handled by auto-generation:
 
 ```python
-# fragment
-class ProductSearchModel(BaseDatabaseModel):
-    name = Keyword()  # Override only this field
-    # description and price use default mapping
-
-domain.register(ProductSearchModel, part_of=Product)
+--8<-- "guides/change-state/database-models/003.py:partial"
 ```
 
 ---
@@ -89,26 +74,13 @@ Register multiple models for the same aggregate, each targeting a
 different database type:
 
 ```python
-# fragment
-class CustomerWriteModel(BaseDatabaseModel):
-    pass
-
-class CustomerSearchModel(BaseDatabaseModel):
-    name = Keyword()
-
-domain.register(
-    CustomerWriteModel,
-    part_of=Customer,
-    database="postgresql",
-    schema_name="customers",
-)
-domain.register(
-    CustomerSearchModel,
-    part_of=Customer,
-    database="elasticsearch",
-    schema_name="customer_index",
-)
+--8<-- "guides/change-state/database-models/004.py:multi_database"
 ```
+
+An aggregate is stored in one provider, set with its `provider` option. Its
+repository uses the model whose `database` matches that provider's database
+type, so `Customer` above uses `CustomerSearchModel` on Elasticsearch and
+`CustomerWriteModel` on PostgreSQL. The aggregate is not written to both.
 
 ---
 

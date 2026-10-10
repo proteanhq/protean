@@ -136,14 +136,11 @@ class TestTheShownQueries:
         assert queries.result.items == []
         assert queries.has_prev is False
 
-    def test_all_without_total_still_returns_the_people_in_ca(self, queries):
-        assert sorted(names(queries.items)) == [
-            "Baby Doe",
-            "Boy Doe",
-            "Girl Doe",
-            "Jane Doe",
-            "John Doe",
-        ]
+    def test_all_without_total_counts_only_the_rows_on_the_page(self, queries):
+        assert names(queries.items) == ["Baby Doe", "Boy Doe"]
+        # Five people live in CA. Without the count query, the memory adapter
+        # sets the total to the two rows it returned.
+        assert queries.youngest.total == 2
 
     def test_only_returns_records_with_the_projected_fields(self, queries):
         records = queries.records
@@ -156,6 +153,8 @@ class TestTheShownQueries:
             ("John Doe", 38),
         ]
         assert all(record.id for record in records)
+        with pytest.raises(AttributeError):
+            records[0].country
 
     def test_update_and_delete_remove_the_children_in_ca(self, queries):
         assert queries.updated_count == 3
@@ -164,8 +163,8 @@ class TestTheShownQueries:
             remaining = queries.repository.query.all().items
         assert sorted(names(remaining)) == ["Jane Doe", "John Doe", "John Roe"]
 
-    def test_raw_query_finds_john_doe(self, queries):
-        assert names(queries.results.items) == ["John Doe"]
+    def test_raw_query_finds_john_doe_and_not_the_minor_with_his_name(self, queries):
+        assert [(p.name, p.age) for p in queries.results.items] == [("John Doe", 38)]
 
 
 class TestTheShownRepositoryMethods:
@@ -348,7 +347,12 @@ class TestNullAndFieldLookups:
 
     def test_f_compares_two_fields_of_the_same_aggregate(self):
         module = load_example("guides/change-state/retrieve-aggregates/002.py")
-        assert [(n.retry_count, n.max_retries) for n in module.retrying] == [(1, 3)]
+        # (4, 5) is in and (2, 1) is out, so each row is compared with its own
+        # `max_retries`, not with the default of 3.
+        assert sorted((n.retry_count, n.max_retries) for n in module.retrying) == [
+            (1, 3),
+            (4, 5),
+        ]
 
 
 @pytest.fixture
@@ -362,10 +366,11 @@ def ids(results):
 
 class TestComposableQueryFunctions:
     def test_composed_functions_find_the_matching_orders(self, orders):
-        assert ids(orders.overdue.items) == ["A", "B"]
+        assert ids(orders.overdue.items) == ["A", "B", "E"]
+        # E is overdue by two days, inside the three-day grace period.
         assert ids(orders.overdue_and_high_value.items) == ["A"]
         assert ids(orders.regional.items) == ["A", "C"]
-        assert ids(orders.stale.items) == ["A", "C"]
+        assert ids(orders.stale.items) == ["A", "C", "E"]
         assert orders.needs_escalation is True
 
     def test_functions_work_with_the_queryset(self, orders):
@@ -385,7 +390,7 @@ class TestSpecifications:
     def test_is_satisfied_by_matches_the_same_orders_in_memory(self, orders):
         with orders.domain.domain_context():
             by_id = {order.id: order for order in orders.repo.query.all().items}
-        assert sorted(by_id) == ["A", "B", "C", "D"]
+        assert sorted(by_id) == ["A", "B", "C", "D", "E"]
         critical = orders.OverdueOrders(grace_days=3) & orders.HighValueOrders(
             min_amount=5000
         )
@@ -395,6 +400,7 @@ class TestSpecifications:
             "A",
             "B",
             "C",
+            "E",
         ]
         not_overdue = ~orders.OverdueOrders()
         assert [i for i in sorted(by_id) if not_overdue.is_satisfied_by(by_id[i])] == [
