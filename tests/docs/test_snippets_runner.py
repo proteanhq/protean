@@ -522,6 +522,46 @@ def test_a_page_left_open_is_rolled_back_and_torn_down_before_the_next_page(
     ]
 
 
+def test_a_teardown_that_fails_while_closing_a_page_fails_that_page(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "def broken(exc):\n"
+        "    raise RuntimeError('teardown broke')\n"
+        "\n"
+        "domain.teardown_domain_context(broken)\n"
+        "domain.domain_context().push()\n"
+        "```\n",
+    )
+    assert _run(tmp_path, [page], bases) == [
+        {
+            "file": "page.md",
+            "failure": "cleanup: RuntimeError: teardown broke",
+            "not_run": [],
+        }
+    ]
+
+
+def test_a_rollback_that_fails_while_closing_a_page_fails_that_page(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "domain.init(traverse=False)\n"
+        "with domain.domain_context():\n"
+        "    uow = UnitOfWork()\n"
+        "    uow.start()\n"
+        "    uow._in_progress = False\n"
+        "```\n",
+    )
+    assert _run(tmp_path, [page], bases) == [
+        {
+            "file": "page.md",
+            "failure": "cleanup: InvalidOperationError: UnitOfWork is not in progress",
+            "not_run": [],
+        }
+    ]
+
+
 def test_an_allowlisted_page_that_passes_says_to_remove_the_entry(tmp_path, bases):
     page = _write(tmp_path, "```python\nx = 1\n```\n")
     (result,) = _run(tmp_path, [page], bases)

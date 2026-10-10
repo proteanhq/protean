@@ -478,19 +478,22 @@ for index, item in enumerate(job["files"], start=job["first_index"]):
     # A file may push a domain context or open a unit of work and leave it
     # open. Close both, so the next file cannot pass by using this file's
     # domain. Rolling back and popping through the objects releases any
-    # session and runs the domain's teardown callbacks.
+    # session and runs the domain's teardown callbacks. A cleanup error
+    # fails the file, because the page left something it could not close.
     while (uow := _uow_context_stack.top) is not None:
         try:
             uow.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            if failure is None:
+                failure = "cleanup: %s: %s" % (type(exc).__name__, exc)
         if _uow_context_stack.top is uow:
             _uow_context_stack.pop()
     while (context := _domain_context_stack.top) is not None:
         try:
             context.pop(None)
-        except Exception:
-            pass
+        except Exception as exc:
+            if failure is None:
+                failure = "cleanup: %s: %s" % (type(exc).__name__, exc)
         if _domain_context_stack.top is context:
             _domain_context_stack.pop()
     if failure is None:
