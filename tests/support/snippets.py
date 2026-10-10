@@ -30,8 +30,10 @@ namespace.
 All files run in one child interpreter, each under its own module name and its
 own ``Domain``, so registrations stay out of the test process. The child starts
 in a temporary directory, so a relative path in a block resolves inside it.
-Each file has a timeout, enforced with ``SIGALRM`` where the platform has it. A
-file still running at twice its timeout (a block that catches the timeout, or a
+Each file has a timeout, enforced with ``SIGALRM`` where the platform has it.
+Closing what a file left open (a unit of work or a domain context) gets the
+same timeout again, because a rollback or a teardown callback can hang. A file
+still running at twice its timeout (a block that catches the timeout, or a
 platform without ``SIGALRM``) stops the child; the file is reported as stuck
 and a new child runs the files after it.
 
@@ -286,16 +288,18 @@ _STUCK_EXIT = 86
 # The child-interpreter runner. argv[1] is a JSON file holding the files and
 # their blocks, the per-file timeout, the hard limit, and the report path. For
 # each file it builds a fresh namespace, runs the non-fragment blocks in order,
-# and then initializes every Domain built for the file that registered an
-# element. It records the first failure (the block's starting line, or "init")
-# and the starting lines of the blocks it did not run. A file the parent could
+# initializes every Domain built for the file that registered an element, and
+# then closes any unit of work or domain context the file left open. It records
+# the first failure (the block's starting line, "init" or "cleanup") and the
+# starting lines of the blocks it did not run. A file the parent could
 # not prepare carries an "error" and runs nothing.
 #
 # The report is a file of JSON lines, written and flushed as the child goes: a
-# "step" line before each block and the init step, and a "result" line after
-# each file. If a file is still running at the hard limit, a watchdog thread
-# ends the child, and the parent reads which step was running from the report.
-# Writing to a file keeps start-up logging and the blocks' own output out of it.
+# "step" line before each block, the init step and the cleanup step, and a
+# "result" line after each file. If a file is still running at the hard limit,
+# a watchdog thread ends the child, and the parent reads which step was running
+# from the report. Writing to a file keeps start-up logging and the blocks' own
+# output out of it.
 _RUNNER = """
 import builtins
 import json
@@ -403,6 +407,45 @@ def emit(record):
     report.flush()
 
 
+# A file may push a domain context or open a unit of work and leave it open.
+# Close both, so the next file cannot pass by using this file's domain.
+# Rolling back and popping through the objects releases any session and runs
+# the domain's teardown callbacks. Closing runs under its own timeout, because
+# a rollback or a teardown callback is page code and can hang. Return the
+# first problem, because the page left something it could not close. Whatever
+# a timeout leaves on the stacks is dropped without running more page code.
+def close_left_open():
+    problem = None
+    if has_alarm:
+        signal.signal(signal.SIGALRM, on_alarm)
+        signal.setitimer(signal.ITIMER_REAL, timeout)
+    try:
+        while (uow := _uow_context_stack.top) is not None:
+            try:
+                uow.rollback()
+            except Exception as exc:
+                problem = problem or "%s: %s" % (type(exc).__name__, exc)
+            if _uow_context_stack.top is uow:
+                _uow_context_stack.pop()
+        while (context := _domain_context_stack.top) is not None:
+            try:
+                context.pop(None)
+            except Exception as exc:
+                problem = problem or "%s: %s" % (type(exc).__name__, exc)
+            if _domain_context_stack.top is context:
+                _domain_context_stack.pop()
+    except SnippetTimeout:
+        problem = problem or "timed out after %s seconds" % timeout
+    finally:
+        if has_alarm:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+        while _uow_context_stack.top is not None:
+            _uow_context_stack.pop()
+        while _domain_context_stack.top is not None:
+            _domain_context_stack.pop()
+    return problem
+
+
 for index, item in enumerate(job["files"], start=job["first_index"]):
     label = item["file"]
     blocks = [b for b in item["blocks"] if not b["fragment"]]
@@ -442,62 +485,50 @@ for index, item in enumerate(job["files"], start=job["first_index"]):
         signal.setitimer(signal.ITIMER_REAL, timeout)
     try:
         try:
-            for position, block in enumerate(blocks):
-                step = "line %d" % block["line"]
-                not_run = [b["line"] for b in blocks[position + 1 :]]
+            try:
+                for position, block in enumerate(blocks):
+                    step = "line %d" % block["line"]
+                    not_run = [b["line"] for b in blocks[position + 1 :]]
+                    emit({"step": step, "not_run": not_run})
+                    padded = "\\n" * (block["line"] - 1) + block["source"]
+                    before = {key: id(value) for key, value in namespace.items()}
+                    earlier = registered()
+                    # Domain() takes its root folder from the caller's file
+                    # name; a relative name would resolve against the scratch
+                    # folder.
+                    exec(compile(padded, item["path"], "exec"), namespace)
+                    check_no_replacement(earlier)
+                    annotate = namespace.pop("__annotate__", None)
+                    if annotate is not None:
+                        annotate(1)
+                    for key, value in list(namespace.items()):
+                        if before.get(key) != id(value):
+                            evaluate_annotations(value, namespace["__name__"])
+                not_run = []
+                step = "init"
                 emit({"step": step, "not_run": not_run})
-                padded = "\\n" * (block["line"] - 1) + block["source"]
-                before = {key: id(value) for key, value in namespace.items()}
-                earlier = registered()
-                # Domain() takes its root folder from the caller's file name;
-                # a relative name would resolve against the scratch folder.
-                exec(compile(padded, item["path"], "exec"), namespace)
-                check_no_replacement(earlier)
-                annotate = namespace.pop("__annotate__", None)
-                if annotate is not None:
-                    annotate(1)
-                for key, value in list(namespace.items()):
-                    if before.get(key) != id(value):
-                        evaluate_annotations(value, namespace["__name__"])
+                for candidate in list(built):
+                    if candidate.registry.elements:
+                        candidate.init(traverse=False)
+            finally:
+                if has_alarm:
+                    signal.setitimer(signal.ITIMER_REAL, 0)
+        except SnippetTimeout:
+            failure = "%s: timed out after %s seconds" % (step, timeout)
+        except KeyboardInterrupt:
+            raise
+        except BaseException as exc:
+            failure = "%s: %s: %s" % (step, type(exc).__name__, exc)
+        if failure is None:
             not_run = []
-            step = "init"
-            emit({"step": step, "not_run": not_run})
-            for candidate in list(built):
-                if candidate.registry.elements:
-                    candidate.init(traverse=False)
-        finally:
-            if has_alarm:
-                signal.setitimer(signal.ITIMER_REAL, 0)
-            watchdog.cancel()
-    except SnippetTimeout:
-        failure = "%s: timed out after %s seconds" % (step, timeout)
-    except KeyboardInterrupt:
-        raise
-    except BaseException as exc:
-        failure = "%s: %s: %s" % (step, type(exc).__name__, exc)
-    # A file may push a domain context or open a unit of work and leave it
-    # open. Close both, so the next file cannot pass by using this file's
-    # domain. Rolling back and popping through the objects releases any
-    # session and runs the domain's teardown callbacks. A cleanup error
-    # fails the file, because the page left something it could not close.
-    while (uow := _uow_context_stack.top) is not None:
-        try:
-            uow.rollback()
-        except Exception as exc:
-            if failure is None:
-                failure = "cleanup: %s: %s" % (type(exc).__name__, exc)
-        if _uow_context_stack.top is uow:
-            _uow_context_stack.pop()
-    while (context := _domain_context_stack.top) is not None:
-        try:
-            context.pop(None)
-        except Exception as exc:
-            if failure is None:
-                failure = "cleanup: %s: %s" % (type(exc).__name__, exc)
-        if _domain_context_stack.top is context:
-            _domain_context_stack.pop()
-    if failure is None:
-        not_run = []
+        # The watchdog stays armed, so a close that ignores the timeout still
+        # stops at the hard limit, reported as the cleanup step.
+        emit({"step": "cleanup", "not_run": not_run})
+        problem = close_left_open()
+        if failure is None and problem is not None:
+            failure = "cleanup: " + problem
+    finally:
+        watchdog.cancel()
     emit({"result": {"file": label, "failure": failure, "not_run": not_run}})
 """
 
