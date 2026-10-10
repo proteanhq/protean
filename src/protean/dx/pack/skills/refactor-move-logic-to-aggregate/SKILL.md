@@ -61,6 +61,7 @@ def place_order(self, command):
 Aggregate is a data bag — no methods, no invariants:
 
 ```python
+# fragment
 # RED FLAG: only fields, no behavior
 @domain.aggregate
 class Order:
@@ -97,9 +98,65 @@ Read the handler and categorize each line:
 
 ### Step 2: Create aggregate methods
 
-For each group of logic, create an aggregate method:
+The order's methods use a `Money` value object, a `LineItem` entity and an
+`OrderPlaced` event. The handler in Step 4 takes a `PlaceOrder` command:
 
 ```python
+@domain.value_object
+class Money:
+    amount = Float(required=True)
+    currency = String(max_length=3, default="USD")
+
+
+@domain.entity(part_of="Order")
+class LineItem:
+    product_id = String(required=True)
+    quantity = Integer(required=True, min_value=1)
+    unit_price = ValueObject(Money, required=True)
+
+
+@domain.event(part_of="Order")
+class OrderPlaced:
+    order_id = Identifier(required=True)
+    total = Float(required=True)
+
+
+@domain.command(part_of="Order")
+class PlaceOrder:
+    customer_id = String(required=True)
+    items = List(content_type=Dict)
+```
+
+For each group of logic, create an aggregate method on `Order`. Step 3 shows the
+whole class, with these methods and its invariants:
+
+```python
+# fragment
+    def place(self, items: list[dict]) -> None:
+        """Place the order with the given items."""
+        for item_data in items:
+            self.add_items(LineItem(**item_data))
+        self.total = self._calculate_total()
+        self.status = "PLACED"
+        self.raise_(OrderPlaced(order_id=self.id, total=self.total.amount))
+
+    def _calculate_total(self) -> Money:
+        """Sum all line item totals."""
+        total = 0.0
+        for item in self.items:
+            total += item.unit_price.amount * item.quantity
+        return Money(amount=total)
+```
+
+### Step 3: Add invariants
+
+Move validation from handlers into `@invariant.post`. With the methods from Step
+2, the `Order` class reads:
+
+```python
+from protean.exceptions import ValidationError
+
+
 @domain.aggregate
 class Order:
     customer_id = String(required=True)
@@ -121,14 +178,7 @@ class Order:
         for item in self.items:
             total += item.unit_price.amount * item.quantity
         return Money(amount=total)
-```
 
-### Step 3: Add invariants
-
-Move validation from handlers into `@invariant.post`:
-
-```python
-# fragment
     @invariant.post
     def must_have_items_when_placed(self):
         """A placed order must have at least one item."""
@@ -165,11 +215,23 @@ class OrderCommandHandler:
 
 ### Step 5: Move tests to aggregate level
 
+A test that drives the handler checks the rule through its internals:
+
 ```python
+# fragment
 # Before: testing handler internals
 def test_place_order_validates_items():
     with pytest.raises(ValidationError):
         handler.place_order(PlaceOrder(items=[]))
+```
+
+Test the aggregate's behavior directly instead:
+
+```python
+import pytest
+
+from protean.exceptions import ValidationError
+
 
 # After: testing aggregate behavior
 def test_order_must_have_items_when_placed():
@@ -198,6 +260,7 @@ def test_order_must_have_items_when_placed():
 ## Quick example
 
 ```python
+# fragment
 # BEFORE: fat handler, anemic aggregate
 @handle(CloseTicket)
 def close_ticket(self, command):
@@ -210,13 +273,52 @@ def close_ticket(self, command):
     ticket.closed_at = datetime.now(UTC)
     ticket.resolution = command.resolution
     domain.repository_for(Ticket).add(ticket)
+```
 
+After the refactor, `Ticket.close()` holds the guards and the state change, and the
+handler loads, calls and persists:
+
+```python
 # AFTER: thin handler, rich aggregate
-@handle(CloseTicket)
-def close_ticket(self, command):
-    ticket = domain.repository_for(Ticket).get(command.ticket_id)
-    ticket.close(resolution=command.resolution)
-    domain.repository_for(Ticket).add(ticket)
+from datetime import UTC, datetime
+
+
+@domain.event(part_of="Ticket")
+class TicketClosed:
+    ticket_id = Identifier(required=True)
+    resolution = String(required=True)
+
+
+@domain.aggregate
+class Ticket:
+    status = String(default="OPEN")
+    resolution = String(max_length=500)
+    closed_at = DateTime()
+
+    def close(self, resolution: str) -> None:
+        if self.status == "CLOSED":
+            raise ValidationError({"status": ["Already closed"]})
+        if self.status == "OPEN":
+            raise ValidationError({"status": ["Must be assigned first"]})
+        self.status = "CLOSED"
+        self.resolution = resolution
+        self.closed_at = datetime.now(UTC)
+        self.raise_(TicketClosed(ticket_id=self.id, resolution=resolution))
+
+
+@domain.command(part_of=Ticket)
+class CloseTicket:
+    ticket_id = Identifier(required=True)
+    resolution = String(required=True, max_length=500)
+
+
+@domain.command_handler(part_of=Ticket)
+class TicketCommandHandler:
+    @handle(CloseTicket)
+    def close_ticket(self, command: CloseTicket) -> None:
+        ticket = domain.repository_for(Ticket).get(command.ticket_id)
+        ticket.close(resolution=command.resolution)
+        domain.repository_for(Ticket).add(ticket)
 ```
 
 ## Examples

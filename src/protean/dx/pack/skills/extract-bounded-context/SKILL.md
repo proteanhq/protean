@@ -60,6 +60,30 @@ reference that crosses the seam is a line in the rewrite work list. See the
 
 ### 2. Stand up the second context
 
+The original domain keeps the aggregates that stay behind. Here that is sales,
+and `Order` no longer holds a `Reference` to `Shipment`:
+
+```python
+sales = Domain(name="Sales")
+
+
+@sales.aggregate
+class Order:
+    customer_id = String(required=True, max_length=50)
+    address = String(required=True, max_length=200)
+    status = String(default="placed", max_length=20)
+
+    def place(self) -> None:
+        self.status = "placed"
+        self.raise_(
+            OrderPlaced(
+                order_id=self.id,
+                customer_id=self.customer_id,
+                address=self.address,
+            )
+        )
+```
+
 Create a second `Domain` for the aggregates you are extracting, and move them and
 their events, commands, and handlers into it:
 
@@ -72,6 +96,20 @@ class Shipment:
     order_id = Identifier(required=True)
     address = String(required=True, max_length=200)
     status = String(default="pending", max_length=20)
+
+
+@fulfilment.command(part_of="Shipment")
+class CreateShipment:
+    order_id = Identifier(required=True)
+    address = String(required=True)
+
+
+@fulfilment.command_handler(part_of=Shipment)
+class ShipmentCommandHandler:
+    @handle(CreateShipment)
+    def create_shipment(self, command: CreateShipment) -> None:
+        shipment = Shipment(order_id=command.order_id, address=command.address)
+        fulfilment.repository_for(Shipment).add(shipment)
 ```
 
 The moved aggregate holds the far side by its identifier (`order_id`), a plain
@@ -134,9 +172,14 @@ class OrderPlacedSubscriber:
         )
 ```
 
+Broker delivery is at-least-once, so a redelivered `OrderPlaced` runs the
+subscriber again and `ShipmentCommandHandler` opens a second shipment for the same
+order.
+
 The [event-integration reference](references/event-integration.md) covers
 `published=True`, the outbox and `outbox.external_brokers` wiring, the stream and
-envelope the outbox delivers on, and holding the far side by identity in full.
+envelope the outbox delivers on, guarding against redelivery, and holding the far
+side by identity in full.
 
 ## What the extraction clears
 

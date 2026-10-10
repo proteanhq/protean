@@ -5,6 +5,44 @@ sending events across the seam. The context that owns a change publishes an even
 as a fact about what happened. The other context reads that event and acts on it.
 A message broker carries the event from one to the other.
 
+## The two contexts
+
+The examples below use the two domains from the
+[worked example](../SKILL.md#worked-example-sales-and-fulfilment). Sales owns
+`Order`, and `Order.place()` raises the `OrderPlaced` event defined below.
+Fulfilment owns `Shipment` and its command handler, shown at the end of this page,
+and the `CreateShipment` command its subscriber sends:
+
+```python
+sales = Domain(name="Sales")
+
+
+@sales.aggregate
+class Order:
+    customer_id = String(required=True, max_length=50)
+    address = String(required=True, max_length=200)
+    status = String(default="placed", max_length=20)
+
+    def place(self) -> None:
+        self.status = "placed"
+        self.raise_(
+            OrderPlaced(
+                order_id=self.id,
+                customer_id=self.customer_id,
+                address=self.address,
+            )
+        )
+
+
+fulfilment = Domain(name="Fulfilment")
+
+
+@fulfilment.command(part_of="Shipment")
+class CreateShipment:
+    order_id = Identifier(required=True)
+    address = String(required=True)
+```
+
 ## The moves
 
 ### 1. The owning context publishes an event
@@ -126,6 +164,17 @@ class Shipment:
     order_id = Identifier(required=True)
     address = String(required=True, max_length=200)
     status = String(default="pending", max_length=20)
+```
+
+Fulfilment's own command handler opens the shipment the subscriber asked for:
+
+```python
+@fulfilment.command_handler(part_of=Shipment)
+class ShipmentCommandHandler:
+    @handle(CreateShipment)
+    def create_shipment(self, command):
+        shipment = Shipment(order_id=command.order_id, address=command.address)
+        fulfilment.repository_for(Shipment).add(shipment)
 ```
 
 `order_id` records which order this shipment is for. Any other sales data

@@ -190,7 +190,6 @@ ALLOWLIST: frozenset[str] = frozenset(
         "reference/cli/data/projection.md",
         "reference/cli/data/snapshot.md",
         "reference/compatibility/index.md",
-        "reference/init-diagnostics.md",
         "reference/logging.md",
         "reference/migration/v0-15.md",
         "reference/migration/v0-17.md",

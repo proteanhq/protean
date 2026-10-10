@@ -75,6 +75,7 @@ a block with a specific priority. Events produced by those commands inherit the
 priority in their outbox records:
 
 ```python
+# fragment
 from protean.utils.processing import processing_priority, Priority
 
 with processing_priority(Priority.LOW):

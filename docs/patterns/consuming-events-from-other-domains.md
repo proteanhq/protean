@@ -362,6 +362,7 @@ Domains](sharing-event-classes-across-domains.md) for alternatives.
 ### Processing External Events Without Translation
 
 ```python
+# fragment
 # Anti-pattern: using external payload directly in handler
 @domain.event_handler(part_of=Shipment)
 class ShipmentEventHandler(BaseEventHandler):

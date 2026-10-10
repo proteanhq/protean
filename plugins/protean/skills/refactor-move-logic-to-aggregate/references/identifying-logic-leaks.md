@@ -7,6 +7,7 @@ How to recognize business logic that doesn't belong where it is.
 An ideal handler is 3 lines:
 
 ```python
+# fragment
 @handle(SomeCommand)
 def handle_it(self, command):
     aggregate = domain.repository_for(Agg).get(command.id)  # 1. Load
@@ -49,8 +50,7 @@ Every line beyond these three is a candidate for moving into the aggregate.
 
 Read the handler aloud. If it tells a **story** ("check this, calculate that, set this, verify that"), the logic should move. If it just says **"tell the aggregate to do it"**, it's correct.
 
-```python
-# fragment
+```text
 # Tells a story (BAD):
 "Get the ticket, check if it's closed, check if it's open,
  set the status to closed, set the resolution, set the closed_at time, save it"

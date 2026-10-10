@@ -35,6 +35,19 @@ Use past tense — events describe what already happened:
 
 ### Example
 
+The event belongs to an `Order` aggregate:
+
+```python
+@domain.aggregate
+class Order:
+    customer_id = String(required=True)
+    product_id = String(required=True)
+    quantity = Integer(required=True, min_value=1)
+    total = Float(default=0.0)
+```
+
+An event that carries what its handlers need:
+
 ```python
 # Good: includes what handlers need
 @domain.event(part_of="Order")
@@ -44,7 +57,12 @@ class OrderPlaced:
     product_id = String(required=True)       # Inventory handler needs this
     quantity = Integer(required=True)         # Inventory handler needs this
     total_amount = Float(required=True)       # Analytics might need this
+```
 
+Two shapes to avoid:
+
+```python
+# fragment
 # Bad: too thin
 @domain.event(part_of="Order")
 class OrderPlaced:
@@ -72,6 +90,7 @@ class OrderPlaced:
 Each distinct business action gets its own event. Don't combine unrelated actions:
 
 ```python
+# fragment
 # Good: separate events
 class OrderPlaced: ...
 class OrderShipped: ...

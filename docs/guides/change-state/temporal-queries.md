@@ -53,6 +53,7 @@ Temporal aggregates are **read-only**. Calling `raise_()` on them raises
 `IncorrectUsageError`:
 
 ```python
+# fragment
 order_v5 = repo.get("order-123", at_version=5)
 order_v5.raise_(SomeEvent(...))  # Raises IncorrectUsageError
 ```
