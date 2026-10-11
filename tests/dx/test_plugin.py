@@ -312,6 +312,23 @@ def test_check_ignores_a_bytecode_cache_in_the_tree(tmp_path: Path) -> None:
     assert plugin_drift(tmp_path, PACK_VERSION) == []
 
 
+def test_a_bytecode_cache_above_the_checkout_hides_nothing(tmp_path: Path) -> None:
+    """A checkout under a ``__pycache__`` directory still sees and prunes orphans."""
+    root = tmp_path / "__pycache__" / "repo"
+    write_plugin(root, PACK_VERSION)
+    orphan = root / PLUGIN_SKILLS_ROOT / "ghost" / SKILL_FILE
+    orphan.parent.mkdir(parents=True)
+    orphan.write_text("stale skill\n", encoding="utf-8")
+
+    assert plugin_drift(root, PACK_VERSION) == [
+        f"extra {PLUGIN_SKILLS_ROOT}/ghost/{SKILL_FILE}"
+    ]
+
+    write_plugin(root, PACK_VERSION)
+
+    assert not orphan.exists()
+
+
 def test_drift_reports_a_missing_file(tmp_path: Path) -> None:
     """A rendered file the tree lacks is reported as ``missing`` drift."""
     write_plugin(tmp_path, PACK_VERSION)

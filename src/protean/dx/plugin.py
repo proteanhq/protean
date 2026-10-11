@@ -202,7 +202,10 @@ def _committed_paths(root: Path) -> set[str]:
     plugin_root = root / PLUGIN_ROOT
     if plugin_root.is_dir():
         for path in plugin_root.rglob("*"):
-            if path.is_file() and _BYTECODE_CACHE not in path.parts:
+            if (
+                path.is_file()
+                and _BYTECODE_CACHE not in path.relative_to(plugin_root).parts
+            ):
                 paths.add(path.relative_to(root).as_posix())
     return paths
 
