@@ -1,7 +1,7 @@
 """Check what docs/guides/change-state/snapshots.md says about snapshots.
 
 The page's example builds an event-sourced ``Account`` with one account,
-``acc-001``, holding three events, then snapshots it by hand. Each test loads
+``acc-001``, raises a few events on it, then snapshots it by hand. Each test loads
 the example fresh, so every test gets its own domain and its own memory event
 store.
 """

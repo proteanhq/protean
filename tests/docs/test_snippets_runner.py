@@ -490,6 +490,12 @@ LEFT_OPEN = {
         "domain.teardown_domain_context(close)\ndomain.domain_context().push()\n"
     ),
 }
+LEFT_OPEN["a domain context pushed twice"] = (
+    "domain.teardown_domain_context(close)\n"
+    "twice = domain.domain_context()\n"
+    "twice.push()\n"
+    "twice.push()\n"
+)
 LEFT_OPEN["both"] = (
     LEFT_OPEN["a unit of work"] + "domain.teardown_domain_context(close)\n"
     "domain.domain_context().push()\n"

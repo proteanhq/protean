@@ -442,7 +442,10 @@ def close_left_open():
         while (context := _domain_context_stack.top) is not None:
             found = close_one(lambda: context.pop(None))
             problem = problem or found
-            if _domain_context_stack.top is context:
+            # Pop the stack directly only when pop() failed. A context pushed
+            # twice is still on top after a clean pop, and popping it through
+            # again is what runs its teardown.
+            if found is not None and _domain_context_stack.top is context:
                 _domain_context_stack.pop()
     except SnippetTimeout:
         problem = problem or "timed out after %s seconds" % timeout

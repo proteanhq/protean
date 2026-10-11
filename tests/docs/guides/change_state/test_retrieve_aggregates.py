@@ -1,10 +1,11 @@
 """The queries on the Retrieve Aggregates guide return what the page says.
 
-The page seeds six people and runs its queries against them. The examples in
-``docs_src/guides/change-state/retrieve-aggregates/`` run the same queries when
-they load, so these tests check the results the examples kept. The REPL
-sessions on the page are not run by the page runner, so these tests repeat
-them against the same six people and check the output the page shows.
+The page seeds a set of people and runs its queries against them. The
+examples in ``docs_src/guides/change-state/retrieve-aggregates/`` run the same
+queries when they load, so these tests check the results the examples kept.
+The REPL sessions on the page are not run by the page runner, so these tests
+repeat them against the same seeded people and check the output the page
+shows.
 """
 
 import pytest

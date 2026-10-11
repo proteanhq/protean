@@ -1,10 +1,10 @@
 """Check what docs/guides/change-state/temporal-queries.md says.
 
-The page's example writes an event-sourced ``Order``, ``order-123``, with
-seven events: version 0 places it, versions 1 to 3 add one item each, and
-versions 4 to 6 add two items each. ``cutoff`` falls between versions 3 and 4.
-The page's last example adds one more item inside a unit of work and saves
-it when the unit of work commits, so the order ends at version 7. Each test
+The page's example writes an event-sourced ``Order``, ``order-123``. The
+first event places it, the events before ``cutoff`` add one item each, and
+the events after ``cutoff`` add two items each. The page's last example adds
+one more item inside a unit of work and saves it when the unit of work
+commits. Each test
 loads the example fresh, with its own memory event store.
 """
 
