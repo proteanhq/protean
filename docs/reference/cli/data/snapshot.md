@@ -109,12 +109,6 @@ The same functionality is available as Domain methods for use in scripts or
 the `protean shell`:
 
 ```python
-# Single aggregate instance
-domain.create_snapshot(User, "abc-123")
-
-# All instances of one aggregate
-count = domain.create_snapshots(User)
-
-# All event-sourced aggregates
-results = domain.create_all_snapshots()  # {"User": 42, "Order": 15}
+--8<-- "reference/cli/data/snapshot/001.py:domain"
+--8<-- "reference/cli/data/snapshot/001.py:api"
 ```

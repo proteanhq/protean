@@ -26,12 +26,7 @@ relationships, field schemas, event flows, handler wiring, and cluster
 boundaries.
 
 ```python
-domain = Domain()
-
-# Define your domain elements...
-
-domain.init()
-ir = domain.to_ir()
+--8<-- "why-protean/001.py:compile"
 ```
 
 The IR is what everything else builds on: architecture documentation, API spec
@@ -59,22 +54,15 @@ value object invariants, and aggregate business rules, on every change, rolled
 back on failure.
 
 ```python
-@domain.aggregate
-class Order:
-    customer_id: Identifier(required=True)
-    status: String(max_length=20, default="draft")
-    items = HasMany("OrderItem")
+--8<-- "why-protean/002.py:always_valid"
+```
 
-    @invariant.post
-    def must_have_items_when_placed(self):
-        if self.status != "draft" and not self.items:
-            raise ValidationError(
-                {"items": ["Order must have at least one item"]}
-            )
-
-# Rejected immediately, so no invalid state is possible
-order = Order(customer_id="cust-1", status="confirmed")
-# → ValidationError: Order must have at least one item
+```pycon
+>>> # Rejected immediately, so no invalid state is possible
+>>> order = Order(customer_id="cust-1", status="confirmed")
+Traceback (most recent call last):
+  ...
+protean.exceptions.ValidationError: {'items': ['Order must have at least one item']}
 ```
 
 Four layers of validation work together:
@@ -106,13 +94,7 @@ repositories. This is the simplest way to build with Protean: no commands, no
 event handlers, no projections, just a clean domain model with persistence.
 
 ```python
-@domain.application_service(part_of=Post)
-class PostService:
-    @use_case
-    def create_post(self, title: str, body: str) -> str:
-        post = Post(title=title, body=body)
-        current_domain.repository_for(Post).add(post)
-        return post.id
+--8<-- "why-protean/003.py:application_service"
 ```
 
 **Add CQRS when you need it.** When one aggregate needs separate read and write
@@ -120,18 +102,7 @@ models, introduce commands, command handlers, and projections for that aggregate
 alone. The others stay as they are.
 
 ```python
-@domain.command(part_of=Post)
-class PublishPost:
-    post_id: Identifier(required=True)
-
-@domain.command_handler(part_of=Post)
-class PostCommandHandler:
-    @handle(PublishPost)
-    def publish(self, command: PublishPost):
-        repo = current_domain.repository_for(Post)
-        post = repo.get(command.post_id)
-        post.publish()
-        repo.add(post)
+--8<-- "why-protean/003.py:cqrs"
 ```
 
 **Adopt event sourcing where it matters.** For aggregates that need a full audit
@@ -139,13 +110,7 @@ trail, temporal queries, or complex state reconstruction, switch to event
 sourcing without rewriting the rest of your system.
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Account:
-    balance: Float(default=0.0)
-
-    @apply
-    def deposited(self, event: Deposited):
-        self.balance += event.amount
+--8<-- "why-protean/004.py:event_sourced"
 ```
 
 You can mix these. One aggregate uses domain-driven design, another uses CQRS, a
@@ -164,9 +129,7 @@ caches. In Protean, infrastructure is **configuration**.
 Start with no setup at all:
 
 ```python
-domain = Domain()
-# In-memory database, in-memory broker, in-memory cache
-# No Docker, no services, no configuration files
+--8<-- "why-protean/005.py:in_memory"
 ```
 
 When you are ready for production, change `domain.toml`:

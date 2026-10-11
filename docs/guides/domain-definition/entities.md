@@ -28,14 +28,16 @@ An Entity is defined with the `Domain.entity` decorator:
 ```
 
 An Entity has to be associated with an Aggregate. If `part_of` is not
-specified while defining the identity, you will see an `IncorrectUsageError`:
+specified while defining the entity, you will see an `IncorrectUsageError`:
 
-```shell
+```pycon
 >>> @publishing.entity
 ... class Comment:
 ...     content = String(max_length=500)
 ...
-IncorrectUsageError: 'Entity `Comment` needs to be associated with an Aggregate'
+Traceback (most recent call last):
+  ...
+protean.exceptions.IncorrectUsageError: Entity `Comment` needs to be associated with an Aggregate
 ```
 
 An Entity cannot directly enclose an Aggregate. Trying to do so will
@@ -95,19 +97,7 @@ Declares indexes for the entity's own table, using the same
 aggregates:
 
 ```python
-from protean import Index
-
-
-@domain.aggregate
-class Order:
-    number: String(max_length=20)
-    line_items = HasMany("LineItem")
-
-
-@domain.entity(part_of=Order, indexes=[Index("sku", unique=True)])
-class LineItem:
-    sku = String(max_length=64)
-    quantity = Integer()
+--8<-- "guides/domain-definition/entities/001.py:indexes"
 ```
 
 See [Declaring Indexes](indexes.md) for the full workflow.
@@ -120,26 +110,7 @@ on a subclass of `BaseEntity` and leave that class undecorated. Decorate only
 the concrete subclasses:
 
 ```python
-from protean.core.entity import BaseEntity
-from protean.utils.reflection import declared_fields
-
-
-class BaseLineItem(BaseEntity):
-    quantity: Integer(required=True, min_value=1)
-    unit_price: Decimal(precision=19, scale=4, required=True)
-
-    @property
-    def subtotal(self):
-        return self.quantity * self.unit_price
-
-
-@domain.entity(part_of=Order)
-class ProductLineItem(BaseLineItem):
-    sku: String(max_length=64, required=True)
-
-
-print(list(declared_fields(ProductLineItem)))
-# ['quantity', 'unit_price', 'id', 'sku', 'order']
+--8<-- "guides/domain-definition/entities/002.py:base_class"
 ```
 
 The base class is not registered with the domain and gets no table of its own.
@@ -169,31 +140,7 @@ aggregates. However, the event is always registered on the **aggregate root**,
 not on the entity itself. The root is the owner of the event stream.
 
 ```python
-@domain.aggregate
-class Order:
-    number: String(max_length=20)
-    items = HasMany("OrderItem")
-
-
-@domain.event(part_of=Order)
-class OrderItemQuantityChanged:
-    order_id: Identifier(required=True)
-    product_name: String(max_length=100)
-    new_quantity: Integer()
-
-
-@domain.entity(part_of=Order)
-class OrderItem:
-    product_name: String(max_length=100)
-    quantity: Integer()
-
-    def update_quantity(self, new_qty):
-        self.quantity = new_qty
-        self.raise_(OrderItemQuantityChanged(
-            order_id=str(self._owner.id),
-            product_name=self.product_name,
-            new_quantity=new_qty,
-        ))
+--8<-- "guides/domain-definition/entities/003.py:raise_event"
 ```
 
 The event must be associated with the aggregate (`part_of=Order`), not
@@ -205,20 +152,7 @@ Entities support the same invariant mechanism as aggregates, use `@invariant.pos
 rules that must always hold:
 
 ```python
-from protean.exceptions import ValidationError
-
-
-@domain.entity(part_of=Order)
-class OrderItem:
-    product_name: String(max_length=100)
-    quantity: Integer()
-
-    @invariant.post
-    def quantity_must_be_positive(self):
-        if self.quantity is not None and self.quantity <= 0:
-            raise ValidationError(
-                {"quantity": ["Quantity must be positive"]}
-            )
+--8<-- "guides/domain-definition/entities/004.py:invariant"
 ```
 
 Entity invariants are checked whenever entity state changes. They work
@@ -232,16 +166,7 @@ Override the `defaults()` method to set computed defaults that depend on
 other field values:
 
 ```python
-@domain.entity(part_of=Order)
-class OrderItem:
-    product_name: String(max_length=100)
-    quantity: Integer(default=1)
-    unit_price: Decimal(precision=19, scale=4)
-    line_total: Decimal(precision=19, scale=4)
-
-    def defaults(self):
-        if self.line_total is None and self.unit_price is not None:
-            self.line_total = self.quantity * self.unit_price
+--8<-- "guides/domain-definition/entities/005.py:defaults"
 ```
 
 `defaults()` runs during initialization, after all field values have been
@@ -260,13 +185,7 @@ You never persist an entity directly, always persist through the aggregate's
 repository:
 
 ```python
-domain.init(traverse=False)
-
-with domain.domain_context():
-    order = Order(number="ORD-1", items=[OrderItem(product_name="Widget", quantity=2)])
-
-    repo = domain.repository_for(Order)
-    repo.add(order)  # Persists the order AND all its OrderItems
+--8<-- "guides/domain-definition/entities/006.py:persist"
 ```
 
 ## Constructing from Value Objects
@@ -276,36 +195,13 @@ When commands and events carry entity data as value objects (see
 use the `from_value_object()` classmethod to convert them back:
 
 ```python
-from protean import handle
-from protean.fields import List, ValueObjectFromEntity
-
-
-@domain.command(part_of=Order)
-class PlaceOrder:
-    number: String(max_length=20)
-    items: List(content_type=ValueObjectFromEntity(OrderItem))
-
-
-@domain.command_handler(part_of=Order)
-class PlaceOrderHandler:
-    @handle(PlaceOrder)
-    def handle_place_order(self, command: PlaceOrder):
-        items = [OrderItem.from_value_object(item) for item in command.items]
-        order = Order(number=command.number, items=items)
-        domain.repository_for(Order).add(order)
+--8<-- "guides/domain-definition/entities/007.py:place_order"
 ```
 
 The conversion itself needs no handler. With `OrderItem` as defined above:
 
 ```python
-from protean import value_object_from_entity
-
-OrderItemData = value_object_from_entity(OrderItem)
-
-with domain.domain_context():
-    data = OrderItemData(product_name="Widget", quantity=2)
-    item = OrderItem.from_value_object(data)
-    print(item.product_name, item.quantity)  # Widget 2
+--8<-- "guides/domain-definition/entities/007.py:conversion"
 ```
 
 `from_value_object()` calls `vo.to_dict()` and constructs an entity instance.
@@ -322,17 +218,7 @@ Entities can enclose other entities within them using `HasOne` and `HasMany` rel
 When an entity is associated with an aggregate, Protean automatically creates a `Reference` field that points back to the parent:
 
 ```python
-@domain.aggregate
-class Order:
-    number: String(max_length=20)
-    items = HasMany("OrderItem")
-
-@domain.entity(part_of=Order)
-class OrderItem:
-    product_name: String(max_length=100)
-    quantity: Integer()
-    # Automatically gets: order = Reference(Order)
-    # Automatically gets: order_id, a shadow field holding the order's id
+--8<-- "guides/domain-definition/entities/008.py:automatic_reference"
 ```
 
 ### Explicit Reference Fields
@@ -341,17 +227,7 @@ You can also define the reference field yourself, for example to rename its
 shadow field. Tell the aggregate's `HasMany` about the new name with `via`:
 
 ```python
-@domain.aggregate
-class Order:
-    number: String(max_length=20)
-    items = HasMany("OrderItem", via="parent_order_id")
-
-@domain.entity(part_of=Order)
-class OrderItem:
-    product_name: String(max_length=100)
-    quantity: Integer()
-    order = Reference(Order, referenced_as="parent_order_id")
-    # Creates shadow field 'parent_order_id' instead of 'order_id'
+--8<-- "guides/domain-definition/entities/009.py:explicit_reference"
 ```
 
 A `Reference` field may point only to the entity's parent: the aggregate root,
@@ -363,11 +239,7 @@ aggregate, store its identity in an `Identifier` field.
 Reference fields enable navigation from child entities back to their parent aggregate:
 
 ```python
-with domain.domain_context():
-    # Access parent aggregate from entity
-    order_item = order.items[0]
-    parent_order = order_item.order  # Order object
-    order_id = order_item.order_id   # Order's ID value
+--8<-- "guides/domain-definition/entities/006.py:navigation"
 ```
 
 For comprehensive relationship documentation, see [Expressing Relationships](./relationships.md) and [Association Fields](../../reference/fields/association-fields.md).

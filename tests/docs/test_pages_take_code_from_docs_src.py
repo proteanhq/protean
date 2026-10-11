@@ -18,6 +18,7 @@ from tests.support.snippets import extract_blocks
 pytestmark = pytest.mark.no_test_domain
 
 PAGES = (
+    "community/contributing/testing.md",
     "guides/architecture-fitness-functions.md",
     "guides/change-state/application-services.md",
     "guides/change-state/command-handlers.md",
@@ -42,10 +43,13 @@ PAGES = (
     "guides/consume-state/cloudevents.md",
     "guides/consume-state/event-handlers.md",
     "guides/consume-state/event-upcasting.md",
+    "guides/consume-state/process-managers.md",
     "guides/consume-state/projections.md",
+    "guides/consume-state/projectors.md",
     "guides/consume-state/query-handlers.md",
     "guides/consume-state/subscribers.md",
     "guides/domain-definition/aggregates.md",
+    "guides/domain-definition/entities.md",
     "guides/domain-definition/events.md",
     "guides/domain-definition/fields.md",
     "guides/domain-definition/identity.md",
@@ -72,6 +76,7 @@ PAGES = (
     "guides/server/production-deployment.md",
     "guides/server/tuning-subscriptions.md",
     "guides/server/using-priority-lanes.md",
+    "index.md",
     "patterns/aggregate-state-machines.md",
     "patterns/creating-identities-early.md",
     "patterns/design-small-aggregates.md",
@@ -96,6 +101,10 @@ PAGES = (
     "reference/adapters/database/postgresql.md",
     "reference/adapters/database/sqlite.md",
     "reference/adapters/eventstore/index.md",
+    "reference/cli/data/projection.md",
+    "reference/cli/data/snapshot.md",
+    "reference/cli/ir.md",
+    "reference/compatibility/index.md",
     "reference/domain-elements/domain-constructor.md",
     "reference/domain-elements/element-decorators.md",
     "reference/domain-elements/identity.md",
@@ -108,6 +117,13 @@ PAGES = (
     "reference/fields/defining-fields.md",
     "reference/fields/index.md",
     "reference/fields/simple-fields.md",
+    "reference/init-diagnostics.md",
+    "reference/migration/v0-15.md",
+    "reference/migration/v0-17.md",
+    "reference/migration/v0-18.md",
+    "reference/stable-surface.md",
+    "reference/troubleshooting.md",
+    "why-protean.md",
 )
 
 _SECTION_INCLUDE = re.compile(r'^--8<-- "[^":]+\.py:[A-Za-z_][\w-]*"$')

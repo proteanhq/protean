@@ -41,8 +41,14 @@ be retried depending on the subscription configuration.
 Projectors are defined using the `Domain.projector` decorator and must be
 associated with a specific projection via `projector_for`:
 
+??? example "The elements this example uses"
+
+    ```python
+    --8<-- "guides/consume-state/002.py:elements"
+    ```
+
 ```python hl_lines="1-2"
---8<-- "guides/consume-state/002.py:89:118"
+--8<-- "guides/consume-state/002.py:inventory_projector"
 ```
 
 You must also specify which events to listen to, via either `aggregates` (a
@@ -61,36 +67,20 @@ Projectors use the `@on` decorator (an alias for `@handle`) to specify which
 events they respond to:
 
 ```python hl_lines="5 21"
---8<-- "guides/consume-state/002.py:89:118"
+--8<-- "guides/consume-state/002.py:inventory_projector"
 ```
 
 A single projector can handle multiple events, and multiple projectors can
 handle the same event:
 
+??? example "The elements this example uses"
+
+    ```python
+    --8<-- "guides/consume-state/projectors/001.py:elements"
+    ```
+
 ```python
-@domain.projector(projector_for=OrderSummary, aggregates=[Order])
-class OrderSummaryProjector:
-    @on(OrderCreated)
-    def on_order_created(self, event: OrderCreated):
-        # Create order summary
-        pass
-
-    @on(OrderShipped)
-    def on_order_shipped(self, event: OrderShipped):
-        # Update shipping status
-        pass
-
-    @on(OrderCancelled)
-    def on_order_cancelled(self, event: OrderCancelled):
-        # Mark as cancelled
-        pass
-
-@domain.projector(projector_for=ShippingReport, aggregates=[Order])
-class ShippingReportProjector:
-    @on(OrderShipped)  # Same event, different projector
-    def on_order_shipped(self, event: OrderShipped):
-        # Update shipping metrics
-        pass
+--8<-- "guides/consume-state/projectors/001.py:projectors"
 ```
 
 ## Cross-Aggregate Projections
@@ -98,26 +88,14 @@ class ShippingReportProjector:
 Projectors can listen to events from multiple aggregates to create
 comprehensive views:
 
+??? example "The elements this example uses"
+
+    ```python
+    --8<-- "guides/consume-state/projectors/002.py:elements"
+    ```
+
 ```python
-@domain.projector(
-    projector_for=CustomerOrderSummary,
-    aggregates=[Customer, Order, Payment]
-)
-class CustomerOrderSummaryProjector:
-    @on(CustomerRegistered)
-    def on_customer_registered(self, event: CustomerRegistered):
-        # Initialize customer summary
-        pass
-
-    @on(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        # Update order count and total
-        pass
-
-    @on(PaymentProcessed)
-    def on_payment_processed(self, event: PaymentProcessed):
-        # Update payment status
-        pass
+--8<-- "guides/consume-state/projectors/002.py:cross_aggregate"
 ```
 
 For more granular control, use
@@ -127,55 +105,21 @@ instead of aggregates. A stream category is qualified with the domain name
 `meta_.stream_category` or write it in full. A bare `"order"` never matches:
 
 ```python
-@domain.projector(
-    projector_for=SystemMetrics,
-    stream_categories=[
-        User.meta_.stream_category,       # "<domain>::user"
-        Order.meta_.stream_category,      # "<domain>::order"
-        Payment.meta_.stream_category,    # "<domain>::payment"
-        Inventory.meta_.stream_category,  # "<domain>::inventory"
-    ],
-)
-class SystemMetricsProjector:
-    @on(UserRegistered)
-    def on_user_registered(self, event: UserRegistered):
-        # Update user metrics
-        pass
-
-    @on(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        # Update order metrics
-        pass
+--8<-- "guides/consume-state/projectors/002.py:stream_categories"
 ```
 
 ## Idempotency
 
 Projectors should be idempotent to handle duplicate events gracefully:
 
+??? example "The elements this example uses"
+
+    ```python
+    --8<-- "guides/consume-state/projectors/003.py:elements"
+    ```
+
 ```python
-from protean import current_domain
-from protean.exceptions import ObjectNotFoundError
-
-@domain.projector(projector_for=UserProfile, aggregates=[User])
-class UserProfileProjector:
-    @on(UserRegistered)
-    def on_user_registered(self, event: UserRegistered):
-        repository = current_domain.repository_for(UserProfile)
-
-        # Check if profile already exists
-        try:
-            existing_profile = repository.get(event.user_id)
-            # Profile already exists, skip creation
-            return
-        except ObjectNotFoundError:
-            pass  # Expected case - create new profile
-
-        profile = UserProfile(
-            user_id=event.user_id,
-            email=event.email,
-            name=event.name
-        )
-        repository.add(profile)
+--8<-- "guides/consume-state/projectors/003.py:projector"
 ```
 
 ### At-least-once delivery
@@ -195,15 +139,14 @@ rather than increment it, so re-applying the same event is harmless.
 When a projector genuinely cannot be expressed as an upsert, opt into
 framework-managed deduplication with `idempotent=True`:
 
+??? example "The elements this example uses"
+
+    ```python
+    --8<-- "guides/consume-state/projectors/004.py:elements"
+    ```
+
 ```python
-@domain.projector(projector_for=ProductStats, aggregates=[Product], idempotent=True)
-class RatingProjector:
-    @on(ReviewApproved)
-    def on_review_approved(self, event: ReviewApproved):
-        repository = current_domain.repository_for(ProductStats)
-        stats = repository.get(event.product_id)
-        stats.total_reviews += 1        # applied exactly once per event
-        repository.add(stats)
+--8<-- "guides/consume-state/projectors/004.py:projector"
 ```
 
 Each handler method records a `(message_id, handler)` marker in the same
@@ -240,18 +183,14 @@ transient exception, before the message is ever re-delivered or routed to the
 DLQ. Set `retries` (and optionally `backoff` / `retry_exceptions`) on the
 projector, exactly as on [event handlers](event-handlers.md#transient-failure-retries):
 
+??? example "The elements this example uses"
+
+    ```python
+    --8<-- "guides/consume-state/projectors/005.py:elements"
+    ```
+
 ```python
-@domain.projector(
-    projector_for=LowStockReport,
-    aggregates=[InventoryItem],
-    retries=8,
-    backoff="exponential",
-    retry_exceptions=["protean.exceptions.TransactionError"],
-)
-class LowStockReportProjector:
-    @on(StockDepleted)
-    def on_stock_depleted(self, event: StockDepleted):
-        ...
+--8<-- "guides/consume-state/projectors/005.py:projector"
 ```
 
 Each attempt runs in a fresh Unit of Work, so a partial read-model write from a
@@ -278,66 +217,28 @@ domain-wide defaults.
 Be aware that events may not always arrive in the expected order. Design
 projectors to handle out-of-order events:
 
+??? example "The elements this example uses"
+
+    ```python
+    --8<-- "guides/consume-state/projectors/006.py:elements"
+    ```
+
 ```python
-@domain.projector(projector_for=OrderStatus, aggregates=[Order])
-class OrderStatusProjector:
-    @on(OrderCreated)
-    def on_order_created(self, event: OrderCreated):
-        repository = current_domain.repository_for(OrderStatus)
-
-        # Use event timestamp to handle ordering
-        status = OrderStatus(
-            order_id=event.order_id,
-            status="CREATED",
-            last_updated=event._metadata.timestamp
-        )
-        repository.add(status)
-
-    @on(OrderShipped)
-    def on_order_shipped(self, event: OrderShipped):
-        repository = current_domain.repository_for(OrderStatus)
-        status = repository.get(event.order_id)
-
-        # Only update if this event is newer
-        if event._metadata.timestamp > status.last_updated:
-            status.status = "SHIPPED"
-            status.last_updated = event._metadata.timestamp
-            repository.add(status)
+--8<-- "guides/consume-state/projectors/006.py:projector"
 ```
 
 ## Error Handling
 
 Projectors should handle errors gracefully to ensure system resilience:
 
+??? example "The elements this example uses"
+
+    ```python
+    --8<-- "guides/consume-state/projectors/007.py:elements"
+    ```
+
 ```python
-@domain.projector(projector_for=ProductInventory, aggregates=[Product])
-class ProductInventoryProjector:
-    @on(ProductAdded)
-    def on_product_added(self, event: ProductAdded):
-        try:
-            repository = current_domain.repository_for(ProductInventory)
-
-            # Check if inventory already exists
-            try:
-                existing = repository.get(event.product_id)
-                # Handle duplicate case
-                return
-            except ObjectNotFoundError:
-                pass  # Expected case - create new inventory
-
-            inventory = ProductInventory(
-                product_id=event.product_id,
-                name=event.name,
-                price=event.price,
-                stock_quantity=event.stock_quantity,
-            )
-
-            repository.add(inventory)
-
-        except Exception as e:
-            # Log error and potentially raise for retry mechanisms
-            logger.error(f"Failed to process ProductAdded event: {e}")
-            raise
+--8<-- "guides/consume-state/projectors/007.py:projector"
 ```
 
 ## Handling Deletions
@@ -346,22 +247,14 @@ When a projection record should be removed in response to an event, filter
 the repository's query for it and call `delete()`. `delete()` returns the
 number of records it removed:
 
-```python
-@domain.projector(projector_for=ActiveOrder, aggregates=[Order])
-class ActiveOrderProjector:
-    @on(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repository = current_domain.repository_for(ActiveOrder)
-        repository.add(ActiveOrder(
-            order_id=event.order_id,
-            customer_name=event.customer_name,
-            status="placed",
-        ))
+??? example "The elements this example uses"
 
-    @on(OrderDelivered)
-    def on_order_delivered(self, event: OrderDelivered):
-        repository = current_domain.repository_for(ActiveOrder)
-        repository.query.filter(order_id=event.order_id).delete()
+    ```python
+    --8<-- "guides/consume-state/projectors/008.py:elements"
+    ```
+
+```python
+--8<-- "guides/consume-state/projectors/008.py:projector"
 ```
 
 `delete()` removes only the records the query returns, and a query returns at
@@ -395,35 +288,7 @@ Test individual projector methods by creating events and calling the methods
 directly:
 
 ```python
-import pytest
-from protean import Domain
-
-def test_product_inventory_projector_on_product_added():
-    domain = Domain()
-    # ... register domain elements
-
-    with domain.domain_context():
-        # Create test event
-        event = ProductAdded(
-            product_id="test-123",
-            name="Test Product",
-            description="A test product",
-            price=99.99,
-            stock_quantity=10
-        )
-
-        # Create projector instance
-        projector = ProductInventoryProjector()
-
-        # Call the handler method
-        projector.on_product_added(event)
-
-        # Verify projection was created
-        repository = domain.repository_for(ProductInventory)
-        inventory = repository.get("test-123")
-
-        assert inventory.name == "Test Product"
-        assert inventory.stock_quantity == 10
+--8<-- "guides/consume-state/projectors/009.py:unit"
 ```
 
 ### Integration Testing
@@ -431,31 +296,7 @@ def test_product_inventory_projector_on_product_added():
 Test the complete flow by raising events from aggregates:
 
 ```python
-def test_projector_integration():
-    domain = Domain()
-    # ... register domain elements
-
-    with domain.domain_context():
-        # Create and persist aggregate
-        product = Product.create(
-            name="Integration Test Product",
-            description="Testing projector integration",
-            price=149.99,
-            stock_quantity=25
-        )
-
-        product_repo = domain.repository_for(Product)
-        product_repo.add(product)  # This triggers events
-
-        # Verify projections were updated via view_for (read-only)
-        inventory_view = domain.view_for(ProductInventory)
-        catalog_view = domain.view_for(ProductCatalog)
-
-        inventory = inventory_view.get(product.id)
-        catalog = catalog_view.get(product.id)
-
-        assert inventory.name == "Integration Test Product"
-        assert catalog.in_stock == "YES"
+--8<-- "guides/consume-state/projectors/009.py:integration"
 ```
 
 ---

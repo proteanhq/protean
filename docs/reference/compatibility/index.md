@@ -151,16 +151,7 @@ Renamed classes, moved imports, changed signatures.
 new implementation. Minimum survival: **2 minor versions**.
 
 ```python
-import warnings
-
-def old_method(self):
-    warnings.warn(
-        "old_method() is deprecated. Use new_method() instead. "
-        "Will be removed in v0.17.0.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return self.new_method()
+--8<-- "reference/compatibility/001.py:old_method"
 ```
 
 ### Tier 2: Behavioral breaks
@@ -213,18 +204,17 @@ Events additionally accept a `superseded_by` option naming the replacement (an
 Event class or a name string):
 
 ```python
-@domain.event(
-    part_of=Order,
-    deprecated={"since": "0.16", "removal": "0.19"},
-    superseded_by=OrderPlacedV2,
-)
-class OrderPlaced(BaseEvent): ...
+--8<-- "reference/compatibility/002.py:setup"
+--8<-- "reference/compatibility/002.py:superseded_by"
 ```
 
 The successor is surfaced two ways: raising a deprecated event emits a
 `ProteanDeprecationWarning` (once per event type) that names it, and the
-`DEPRECATED_ELEMENT` diagnostic appends `superseded by \`<name>\``. It is
-documentation-only and never resolved to a link.
+`DEPRECATED_ELEMENT` diagnostic appends `superseded by \`<name>\``. The
+warning names an Event class by its class name (`OrderPlacedV2`). The diagnostic
+names it by its fully qualified name (`ordering.events.OrderPlacedV2` for a class
+defined in `ordering/events.py`). The successor is for documentation only and
+is never resolved to a link.
 
 ---
 

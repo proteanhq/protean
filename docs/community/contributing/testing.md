@@ -355,9 +355,7 @@ The `test_domain` fixture creates a fresh Protean domain for each test. It:
 Example usage:
 
 ```python
-def test_domain_initialization(test_domain):
-    assert test_domain.name == "Test"
-    assert test_domain.config["testing"] is True
+--8<-- "community/contributing/testing/001.py:test_domain_fixture"
 ```
 
 ### `db`
@@ -420,14 +418,7 @@ The `store_config` fixture does the same for event stores:
 Put runnable code in a file under `docs_src` and include it on the page by a named section. A section starts at a line <code># --8<-- &#91;start:place_order]</code> and ends at a line <code># --8<-- &#91;end:place_order]</code>. Between them goes the code the page shows:
 
 ```python
-@domain.aggregate
-class Order:
-    status = String()
-
-
-@domain.command(part_of=Order)
-class PlaceOrder:
-    order_id = Identifier(required=True)
+--8<-- "community/contributing/testing/002.py:place_order"
 ```
 
 The page includes it with `--8<-- "path/to/file.py:place_order"` inside a `python` fence. The test replaces that line with the section's code before it runs the block. Prefer a named section to a line range like `file.py:10:24`, because a line range points at the wrong lines once the file changes.

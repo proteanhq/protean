@@ -240,8 +240,7 @@ against the current schema to clear it.
 In Python code, call `domain.to_ir()` directly:
 
 ```python
-domain.init()
-ir = domain.to_ir()
+--8<-- "reference/cli/ir/001.py:to_ir"
 ```
 
 The returned dict is identical to the JSON output. See
