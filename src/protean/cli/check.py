@@ -453,11 +453,11 @@ def _format_sarif(result: dict[str, Any], domain: Any) -> dict[str, Any]:
     """Render a check result as a SARIF 2.1.0 document.
 
     ``errors`` and ``diagnostics`` are mutually exclusive per run and carry
-    different shapes, so each list is handled separately: validator ``errors``
-    become location-less ``error`` results with no rule metadata; rule
-    ``diagnostics`` carry the #774 metadata and attempt FQN-based location
-    resolution. ``reportingDescriptor`` objects are deduplicated by code across
-    both lists (first occurrence wins).
+    different shapes, so each list is handled separately: ``errors`` (validator
+    errors, or the IR-build error) become location-less ``error`` results with
+    no rule metadata; rule ``diagnostics`` carry the #774 metadata and attempt
+    FQN-based location resolution. ``reportingDescriptor`` objects are
+    deduplicated by code across both lists (first occurrence wins).
     """
     module_map = _element_module_map(domain)
     rules: dict[str, dict[str, Any]] = {}
