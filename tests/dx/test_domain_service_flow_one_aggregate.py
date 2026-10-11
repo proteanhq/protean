@@ -185,6 +185,23 @@ def _open_accounts(ns: Namespace, domain: Domain) -> None:
     repo.add(ns["Account"](account_id="B-1", owner="Bob", balance=0.0))
 
 
+@pytest.mark.parametrize("amount", [0.0, -5.0, float("nan")])
+def test_a_transfer_amount_that_is_not_positive_is_rejected(amount: float) -> None:
+    ns, domain = _load("domain_service_flow_basic.py")
+    with domain.domain_context():
+        _open_accounts(ns, domain)
+
+        with pytest.raises(ValidationError) as exc:
+            domain.process(
+                ns["TransferFunds"](
+                    transfer_id="T-1", source_id="A-1", target_id="B-1", amount=amount
+                )
+            )
+
+        assert exc.value.messages == {"_service": ["Transfer amount must be positive"]}
+        assert _balances(ns, domain) == (100.0, 0.0)
+
+
 @pytest.mark.parametrize("repeat_amount", [40.0, 10.0])
 def test_a_repeated_transfer_id_moves_no_money(repeat_amount: float) -> None:
     ns, domain = _load("domain_service_flow_basic.py")

@@ -603,6 +603,39 @@ class TestTutorialCh13(_TutorialBase):
             assert updated_inv.quantity == 7  # 10 - 3
             assert updated_inv.reserved_order_ids == [order.id]
 
+    def test_repeated_confirm_order_raises_one_order_confirmed(self):
+        """Ch13: a second ConfirmOrder for a confirmed order changes nothing."""
+        domain = ch13.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch13.Inventory)
+            inv = ch13.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+            order = ch13.Order(
+                customer_name="Alice",
+                items=[
+                    ch13.OrderItem(
+                        book_title="Dune",
+                        quantity=3,
+                        unit_price=ch13.Money(amount=15.99),
+                    )
+                ],
+            )
+            domain.repository_for(ch13.Order).add(order)
+
+            for _ in range(2):
+                domain.process(ch13.ConfirmOrder(order_id=order.id))
+
+            confirmations = [
+                event
+                for event in (
+                    message.to_domain_object()
+                    for message in domain.event_store.store.read("$all")
+                )
+                if isinstance(event, ch13.OrderConfirmed) and event.order_id == order.id
+            ]
+            assert len(confirmations) == 1
+            assert inv_repo.get(inv.id).quantity == 7
+
     def test_confirm_order_handler_persists_only_the_order(self, monkeypatch):
         """Ch13: the ConfirmOrder handler leaves Inventory to the event flow."""
         sdk_trace = pytest.importorskip("opentelemetry.sdk.trace")

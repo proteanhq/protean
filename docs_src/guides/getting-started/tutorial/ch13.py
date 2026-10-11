@@ -146,6 +146,9 @@ class OrderCommandHandler:
     def confirm_order(self, command: ConfirmOrder) -> None:
         repo = current_domain.repository_for(Order)
         order = repo.get(command.order_id)
+        if order.status == "CONFIRMED":
+            # A repeated ConfirmOrder would raise OrderConfirmed a second time.
+            return
 
         # Load inventory records for all items in the order
         inv_repo = current_domain.repository_for(Inventory)

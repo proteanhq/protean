@@ -17,8 +17,9 @@ inventory. Where does this logic live?
   be available") leak into the application layer, bypassing the domain model.
 - **In a domain service?** The service receives both aggregates, validates
   cross-aggregate invariants, and confirms the order. The business logic stays
-  in the domain layer where it belongs. The order's event then tells the
-  inventory to reserve stock, in a separate transaction.
+  in the domain layer where it belongs. An event handler then reacts to the
+  order's event and sends the inventory a command to reserve stock, in a
+  separate transaction.
 
 Domain services solve the specific problem of **cross-aggregate business logic
 that doesn't belong to any single aggregate**.

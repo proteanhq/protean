@@ -412,18 +412,78 @@ print(json.dumps(found))
 """
 
 
-def _reaches_another_aggregate(class_def: ast.ClassDef, part_of: str) -> bool:
-    """True when the handler issues a command or loads a different aggregate."""
-    for node in ast.walk(class_def):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+def _reaches_another_aggregate(
+    node: ast.AST,
+    part_of: str,
+    helpers: dict[str, ast.FunctionDef],
+    followed: frozenset[str] = frozenset(),
+) -> bool:
+    """True when the handler issues a command or loads a different aggregate.
+
+    ``repository_for`` counts unless its argument names ``part_of``, as a class
+    or as a string, so an alias or a computed argument counts as reaching
+    another aggregate. A call to a function defined at module level is
+    followed into that function. A method on another object is not.
+    """
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
             continue
-        if node.func.attr == "process":
-            return True
-        if node.func.attr == "repository_for" and node.args:
-            target = node.args[0]
-            if isinstance(target, ast.Name) and target.id != part_of:
+        func = child.func
+        if isinstance(func, ast.Name) and func.id in helpers:
+            if func.id not in followed and _reaches_another_aggregate(
+                helpers[func.id], part_of, helpers, followed | {func.id}
+            ):
                 return True
+            continue
+        if not isinstance(func, ast.Attribute):
+            continue
+        if func.attr == "process":
+            return True
+        if func.attr == "repository_for" and child.args:
+            target = child.args[0]
+            if isinstance(target, ast.Name) and target.id == part_of:
+                continue
+            if isinstance(target, ast.Constant) and target.value == part_of:
+                continue
+            return True
     return False
+
+
+def _module_functions(tree: ast.Module) -> dict[str, ast.FunctionDef]:
+    return {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+
+
+@pytest.mark.parametrize(
+    ("source", "reaches"),
+    [
+        ("class H:\n    def on(self):\n        d.repository_for(Order)\n", False),
+        ("class H:\n    def on(self):\n        d.repository_for('Order')\n", False),
+        ("class H:\n    def on(self):\n        d.repository_for(Stock)\n", True),
+        ("class H:\n    def on(self):\n        d.repository_for('Stock')\n", True),
+        ("class H:\n    def on(self):\n        d.process(cmd)\n", True),
+        (
+            (
+                "def save(x):\n    d.repository_for(Stock).add(x)\n"
+                "class H:\n    def on(self):\n        save(1)\n"
+            ),
+            True,
+        ),
+        (
+            "def loop():\n    loop()\nclass H:\n    def on(self):\n        loop()\n",
+            False,
+        ),
+    ],
+)
+def test_the_hand_off_scan_sees_strings_aliases_and_helpers(
+    source: str, reaches: bool
+) -> None:
+    tree = ast.parse(source)
+    [class_def] = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+
+    assert (
+        _reaches_another_aggregate(class_def, "Order", _module_functions(tree))
+        is reaches
+    )
 
 
 def _assets_handing_off() -> list[str]:
@@ -445,13 +505,17 @@ def _assets_handing_off() -> list[str]:
         by_name = dict(handlers[str(path)])
         if not by_name:
             continue
+        tree = ast.parse(path.read_text())
+        helpers = _module_functions(tree)
         classes = [
             node
-            for node in ast.walk(ast.parse(path.read_text()))
+            for node in ast.walk(tree)
             if isinstance(node, ast.ClassDef) and node.name in by_name
         ]
         assert classes, f"{path}: no class definition for {sorted(by_name)}"
-        if any(_reaches_another_aggregate(c, by_name[c.name]) for c in classes):
+        if any(
+            _reaches_another_aggregate(c, by_name[c.name], helpers) for c in classes
+        ):
             handing_off.append(str(path.relative_to(SKILLS)))
     return handing_off
 

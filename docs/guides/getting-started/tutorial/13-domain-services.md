@@ -76,7 +76,8 @@ the domain service:
 
 The handler's job is orchestration, not business logic:
 
-1. Load the order from the repository.
+1. Load the order from the repository. Stop if it is already confirmed, so a
+   repeated `ConfirmOrder` changes nothing.
 2. Load the relevant inventory records.
 3. Pass everything to the domain service.
 4. Persist the order. Only the order.
