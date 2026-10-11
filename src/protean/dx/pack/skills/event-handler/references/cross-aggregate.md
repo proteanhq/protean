@@ -99,7 +99,7 @@ class ReduceStock:
     quantity: Integer(required=True)
 ```
 
-The command carries everything Inventory needs, so its handler does not load the Order. `order_id` is a deterministic id taken from the event. An order ships one book, so the order id names exactly one stock change. When one event drives several writes to the same aggregate, such as one per order line, derive one id per write, such as `f"{order_id}:{book_id}"`.
+The command carries everything Inventory needs, so its handler does not load the Order. `order_id` is a deterministic id taken from the event. An order ships one book, so the order id names exactly one stock change. When one event drives several writes to the same aggregate, such as one per order line, derive one id per write, such as `f"{order_id}:{book_id}"`. Add up the lines for the same book first, so each book gets one write. Two lines for one book would otherwise share an id, and the handler would skip the second as a repeat.
 
 ### The Command Handler
 
