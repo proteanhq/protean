@@ -64,7 +64,7 @@ driven by the **unfiltered** counts and gated by the `[lint].level` config key
 | Exit code | Meaning |
 |-----------|---------|
 | `0` | Nothing at or above the configured floor. |
-| `1` | A findings failure: validator errors, or a warning/info at or above the floor. The severity detail is in the envelope, not the code. |
+| `1` | A findings failure: validator errors, an IR-build error, or a warning/info at or above the floor. The severity detail is in the envelope, not the code. |
 | `2` | A usage or environment error: a bad `--domain`, `--level`, or `--format`; a domain that will not load; or a malformed `[lint]` config. |
 
 The single findings-failure code (`1`) replaced an earlier split (errors `1`,

@@ -758,7 +758,7 @@ class Domain:
             {
                 "domain": "<domain name>",
                 "status": "pass" | "warn" | "info" | "fail",
-                "errors": [...],       # from validate_all()
+                "errors": [...],       # from validate_all(), or one to_ir entry
                 "diagnostics": [...],  # from IR builder (if no errors)
                 "counts": {
                     "errors": int,

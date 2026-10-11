@@ -486,7 +486,8 @@ def _format_sarif(result: dict[str, Any], domain: Any) -> dict[str, Any]:
             ),
         }
 
-    # Validator errors: no FQN, no rule metadata, always error, no location.
+    # Errors (validator or IR-build): no FQN, no rule metadata, always error,
+    # no location.
     for err in result.get("errors", []):
         code = err["code"]
         _descriptor(code, err.get("message", code), None, None)
