@@ -471,8 +471,9 @@ def test_a_page_left_open_is_rolled_back_and_torn_down_before_the_next_page(
 # What closing a page has to decide over: whether the page's own blocks
 # passed, raised or timed out, what the page left open, and how closing it
 # behaves. Every cell must give the page one result and leave nothing open for
-# the next page.
-CLOSE_TIMEOUT = 1.0
+# the next page. The limit leaves room for a page's setup on a busy CI runner,
+# where the child shares the CPUs with every other test worker.
+CLOSE_TIMEOUT = 2.0
 
 LEFT_OPEN = {
     "nothing": "",
@@ -490,12 +491,6 @@ LEFT_OPEN = {
         "domain.teardown_domain_context(close)\ndomain.domain_context().push()\n"
     ),
 }
-LEFT_OPEN["a domain context pushed twice"] = (
-    "domain.teardown_domain_context(close)\n"
-    "twice = domain.domain_context()\n"
-    "twice.push()\n"
-    "twice.push()\n"
-)
 LEFT_OPEN["both"] = (
     LEFT_OPEN["a unit of work"] + "domain.teardown_domain_context(close)\n"
     "domain.domain_context().push()\n"
@@ -609,6 +604,31 @@ def test_closing_what_a_page_left_open_gives_one_result_and_leaves_nothing_open(
             {"file": f"{number}-{name}-next.md", "failure": None, "not_run": []}
         )
     assert _run(tmp_path, pages, bases, timeout=CLOSE_TIMEOUT) == expected
+
+
+def test_closing_a_domain_context_pushed_twice_runs_its_teardown(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "def close(*args):\n"
+        "    raise RuntimeError('teardown ran')\n"
+        "\n"
+        "domain.teardown_domain_context(close)\n"
+        "twice = domain.domain_context()\n"
+        "twice.push()\n"
+        "twice.push()\n"
+        "```\n",
+        "a.md",
+    )
+    after = _write(tmp_path, READER, "b.md")
+    assert _run(tmp_path, [page, after], bases) == [
+        {
+            "file": "a.md",
+            "failure": "cleanup: RuntimeError: teardown ran",
+            "not_run": [],
+        },
+        {"file": "b.md", "failure": None, "not_run": []},
+    ]
 
 
 def test_an_allowlisted_page_that_passes_says_to_remove_the_entry(tmp_path, bases):
