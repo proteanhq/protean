@@ -52,9 +52,6 @@ ALLOWLIST: set[str] = {
     "guides/domain-behavior/003.py",
     "guides/domain-behavior/004.py",
     "guides/domain-behavior/005.py",
-    "guides/domain-behavior/006.py",
-    "guides/domain-behavior/007.py",
-    "guides/domain-behavior/008.py",
     "guides/domain-behavior/010.py",
 }
 

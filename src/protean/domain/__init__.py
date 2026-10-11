@@ -2188,9 +2188,10 @@ class Domain:
         the ``Repository.add`` -> ``DAO.save`` path, on both the create and the
         update, inside an active domain context, so it can read the acting user
         from ``g`` and stamp technical fields such as ``updated_at`` /
-        ``updated_by`` / ``created_by``.  It does not fire for event-sourced
-        aggregates (persisted through the event store) or for a set-based
-        ``query.update()`` (which runs no per-row Python).
+        ``updated_by`` / ``created_by``.  It also runs for each row that
+        ``query.update()`` saves.  It does not fire for event-sourced
+        aggregates (persisted through the event store) or for a save that
+        passes ``apply_hooks=False``.
 
         Enrichers execute in registration order (FIFO).  If an enricher raises,
         the exception propagates and the save is aborted; on an update the

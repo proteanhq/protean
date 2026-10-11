@@ -8,11 +8,13 @@ This example demonstrates:
 - Caller-side error handling patterns
 
 Usage:
-    svc = OrderApplicationServices()
-    try:
-        order_id = svc.place_order(customer_id="CUST-001", items=["item1"])
-    except ValidationError:
-        ...  # Handle domain validation error
+    domain.init(traverse=False)
+    with domain.domain_context():
+        svc = OrderApplicationServices()
+        try:
+            order_id = svc.place_order(customer_id="CUST-001", items=[10.00, 20.00])
+        except ValidationError:
+            ...  # Handle domain validation error
 """
 
 from protean import Domain, current_domain, use_case

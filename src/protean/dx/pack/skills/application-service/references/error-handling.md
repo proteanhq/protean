@@ -11,6 +11,18 @@ When an exception occurs inside a `@use_case` method:
 3. No partial state is persisted
 
 ```python
+from protean.exceptions import ValidationError
+from protean.fields import Identifier, String
+
+@domain.aggregate
+class User:
+    email: String(required=True)
+    name: String(required=True)
+
+    @classmethod
+    def register(cls, email, name):
+        return cls(email=email, name=name)  # Raises ValidationError on bad input
+
 @domain.application_service(part_of=User)
 class UserServices:
     @use_case
@@ -22,20 +34,28 @@ class UserServices:
 
 ## Caller-Side Error Handling
 
-Handle exceptions in the API layer (controller), not in the application service:
+Catch exceptions in the API layer (controller), and let the use case raise them. A use case needs an initialized domain and an active domain context, so the controller opens one:
 
 ```python
+domain.init(traverse=False)
+
 # In the API layer
-try:
-    svc = UserServices()
-    user_id = svc.register_user(email="john@example.com", name="John Doe")
-except ValidationError as exc:
-    # Handle validation errors (e.g., return 400 response)
-    ...
-except Exception as exc:
-    # Handle unexpected errors (e.g., return 500 response)
-    ...
+def register_user_endpoint(email: str, name: str):
+    with domain.domain_context():
+        try:
+            user_id = UserServices().register_user(email=email, name=name)
+        except ValidationError as exc:
+            return 400, exc.messages  # Validation errors become a 400 response
+    # Unexpected errors reach the web framework, which returns a 500
+    return 201, {"id": user_id}
+
+assert register_user_endpoint(email="john@example.com", name="John Doe")[0] == 201
+assert register_user_endpoint(email=None, name="John Doe")[0] == 400
 ```
+
+## No Retry on Version Conflicts
+
+`@use_case` runs the method once. If a save hits a version conflict (`ExpectedVersionError`, raised when another writer changed the aggregate first), the Unit of Work rolls back and the exception reaches the caller. Command and event handlers behave differently: on a version conflict, `@handle` re-runs the handler body, up to 4 times in total by default. A caller that wants a retry calls the use case again, which loads the aggregate fresh.
 
 ## No handle_error Hook
 
@@ -58,9 +78,10 @@ This is because application services always have a synchronous caller present wh
 
 ## UnitOfWork Rollback Guarantee
 
-The UoW ensures atomicity — if any part of the use case fails, ALL changes are rolled back:
+On a provider with transactions, such as the SQL databases, the Unit of Work is one real database transaction, as [ADR-0027 (The Unit of Work is a real database transaction)](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/) describes. Writes reach the database inside the transaction, but nothing is committed or visible to other connections until the Unit of Work commits. If any part of the use case fails, the rollback undoes ALL its writes:
 
 ```python
+# fragment
 @use_case
 def register_user(self, email, name):
     user = User(email=email, name=name)
@@ -69,5 +90,7 @@ def register_user(self, email, name):
     user.raise_(Registered(user_id=user.id, email=email, name=name))
     return user.id
 ```
+
+The in-memory provider keeps writes in the Unit of Work until it commits, so a rollback there also leaves nothing behind. Elasticsearch has no transactions. There the Unit of Work logs a warning that commit and rollback are not atomic, and a rollback does not undo writes already sent.
 
 See [Error Handling Example](../assets/application_service_error_handling.py) for a complete runnable example.

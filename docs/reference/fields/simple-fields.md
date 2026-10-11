@@ -186,9 +186,9 @@ The two flags are mutually exclusive, are only valid on `DateTime`/`Date`
 fields, and cannot be combined with `required=True` (the value is filled at
 save time, so the field must be optional). Unlike a construction-time
 `default=utc_now`, an `auto_now*` field is `None` until the first save. The
-value is stamped on the `repository.add()` → save path, not at construction and
-not on a bulk `query.update()` (matching Django's `Model.save()` vs
-`QuerySet.update()` behavior).
+value is stamped at save time, not at construction: on the `repository.add()` →
+save path and on each row a `query.update()` saves. Pass
+`apply_hooks=False` to skip the stamp.
 
 See [Track Audit and Lifecycle Fields](../../patterns/track-audit-fields.md) for
 the full recipe (abstract base + timestamps + `created_by`/`updated_by`).

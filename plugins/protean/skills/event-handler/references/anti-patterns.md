@@ -2,10 +2,68 @@
 
 Common mistakes when implementing event handlers in Protean and how to avoid them.
 
+The examples on this page use these elements:
+
+```python
+from protean.exceptions import ValidationError
+
+@domain.aggregate
+class Order:
+    product_id: Identifier()
+    quantity: Integer()
+    status: String(default="placed")
+    confirmation_number: String()
+
+    def confirm(self):
+        if self.status != "placed":
+            raise ValidationError({"status": ["Only placed orders can be confirmed"]})
+        self.status = "confirmed"
+
+@domain.event(part_of=Order)
+class OrderPlaced:
+    order_id: Identifier(required=True)
+
+@domain.event(part_of=Order)
+class OrderShipped:
+    order_id: Identifier(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+
+@domain.command(part_of=Order)
+class PlaceOrder:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+
+@domain.aggregate
+class Inventory:
+    product_id: Identifier(required=True)
+    stock_level: Integer(required=True)
+    applied_order_ids: List(content_type=String)
+
+    def reduce_stock(self, order_id, quantity):
+        self.stock_level -= quantity
+        self.applied_order_ids = [*self.applied_order_ids, order_id]
+
+@domain.command(part_of=Inventory)
+class ReduceStock:
+    order_id: Identifier(required=True)
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+
+@domain.aggregate
+class Task:
+    title: String(required=True)
+
+@domain.aggregate
+class AuditLog:
+    event_type: String(required=True)
+```
+
 ## 1. Missing part_of and stream_category
 
 **Wrong:**
 ```python
+# fragment
 @domain.event_handler  # Missing both part_of and stream_category!
 class OrderEventHandler:
     @handle(OrderPlaced)
@@ -22,7 +80,7 @@ class OrderEventHandler:
         pass
 ```
 
-Protean raises `IncorrectUsageError: Event Handler 'OrderEventHandler' needs to be associated with an aggregate or a stream`.
+Protean raises ``IncorrectUsageError: Event Handler `OrderEventHandler` needs to be associated with an aggregate or a stream``.
 
 An event handler must specify at least one of `part_of` or `stream_category`.
 
@@ -30,6 +88,7 @@ An event handler must specify at least one of `part_of` or `stream_category`.
 
 **Wrong:**
 ```python
+# fragment
 @domain.event_handler(part_of=Order)
 class OrderEventHandler:
     @handle(OrderPlaced)
@@ -41,7 +100,7 @@ class OrderEventHandler:
 **Correct:**
 ```python
 @domain.event_handler(part_of=Order)
-class OrderEventHandler:
+class OrderConfirmationHandler:
     @handle(OrderPlaced)
     def handle(self, event: OrderPlaced):
         order = domain.repository_for(Order).get(event.order_id)
@@ -56,6 +115,7 @@ Event handlers follow fire-and-forget. Return values are discarded. If you need 
 
 **Wrong:**
 ```python
+# fragment
 @handle(OrderPlaced)
 def handle_order_placed(self, event):
     with UnitOfWork():  # Redundant!
@@ -64,9 +124,10 @@ def handle_order_placed(self, event):
         domain.repository_for(Order).add(order)
 ```
 
-**Correct:** The `@handle` decorator already wraps the method in a UnitOfWork.
+**Correct:** The `@handle` decorator already wraps the method in a UnitOfWork. A Unit of Work started inside the handler joins that one: there are no savepoints, and only the outermost Unit of Work commits or rolls back.
 
 ```python
+# fragment
 @handle(OrderPlaced)
 def handle_order_placed(self, event):
     order = domain.repository_for(Order).get(event.order_id)
@@ -78,6 +139,7 @@ def handle_order_placed(self, event):
 
 **Wrong:**
 ```python
+# fragment
 @handle(OrderPlaced)
 def confirm_order(self, event):
     order = domain.repository_for(Order).get(event.order_id)
@@ -91,6 +153,7 @@ def confirm_order(self, event):
 **Correct:** Keep business logic in the aggregate. Handler only orchestrates.
 
 ```python
+# fragment
 @handle(OrderPlaced)
 def confirm_order(self, event):
     order = domain.repository_for(Order).get(event.order_id)
@@ -102,6 +165,7 @@ def confirm_order(self, event):
 
 **Wrong:**
 ```python
+# fragment
 @domain.event_handler(part_of=Order)
 class OrderEventHandler:
     @handle(PlaceOrder)  # This is a COMMAND, not an event!
@@ -109,12 +173,13 @@ class OrderEventHandler:
         pass
 ```
 
-Event handlers handle events. Command handlers handle commands. Protean validates this during domain initialization.
+An event handler's `@handle` takes an event class, and a command class belongs in a command handler. Protean does not reject this at `init`: it only warns that `PlaceOrder` has no registered handler, and `domain.process(PlaceOrder(...))` never reaches the event handler's method. Move the method to a command handler.
 
 ## 6. Expecting Synchronous Execution in Production
 
 **Wrong:**
 ```python
+# fragment
 # In production code
 order.place()
 domain.repository_for(Order).add(order)
@@ -135,6 +200,7 @@ domain.config["event_processing"] = "sync"
 **Avoid:** Updating multiple aggregate roots in a single event handler method.
 
 ```python
+# fragment
 @handle(OrderPlaced)
 def handle(self, event):
     # Updating TWO aggregate roots - violates DDD boundaries
@@ -145,6 +211,8 @@ def handle(self, event):
     notification = Notification(...)
     domain.repository_for(Notification).add(notification)
 ```
+
+The Unit of Work does not stop this. On a provider with transactions, such as the SQL databases, it is one database transaction, and it can hold changes to several aggregates; one aggregate per transaction is a design rule.
 
 **Better:** Have the handler issue one command per target aggregate. Each target's command handler then changes its own aggregate. With async command processing, each runs in its own transaction. See [Cross-Aggregate](./cross-aggregate.md).
 
@@ -165,7 +233,8 @@ class TaskAuditor:
 @domain.event_handler(part_of=AuditLog, stream_category=Task.meta_.stream_category)
 class TaskAuditor:
     @handle("$any")
-    def on_any_task_event(self, event): ...
+    def on_any_task_event(self, event):
+        domain.repository_for(AuditLog).add(AuditLog(event_type=event.__class__.__name__))
 ```
 
 Stream categories are module-qualified internally. Using a plain string like `"order"` may not match the actual stream name, which includes the module path. Always use `Aggregate.meta_.stream_category` for reliable event routing.
@@ -191,7 +260,6 @@ The handler belongs to Inventory but reacts to `OrderShipped`, which belongs to 
 **Correct:** Put the handler in the cluster that owns the event and hand off with a command. Inventory's command handler does the write, and returns without changes for an order it has already applied, because events are delivered at least once.
 
 ```python
-# fragment
 @domain.event_handler(part_of=Order)
 class InventorySyncHandler:
     @handle(OrderShipped)

@@ -123,6 +123,8 @@ from protean.utils.globals import g
 
 @domain.aggregate_enricher
 def stamp_audit(aggregate):
+    if not hasattr(aggregate, "updated_by"):  # a framework record, such as an outbox row
+        return
     user = g.get("current_user")
     aggregate.updated_by = user
     if aggregate.created_by is None:      # set once, on create
@@ -138,7 +140,10 @@ with domain.domain_context(current_user="alice"):
 
 Aggregate enrichers run in registration order, fire only for aggregates (not
 child entities), and (because they assign through normal attributes) invariants
-still run on the stamped fields. If one raises, the save is aborted.
+still run on the stamped fields. If one raises, the save is aborted. They also
+fire for the records Protean itself saves through repositories, such as outbox
+rows and the message records of the in-memory event store. That is why the
+example skips an aggregate without `updated_by`.
 
 Keep them to cross-cutting lifecycle/audit metadata; they are not a hook for
 business logic or for raising events. For the complete recipe (an abstract audit

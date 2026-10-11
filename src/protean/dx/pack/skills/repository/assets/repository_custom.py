@@ -8,6 +8,8 @@ This example demonstrates:
 - Filtering with self.query.filter()
 - Custom repository inherits add() and get() from BaseRepository
 - Domain-specific query naming (find_by_*, find_active, etc.)
+- An index on every field a query method filters on, with a max_length on
+  each indexed String
 
 Usage:
     repo = domain.repository_for(Product)
@@ -15,20 +17,22 @@ Usage:
     cheap_products = repo.find_affordable(max_price=50.0)
 """
 
-from protean import Domain
+from protean import Domain, Index
 from protean.fields import Boolean, Float, Identifier, String
 
 # Domain setup
 domain = Domain()
 
 
-@domain.aggregate
+@domain.aggregate(
+    indexes=[Index("category"), Index("is_active"), Index("price"), Index("name")]
+)
 class Product:
     """Product aggregate for an e-commerce catalog."""
 
     product_id: Identifier(identifier=True)
     name: String(required=True, max_length=200)
-    category: String(required=True)
+    category: String(required=True, max_length=50)
     price: Float(required=True)
     is_active: Boolean(default=True)
 

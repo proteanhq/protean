@@ -9,11 +9,13 @@ This example demonstrates:
 - All methods share the same aggregate association
 
 Usage:
-    svc = AccountApplicationServices()
-    account_id = svc.create_account(email="user@example.com", name="User")
-    svc.activate_account(account_id=account_id)
-    svc.change_email(account_id=account_id, new_email="new@example.com")
-    svc.deactivate_account(account_id=account_id)
+    domain.init(traverse=False)
+    with domain.domain_context():
+        svc = AccountApplicationServices()
+        account_id = svc.create_account(email="user@example.com", name="User")
+        svc.activate_account(account_id=account_id)
+        svc.change_email(account_id=account_id, new_email="new@example.com")
+        svc.deactivate_account(account_id=account_id)
 """
 
 from protean import Domain, current_domain, use_case

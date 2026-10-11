@@ -14,6 +14,17 @@ The complete implementation is in [assets/repository_with_database.py](../assets
 
 ## How Database Selection Works
 
+The examples on this page use this aggregate. The repositories filter on `report_type` and `total_value`, so it declares an index led by each:
+
+```python
+@domain.aggregate(indexes=[Index("report_type"), Index("total_value")])
+class Report:
+    report_id: Identifier(identifier=True)
+    title: String(required=True, max_length=200)
+    report_type: String(required=True, max_length=50)
+    total_value: Float(default=0.0)
+```
+
 ### Default Behavior: `database="ALL"`
 
 ```python

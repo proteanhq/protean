@@ -366,6 +366,15 @@ domain.register_event_enricher(audit_enricher)
 domain.register_command_enricher(tenant_command_enricher)
 ```
 
+### Stamping Fields on the Aggregate
+
+Command and event enrichers add to message metadata. To set fields on the
+aggregate itself, such as `updated_by`, register an aggregate enricher with
+`@domain.aggregate_enricher`. It receives the aggregate just before a
+repository saves it and sets fields on it in place. See
+[Aggregate Pre-Persist Enrichers](../guides/domain-behavior/message-enrichment.md#aggregate-pre-persist-enrichers)
+and [Track Audit and Lifecycle Fields](track-audit-fields.md).
+
 ### Testing with Enrichers
 
 Because enrichers read from `g`, tests that need enriched metadata must set up

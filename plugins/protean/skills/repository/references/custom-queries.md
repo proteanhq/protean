@@ -24,6 +24,35 @@ Inside a custom repository, `self.query` returns a `QuerySet` for fluent filteri
 
 ### Basic Filtering
 
+The examples on this page use these aggregates. Each field a query method filters on has an index led by it, and no index covers a `Text` field, so `check` reports no `UNINDEXED_FILTER_PATH` or `UNBOUNDED_INDEXED_STRING`:
+
+```python
+@domain.aggregate(
+    indexes=[Index("category"), Index("is_active"), Index("price")]
+)
+class Product:
+    product_id: Identifier(identifier=True)
+    name: String(required=True, max_length=200)
+    category: String(required=True, max_length=50)
+    price: Float(required=True)
+    is_active: Boolean(default=True)
+
+
+@domain.aggregate(indexes=[Index("email", unique=True)])
+class User:
+    user_id: Identifier(identifier=True)
+    email: String(required=True, max_length=254)
+
+
+@domain.aggregate
+class Report:
+    report_id: Identifier(identifier=True)
+    report_type: String(max_length=50)
+    total_value: Float(default=0.0)
+```
+
+A custom repository filters through `self.query`:
+
 ```python
 @domain.repository(part_of=Product)
 class ProductRepository:
@@ -95,10 +124,16 @@ Use domain-meaningful names for repository methods:
 Custom repositories inherit from `BaseRepository`, so they still have `add()` and `get()`:
 
 ```python
-repo = domain.repository_for(Product)
-repo.add(product)              # Inherited from BaseRepository
-repo.get("PROD-001")           # Inherited from BaseRepository
-repo.find_by_category("books") # Custom method
+domain.init(traverse=False)
+
+with domain.domain_context():
+    product = Product(
+        product_id="PROD-001", name="Dune", category="books", price=9.99
+    )
+    repo = domain.repository_for(Product)
+    repo.add(product)              # Inherited from BaseRepository
+    repo.get("PROD-001")           # Inherited from BaseRepository
+    repo.find_by_category("books") # Custom method
 ```
 
 ## Raw Queries

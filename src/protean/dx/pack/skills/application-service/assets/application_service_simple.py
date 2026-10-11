@@ -10,8 +10,10 @@ This example demonstrates:
 - Synchronous return value (user ID)
 
 Usage:
-    svc = UserApplicationServices()
-    user_id = svc.register_user(email="john@example.com", name="John Doe")
+    domain.init(traverse=False)
+    with domain.domain_context():
+        svc = UserApplicationServices()
+        user_id = svc.register_user(email="john@example.com", name="John Doe")
 """
 
 from protean import Domain, current_domain, use_case

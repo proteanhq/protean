@@ -300,8 +300,10 @@ first writer wins, and subsequent writers must retry with the latest version.
 
 In async handlers (command handlers and event handlers decorated with
 `@handle`), the framework **automatically retries** `ExpectedVersionError`
-with exponential backoff. Each retry creates a fresh `UnitOfWork`, so the
-handler re-reads the aggregate at the latest version. This is transparent, most
+with exponential backoff. Each retry runs in a new `UnitOfWork`, so the
+handler re-reads the aggregate at the latest version. When the handler runs
+inside an outer `UnitOfWork`, as a synchronous command processed from an
+application service does, every retry joins that outer one instead. This is transparent, most
 version conflicts resolve without any manual intervention. For details, see
 [Version conflict
 auto-retry](../server/error-handling.md#version-conflict-auto-retry).

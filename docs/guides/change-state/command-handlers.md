@@ -28,6 +28,11 @@ Command Handlers are defined with the `Domain.command_handler` decorator:
 | `retries` | `int` | `None` | Max auto-retry attempts on transient exceptions. Overrides the domain-level `server.transient_retry`; `None` defers to it. See [Retrying transient failures](#retrying-transient-failures). |
 | `backoff` | `str` | `None` | Backoff strategy between retries: `"exponential"`, `"linear"`, or `"fixed"`. `None` defers to config. |
 | `retry_exceptions` | exception types or dotted-path strings | `None` | Which exceptions count as transient. `None` uses the configured default (`ConnectionError`, `TimeoutError`, `SendError`). |
+| `sequential_by` | `str` | `None` | Name of an attribute on every command this handler handles. Registration checks that every handled command has the attribute. Commands do not go through the outbox yet, so they are not split by this value. See [Sequential processing](../../reference/server/sequential-by.md) for what the option does on a command handler today. |
+| `subscription_type` | `SubscriptionType` | `None` | Subscription type for the server's subscription. `None` uses the default. |
+| `subscription_profile` | `SubscriptionProfile` | `None` | Subscription profile preset. `None` uses the default. |
+| `subscription_config` | `dict` | `{}` | Custom subscription settings that override the type and profile defaults. |
+| `suppress_checks` | tuple of `str` | `()` | Diagnostic codes `protean check` should not report for this handler. |
 
 ### The `@handle` decorator
 
@@ -250,8 +255,10 @@ per handler with `retries`:
 --8<-- "guides/change-state/command-handlers/004.py:handler"
 ```
 
-Each attempt runs in a fresh Unit of Work, so a failed attempt is rolled back
-cleanly before the next one. Only genuinely transient exceptions are retried;
+Each attempt opens its own Unit of Work, so a failed attempt is rolled back
+cleanly before the next one. When the handler runs inside an outer Unit of
+Work, such as a use case that calls `domain.process()` synchronously, every
+attempt joins the outer one instead, and the first failure dooms it. Only genuinely transient exceptions are retried;
 by default `ConnectionError`, `TimeoutError`, and `SendError`. Narrow or widen
 the set with `retry_exceptions`:
 

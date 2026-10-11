@@ -51,15 +51,32 @@ to go from here.
 | Aggregates | 4 | Book, Order, Inventory, Shipping |
 | Entities | 1 | OrderItem |
 | Value Objects | 2 | Money, Address |
-| Commands | 8+ | AddBook, PlaceOrder, ConfirmOrder, ShipOrder, RestockInventory, ... |
-| Events | 6+ | BookAdded, OrderConfirmed, OrderShipped, BookPriceUpdated, ... |
-| Command Handlers | 3+ | BookCommandHandler, OrderCommandHandler, InventoryCommandHandler |
+| Commands | 8+ | AddBook, PlaceOrder, ConfirmOrder, ShipOrder, ReserveInventory, CreateShipment, ... |
+| Events | 6+ | BookAdded, OrderConfirmed, OrderShipped, InventoryReserved, ShipmentFailed, ... |
+| Command Handlers | 4+ | BookCommandHandler, OrderCommandHandler, InventoryCommandHandler, ShipmentCommandHandler |
 | Event Handlers | 2 | BookEventHandler, OrderEventHandler |
 | Projections | 3 | BookCatalog, BookReport, StorefrontView |
 | Projectors | 3 | BookCatalogProjector, BookReportProjector, StorefrontProjector |
 | Domain Services | 1 | OrderFulfillmentService |
 | Process Managers | 1 | OrderFulfillmentPM |
 | Subscribers | 1 | BookSupplyWebhookSubscriber |
+
+### How an Order Is Confirmed and Shipped
+
+1. `ConfirmOrder` reaches `OrderCommandHandler`. The handler loads the order
+   and the inventory records for its titles, and `OrderFulfillmentService`
+   checks the stock. If it is short, the command fails and the order stays
+   `PENDING`.
+2. If the stock is there, the handler saves the order alone, as `CONFIRMED`.
+   `OrderConfirmed` lists each title once, with its total quantity.
+3. `OrderFulfillmentPM` starts on `OrderConfirmed` and sends one
+   `ReserveInventory` per title. `InventoryCommandHandler` reserves the stock,
+   skipping an order it has already reserved for.
+4. When every title is reserved, the process manager sends `CreateShipment`.
+   A shipment that is created completes the order. A shipment that fails
+   releases the stock and cancels the order.
+
+Each step changes one aggregate.
 
 ### CLI Commands Used
 
@@ -87,7 +104,7 @@ to go from here.
 | Read Model Projections | BookCatalog, BookReport, StorefrontView |
 | Outbox Pattern | Reliable event delivery via Redis |
 | Anti-Corruption Layer | Subscriber translates external data |
-| Domain Services | Cross-aggregate validation (inventory check) |
+| Domain Services | Check stock across Order and Inventory before confirming an order |
 | Process Manager / Saga | Multi-step fulfillment with compensation |
 | Priority Lanes | Bulk imports without starving production |
 | Dead Letter Queues | Failure recovery with fix-and-replay |

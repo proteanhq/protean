@@ -20,19 +20,64 @@ Key highlights:
 - Construct new aggregate instances directly when creating
 - Always persist via `domain.repository_for(Aggregate).add(aggregate)` after mutation
 
+The examples on this page use these elements:
+
+```python
+from protean import handle
+from protean.fields import Identifier, String
+
+@domain.aggregate
+class Account:
+    account_id: Identifier(identifier=True)
+    email: String(required=True)
+    name: String()
+    status: String(default="pending")
+
+    def activate(self):
+        self.status = "active"
+
+@domain.command(part_of="Account")
+class RegisterAccount:
+    account_id: Identifier(required=True)
+    email: String(required=True)
+    name: String()
+
+@domain.command(part_of="Account")
+class ActivateAccount:
+    account_id: Identifier(required=True)
+
+@domain.aggregate
+class Order:
+    order_id: Identifier(identifier=True)
+    shipping_address: String()
+
+@domain.aggregate
+class Shipment:
+    shipment_id: Identifier(identifier=True)
+    order_id: Identifier(required=True)
+    address: String()
+
+@domain.command(part_of="Shipment")
+class FulfillOrder:
+    shipment_id: Identifier(required=True)
+    order_id: Identifier(required=True)
+```
+
 ## Creating a New Aggregate
 
 When handling a "create" command, construct the aggregate from command data:
 
 ```python
-@handle(RegisterAccount)
-def handle_register(self, command: RegisterAccount):
-    account = Account(
-        account_id=command.account_id,
-        email=command.email,
-        name=command.name,
-    )
-    domain.repository_for(Account).add(account)
+@domain.command_handler(part_of=Account)
+class AccountRegistrationHandler:
+    @handle(RegisterAccount)
+    def handle_register(self, command: RegisterAccount):
+        account = Account(
+            account_id=command.account_id,
+            email=command.email,
+            name=command.name,
+        )
+        domain.repository_for(Account).add(account)
 ```
 
 ## Loading an Existing Aggregate
@@ -40,49 +85,60 @@ def handle_register(self, command: RegisterAccount):
 When handling an "update" command, load from the repository first:
 
 ```python
-@handle(ActivateAccount)
-def handle_activate(self, command: ActivateAccount):
-    account = domain.repository_for(Account).get(command.account_id)
-    account.activate()
-    domain.repository_for(Account).add(account)
+@domain.command_handler(part_of=Account)
+class AccountActivationHandler:
+    @handle(ActivateAccount)
+    def handle_activate(self, command: ActivateAccount):
+        account = domain.repository_for(Account).get(command.account_id)
+        account.activate()
+        domain.repository_for(Account).add(account)
+```
+
+Both handlers belong to `Account`. One handler class with two `@handle` methods works the same way.
+
+## Multiple Aggregates
+
+A handler can load more than one aggregate if the business process requires it, but it should persist only ONE aggregate root. The Unit of Work does not enforce this: it can hold changes to several aggregates and commits them together. "One aggregate per transaction" is a design rule. To change another aggregate, raise an event; an event handler in the owning aggregate's cluster issues a command to the other aggregate.
+
+```python
+@domain.command_handler(part_of=Shipment)
+class ShipmentCommandHandler:
+    @handle(FulfillOrder)
+    def handle_fulfill(self, command: FulfillOrder):
+        # Load the order (for reading)
+        order = domain.repository_for(Order).get(command.order_id)
+
+        # Create a shipment (the aggregate being persisted)
+        shipment = Shipment(
+            shipment_id=command.shipment_id,
+            order_id=order.order_id,
+            address=order.shipping_address,
+        )
+        domain.repository_for(Shipment).add(shipment)
+        # Order changes should be synced via domain events
 ```
 
 ## Repository Access
 
-Access the repository via `domain.repository_for(AggregateClass)`:
+Access the repository via `domain.repository_for(AggregateClass)`. Outside a handler, initialize the domain first and work inside a domain context:
 
 ```python
-# Get a repository for the aggregate
-repo = domain.repository_for(Order)
+domain.init(traverse=False)
 
-# Load by identifier
-order = repo.get("ORD-001")
+with domain.domain_context():
+    # Get a repository for the aggregate
+    repo = domain.repository_for(Order)
+    repo.add(Order(order_id="ORD-001", shipping_address="1 Main St"))
 
-# Persist (add or update)
-repo.add(order)
+    # Load by identifier
+    order = repo.get("ORD-001")
+
+    # Persist (add or update)
+    order.shipping_address = "2 Main St"
+    repo.add(order)
 ```
 
 The repository automatically handles both inserts (new aggregates) and updates (existing aggregates).
-
-## Multiple Aggregates
-
-A handler can load more than one aggregate if the business process requires it, but it should only persist ONE aggregate root. Cross-aggregate coordination should happen through domain events.
-
-```python
-@handle(FulfillOrder)
-def handle_fulfill(self, command: FulfillOrder):
-    # Load the order (for reading)
-    order = domain.repository_for(Order).get(command.order_id)
-
-    # Create a shipment (the aggregate being persisted)
-    shipment = Shipment(
-        shipment_id=command.shipment_id,
-        order_id=order.order_id,
-        address=order.shipping_address,
-    )
-    domain.repository_for(Shipment).add(shipment)
-    # Order changes should be synced via domain events
-```
 
 ## Related
 

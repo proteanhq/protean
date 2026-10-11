@@ -5,8 +5,11 @@ This example demonstrates:
 - Domain service with named instance methods
 - Association with two aggregates via part_of
 - Pre invariant that applies to all public methods
-- Multiple aggregates mutated during the operation
-- Proper super().__init__() call with aggregate unpacking
+- Reading the inventory to validate, and changing only the order
+- An OrderConfirmed event that carries the items, so the inventory can
+  reserve stock later through an event handler and a command (see the
+  add-domain-service-flow skill)
+- super().__init__() storing the aggregates on the service
 
 Usage:
     service = OrderPlacementService(order, [inventory])
@@ -17,14 +20,15 @@ from datetime import UTC, datetime
 from enum import Enum
 
 from protean import Domain, invariant
-from protean.core.domain_service import BaseDomainService
 from protean.exceptions import ValidationError
 from protean.fields import (
     DateTime,
+    Dict,
     Float,
     HasMany,
     Identifier,
     Integer,
+    List,
     String,
     ValueObject,
 )
@@ -41,7 +45,10 @@ class OrderStatus(Enum):
 
 @domain.event(part_of="Order")
 class OrderConfirmed:
+    """Carries the items, so the inventory side can reserve stock for them."""
+
     order_id: Identifier(required=True)
+    items = List(content_type=Dict)
     confirmed_at: DateTime(required=True)
 
 
@@ -54,7 +61,16 @@ class Order:
 
     def confirm(self):
         self.status = OrderStatus.CONFIRMED.value
-        self.raise_(OrderConfirmed(order_id=self.id, confirmed_at=datetime.now(UTC)))
+        self.raise_(
+            OrderConfirmed(
+                order_id=self.id,
+                items=[
+                    {"product_id": item.product_id, "quantity": item.quantity}
+                    for item in self.items
+                ],
+                confirmed_at=datetime.now(UTC),
+            )
+        )
 
 
 @domain.entity(part_of="Order")
@@ -83,6 +99,9 @@ class Inventory:
     quantity: Integer()
     warehouse = ValueObject(Warehouse)
 
+    # The inventory's own command handler calls this, when an event handler
+    # reacting to OrderConfirmed issues it a command. The domain service
+    # never does.
     def reserve_stock(self, quantity: int):
         self.quantity -= quantity
         self.raise_(
@@ -94,7 +113,7 @@ class Inventory:
         )
 
 
-@domain.domain_service(part_of=["Order", "Inventory"])
+@domain.domain_service(part_of=[Order, Inventory])
 class OrderPlacementService:
     """Domain service with instance methods for order placement.
 
@@ -104,31 +123,26 @@ class OrderPlacementService:
     """
 
     def __init__(self, order, inventories):
-        # Note: Use explicit base class call instead of super() because the
-        # @domain.domain_service decorator replaces the class via derive_element_class,
-        # which breaks super()'s __class__ cell reference.
-        BaseDomainService.__init__(self, *(order, inventories))
+        super().__init__(order, inventories)
 
         self.order = order
         self.inventories = inventories
 
     @invariant.pre
     def inventory_should_have_sufficient_stock(self):
+        # Lines for the same product draw on the same stock, so add them up.
+        ordered: dict[str, int] = {}
         for item in self.order.items:
+            ordered[item.product_id] = ordered.get(item.product_id, 0) + item.quantity
+        for product_id, quantity in ordered.items():
             inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
+                (i for i in self.inventories if i.product_id == product_id), None
             )
-            if inventory is None or inventory.quantity < item.quantity:
+            if inventory is None or inventory.quantity < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
     def place_order(self):
-        """Place the order and reserve inventory stock."""
-        for item in self.order.items:
-            inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
-            )
-            inventory.reserve_stock(item.quantity)
-
+        """Confirm the order. The pre invariant has already checked the stock."""
         self.order.confirm()
 
 
@@ -161,6 +175,9 @@ if __name__ == "__main__":
         service = OrderPlacementService(order, [inventory1, inventory2])
         service.place_order()
 
+        # The service changed only the order. The inventory is unchanged
+        # until its own command handler reserves the stock.
         print(f"Order status: {order.status}")
-        print(f"Inventory 1 remaining: {inventory1.quantity}")
-        print(f"Inventory 2 remaining: {inventory2.quantity}")
+        print(f"Items to reserve: {order._events[-1].items}")
+        print(f"Inventory 1 quantity: {inventory1.quantity}")
+        print(f"Inventory 2 quantity: {inventory2.quantity}")

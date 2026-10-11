@@ -8,10 +8,12 @@ This example demonstrates:
 - Synchronous execution guarantees (caller always receives result)
 
 Usage:
-    svc = ProductApplicationServices()
-    product_id = svc.create_product(name="Widget", sku="WDG-001", price=29.99)
-    svc.update_price(product_id=product_id, new_price=34.99)
-    product = svc.get_product(product_id=product_id)
+    domain.init(traverse=False)
+    with domain.domain_context():
+        svc = ProductApplicationServices()
+        product_id = svc.create_product(name="Widget", sku="WDG-001", price=29.99)
+        svc.update_price(product_id=product_id, new_price=34.99)
+        product = svc.get_product(product_id=product_id)
 """
 
 from protean import Domain, current_domain, use_case

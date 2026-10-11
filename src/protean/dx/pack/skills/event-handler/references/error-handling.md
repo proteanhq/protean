@@ -17,7 +17,34 @@ See [assets/event_handler_error_handling.py](../assets/event_handler_error_handl
 
 ## The handle_error Method
 
-The default `handle_error` implementation (from `HandlerMixin`) does nothing. Override it to add custom behavior:
+The default `handle_error` implementation (from `HandlerMixin`) does nothing. Override it to add custom behavior. The example uses these elements, shortened from the asset:
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+@domain.aggregate
+class Shipment:
+    order_id: Identifier(required=True)
+    status: String(default="pending")
+
+@domain.event(part_of=Shipment)
+class ShipmentDispatched:
+    shipment_id: Identifier(required=True)
+
+@domain.aggregate
+class ShipmentLog:
+    log_id: Identifier(identifier=True)
+    shipment_id: Identifier(required=True)
+    message: Text(required=True)
+
+@domain.command(part_of=ShipmentLog)
+class RecordShipmentLog:
+    log_id: Identifier(required=True)
+    shipment_id: Identifier(required=True)
+    message: Text(required=True)
+```
 
 ```python
 @domain.event_handler(part_of=Shipment)
@@ -63,6 +90,7 @@ def handle_error(cls, exc: Exception, message) -> None:
 If `handle_error` itself raises an exception, the Protean Engine catches that too and logs it. The engine never shuts down due to handler errors:
 
 ```python
+# fragment
 @classmethod
 def handle_error(cls, exc: Exception, message) -> None:
     # Even if this raises, the engine continues

@@ -18,7 +18,6 @@ import os
 import subprocess
 import sys
 import types
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -542,7 +541,12 @@ class TestTutorialCh13(_TutorialBase):
             service.confirm_order()
 
             assert order.status == "CONFIRMED"
-            assert inv.quantity == 8  # 10 - 2
+            # The service only confirms; Inventory reserves through the event
+            assert inv.quantity == 10
+            assert [type(e) for e in order._events] == [ch13.OrderConfirmed]
+            assert order._events[0].items == [{"book_title": "Dune", "quantity": 2}]
+            # Chapter 6's notification handler reads customer_name
+            assert order._events[0].customer_name == "Alice"
 
     def test_domain_service_rejects_insufficient_stock(self):
         """Ch13: OrderFulfillmentService rejects when stock is insufficient."""
@@ -594,8 +598,234 @@ class TestTutorialCh13(_TutorialBase):
             confirmed = order_repo.get(order.id)
             assert confirmed.status == "CONFIRMED"
 
+            # OrderConfirmed -> ReserveInventory -> InventoryCommandHandler
             updated_inv = inv_repo.get(inv.id)
             assert updated_inv.quantity == 7  # 10 - 3
+            assert updated_inv.reserved_order_ids == [order.id]
+
+    def test_repeated_confirm_order_raises_one_order_confirmed(self):
+        """Ch13: a second ConfirmOrder for a confirmed order changes nothing."""
+        domain = ch13.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch13.Inventory)
+            inv = ch13.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+            order = ch13.Order(
+                customer_name="Alice",
+                items=[
+                    ch13.OrderItem(
+                        book_title="Dune",
+                        quantity=3,
+                        unit_price=ch13.Money(amount=15.99),
+                    )
+                ],
+            )
+            domain.repository_for(ch13.Order).add(order)
+
+            for _ in range(2):
+                domain.process(ch13.ConfirmOrder(order_id=order.id))
+
+            confirmations = [
+                event
+                for event in (
+                    message.to_domain_object()
+                    for message in domain.event_store.store.read("$all")
+                )
+                if isinstance(event, ch13.OrderConfirmed) and event.order_id == order.id
+            ]
+            assert len(confirmations) == 1
+            assert inv_repo.get(inv.id).quantity == 7
+
+    def test_confirm_order_handler_persists_only_the_order(self, monkeypatch):
+        """Ch13: the ConfirmOrder handler leaves Inventory to the event flow."""
+        sdk_trace = pytest.importorskip("opentelemetry.sdk.trace")
+        export = pytest.importorskip("opentelemetry.sdk.trace.export")
+        in_memory = pytest.importorskip(
+            "opentelemetry.sdk.trace.export.in_memory_span_exporter"
+        )
+        domain = ch13.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch13.Inventory)
+            inv = ch13.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+            order_repo = domain.repository_for(ch13.Order)
+            order = ch13.Order(
+                customer_name="Alice",
+                items=[
+                    ch13.OrderItem(
+                        book_title="Dune",
+                        quantity=3,
+                        unit_price=ch13.Money(amount=15.99),
+                    )
+                ],
+            )
+            order_repo.add(order)
+
+            # With async event processing the OrderConfirmed reaction does not
+            # run here, so only what the command handler wrote is visible.
+            monkeypatch.setitem(domain.config, "event_processing", "async")
+            exporter = in_memory.InMemorySpanExporter()
+            provider = sdk_trace.TracerProvider()
+            provider.add_span_processor(export.SimpleSpanProcessor(exporter))
+            monkeypatch.setattr(
+                domain, "_otel_tracer_provider", provider, raising=False
+            )
+            monkeypatch.setattr(domain, "_otel_init_attempted", True)
+            domain.process(ch13.ConfirmOrder(order_id=order.id))
+
+            assert order_repo.get(order.id).status == "CONFIRMED"
+            assert inv_repo.get(inv.id).quantity == 10
+            # A save of an unchanged Inventory writes nothing, so count the
+            # repository.add calls to catch a handler that saves one anyway.
+            saved = [
+                span.attributes["protean.aggregate.type"]
+                for span in exporter.get_finished_spans()
+                if span.name == "protean.repository.add"
+                and span.attributes["protean.aggregate.type"] != "MemoryMessage"
+            ]
+            assert saved == ["Order"]
+
+    def test_redelivered_reservation_is_skipped(self):
+        """Ch13: a second ReserveInventory for the same order changes nothing."""
+        domain = ch13.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch13.Inventory)
+            inv = ch13.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+
+            command = ch13.ReserveInventory(
+                order_id="order-1", book_title="Dune", quantity=3
+            )
+            domain.process(command)
+            domain.process(command)
+
+            updated = inv_repo.get(inv.id)
+            assert updated.quantity == 7
+            assert updated.reserved_order_ids == ["order-1"]
+
+    def _order_with_two_dune_lines(self):
+        return ch13.Order(
+            customer_name="Alice",
+            items=[
+                ch13.OrderItem(
+                    book_title="Dune", quantity=2, unit_price=ch13.Money(amount=15.99)
+                ),
+                ch13.OrderItem(
+                    book_title="Dune", quantity=3, unit_price=ch13.Money(amount=15.99)
+                ),
+            ],
+        )
+
+    def test_two_lines_for_the_same_book_both_reserve(self):
+        """Ch13: two lines for one book reserve their summed quantity."""
+        domain = ch13.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch13.Inventory)
+            inv = ch13.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+            order_repo = domain.repository_for(ch13.Order)
+            order = self._order_with_two_dune_lines()
+            order_repo.add(order)
+
+            domain.process(ch13.ConfirmOrder(order_id=order.id))
+
+            updated = inv_repo.get(inv.id)
+            assert updated.quantity == 5  # 10 - 2 - 3
+            assert updated.reserved_order_ids == [order.id]
+
+    def test_service_checks_lines_for_the_same_book_together(self):
+        """Ch13: 2 + 3 copies of one book against a stock of 4 is rejected."""
+        domain = ch13.domain
+        with domain.domain_context():
+            inv = ch13.Inventory(book_id="book-1", title="Dune", quantity=4)
+            order = self._order_with_two_dune_lines()
+
+            service = ch13.OrderFulfillmentService(order, [inv])
+            with pytest.raises(ValidationError) as exc_info:
+                service.confirm_order()
+            assert exc_info.value.messages == {
+                "_entity": ["Insufficient stock for 'Dune': 4 available, 5 requested"]
+            }
+            assert order.status == "PENDING"
+
+    def test_reservation_after_the_check_can_still_fail(self, monkeypatch):
+        """Ch13: two orders pass the stock check; the second reservation fails."""
+        domain = ch13.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch13.Inventory)
+            inv = ch13.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+            order_repo = domain.repository_for(ch13.Order)
+            orders = []
+            for quantity in (8, 5):
+                order = ch13.Order(
+                    customer_name="Alice",
+                    items=[
+                        ch13.OrderItem(
+                            book_title="Dune",
+                            quantity=quantity,
+                            unit_price=ch13.Money(amount=15.99),
+                        )
+                    ],
+                )
+                order_repo.add(order)
+                orders.append(order)
+
+            # Hold back the reservations so both orders see 10 in stock.
+            monkeypatch.setitem(domain.config, "event_processing", "async")
+            for order in orders:
+                domain.process(ch13.ConfirmOrder(order_id=order.id))
+            monkeypatch.setitem(domain.config, "event_processing", "sync")
+
+            domain.process(
+                ch13.ReserveInventory(
+                    order_id=orders[0].id, book_title="Dune", quantity=8
+                )
+            )
+            with pytest.raises(ValidationError) as exc_info:
+                domain.process(
+                    ch13.ReserveInventory(
+                        order_id=orders[1].id, book_title="Dune", quantity=5
+                    )
+                )
+            assert exc_info.value.messages == {
+                "quantity": ["Insufficient stock: 2 available, 5 requested"]
+            }
+
+            assert [order_repo.get(o.id).status for o in orders] == [
+                "CONFIRMED",
+                "CONFIRMED",
+            ]
+            updated = inv_repo.get(inv.id)
+            assert updated.quantity == 2
+            assert updated.reserved_order_ids == [orders[0].id]
+
+    def test_out_of_stock_command_leaves_both_unchanged(self):
+        """Ch13: the pre-invariant rejects the command before anything changes."""
+        domain = ch13.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch13.Inventory)
+            inv = ch13.Inventory(book_id="book-1", title="Dune", quantity=1)
+            inv_repo.add(inv)
+            order_repo = domain.repository_for(ch13.Order)
+            order = ch13.Order(
+                customer_name="Alice",
+                items=[
+                    ch13.OrderItem(
+                        book_title="Dune",
+                        quantity=5,
+                        unit_price=ch13.Money(amount=15.99),
+                    )
+                ],
+            )
+            order_repo.add(order)
+
+            with pytest.raises(ValidationError) as exc_info:
+                domain.process(ch13.ConfirmOrder(order_id=order.id))
+            assert "Insufficient stock" in str(exc_info.value.messages)
+
+            assert order_repo.get(order.id).status == "PENDING"
+            assert inv_repo.get(inv.id).quantity == 1
 
 
 @pytest.mark.no_test_domain
@@ -705,15 +935,24 @@ class TestTutorialCh20(_TutorialBase):
         """Ch20: Order, Inventory, Shipment aggregates raise events."""
         domain = ch20.domain
         with domain.domain_context():
-            # Order confirm raises OrderConfirmed
+            # Order confirm raises OrderConfirmed with chapter 13's shape
             order = ch20.Order(
                 customer_name="Alice",
                 shipping_address="123 Main St",
+                items=[
+                    ch20.OrderItem(
+                        book_title="Dune",
+                        quantity=2,
+                        unit_price=ch20.Money(amount=15.99),
+                    )
+                ],
             )
             order.confirm()
             assert order.status == "CONFIRMED"
             assert len(order._events) == 1
             assert order._events[0].__class__.__name__ == "OrderConfirmed"
+            assert order._events[0].customer_name == "Alice"
+            assert order._events[0].items == [{"book_title": "Dune", "quantity": 2}]
 
             # Inventory reserve raises InventoryReserved
             inv = ch20.Inventory(book_id="book-1", title="Dune", quantity=10)
@@ -722,7 +961,7 @@ class TestTutorialCh20(_TutorialBase):
             assert len(inv._events) == 1
             assert inv._events[0].__class__.__name__ == "InventoryReserved"
             assert inv._events[0].order_id == "order-1"
-            assert inv._events[0].book_id == "book-1"
+            assert inv._events[0].book_title == "Dune"
 
             # Shipment success path
             shipment = ch20.Shipment(order_id=order.id)
@@ -742,16 +981,172 @@ class TestTutorialCh20(_TutorialBase):
             assert len(shipment._events) == 1
             assert shipment._events[0].__class__.__name__ == "ShipmentFailed"
 
-    def test_process_manager_start_stores_order_id(self):
-        """Ch20: the start handler keeps the order ID for the later steps."""
+    def test_chapter_happy_path(self):
+        """Ch20: the chapter's happy-path test runs as shown."""
+        ch20.test_fulfillment_happy_path()
+
+    def test_chapter_compensation(self):
+        """Ch20: the chapter's compensation test runs as shown."""
+        ch20.test_fulfillment_compensation()
+
+    def _confirm(self, address):
+        order_repo = ch20.domain.repository_for(ch20.Order)
+        order = ch20.Order(
+            customer_name="Alice",
+            shipping_address=address,
+            items=[
+                ch20.OrderItem(
+                    book_title=title, quantity=quantity, unit_price=ch20.Money(amount=1)
+                )
+                for title, quantity in (("Dune", 2), ("Dune", 3), ("Emma", 1))
+            ],
+        )
+        order_repo.add(order)
+        order.confirm()
+        order_repo.add(order)
+        return order_repo.get(order.id)
+
+    def test_process_manager_reserves_every_title_before_shipping(self):
+        """Ch20: an order with two titles ships once both are reserved."""
         domain = ch20.domain
         with domain.domain_context():
-            pm = ch20.OrderFulfillmentPM._load_or_create("order-1", is_start=True)
-            event = ch20.OrderConfirmed(order_id="order-1", customer_name="Alice")
-            with patch.object(domain, "process") as process:
-                ch20.OrderFulfillmentPM.on_order_confirmed.__wrapped__(pm, event)
-            assert pm.order_id == "order-1"
-            assert process.call_args.args[0].order_id == "order-1"
+            inv_repo = domain.repository_for(ch20.Inventory)
+            dune = ch20.Inventory(book_id="book-1", title="Dune", quantity=10)
+            emma = ch20.Inventory(book_id="book-2", title="Emma", quantity=10)
+            inv_repo.add(dune)
+            inv_repo.add(emma)
+
+            order = self._confirm("123 Main St")
+
+            assert order.status == "COMPLETED"
+            assert inv_repo.get(dune.id).quantity == 5
+            assert inv_repo.get(emma.id).quantity == 9
+            shipments = (
+                domain.repository_for(ch20.Shipment)
+                .query.filter(order_id=order.id)
+                .all()
+                .items
+            )
+            assert [s.status for s in shipments] == ["CREATED"]
+
+    def test_failed_shipment_releases_every_title(self):
+        """Ch20: compensation returns the stock of each title and cancels."""
+        domain = ch20.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch20.Inventory)
+            dune = ch20.Inventory(book_id="book-1", title="Dune", quantity=10)
+            emma = ch20.Inventory(book_id="book-2", title="Emma", quantity=10)
+            inv_repo.add(dune)
+            inv_repo.add(emma)
+
+            order = self._confirm("")
+
+            assert order.status == "CANCELLED"
+            assert inv_repo.get(dune.id).quantity == 10
+            assert inv_repo.get(emma.id).quantity == 10
+            assert inv_repo.get(dune.id).reserved_quantities == {}
+
+    def test_second_release_changes_nothing(self):
+        """Ch20: a repeated ReleaseInventory returns the stock once."""
+        domain = ch20.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch20.Inventory)
+            inv = ch20.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+            domain.process(
+                ch20.ReserveInventory(order_id="order-1", book_title="Dune", quantity=3)
+            )
+
+            release = ch20.ReleaseInventory(order_id="order-1", book_title="Dune")
+            domain.process(release)
+            domain.process(release)
+
+            assert inv_repo.get(inv.id).quantity == 10
+
+    def test_reservation_after_release_changes_nothing(self):
+        """Ch20: a ReserveInventory that arrives after the release is skipped."""
+        domain = ch20.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch20.Inventory)
+            inv = ch20.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+            reserve = ch20.ReserveInventory(
+                order_id="order-1", book_title="Dune", quantity=3
+            )
+
+            domain.process(reserve)
+            domain.process(ch20.ReleaseInventory(order_id="order-1", book_title="Dune"))
+            domain.process(reserve)
+
+            # A release that arrives before its reservation blocks it too.
+            domain.process(ch20.ReleaseInventory(order_id="order-2", book_title="Dune"))
+            domain.process(
+                ch20.ReserveInventory(order_id="order-2", book_title="Dune", quantity=4)
+            )
+
+            assert inv_repo.get(inv.id).quantity == 10
+            assert inv_repo.get(inv.id).reserved_quantities == {}
+
+    def test_release_returns_the_quantity_reserved(self):
+        """Ch20: a release returns what the order holds, not a quantity it is sent."""
+        domain = ch20.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch20.Inventory)
+            inv = ch20.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+            domain.process(
+                ch20.ReserveInventory(order_id="order-1", book_title="Dune", quantity=1)
+            )
+            domain.process(
+                ch20.ReserveInventory(order_id="order-2", book_title="Dune", quantity=2)
+            )
+
+            domain.process(ch20.ReleaseInventory(order_id="order-1", book_title="Dune"))
+
+            assert inv_repo.get(inv.id).quantity == 8
+            assert inv_repo.get(inv.id).reserved_quantities == {"order-2": 2}
+
+    def test_repeated_reservation_event_creates_no_second_shipment(self):
+        """Ch20: a repeated InventoryReserved after the last title is not counted."""
+        domain = ch20.domain
+        with domain.domain_context():
+            order = ch20.Order(customer_name="Alice", shipping_address="1 Main St")
+            domain.repository_for(ch20.Order).add(order)
+
+            # Every title is already counted and the CreateShipment is in flight,
+            # so a repeat of the last InventoryReserved must not send another.
+            manager = ch20.OrderFulfillmentPM(
+                order_id=order.id,
+                items=[{"book_title": "Dune", "quantity": 2}],
+                awaiting_titles=[],
+            )
+            manager.on_inventory_reserved(
+                ch20.InventoryReserved(order_id=order.id, book_title="Dune", quantity=2)
+            )
+
+            shipments = (
+                domain.repository_for(ch20.Shipment)
+                .query.filter(order_id=order.id)
+                .all()
+                .items
+            )
+            assert shipments == []
+
+    def test_repeated_create_shipment_creates_one(self):
+        """Ch20: a CreateShipment processed twice leaves one shipment."""
+        domain = ch20.domain
+        with domain.domain_context():
+            command = ch20.CreateShipment(order_id="order-1", address="1 Main St")
+            domain.process(command)
+            domain.process(command)
+
+            shipments = (
+                domain.repository_for(ch20.Shipment)
+                .query.filter(order_id="order-1")
+                .all()
+                .items
+            )
+            assert [s.status for s in shipments] == ["CREATED"]
 
 
 @pytest.mark.no_test_domain

@@ -51,21 +51,48 @@ class OrderCommandHandler:
 3. **One handler per command** - A command can only be processed by ONE handler (Protean enforces this)
 4. **Use @handle decorator** - Each handler method is decorated with `@handle(CommandClass)`
 5. **Handler methods take self and command** - Signature: `def method_name(self, command: CommandClass)`
-6. **Implicit UnitOfWork** - Each handler method runs within a UnitOfWork context automatically (no manual wrapping needed)
-7. **Persist one aggregate** - Handler should persist only one aggregate root per operation; use domain events for cross-aggregate coordination
+6. **Implicit Unit of Work** - `@handle` wraps every handler call in its own Unit of Work, which is one real database transaction on a provider with transactions, such as the SQL databases ([ADR-0027](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/)). Do not wrap the body yourself. See [Unit of Work](references/unit-of-work.md)
+7. **Change one aggregate per transaction** - A handler should persist one aggregate root. This is a design rule: the Unit of Work can hold changes to several aggregates and does not stop you. To change another aggregate, raise an event; an event handler in the owning aggregate's cluster issues a command to the other aggregate
 8. **Import handle from protean** - `from protean import handle` (not from protean.core)
 9. **part_of on a handler takes the class or a string** - A handler usually passes the class, `part_of=AggregateClass`. A string, `part_of="AggregateName"`, also works on the handler and resolves at `init`, so the aggregate may be defined after the handler. Commands use the string form
 
 ## Handler options
 
-| Option | Purpose | Required |
-|--------|---------|----------|
-| `part_of` | Associate handler with an aggregate class | Yes |
-| `stream_category` | Read-only, derived from aggregate | No |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `part_of` | `None` | The aggregate this handler belongs to, as a class or a string name. Required: registration fails without it |
+| `stream_category` | derived from part_of | The command stream the handler reads, `<aggregate stream category>:command`. Always derived from the aggregate; a value you pass is replaced |
+| `timeout` | `None` | Default validity window, in seconds or a `timedelta`, for commands this handler processes. Overrides the domain's `command_default_timeout`; a deadline or timeout passed to `domain.process()` overrides both |
+| `retries` | `None` | Maximum retries when the handler fails with a transient exception. Overrides the domain's `server.transient_retry` setting; `None` uses that setting |
+| `backoff` | `None` | Delay strategy between transient retries: `"exponential"`, `"linear"` or `"fixed"`. `None` uses the domain setting |
+| `retry_exceptions` | `None` | Exception types treated as transient, as classes or dotted paths. `None` uses the domain setting |
+| `sequential_by` | `None` | Name of an attribute on every command this handler handles. Registration checks that every handled command has the attribute. Commands do not go through the outbox yet, so they are not split by this value. See [Sequential processing](https://docs.proteanhq.com/reference/server/sequential-by/) for what the option does on a command handler today |
+| `subscription_type` | `None` | `SubscriptionType` for the server's subscription. `None` uses the default |
+| `subscription_profile` | `None` | `SubscriptionProfile` preset for the subscription. `None` uses the default |
+| `subscription_config` | `{}` | Custom subscription settings that override the type and profile defaults |
+| `suppress_checks` | `()` | Diagnostic codes `protean check` should not report for this handler |
 
 ## Quick example: Multiple commands
 
 ```python
+@domain.aggregate
+class Account:
+    account_id: Identifier(identifier=True)
+    email: String(required=True)
+    status: String(default="pending")
+
+    def activate(self):
+        self.status = "active"
+
+@domain.command(part_of="Account")
+class RegisterAccount:
+    account_id: Identifier(required=True)
+    email: String(required=True)
+
+@domain.command(part_of="Account")
+class ActivateAccount:
+    account_id: Identifier(required=True)
+
 @domain.command_handler(part_of=Account)
 class AccountCommandHandler:
     @handle(RegisterAccount)
@@ -90,31 +117,57 @@ class AccountCommandHandler:
 3. **Extract data and invoke method** - Call aggregate methods with data from the command
 4. **Persist** - Use `domain.repository_for(Aggregate).add(aggregate)` to save
 
-## Processing commands
-
-```python
-# Synchronous - blocks until done, returns handler result
-result = domain.process(command, asynchronous=False)
-
-# Asynchronous (default) - returns position in event store
-position = domain.process(command)
-```
-
 ## Error handling
 
 Override `handle_error` classmethod for custom error recovery during async processing:
 
 ```python
+import logging
+
+from protean.fields import Float, Identifier, String
+
+logger = logging.getLogger(__name__)
+
+@domain.aggregate
+class Payment:
+    payment_id: Identifier(identifier=True)
+    amount: Float(required=True)
+    status: String(default="pending")
+
+    def execute(self):
+        self.status = "completed"
+
+@domain.command(part_of="Payment")
+class TransferFunds:
+    payment_id: Identifier(required=True)
+    amount: Float(required=True)
+
 @domain.command_handler(part_of=Payment)
 class PaymentCommandHandler:
     @handle(TransferFunds)
-    def handle_transfer(self, command):
-        # ... handler logic ...
-        pass
+    def handle_transfer(self, command: TransferFunds):
+        payment = Payment(payment_id=command.payment_id, amount=command.amount)
+        payment.execute()
+        domain.repository_for(Payment).add(payment)
 
     @classmethod
     def handle_error(cls, exc: Exception, message) -> None:
         logger.error(f"Payment failed: {exc}")
+```
+
+## Processing commands
+
+Initialize the domain once every element is registered, then process commands inside a domain context:
+
+```python
+domain.init(traverse=False)
+
+with domain.domain_context():
+    # Synchronous - blocks until done, returns handler result
+    result = domain.process(PlaceOrder(order_id="ORD-001"), asynchronous=False)
+
+    # Asynchronous (default) - returns position in event store
+    position = domain.process(PlaceOrder(order_id="ORD-002"))
 ```
 
 ## Common mistakes
@@ -122,6 +175,7 @@ class PaymentCommandHandler:
 ### Missing part_of on handler
 
 ```python
+# fragment
 @domain.command_handler  # Wrong! Missing part_of
 class OrderCommandHandler:
     pass
@@ -130,6 +184,7 @@ class OrderCommandHandler:
 Instead: Always specify part_of with the aggregate class
 
 ```python
+# fragment
 @domain.command_handler(part_of=Order)  # Correct!
 class OrderCommandHandler:
     pass
@@ -138,6 +193,7 @@ class OrderCommandHandler:
 ### Command associated with different aggregate
 
 ```python
+# fragment
 @domain.command(part_of="Shipment")
 class ShipOrder:
     order_id: Identifier(required=True)
@@ -154,6 +210,7 @@ Instead: Command and handler must share the same aggregate
 ### Handling the same command in multiple handlers
 
 ```python
+# fragment
 @domain.command_handler(part_of=Order)
 class OrderHandler1:
     @handle(PlaceOrder)  # First handler
@@ -170,19 +227,21 @@ class OrderHandler2:
 ### Wrapping in UnitOfWork manually
 
 ```python
+# fragment
 @handle(PlaceOrder)
 def handle_place_order(self, command):
     with UnitOfWork():  # Unnecessary! Already implicit
-        order = Order(...)
+        order = Order(order_id=command.order_id)
         domain.repository_for(Order).add(order)
 ```
 
-Instead: Let the implicit UnitOfWork handle it
+Instead: Let the implicit Unit of Work handle it. A `with UnitOfWork():` inside the handler joins the outer one and adds nothing.
 
 ```python
+# fragment
 @handle(PlaceOrder)
 def handle_place_order(self, command):
-    order = Order(...)
+    order = Order(order_id=command.order_id)
     domain.repository_for(Order).add(order)
 ```
 
@@ -198,7 +257,7 @@ def handle_place_order(self, command):
 
 ### Core Concepts
 - [Loading Aggregates](references/loading-aggregates.md) - Hydrating aggregates from the repository
-- [Unit of Work](references/unit-of-work.md) - Implicit transactional behavior
+- [Unit of Work](references/unit-of-work.md) - The transaction each handler call runs in
 - [Error Handling](references/error-handling.md) - Custom error recovery with handle_error
 - [Return Values](references/return-values.md) - Returning data from handlers
 - [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them

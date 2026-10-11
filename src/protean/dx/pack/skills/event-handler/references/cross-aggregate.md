@@ -25,6 +25,48 @@ Key highlights:
 
 ## Walkthrough
 
+The examples on this page use these elements, a shortened version of the asset:
+
+```python
+@domain.aggregate
+class Order:
+    book_id: Identifier(required=True)
+    quantity: Integer(required=True)
+    status: String(default="PENDING")
+
+@domain.event(part_of=Order)
+class OrderPlaced:
+    order_id: Identifier(required=True)
+
+@domain.event(part_of=Order)
+class OrderShipped:
+    order_id: Identifier(required=True)
+    book_id: Identifier(required=True)
+    quantity: Integer(required=True)
+
+@domain.aggregate
+class Inventory:
+    book_id: Identifier(required=True)
+    in_stock: Integer(required=True)
+    applied_order_ids: List(content_type=String)
+
+    def reduce_stock(self, order_id, quantity):
+        self.in_stock -= quantity
+        self.applied_order_ids = [*self.applied_order_ids, order_id]
+
+@domain.command(part_of=Inventory)
+class ReserveStock:
+    order_id: Identifier(required=True)
+
+@domain.aggregate
+class Notification:
+    order_id: Identifier(required=True)
+
+@domain.command(part_of=Notification)
+class SendConfirmation:
+    order_id: Identifier(required=True)
+```
+
 ### The Event Handler
 
 ```python
@@ -57,7 +99,7 @@ class ReduceStock:
     quantity: Integer(required=True)
 ```
 
-The command carries everything Inventory needs, so its handler does not load the Order. `order_id` is a deterministic id taken from the event.
+The command carries everything Inventory needs, so its handler does not load the Order. `order_id` is a deterministic id taken from the event. An order ships one book, so the order id names exactly one stock change. When one event drives several writes to the same aggregate, such as one per order line, derive one id per write, such as `f"{order_id}:{book_id}"`. Add up the lines for the same book first, so each book gets one write. Two lines for one book would otherwise share an id, and the handler would skip the second as a repeat.
 
 ### The Command Handler
 
@@ -108,7 +150,7 @@ Unlike commands (one handler per command), multiple event handlers can react to 
 
 ```python
 @domain.event_handler(part_of=Order)
-class ManageInventory:
+class ReserveInventory:
     @handle(OrderPlaced)
     def reserve_stock(self, event):
         current_domain.process(ReserveStock(order_id=event.order_id))

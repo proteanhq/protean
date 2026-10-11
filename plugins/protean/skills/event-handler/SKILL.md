@@ -54,7 +54,7 @@ class OrderEventHandler:
 2. **Use @handle decorator** - Each handler method is decorated with `@handle(EventClass)` or `@handle("$any")`
 3. **Handler methods take self and event** - Signature: `def method_name(self, event: EventClass)`
 4. **No return values** - Event handlers do NOT return values (CQRS pattern, fire-and-forget)
-5. **Implicit UnitOfWork** - Each handler method runs within a UnitOfWork context automatically
+5. **Implicit UnitOfWork** - `@handle` wraps every handler invocation in its own Unit of Work, which is one real database transaction on a provider with transactions, such as the SQL databases. A handler method that reaches no repository opens no transaction. On a version conflict (`ExpectedVersionError`) the whole method runs again: with the default `max_retries=3` it runs up to 4 times in total, with waits that double between runs. Each run opens its own Unit of Work, or joins an outer one if the handler runs inside it. Configure it under `server.version_retry`
 6. **Multiple handlers per event** - Unlike commands, multiple event handlers can process the same event
 7. **Import handle from protean** - `from protean import handle` (not from protean.core)
 8. **part_of uses class reference** - Handler uses `part_of=AggregateClass` by convention. A string reference (`part_of="AggregateName"`) also works and resolves at `init`, so the aggregate may be defined after the handler
@@ -62,22 +62,30 @@ class OrderEventHandler:
 
 ## Handler options
 
-| Option | Purpose | Required |
-|--------|---------|----------|
-| `part_of` | Associate handler with an aggregate class | Yes (unless stream_category provided) |
-| `stream_category` | Stream to listen to, use `Aggregate.meta_.stream_category` (defaults to own aggregate's stream) | No |
-| `source_stream` | Origin stream filter | No |
-| `subscription_type` | "stream" or "event_store" | No |
-| `subscription_profile` | "production", "fast", "batch", "debug", "projection" | No |
-| `subscription_config` | Custom config dict (messages_per_tick, max_retries, etc.) | No |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `part_of` | `None` | The aggregate whose cluster the handler belongs to, as a class or a string name. Registration fails unless `part_of` or `stream_category` is set |
+| `source_stream` | `None` | Handle only events whose origin stream is in this stream category. An event's origin stream is the stream of the event that led to the command that raised it. Applies to event-store subscriptions |
+| `stream_category` | derived from part_of | The stream category the handler listens to. Defaults to the `part_of` aggregate's stream category; to name another, use `Aggregate.meta_.stream_category` |
+| `retries` | `None` | Maximum retries when the handler fails with a transient exception. Overrides the domain's `server.transient_retry` setting; `None` uses that setting |
+| `backoff` | `None` | Delay strategy between transient retries: `"exponential"`, `"linear"` or `"fixed"`. `None` uses the domain setting |
+| `retry_exceptions` | `None` | Exception types treated as transient, as classes or dotted paths. `None` uses the domain setting |
+| `sequential_by` | `None` | Name of an attribute on every event this handler handles. Events with the same value are processed one at a time. `None` turns this off |
+| `subscription_type` | `None` | `SubscriptionType` for the server's subscription (`STREAM` or `EVENT_STORE`). `None` uses the default |
+| `subscription_profile` | `None` | `SubscriptionProfile` preset for the subscription (`PRODUCTION`, `FAST`, `BATCH`, `DEBUG`, `PROJECTION`). `None` uses the default |
+| `subscription_config` | `{}` | Custom subscription settings, such as `messages_per_tick`, that override the type and profile defaults |
+| `suppress_checks` | `()` | Diagnostic codes `protean check` should not report for this handler |
 
 ## Quick example: Cross-aggregate handler
 
 The handler sits in `Order`'s cluster, because `OrderShipped` belongs to `Order`.
 It changes `Inventory` by issuing a `ReduceStock` command, which `Inventory`'s
-command handler processes.
+command handler processes. This is an excerpt: the event, both aggregates and
+the command are defined in
+[Building a cross-aggregate handler](#building-a-cross-aggregate-handler).
 
 ```python
+# fragment
 @domain.event_handler(part_of=Order)
 class ManageInventory:
     @handle(OrderShipped)
@@ -85,13 +93,42 @@ class ManageInventory:
         current_domain.process(
             ReduceStock(
                 order_id=event.order_id,
-                book_id=event.book_id,
+                product_id=event.product_id,
                 quantity=event.quantity,
             )
         )
 ```
 
 ## Quick example: Multiple events
+
+The example uses these elements:
+
+```python
+@domain.aggregate
+class Account:
+    name: String(required=True)
+    status: String(default="active")
+
+@domain.event(part_of=Account)
+class AccountRegistered:
+    account_id: Identifier(required=True)
+    name: String(required=True)
+
+@domain.event(part_of=Account)
+class AccountSuspended:
+    account_id: Identifier(required=True)
+    reason: String(required=True)
+
+@domain.aggregate
+class Notification:
+    notification_id: Identifier(identifier=True)
+    message: String(required=True)
+
+@domain.command(part_of=Notification)
+class SendNotification:
+    notification_id: Identifier(required=True)
+    message: String(required=True)
+```
 
 Each method issues a `SendNotification` command. An account can be suspended
 more than once, so the account id cannot name one notification. The
@@ -123,7 +160,17 @@ class AccountNotifier:
 
 ## Quick example: Catch-all ($any) handler
 
+`TaskAuditor` records every event on `Task`'s stream as an `AuditLog` entry:
+
 ```python
+@domain.aggregate
+class Task:
+    title: String(required=True)
+
+@domain.aggregate
+class AuditLog:
+    event_type: String(required=True)
+
 @domain.event_handler(part_of=AuditLog, stream_category=Task.meta_.stream_category)
 class TaskAuditor:
     @handle("$any")
@@ -137,12 +184,23 @@ class TaskAuditor:
 Override `handle_error` classmethod for custom error recovery during async processing:
 
 ```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+@domain.aggregate
+class Shipment:
+    order_id: Identifier(required=True)
+
+@domain.event(part_of=Shipment)
+class ShipmentDispatched:
+    shipment_id: Identifier(required=True)
+
 @domain.event_handler(part_of=Shipment)
 class ShipmentNotifier:
     @handle(ShipmentDispatched)
     def on_dispatched(self, event):
-        # ... handler logic ...
-        pass
+        logger.info("Shipment %s dispatched", event.shipment_id)
 
     @classmethod
     def handle_error(cls, exc: Exception, message) -> None:
@@ -192,7 +250,9 @@ changes when that work is already done:
   The list grows with every applied id and loads with B each time.
 
 When one event drives several writes to B, derive one id per write, such as
-`f"{order_id}:{product_id}"`. Never generate a fresh `uuid4()` in the handler,
+`f"{order_id}:{product_id}"`. Add up the lines for the same product first, so
+each product gets one write. Two lines for one product would otherwise share an
+id, and the handler would skip the second as a repeat. Never generate a fresh `uuid4()` in the handler,
 because a redelivered event would then look like new work.
 
 Prefer an id from the event's payload. When the same kind of event can recur
@@ -232,9 +292,12 @@ command handler, is [cross_sync_order_inventory.py](assets/cross_sync_order_inve
 A `ShipOrder` command ships the order, `Order` raises `OrderShipped`,
 `InventorySyncHandler` in `Order`'s cluster issues `ReduceStock`, and
 `InventoryCommandHandler` reduces the stock unless it has already applied that
-order.
+order. The block starts a new domain, because its `Order` is not the one from
+[Basic structure](#basic-structure).
 
 ```python
+domain = Domain()
+
 # 1. Event on source aggregate
 @domain.event(part_of="Order")
 class OrderShipped:
@@ -304,6 +367,7 @@ class InventorySyncHandler:
 ### Missing part_of and stream_category
 
 ```python
+# fragment
 @domain.event_handler  # Wrong! Missing both part_of and stream_category
 class OrderEventHandler:
     pass
@@ -339,6 +403,7 @@ issue a `ReduceStock` command, as in
 ### Returning values from event handlers
 
 ```python
+# fragment
 @handle(OrderPlaced)
 def handle(self, event):
     return order  # Wrong! Return value is discarded
@@ -349,6 +414,7 @@ Instead: Update aggregates or emit new events to communicate results
 ### Manually wrapping in UnitOfWork
 
 ```python
+# fragment
 @handle(OrderPlaced)
 def handle(self, event):
     with UnitOfWork():  # Unnecessary! Already implicit
@@ -356,11 +422,12 @@ def handle(self, event):
         domain.repository_for(Order).add(order)
 ```
 
-Instead: Let the implicit UnitOfWork handle it
+Instead: Let the implicit UnitOfWork handle it. A Unit of Work started inside the handler joins the one `@handle` already opened. There are no savepoints, and only the outermost Unit of Work commits or rolls back
 
 ### Business logic in the handler
 
 ```python
+# fragment
 @handle(OrderPlaced)
 def confirm_order(self, event):
     order = domain.repository_for(Order).get(event.order_id)

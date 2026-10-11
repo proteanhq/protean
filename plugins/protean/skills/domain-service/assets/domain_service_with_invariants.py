@@ -4,7 +4,9 @@ Domain service with comprehensive pre and post invariants.
 This example demonstrates:
 - Multiple @invariant.pre decorators for precondition validation
 - Multiple @invariant.post decorators for postcondition validation
-- Cross-aggregate validation spanning Order and Inventory
+- Cross-aggregate validation spanning Order and Inventory, changing only
+  the order. The inventory reserves stock later, from the OrderConfirmed
+  event's items (see the add-domain-service-flow skill)
 - Error collection from multiple invariant failures
 - Callable class pattern combined with invariants
 
@@ -17,14 +19,15 @@ from datetime import UTC, datetime
 from enum import Enum
 
 from protean import Domain, invariant
-from protean.core.domain_service import BaseDomainService
 from protean.exceptions import ValidationError
 from protean.fields import (
     DateTime,
+    Dict,
     Float,
     HasMany,
     Identifier,
     Integer,
+    List,
     String,
     ValueObject,
 )
@@ -41,7 +44,10 @@ class OrderStatus(Enum):
 
 @domain.event(part_of="Order")
 class OrderConfirmed:
+    """Carries the items, so the inventory side can reserve stock for them."""
+
     order_id: Identifier(required=True)
+    items = List(content_type=Dict)
     confirmed_at: DateTime(required=True)
 
 
@@ -52,9 +58,25 @@ class Order:
     status: String(choices=OrderStatus, default=OrderStatus.PENDING.value)
     payment_id: Identifier()
 
+    def quantities_by_product(self) -> dict[str, int]:
+        """Total quantity per product, adding up lines for the same product."""
+        totals: dict[str, int] = {}
+        for item in self.items:
+            totals[item.product_id] = totals.get(item.product_id, 0) + item.quantity
+        return totals
+
     def confirm(self):
         self.status = OrderStatus.CONFIRMED.value
-        self.raise_(OrderConfirmed(order_id=self.id, confirmed_at=datetime.now(UTC)))
+        self.raise_(
+            OrderConfirmed(
+                order_id=self.id,
+                items=[
+                    {"product_id": item.product_id, "quantity": item.quantity}
+                    for item in self.items
+                ],
+                confirmed_at=datetime.now(UTC),
+            )
+        )
 
 
 @domain.entity(part_of="Order")
@@ -83,6 +105,9 @@ class Inventory:
     quantity: Integer()
     warehouse = ValueObject(Warehouse)
 
+    # The inventory's own command handler calls this, when an event handler
+    # reacting to OrderConfirmed issues it a command. The domain service
+    # never does.
     def reserve_stock(self, quantity: int):
         self.quantity -= quantity
         self.raise_(
@@ -94,7 +119,7 @@ class Inventory:
         )
 
 
-@domain.domain_service(part_of=["Order", "Inventory"])
+@domain.domain_service(part_of=[Order, Inventory])
 class OrderPlacementService:
     """Domain service with pre and post invariants for order placement.
 
@@ -103,26 +128,27 @@ class OrderPlacementService:
     - Valid payment method on the order
 
     Post invariants validate:
-    - Reserved value matches order value
-    - Reserved quantity matches order quantity
+    - The order is confirmed
+    - The OrderConfirmed event lists every ordered item and its quantity
+
+    The service reads the inventory and changes only the order.
     """
 
     def __init__(self, order, inventories):
-        # Note: Use explicit base class call instead of super() because the
-        # @domain.domain_service decorator replaces the class via derive_element_class,
-        # which breaks super()'s __class__ cell reference.
-        BaseDomainService.__init__(self, *(order, inventories))
+        super().__init__(order, inventories)
 
         self.order = order
         self.inventories = inventories
 
     @invariant.pre
     def inventory_should_have_sufficient_stock(self):
-        for item in self.order.items:
+        # Two lines for the same product draw on the same stock, so check
+        # their total.
+        for product_id, quantity in self.order.quantities_by_product().items():
             inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
+                (i for i in self.inventories if i.product_id == product_id), None
             )
-            if inventory is None or inventory.quantity < item.quantity:
+            if inventory is None or inventory.quantity < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
     @invariant.pre
@@ -133,42 +159,28 @@ class OrderPlacementService:
             )
 
     @invariant.post
-    def total_reserved_value_should_match_order_value(self):
-        order_total = sum(item.quantity * item.price for item in self.order.items)
-        reserved_total = 0
-        for item in self.order.items:
-            inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
-            )
-            if inventory:
-                reserved_total += inventory._events[0].quantity * item.price
-
-        if order_total != reserved_total:
-            raise ValidationError(
-                {"_service": ["Total reserved value does not match order value"]}
-            )
+    def order_should_be_confirmed(self):
+        if self.order.status != OrderStatus.CONFIRMED.value:
+            raise ValidationError({"_service": ["Order was not confirmed"]})
 
     @invariant.post
-    def total_quantity_reserved_should_match_order_quantity(self):
-        order_quantity = sum(item.quantity for item in self.order.items)
-        reserved_quantity = sum(
-            inventory._events[0].quantity
-            for inventory in self.inventories
-            if inventory._events
-        )
+    def confirmation_should_list_every_ordered_item(self):
+        # The inventory reserves stock from the event's items, so an item
+        # missing from the event would never be reserved.
+        confirmations = [e for e in self.order._events if isinstance(e, OrderConfirmed)]
+        ordered = self.order.quantities_by_product()
+        listed: dict[str, int] = {}
+        for line in confirmations[-1].items if confirmations else []:
+            listed[line["product_id"]] = (
+                listed.get(line["product_id"], 0) + line["quantity"]
+            )
 
-        if order_quantity != reserved_quantity:
+        if listed != ordered:
             raise ValidationError(
-                {"_service": ["Total reserved quantity does not match order quantity"]}
+                {"_service": ["The confirmation does not list every ordered item"]}
             )
 
     def __call__(self):
-        for item in self.order.items:
-            inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
-            )
-            inventory.reserve_stock(item.quantity)
-
         self.order.confirm()
 
 
@@ -200,6 +212,9 @@ if __name__ == "__main__":
         # Callable with invariants: pre checks -> __call__ -> post checks
         OrderPlacementService(order, [inventory1, inventory2])()
 
+        # The service changed only the order. The inventory is unchanged
+        # until its own command handler reserves the stock.
         print(f"Order status: {order.status}")
-        print(f"Inventory 1 remaining: {inventory1.quantity}")
-        print(f"Inventory 2 remaining: {inventory2.quantity}")
+        print(f"Items to reserve: {order._events[-1].items}")
+        print(f"Inventory 1 quantity: {inventory1.quantity}")
+        print(f"Inventory 2 quantity: {inventory2.quantity}")

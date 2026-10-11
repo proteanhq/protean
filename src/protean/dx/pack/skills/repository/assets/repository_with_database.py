@@ -7,6 +7,8 @@ This example demonstrates:
 - Custom repository can be locked to a specific database (e.g., "postgresql", "sqlite")
 - Multiple repositories per aggregate for different databases
 - Database-specific query optimizations
+- Indexes on the fields the repository filters on (report_type,
+  generated_by)
 
 Usage:
     # The domain automatically selects the correct repository
@@ -14,21 +16,21 @@ Usage:
     repo = domain.repository_for(Report)
 """
 
-from protean import Domain
+from protean import Domain, Index
 from protean.fields import Float, Identifier, String
 
 # Domain setup
 domain = Domain()
 
 
-@domain.aggregate
+@domain.aggregate(indexes=[Index("report_type"), Index("generated_by")])
 class Report:
     """Report aggregate for analytics."""
 
     report_id: Identifier(identifier=True)
     title: String(required=True, max_length=200)
-    report_type: String(required=True)
-    generated_by: String(required=True)
+    report_type: String(required=True, max_length=50)
+    generated_by: String(required=True, max_length=100)
     total_value: Float(default=0.0)
 
 
