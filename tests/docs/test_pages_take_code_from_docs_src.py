@@ -19,6 +19,17 @@ pytestmark = pytest.mark.no_test_domain
 
 PAGES = (
     "guides/architecture-fitness-functions.md",
+    "guides/change-state/application-services.md",
+    "guides/change-state/command-handlers.md",
+    "guides/change-state/commands.md",
+    "guides/change-state/database-models.md",
+    "guides/change-state/event-store-setup.md",
+    "guides/change-state/persist-aggregates.md",
+    "guides/change-state/repositories.md",
+    "guides/change-state/retrieve-aggregates.md",
+    "guides/change-state/snapshots.md",
+    "guides/change-state/temporal-queries.md",
+    "guides/change-state/unit-of-work.md",
     "guides/compose-a-domain/activate-domain.md",
     "guides/compose-a-domain/choosing-adapters.md",
     "guides/compose-a-domain/index.md",

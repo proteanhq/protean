@@ -180,6 +180,8 @@ paths = [
     "tests/test_coverage_guards.py",
     "docs_src/adapters/database/elasticsearch/",
     "tests/docs/reference/adapters/database/test_elasticsearch.py",
+    "docs_src/guides/change-state/database-models/",
+    "tests/docs/guides/change_state/test_database_models_elasticsearch.py",
 ]
 markers = ["elasticsearch"]
 databases = ["ELASTICSEARCH"]

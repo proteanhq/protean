@@ -35,7 +35,7 @@ Beyond `get`, every repository exposes convenience methods for querying:
 - **`.find(criteria)`**: Finds all aggregates matching a `Q` criteria
   expression. Returns a `ResultSet`.
 - **`.exists(criteria)`**: Checks if any aggregate matches a `Q` criteria
-  expression. Returns `True` or `False` without loading objects.
+  expression. Returns `True` or `False`.
 
 These are available both on the repository instance returned by
 `domain.repository_for()` and inside custom repository methods via `self`.
@@ -49,19 +49,11 @@ exist in the database:
 --8<-- "guides/change-state/005.py:full"
 ```
 
-```shell
-In [1]: repository = domain.repository_for(Person)
+The code below activates the domain and adds six people. The examples on this
+page query this data:
 
-In [2]: for person in [
-   ...:     Person(name="John Doe", age=38, country="CA"),
-   ...:     Person(name="John Roe", age=41, country="US"),
-   ...:     Person(name="Jane Doe", age=36, country="CA"),
-   ...:     Person(name="Baby Doe", age=3, country="CA"),
-   ...:     Person(name="Boy Doe", age=8, country="CA"),
-   ...:     Person(name="Girl Doe", age=11, country="CA"),
-   ...: ]:
-   ...:     repository.add(person)
-   ...:
+```python
+--8<-- "guides/change-state/retrieve-aggregates/001.py:seed"
 ```
 
 All queries below can be placed in
@@ -90,7 +82,7 @@ Use `find` to retrieve all aggregates matching a `Q` criteria expression.
 It accepts composable `Q` objects and returns a `ResultSet`:
 
 ```python
-from protean.utils.query import Q
+--8<-- "guides/change-state/retrieve-aggregates/001.py:import_q"
 ```
 
 ```shell
@@ -117,7 +109,9 @@ using `find()` with reusable, domain-named query criteria.
 
 ### `exists`
 
-Use `exists` to check whether matching aggregates exist without loading them:
+Use `exists` to check whether any aggregate matches. It runs the same query as
+`find` and checks whether any rows came back, so it still reads the matching
+aggregates:
 
 ```shell
 In [1]: repository.exists(Q(country="US"))
@@ -130,9 +124,7 @@ Out[2]: False
 `exists` also accepts composed criteria:
 
 ```python
-# Inside a custom repository method
-def has_adults_in_country(self, country: str) -> bool:
-    return self.exists(Q(age__gte=18) & Q(country=country))
+--8<-- "guides/change-state/retrieve-aggregates/001.py:exists_method"
 ```
 
 ---
@@ -149,7 +141,7 @@ filtered, ordered, and paginated. You access a QuerySet through the
 repository's `.query` property:
 
 ```python
-queryset = repository.query
+--8<-- "guides/change-state/retrieve-aggregates/001.py:queryset"
 ```
 
 QuerySets are **lazy**. They don't access the database until you actually need
@@ -195,20 +187,8 @@ Out[2]: ['Jane Doe, 36', 'John Doe, 38']
 In a real application, you would wrap QuerySet operations in repository
 methods with domain-meaningful names:
 
-```python hl_lines="5-7 10-12"
-@domain.repository(part_of=Person)
-class PersonRepository:
-    def adults_in_country(self, country_code):
-        """Find all adults in the specified country."""
-        return self.query.filter(
-            age__gte=18, country=country_code).all().items
-
-    def children_by_age(self, country_code=None):
-        """Find all children ordered by age."""
-        query = self.query.filter(age__lt=18)
-        if country_code:
-            query = query.filter(country=country_code)
-        return query.order_by("age").all().items
+```python hl_lines="5 9-12"
+--8<-- "guides/change-state/retrieve-aggregates/001.py:repository"
 ```
 
 ## Filtering criteria
@@ -246,11 +226,9 @@ Out[3]: 2
 The `isnull` lookup is handy for fields that may be unset:
 
 ```python
-# Aggregates whose `archived_at` timestamp has never been set
-repository.query.filter(archived_at__isnull=True).all().items
+--8<-- "guides/change-state/retrieve-aggregates/002.py:article"
 
-# Aggregates that have been archived
-repository.query.filter(archived_at__isnull=False).all().items
+--8<-- "guides/change-state/retrieve-aggregates/002.py:isnull"
 ```
 
 ### Comparing two fields with `F`
@@ -260,10 +238,10 @@ field against **another field of the same aggregate**, wrap the other field's
 name in `F`:
 
 ```python
-from protean import F
+--8<-- "guides/change-state/retrieve-aggregates/002.py:import_f"
+--8<-- "guides/change-state/retrieve-aggregates/002.py:notification"
 
-# Messages that still have retries left (retry_count < max_retries)
-repository.query.filter(retry_count__lt=F("max_retries")).all().items
+--8<-- "guides/change-state/retrieve-aggregates/002.py:field_reference"
 ```
 
 `F` works with any comparison lookup (`exact`, `gt`, `gte`, `lt`, `lte`). The
@@ -292,7 +270,7 @@ For queries that require OR conditions or negation, use Q objects from
 `protean.utils.query`:
 
 ```python
-from protean.utils.query import Q
+--8<-- "guides/change-state/retrieve-aggregates/001.py:import_q"
 ```
 
 ### AND
@@ -300,10 +278,7 @@ from protean.utils.query import Q
 Combine Q objects with `&` to require all conditions:
 
 ```python
-# People named "Doe" who are at least 18
-people = repository.query.filter(
-    Q(name__contains="Doe") & Q(age__gte=18)
-).all().items
+--8<-- "guides/change-state/retrieve-aggregates/001.py:q_and"
 ```
 
 This is equivalent to passing multiple keyword arguments to `filter()`, since
@@ -314,10 +289,7 @@ keyword arguments are ANDed together by default.
 Combine Q objects with `|` to match any condition:
 
 ```python
-# People who are under 5 OR over 40
-people = repository.query.filter(
-    Q(age__lt=5) | Q(age__gt=40)
-).all().items
+--8<-- "guides/change-state/retrieve-aggregates/001.py:q_or"
 ```
 
 ### NOT
@@ -325,10 +297,7 @@ people = repository.query.filter(
 Negate a Q object with `~` to exclude matching records:
 
 ```python
-# Everyone except those in the US
-people = repository.query.filter(
-    ~Q(country="US")
-).all().items
+--8<-- "guides/change-state/retrieve-aggregates/001.py:q_not"
 ```
 
 ### Nesting
@@ -336,10 +305,7 @@ people = repository.query.filter(
 Q objects can be combined and nested to express complex criteria:
 
 ```python
-# (Adults in CA) OR (children in US)
-people = repository.query.filter(
-    (Q(age__gte=18) & Q(country="CA")) | (Q(age__lt=18) & Q(country="US"))
-).all().items
+--8<-- "guides/change-state/retrieve-aggregates/001.py:q_nested"
 ```
 
 ### Mixing Q objects with keyword arguments
@@ -348,10 +314,7 @@ Q objects can be mixed with keyword arguments in `filter()`. The Q objects
 and keyword arguments are ANDed together:
 
 ```python
-# People in CA who are either named "John Doe" or under age 5
-people = repository.query.filter(
-    Q(name="John Doe") | Q(age__lt=5), country="CA"
-).all().items
+--8<-- "guides/change-state/retrieve-aggregates/001.py:q_mixed"
 ```
 
 ## Composable query functions
@@ -362,74 +325,28 @@ Python function that returns a `Q` object. This gives you named, reusable,
 composable query criteria without any framework overhead:
 
 ```python
-from protean.utils.query import Q
-from datetime import datetime, timedelta
-from decimal import Decimal
-
-
-def overdue_orders(grace_days: int = 0) -> Q:
-    """Orders past their payment deadline."""
-    deadline = datetime.now() - timedelta(days=grace_days)
-    return Q(status="pending", due_date__lt=deadline)
-
-
-def high_value_orders(min_amount: Decimal = Decimal("1000")) -> Q:
-    """Orders exceeding a monetary threshold."""
-    return Q(total__gte=min_amount)
-
-
-def in_region(region: str) -> Q:
-    """Orders shipping to a specific region."""
-    return Q(shipping_region=region)
+--8<-- "guides/change-state/retrieve-aggregates/003.py:import_q"
+--8<-- "guides/change-state/retrieve-aggregates/003.py:import_datetime"
+--8<-- "guides/change-state/retrieve-aggregates/003.py:functions"
 ```
 
 These functions compose naturally with `&`, `|`, and `~`:
 
 ```python
-repo = domain.repository_for(Order)
-
-# Find all overdue orders
-overdue = repo.find(overdue_orders())
-
-# Compose: overdue AND high-value
-critical = repo.find(overdue_orders(grace_days=3) & high_value_orders(5000))
-
-# Compose: high-value in a specific region
-regional = repo.find(high_value_orders() & in_region("US"))
-
-# Negate: orders that are NOT recent
-stale = repo.find(~recent_orders(within_days=7))
-
-# Check existence
-if repo.exists(overdue_orders() & high_value_orders(5000)):
-    trigger_escalation()
+--8<-- "guides/change-state/retrieve-aggregates/003.py:compose"
 ```
 
 The same functions work with the QuerySet API when you need ordering or
 pagination:
 
 ```python
-results = (
-    repo.query
-    .filter(overdue_orders() & in_region("US"))
-    .order_by("-total")
-    .limit(20)
-    .all()
-)
+--8<-- "guides/change-state/retrieve-aggregates/003.py:queryset"
 ```
 
 And inside custom repository methods:
 
 ```python
-@domain.repository(part_of=Order)
-class OrderRepository:
-    def critical_orders(self) -> list:
-        return self.find(
-            overdue_orders(grace_days=3) & high_value_orders(5000)
-        ).items
-
-    def has_overdue_in_region(self, region: str) -> bool:
-        return self.exists(overdue_orders() & in_region(region))
+--8<-- "guides/change-state/retrieve-aggregates/003.py:repository"
 ```
 
 This pattern gives you most of the formal [Specification
@@ -445,105 +362,23 @@ checking whether a single order is overdue inside an event handler. You can
 structure your query criteria as specification classes:
 
 ```python
-from abc import ABC, abstractmethod
-from protean.utils.query import Q
-
-
-class Specification(ABC):
-    """Base class for domain query specifications."""
-
-    @abstractmethod
-    def to_query(self) -> Q:
-        """Return Q criteria for database queries."""
-        ...
-
-    @abstractmethod
-    def is_satisfied_by(self, entity) -> bool:
-        """Test whether an entity matches this rule in memory."""
-        ...
-
-    def __and__(self, other: "Specification") -> "Specification":
-        return _And(self, other)
-
-    def __or__(self, other: "Specification") -> "Specification":
-        return _Or(self, other)
-
-    def __invert__(self) -> "Specification":
-        return _Not(self)
-
-
-class _And(Specification):
-    def __init__(self, left, right):
-        self.left, self.right = left, right
-
-    def to_query(self) -> Q:
-        return self.left.to_query() & self.right.to_query()
-
-    def is_satisfied_by(self, entity) -> bool:
-        return self.left.is_satisfied_by(entity) and self.right.is_satisfied_by(entity)
-
-
-class _Or(Specification):
-    def __init__(self, left, right):
-        self.left, self.right = left, right
-
-    def to_query(self) -> Q:
-        return self.left.to_query() | self.right.to_query()
-
-    def is_satisfied_by(self, entity) -> bool:
-        return self.left.is_satisfied_by(entity) or self.right.is_satisfied_by(entity)
-
-
-class _Not(Specification):
-    def __init__(self, spec):
-        self.spec = spec
-
-    def to_query(self) -> Q:
-        return ~self.spec.to_query()
-
-    def is_satisfied_by(self, entity) -> bool:
-        return not self.spec.is_satisfied_by(entity)
+--8<-- "guides/change-state/retrieve-aggregates/003.py:import_abc"
+--8<-- "guides/change-state/retrieve-aggregates/003.py:import_q"
+--8<-- "guides/change-state/retrieve-aggregates/003.py:specification"
 ```
 
 With this base class in place, define concrete specifications for your
 domain:
 
 ```python
-class OverdueOrders(Specification):
-    def __init__(self, grace_days: int = 0):
-        self.grace_period = timedelta(days=grace_days)
-
-    def to_query(self) -> Q:
-        deadline = datetime.now() - self.grace_period
-        return Q(status="pending", due_date__lt=deadline)
-
-    def is_satisfied_by(self, order) -> bool:
-        deadline = datetime.now() - self.grace_period
-        return order.status == "pending" and order.due_date < deadline
-
-
-class HighValueOrders(Specification):
-    def __init__(self, min_amount: Decimal = Decimal("1000")):
-        self.min_amount = min_amount
-
-    def to_query(self) -> Q:
-        return Q(total__gte=self.min_amount)
-
-    def is_satisfied_by(self, order) -> bool:
-        return order.total >= self.min_amount
+--8<-- "guides/change-state/retrieve-aggregates/003.py:concrete_specifications"
 ```
 
 Use `to_query()` with `find()` for database queries, and
 `is_satisfied_by()` for in-memory checks:
 
 ```python
-# Database query
-critical = OverdueOrders(grace_days=3) & HighValueOrders(min_amount=5000)
-results = repo.find(critical.to_query())
-
-# In-memory check (no database hit)
-if OverdueOrders().is_satisfied_by(order):
-    send_reminder(order)
+--8<-- "guides/change-state/retrieve-aggregates/003.py:use_specifications"
 ```
 
 !!! tip
@@ -572,8 +407,7 @@ Out[2]:
 You can sort by multiple fields by passing a list:
 
 ```python
-# Sort by country ascending, then age descending
-people = repository.query.order_by(["country", "-age"]).all().items
+--8<-- "guides/change-state/retrieve-aggregates/001.py:order_by_fields"
 ```
 
 ## Pagination
@@ -585,12 +419,8 @@ You can control this behavior in several ways.
 
 **Setting a default limit during element registration:**
 
-```python hl_lines="2"
-@domain.aggregate(limit=50)
-class Person:
-    # Queries will return at most 50 records by default
-    id = field.Integer(identifier=True)
-    name = field.String(required=True, max_length=50)
+```python hl_lines="1"
+--8<-- "guides/change-state/retrieve-aggregates/004.py:limit"
 ```
 
 Setting the limit to `None` removes the limit entirely.
@@ -598,11 +428,7 @@ Setting the limit to `None` removes the limit entirely.
 **Applying a limit at query time:**
 
 ```python
-# Limit to 10 records
-limited_query = repository.query.limit(10).all()
-
-# Remove limit entirely
-unlimited_query = repository.query.limit(None).all()
+--8<-- "guides/change-state/retrieve-aggregates/001.py:limit"
 ```
 
 !!!note
@@ -615,10 +441,7 @@ unlimited_query = repository.query.limit(None).all()
 Combine `limit` with `offset` for pagination:
 
 ```python
-def get_page(self, page_number, page_size=10):
-    """Get a specific page of results."""
-    offset = (page_number - 1) * page_size
-    return self.query.offset(offset).limit(page_size).all()
+--8<-- "guides/change-state/retrieve-aggregates/001.py:get_page"
 ```
 
 ### Pagination navigation
@@ -626,13 +449,7 @@ def get_page(self, page_number, page_size=10):
 The result provides pagination properties for navigating through pages:
 
 ```python
-result = repository.query.offset(10).limit(10).all()
-
-result.page        # Current page number (1-indexed)
-result.page_size   # Number of items per page (alias for limit)
-result.total_pages # Total number of pages
-result.has_next    # True if more pages exist beyond the current one
-result.has_prev    # True if this is not the first page
+--8<-- "guides/change-state/retrieve-aggregates/001.py:pagination"
 ```
 
 ## Evaluating a QuerySet
@@ -662,7 +479,7 @@ on first access:
 - **`first`**: First result, or `None` if empty
 - **`last`**: Last result, or `None` if empty
 - **`has_next`**: `True` if more pages exist
-- **`has_prev`**: `True` if previous pages exist
+- **`has_prev`**: `True` if this page has items and is not the first page
 - **`page`**: Current page number (1-indexed, int)
 - **`page_size`**: Items per page, or `None` when unlimited (alias for `limit`)
 - **`total_pages`**: Total number of pages (0 when no results)
@@ -704,12 +521,12 @@ matching rows. On some adapters (SQLAlchemy) the total requires a second
 `ResultSet.total`, pass `with_total=False` to skip that round-trip:
 
 ```python
-# Only the rows are needed, so the separate count query is skipped
-items = repository.query.filter(country="CA").all(with_total=False).items
+--8<-- "guides/change-state/retrieve-aggregates/001.py:with_total"
 ```
 
-Adapters that derive the total for free (memory, Elasticsearch) continue to
-populate `total` regardless.
+With `with_total=False`, the memory and SQLAlchemy adapters set `total` to the
+number of items on the page. Elasticsearch returns the full count with every
+search, so it still sets `total` to the number of matching rows.
 
 ## Projecting fields with `only`
 
@@ -718,7 +535,7 @@ the query to the named fields (the identifier is always included) and returns
 read-only `Record` objects instead of fully materialized entities:
 
 ```python
-records = repository.query.filter(country="CA").only("name", "age").all().items
+--8<-- "guides/change-state/retrieve-aggregates/001.py:only"
 ```
 
 ```shell
@@ -742,6 +559,7 @@ raises an error rather than returning a silent `None`, so a missing projection
 is never mistaken for a null value:
 
 ```python
+# fragment
 record = repository.query.only("name").all().first
 record.age          # AttributeError: 'age' was not projected
 record.name = "X"   # NotSupportedError: Records are read-only
@@ -775,7 +593,7 @@ Updates each matching object individually: it loads every entity and triggers
 callbacks and validations:
 
 ```python
-count = repository.query.filter(country="CA", age__lt=18).update(country="XX")
+--8<-- "guides/change-state/retrieve-aggregates/001.py:update"
 ```
 
 Returns the number of objects matched.
@@ -785,7 +603,7 @@ Returns the number of objects matched.
 Deletes each matching object individually: it loads every entity first:
 
 ```python
-count = repository.query.filter(country="XX").delete()
+--8<-- "guides/change-state/retrieve-aggregates/001.py:delete"
 ```
 
 Returns the number of objects deleted.
@@ -807,7 +625,7 @@ DAO-specific data structures from leaking into the domain layer.
 - **`first`**: First item, or `None` if empty
 - **`last`**: Last item, or `None` if empty
 - **`has_next`**: `True` if more pages exist beyond the current one
-- **`has_prev`**: `True` if this is not the first page
+- **`has_prev`**: `True` if this page has items and is not the first page
 - **`page`**: Current page number (1-indexed)
 - **`page_size`**: Number of items per page (alias for `limit`; `None` when unlimited)
 - **`total_pages`**: Total number of pages (0 when no results)
@@ -830,8 +648,13 @@ Out[2]: <ResultSet: 6 items>
 In [3]: result.to_dict()
 Out[3]:
 {'offset': 0,
- 'limit': 1000,
+ 'limit': 100,
  'total': 6,
+ 'page': 1,
+ 'page_size': 100,
+ 'total_pages': 1,
+ 'has_next': False,
+ 'has_prev': False,
  'items': [<Person: Person object (id: 84cac5ae-8272-4936-aa45-9342abe05513)>,
   <Person: Person object (id: aec03bb7-a97d-4722-9e10-fa5c324aa69b)>,
   <Person: Person object (id: 0b6314e9-e9b0-4456-bf04-1b0e05af1bf2)>,
@@ -846,7 +669,7 @@ For database-specific queries that cannot be expressed through the QuerySet
 API, use `raw()`:
 
 ```python
-results = repository.query.raw('{"name": "John Doe", "age__gte": 18}')
+--8<-- "guides/change-state/retrieve-aggregates/001.py:raw"
 ```
 
 The query format is database-specific: a JSON string for the memory adapter,
@@ -865,12 +688,7 @@ index to stay fast as the table grows, without one, the database falls back to
 a full scan. Declare the indexes a query path needs on the aggregate itself:
 
 ```python
-from protean import Index
-
-@domain.aggregate(indexes=[Index("country", "age", desc=("age",))])
-class Customer:
-    country = String(max_length=2)
-    age = Integer()
+--8<-- "guides/change-state/retrieve-aggregates/005.py:index"
 ```
 
 This backs `filter(country="US").order_by("-age")` with a single index. See

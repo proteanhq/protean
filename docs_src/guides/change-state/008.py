@@ -50,3 +50,14 @@ auth.register(UserApplicationServices, part_of=User)
 auth.register(Registered, part_of=User)
 auth.init(traverse=False)
 # --8<-- [end:full]
+
+
+# --8<-- [start:call]
+def register_and_activate():
+    user_service = UserApplicationServices()
+    user_id = user_service.register_user(email="john@example.com", name="John Doe")
+    user_service.activate_user(user_id=user_id)
+    return user_id
+
+
+# --8<-- [end:call]

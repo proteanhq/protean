@@ -1,54 +1,19 @@
-from protean.core.aggregate import BaseAggregate
-from protean.core.application_service import BaseApplicationService, use_case
-from protean.core.event import BaseEvent
-from protean.fields import Identifier, String
-from protean.utils.globals import current_domain
+import pytest
+
+from tests.docs.support import load_example
+
+pytestmark = pytest.mark.no_test_domain
 
 
-class User(BaseAggregate):
-    email: String()
-    name: String()
-    status: String(choices=["INACTIVE", "ACTIVE", "ARCHIVED"], default="INACTIVE")
+def test_application_service_method_invocation():
+    example = load_example("guides/change-state/008.py")
 
-    def activate(self):
-        self.status = "ACTIVE"
+    with example.auth.domain_context():
+        service = example.UserApplicationServices()
 
+        user_id = service.register_user(email="john.doe@gmail.com", name="John Doe")
+        assert user_id is not None
 
-class Registered(BaseEvent):
-    user_id: Identifier()
-    email: String()
-    name: String()
-
-
-class UserApplicationServices(BaseApplicationService):
-    @use_case
-    def register_user(self, email: str, name: str) -> Identifier:
-        user = User(email=email, name=name)
-        user.raise_(Registered(user_id=user.id, email=user.email, name=user.name))
-        current_domain.repository_for(User).add(user)
-
-        return user.id
-
-    @use_case
-    def activate_user(sefl, user_id: Identifier) -> None:
-        user = current_domain.repository_for(User).get(user_id)
-        user.activate()
-        current_domain.repository_for(User).add(user)
-
-
-def test_application_service_method_invocation(test_domain):
-    test_domain.register(User)
-    test_domain.register(UserApplicationServices, part_of=User)
-    test_domain.register(Registered, part_of=User)
-    test_domain.init(traverse=False)
-
-    app_services_obj = UserApplicationServices()
-
-    user_id = app_services_obj.register_user(
-        email="john.doe@gmail.com", name="John Doe"
-    )
-    assert user_id is not None
-
-    app_services_obj.activate_user(user_id)
-    user = current_domain.repository_for(User).get(user_id)
-    assert user.status == "ACTIVE"
+        service.activate_user(user_id)
+        user = example.auth.repository_for(example.User).get(user_id)
+        assert user.status == "ACTIVE"

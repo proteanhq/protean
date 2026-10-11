@@ -58,34 +58,17 @@ so the invocation opens a session before the body.
 ### Manual UoW
 
 For scripts, data migrations, shell sessions, and tests, you can create a UoW
-explicitly:
+explicitly. The code must run with the domain active, for example inside
+`with domain.domain_context():`:
 
 ```python
-from protean import UnitOfWork
-
-with UnitOfWork():
-    repo = domain.repository_for(Order)
-    order = repo.get(order_id)
-    order.confirm()
-    repo.add(order)
-    # Commit happens automatically when the block exits successfully
+--8<-- "guides/change-state/unit-of-work/001.py:manual"
 ```
 
 You can also use the imperative API:
 
 ```python
-uow = UnitOfWork()
-uow.start()
-
-try:
-    repo = domain.repository_for(Order)
-    order = repo.get(order_id)
-    order.confirm()
-    repo.add(order)
-    uow.commit()
-except Exception:
-    uow.rollback()
-    raise
+--8<-- "guides/change-state/unit-of-work/001.py:imperative"
 ```
 
 !!!note
@@ -99,11 +82,7 @@ The active UoW is accessible anywhere through the `current_uow` context
 variable:
 
 ```python
-from protean import current_uow
-
-if current_uow and current_uow.in_progress:
-    # A UoW is active — changes will be committed when it exits
-    ...
+--8<-- "guides/change-state/unit-of-work/001.py:current_uow"
 ```
 
 This is a thread-local proxy backed by a context stack. The outermost `start()`
@@ -121,13 +100,7 @@ stack, so every write, read, and event routes to the outermost UoW, and only tha
 UoW commits or rolls back. A nested rollback rolls back the whole transaction.
 
 ```python
-with UnitOfWork():            # outermost: owns the transaction
-    repo.add(a)
-    with UnitOfWork():        # nested: joins the outer, does not commit on its own
-        repo.add(b)
-    repo.add(c)
-    # a, b, and c all commit together when the outermost block exits,
-    # and all roll back together if anything fails.
+--8<-- "guides/change-state/unit-of-work/001.py:nested"
 ```
 
 The most common way this happens is composition: an application service
@@ -244,19 +217,7 @@ When an exception is raised inside a UoW block:
   and message queue are cleared.
 
 ```python
-from protean import UnitOfWork
-from protean.exceptions import ValidationError
-
-try:
-    with UnitOfWork():
-        repo = domain.repository_for(Order)
-        order = repo.get(order_id)
-        order.confirm()  # May raise ValidationError
-        repo.add(order)
-        # If confirm() or add() raises, rollback happens automatically
-except ValidationError:
-    # The UoW has already rolled back — no partial state was committed
-    ...
+--8<-- "guides/change-state/unit-of-work/002.py:rollback"
 ```
 
 ## The identity map
@@ -356,19 +317,7 @@ If the database commit fails for reasons other than version conflicts, the UoW
 raises a `TransactionError` with diagnostic information:
 
 ```python
-from protean.exceptions import TransactionError
-
-try:
-    with UnitOfWork():
-        ...
-except TransactionError as exc:
-    # exc.extra_info contains:
-    #   - original_exception: exception class name
-    #   - original_message: error message
-    #   - sessions: list of provider names involved
-    #   - events_count: number of events that were pending
-    #   - messages_count: number of broker messages pending
-    ...
+--8<-- "guides/change-state/unit-of-work/002.py:commit_errors"
 ```
 
 ---
