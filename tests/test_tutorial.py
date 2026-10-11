@@ -605,6 +605,11 @@ class TestTutorialCh13(_TutorialBase):
 
     def test_confirm_order_handler_persists_only_the_order(self, monkeypatch):
         """Ch13: the ConfirmOrder handler leaves Inventory to the event flow."""
+        sdk_trace = pytest.importorskip("opentelemetry.sdk.trace")
+        export = pytest.importorskip("opentelemetry.sdk.trace.export")
+        in_memory = pytest.importorskip(
+            "opentelemetry.sdk.trace.export.in_memory_span_exporter"
+        )
         domain = ch13.domain
         with domain.domain_context():
             inv_repo = domain.repository_for(ch13.Inventory)
@@ -626,10 +631,26 @@ class TestTutorialCh13(_TutorialBase):
             # With async event processing the OrderConfirmed reaction does not
             # run here, so only what the command handler wrote is visible.
             monkeypatch.setitem(domain.config, "event_processing", "async")
+            exporter = in_memory.InMemorySpanExporter()
+            provider = sdk_trace.TracerProvider()
+            provider.add_span_processor(export.SimpleSpanProcessor(exporter))
+            monkeypatch.setattr(
+                domain, "_otel_tracer_provider", provider, raising=False
+            )
+            monkeypatch.setattr(domain, "_otel_init_attempted", True)
             domain.process(ch13.ConfirmOrder(order_id=order.id))
 
             assert order_repo.get(order.id).status == "CONFIRMED"
             assert inv_repo.get(inv.id).quantity == 10
+            # A save of an unchanged Inventory writes nothing, so count the
+            # repository.add calls to catch a handler that saves one anyway.
+            saved = [
+                span.attributes["protean.aggregate.type"]
+                for span in exporter.get_finished_spans()
+                if span.name == "protean.repository.add"
+                and span.attributes["protean.aggregate.type"] != "MemoryMessage"
+            ]
+            assert saved == ["Order"]
 
     def test_redelivered_reservation_is_skipped(self):
         """Ch13: a second ReserveInventory for the same order changes nothing."""

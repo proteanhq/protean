@@ -4,7 +4,8 @@ Each asset's command handler runs a domain service over two aggregates and
 persists only the primary one. The other aggregate changes later, through an
 event and a command. Running the command with asynchronous event processing,
 and no server, stops the flow after the first handler. The other aggregate
-must then be exactly as it was saved.
+must then be exactly as it was saved, and the handler must not have called
+``repository.add`` on it.
 
 The other tests drive the full flow and check that a repeated command, a
 reused id, or a late event changes nothing.
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import itertools
 import runpy
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -56,6 +58,35 @@ def _event_names(domain: Domain) -> list[str]:
     return [type(message.to_domain_object()).__name__ for message in messages]
 
 
+def _record_spans(domain: Domain) -> Any:
+    """Send the domain's spans to an in-memory exporter and return it."""
+    sdk_trace = pytest.importorskip("opentelemetry.sdk.trace")
+    export = pytest.importorskip("opentelemetry.sdk.trace.export")
+    in_memory = pytest.importorskip(
+        "opentelemetry.sdk.trace.export.in_memory_span_exporter"
+    )
+    exporter = in_memory.InMemorySpanExporter()
+    provider = sdk_trace.TracerProvider()
+    provider.add_span_processor(export.SimpleSpanProcessor(exporter))
+    domain._otel_tracer_provider = provider
+    domain._otel_init_attempted = True
+    return exporter
+
+
+def _saves_by_type(exporter: Any) -> Counter[str]:
+    """Count ``repository.add`` calls per aggregate type, event store writes aside.
+
+    A save of an unchanged aggregate writes nothing to the store, so only the
+    call count shows a handler that saves a second aggregate.
+    """
+    return Counter(
+        span.attributes["protean.aggregate.type"]
+        for span in exporter.get_finished_spans()
+        if span.name == "protean.repository.add"
+        and span.attributes["protean.aggregate.type"] != "MemoryMessage"
+    )
+
+
 def _transfer(ns: Namespace, domain: Domain) -> None:
     repo = domain.repository_for(ns["Account"])
     repo.add(ns["Account"](account_id="A-1", owner="Ann", balance=100.0))
@@ -86,27 +117,34 @@ def _reserve(ns: Namespace, domain: Domain) -> None:
 
 
 # For each asset: the step that runs the primary command, the event it hands
-# off with, and the other aggregate as (class name, field values).
+# off with, the other aggregate as (class name, field values), and the
+# repository.add calls the whole step makes per aggregate type. Each step saves
+# its own setup aggregate once, so a count of 2 means the handler saved the
+# primary aggregate once and nothing else.
 PRIMARY_STEPS: dict[
-    str, tuple[Callable[[Namespace, Domain], None], str, str, dict[str, Any]]
+    str,
+    tuple[Callable[[Namespace, Domain], None], str, str, dict[str, Any], Counter[str]],
 ] = {
     "domain_service_flow_basic.py": (
         _transfer,
         "FundsDebited",
         "Account",
         {"account_id": "B-1", "owner": "Bob"},
+        Counter({"Account": 2}),
     ),
     "domain_service_flow_in_handler.py": (
         _enroll,
         "StudentEnrolled",
         "Student",
         {"student_id": "S-1", "name": "Ann"},
+        Counter({"Course": 2}),
     ),
     "domain_service_flow_invariants.py": (
         _reserve,
         "RoomReserved",
         "Requester",
         {"requester_id": "P-1", "name": "Ann", "authorization_level": 2},
+        Counter({"Room": 2}),
     ),
 }
 
@@ -114,7 +152,7 @@ PRIMARY_STEPS: dict[
 @pytest.mark.parametrize("asset", sorted(PRIMARY_STEPS))
 def test_the_command_handler_persists_only_the_primary_aggregate(asset: str) -> None:
     ns, domain = _load(asset, event_processing="async")
-    step, event_name, other_name, other_values = PRIMARY_STEPS[asset]
+    step, event_name, other_name, other_values, saves = PRIMARY_STEPS[asset]
 
     with domain.domain_context():
         other_repo = domain.repository_for(ns[other_name])
@@ -122,6 +160,7 @@ def test_the_command_handler_persists_only_the_primary_aggregate(asset: str) -> 
         other_repo.add(other)
         other_id = next(iter(other_values.values()))
         before = other_repo.get(other_id).to_dict()
+        exporter = _record_spans(domain)
 
         step(ns, domain)
 
@@ -129,6 +168,7 @@ def test_the_command_handler_persists_only_the_primary_aggregate(asset: str) -> 
         # server ran to deliver it.
         assert event_name in _event_names(domain)
         assert other_repo.get(other_id).to_dict() == before
+        assert _saves_by_type(exporter) == saves
 
 
 # --- Funds transfer: the debit and the credit apply once per transfer id ---
