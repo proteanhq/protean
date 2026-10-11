@@ -248,13 +248,19 @@ def test_invariant_calling_a_public_helper_stops_at_the_recursion_limit():
 
 
 def test_no_page_claims_a_recursion_error():
-    pages = sorted(PACK_ROOT.rglob("*.md")) + sorted((REPO_ROOT / "docs").rglob("*.md"))
-    assert pages, "found no Markdown pages to scan"
+    # The example sources count too: a docstring is read as part of the page.
+    pages = [
+        page
+        for root in (PACK_ROOT, REPO_ROOT / "docs", REPO_ROOT / "docs_src")
+        for pattern in ("*.md", "*.py")
+        for page in sorted(root.rglob(pattern))
+    ]
+    assert pages, "found no pages to scan"
 
     # Other pages name RecursionError for unrelated reasons (a source file too
     # deep to parse), so only a paragraph that also talks about domain
     # services, helpers or invariants counts.
-    topic = re.compile(r"domain service|helper|invariant", re.IGNORECASE)
+    topic = re.compile(r"domain[ -]service|helper|invariant", re.IGNORECASE)
     offenders = [
         str(page.relative_to(REPO_ROOT))
         for page in pages
@@ -263,3 +269,30 @@ def test_no_page_claims_a_recursion_error():
     ]
 
     assert offenders == []
+
+
+# The pages that state the helper rule, as ruled for this skill: a public helper
+# re-runs the invariants on the state reached so far and raises ValidationError
+# when that state breaks one, and helpers take a ``_`` prefix.
+HELPER_RULE_PAGES = [
+    "domain-service/SKILL.md",
+    "domain-service/references/instance-methods.md",
+    "domain-service/references/invariants.md",
+]
+
+
+@pytest.mark.parametrize("site", HELPER_RULE_PAGES)
+def test_the_page_states_the_helper_rule_as_it_works(site):
+    page = PACK_ROOT / dx.SKILLS_DIR / site
+    # Join wrapped lines and drop bold markers so a phrase matches as read.
+    text = " ".join(page.read_text(encoding="utf-8").replace("**", "").split())
+
+    assert (
+        "runs every invariant again" in text
+        or "runs the pre and post invariants again" in text
+    )
+    assert "has reached so far" in text
+    assert "raises `ValidationError`" in text
+    assert "not wrapped" in text
+    for false_claim in ("does not run the invariants again", "is safe to call"):
+        assert false_claim not in text

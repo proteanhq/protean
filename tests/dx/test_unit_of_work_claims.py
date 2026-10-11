@@ -87,6 +87,22 @@ def test_the_page_says_several_aggregates_and_nested_joins(site):
     assert "joins the outer one" in text
 
 
+# The false statements the pages used to make. Each contradicts ADR-0027.
+FALSE_CLAIMS = [
+    "does not span",
+    "nested transaction",
+    "never joins",
+    "does not join",
+    "not written until",
+]
+
+
+@pytest.mark.parametrize("site", SITES)
+@pytest.mark.parametrize("claim", FALSE_CLAIMS)
+def test_the_page_drops_the_false_claim(site, claim):
+    assert claim not in _page(site).lower()
+
+
 @pytest.mark.parametrize("site", ATOMICITY_SITES)
 def test_the_page_scopes_atomicity_to_providers_with_transactions(site):
     text = _page(site)
