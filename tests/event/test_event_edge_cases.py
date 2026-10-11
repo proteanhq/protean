@@ -1,7 +1,7 @@
 """Tests for edge cases in core/event.py.
 
 Covers uncovered paths:
-- AssertionError for non-dict positional arg
+- TypeError for non-dict positional arg
 - expected_version from template metadata
 - ConfigurationError when event not registered with domain
 """
@@ -30,14 +30,17 @@ class OrderPlaced(BaseEvent):
 # ---------------------------------------------------------------------------
 class TestEventTemplateDictPattern:
     def test_non_dict_positional_arg_raises(self, test_domain):
-        """AssertionError for non-dict positional arg."""
+        """TypeError for non-dict positional arg."""
         test_domain.register(Order)
         test_domain.register(OrderPlaced, part_of=Order)
         test_domain.init(traverse=False)
 
-        with pytest.raises(AssertionError) as exc_info:
+        with pytest.raises(TypeError) as exc_info:
             OrderPlaced("not a dict")
-        assert "must be a dict" in str(exc_info.value)
+        assert str(exc_info.value) == (
+            "Positional argument not a dict passed must be a dict. "
+            "This argument serves as a template for loading common values."
+        )
 
     def test_dict_positional_arg_merged(self, test_domain):
         """Positional dict merged with kwargs."""

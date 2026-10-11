@@ -22,6 +22,7 @@ from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import (
     DomainObjects,
     _derive_element_class,
+    _ensure_template_dict,
     inflection,
 )
 from protean.utils.container import DerivedDefault, Element, OptionsMixin
@@ -257,12 +258,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         if args:
             merged: dict[str, Any] = {}
             for template in args:
-                if not isinstance(template, dict):
-                    raise AssertionError(
-                        f"Positional argument {template} passed must be a dict. "
-                        f"This argument serves as a template for loading common "
-                        f"values.",
-                    )
+                _ensure_template_dict(template)
                 # Also separate descriptor and shadow kwargs from template dicts
                 for tname in list(template):
                     if tname in _shadow_field_names:

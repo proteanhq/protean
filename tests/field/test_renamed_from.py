@@ -40,7 +40,7 @@ class TestNormalizeRenamedFrom:
         assert normalize_field_renamed_from([]) is None
 
     def test_invalid_type_raises(self):
-        with pytest.raises(ValueError, match="Invalid `renamed_from` value"):
+        with pytest.raises(TypeError, match="Invalid `renamed_from` value"):
             normalize_field_renamed_from(42)
 
     def test_empty_string_alias_raises(self):
@@ -90,3 +90,11 @@ class TestFieldSpecRenamedFrom:
 
     def test_copy_preserves_renamed_from(self):
         assert copy.copy(String(renamed_from=["a", "b"])).renamed_from == ["a", "b"]
+
+    def test_wrong_type_raises_type_error(self):
+        with pytest.raises(TypeError, match="Invalid `renamed_from` value"):
+            String(renamed_from=123)
+
+    def test_empty_alias_raises_value_error(self):
+        with pytest.raises(ValueError, match="Invalid `renamed_from` alias"):
+            String(renamed_from=[""])

@@ -349,17 +349,6 @@ ignore = [
 "specs/outbox_trace.py" = ["TRY004"]
 "specs/recovery_trace.py" = ["TRY004"]
 "tests/eval/spec.py" = ["TRY004"]
-# Files that still fail TRY004. New files are checked from the start. #1717
-# fixes them and deletes its files from this list.
-"src/protean/core/command.py" = ["TRY004"]
-"src/protean/core/email.py" = ["TRY004"]
-"src/protean/core/entity.py" = ["TRY004"]
-"src/protean/core/event.py" = ["TRY004"]
-"src/protean/core/process_manager.py" = ["TRY004"]
-"src/protean/core/projection.py" = ["TRY004"]
-"src/protean/core/query.py" = ["TRY004"]
-"src/protean/core/value_object.py" = ["TRY004"]
-"src/protean/fields/base.py" = ["TRY004"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["protean"]

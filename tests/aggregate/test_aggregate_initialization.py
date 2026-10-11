@@ -130,7 +130,7 @@ class TestAggregateInitialization:
         assert role2.name == "USER"
 
     def test_initialization_from_dict_template(self):
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError, match="must be a dict"):
             Person("John Doe")
 
         person = Person({"first_name": "John", "last_name": "Doe", "age": 23})
@@ -139,7 +139,7 @@ class TestAggregateInitialization:
         assert person.age == 23
 
     def test_template_param_is_a_dict(self):
-        with pytest.raises(AssertionError) as exc:
+        with pytest.raises(TypeError) as exc:
             Person(["John", "Doe", 23])
 
         assert str(exc.value) == (

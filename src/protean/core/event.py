@@ -13,6 +13,7 @@ from protean.fields.resolved import convert_pydantic_errors
 from protean.utils import (
     DomainObjects,
     _derive_element_class,
+    _ensure_template_dict,
     fqn,
 )
 from protean.utils.eventing import (
@@ -91,12 +92,7 @@ class BaseEvent(BaseMessageType):
         if args:
             merged: dict[str, Any] = {}
             for template in args:
-                if not isinstance(template, dict):
-                    raise AssertionError(
-                        f"Positional argument {template} passed must be a dict. "
-                        f"This argument serves as a template for loading common "
-                        f"values.",
-                    )
+                _ensure_template_dict(template)
                 merged.update(template)
             merged.update(kwargs)
             kwargs = merged
