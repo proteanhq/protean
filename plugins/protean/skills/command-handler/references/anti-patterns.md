@@ -212,7 +212,7 @@ class OrderCommandHandler:
 
 Protean raises `IncorrectUsageError: Method 'handle' in Command Handler 'OrderCommandHandler' is not associated with a command`.
 
-**Correct:** Command handlers handle commands. Event handlers handle events.
+**Correct:** Give `@handle` in a command handler a command class. To react to `OrderPlaced`, write an event handler with `@handle(OrderPlaced)`.
 
 ## 7. Command Without part_of
 

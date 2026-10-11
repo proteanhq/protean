@@ -65,7 +65,7 @@ def use_case(func):
     return wrapper
 ```
 
-The `_use_case` attribute is set on the wrapper function to mark it as a use case method. The wrapper does not retry: a version conflict (`ExpectedVersionError`) reaches the caller after the rollback. `@handle` on command and event handlers is the one that retries.
+The `_use_case` attribute is set on the wrapper function to mark it as a use case method. The wrapper does not retry: a version conflict (`ExpectedVersionError`) reaches the caller after the rollback. `@handle` is the one that retries, on command handlers, event handlers, process managers and projectors alike.
 
 ## Important Notes
 

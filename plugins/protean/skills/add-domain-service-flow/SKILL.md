@@ -93,6 +93,10 @@ class Inventory:
     reserved_order_ids: List(content_type=String)
 
     def reserve_stock(self, order_id, quantity):
+        # The service checked the stock as it was last saved. Another order
+        # may have taken it since, so check again before taking it.
+        if quantity > self.available:
+            raise ValidationError({"available": ["Insufficient stock"]})
         self.available -= quantity
         self.reserved_order_ids = [*self.reserved_order_ids, order_id]
 
@@ -205,7 +209,7 @@ class InventoryCommandHandler:
 
 - `part_of=Order`: the event handler sits in the cluster that owns `OrderConfirmed`, with no `stream_category`
 - The command carries the order id from the event, so a redelivered event reissues the same command and the handler can tell it is a repeat
-- An order has one product, so the order id names exactly one reservation. When one event drives several writes to the same aggregate, such as one per order line, derive one id per write, such as `f"{order_id}:{product_id}"`
+- An order has one product, so the order id names exactly one reservation. When one event drives several writes to the same aggregate, such as one per order line, derive one id per write, such as `f"{order_id}:{product_id}"`. Add up the lines for the same product first, so each product gets one write. Two lines for one product would otherwise share an id, and the handler would skip the second as a repeat
 - `reserved_order_ids` grows with every order and loads with the Inventory each time
 
 This is the cross-aggregate pattern from the [event-handler](../event-handler/SKILL.md) skill.

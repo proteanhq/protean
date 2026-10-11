@@ -80,7 +80,12 @@ class TransferFunds:
 
 @domain.command(part_of="Account")
 class CreditAccount:
-    """Credit one account with the money from one transfer."""
+    """Credit one account with the money from one transfer.
+
+    Only CreditTransferTarget sends this command, after the source account is
+    debited. It carries no check of its own, so do not accept it from outside
+    the domain.
+    """
 
     transfer_id: Identifier(required=True)
     account_id: Identifier(required=True)
@@ -158,7 +163,8 @@ class FundsTransferService:
     @invariant.pre
     def amount_must_be_positive(self):
         """Transfer amount must be positive."""
-        if self.amount <= 0:
+        # Written this way so NaN fails too: every comparison with NaN is False.
+        if not self.amount > 0:
             raise ValidationError({"_service": ["Transfer amount must be positive"]})
 
     @invariant.pre

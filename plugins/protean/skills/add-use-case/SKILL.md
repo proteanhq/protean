@@ -312,7 +312,7 @@ def handle_place_order(self, command):
     domain.repository_for(Inventory).add(inventory)  # cross-aggregate write
 ```
 
-Instead: persist one aggregate. An event handler in its cluster reacts to the event and issues a command, and the other aggregate's command handler does the write (eventual consistency). For an atomic cross-aggregate rule use a domain service.
+Instead: persist one aggregate. An event handler in its cluster reacts to the event and issues a command, and the other aggregate's command handler does the write (eventual consistency). To check a rule across aggregates before the change, use a domain service: it checks the rule, and the handler still persists one aggregate.
 
 ### Authorization inside the aggregate
 

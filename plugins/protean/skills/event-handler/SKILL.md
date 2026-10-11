@@ -54,7 +54,7 @@ class OrderEventHandler:
 2. **Use @handle decorator** - Each handler method is decorated with `@handle(EventClass)` or `@handle("$any")`
 3. **Handler methods take self and event** - Signature: `def method_name(self, event: EventClass)`
 4. **No return values** - Event handlers do NOT return values (CQRS pattern, fire-and-forget)
-5. **Implicit UnitOfWork** - `@handle` wraps every handler invocation in its own Unit of Work, which is one real database transaction on a provider with transactions, such as the SQL databases. A handler method that reaches no repository opens no transaction. On a version conflict (`ExpectedVersionError`) the whole method runs again: with the default `max_retries=3` it runs up to 4 times in total, with waits that double between runs, stopping early at a command's deadline. Each run opens its own Unit of Work, or joins an outer one if the handler runs inside it. Configure it under `server.version_retry`
+5. **Implicit UnitOfWork** - `@handle` wraps every handler invocation in its own Unit of Work, which is one real database transaction on a provider with transactions, such as the SQL databases. A handler method that reaches no repository opens no transaction. On a version conflict (`ExpectedVersionError`) the whole method runs again: with the default `max_retries=3` it runs up to 4 times in total, with waits that double between runs. Each run opens its own Unit of Work, or joins an outer one if the handler runs inside it. Configure it under `server.version_retry`
 6. **Multiple handlers per event** - Unlike commands, multiple event handlers can process the same event
 7. **Import handle from protean** - `from protean import handle` (not from protean.core)
 8. **part_of uses class reference** - Handler uses `part_of=AggregateClass` by convention. A string reference (`part_of="AggregateName"`) also works and resolves at `init`, so the aggregate may be defined after the handler
@@ -250,7 +250,9 @@ changes when that work is already done:
   The list grows with every applied id and loads with B each time.
 
 When one event drives several writes to B, derive one id per write, such as
-`f"{order_id}:{product_id}"`. Never generate a fresh `uuid4()` in the handler,
+`f"{order_id}:{product_id}"`. Add up the lines for the same product first, so
+each product gets one write. Two lines for one product would otherwise share an
+id, and the handler would skip the second as a repeat. Never generate a fresh `uuid4()` in the handler,
 because a redelivered event would then look like new work.
 
 Prefer an id from the event's payload. When the same kind of event can recur

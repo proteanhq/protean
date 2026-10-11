@@ -172,6 +172,7 @@ class ReserveRoomService:
     """Reserve a meeting room for a requester.
 
     Pre-invariants:
+    - The reservation id must be new to the requester
     - Room must be available
     - Requester must have sufficient authorization
     - Requester must not exceed max reservations
@@ -187,6 +188,20 @@ class ReserveRoomService:
         self.room = room
         self.requester = requester
         self.reservation_id = reservation_id
+
+    @invariant.pre
+    def reservation_id_must_be_new(self):
+        """The requester must not have recorded this reservation id before.
+
+        The requester counts reservations by id, so a reused id would hold a
+        second room without counting toward the limit.
+        """
+        seen = {
+            *self.requester.reservation_ids,
+            *self.requester.released_reservation_ids,
+        }
+        if self.reservation_id in seen:
+            raise ValidationError({"_service": ["Reservation id is already in use"]})
 
     @invariant.pre
     def room_must_be_available(self):
@@ -233,7 +248,13 @@ class ReserveRoomService:
 
 @domain.command(part_of="Room")
 class ReserveRoom:
-    """Reserve a room. The caller supplies the reservation id."""
+    """Reserve a room.
+
+    The caller supplies `reservation_id` and must give every reservation its
+    own id. The service rejects an id the requester has already recorded. An
+    id reused before its RoomReserved is delivered passes that check, the same
+    way a reservation past the limit does.
+    """
 
     reservation_id: Identifier(required=True)
     room_id: Identifier(required=True)

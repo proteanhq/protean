@@ -116,7 +116,7 @@ class EnrollStudentService:
     Changes:
     - The student added to Course.student_ids, and StudentEnrolled raised
 
-    The Student is not changed here. It is updated through StudentEnrolled.
+    StudentEnrolled carries the change to the Student, in its own transaction.
     """
 
     def __init__(self, course, student):

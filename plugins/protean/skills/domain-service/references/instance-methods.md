@@ -92,8 +92,12 @@ class OrderPlacementService:
 
     def _check_stock(self):
         stock = {i.product_id: i.quantity for i in self.inventories}
+        # Lines for the same product draw on the same stock, so add them up.
+        ordered: dict[str, int] = {}
         for item in self.order.items:
-            if stock.get(item.product_id, 0) < item.quantity:
+            ordered[item.product_id] = ordered.get(item.product_id, 0) + item.quantity
+        for product_id, quantity in ordered.items():
+            if stock.get(product_id, 0) < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 ```
 
