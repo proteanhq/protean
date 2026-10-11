@@ -4,7 +4,8 @@
 handler class does not list in ``_default_options``. The command-handler and
 event-handler skills each carry a table of those options with their defaults.
 These tests read each table and compare it with the class, so a new option or a
-changed default fails here until the table catches up.
+changed default fails here until the table catches up. The handler tables in
+``docs/`` are checked for the same option names.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from protean.utils.container import DerivedDefault
 pytestmark = pytest.mark.no_test_domain
 
 SKILLS_ROOT = Path(str(dx.pack_files())) / dx.SKILLS_DIR
+DOCS_ROOT = Path(__file__).resolve().parents[2] / "docs"
 
 if not SKILLS_ROOT.is_dir():
     pytest.skip(
@@ -39,7 +41,8 @@ DERIVED = {"stream_category": "derived from part_of"}
 def option_table(text: str) -> dict[str, str]:
     """Return ``{option: default cell}`` from the page's one ``Option`` table.
 
-    The table needs a ``Default`` column. Backticks around a cell are removed.
+    The table needs a ``Default`` column. Bold markers and backticks around a
+    cell are removed.
     A page with more than one such table, or a table that lists an option
     twice, fails: either would let a wrong row hide behind a right one.
     """
@@ -70,7 +73,9 @@ def _cells(line: str) -> list[str]:
     stripped = line.strip()
     if not stripped.startswith("|"):
         return []
-    return [cell.strip().strip("`") for cell in stripped.strip("|").split("|")]
+    return [
+        cell.strip().strip("*").strip("`") for cell in stripped.strip("|").split("|")
+    ]
 
 
 def render_default(name: str, value: Any) -> str:
@@ -108,6 +113,41 @@ def test_option_table_matches_the_handler_class(skill, handler_cls):
 
     assert table, f"{skill} option table has no rows"
     assert table_problems(table, handler_cls._default_options) == []
+
+
+def _section(text: str, heading: str) -> str:
+    """The text under ``heading`` up to the next heading of the same level."""
+    start = text.index(heading + "\n")
+    level = heading.split(" ", 1)[0]
+    rest = text[start + len(heading) + 1 :]
+    end = rest.find("\n" + level + " ")
+    return rest if end == -1 else rest[:end]
+
+
+# The docs tables write some defaults in words ("—", "*required*", "from
+# aggregate"), so they are checked for the option names only.
+DOCS_TABLES = [
+    (
+        "reference/domain-elements/element-decorators.md",
+        "### `Domain.command_handler`",
+        BaseCommandHandler,
+    ),
+    (
+        "reference/domain-elements/element-decorators.md",
+        "### `Domain.event_handler`",
+        BaseEventHandler,
+    ),
+    ("guides/change-state/command-handlers.md", None, BaseCommandHandler),
+]
+
+
+@pytest.mark.parametrize("page, heading, handler_cls", DOCS_TABLES)
+def test_docs_option_table_lists_the_handler_options(page, heading, handler_cls):
+    text = (DOCS_ROOT / page).read_text(encoding="utf-8")
+    if heading is not None:
+        text = _section(text, heading)
+
+    assert set(option_table(text)) == {name for name, _ in handler_cls._default_options}
 
 
 def test_command_and_event_handler_options_differ_where_documented():

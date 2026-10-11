@@ -198,11 +198,12 @@ Receives commands and orchestrates aggregate state changes. Uses
 | `subscription_type` | `None` | Subscription behavior enum |
 | `subscription_profile` | `None` | Subscription profile enum |
 | `subscription_config` | `{}` | Custom subscription configuration |
-| `sequential_by` | `None` | Field name whose value partitions the stream, so commands sharing a value are processed one at a time. See [Sequential processing](../server/sequential-by.md) |
+| `sequential_by` | `None` | Field name on every command this handler handles. Registration checks the field exists, but commands do not go through the outbox yet, so the option has no runtime effect on a command handler today. See [Sequential processing](../server/sequential-by.md) |
 | `timeout` | `None` | Default deadline in seconds for commands this handler processes. Falls back to `command_default_timeout`; an explicit deadline on `domain.process()` wins over both |
 | `retries` | `None` | Maximum retries when the handler fails with a transient exception. Overrides the domain's `server.transient_retry` setting; `None` uses that setting |
 | `backoff` | `None` | Delay strategy between transient retries: `"exponential"`, `"linear"` or `"fixed"`. `None` uses the domain setting |
 | `retry_exceptions` | `None` | Exception types treated as transient, as classes or dotted paths. `None` uses the domain setting |
+| `suppress_checks` | `()` | Diagnostic codes `protean check` should not report for this handler |
 
 Guide: [Command Handlers](../../guides/change-state/command-handlers.md)
 
@@ -215,7 +216,7 @@ both synchronous and asynchronous processing.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| **`part_of`** | — | **Required.** Source aggregate class |
+| `part_of` | — | Source aggregate class. Registration fails unless `part_of` or `stream_category` is set |
 | `source_stream` | `None` | Custom event stream source |
 | `stream_category` | from aggregate | Message stream category |
 | `subscription_type` | `None` | Subscription behavior enum |
@@ -225,6 +226,7 @@ both synchronous and asynchronous processing.
 | `retries` | `None` | Maximum retries when the handler fails with a transient exception. Overrides the domain's `server.transient_retry` setting; `None` uses that setting |
 | `backoff` | `None` | Delay strategy between transient retries: `"exponential"`, `"linear"` or `"fixed"`. `None` uses the domain setting |
 | `retry_exceptions` | `None` | Exception types treated as transient, as classes or dotted paths. `None` uses the domain setting |
+| `suppress_checks` | `()` | Diagnostic codes `protean check` should not report for this handler |
 
 `sequential_by` is a no-op unless the configured broker advertises
 `STREAM_PARTITIONING`, so a domain that declares it still runs on the inline
