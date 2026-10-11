@@ -5,7 +5,7 @@ A domain service with class methods provides a stateless, functional approach. N
 ## Overview
 
 Use this pattern when:
-- No invariants are needed. Protean does not run the service's `@invariant.pre` or `@invariant.post` methods around a class method, so a class-method service should not declare any
+- No invariants are needed. Protean does not run the service's `@invariant.pre` or `@invariant.post` methods around a class method, so a class-method service should not declare any. Protean still wraps a public class method, and treats its first argument as the service instance. It runs the first argument's own invariants around the call, so that argument must be an aggregate: a list there raises `AttributeError`. A call on an instance raises `TypeError`, because the instance is passed as one argument too many.
 - You prefer a functional style
 - Each method receives all input as parameters
 - Validation is done inline within the method
@@ -71,11 +71,15 @@ class OrderPlacementService:
     @classmethod
     def place_order(cls, order, inventories):
         # Inline validation: read the inventory, change only the order
+        # Lines for the same product draw on the same stock, so add them up.
+        ordered: dict[str, int] = {}
         for item in order.items:
+            ordered[item.product_id] = ordered.get(item.product_id, 0) + item.quantity
+        for product_id, quantity in ordered.items():
             inventory = next(
-                (i for i in inventories if i.product_id == item.product_id), None
+                (i for i in inventories if i.product_id == product_id), None
             )
-            if inventory is None or inventory.quantity < item.quantity:
+            if inventory is None or inventory.quantity < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
         order.confirm()

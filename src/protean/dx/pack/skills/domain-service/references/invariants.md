@@ -61,11 +61,15 @@ class OrderPlacementService:
 
     @invariant.pre
     def inventory_should_have_sufficient_stock(self):
+        # Lines for the same product draw on the same stock, so add them up.
+        ordered: dict[str, int] = {}
         for item in self.order.items:
+            ordered[item.product_id] = ordered.get(item.product_id, 0) + item.quantity
+        for product_id, quantity in ordered.items():
             inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
+                (i for i in self.inventories if i.product_id == product_id), None
             )
-            if inventory is None or inventory.quantity < item.quantity:
+            if inventory is None or inventory.quantity < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
     @invariant.pre
@@ -89,11 +93,15 @@ Pre invariants run **before** the service method executes. If any pre invariant 
 # fragment
 @invariant.pre
 def inventory_should_have_sufficient_stock(self):
+    # Lines for the same product draw on the same stock, so add them up.
+    ordered: dict[str, int] = {}
     for item in self.order.items:
+        ordered[item.product_id] = ordered.get(item.product_id, 0) + item.quantity
+    for product_id, quantity in ordered.items():
         inventory = next(
-            (i for i in self.inventories if i.product_id == item.product_id), None
+            (i for i in self.inventories if i.product_id == product_id), None
         )
-        if inventory is None or inventory.quantity < item.quantity:
+        if inventory is None or inventory.quantity < quantity:
             raise ValidationError({"_service": ["Product is out of stock"]})
 ```
 

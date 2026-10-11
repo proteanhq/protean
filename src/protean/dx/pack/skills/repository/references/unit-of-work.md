@@ -129,7 +129,7 @@ The UoW keeps an **identity map**: a record of the aggregates it loads and saves
 | Scenario | Behavior |
 |----------|----------|
 | Handler succeeds | All changes committed together (atomic on providers with transactions) |
-| Handler raises exception | All changes rolled back |
+| Handler raises exception | All changes rolled back (on Elasticsearch, writes already sent stay) |
 | Multiple `repo.add()` calls | All committed together |
 | Events raised during handler | Dispatched after successful commit |
 | Optimistic concurrency conflict | `ExpectedVersionError` raised, changes rolled back. `@handle` re-runs the whole handler body: with the default `max_retries=3`, the body runs up to 4 times in total |

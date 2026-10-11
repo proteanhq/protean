@@ -7,7 +7,7 @@ helper raises ``RecursionError``. A public method calling another public method
 runs the invariants again against the state reached so far, which raises
 ``ValidationError`` when that state breaks one, for pre and post invariants
 alike; only an invariant calling a public helper recurses. A class method is
-called without the service's invariants.
+called without the service's invariants, but with its first argument's.
 """
 
 from __future__ import annotations
@@ -203,6 +203,62 @@ def test_class_method_does_not_run_the_service_invariants():
 
     assert order.total == 7
     assert calls == []
+
+
+def _class_method_service():
+    domain = Domain(name="DomainServiceClassMethodWrapped")
+    calls: list[str] = []
+
+    @domain.aggregate
+    class Order:
+        total = Integer(default=0)
+
+        @invariant.pre
+        def order_pre(self):
+            calls.append("order_pre")
+
+    @domain.aggregate
+    class Inventory:
+        quantity = Integer(default=0)
+
+    @domain.domain_service(part_of=[Order, Inventory])
+    class Pricing:
+        # Reads only: setting a field on the order would run its pre
+        # invariants as well.
+        @classmethod
+        def quote(cls, order, inventory):
+            return order.total + inventory.quantity
+
+    domain.init(traverse=False)
+    return domain, Order, Inventory, Pricing, calls
+
+
+def test_class_method_runs_the_first_arguments_invariants():
+    domain, Order, Inventory, Pricing, calls = _class_method_service()
+
+    with domain.domain_context():
+        order = Order(total=2)
+        calls.clear()
+        quote = Pricing.quote(order, Inventory(quantity=7))
+
+    assert quote == 9
+    assert calls == ["order_pre"]
+
+
+def test_class_method_with_a_list_first_raises_attribute_error():
+    domain, Order, Inventory, Pricing, _ = _class_method_service()
+
+    with domain.domain_context():
+        with pytest.raises(AttributeError, match="_invariants"):
+            Pricing.quote([Order()], Inventory(quantity=7))
+
+
+def test_class_method_called_on_an_instance_raises_type_error():
+    domain, Order, Inventory, Pricing, _ = _class_method_service()
+
+    with domain.domain_context():
+        with pytest.raises(TypeError):
+            Pricing().quote(Order(), Inventory(quantity=7))
 
 
 def test_underscore_helper_is_not_wrapped():

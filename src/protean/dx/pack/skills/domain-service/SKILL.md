@@ -98,8 +98,12 @@ class OrderPlacementService:
     @invariant.pre
     def inventory_should_have_sufficient_stock(self):
         stock = {i.product_id: i.quantity for i in self.inventories}
+        # Lines for the same product draw on the same stock, so add them up.
+        ordered: dict[str, int] = {}
         for item in self.order.items:
-            if stock.get(item.product_id, 0) < item.quantity:
+            ordered[item.product_id] = ordered.get(item.product_id, 0) + item.quantity
+        for product_id, quantity in ordered.items():
+            if stock.get(product_id, 0) < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
     def place_order(self):
@@ -123,8 +127,12 @@ class place_order:
     @invariant.pre
     def inventory_should_have_sufficient_stock(self):
         stock = {i.product_id: i.quantity for i in self.inventories}
+        # Lines for the same product draw on the same stock, so add them up.
+        ordered: dict[str, int] = {}
         for item in self.order.items:
-            if stock.get(item.product_id, 0) < item.quantity:
+            ordered[item.product_id] = ordered.get(item.product_id, 0) + item.quantity
+        for product_id, quantity in ordered.items():
+            if stock.get(product_id, 0) < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
     def __call__(self):
@@ -154,8 +162,12 @@ class OrderFulfillmentService:
 
     def _check_stock(self):
         stock = {i.product_id: i.quantity for i in self.inventories}
+        # Lines for the same product draw on the same stock, so add them up.
+        ordered: dict[str, int] = {}
         for item in self.order.items:
-            if stock.get(item.product_id, 0) < item.quantity:
+            ordered[item.product_id] = ordered.get(item.product_id, 0) + item.quantity
+        for product_id, quantity in ordered.items():
+            if stock.get(product_id, 0) < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
 # Usage:
@@ -165,7 +177,7 @@ class OrderFulfillmentService:
 
 ### 3. Class with class methods
 
-Best for a stateless, functional style with no invariants. Protean does not run the service's `@invariant.pre` or `@invariant.post` methods around a class method, so a class-method service should not declare any. Validate inside the method, and call it on the class:
+Best for a stateless, functional style with no invariants. Protean does not run the service's `@invariant.pre` or `@invariant.post` methods around a class method, so a class-method service should not declare any. Protean still wraps a public class method, and treats its first argument as the service instance. It runs the first argument's own invariants around the call, so that argument must be an aggregate: a list there raises `AttributeError`. A call on an instance raises `TypeError`, because the instance is passed as one argument too many. Validate inside the method, and call it on the class:
 
 ```python
 @domain.domain_service(part_of=[Order, Inventory])
@@ -173,8 +185,12 @@ class StockReservationService:
     @classmethod
     def place_order(cls, order, inventories):
         stock = {i.product_id: i.quantity for i in inventories}
+        # Lines for the same product draw on the same stock, so add them up.
+        ordered: dict[str, int] = {}
         for item in order.items:
-            if stock.get(item.product_id, 0) < item.quantity:
+            ordered[item.product_id] = ordered.get(item.product_id, 0) + item.quantity
+        for product_id, quantity in ordered.items():
+            if stock.get(product_id, 0) < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
         order.confirm()
         return order
@@ -192,7 +208,7 @@ class StockReservationService:
 5. **Don't persist**: Domain services change the primary aggregate but never call repositories. The calling layer handles persistence.
 6. **Invariants span aggregates**: Use `@invariant.pre` and `@invariant.post` for validations that involve multiple aggregates.
 7. **Prefix helper methods with `_`**: Protean wraps every public instance method and `__call__` with the invariant checks. A public helper called from another public method runs the pre and post invariants again, against the state the outer method has reached so far. If that half-finished state breaks an invariant, the helper raises `ValidationError` before the outer method completes. An invariant that calls a public helper fails: the helper's wrapper runs the invariant again, which calls the helper again, until Python's recursion limit stops the call. A method whose name starts with `_` is not wrapped.
-8. **Choose flavor based on needs**: Callable class for a single operation, instance methods for multiple operations, class methods for a service with no invariants. Protean does not run a service's invariants around its class methods.
+8. **Choose flavor based on needs**: Callable class for a single operation, instance methods for multiple operations, class methods for a service with no invariants. Protean does not run a service's invariants around its class methods. It runs the first argument's invariants instead, so pass an aggregate first and call the method on the class.
 9. **Change only the primary aggregate**: A domain service reads several aggregates but changes one, the aggregate the command belongs to. The command handler persists only that aggregate. The other aggregate changes through an event handler in the cluster that owns the event, which issues a command to the other aggregate. See the `event-handler` skill's cross-aggregate reference and the `add-domain-service-flow` skill.
 10. **Review regularly**: As the domain model matures, revisit whether logic in a domain service should be moved to an aggregate or vice versa.
 
@@ -218,8 +234,12 @@ class PlaceOrderService:
     @invariant.pre
     def inventory_should_have_sufficient_stock(self):
         stock = {i.product_id: i.quantity for i in self.inventories}
+        # Lines for the same product draw on the same stock, so add them up.
+        ordered: dict[str, int] = {}
         for item in self.order.items:
-            if stock.get(item.product_id, 0) < item.quantity:
+            ordered[item.product_id] = ordered.get(item.product_id, 0) + item.quantity
+        for product_id, quantity in ordered.items():
+            if stock.get(product_id, 0) < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
     @invariant.post

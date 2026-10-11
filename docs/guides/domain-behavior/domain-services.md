@@ -53,6 +53,12 @@ OrderPlacementService.place_order(order, inventories)
     Protean does not run a Domain Service's invariants around its class
     methods, so a class-method service should not declare any. If you need
     pre/post invariants, use the instance-method or callable-class flavor.
+    Protean still wraps a public class method and treats its first argument
+    as the service instance. It runs that argument's own invariants around
+    the call, so pass an aggregate first: a list there raises
+    `AttributeError`. Call the method on the class. A call on an instance
+    raises `TypeError`, because the instance is passed as one argument too
+    many.
 
 ### 2. Class with instance methods
 
