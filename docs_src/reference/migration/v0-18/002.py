@@ -43,7 +43,7 @@ def ship_order(order_id):
 def cancel_pending_orders():
     # Load each match and invoke the behaviour method on it
     repo = domain.repository_for(Order)
-    for order in repo._dao.query.filter(status="pending").all():
+    for order in repo.query.filter(status="pending").all():
         order.cancel()
         repo.add(order)
 

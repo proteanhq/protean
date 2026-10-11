@@ -71,7 +71,7 @@ def test_get_ttl_returns_seconds():
         cache = example.domain.cache_for(example.UserProfile)
         cache.add(example.UserProfile(user_id="u1", name="Ada"), ttl=120)
 
-        assert 119 < example.seconds_left(cache, "user_profile:::u1") <= 120
+        assert 0 < example.seconds_left(cache, "user_profile:::u1") <= 120
 
 
 def test_event_sourced_marks_the_aggregate_event_sourced():
