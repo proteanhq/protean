@@ -2,7 +2,7 @@
 Basic domain service: Fund transfer between two accounts.
 
 This example demonstrates:
-- Domain service spanning two Account aggregates
+- Domain service spanning the source and target Account aggregates
 - Pre-invariants: the amount is positive, the source has enough funds, and
   the source and target are different accounts
 - Callable pattern: instantiate with aggregates, call to execute
@@ -13,7 +13,7 @@ This example demonstrates:
   credit for the same transfer changes nothing
 
 Domain: A banking system where transferring funds requires checking the
-source balance before debiting. The rule spans two Account aggregates and
+source balance before debiting. The rule spans the source and target accounts and
 belongs to neither one.
 
 The check across both accounts happens in one step, in the source account's
@@ -175,7 +175,7 @@ class FundsTransferService:
 
     @invariant.pre
     def accounts_must_differ(self):
-        """A transfer needs two different accounts."""
+        """The source and target must be different accounts."""
         if self.source.account_id == self.target.account_id:
             raise ValidationError(
                 {"_service": ["Source and target must be different accounts"]}

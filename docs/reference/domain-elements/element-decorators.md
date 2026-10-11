@@ -198,7 +198,7 @@ Receives commands and orchestrates aggregate state changes. Uses
 | `subscription_type` | `None` | Subscription behavior enum |
 | `subscription_profile` | `None` | Subscription profile enum |
 | `subscription_config` | `{}` | Custom subscription configuration |
-| `sequential_by` | `None` | Field name on every command this handler handles. Registration checks the field exists, but commands do not go through the outbox yet, so the option has no runtime effect on a command handler today. See [Sequential processing](../server/sequential-by.md) |
+| `sequential_by` | `None` | Field name on every command this handler handles. Registration checks the field exists on each command and marks the handler's stream category as partitioned. See [Sequential processing](../server/sequential-by.md) |
 | `timeout` | `None` | Default deadline in seconds for commands this handler processes. Falls back to `command_default_timeout`; an explicit deadline on `domain.process()` wins over both |
 | `retries` | `None` | Maximum retries when the handler fails with a transient exception. Overrides the domain's `server.transient_retry` setting; `None` uses that setting |
 | `backoff` | `None` | Delay strategy between transient retries: `"exponential"`, `"linear"` or `"fixed"`. `None` uses the domain setting |
