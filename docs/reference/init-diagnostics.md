@@ -21,8 +21,13 @@ design time under the same code.
 
 A coded exception exposes these attributes:
 
+??? example "The domain this example uses"
+
+    ```python
+    --8<-- "reference/init-diagnostics/001.py:domain"
+    ```
+
 ```python
---8<-- "reference/init-diagnostics/001.py:domain"
 --8<-- "reference/init-diagnostics/001.py:coded_exception"
 ```
 

@@ -64,3 +64,19 @@ def test_rebuild_replaces_stale_projection_data(example):
 
     assert result.events_dispatched == 4
     assert repo.get("acc-1").balance == 150.0
+
+
+def test_rebuild_with_a_batch_size_replays_every_event(example):
+    module, _ = example
+
+    assert module.batched.events_dispatched == 4
+    assert module.batched.success is True
+
+
+def test_a_batch_smaller_than_the_stream_still_replays_every_event(example):
+    module, _ = example
+
+    result = module.domain.rebuild_projection(module.Balances, batch_size=1)
+
+    assert result.events_dispatched == 4
+    assert module.domain.repository_for(module.Balances).get("acc-1").balance == 150.0

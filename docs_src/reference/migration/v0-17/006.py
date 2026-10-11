@@ -64,6 +64,7 @@ class OrderPlaced:
 
 
 # --8<-- [start:reactions]
+# `stock` and `partner` are clients for two outside services
 @domain.event_handler(part_of=Order)
 class OrderReactions:
     @handle(OrderPlaced)
@@ -72,8 +73,8 @@ class OrderReactions:
 
     @handle(OrderPlaced)
     def notify_partner(self, event):
-        partner.notify(event.order_id)  # before: might never run
-        # after: no longer skipped
+        # Before 0.17 this might never run. Now it always gets its turn.
+        partner.notify(event.order_id)
 
 
 # --8<-- [end:reactions]

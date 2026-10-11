@@ -79,7 +79,7 @@ class TestMemoryCacheAbsentKey:
     def test_set_ttl_still_rejects_an_invalid_ttl_on_an_absent_key(self, cache_example):
         _, cache = cache_example
 
-        with pytest.raises(ConfigurationError):
+        with pytest.raises(ConfigurationError, match="TTL = -1"):
             cache.set_ttl("user_profile:::never-added", -1)
 
 
@@ -263,6 +263,77 @@ class TestReservedFieldName:
         assert order.order_id == "o1"
         assert not hasattr(order, "note")
 
+    def test_replay_drops_the_helpers_of_a_reserved_association(self):
+        domain = Domain(name="Ordering")
+        seen = {}
+
+        @domain.entity(part_of="Order")
+        class OrderItem:
+            name = String()
+
+        @domain.event(part_of="Order")
+        class ItemAdded:
+            order_id = Identifier(identifier=True)
+            name = String()
+
+        @domain.aggregate(event_sourced=True, reserved=["items"])
+        class Order:
+            order_id = Identifier(identifier=True)
+
+            @apply
+            def item_added(self, event: ItemAdded):
+                self.order_id = event.order_id
+                seen["add"] = self.add_items(OrderItem(name=event.name))
+                seen["remove"] = self.remove_items(OrderItem(name=event.name))
+                for reader in ("get_one_from_items", "filter_items"):
+                    try:
+                        getattr(self, reader)(name=event.name)
+                    except AttributeError as exc:
+                        seen[reader] = str(exc)
+
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            order = Order.from_events([ItemAdded(order_id="o1", name="pen")])
+
+        assert order.order_id == "o1"
+        assert seen == {
+            "add": None,
+            "remove": None,
+            "get_one_from_items": "'Order' object has no attribute 'get_one_from_items'",
+            "filter_items": "'Order' object has no attribute 'filter_items'",
+        }
+
+    def test_the_live_path_still_raises_on_a_reserved_helper(self):
+        domain = Domain(name="Ordering")
+
+        @domain.entity(part_of="Order")
+        class OrderItem:
+            name = String()
+
+        @domain.aggregate(event_sourced=True, reserved=["items"])
+        class Order:
+            order_id = Identifier(identifier=True)
+
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            order = Order(order_id="o1")
+            with pytest.raises(AttributeError, match="add_items"):
+                order.add_items(OrderItem(name="pen"))
+
+    @pytest.mark.parametrize("name", ["", "_note"])
+    def test_an_empty_or_private_reserved_name_raises(self, name):
+        domain = Domain(name="Ordering")
+
+        with pytest.raises(IncorrectUsageError, match="are not field names"):
+
+            @domain.aggregate(event_sourced=True, reserved=[name])
+            class Order:
+                order_id = Identifier(identifier=True)
+
+            domain.init(traverse=False)
+
     def test_reusing_a_reserved_name_raises(self):
         domain = Domain(name="Ordering")
 
@@ -301,15 +372,74 @@ class TestRawIndexDialect:
             domain.init(traverse=False)
 
 
-class TestAssertHelpersRemoved:
-    def test_pytest_raises_replaces_assert_invalid(self, validation_example):
-        validation_example.test_an_order_needs_an_item()
+def accepts_anything(**kwargs):
+    return None
 
-    def test_match_replaces_assert_invalid(self, validation_example):
-        validation_example.test_an_order_needs_an_item_with_match()
+
+def rejects_with(message):
+    def build(**kwargs):
+        raise ValidationError({"items": [message]})
+
+    return build
+
+
+class TestAssertHelpersRemoved:
+    """The page's replacement tests pass on the real ``Order``, and fail when
+    ``Order`` accepts an empty order or rejects it for another reason."""
+
+    @pytest.mark.parametrize(
+        "name",
+        ["test_an_order_needs_an_item", "test_an_order_needs_an_item_with_match"],
+    )
+    def test_the_assert_invalid_replacement_passes_on_the_real_order(
+        self, validation_example, name
+    ):
+        getattr(validation_example, name)()
+
+    @pytest.mark.parametrize(
+        "name",
+        ["test_an_order_needs_an_item", "test_an_order_needs_an_item_with_match"],
+    )
+    def test_the_assert_invalid_replacement_fails_when_nothing_raises(
+        self, validation_example, monkeypatch, name
+    ):
+        monkeypatch.setattr(validation_example, "Order", accepts_anything)
+
+        with pytest.raises(pytest.fail.Exception, match="DID NOT RAISE"):
+            getattr(validation_example, name)()
+
+    def test_the_assert_invalid_replacement_checks_the_message(
+        self, validation_example, monkeypatch
+    ):
+        monkeypatch.setattr(
+            validation_example, "Order", rejects_with("Customer is unknown")
+        )
+
+        with pytest.raises(AssertionError):
+            validation_example.test_an_order_needs_an_item()
+
+    def test_the_match_replacement_checks_the_message(
+        self, validation_example, monkeypatch
+    ):
+        monkeypatch.setattr(
+            validation_example, "Order", rejects_with("Customer is unknown")
+        )
+
+        with pytest.raises(AssertionError, match="at least one item"):
+            validation_example.test_an_order_needs_an_item_with_match()
 
     def test_a_plain_call_replaces_assert_valid(self, validation_example):
         validation_example.test_an_order_with_an_item_is_valid()
+
+    def test_the_plain_call_fails_when_the_order_is_rejected(
+        self, validation_example, monkeypatch
+    ):
+        monkeypatch.setattr(
+            validation_example, "Order", rejects_with("Order is already shipped")
+        )
+
+        with pytest.raises(ValidationError, match="already shipped"):
+            validation_example.test_an_order_with_an_item_is_valid()
 
     def test_the_invariant_message_is_what_the_page_checks(self, validation_example):
         with pytest.raises(ValidationError) as exc_info:
@@ -332,11 +462,15 @@ class TestAssertHelpersRemoved:
             from protean._deprecation import RemovedInProtean018Warning  # noqa: F401
 
 
-def test_a_rejected_change_is_rolled_back():
+def test_a_rejected_change_is_rolled_back(capsys):
     module = load_example("reference/migration/v0-18/007.py")
 
     with activated(module.domain):
         assert module.rejected_total() == 10.0
+
+    out = capsys.readouterr().out
+    assert out.startswith("rejected: ")
+    assert "{'total': ['Total cannot be negative']}" in out
 
 
 class TestOmittedValueObjectArgument:
@@ -381,9 +515,9 @@ class TestNonDictPositionalArgument:
             example.Order("c-1")
 
     def test_renamed_from_with_a_non_string_raises_type_error(self):
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match="renamed_from"):
             String(renamed_from=42)
 
     def test_renamed_from_with_an_empty_alias_still_raises_value_error(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="renamed_from"):
             String(renamed_from=[""])

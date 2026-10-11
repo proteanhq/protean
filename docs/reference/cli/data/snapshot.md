@@ -108,7 +108,12 @@ See [Domain Discovery](../project/discovery.md) for the full resolution logic.
 The same functionality is available as Domain methods for use in scripts or
 the `protean shell`:
 
+??? example "The domain this example uses"
+
+    ```python
+    --8<-- "reference/cli/data/snapshot/001.py:domain"
+    ```
+
 ```python
---8<-- "reference/cli/data/snapshot/001.py:domain"
 --8<-- "reference/cli/data/snapshot/001.py:api"
 ```

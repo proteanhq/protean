@@ -30,6 +30,15 @@ def test_example_test_fails_with_another_domain(fixture_example):
         fixture_example.test_domain_initialization(Domain(name="Other"))
 
 
+@pytest.mark.no_test_domain
+def test_example_test_fails_with_a_test_domain_without_test_config(fixture_example):
+    domain = Domain(name="Test")
+    domain.config["testing"] = False
+
+    with pytest.raises(AssertionError):
+        fixture_example.test_domain_initialization(domain)
+
+
 @pytest.fixture
 def place_order_example():
     module = load_example("community/contributing/testing/002.py")

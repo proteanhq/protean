@@ -76,7 +76,8 @@ with domain.domain_context():
     print(f"{result.events_dispatched} events replayed")
 
     # Rebuild a single projection with custom batch size
-    result = domain.rebuild_projection(Balances, batch_size=1000)
+    batched = domain.rebuild_projection(Balances, batch_size=1000)
+    assert batched.success
 
     # Rebuild all projections
     results: dict[str, RebuildResult] = domain.rebuild_all_projections()

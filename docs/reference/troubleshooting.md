@@ -4,11 +4,13 @@ A cookbook of common issues and how to debug them. For error classification
 patterns in production, see
 [Classify Async Processing Errors](../patterns/classify-async-processing-errors.md).
 
-The examples on this page use this small order domain:
+The examples on this page use a small order domain:
 
-```python
---8<-- "reference/troubleshooting/001.py:model"
-```
+??? example "The order domain these examples use"
+
+    ```python
+    --8<-- "reference/troubleshooting/001.py:model"
+    ```
 
 ---
 
@@ -208,9 +210,10 @@ causes:
 
     Field validation always produces the `dict[str, list[str]]` above, so code
     handling *that* can index it safely. But `ValidationError` carries whatever
-    it was raised with, and an invariant or a domain service is free to raise
-    `ValidationError("Order is already shipped")`. Then `messages` is a plain
-    `str`, and a list raises it as a `list[str]`. A blanket
+    it was raised with. An aggregate method, a domain service method or a
+    handler is free to raise `ValidationError("Order is already shipped")`.
+    Then `messages` is a plain `str`, and a list raises it as a `list[str]`.
+    (An `@invariant` check is different: it must raise the dict form.) A blanket
     `except ValidationError` that does `e.messages.items()` will fail on those.
 
     ```python
@@ -249,6 +252,11 @@ protean events trace <correlation_id> --domain .
 ```python
 --8<-- "reference/troubleshooting/003.py:endpoint"
 ```
+
+`DomainContextMiddleware` already uses the `X-Correlation-ID` header, or
+`X-Request-ID` when that is missing, as the default correlation ID. Pass
+`correlation_id` yourself when the ID comes from somewhere else, or when it must
+win over an `X-Correlation-ID` header.
 
 See [Message Tracing](../guides/domain-behavior/message-tracing.md) for the full
 guide.

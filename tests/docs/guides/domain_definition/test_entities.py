@@ -12,7 +12,7 @@ import pytest
 
 from protean import Domain
 from protean.exceptions import ConfigurationError, IncorrectUsageError, ValidationError
-from protean.fields import String
+from protean.fields import HasMany, HasOne, String
 from protean.utils.reflection import attributes, declared_fields
 from tests.docs.support import load_example
 
@@ -222,3 +222,97 @@ def test_an_explicit_reference_renames_the_shadow_field():
     assert "order_id" not in attributes(example.OrderItem)
     assert item.parent_order_id == order.id
     assert item.order is order
+
+
+class TestCommonErrors:
+    def test_an_entity_cannot_enclose_an_aggregate(self):
+        domain = Domain(name="Publishing")
+
+        @domain.aggregate
+        class Author:
+            name = String()
+
+        @domain.aggregate
+        class Post:
+            name = String()
+
+        @domain.entity(part_of=Post)
+        class Comment:
+            content = String()
+            author = HasOne(Author)
+
+        with pytest.raises(
+            IncorrectUsageError,
+            match="Field `author` in `Comment` is not linked to an Entity class",
+        ):
+            domain.init(traverse=False)
+
+    def test_a_missing_required_field_raises_validation_error(self):
+        domain = Domain(name="Publishing")
+
+        @domain.aggregate
+        class Post:
+            name = String()
+
+        @domain.entity(part_of=Post)
+        class Comment:
+            content = String(required=True)
+
+        with activated(domain):
+            with pytest.raises(ValidationError) as exc:
+                Comment()
+
+        assert exc.value.messages == {"content": ["is required"]}
+
+    def test_raising_an_event_of_another_aggregate_raises_configuration_error(self):
+        domain = Domain(name="Publishing")
+
+        @domain.aggregate
+        class Post:
+            name = String()
+            comments = HasMany("Comment")
+
+        @domain.entity(part_of=Post)
+        class Comment:
+            content = String()
+
+            def flag(self):
+                self.raise_(AuthorFlagged(reason="spam"))
+
+        @domain.aggregate
+        class Author:
+            name = String()
+
+        @domain.event(part_of=Author)
+        class AuthorFlagged:
+            reason = String()
+
+        with activated(domain):
+            comment = Comment(content="Buy now")
+            Post(name="Hello", comments=[comment])
+
+            with pytest.raises(
+                ConfigurationError,
+                match="Event `AuthorFlagged` is not associated with aggregate `Post`",
+            ):
+                comment.flag()
+
+
+def test_a_plain_mixin_contributes_no_fields():
+    domain = Domain(name="Publishing")
+
+    class Tagged:
+        tag = String()
+
+    @domain.aggregate
+    class Post:
+        name = String()
+
+    @domain.entity(part_of=Post)
+    class Comment(Tagged):
+        content = String()
+
+    domain.init(traverse=False)
+
+    assert "tag" not in declared_fields(Comment)
+    assert "content" in declared_fields(Comment)

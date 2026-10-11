@@ -544,6 +544,9 @@ class TestTestingProjectors:
             capture_output=True,
             text=True,
             check=False,
+            timeout=120,
         )
 
-        assert re.search(r"\b2 passed\b", result.stdout), result.stdout + result.stderr
+        output = result.stdout + result.stderr
+        assert result.returncode == 0, output
+        assert re.search(r"\b2 passed\b", result.stdout), output

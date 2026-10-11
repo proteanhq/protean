@@ -168,7 +168,7 @@ class TestNoDomainContext:
         module = load_example("reference/troubleshooting/001.py")
         module.domain.init(traverse=False)
 
-        with pytest.warns(UserWarning, match="Working outside of domain context"):
+        with pytest.warns(UserWarning, match="^Working outside of domain context"):
             with pytest.raises(AttributeError, match="repository_for"):
                 current_domain.repository_for(module.Order)
 
@@ -176,7 +176,7 @@ class TestNoDomainContext:
         module = load_example("reference/troubleshooting/001.py")
         module.domain.init(traverse=False)
 
-        with pytest.warns(UserWarning, match="Working outside of domain context"):
+        with pytest.warns(UserWarning, match="^Working outside of domain context"):
             with pytest.raises(AttributeError, match="config"):
                 module.Order(customer_id="cust-1")
 
@@ -196,9 +196,11 @@ class TestNoDomainContext:
 
         steps = fixture.domain_context.__wrapped__(domain)
         next(steps)
-        assert current_domain.name == "Tests"
+        try:
+            assert current_domain.name == "Tests"
+        finally:
+            steps.close()
 
-        steps.close()
         assert not has_domain_context()
 
     @pytest.mark.fastapi
@@ -248,17 +250,44 @@ class TestAggregateValidationErrors:
             }
         )
 
-    def test_messages_is_a_plain_string_when_raised_with_one(self):
-        with pytest.raises(ValidationError) as exc:
-            raise ValidationError("Order is already shipped")
+    def test_the_example_opens_its_own_domain_context(self, capsys):
+        module = load_example("reference/troubleshooting/001.py")
+        module.domain.init(traverse=False)
 
-        assert exc.value.messages == "Order is already shipped"
+        module.show_validation_errors()
 
-    def test_messages_is_a_list_when_raised_with_one(self):
-        with pytest.raises(ValidationError) as exc:
-            raise ValidationError(["Order is already shipped"])
+        assert not has_domain_context()
+        assert "'total': ['Input should be greater than or equal to 0']" in (
+            capsys.readouterr().out
+        )
 
-        assert exc.value.messages == ["Order is already shipped"]
+    @pytest.mark.parametrize(
+        "raised",
+        ["Order is already shipped", ["Order is already shipped"]],
+        ids=["str", "list"],
+    )
+    def test_domain_code_can_raise_messages_that_are_not_a_dict(self, raised):
+        domain = Domain(name="Sales")
+
+        @domain.aggregate
+        class Order:
+            status: String(default="shipped")
+
+            def cancel(self):
+                if self.status == "shipped":
+                    raise ValidationError(raised)
+                self.status = "cancelled"
+
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            order = Order()
+            with pytest.raises(ValidationError) as exc:
+                order.cancel()
+
+        assert exc.value.messages == raised
+        with pytest.raises(AttributeError, match="items"):
+            exc.value.messages.items()
 
 
 class TestMessageTracing:
@@ -277,15 +306,19 @@ class TestMessageTracing:
         module = load_example("reference/troubleshooting/003.py")
         module.domain.init(traverse=False)
 
+        # The middleware prefers X-Correlation-ID, so only the endpoint's own
+        # correlation_id argument can put req-42 on the chain.
         response = TestClient(module.app).post(
             "/orders",
             json={"customer_id": "cust-1"},
-            headers={"X-Request-Id": "req-42"},
+            headers={"X-Request-Id": "req-42", "X-Correlation-ID": "from-middleware"},
         )
 
         assert response.status_code == 200
         with module.domain.domain_context():
-            tree = module.domain.event_store.store.build_causation_tree("req-42")
+            store = module.domain.event_store.store
+            assert store.build_causation_tree("from-middleware") is None
+            tree = store.build_causation_tree("req-42")
         assert tree.message_type == "Sales.PlaceOrder.v1"
         assert [child.message_type for child in tree.children] == [
             "Sales.OrderPlaced.v1"

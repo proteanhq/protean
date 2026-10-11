@@ -16,6 +16,7 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.fields import String
+from protean.utils.globals import current_uow
 from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -39,6 +40,38 @@ def test_a_failed_nested_unit_of_work_dooms_the_outer_one():
             example.domain.repository_for(example.Order).get(order.id)
         with pytest.raises(ObjectNotFoundError):
             example.domain.repository_for(example.Audit).get(entry.id)
+
+
+def test_the_order_is_committed_before_the_partner_call(monkeypatch):
+    example = load_example("reference/migration/v0-17/001.py")
+    calls = []
+
+    def record_post(url, json):
+        # A UnitOfWork still open here would hold its locks during the call.
+        assert not current_uow
+        stored = example.domain.repository_for(example.Order).get(json["order_id"])
+        calls.append((url, json, stored.status))
+
+    with activated(example.domain):
+        order = example.Order(customer="Jane")
+        example.domain.repository_for(example.Order).add(order)
+        monkeypatch.setattr(example.httpx, "post", record_post)
+
+        example.confirm_order(order.id, {"order_id": order.id})
+
+    assert calls == [
+        ("https://partner.example/webhook", {"order_id": order.id}, "confirmed")
+    ]
+
+
+def test_get_ttl_returns_seconds():
+    example = load_example("reference/migration/v0-17/008.py")
+
+    with activated(example.domain):
+        cache = example.domain.cache_for(example.UserProfile)
+        cache.add(example.UserProfile(user_id="u1", name="Ada"), ttl=120)
+
+        assert 119 < example.seconds_left(cache, "user_profile:::u1") <= 120
 
 
 def test_event_sourced_marks_the_aggregate_event_sourced():

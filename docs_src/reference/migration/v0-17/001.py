@@ -1,3 +1,5 @@
+import httpx
+
 from protean import Domain, UnitOfWork
 from protean.fields import String
 
@@ -7,6 +9,10 @@ domain = Domain(name="Ordering")
 @domain.aggregate
 class Order:
     customer = String()
+    status = String(default="new")
+
+    def confirm(self):
+        self.status = "confirmed"
 
 
 @domain.aggregate
@@ -31,3 +37,16 @@ def place_order(order, entry):
 
 
 # --8<-- [end:nested]
+
+
+# --8<-- [start:commit_then_call]
+def confirm_order(order_id, payload):
+    with UnitOfWork():
+        order = domain.repository_for(Order).get(order_id)
+        order.confirm()
+        domain.repository_for(Order).add(order)
+
+    httpx.post("https://partner.example/webhook", json=payload)
+
+
+# --8<-- [end:commit_then_call]

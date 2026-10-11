@@ -145,12 +145,13 @@ from protean.exceptions import ValidationError
 
 
 def show_validation_errors():
-    try:
-        Order(customer_id="", total=-5)
-    except ValidationError as e:
-        print(e.messages)
-        # {'customer_id': ['String should have at least 1 character'],
-        #  'total': ['Input should be greater than or equal to 0']}
+    with domain.domain_context():
+        try:
+            Order(customer_id="", total=-5)
+        except ValidationError as e:
+            print(e.messages)
+            # {'customer_id': ['String should have at least 1 character'],
+            #  'total': ['Input should be greater than or equal to 0']}
 
 
 # --8<-- [end:validation]

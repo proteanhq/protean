@@ -182,6 +182,33 @@ class TestHandlingEventsFromOtherDomains:
         assert event_cls.__type__ == type_string
         assert type_string in ex.OrderFulfillmentPM._handlers
 
+    def test_a_stored_message_is_delivered_by_its_type_string(self, external_example):
+        ex = external_example
+        pm = ex.OrderFulfillmentPM
+        store = ex.domain.event_store.store
+        stream = "billing::payment-pay-1"
+        # Written the way the billing domain stores it: only the type string
+        # links the payload to this domain's PaymentReceived class.
+        store._write(
+            stream,
+            "Billing.PaymentReceived.v1",
+            {"payment_id": "pay-1", "order_id": "ord-1", "amount": 20.0},
+            {
+                "headers": {
+                    "id": "billing-msg-1",
+                    "type": "Billing.PaymentReceived.v1",
+                    "stream": stream,
+                },
+                "domain": {"kind": "EVENT", "stream_category": "billing::payment"},
+            },
+        )
+        [message] = store.read(stream)
+
+        pm._handle(ex.OrderPlaced(order_id="ord-1", customer_id="c-1", total=20.0))
+        pm._handle(message)
+
+        assert statuses(ex, pm, "ord-1") == ["awaiting_payment", "awaiting_inventory"]
+
     def test_order_completes_when_payment_then_inventory_arrive(self, external_example):
         ex = external_example
         pm = ex.OrderFulfillmentPM
