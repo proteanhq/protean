@@ -323,3 +323,26 @@ def test_a_release_recorded_before_its_reservation_still_counts() -> None:
         requester.record_reservation("RES-1")
 
         assert requester.active_reservation_count() == 0
+
+
+@pytest.mark.parametrize("released", [False, True])
+def test_a_reused_reservation_id_cannot_hold_a_second_room(released: bool) -> None:
+    ns, domain = _load("domain_service_flow_invariants.py")
+    with domain.domain_context():
+        _requester(ns, domain)
+        _reserve_rooms(ns, domain, range(1, 2))
+        if released:
+            domain.process(ns["ReleaseRoom"](room_id="R-1", reservation_id="RES-1"))
+        domain.repository_for(ns["Room"]).add(
+            ns["Room"](room_id="R-2", name="Room 2", capacity=8)
+        )
+
+        with pytest.raises(ValidationError) as exc:
+            domain.process(
+                ns["ReserveRoom"](
+                    reservation_id="RES-1", room_id="R-2", requester_id="P-1"
+                )
+            )
+
+        assert exc.value.messages == {"_service": ["Reservation id is already in use"]}
+        assert domain.repository_for(ns["Room"]).get("R-2").status == "available"
