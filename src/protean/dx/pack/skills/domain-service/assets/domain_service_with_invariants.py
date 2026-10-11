@@ -58,6 +58,13 @@ class Order:
     status: String(choices=OrderStatus, default=OrderStatus.PENDING.value)
     payment_id: Identifier()
 
+    def quantities_by_product(self) -> dict[str, int]:
+        """Total quantity per product, adding up lines for the same product."""
+        totals: dict[str, int] = {}
+        for item in self.items:
+            totals[item.product_id] = totals.get(item.product_id, 0) + item.quantity
+        return totals
+
     def confirm(self):
         self.status = OrderStatus.CONFIRMED.value
         self.raise_(
@@ -135,11 +142,13 @@ class OrderPlacementService:
 
     @invariant.pre
     def inventory_should_have_sufficient_stock(self):
-        for item in self.order.items:
+        # Two lines for the same product draw on the same stock, so check
+        # their total.
+        for product_id, quantity in self.order.quantities_by_product().items():
             inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
+                (i for i in self.inventories if i.product_id == product_id), None
             )
-            if inventory is None or inventory.quantity < item.quantity:
+            if inventory is None or inventory.quantity < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
     @invariant.pre
@@ -159,10 +168,12 @@ class OrderPlacementService:
         # The inventory reserves stock from the event's items, so an item
         # missing from the event would never be reserved.
         confirmations = [e for e in self.order._events if isinstance(e, OrderConfirmed)]
-        ordered = {item.product_id: item.quantity for item in self.order.items}
-        listed = {}
-        if confirmations:
-            listed = {i["product_id"]: i["quantity"] for i in confirmations[-1].items}
+        ordered = self.order.quantities_by_product()
+        listed: dict[str, int] = {}
+        for line in confirmations[-1].items if confirmations else []:
+            listed[line["product_id"]] = (
+                listed.get(line["product_id"], 0) + line["quantity"]
+            )
 
         if listed != ordered:
             raise ValidationError(

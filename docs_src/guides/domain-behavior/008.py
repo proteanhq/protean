@@ -44,6 +44,13 @@ class Order:
         if not self.items or len(self.items) == 0:
             raise ValidationError({"_entity": ["Order must contain at least one item"]})
 
+    def quantities_by_product(self) -> dict[str, int]:
+        """Total quantity per product, adding up lines for the same product."""
+        totals: dict[str, int] = {}
+        for item in self.items:
+            totals[item.product_id] = totals.get(item.product_id, 0) + item.quantity
+        return totals
+
     def confirm(self):
         self.status = OrderStatus.CONFIRMED.value
         self.raise_(
@@ -99,11 +106,11 @@ class Inventory:
 class OrderPlacementService:
     @classmethod
     def place_order(cls, order, inventories):
-        for item in order.items:
+        for product_id, quantity in order.quantities_by_product().items():
             inventory = next(
-                (i for i in inventories if i.product_id == item.product_id), None
+                (i for i in inventories if i.product_id == product_id), None
             )
-            if inventory is None or inventory.quantity < item.quantity:
+            if inventory is None or inventory.quantity < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
         order.confirm()

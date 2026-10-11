@@ -40,7 +40,7 @@ the input necessary for performing the business function. The method checks
 the stock itself and returns the order.
 
 ```python hl_lines="1-2"
---8<-- "guides/domain-behavior/008.py:98:110"
+--8<-- "guides/domain-behavior/008.py:105:117"
 ```
 
 Invoking it is straightforward:
@@ -60,7 +60,7 @@ In this flavor, the Domain Service is instantiated with the aggregates and each
 method performs a distinct business function.
 
 ```python hl_lines="1-2 9"
---8<-- "guides/domain-behavior/007.py:98:116"
+--8<-- "guides/domain-behavior/007.py:105:123"
 ```
 
 You would then instantiate the Domain Service, passing the relevant aggregates
@@ -77,7 +77,7 @@ If you have a single business function, you can model it as a callable
 class:
 
 ```python hl_lines="1-2 9"
---8<-- "guides/domain-behavior/006.py:99:117"
+--8<-- "guides/domain-behavior/006.py:106:124"
 ```
 
 ```shell
