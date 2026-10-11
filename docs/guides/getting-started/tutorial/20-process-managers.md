@@ -41,9 +41,12 @@ manager now sends those commands, so remove `reserve_inventory` from
 manager, which also releases the stock if a later step fails. If both stay,
 Inventory's command handler finds the order in `reserved_order_ids` and skips
 the second command, so the stock is still reserved once.
-`OrderConfirmed`, `ReserveInventory` and Inventory's reservation check stay as
-Chapter 13 defined them. `Inventory.reserve()` now also raises
-`InventoryReserved`, which tells the process manager a title is reserved.
+`OrderConfirmed` and `ReserveInventory` stay as Chapter 13 defined them.
+`Inventory.reserve()` now also raises `InventoryReserved`, which tells the
+process manager a title is reserved, and records the quantity it took for the
+order in `reserved_quantities`. Inventory's command handler also skips an order
+in `released_order_ids`, so a reservation that arrives after compensation has
+released the order takes no stock.
 
 The `OrderFulfillmentPM` coordinates the fulfillment workflow:
 
@@ -60,7 +63,10 @@ streams. It sees all events from these three aggregates.
 stateful. These fields are saved between events. `order_id` says which order
 the PM is tracking. `items` keeps the titles and quantities, so the PM knows
 what to release if shipping fails. `awaiting_titles` lists the titles not yet
-reserved, so the PM creates the shipment only after the last one.
+reserved, so the PM creates the shipment only after the last one. An
+`InventoryReserved` for a title no longer in the list is a repeat, and the PM
+ignores it. Shipment's command handler also skips an order that already has a
+shipment.
 
 **`start=True`**, The `on_order_confirmed` handler is marked as the start event. When an `OrderConfirmed` event
 arrives, Protean creates a *new* PM instance and stores the correlated `order_id`.
@@ -105,8 +111,16 @@ OrderConfirmed ──► ReserveInventory ──► CreateShipment
                           ReleaseInventory          CancelOrder
 ```
 
-The PM sends one `ReleaseInventory` per title, with the quantities it saved
-when the order was confirmed.
+The PM sends one `ReleaseInventory` per title. The command carries no
+quantity: Inventory returns the quantity it recorded for the order when it
+reserved.
+
+This chapter compensates a failed shipment only. If a reservation fails because
+another order took the last copies, `Inventory.reserve()` raises
+`ValidationError` and the order stays `CONFIRMED`. Handling that takes a
+`ReservationFailed` event in place of the error, and a PM handler that releases
+the titles already reserved and cancels the order, as `on_shipment_failed`
+does.
 
 This is the **saga pattern**. Each step has a compensating action that undoes
 it if a subsequent step fails. The process manager is the coordinator that
@@ -115,9 +129,10 @@ decides when to compensate.
 Design compensating actions to be **idempotent**. If `ReleaseInventory` is
 processed twice (e.g., due to a retry), the second invocation should be
 harmless. This is critical for reliability in asynchronous systems.
-`Inventory.release()` returns stock only for an order in
-`reserved_order_ids`, and then removes the order from the list, so a second
-release changes nothing.
+`Inventory.release()` returns the quantity in `reserved_quantities` for the
+order and adds the order to `released_order_ids`. A second release finds the
+order there and changes nothing. A release that arrives before its reservation
+returns nothing, and the reservation that follows is skipped.
 
 The full source below also has the command handlers that carry out each
 command: reserving and releasing stock, creating the shipment, and completing

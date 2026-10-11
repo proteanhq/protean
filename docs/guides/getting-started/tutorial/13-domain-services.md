@@ -129,8 +129,9 @@ asynchronous processing, the reservation fails in the server instead.
 
 A real store has to handle that failure. A common way is a compensating step:
 Inventory's command handler catches the error and raises an event such as
-`ReservationFailed`, and a handler reacts by cancelling the order. Chapter 20 builds this kind of flow with a process
-manager.
+`ReservationFailed`, and a handler reacts by cancelling the order. Chapter 20
+builds this kind of compensation with a process manager for a failed shipment.
+It leaves a failed reservation out, and describes how to add it.
 
 This chapter's domain sets `command_processing` and `event_processing` to
 `"sync"`, so the whole chain runs before `domain.process()` returns. With

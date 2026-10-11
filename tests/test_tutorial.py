@@ -1011,7 +1011,7 @@ class TestTutorialCh20(_TutorialBase):
             assert order.status == "CANCELLED"
             assert inv_repo.get(dune.id).quantity == 10
             assert inv_repo.get(emma.id).quantity == 10
-            assert inv_repo.get(dune.id).reserved_order_ids == []
+            assert inv_repo.get(dune.id).reserved_quantities == {}
 
     def test_second_release_changes_nothing(self):
         """Ch20: a repeated ReleaseInventory returns the stock once."""
@@ -1024,13 +1024,96 @@ class TestTutorialCh20(_TutorialBase):
                 ch20.ReserveInventory(order_id="order-1", book_title="Dune", quantity=3)
             )
 
-            release = ch20.ReleaseInventory(
-                order_id="order-1", book_title="Dune", quantity=3
-            )
+            release = ch20.ReleaseInventory(order_id="order-1", book_title="Dune")
             domain.process(release)
             domain.process(release)
 
             assert inv_repo.get(inv.id).quantity == 10
+
+    def test_reservation_after_release_changes_nothing(self):
+        """Ch20: a ReserveInventory that arrives after the release is skipped."""
+        domain = ch20.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch20.Inventory)
+            inv = ch20.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+            reserve = ch20.ReserveInventory(
+                order_id="order-1", book_title="Dune", quantity=3
+            )
+
+            domain.process(reserve)
+            domain.process(ch20.ReleaseInventory(order_id="order-1", book_title="Dune"))
+            domain.process(reserve)
+
+            # A release that arrives before its reservation blocks it too.
+            domain.process(ch20.ReleaseInventory(order_id="order-2", book_title="Dune"))
+            domain.process(
+                ch20.ReserveInventory(order_id="order-2", book_title="Dune", quantity=4)
+            )
+
+            assert inv_repo.get(inv.id).quantity == 10
+            assert inv_repo.get(inv.id).reserved_quantities == {}
+
+    def test_release_returns_the_quantity_reserved(self):
+        """Ch20: a release returns what the order holds, not a quantity it is sent."""
+        domain = ch20.domain
+        with domain.domain_context():
+            inv_repo = domain.repository_for(ch20.Inventory)
+            inv = ch20.Inventory(book_id="book-1", title="Dune", quantity=10)
+            inv_repo.add(inv)
+            domain.process(
+                ch20.ReserveInventory(order_id="order-1", book_title="Dune", quantity=1)
+            )
+            domain.process(
+                ch20.ReserveInventory(order_id="order-2", book_title="Dune", quantity=2)
+            )
+
+            domain.process(ch20.ReleaseInventory(order_id="order-1", book_title="Dune"))
+
+            assert inv_repo.get(inv.id).quantity == 8
+            assert inv_repo.get(inv.id).reserved_quantities == {"order-2": 2}
+
+    def test_repeated_reservation_event_creates_no_second_shipment(self):
+        """Ch20: a repeated InventoryReserved after the last title is not counted."""
+        domain = ch20.domain
+        with domain.domain_context():
+            order = ch20.Order(customer_name="Alice", shipping_address="1 Main St")
+            domain.repository_for(ch20.Order).add(order)
+
+            # Every title is already counted and the CreateShipment is in flight,
+            # so a repeat of the last InventoryReserved must not send another.
+            manager = ch20.OrderFulfillmentPM(
+                order_id=order.id,
+                items=[{"book_title": "Dune", "quantity": 2}],
+                awaiting_titles=[],
+            )
+            manager.on_inventory_reserved(
+                ch20.InventoryReserved(order_id=order.id, book_title="Dune", quantity=2)
+            )
+
+            shipments = (
+                domain.repository_for(ch20.Shipment)
+                .query.filter(order_id=order.id)
+                .all()
+                .items
+            )
+            assert shipments == []
+
+    def test_repeated_create_shipment_creates_one(self):
+        """Ch20: a CreateShipment processed twice leaves one shipment."""
+        domain = ch20.domain
+        with domain.domain_context():
+            command = ch20.CreateShipment(order_id="order-1", address="1 Main St")
+            domain.process(command)
+            domain.process(command)
+
+            shipments = (
+                domain.repository_for(ch20.Shipment)
+                .query.filter(order_id="order-1")
+                .all()
+                .items
+            )
+            assert [s.status for s in shipments] == ["CREATED"]
 
 
 @pytest.mark.no_test_domain

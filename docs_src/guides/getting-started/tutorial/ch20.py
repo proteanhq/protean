@@ -71,6 +71,8 @@ class Inventory:
     title: String(max_length=200, required=True)
     quantity: Integer(default=0)
     reserved_order_ids = List(content_type=String)
+    reserved_quantities = Dict()  # order id -> copies held for that order
+    released_order_ids = List(content_type=String)
 
     def reserve(self, order_id: str, amount: int):
         if self.quantity < amount:
@@ -83,17 +85,24 @@ class Inventory:
             )
         self.quantity -= amount
         self.reserved_order_ids = [*self.reserved_order_ids, order_id]
+        self.reserved_quantities = {**self.reserved_quantities, order_id: amount}
         self.raise_(
             InventoryReserved(order_id=order_id, book_title=self.title, quantity=amount)
         )
 
-    def release(self, order_id: str, amount: int):
-        if order_id not in self.reserved_order_ids:
-            return  # nothing reserved for this order, or already released
-        self.quantity += amount
-        self.reserved_order_ids = [
-            reserved for reserved in self.reserved_order_ids if reserved != order_id
-        ]
+    def release(self, order_id: str):
+        if order_id in self.released_order_ids:
+            return  # already released
+        # Return what this order holds, whatever a command says. An order
+        # released before its reservation arrives holds nothing, and the
+        # release still counts, so that late reservation is skipped.
+        self.quantity += self.reserved_quantities.get(order_id, 0)
+        self.reserved_quantities = {
+            held_for: amount
+            for held_for, amount in self.reserved_quantities.items()
+            if held_for != order_id
+        }
+        self.released_order_ids = [*self.released_order_ids, order_id]
 
 
 # --8<-- [start:shipping]
@@ -178,7 +187,6 @@ class CancelOrder:
 class ReleaseInventory:
     order_id: Identifier(required=True)
     book_title: String(max_length=200, required=True)
-    quantity: Integer(required=True)
 
 
 # --8<-- [start:process_manager]
@@ -208,6 +216,8 @@ class OrderFulfillmentPM:
     @handle(InventoryReserved, correlate="order_id")
     def on_inventory_reserved(self, event: InventoryReserved):
         """Step 2: Once every title is reserved, create the shipment."""
+        if event.book_title not in self.awaiting_titles:
+            return  # a repeated event for a title already counted
         self.awaiting_titles = [
             title for title in self.awaiting_titles if title != event.book_title
         ]
@@ -231,11 +241,7 @@ class OrderFulfillmentPM:
         """Compensation: Shipment failed. Release the stock and cancel the order."""
         for item in self.items:
             current_domain.process(
-                ReleaseInventory(
-                    order_id=event.order_id,
-                    book_title=item["book_title"],
-                    quantity=item["quantity"],
-                )
+                ReleaseInventory(order_id=event.order_id, book_title=item["book_title"])
             )
         current_domain.process(CancelOrder(order_id=event.order_id))
 
@@ -250,8 +256,11 @@ class InventoryCommandHandler:
     def reserve(self, command: ReserveInventory) -> None:
         repo = current_domain.repository_for(Inventory)
         inventory = repo.find_by(title=command.book_title)
-        if command.order_id in inventory.reserved_order_ids:
-            return
+        if (
+            command.order_id in inventory.reserved_order_ids
+            or command.order_id in inventory.released_order_ids
+        ):
+            return  # reserved before, or already released by compensation
         inventory.reserve(command.order_id, command.quantity)
         repo.add(inventory)
 
@@ -259,7 +268,7 @@ class InventoryCommandHandler:
     def release(self, command: ReleaseInventory) -> None:
         repo = current_domain.repository_for(Inventory)
         inventory = repo.find_by(title=command.book_title)
-        inventory.release(command.order_id, command.quantity)
+        inventory.release(command.order_id)
         repo.add(inventory)
 
 
@@ -267,9 +276,12 @@ class InventoryCommandHandler:
 class ShipmentCommandHandler:
     @handle(CreateShipment)
     def create(self, command: CreateShipment) -> None:
+        repo = current_domain.repository_for(Shipment)
+        if repo.query.filter(order_id=command.order_id).all().items:
+            return  # this order already has a shipment
         shipment = Shipment(order_id=command.order_id)
         shipment.create_shipment(command.address)
-        current_domain.repository_for(Shipment).add(shipment)
+        repo.add(shipment)
 
 
 @domain.command_handler(part_of=Order)
