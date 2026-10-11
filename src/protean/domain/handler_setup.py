@@ -360,7 +360,8 @@ class HandlerConfigurator:
         the result on the domain:
 
         - **Field existence** — every event/command type a ``sequential_by``
-          handler handles must declare the named field (for a process manager,
+          handler (event handler, projector, command handler or process
+          manager) handles must declare the named field (for a process manager,
           the field its ``correlate`` spec resolves for that event).
         - **One key per category** — a stream category can be partitioned by at
           most one key; two handlers asking for different keys on the same
@@ -402,6 +403,20 @@ class HandlerConfigurator:
                     category = self._event_published_category(target)
                     if category is not None:
                         _record(category, key, handler_cls.__name__)
+
+        # Projectors: same meaning as event handlers.
+        for element in registry._elements[DomainObjects.PROJECTOR.value].values():
+            projector_cls = element.cls
+            key = getattr(projector_cls.meta_, "sequential_by", None)
+            if not key:
+                continue
+            for _, method in _discover_handler_methods(projector_cls):
+                target = method._target_cls
+                if inspect.isclass(target) and issubclass(target, BaseEvent):
+                    self._assert_partition_field(target, key, projector_cls, "Event")
+                    category = self._event_published_category(target)
+                    if category is not None:
+                        _record(category, key, projector_cls.__name__)
 
         # Command handlers: value is a direct field name on each handled command.
         for element in registry._elements[DomainObjects.COMMAND_HANDLER.value].values():

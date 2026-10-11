@@ -93,7 +93,8 @@ an unbounded partition set (addressed under discovery and consequences).
 ### 2. Declaring the key
 
 `sequential_by` is an option on the handler's metadata, supported on event
-handlers, command handlers, and process managers. On an event or command handler
+handlers, command handlers, and process managers (and projectors, see the
+amendment at the end of this record). On an event or command handler
 its value is the name of a direct attribute on the event or command payload; nested
 paths and computed keys are out of scope. On a process manager it is a boolean
 opt-in, because a PM already declares its serialization domain through its
@@ -476,6 +477,20 @@ collapsing every key onto a single worker.
   for that event. `sequential_by` narrows this to the single in-flight event and
   never reorders, but it does not remove it; handlers still lean on OCC and the
   idempotent patterns from ADR-0009 for exactly-once *effect*.
+
+## Amendment (October 2026): projectors
+
+Decision 2 listed event handlers, command handlers and process managers. A
+projector on a category that no other handler partitions had no way to ask for
+ordering, even though the consumer already reads a partitioned category partition
+by partition for every handler subscribed to it.
+
+**Amended decision:** projectors also accept `sequential_by`, with the
+event-handler meaning. The value names a direct field on every event the
+projector handles. Each handled event's published category is partitioned by that
+field. The same registration rules apply: field existence, one key per category
+(shared with every other handler on the category), and broker capability. The
+process-manager boolean form does not apply to projectors.
 
 ## Alternatives Considered
 

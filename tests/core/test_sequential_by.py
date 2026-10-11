@@ -17,6 +17,8 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.process_manager import BaseProcessManager
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector, on
 from protean.core.unit_of_work import UnitOfWork
 from protean.domain import Domain
 from protean.domain.handler_setup import HandlerConfigurator
@@ -70,6 +72,53 @@ class Account(BaseAggregate):
 class AccountOpened(BaseEvent):
     account_id: Identifier()
     tenant: Integer()
+
+
+class Product(BaseAggregate):
+    product_id: Identifier()
+
+
+class ProductCreated(BaseEvent):
+    product_id: Identifier()
+    sku: String(max_length=50)
+
+
+class ProductActivated(BaseEvent):
+    product_id: Identifier()
+    sku: String(max_length=50)
+
+
+class ProductSummary(BaseProjection):
+    product_id: Identifier(identifier=True)
+
+
+def _product_projector():
+    class ProductSummaryProjector(BaseProjector):
+        @on(ProductCreated)
+        def on_created(self, event):
+            pass
+
+        @on(ProductActivated)
+        def on_activated(self, event):
+            pass
+
+    return ProductSummaryProjector
+
+
+def _product_event_handler():
+    class ProductEventHandler(BaseEventHandler):
+        @handle(ProductCreated)
+        def on_created(self, event):
+            pass
+
+    return ProductEventHandler
+
+
+def _register_product(domain):
+    domain.register(Product)
+    domain.register(ProductCreated, part_of=Product)
+    domain.register(ProductActivated, part_of=Product)
+    domain.register(ProductSummary)
 
 
 class _StubBroker:
@@ -532,3 +581,165 @@ class TestStaticHelperEdges:
 
     def test_correlate_field_none_for_empty_dict(self):
         assert HandlerConfigurator._correlate_field({}) is None
+
+
+# --- Projectors --------------------------------------------------------------
+
+
+class TestProjectorSequentialBy:
+    def test_projector_stores_sequential_by(self, test_domain):
+        projector = _product_projector()
+        _register_product(test_domain)
+        test_domain.register(
+            projector,
+            projector_for=ProductSummary,
+            aggregates=[Product],
+            sequential_by="product_id",
+        )
+        test_domain.init(traverse=False)
+
+        assert projector.meta_.sequential_by == "product_id"
+
+    def test_projector_defaults_to_none_and_adds_no_partition(self, test_domain):
+        projector = _product_projector()
+        _register_product(test_domain)
+        test_domain.register(
+            projector, projector_for=ProductSummary, aggregates=[Product]
+        )
+        test_domain.init(traverse=False)
+
+        assert projector.meta_.sequential_by is None
+        assert test_domain._partition_keys == {}
+
+    def test_decorator_accepts_sequential_by(self, test_domain):
+        _register_product(test_domain)
+
+        @test_domain.projector(
+            projector_for=ProductSummary,
+            aggregates=[Product],
+            sequential_by="product_id",
+        )
+        class DecoratedProjector:
+            @on(ProductCreated)
+            def on_created(self, event):
+                pass
+
+        test_domain.init(traverse=False)
+
+        assert test_domain._partition_keys == {"test::product": "product_id"}
+
+    def test_projector_partitions_its_events_category(self, test_domain):
+        _register_product(test_domain)
+        test_domain.register(
+            _product_projector(),
+            projector_for=ProductSummary,
+            aggregates=[Product],
+            sequential_by="product_id",
+        )
+        test_domain.init(traverse=False)
+
+        assert test_domain._partition_keys == {"test::product": "product_id"}
+
+    def test_projector_on_stream_categories_keys_off_event_category(self, test_domain):
+        # The key is recorded on the category each event is published to,
+        # which is what the Unit of Work reads at commit.
+        _register_product(test_domain)
+        test_domain.register(
+            _product_projector(),
+            projector_for=ProductSummary,
+            stream_categories=["test::product"],
+            sequential_by="product_id",
+        )
+        test_domain.init(traverse=False)
+
+        assert test_domain._partition_keys == {"test::product": "product_id"}
+
+    def test_missing_field_on_projector_raises(self, test_domain):
+        class ProductSummaryProjector(BaseProjector):
+            @on(ProductCreated)
+            def on_created(self, event):
+                pass
+
+        _register_product(test_domain)
+        test_domain.register(
+            ProductSummaryProjector,
+            projector_for=ProductSummary,
+            aggregates=[Product],
+            sequential_by="missing",
+        )
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+        message = str(exc.value)
+        assert "ProductSummaryProjector" in message
+        assert "ProductCreated" in message
+        assert "`missing`" in message
+
+    @pytest.mark.parametrize("projector_first", [True, False])
+    def test_conflicting_keys_with_event_handler_raise(
+        self, test_domain, projector_first
+    ):
+        _register_product(test_domain)
+
+        def register_projector():
+            test_domain.register(
+                _product_projector(),
+                projector_for=ProductSummary,
+                aggregates=[Product],
+                sequential_by="product_id",
+            )
+
+        def register_handler():
+            test_domain.register(
+                _product_event_handler(), part_of=Product, sequential_by="sku"
+            )
+
+        if projector_first:
+            register_projector()
+            register_handler()
+        else:
+            register_handler()
+            register_projector()
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+        message = str(exc.value)
+        assert "conflicting keys" in message
+        assert "`product_id` (from `ProductSummaryProjector`)" in message
+        assert "`sku` (from `ProductEventHandler`)" in message
+
+    def test_same_key_as_event_handler_passes(self, test_domain):
+        _register_product(test_domain)
+        test_domain.register(
+            _product_projector(),
+            projector_for=ProductSummary,
+            aggregates=[Product],
+            sequential_by="product_id",
+        )
+        test_domain.register(
+            _product_event_handler(), part_of=Product, sequential_by="product_id"
+        )
+        test_domain.init(traverse=False)
+
+        assert test_domain._partition_keys == {"test::product": "product_id"}
+
+    def test_non_partitioning_broker_rejects_projector(self):
+        domain = Domain(name="CapProjector")
+        _register_product(domain)
+        domain.register(
+            _product_projector(),
+            projector_for=ProductSummary,
+            aggregates=[Product],
+            sequential_by="product_id",
+        )
+        with domain.domain_context():
+            domain.init(traverse=False)
+        domain.brokers._brokers["default"] = _StubBroker(
+            "default", BrokerCapabilities.RELIABLE_MESSAGING
+        )
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            domain._handler_configurator.validate_sequential_by_capabilities()
+        message = str(exc.value)
+        assert "STREAM_PARTITIONING" in message
+        assert "capprojector::product" in message

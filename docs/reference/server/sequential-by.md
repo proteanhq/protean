@@ -16,7 +16,8 @@ most concurrency problems have a simpler structural fix.
 
 !!! note "Events on the Redis broker; command handlers still inert"
     The Redis broker advertises `STREAM_PARTITIONING`, so `sequential_by` is
-    fully active there for **event handlers** and **process managers**: the
+    fully active there for **event handlers**, **projectors** and **process
+    managers**: the
     publisher routes each event to its partition stream, and the consumer
     described under [How the consumer enforces ordering](#how-the-consumer-enforces-ordering)
     owns and serially drains each partition across engine instances.
@@ -36,17 +37,42 @@ most concurrency problems have a simpler structural fix.
 
 ## Declaring the key
 
-On an **event handler** or **command handler**, `sequential_by` is the name of a
-direct field on the event or command payload. Only the event-handler case has a
-runtime effect today, see the warning above.
+On an **event handler**, **projector** or **command handler**, `sequential_by`
+is the name of a direct field on the event or command payload. The event-handler
+and projector cases have a runtime effect today. The command-handler case does
+not, see the note above.
 
 ```python
 @domain.event_handler(part_of=Order, sequential_by="client_id")
-class OrderProjector(BaseEventHandler):
+class OrderEventHandler(BaseEventHandler):
     @handle(OrderPlaced)
     def on_placed(self, event: OrderPlaced) -> None:
         ...
 ```
+
+On a projector, every event the projector handles must carry the field, and the
+category each handled event is published to is partitioned by it:
+
+```python
+@domain.projector(
+    projector_for=ProductSummary, aggregates=[Product], sequential_by="product_id"
+)
+class ProductSummaryProjector(BaseProjector):
+    @on(ProductCreated)
+    def on_created(self, event: ProductCreated) -> None:
+        ...
+
+    @on(ProductActivated)
+    def on_activated(self, event: ProductActivated) -> None:
+        ...
+```
+
+A projector does not need its own `sequential_by` to be ordered. The key is
+stored per stream category, and every handler subscribed to a partitioned
+category consumes it partition by partition. So a projector on a category that
+an event handler or process manager already partitions gets the same ordering.
+Declaring `sequential_by` on the projector matters when no other handler
+partitions its categories.
 
 On a **process manager** it is a boolean opt-in. A process manager already
 declares its serialization domain through its `correlate` specs, so
