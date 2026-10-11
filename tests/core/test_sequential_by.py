@@ -88,6 +88,10 @@ class ProductActivated(BaseEvent):
     sku: String(max_length=50)
 
 
+class ProductRetired(BaseEvent):
+    product_id: Identifier()
+
+
 class ProductSummary(BaseProjection):
     product_id: Identifier(identifier=True)
 
@@ -118,6 +122,7 @@ def _register_product(domain):
     domain.register(Product)
     domain.register(ProductCreated, part_of=Product)
     domain.register(ProductActivated, part_of=Product)
+    domain.register(ProductRetired, part_of=Product)
     domain.register(ProductSummary)
 
 
@@ -642,12 +647,13 @@ class TestProjectorSequentialBy:
 
     def test_projector_on_stream_categories_keys_off_event_category(self, test_domain):
         # The key is recorded on the category each event is published to,
-        # which is what the Unit of Work reads at commit.
+        # which is what the Unit of Work reads at commit, not on the
+        # projector's subscribed categories.
         _register_product(test_domain)
         test_domain.register(
             _product_projector(),
             projector_for=ProductSummary,
-            stream_categories=["test::product"],
+            stream_categories=["other::cat"],
             sequential_by="product_id",
         )
         test_domain.init(traverse=False)
@@ -672,34 +678,75 @@ class TestProjectorSequentialBy:
             test_domain.init(traverse=False)
         message = str(exc.value)
         assert "ProductSummaryProjector" in message
-        assert "ProductCreated" in message
+        assert "Event `ProductCreated`" in message
         assert "`missing`" in message
 
-    @pytest.mark.parametrize("projector_first", [True, False])
-    def test_conflicting_keys_with_event_handler_raise(
-        self, test_domain, projector_first
+    def test_every_handled_event_must_carry_the_field(self, test_domain):
+        # Handler methods are discovered in name order, so the event without
+        # the field is checked second. Checking only the first event would
+        # let this projector through.
+        class ProductSummaryProjector(BaseProjector):
+            @on(ProductCreated)
+            def a_on_created(self, event):
+                pass
+
+            @on(ProductRetired)
+            def b_on_retired(self, event):
+                pass
+
+        _register_product(test_domain)
+        test_domain.register(
+            ProductSummaryProjector,
+            projector_for=ProductSummary,
+            aggregates=[Product],
+            sequential_by="sku",
+        )
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+        assert "Event `ProductRetired` has no field named `sku`" in str(exc.value)
+
+    @pytest.mark.parametrize("value", [True, False, ""])
+    def test_projector_rejects_a_value_that_is_not_a_field_name(
+        self, test_domain, value
     ):
         _register_product(test_domain)
+        test_domain.register(
+            _product_projector(),
+            projector_for=ProductSummary,
+            aggregates=[Product],
+            sequential_by=value,
+        )
 
-        def register_projector():
-            test_domain.register(
-                _product_projector(),
-                projector_for=ProductSummary,
-                aggregates=[Product],
-                sequential_by="product_id",
-            )
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+        message = str(exc.value)
+        assert f"`ProductSummaryProjector` declares `sequential_by={value!r}`" in (
+            message
+        )
+        assert "is for process managers only" in message
 
-        def register_handler():
-            test_domain.register(
-                _product_event_handler(), part_of=Product, sequential_by="sku"
-            )
+    def test_event_handler_rejects_the_boolean_form(self, test_domain):
+        _register_product(test_domain)
+        test_domain.register(
+            _product_event_handler(), part_of=Product, sequential_by=True
+        )
 
-        if projector_first:
-            register_projector()
-            register_handler()
-        else:
-            register_handler()
-            register_projector()
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+        assert "`ProductEventHandler` declares `sequential_by=True`" in str(exc.value)
+
+    def test_conflicting_keys_with_event_handler_raise(self, test_domain):
+        _register_product(test_domain)
+        test_domain.register(
+            _product_projector(),
+            projector_for=ProductSummary,
+            aggregates=[Product],
+            sequential_by="product_id",
+        )
+        test_domain.register(
+            _product_event_handler(), part_of=Product, sequential_by="sku"
+        )
 
         with pytest.raises(IncorrectUsageError) as exc:
             test_domain.init(traverse=False)

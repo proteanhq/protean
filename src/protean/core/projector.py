@@ -30,6 +30,11 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
     | ``backoff`` | ``str`` | Retry delay strategy: ``"exponential"``, ``"linear"``, or ``"fixed"``. |
     | ``retry_exceptions`` | ``list`` | Exception types (classes or dotted paths) treated as transient for retry. |
     | ``sequential_by`` | ``str`` | Partition key field name for per-key sequential processing (ADR-0028). |
+    | ``subscription_type`` | ``str`` | ``"stream"`` or ``"event_store"``. ``None`` uses the domain default. |
+    | ``subscription_profile`` | ``str`` | Named subscription profile, such as ``"projection"``. |
+    | ``subscription_config`` | ``dict`` | Custom subscription settings that override the profile. |
+    | ``idempotent`` | ``bool`` | Record a delivery marker per event so a redelivered event is applied once. |
+    | ``suppress_checks`` | ``tuple`` | Diagnostic codes ``protean check`` should not report for this projector. |
 
     Example::
 

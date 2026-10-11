@@ -67,12 +67,22 @@ class ProductSummaryProjector(BaseProjector):
         ...
 ```
 
-A projector does not need its own `sequential_by` to be ordered. The key is
-stored per stream category, and every handler subscribed to a partitioned
-category consumes it partition by partition. So a projector on a category that
-an event handler or process manager already partitions gets the same ordering.
-Declaring `sequential_by` on the projector matters when no other handler
-partitions its categories.
+A projector on a stream subscription (`subscription_type` set to `"stream"`)
+does not need its own `sequential_by` to be ordered. The key is stored per
+stream category, and every stream-subscribed handler on a partitioned category
+consumes it partition by partition. So a projector on a category that an event
+handler or process manager already partitions gets the same ordering. Declaring
+`sequential_by` on the projector matters when no other handler partitions its
+categories.
+
+The ordering applies only to stream subscriptions. A projector on an event-store
+subscription, the domain default and the `PROJECTION` profile's choice, reads
+the event store directly, and `sequential_by` does not change those reads.
+
+Ordering is per stream category. A projector over several aggregates, such as
+`aggregates=[Customer, Order]` with `sequential_by="customer_id"`, gets one
+partitioned subscription per category. A `Customer` event and an `Order` event
+for the same customer can still be processed at the same time.
 
 On a **process manager** it is a boolean opt-in. A process manager already
 declares its serialization domain through its `correlate` specs, so

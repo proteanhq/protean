@@ -228,9 +228,9 @@ both synchronous and asynchronous processing.
 | `retry_exceptions` | `None` | Exception types treated as transient, as classes or dotted paths. `None` uses the domain setting |
 | `suppress_checks` | `()` | Diagnostic codes `protean check` should not report for this handler |
 
-`sequential_by` is a no-op unless the configured broker advertises
-`STREAM_PARTITIONING`, so a domain that declares it still runs on the inline
-broker in tests, without the ordering guarantee. See the
+`sequential_by` is a no-op on the inline broker, so a domain that declares it
+still runs there in tests, without the ordering guarantee. Any other broker
+that does not advertise `STREAM_PARTITIONING` is rejected at `domain.init()`. See the
 [broker partitioning contract](../adapters/broker/partitioning.md).
 
 Guide: [Event Handlers](../../guides/consume-state/event-handlers.md) ·
@@ -303,9 +303,11 @@ explicitly target a projection and can listen to multiple stream categories.
 | `retries` | `None` | Maximum retries when the handler fails with a transient exception. Overrides the domain's `server.transient_retry` setting; `None` uses that setting |
 | `backoff` | `None` | Delay strategy between transient retries: `"exponential"`, `"linear"` or `"fixed"`. `None` uses the domain setting |
 | `retry_exceptions` | `None` | Exception types treated as transient, as classes or dotted paths. `None` uses the domain setting |
+| `suppress_checks` | `()` | Diagnostic codes `protean check` should not report for this projector |
 
-`sequential_by` is a no-op unless the configured broker advertises
-`STREAM_PARTITIONING`, the same as for event handlers.
+`sequential_by` is a no-op on the inline broker. Any other broker that does not
+advertise `STREAM_PARTITIONING` is rejected at `domain.init()`, the same as for
+event handlers.
 
 Guide: [Projectors](../../guides/consume-state/projectors.md) ·
 [Sequential processing](../server/sequential-by.md)

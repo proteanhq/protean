@@ -229,8 +229,12 @@ projectors to handle out-of-order events:
 
 When two events about the same entity must never be applied at the same time,
 set `sequential_by` to a field every handled event carries, such as
-`sequential_by="product_id"`. On a broker that supports partitioning, events
-that share a value are then processed one at a time and in publish order. See
+`sequential_by="product_id"`. On a broker that supports partitioning and a
+stream subscription, events in the same stream category that share a value are
+then processed one at a time and in publish order. Events from different
+categories are not ordered against each other, so a projector over two
+aggregates can still apply a `Customer` event and an `Order` event for the same
+customer at the same time. See
 [Sequential processing](../../reference/server/sequential-by.md).
 
 ## Error Handling
