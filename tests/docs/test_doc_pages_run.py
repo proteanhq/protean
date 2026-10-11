@@ -93,7 +93,6 @@ ALLOWLIST: frozenset[str] = frozenset(
         "concepts/observability/logging.md",
         "concepts/philosophy/always-valid.md",
         "concepts/ports-and-adapters/index.md",
-        "guides/consume-state/projectors.md",
         "guides/domain-behavior/aggregate-mutation.md",
         "guides/domain-behavior/domain-services.md",
         "guides/domain-behavior/error-handling.md",
@@ -176,19 +175,11 @@ ALLOWLIST: frozenset[str] = frozenset(
         "patterns/thin-handlers-rich-domain.md",
         "patterns/track-audit-fields.md",
         "patterns/validation-layering.md",
-        "reference/cli/data/projection.md",
-        "reference/cli/data/snapshot.md",
-        "reference/compatibility/index.md",
         "reference/logging.md",
-        "reference/migration/v0-15.md",
-        "reference/migration/v0-17.md",
-        "reference/migration/v0-18.md",
         "reference/server/configuration.md",
         "reference/server/observability.md",
         "reference/server/sequential-by.md",
         "reference/server/subscription-types.md",
-        "reference/troubleshooting.md",
-        "why-protean.md",
     }
 )
 

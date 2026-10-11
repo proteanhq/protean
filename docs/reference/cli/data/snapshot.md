@@ -108,13 +108,12 @@ See [Domain Discovery](../project/discovery.md) for the full resolution logic.
 The same functionality is available as Domain methods for use in scripts or
 the `protean shell`:
 
+??? example "The domain this example uses"
+
+    ```python
+    --8<-- "reference/cli/data/snapshot/001.py:domain"
+    ```
+
 ```python
-# Single aggregate instance
-domain.create_snapshot(User, "abc-123")
-
-# All instances of one aggregate
-count = domain.create_snapshots(User)
-
-# All event-sourced aggregates
-results = domain.create_all_snapshots()  # {"User": 42, "Order": 15}
+--8<-- "reference/cli/data/snapshot/001.py:api"
 ```

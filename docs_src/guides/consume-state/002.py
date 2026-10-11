@@ -1,4 +1,5 @@
 # --8<-- [start:full]
+# --8<-- [start:elements]
 from protean import Domain
 from protean.core.projector import on
 from protean.fields import DateTime, Float, Identifier, Integer, String, Text
@@ -86,6 +87,8 @@ class ProductCatalog:
     in_stock: String(choices=["YES", "NO"], default="YES")
 
 
+# --8<-- [end:elements]
+# --8<-- [start:inventory_projector]
 @domain.projector(projector_for=ProductInventory, aggregates=[Product])
 class ProductInventoryProjector:
     """Projector that maintains the ProductInventory projection."""
@@ -118,6 +121,7 @@ class ProductInventoryProjector:
         repository.add(inventory)
 
 
+# --8<-- [end:inventory_projector]
 @domain.projector(projector_for=ProductCatalog, aggregates=[Product])
 class ProductCatalogProjector:
     """Projector that maintains the ProductCatalog projection."""

@@ -101,6 +101,8 @@ MARKERS: dict[str, str] = {
     "guides/server/opentelemetry/002.py": "fastapi",
     "guides/server/opentelemetry/003.py": "fastapi",
     "guides/server/production-deployment/001.py": "fastapi",
+    "reference/migration/v0-15/005.py": "elasticsearch",
+    "reference/troubleshooting/003.py": "fastapi",
 }
 
 # Marker -> environment variables its examples read to reach the service. The

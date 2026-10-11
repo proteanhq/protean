@@ -182,6 +182,8 @@ paths = [
     "tests/docs/reference/adapters/database/test_elasticsearch.py",
     "docs_src/guides/change-state/database-models/",
     "tests/docs/guides/change_state/test_database_models_elasticsearch.py",
+    "docs_src/reference/migration/v0-15/005.py",
+    "tests/docs/reference/migration/test_v0_15.py",
 ]
 markers = ["elasticsearch"]
 databases = ["ELASTICSEARCH"]

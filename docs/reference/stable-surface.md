@@ -132,9 +132,7 @@ no is named as the predicate itself (`abstract`, `auto_add_id_field`), not
 the documented default:
 
 ```python
-@domain.aggregate
-class Order:
-    placed_at: DateTime(required=True)
+--8<-- "reference/stable-surface/001.py:annotation_style"
 ```
 
 The annotation style is **not compatible with PEP 563** (`from __future__ import

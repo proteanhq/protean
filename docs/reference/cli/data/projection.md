@@ -192,21 +192,14 @@ See [Domain Discovery](../project/discovery.md) for the full resolution logic.
 The same functionality is available as Domain methods for use in scripts or
 the `protean shell`:
 
+??? example "The domain this example uses"
+
+    ```python
+    --8<-- "reference/cli/data/projection/001.py:domain"
+    ```
+
 ```python
-from protean.utils.projection_rebuilder import RebuildResult
-
-# Rebuild a single projection
-result = domain.rebuild_projection(Balances)
-assert result.success
-print(f"{result.events_dispatched} events replayed")
-
-# Rebuild a single projection with custom batch size
-result = domain.rebuild_projection(Balances, batch_size=1000)
-
-# Rebuild all projections
-results = domain.rebuild_all_projections()
-for name, result in results.items():
-    print(f"{name}: {result.events_dispatched} events")
+--8<-- "reference/cli/data/projection/001.py:api"
 ```
 
 ### `domain.rebuild_projection(projection_cls, batch_size=500)`

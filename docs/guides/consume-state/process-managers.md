@@ -284,71 +284,14 @@ the same event store, use `register_external_event()` to give the PM typed
 access to external events:
 
 ```python
-from protean.core.event import BaseEvent
-from protean.fields import Float, Identifier
-
-# Define external event classes in YOUR domain (no imports from other packages)
-class PaymentReceived(BaseEvent):
-    payment_id = Identifier(required=True)
-    order_id = Identifier(required=True)
-    amount = Float()
-
-
-class InventoryReserved(BaseEvent):
-    order_id = Identifier(required=True)
-    product_id = Identifier(required=True)
-
-
-class InventoryUnavailable(BaseEvent):
-    order_id = Identifier(required=True)
-    product_id = Identifier(required=True)
-
-
-# Register them with the type strings used by the publishing domains
-domain.register_external_event(PaymentReceived, "Billing.PaymentReceived.v1")
-domain.register_external_event(InventoryReserved, "Inventory.InventoryReserved.v1")
-domain.register_external_event(
-    InventoryUnavailable, "Inventory.InventoryUnavailable.v1"
-)
+--8<-- "guides/consume-state/process-managers/004.py:external_events"
 ```
 
 Then reference these events in the PM's handlers and include the external
 streams in `stream_categories`:
 
 ```python
-@domain.process_manager(
-    stream_categories=[
-        "ecommerce::order",              # Own domain
-        "billing::payment",              # External domain
-        "inventory::inventory_item",     # External domain
-    ]
-)
-class OrderFulfillmentPM:
-    order_id = Identifier()
-    status = String(default="new")
-
-    @handle(OrderPlaced, start=True, correlate="order_id")
-    def on_order_placed(self, event: OrderPlaced) -> None:
-        self.order_id = event.order_id
-        self.status = "awaiting_payment"
-
-    @handle(PaymentReceived, correlate="order_id")
-    def on_payment_received(self, event: PaymentReceived) -> None:
-        if self.status != "awaiting_payment":
-            return
-        self.status = "awaiting_inventory"
-        current_domain.process(ReserveInventory(order_id=self.order_id))
-
-    @handle(InventoryReserved, correlate="order_id")
-    def on_inventory_reserved(self, event: InventoryReserved) -> None:
-        if self.status != "awaiting_inventory":
-            return
-        self.status = "completed"
-        self.mark_as_complete()
-
-    @handle(InventoryUnavailable, correlate="order_id", end=True)
-    def on_inventory_unavailable(self, event: InventoryUnavailable) -> None:
-        self.status = "inventory_unavailable"
+--8<-- "guides/consume-state/process-managers/004.py:process_manager"
 ```
 
 `on_inventory_reserved` completes the process only when the order is waiting

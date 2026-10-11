@@ -21,18 +21,14 @@ design time under the same code.
 
 A coded exception exposes these attributes:
 
-```python
-# fragment
-from protean.exceptions import IncorrectUsageError
+??? example "The domain this example uses"
 
-try:
-    domain.view_for(SomeAggregate)
-except IncorrectUsageError as exc:
-    print(exc.code)       # "USAGE_NOT_A_PROJECTION"
-    print(exc.codes)      # ["USAGE_NOT_A_PROJECTION"]
-    print(exc.location)   # "Domain.view_for"
-    print(exc.rationale)  # why it fired, from the registry
-    print(exc.fix)        # how to fix it, from the registry
+    ```python
+    --8<-- "reference/init-diagnostics/001.py:domain"
+    ```
+
+```python
+--8<-- "reference/init-diagnostics/001.py:coded_exception"
 ```
 
 `code`, `codes`, and `location` survive a pickle round-trip, so the code is

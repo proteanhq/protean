@@ -4,6 +4,14 @@ A cookbook of common issues and how to debug them. For error classification
 patterns in production, see
 [Classify Async Processing Errors](../patterns/classify-async-processing-errors.md).
 
+The examples on this page use a small order domain:
+
+??? example "The order domain these examples use"
+
+    ```python
+    --8<-- "reference/troubleshooting/001.py:model"
+    ```
+
 ---
 
 ## Command is accepted but nothing happens
@@ -14,10 +22,7 @@ isn't created or updated.
 **Check 1: Is there a handler registered?**
 
 ```python
-# In a test or shell, after domain.init()
-with domain.domain_context():
-    handlers = domain.command_handler_for(PlaceOrder)
-    print(handlers)  # Should show your handler class
+--8<-- "reference/troubleshooting/001.py:check_handler"
 ```
 
 If this returns `None`, the handler isn't registered. Verify:
@@ -31,13 +36,7 @@ If this returns `None`, the handler isn't registered. Verify:
 Command handlers must explicitly save via the repository:
 
 ```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(PlaceOrder)
-    def place_order(self, command: PlaceOrder):
-        order = Order(customer_id=command.customer_id)
-        # This line is required -- without it, nothing is persisted
-        current_domain.repository_for(Order).add(order)
+--8<-- "reference/troubleshooting/001.py:command_handler"
 ```
 
 **Check 3: Is event processing set to sync for tests?**
@@ -46,8 +45,7 @@ In tests, events are processed asynchronously by default. If your test
 expects immediate side effects, configure sync processing:
 
 ```python
-domain.config["command_processing"] = "sync"
-domain.config["event_processing"] = "sync"
+--8<-- "reference/troubleshooting/001.py:sync_config"
 ```
 
 Or use the `DomainFixture` which handles this automatically.
@@ -64,10 +62,7 @@ is never called.
 Events must be raised with `self.raise_()` inside an aggregate method:
 
 ```python
-class Order(BaseAggregate):
-    def place(self):
-        self.status = "placed"
-        self.raise_(OrderPlaced(order_id=self.id))  # Required
+--8<-- "reference/troubleshooting/001.py:order"
 ```
 
 Creating an event object does nothing. It must be raised.
@@ -75,12 +70,7 @@ Creating an event object does nothing. It must be raised.
 **Check 2: Is the handler wired to the right aggregate?**
 
 ```python
-# The handler must declare part_of matching the event's aggregate
-@domain.event_handler(part_of=Order)
-class OrderEventHandler:
-    @handle(OrderPlaced)
-    def on_placed(self, event: OrderPlaced):
-        ...
+--8<-- "reference/troubleshooting/001.py:event_handler"
 ```
 
 If the event belongs to `Order` but the handler says `part_of=Customer`,
@@ -93,17 +83,17 @@ server. In tests, set `event_processing = "sync"` or use the Engine in
 test mode:
 
 ```python
-from protean.server import Engine
-
-engine = Engine(domain=domain, test_mode=True)
-engine.run()
+--8<-- "reference/troubleshooting/001.py:engine"
 ```
 
 ---
 
 ## "No domain context" errors
 
-**Symptoms:** `RuntimeError: Working outside of domain context` or similar.
+**Symptoms:** A `UserWarning` that starts with `Working outside of domain
+context.`, followed by an `AttributeError` that names a domain attribute, such
+as `AttributeError: repository_for` or `AttributeError: config`. Protean warns
+first, then the call fails because there is no current domain to read from.
 
 **Cause:** Protean operations require an active domain context on the current
 thread. This is usually set up by middleware (FastAPI) or fixtures (tests).
@@ -111,27 +101,19 @@ thread. This is usually set up by middleware (FastAPI) or fixtures (tests).
 **Fix for FastAPI:**
 
 ```python
-app.add_middleware(
-    DomainContextMiddleware,
-    route_domain_map={"/": domain},
-)
+--8<-- "reference/troubleshooting/003.py:middleware"
 ```
 
 **Fix for tests:**
 
 ```python
-@pytest.fixture(autouse=True)
-def domain_context(test_domain):
-    with test_domain.domain_context():
-        yield
+--8<-- "reference/troubleshooting/002.py:fixture"
 ```
 
 **Fix for scripts or CLI tools:**
 
 ```python
-with domain.domain_context():
-    repo = domain.repository_for(Order)
-    orders = repo.all()
+--8<-- "reference/troubleshooting/001.py:script"
 ```
 
 ---
@@ -144,13 +126,8 @@ even though events have been raised.
 **Check 1: Is the projector registered?**
 
 ```python
-@domain.projector(projector_for=OrderSummary, aggregates=[Order])
-class OrderSummaryProjector:
-    @handle(OrderPlaced)
-    def on_placed(self, event: OrderPlaced):
-        current_domain.repository_for(OrderSummary).add(
-            OrderSummary(order_id=event.order_id, status="placed")
-        )
+--8<-- "reference/troubleshooting/001.py:projection"
+--8<-- "reference/troubleshooting/001.py:projector"
 ```
 
 Verify the projector is decorated with `@domain.projector`, uses
@@ -162,8 +139,7 @@ whose events it handles in `aggregates`.
 In tests, ensure sync processing is active or run the engine:
 
 ```python
-engine = Engine(domain=domain, test_mode=True)
-engine.run()
+--8<-- "reference/troubleshooting/001.py:engine"
 ```
 
 **Check 3: Is the projection database set up?**
@@ -171,8 +147,7 @@ engine.run()
 Projections backed by a database need schema setup:
 
 ```python
-with domain.domain_context():
-    domain.setup_database()
+--8<-- "reference/troubleshooting/001.py:setup_database"
 ```
 
 ---
@@ -188,10 +163,7 @@ The subscriber's `stream` must match the broker stream/topic being published
 to:
 
 ```python
-@domain.subscriber(stream="external_orders")
-class OrderSubscriber:
-    def __call__(self, payload: dict):
-        ...
+--8<-- "reference/troubleshooting/001.py:subscriber"
 ```
 
 **Check 2: Is the broker configured?**
@@ -223,11 +195,7 @@ For tests, use test mode to process messages synchronously.
 **Debugging approach:**
 
 ```python
-try:
-    order = Order(customer_id="", total=-5)
-except ValidationError as e:
-    print(e.messages)
-    # {'customer_id': ['is required'], 'total': ['must be positive']}
+--8<-- "reference/troubleshooting/001.py:validation"
 ```
 
 The `messages` dict maps field names to lists of error strings. Common
@@ -242,9 +210,10 @@ causes:
 
     Field validation always produces the `dict[str, list[str]]` above, so code
     handling *that* can index it safely. But `ValidationError` carries whatever
-    it was raised with, and an invariant or a domain service is free to raise
-    `ValidationError("Order is already shipped")`. Then `messages` is a plain
-    `str`, and a list raises it as a `list[str]`. A blanket
+    it was raised with. An aggregate method, a domain service method or a
+    handler is free to raise `ValidationError("Order is already shipped")`.
+    Then `messages` is a plain `str`, and a list raises it as a `list[str]`.
+    (An `@invariant` check is different: it must raise the dict form.) A blanket
     `except ValidationError` that does `e.messages.items()` will fail on those.
 
     ```python
@@ -275,24 +244,19 @@ protean events trace <correlation_id> --domain .
 **Programmatically:**
 
 ```python
-from protean.utils.eventing import build_causation_tree
-
-with domain.domain_context():
-    tree = build_causation_tree(correlation_id)
-    # Returns nested dict of command → events → handler effects
+--8<-- "reference/troubleshooting/001.py:causation_tree"
 ```
 
 **Supply correlation IDs from API boundaries:**
 
 ```python
-@app.post("/orders")
-async def create_order(request: Request, payload: dict):
-    request_id = request.headers.get("X-Request-Id")
-    current_domain.process(
-        PlaceOrder(**payload),
-        correlation_id=request_id,  # Thread through the chain
-    )
+--8<-- "reference/troubleshooting/003.py:endpoint"
 ```
+
+`DomainContextMiddleware` already uses the `X-Correlation-ID` header, or
+`X-Request-ID` when that is missing, as the default correlation ID. Pass
+`correlation_id` yourself when the ID comes from somewhere else, or when it must
+win over an `X-Correlation-ID` header.
 
 See [Message Tracing](../guides/domain-behavior/message-tracing.md) for the full
 guide.
