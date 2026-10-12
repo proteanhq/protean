@@ -182,11 +182,6 @@ metadata:
 --8<-- "guides/observability/correlation-and-causation/001.py:ids"
 ```
 
-!!! warning "Known issue: a rebuilt event loses both IDs"
-    An event rebuilt from a stored message with `message.to_domain_object()`
-    has `None` for `correlation_id` and `causation_id`. A rebuilt command keeps
-    both. Read the IDs from the `Message` when you start from the store.
-
 ### Traversing the chain programmatically
 
 The event store provides three methods for causation chain traversal:
