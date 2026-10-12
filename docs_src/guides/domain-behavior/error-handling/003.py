@@ -106,6 +106,10 @@ register_exception_handlers(app)
 
 from protean.integrations.fastapi import DomainContextMiddleware
 
+# Sync processing runs the handler inside the request, so its errors
+# reach the exception handlers.
+domain.config["command_processing"] = "sync"
+
 app.add_middleware(DomainContextMiddleware, route_domain_map={"/": domain})
 
 

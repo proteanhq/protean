@@ -35,9 +35,6 @@ def cancel_example():
 @pytest.fixture
 def app_example():
     example = load_example("guides/domain-behavior/error-handling/003.py")
-    # Sync processing runs the handler inside the request, so its errors
-    # reach the exception handlers.
-    example.domain.config["command_processing"] = "sync"
     example.domain.init(traverse=False)
     return example
 
