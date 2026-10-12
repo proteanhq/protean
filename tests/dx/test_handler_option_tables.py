@@ -4,8 +4,8 @@
 handler class does not list in ``_default_options``. The command-handler and
 event-handler skills each carry a table of those options with their defaults.
 These tests read each table and compare it with the class, so a new option or a
-changed default fails here until the table catches up. The handler tables in
-``docs/`` are checked for the same option names.
+changed default fails here until the table catches up. The projector skill's
+table and the handler tables in ``docs/`` are checked for the same option names.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import pytest
 from protean import dx
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
+from protean.core.projector import BaseProjector
 from protean.utils.container import DerivedDefault
 
 pytestmark = pytest.mark.no_test_domain
@@ -138,6 +139,11 @@ DOCS_TABLES = [
         BaseEventHandler,
     ),
     ("guides/change-state/command-handlers.md", None, BaseCommandHandler),
+    (
+        "reference/domain-elements/element-decorators.md",
+        "### `Domain.projector`",
+        BaseProjector,
+    ),
 ]
 
 
@@ -148,6 +154,17 @@ def test_docs_option_table_lists_the_handler_options(page, heading, handler_cls)
         text = _section(text, heading)
 
     assert set(option_table(text)) == {name for name, _ in handler_cls._default_options}
+
+
+def test_projector_skill_lists_the_projector_options():
+    # This table has Purpose and Required columns in place of Default, so only
+    # the option names are compared.
+    text = (SKILLS_ROOT / "projector" / "SKILL.md").read_text(encoding="utf-8")
+    lines = _section(text, "## Projector options").splitlines()
+    names = [cells[0] for cells in map(_cells, lines) if cells][2:]
+
+    assert names, "projector option table has no rows"
+    assert set(names) == {name for name, _ in BaseProjector._default_options}
 
 
 def test_command_and_event_handler_options_differ_where_documented():

@@ -2,6 +2,9 @@
 
 **Status:** Accepted
 
+> Amended October 2026, see
+[Amendment](#amendment-october-2026-projectors) below.
+
 **Date:** July 2026
 
 **Supersedes:** ADR-0009 Section 4 (which deferred `sequential_by` to the 5.2 epic)
@@ -93,8 +96,9 @@ an unbounded partition set (addressed under discovery and consequences).
 ### 2. Declaring the key
 
 `sequential_by` is an option on the handler's metadata, supported on event
-handlers, command handlers, and process managers. On an event or command handler
-its value is the name of a direct attribute on the event or command payload; nested
+handlers, command handlers, and process managers (and projectors, see the
+[amendment](#amendment-october-2026-projectors) at the end of this record). On
+an event or command handler its value is the name of a direct attribute on the event or command payload; nested
 paths and computed keys are out of scope. On a process manager it is a boolean
 opt-in, because a PM already declares its serialization domain through its
 `correlate` specs (see below).
@@ -504,3 +508,20 @@ collapsing every key onto a single worker.
   gain the reject rule does not already provide. Rejected in favour of the more
   readable flat name (both schemes carry the same reverse-parse cost, per
   decision 4).
+
+## Amendment (October 2026): projectors
+
+Decision 2 listed event handlers, command handlers and process managers. Users
+could not declare ordering on a projector whose category no other handler
+partitions, even though the consumer already reads a partitioned category
+partition by partition for every stream-subscribed handler on it.
+
+**Amended decision:** projectors also accept `sequential_by`, with the
+event-handler meaning. The value names a direct field on every event the
+projector handles. Each handled event's published category is partitioned by that
+field. The same registration rules apply: field existence, one key per category
+(shared with every other handler on the category), and broker capability. The
+process-manager boolean form does not apply to projectors. The ordering holds
+for a projector on a stream subscription; an event-store subscription reads the
+event store directly and is not affected. Ordering is per stream category, so a
+projector over several aggregates is not ordered across their categories.

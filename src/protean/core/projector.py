@@ -29,6 +29,12 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
     | ``retries`` | ``int`` | Max retry attempts on transient exceptions. Overrides ``server.transient_retry``; ``None`` defers to it. |
     | ``backoff`` | ``str`` | Retry delay strategy: ``"exponential"``, ``"linear"``, or ``"fixed"``. |
     | ``retry_exceptions`` | ``list`` | Exception types (classes or dotted paths) treated as transient for retry. |
+    | ``sequential_by`` | ``str`` | Partition key field name for per-key sequential processing (ADR-0028). |
+    | ``subscription_type`` | ``str`` | ``"stream"`` or ``"event_store"``. ``None`` uses the domain default. |
+    | ``subscription_profile`` | ``str`` | Named subscription profile, such as ``"projection"``. |
+    | ``subscription_config`` | ``dict`` | Custom subscription settings that override the profile. |
+    | ``idempotent`` | ``bool`` | Record a delivery marker per event so a redelivered event is applied once. |
+    | ``suppress_checks`` | ``tuple`` | Diagnostic codes ``protean check`` should not report for this projector. |
 
     Example::
 
@@ -83,6 +89,11 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
         ("retries", None),
         ("backoff", None),
         ("retry_exceptions", None),
+        # Partition-per-key sequential processing (ADR-0028), with the same
+        # meaning as on event handlers: the name of a direct attribute on
+        # every event this projector handles. Each handled event's stream
+        # category is partitioned by that key. ``None`` disables partitioning.
+        ("sequential_by", None),
         # Subscription configuration options (parity with event handlers and PMs)
         ("subscription_type", None),
         ("subscription_profile", None),
