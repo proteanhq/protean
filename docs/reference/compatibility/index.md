@@ -77,9 +77,19 @@ lists the breaks in `contracts.breaking_changes`. `summary.has_breaking_changes`
 is read from that list. The published-contract check applies the same field
 rules as the compatibility report: a field type change, a breaking `Decimal`
 precision or scale change, and a required field added without a default. So
-for a published event's fields, the two lists flag the same breaks. The one
-exception is an event version bump covered by an upcaster: the report marks
-those field changes as mitigated, and the contract check does not.
+for a published event's fields, the two lists flag the same breaks, with these
+exceptions:
+
+- An event version bump covered by an upcaster: the report marks those field
+  changes as mitigated, and the contract check does not.
+- An event that becomes published in the same diff: the contract check compares
+  only events published on both sides, so a field break in that diff is in the
+  report alone.
+- A field inside a value object the event holds: the report flags it on the
+  value object, and the contract check compares only the event's own fields.
+- `exclude` in `.protean/config.toml` filters the compatibility report only. A
+  contract break on an excluded published event still counts as breaking, and
+  `protean ir diff` and the `protean-check-compat` hook still print it.
 
 The contract check writes these field entries:
 
@@ -216,7 +226,9 @@ When deprecating a domain element or field:
 2. **Keep the deprecated API** for at least `min_versions_before_removal`
    minor versions (default: 3, configurable in `.protean/config.toml`).
 3. **Add to `exclude`** in `.protean/config.toml` if the element should
-   not trigger breaking change alerts during its deprecation period.
+   not trigger breaking change alerts during its deprecation period. On a
+   published event, `exclude` does not cover the contract breaks; see
+   [Published event contracts](#published-event-contracts).
 4. **Remove** in a later release, once the declared removal version has
    arrived and has been announced.
 
@@ -267,7 +279,7 @@ ordering = "ordering.domain"
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `strictness` | string | `"strict"` | `"strict"` exits non-zero on breaking changes. `"warn"` reports but allows. `"off"` skips checking entirely. |
-| `exclude` | list of strings | `[]` | Fully-qualified names of elements to exclude from compatibility checks. |
+| `exclude` | list of strings | `[]` | Fully-qualified names of elements to leave out of the compatibility report. A published event's contract breaks are still checked; see [Published event contracts](#published-event-contracts). |
 
 ### `[compatibility.deprecation]`
 

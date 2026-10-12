@@ -893,7 +893,7 @@ class CompatibilityChange:
     # Lets a per-field mitigation match a specific removal when an element
     # removes several fields with only some reserved, and lets the text output
     # match a report change to the published-contract entry for the same field.
-    # ``None`` for changes that are not about a single field.
+    # ``None`` for every other change type.
     field_name: str | None = None
 
 
@@ -1098,6 +1098,46 @@ def classify_changes(
     _apply_reserved_mitigation(report, left_ir, right_ir)
 
     return report
+
+
+# The report change type that names the same break as each contract field entry.
+_CONTRACT_TO_REPORT_CHANGE: dict[str, str] = {
+    "contract_field_type_changed": "field_type_changed",
+    "contract_required_field_added": "required_field_added",
+    "contract_field_removed": "field_removed",
+}
+
+
+def breaking_change_messages(
+    diff_result: dict[str, Any], report: CompatibilityReport | None = None
+) -> list[str]:
+    """List the message of every breaking change, each break once.
+
+    Contract entries from *diff_result* come first. A change in *report* is
+    left out when a contract entry names the same element, field and kind of
+    change, because both lists see a field break on a published event and word
+    it differently. The match is on those three parts, so two fields on one
+    event, or one field name on two elements, each keep their own line.
+    """
+    contract_breaks = diff_result.get("contracts", {}).get("breaking_changes", [])
+    messages: list[str] = [bc["message"] for bc in contract_breaks]
+    if report is None:
+        return messages
+
+    seen = set(messages)
+    contract_keys = {
+        (bc.get("fqn"), bc.get("field"), _CONTRACT_TO_REPORT_CHANGE[bc["type"]])
+        for bc in contract_breaks
+        if bc.get("type") in _CONTRACT_TO_REPORT_CHANGE
+    }
+    messages += [
+        change.message
+        for change in report.breaking_changes
+        if change.message not in seen
+        and (change.element_fqn, change.field_name, change.change_type)
+        not in contract_keys
+    ]
+    return messages
 
 
 def _events_by_fqn(ir: dict[str, Any]) -> dict[str, dict[str, Any]]:

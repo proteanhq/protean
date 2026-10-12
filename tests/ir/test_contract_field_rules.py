@@ -8,16 +8,26 @@ element. For a published event's fields, both lists must flag the same breaks.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
 from protean import Domain
 from protean.cli import app
+from protean.cli.hooks import _check_compat_single
 from protean.fields import Decimal, Float, Identifier, Integer, String
 from protean.ir.builder import IRBuilder
-from protean.ir.diff import classify_changes, diff_ir
+from protean.ir.config import CompatConfig
+from protean.ir.diff import (
+    CompatibilityChange,
+    CompatibilityReport,
+    breaking_change_messages,
+    classify_changes,
+    diff_ir,
+)
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -27,11 +37,23 @@ EVENT_TYPE = "Shop.Placed.v1"
 runner = CliRunner()
 
 
-def _build(published: bool = True, version: int = 1, **fields: Any) -> dict[str, Any]:
-    """Build the IR of a domain with one event ``Placed`` holding *fields*."""
+def _build(
+    published: bool = True,
+    version: int = 1,
+    order_fields: dict[str, Any] | None = None,
+    **fields: Any,
+) -> dict[str, Any]:
+    """Build the IR of a domain with one event ``Placed`` holding *fields*.
+
+    *order_fields* go on the ``Order`` aggregate the event belongs to.
+    """
     domain = Domain(name="Shop")
     order = domain.aggregate(
-        type("Order", (), {"__module__": "shop", "name": String()})
+        type(
+            "Order",
+            (),
+            {"__module__": "shop", "name": String(), **(order_fields or {})},
+        )
     )
     placed = type(
         "Placed", (), {"__module__": "shop", "order_id": Identifier(), **fields}
@@ -212,12 +234,15 @@ class TestSameNameFieldChanges:
         assert result["summary"]["has_breaking_changes"] is False
 
     def test_breaks_are_listed_in_field_order(self):
+        # Set iteration order follows the string hash seed, so five fields
+        # declared in reverse make an accidentally sorted order unlikely.
+        names = ["e", "d", "c", "b", "a"]
         breaks = _contract_breaks(
-            _build(qty=Integer(), amount=Decimal(precision=19, scale=2)),
-            _build(qty=String(), amount=Decimal(precision=19, scale=4)),
+            _build(**{name: Integer() for name in names}),
+            _build(**{name: String() for name in names}),
         )
 
-        assert [b["field"] for b in breaks] == ["amount", "qty"]
+        assert [b["field"] for b in breaks] == ["a", "b", "c", "d", "e"]
 
     def test_an_internal_event_has_no_contract_entry(self):
         left = _build(published=False, amount=Decimal(precision=19, scale=2))
@@ -418,6 +443,76 @@ class TestTextOutputPrintsEachBreakOnce:
         assert f"Type string changed for '{EVENT_FQN}'" in output
 
 
+class TestBreakingChangeMessagesMatchOnEveryKeyPart:
+    """A report change is dropped only when element, field and kind all match."""
+
+    _CONTRACT = {
+        "type": "contract_field_type_changed",
+        "fqn": EVENT_FQN,
+        "field": "amount",
+        "message": "contract: amount",
+    }
+
+    def _messages(self, **change: str) -> list[str]:
+        report = CompatibilityReport(
+            breaking_changes=[
+                CompatibilityChange(
+                    severity="breaking",
+                    message="report: amount",
+                    **{
+                        "element_fqn": EVENT_FQN,
+                        "change_type": "field_type_changed",
+                        "field_name": "amount",
+                        **change,
+                    },
+                )
+            ]
+        )
+        return breaking_change_messages(
+            {"contracts": {"breaking_changes": [self._CONTRACT]}}, report
+        )
+
+    def test_a_full_match_drops_the_report_change(self):
+        assert self._messages() == ["contract: amount"]
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            {"element_fqn": "shop.Order"},
+            {"field_name": "qty"},
+            {"change_type": "field_removed"},
+        ],
+        ids=["other-element", "other-field", "other-kind"],
+    )
+    def test_a_partial_match_keeps_the_report_change(self, change):
+        assert self._messages(**change) == ["contract: amount", "report: amount"]
+
+    def test_without_a_report_only_contract_messages_are_listed(self):
+        assert breaking_change_messages(
+            {"contracts": {"breaking_changes": [self._CONTRACT]}}
+        ) == ["contract: amount"]
+
+
+class TestSameFieldOnTwoElements:
+    def test_an_aggregate_break_still_prints_beside_the_event_break(self, tmp_path):
+        result = _diff_cli(
+            tmp_path,
+            _build(
+                order_fields={"amount": Decimal(precision=19, scale=2)},
+                amount=Decimal(precision=19, scale=2),
+            ),
+            _build(
+                order_fields={"amount": Decimal(precision=19, scale=4)},
+                amount=Decimal(precision=19, scale=4),
+            ),
+        )
+
+        output = _breaking_section(result.output)
+        assert "Breaking Changes (2):" in output
+        assert "in AGGREGATE 'shop.Order'" in output
+        assert f"in published event '{EVENT_TYPE}'" in output
+
+
 class TestExcludedPublishedEvent:
     def test_a_field_break_on_an_excluded_published_event_exits_1(self, tmp_path):
         protean_dir = tmp_path / ".protean"
@@ -455,3 +550,36 @@ class TestJsonCompatibilityBlock:
         assert [(b["change_type"], b["field_name"]) for b in breaks] == [
             ("field_type_changed", "qty")
         ]
+
+
+class TestHookOnExcludedPublishedEvent:
+    """The pre-commit hook names a contract break the `exclude` filter left in."""
+
+    def _check(self, config: CompatConfig) -> bool:
+        baseline = _build(qty=Integer())
+        current = _build(qty=String())
+        with (
+            patch("protean.ir.git.load_ir_from_commit", return_value=baseline),
+            patch("protean.cli.hooks._load_live_ir", return_value=current),
+        ):
+            return _check_compat_single(
+                "shop.py", Path(".protean"), base="HEAD", config=config
+            )
+
+    def test_strict_blocks_and_names_the_break(self, capsys):
+        assert self._check(CompatConfig(exclude=(EVENT_FQN,))) is False
+
+        err = " ".join(capsys.readouterr().err.split())
+        assert "Breaking IR changes detected for shop.py:" in err
+        assert (
+            f"! Field 'qty' type changed from 'Integer' to 'String' in "
+            f"published event '{EVENT_TYPE}'" in err
+        )
+
+    def test_warn_passes_and_names_the_break(self, capsys):
+        config = CompatConfig(strictness="warn", exclude=(EVENT_FQN,))
+        assert self._check(config) is True
+
+        err = " ".join(capsys.readouterr().err.split())
+        assert "Field 'qty' type changed from 'Integer' to 'String'" in err
+        assert "strictness=warn" in err
