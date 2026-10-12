@@ -75,6 +75,15 @@ def test_a_pending_order_older_than_30_days_fails(orders):
     }
 
 
+def test_a_pending_order_dated_in_the_future_fails(orders):
+    with pytest.raises(ValidationError) as exc:
+        _order(orders, order_date=date.today() + timedelta(days=1))
+
+    assert exc.value.messages == {
+        "_entity": ["Order date must be within the last 30 days if status is PENDING"]
+    }
+
+
 def test_a_pending_order_from_30_days_ago_is_valid(orders):
     order = _order(orders, order_date=date.today() - timedelta(days=30))
 

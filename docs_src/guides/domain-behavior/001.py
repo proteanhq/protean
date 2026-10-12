@@ -32,7 +32,7 @@ class Order:
     def order_date_must_be_within_the_last_30_days_if_status_is_pending(self):
         if (
             self.status == OrderStatus.PENDING.value
-            and self.order_date < date.today() - timedelta(days=30)
+            and not date.today() - timedelta(days=30) <= self.order_date <= date.today()
         ):
             raise ValidationError(
                 {
