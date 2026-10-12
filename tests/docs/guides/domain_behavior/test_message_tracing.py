@@ -55,6 +55,14 @@ def test_trace_ids_reads_both_ids_from_an_object_and_a_message(tracing):
     assert message_ids == ("ext-1", command.metadata.headers.id)
 
 
+def test_trace_ids_reads_both_ids_from_a_stored_event(tracing):
+    _, placed, *_ = _place_and_run(tracing, "ext-1")
+
+    object_ids, message_ids = tracing.trace_ids(placed.to_domain_object(), placed)
+
+    assert object_ids == message_ids == ("ext-1", placed.metadata.domain.causation_id)
+
+
 def test_trace_causation_walks_up_to_the_root(tracing, capsys):
     messages = _place_and_run(tracing, "ext-1")
     target = messages[-1]

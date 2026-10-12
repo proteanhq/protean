@@ -317,3 +317,16 @@ class TestEnvelopeMetadata:
             event_dict["_metadata"]["envelope"]["specversion"]
             == original_envelope.specversion
         )
+
+
+def test_trace_ids_survive_rebuilding_an_event_from_its_metadata():
+    original = UserLoggedIn(user_id=str(uuid4()))
+    domain = original._metadata.domain.model_copy(
+        update={"correlation_id": "checkout-42", "causation_id": "cmd-1"}
+    )
+    metadata = original._metadata.model_copy(update={"domain": domain})
+
+    rebuilt = UserLoggedIn(_metadata=metadata, user_id=original.user_id)
+
+    assert rebuilt._metadata.domain.correlation_id == "checkout-42"
+    assert rebuilt._metadata.domain.causation_id == "cmd-1"

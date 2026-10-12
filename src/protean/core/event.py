@@ -186,8 +186,12 @@ class BaseEvent(BaseMessageType):
             asynchronous=existing_domain.asynchronous
             if existing_domain and hasattr(existing_domain, "asynchronous")
             else True,
-            correlation_id=correlation_id,
-            causation_id=causation_id,
+            correlation_id=existing_domain.correlation_id
+            if existing_domain and existing_domain.correlation_id
+            else correlation_id,
+            causation_id=existing_domain.causation_id
+            if existing_domain and existing_domain.causation_id
+            else causation_id,
         )
 
         # Also preserve envelope if it exists
