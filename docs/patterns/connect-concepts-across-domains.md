@@ -224,9 +224,10 @@ own representation. The mechanism depends on the deployment relationship between
 the contexts.
 
 !!!tip "Choosing the right integration mechanism"
-    **Same domain / co-located domains:** Use event handlers with
-    `stream_category` for simple state sync, or `register_external_event()`
-    with process managers for multi-step cross-domain workflows.
+    **Same domain / co-located domains:** Use an event handler on the
+    aggregate that raises the event, and have it issue a command to the other
+    aggregate for simple state sync. Use `register_external_event()` with
+    process managers for multi-step cross-domain workflows.
 
     **Distributed domains:** Use subscribers as anti-corruption layers.
 
@@ -234,10 +235,12 @@ the contexts.
     communication](../guides/multi-domain-applications.md#cross-domain-communication)
     for the full decision framework.
 
-### Same Domain: Event Handlers with Cross-Aggregate Streams
+### Same Domain: An Event Handler That Issues Commands
 
-When multiple aggregates exist within the same Protean domain, use event handlers
-with the `stream_category` option to listen across aggregate boundaries:
+When multiple aggregates exist within the same Protean domain, the event
+handler stays with the aggregate that raises the events. It issues a command
+for each change the other aggregate must make, and that aggregate's command
+handler does the write:
 
 ```python
 @domain.aggregate
@@ -256,32 +259,73 @@ class BillingAccount:
     email: String(required=True)
     account_status: String(default="ACTIVE")
 
+    def suspend(self):
+        self.account_status = "SUSPENDED"
 
-@domain.event_handler(part_of=BillingAccount, stream_category="customer")
-class BillingAccountLifecycleHandler:
-    """Reacts to Customer lifecycle events to manage billing accounts."""
+
+@domain.command(part_of=BillingAccount)
+class OpenBillingAccount:
+    customer_id: Identifier(required=True)
+    email: String(required=True)
+
+
+@domain.command(part_of=BillingAccount)
+class SuspendBillingAccount:
+    customer_id: Identifier(required=True)
+
+
+@domain.event_handler(part_of=Customer)
+class CustomerLifecycleHandler:
+    """Turns Customer lifecycle events into BillingAccount commands."""
 
     @handle(CustomerRegistered)
     def on_customer_registered(self, event: CustomerRegistered):
-        repo = current_domain.repository_for(BillingAccount)
-        account = BillingAccount(
-            customer_id=event.customer_id,  # Correlation
-            email=event.email,
-            account_status="ACTIVE",
+        current_domain.process(
+            OpenBillingAccount(customer_id=event.customer_id, email=event.email)
         )
-        repo.add(account)
 
     @handle(CustomerDeactivated)
     def on_customer_deactivated(self, event: CustomerDeactivated):
+        current_domain.process(
+            SuspendBillingAccount(customer_id=event.customer_id)
+        )
+
+
+@domain.command_handler(part_of=BillingAccount)
+class BillingAccountCommandHandler:
+    @handle(OpenBillingAccount)
+    def open_account(self, command: OpenBillingAccount):
         repo = current_domain.repository_for(BillingAccount)
-        account = repo.find_by(customer_id=event.customer_id)
+        if repo.query.filter(customer_id=command.customer_id).all().total:
+            return  # An account for this customer already exists
+
+        repo.add(
+            BillingAccount(
+                customer_id=command.customer_id,  # Correlation
+                email=command.email,
+                account_status="ACTIVE",
+            )
+        )
+
+    @handle(SuspendBillingAccount)
+    def suspend_account(self, command: SuspendBillingAccount):
+        repo = current_domain.repository_for(BillingAccount)
+        account = repo.find_by(customer_id=command.customer_id)
+        if account.account_status == "SUSPENDED":
+            return  # Already suspended
+
         account.suspend()
         repo.add(account)
 ```
 
-The event handler is `part_of` the `BillingAccount` aggregate but subscribes to
-the `customer` stream category. It translates Customer events into
-BillingAccount operations, using `customer_id` as the correlation identifier.
+The event handler is `part_of` the `Customer` aggregate and reads the
+`customer` stream, where the events are raised. It translates Customer events
+into BillingAccount commands, using `customer_id` as the correlation
+identifier. `BillingAccount` changes only through its own command handler.
+
+Events are delivered at least once, so the same event can arrive twice. The
+command handler skips a repeat: it opens no second account for a customer, and
+it leaves an account that is already suspended as it is.
 
 ### Separate Domains: Subscribers as Anti-Corruption Layers
 
@@ -578,7 +622,7 @@ integration (e.g., an API call or a command sent through a broker), not events.
 |--------|----------|
 | Shared identity | Use the source context's identity as a correlation ID in all consuming contexts |
 | State propagation | Publish lifecycle events from the authoritative context; consume and build local models |
-| Within same domain | Event handlers with `stream_category` override for cross-aggregate subscriptions |
+| Within same domain | An event handler on the aggregate that raises the event issues a command to the other aggregate |
 | Across separate domains | Subscribers on broker streams, acting as anti-corruption layers |
 | Read-only cross-context views | Projections built by projectors subscribing to multiple stream categories |
 | Event format for cross-context transfer | Fact events (`fact_events=True`) for complete state snapshots |

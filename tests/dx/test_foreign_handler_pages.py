@@ -2,8 +2,10 @@
 
 An event handler that is ``part_of`` one aggregate and sets ``stream_category``
 to another aggregate's stream is what ``check`` reports as
-``EVENT_HANDLER_FOREIGN_EVENT``. The pages below teach the other shape: the
-handler stays with the aggregate that owns the event and issues a command.
+``EVENT_HANDLER_FOREIGN_EVENT``. The pages this test reads (the skills and
+rules in the DX pack, the event handlers guide, and the docs pages in
+``DOCS_PAGES``) teach the other shape: the handler stays with the aggregate
+that owns the event and issues a command.
 
 A code block on these pages may still show ``stream_category`` on an event
 handler in two cases:
@@ -35,6 +37,15 @@ if not PACK_ROOT.is_dir():
 
 SKILLS = ("event-handler", "add-event", "add-use-case", "refactor-introduce-events")
 GUIDE = REPO_ROOT / "docs" / "guides" / "consume-state" / "event-handlers.md"
+DOCS_PAGES = tuple(
+    REPO_ROOT / "docs" / page
+    for page in (
+        "concepts/async-processing/stream-categories.md",
+        "concepts/async-processing/subscriptions.md",
+        "patterns/calling-external-systems-from-handlers.md",
+        "patterns/connect-concepts-across-domains.md",
+    )
+)
 
 FENCE = re.compile(r"^([ \t]*)```[^\n]*\n(.*?)^\1```", re.MULTILINE | re.DOTALL)
 EVENT_HANDLER = re.compile(r"event_handler\((.*?)\)[ \t]*(?:#[^\n]*)?\n", re.DOTALL)
@@ -51,8 +62,7 @@ def _pages() -> list[Path]:
         for page in sorted((PACK_ROOT / dx.SKILLS_DIR / skill).rglob("*.md"))
     ]
     pages += sorted((PACK_ROOT / "rules").glob("*.md"))
-    if GUIDE.is_file():
-        pages.append(GUIDE)
+    pages += [page for page in (GUIDE, *DOCS_PAGES) if page.is_file()]
     return pages
 
 

@@ -149,41 +149,37 @@ check` does not flag it: the rule fires only on a call that comes after a
 repository access. A retry re-runs the fetch, a safe repeat for a read.
 
 Persisting the snapshot and giving it an identity keeps the payload out of the
-event. Each facet then loads the snapshot by id rather than carrying it on the
-event or fetching it again. A fat event would put the whole payload into the event
-store forever, and a re-fetch per facet turns one call into several.
+event. The step that applies the facets then loads the snapshot by id rather
+than carrying it on the event or fetching it again. A fat event would put the
+whole payload into the event store forever, and a re-fetch per facet turns one
+call into several.
 
-**Apply the facets as sibling methods on one class.** They all mutate
-`Subscriber`, so they belong together. Sibling methods run sequentially, each in
-its own Unit of Work, and each one sees the previous method's commit. Each write
-advances the aggregate's version by one, so they never collide.
+**Apply every facet in one command.** The snapshot belongs to `ProfileSnapshot`,
+so the event handler is part of `ProfileSnapshot`. It does not change
+`Subscriber` itself. It issues one `ApplyProfileSnapshot` command, which is part
+of `Subscriber`, and Subscriber's command handler applies every facet:
 
 ```python
-@domain.event_handler(part_of=Subscriber, stream_category="profile_snapshot")
-class ProfileSync:
-    @handle(ProfileSnapshotStored)
-    def apply_contact(self, event):
-        snapshot = current_domain.repository_for(ProfileSnapshot).get(event.snapshot_id)
-        repo = current_domain.repository_for(Subscriber)
-        subscriber = repo.get(event.subscriber_id)
-        subscriber.update_contact(snapshot.email, snapshot.name)
-        repo.add(subscriber)
-
-    @handle(ProfileSnapshotStored)
-    def apply_plan_and_flags(self, event):
-        snapshot = current_domain.repository_for(ProfileSnapshot).get(event.snapshot_id)
-        repo = current_domain.repository_for(Subscriber)
-        subscriber = repo.get(event.subscriber_id)
-        subscriber.change_plan(snapshot.tier, snapshot.seats)   # sets the tier
-        subscriber.set_flags_for_tier()                         # reads the tier
-        repo.add(subscriber)
+--8<-- "patterns/calling-external-systems-from-handlers/001.py:sync"
 ```
 
-**Dependent steps share a method.** The feature flags depend on the plan tier, so
-they read what `change_plan` wrote. Sibling methods run in an unspecified order,
-so a separate `set_flags` method could run first and read the old tier. Putting
-both steps in `apply_plan_and_flags` makes their order ordinary code, which is
-where an ordering dependency belongs.
+The facets run in one method, in the order the code gives: contact, then plan,
+then flags. The feature flags depend on the plan tier, so
+`set_flags_for_tier()` reads the tier that `change_plan()` has just set. The
+order is ordinary code, which is where an ordering dependency belongs. All three
+facets and the snapshot id go into `Subscriber` in one write.
+
+Events are delivered at least once, so the same `ProfileSnapshotStored` can
+arrive twice. `Subscriber` records the ids of the snapshots it has applied, and
+the command handler returns without changes when it sees one again. The id is
+saved in the same write as the facets. A retry after that write commits does
+nothing, and a retry after a failed write applies the snapshot again in full.
+
+The command handler uses these two aggregates:
+
+```python
+--8<-- "patterns/calling-external-systems-from-handlers/001.py:aggregates"
+```
 
 ### When the two genuinely cannot be split
 
@@ -227,41 +223,24 @@ a connection while it waits on the partner, and an OCC retry re-posts. Split it
 into `confirm` and `notify_partner`, and chain the call to `OrderConfirmed` when
 it must follow the write.
 
-### A separate handler class per facet on a shared aggregate
+### One command per facet
 
-ADR-0031 offers separate handler classes "for full independence with their own
-subscriptions and checkpoints", and that is right when the handlers touch
-different aggregates. It is the wrong tool when every handler mutates the same
-one.
+It can look tidier to give each facet its own command: `UpdateContact`,
+`ChangePlan` and `SetFlags`, all issued by the same event handler. With async
+command processing, each command is delivered and processed on its own, in its
+own transaction. When `ChangePlan` fails and waits for a retry, `SetFlags` still
+runs, reads the old tier, and sets the wrong flags. With more than one worker on
+the command stream, `SetFlags` can also run before `ChangePlan`. Each command
+also loads `Subscriber` and writes a new version, so three writes compete where
+one would do.
 
-```python
-# Anti-pattern: three classes, all mutating Subscriber, all subscribed to one event.
-@domain.event_handler(part_of=Subscriber, stream_category="profile_snapshot")
-class ContactSync:
-    @handle(ProfileSnapshotStored)
-    def apply(self, event): ...          # its own subscription and worker
-
-@domain.event_handler(part_of=Subscriber, stream_category="profile_snapshot")
-class PlanSync:
-    @handle(ProfileSnapshotStored)
-    def apply(self, event): ...          # runs concurrently with the others
-
-@domain.event_handler(part_of=Subscriber, stream_category="profile_snapshot")
-class FlagSync:
-    @handle(ProfileSnapshotStored)
-    def apply(self, event): ...          # and a third worker again
-```
-
-Each class gets its own subscription and its own worker, so the three run
-concurrently. They all load `Subscriber` at the same version and all try to write
-the next one, so two of every three writes lose the version race and retry.
-Sibling methods on one class avoid this: they are sequential, and each sees the
-previous commit.
+Keep facets that depend on each other in one command and one command handler
+method, where their order is the order of the code.
 
 ### A fat event or a re-fetch per facet
 
 Passing the fetched snapshot on the event makes the event large and writes the
-payload into the event store permanently. Re-fetching the snapshot in each facet
+payload into the event store permanently. Re-fetching the snapshot for each facet
 turns one external call into one per facet. Persist the snapshot once, give it an
 identity, and load it by id.
 
@@ -286,11 +265,11 @@ holding a transaction open while an external call runs.
 |-----------|---------------|
 | Persist and call out, independent | Two sibling methods on one class |
 | Call must follow the write, or needs its value | Persisting method raises an event; calling method handles it |
-| Many facets of one aggregate from one snapshot | Fetch and persist the snapshot once, raise one event, apply facets as sibling methods |
-| A facet depends on what an earlier facet wrote | Put both in one method |
+| Many facets of one aggregate from one snapshot | Fetch and persist the snapshot once, raise one event, and have its handler issue one command that applies every facet |
+| A facet depends on what an earlier facet wrote | Apply both in the same command handler method, in order |
 | The write needs the call's result | One method, plus the remote system's idempotency key |
 | Facets that touch different aggregates | Separate handler classes, one per aggregate |
-| Facets that all mutate one aggregate | Sibling methods on one class, never separate classes |
+| Facets that all mutate one aggregate | One command to that aggregate, never one command per facet |
 
 ---
 
