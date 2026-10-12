@@ -24,14 +24,15 @@ Invariants are defined using the `@invariant` decorator with either a `.pre`
 or `.post` qualifier. You must always use `@invariant.pre` or
 `@invariant.post`, plain `@invariant` without a qualifier is not valid.
 
-```python hl_lines="9-10 14-15"
---8<-- "guides/domain-behavior/001.py:17:41"
+```python hl_lines="25-26 30-31 44-45"
+--8<-- "guides/domain-behavior/001.py:full"
 ```
 
-In the above example, `Order` aggregate has two invariants (business
-conditions), one that the total amount of the order must always equal the sum
-of individual item subtotals, and the other that the order date must be within
-30 days if status is `PENDING`.
+In the above example, the `Order` aggregate has three invariants (business
+conditions). The total amount of the order must always equal the sum of
+individual item subtotals. The order date must be within the last 30 days if
+the status is `PENDING`. The order must have a customer and at least one item.
+The `OrderItem` entity has an invariant of its own.
 
 All methods marked `@invariant` are associated with the domain element when
 the element is registered with the domain.
@@ -59,34 +60,7 @@ For example, checking that an account has sufficient balance before a
 withdrawal:
 
 ```python
-from protean import Domain, invariant
-from protean.exceptions import ValidationError
-from protean.fields import Float, Identifier, String
-
-domain = Domain()
-
-@domain.aggregate
-class Account:
-    account_number: Identifier(required=True, unique=True)
-    balance: Float(default=0.0)
-    status: String(choices=["ACTIVE", "FROZEN"], default="ACTIVE")
-
-    @invariant.pre
-    def account_must_be_active_to_transact(self):
-        if self.status == "FROZEN":
-            raise ValidationError(
-                {"_entity": ["Cannot modify a frozen account"]}
-            )
-
-    @invariant.post
-    def balance_must_not_be_negative(self):
-        if self.balance < 0:
-            raise ValidationError(
-                {"_entity": ["Insufficient funds"]}
-            )
-
-    def withdraw(self, amount: float):
-        self.balance -= amount
+--8<-- "guides/domain-behavior/invariants/001.py:account"
 ```
 
 When `withdraw()` is called, the flow is:
@@ -148,10 +122,12 @@ Immediately after an object (aggregate or entity) is initialized, all
 **post-invariant** checks are triggered to ensure the aggregate starts in a
 valid state.
 
-```shell hl_lines="11 13"
-In [1]: Order(
+```shell hl_lines="13 15"
+In [1]: from datetime import date
+
+In [2]: Order(
    ...:    customer_id="1",
-   ...:    order_date="2020-01-01",
+   ...:    order_date=date.today(),
    ...:    total_amount=100.0,
    ...:    status="PENDING",
    ...:    items=[
@@ -170,10 +146,12 @@ Every attribute change in an aggregate or its enclosed entities triggers
 invariant validation throughout the aggregate cluster. This ensures that any
 modification maintains the consistency of the domain model.
 
-```shell hl_lines="13 15"
-In [1]: order = Order(
+```shell hl_lines="15 17"
+In [1]: from datetime import date
+
+In [2]: order = Order(
    ...:     customer_id="1",
-   ...:     order_date="2020-01-01",
+   ...:     order_date=date.today(),
    ...:     total_amount=100.0,
    ...:     status="PENDING",
    ...:     items=[
@@ -183,7 +161,7 @@ In [1]: order = Order(
    ...: )
    ...:
 
-In [2]: order.total_amount = 140.0
+In [3]: order.total_amount = 140.0
 ...
 ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
@@ -207,7 +185,7 @@ invariants. Both pre-invariants and post-invariants fire, just as they do
 for direct attribute assignments.
 
 ```shell hl_lines="1 3"
-In [3]: order.add_items(OrderItem(product_id="3", quantity=2, price=10.0, subtotal=20.0))
+In [4]: order.add_items(OrderItem(product_id="3", quantity=2, price=10.0, subtotal=20.0))
 ...
 ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
@@ -225,10 +203,6 @@ There may be times when multiple attributes need to be changed together, and
 validations should not trigger until the entire operation is complete.
 The `atomic_change` context manager can be used to achieve this.
 
-```python
-from protean import atomic_change
-```
-
 Within the `atomic_change` context manager, the cycle works as follows:
 
 1. **Pre-invariants fire on entry**: The current state is validated.
@@ -238,12 +212,19 @@ Within the `atomic_change` context manager, the cycle works as follows:
    check fails, `ValidationError` is raised and every change made inside the
    block is undone.
 
-```shell hl_lines="14"
-In [1]: from protean import atomic_change
+```python
+--8<-- "guides/domain-behavior/001.py:atomic_change"
+```
+
+Called on the order from the earlier examples, `add_third_item()` changes the
+total and adds the item, and the check at the end of the block passes:
+
+```shell hl_lines="16"
+In [1]: from datetime import date
 
 In [2]: order = Order(
    ...:     customer_id="1",
-   ...:     order_date="2020-01-01",
+   ...:     order_date=date.today(),
    ...:     total_amount=100.0,
    ...:     status="PENDING",
    ...:     items=[
@@ -252,19 +233,17 @@ In [2]: order = Order(
    ...:     ],
    ...: )
 
-In [3]: with atomic_change(order):
-   ...:     order.total_amount = 120.0
-   ...:     order.add_items(
-   ...:         OrderItem(product_id="3", quantity=2, price=10.0, subtotal=20.0)
-   ...:     )
-   ...:
+In [3]: add_third_item(order)
+
+In [4]: order.total_amount, len(order.items)
+Out[4]: (120.0, 3)
 ```
 
 Trying to perform the attribute updates one after another would have resulted
 in a `ValidationError` exception:
 
 ```shell hl_lines="3"
-In [4]: order.total_amount = 120.0
+In [5]: order.total_amount = 120.0
 ...
 ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
@@ -288,7 +267,7 @@ standard Python MRO resolution. A subclass inherits all `@invariant.pre` and
 When invariants raise `ValidationError`, the framework aggregates all
 violations into a single `ValidationError` with a dictionary structure:
 
-```python
+```
 ValidationError({
     '_entity': ['Total should be sum of item prices'],
     'balance': ['Insufficient funds'],
@@ -309,23 +288,19 @@ carries `VALUE_OBJECT_INVARIANT_FAILED`. The exception's `rationale` and `fix`
 resolve from that code.
 
 ```python
-from protean.exceptions import ValidationError
-
-try:
-    order.total_amount = 140.0
-except ValidationError as exc:
-    print(exc.code)   # "INVARIANT_POST_FAILED"
-    print(exc.codes)  # ["INVARIANT_POST_FAILED"]
-    print(exc.fix)    # how to fix it, from the registry
+--8<-- "guides/domain-behavior/001.py:codes"
 ```
 
-When several invariants fail together, every code rides on `exc.codes`, and
-`exc.code` is `None` because no single one names the failure. The errors dict is
-the same either way.
+When several invariants fail together, `exc.codes` lists each distinct code
+once. Two failed `@invariant.post` checks give `["INVARIANT_POST_FAILED"]`, so
+`exc.code` is still `"INVARIANT_POST_FAILED"`. When the failures carry different
+codes, `exc.code` is `None` because no single one names the failure. The errors
+dict lists every message either way.
 
 Pass `code` to stamp a specific code on an invariant:
 
 ```python
+# fragment
 @invariant.post(code="ORDER_TOTAL_MISMATCH")
 def total_matches_items(self):
     if self.total_amount != sum(item.subtotal for item in self.items):

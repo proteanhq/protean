@@ -15,20 +15,7 @@ automatically enforced.
 A `Status` field requires an Enum class as its first argument:
 
 ```python
-from enum import Enum
-from protean.fields import Status
-
-class OrderStatus(Enum):
-    DRAFT = "DRAFT"
-    PLACED = "PLACED"
-    CONFIRMED = "CONFIRMED"
-    SHIPPED = "SHIPPED"
-    DELIVERED = "DELIVERED"
-    CANCELLED = "CANCELLED"
-
-@domain.aggregate
-class Order:
-    status = Status(OrderStatus, default="DRAFT")
+--8<-- "guides/domain-behavior/status-transitions/001.py:status"
 ```
 
 Without a `transitions` argument, `Status` behaves like
@@ -40,15 +27,10 @@ does not enforce transition rules.
 Pass a `transitions` dict mapping each state to its allowed next states:
 
 ```python
-@domain.aggregate
-class Order:
-    status = Status(OrderStatus, default="DRAFT", transitions={
-        OrderStatus.DRAFT: [OrderStatus.PLACED, OrderStatus.CANCELLED],
-        OrderStatus.PLACED: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-        OrderStatus.CONFIRMED: [OrderStatus.SHIPPED],
-        OrderStatus.SHIPPED: [OrderStatus.DELIVERED],
-    })
+--8<-- "guides/domain-behavior/status-transitions/002.py:transitions"
 ```
+
+The `amount` field is used in the `atomic_change` examples further down.
 
 States **not appearing as keys** in the dict are terminal, no outgoing
 transitions are allowed. In the example above, `DELIVERED` and `CANCELLED` are
@@ -62,9 +44,7 @@ When you assign a new status value, the framework validates the transition
 immediately:
 
 ```python
-order = Order()                # status = "DRAFT"
-order.status = "PLACED"        # OK — DRAFT → PLACED is allowed
-order.status = "SHIPPED"       # ValidationError — PLACED → SHIPPED is not allowed
+--8<-- "guides/domain-behavior/status-transitions/002.py:direct"
 ```
 
 The error message tells you exactly what's wrong:
@@ -87,8 +67,7 @@ This catches re-entry bugs (calling `approve()` on an already-approved item) at
 the framework level instead of requiring manual guards.
 
 ```python
-order = Order()           # status = "DRAFT"
-order.status = "DRAFT"    # ValidationError — DRAFT is not in DRAFT's target list
+--8<-- "guides/domain-behavior/status-transitions/002.py:reentry"
 ```
 
 The error message guides you toward the fix:
@@ -102,16 +81,7 @@ order should be a safe no-op for race condition resilience), add the state to
 its own target list:
 
 ```python
-@domain.aggregate
-class Order:
-    status = Status(OrderStatus, default="DRAFT", transitions={
-        OrderStatus.DRAFT: [OrderStatus.PLACED, OrderStatus.CANCELLED],
-        OrderStatus.PLACED: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-        OrderStatus.CONFIRMED: [OrderStatus.SHIPPED],
-        OrderStatus.SHIPPED: [OrderStatus.DELIVERED],
-        # CANCELLED is idempotent — re-entry is explicitly allowed
-        OrderStatus.CANCELLED: [OrderStatus.CANCELLED],
-    })
+--8<-- "guides/domain-behavior/status-transitions/003.py:idempotent"
 ```
 
 Now `order.status = "CANCELLED"` succeeds when the order is already cancelled.
@@ -132,8 +102,7 @@ Setting the initial value (from `None`) is always allowed, regardless of the
 transition map:
 
 ```python
-order = Order()           # status = "DRAFT" (via default) — OK
-order = Order(status="PLACED")  # Also OK — initial assignment
+--8<-- "guides/domain-behavior/status-transitions/002.py:initialization"
 ```
 
 ## Working with `atomic_change`
@@ -143,23 +112,13 @@ status snapshots on entry and validates the **start-to-end** transition on exit.
 Intermediate states are not checked:
 
 ```python
-from protean import atomic_change
-
-order = Order()  # status = "DRAFT"
-
-with atomic_change(order):
-    order.status = "PLACED"
-    order.amount = 100.0
-# On exit: validates DRAFT → PLACED — OK
+--8<-- "guides/domain-behavior/status-transitions/002.py:atomic_valid"
 ```
 
 If the overall transition is invalid:
 
 ```python
-with atomic_change(order):
-    order.status = "PLACED"      # DRAFT → PLACED (valid step)
-    order.status = "CONFIRMED"   # PLACED → CONFIRMED (valid step)
-# On exit: validates DRAFT → CONFIRMED — NOT in DRAFT's allowed list → ValidationError
+--8<-- "guides/domain-behavior/status-transitions/002.py:atomic_invalid"
 ```
 
 ## Event-sourced aggregates
@@ -168,19 +127,7 @@ For event-sourced aggregates, `raise_()` wraps the `@apply` handler in
 `atomic_change`. The same start-to-end validation applies:
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Order:
-    status = Status(OrderStatus, default="DRAFT", transitions={
-        OrderStatus.DRAFT: [OrderStatus.PLACED],
-        OrderStatus.PLACED: [OrderStatus.CONFIRMED],
-    })
-
-    def place(self):
-        self.raise_(OrderPlaced(order_id=self.order_id))
-
-    @apply
-    def on_placed(self, event: OrderPlaced) -> None:
-        self.status = "PLACED"   # Validated on atomic_change exit
+--8<-- "guides/domain-behavior/status-transitions/004.py:es_order"
 ```
 
 **Event replay** (`from_events()`) does **not** validate transitions.
@@ -189,11 +136,10 @@ Replayed events are historical facts, the framework trusts them.
 ## Programmatic checking
 
 Use `can_transition_to()` to check whether a transition would be valid
-without actually performing it:
+without actually performing it. For an order in `DRAFT`:
 
 ```python
-order.can_transition_to("status", OrderStatus.SHIPPED)  # False
-order.can_transition_to("status", OrderStatus.PLACED)   # True
+--8<-- "guides/domain-behavior/status-transitions/002.py:can_transition"
 ```
 
 This is useful for:
@@ -208,26 +154,7 @@ An aggregate can have multiple independent `Status` fields. Each validates
 its transitions independently:
 
 ```python
-class PaymentStatus(Enum):
-    PENDING = "PENDING"
-    PAID = "PAID"
-    REFUNDED = "REFUNDED"
-
-class FulfillmentStatus(Enum):
-    UNFULFILLED = "UNFULFILLED"
-    FULFILLED = "FULFILLED"
-    RETURNED = "RETURNED"
-
-@domain.aggregate
-class Order:
-    payment = Status(PaymentStatus, default="PENDING", transitions={
-        PaymentStatus.PENDING: [PaymentStatus.PAID],
-        PaymentStatus.PAID: [PaymentStatus.REFUNDED],
-    })
-    fulfillment = Status(FulfillmentStatus, default="UNFULFILLED", transitions={
-        FulfillmentStatus.UNFULFILLED: [FulfillmentStatus.FULFILLED],
-        FulfillmentStatus.FULFILLED: [FulfillmentStatus.RETURNED],
-    })
+--8<-- "guides/domain-behavior/status-transitions/005.py:multiple"
 ```
 
 ## Best practices

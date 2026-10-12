@@ -30,8 +30,8 @@ An Application Service (or another element from the Application Layer, like
 the repository. It then invokes a method on the aggregate that mutates state.
 Below is the aggregate method that mutates state:
 
-```python hl_lines="13-18 20-23"
---8<-- "guides/domain-behavior/002.py:8:30"
+```python hl_lines="20-25 27-30"
+--8<-- "guides/domain-behavior/002.py:full"
 ```
 
 Also visible is the invariant (business rule) that the balance should never
@@ -43,7 +43,7 @@ Changing state within an aggregate is straightforward, in the form of attribute
 updates.
 
 ```python hl_lines="15"
---8<-- "guides/domain-behavior/002.py:14:30"
+--8<-- "guides/domain-behavior/002.py:account"
 ```
 
 If the state change is successful, meaning it satisfies all
@@ -60,7 +60,8 @@ Out[3]:
 {'account_number': '1234',
  'balance': 500.0,
  'overdraft_limit': 50.0,
- 'id': '73e6826c-cae0-4fbf-b42b-7edefc030968'}
+ 'id': '73e6826c-cae0-4fbf-b42b-7edefc030968',
+ '_version': -1}
 ```
 
 If the change does not satisfy an invariant, Protean raises a `ValidationError`
@@ -95,16 +96,11 @@ intercepted by `__setattr__`, which runs a full validation cycle:
 
 This means that **every individual assignment** triggers the full invariant
 cycle. If you need to change multiple fields together (where intermediate
-states would be invalid), use `atomic_change`:
+states would be invalid), use `atomic_change`. This example uses the `Order`
+aggregate from the [Invariants](invariants.md) guide:
 
 ```python
-from protean import atomic_change
-
-with atomic_change(order):
-    order.total_amount = 120.0
-    order.add_items(
-        OrderItem(product_id="3", quantity=2, price=10.0, subtotal=20.0)
-    )
+--8<-- "guides/domain-behavior/001.py:atomic_change"
 ```
 
 Within `atomic_change`, pre-invariants fire on entry, individual assignment
@@ -137,18 +133,7 @@ and the framework automatically invokes the corresponding `@apply`
 handler to perform the state change:
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Order:
-    status: String(max_length=20, default="PENDING")
-
-    def confirm(self):
-        # Don't set self.status here — raise an event instead
-        self.raise_(OrderConfirmed(order_id=self.id))
-
-    @apply
-    def when_confirmed(self, event: OrderConfirmed):
-        # State mutation happens here, triggered by raise_()
-        self.status = "CONFIRMED"
+--8<-- "guides/domain-behavior/aggregate-mutation/001.py:es_order"
 ```
 
 This ensures the **same code path** runs whether the aggregate is

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from datetime import UTC, datetime
 from enum import Enum
 
@@ -22,3 +23,6 @@ class Account:
     account_type: String(required=True, max_length=7, choices=AccountType)
     balance: Float(default=0.0)
     opened_at: DateTime(default=utc_now)
+
+
+# --8<-- [end:full]
