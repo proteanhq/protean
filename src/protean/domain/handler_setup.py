@@ -360,7 +360,8 @@ class HandlerConfigurator:
         the result on the domain:
 
         - **Field existence** — every event/command type a ``sequential_by``
-          handler handles must declare the named field (for a process manager,
+          handler (event handler, projector, command handler or process
+          manager) handles must declare the named field (for a process manager,
           the field its ``correlate`` spec resolves for that event).
         - **One key per category** — a stream category can be partitioned by at
           most one key; two handlers asking for different keys on the same
@@ -393,8 +394,9 @@ class HandlerConfigurator:
         for element in registry._elements[DomainObjects.EVENT_HANDLER.value].values():
             handler_cls = element.cls
             key = getattr(handler_cls.meta_, "sequential_by", None)
-            if not key:
+            if key is None:
                 continue
+            self._assert_field_name_key(key, handler_cls)
             for _, method in _discover_handler_methods(handler_cls):
                 target = method._target_cls
                 if inspect.isclass(target) and issubclass(target, BaseEvent):
@@ -403,12 +405,28 @@ class HandlerConfigurator:
                     if category is not None:
                         _record(category, key, handler_cls.__name__)
 
+        # Projectors: same meaning as event handlers.
+        for element in registry._elements[DomainObjects.PROJECTOR.value].values():
+            projector_cls = element.cls
+            key = getattr(projector_cls.meta_, "sequential_by", None)
+            if key is None:
+                continue
+            self._assert_field_name_key(key, projector_cls)
+            for _, method in _discover_handler_methods(projector_cls):
+                target = method._target_cls
+                if inspect.isclass(target) and issubclass(target, BaseEvent):
+                    self._assert_partition_field(target, key, projector_cls, "Event")
+                    category = self._event_published_category(target)
+                    if category is not None:
+                        _record(category, key, projector_cls.__name__)
+
         # Command handlers: value is a direct field name on each handled command.
         for element in registry._elements[DomainObjects.COMMAND_HANDLER.value].values():
             handler_cls = element.cls
             key = getattr(handler_cls.meta_, "sequential_by", None)
-            if not key:
+            if key is None:
                 continue
+            self._assert_field_name_key(key, handler_cls)
             for _, method in _discover_handler_methods(handler_cls):
                 target = method._target_cls
                 if inspect.isclass(target) and issubclass(target, BaseCommand):
@@ -486,6 +504,22 @@ class HandlerConfigurator:
             f"which `sequential_by` requires. Offending categories: "
             f"{categories} (ADR-0028)."
         )
+
+    @staticmethod
+    def _assert_field_name_key(key: Any, element_cls: type[Any]) -> None:
+        """Raise unless *key* is a non-empty field name.
+
+        Event handlers, projectors and command handlers take a field name. The
+        boolean form belongs to process managers only, and without this check a
+        copied ``sequential_by=True`` fails with a confusing missing-field error.
+        """
+        if not isinstance(key, str) or not key:
+            raise IncorrectUsageError(
+                f"`{element_cls.__name__}` declares `sequential_by={key!r}`, "
+                f"but it takes the name of a field on the handled messages, "
+                f'such as `sequential_by="order_id"`. The boolean form '
+                f"`sequential_by=True` is for process managers only (ADR-0028)."
+            )
 
     @staticmethod
     def _assert_partition_field(

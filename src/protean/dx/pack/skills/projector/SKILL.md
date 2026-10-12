@@ -95,6 +95,7 @@ class ProductInventoryProjector:
 | `retries` | Max retry attempts on transient exceptions; overrides `server.transient_retry` | No |
 | `backoff` | Retry delay strategy: `"exponential"`, `"linear"`, or `"fixed"` | No |
 | `retry_exceptions` | Exception types (classes or dotted paths) treated as transient for retry | No |
+| `sequential_by` | Field name on every handled event; events in the same stream category that share its value are processed one at a time (needs a partitioning broker and a stream subscription) | No |
 | `subscription_type` | `"stream"` or `"event_store"` | No |
 | `subscription_profile` | `"production"`, `"fast"`, `"batch"`, `"debug"`, `"projection"` | No |
 | `subscription_config` | Custom config dict (messages_per_tick, max_retries, etc.) | No |

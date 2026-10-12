@@ -1264,6 +1264,10 @@ class IRBuilder:
         if projector_for is not None:
             entry["projector_for"] = fqn(projector_for)
 
+        sequential_by = getattr(cls.meta_, "sequential_by", None)
+        if sequential_by is not None:
+            entry["sequential_by"] = sequential_by
+
         entry["stream_categories"] = sorted(getattr(cls.meta_, "stream_categories", []))
         entry["subscription"] = self._extract_subscription(cls)
 

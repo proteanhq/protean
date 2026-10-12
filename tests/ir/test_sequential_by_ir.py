@@ -2,9 +2,12 @@
 
 The field is sparse: it appears on a handler's IR dict only when set, and
 carries the declared value (a field name for event/command handlers, the
-boolean opt-in for process managers).
+boolean opt-in for process managers; a field name for projectors too).
 """
 
+import json
+
+import jsonschema
 import pytest
 
 from protean.core.aggregate import BaseAggregate
@@ -13,8 +16,11 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.process_manager import BaseProcessManager
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector, on
 from protean.domain import Domain
 from protean.fields import Identifier, String
+from protean.ir import SCHEMA_PATH
 from protean.ir.builder import IRBuilder
 from protean.utils.mixins import handle
 
@@ -59,6 +65,22 @@ class OrderPM(BaseProcessManager):
         pass
 
 
+class OrderSummary(BaseProjection):
+    order_id: Identifier(identifier=True)
+
+
+class PartitionedOrderProjector(BaseProjector):
+    @on(OrderPlaced)
+    def on_placed(self, event):
+        pass
+
+
+class PlainOrderProjector(BaseProjector):
+    @on(OrderPlaced)
+    def on_placed(self, event):
+        pass
+
+
 def _build_ir():
     domain = Domain(name="IRSeq")
     domain.register(Order)
@@ -71,6 +93,14 @@ def _build_ir():
     domain.register(PlainOrderHandler, part_of=Order)
     domain.register(OrderCommandHandler, part_of=Order, sequential_by="client_id")
     domain.register(OrderPM, sequential_by=True)
+    domain.register(OrderSummary)
+    domain.register(
+        PartitionedOrderProjector,
+        projector_for=OrderSummary,
+        aggregates=[Order],
+        sequential_by="order_id",
+    )
+    domain.register(PlainOrderProjector, projector_for=OrderSummary, aggregates=[Order])
     with domain.domain_context():
         domain.init(traverse=False)
         return IRBuilder(domain).build()
@@ -108,3 +138,22 @@ class TestSequentialByIR:
         ir = _build_ir()
         pm = next(iter(ir["flows"]["process_managers"].values()))
         assert pm["sequential_by"] is True
+
+    def _projectors(self, ir):
+        projectors = {}
+        for projection in ir["projections"].values():
+            for entry in projection["projectors"].values():
+                projectors[entry["name"]] = entry
+        assert projectors, "no projectors found in the IR"
+        return projectors
+
+    def test_projector_carries_sequential_by(self):
+        projectors = self._projectors(_build_ir())
+        assert projectors["PartitionedOrderProjector"]["sequential_by"] == "order_id"
+
+    def test_projector_omits_when_unset(self):
+        projectors = self._projectors(_build_ir())
+        assert "sequential_by" not in projectors["PlainOrderProjector"]
+
+    def test_ir_validates_against_schema(self):
+        jsonschema.validate(_build_ir(), json.loads(SCHEMA_PATH.read_text()))
