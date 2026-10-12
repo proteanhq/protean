@@ -327,6 +327,12 @@ Events are delivered at least once, so the same event can arrive twice. The
 command handler skips a repeat: it opens no second account for a customer, and
 it leaves an account that is already suspended as it is.
 
+The two commands are separate messages, so `SuspendBillingAccount` can be
+processed before `OpenBillingAccount` has stored the account. Then `find_by`
+raises `ObjectNotFoundError` and the command fails. The server retries a failed
+message, and by then the account usually exists. See
+[Error Handling](../guides/server/error-handling.md) for the retry settings.
+
 ### Separate Domains: Subscribers as Anti-Corruption Layers
 
 When bounded contexts are deployed as separate services communicating through a

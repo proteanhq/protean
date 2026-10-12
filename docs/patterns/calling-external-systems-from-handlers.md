@@ -48,11 +48,11 @@ sibling methods and run in any order:
 @domain.event_handler(part_of=Order)
 class OrderReactions:
     @handle(OrderPlaced)
-    def reserve_stock(self, event):
-        repo = current_domain.repository_for(Inventory)
-        stock = repo.find_by(product_id=event.product_id)
-        stock.reserve(event.quantity)
-        repo.add(stock)
+    def start_fulfilment(self, event):
+        repo = current_domain.repository_for(Order)
+        order = repo.get(event.order_id)
+        order.start_fulfilment()
+        repo.add(order)
 
     @handle(OrderPlaced)
     def notify_partner(self, event):

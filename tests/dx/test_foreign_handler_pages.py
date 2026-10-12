@@ -1,8 +1,9 @@
 """No page teaches an event handler that listens on another aggregate's stream.
 
-An event handler that is ``part_of`` one aggregate and sets ``stream_category``
-to another aggregate's stream is what ``check`` reports as
-``EVENT_HANDLER_FOREIGN_EVENT``. The pages this test reads (the skills and
+``check`` reports an event handler whose ``part_of`` aggregate does not own an
+event it handles as ``EVENT_HANDLER_FOREIGN_EVENT``. On these pages that shape
+shows up as a handler that sets ``stream_category`` to another aggregate's
+stream. The pages this test reads (the skills and
 rules in the DX pack, the event handlers guide, and the docs pages in
 ``DOCS_PAGES``) teach the other shape: the handler stays with the aggregate
 that owns the event and issues a command.
@@ -186,3 +187,17 @@ def test_the_scan_finds_a_foreign_handler_after_an_any_handler() -> None:
         "```\n"
     )
     assert _unlabelled_foreign_handlers(page) == [1]
+
+
+@pytest.mark.parametrize("page", DOCS_PAGES[:2], ids=lambda page: page.name)
+def test_the_stream_category_pages_keep_an_explicit_stream_example(
+    page: Path,
+) -> None:
+    text = page.read_text()
+    examples = [
+        handler
+        for block in FENCE.finditer(text)
+        for handler in EVENT_HANDLER.finditer(block.group(2))
+        if "stream_category" in handler.group(1)
+    ]
+    assert examples, f"{page.name} must still show a handler with stream_category"

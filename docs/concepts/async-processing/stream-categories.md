@@ -189,7 +189,7 @@ aggregate's events so it can change its own aggregate from there. `protean
 check` reports a handler whose `part_of` aggregate does not own an event it
 handles as `EVENT_HANDLER_FOREIGN_EVENT`. The
 [event handlers guide](../../guides/consume-state/event-handlers.md#defining-an-event-handler)
-has a full, runnable version of the example above.
+has a full, runnable version of this hand-off.
 
 Learn more:
 
@@ -343,7 +343,7 @@ class PurchaseOrder:
 
 ### 5. Change Another Aggregate Through a Command
 
-A handler subscribes to the stream of the aggregate it is part of. When an
+By default, a handler subscribes to the stream of the aggregate it is part of. When an
 event must change a different aggregate, the handler issues a command to that
 aggregate, as shown in [Changing Another Aggregate](#changing-another-aggregate).
 Each aggregate then changes only through its own command handler.
@@ -427,7 +427,7 @@ class OrderEventHandler:
 
 @domain.command_handler(part_of=Inventory)
 class InventoryCommandHandler:
-    """Applies ReduceStock to Inventory."""
+    """Applies ReduceStock to Inventory and skips an order already applied."""
     ...
 ```
 
