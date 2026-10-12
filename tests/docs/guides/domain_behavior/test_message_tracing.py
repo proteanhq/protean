@@ -97,15 +97,18 @@ def test_an_unknown_correlation_id_prints_no_tree(tracing, capsys):
     assert capsys.readouterr().out == ""
 
 
-def test_the_dsl_keeps_both_commands_in_one_chain(tracing):
+def test_the_dsl_groups_both_commands_under_one_correlation_id(tracing):
     result = tracing.place_and_reserve()
 
     assert result.aggregate.status == "RESERVED"
+    assert result.aggregate.items == [{"sku": "BOOK-1", "qty": 2}]
     stored = list(tracing.domain.event_store.store.read("$all"))
     assert [message.metadata.headers.type for message in stored] == CHAIN
     assert {message.metadata.domain.correlation_id for message in stored} == {
         "checkout-42"
     }
+    reserve = stored[CHAIN.index("MyApp.ReserveInventory.v1")]
+    assert reserve.metadata.domain.causation_id is None
 
 
 def test_outbox_rows_can_be_found_by_correlation_and_causation():

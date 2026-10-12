@@ -8,6 +8,7 @@ domain = Domain(name="MyApp")
 class OrderPlaced:
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
+    items: List(content_type=Dict)
 
 
 @domain.event(part_of="Order")
@@ -25,6 +26,7 @@ class Order:
     def when_placed(self, event: OrderPlaced) -> None:
         self.id = event.order_id
         self.customer_id = event.customer_id
+        self.items = event.items
         self.status = "PLACED"
 
     @apply
@@ -47,8 +49,14 @@ class ReserveInventory:
 class OrderCommandHandler:
     @handle(PlaceOrder)
     def place(self, command: PlaceOrder):
-        order = Order(items=command.items)
-        order.raise_(OrderPlaced(order_id=order.id, customer_id=command.customer_id))
+        order = Order()
+        order.raise_(
+            OrderPlaced(
+                order_id=order.id,
+                customer_id=command.customer_id,
+                items=command.items,
+            )
+        )
         current_domain.repository_for(Order).add(order)
         return order.id
 
@@ -111,7 +119,7 @@ def place_and_reserve():
     )
     assert result.events.types == [OrderPlaced]
 
-    # Follow the chain with the same correlation_id
+    # Group the next command under the same correlation_id
     result.process(
         ReserveInventory(order_id=result.aggregate.id),
         correlation_id="checkout-42",

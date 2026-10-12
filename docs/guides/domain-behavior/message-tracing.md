@@ -118,7 +118,8 @@ fit in W3C's 16-hex-char `parent_id` format.
 
 The [test DSL](../testing/event-sourcing-tests.md) supports correlation IDs for
 verifying trace propagation. Pass the same `correlation_id` to each `process()`
-call to keep the commands in one chain:
+call to group the commands under one business operation. Each call still starts
+its own causation chain, with `causation_id=None` on its command:
 
 ```python
 --8<-- "guides/domain-behavior/message-tracing/001.py:dsl"
