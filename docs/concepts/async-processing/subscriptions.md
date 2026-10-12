@@ -135,8 +135,9 @@ class OrderEventHandler:
         )
 ```
 
-An event handler that is part of `Inventory` but sets `stream_category` to the
-`order` stream is what `protean check` reports as `EVENT_HANDLER_FOREIGN_EVENT`.
+An event handler that is part of `Inventory` but handles `OrderShipped`, an
+event owned by `Order`, is what `protean check` reports as
+`EVENT_HANDLER_FOREIGN_EVENT`.
 The [event handlers guide](../../guides/consume-state/event-handlers.md#defining-an-event-handler)
 shows the full example, including the command handler that skips an order it
 has already applied.

@@ -184,9 +184,10 @@ In this example:
 - `ReduceStock` is part of `Inventory`, so it is routed to Inventory's command
   handler. `Inventory` changes only through that handler.
 
-Do not point an event handler's `stream_category` at another aggregate's
-stream so it can change its own aggregate from there. `protean check` reports
-that shape as `EVENT_HANDLER_FOREIGN_EVENT`. The
+Do not make an event handler part of one aggregate and have it handle another
+aggregate's events so it can change its own aggregate from there. `protean
+check` reports a handler whose `part_of` aggregate does not own an event it
+handles as `EVENT_HANDLER_FOREIGN_EVENT`. The
 [event handlers guide](../../guides/consume-state/event-handlers.md#defining-an-event-handler)
 has a full, runnable version of the example above.
 
