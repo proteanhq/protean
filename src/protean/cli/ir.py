@@ -382,6 +382,15 @@ def _print_avro_verdict(report: CompatibilityReport) -> None:
         print(f"  [dim]breaks {direction}:[/dim] {change.message}")
 
 
+# Contract breaking-change types and the report change type that describes the
+# same break on the same field.
+_CONTRACT_TO_REPORT_CHANGE: dict[str, str] = {
+    "contract_field_type_changed": "field_type_changed",
+    "contract_required_field_added": "required_field_added",
+    "contract_field_removed": "field_removed",
+}
+
+
 def _print_diff_text(
     result: dict[str, Any], report: CompatibilityReport | None = None
 ) -> None:
@@ -418,15 +427,26 @@ def _print_diff_text(
     # lines never mention it. Before this it appeared nowhere in the text output
     # while still setting the exit code, so the command said "breaking changes
     # are present — see above" with nothing above naming one.
-    messages = [
-        bc["message"] for bc in result.get("contracts", {}).get("breaking_changes", [])
-    ]
+    #
+    # Both sources see a field break on a published event, worded differently.
+    # A report change about the same event, field and kind of change as a
+    # contract entry is dropped so the break prints once, with the contract
+    # message.
+    contract_breaks = result.get("contracts", {}).get("breaking_changes", [])
+    messages = [bc["message"] for bc in contract_breaks]
     if report is not None:
         seen = set(messages)
+        contract_keys = {
+            (bc.get("fqn"), bc.get("field"), _CONTRACT_TO_REPORT_CHANGE[bc["type"]])
+            for bc in contract_breaks
+            if bc.get("type") in _CONTRACT_TO_REPORT_CHANGE
+        }
         messages += [
             change.message
             for change in report.breaking_changes
             if change.message not in seen
+            and (change.element_fqn, change.field_name, change.change_type)
+            not in contract_keys
         ]
     if messages:
         print(f"\n[bold red]Breaking Changes ({len(messages)}):[/bold red]")

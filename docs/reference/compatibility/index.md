@@ -70,6 +70,29 @@ are both equal. A change of visibility from public to internal also gives
 two different verdicts: the report calls it breaking, and the Avro verdict is
 `FULL`.
 
+### Published event contracts
+
+`diff_ir()` also checks every published event in its `contracts` section and
+lists the breaks in `contracts.breaking_changes`. `summary.has_breaking_changes`
+is read from that list. The published-contract check applies the same field
+rules as the compatibility report: a field type change, a breaking `Decimal`
+precision or scale change, and a required field added without a default. So
+for a published event's fields, the two lists flag the same breaks. The one
+exception is an event version bump covered by an upcaster: the report marks
+those field changes as mitigated, and the contract check does not.
+
+The contract check writes these field entries:
+
+| Entry `type` | When | Keys |
+|--------------|------|------|
+| `contract_field_type_changed` | A field's type changes, or its `Decimal` shape changes in a breaking way. A field renamed with `renamed_from` carries `renamed_to`; a field that keeps its name does not. | `fqn`, `field`, `left`, `right`, `message`, and `renamed_to` on a rename |
+| `contract_required_field_added` | A required field without a default is added | `fqn`, `field`, `message` |
+| `contract_field_removed` | A field is removed and no rename claims it | `fqn`, `field`, `classification`, `message`, and `deprecated` when the field was deprecated |
+
+`protean ir diff` prints both lists under "Breaking Changes". A break that both
+lists report, on the same event, the same field and the same kind of change,
+is printed once, with the contract message.
+
 ### Replay hazards on an event-sourced aggregate
 
 An event-sourced aggregate's authoritative state is a stream of events, rebuilt

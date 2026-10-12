@@ -594,34 +594,12 @@ def _diff_contracts(
         }
         contract_renames = _detect_field_renames(added_fields, removed_fields)
         for old_name, new_name in contract_renames.items():
-            old_type = left_fields[old_name].get("type")
-            new_type = right_fields[new_name].get("type")
-            if (
-                old_type == new_type == "Decimal"
-                and _classify_decimal_shape(
-                    left_fields[old_name], right_fields[new_name]
-                )
-                == "breaking"
-            ):
-                shape_delta = _decimal_shape_delta(
-                    left_fields[old_name], right_fields[new_name]
-                )
-                breaking.append(
-                    {
-                        "type": "contract_field_type_changed",
-                        "fqn": event_fqn,
-                        "field": old_name,
-                        "renamed_to": new_name,
-                        "left": old_type,
-                        "right": new_type,
-                        "message": (
-                            f"Field '{old_name}' renamed to '{new_name}' with a "
-                            f"Decimal shape change ({shape_delta}) in "
-                            f"published event '{left_type}'"
-                        ),
-                    }
-                )
-            elif old_type != new_type:
+            old_field = left_fields[old_name]
+            new_field = right_fields[new_name]
+            old_type = old_field.get("type")
+            new_type = new_field.get("type")
+            change = _field_change_kind(old_field, new_field)
+            if change == "type":
                 # A rename that also changes type breaks old payloads.
                 breaking.append(
                     {
@@ -634,6 +612,23 @@ def _diff_contracts(
                         "message": (
                             f"Field '{old_name}' renamed to '{new_name}' with a "
                             f"type change from '{old_type}' to '{new_type}' in "
+                            f"published event '{left_type}'"
+                        ),
+                    }
+                )
+            elif change == "decimal_breaking":
+                breaking.append(
+                    {
+                        "type": "contract_field_type_changed",
+                        "fqn": event_fqn,
+                        "field": old_name,
+                        "renamed_to": new_name,
+                        "left": old_type,
+                        "right": new_type,
+                        "message": (
+                            f"Field '{old_name}' renamed to '{new_name}' with a "
+                            f"Decimal shape change "
+                            f"({_decimal_shape_delta(old_field, new_field)}) in "
                             f"published event '{left_type}'"
                         ),
                     }
@@ -651,6 +646,51 @@ def _diff_contracts(
                         ),
                     }
                 )
+
+        for field_name in sorted(left_fields.keys() & right_fields.keys()):
+            old_field = left_fields[field_name]
+            new_field = right_fields[field_name]
+            change = _field_change_kind(old_field, new_field)
+            if change == "type":
+                message = (
+                    f"Field '{field_name}' type changed from "
+                    f"'{old_field.get('type')}' to '{new_field.get('type')}' in "
+                    f"published event '{left_type}'"
+                )
+            elif change == "decimal_breaking":
+                message = (
+                    f"Field '{field_name}' Decimal shape changed "
+                    f"({_decimal_shape_delta(old_field, new_field)}) in "
+                    f"published event '{left_type}'"
+                )
+            else:
+                continue
+            breaking.append(
+                {
+                    "type": "contract_field_type_changed",
+                    "fqn": event_fqn,
+                    "field": field_name,
+                    "left": old_field.get("type"),
+                    "right": new_field.get("type"),
+                    "message": message,
+                }
+            )
+
+        renamed_new = set(contract_renames.values())
+        for field_name, field_dict in added_fields.items():
+            if field_name in renamed_new or not _is_breaking_addition(field_dict):
+                continue
+            breaking.append(
+                {
+                    "type": "contract_required_field_added",
+                    "fqn": event_fqn,
+                    "field": field_name,
+                    "message": (
+                        f"Required field '{field_name}' added to published event "
+                        f"'{left_type}' without a default value"
+                    ),
+                }
+            )
 
         for field_name in sorted(removed_fields):
             if field_name in contract_renames:
@@ -848,10 +888,12 @@ class CompatibilityChange:
     backward_safe: bool | None = None
     forward_safe: bool | None = None
     # The name of the field this change is about, for the change types that
-    # concern one field (``field_removed``, ``reservation_removed``). Lets a
-    # per-field mitigation match a specific removal when an element removes
-    # several fields with only some reserved. ``None`` for changes that are not
-    # about a single field.
+    # concern one field (``field_removed``, ``field_type_changed`` (the old
+    # name, for a rename), ``required_field_added``, ``reservation_removed``).
+    # Lets a per-field mitigation match a specific removal when an element
+    # removes several fields with only some reserved, and lets the text output
+    # match a report change to the published-contract entry for the same field.
+    # ``None`` for changes that are not about a single field.
     field_name: str | None = None
 
 
@@ -1587,12 +1629,8 @@ def _classify_field_changes(
     for old_name, new_name in renames.items():
         old_type = removed[old_name].get("type")
         new_type = added[new_name].get("type")
-        decimal_change = (
-            _classify_decimal_shape(removed[old_name], added[new_name])
-            if old_type == new_type == "Decimal"
-            else None
-        )
-        if decimal_change == "breaking":
+        change = _field_change_kind(removed[old_name], added[new_name])
+        if change == "decimal_breaking":
             report.breaking_changes.append(
                 CompatibilityChange(
                     severity="breaking",
@@ -1604,9 +1642,10 @@ def _classify_field_changes(
                         f"({_decimal_shape_delta(removed[old_name], added[new_name])})"
                         f" in {element_type} '{fqn}'"
                     ),
+                    field_name=old_name,
                 )
             )
-        elif old_type != new_type:
+        elif change == "type":
             report.breaking_changes.append(
                 CompatibilityChange(
                     severity="breaking",
@@ -1617,6 +1656,7 @@ def _classify_field_changes(
                         f"change from '{old_type}' to '{new_type}' in "
                         f"{element_type} '{fqn}'"
                     ),
+                    field_name=old_name,
                 )
             )
         else:
@@ -1635,7 +1675,7 @@ def _classify_field_changes(
                     forward_safe=_removal_forward_safe(removed[old_name]),
                 )
             )
-            if decimal_change == "widened":
+            if change == "decimal_widened":
                 report.safe_changes.append(
                     _precision_widened_change(
                         new_name, removed[old_name], added[new_name], fqn, element_type
@@ -1645,9 +1685,7 @@ def _classify_field_changes(
     for field_name, field_dict in added.items():
         if field_name in renamed_new:
             continue
-        is_required = field_dict.get("required", False)
-        has_default = "default" in field_dict
-        if is_required and not has_default:
+        if _is_breaking_addition(field_dict):
             report.breaking_changes.append(
                 CompatibilityChange(
                     severity="breaking",
@@ -1657,9 +1695,10 @@ def _classify_field_changes(
                         f"Required field '{field_name}' added to {element_type} "
                         f"'{fqn}' without a default value"
                     ),
+                    field_name=field_name,
                 )
             )
-        elif is_required and has_default:
+        elif field_dict.get("required", False):
             report.safe_changes.append(
                 CompatibilityChange(
                     severity="safe",
@@ -1743,46 +1782,67 @@ def _classify_field_changes(
             )
 
     for field_name, field_changes in fields_diff.get("changed", {}).items():
-        if "type" in field_changes:
-            left_type = field_changes["type"].get("left")
-            right_type = field_changes["type"].get("right")
+        # The delta holds only the keys that differ; a key left out is equal on
+        # both sides, so comparing the delta alone gives the same answer as
+        # comparing the full fields.
+        left = {k: v.get("left") for k, v in field_changes.items()}
+        right = {k: v.get("right") for k, v in field_changes.items()}
+        change = _field_change_kind(left, right)
+        if change == "type":
             report.breaking_changes.append(
                 CompatibilityChange(
                     severity="breaking",
                     element_fqn=fqn,
                     change_type="field_type_changed",
                     message=(
-                        f"Field '{field_name}' type changed from '{left_type}' to "
-                        f"'{right_type}' in {element_type} '{fqn}'"
+                        f"Field '{field_name}' type changed from '{left['type']}' to "
+                        f"'{right['type']}' in {element_type} '{fqn}'"
                     ),
+                    field_name=field_name,
                 )
             )
-        elif "precision" in field_changes or "scale" in field_changes:
-            # Only a Decimal field carries ``precision`` and ``scale``, and its
-            # type is unchanged here. The delta holds only the keys that
-            # differ; a key left out is equal on both sides, so comparing the
-            # delta alone gives the same answer as comparing the full fields.
-            left = {k: v.get("left") for k, v in field_changes.items()}
-            right = {k: v.get("right") for k, v in field_changes.items()}
-            if _classify_decimal_shape(left, right) == "widened":
-                report.safe_changes.append(
-                    _precision_widened_change(
-                        field_name, left, right, fqn, element_type
-                    )
+        elif change == "decimal_widened":
+            report.safe_changes.append(
+                _precision_widened_change(field_name, left, right, fqn, element_type)
+            )
+        elif change == "decimal_breaking":
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="field_type_changed",
+                    message=(
+                        f"Field '{field_name}' Decimal shape changed "
+                        f"({_decimal_shape_delta(left, right)}) "
+                        f"in {element_type} '{fqn}'"
+                    ),
+                    field_name=field_name,
                 )
-            else:
-                report.breaking_changes.append(
-                    CompatibilityChange(
-                        severity="breaking",
-                        element_fqn=fqn,
-                        change_type="field_type_changed",
-                        message=(
-                            f"Field '{field_name}' Decimal shape changed "
-                            f"({_decimal_shape_delta(left, right)}) "
-                            f"in {element_type} '{fqn}'"
-                        ),
-                    )
-                )
+            )
+
+
+def _field_change_kind(left: dict[str, Any], right: dict[str, Any]) -> str | None:
+    """Classify how a field changed between two field dicts.
+
+    Returns ``"type"`` when the ``type`` differs, ``"decimal_breaking"`` or
+    ``"decimal_widened"`` when only a Decimal field's precision or scale
+    differs (see ``_classify_decimal_shape``), and ``None`` otherwise. Both
+    the compatibility report and the published-contract check call this, so
+    they agree on which field changes break old payloads. It accepts full
+    field dicts or a field delta: only Decimal fields carry ``precision`` and
+    ``scale``, and a key absent from both sides compares equal.
+    """
+    if left.get("type") != right.get("type"):
+        return "type"
+    shape = _classify_decimal_shape(left, right)
+    if shape is None:
+        return None
+    return "decimal_widened" if shape == "widened" else "decimal_breaking"
+
+
+def _is_breaking_addition(field: dict[str, Any]) -> bool:
+    """Whether adding *field* breaks old payloads: required with no default."""
+    return bool(field.get("required", False)) and "default" not in field
 
 
 def _classify_decimal_shape(left: dict[str, Any], right: dict[str, Any]) -> str | None:
