@@ -186,8 +186,8 @@ In this example:
 
 Do not make an event handler part of one aggregate and have it handle another
 aggregate's events so it can change its own aggregate from there. `protean
-check` reports a handler whose `part_of` aggregate does not own an event it
-handles as `EVENT_HANDLER_FOREIGN_EVENT`. The
+check` reports `EVENT_HANDLER_FOREIGN_EVENT` when a handler handles an event
+that a single other aggregate in the same domain defines. The
 [event handlers guide](../../guides/consume-state/event-handlers.md#defining-an-event-handler)
 has a full, runnable version of this hand-off.
 
