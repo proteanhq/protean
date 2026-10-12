@@ -134,6 +134,16 @@ def test_atomic_change_checks_only_the_end_state(orders):
     assert [item.product_id for item in order.items] == ["1", "2", "3"]
 
 
+def test_changing_the_total_alone_fails_on_a_fresh_order(orders):
+    order = _order(orders)
+
+    with pytest.raises(ValidationError) as exc:
+        order.total_amount = 120.0
+
+    assert exc.value.messages == TOTAL_MISMATCH
+    assert order.total_amount == 100.0
+
+
 def test_the_failure_carries_the_post_invariant_code(orders, capsys):
     order = _order(orders)
 

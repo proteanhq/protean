@@ -239,11 +239,23 @@ In [4]: order.total_amount, len(order.items)
 Out[4]: (120.0, 3)
 ```
 
-Trying to perform the attribute updates one after another would have resulted
-in a `ValidationError` exception:
+Making the same two updates one after another, outside `atomic_change`, fails
+at the first one. On a fresh order with the same two items, setting the total
+alone breaks the post-invariant:
 
-```shell hl_lines="3"
-In [5]: order.total_amount = 120.0
+```shell hl_lines="14"
+In [5]: order = Order(
+   ...:     customer_id="1",
+   ...:     order_date=date.today(),
+   ...:     total_amount=100.0,
+   ...:     status="PENDING",
+   ...:     items=[
+   ...:         OrderItem(product_id="1", quantity=4, price=10.0, subtotal=40.0),
+   ...:         OrderItem(product_id="2", quantity=3, price=20.0, subtotal=60.0),
+   ...:     ],
+   ...: )
+
+In [6]: order.total_amount = 120.0
 ...
 ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
