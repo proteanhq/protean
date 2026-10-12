@@ -22,7 +22,7 @@ the bounded context.
 
 The generated events are collected in the mutated aggregate:
 
-```shell hl_lines="8 12-15"
+```shell hl_lines="8 13-16"
 In [1]: account = Account(account_number="1234", balance=1000.0, overdraft_limit=50.0)
 
 In [2]: account.withdraw(500.0)

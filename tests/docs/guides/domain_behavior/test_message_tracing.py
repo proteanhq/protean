@@ -130,3 +130,26 @@ def test_outbox_rows_can_be_found_by_correlation_and_causation():
     assert [row.id for row in by_causation] == [row.id for row in by_correlation]
     assert by_correlation[0].correlation_id == "ext-9"
     assert unknown == ([], [])
+
+
+def test_a_command_sent_from_a_sync_event_handler_names_the_original_command():
+    example = load_example("guides/domain-behavior/message-tracing/001.py")
+    example.domain.config["event_processing"] = "sync"
+    example.domain.config["command_processing"] = "sync"
+    example.domain.init(traverse=False)
+
+    with example.domain.domain_context():
+        example.domain.process(
+            example.PlaceOrder(customer_id="cust-1", items=[]),
+            correlation_id="sync-1",
+        )
+        messages = [
+            message
+            for message in example.domain.event_store.store.read("$all")
+            if message.metadata.domain.correlation_id == "sync-1"
+        ]
+
+    assert [message.metadata.headers.type for message in messages] == CHAIN
+    place, placed, reserve, _ = messages
+    assert reserve.metadata.domain.causation_id == place.metadata.headers.id
+    assert reserve.metadata.domain.causation_id != placed.metadata.headers.id

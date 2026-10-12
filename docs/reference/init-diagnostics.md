@@ -37,9 +37,10 @@ raised without a code leaves `code`, `location`, `rationale`, and `fix` as
 `None` and `codes` empty, so existing `raise` sites are unaffected.
 
 One raise can carry more than one code. When several invariants fail together,
-the single `ValidationError` carries every code in `codes`, and `code` is `None`
-because no single one names the failure. With exactly one code, `code` holds it
-and `rationale`/`fix` resolve from it.
+the single `ValidationError` lists each distinct code once in `codes`. If the
+failures carry different codes, `code` is `None` because no single one names the
+failure. With exactly one distinct code, `code` holds it and `rationale`/`fix`
+resolve from it, even when several invariants failed with that same code.
 
 ## Severity levels
 
@@ -248,7 +249,7 @@ registering it, or register a valid element class.
 A business rule declared with `@invariant.pre` or `@invariant.post` did not hold
 at runtime. The `ValidationError` still carries its errors dict; it also carries
 the code below, or the code you passed as `@invariant.post(code=...)`. When
-several invariants fail together, every code rides on `codes`.
+several invariants fail together, `codes` lists each distinct code once.
 
 ### INVARIANT_PRE_FAILED { #invariant-pre-failed }
 

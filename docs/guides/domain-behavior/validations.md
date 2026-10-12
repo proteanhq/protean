@@ -132,7 +132,7 @@ You can also add validations at the field level by defining custom validators.
 A validator is any callable class that accepts a value and raises `ValueError`
 if the value is invalid:
 
-```python hl_lines="19-20 25"
+```python hl_lines="18-19 25"
 --8<-- "guides/domain-behavior/005.py:full"
 ```
 
