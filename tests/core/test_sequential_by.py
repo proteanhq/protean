@@ -770,6 +770,55 @@ class TestProjectorSequentialBy:
 
         assert test_domain._partition_keys == {"test::product": "product_id"}
 
+    def test_validation_skips_a_wildcard_method_on_a_projector(self, test_domain):
+        # ``setup_projectors`` rejects a wildcard method during ``init()``, so
+        # call the validation directly to check that it skips the method
+        # instead of reading event fields off the "$any" string.
+        class WildcardProjector(BaseProjector):
+            @on("$any")
+            def on_any(self, event):
+                pass
+
+            @on(ProductCreated)
+            def on_created(self, event):
+                pass
+
+        _register_product(test_domain)
+        test_domain.register(
+            WildcardProjector,
+            projector_for=ProductSummary,
+            aggregates=[Product],
+            sequential_by="product_id",
+        )
+
+        test_domain._handler_configurator.validate_sequential_by()
+
+        assert test_domain._partition_keys == {"test::product": "product_id"}
+
+    def test_event_without_a_resolved_category_adds_no_key(self, test_domain):
+        # Before ``init()`` resolves it, a string ``part_of`` has no stream
+        # category, so no key can be recorded for the event.
+        class LooseProductCreated(BaseEvent):
+            product_id: Identifier()
+
+        class LooseProjector(BaseProjector):
+            @on(LooseProductCreated)
+            def on_created(self, event):
+                pass
+
+        test_domain.register(LooseProductCreated, part_of="Product")
+        test_domain.register(ProductSummary)
+        test_domain.register(
+            LooseProjector,
+            projector_for=ProductSummary,
+            stream_categories=["test::product"],
+            sequential_by="product_id",
+        )
+
+        test_domain._handler_configurator.validate_sequential_by()
+
+        assert test_domain._partition_keys == {}
+
     def test_non_partitioning_broker_rejects_projector(self):
         domain = Domain(name="CapProjector")
         _register_product(domain)
