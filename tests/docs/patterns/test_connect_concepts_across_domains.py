@@ -6,8 +6,6 @@ from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
 
-EXAMPLE = "patterns/connect-concepts-across-domains/001.py"
-
 
 def _context(example):
     domain = example.domain
@@ -30,7 +28,7 @@ def _accounts(example, customer_id):
 
 
 def test_registering_a_customer_opens_one_billing_account():
-    example = load_example(EXAMPLE)
+    example = load_example("patterns/connect-concepts-across-domains/001.py")
     with _context(example):
         customer = _register(example)
 
@@ -41,7 +39,7 @@ def test_registering_a_customer_opens_one_billing_account():
 
 
 def test_a_repeated_open_command_opens_no_second_account():
-    example = load_example(EXAMPLE)
+    example = load_example("patterns/connect-concepts-across-domains/001.py")
     with _context(example):
         customer = _register(example)
 
@@ -55,7 +53,7 @@ def test_a_repeated_open_command_opens_no_second_account():
 
 
 def test_a_repeated_suspend_command_leaves_the_account_unchanged():
-    example = load_example(EXAMPLE)
+    example = load_example("patterns/connect-concepts-across-domains/001.py")
     with _context(example):
         customer = _register(example)
         customer.raise_(example.CustomerDeactivated(customer_id=customer.customer_id))
@@ -74,7 +72,7 @@ def test_a_repeated_suspend_command_leaves_the_account_unchanged():
 
 
 def test_the_hand_off_stays_with_the_customer():
-    example = load_example(EXAMPLE)
+    example = load_example("patterns/connect-concepts-across-domains/001.py")
     with _context(example):
         assert example.CustomerLifecycleHandler.meta_.part_of is example.Customer
         report = example.domain.check(traverse=False)
