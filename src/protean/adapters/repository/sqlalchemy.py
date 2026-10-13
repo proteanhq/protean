@@ -314,8 +314,7 @@ def _resolve_python_type(shim: ResolvedField) -> type | None:
 
     Unwraps Optional/Union, and normalises generic aliases
     (``list[X]`` → ``list``, ``dict[K,V]`` → ``dict``). An annotation that is
-    not a class, such as a ``Literal``, gives ``None``, which every caller
-    already maps to a plain string column.
+    not a class, such as a ``Literal``, gives ``None``.
     """
     python_type = shim._python_type
 
