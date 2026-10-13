@@ -41,7 +41,12 @@ from protean.cli._ir_utils import load_domain_ir, load_ir_file
 from protean.exceptions import NoDomainException
 from protean.ir.config import load_config
 from protean.ir.constants import canonical_ir_json
-from protean.ir.diff import CompatibilityReport, classify_changes, diff_ir
+from protean.ir.diff import (
+    CompatibilityReport,
+    breaking_change_messages,
+    classify_changes,
+    diff_ir,
+)
 from protean.ir.generators.event_model import generate_event_model_diff
 from protean.ir.git import GitError
 from protean.ir.staleness import (
@@ -418,16 +423,10 @@ def _print_diff_text(
     # lines never mention it. Before this it appeared nowhere in the text output
     # while still setting the exit code, so the command said "breaking changes
     # are present — see above" with nothing above naming one.
-    messages = [
-        bc["message"] for bc in result.get("contracts", {}).get("breaking_changes", [])
-    ]
-    if report is not None:
-        seen = set(messages)
-        messages += [
-            change.message
-            for change in report.breaking_changes
-            if change.message not in seen
-        ]
+    #
+    # Both sources see a field break on a published event, worded differently,
+    # so the break prints once, with the contract message.
+    messages = breaking_change_messages(result, report)
     if messages:
         print(f"\n[bold red]Breaking Changes ({len(messages)}):[/bold red]")
         for message in messages:

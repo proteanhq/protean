@@ -70,6 +70,43 @@ are both equal. A change of visibility from public to internal also gives
 two different verdicts: the report calls it breaking, and the Avro verdict is
 `FULL`.
 
+### Published event contracts
+
+`diff_ir()` also checks every published event in its `contracts` section and
+lists the breaks in `contracts.breaking_changes`. `summary.has_breaking_changes`
+is read from that list. The published-contract check applies the same field
+rules as the compatibility report: a field type change, a breaking `Decimal`
+precision or scale change, and a required field added without a default. So
+for a published event's fields, the two lists flag the same breaks, with these
+exceptions:
+
+- An event version bump covered by an upcaster: the report marks those field
+  changes as mitigated, and the contract check does not.
+- An event that becomes published in the same diff: the contract check compares
+  only events published on both sides, so a field break in that diff is in the
+  report alone.
+- A field inside a value object the event holds: the report flags it on the
+  value object, and the contract check compares only the event's own fields.
+- `exclude` in `.protean/config.toml` filters the compatibility report only. A
+  contract break on an excluded published event still counts as breaking, and
+  `protean ir diff` and the `protean-check-compat` hook still print it.
+
+The contract check writes these field entries. The list column names the key
+under `contracts` that holds the entry:
+
+| Entry `type` | List | When | Keys |
+|--------------|------|------|------|
+| `contract_field_type_changed` | `breaking_changes` | A field's type changes, or its `Decimal` shape changes in a breaking way. A field renamed with `renamed_from` carries `renamed_to`; a field that keeps its name does not. | `fqn`, `field`, `left`, `right`, `message`, and `renamed_to` on a rename |
+| `contract_required_field_added` | `breaking_changes` | A required field without a default is added | `fqn`, `field`, `message` |
+| `contract_field_removed` | `breaking_changes` | A field is removed, no rename claims it, and the next row does not apply | `fqn`, `field`, `classification`, `message`, and `deprecated` when the field was deprecated |
+| `contract_field_removed` | `expected_removals` | A deprecated field is removed at or after its removal version, and the caller passed `current_version` to `diff_ir()`. This is not a break. `protean ir diff` and the `protean-check-compat` hook do not pass `current_version`, so there the removal is a `premature_removal` in `breaking_changes`. | `fqn`, `field`, `classification` (always `expected_removal`), `deprecated`, `message` |
+| `contract_field_renamed` | `renamed_fields` | A plain rename: a field with `renamed_from` and no type change or breaking `Decimal` shape change. This is not a break. | `fqn`, `field`, `renamed_to`, `message` |
+
+`protean ir diff` prints the report's breaking changes and
+`contracts.breaking_changes` under "Breaking Changes". A break that both report,
+on the same event, the same field and the same kind of change, is printed once,
+with the contract message.
+
 ### Replay hazards on an event-sourced aggregate
 
 An event-sourced aggregate's authoritative state is a stream of events, rebuilt
@@ -193,7 +230,9 @@ When deprecating a domain element or field:
 2. **Keep the deprecated API** for at least `min_versions_before_removal`
    minor versions (default: 3, configurable in `.protean/config.toml`).
 3. **Add to `exclude`** in `.protean/config.toml` if the element should
-   not trigger breaking change alerts during its deprecation period.
+   not trigger breaking change alerts during its deprecation period. On a
+   published event, `exclude` does not cover the contract breaks; see
+   [Published event contracts](#published-event-contracts).
 4. **Remove** in a later release, once the declared removal version has
    arrived and has been announced.
 
@@ -244,7 +283,7 @@ ordering = "ordering.domain"
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `strictness` | string | `"strict"` | `"strict"` exits non-zero on breaking changes. `"warn"` reports but allows. `"off"` skips checking entirely. |
-| `exclude` | list of strings | `[]` | Fully-qualified names of elements to exclude from compatibility checks. |
+| `exclude` | list of strings | `[]` | Fully-qualified names of elements to leave out of the compatibility report. A published event's contract breaks are still checked; see [Published event contracts](#published-event-contracts). |
 
 ### `[compatibility.deprecation]`
 

@@ -61,7 +61,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from protean.exceptions import NoDomainException
-from protean.ir.diff import classify_changes, diff_ir
+from protean.ir.diff import breaking_change_messages, classify_changes, diff_ir
 from protean.ir.git import GitError
 from protean.ir.staleness import StalenessStatus, check_staleness
 
@@ -389,10 +389,13 @@ def _check_compat_single(
     has_breaking = report.is_breaking or summary.get("has_breaking_changes", False)
 
     if has_breaking:
-        if report.is_breaking:
+        # The contract list is not filtered by `exclude`, so a published event's
+        # break can block the commit after the report's copy was excluded.
+        messages = breaking_change_messages(result, report)
+        if messages:
             print(f"Breaking IR changes detected for {domain_module}:", file=sys.stderr)
-            for change in report.breaking_changes:
-                print(f"  ! {change.message}", file=sys.stderr)
+            for message in messages:
+                print(f"  ! {message}", file=sys.stderr)
 
         if config.strictness == "warn":
             print(

@@ -43,7 +43,9 @@ class CompatConfig:
         - ``"warn"`` — report breaking changes but allow the operation.
         - ``"off"`` — skip compatibility checking entirely.
     exclude:
-        Fully-qualified names of elements to exclude from compatibility checks.
+        Fully-qualified names of elements to leave out of the compatibility
+        report. The published-event contract check ignores this list, so a
+        contract break on an excluded published event still counts as breaking.
     min_versions_before_removal:
         Minimum number of minor versions a deprecated element/field must
         survive before it can be removed.
