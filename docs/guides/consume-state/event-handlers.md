@@ -173,8 +173,9 @@ When two classes both mutate the *same* aggregate, that independence turns into
 contention: they run concurrently and collide on the aggregate's version, driving
 version-conflict retries. Keep those reactions as sibling methods on one class,
 where they run in sequence and each sees the previous commit. When the
-reactions depend on each other's writes, put them in one command handler method
-instead. [Calling External Systems from
+reactions depend on each other's writes, put them in one method instead. When
+those writes land on another aggregate, that method is a command handler method
+on that aggregate. [Calling External Systems from
 Handlers](../../patterns/calling-external-systems-from-handlers.md) shows that
 recipe for a multi-facet sync, and how to split a method that both persists and
 calls out.

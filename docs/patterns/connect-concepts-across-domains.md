@@ -224,10 +224,13 @@ own representation. The mechanism depends on the deployment relationship between
 the contexts.
 
 !!!tip "Choosing the right integration mechanism"
-    **Same domain / co-located domains:** Use an event handler on the
-    aggregate that raises the event, and have it issue a command to the other
-    aggregate for simple state sync. Use `register_external_event()` with
-    process managers for multi-step cross-domain workflows.
+    **Same domain:** Use an event handler on the aggregate that raises the
+    event, and have it issue a command to the other aggregate for simple state
+    sync.
+
+    **Co-located domains:** Use event handlers with `stream_category` for
+    simple state sync, or `register_external_event()` with process managers
+    for multi-step cross-domain workflows.
 
     **Distributed domains:** Use subscribers as anti-corruption layers.
 
@@ -243,79 +246,7 @@ for each change the other aggregate must make, and that aggregate's command
 handler does the write:
 
 ```python
-@domain.aggregate
-class Customer:
-    """Authority for customer lifecycle."""
-    customer_id: Auto(identifier=True)
-    name: String(required=True)
-    email: String(required=True)
-
-
-@domain.aggregate
-class BillingAccount:
-    """Billing context's local model of a customer."""
-    account_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)  # Correlation ID
-    email: String(required=True)
-    account_status: String(default="ACTIVE")
-
-    def suspend(self):
-        self.account_status = "SUSPENDED"
-
-
-@domain.command(part_of=BillingAccount)
-class OpenBillingAccount:
-    customer_id: Identifier(required=True)
-    email: String(required=True)
-
-
-@domain.command(part_of=BillingAccount)
-class SuspendBillingAccount:
-    customer_id: Identifier(required=True)
-
-
-@domain.event_handler(part_of=Customer)
-class CustomerLifecycleHandler:
-    """Turns Customer lifecycle events into BillingAccount commands."""
-
-    @handle(CustomerRegistered)
-    def on_customer_registered(self, event: CustomerRegistered):
-        current_domain.process(
-            OpenBillingAccount(customer_id=event.customer_id, email=event.email)
-        )
-
-    @handle(CustomerDeactivated)
-    def on_customer_deactivated(self, event: CustomerDeactivated):
-        current_domain.process(
-            SuspendBillingAccount(customer_id=event.customer_id)
-        )
-
-
-@domain.command_handler(part_of=BillingAccount)
-class BillingAccountCommandHandler:
-    @handle(OpenBillingAccount)
-    def open_account(self, command: OpenBillingAccount):
-        repo = current_domain.repository_for(BillingAccount)
-        if repo.query.filter(customer_id=command.customer_id).all().total:
-            return  # An account for this customer already exists
-
-        repo.add(
-            BillingAccount(
-                customer_id=command.customer_id,  # Correlation
-                email=command.email,
-                account_status="ACTIVE",
-            )
-        )
-
-    @handle(SuspendBillingAccount)
-    def suspend_account(self, command: SuspendBillingAccount):
-        repo = current_domain.repository_for(BillingAccount)
-        account = repo.find_by(customer_id=command.customer_id)
-        if account.account_status == "SUSPENDED":
-            return  # Already suspended
-
-        account.suspend()
-        repo.add(account)
+--8<-- "patterns/connect-concepts-across-domains/001.py:same-domain"
 ```
 
 The event handler is `part_of` the `Customer` aggregate and reads the
@@ -324,13 +255,15 @@ into BillingAccount commands, using `customer_id` as the correlation
 identifier. `BillingAccount` changes only through its own command handler.
 
 Events are delivered at least once, so the same event can arrive twice. The
-command handler skips a repeat: it opens no second account for a customer, and
-it leaves an account that is already suspended as it is.
+command handler skips a redelivered command: it opens no second account for a
+customer, and it leaves an account that is already suspended as it is. The
+check reads before it writes, so it does not stop two copies of
+`OpenBillingAccount` that are handled at the same moment by parallel workers.
 
-The two commands are separate messages, so `SuspendBillingAccount` can be
-processed before `OpenBillingAccount` has stored the account. Then `find_by`
-raises `ObjectNotFoundError` and the command fails. The server retries a failed
-message, and by then the account usually exists. See
+The two commands are separate messages. If `OpenBillingAccount` fails and is
+retried, `SuspendBillingAccount` can be processed before the account is stored.
+Then `find_by` raises `ObjectNotFoundError` and the command fails. The server
+retries a failed message, and by then the account usually exists. See
 [Error Handling](../guides/server/error-handling.md) for the retry settings.
 
 ### Separate Domains: Subscribers as Anti-Corruption Layers

@@ -148,16 +148,21 @@ Because the fetch precedes the persist, the call holds no lock, and `protean
 check` does not flag it: the rule fires only on a call that comes after a
 repository access. A retry re-runs the fetch, a safe repeat for a read.
 
+`ProfileFetch` is part of `Subscriber`, yet it adds a `ProfileSnapshot`. It
+creates a new record and changes no existing one, so no other writer competes
+for it. To change an existing aggregate of another kind, issue a command to it,
+as the next step does.
+
 Persisting the snapshot and giving it an identity keeps the payload out of the
 event. The step that applies the facets then loads the snapshot by id rather
 than carrying it on the event or fetching it again. A fat event would put the
 whole payload into the event store forever, and a re-fetch per facet turns one
 call into several.
 
-**Apply every facet in one command.** The snapshot belongs to `ProfileSnapshot`,
-so the event handler is part of `ProfileSnapshot`. It does not change
-`Subscriber` itself. It issues one `ApplyProfileSnapshot` command, which is part
-of `Subscriber`, and Subscriber's command handler applies every facet:
+**Apply every facet in one command.** `ProfileSnapshotStored` belongs to
+`ProfileSnapshot`, so the event handler is part of `ProfileSnapshot`. The
+handler issues one `ApplyProfileSnapshot` command, which is part of
+`Subscriber`, and Subscriber's command handler applies every facet:
 
 ```python
 --8<-- "patterns/calling-external-systems-from-handlers/001.py:sync"
@@ -174,6 +179,16 @@ arrive twice. `Subscriber` records the ids of the snapshots it has applied, and
 the command handler returns without changes when it sees one again. The id is
 saved in the same write as the facets. A retry after that write commits does
 nothing, and a retry after a failed write applies the snapshot again in full.
+
+The command handler expects the `Subscriber` to exist already. If it does not,
+`repo.get` raises `ObjectNotFoundError`, and the command fails and is retried
+like any other failed message.
+
+`subscriber_id` is the command's identifier, so every `ApplyProfileSnapshot` for
+one subscriber goes to the same command stream. The handler applies snapshots in
+the order it receives them. If the provider can send an older snapshot after a
+newer one, store the provider's timestamp on the snapshot and skip one that is
+older than the last one applied.
 
 The command handler uses these two aggregates:
 
@@ -229,10 +244,9 @@ It can look tidier to give each facet its own command: `UpdateContact`,
 `ChangePlan` and `SetFlags`, all issued by the same event handler. With async
 command processing, each command is delivered and processed on its own, in its
 own transaction. When `ChangePlan` fails and waits for a retry, `SetFlags` still
-runs, reads the old tier, and sets the wrong flags. With more than one worker on
-the command stream, `SetFlags` can also run before `ChangePlan`. Each command
-also loads `Subscriber` and writes a new version, so three writes compete where
-one would do.
+runs, reads the old tier, and sets the wrong flags. Each command also loads
+`Subscriber` and writes a new version of it, so one sync costs three writes
+instead of one.
 
 Keep facets that depend on each other in one command and one command handler
 method, where their order is the order of the code.
@@ -266,9 +280,9 @@ holding a transaction open while an external call runs.
 | Persist and call out, independent | Two sibling methods on one class |
 | Call must follow the write, or needs its value | Persisting method raises an event; calling method handles it |
 | Many facets of one aggregate from one snapshot | Fetch and persist the snapshot once, raise one event, and have its handler issue one command that applies every facet |
-| A facet depends on what an earlier facet wrote | Apply both in the same command handler method, in order |
+| A facet depends on what an earlier facet wrote | Apply both in the same method, in order |
 | The write needs the call's result | One method, plus the remote system's idempotency key |
-| Facets that touch different aggregates | Separate handler classes, one per aggregate |
+| Facets that touch different aggregates | One event handler on the event's aggregate issues one command per target aggregate |
 | Facets that all mutate one aggregate | One command to that aggregate, never one command per facet |
 
 ---

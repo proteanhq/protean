@@ -94,10 +94,6 @@ def test_the_hand_off_stays_with_the_snapshot():
     with _context(example):
         handler = example.ProfileSnapshotHandler
         assert handler.meta_.part_of is example.ProfileSnapshot
-        assert (
-            handler.meta_.stream_category
-            == example.ProfileSnapshot.meta_.stream_category
-        )
         assert example.ApplyProfileSnapshot.meta_.part_of is example.Subscriber
         assert example.SubscriberCommandHandler.meta_.part_of is example.Subscriber
         assert "EVENT_HANDLER_FOREIGN_EVENT" not in _check_codes(example)

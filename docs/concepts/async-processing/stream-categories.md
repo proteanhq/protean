@@ -138,7 +138,7 @@ class OrderReportHandler:
 
 This allows multiple aggregates to publish to shared stream categories for specific use cases.
 A handler like this one reads every event on the shared stream with `@handle("$any")`,
-for a report or an audit log. It does not change another aggregate.
+for a report or an audit log, and leaves every aggregate as it is.
 
 ### Changing Another Aggregate
 

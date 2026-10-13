@@ -68,7 +68,7 @@ class Subscriber:
 # --8<-- [start:sync]
 @domain.command(part_of=Subscriber)
 class ApplyProfileSnapshot:
-    subscriber_id: Identifier(required=True)
+    subscriber_id: Identifier(identifier=True)
     snapshot_id: Identifier(required=True)
 
 
