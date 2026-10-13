@@ -4,9 +4,9 @@
 an event that exactly one other aggregate owns. An event that no aggregate owns,
 or one that more than one aggregate defines, is not reported. On these pages that shape
 shows up as a handler that sets ``stream_category`` to another aggregate's
-stream. The pages this test reads (the skills and
-rules in the DX pack, the event handlers guide, and the docs pages in
-``DOCS_PAGES``) teach the other shape: the handler stays with the aggregate
+stream. The pages this test reads (the DX pack skills named in
+``SKILLS``, the rules in the DX pack, the event handlers guide, and the docs
+pages in ``DOCS_PAGES``) teach the other shape: the handler stays with the aggregate
 that owns the event and issues a command.
 
 A code block on these pages may still show ``stream_category`` on an event
