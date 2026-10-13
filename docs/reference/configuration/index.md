@@ -323,6 +323,12 @@ settings.
 --8<-- "reference/configuration/index/server.toml"
 ```
 
+!!! warning "Known issue: per-handler DLQ overrides have no effect yet"
+    The subscription config Protean builds for a handler does not carry
+    `dlq_retention_hours` or `dlq_alert_threshold`, so the engine applies the
+    `[server.dlq]` values to every handler. The `dlq_retention_hours` and
+    `dlq_alert_threshold` keys under `OrderEventHandler` above are not read.
+
 #### Subscription Profiles
 
 Pre-configured settings for common scenarios:
@@ -359,6 +365,9 @@ Per-subscription overrides are available on each handler's
 |---|---|---|---|
 | `dlq_retention_hours` | int \| None | inherit | Override `retention_hours` for this subscription's DLQ stream only. |
 | `dlq_alert_threshold` | int \| None | inherit | Override `alert_threshold` for this subscription's DLQ stream only. |
+
+These two keys have no effect yet. See the known issue under
+[`server`](#server).
 
 For the operational workflow (discover, inspect, replay, purge) see [Dead
 Letter Queues](../../guides/server/dead-letter-queues.md).

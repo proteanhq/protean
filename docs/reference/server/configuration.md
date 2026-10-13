@@ -193,6 +193,11 @@ settings and no profile.
 | `circuit_breaker_reset_seconds` | float | 60 | Seconds an OPEN breaker waits before a single HALF_OPEN probe. Must be > 0 and finite (`inf`/`nan` are rejected) |
 | `retention_maxlen` | int | none | Cap the stream at this many entries ([stream retention](subscription-types.md#stream-retention)) |
 
+!!! warning "Known issue: per-handler DLQ overrides have no effect yet"
+    The subscription config Protean builds for a handler does not carry
+    `dlq_retention_hours` or `dlq_alert_threshold`, so the engine applies the
+    `[server.dlq]` values to every handler.
+
 See [Server Hardening → Circuit breaker](./hardening.md#circuit-breaker) for
 the state machine, the metric, and the trace events, and
 [Tuning subscriptions](../../guides/server/tuning-subscriptions.md) for how to

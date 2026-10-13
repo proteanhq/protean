@@ -503,7 +503,9 @@ protean_stream_pending 5
 protean_projection_staleness_seconds{domain="identity",projection="UserDirectory"} 0
 ```
 
-Available metrics:
+When OpenTelemetry is off, the endpoint emits these gauges. When it is on,
+the endpoint returns the OpenTelemetry metrics instead; see
+[OpenTelemetry integration](#opentelemetry-integration).
 
 | Metric | Type | Description |
 |--------|------|-------------|

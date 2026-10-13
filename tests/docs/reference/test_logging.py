@@ -9,6 +9,7 @@ import logging
 import logging.handlers
 import shutil
 import sys
+from unittest.mock import patch
 
 import pytest
 import structlog
@@ -264,17 +265,17 @@ def test_errors_are_kept_and_happy_path_events_are_sampled(sampled_access):
     assert error.sampling_rate == 1.0
 
     records.clear()
-    for _ in range(200):
-        access.info(
-            "access.handler_completed",
-            extra={"status": "ok", "message_type": "Billing.UpdateAddress.v1"},
-        )
-    # Roughly 5% of 200 are kept. Keeping none happens with odds of about
-    # 1 in 30,000, and keeping 40 or more is further outside that rate.
-    assert records
-    assert len(records) < 40
-    assert {r.sampling_rule for r in records} <= {"random"}
-    assert {r.sampling_rate for r in records} <= {0.05}
+    # Evenly spaced draws make the 5% rate keep exactly 10 of 200
+    draws = [i / 200 for i in range(200)]
+    with patch("protean.utils.logging.random.random", side_effect=draws):
+        for _ in range(200):
+            access.info(
+                "access.handler_completed",
+                extra={"status": "ok", "message_type": "Billing.UpdateAddress.v1"},
+            )
+    assert len(records) == 10
+    assert {r.sampling_rule for r in records} == {"random"}
+    assert {r.sampling_rate for r in records} == {0.05}
 
 
 def test_sampling_leaves_other_loggers_alone(sampled_access):

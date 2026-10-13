@@ -387,6 +387,11 @@ a single subscription:
 | `dlq_retention_hours` | <code>int &#124; None</code> | inherit global | Per-handler retention window |
 | `dlq_alert_threshold` | <code>int &#124; None</code> | inherit global | Per-handler alert threshold |
 
+!!! warning "Known issue: per-handler DLQ overrides have no effect yet"
+    The subscription config Protean builds for a handler does not carry
+    `dlq_retention_hours` or `dlq_alert_threshold`, so the engine applies the
+    `[server.dlq]` values to every handler.
+
 The maintenance task only runs when a broker that advertises the
 `DEAD_LETTER_QUEUE` capability is configured. Redis Streams implements
 time-based trimming via `XTRIM MINID`; other brokers fall back to a
