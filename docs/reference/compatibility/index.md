@@ -98,8 +98,8 @@ under `contracts` that holds the entry:
 |--------------|------|------|------|
 | `contract_field_type_changed` | `breaking_changes` | A field's type changes, or its `Decimal` shape changes in a breaking way. A field renamed with `renamed_from` carries `renamed_to`; a field that keeps its name does not. | `fqn`, `field`, `left`, `right`, `message`, and `renamed_to` on a rename |
 | `contract_required_field_added` | `breaking_changes` | A required field without a default is added | `fqn`, `field`, `message` |
-| `contract_field_removed` | `breaking_changes` | A field is removed, no rename claims it, and it is not a deprecated field past its removal version | `fqn`, `field`, `classification`, `message`, and `deprecated` when the field was deprecated |
-| `contract_field_removed` | `expected_removals` | A deprecated field is removed at or after its removal version. This is not a break. | `fqn`, `field`, `classification` (always `expected_removal`), `deprecated`, `message` |
+| `contract_field_removed` | `breaking_changes` | A field is removed, no rename claims it, and the next row does not apply | `fqn`, `field`, `classification`, `message`, and `deprecated` when the field was deprecated |
+| `contract_field_removed` | `expected_removals` | A deprecated field is removed at or after its removal version, and the caller passed `current_version` to `diff_ir()`. This is not a break. `protean ir diff` and the `protean-check-compat` hook do not pass `current_version`, so there the removal is a `premature_removal` in `breaking_changes`. | `fqn`, `field`, `classification` (always `expected_removal`), `deprecated`, `message` |
 | `contract_field_renamed` | `renamed_fields` | A plain rename: a field with `renamed_from` and no type change or breaking `Decimal` shape change. This is not a break. | `fqn`, `field`, `renamed_to`, `message` |
 
 `protean ir diff` prints the report's breaking changes and
