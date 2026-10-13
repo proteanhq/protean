@@ -263,7 +263,12 @@ class BaseAggregate(BaseEntity):
             event_identity = f"{stream}-{self._version}"
             sequence_id = f"{self._version}"
         else:
-            aggregate_version = max(self._version, self._next_version)
+            # A fact event is raised after the save, so it carries the
+            # version just written; other events carry the next one.
+            if event.__class__.meta_.is_fact_event:
+                aggregate_version = self._version
+            else:
+                aggregate_version = max(self._version, self._next_version)
             event_number = len(self._events) + 1
 
             event_identity = f"{stream}-{aggregate_version}.{event_number}"

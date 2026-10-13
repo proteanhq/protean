@@ -451,3 +451,95 @@ class TestChildOnlyMutationVersioning:
         final = test_domain.repository_for(Order).get(order_id)
         assert final._version == 1
         assert final.lines[0].quantity == 10
+
+
+@pytest.mark.basic_storage
+class TestSameInstanceSavedRepeatedly:
+    """Saving one instance again without reloading writes a new version each time."""
+
+    def test_stored_version_advances_on_each_save(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+
+        stored_versions = []
+        for value in range(3):
+            counter.value = value
+            with UnitOfWork():
+                repo.add(counter)
+
+            stored = repo.get(counter.id)
+            stored_versions.append(stored._version)
+            assert counter._next_version == stored._version + 1
+
+        assert stored_versions == [0, 1, 2]
+
+    def test_stale_copy_is_rejected_after_reused_instance_saves_twice(
+        self, test_domain
+    ):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+
+        stale = repo.get(counter.id)
+
+        for value in (1, 2):
+            counter.value = value
+            with UnitOfWork():
+                repo.add(counter)
+
+        stale.value = 99
+        with pytest.raises(ExpectedVersionError), UnitOfWork():
+            repo.add(stale)
+
+        final = repo.get(counter.id)
+        assert final.value == 2
+        assert final._version == 2
+
+    def test_stale_save_leaves_versions_unchanged(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+
+        winner = repo.get(counter.id)
+        winner.value = 1
+        with UnitOfWork():
+            repo.add(winner)
+
+        counter.value = 2
+        with pytest.raises(ExpectedVersionError), UnitOfWork():
+            repo.add(counter)
+
+        assert counter._version == 0
+        assert counter._next_version == 1
+
+    def test_new_aggregate_added_twice_in_one_uow_commits(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+
+        with UnitOfWork():
+            repo.add(counter)
+            counter.value = 1
+            repo.add(counter)
+
+        stored = repo.get(counter.id)
+        assert stored.value == 1
+        assert stored._version == 1
+
+    def test_loaded_aggregate_added_twice_in_one_uow_commits(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+
+        loaded = repo.get(counter.id)
+        with UnitOfWork():
+            loaded.value = 1
+            repo.add(loaded)
+            loaded.value = 2
+            repo.add(loaded)
+
+        stored = repo.get(counter.id)
+        assert stored.value == 2
+        assert stored._version == 2

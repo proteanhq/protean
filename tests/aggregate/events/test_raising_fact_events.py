@@ -60,3 +60,21 @@ def test_fact_event_version_metadata_after_second_edit(test_domain):
 
     assert event._metadata.headers.id.endswith("-1.1")
     assert event._metadata.domain.sequence_id == "1.1"
+
+
+def test_fact_events_on_same_instance_carry_the_saved_version(test_domain):
+    repo = test_domain.repository_for(User)
+    user = User(name="John Doe", email="john.doe@example.com")
+    repo.add(user)
+
+    user.name = "Jane Doe"
+    repo.add(user)
+
+    event_messages = test_domain.event_store.store.read(f"test::user-fact-{user.id}")
+    assert len(event_messages) == 2
+
+    events = [message.to_domain_object() for message in event_messages]
+    assert [event._metadata.domain.sequence_id for event in events] == ["0.1", "1.1"]
+    assert events[0]._metadata.headers.id.endswith("-0.1")
+    assert events[1]._metadata.headers.id.endswith("-1.1")
+    assert events[1].name == "Jane Doe"
