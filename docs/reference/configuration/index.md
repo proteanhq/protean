@@ -106,15 +106,21 @@ Default: `string`
     these:
 
     - `identity_strategy = "function"`, with an `identity_function` that
-      returns integers that fit the column. The id is set when the aggregate
+      returns integers that fit the column. The id is set when the object
       is created.
     - [`Auto(increment=True)`](../fields/simple-fields.md#auto) on the
       identifier. The database assigns the id, so it stays unset until the
       first save.
 
+    On an `integer` domain, the identity column is an integer column for
+    every generated identifier. An identifier that sets
+    `identity_type="string"` or `"uuid"` itself does not fit it and is
+    refused too.
+
     Otherwise `Domain.init()` raises `ConfigurationError`, naming the
-    aggregate and its provider. The memory and Elasticsearch providers hold
-    the 128-bit value and are not affected.
+    aggregate, entity or projection and its provider. The memory provider
+    holds the 128-bit value. Elasticsearch stores it as a string, so it
+    loads back as a string. Neither is affected.
 
 ### `command_processing`
 

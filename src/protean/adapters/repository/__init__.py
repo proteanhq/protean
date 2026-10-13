@@ -8,10 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
-from protean.fields.spec import _UNSET
 from protean.port.provider import BaseProvider, registry
-from protean.utils import IdentityStrategy, IdentityType, _fully_qualified_name
-from protean.utils.reflection import id_field
+from protean.utils import _fully_qualified_name
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -140,79 +138,33 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
         self._providers = provider_objects
 
     def validate_identity_capacity(self) -> None:
-        """Refuse an integer identity under the ``uuid`` strategy on a SQL provider.
+        """Refuse an identity a SQL provider cannot store.
 
-        The ``uuid`` strategy makes an integer identity from ``uuid4().int``, a
-        128-bit number. Under a domain ``identity_type`` of ``integer`` the
-        column is an SQL integer column, which cannot hold it, so the first save
-        would fail. The field's own ``identity_type`` / ``identity_strategy``
-        win over the domain configuration, the same rule ``_generate_identity``
-        follows. The column type follows only the domain setting, so a field
-        that sets ``identity_type="integer"`` on a ``string`` domain gets a text
-        column; it is refused all the same, so the rule does not depend on
-        where the setting comes from. Identifiers the database assigns
-        (``increment=True``) and identifiers with a user-supplied default are
-        not generated, so they are skipped.
+        Runs ``_refuse_unstorable_identity`` for every aggregate, entity and
+        projection whose provider is a SQLAlchemy provider. Models are built
+        lazily, so this makes ``Domain.init()`` report the problem before the
+        first repository call does.
 
         Raises:
-            ConfigurationError: An aggregate on a SQLAlchemy provider would get
-                a 128-bit integer identity.
+            ConfigurationError: An element on a SQLAlchemy provider would get
+                an identity its column cannot hold.
         """
         try:
             # SQLAlchemy is an optional extra; without it no SQL provider exists.
             from protean.adapters.repository.sqlalchemy import (  # noqa: PLC0415
                 SAProvider,
+                _refuse_unstorable_identity,
             )
         except ImportError:  # pragma: no cover - sqlalchemy backs every SAProvider
             return
 
         providers = self._providers or {}
-        config = self.domain.config
-        for record in self.domain.registry.aggregates.values():
-            aggregate_cls = record.cls
-            provider = providers.get(aggregate_cls.meta_.provider)
-            if not isinstance(provider, SAProvider):
-                continue
-
-            id_fld = id_field(aggregate_cls)
-            if id_fld is None or getattr(id_fld, "increment", False):
-                continue
-
-            spec = getattr(aggregate_cls, "__protean_field_meta__", {}).get(
-                id_fld.field_name
-            )
-            if spec is not None:
-                if (
-                    spec.field_kind not in ("identifier", "auto")
-                    or spec.default is not _UNSET
-                    or getattr(spec, "_increment", False)
-                ):
-                    continue
-                identity_type = getattr(spec, "_identity_type", None)
-                identity_strategy = getattr(spec, "_identity_strategy", None)
-            elif getattr(id_fld, "_auto_generated", False):
-                identity_type = identity_strategy = None
-            else:
-                continue
-
-            identity_type = identity_type or config["identity_type"]
-            identity_strategy = identity_strategy or config["identity_strategy"]
-            if (
-                identity_type == IdentityType.INTEGER.value
-                and identity_strategy == IdentityStrategy.UUID.value
-            ):
-                raise ConfigurationError(
-                    f"Aggregate `{aggregate_cls.__name__}` uses an integer "
-                    f"identity under the `uuid` identity strategy, on provider "
-                    f"`{provider.name}` ({provider.__database__}). The `uuid` "
-                    f"strategy makes a 128-bit integer, and no SQL integer "
-                    f'column holds it. Set `identity_strategy = "function"` '
-                    f"with an `identity_function` that returns integers that "
-                    f"fit the column, so the id is set when the aggregate is "
-                    f"created. Or declare the identifier as "
-                    f"`Auto(increment=True)`, so the database assigns the id "
-                    f"on the first save."
-                )
+        registry = self.domain.registry
+        for records in (registry.aggregates, registry.entities, registry.projections):
+            for record in records.values():
+                provider = providers.get(record.cls.meta_.provider)
+                if isinstance(provider, SAProvider):
+                    _refuse_unstorable_identity(record.cls, provider)
 
     def get_connection(self, provider_name: str = "default") -> Any:
         """Fetch connection from Provider"""

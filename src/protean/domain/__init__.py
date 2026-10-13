@@ -692,8 +692,9 @@ class Domain:
         # Initialize adapters after loading domain
         self._initialize()
 
-        # An integer identity under the uuid strategy overflows every SQL
-        # integer column; needs live providers, so it runs after _initialize().
+        # An identity a SQL column cannot hold (an integer under the uuid
+        # strategy overflows every SQL integer column) would only fail on the
+        # first save; needs live providers, so it runs after _initialize().
         self.providers.validate_identity_capacity()
 
         # Gate sequential_by handlers on broker STREAM_PARTITIONING support
