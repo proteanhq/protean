@@ -91,22 +91,21 @@ exceptions:
   contract break on an excluded published event still counts as breaking, and
   `protean ir diff` and the `protean-check-compat` hook still print it.
 
-The contract check writes these field entries into `contracts.breaking_changes`:
+The contract check writes these field entries. The list column names the key
+under `contracts` that holds the entry:
 
-| Entry `type` | When | Keys |
-|--------------|------|------|
-| `contract_field_type_changed` | A field's type changes, or its `Decimal` shape changes in a breaking way. A field renamed with `renamed_from` carries `renamed_to`; a field that keeps its name does not. | `fqn`, `field`, `left`, `right`, `message`, and `renamed_to` on a rename |
-| `contract_required_field_added` | A required field without a default is added | `fqn`, `field`, `message` |
-| `contract_field_removed` | A field is removed and no rename claims it | `fqn`, `field`, `classification`, `message`, and `deprecated` when the field was deprecated |
+| Entry `type` | List | When | Keys |
+|--------------|------|------|------|
+| `contract_field_type_changed` | `breaking_changes` | A field's type changes, or its `Decimal` shape changes in a breaking way. A field renamed with `renamed_from` carries `renamed_to`; a field that keeps its name does not. | `fqn`, `field`, `left`, `right`, `message`, and `renamed_to` on a rename |
+| `contract_required_field_added` | `breaking_changes` | A required field without a default is added | `fqn`, `field`, `message` |
+| `contract_field_removed` | `breaking_changes` | A field is removed, no rename claims it, and it is not a deprecated field past its removal version | `fqn`, `field`, `classification`, `message`, and `deprecated` when the field was deprecated |
+| `contract_field_removed` | `expected_removals` | A deprecated field is removed at or after its removal version. This is not a break. | `fqn`, `field`, `classification` (always `expected_removal`), `deprecated`, `message` |
+| `contract_field_renamed` | `renamed_fields` | A plain rename: a field with `renamed_from` and no type change or breaking `Decimal` shape change. This is not a break. | `fqn`, `field`, `renamed_to`, `message` |
 
-A plain rename is a `contract_field_renamed` entry in `contracts.renamed_fields`,
-and it is not a break. A plain rename is a field with `renamed_from` and no type
-change or breaking `Decimal` shape change. Its keys are `fqn`, `field`,
-`renamed_to` and `message`.
-
-`protean ir diff` prints both lists under "Breaking Changes". A break that both
-lists report, on the same event, the same field and the same kind of change,
-is printed once, with the contract message.
+`protean ir diff` prints the report's breaking changes and
+`contracts.breaking_changes` under "Breaking Changes". A break that both report,
+on the same event, the same field and the same kind of change, is printed once,
+with the contract message.
 
 ### Replay hazards on an event-sourced aggregate
 
