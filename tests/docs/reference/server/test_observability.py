@@ -70,8 +70,9 @@ def test_zero_trace_retention_days_turns_persistence_off(tmp_path):
 
 
 def test_metrics_table_lists_every_metric_the_fallback_endpoint_emits():
-    # The table covers the endpoint without OpenTelemetry. With it on, the
-    # endpoint returns the OpenTelemetry metrics, which the OTel guide lists.
+    # The table covers the fallback endpoint. With OpenTelemetry on and the
+    # Prometheus exporter installed, the endpoint returns the OpenTelemetry
+    # metrics instead, which the OTel guide lists.
     page = (DOCS / "reference/server/observability.md").read_text()
     table = set(re.findall(r"^\| `(protean_\w+)` \| gauge \|", page, re.MULTILINE))
     emitted = set(

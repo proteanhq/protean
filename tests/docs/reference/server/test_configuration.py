@@ -383,6 +383,8 @@ def test_option_tables_show_the_defaults_a_bare_domain_resolves_to():
     assert resolved["blocking_timeout_ms"] == 100
     assert resolved["max_retries"] == 3
     assert resolved["retry_delay_seconds"] == 1
+    # enable_dlq defaults to true, but event_store turns it off
+    assert resolved["enable_dlq"] is False
     assert resolved["circuit_breaker_threshold"] == 10
     assert resolved["circuit_breaker_reset_seconds"] == 60
     assert resolved["retention_maxlen"] is None

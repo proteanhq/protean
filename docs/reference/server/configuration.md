@@ -169,7 +169,9 @@ and custom profiles behave the same way here.
 ## Configuration Options Reference
 
 Each default below is the value a handler gets in a domain with no `[server]`
-settings and no profile.
+settings and no profile. One exception: `enable_dlq` defaults to true, but such
+a domain resolves to the `event_store` subscription type, and the engine turns
+`enable_dlq` off for that type.
 
 ### Common Options
 
@@ -186,7 +188,7 @@ settings and no profile.
 | `blocking_timeout_ms` | int | 100 | Longest wait of an idle blocking read, in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. A read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the Redis broker waits on the primary and the backfill stream at once, and a message on either one ends the wait |
 | `max_retries` | int | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | int | 1 | Delay between retries |
-| `enable_dlq` | bool | true | Enable dead letter queue |
+| `enable_dlq` | bool | true | Enable dead letter queue. Always off for an `event_store` subscription |
 | `dlq_retention_hours` | int \| None | inherit | Override `[server.dlq] retention_hours` (default 168) for this subscription's DLQ stream only |
 | `dlq_alert_threshold` | int \| None | inherit | Override `[server.dlq] alert_threshold` (default 100) for this subscription's DLQ stream only |
 | `circuit_breaker_threshold` | int | 10 | Consecutive handler failures that trip the circuit breaker OPEN |
