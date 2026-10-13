@@ -98,10 +98,13 @@ def place_order(self, command):
 # Event handler — no return value
 @handle(OrderPlaced)
 def on_order_placed(self, event):
-    repo = current_domain.repository_for(Inventory)
-    inventory = repo.get(event.item_id)
-    inventory.reserve(event.order_id, event.quantity)
-    repo.add(inventory)
+    current_domain.process(
+        ReserveStock(
+            order_id=event.order_id,
+            product_id=event.product_id,
+            quantity=event.quantity,
+        )
+    )
     # No return
 ```
 
