@@ -322,9 +322,9 @@ Tests that mock domain internals instead of using real objects:
 def test_place_order():
     mock_repo = Mock()
     mock_repo.get.return_value = Order(status="DRAFT")
-    handler = OrderHandler()
-    handler.repository = mock_repo
-    handler.place_order(PlaceOrder(...))
+    with patch("app.handlers.current_domain") as mock_domain:
+        mock_domain.repository_for.return_value = mock_repo
+        OrderHandler().place_order(PlaceOrder(...))
     mock_repo.add.assert_called_once()
 ```
 

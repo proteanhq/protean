@@ -5,17 +5,20 @@ globs: "**/*.py"
 
 # Persistence Patterns
 
-## Access Repositories via `domain.repository_for()`
+## Access Repositories via `repository_for()`
 
-Always use `domain.repository_for(AggregateClass)` to obtain a repository. Inside handlers,
-use `self.repository` (auto-injected). Never construct repositories manually:
+Always get a repository with `repository_for(AggregateClass)`. Inside handlers,
+call `current_domain.repository_for(AggregateClass)`. Outside handlers, call
+`domain.repository_for()` inside a domain context. Never construct repositories manually:
 
 ```python
-# In handler methods — use self.repository (auto-injected)
+from protean.utils.globals import current_domain
+
+# In handler methods — use current_domain.repository_for()
 @handle(PlaceOrder)
 def place_order(self, command):
     order = Order.create(buyer_id=command.buyer_id)
-    self.repository.add(order)
+    current_domain.repository_for(Order).add(order)
 
 # Outside handlers — use domain.repository_for()
 with domain.domain_context():
@@ -29,14 +32,16 @@ Repositories use **collection semantics** — `.add()` handles both new aggregat
 to existing ones. There is no separate `.update()` or `.save()`:
 
 ```python
+repo = current_domain.repository_for(Order)  # inside a handler
+
 # Creating
 order = Order.create(buyer_id=buyer_id)
-self.repository.add(order)
+repo.add(order)
 
 # Updating (same method)
-order = self.repository.get(order_id)
+order = repo.get(order_id)
 order.cancel()
-self.repository.add(order)
+repo.add(order)
 ```
 
 ## Persist at the Aggregate Level
@@ -46,9 +51,10 @@ part of the aggregate's consistency boundary:
 
 ```python
 # Good — persist the aggregate
-order = self.repository.get(order_id)
+repo = current_domain.repository_for(Order)  # inside a handler
+order = repo.get(order_id)
 order.add_line_item(product_id=product_id, quantity=2)
-self.repository.add(order)  # Persists order + its line items
+repo.add(order)  # Persists order + its line items
 
 # Bad — persisting entity directly
 line_item = LineItem(product_id=product_id, quantity=2)
@@ -82,17 +88,19 @@ cross-aggregate coordination, use domain events and eventual consistency:
 @handle(PlaceOrder)
 def place_order(self, command):
     order = Order.create(...)
-    self.repository.add(order)
+    current_domain.repository_for(Order).add(order)
     # Order raises OrderPlaced event -> separate handler updates Inventory
 
 # Bad — two aggregates in one handler
 @handle(PlaceOrder)
 def place_order(self, command):
+    order_repo = current_domain.repository_for(Order)
+    inventory_repo = current_domain.repository_for(Inventory)
     order = Order.create(...)
-    inventory = other_repo.get(product_id)
+    inventory = inventory_repo.get(product_id)
     inventory.reserve(quantity)  # Don't modify another aggregate here
-    self.repository.add(order)
-    other_repo.add(inventory)
+    order_repo.add(order)
+    inventory_repo.add(inventory)
 ```
 
 ## API Endpoints Are Thin Adapters
