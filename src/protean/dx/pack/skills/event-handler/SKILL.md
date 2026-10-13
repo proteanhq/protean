@@ -259,11 +259,9 @@ Prefer an id from the event's payload. When the same kind of event can recur
 for one source and the payload has no id for each occurrence, use the event's
 message id, `event._metadata.headers.id`. On an aggregate that is not event
 sourced it has the form `<stream>-<version>.<n>` and stays the same on every
-delivery. It names one change only when the source aggregate is loaded fresh
-before each change, as a command handler does, and when an aggregate id is
-never reused. An instance
-saved twice without reloading raises its second event under the same id, and
-the guard then drops that real change.
+delivery. It names one change as long as an aggregate id is never reused. Each
+committed save writes a new version, so events from separate saves get separate
+ids, whether or not the instance is reloaded in between.
 
 Keys like `f"{order_id}:{product_id}"` and message ids are strings, not UUIDs.
 A guard that stores them as B's identity needs the default

@@ -24,6 +24,7 @@ from protean.fields import (
     String,
     ValueObject,
 )
+from protean.port.provider import DatabaseCapabilities
 from protean.utils.globals import current_uow
 
 
@@ -598,9 +599,11 @@ class TestSameInstanceSavedRepeatedly:
             repo.add(counter)
             raise RuntimeError("abort")
 
-        assert counter._version == 0
-        assert counter._next_version == 1
-        assert repo.get(counter.id)._version == 0
+        # A provider without transactions keeps the write despite the rollback.
+        kept = 0 if _undoes_writes_on_rollback(test_domain) else 1
+        assert repo.get(counter.id)._version == kept
+        assert counter._version == kept
+        assert counter._next_version == kept + 1
 
         counter.value = 2
         with UnitOfWork():
@@ -608,7 +611,7 @@ class TestSameInstanceSavedRepeatedly:
 
         stored = repo.get(counter.id)
         assert stored.value == 2
-        assert stored._version == 1
+        assert stored._version == kept + 1
 
     def test_loaded_instance_can_retry_after_a_rollback(self, test_domain):
         repo = test_domain.repository_for(Counter)
@@ -621,13 +624,15 @@ class TestSameInstanceSavedRepeatedly:
             repo.add(loaded)
             raise RuntimeError("abort")
 
-        assert loaded._version == 0
+        kept = 0 if _undoes_writes_on_rollback(test_domain) else 1
+        assert repo.get("c1")._version == kept
+        assert loaded._version == kept
 
         loaded.value = 2
         with UnitOfWork():
             repo.add(loaded)
 
-        assert repo.get("c1")._version == 1
+        assert repo.get("c1")._version == kept + 1
 
     def test_standalone_dao_save_advances_on_each_write(self, test_domain):
         dao = test_domain.repository_for(Counter)._dao
@@ -642,6 +647,13 @@ class TestSameInstanceSavedRepeatedly:
         assert counter._version == 1
         assert counter._next_version == 2
         assert test_domain.repository_for(Counter).get(counter.id)._version == 1
+
+
+def _undoes_writes_on_rollback(test_domain):
+    provider = test_domain.providers["default"]
+    return provider.has_capability(
+        DatabaseCapabilities.TRANSACTIONS
+    ) or provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS)
 
 
 def _stored_sequence_ids(test_domain, counter):

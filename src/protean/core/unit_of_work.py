@@ -150,11 +150,12 @@ class UnitOfWork:
                 # Clear events from the item
                 item._events = []
 
-    def _state_based_items(self) -> list[Any]:
-        """Aggregates in the identity map whose versions the DAO manages."""
+    def _state_based_items(self) -> list[tuple[str, Any]]:
+        """Aggregates in the identity map whose versions the DAO manages,
+        each with the name of its provider."""
         return [
-            item
-            for items in self._identity_map.values()
+            (provider_name, item)
+            for provider_name, items in self._identity_map.items()
             for item in items.values()
             if not item.meta_.is_event_sourced
         ]
@@ -163,18 +164,27 @@ class UnitOfWork:
         """Move each saved aggregate's ``_next_version`` past the version just
         committed, so a later save of the same instance writes a new version
         and its events get new ids, as they would after a reload."""
-        for item in self._state_based_items():
+        for _, item in self._state_based_items():
             item._next_version = item._version + 1
 
-    def _restore_versions(self) -> None:
-        """Put each saved aggregate's ``_version`` back to the version it had
-        before this transaction.
+    def _settle_versions_on_rollback(self) -> None:
+        """Make each saved aggregate's versions match its store after a rollback.
 
-        ``_next_version`` only advances on commit, so during the transaction
-        it is still one past that version.
+        Where the provider undoes the write, ``_version`` goes back to the
+        version the instance had before this transaction. ``_next_version``
+        only advances on commit, so it is still one past that version.
+
+        A provider without transactions has already kept the write, so its
+        aggregates advance as they would on commit.
         """
-        for item in self._state_based_items():
-            item._version = item._next_version - 1
+        for provider_name, item in self._state_based_items():
+            provider = self.domain.providers[provider_name]
+            if provider.has_capability(
+                DatabaseCapabilities.TRANSACTIONS
+            ) or provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS):
+                item._version = item._next_version - 1
+            else:
+                item._next_version = item._version + 1
 
     def start(self) -> None:
         """Begin the transaction and push this UnitOfWork onto the context stack.
@@ -634,7 +644,7 @@ class UnitOfWork:
         if _uow_stack.top is self:
             _uow_stack.pop()
 
-        self._restore_versions()
+        self._settle_versions_on_rollback()
 
         try:
             for session in self._sessions.values():
