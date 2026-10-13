@@ -224,9 +224,13 @@ own representation. The mechanism depends on the deployment relationship between
 the contexts.
 
 !!!tip "Choosing the right integration mechanism"
-    **Same domain / co-located domains:** Use event handlers with
-    `stream_category` for simple state sync, or `register_external_event()`
-    with process managers for multi-step cross-domain workflows.
+    **Same domain:** Use an event handler on the aggregate that raises the
+    event, and have it issue a command to the other aggregate for simple state
+    sync.
+
+    **Co-located domains:** Use event handlers with `stream_category` for
+    simple state sync, or `register_external_event()` with process managers
+    for multi-step cross-domain workflows.
 
     **Distributed domains:** Use subscribers as anti-corruption layers.
 
@@ -234,54 +238,33 @@ the contexts.
     communication](../guides/multi-domain-applications.md#cross-domain-communication)
     for the full decision framework.
 
-### Same Domain: Event Handlers with Cross-Aggregate Streams
+### Same Domain: An Event Handler That Issues Commands
 
-When multiple aggregates exist within the same Protean domain, use event handlers
-with the `stream_category` option to listen across aggregate boundaries:
+When multiple aggregates exist within the same Protean domain, the event
+handler stays with the aggregate that raises the events. It issues a command
+for each change the other aggregate must make, and that aggregate's command
+handler does the write:
 
 ```python
-@domain.aggregate
-class Customer:
-    """Authority for customer lifecycle."""
-    customer_id: Auto(identifier=True)
-    name: String(required=True)
-    email: String(required=True)
-
-
-@domain.aggregate
-class BillingAccount:
-    """Billing context's local model of a customer."""
-    account_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)  # Correlation ID
-    email: String(required=True)
-    account_status: String(default="ACTIVE")
-
-
-@domain.event_handler(part_of=BillingAccount, stream_category="customer")
-class BillingAccountLifecycleHandler:
-    """Reacts to Customer lifecycle events to manage billing accounts."""
-
-    @handle(CustomerRegistered)
-    def on_customer_registered(self, event: CustomerRegistered):
-        repo = current_domain.repository_for(BillingAccount)
-        account = BillingAccount(
-            customer_id=event.customer_id,  # Correlation
-            email=event.email,
-            account_status="ACTIVE",
-        )
-        repo.add(account)
-
-    @handle(CustomerDeactivated)
-    def on_customer_deactivated(self, event: CustomerDeactivated):
-        repo = current_domain.repository_for(BillingAccount)
-        account = repo.find_by(customer_id=event.customer_id)
-        account.suspend()
-        repo.add(account)
+--8<-- "patterns/connect-concepts-across-domains/001.py:same-domain"
 ```
 
-The event handler is `part_of` the `BillingAccount` aggregate but subscribes to
-the `customer` stream category. It translates Customer events into
-BillingAccount operations, using `customer_id` as the correlation identifier.
+The event handler is `part_of` the `Customer` aggregate and reads the
+`customer` stream, where the events are raised. It translates Customer events
+into BillingAccount commands, using `customer_id` as the correlation
+identifier. `BillingAccount` changes only through its own command handler.
+
+Events are delivered at least once, so the same event can arrive twice. The
+command handler skips a redelivered command: it opens no second account for a
+customer, and it leaves an account that is already suspended as it is. The
+check reads before it writes, so it does not stop two copies of
+`OpenBillingAccount` that are handled at the same moment by parallel workers.
+
+The two commands are separate messages. If `OpenBillingAccount` fails and is
+retried, `SuspendBillingAccount` can be processed before the account is stored.
+Then `find_by` raises `ObjectNotFoundError` and the command fails. The server
+retries a failed message, and by then the account usually exists. See
+[Error Handling](../guides/server/error-handling.md) for the retry settings.
 
 ### Separate Domains: Subscribers as Anti-Corruption Layers
 
@@ -578,7 +561,7 @@ integration (e.g., an API call or a command sent through a broker), not events.
 |--------|----------|
 | Shared identity | Use the source context's identity as a correlation ID in all consuming contexts |
 | State propagation | Publish lifecycle events from the authoritative context; consume and build local models |
-| Within same domain | Event handlers with `stream_category` override for cross-aggregate subscriptions |
+| Within same domain | An event handler on the aggregate that raises the event issues a command to the other aggregate |
 | Across separate domains | Subscribers on broker streams, acting as anti-corruption layers |
 | Read-only cross-context views | Projections built by projectors subscribing to multiple stream categories |
 | Event format for cross-context transfer | Fact events (`fact_events=True`) for complete state snapshots |

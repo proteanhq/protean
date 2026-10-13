@@ -130,39 +130,66 @@ Handlers can explicitly specify which stream category to subscribe to:
 @domain.event_handler(part_of=Order, stream_category="all_orders")
 class OrderReportHandler:
     # Subscribes to "all_orders" instead of Order's default
-    ...
+
+    @handle("$any")
+    def record(self, event):
+        ...
 ```
 
 This allows multiple aggregates to publish to shared stream categories for specific use cases.
+A handler like this one reads every event on the shared stream with `@handle("$any")`,
+for a report or an audit log, and leaves every aggregate as it is.
 
-### Cross-Aggregate Subscriptions
+### Changing Another Aggregate
 
-One useful pattern is having handlers that are part of one aggregate but subscribe to another aggregate's stream category. This enables reactive, cross-aggregate coordination:
+When an event on one aggregate's stream must change another aggregate, the
+handler stays with the aggregate that owns the event. It issues a command, and
+the other aggregate's command handler does the write:
 
 ```python
-@domain.event_handler(part_of=Inventory, stream_category="order")
-class InventoryEventHandler:
-    """Handles order events to update inventory."""
+@domain.event_handler(part_of=Order)
+class OrderEventHandler:
+    """Asks Inventory to reduce stock when an order ships."""
 
     @handle(OrderShipped)
     def reduce_stock(self, event):
-        # React to Order events while being part of Inventory
-        inventory = self.repository_for(Inventory).get(event.product_id)
-        inventory.reduce_stock(event.quantity)
-        self.repository_for(Inventory).add(inventory)
+        current_domain.process(
+            ReduceStock(
+                order_id=event.order_id,
+                product_id=event.product_id,
+                quantity=event.quantity,
+            )
+        )
+
+
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    @handle(ReduceStock)
+    def reduce_stock(self, command):
+        repo = current_domain.repository_for(Inventory)
+        inventory = repo.get(command.product_id)
+
+        # Events arrive at least once. Skip an order already applied.
+        if command.order_id in inventory.applied_order_ids:
+            return
+
+        inventory.reduce_stock(command.order_id, command.quantity)
+        repo.add(inventory)
 ```
 
 In this example:
 
-- The handler is part of the `Inventory` aggregate (determines its lifecycle and domain clustering)
-- But it subscribes to the `order` stream category (receives Order events)
+- The event handler is part of `Order` and reads the `order` stream category,
+  where `OrderShipped` is raised.
+- `ReduceStock` is part of `Inventory`, so it is routed to Inventory's command
+  handler. `Inventory` changes only through that handler.
 
-This pattern is useful for:
-
-- **Maintaining consistency** across aggregate boundaries
-- **Building read models** from multiple aggregate streams
-- **Coordinating workflows** across different parts of your domain
-- **Implementing sagas** that span multiple aggregates
+Do not make an event handler part of one aggregate and have it handle another
+aggregate's events so it can change its own aggregate from there. `protean
+check` reports `EVENT_HANDLER_FOREIGN_EVENT` when a handler handles an event
+that a single other aggregate in the same domain defines. The
+[event handlers guide](../../guides/consume-state/event-handlers.md#defining-an-event-handler)
+has a full, runnable version of this hand-off.
 
 Learn more:
 
@@ -314,21 +341,12 @@ class PurchaseOrder:
     ...
 ```
 
-### 5. Document Cross-Subscriptions
+### 5. Change Another Aggregate Through a Command
 
-When handlers subscribe to other aggregates' streams, document the reason clearly:
-
-```python
-@domain.event_handler(part_of=Inventory, stream_category="order")
-class InventoryEventHandler:
-    """
-    Subscribes to order stream to maintain inventory consistency.
-
-    When orders are placed or shipped, inventory levels are adjusted
-    to reflect the change in available stock.
-    """
-    ...
-```
+By default, a handler subscribes to the stream of the aggregate it is part of. When an
+event must change a different aggregate, the handler issues a command to that
+aggregate, as shown in [Changing Another Aggregate](#changing-another-aggregate).
+Each aggregate then changes only through its own command handler.
 
 ### 6. Avoid Generic Names
 
@@ -390,7 +408,8 @@ Each handler subscribes to the `order` stream category independently.
 
 ### Pattern 3: Cross-Aggregate Event Propagation
 
-One aggregate reacting to another's events:
+One aggregate reacting to another's events. The event handler stays with
+`Order` and issues a command that `Inventory` handles:
 
 ```python
 @domain.aggregate
@@ -401,9 +420,14 @@ class Order:
 class Inventory:
     ...
 
-@domain.event_handler(part_of=Inventory, stream_category="order")
-class InventoryEventHandler:
-    """Maintains inventory in response to order events."""
+@domain.event_handler(part_of=Order)
+class OrderEventHandler:
+    """Issues ReduceStock to Inventory when an order ships."""
+    ...
+
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    """Applies ReduceStock to Inventory and skips an order already applied."""
     ...
 ```
 

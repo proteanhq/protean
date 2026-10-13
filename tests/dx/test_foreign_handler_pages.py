@@ -1,9 +1,13 @@
 """No page teaches an event handler that listens on another aggregate's stream.
 
-An event handler that is ``part_of`` one aggregate and sets ``stream_category``
-to another aggregate's stream is what ``check`` reports as
-``EVENT_HANDLER_FOREIGN_EVENT``. The pages below teach the other shape: the
-handler stays with the aggregate that owns the event and issues a command.
+``check`` reports ``EVENT_HANDLER_FOREIGN_EVENT`` when an event handler handles
+an event that exactly one other aggregate owns. An event that no aggregate owns,
+or one that more than one aggregate defines, is not reported. On these pages that shape
+shows up as a handler that sets ``stream_category`` to another aggregate's
+stream. The pages this test reads (the DX pack skills named in
+``SKILLS``, the rules in the DX pack, the event handlers guide, and the docs
+pages in ``DOCS_PAGES``) teach the other shape: the handler stays with the aggregate
+that owns the event and issues a command.
 
 A code block on these pages may still show ``stream_category`` on an event
 handler in two cases:
@@ -35,6 +39,15 @@ if not PACK_ROOT.is_dir():
 
 SKILLS = ("event-handler", "add-event", "add-use-case", "refactor-introduce-events")
 GUIDE = REPO_ROOT / "docs" / "guides" / "consume-state" / "event-handlers.md"
+DOCS_PAGES = tuple(
+    REPO_ROOT / "docs" / page
+    for page in (
+        "concepts/async-processing/stream-categories.md",
+        "concepts/async-processing/subscriptions.md",
+        "patterns/calling-external-systems-from-handlers.md",
+        "patterns/connect-concepts-across-domains.md",
+    )
+)
 
 FENCE = re.compile(r"^([ \t]*)```[^\n]*\n(.*?)^\1```", re.MULTILINE | re.DOTALL)
 EVENT_HANDLER = re.compile(r"event_handler\((.*?)\)[ \t]*(?:#[^\n]*)?\n", re.DOTALL)
@@ -51,8 +64,7 @@ def _pages() -> list[Path]:
         for page in sorted((PACK_ROOT / dx.SKILLS_DIR / skill).rglob("*.md"))
     ]
     pages += sorted((PACK_ROOT / "rules").glob("*.md"))
-    if GUIDE.is_file():
-        pages.append(GUIDE)
+    pages += [page for page in (GUIDE, *DOCS_PAGES) if page.is_file()]
     return pages
 
 
@@ -176,3 +188,29 @@ def test_the_scan_finds_a_foreign_handler_after_an_any_handler() -> None:
         "```\n"
     )
     assert _unlabelled_foreign_handlers(page) == [1]
+
+
+HAND_OFF_LINK = "guides/consume-state/event-handlers.md#defining-an-event-handler"
+
+
+@pytest.mark.parametrize("page", DOCS_PAGES[:2], ids=lambda page: page.name)
+def test_the_stream_category_pages_keep_the_explanation_and_point_to_the_hand_off(
+    page: Path,
+) -> None:
+    text = page.read_text()
+    any_handlers = [
+        handler
+        for block in FENCE.finditer(text)
+        for handlers in [list(EVENT_HANDLER.finditer(block.group(2)))]
+        for index, handler in enumerate(handlers)
+        if "stream_category" in handler.group(1)
+        and _wildcard_only(
+            block.group(2)[
+                handler.end() : handlers[index + 1].start()
+                if index + 1 < len(handlers)
+                else None
+            ]
+        )
+    ]
+    assert any_handlers, f"{page.name} must still show a $any stream_category handler"
+    assert HAND_OFF_LINK in text, f"{page.name} must link to the command hand-off"

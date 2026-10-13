@@ -99,29 +99,48 @@ class OrderEventHandler:
 
 ### Custom Stream Category Subscription
 
-Handlers can subscribe to a different stream category:
+Handlers can subscribe to a different stream category. A handler on a shared
+stream such as `all_orders` usually reads every event on it with
+`@handle("$any")`, for a report or an audit log:
 
 ```python
 @domain.event_handler(part_of=Order, stream_category="all_orders")
 class OrderReportHandler:
     # Subscribes to "all_orders" instead of Order's default
-    ...
+
+    @handle("$any")
+    def record(self, event):
+        ...
 ```
 
-### Cross-Aggregate Subscriptions
+### Cross-Aggregate Coordination
 
-Handlers can be part of one aggregate but subscribe to another aggregate's stream category for cross-aggregate coordination:
+When an `Order` event must change `Inventory`, the event handler stays with
+`Order` and subscribes to the `order` stream. It issues a command that is part
+of `Inventory`, and Inventory's command handler does the write:
 
 ```python
-@domain.event_handler(part_of=Inventory, stream_category="order")
-class InventoryEventHandler:
-    """Updates inventory based on order events."""
+@domain.event_handler(part_of=Order)
+class OrderEventHandler:
+    """Asks Inventory to reduce stock when an order ships."""
 
     @handle(OrderShipped)
     def reduce_stock(self, event):
-        # React to Order events while being part of Inventory
-        ...
+        current_domain.process(
+            ReduceStock(
+                order_id=event.order_id,
+                product_id=event.product_id,
+                quantity=event.quantity,
+            )
+        )
 ```
+
+An event handler that is part of `Inventory` but handles `OrderShipped`, an
+event owned by `Order`, is what `protean check` reports as
+`EVENT_HANDLER_FOREIGN_EVENT`.
+The [event handlers guide](../../guides/consume-state/event-handlers.md#defining-an-event-handler)
+shows the full example, including the command handler that skips an order it
+has already applied.
 
 For comprehensive details on stream categories, including message organization, routing patterns, event sourcing, and best practices, see the [Stream Categories](./stream-categories.md) guide.
 
