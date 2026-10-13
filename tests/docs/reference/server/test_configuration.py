@@ -231,8 +231,28 @@ def test_debug_as_default_subscription_profile_changes_nothing():
     )
     without = Domain(name="Shop")
 
-    # The built-in server-level defaults set every field `debug` sets
+    # The built-in server-level defaults set the fields `debug` sets
     assert resolve(with_debug, handler) == resolve(without, handler)
+
+
+def test_debug_as_default_profile_caps_stream_retention_on_stream_type():
+    handler = bare_handler("OrderEventHandler")
+    stream = {"default_subscription_type": "stream"}
+    with_debug = resolve(
+        Domain(
+            name="Shop",
+            config={"server": {**stream, "default_subscription_profile": "debug"}},
+        ),
+        handler,
+    )
+    without = resolve(Domain(name="Shop", config={"server": stream}), handler)
+
+    differing = {
+        k: (with_debug[k], without[k])
+        for k in with_debug
+        if with_debug[k] != without[k]
+    }
+    assert differing == {"retention_maxlen": (1_000, None)}
 
 
 def test_outbox_with_event_store_subscriptions_is_a_conflict():

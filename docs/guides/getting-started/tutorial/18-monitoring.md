@@ -63,8 +63,8 @@ The Observatory exposes a `/metrics` endpoint in Prometheus format:
 $ curl http://localhost:9000/metrics
 # HELP protean_subscription_consumer_lag Messages behind stream head
 # TYPE protean_subscription_consumer_lag gauge
-protean_subscription_consumer_lag{domain="bookshelf",handler="BookEventHandler"} 0
-protean_subscription_consumer_lag{domain="bookshelf",handler="OrderEventHandler"} 2
+protean_subscription_consumer_lag{domain="bookshelf",handler="BookEventHandler",stream="bookshelf::book",type="stream"} 0
+protean_subscription_consumer_lag{domain="bookshelf",handler="OrderEventHandler",stream="bookshelf::order",type="stream"} 2
 ...
 ```
 

@@ -439,8 +439,12 @@ Name the `debug` profile on the handlers you are working on:
 ```
 
 Setting `default_subscription_profile = "debug"` does not do this. Protean's
-built-in server-level defaults set every field the `debug` profile sets, and
-they win over it, as the [caveat](#custom-profiles) explains.
+built-in server-level defaults set the fields the `debug` profile sets, and
+they win over it, as the [caveat](#custom-profiles) explains. The one field
+that gets through is `retention_maxlen`: the built-in
+`[server.stream_subscription]` block does not set it, so with
+`default_subscription_type = "stream"` every stream subscription caps its
+stream at the `debug` profile's 1000 entries.
 
 ### 4. Monitor and Adjust
 
