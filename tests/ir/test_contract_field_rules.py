@@ -538,6 +538,28 @@ class TestExcludedPublishedEvent:
             "amount"
         ]
 
+    def test_under_warn_the_break_is_printed_and_exits_0(self, tmp_path):
+        protean_dir = tmp_path / ".protean"
+        protean_dir.mkdir()
+        (protean_dir / "config.toml").write_text(
+            f'[compatibility]\nstrictness = "warn"\nexclude = ["{EVENT_FQN}"]\n',
+            encoding="utf-8",
+        )
+
+        result = _diff_cli(
+            tmp_path,
+            _build(qty=Integer()),
+            _build(qty=String()),
+            "--dir",
+            str(protean_dir),
+        )
+
+        assert result.exit_code == 0
+        assert (
+            f"Field 'qty' type changed from 'Integer' to 'String' in "
+            f"published event '{EVENT_TYPE}'" in _breaking_section(result.output)
+        )
+
 
 class TestJsonCompatibilityBlock:
     def test_field_name_is_filled_for_a_type_change(self, tmp_path):
