@@ -91,13 +91,18 @@ exceptions:
   contract break on an excluded published event still counts as breaking, and
   `protean ir diff` and the `protean-check-compat` hook still print it.
 
-The contract check writes these field entries:
+The contract check writes these field entries into `contracts.breaking_changes`:
 
 | Entry `type` | When | Keys |
 |--------------|------|------|
 | `contract_field_type_changed` | A field's type changes, or its `Decimal` shape changes in a breaking way. A field renamed with `renamed_from` carries `renamed_to`; a field that keeps its name does not. | `fqn`, `field`, `left`, `right`, `message`, and `renamed_to` on a rename |
 | `contract_required_field_added` | A required field without a default is added | `fqn`, `field`, `message` |
 | `contract_field_removed` | A field is removed and no rename claims it | `fqn`, `field`, `classification`, `message`, and `deprecated` when the field was deprecated |
+
+A plain rename is a `contract_field_renamed` entry in `contracts.renamed_fields`,
+and it is not a break. A plain rename is a field with `renamed_from` and no type
+change or breaking `Decimal` shape change. Its keys are `fqn`, `field`,
+`renamed_to` and `message`.
 
 `protean ir diff` prints both lists under "Breaking Changes". A break that both
 lists report, on the same event, the same field and the same kind of change,
