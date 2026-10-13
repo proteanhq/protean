@@ -27,6 +27,7 @@ from annotated_types import Ge, Gt, Le, Lt, MaxLen, MinLen
 from pydantic import Field as PydanticField
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_core import PydanticUndefined
+from typing_extensions import TypeForm
 
 from protean.exceptions import ValidationError
 
@@ -57,11 +58,11 @@ class ResolvedField:
     """
 
     def __init__(
-        self, field_name: str, field_info: Any, python_type: type | None
+        self, field_name: str, field_info: Any, python_type: TypeForm[Any] | None
     ) -> None:
         self.field_name = field_name
         self.attribute_name = field_name
-        self._python_type = python_type
+        self._python_type: TypeForm[Any] | None = python_type
         self._field_info = field_info
 
         # Extract description from FieldInfo

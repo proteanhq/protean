@@ -192,6 +192,18 @@ class TestResolvePythonType:
         result = _resolve_python_type(shim)
         assert result is str
 
+    def test_returns_none_for_literal_type(self):
+        """A ``Literal``, which a field with ``choices`` produces, is not a
+        class, so it falls through to the plain string column."""
+        from typing import Literal
+
+        from protean.adapters.repository.sqlalchemy import _resolve_python_type
+
+        shim = MagicMock()
+        shim._python_type = Literal["draft", "published"]
+        result = _resolve_python_type(shim)
+        assert result is None
+
 
 class TestFieldMappingForNoneType:
     """Tests for field_mapping_for when _resolve_python_type returns None."""

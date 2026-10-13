@@ -313,7 +313,9 @@ def _resolve_python_type(shim: ResolvedField) -> type | None:
     """Extract the core Python type from a ResolvedField.
 
     Unwraps Optional/Union, and normalises generic aliases
-    (``list[X]`` → ``list``, ``dict[K,V]`` → ``dict``).
+    (``list[X]`` → ``list``, ``dict[K,V]`` → ``dict``). An annotation that is
+    not a class, such as a ``Literal``, gives ``None``, which every caller
+    already maps to a plain string column.
     """
     python_type = shim._python_type
 
@@ -331,7 +333,7 @@ def _resolve_python_type(shim: ResolvedField) -> type | None:
     if origin is dict or python_type is dict:
         return dict
 
-    return python_type
+    return python_type if isinstance(python_type, type) else None
 
 
 # Python-type-to-SQLAlchemy-type mapping
