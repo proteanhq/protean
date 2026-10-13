@@ -102,6 +102,8 @@ MARKERS: dict[str, str] = {
     "guides/server/opentelemetry/003.py": "fastapi",
     "guides/server/production-deployment/001.py": "fastapi",
     "reference/migration/v0-15/005.py": "elasticsearch",
+    "reference/server/observability/001.py": "fastapi",
+    "reference/server/observability/002.py": "fastapi",
     "reference/troubleshooting/003.py": "fastapi",
 }
 

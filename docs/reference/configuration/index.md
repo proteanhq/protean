@@ -10,12 +10,12 @@ Protean's configuration is managed through the Domain object, which can be confi
 Pass a configuration dictionary when initializing the Domain object:
 
    ```python
-   domain = Domain(config={'debug': True, 'testing': True})
+   --8<-- "reference/configuration/index/001.py:direct"
    ```
 
 ## Configuration Files
 
-Place configuration can be supplied in a TOML file in your project directory or up to two levels of parent directories.
+Configuration can be supplied in a TOML file in your project directory or up to two levels of parent directories.
 
 Protean searches for configuration files in the following order:
 
@@ -30,73 +30,7 @@ When initializing a new Protean application using the [`new`](../cli/project/new
 A sample configuration file is below:
 
 ```toml
-debug = true
-testing = true
-secret_key = "tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA"
-identity_strategy = "uuid"
-identity_type = "string"
-event_processing = "sync"
-command_processing = "sync"
-
-[databases.default]
-provider = "memory"
-
-[databases.memory]
-provider = "memory"
-
-[brokers.default]
-provider = "inline"
-
-[caches.default]
-provider = "memory"
-
-[event_store]
-provider = "memory"
-
-[custom]
-foo = "bar"
-
-[staging]
-event_processing = "async"
-command_processing = "sync"
-
-[staging.databases.default]
-provider = "sqlite"
-database_url = "sqlite:///test.db"
-
-[staging.brokers.default]
-provider = "redis_pubsub"
-URI = "redis://staging.example.com:6379/2"
-TTL = 300
-
-[staging.custom]
-foo = "qux"
-
-[prod]
-event_processing = "async"
-command_processing = "async"
-
-[prod.databases.default]
-provider = "postgresql"
-database_url = "postgresql://postgres:postgres@localhost:5432/postgres"
-
-[prod.brokers.default]
-provider = "redis_pubsub"
-URI = "redis://prod.example.com:6379/2"
-TTL = 30
-
-[prod.event_store]
-provider = "message_db"
-database_uri = "postgresql://message_store@localhost:5433/message_store"
-
-[prod.custom]
-foo = "quux"
-
-[prod.telemetry]
-enabled = true
-service_name = "my-service"
-exporter = "otlp"
-endpoint = "http://otel-collector:4317"
+--8<-- "reference/configuration/index/sample.toml"
 ```
 
 ## Basic Configuration Parameters
@@ -258,8 +192,7 @@ holds one key, `sanitize`, the default for String and Text fields declared
 without an explicit `sanitize=` kwarg.
 
 ```toml
-[field_defaults]
-sanitize = false
+--8<-- "reference/configuration/index/field_defaults.toml"
 ```
 
 The framework default is `false`: a String/Text field with no `sanitize=`
@@ -294,15 +227,7 @@ persisting and retrieving domain objects.
 They are defined in the `[databases]` section.
 
 ```toml hl_lines="1 4 7"
-[databases.default]
-provider = "memory"
-
-[databases.memory]
-provider = "memory"
-
-[databases.sqlite]
-provider = "sqlite"
-database_uri = "sqlite:///test.db"
+--8<-- "reference/configuration/index/databases.toml"
 ```
 
 You can define as many databases as you need. The default database is identified
@@ -316,10 +241,7 @@ The persistence store defined here is then specified in the `provider` key of
 aggregates and entities to assign them a specific database.
 
 ```python hl_lines="1"
-@domain.aggregate(provider="sqlite")  # (1)
-class User:
-    name: String(max_length=50)
-    email: String(max_length=254)
+--8<-- "reference/configuration/index/002.py:aggregate"
 ```
 
 1. `sqlite` is the key of the database definition in the `[databases.sqlite]`
@@ -346,17 +268,7 @@ full catalogue in [Server Hardening reference](../server/hardening.md#connection
 This section holds definitions for cache infrastructure.
 
 ```toml
-[caches.default]
-provider = "memory"
-
-[caches.redis]
-provider = "redis"
-URI = "redis://127.0.0.1:6379/2"
-TTL = 300
-max_connections = 50
-socket_timeout = 5
-socket_connect_timeout = 5
-retry_on_timeout = true
+--8<-- "reference/configuration/index/caches.toml"
 ```
 
 Default provider: `memory`
@@ -372,16 +284,7 @@ Read more in [Adapters → Cache](../adapters/cache/index.md) section.
 This section holds configurations for message brokers.
 
 ```toml
-[brokers.default]
-provider = "inline"
-
-[brokers.redis]
-provider = "redis"
-URI = "redis://127.0.0.1:6379/0"
-max_connections = 50
-socket_timeout = 5
-socket_connect_timeout = 5
-retry_on_timeout = true
+--8<-- "reference/configuration/index/brokers.toml"
 ```
 
 Default provider: `inline`
@@ -398,13 +301,10 @@ The event store that stores event and command messages is defined in this
 section.
 
 ```toml
-[event_store]
-provider = "message_db"
-database_uri = "postgresql://message_store@localhost:5433/message_store"
-max_connections = 20
+--8<-- "reference/configuration/index/event_store.toml"
 ```
 
-Note that there can only be only event store defined per domain.
+Note that there can be only one event store per domain.
 
 Default provider: `memory`
 
@@ -420,98 +320,7 @@ It controls subscription behavior, outbox processing, and handler-specific
 settings.
 
 ```toml
-[server]
-# Default subscription settings
-default_subscription_type = "stream"      # "stream" or "event_store"
-default_subscription_profile = "production"  # Profile for defaults
-messages_per_tick = 100                   # Messages per processing cycle
-drain_timeout = 10                        # Seconds to wait for in-flight handlers on shutdown
-
-# StreamSubscription defaults
-[server.stream_subscription]
-blocking_timeout_ms = 5000    # Blocking read timeout
-max_retries = 3               # Retries before DLQ
-retry_delay_seconds = 1       # Delay between retries
-enable_dlq = true             # Enable dead letter queue
-
-# EventStoreSubscription defaults
-[server.event_store_subscription]
-position_update_interval = 10  # Messages between position writes
-max_retries = 3                # Retries before marking exhausted
-retry_delay_seconds = 1        # Delay between recovery retries
-enable_recovery = true         # Enable periodic recovery pass
-recovery_interval_seconds = 30 # Interval between recovery sweeps
-gap_timeout_seconds = 5        # $all subs: hold at a global_position gap this long before abandoning it
-
-# BrokerSubscription defaults
-[server.broker_subscription]
-max_retries = 3               # Retries before DLQ
-retry_delay_seconds = 1       # Delay between retries
-enable_dlq = true             # Enable dead letter queue
-
-# Version conflict auto-retry
-# Retries ExpectedVersionError at the handler level before
-# the error reaches the subscription retry/DLQ pipeline
-[server.version_retry]
-enabled = true               # Enable/disable auto-retry
-max_retries = 3              # Fast retries before propagating
-base_delay_seconds = 0.05    # 50ms initial backoff
-max_delay_seconds = 1.0      # Cap backoff at 1 second
-
-# Transient-failure auto-retry (distinct from version_retry)
-# Retries handlers that fail with transient infrastructure errors
-# before the error reaches the subscription retry/DLQ pipeline.
-# Opt-in: disabled by default. Per-handler retries=/backoff=/
-# retry_exceptions= options override these.
-[server.transient_retry]
-enabled = false              # Off by default; turn on to retry transient errors
-max_retries = 3              # Retries before propagating
-backoff = "exponential"      # exponential | linear | fixed
-base_delay_seconds = 0.1     # Initial backoff delay
-max_delay_seconds = 5.0      # Cap backoff at 5 seconds
-# Only genuinely transient exceptions belong here. Dotted paths or
-# bare builtin names.
-exceptions = [
-    "builtins.ConnectionError",
-    "builtins.TimeoutError",
-    "protean.exceptions.SendError",
-]
-
-# DLQ maintenance (retention + alerting)
-# Off by default; opt in by setting enabled = true.
-[server.dlq]
-enabled = false              # Master switch for the maintenance task
-retention_hours = 168        # Trim DLQ entries older than this (default: 7 days)
-alert_threshold = 100        # Warn when a DLQ stream reaches this depth
-check_interval_seconds = 60  # How often the maintenance cycle runs
-alert_callback = "myapp.alerts.notify_oncall"  # Optional dotted path, called on breach
-
-# Kubernetes-compatible health HTTP server
-# Enabled by default on port 8080; disable for tests or embedded use.
-[server.health]
-enabled = true               # Start the built-in health server
-host = "127.0.0.1"           # Bind address (loopback; use "0.0.0.0" to expose)
-port = 8080                  # Listen port
-port_auto_increment = false  # Try 8081, 8082, ... if the port is taken
-
-# Two-lane event/command routing (backfill vs. primary stream)
-# Off by default; opt in by setting enabled = true.
-[server.priority_lanes]
-enabled = false               # Off by default; enable two-lane routing
-threshold = 0                 # Priority below this routes to the backfill lane
-backfill_suffix = "backfill"  # Suffix for the backfill stream/DLQ
-
-# Handler-specific overrides
-[server.subscriptions.OrderEventHandler]
-profile = "fast"
-messages_per_tick = 50
-# Per-subscription DLQ overrides (inherit from [server.dlq] when unset)
-dlq_retention_hours = 72
-dlq_alert_threshold = 25
-
-[server.subscriptions.InventoryProjector]
-subscription_type = "event_store"
-profile = "projection"
+--8<-- "reference/configuration/index/server.toml"
 ```
 
 #### Subscription Profiles
@@ -598,28 +407,7 @@ delivery. The outbox is automatically enabled when
 `enable_outbox = true` flag still works for backward compatibility.
 
 ```toml
-[server]
-default_subscription_type = "stream"  # Enables outbox automatically
-
-[outbox]
-broker = "default"         # Target broker for publishing
-messages_per_tick = 10     # Messages per processing cycle
-tick_interval = 1          # Seconds between cycles
-max_tick_interval = 30     # Adaptive backoff cap when idle (omit to disable backoff)
-
-# Retry configuration
-[outbox.retry]
-max_attempts = 3           # Maximum retry attempts
-base_delay_seconds = 60    # Initial retry delay
-max_backoff_seconds = 3600 # Maximum retry delay
-backoff_multiplier = 2     # Exponential backoff multiplier
-jitter = true              # Add randomization to delays
-
-# Cleanup configuration
-[outbox.cleanup]
-published_retention_hours = 168   # Keep published for 7 days
-abandoned_retention_hours = 720   # Keep abandoned for 30 days
-batch_size = 5000                 # Rows deleted per bounded cleanup batch
+--8<-- "reference/configuration/index/outbox.toml"
 ```
 
 Cleanup runs as bounded `batch_size` deletes rather than one unbounded
@@ -633,14 +421,7 @@ Read more in [Server → Outbox Pattern](../../concepts/async-processing/outbox.
 This section configures OpenTelemetry distributed tracing and metrics.
 
 ```toml
-[telemetry]
-enabled = true
-service_name = "my-service"
-exporter = "otlp"
-endpoint = "http://localhost:4317"
-
-[telemetry.resource_attributes]
-"deployment.environment" = "production"
+--8<-- "reference/configuration/index/telemetry.toml"
 ```
 
 | Key | Type | Default | Description |
@@ -663,10 +444,7 @@ a Redis instance, `domain.process()` can detect and deduplicate repeated
 command submissions using caller-provided idempotency keys.
 
 ```toml
-[idempotency]
-redis_url = "redis://localhost:6379/5"  # Redis connection URL
-ttl = 86400                              # Success entry TTL in seconds (default: 24 hours)
-error_ttl = 60                           # Error entry TTL in seconds (default: 60s)
+--8<-- "reference/configuration/index/idempotency.toml"
 ```
 
 | Key | Description | Default |
@@ -688,9 +466,7 @@ by projectors to detect and skip already-processed messages (the
 above). See [ADR-0017](../../adr/0017-consume-side-idempotency-for-projectors.md).
 
 ```toml
-[consume_idempotency.cleanup]
-retention_hours = 168  # Prune markers older than this (default: 7 days)
-batch_size = 5000      # Rows deleted per bounded cleanup batch
+--8<-- "reference/configuration/index/consume_idempotency.toml"
 ```
 
 | Key | Description | Default |
@@ -708,9 +484,7 @@ file rotation, slow-handler/slow-query thresholds, and redaction of sensitive
 fields.
 
 ```toml
-[logging]
-level = "INFO"
-format = "auto"
+--8<-- "reference/configuration/index/logging.toml"
 ```
 
 Full key reference, redaction rules, and tail sampling: [Logging](../logging.md).
@@ -721,16 +495,7 @@ This section configures the diagnostics reported by `protean check`. All keys
 are optional.
 
 ```toml
-[lint]
-level = "warn"                        # exit-code severity floor
-aggregate_size_limit = 5              # entities before AGGREGATE_TOO_LARGE
-handler_breadth_limit = 5             # message types before HANDLER_TOO_BROAD
-check_infra_imports = false           # flag domain modules importing protean.adapters
-check_adapter_calls = false           # flag domain elements calling adapters directly
-rules = ["my_app.lint.check_names"]   # dotted paths to custom rule callables
-
-[lint.suppressions]
-UNHANDLED_EVENT = 3                    # grandfather the first 3 findings
+--8<-- "reference/configuration/index/lint.toml"
 ```
 
 | Key | Type | Default | Description |
@@ -766,8 +531,7 @@ precedence over the `[lint.suppressions]` allow-list.
 This section configures the Observatory's trace history.
 
 ```toml
-[observatory]
-trace_retention_days = 7   # days of trace history kept in Redis; 0 disables it
+--8<-- "reference/configuration/index/observatory.toml"
 ```
 
 | Key | Type | Default | Description |
@@ -783,11 +547,7 @@ deployments; raise the lease TTL only if your handlers routinely pause longer
 than it.
 
 ```toml
-[server.partitioning]
-lease_ttl_ms = 15000              # how long an ownership lease survives without renewal
-heartbeat_interval_seconds = 3.0  # how often the owner renews it
-poll_interval_seconds = 0.25      # how often a worker looks for unowned partitions
-reap_idle_ms = 3600000            # idle time before a cold partition is pruned
+--8<-- "reference/configuration/index/partitioning.toml"
 ```
 
 | Key | Type | Default | Purpose |
@@ -809,11 +569,7 @@ Custom attributes can be defined in toml under the `[custom]` section (or
 Custom attributes are also made available as domain attributes.
 
 ```toml hl_lines="5"
-debug = true
-testing = true
-
-[custom]
-FOO = "bar"
+--8<-- "reference/configuration/index/custom.toml"
 ```
 
 ```shell hl_lines="3-4 6-7"
@@ -840,16 +596,7 @@ The string specified in `PROTEAN_ENV` is used as a qualifier in the
 configuration.
 
 ```toml hl_lines="4 8"
-[databases.default]
-provider = "memory"
-
-[staging.databases.default]
-provider = "sqlite"
-database_url = "sqlite:///test.db"
-
-[prod.databases.default]
-provider = "postgresql"
-database_url = "postgresql://postgres:postgres@localhost:5432/postgres"
+--8<-- "reference/configuration/index/environments.toml"
 ```
 
 Protean has a default configuration with memory stubs that is overridden
@@ -866,36 +613,7 @@ confidence. Define a `[test]` overlay (the default for `pytest`) and a `[memory]
 switch from the command line:
 
 ```toml
-# Base configuration (development)
-[databases.default]
-provider = "postgresql"
-database_uri = "postgresql://localhost/myapp_local"
-
-[brokers.default]
-provider = "redis"
-URI = "redis://localhost:6379/0"
-
-# Test overlay: separate database, sync processing
-[test]
-testing = true
-event_processing = "sync"
-
-[test.databases.default]
-database_uri = "postgresql://localhost/myapp_test"
-
-# Memory overlay: all in-memory adapters, no Docker needed
-[memory]
-testing = true
-event_processing = "sync"
-
-[memory.databases.default]
-provider = "memory"
-
-[memory.event_store]
-provider = "memory"
-
-[memory.brokers.default]
-provider = "inline"
+--8<-- "reference/configuration/index/testing_overlays.toml"
 ```
 
 ```shell

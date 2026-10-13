@@ -1,0 +1,6 @@
+[logging.sampling]
+enabled = true
+default_rate = 0.05
+always_keep_errors = true
+always_keep_slow = true
+critical_streams = ["*.Payment*", "*.Auth*"]

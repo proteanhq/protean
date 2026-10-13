@@ -1,0 +1,4 @@
+[event_store]
+provider = "message_db"
+database_uri = "${MESSAGE_DB_URL}"
+max_connections = 20

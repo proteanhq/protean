@@ -1,0 +1,2 @@
+[logging]
+redact = ["x-internal-token", "customer_ssn"]

@@ -1,0 +1,10 @@
+[databases.default]
+provider = "memory"
+
+[staging.databases.default]
+provider = "sqlite"
+database_uri = "sqlite:///test.db"
+
+[prod.databases.default]
+provider = "postgresql"
+database_uri = "postgresql://postgres:postgres@localhost:5432/postgres"

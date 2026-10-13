@@ -26,9 +26,7 @@ is processed by exactly one worker.
     Redis Stream-based consumer groups that distribute messages across workers.
 
     ```toml
-    # domain.toml
-    [server]
-    default_subscription_type = "stream"
+    --8<-- "reference/server/supervisor/stream_subscriptions.toml"
     ```
 
     See [Subscription Types](subscription-types.md) for details on the two
@@ -152,15 +150,14 @@ The Supervisor continuously monitors worker processes:
 You can use the Supervisor directly in Python code:
 
 ```python
-from protean.server.supervisor import Supervisor
+--8<-- "reference/server/supervisor/001.py:construct"
+```
 
-supervisor = Supervisor(
-    domain_path="my_package.domain",
-    num_workers=4,
-    test_mode=False,
-    log_level="INFO",
-)
-supervisor.run()  # Blocks until all workers exit
+`run()` spawns the workers and blocks until they all exit:
+
+```python
+# fragment
+supervisor.run()
 
 print(f"Exit code: {supervisor.exit_code}")
 ```
@@ -179,11 +176,10 @@ INFO, so worker DEBUG records are dropped. Set up logging before you call
 `run()`:
 
 ```python
-from protean.utils.logging import configure_logging
-
-configure_logging(level="DEBUG")
-Supervisor("my_package.domain", num_workers=4, log_level="DEBUG").run()
+--8<-- "reference/server/supervisor/002.py:debug_logging"
 ```
+
+Then call `supervisor.run()`.
 
 The `debug` argument is deprecated and is removed in 0.20.0. Pass
 `log_level="DEBUG"` instead. `Reloader` takes the same arguments and has the

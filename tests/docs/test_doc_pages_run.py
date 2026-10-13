@@ -167,11 +167,6 @@ ALLOWLIST: frozenset[str] = frozenset(
         "patterns/thin-handlers-rich-domain.md",
         "patterns/track-audit-fields.md",
         "patterns/validation-layering.md",
-        "reference/logging.md",
-        "reference/server/configuration.md",
-        "reference/server/observability.md",
-        "reference/server/sequential-by.md",
-        "reference/server/subscription-types.md",
     }
 )
 

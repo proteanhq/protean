@@ -93,9 +93,7 @@ historical data even after SSE clients disconnect.
 Set `trace_retention_days` in your domain configuration:
 
 ```toml
-# domain.toml
-[observatory]
-trace_retention_days = 7   # Default: 7 days. Set to 0 to disable persistence.
+--8<-- "reference/server/observability/observatory.toml"
 ```
 
 When `trace_retention_days` is set to `0`, persistence is disabled and only
@@ -150,11 +148,8 @@ observatory.run(port=9000)
 For deployment with uvicorn directly:
 
 ```python
-from protean.server.observatory import create_observatory_app
-
-app = create_observatory_app(domains=[identity, catalogue])
-
-# Then run with: uvicorn my_module:app --host 0.0.0.0 --port 9000
+--8<-- "reference/server/observability/001.py:domains"
+--8<-- "reference/server/observability/001.py:app"
 ```
 
 ### Endpoints
@@ -206,7 +201,7 @@ usage, and throughput:
   "status": "ok",
   "domains": ["identity", "catalogue"],
   "infrastructure": {
-    "broker": {
+    "redis": {
       "healthy": true,
       "version": "7.2.4",
       "connected_clients": 5,
@@ -483,9 +478,9 @@ Metrics in Prometheus text exposition format, suitable for scraping by
 Prometheus, Grafana Agent, or any compatible collector:
 
 ```
-# HELP protean_outbox_pending Current pending outbox messages
-# TYPE protean_outbox_pending gauge
-protean_outbox_messages{domain="identity",status="PENDING"} 3
+# HELP protean_outbox_pending_count Current pending outbox messages
+# TYPE protean_outbox_pending_count gauge
+protean_outbox_pending_count{domain="identity"} 3
 
 # HELP protean_broker_up Broker health (1=up, 0=down)
 # TYPE protean_broker_up gauge
@@ -512,7 +507,7 @@ Available metrics:
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `protean_outbox_messages` | gauge | Outbox messages by domain and status |
+| `protean_outbox_pending_count` | gauge | Pending outbox messages (per domain) |
 | `protean_broker_up` | gauge | Broker health (1=up, 0=down) |
 | `protean_broker_memory_bytes` | gauge | Broker memory usage in bytes |
 | `protean_broker_connected_clients` | gauge | Number of connected broker clients |
@@ -521,9 +516,9 @@ Available metrics:
 | `protean_stream_pending` | gauge | Pending (in-flight) messages |
 | `protean_streams_count` | gauge | Number of active streams |
 | `protean_consumer_groups_count` | gauge | Number of consumer groups |
-| `protean_subscription_lag` | gauge | Messages behind stream head (per subscription) |
+| `protean_subscription_consumer_lag` | gauge | Messages behind stream head (per subscription) |
 | `protean_subscription_lag_seconds` | gauge | Seconds since the last processed position (per event-store subscription); not emitted when unavailable |
-| `protean_subscription_pending` | gauge | Unacknowledged messages (per subscription) |
+| `protean_subscription_pending_messages` | gauge | Unacknowledged messages (per subscription) |
 | `protean_subscription_dlq_depth` | gauge | Dead letter queue depth (per subscription) |
 | `protean_subscription_status` | gauge | Subscription health: 1=ok, 0=not ok |
 | `protean_projection_staleness_seconds` | gauge | Seconds a projection is behind its source events (per projection) |
@@ -545,11 +540,7 @@ The Observatory enables CORS by default to allow browser-based dashboards. You
 can customize the allowed origins:
 
 ```python
-observatory = Observatory(
-    domains=[domain],
-    enable_cors=True,
-    cors_origins=["https://monitoring.example.com"],
-)
+--8<-- "reference/server/observability/002.py:cors"
 ```
 
 ## Prerequisites

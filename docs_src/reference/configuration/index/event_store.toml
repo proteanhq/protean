@@ -1,0 +1,4 @@
+[event_store]
+provider = "message_db"
+database_uri = "postgresql://message_store@localhost:5433/message_store"
+max_connections = 20

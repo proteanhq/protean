@@ -1,0 +1,22 @@
+[server]
+default_subscription_type = "stream"  # Enables outbox automatically
+
+[outbox]
+broker = "default"         # Target broker for publishing
+messages_per_tick = 10     # Messages per processing cycle
+tick_interval = 1          # Seconds between cycles
+max_tick_interval = 30     # Adaptive backoff cap when idle (omit to disable backoff)
+
+# Retry configuration
+[outbox.retry]
+max_attempts = 3           # Maximum retry attempts
+base_delay_seconds = 60    # Initial retry delay
+max_backoff_seconds = 3600 # Maximum retry delay
+backoff_multiplier = 2     # Exponential backoff multiplier
+jitter = true              # Add randomization to delays
+
+# Cleanup configuration
+[outbox.cleanup]
+published_retention_hours = 168   # Keep published for 7 days
+abandoned_retention_hours = 720   # Keep abandoned for 30 days
+batch_size = 5000                 # Rows deleted per bounded cleanup batch

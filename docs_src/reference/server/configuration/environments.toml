@@ -1,0 +1,16 @@
+# Development defaults
+[server]
+default_subscription_profile = "debug"
+
+# Production overrides
+[prod.server]
+default_subscription_profile = "production"
+messages_per_tick = 200
+
+[prod.server.stream_subscription]
+max_retries = 5
+enable_dlq = true
+
+# Staging overrides
+[staging.server]
+default_subscription_profile = "fast"

@@ -77,9 +77,9 @@ The Observatory provides:
 The Observatory exposes Prometheus-compatible metrics at `/metrics`:
 
 ```
-# HELP protean_subscription_lag Messages behind head position
-# TYPE protean_subscription_lag gauge
-protean_subscription_lag{domain="fidelis",handler="AccountSummaryProjector",stream="fidelis::account",type="stream"} 2
+# HELP protean_subscription_consumer_lag Messages behind stream head
+# TYPE protean_subscription_consumer_lag gauge
+protean_subscription_consumer_lag{domain="fidelis",handler="AccountSummaryProjector",stream="fidelis::account",type="stream"} 2
 
 # HELP protean_subscription_dlq_depth Messages in dead-letter queue
 # TYPE protean_subscription_dlq_depth gauge
@@ -93,7 +93,7 @@ protean_subscription_status{domain="fidelis",handler="AccountCommandHandler",str
 These metrics can be scraped by Grafana, Datadog, or any Prometheus-
 compatible monitoring tool. Set alerts on:
 
-- `protean_subscription_lag > 100`: Handler falling behind
+- `protean_subscription_consumer_lag > 100`: Handler falling behind
 - `protean_subscription_dlq_depth > 0`: Failed messages accumulating
 
 ## Trace Events

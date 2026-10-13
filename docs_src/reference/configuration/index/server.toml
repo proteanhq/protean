@@ -1,0 +1,92 @@
+[server]
+# Default subscription settings
+default_subscription_type = "stream"      # "stream" or "event_store"
+default_subscription_profile = "production"  # Profile for defaults
+messages_per_tick = 100                   # Messages per processing cycle
+drain_timeout = 10                        # Seconds to wait for in-flight handlers on shutdown
+
+# StreamSubscription defaults
+[server.stream_subscription]
+blocking_timeout_ms = 5000    # Blocking read timeout
+max_retries = 3               # Retries before DLQ
+retry_delay_seconds = 1       # Delay between retries
+enable_dlq = true             # Enable dead letter queue
+
+# EventStoreSubscription defaults
+[server.event_store_subscription]
+position_update_interval = 10  # Messages between position writes
+max_retries = 3                # Retries before marking exhausted
+retry_delay_seconds = 1        # Delay between recovery retries
+enable_recovery = true         # Enable periodic recovery pass
+recovery_interval_seconds = 30 # Interval between recovery sweeps
+gap_timeout_seconds = 5        # $all subs: hold at a global_position gap this long before abandoning it
+
+# BrokerSubscription defaults
+[server.broker_subscription]
+max_retries = 3               # Retries before DLQ
+retry_delay_seconds = 1       # Delay between retries
+enable_dlq = true             # Enable dead letter queue
+
+# Version conflict auto-retry
+# Retries ExpectedVersionError at the handler level before
+# the error reaches the subscription retry/DLQ pipeline
+[server.version_retry]
+enabled = true               # Enable/disable auto-retry
+max_retries = 3              # Fast retries before propagating
+base_delay_seconds = 0.05    # 50ms initial backoff
+max_delay_seconds = 1.0      # Cap backoff at 1 second
+
+# Transient-failure auto-retry (distinct from version_retry)
+# Retries handlers that fail with transient infrastructure errors
+# before the error reaches the subscription retry/DLQ pipeline.
+# Opt-in: disabled by default. Per-handler retries=/backoff=/
+# retry_exceptions= options override these.
+[server.transient_retry]
+enabled = false              # Off by default; turn on to retry transient errors
+max_retries = 3              # Retries before propagating
+backoff = "exponential"      # exponential | linear | fixed
+base_delay_seconds = 0.1     # Initial backoff delay
+max_delay_seconds = 5.0      # Cap backoff at 5 seconds
+# Only genuinely transient exceptions belong here. Dotted paths or
+# bare builtin names.
+exceptions = [
+    "builtins.ConnectionError",
+    "builtins.TimeoutError",
+    "protean.exceptions.SendError",
+]
+
+# DLQ maintenance (retention + alerting)
+# Off by default; opt in by setting enabled = true.
+[server.dlq]
+enabled = false              # Master switch for the maintenance task
+retention_hours = 168        # Trim DLQ entries older than this (default: 7 days)
+alert_threshold = 100        # Warn when a DLQ stream reaches this depth
+check_interval_seconds = 60  # How often the maintenance cycle runs
+alert_callback = "myapp.alerts.notify_oncall"  # Optional dotted path, called on breach
+
+# Kubernetes-compatible health HTTP server
+# Enabled by default on port 8080; disable for tests or embedded use.
+[server.health]
+enabled = true               # Start the built-in health server
+host = "127.0.0.1"           # Bind address (loopback; use "0.0.0.0" to expose)
+port = 8080                  # Listen port
+port_auto_increment = false  # Try 8081, 8082, ... if the port is taken
+
+# Two-lane event/command routing (backfill vs. primary stream)
+# Off by default; opt in by setting enabled = true.
+[server.priority_lanes]
+enabled = false               # Off by default; enable two-lane routing
+threshold = 0                 # Priority below this routes to the backfill lane
+backfill_suffix = "backfill"  # Suffix for the backfill stream/DLQ
+
+# Handler-specific overrides
+[server.subscriptions.OrderEventHandler]
+profile = "fast"
+messages_per_tick = 50
+# Per-subscription DLQ overrides (inherit from [server.dlq] when unset)
+dlq_retention_hours = 72
+dlq_alert_threshold = 25
+
+[server.subscriptions.InventoryProjector]
+subscription_type = "event_store"
+profile = "projection"

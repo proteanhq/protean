@@ -1,0 +1,10 @@
+[brokers.default]
+provider = "inline"
+
+[brokers.redis]
+provider = "redis"
+URI = "redis://127.0.0.1:6379/0"
+max_connections = 50
+socket_timeout = 5
+socket_connect_timeout = 5
+retry_on_timeout = true

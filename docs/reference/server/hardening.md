@@ -21,12 +21,7 @@ Pool defaults for the `postgresql`, `mssql` and `mysql` providers (SQLite uses
 | `pool_recycle` | unset | Recycle connections older than N seconds |
 
 ```toml
-[databases.default]
-provider = "postgresql"
-database_uri = "${DATABASE_URL}"
-pool_size = 10
-max_overflow = 20
-pool_recycle = 1800
+--8<-- "reference/server/hardening/database_pool.toml"
 ```
 
 ### Redis broker and cache
@@ -45,10 +40,7 @@ Both adapters forward pool parameters to `redis.ConnectionPool`.
 Forward `max_connections` directly through `conn_info`.
 
 ```toml
-[event_store]
-provider = "message_db"
-database_uri = "${MESSAGE_DB_URL}"
-max_connections = 20
+--8<-- "reference/server/hardening/message_db.toml"
 ```
 
 ### LOW_POOL_SIZE warning
@@ -325,8 +317,7 @@ worker to drain its peers. To quiesce the whole group, POST to every worker's
 health port:
 
 ```toml
-[server.health]
-port_auto_increment = true   # worker 0 binds 8080, worker 1 8081, ...
+--8<-- "reference/server/hardening/health.toml"
 ```
 
 ```bash
@@ -358,7 +349,7 @@ create_health_router(
     domain,                # Domain instance
     *,
     prefix: str = "",      # URL prefix for all health routes
-    tags: list[str] | None = None,  # OpenAPI tags
+    tags: list[str | Enum] | None = None,  # OpenAPI tags
 )
 ```
 
@@ -383,8 +374,7 @@ event-loop task inside the request cycle to probe.
 The alert callback is invoked with keyword arguments:
 
 ```python
-def on_dlq_alert(dlq_stream: str, depth: int, threshold: int) -> None:
-    ...
+--8<-- "reference/server/hardening/001.py:alert_callback"
 ```
 
 ### Per-subscription overrides
@@ -444,9 +434,7 @@ failure) and is separate from `poll()`'s own backoff for broker read errors.
 | `circuit_breaker_reset_seconds` | `60` | Seconds an OPEN breaker waits before a single HALF_OPEN probe. Must be > 0 and finite (`inf`/`nan` are rejected). |
 
 ```toml
-[server.stream_subscription]
-circuit_breaker_threshold = 10
-circuit_breaker_reset_seconds = 60
+--8<-- "reference/server/hardening/circuit_breaker.toml"
 ```
 
 State machine:
@@ -557,8 +545,7 @@ tooling that create and tear down domains on demand.
 | `drain_timeout` | `10` | Seconds step 3 waits for in-flight handlers before force-cancelling |
 
 ```toml
-[server]
-drain_timeout = 10  # seconds
+--8<-- "reference/server/hardening/drain_timeout.toml"
 ```
 
 The default of `10` preserves the previous fixed behaviour. Keep the drain

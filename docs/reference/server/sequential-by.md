@@ -43,28 +43,16 @@ and projector cases have a runtime effect today. The command-handler case does
 not, see the note above.
 
 ```python
-@domain.event_handler(part_of=Order, sequential_by="client_id")
-class OrderEventHandler(BaseEventHandler):
-    @handle(OrderPlaced)
-    def on_placed(self, event: OrderPlaced) -> None:
-        ...
+--8<-- "reference/server/sequential-by/001.py:order_model"
+--8<-- "reference/server/sequential-by/001.py:event_handler"
 ```
 
 On a projector, every event the projector handles must carry the field, and the
 category each handled event is published to is partitioned by it:
 
 ```python
-@domain.projector(
-    projector_for=ProductSummary, aggregates=[Product], sequential_by="product_id"
-)
-class ProductSummaryProjector(BaseProjector):
-    @on(ProductCreated)
-    def on_created(self, event: ProductCreated) -> None:
-        ...
-
-    @on(ProductActivated)
-    def on_activated(self, event: ProductActivated) -> None:
-        ...
+--8<-- "reference/server/sequential-by/001.py:product_model"
+--8<-- "reference/server/sequential-by/001.py:projector"
 ```
 
 A projector on a stream subscription (`subscription_type` set to `"stream"`)
@@ -87,16 +75,12 @@ for the same customer can still be processed at the same time.
 On a **process manager** it is a boolean opt-in. A process manager already
 declares its serialization domain through its `correlate` specs, so
 `sequential_by=True` partitions each subscribed category by the field that
-category's `correlate` maps to the correlation value:
+category's `correlate` maps to the correlation value. Here the `payment`
+category is partitioned by `order_id`:
 
 ```python
-@domain.process_manager(sequential_by=True)
-class OrderFulfillment(BaseProcessManager):
-    order_id = Identifier(identifier=True)
-
-    @handle(OrderPlaced, start=True, correlate="order_id")
-    def on_placed(self, event: OrderPlaced) -> None:
-        ...
+--8<-- "reference/server/sequential-by/001.py:payment_model"
+--8<-- "reference/server/sequential-by/001.py:process_manager"
 ```
 
 Nested paths and computed keys are out of scope: the key is a single named field.
@@ -112,7 +96,9 @@ runtime surprises into a startup error:
 - **One key per category**: A partition key is a property of the stream
   *category*, not of one handler. Two handlers on the same category that ask for
   different keys are rejected. All handlers on a category must agree on one key
-  or not partition it at all.
+  or not partition it at all. For example, the `client_id` event handler above
+  cannot share a domain with a process manager that correlates `OrderPlaced` by
+  `order_id`: both partition the `order` category.
 - **Broker capability**: The target broker must advertise the
   `STREAM_PARTITIONING` capability. The inline broker is the accepted exception
   (it is a no-op there); any other broker without the capability is rejected.

@@ -1,0 +1,3 @@
+[consume_idempotency.cleanup]
+retention_hours = 168  # Prune markers older than this (default: 7 days)
+batch_size = 5000      # Rows deleted per bounded cleanup batch

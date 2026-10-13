@@ -1,0 +1,5 @@
+[server.partitioning]
+lease_ttl_ms = 15000              # how long an ownership lease survives without renewal
+heartbeat_interval_seconds = 3.0  # how often the owner renews it
+poll_interval_seconds = 0.25      # how often a worker looks for unowned partitions
+reap_idle_ms = 3600000            # idle time before a cold partition is pruned
