@@ -5,9 +5,9 @@ globs: "**/*.py"
 
 # Persistence Patterns
 
-## Access Repositories via `domain.repository_for()`
+## Access Repositories via `repository_for()`
 
-Always use `domain.repository_for(AggregateClass)` to obtain a repository. Inside handlers,
+Always get a repository with `repository_for(AggregateClass)`. Inside handlers,
 call `current_domain.repository_for(AggregateClass)`. Outside handlers, call
 `domain.repository_for()` inside a domain context. Never construct repositories manually:
 
@@ -32,7 +32,7 @@ Repositories use **collection semantics** — `.add()` handles both new aggregat
 to existing ones. There is no separate `.update()` or `.save()`:
 
 ```python
-repo = current_domain.repository_for(Order)
+repo = current_domain.repository_for(Order)  # inside a handler
 
 # Creating
 order = Order.create(buyer_id=buyer_id)
@@ -51,7 +51,7 @@ part of the aggregate's consistency boundary:
 
 ```python
 # Good — persist the aggregate
-repo = current_domain.repository_for(Order)
+repo = current_domain.repository_for(Order)  # inside a handler
 order = repo.get(order_id)
 order.add_line_item(product_id=product_id, quantity=2)
 repo.add(order)  # Persists order + its line items

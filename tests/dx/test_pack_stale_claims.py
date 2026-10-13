@@ -1,10 +1,12 @@
 """The DX pack does not bring back errors that once repeated across its skills.
 
-Each rule below names one error that used to appear in several skills: the old
-``protean.globals`` import path, calls into the private ``_dao``, links to docs
-pages that do not exist, the claim that a string ``part_of`` is rejected on a
-handler or repository, and a ``self.repository`` attribute that no handler has. The test reads every text file in the pack and fails on
-any line that matches a rule, except the lines a rule allows on purpose.
+Each rule below names one error that used to appear in the pack's skills or
+rules: the old ``protean.globals`` import path, calls into the private ``_dao``,
+links to docs pages that do not exist, the claim that a string ``part_of`` is
+rejected on a handler or repository, and a ``repository`` attribute that no
+handler has, auto-injected or otherwise. The test reads every text file in the
+pack and fails on any line that matches a rule, except the lines a rule allows
+on purpose.
 """
 
 from __future__ import annotations
@@ -54,7 +56,16 @@ RULES: list[tuple[str, re.Pattern[str], frozenset[str]]] = [
     ),
     ("a string part_of called invalid", _STRING_PART_OF_REJECTED, frozenset()),
     # No word boundary, so self.repository_for is caught too.
-    ("self.repository on a handler", re.compile(r"self\.repository"), frozenset()),
+    (
+        "a repository attribute on a handler",
+        re.compile(r"\b(self|handler)\.repository"),
+        frozenset(),
+    ),
+    (
+        "an auto-injected repository",
+        re.compile(r"auto-?injected", re.IGNORECASE),
+        frozenset(),
+    ),
 ]
 
 
@@ -111,9 +122,11 @@ def test_the_pack_holds_none_of_the_stale_claims():
             "part_of",
         ),
         ("repositories require the resolved class", "part_of"),
-        ("    self.repository.add(order)", "self.repository"),
-        ("use `self.repository` (auto-injected)", "self.repository"),
-        ("    repo = self.repository_for(Order)", "self.repository"),
+        ("    self.repository.add(order)", "repository attribute"),
+        ("    repo = self.repository_for(Order)", "repository attribute"),
+        ("    handler.repository = mock_repo", "repository attribute"),
+        ("Handlers get an auto-injected repository", "auto-injected"),
+        ("# In handler methods, the repository is autoinjected", "auto-injected"),
     ],
 )
 def test_a_stale_line_is_reported(line, rule):
@@ -139,10 +152,21 @@ def test_a_stale_line_is_reported(line, rule):
         "A `HasMany` field requires the resolved class of its entity.",
         "    repo = current_domain.repository_for(Order)",
         "    order_repo = domain.repository_for(Order)",
+        '    with patch("app.handlers.current_domain") as mock_domain:',
     ],
 )
 def test_a_current_line_passes(line):
     assert find_stale_claims("skills/x/SKILL.md", line) == []
+
+
+@pytest.mark.parametrize(
+    "rule_file", ["rules/handler-patterns.md", "rules/persistence-patterns.md"]
+)
+def test_a_rule_file_with_handler_examples_imports_current_domain(rule_file):
+    text = (PACK_ROOT / rule_file).read_text(encoding="utf-8")
+
+    assert "current_domain.repository_for(" in text
+    assert "from protean.utils.globals import current_domain" in text
 
 
 def test_an_allowed_line_passes_only_at_its_own_location():

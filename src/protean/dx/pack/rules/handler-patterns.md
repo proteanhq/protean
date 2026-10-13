@@ -100,7 +100,7 @@ def place_order(self, command):
 def on_order_placed(self, event):
     repo = current_domain.repository_for(Inventory)
     inventory = repo.get(event.item_id)
-    inventory.reserve(event.quantity)
+    inventory.reserve(event.order_id, event.quantity)
     repo.add(inventory)
     # No return
 ```
