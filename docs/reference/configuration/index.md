@@ -118,7 +118,9 @@ Default: `string`
     refused too.
 
     Otherwise `Domain.init()` raises `ConfigurationError`, naming the
-    aggregate, entity or projection and its provider. The memory provider
+    aggregate, entity or projection and its provider. An element whose
+    custom database model declares the identity column is not checked,
+    because the model sets that column's type. The memory provider
     holds the 128-bit value. Elasticsearch stores it as a string, so it
     loads back as a string. Neither is affected.
 

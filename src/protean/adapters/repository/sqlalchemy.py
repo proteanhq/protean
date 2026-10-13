@@ -332,7 +332,8 @@ def _refuse_unstorable_identity(
 
     Identifiers the database assigns (``increment=True``), abstract elements
     and the elements of an event-sourced aggregate have no generated value in
-    a SQL table, so they are skipped.
+    a SQL table, so they are skipped. So is an element whose custom database
+    model for this provider declares the identity column itself.
 
     Raises:
         ConfigurationError: The element would get an identity its column
@@ -347,6 +348,18 @@ def _refuse_unstorable_identity(
 
     id_fld = id_field(element_cls)
     if id_fld is None or getattr(id_fld, "increment", False):
+        return
+
+    # A custom database model that declares the identity column decides its
+    # type, so the domain mapping this check reasons about does not apply.
+    models = provider.domain._database_models.get(
+        _fully_qualified_name(element_cls), {}
+    )
+    custom_model = models.get(provider.__database__) or models.get(None)
+    attribute_name = id_fld.attribute_name or id_fld.field_name
+    if custom_model is not None and isinstance(
+        vars(custom_model).get(attribute_name), Column
+    ):
         return
 
     spec = getattr(element_cls, "__protean_field_meta__", {}).get(id_fld.field_name)

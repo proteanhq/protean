@@ -7,8 +7,11 @@ from typing import Annotated
 
 import pytest
 from pydantic import Field as PydanticField
+from sqlalchemy import Column
+from sqlalchemy import String as SAString
 
 from protean.core.aggregate import BaseAggregate
+from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
@@ -347,6 +350,58 @@ class TestIntegerIdentityThatSqliteStores:
         tiny, loaded = round_trip(domain, Tiny, title="first")
 
         assert str(loaded.id) == str(tiny.id)
+
+
+@pytest.mark.sqlite
+class TestACustomModelThatDeclaresTheIdentityColumn:
+    def test_an_integer_identity_under_the_uuid_strategy_is_stored(self):
+        domain = sqlite_domain(identity_type="integer")
+
+        @domain.aggregate
+        class Ticket(BaseAggregate):
+            ticket_id: Auto(identifier=True)
+
+        @domain.database_model(part_of=Ticket)
+        class TicketModel(BaseDatabaseModel):
+            ticket_id = Column(SAString(50), primary_key=True)
+
+        domain.init(traverse=False)
+        ticket, loaded = round_trip(domain, Ticket)
+
+        assert loaded.ticket_id == ticket.ticket_id
+        assert int(ticket.ticket_id) >= 2**64
+
+    def test_a_field_that_overrides_the_type_is_stored(self):
+        domain = sqlite_domain(identity_type="integer")
+
+        @domain.aggregate
+        class Ticket(BaseAggregate):
+            ticket_id: Auto(identifier=True, identity_type="string")
+
+        @domain.database_model(part_of=Ticket)
+        class TicketModel(BaseDatabaseModel):
+            ticket_id = Column(SAString(50), primary_key=True)
+
+        domain.init(traverse=False)
+        ticket, loaded = round_trip(domain, Ticket)
+
+        assert loaded.ticket_id == ticket.ticket_id
+
+    def test_a_custom_model_without_the_identity_column_is_refused(self):
+        domain = sqlite_domain(identity_type="integer")
+
+        @domain.aggregate
+        class Tiny(BaseAggregate):
+            title: String(max_length=50)
+
+        @domain.database_model(part_of=Tiny)
+        class TinyModel(BaseDatabaseModel):
+            title = Column(SAString(50))
+
+        with pytest.raises(ConfigurationError) as exc:
+            domain.init(traverse=False)
+
+        _assert_refused(exc, "Tiny")
 
 
 @pytest.mark.sqlite
