@@ -1,0 +1,2 @@
+[observatory]
+trace_retention_days = 7   # days of trace history kept in Redis; 0 disables it

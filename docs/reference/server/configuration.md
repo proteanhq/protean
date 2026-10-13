@@ -10,8 +10,8 @@ Configuration is resolved using this priority order (highest to lowest):
 
 1. **Handler Meta `subscription_config`**: Explicit configuration dict on
    handler
-2. **Handler Meta `subscription_profile`**: Profile specified on handler
-3. **Handler Meta `subscription_type`**: Type specified on handler
+2. **Handler Meta `subscription_type`**: Type specified on handler
+3. **Handler Meta `subscription_profile`**: Profile specified on handler
 4. **Server config handler-specific**: `server.subscriptions.HandlerName`
 5. **Server config defaults**: `server.default_subscription_*`
 6. **Profile defaults**: Defaults from the resolved profile
@@ -19,8 +19,8 @@ Configuration is resolved using this priority order (highest to lowest):
 
 ```mermaid
 flowchart TD
-    A[Handler Meta subscription_config] --> B[Handler Meta subscription_profile]
-    B --> C[Handler Meta subscription_type]
+    A[Handler Meta subscription_config] --> B[Handler Meta subscription_type]
+    B --> C[Handler Meta subscription_profile]
     C --> D[Server subscriptions.HandlerName]
     D --> E[Server default_subscription_*]
     E --> F[Profile Defaults]
@@ -57,19 +57,7 @@ profiles simplifies configuration while still allowing overrides.
 Optimized for production workloads with reliability guarantees:
 
 ```python
-{
-    "subscription_type": "stream",
-    "messages_per_tick": 100,
-    "tick_interval": 0,
-    "blocking_timeout_ms": 5000,
-    "max_retries": 3,
-    "retry_delay_seconds": 1,
-    "enable_dlq": True,
-    "position_update_interval": 10,
-    "circuit_breaker_threshold": 10,
-    "circuit_breaker_reset_seconds": 60,
-    "retention_maxlen": 100_000,
-}
+--8<-- "reference/server/configuration/001.py:production"
 ```
 
 #### `fast` Profile
@@ -77,19 +65,7 @@ Optimized for production workloads with reliability guarantees:
 Optimized for low-latency processing:
 
 ```python
-{
-    "subscription_type": "stream",
-    "messages_per_tick": 10,
-    "tick_interval": 0,
-    "blocking_timeout_ms": 100,
-    "max_retries": 2,
-    "retry_delay_seconds": 0,
-    "enable_dlq": True,
-    "position_update_interval": 5,
-    "circuit_breaker_threshold": 10,
-    "circuit_breaker_reset_seconds": 60,
-    "retention_maxlen": 100_000,
-}
+--8<-- "reference/server/configuration/001.py:fast"
 ```
 
 #### `batch` Profile
@@ -97,19 +73,7 @@ Optimized for low-latency processing:
 Optimized for high-throughput batch processing:
 
 ```python
-{
-    "subscription_type": "stream",
-    "messages_per_tick": 500,
-    "tick_interval": 0,
-    "blocking_timeout_ms": 10000,
-    "max_retries": 5,
-    "retry_delay_seconds": 2,
-    "enable_dlq": True,
-    "position_update_interval": 50,
-    "circuit_breaker_threshold": 10,
-    "circuit_breaker_reset_seconds": 60,
-    "retention_maxlen": 500_000,
-}
+--8<-- "reference/server/configuration/001.py:batch"
 ```
 
 #### `debug` Profile
@@ -117,19 +81,7 @@ Optimized for high-throughput batch processing:
 Optimized for development and debugging:
 
 ```python
-{
-    "subscription_type": "stream",
-    "messages_per_tick": 1,
-    "tick_interval": 1,
-    "blocking_timeout_ms": 1000,
-    "max_retries": 1,
-    "retry_delay_seconds": 0,
-    "enable_dlq": False,
-    "position_update_interval": 1,
-    "circuit_breaker_threshold": 10,
-    "circuit_breaker_reset_seconds": 60,
-    "retention_maxlen": 1_000,
-}
+--8<-- "reference/server/configuration/001.py:debug"
 ```
 
 #### `projection` Profile
@@ -137,14 +89,7 @@ Optimized for development and debugging:
 Optimized for building read models:
 
 ```python
-{
-    "subscription_type": "event_store",
-    "messages_per_tick": 100,
-    "tick_interval": 0,
-    "position_update_interval": 10,
-    "enable_dlq": False,  # Not supported for event_store
-    "retention_maxlen": None,  # Reads the event store, not a broker stream
-}
+--8<-- "reference/server/configuration/001.py:projection"
 ```
 
 ### Stream retention defaults {#stream-retention-defaults}
@@ -177,14 +122,11 @@ built-in name is: `default_subscription_profile`, a per-handler `profile`, or a
 handler's Meta `subscription_profile`.
 
 ```toml
-[server.profiles.myfast]
-inherits = "fast"        # optional: base on a built-in profile
-messages_per_tick = 25   # override one (or more) of the inherited fields
+--8<-- "reference/server/configuration/custom_profile.toml"
 ```
 
 ```toml
-[server.subscriptions.NotificationHandler]
-profile = "myfast"
+--8<-- "reference/server/configuration/custom_profile_handler.toml"
 ```
 
 **Inheritance.** With `inherits = "<built-in>"`, the profile starts from that
@@ -215,39 +157,48 @@ over the profile's default.
 **Caveat for `default_subscription_profile`.** A profile named there resolves at
 priority 6, which is *below* the server-level defaults at priority 5
 (`default_subscription_type`, `messages_per_tick`, `tick_interval`, and the
-`[server.stream_subscription]` / `[server.event_store_subscription]` blocks). Any
-of those that are set overwrite the matching fields the profile provides. In a
-stock `domain.toml` (which sets several of them), `default_subscription_profile`
-therefore only governs fields the server-level defaults leave unset. To let it
-govern a field, clear that field at the server level, or name the profile at a
-higher-priority level instead, a per-handler `profile` (priority 4) or a handler's
-Meta `subscription_profile` (priority 2-3), which both sit above the server-level defaults. This
-is not new to custom profiles: a built-in named at `default_subscription_profile` is shadowed the same
-way.
+`[server.stream_subscription]` / `[server.event_store_subscription]` blocks).
+When a server-level default sets a field, it overwrites the profile's value.
+Protean's built-in configuration sets most of these fields even when
+`domain.toml` does not, so `default_subscription_profile` only governs the
+fields the server-level defaults leave unset, such as `retention_maxlen`. To
+apply a whole profile, name it at a higher level: a per-handler `profile`
+(priority 4) or a handler's Meta `subscription_profile` (priority 3). Built-in
+and custom profiles behave the same way here.
 
 ## Configuration Options Reference
+
+Each default below is the value a handler gets in a domain with no `[server]`
+settings and no profile. One exception: `enable_dlq` defaults to true, but such
+a domain resolves to the `event_store` subscription type, and the engine turns
+`enable_dlq` off for that type.
 
 ### Common Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `subscription_type` | string | `"stream"` | Subscription type: `"stream"` or `"event_store"` |
-| `messages_per_tick` | int | 10 | Messages to process per batch |
-| `tick_interval` | int | 1 | Seconds between polling cycles |
+| `subscription_type` | string | `"event_store"` | Subscription type: `"stream"` or `"event_store"` |
+| `messages_per_tick` | int | 100 | Messages to process per batch |
+| `tick_interval` | int | 0 | Seconds between polling cycles |
 
 ### StreamSubscription Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `blocking_timeout_ms` | int | 5000 | Longest wait of an idle blocking read, in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. A read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the Redis broker waits on the primary and the backfill stream at once, and a message on either one ends the wait |
+| `blocking_timeout_ms` | int | 100 | Longest wait of an idle blocking read, in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. A read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the Redis broker waits on the primary and the backfill stream at once, and a message on either one ends the wait |
 | `max_retries` | int | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | int | 1 | Delay between retries |
-| `enable_dlq` | bool | true | Enable dead letter queue |
+| `enable_dlq` | bool | true | Enable dead letter queue. Always off for an `event_store` subscription |
 | `dlq_retention_hours` | int \| None | inherit | Override `[server.dlq] retention_hours` (default 168) for this subscription's DLQ stream only |
 | `dlq_alert_threshold` | int \| None | inherit | Override `[server.dlq] alert_threshold` (default 100) for this subscription's DLQ stream only |
 | `circuit_breaker_threshold` | int | 10 | Consecutive handler failures that trip the circuit breaker OPEN |
 | `circuit_breaker_reset_seconds` | float | 60 | Seconds an OPEN breaker waits before a single HALF_OPEN probe. Must be > 0 and finite (`inf`/`nan` are rejected) |
 | `retention_maxlen` | int | none | Cap the stream at this many entries ([stream retention](subscription-types.md#stream-retention)) |
+
+!!! warning "Known issue: per-handler DLQ overrides have no effect yet"
+    The subscription config Protean builds for a handler does not carry
+    `dlq_retention_hours` or `dlq_alert_threshold`, so the engine applies the
+    `[server.dlq]` values to every handler.
 
 See [Server Hardening → Circuit breaker](./hardening.md#circuit-breaker) for
 the state machine, the metric, and the trace events, and
@@ -265,104 +216,47 @@ choose between these options.
 
 ### 1. Handler Decorator Options
 
+The examples on this page use this model:
+
+```python
+--8<-- "reference/server/configuration/002.py:model"
+```
+
 Configure directly on the handler decorator:
 
 ```python
-@domain.event_handler(
-    part_of=Order,
-    subscription_type="stream",
-    subscription_profile="production",
-    subscription_config={
-        "messages_per_tick": 50,
-        "enable_dlq": True,
-    }
-)
-class OrderEventHandler:
-    @handle(OrderCreated)
-    def handle_order_created(self, event):
-        ...
+--8<-- "reference/server/configuration/002.py:decorator"
 ```
 
 The options combine with priority:
 
 1. `subscription_config` values override everything
-2. `subscription_profile` provides base defaults
-3. `subscription_type` sets the subscription type
+2. `subscription_type` sets the subscription type, even when the profile names
+   another type
+3. `subscription_profile` provides base defaults
 
 ### 2. Domain Configuration File
 
 Configure in `domain.toml`:
 
 ```toml
-[server]
-# Default settings for all handlers
-default_subscription_type = "stream"
-default_subscription_profile = "production"
-messages_per_tick = 100
-
-# StreamSubscription defaults
-[server.stream_subscription]
-blocking_timeout_ms = 5000
-max_retries = 3
-retry_delay_seconds = 1
-enable_dlq = true
-circuit_breaker_threshold = 10
-circuit_breaker_reset_seconds = 60
-
-# EventStoreSubscription defaults
-[server.event_store_subscription]
-position_update_interval = 10
-max_retries = 3
-retry_delay_seconds = 1
-enable_recovery = true
-recovery_interval_seconds = 30
-gap_timeout_seconds = 5  # $all subscriptions: hold at a global_position gap this long before abandoning it
-
-# BrokerSubscription defaults
-[server.broker_subscription]
-max_retries = 3
-retry_delay_seconds = 1
-enable_dlq = true
-
-# Version conflict auto-retry
-[server.version_retry]
-enabled = true
-max_retries = 3
-base_delay_seconds = 0.05
-max_delay_seconds = 1.0
-
-# Handler-specific overrides
-[server.subscriptions.OrderEventHandler]
-profile = "fast"
-messages_per_tick = 50
-
-[server.subscriptions.InventoryProjector]
-subscription_type = "event_store"
-profile = "projection"
+--8<-- "reference/server/configuration/server.toml"
 ```
 
 ### 3. Environment-Specific Configuration
 
-Use environment sections for different deployment environments:
+Use environment sections for different deployment environments. Protean picks
+the section that matches `PROTEAN_ENV` and merges it into the base `[server]`
+settings:
 
 ```toml
-# Development defaults
-[server]
-default_subscription_profile = "debug"
-
-# Production overrides
-[prod.server]
-default_subscription_profile = "production"
-messages_per_tick = 200
-
-[prod.server.stream_subscription]
-max_retries = 5
-enable_dlq = true
-
-# Staging overrides
-[staging.server]
-default_subscription_profile = "fast"
+--8<-- "reference/server/configuration/environments.toml"
 ```
+
+To use a different profile per environment, name it per handler under
+`[server.subscriptions.<Handler>]` in the environment section.
+`default_subscription_profile` sits below the server-level defaults, so it
+sets few fields (see the [caveat](#custom-profiles)).
 
 ## Configuration Examples
 
@@ -371,27 +265,12 @@ default_subscription_profile = "fast"
 A handler with production settings and custom batch size:
 
 ```python
-@domain.event_handler(
-    part_of=Order,
-    subscription_profile="production",
-    subscription_config={
-        "messages_per_tick": 200,  # Higher throughput
-    }
-)
-class OrderEventHandler:
-    ...
+--8<-- "reference/server/configuration/003.py:production_handler"
 ```
 
 Resolved configuration:
 ```python
-{
-    "subscription_type": "stream",      # From profile
-    "messages_per_tick": 200,           # From subscription_config (override)
-    "blocking_timeout_ms": 5000,        # From profile
-    "max_retries": 3,                   # From profile
-    "retry_delay_seconds": 1,           # From profile
-    "enable_dlq": True,                 # From profile
-}
+--8<-- "reference/server/configuration/003.py:production_resolved"
 ```
 
 ### Example 2: Low-Latency Handler
@@ -399,24 +278,12 @@ Resolved configuration:
 A handler optimized for fast processing:
 
 ```python
-@domain.event_handler(
-    part_of=Notification,
-    subscription_profile="fast",
-)
-class NotificationEventHandler:
-    ...
+--8<-- "reference/server/configuration/003.py:fast_handler"
 ```
 
 Resolved configuration:
 ```python
-{
-    "subscription_type": "stream",
-    "messages_per_tick": 10,
-    "blocking_timeout_ms": 100,         # Short timeout for quick response
-    "max_retries": 2,
-    "retry_delay_seconds": 0,           # No delay between retries
-    "enable_dlq": True,
-}
+--8<-- "reference/server/configuration/003.py:fast_resolved"
 ```
 
 ### Example 3: Projection Handler
@@ -424,61 +291,31 @@ Resolved configuration:
 A projector using EventStoreSubscription:
 
 ```python
-@domain.projector(
-    projector_for=OrderSummary,
-    aggregates=[Order, Inventory],
-    subscription_profile="projection",
-)
-class OrderSummaryProjector:
-    ...
+--8<-- "reference/server/configuration/003.py:projector"
 ```
 
 Resolved configuration:
 ```python
-{
-    "subscription_type": "event_store",  # Direct event store access
-    "messages_per_tick": 100,
-    "tick_interval": 0,
-    "position_update_interval": 10,
-    "enable_dlq": False,                 # Not supported
-}
+--8<-- "reference/server/configuration/003.py:projector_resolved"
 ```
 
 ### Example 4: Mixed Configuration
 
-Combining domain config with handler config:
+Combining domain config with handler config. The handler's server config names
+the profile, so the profile sits above the server-level defaults (see the
+[caveat](#custom-profiles) on `default_subscription_profile`):
 
 ```toml
-# domain.toml
-[server]
-default_subscription_profile = "production"
-
-[server.subscriptions.SpecialHandler]
-messages_per_tick = 500
-max_retries = 10
+--8<-- "reference/server/configuration/mixed.toml"
 ```
 
 ```python
-@domain.event_handler(
-    part_of=Order,
-    subscription_config={
-        "enable_dlq": False,  # Highest priority - overrides everything
-    }
-)
-class SpecialHandler:
-    ...
+--8<-- "reference/server/configuration/004.py:special_handler"
 ```
 
 Resolved configuration:
 ```python
-{
-    "subscription_type": "stream",      # From profile (via server default)
-    "messages_per_tick": 500,           # From server.subscriptions.SpecialHandler
-    "max_retries": 10,                  # From server.subscriptions.SpecialHandler
-    "enable_dlq": False,                # From handler subscription_config (override)
-    "blocking_timeout_ms": 5000,        # From profile
-    "retry_delay_seconds": 1,           # From profile
-}
+--8<-- "reference/server/configuration/004.py:special_resolved"
 ```
 
 ### Example 5: Origin Stream Filtering
@@ -486,19 +323,7 @@ Resolved configuration:
 Filter events by their origin stream:
 
 ```python
-@domain.event_handler(
-    part_of=Notification,
-    stream_category="order",
-    source_stream="user_actions",  # Only events from user_actions origin
-    subscription_type="event_store",
-)
-class UserActionNotificationHandler:
-    """Send notifications only for user-initiated order events."""
-
-    @handle(OrderShipped)
-    def notify_user(self, event):
-        # Only called for OrderShipped events that originated from user_actions
-        ...
+--8<-- "reference/server/configuration/003.py:origin_stream"
 ```
 
 ## Configuration Validation
@@ -525,7 +350,8 @@ without needing to set `enable_outbox` at all.
 ### Missing External Broker
 
 Configuring an `external_brokers` entry that doesn't match a registered broker
-is a startup error:
+is a startup error. This configuration is wrong on purpose:
+`nonexistent_broker` is not a registered broker.
 
 ```toml
 [outbox]
@@ -558,10 +384,14 @@ to configure external dispatch.
 @domain.event_handler(subscription_type="invalid")
 ```
 
+An unknown subscription type does not raise. The engine logs a warning when it
+builds the handler's subscription and falls back to `event_store`:
+
 ```
-ConfigurationError: Unknown subscription type: 'invalid'.
-Valid types are: stream, event_store
+WARNING: Unknown subscription type 'invalid', defaulting to EVENT_STORE
 ```
+
+Check the log at startup if a handler does not get the subscription you expect.
 
 ### Invalid Profile
 
@@ -570,9 +400,11 @@ Valid types are: stream, event_store
 @domain.event_handler(subscription_profile="nonexistent")
 ```
 
+The engine raises this error when it builds the handler's subscription:
+
 ```
-ConfigurationError: Unknown subscription profile: 'nonexistent'.
-Valid profiles are: production, fast, batch, debug, projection
+ConfigurationError: Unknown subscription profile 'nonexistent'.
+Valid profiles: batch, debug, fast, production, projection
 ```
 
 ### Incompatible Options
@@ -585,11 +417,12 @@ Valid profiles are: production, fast, batch, debug, projection
 )
 ```
 
-```
-ConfigurationError: Invalid subscription configuration:
-enable_dlq is not supported for EVENT_STORE subscription type.
-EventStoreSubscription handles messages without DLQ support.
-```
+Protean logs no error here. `enable_dlq` controls the broker-side dead letter
+stream, which only a stream subscription has, so the engine turns `enable_dlq`
+off for an event store subscription and keeps the rest of the configuration.
+An event store subscription records failed positions in its own failed-position
+stream and retries them in a recovery pass, described in
+[Error Handling](../../guides/server/error-handling.md#eventstoresubscription).
 
 ## Configuration guidance
 
@@ -616,17 +449,27 @@ Start with a profile and override specific options:
 
 ### 3. Use `debug` Profile in Development
 
+Name the `debug` profile on the handlers you are working on:
+
 ```toml
-# domain.toml (development)
-[server]
-default_subscription_profile = "debug"
+--8<-- "reference/server/configuration/development.toml"
 ```
+
+`default_subscription_profile = "debug"` sets far less. Protean's built-in
+server-level defaults set most fields the `debug` profile sets, and the
+resolver applies them after the profile, as the [caveat](#custom-profiles)
+explains. Only `retention_maxlen` comes from the profile, because the built-in
+`[server.stream_subscription]` block does not set it. So with
+`default_subscription_type = "stream"`, a stream subscription whose handler
+names no profile caps its stream at 1000 entries. A handler that names its own
+profile keeps that profile's cap.
 
 ### 4. Monitor and Adjust
 
 Start with conservative settings and adjust based on monitoring:
 
 ```python
+# fragment
 # Start conservative
 subscription_config={"messages_per_tick": 10}
 
@@ -639,6 +482,7 @@ subscription_config={"messages_per_tick": 100}
 Always enable DLQ for production workloads to capture failed messages:
 
 ```python
+# fragment
 subscription_config={"enable_dlq": True}
 ```
 

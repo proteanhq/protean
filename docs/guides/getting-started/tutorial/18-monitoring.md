@@ -61,10 +61,10 @@ The Observatory exposes a `/metrics` endpoint in Prometheus format:
 
 ```shell
 $ curl http://localhost:9000/metrics
-# HELP protean_subscription_lag Messages waiting to be processed
-# TYPE protean_subscription_lag gauge
-protean_subscription_lag{domain="bookshelf",handler="BookEventHandler"} 0
-protean_subscription_lag{domain="bookshelf",handler="OrderEventHandler"} 2
+# HELP protean_subscription_consumer_lag Messages behind stream head
+# TYPE protean_subscription_consumer_lag gauge
+protean_subscription_consumer_lag{domain="bookshelf",handler="BookEventHandler",stream="bookshelf::book",type="stream"} 0
+protean_subscription_consumer_lag{domain="bookshelf",handler="OrderEventHandler",stream="bookshelf::order",type="stream"} 2
 ...
 ```
 
@@ -80,7 +80,7 @@ groups:
   - name: bookshelf
     rules:
       - alert: HighSubscriptionLag
-        expr: protean_subscription_lag > 100
+        expr: protean_subscription_consumer_lag > 100
         for: 5m
         labels:
           severity: warning

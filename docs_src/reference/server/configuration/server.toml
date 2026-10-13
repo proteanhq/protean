@@ -1,0 +1,45 @@
+[server]
+# Default settings for all handlers
+default_subscription_type = "stream"
+default_subscription_profile = "production"
+messages_per_tick = 100
+
+# StreamSubscription defaults
+[server.stream_subscription]
+blocking_timeout_ms = 5000
+max_retries = 3
+retry_delay_seconds = 1
+enable_dlq = true
+circuit_breaker_threshold = 10
+circuit_breaker_reset_seconds = 60
+
+# EventStoreSubscription defaults
+[server.event_store_subscription]
+position_update_interval = 10
+max_retries = 3
+retry_delay_seconds = 1
+enable_recovery = true
+recovery_interval_seconds = 30
+gap_timeout_seconds = 5  # $all subscriptions: hold at a global_position gap this long before abandoning it
+
+# BrokerSubscription defaults
+[server.broker_subscription]
+max_retries = 3
+retry_delay_seconds = 1
+enable_dlq = true
+
+# Version conflict auto-retry
+[server.version_retry]
+enabled = true
+max_retries = 3
+base_delay_seconds = 0.05
+max_delay_seconds = 1.0
+
+# Handler-specific overrides
+[server.subscriptions.OrderEventHandler]
+profile = "fast"
+messages_per_tick = 50
+
+[server.subscriptions.InventoryProjector]
+subscription_type = "event_store"
+profile = "projection"

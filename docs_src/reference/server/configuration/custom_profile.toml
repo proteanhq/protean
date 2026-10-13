@@ -1,0 +1,3 @@
+[server.profiles.myfast]
+inherits = "fast"        # optional: base on a built-in profile
+messages_per_tick = 25   # override one (or more) of the inherited fields

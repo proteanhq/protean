@@ -1,0 +1,14 @@
+[logging]
+level = "INFO"
+format = "auto"
+log_dir = ""
+log_file_prefix = "protean"
+max_bytes = 10485760
+backup_count = 5
+slow_handler_threshold_ms = 500
+slow_query_threshold_ms = 100
+slow_query_truncate_chars = 500
+redact = ["password", "token", "secret", "api_key", "authorization", "cookie", "session", "csrf"]
+
+[logging.per_logger]
+"protean.server.engine" = "WARNING"

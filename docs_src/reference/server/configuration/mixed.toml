@@ -1,0 +1,5 @@
+# domain.toml
+[server.subscriptions.SpecialHandler]
+profile = "production"
+messages_per_tick = 500
+max_retries = 10

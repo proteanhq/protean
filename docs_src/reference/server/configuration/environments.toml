@@ -1,0 +1,17 @@
+# Development defaults
+[server]
+default_subscription_type = "event_store"
+
+# Production overrides
+[prod.server]
+default_subscription_type = "stream"
+messages_per_tick = 200
+
+[prod.server.stream_subscription]
+max_retries = 5
+enable_dlq = true
+
+# Staging overrides
+[staging.server]
+default_subscription_type = "stream"
+messages_per_tick = 50

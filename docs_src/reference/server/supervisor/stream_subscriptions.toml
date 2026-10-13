@@ -1,0 +1,3 @@
+# domain.toml
+[server]
+default_subscription_type = "stream"

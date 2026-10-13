@@ -47,6 +47,7 @@ snapshot_threshold = 100
 
 [server]
 default_subscription_type = "stream"
+# Fills only fields the server defaults leave unset, such as retention_maxlen
 default_subscription_profile = "production"
 messages_per_tick = 100
 

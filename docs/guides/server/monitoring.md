@@ -35,13 +35,13 @@ Monitor these metrics in production (available at `/metrics`):
 | Metric | Description |
 |--------|-------------|
 | `protean_broker_up` | Broker health (1=up, 0=down) |
-| `protean_outbox_messages` | Outbox messages by domain and status |
+| `protean_outbox_pending_count` | Pending outbox messages, per domain |
 | `protean_stream_messages_total` | Total messages across all streams |
 | `protean_stream_pending` | In-flight (unacknowledged) messages |
 | `protean_broker_ops_per_sec` | Broker operations per second |
 | `protean_broker_memory_bytes` | Broker memory usage |
-| `protean_subscription_lag` | Per-subscription lag behind stream head |
-| `protean_subscription_pending` | Per-subscription unacknowledged messages |
+| `protean_subscription_consumer_lag` | Per-subscription lag behind stream head |
+| `protean_subscription_pending_messages` | Per-subscription unacknowledged messages |
 | `protean_subscription_dlq_depth` | Per-subscription dead letter queue depth |
 | `protean_projection_staleness_seconds` | Per-projection seconds behind source events |
 
@@ -60,7 +60,7 @@ Or query the Observatory's REST API:
 curl http://localhost:9000/api/subscriptions
 ```
 
-For Prometheus alerting, use `protean_subscription_lag` to detect handlers
+For Prometheus alerting, use `protean_subscription_consumer_lag` to detect handlers
 that are falling behind:
 
 ```yaml
@@ -69,7 +69,7 @@ groups:
   - name: protean
     rules:
       - alert: SubscriptionLagging
-        expr: protean_subscription_lag > 100
+        expr: protean_subscription_consumer_lag > 100
         for: 5m
         labels:
           severity: warning

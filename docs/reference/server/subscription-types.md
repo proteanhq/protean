@@ -12,8 +12,8 @@ guarantees.
 | **Delivery Pattern** | Push (blocking read) | Poll |
 | **Consumer Groups** | Yes | No |
 | **Horizontal Scaling** | Yes | Limited |
-| **Dead Letter Queue** | Yes | No |
-| **Automatic Retries** | Yes | No |
+| **Dead Letter Queue** | Yes | Failed-position stream |
+| **Automatic Retries** | Yes | Yes, in a periodic recovery pass |
 | **Position Tracking** | Redis (automatic) | Event Store (manual) |
 | **Recommended For** | Production workloads | Projections, replay, debugging |
 
@@ -79,6 +79,7 @@ StreamSubscription uses Redis's `XREADGROUP` with blocking, which means:
   wait at 1000 ms)
 
 ```python
+# fragment
 # Internally uses blocking read
 messages = broker.read_blocking(
     stream=stream_category,
@@ -99,16 +100,21 @@ Stream: orders
 └── DLQ stream: orders:dlq (failed messages)
 ```
 
-DLQ messages include metadata for debugging:
+A DLQ message is the original message with a `_dlq_metadata` key added for
+debugging. `consumer_group` holds the handler's fully qualified name:
 
 ```python
+# fragment
 {
-    "original_stream": "orders",
-    "original_id": "1234567890-0",
-    "consumer_group": "OrderEventHandler",
-    "consumer": "order-handler-host1-12345-abc123",
-    "failed_at": "2024-01-15T10:30:00Z",
-    "retry_count": 3,
+    # ...the original message's keys...
+    "_dlq_metadata": {
+        "original_stream": "orders",
+        "original_id": "1234567890-0",
+        "consumer_group": "shop.handlers.OrderEventHandler",
+        "consumer": "order-handler-host1-12345-abc123",
+        "failed_at": "2024-01-15T10:30:00Z",
+        "retry_count": 3,
+    },
 }
 ```
 
@@ -130,23 +136,16 @@ for usage examples.
 Failed messages are automatically retried with configurable delays:
 
 ```python
-@domain.event_handler(
-    part_of=Order,
-    subscription_config={
-        "max_retries": 3,
-        "retry_delay_seconds": 1,
-    }
-)
-class OrderEventHandler:
-    ...
+--8<-- "reference/server/subscription-types/001.py:model"
+--8<-- "reference/server/subscription-types/001.py:retries"
 ```
 
 ### StreamSubscription Configuration Options
 
 | Option | Default | Description |
 | ------ | ------- | ----------- |
-| `messages_per_tick` | 10 | Messages to read per batch |
-| `blocking_timeout_ms` | 5000 | Longest wait of an idle blocking read, in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. A read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the Redis broker waits on the primary and the backfill stream at once, and a message on either one ends the wait |
+| `messages_per_tick` | 100 | Messages to read per batch |
+| `blocking_timeout_ms` | 100 | Longest wait of an idle blocking read, in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. A read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the Redis broker waits on the primary and the backfill stream at once, and a message on either one ends the wait |
 | `max_retries` | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | 1 | Delay between retries |
 | `enable_dlq` | true | Whether to use dead letter queue |
@@ -227,6 +226,7 @@ Reads events directly from the event store, preserving the complete event
 history:
 
 ```python
+# fragment
 messages = event_store.read(
     stream_category,
     position=current_position + 1,
@@ -239,17 +239,18 @@ messages = event_store.read(
 Position is stored in the event store itself as a special message type:
 
 ```python
+# fragment
 # Position stream name
-f"position-{handler_name}-{stream_category}"
+# subscriber_name is the handler's fully qualified class name
+f"position-{subscriber_name}-{stream_category}"
 
 # Stored as Read position message
 {
     "data": {"position": 145},
     "metadata": {
-        "type": "Read",
-        "kind": "read_position",
-        "origin_stream": "orders"
-    }
+        "headers": {"type": "Read"},
+        "domain": {"kind": "READ_POSITION", "origin_stream": "orders"},
+    },
 }
 ```
 
@@ -259,20 +260,15 @@ Filter messages based on their origin stream - useful when handling events
 that were generated in response to specific commands:
 
 ```python
-@domain.event_handler(
-    part_of=Order,
-    source_stream="manage_order",  # Only events triggered by manage_order commands
-)
-class OrderEventHandler:
-    ...
+--8<-- "reference/server/subscription-types/001.py:origin_filter"
 ```
 
 ### EventStoreSubscription Configuration Options
 
 | Option | Default | Description |
 | ------ | ------- | ----------- |
-| `messages_per_tick` | 10 | Messages to read per batch |
-| `tick_interval` | 1 | Seconds between polling cycles |
+| `messages_per_tick` | 100 | Messages to read per batch |
+| `tick_interval` | 0 | Seconds between polling cycles |
 | `position_update_interval` | 10 | Messages between position writes |
 | `origin_stream` | None | Filter by origin stream |
 
@@ -319,57 +315,25 @@ is set to `production`, `prod`, or `prd`.
 ### StreamSubscription Configuration
 
 ```python
-@domain.event_handler(
-    part_of=Order,
-    subscription_type="stream",
-    subscription_config={
-        "messages_per_tick": 100,
-        "blocking_timeout_ms": 5000,
-        "max_retries": 3,
-        "retry_delay_seconds": 1,
-        "enable_dlq": True,
-    }
-)
-class OrderEventHandler:
-    ...
+--8<-- "reference/server/subscription-types/001.py:stream_config"
 ```
 
 Or using a profile:
 
 ```python
-@domain.event_handler(
-    part_of=Order,
-    subscription_profile="production",
-)
-class OrderEventHandler:
-    ...
+--8<-- "reference/server/subscription-types/001.py:stream_profile"
 ```
 
 ### EventStoreSubscription Configuration
 
 ```python
-@domain.event_handler(
-    part_of=Order,
-    subscription_type="event_store",
-    subscription_config={
-        "messages_per_tick": 100,
-        "tick_interval": 1,
-        "position_update_interval": 10,
-    }
-)
-class OrderEventHandler:
-    ...
+--8<-- "reference/server/subscription-types/001.py:event_store_config"
 ```
 
 Or using a profile:
 
 ```python
-@domain.projector(
-    part_of=Order,
-    subscription_profile="projection",
-)
-class OrderProjector:
-    ...
+--8<-- "reference/server/subscription-types/001.py:projection_profile"
 ```
 
 ## Monitoring lag

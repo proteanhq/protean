@@ -12,20 +12,7 @@ page.
 `domain.toml`:
 
 ```toml
-[logging]
-level = "INFO"
-format = "auto"
-log_dir = ""
-log_file_prefix = "protean"
-max_bytes = 10485760
-backup_count = 5
-slow_handler_threshold_ms = 500
-slow_query_threshold_ms = 100
-slow_query_truncate_chars = 500
-redact = ["password", "token", "secret", "api_key", "authorization", "cookie", "session", "csrf"]
-
-[logging.per_logger]
-"protean.server.engine" = "WARNING"
+--8<-- "reference/logging/logging.toml"
 ```
 
 | Key | Type | Default | Description |
@@ -39,7 +26,7 @@ redact = ["password", "token", "secret", "api_key", "authorization", "cookie", "
 | `slow_handler_threshold_ms` | float | `500` | Duration in ms above which a handler emits a `protean.perf.slow_handler` WARNING and the wide event is tagged `status="slow"`. Set to `0` to disable slow-handler tagging. |
 | `slow_query_threshold_ms` | float | `100` | Duration in ms above which a SQLAlchemy query emits a `protean.adapters.repository.sqlalchemy.slow_query` WARNING. |
 | `slow_query_truncate_chars` | int | `500` | Max SQL statement length in the slow-query log event. Trailing characters are replaced with `...`. `0` disables truncation. |
-| `redact` | list[str] | see [Redaction](#redaction) | Additional keys (case-insensitive) to mask with `[REDACTED]`. Unioned with the built-in defaults, never replaces them. |
+| `redact` | list[str] | see [Redaction](#redaction) | Additional keys (case-insensitive) to mask with `[REDACTED]`. Unioned with the built-in defaults, never replaces them. One exception: `redact = []` currently turns redaction off, which is a bug. |
 | `per_logger` | table | `{}` | Map of logger name → level. Applied after the global setup so individual loggers can be tuned. |
 
 !!! note "Console logs go to stderr"
@@ -56,12 +43,7 @@ every handled message produces one wide event. Enable when wide-event volume
 becomes a cost concern at scale.
 
 ```toml
-[logging.sampling]
-enabled = true
-default_rate = 0.05
-always_keep_errors = true
-always_keep_slow = true
-critical_streams = ["Payment*", "Auth*"]
+--8<-- "reference/logging/sampling.toml"
 ```
 
 | Key | Type | Default | Description |
@@ -70,7 +52,7 @@ critical_streams = ["Payment*", "Auth*"]
 | `default_rate` | float | `0.05` | Fraction of happy-path events kept (0.0–1.0). Applied after the always-keep rules. |
 | `always_keep_errors` | bool | `true` | Keep events with `status="failed"` or emitted at level `ERROR` / `CRITICAL` / `FATAL`. |
 | `always_keep_slow` | bool | `true` | Keep events with `status="slow"` (duration exceeded `slow_handler_threshold_ms`). |
-| `critical_streams` | list[str] | `[]` | `fnmatch` glob patterns matched against `message_type` (case-sensitive). Matching events are always kept. |
+| `critical_streams` | list[str] | `[]` | `fnmatch` glob patterns matched against `message_type` (case-sensitive). `message_type` is the full type string, such as `Billing.PaymentCaptured.v1`, so start a pattern with `*.` to match on the class name. Matching events are always kept. |
 
 Rules apply in this order; first match wins:
 
@@ -103,11 +85,7 @@ default; one wide event per HTTP request lands on the `protean.access.http`
 logger.
 
 ```toml
-[logging.http]
-enabled = true
-exclude_paths = ["/healthz", "/readyz", "/metrics"]
-log_request_headers = false
-log_response_headers = false
+--8<-- "reference/logging/http.toml"
 ```
 
 | Key | Type | Default | Description |
@@ -211,20 +189,7 @@ handlers on the root logger.
 ### `configure_logging`
 
 ```python
-from protean.utils.logging import configure_logging
-
-configure_logging(
-    level=None,
-    format="auto",
-    log_dir=None,
-    log_file_prefix=None,
-    max_bytes=10 * 1024 * 1024,
-    backup_count=5,
-    extra_processors=None,
-    per_logger=None,
-    dict_config=None,
-    redact=None,
-)
+--8<-- "reference/logging/001.py:configure-logging"
 ```
 
 Installs handlers, configures structlog, and wires the `ProcessorFormatter`
@@ -242,12 +207,12 @@ processor chain as `get_logger()` events.
 | `extra_processors` | <code>list &#124; None</code> | `None` | Additional structlog processors inserted before the renderer. Redaction is appended after these so operator-supplied processors cannot smuggle sensitive values past it. |
 | `per_logger` | <code>dict[str, str] &#124; None</code> | `None` | Applied after main setup. |
 | `dict_config` | <code>dict &#124; None</code> | `None` | When provided, bypasses the environment-aware setup and applies `logging.config.dictConfig()`. The `ProteanCorrelationFilter` is still installed on the root logger and on each of its handlers. |
-| `redact` | <code>list[str] &#124; None</code> | `None` | Adds keys (case-insensitive) to the redact list; always unioned with [`DEFAULT_REDACT_KEYS`](#redaction). |
+| `redact` | <code>list[str] &#124; None</code> | `None` | Adds keys (case-insensitive) to the redact list; always unioned with [`DEFAULT_REDACT_KEYS`](#redaction). `None` or an empty list turns redaction off. `Domain.configure_logging()` passes `[logging].redact`, which holds the default keys unless `domain.toml` sets it. |
 
 ### `Domain.configure_logging`
 
 ```python
-domain.configure_logging(**kwargs)
+--8<-- "reference/logging/002.py:domain-configure-logging"
 ```
 
 Merges `domain.toml [logging]` with explicit kwargs, calls
@@ -263,10 +228,7 @@ Idempotent, calling it again replaces handlers and de-duplicates filters.
 ### `get_logger`
 
 ```python
-from protean.utils.logging import get_logger
-
-logger = get_logger(__name__)
-logger.info("order_placed", order_id="ord-123", total=99.95)
+--8<-- "reference/logging/003.py:get-logger"
 ```
 
 Returns a `structlog.stdlib.BoundLogger` wrapping the stdlib logger of the
@@ -275,10 +237,7 @@ given name.
 ### `bind_event_context` / `unbind_event_context`
 
 ```python
-from protean.utils.logging import bind_event_context, unbind_event_context
-
-bind_event_context(user_id="u-42", plan="premium")
-unbind_event_context("plan")
+--8<-- "reference/logging/003.py:bind-event-context"
 ```
 
 Adds or removes business-specific fields on the **current wide event**.
@@ -303,10 +262,7 @@ correlation_id, causation_id
 ### `add_context` / `clear_context`
 
 ```python
-from protean.utils.logging import add_context, clear_context
-
-add_context(request_id="req-abc", tenant_id="tenant-42")
-clear_context()
+--8<-- "reference/logging/003.py:add-context"
 ```
 
 Binds request-scoped context to every subsequent log record (not just wide
@@ -316,12 +272,7 @@ events). Uses the same `structlog.contextvars` store as
 ### `log_method_call`
 
 ```python
-from protean.utils.logging import log_method_call
-
-class PlaceOrderHandler:
-    @log_method_call
-    def handle(self, command):
-        ...
+--8<-- "reference/logging/004.py:log-method-call"
 ```
 
 Logs `method_call_start` / `method_call_end` / `method_call_error` at
@@ -331,9 +282,7 @@ pass through the configured redaction filter.
 ### `configure_for_testing`
 
 ```python
-from protean.utils.logging import configure_for_testing
-
-configure_for_testing()
+--8<-- "reference/logging/005.py:configure-for-testing"
 ```
 
 Sets the root logger to WARNING and removes any `FileHandler` attached to
@@ -363,8 +312,8 @@ Emitted once per successful or slow handler execution.
 | Field | Type | Notes |
 |-------|------|-------|
 | `kind` | <code>"command" &#124; "event" &#124; "query" &#124; "projector"</code> | Handler kind. |
-| `message_type` | `str` | e.g. `"PlaceOrder"`. Uses `__type__` when set, else `__class__.__name__`. |
-| `message_id` | `str` | Message envelope id; `""` outside the server engine path. |
+| `message_type` | `str` | e.g. `"Orders.PlaceOrder.v1"`. Uses `__type__` when set, else `__class__.__name__`. |
+| `message_id` | `str` | Message envelope id; `""` when the message has no envelope headers. |
 | `aggregate` | `str` | Aggregate class name; `""` for handlers without a `part_of`. |
 | `aggregate_id` | `str` | Extracted from the message stream when deducible; `""` otherwise. |
 | `events_raised` | `list[str]` | Event class names raised during the handler. |
@@ -402,7 +351,7 @@ renderer):
   "logger": "protean.access",
   "timestamp": "2026-04-23T10:15:32.418912Z",
   "kind": "command",
-  "message_type": "PlaceOrder",
+  "message_type": "Orders.PlaceOrder.v1",
   "message_id": "7a2b4f...",
   "aggregate": "Order",
   "aggregate_id": "ord-9b1c...",
@@ -500,17 +449,7 @@ deliberately narrow so operators can trust that every entry merits attention.
 #### `log_security_event`
 
 ```python
-from protean.integrations.logging import (
-    SECURITY_EVENT_INVARIANT_FAILED,
-    log_security_event,
-)
-
-log_security_event(
-    SECURITY_EVENT_INVARIANT_FAILED,
-    aggregate="Order",
-    aggregate_id="ord-9b1c",
-    invariant="total_must_equal_sum_of_items",
-)
+--8<-- "reference/logging/006.py:log-security-event"
 ```
 
 Signature: `log_security_event(event_type: str, **fields: Any) -> None`.
@@ -523,12 +462,7 @@ The four event-type constants are exposed so call sites never drift
 typographically from operator queries:
 
 ```python
-from protean.integrations.logging import (
-    SECURITY_EVENT_INVARIANT_FAILED,   # "invariant_failed"
-    SECURITY_EVENT_VALIDATION_FAILED,  # "validation_failed"
-    SECURITY_EVENT_INVALID_OPERATION,  # "invalid_operation"
-    SECURITY_EVENT_INVALID_STATE,      # "invalid_state"
-)
+--8<-- "reference/logging/006.py:security-constants"
 ```
 
 | Event name | Emitted for |
@@ -576,17 +510,7 @@ The warning marks snapshots to rebuild with `protean snapshot create`.
 #### `log_snapshot_event`
 
 ```python
-from protean.integrations.logging import (
-    SNAPSHOT_EVENT_DISCARDED,
-    log_snapshot_event,
-)
-
-log_snapshot_event(
-    SNAPSHOT_EVENT_DISCARDED,
-    aggregate="User",
-    aggregate_id="user-1",
-    reason="extra fields not permitted",
-)
+--8<-- "reference/logging/007.py:log-snapshot-event"
 ```
 
 Signature: `log_snapshot_event(event_type: str, **fields: Any) -> None`. Emits a
@@ -810,8 +734,7 @@ their own list.
 ### Extending the list
 
 ```toml
-[logging]
-redact = ["x-internal-token", "customer_ssn"]
+--8<-- "reference/logging/redact.toml"
 ```
 
 ### Where redaction runs

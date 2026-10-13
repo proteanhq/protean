@@ -1,0 +1,10 @@
+[lint]
+level = "warn"                        # exit-code severity floor
+aggregate_size_limit = 5              # entities before AGGREGATE_TOO_LARGE
+handler_breadth_limit = 5             # message types before HANDLER_TOO_BROAD
+check_infra_imports = false           # flag domain modules importing protean.adapters
+check_adapter_calls = false           # flag domain elements calling adapters directly
+rules = ["my_app.lint.check_names"]   # dotted paths to custom rule callables
+
+[lint.suppressions]
+UNHANDLED_EVENT = 3                    # grandfather the first 3 findings

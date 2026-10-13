@@ -1,0 +1,8 @@
+[telemetry]
+enabled = true
+service_name = "my-service"
+exporter = "otlp"
+endpoint = "http://localhost:4317"
+
+[telemetry.resource_attributes]
+"deployment.environment" = "production"

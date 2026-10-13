@@ -1,0 +1,3 @@
+# domain.toml (development)
+[server.subscriptions.OrderEventHandler]
+profile = "debug"

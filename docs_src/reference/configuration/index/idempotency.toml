@@ -1,0 +1,4 @@
+[idempotency]
+redis_url = "redis://localhost:6379/5"  # Redis connection URL
+ttl = 86400                              # Success entry TTL in seconds (default: 24 hours)
+error_ttl = 60                           # Error entry TTL in seconds (default: 60s)

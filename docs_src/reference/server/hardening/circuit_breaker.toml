@@ -1,0 +1,3 @@
+[server.stream_subscription]
+circuit_breaker_threshold = 10
+circuit_breaker_reset_seconds = 60
