@@ -1,7 +1,8 @@
 [server]
 # Default subscription settings
 default_subscription_type = "stream"      # "stream" or "event_store"
-default_subscription_profile = "production"  # Profile for defaults
+# The profile fills only fields the server defaults leave unset, such as retention_maxlen
+default_subscription_profile = "production"
 messages_per_tick = 100                   # Messages per processing cycle
 drain_timeout = 10                        # Seconds to wait for in-flight handlers on shutdown
 

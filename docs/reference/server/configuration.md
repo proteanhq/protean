@@ -10,8 +10,8 @@ Configuration is resolved using this priority order (highest to lowest):
 
 1. **Handler Meta `subscription_config`**: Explicit configuration dict on
    handler
-2. **Handler Meta `subscription_profile`**: Profile specified on handler
-3. **Handler Meta `subscription_type`**: Type specified on handler
+2. **Handler Meta `subscription_type`**: Type specified on handler
+3. **Handler Meta `subscription_profile`**: Profile specified on handler
 4. **Server config handler-specific**: `server.subscriptions.HandlerName`
 5. **Server config defaults**: `server.default_subscription_*`
 6. **Profile defaults**: Defaults from the resolved profile
@@ -19,8 +19,8 @@ Configuration is resolved using this priority order (highest to lowest):
 
 ```mermaid
 flowchart TD
-    A[Handler Meta subscription_config] --> B[Handler Meta subscription_profile]
-    B --> C[Handler Meta subscription_type]
+    A[Handler Meta subscription_config] --> B[Handler Meta subscription_type]
+    B --> C[Handler Meta subscription_profile]
     C --> D[Server subscriptions.HandlerName]
     D --> E[Server default_subscription_*]
     E --> F[Profile Defaults]
@@ -157,32 +157,33 @@ over the profile's default.
 **Caveat for `default_subscription_profile`.** A profile named there resolves at
 priority 6, which is *below* the server-level defaults at priority 5
 (`default_subscription_type`, `messages_per_tick`, `tick_interval`, and the
-`[server.stream_subscription]` / `[server.event_store_subscription]` blocks). Any
-of those that are set overwrite the matching fields the profile provides.
-Protean's built-in configuration sets several of them even when `domain.toml`
-does not, so `default_subscription_profile` only governs fields the server-level
-defaults leave unset. To let it
-govern a field, clear that field at the server level, or name the profile at a
-higher-priority level instead, a per-handler `profile` (priority 4) or a handler's
-Meta `subscription_profile` (priority 2-3), which both sit above the server-level defaults. This
-is not new to custom profiles: a built-in named at `default_subscription_profile` is shadowed the same
-way.
+`[server.stream_subscription]` / `[server.event_store_subscription]` blocks).
+When a server-level default sets a field, it overwrites the profile's value.
+Protean's built-in configuration sets most of these fields even when
+`domain.toml` does not, so `default_subscription_profile` only governs the
+fields the server-level defaults leave unset, such as `retention_maxlen`. To
+apply a whole profile, name it at a higher level: a per-handler `profile`
+(priority 4) or a handler's Meta `subscription_profile` (priority 3). Built-in
+and custom profiles behave the same way here.
 
 ## Configuration Options Reference
+
+Each default below is the value a handler gets in a domain with no `[server]`
+settings and no profile.
 
 ### Common Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `subscription_type` | string | `"stream"` | Subscription type: `"stream"` or `"event_store"` |
-| `messages_per_tick` | int | 10 | Messages to process per batch |
-| `tick_interval` | int | 1 | Seconds between polling cycles |
+| `subscription_type` | string | `"event_store"` | Subscription type: `"stream"` or `"event_store"` |
+| `messages_per_tick` | int | 100 | Messages to process per batch |
+| `tick_interval` | int | 0 | Seconds between polling cycles |
 
 ### StreamSubscription Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `blocking_timeout_ms` | int | 5000 | Longest wait of an idle blocking read, in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. A read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the Redis broker waits on the primary and the backfill stream at once, and a message on either one ends the wait |
+| `blocking_timeout_ms` | int | 100 | Longest wait of an idle blocking read, in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. A read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the Redis broker waits on the primary and the backfill stream at once, and a message on either one ends the wait |
 | `max_retries` | int | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | int | 1 | Delay between retries |
 | `enable_dlq` | bool | true | Enable dead letter queue |
@@ -223,8 +224,9 @@ Configure directly on the handler decorator:
 The options combine with priority:
 
 1. `subscription_config` values override everything
-2. `subscription_profile` provides base defaults
-3. `subscription_type` sets the subscription type
+2. `subscription_type` sets the subscription type, even when the profile names
+   another type
+3. `subscription_profile` provides base defaults
 
 ### 2. Domain Configuration File
 
@@ -236,11 +238,18 @@ Configure in `domain.toml`:
 
 ### 3. Environment-Specific Configuration
 
-Use environment sections for different deployment environments:
+Use environment sections for different deployment environments. Protean picks
+the section that matches `PROTEAN_ENV` and merges it into the base `[server]`
+settings:
 
 ```toml
 --8<-- "reference/server/configuration/environments.toml"
 ```
+
+To use a different profile per environment, name it per handler under
+`[server.subscriptions.<Handler>]` in the environment section.
+`default_subscription_profile` sits below the server-level defaults, so it
+sets few fields (see the [caveat](#custom-profiles)).
 
 ## Configuration Examples
 
@@ -401,10 +410,11 @@ Valid profiles: batch, debug, fast, production, projection
 )
 ```
 
-This does not raise either. An event store subscription has no dead letter
-queue, so the engine turns `enable_dlq` off for it and keeps the rest of the
-configuration. Failed positions go to the event store subscription's own
-recovery pass, described in
+Protean logs no error here. `enable_dlq` controls the broker-side dead letter
+stream, which only a stream subscription has, so the engine turns `enable_dlq`
+off for an event store subscription and keeps the rest of the configuration.
+An event store subscription records failed positions in its own failed-position
+stream and retries them in a recovery pass, described in
 [Error Handling](../../guides/server/error-handling.md#eventstoresubscription).
 
 ## Configuration guidance
@@ -438,13 +448,14 @@ Name the `debug` profile on the handlers you are working on:
 --8<-- "reference/server/configuration/development.toml"
 ```
 
-Setting `default_subscription_profile = "debug"` does not do this. Protean's
-built-in server-level defaults set the fields the `debug` profile sets, and
-they win over it, as the [caveat](#custom-profiles) explains. The one field
-that gets through is `retention_maxlen`: the built-in
-`[server.stream_subscription]` block does not set it, so with
-`default_subscription_type = "stream"` every stream subscription caps its
-stream at the `debug` profile's 1000 entries.
+`default_subscription_profile = "debug"` sets far less. Protean's built-in
+server-level defaults set most fields the `debug` profile sets, and the
+resolver applies them after the profile, as the [caveat](#custom-profiles)
+explains. Only `retention_maxlen` comes from the profile, because the built-in
+`[server.stream_subscription]` block does not set it. So with
+`default_subscription_type = "stream"`, a stream subscription whose handler
+names no profile caps its stream at 1000 entries. A handler that names its own
+profile keeps that profile's cap.
 
 ### 4. Monitor and Adjust
 

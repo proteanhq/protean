@@ -1,16 +1,22 @@
 """The examples on ``docs/reference/server/sequential-by.md`` behave as the page says."""
 
+import re
+
 import pytest
 
 from protean import handle
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import Identifier
 from protean.port.broker import BrokerCapabilities
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import (
     EventStoreSubscription,
 )
+from protean.server.subscription.partitioned_stream_subscription import (
+    PartitionedStreamSubscription,
+)
 from tests.docs.support import load_example
+from tests.shared import REDIS_URI
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -112,25 +118,95 @@ def test_the_boolean_form_is_rejected_on_an_event_handler():
         example.domain.init(traverse=False)
 
 
-class _BrokerWithoutPartitioning:
-    """A stand-in for a non-inline broker that lacks ``STREAM_PARTITIONING``.
-
-    It carries only what the capability check reads: a name and
-    ``has_capability``.
-    """
-
-    name = "default"
-
-    def has_capability(self, capability: BrokerCapabilities) -> bool:
-        return capability != BrokerCapabilities.STREAM_PARTITIONING
-
-
-def test_a_broker_without_partitioning_is_rejected():
+def test_a_broker_without_partitioning_is_rejected_at_init():
     example = load_example("reference/server/sequential-by/001.py")
-    example.domain.init(traverse=False)
-    example.domain.brokers._brokers["default"] = _BrokerWithoutPartitioning()
+    # Redis PubSub advertises only SIMPLE_QUEUING. Building it does not
+    # connect, so init() reaches the capability check without a live server.
+    example.domain.config["brokers"]["default"] = {
+        "provider": "redis_pubsub",
+        "URI": f"{REDIS_URI}/9",
+    }
 
     with pytest.raises(
         IncorrectUsageError, match="does not advertise STREAM_PARTITIONING"
     ):
-        example.domain._handler_configurator.validate_sequential_by_capabilities()
+        example.domain.init(traverse=False)
+
+
+@pytest.mark.redis
+def test_the_redis_broker_builds_partitioned_subscriptions():
+    example = load_example("reference/server/sequential-by/001.py")
+    example.domain.config["brokers"]["default"] = {
+        "provider": "redis",
+        "URI": f"{REDIS_URI}/9",
+    }
+    example.domain.config["server"]["default_subscription_type"] = "stream"
+    example.domain.init(traverse=False)
+
+    with example.domain.domain_context():
+        broker = example.domain.brokers["default"]
+        assert broker.has_capability(BrokerCapabilities.STREAM_PARTITIONING)
+        engine = Engine(example.domain, test_mode=True)
+
+    module = example.OrderEventHandler.__module__
+    for key in (
+        f"{module}.OrderEventHandler",
+        f"{module}.ProductSummaryProjector-shop::product",
+    ):
+        assert isinstance(engine.subscriptions[key], PartitionedStreamSubscription)
+    # The process manager gets one partitioned subscription across its
+    # categories in place of one per category.
+    assert isinstance(
+        engine.subscriptions[f"{module}.OrderFulfillment-partitioned"],
+        PartitionedStreamSubscription,
+    )
+    assert f"{module}.OrderFulfillment-shop::payment" not in engine.subscriptions
+
+
+@pytest.mark.parametrize(
+    "client_id, reason",
+    [
+        ("", "null or empty"),
+        ("acme:eu", "contains a colon"),
+        ("dlq", "reserved lane/DLQ token"),
+        ("backfill", "reserved lane/DLQ token"),
+        ("__partitions__", "reserved '__name__' sentinel form"),
+    ],
+)
+def test_a_rejected_key_fails_the_callers_commit(client_id, reason):
+    example = load_example("reference/server/sequential-by/001.py")
+    example.domain.config["enable_outbox"] = True
+    example.domain.config["server"]["default_subscription_type"] = "stream"
+    example.domain.init(traverse=False)
+
+    with example.domain.domain_context():
+        order = example.Order(client_id="c-1", total=10.0)
+        order.raise_(
+            example.OrderPlaced(order_id=order.id, client_id="c-1", total=10.0)
+        )
+        # Set after raising: an empty value would fail the event's
+        # required-field check before the key check ran.
+        object.__setattr__(order._events[-1], "client_id", client_id)
+
+        with pytest.raises(ValidationError, match=re.escape(reason)):
+            example.domain.repository_for(example.Order).add(order)
+
+        outbox = example.domain._get_outbox_repo("default")
+        assert outbox.find_unprocessed() == []
+
+
+def test_a_valid_key_reaches_the_outbox_with_its_partition_key():
+    example = load_example("reference/server/sequential-by/001.py")
+    example.domain.config["enable_outbox"] = True
+    example.domain.config["server"]["default_subscription_type"] = "stream"
+    example.domain.init(traverse=False)
+
+    with example.domain.domain_context():
+        order = example.Order(client_id="acme", total=10.0)
+        order.raise_(
+            example.OrderPlaced(order_id=order.id, client_id="acme", total=10.0)
+        )
+        example.domain.repository_for(example.Order).add(order)
+
+        rows = example.domain._get_outbox_repo("default").find_unprocessed()
+        assert [row.partition_key for row in rows] == ["acme"]

@@ -5,7 +5,10 @@ import shutil
 
 import pytest
 
-from protean import Domain
+from protean import Domain, handle
+from protean.fields import Float
+from protean.server import Engine
+from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.server.supervisor import Supervisor
 from tests.docs.support import DOCS_SRC, load_example
 
@@ -58,3 +61,25 @@ def test_the_prerequisite_config_selects_stream_subscriptions(tmp_path):
     domain = Domain(root_path=str(tmp_path), name="Workers")
 
     assert domain.config["server"]["default_subscription_type"] == "stream"
+
+    # An event handler in that domain gets a stream subscription
+    @domain.aggregate
+    class Order:
+        total = Float()
+
+    @domain.event(part_of=Order)
+    class OrderPlaced:
+        total = Float()
+
+    @domain.event_handler(part_of=Order)
+    class OrderHandler:
+        @handle(OrderPlaced)
+        def on_placed(self, event: OrderPlaced) -> None: ...
+
+    domain.init(traverse=False)
+    with domain.domain_context():
+        engine = Engine(domain, test_mode=True)
+
+    subscriptions = list(engine.subscriptions.values())
+    assert subscriptions
+    assert all(isinstance(s, StreamSubscription) for s in subscriptions)

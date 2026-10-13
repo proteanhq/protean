@@ -1,10 +1,10 @@
 # Development defaults
 [server]
-default_subscription_profile = "debug"
+default_subscription_type = "event_store"
 
 # Production overrides
 [prod.server]
-default_subscription_profile = "production"
+default_subscription_type = "stream"
 messages_per_tick = 200
 
 [prod.server.stream_subscription]
@@ -13,4 +13,5 @@ enable_dlq = true
 
 # Staging overrides
 [staging.server]
-default_subscription_profile = "fast"
+default_subscription_type = "stream"
+messages_per_tick = 50

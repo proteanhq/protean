@@ -1,22 +1,57 @@
 """The examples on ``docs/reference/configuration/index.md`` behave as the page says."""
 
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+
 import pytest
 
 from protean import Domain
+from protean.adapters.broker.redis import RedisBroker
 from protean.adapters.cache.redis import RedisCache
 from protean.adapters.event_store.message_db import MessageDBStore
 from protean.adapters.repository.sqlalchemy import SqliteProvider
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector, on
 from protean.exceptions import ConfigurationError
-from protean.fields import String
+from protean.fields import Identifier, Integer, String
 from protean.ir.builder import validate_lint_table
 from protean.ir.diagnostics import DiagnosticCode
+from protean.server import Engine
 from protean.server.subscription.config_resolver import ConfigResolver
+from protean.server.subscription.partitioned_stream_subscription import (
+    PartitionedStreamSubscription,
+)
 from protean.server.subscription.profiles import SubscriptionType
+from protean.utils.consume_idempotency import (
+    ProcessedMessage,
+    cleanup_processed_messages,
+)
+from protean.utils.telemetry import init_telemetry, shutdown_telemetry
 from tests.docs.support import DOCS_SRC, load_example
 
 pytestmark = pytest.mark.no_test_domain
 
 EXAMPLES = DOCS_SRC / "reference/configuration/index"
+
+
+class _Product(BaseAggregate):
+    name = String()
+
+
+class _Reviewed(BaseEvent):
+    product_id = Identifier()
+
+
+class _ProductStats(BaseProjection):
+    product_id = Identifier(identifier=True)
+    total_reviews = Integer(default=0)
+
+
+class _StatsProjector(BaseProjector):
+    @on(_Reviewed)
+    def on_reviewed(self, event: _Reviewed) -> None: ...
 
 
 @pytest.fixture
@@ -196,15 +231,13 @@ def test_databases_and_provider_on_an_aggregate(load_toml, tmp_path, monkeypatch
     # The relative sqlite path is resolved from the working directory
     monkeypatch.chdir(tmp_path)
 
-    @domain.aggregate(provider="sqlite")
-    class User:
-        name: String(max_length=50)
-
+    # The example's own class, registered in the domain the TOML file built
+    domain.register(example.User, provider="sqlite")
     domain.init(traverse=False)
     with domain.domain_context():
         provider = domain.providers["sqlite"]
         assert isinstance(provider, SqliteProvider)
-        assert domain.repository_for(User)._provider is provider
+        assert domain.repository_for(example.User)._provider is provider
 
 
 def test_caches_forward_pool_keys(load_toml):
@@ -244,6 +277,15 @@ def test_brokers_keep_provider_names_and_key_casing(load_toml):
             "retry_on_timeout": True,
         },
     }
+
+    # The pool keys reach the client's connection pool. Building the broker
+    # does not connect to Redis.
+    broker = RedisBroker("redis", domain, dict(domain.config["brokers"]["redis"]))
+    pool = broker.redis_instance.connection_pool
+    assert pool.max_connections == 50
+    assert pool.connection_kwargs["socket_timeout"] == 5
+    assert pool.connection_kwargs["socket_connect_timeout"] == 5
+    assert pool.connection_kwargs["retry_on_timeout"] is True
 
 
 def test_event_store_forwards_max_connections(load_toml):
@@ -407,6 +449,20 @@ def test_outbox_values(load_toml):
     assert outbox["cleanup"]["abandoned_retention_hours"] == 720
     assert outbox["cleanup"]["batch_size"] == 5000
 
+    # The engine builds its outbox processors from these values
+    domain.init(traverse=False)
+    processors = Engine(domain, test_mode=True)._outbox_processors
+    assert processors
+    for processor in processors.values():
+        assert processor.broker_provider_name == "default"
+        assert processor.messages_per_tick == 10
+        assert processor.tick_interval == 1
+        assert processor.max_tick_interval == 30
+        assert processor.retry_config == outbox["retry"]
+        assert processor.cleanup_config["published_retention_hours"] == 168
+        assert processor.cleanup_config["abandoned_retention_hours"] == 720
+        assert processor.cleanup_config["batch_size"] == 5000
+
 
 def test_outbox_is_off_without_a_stream_subscription_type(no_env):
     assert Domain(name="Config", config={}).has_outbox is False
@@ -423,6 +479,15 @@ def test_telemetry_values(load_toml):
         "resource_attributes": {"deployment.environment": "production"},
     }
 
+    # Building the providers does not contact the OTLP endpoint
+    tracer_provider = init_telemetry(domain)
+    try:
+        attributes = tracer_provider.resource.attributes
+        assert attributes["service.name"] == "my-service"
+        assert attributes["deployment.environment"] == "production"
+    finally:
+        shutdown_telemetry(domain)
+
 
 def test_idempotency_values(load_toml):
     domain = load_toml("idempotency.toml")
@@ -432,6 +497,11 @@ def test_idempotency_values(load_toml):
         "ttl": 86400,
         "error_ttl": 60,
     }
+
+    # The store keeps the TTLs whether or not Redis is reachable
+    store = domain.idempotency_store
+    assert store._ttl == 86400
+    assert store._error_ttl == 60
 
 
 def test_idempotency_is_off_without_redis_url(no_env):
@@ -447,6 +517,32 @@ def test_consume_idempotency_values(load_toml):
     assert domain.config["consume_idempotency"] == {
         "cleanup": {"retention_hours": 168, "batch_size": 5000}
     }
+
+    # The cleanup helper prunes markers older than retention_hours
+    domain.register(_Product)
+    domain.register(_Reviewed, part_of=_Product)
+    domain.register(_ProductStats)
+    domain.register(
+        _StatsProjector,
+        projector_for=_ProductStats,
+        aggregates=[_Product],
+        idempotent=True,
+    )
+    domain.init(traverse=False)
+    with domain.domain_context():
+        repo = domain._get_processed_message_repo("default")
+        for message_id, hours_ago in (("inside", 160), ("outside", 176)):
+            repo._dao.save(
+                ProcessedMessage(
+                    message_id=message_id,
+                    handler="h",
+                    processed_at=datetime.now(UTC) - timedelta(hours=hours_ago),
+                )
+            )
+
+        assert cleanup_processed_messages(domain) == 1
+        assert repo.is_processed("inside", "h")
+        assert not repo.is_processed("outside", "h")
 
 
 def test_logging_values(load_toml):
@@ -502,6 +598,22 @@ def test_partitioning_values(load_toml):
         "poll_interval_seconds": 0.25,
         "reap_idle_ms": 3600000,
     }
+
+    # A partitioned subscription reads its lease and polling settings here
+    domain.init(traverse=False)
+
+    @domain.event_handler(stream_category="order")
+    class OrderHandler: ...
+
+    subscription = PartitionedStreamSubscription(
+        engine=SimpleNamespace(domain=domain, loop=None),
+        stream_category="order",
+        handler=OrderHandler,
+    )
+    assert subscription.lease_ttl_ms == 15000
+    assert subscription.heartbeat_interval == 3.0
+    assert subscription.poll_interval == 0.25
+    assert subscription.reap_idle_ms == 3600000
 
 
 def test_custom_attributes_become_domain_attributes(load_toml):

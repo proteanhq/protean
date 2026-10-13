@@ -33,6 +33,12 @@ def engine(example):
 def test_retries_example_builds_a_stream_subscription_with_its_retry_settings(
     example, engine
 ):
+    # Server defaults that differ from the example, so only the example's own
+    # subscription_config can produce the values asserted below
+    stream_defaults = example.domain.config["server"]["stream_subscription"]
+    stream_defaults["max_retries"] = 7
+    stream_defaults["retry_delay_seconds"] = 9
+
     subscription = engine.subscription_factory.create_subscription(
         handler=example.RetryingHandler, stream_category=STREAM
     )
@@ -154,6 +160,9 @@ def test_dlq_message_carries_the_metadata_the_page_lists(example, engine):
         "retry_count",
     }
     assert dlq_message["_dlq_metadata"]["original_stream"] == STREAM
+    assert dlq_message["_dlq_metadata"]["consumer_group"] == (
+        f"{example.StreamHandler.__module__}.{example.StreamHandler.__name__}"
+    )
     assert dlq_message["_dlq_metadata"]["retry_count"] == 3
 
 

@@ -190,7 +190,7 @@ enabled = true
 default_rate = 0.01          # keep 1% of happy-path requests
 always_keep_errors = true    # all 5xx and unhandled exceptions
 always_keep_slow = true      # any handler over the threshold
-critical_streams = ["Payment*", "Auth*"]
+critical_streams = ["*.Payment*", "*.Auth*"]
 ```
 
 Combined with `[logging.http].exclude_paths` for liveness probes, this

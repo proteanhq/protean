@@ -26,6 +26,7 @@ from protean.integrations.logging import (
 from protean.utils.globals import g
 from protean.utils.logging import TailSamplingFilter
 from tests.docs.support import DOCS_SRC, load_example
+from tests.support.snippets import read_include
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -268,7 +269,9 @@ def test_errors_are_kept_and_happy_path_events_are_sampled(sampled_access):
             "access.handler_completed",
             extra={"status": "ok", "message_type": "Billing.UpdateAddress.v1"},
         )
-    # Roughly 5% of 200 are kept; 40 or more would be far outside that rate
+    # Roughly 5% of 200 are kept. Keeping none happens with odds of about
+    # 1 in 30,000, and keeping 40 or more is further outside that rate.
+    assert records
     assert len(records) < 40
     assert {r.sampling_rule for r in records} <= {"random"}
     assert {r.sampling_rate for r in records} <= {0.05}
@@ -372,7 +375,17 @@ def test_configure_logging_without_redact_masks_nothing(
 def test_domain_configure_logging_applies_explicit_values(no_env_hints, capsys):
     root = _bare_root()
 
-    load_example("reference/logging/002.py")
+    example = load_example("reference/logging/002.py")
+
+    # Run the two calls again one at a time: the first applies the domain's
+    # [logging] level, the second's explicit values win over it
+    first, second = read_include(
+        "reference/logging/002.py:domain-configure-logging", [DOCS_SRC]
+    ).splitlines()
+    _bare_root()
+    exec(first, vars(example))
+    assert root.level == logging.INFO
+    exec(second, vars(example))
 
     assert root.level == logging.DEBUG
     assert protean_correlation_processor in structlog.get_config()["processors"]

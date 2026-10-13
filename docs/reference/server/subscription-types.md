@@ -100,17 +100,21 @@ Stream: orders
 └── DLQ stream: orders:dlq (failed messages)
 ```
 
-DLQ messages include metadata for debugging:
+A DLQ message is the original message with a `_dlq_metadata` key added for
+debugging. `consumer_group` holds the handler's fully qualified name:
 
 ```python
 # fragment
 {
-    "original_stream": "orders",
-    "original_id": "1234567890-0",
-    "consumer_group": "OrderEventHandler",
-    "consumer": "order-handler-host1-12345-abc123",
-    "failed_at": "2024-01-15T10:30:00Z",
-    "retry_count": 3,
+    # ...the original message's keys...
+    "_dlq_metadata": {
+        "original_stream": "orders",
+        "original_id": "1234567890-0",
+        "consumer_group": "shop.handlers.OrderEventHandler",
+        "consumer": "order-handler-host1-12345-abc123",
+        "failed_at": "2024-01-15T10:30:00Z",
+        "retry_count": 3,
+    },
 }
 ```
 
@@ -140,8 +144,8 @@ Failed messages are automatically retried with configurable delays:
 
 | Option | Default | Description |
 | ------ | ------- | ----------- |
-| `messages_per_tick` | 10 | Messages to read per batch |
-| `blocking_timeout_ms` | 5000 | Longest wait of an idle blocking read, in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. A read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the Redis broker waits on the primary and the backfill stream at once, and a message on either one ends the wait |
+| `messages_per_tick` | 100 | Messages to read per batch |
+| `blocking_timeout_ms` | 100 | Longest wait of an idle blocking read, in milliseconds. Must be positive. The Redis broker waits at most 1000 ms per read. A read returns as soon as a message arrives, so the value does not affect latency. With priority lanes on, the Redis broker waits on the primary and the backfill stream at once, and a message on either one ends the wait |
 | `max_retries` | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | 1 | Delay between retries |
 | `enable_dlq` | true | Whether to use dead letter queue |
@@ -237,7 +241,8 @@ Position is stored in the event store itself as a special message type:
 ```python
 # fragment
 # Position stream name
-f"position-{handler_name}-{stream_category}"
+# subscriber_name is the handler's fully qualified class name
+f"position-{subscriber_name}-{stream_category}"
 
 # Stored as Read position message
 {
@@ -262,8 +267,8 @@ that were generated in response to specific commands:
 
 | Option | Default | Description |
 | ------ | ------- | ----------- |
-| `messages_per_tick` | 10 | Messages to read per batch |
-| `tick_interval` | 1 | Seconds between polling cycles |
+| `messages_per_tick` | 100 | Messages to read per batch |
+| `tick_interval` | 0 | Seconds between polling cycles |
 | `position_update_interval` | 10 | Messages between position writes |
 | `origin_stream` | None | Filter by origin stream |
 

@@ -522,6 +522,13 @@ Available metrics:
 | `protean_subscription_dlq_depth` | gauge | Dead letter queue depth (per subscription) |
 | `protean_subscription_status` | gauge | Subscription health: 1=ok, 0=not ok |
 | `protean_projection_staleness_seconds` | gauge | Seconds a projection is behind its source events (per projection) |
+| `protean_consumer_pending` | gauge | Unacknowledged messages (per consumer) |
+| `protean_consumer_idle_ms` | gauge | Idle time in milliseconds (per consumer) |
+| `protean_db_pool_size` | gauge | Database connection pool size |
+| `protean_db_pool_checked_out` | gauge | Checked-out database connections |
+| `protean_db_pool_checked_in` | gauge | Available database connections |
+| `protean_db_pool_overflow` | gauge | Overflow database connections |
+| `protean_broker_pool_active_connections` | gauge | Active broker pool connections |
 
 ### Prometheus scrape configuration
 

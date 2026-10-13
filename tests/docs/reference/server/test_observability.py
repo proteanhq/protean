@@ -1,13 +1,16 @@
 """The examples on ``docs/reference/server/observability.md`` behave as the page says."""
 
+import re
 import shutil
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import protean.server.observatory.metrics as metrics_module
 from protean import Domain
-from tests.docs.support import DOCS_SRC, load_example
+from tests.docs.support import DOCS, DOCS_SRC, load_example
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -64,3 +67,14 @@ def test_zero_trace_retention_days_turns_persistence_off(tmp_path):
     domain = Domain(root_path=str(tmp_path), name="Monitoring")
 
     assert domain.trace_emitter._persist is False
+
+
+def test_metrics_table_lists_every_metric_the_endpoint_emits():
+    page = (DOCS / "reference/server/observability.md").read_text()
+    table = set(re.findall(r"^\| `(protean_\w+)` \| gauge \|", page, re.MULTILINE))
+    emitted = set(
+        re.findall(r"# HELP (protean_\w+)", Path(metrics_module.__file__).read_text())
+    )
+
+    assert table
+    assert table == emitted

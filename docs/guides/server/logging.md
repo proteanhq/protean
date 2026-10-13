@@ -78,7 +78,7 @@ JSON:
   "logger": "protean.access",
   "timestamp": "2026-04-23T10:15:32.418912Z",
   "kind": "command",
-  "message_type": "PlaceOrder",
+  "message_type": "Orders.PlaceOrder.v1",
   "aggregate": "Order",
   "aggregate_id": "ord-9b1c",
   "events_raised": ["OrderPlaced"],
@@ -102,7 +102,7 @@ and preserves the traceback:
   "level": "error",
   "logger": "protean.access",
   "kind": "command",
-  "message_type": "ChargeCard",
+  "message_type": "Payments.ChargeCard.v1",
   "handler": "ChargeCardHandler.handle_charge_card",
   "duration_ms": 842.13,
   "status": "failed",
@@ -254,7 +254,7 @@ enabled = true
 default_rate = 0.05         # keep 5 % of happy-path events
 always_keep_errors = true   # status="failed" / ERROR+ level
 always_keep_slow = true     # status="slow"
-critical_streams = ["Payment*", "Auth*"]   # fnmatch globs on message_type
+critical_streams = ["*.Payment*", "*.Auth*"]   # fnmatch globs on message_type
 ```
 
 Every kept event carries three metadata fields so log aggregators can

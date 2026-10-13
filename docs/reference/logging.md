@@ -26,7 +26,7 @@ page.
 | `slow_handler_threshold_ms` | float | `500` | Duration in ms above which a handler emits a `protean.perf.slow_handler` WARNING and the wide event is tagged `status="slow"`. Set to `0` to disable slow-handler tagging. |
 | `slow_query_threshold_ms` | float | `100` | Duration in ms above which a SQLAlchemy query emits a `protean.adapters.repository.sqlalchemy.slow_query` WARNING. |
 | `slow_query_truncate_chars` | int | `500` | Max SQL statement length in the slow-query log event. Trailing characters are replaced with `...`. `0` disables truncation. |
-| `redact` | list[str] | see [Redaction](#redaction) | Additional keys (case-insensitive) to mask with `[REDACTED]`. Unioned with the built-in defaults, never replaces them. |
+| `redact` | list[str] | see [Redaction](#redaction) | Additional keys (case-insensitive) to mask with `[REDACTED]`. Unioned with the built-in defaults, never replaces them. One exception: `redact = []` currently turns redaction off, which is a bug. |
 | `per_logger` | table | `{}` | Map of logger name → level. Applied after the global setup so individual loggers can be tuned. |
 
 !!! note "Console logs go to stderr"
@@ -207,7 +207,7 @@ processor chain as `get_logger()` events.
 | `extra_processors` | <code>list &#124; None</code> | `None` | Additional structlog processors inserted before the renderer. Redaction is appended after these so operator-supplied processors cannot smuggle sensitive values past it. |
 | `per_logger` | <code>dict[str, str] &#124; None</code> | `None` | Applied after main setup. |
 | `dict_config` | <code>dict &#124; None</code> | `None` | When provided, bypasses the environment-aware setup and applies `logging.config.dictConfig()`. The `ProteanCorrelationFilter` is still installed on the root logger and on each of its handlers. |
-| `redact` | <code>list[str] &#124; None</code> | `None` | Adds keys (case-insensitive) to the redact list; always unioned with [`DEFAULT_REDACT_KEYS`](#redaction). `None` turns redaction off. `Domain.configure_logging()` passes `[logging].redact`, which holds the default keys unless `domain.toml` sets it. |
+| `redact` | <code>list[str] &#124; None</code> | `None` | Adds keys (case-insensitive) to the redact list; always unioned with [`DEFAULT_REDACT_KEYS`](#redaction). `None` or an empty list turns redaction off. `Domain.configure_logging()` passes `[logging].redact`, which holds the default keys unless `domain.toml` sets it. |
 
 ### `Domain.configure_logging`
 

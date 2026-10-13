@@ -3,6 +3,7 @@
 import ast
 import logging
 from enum import Enum
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,10 +11,14 @@ from protean import Domain
 from protean.exceptions import ConfigurationError
 from protean.server import Engine
 from protean.server.subscription.config_resolver import ConfigResolver
+from protean.server.subscription.event_store_subscription import (
+    EventStoreSubscription,
+)
 from protean.server.subscription.profiles import (
     PROFILE_DEFAULTS,
     SubscriptionProfile,
 )
+from protean.utils.mixins import _get_version_retry_config
 from tests.docs.support import DOCS_SRC, load_example
 from tests.support.snippets import read_include
 
@@ -104,8 +109,67 @@ def test_a_custom_profile_cannot_reuse_a_built_in_name(tmp_path):
     )
     domain = Domain(root_path=str(tmp_path), name="Shop")
 
-    with pytest.raises(ConfigurationError, match="fast"):
+    with pytest.raises(ConfigurationError, match="shadows a built-in profile name"):
         resolve(domain, bare_handler("NotificationHandler"))
+
+
+def test_a_custom_profile_cannot_set_a_field_outside_the_allowed_list(tmp_path):
+    (tmp_path / "domain.toml").write_text("[server.profiles.myfast]\nbatch_size = 25\n")
+    domain = Domain(root_path=str(tmp_path), name="Shop")
+
+    with pytest.raises(
+        ConfigurationError, match="has unknown field\\(s\\): batch_size"
+    ):
+        resolve(domain, bare_handler("NotificationHandler"))
+
+
+def test_a_custom_profile_can_only_inherit_from_a_built_in(tmp_path):
+    (tmp_path / "domain.toml").write_text(
+        "[server.profiles.base]\nmessages_per_tick = 5\n\n"
+        '[server.profiles.myfast]\ninherits = "base"\n'
+    )
+    domain = Domain(root_path=str(tmp_path), name="Shop")
+
+    with pytest.raises(
+        ConfigurationError, match="inherits from 'base', which is not a built-in"
+    ):
+        resolve(domain, bare_handler("NotificationHandler"))
+
+
+def test_meta_subscription_type_wins_over_meta_subscription_profile():
+    domain = Domain(name="Shop")
+    handler = type(
+        "OrderEventHandler",
+        (),
+        {
+            "meta_": SimpleNamespace(
+                subscription_profile="projection", subscription_type="stream"
+            )
+        },
+    )
+
+    resolved = resolve(domain, handler)
+
+    assert resolved["subscription_type"] == "stream"
+    # The rest still comes from the `projection` profile
+    assert resolved["messages_per_tick"] == 100
+    assert resolved["position_update_interval"] == 10
+
+
+def test_subscription_config_wins_over_meta_subscription_type():
+    domain = Domain(name="Shop")
+    handler = type(
+        "OrderEventHandler",
+        (),
+        {
+            "meta_": SimpleNamespace(
+                subscription_type="event_store",
+                subscription_config={"subscription_type": "stream"},
+            )
+        },
+    )
+
+    assert resolve(domain, handler)["subscription_type"] == "stream"
 
 
 def test_decorator_options_combine_profile_and_config():
@@ -130,10 +194,37 @@ def test_server_toml_sets_the_defaults_and_handler_overrides(tmp_path):
     assert server["default_subscription_type"] == "stream"
     assert server["default_subscription_profile"] == "production"
     assert server["messages_per_tick"] == 100
-    assert server["stream_subscription"]["circuit_breaker_threshold"] == 10
-    assert server["event_store_subscription"]["gap_timeout_seconds"] == 5
-    assert server["broker_subscription"]["enable_dlq"] is True
-    assert server["version_retry"]["max_delay_seconds"] == 1.0
+    expected_tables = {
+        "stream_subscription": {
+            "blocking_timeout_ms": 5000,
+            "max_retries": 3,
+            "retry_delay_seconds": 1,
+            "enable_dlq": True,
+            "circuit_breaker_threshold": 10,
+            "circuit_breaker_reset_seconds": 60,
+        },
+        "event_store_subscription": {
+            "position_update_interval": 10,
+            "max_retries": 3,
+            "retry_delay_seconds": 1,
+            "enable_recovery": True,
+            "recovery_interval_seconds": 30,
+            "gap_timeout_seconds": 5,
+        },
+        "broker_subscription": {
+            "max_retries": 3,
+            "retry_delay_seconds": 1,
+            "enable_dlq": True,
+        },
+        "version_retry": {
+            "enabled": True,
+            "max_retries": 3,
+            "base_delay_seconds": 0.05,
+            "max_delay_seconds": 1.0,
+        },
+    }
+    for table, expected in expected_tables.items():
+        assert {key: server[table][key] for key in expected} == expected
 
     order_handler = resolve(domain, bare_handler("OrderEventHandler"))
     assert order_handler["subscription_type"] == "stream"
@@ -151,29 +242,57 @@ def test_server_toml_sets_the_defaults_and_handler_overrides(tmp_path):
     assert other["subscription_type"] == "stream"
     assert other["messages_per_tick"] == 100
     assert other["blocking_timeout_ms"] == 5000
+    assert other["retry_delay_seconds"] == 1
+    assert other["circuit_breaker_reset_seconds"] == 60
+    assert other["position_update_interval"] == 10
+
+    # The event store subscription reads its recovery settings from the TOML
+    domain.init(traverse=False)
+    subscription = EventStoreSubscription(
+        engine=SimpleNamespace(domain=domain, loop=None),
+        stream_category="inventory",
+        handler=bare_handler("InventoryProjector"),
+    )
+    assert subscription.enable_recovery is True
+    assert subscription.recovery_interval_seconds == 30
+    assert subscription.gap_timeout_seconds == 5
+    assert subscription.max_retries == 3
+    assert subscription.retry_delay_seconds == 1
+
+    # The handler-level version conflict retry reads [server.version_retry]
+    with domain.domain_context():
+        assert _get_version_retry_config() == expected_tables["version_retry"]
 
 
 @pytest.mark.parametrize(
-    "environment, profile, messages_per_tick, max_retries",
+    "environment, subscription_type, messages_per_tick, max_retries",
     [
-        (None, "debug", 100, 3),
-        ("prod", "production", 200, 5),
-        ("staging", "fast", 100, 3),
+        (None, "event_store", 100, 3),
+        ("prod", "stream", 200, 5),
+        ("staging", "stream", 50, 3),
     ],
 )
 def test_environment_sections_override_the_server_settings(
-    tmp_path, monkeypatch, environment, profile, messages_per_tick, max_retries
+    tmp_path,
+    monkeypatch,
+    environment,
+    subscription_type,
+    messages_per_tick,
+    max_retries,
 ):
     if environment is None:
         monkeypatch.delenv("PROTEAN_ENV", raising=False)
     else:
         monkeypatch.setenv("PROTEAN_ENV", environment)
 
-    server = toml_domain(tmp_path, "environments.toml").config["server"]
+    domain = toml_domain(tmp_path, "environments.toml")
+    resolved = resolve(domain, bare_handler("OrderEventHandler"))
 
-    assert server["default_subscription_profile"] == profile
-    assert server["messages_per_tick"] == messages_per_tick
-    assert server["stream_subscription"]["max_retries"] == max_retries
+    assert resolved["subscription_type"] == subscription_type
+    assert resolved["messages_per_tick"] == messages_per_tick
+    assert resolved["max_retries"] == max_retries
+    if environment == "prod":
+        assert domain.config["server"]["stream_subscription"]["enable_dlq"] is True
 
 
 @pytest.mark.parametrize(
@@ -253,6 +372,22 @@ def test_debug_as_default_profile_caps_stream_retention_on_stream_type():
         if with_debug[k] != without[k]
     }
     assert differing == {"retention_maxlen": (1_000, None)}
+
+
+def test_option_tables_show_the_defaults_a_bare_domain_resolves_to():
+    resolved = resolve(Domain(name="Shop"), bare_handler("OrderEventHandler"))
+
+    assert resolved["subscription_type"] == "event_store"
+    assert resolved["messages_per_tick"] == 100
+    assert resolved["tick_interval"] == 0
+    assert resolved["blocking_timeout_ms"] == 100
+    assert resolved["max_retries"] == 3
+    assert resolved["retry_delay_seconds"] == 1
+    assert resolved["circuit_breaker_threshold"] == 10
+    assert resolved["circuit_breaker_reset_seconds"] == 60
+    assert resolved["retention_maxlen"] is None
+    assert resolved["position_update_interval"] == 10
+    assert resolved["origin_stream"] is None
 
 
 def test_outbox_with_event_store_subscriptions_is_a_conflict():
