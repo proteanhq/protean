@@ -32,19 +32,7 @@ Invariants raise `ValidationError` when business rules are violated.
 The error dict uses `"_entity"` as the key for aggregate-level errors:
 
 ```python
-from protean.exceptions import ValidationError
-
-@domain.aggregate
-class Order:
-    items = HasMany("OrderItem")
-    status = String(default="draft")
-
-    @invariant.post
-    def must_have_items(self):
-        if not self.items:
-            raise ValidationError(
-                {"_entity": ["Order must contain at least one item"]}
-            )
+--8<-- "guides/domain-behavior/error-handling/001.py:invariant"
 ```
 
 ### From domain methods
@@ -53,16 +41,7 @@ Use `InvalidStateError` or `InvalidOperationError` for explicit
 business logic checks:
 
 ```python
-from protean.exceptions import InvalidStateError
-
-@domain.aggregate
-class Order:
-    status = String(default="draft")
-
-    def cancel(self):
-        if self.status == "shipped":
-            raise InvalidStateError("Cannot cancel a shipped order")
-        self.status = "cancelled"
+--8<-- "guides/domain-behavior/error-handling/002.py:cancel"
 ```
 
 ---
@@ -86,16 +65,7 @@ Aggregate method
 Let exceptions propagate. Don't wrap them:
 
 ```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(PlaceOrder)
-    def place_order(self, command):
-        order = Order(
-            customer_id=command.customer_id,
-            items=command.items,  # ValidationError if empty
-        )
-        order.place()  # InvalidStateError if invalid transition
-        current_domain.repository_for(Order).add(order)
+--8<-- "guides/domain-behavior/error-handling/003.py:handler"
 ```
 
 ### In application services
@@ -103,14 +73,7 @@ class OrderCommandHandler:
 Same principle, let domain exceptions propagate to the caller:
 
 ```python
-@domain.application_service(part_of=Order)
-class OrderService:
-    @use_case
-    def place_order(self, customer_id, items):
-        order = Order(customer_id=customer_id, items=items)
-        order.place()
-        current_domain.repository_for(Order).add(order)
-        return order.id
+--8<-- "guides/domain-behavior/error-handling/003.py:service"
 ```
 
 ---
@@ -129,12 +92,7 @@ Use `repo.find()` or `repo.exists()` when absence is expected, and
 `repo.get()` when absence is an error:
 
 ```python
-# Absence is an error -- let it raise
-order = repo.get(order_id)  # ObjectNotFoundError → 404
-
-# Absence is expected -- check gracefully
-if repo.exists(Q(email=email)):
-    raise InvalidOperationError("Email already registered")
+--8<-- "guides/domain-behavior/error-handling/003.py:repository"
 ```
 
 ---
@@ -156,10 +114,7 @@ Use `register_exception_handlers` to automatically map domain exceptions
 to HTTP status codes in FastAPI:
 
 ```python
-from protean.integrations.fastapi import register_exception_handlers
-
-app = FastAPI()
-register_exception_handlers(app)
+--8<-- "guides/domain-behavior/error-handling/003.py:fastapi"
 ```
 
 | Exception | HTTP Status | Response body |
@@ -171,14 +126,13 @@ register_exception_handlers(app)
 | `InvalidStateError` | 409 | `{"error": "message"}` |
 | `InvalidOperationError` | 422 | `{"error": "message"}` |
 
+When a domain context is active, the response body also carries a
+`correlation_id` that matches the `X-Correlation-ID` response header.
+
 Your endpoints don't need try/except blocks:
 
 ```python
-@app.post("/orders", status_code=201)
-async def place_order(payload: dict):
-    # ValidationError → 400, ObjectNotFoundError → 404, etc.
-    current_domain.process(PlaceOrder(**payload))
-    return {"status": "accepted"}
+--8<-- "guides/domain-behavior/error-handling/003.py:endpoint"
 ```
 
 See [FastAPI Integration](../fastapi/index.md) for full setup.
@@ -190,13 +144,7 @@ See [FastAPI Integration](../fastapi/index.md) for full setup.
 Use `pytest.raises`:
 
 ```python
-import pytest
-from protean.exceptions import ValidationError
-
-def test_order_requires_items():
-    with pytest.raises(ValidationError) as exc:
-        Order(customer_id="c1", items=[])
-    assert "must contain at least one item" in str(exc.value)
+--8<-- "guides/domain-behavior/error-handling/003.py:test"
 ```
 
 ---

@@ -16,13 +16,13 @@ When an aggregate mutates, it also (preferably) raises one or more events
 to record the state change in time, as well as propagate it within and beyond
 the bounded context.
 
-```python hl_lines="17"
---8<-- "guides/domain-behavior/002.py:14:30"
+```python hl_lines="30"
+--8<-- "guides/domain-behavior/002.py:full"
 ```
 
 The generated events are collected in the mutated aggregate:
 
-```shell hl_lines="8 12-15"
+```shell hl_lines="8 13-16"
 In [1]: account = Account(account_number="1234", balance=1000.0, overdraft_limit=50.0)
 
 In [2]: account.withdraw(500.0)
@@ -32,7 +32,8 @@ Out[3]:
 {'account_number': '1234',
  'balance': 500.0,
  'overdraft_limit': 50.0,
- 'id': '37fc8d10-1209-41d2-a6fa-4f7312912212'}
+ 'id': '37fc8d10-1209-41d2-a6fa-4f7312912212',
+ '_version': -1}
 
 In [4]: account._events
 Out[4]: [<AccountWithdrawn: AccountWithdrawn object (
@@ -133,33 +134,7 @@ handler to mutate the aggregate's state in-place. This makes `@apply` the
 processing live commands or being reconstructed from stored events.
 
 ```python
-from protean import apply
-
-@domain.aggregate(event_sourced=True)
-class Order:
-    customer_name: String(max_length=150, required=True)
-    status: String(max_length=20, default="PENDING")
-
-    @classmethod
-    def place(cls, customer_name):
-        order = cls._create_new()
-        order.raise_(OrderPlaced(
-            order_id=str(order.id),
-            customer_name=customer_name,
-        ))
-        return order
-
-    def confirm(self):
-        self.raise_(OrderConfirmed(order_id=self.id))
-
-    @apply
-    def when_placed(self, event: OrderPlaced):
-        self.customer_name = event.customer_name
-        self.status = "PENDING"
-
-    @apply
-    def when_confirmed(self, event: OrderConfirmed):
-        self.status = "CONFIRMED"
+--8<-- "guides/domain-behavior/raising-events/001.py:es_order"
 ```
 
 Key points for ES aggregates:

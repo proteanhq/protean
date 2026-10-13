@@ -1,4 +1,5 @@
-from datetime import date
+# --8<-- [start:full]
+from datetime import date, timedelta
 from enum import Enum
 
 from protean import Domain, invariant
@@ -29,8 +30,9 @@ class Order:
 
     @invariant.post
     def order_date_must_be_within_the_last_30_days_if_status_is_pending(self):
-        if self.status == OrderStatus.PENDING.value and self.order_date < date(
-            2020, 1, 1
+        if (
+            self.status == OrderStatus.PENDING.value
+            and not date.today() - timedelta(days=30) <= self.order_date <= date.today()
         ):
             raise ValidationError(
                 {
@@ -74,3 +76,34 @@ class OrderItem:
                     ]
                 }
             )
+
+
+# --8<-- [end:full]
+
+
+# --8<-- [start:atomic_change]
+from protean import atomic_change
+
+
+def add_third_item(order):
+    with atomic_change(order):
+        order.total_amount = 120.0
+        order.add_items(
+            OrderItem(product_id="3", quantity=2, price=10.0, subtotal=20.0)
+        )
+
+
+# --8<-- [end:atomic_change]
+
+
+# --8<-- [start:codes]
+def change_total(order):
+    try:
+        order.total_amount = 140.0
+    except ValidationError as exc:
+        print(exc.code)  # "INVARIANT_POST_FAILED"
+        print(exc.codes)  # ["INVARIANT_POST_FAILED"]
+        print(exc.fix)  # how to fix it, from the registry
+
+
+# --8<-- [end:codes]

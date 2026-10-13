@@ -29,8 +29,8 @@ Layering](../../patterns/validation-layering.md) pattern.
 Field restrictions begin with the type of field chosen to represent an
 attribute.
 
-```python hl_lines="12-15"
---8<-- "guides/domain-behavior/003.py:10:24"
+```python hl_lines="21-24"
+--8<-- "guides/domain-behavior/003.py:full"
 ```
 
 Violating any of these constraints will throw exceptions:
@@ -43,10 +43,8 @@ In [3]: account = Account(
 ERROR: Error during initialization...
 ...
 ValidationError: {
-    'account_number': ['"A1234" value must be an integer.'],
-    'account_type': [
-        "Value `'CHECKING'` is not a valid choice. Must be among ['SAVINGS', 'CURRENT']"
-    ]
+    'account_number': ['Input should be a valid integer, unable to parse string as an integer'],
+    'account_type': ["Input should be 'SAVINGS' or 'CURRENT'"]
 }
 ```
 
@@ -58,11 +56,7 @@ In [1]: account = Account(account_number=1234, account_type="SAVINGS", balance=5
 
 In [2]: account.account_type = "CHECKING"
 ...
-ValidationError: {
-    'account_type': [
-        "Value `'CHECKING'` is not a valid choice. Must be among ['SAVINGS', 'CURRENT']"
-    ]
-}
+ValidationError: {'account_type': ["Input should be 'SAVINGS' or 'CURRENT'"]}
 ```
 
 Every Protean field also has options that help constrain the field value.
@@ -90,7 +84,7 @@ Since `Account.account_number` was declared `required` earlier, skipping it
 will throw an exception:
 
 ```shell hl_lines="6"
-n [5]: account = Account(
+In [5]: account = Account(
    ...:     account_type="SAVINGS",
    ...:     balance=50)
 ERROR: Error during initialization: {'account_number': ['is required']}
@@ -111,8 +105,8 @@ while `String` fields have `min_length` and `max_length` validators. These
 validators are typically activated by supplying them as a parameter during
 field initialization.
 
-```python hl_lines="3-4"
---8<-- "guides/domain-behavior/004.py:7:10"
+```python hl_lines="9-10"
+--8<-- "guides/domain-behavior/004.py:full"
 ```
 
 Violating these constraints results in an immediate exception:
@@ -121,7 +115,7 @@ Violating these constraints results in an immediate exception:
 In [1]: Person(name="Ho", age=200)
 ERROR: Error during initialization:
 ...
-ValidationError: {'name': ['value has less than 3 characters'], 'age': ['value is greater than 120']}
+ValidationError: {'name': ['String should have at least 3 characters'], 'age': ['Input should be less than or equal to 120']}
 ```
 
 These parameters create built-in validator instances from
@@ -138,12 +132,13 @@ You can also add validations at the field level by defining custom validators.
 A validator is any callable class that accepts a value and raises `ValueError`
 if the value is invalid:
 
-```python hl_lines="15-17"
---8<-- "guides/domain-behavior/005.py:9:25"
+```python hl_lines="18-19 25"
+--8<-- "guides/domain-behavior/005.py:full"
 ```
 
 Now, an email address assigned to the field is validated with the custom
-regex pattern:
+regex pattern. Protean catches the validator's `ValueError` and raises a
+`ValidationError` that carries its message under the field name:
 
 ```shell
 In [1]: Person(name="John", email="john.doe@gmail.com")
@@ -151,7 +146,7 @@ Out[1]: <Person: Person object (id: 659fa079-f93c-4a6d-9b16-19af02ec86ef)>
 
 In [2]: Person(name="Jane", email="jane.doe@.gmail.com")
 ...
-ValueError: Invalid Email Address - jane.doe@.gmail.com
+ValidationError: {'email': ['Invalid Email Address - jane.doe@.gmail.com']}
 ```
 
 You can attach multiple validators to a single field with the `validators`

@@ -23,26 +23,16 @@ to merge into `metadata.extensions`.
 ### Registration
 
 Register enrichers with `domain.register_event_enricher()` or the
-`@domain.event_enricher` decorator:
+`@domain.event_enricher` decorator. In these examples, helpers such as
+`get_current_user()` and `get_client_ip()` read request values that your app
+put on Protean's `g`:
 
 ```python
-# Functional registration
-def add_user_context(event, aggregate):
-    """Enrich every event with the current user."""
-    user = get_current_user()
-    return {
-        "user_id": user.id if user else "system",
-        "tenant_id": get_current_tenant_id(),
-    }
-
-domain.register_event_enricher(add_user_context)
+--8<-- "guides/domain-behavior/message-enrichment/001.py:functional"
 ```
 
 ```python
-# Decorator registration
-@domain.event_enricher
-def add_audit_context(event, aggregate):
-    return {"ip_address": get_client_ip()}
+--8<-- "guides/domain-behavior/message-enrichment/001.py:decorator"
 ```
 
 ### How It Works
@@ -59,6 +49,7 @@ appended to `aggregate._events`. This means:
 ### Enricher Signature
 
 ```python
+# fragment
 def enricher(event: BaseEvent, aggregate: BaseAggregate) -> dict[str, Any]:
     """Return key-value pairs to merge into metadata.extensions."""
 ```
@@ -76,15 +67,7 @@ You can register any number of enrichers. They execute in registration order
 later one wins:
 
 ```python
-@domain.event_enricher
-def add_user(event, aggregate):
-    return {"source": "user-enricher", "user_id": "u-123"}
-
-@domain.event_enricher
-def add_tenant(event, aggregate):
-    return {"source": "tenant-enricher", "tenant_id": "t-456"}
-
-# Result: {"source": "tenant-enricher", "user_id": "u-123", "tenant_id": "t-456"}
+--8<-- "guides/domain-behavior/message-enrichment/002.py:fifo"
 ```
 
 ## Command Enrichers
@@ -94,17 +77,13 @@ A **command enricher** works the same way but for commands processed via
 receive only the command (no aggregate):
 
 ```python
-@domain.command_enricher
-def add_request_context(command):
-    return {
-        "request_id": get_request_id(),
-        "ip_address": get_client_ip(),
-    }
+--8<-- "guides/domain-behavior/message-enrichment/001.py:command"
 ```
 
 ### Enricher Signature
 
 ```python
+# fragment
 def enricher(command: BaseCommand) -> dict[str, Any]:
     """Return key-value pairs to merge into metadata.extensions."""
 ```
@@ -119,23 +98,13 @@ and update), and unlike the enrichers above it **mutates the aggregate in
 place** rather than returning a dict:
 
 ```python
-from protean.utils.globals import g
-
-@domain.aggregate_enricher
-def stamp_audit(aggregate):
-    if not hasattr(aggregate, "updated_by"):  # a framework record, such as an outbox row
-        return
-    user = g.get("current_user")
-    aggregate.updated_by = user
-    if aggregate.created_by is None:      # set once, on create
-        aggregate.created_by = user
+--8<-- "guides/domain-behavior/message-enrichment/003.py:stamp_audit"
 ```
 
 Put the acting user on the context so the enricher can read it:
 
 ```python
-with domain.domain_context(current_user="alice"):
-    domain.repository_for(Order).add(order)
+--8<-- "guides/domain-behavior/message-enrichment/003.py:save_as"
 ```
 
 Aggregate enrichers run in registration order, fire only for aggregates (not
@@ -155,25 +124,14 @@ see [Track Audit and Lifecycle Fields](../../patterns/track-audit-fields.md).
 After raising an event, extensions are available on the metadata:
 
 ```python
-user.register()
-event = user._events[0]
-print(event._metadata.extensions)
-# {"user_id": "u-123", "tenant_id": "acme-corp"}
+--8<-- "guides/domain-behavior/message-enrichment/001.py:extensions"
 ```
 
 Extensions are included in the serialized form and survive round-trips
 through the event store:
 
 ```python
-message = Message.from_domain_object(event)
-msg_dict = message.to_dict()
-print(msg_dict["metadata"]["extensions"])
-# {"user_id": "u-123", "tenant_id": "acme-corp"}
-
-# Deserialize back
-restored = Message.deserialize(msg_dict)
-print(restored.metadata.extensions)
-# {"user_id": "u-123", "tenant_id": "acme-corp"}
+--8<-- "guides/domain-behavior/message-enrichment/001.py:round_trip"
 ```
 
 ## Edge Cases

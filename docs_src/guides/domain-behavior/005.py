@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 import re
 
 from protean import Domain
@@ -23,3 +24,6 @@ class EmailValidator:
 class Person:
     name: String(required=True, max_length=50)
     email: String(required=True, max_length=254, validators=[EmailValidator()])
+
+
+# --8<-- [end:full]

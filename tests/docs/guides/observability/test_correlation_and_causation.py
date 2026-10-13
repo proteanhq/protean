@@ -119,14 +119,6 @@ def test_trace_ids_reads_the_ids_from_a_command_and_from_a_message():
     assert message_ids == ("ext-123", placed_id)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BaseEvent._build_metadata ignores the correlation_id and causation_id "
-        "in the metadata it is given, so an event rebuilt from a stored "
-        "message loses both IDs"
-    ),
-)
 def test_trace_ids_reads_the_ids_from_an_event():
     example = _shipping_domain()
 

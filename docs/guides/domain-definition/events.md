@@ -310,8 +310,11 @@ The message ID (`headers.id`) of the immediate parent message that caused this
 one. It answers: *"What directly triggered this message?"*
 
 For example, when a command handler raises an event, the event's `causation_id`
-is the command's `headers.id`. When an event handler dispatches a new command,
-that command's `causation_id` is the event's `headers.id`. Root messages (the
+is the command's `headers.id`. When an event handler dispatches a new command
+during asynchronous processing, that command's `causation_id` is the event's
+`headers.id`. With synchronous processing the event handler runs inside the
+original command's handler, so the new command records that original command as
+its cause. Root messages (the
 first command in a chain) have `causation_id = None`.
 
 Together with `correlation_id`, `causation_id` lets you reconstruct the full

@@ -1,3 +1,4 @@
+# --8<-- [start:full]
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier
@@ -11,6 +12,7 @@ class AccountWithdrawn:
     amount: Float(required=True)
 
 
+# --8<-- [start:account]
 @banking.aggregate
 class Account:
     account_number: Identifier(required=True, unique=True)
@@ -28,3 +30,7 @@ class Account:
         self.balance -= amount  # Update account state (mutation)
 
         self.raise_(AccountWithdrawn(account_number=self.account_number, amount=amount))
+
+
+# --8<-- [end:account]
+# --8<-- [end:full]

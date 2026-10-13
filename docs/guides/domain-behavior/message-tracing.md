@@ -39,13 +39,7 @@ In production, the `correlation_id` often originates outside Protean, from an AP
 frontend client, or upstream service. You can pass it into `domain.process()`:
 
 ```python
-# Accept correlation_id from the HTTP request header
-correlation_id = request.headers.get("X-Correlation-ID")
-
-domain.process(
-    PlaceOrder(customer_id="cust-123", items=items),
-    correlation_id=correlation_id,
-)
+--8<-- "guides/domain-behavior/message-tracing/001.py:external"
 ```
 
 When a `correlation_id` is provided, Protean uses it as-is instead of
@@ -82,13 +76,7 @@ Both IDs live in `DomainMeta`, the domain-specific section of message metadata:
 ### Accessing Trace IDs in Code
 
 ```python
-# On a command or event object
-event._metadata.domain.correlation_id
-event._metadata.domain.causation_id
-
-# On a deserialized Message
-message.metadata.domain.correlation_id
-message.metadata.domain.causation_id
+--8<-- "guides/domain-behavior/message-tracing/001.py:access"
 ```
 
 ## Propagation Rules
@@ -103,8 +91,13 @@ The trace context flows through all message construction paths:
 | Event handler processes new command | Inherited from event | Event's `headers.id` |
 
 The propagation happens through Protean's global context (`g.message_in_context`),
-which the engine sets before invoking each handler. This works in both
-synchronous and asynchronous processing modes.
+which the engine sets before invoking each handler. The `correlation_id` carries
+through in both synchronous and asynchronous processing modes. The
+`causation_id` of a command sent from an event handler differs between them.
+With asynchronous processing it is the event's `headers.id`, as the table
+shows. With synchronous processing the event handler runs inside the original
+command's handler, so the new command records that original command as its
+cause.
 
 ## Relationship to W3C TraceParent
 
@@ -124,22 +117,12 @@ fit in W3C's 16-hex-char `parent_id` format.
 ## Using Trace IDs in the Test DSL
 
 The [test DSL](../testing/event-sourcing-tests.md) supports correlation IDs for
-verifying trace propagation:
+verifying trace propagation. Pass the same `correlation_id` to each `process()`
+call to group the commands under one business operation. Each call still starts
+its own causation chain, with `causation_id=None` on its command:
 
 ```python
-from protean.testing import given
-
-result = (
-    given(Order)
-    .when(PlaceOrder(customer_id="cust-1", items=[...]))
-    .then_events(OrderPlaced)
-)
-
-# Follow the chain with the same correlation_id
-result.process(
-    ReserveInventory(order_id=result.aggregate.id),
-    correlation_id=result.events[0]._metadata.domain.correlation_id,
-)
+--8<-- "guides/domain-behavior/message-tracing/001.py:dsl"
 ```
 
 ## Traversing the Causation Chain Programmatically
@@ -153,17 +136,7 @@ directly.
 Given a message, walk **up** the causation chain to the root command:
 
 ```python
-store = domain.event_store.store
-
-# From a message ID string
-chain = store.trace_causation("myapp::order-abc123-0.1")
-
-# From a Message object
-chain = store.trace_causation(some_message)
-
-# chain = [root_command, ..., target_message]
-for msg in chain:
-    print(f"{msg.metadata.headers.type} (caused by {msg.metadata.domain.causation_id})")
+--8<-- "guides/domain-behavior/message-tracing/001.py:trace_causation"
 ```
 
 The result is a list of `Message` objects ordered root-first, target-last. The
@@ -175,11 +148,7 @@ target message is always the last.
 Given a message, walk **down** to find everything it caused:
 
 ```python
-# All downstream effects (recursive)
-effects = store.trace_effects("myapp::order:command-abc123-0")
-
-# Only direct children (one level)
-direct = store.trace_effects("myapp::order:command-abc123-0", recursive=False)
+--8<-- "guides/domain-behavior/message-tracing/001.py:trace_effects"
 ```
 
 Effects are returned in chronological order (by `global_position`). The target
@@ -191,14 +160,7 @@ For a complete picture of a business operation, build the full causation tree
 from a `correlation_id`:
 
 ```python
-from protean.port.event_store import CausationNode
-
-root = store.build_causation_tree("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6")
-
-if root:
-    print(f"{root.kind} {root.message_type}")  # e.g., "COMMAND App.PlaceOrder.v1"
-    for child in root.children:
-        print(f"  {child.kind} {child.message_type}")
+--8<-- "guides/domain-behavior/message-tracing/001.py:tree"
 ```
 
 `CausationNode` is a dataclass with these attributes:
@@ -231,10 +193,10 @@ protean events search --type=OrderPlaced --trace --domain=myapp
 To follow an entire causal chain by correlation ID:
 
 ```bash
-# Tree view (default) — shows parent-child causation structure
+# Tree view (default): shows parent-child causation structure
 protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" --domain=myapp
 
-# Flat table view — chronological list with trace columns
+# Flat table view: chronological list with trace columns
 protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" --flat --domain=myapp
 ```
 
@@ -260,14 +222,13 @@ reference.
 
 When events are committed to the outbox (for reliable message delivery), the
 `correlation_id` and `causation_id` are denormalized into the outbox record
-for efficient querying:
+for efficient querying. Each database provider has its own outbox repository,
+looked up by the provider's name. Protean has no public method for this lookup
+yet, so the example calls the internal `_get_outbox_repo()`, which may change
+between releases:
 
 ```python
-# Find all outbox messages for a business operation
-outbox_repo.find_by_correlation_id("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6")
-
-# Find all messages caused by a specific message
-outbox_repo.find_by_causation_id("myapp::order-abc123-0.1")
+--8<-- "guides/domain-behavior/message-tracing/002.py:outbox"
 ```
 
 This is useful for operational dashboards and debugging delivery issues.

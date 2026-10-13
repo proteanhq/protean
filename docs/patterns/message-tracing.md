@@ -32,8 +32,8 @@ Attach two identifiers to every command and event:
 
 - **`causation_id`**: Points to the immediate parent. When a command handler
   raises an event, the event's `causation_id` is the command's message ID.
-  When an event handler dispatches a new command, the command's `causation_id`
-  is the event's message ID.
+  When an event handler dispatches a new command during asynchronous
+  processing, the command's `causation_id` is the event's message ID.
 
 Together, they form a **causation tree**:
 
@@ -120,7 +120,10 @@ Trace context flows through all message construction paths via
 3. **Event handler dispatches commands**: New commands inherit
    `correlation_id` from the event, `causation_id` = event's `headers.id`
 
-This works in both sync and async processing modes.
+The `correlation_id` carries through in both sync and async processing modes.
+Step 3's `causation_id` holds only in async mode. In sync mode the event
+handler runs inside the original command's handler, so the new command records
+that original command as its cause.
 
 ### Outbox Denormalization
 
