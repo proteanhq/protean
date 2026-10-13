@@ -2,8 +2,8 @@
 
 Each rule below names one error that used to appear in several skills: the old
 ``protean.globals`` import path, calls into the private ``_dao``, links to docs
-pages that do not exist, and the claim that a string ``part_of`` is rejected on a
-handler or repository. The test reads every text file in the pack and fails on
+pages that do not exist, the claim that a string ``part_of`` is rejected on a
+handler or repository, and a ``self.repository`` attribute that no handler has. The test reads every text file in the pack and fails on
 any line that matches a rule, except the lines a rule allows on purpose.
 """
 
@@ -53,6 +53,8 @@ RULES: list[tuple[str, re.Pattern[str], frozenset[str]]] = [
         frozenset(),
     ),
     ("a string part_of called invalid", _STRING_PART_OF_REJECTED, frozenset()),
+    # No word boundary, so self.repository_for is caught too.
+    ("self.repository on a handler", re.compile(r"self\.repository"), frozenset()),
 ]
 
 
@@ -109,6 +111,9 @@ def test_the_pack_holds_none_of_the_stale_claims():
             "part_of",
         ),
         ("repositories require the resolved class", "part_of"),
+        ("    self.repository.add(order)", "self.repository"),
+        ("use `self.repository` (auto-injected)", "self.repository"),
+        ("    repo = self.repository_for(Order)", "self.repository"),
     ],
 )
 def test_a_stale_line_is_reported(line, rule):
@@ -132,6 +137,8 @@ def test_a_stale_line_is_reported(line, rule):
         "A handler with no `@handle` method raises at registration.",
         "The serializer does not accept a string for `amount`.",
         "A `HasMany` field requires the resolved class of its entity.",
+        "    repo = current_domain.repository_for(Order)",
+        "    order_repo = domain.repository_for(Order)",
     ],
 )
 def test_a_current_line_passes(line):

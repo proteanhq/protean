@@ -12,11 +12,13 @@ call domain methods, and persist. Business logic (validation, state transitions,
 belongs in **aggregate methods**, not handlers.
 
 ```python
+from protean.utils.globals import current_domain
+
 # Good — handler delegates to aggregate
 @handle(PlaceOrder)
 def place_order(self, command):
     order = Order.create(buyer_id=command.buyer_id, items=command.items)
-    self.repository.add(order)
+    current_domain.repository_for(Order).add(order)
 
 # Bad — business logic leaks into handler
 @handle(PlaceOrder)
@@ -25,7 +27,7 @@ def place_order(self, command):
         raise ValidationError("Order must have items")
     total = sum(item.price * item.qty for item in command.items)
     order = Order(buyer_id=command.buyer_id, total=total, status="PLACED")
-    self.repository.add(order)
+    current_domain.repository_for(Order).add(order)
 ```
 
 ## Implicit UnitOfWork — Never Wrap Manually
@@ -38,14 +40,14 @@ Command handlers, event handlers, projectors, and application services all run w
 @handle(PlaceOrder)
 def place_order(self, command):
     order = Order.create(buyer_id=command.buyer_id)
-    self.repository.add(order)
+    current_domain.repository_for(Order).add(order)
 
 # Bad — manual UoW wrapping
 @handle(PlaceOrder)
 def place_order(self, command):
     with UnitOfWork():  # Never do this
         order = Order.create(buyer_id=command.buyer_id)
-        self.repository.add(order)
+        current_domain.repository_for(Order).add(order)
 ```
 
 ## `@handle` Decorator
@@ -90,14 +92,16 @@ values in synchronous mode, but event handlers never do:
 @handle(PlaceOrder)
 def place_order(self, command):
     order = Order.create(...)
-    self.repository.add(order)
+    current_domain.repository_for(Order).add(order)
     return order  # OK
 
 # Event handler — no return value
 @handle(OrderPlaced)
 def on_order_placed(self, event):
-    inventory.reserve(event.item_id, event.quantity)
-    self.repository.add(inventory)
+    repo = current_domain.repository_for(Inventory)
+    inventory = repo.get(event.item_id)
+    inventory.reserve(event.quantity)
+    repo.add(inventory)
     # No return
 ```
 
