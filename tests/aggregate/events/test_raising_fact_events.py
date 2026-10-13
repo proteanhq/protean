@@ -1,7 +1,8 @@
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import String
+from protean.core.event import BaseEvent
+from protean.fields import Identifier, String
 
 
 class User(BaseAggregate):
@@ -10,9 +11,19 @@ class User(BaseAggregate):
     status: String(choices=["ACTIVE", "ARCHIVED"])
 
 
+class Member(BaseAggregate):
+    name: String(max_length=50, required=True)
+
+
+class MemberJoined(BaseEvent):
+    member_id: Identifier(required=True)
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(User, fact_events=True)
+    test_domain.register(Member, fact_events=True)
+    test_domain.register(MemberJoined, part_of=Member)
     test_domain.init(traverse=False)
 
 
@@ -78,3 +89,21 @@ def test_fact_events_on_same_instance_carry_the_saved_version(test_domain):
     assert events[0]._metadata.headers.id.endswith("-0.1")
     assert events[1]._metadata.headers.id.endswith("-1.1")
     assert events[1].name == "Jane Doe"
+
+
+def test_fact_event_follows_a_regular_event_raised_in_the_same_save(test_domain):
+    member = Member(name="John Doe")
+    member.raise_(MemberJoined(member_id=member.id))
+    test_domain.repository_for(Member).add(member)
+
+    own = test_domain.event_store.store.read(f"test::member-{member.id}")
+    fact = test_domain.event_store.store.read(f"test::member-fact-{member.id}")
+    assert len(own) == 1
+    assert len(fact) == 1
+
+    assert own[0].to_domain_object()._metadata.headers.id == (
+        f"test::member-{member.id}-0.1"
+    )
+    assert fact[0].to_domain_object()._metadata.headers.id == (
+        f"test::member-fact-{member.id}-0.2"
+    )

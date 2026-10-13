@@ -227,7 +227,7 @@ class ProjectionStateHandler(BaseEventHandler):
         state = repo.get("order-projection")
 
         # Use stream position for deduplication
-        event_position = event._metadata.headers.sequence
+        event_position = event._metadata.event_store.position
         if event_position <= state.last_processed_position:
             return  # Already processed or older
 

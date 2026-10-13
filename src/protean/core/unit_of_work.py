@@ -150,6 +150,31 @@ class UnitOfWork:
                 # Clear events from the item
                 item._events = []
 
+    def _state_based_items(self) -> list[Any]:
+        """Aggregates in the identity map whose versions the DAO manages."""
+        return [
+            item
+            for items in self._identity_map.values()
+            for item in items.values()
+            if not item.meta_.is_event_sourced
+        ]
+
+    def _advance_next_versions(self) -> None:
+        """Move each saved aggregate's ``_next_version`` past the version just
+        committed, so a later save of the same instance writes a new version
+        and its events get new ids, as they would after a reload."""
+        for item in self._state_based_items():
+            item._next_version = item._version + 1
+
+    def _restore_versions(self) -> None:
+        """Put each saved aggregate's ``_version`` back to what the store holds.
+
+        ``_next_version`` only advances on commit, so after a rollback it is
+        still one past the version the store holds.
+        """
+        for item in self._state_based_items():
+            item._version = item._next_version - 1
+
     def start(self) -> None:
         """Begin the transaction and push this UnitOfWork onto the context stack.
 
@@ -462,6 +487,8 @@ class UnitOfWork:
             for session in self._sessions.values():
                 session.commit()
 
+            self._advance_next_versions()
+
             # Dispatch messages to their designated broker
             for stream, message, broker_name in self._messages_to_dispatch:
                 if broker_name and broker_name in self.domain.brokers:
@@ -605,6 +632,8 @@ class UnitOfWork:
         # cannot pop a parent UnitOfWork off the stack.
         if _uow_stack.top is self:
             _uow_stack.pop()
+
+        self._restore_versions()
 
         try:
             for session in self._sessions.values():

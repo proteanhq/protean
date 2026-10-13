@@ -751,8 +751,8 @@ class BaseDAO(metaclass=ABCMeta):
             expected_version = entity_obj._version
 
         # Advance to the next version: the model built from this entity
-        # carries it for the write. ``save`` moves ``_next_version`` on only
-        # after the write succeeds.
+        # carries it for the write. ``_next_version`` moves on only once the
+        # write is committed (see ``save`` and ``UnitOfWork.commit``).
         entity_obj._version = entity_obj._next_version
 
         return expected_version
@@ -842,9 +842,14 @@ class BaseDAO(metaclass=ABCMeta):
             # Set Entity status to saved to let everybody know it has been persisted
             entity_obj.state_.mark_saved()
 
-            # Match what a reload would give, so a second save of this same
-            # instance writes a new version and its events get new ids.
-            if entity_obj.element_type == DomainObjects.AGGREGATE:
+            # A standalone write is already committed, so match what a reload
+            # would give. Under a UoW the commit advances ``_next_version``
+            # instead: until then, events raised on this instance belong to
+            # the version this transaction writes.
+            if (
+                self._is_standalone
+                and entity_obj.element_type == DomainObjects.AGGREGATE
+            ):
                 entity_obj._next_version = entity_obj._version + 1
 
             # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
