@@ -1356,7 +1356,14 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         # index or join on, and the key-width guard then reports
                         # a missing max_length on a column nobody declared.
                         type_kwargs["length"] = _IDENTITY_STRING_LENGTH
-                    elif resolved_type is str and isinstance(field_obj, ResolvedField):
+                    elif (
+                        resolved_type is str
+                        and isinstance(field_obj, ResolvedField)
+                        and not field_obj.identifier
+                    ):
+                        # An identity column takes its type and width from
+                        # ``identity_type``, so the field's own max_length does
+                        # not apply. An Integer or GUID column takes no length.
                         type_kwargs["length"] = field_obj.max_length
                     elif resolved_type is decimal.Decimal and isinstance(
                         field_obj, ResolvedField

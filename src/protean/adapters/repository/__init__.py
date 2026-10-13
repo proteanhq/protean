@@ -8,8 +8,10 @@ from typing import TYPE_CHECKING, Any
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
+from protean.fields.spec import _UNSET
 from protean.port.provider import BaseProvider, registry
-from protean.utils import _fully_qualified_name
+from protean.utils import IdentityStrategy, IdentityType, _fully_qualified_name
+from protean.utils.reflection import id_field
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -136,6 +138,76 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
                 provider_objects[provider_name] = provider
 
         self._providers = provider_objects
+
+    def validate_identity_capacity(self) -> None:
+        """Refuse an integer identity under the ``uuid`` strategy on a SQL provider.
+
+        The ``uuid`` strategy makes an integer identity from ``uuid4().int``, a
+        128-bit number that no SQL integer column holds, so the first save would
+        fail. The field's own ``identity_type`` / ``identity_strategy`` win over
+        the domain configuration, the same rule ``_generate_identity`` follows.
+        Identifiers the database assigns (``increment=True``) and identifiers
+        with a user-supplied default are not generated, so they are skipped.
+
+        Raises:
+            ConfigurationError: An aggregate on a SQLAlchemy provider would get
+                a 128-bit integer identity.
+        """
+        try:
+            # SQLAlchemy is an optional extra; without it no SQL provider exists.
+            from protean.adapters.repository.sqlalchemy import (  # noqa: PLC0415
+                SAProvider,
+            )
+        except ImportError:  # pragma: no cover - sqlalchemy backs every SAProvider
+            return
+
+        providers = self._providers or {}
+        config = self.domain.config
+        for record in self.domain.registry.aggregates.values():
+            aggregate_cls = record.cls
+            provider = providers.get(aggregate_cls.meta_.provider)
+            if not isinstance(provider, SAProvider):
+                continue
+
+            id_fld = id_field(aggregate_cls)
+            if id_fld is None or getattr(id_fld, "increment", False):
+                continue
+
+            spec = getattr(aggregate_cls, "__protean_field_meta__", {}).get(
+                id_fld.field_name
+            )
+            if spec is not None:
+                if (
+                    spec.field_kind not in ("identifier", "auto")
+                    or spec.default is not _UNSET
+                    or getattr(spec, "_increment", False)
+                ):
+                    continue
+                identity_type = getattr(spec, "_identity_type", None)
+                identity_strategy = getattr(spec, "_identity_strategy", None)
+            elif getattr(id_fld, "_auto_generated", False):
+                identity_type = identity_strategy = None
+            else:
+                continue
+
+            identity_type = identity_type or config["identity_type"]
+            identity_strategy = identity_strategy or config["identity_strategy"]
+            if (
+                identity_type == IdentityType.INTEGER.value
+                and identity_strategy == IdentityStrategy.UUID.value
+            ):
+                raise ConfigurationError(
+                    f"Aggregate `{aggregate_cls.__name__}` uses an integer "
+                    f"identity under the `uuid` identity strategy, on provider "
+                    f"`{provider.name}` ({provider.__database__}). The `uuid` "
+                    f"strategy makes a 128-bit integer, and no SQL integer "
+                    f'column holds it. Set `identity_strategy = "function"` '
+                    f"with an `identity_function` that returns integers that "
+                    f"fit the column, so the id is set when the aggregate is "
+                    f"created. Or declare the identifier as "
+                    f"`Auto(increment=True)`, so the database assigns the id "
+                    f"on the first save."
+                )
 
     def get_connection(self, provider_name: str = "default") -> Any:
         """Fetch connection from Provider"""

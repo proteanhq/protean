@@ -96,6 +96,22 @@ Supported options are `integer`, `string`, and `uuid`.
 
 Default: `string`
 
+!!! note
+    On a SQL provider (SQLite, PostgreSQL, MySQL/MariaDB or MSSQL), an
+    `integer` identity cannot use the `uuid` strategy. That strategy makes a
+    128-bit integer, and no SQL integer column holds it. Use one of these:
+
+    - `identity_strategy = "function"`, with an `identity_function` that
+      returns integers that fit the column. The id is set when the aggregate
+      is created.
+    - [`Auto(increment=True)`](../fields/simple-fields.md#auto) on the
+      identifier. The database assigns the id, so it stays unset until the
+      first save.
+
+    Otherwise `Domain.init()` raises `ConfigurationError`, naming the
+    aggregate and its provider. The memory and Elasticsearch providers hold
+    the 128-bit value and are not affected.
+
 ### `command_processing`
 
 Whether to process commands synchronously or asynchronously.
