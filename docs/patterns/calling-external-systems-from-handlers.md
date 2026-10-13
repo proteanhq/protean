@@ -185,10 +185,12 @@ The command handler expects the `Subscriber` to exist already. If it does not,
 like any other failed message.
 
 `subscriber_id` is the command's identifier, so every `ApplyProfileSnapshot` for
-one subscriber goes to the same command stream. The handler applies snapshots in
-the order it receives them. If the provider can send an older snapshot after a
-newer one, store the provider's timestamp on the snapshot and skip one that is
-older than the last one applied.
+one subscriber goes to the same command stream. That choice of stream does not
+make the snapshots apply in order. Several workers can handle commands for the
+same subscriber at once, and after a version conflict the retried command can
+apply an older snapshot over a newer one. If the order matters, store the
+provider's sequence number or timestamp on `Subscriber` and skip a snapshot that
+is older than the last one applied.
 
 The command handler uses these two aggregates:
 
