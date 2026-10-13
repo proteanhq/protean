@@ -1,7 +1,8 @@
 """No page teaches an event handler that listens on another aggregate's stream.
 
-``check`` reports an event handler whose ``part_of`` aggregate does not own an
-event it handles as ``EVENT_HANDLER_FOREIGN_EVENT``. On these pages that shape
+``check`` reports ``EVENT_HANDLER_FOREIGN_EVENT`` when an event handler handles
+an event that exactly one other aggregate owns. An event that no aggregate owns,
+or one that more than one aggregate defines, is not reported. On these pages that shape
 shows up as a handler that sets ``stream_category`` to another aggregate's
 stream. The pages this test reads (the skills and
 rules in the DX pack, the event handlers guide, and the docs pages in
