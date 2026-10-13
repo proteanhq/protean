@@ -143,11 +143,16 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
         """Refuse an integer identity under the ``uuid`` strategy on a SQL provider.
 
         The ``uuid`` strategy makes an integer identity from ``uuid4().int``, a
-        128-bit number that no SQL integer column holds, so the first save would
-        fail. The field's own ``identity_type`` / ``identity_strategy`` win over
-        the domain configuration, the same rule ``_generate_identity`` follows.
-        Identifiers the database assigns (``increment=True``) and identifiers
-        with a user-supplied default are not generated, so they are skipped.
+        128-bit number. Under a domain ``identity_type`` of ``integer`` the
+        column is an SQL integer column, which cannot hold it, so the first save
+        would fail. The field's own ``identity_type`` / ``identity_strategy``
+        win over the domain configuration, the same rule ``_generate_identity``
+        follows. The column type follows only the domain setting, so a field
+        that sets ``identity_type="integer"`` on a ``string`` domain gets a text
+        column; it is refused all the same, so the rule does not depend on
+        where the setting comes from. Identifiers the database assigns
+        (``increment=True``) and identifiers with a user-supplied default are
+        not generated, so they are skipped.
 
         Raises:
             ConfigurationError: An aggregate on a SQLAlchemy provider would get

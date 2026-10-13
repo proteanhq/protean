@@ -99,7 +99,11 @@ Default: `string`
 !!! note
     On a SQL provider (SQLite, PostgreSQL, MySQL/MariaDB or MSSQL), an
     `integer` identity cannot use the `uuid` strategy. That strategy makes a
-    128-bit integer, and no SQL integer column holds it. Use one of these:
+    128-bit integer, and the integer column an `integer` domain gets cannot
+    hold it. The rule also applies when the identifier sets
+    `identity_type="integer"` or `identity_strategy="uuid"` itself, even
+    though the column then follows the domain's `identity_type`. Use one of
+    these:
 
     - `identity_strategy = "function"`, with an `identity_function` that
       returns integers that fit the column. The id is set when the aggregate
