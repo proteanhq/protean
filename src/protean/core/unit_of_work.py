@@ -167,10 +167,11 @@ class UnitOfWork:
             item._next_version = item._version + 1
 
     def _restore_versions(self) -> None:
-        """Put each saved aggregate's ``_version`` back to what the store holds.
+        """Put each saved aggregate's ``_version`` back to the version it had
+        before this transaction.
 
-        ``_next_version`` only advances on commit, so after a rollback it is
-        still one past the version the store holds.
+        ``_next_version`` only advances on commit, so during the transaction
+        it is still one past that version.
         """
         for item in self._state_based_items():
             item._version = item._next_version - 1
