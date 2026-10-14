@@ -194,8 +194,9 @@ def _move_redaction_filter_last() -> None:
 
     A target is changed only when a redaction filter sits before a context
     filter. The redaction filters then go right after the last context
-    filter, so other filters (user filters included) keep their place
-    relative to redaction. Filters keep their identity, and the new list is
+    filter, and every other filter keeps its relative order, so a filter
+    already after redaction and after the last context filter stays after
+    redaction. Filters keep their identity, and the new list is
     bound in place of the old one, so a record being filtered on another
     thread finishes its pass over the old list.
     """
