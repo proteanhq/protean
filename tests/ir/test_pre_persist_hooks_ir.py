@@ -216,3 +216,18 @@ class TestEnricherDiff:
         output = " ".join(result.output.split())
         assert "Enrichers" in output
         assert f"aggregate: none → {__name__}.stamp_actor" in output
+
+    def test_text_diff_keeps_square_brackets_in_domain_values(self, tmp_path):
+        left = tmp_path / "left.json"
+        right = tmp_path / "right.json"
+        ir = _build()
+        left.write_text(json.dumps(ir), encoding="utf-8")
+        ir["domain"]["name"] = "Shop[red]Front"
+        right.write_text(json.dumps(ir), encoding="utf-8")
+
+        result = CliRunner().invoke(
+            app, ["ir", "diff", "--left", str(left), "--right", str(right)]
+        )
+
+        output = " ".join(result.output.split())
+        assert "name: Test → Shop[red]Front" in output
