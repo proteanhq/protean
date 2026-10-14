@@ -18,6 +18,7 @@ from protean._deprecation import RemovedInProtean020Warning
 from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.integrations.logging import ProteanRedactionFilter
+from protean.server.reloader import Reloader
 from protean.server.supervisor import Supervisor, _worker_entry
 from tests.shared import change_working_directory_to
 
@@ -452,7 +453,8 @@ class TestWorkerEntry:
 
         mock_configure.assert_called_once_with(level="DEBUG")
 
-    def test_worker_entry_bootstraps_at_info_without_a_log_level(self):
+    def test_worker_entry_bootstraps_at_info_without_a_log_level(self, monkeypatch):
+        monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
         with (
             patch("protean.utils.domain_discovery.derive_domain", return_value=None),
             patch("protean.utils.logging.configure_logging") as mock_configure,
@@ -461,6 +463,84 @@ class TestWorkerEntry:
             _worker_entry("d", test_mode=False, worker_id=0)
 
         mock_configure.assert_called_once_with(level="INFO")
+
+
+def _root_level_at_derive(target=_worker_entry, args=None, kwargs=None) -> int:
+    """Run the worker entry and return the root logger level when the domain loads.
+
+    The fake ``derive_domain`` returns ``None``, so the worker exits right
+    after the level is recorded. ``configure_logging`` is the real one.
+    """
+    seen: dict[str, int] = {}
+
+    def fake_derive(path: str) -> None:
+        seen["level"] = logging.getLogger().level
+
+    with (
+        patch("protean.utils.domain_discovery.derive_domain", side_effect=fake_derive),
+        pytest.raises(SystemExit, match="1"),
+    ):
+        target(*(args or ("d", False, 0)), **(kwargs or {}))
+
+    return seen["level"]
+
+
+class TestWorkerEntryBootstrapLevel:
+    """Before the domain loads, the worker logs at the parent's level."""
+
+    def test_protean_log_level_sets_the_bootstrap_level(self, monkeypatch):
+        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")
+
+        assert _root_level_at_derive() == logging.DEBUG
+
+    def test_lowercase_protean_log_level_is_accepted(self, monkeypatch):
+        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "debug")
+
+        assert _root_level_at_derive() == logging.DEBUG
+
+    def test_log_level_flag_wins_over_protean_log_level(self, monkeypatch):
+        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")
+
+        level = _root_level_at_derive(kwargs={"log_level": "WARNING"})
+
+        assert level == logging.WARNING
+
+    def test_defaults_to_info_without_flag_or_variable(self, monkeypatch):
+        monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
+
+        assert _root_level_at_derive() == logging.INFO
+
+    def test_defaults_to_info_under_development_env(self, monkeypatch):
+        # The PROTEAN_ENV map would pick DEBUG here. The parent bootstraps at
+        # INFO, so the worker does too.
+        monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
+        monkeypatch.setenv("PROTEAN_ENV", "development")
+
+        assert _root_level_at_derive() == logging.INFO
+
+    def test_protean_log_level_does_not_override_log_config(self, monkeypatch):
+        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")
+        dict_config = {"version": 1, "root": {"level": "ERROR"}}
+
+        level = _root_level_at_derive(kwargs={"log_config": dict_config})
+
+        assert level == logging.ERROR
+
+    def test_reload_worker_uses_protean_log_level(self, monkeypatch):
+        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")
+        reloader = Reloader(domain_path="d")
+        reloader._ctx = MagicMock()
+
+        reloader._start_process()
+
+        call = reloader._ctx.Process.call_args
+        level = _root_level_at_derive(
+            target=call.kwargs["target"],
+            args=call.kwargs["args"],
+            kwargs=call.kwargs["kwargs"],
+        )
+
+        assert level == logging.DEBUG
 
 
 class TestSupervisorEventStoreGuard:

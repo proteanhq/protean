@@ -488,13 +488,14 @@ def _worker_entry(
     # does in the parent process. It is applied first, before the worker's own
     # logger exists, so its ``disable_existing_loggers`` cannot silence that
     # logger, and no bootstrap handler is left on the root beside it.
-    # Otherwise, bootstrap logging so the worker has *some* output for
-    # derive/init errors. The domain's own configuration (which carries
-    # ``[logging].redact``, per-logger overrides, etc.) replaces it below.
+    # Otherwise, bootstrap logging at the parent's level so the worker has
+    # *some* output for derive/init errors. The domain's own configuration
+    # (which carries ``[logging].redact``, per-logger overrides, etc.)
+    # replaces it below.
     if log_config is not None:
         configure_logging(dict_config=log_config)
     else:
-        configure_logging(level=log_level or "INFO")
+        configure_logging(level=log_level or os.getenv("PROTEAN_LOG_LEVEL", "INFO"))
 
     worker_logger = logging.getLogger(f"protean.server.worker-{worker_id}")
     worker_logger.info(f"Worker {worker_id} (PID {os.getpid()}) starting...")
