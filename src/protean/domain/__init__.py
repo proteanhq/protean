@@ -2880,8 +2880,10 @@ class Domain:
         _install_root_filter(ProteanCorrelationFilter())
         if telemetry_enabled:
             _install_root_filter(OTelTraceContextFilter())
-        # The context filters write the ids that redaction may need to mask,
-        # so redaction has to stay last on every target.
+        # The two installs above append after any redaction filter already
+        # there, and the context filters write the ids redaction may need to
+        # mask, so move redaction back after them on the root logger and on
+        # each root handler.
         _move_redaction_filter_last()
 
         # Tail sampling filter on the protean.access stdlib logger — covers

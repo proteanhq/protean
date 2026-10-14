@@ -487,6 +487,42 @@ class TestMoveRedactionFilterLast:
         assert root.filters == [correlation, user, otel, first_redact, second_redact]
         assert handler.filters == [otel, correlation, second_redact, first_redact]
 
+    def test_filter_after_last_context_filter_stays_after_redaction(self):
+        root = logging.getLogger()
+        redact, correlation = ProteanRedactionFilter(), ProteanCorrelationFilter()
+        user = logging.Filter("user")
+        root.filters = [redact, correlation, user]
+        root.handlers = []
+
+        _move_redaction_filter_last()
+
+        assert root.filters == [correlation, redact, user]
+
+    def test_redaction_already_after_context_filters_is_left_alone(self):
+        root = logging.getLogger()
+        redact, correlation = ProteanRedactionFilter(), ProteanCorrelationFilter()
+        user = logging.Filter("user")
+        original = [correlation, redact, user]
+        root.filters = original
+        root.handlers = []
+
+        _move_redaction_filter_last()
+
+        assert root.filters is original
+        assert root.filters == [correlation, redact, user]
+
+    def test_reorder_binds_a_new_list(self):
+        root = logging.getLogger()
+        redact, correlation = ProteanRedactionFilter(), ProteanCorrelationFilter()
+        original = [redact, correlation]
+        root.filters = original
+        root.handlers = []
+
+        _move_redaction_filter_last()
+
+        assert root.filters == [correlation, redact]
+        assert original == [redact, correlation]
+
     def test_without_handlers_only_root_is_reordered(self):
         root = logging.getLogger()
         redact, correlation = ProteanRedactionFilter(), ProteanCorrelationFilter()
@@ -616,12 +652,12 @@ class TestRedactionRunsAfterContextFilters:
         assert records[-1].correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
 
     @pytest.mark.no_test_domain
-    def test_standalone_call_after_domain_call_keeps_redaction_last(self):
+    def test_dict_config_call_reorders_redaction_already_on_root(self):
         records: list[logging.LogRecord] = []
         config = _dict_config(records)
         root = logging.getLogger()
-        # The order an earlier configure call leaves when it installs the
-        # correlation filter after redaction.
+        # User code (or an older Protean) can leave redaction before the
+        # correlation filter on the root logger.
         earlier_redact = ProteanRedactionFilter(["correlation_id"])
         root.filters = [earlier_redact, ProteanCorrelationFilter()]
         with patch.dict("os.environ", {}, clear=True):
@@ -629,6 +665,51 @@ class TestRedactionRunsAfterContextFilters:
 
         _assert_redaction_runs_last()
         assert root.filters[-1] is earlier_redact
+
+    @pytest.mark.no_test_domain
+    def test_default_path_call_reorders_redaction_already_on_root(self):
+        root = logging.getLogger()
+        earlier_redact = ProteanRedactionFilter(["correlation_id"])
+        root.filters = [earlier_redact, ProteanCorrelationFilter()]
+        with patch.dict("os.environ", {}, clear=True):
+            configure_logging(level="DEBUG", format="json", redact=["correlation_id"])
+
+        assert isinstance(root.filters[-1], ProteanRedactionFilter)
+        assert isinstance(root.filters[0], ProteanCorrelationFilter)
+
+    def test_user_filter_added_between_calls_keeps_its_place(self, test_domain):
+        test_domain.config["logging"] = {"redact": ["password"]}
+        test_domain.configure_logging(level="DEBUG", format="json")
+        root = logging.getLogger()
+        audit = logging.Filter("audit")
+        root.addFilter(audit)
+
+        test_domain.configure_logging(level="DEBUG", format="json")
+
+        assert root.filters[-1] is audit
+        assert isinstance(root.filters[-2], ProteanRedactionFilter)
+
+    def test_redaction_declared_on_root_in_dict_config_covers_handlers(
+        self, test_domain
+    ):
+        records: list[logging.LogRecord] = []
+        config = _dict_config(records)
+        config["filters"] = {
+            "red": {"()": lambda: ProteanRedactionFilter(["correlation_id"])}
+        }
+        config["root"]["filters"] = ["red"]
+        test_domain.config["logging"] = {}
+
+        test_domain.configure_logging(dict_config=config)
+
+        handler = logging.getLogger().handlers[0]
+        assert _count(handler, ProteanRedactionFilter) == 1
+        _assert_redaction_runs_last()
+        with test_domain.domain_context():
+            g.correlation_id = "secret-corr-123"
+            _log_on_child()
+        assert records
+        assert records[-1].correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
 
     def test_worker_queue_handler_keeps_redaction_last(self, test_domain):
         test_domain.config["logging"] = {"redact": ["correlation_id"]}
