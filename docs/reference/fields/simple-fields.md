@@ -190,6 +190,13 @@ value is stamped at save time, not at construction: on the `repository.add()` â†
 save path and on each row a `query.update()` saves. Pass
 `apply_hooks=False` to skip the stamp.
 
+The stamp does not run the aggregate's `@invariant.pre` checks, so an aggregate
+whose pre-invariant rejects changes once it is closed can still be saved after
+`close()`. The `@invariant.post` checks run once after the stamp. If one fails,
+the save is aborted with a `ValidationError` whose `location` names the
+stamping and the fields, for example
+`auto_now stamping of updated_at on Account`.
+
 See [Track Audit and Lifecycle Fields](../../patterns/track-audit-fields.md) for
 the full recipe (abstract base + timestamps + `created_by`/`updated_by`).
 

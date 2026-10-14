@@ -5,16 +5,20 @@ Covers the two mechanisms that fire in ``BaseDAO.save``:
 - **Part A** — ``auto_now`` / ``auto_now_add`` timestamp stamping.
 - **Part B** — registered aggregate pre-persist enrichers that stamp
   cross-cutting audit fields (``created_by`` / ``updated_by``) from ``g``.
+- **Part C** — how both hooks interact with the aggregate's invariants:
+  ``@invariant.pre`` does not run on the hook writes, ``@invariant.post``
+  runs once after each hook and names the hook when it fails.
 """
 
 from datetime import UTC, date, datetime, timedelta
+from enum import Enum
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
-from protean.core.entity import BaseEntity
-from protean.exceptions import IncorrectUsageError
-from protean.fields import Date, DateTime, HasMany, String
+from protean.core.aggregate import BaseAggregate, atomic_change
+from protean.core.entity import BaseEntity, invariant
+from protean.exceptions import IncorrectUsageError, ObjectNotFoundError, ValidationError
+from protean.fields import Date, DateTime, HasMany, Status, String
 from protean.utils.globals import g
 from tests.shared import FrozenClock
 
@@ -36,10 +40,82 @@ class Post(BaseAggregate):
     comments = HasMany(Comment)
 
 
+class Entry(BaseEntity):
+    memo: String(max_length=50)
+    updated_at: DateTime(auto_now=True)
+
+
+class Account(BaseAggregate):
+    status: String(default="OPEN")
+    updated_at: DateTime(auto_now=True)
+    entries = HasMany(Entry)
+
+    @invariant.pre
+    def closed_accounts_are_immutable(self):
+        if self.status == "CLOSED":
+            raise ValidationError({"_account": ["A closed account cannot be modified"]})
+
+    def close(self):
+        self.status = "CLOSED"
+
+
+class Ledger(BaseAggregate):
+    """``Account`` without an ``auto_now`` field, for the enricher cases."""
+
+    status: String(default="OPEN")
+    updated_by: String(max_length=50)
+    reviewer: String(max_length=50)
+
+    @invariant.pre
+    def closed_ledgers_are_immutable(self):
+        if self.status == "CLOSED":
+            raise ValidationError({"_ledger": ["A closed ledger cannot be modified"]})
+
+    @invariant.post
+    def updater_is_not_the_reviewer(self):
+        if self.updated_by is not None and self.updated_by == self.reviewer:
+            raise ValidationError(
+                {"_ledger": ["The updater cannot also review the ledger"]}
+            )
+
+    def close(self):
+        self.status = "CLOSED"
+
+
+class BatchStage(Enum):
+    DRAFT = "DRAFT"
+    SENT = "SENT"
+    ARCHIVED = "ARCHIVED"
+
+
+class Batch(BaseAggregate):
+    stage: Status(
+        BatchStage,
+        default="DRAFT",
+        transitions={"DRAFT": ["SENT"], "SENT": ["ARCHIVED"]},
+    )
+    note: String(max_length=50)
+
+
+class Reading(BaseAggregate):
+    value: String(max_length=50)
+    updated_at: DateTime(auto_now=True)
+
+    @invariant.post
+    def not_stamped_in_a_maintenance_window(self):
+        if self.updated_at is not None and self.updated_at.year == 2031:
+            raise ValidationError({"updated_at": ["Readings are frozen in 2031"]})
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Post)
     test_domain.register(Comment, part_of=Post)
+    test_domain.register(Account)
+    test_domain.register(Entry, part_of=Account)
+    test_domain.register(Ledger)
+    test_domain.register(Batch)
+    test_domain.register(Reading)
     test_domain.init(traverse=False)
 
 
@@ -385,3 +461,248 @@ class TestAggregateEnricherNegativePaths:
         # The version advance is rolled back so the entity stays consistent
         # with the store after the failed save.
         assert stored._version == version_before
+
+
+# ---------------------------------------------------------------------------
+# Part C — pre-persist hooks and invariants
+# ---------------------------------------------------------------------------
+def _closed_account(domain):
+    repo = domain.repository_for(Account)
+    account = Account()
+    repo.add(account)
+    account = repo.get(account.id)
+    account.close()
+    return repo, account
+
+
+def _stamp_updated_by(aggregate):
+    if isinstance(aggregate, Ledger):
+        aggregate.updated_by = "alice"
+
+
+class TestPreInvariantsDoNotRunOnHookWrites:
+    def test_a_closed_aggregate_saves_with_an_auto_now_field(self, test_domain):
+        t0 = datetime(2030, 6, 1, 12, 0, tzinfo=UTC)
+        test_domain.clock = FrozenClock(t0)
+        repo, account = _closed_account(test_domain)
+        assert account.updated_at == t0
+
+        test_domain.clock.advance(timedelta(minutes=5))
+        repo.add(account)
+
+        got = repo.get(account.id)
+        assert got.status == "CLOSED"
+        assert got.updated_at == t0 + timedelta(minutes=5)
+
+    def test_a_closed_aggregate_saves_through_dao_update(self, test_domain):
+        t0 = datetime(2030, 6, 1, 12, 0, tzinfo=UTC)
+        test_domain.clock = FrozenClock(t0)
+        repo = test_domain.repository_for(Account)
+        account = Account()
+        repo.add(account)
+
+        test_domain.clock.advance(timedelta(minutes=5))
+        stored = repo.get(account.id)
+        repo._dao.update(stored, status="CLOSED")
+
+        got = repo.get(account.id)
+        assert got.status == "CLOSED"
+        assert got.updated_at == t0 + timedelta(minutes=5)
+
+    def test_a_closed_aggregate_saves_with_an_enricher(self, test_domain):
+        test_domain.register_aggregate_enricher(_stamp_updated_by)
+        repo = test_domain.repository_for(Ledger)
+        ledger = Ledger()
+        repo.add(ledger)
+
+        ledger = repo.get(ledger.id)
+        ledger.close()
+        repo.add(ledger)
+
+        got = repo.get(ledger.id)
+        assert got.status == "CLOSED"
+        assert got.updated_by == "alice"
+
+    def test_a_closed_aggregate_saves_with_an_enricher_through_dao_update(
+        self, test_domain
+    ):
+        test_domain.register_aggregate_enricher(_stamp_updated_by)
+        repo = test_domain.repository_for(Ledger)
+        ledger = Ledger()
+        repo.add(ledger)
+
+        repo._dao.update(repo.get(ledger.id), status="CLOSED")
+
+        got = repo.get(ledger.id)
+        assert got.status == "CLOSED"
+        assert got.updated_by == "alice"
+
+    def test_a_child_entity_stamp_does_not_run_the_root_pre_invariants(
+        self, test_domain
+    ):
+        repo = test_domain.repository_for(Account)
+        account = Account(entries=[Entry(memo="opening")])
+        repo.add(account)
+
+        account = repo.get(account.id)
+        account.close()
+        repo.add(account)
+
+        got = repo.get(account.id)
+        assert got.status == "CLOSED"
+        assert len(got.entries) == 1
+        assert got.entries[0].updated_at is not None
+
+    def test_the_pre_invariant_still_rejects_a_business_change(self, test_domain):
+        _, account = _closed_account(test_domain)
+
+        with pytest.raises(ValidationError) as exc:
+            account.status = "OPEN"
+
+        assert exc.value.messages == {
+            "_account": ["A closed account cannot be modified"]
+        }
+
+    def test_post_invariants_run_once_after_the_enricher(self, test_domain):
+        # The enricher passes through a state the post-invariant rejects
+        # (updater == reviewer) and leaves a valid one. Only the end state
+        # is checked.
+        @test_domain.aggregate_enricher
+        def swap_reviewer(aggregate):
+            aggregate.updated_by = "alice"
+            aggregate.reviewer = "bob"
+
+        repo = test_domain.repository_for(Ledger)
+        ledger = Ledger(reviewer="alice")
+        repo.add(ledger)
+
+        got = repo.get(ledger.id)
+        assert (got.updated_by, got.reviewer) == ("alice", "bob")
+
+    def test_inside_atomic_change_the_block_runs_the_checks_on_exit(self, test_domain):
+        @test_domain.aggregate_enricher
+        def stamp_audit(aggregate):
+            if isinstance(aggregate, Ledger):
+                aggregate.updated_by = "alice"
+
+        repo = test_domain.repository_for(Ledger)
+        ledger = Ledger(reviewer="bob")
+        repo.add(ledger)
+        ledger = repo.get(ledger.id)
+
+        with pytest.raises(ValidationError) as exc:
+            with atomic_change(ledger):
+                ledger.reviewer = "alice"
+                repo.add(ledger)
+
+        assert exc.value.messages == {
+            "_ledger": ["The updater cannot also review the ledger"]
+        }
+
+
+class TestPostInvariantFailuresNameTheHook:
+    def test_an_enricher_failure_aborts_the_update(self, test_domain):
+        @test_domain.aggregate_enricher
+        def stamp_audit(aggregate):
+            if isinstance(aggregate, Ledger):
+                aggregate.updated_by = "alice"
+
+        repo = test_domain.repository_for(Ledger)
+        # Seed the row with the hooks off, so the enricher's first run is on
+        # the update.
+        ledger = Ledger(reviewer="alice")
+        repo._dao.save(ledger, apply_hooks=False)
+
+        stored = repo.get(ledger.id)
+        version_before = stored._version
+        stored.status = "REVIEWED"
+
+        with pytest.raises(ValidationError) as exc:
+            repo.add(stored)
+
+        assert exc.value.messages == {
+            "_ledger": ["The updater cannot also review the ledger"]
+        }
+        assert exc.value.location is not None
+        assert "stamp_audit" in exc.value.location
+        assert exc.value.location.startswith("aggregate enricher ")
+        assert exc.value.codes, "the invariant's diagnostic code is kept"
+        assert stored._version == version_before
+        assert repo.get(ledger.id).status == "OPEN"  # nothing persisted
+
+    def test_an_enricher_failure_aborts_the_create(self, test_domain):
+        @test_domain.aggregate_enricher
+        def stamp_audit(aggregate):
+            if isinstance(aggregate, Ledger):
+                aggregate.updated_by = "alice"
+
+        repo = test_domain.repository_for(Ledger)
+        ledger = Ledger(reviewer="alice")
+
+        with pytest.raises(ValidationError) as exc:
+            repo.add(ledger)
+
+        assert exc.value.location is not None
+        assert "stamp_audit" in exc.value.location
+        with pytest.raises(ObjectNotFoundError):
+            repo.get(ledger.id)
+
+    def test_an_auto_now_failure_names_the_stamping_and_the_field(self, test_domain):
+        test_domain.clock = FrozenClock(datetime(2030, 6, 1, tzinfo=UTC))
+        repo = test_domain.repository_for(Reading)
+        reading = Reading()
+        repo.add(reading)
+
+        stored = repo.get(reading.id)
+        version_before = stored._version
+        test_domain.clock = FrozenClock(datetime(2031, 6, 1, tzinfo=UTC))
+        stored.value = "42"
+
+        with pytest.raises(ValidationError) as exc:
+            repo.add(stored)
+
+        assert exc.value.messages == {"updated_at": ["Readings are frozen in 2031"]}
+        assert exc.value.location == "auto_now stamping of updated_at on Reading"
+        assert stored._version == version_before
+        assert repo.get(reading.id).updated_at.year == 2030
+
+    def test_a_status_transition_made_by_an_enricher_is_still_checked(
+        self, test_domain
+    ):
+        @test_domain.aggregate_enricher
+        def archive(aggregate):
+            if isinstance(aggregate, Batch):
+                aggregate.stage = "ARCHIVED"
+
+        repo = test_domain.repository_for(Batch)
+        batch = Batch()
+        repo._dao.save(batch, apply_hooks=False)
+        stored = repo.get(batch.id)
+        stored.note = "ready"
+
+        with pytest.raises(ValidationError) as exc:
+            repo.add(stored)
+
+        assert exc.value.messages == {
+            "stage": [
+                (
+                    "Invalid status transition from 'DRAFT' to 'ARCHIVED'. "
+                    "Allowed transitions: SENT"
+                )
+            ]
+        }
+        assert exc.value.location is not None
+        assert "archive" in exc.value.location
+        assert repo.get(batch.id).stage == "DRAFT"
+
+    def test_a_raising_enricher_keeps_its_own_exception(self, test_domain):
+        @test_domain.aggregate_enricher
+        def reject(aggregate):
+            raise ValidationError({"_audit": ["no actor"]})
+
+        repo = test_domain.repository_for(Ledger)
+        with pytest.raises(ValidationError) as exc:
+            repo.add(Ledger())
+
+        assert exc.value.messages == {"_audit": ["no actor"]}
+        assert exc.value.location is None

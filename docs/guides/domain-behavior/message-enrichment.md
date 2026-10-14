@@ -107,12 +107,21 @@ Put the acting user on the context so the enricher can read it:
 --8<-- "guides/domain-behavior/message-enrichment/003.py:save_as"
 ```
 
-Aggregate enrichers run in registration order, fire only for aggregates (not
-child entities), and (because they assign through normal attributes) invariants
-still run on the stamped fields. If one raises, the save is aborted. They also
-fire for the records Protean itself saves through repositories, such as outbox
-rows and the message records of the in-memory event store. That is why the
-example skips an aggregate without `updated_by`.
+Aggregate enrichers run in registration order and fire only for aggregates (not
+child entities). If one raises, the save is aborted.
+
+The aggregate's `@invariant.pre` checks do not run on an enricher's writes,
+because stamping an audit field is not a business change. So a closed aggregate
+whose pre-invariant rejects changes can still be saved. The `@invariant.post`
+checks run once after each enricher, and the status-transition rules still
+apply to a status field it changes. When one of them fails, the save is aborted
+with a `ValidationError` whose `location` names the enricher, for example
+`aggregate enricher myapp.audit.stamp_audit`. `auto_now` and `auto_now_add`
+stamping works the same way, and its `location` names the stamped fields.
+
+Aggregate enrichers also fire for the records Protean itself saves through
+repositories, such as outbox rows and the message records of the in-memory event
+store. That is why the example skips an aggregate without `updated_by`.
 
 Keep them to cross-cutting lifecycle/audit metadata; they are not a hook for
 business logic or for raising events. For the complete recipe (an abstract audit

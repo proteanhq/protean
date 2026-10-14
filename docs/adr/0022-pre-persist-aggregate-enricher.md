@@ -4,6 +4,8 @@
 
 > Amended July 2026 (#1255), see
 [Amendment](#amendment-july-2026-unified-persist-lifecycle) below.
+> Amended October 2026 (#1663), see
+[Amendment](#amendment-october-2026-hook-writes-and-invariants) below.
 
 **Date:** July 2026
 
@@ -68,10 +70,11 @@ mechanism; the audit *user* model stays app-defined.
   mutator.
 - The mechanism is symmetric with the enrichers developers already know, so
   there is little new surface to learn.
-- Because the enricher mutates the aggregate through normal attribute
-  assignment, invariants still run on the stamped fields. The hook does **not**
-  bypass validation. It also does not touch `_events`, so event raising is
-  unaffected.
+- The hook does **not** bypass validation: the post-invariants still hold after
+  it, and status-transition rules still apply to what it writes. The
+  pre-invariants do not run on the hook's writes (see
+  [Amendment](#amendment-october-2026-hook-writes-and-invariants)). The hook
+  does not touch `_events`, so event raising is unaffected.
 - The enricher fires on every aggregate persisted through the repository, so it
   must stay fast (read from `g`, not from I/O). This is the same constraint the
   event/command enrichers already carry.
@@ -139,3 +142,31 @@ enrichers) by default. Two qualifications:
 
 Event-sourced aggregates are unchanged: they persist through the event store and
 carry audit data in their events, so the DAO lifecycle does not apply.
+
+## Amendment (October 2026): hook writes and invariants
+
+Both hooks assigned through `__setattr__`, so every stamped field ran the
+aggregate's `@invariant.pre` checks against the new state. A common
+pre-invariant is "a closed account cannot be modified". `close()` passes,
+because the check runs before `status` is assigned. Then the `updated_at` stamp
+counted as a modification of a closed account, and the save failed (#1663).
+
+**Amended decision:**
+
+- **Pre-invariants do not run on hook writes.** A pre-invariant guards a
+  business change against the state before it. An `auto_now` stamp or an
+  enricher's audit field is not a business change.
+- **Post-invariants still run, once per hook.** `_postcheck()` runs after the
+  `auto_now` stamping and after each enricher. An aggregate saved in an invalid
+  state would fail every later load, because loading rebuilds it and
+  initialization runs the post-invariants. Skipping the post-check would move
+  the failure from the save to an unrelated read, with the bad row already
+  stored.
+- **Status-transition rules still apply** to a status field a hook changes,
+  from its value before the hook to its value after.
+- **A failure names the hook.** The `ValidationError` keeps the invariant's
+  messages and codes, and its `location` names the `auto_now` stamping (with
+  the stamped field names) or the enricher's qualified name. The aggregate was
+  valid before the hook ran, so the error has to say which hook made it
+  invalid. The save aborts, and the version advance is rolled back, as when an
+  enricher raises.

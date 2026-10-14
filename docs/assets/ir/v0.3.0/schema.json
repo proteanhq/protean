@@ -51,6 +51,9 @@
     "elements": {
       "$ref": "#/$defs/elements_index"
     },
+    "enrichers": {
+      "$ref": "#/$defs/enrichers"
+    },
     "diagnostics": {
       "type": "array",
       "description": "Builder warnings and errors (may be empty)",
@@ -248,6 +251,8 @@
         "scale": { "type": "integer", "description": "Number of digits after the decimal point. Set only on a Decimal field that declares it." },
         "choices": { "type": "array", "items": { "type": "string" } },
         "sanitize": { "type": "boolean" },
+        "auto_now": { "type": "boolean", "description": "Set to the current time on every save. Only on a Date or DateTime field." },
+        "auto_now_add": { "type": "boolean", "description": "Set to the current time on the save that creates the record. Only on a Date or DateTime field." },
         "description": { "type": "string" },
         "auto_generated": { "type": "boolean" }
       },
@@ -1014,6 +1019,23 @@
         "QUERY", "QUERY_HANDLER", "REPOSITORY", "SUBSCRIBER", "VALUE_OBJECT"
       ],
       "additionalProperties": true
+    },
+
+    "enrichers": {
+      "type": "object",
+      "description": "Registered enrichers by kind, each a list of qualified names in registration order. Present only when the domain registers at least one enricher; a kind with none is left out.",
+      "properties": {
+        "aggregate": { "$ref": "#/$defs/enricher_list" },
+        "command": { "$ref": "#/$defs/enricher_list" },
+        "event": { "$ref": "#/$defs/enricher_list" }
+      },
+      "additionalProperties": false
+    },
+
+    "enricher_list": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
     },
 
     "domain_metadata": {

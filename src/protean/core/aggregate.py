@@ -5,6 +5,8 @@ import inspect
 import logging
 import typing
 from collections import defaultdict
+from collections.abc import Iterator
+from contextlib import contextmanager
 from enum import Enum
 from functools import partial
 from types import TracebackType
@@ -917,7 +919,10 @@ class atomic_change:
         # the block body leaves its changes in place.
         try:
             if exc_type is None:
-                self._validate_status_transitions()
+                # The first entry snapshot is the aggregate's own, taken on entry.
+                _validate_status_transitions(
+                    self.aggregate, self._entity_snapshots[0].values
+                )
 
             self.aggregate._postcheck()
         except BaseException:
@@ -929,54 +934,96 @@ class atomic_change:
         finally:
             self.aggregate._disable_invariant_checks = self._checks_were_disabled
 
-    def _validate_status_transitions(self) -> None:
-        """Validate start-to-end status transitions within the atomic block."""
-        fields_dict = getattr(self.aggregate.__class__, _FIELDS, {})
-        # The first entry snapshot is the aggregate's own, taken on entry.
-        start_values = self._entity_snapshots[0].values
 
-        for fname, fobj in fields_dict.items():
-            if not isinstance(fobj, ResolvedField) or not fobj.transitions:
-                continue
+def _validate_status_transitions(aggregate: Any, start_values: dict[str, Any]) -> None:
+    """Validate each status field's transition from ``start_values`` to now.
 
-            start_value = start_values.get(fname)
-            end_value = getattr(self.aggregate, fname, None)
+    Only the aggregate's own status fields are checked. A field whose value
+    did not change, or that started as ``None``, passes.
+    """
+    fields_dict = getattr(aggregate.__class__, _FIELDS, {})
 
-            start = start_value.value if isinstance(start_value, Enum) else start_value
-            end = end_value.value if isinstance(end_value, Enum) else end_value
+    for fname, fobj in fields_dict.items():
+        if not isinstance(fobj, ResolvedField) or not fobj.transitions:
+            continue
 
-            if start == end or start is None:
-                continue
+        start_value = start_values.get(fname)
+        end_value = getattr(aggregate, fname, None)
 
-            transitions = fobj.transitions
+        start = start_value.value if isinstance(start_value, Enum) else start_value
+        end = end_value.value if isinstance(end_value, Enum) else end_value
 
-            if start not in transitions:
-                raise ValidationError(
-                    {
-                        fname: [
-                            (
-                                f"Invalid status transition from '{start}'. "
-                                f"'{start}' is a terminal state with no "
-                                "allowed transitions"
-                            )
-                        ]
-                    }
-                )
+        if start == end or start is None:
+            continue
 
-            allowed = transitions[start]
-            if end not in allowed:
-                allowed_str = ", ".join(allowed)
-                raise ValidationError(
-                    {
-                        fname: [
-                            (
-                                f"Invalid status transition from '{start}' "
-                                f"to '{end}'. "
-                                f"Allowed transitions: {allowed_str}"
-                            )
-                        ]
-                    }
-                )
+        transitions = fobj.transitions
+
+        if start not in transitions:
+            raise ValidationError(
+                {
+                    fname: [
+                        (
+                            f"Invalid status transition from '{start}'. "
+                            f"'{start}' is a terminal state with no "
+                            "allowed transitions"
+                        )
+                    ]
+                }
+            )
+
+        allowed = transitions[start]
+        if end not in allowed:
+            allowed_str = ", ".join(allowed)
+            raise ValidationError(
+                {
+                    fname: [
+                        (
+                            f"Invalid status transition from '{start}' "
+                            f"to '{end}'. "
+                            f"Allowed transitions: {allowed_str}"
+                        )
+                    ]
+                }
+            )
+
+
+@contextmanager
+def _without_prechecks(aggregate: Any, *, location: str) -> Iterator[None]:
+    """Run writes on ``aggregate`` without its ``@invariant.pre`` checks.
+
+    ``BaseDAO.save`` stamps ``auto_now`` fields and runs aggregate enrichers
+    just before the write. Those writes are not business changes, and a
+    pre-invariant guards a business change against the state before it, so
+    the pre-invariants do not run on them. The status-transition rules and the
+    post-invariants still run, once, when the block exits without an error.
+    Their ``ValidationError`` is raised again with ``location``, because the
+    aggregate was valid before the block and the caller knows what wrote it.
+    An exception raised by the block body propagates unchanged.
+
+    Inside an ``atomic_change`` block checks are already off, and that block
+    runs them on its own exit, so nothing runs here.
+    """
+    if aggregate._disable_invariant_checks:
+        yield
+        return
+
+    fields_dict = getattr(aggregate.__class__, _FIELDS, {})
+    start_values = {
+        name: getattr(aggregate, name, None)
+        for name, field_obj in fields_dict.items()
+        if isinstance(field_obj, ResolvedField) and field_obj.transitions
+    }
+    aggregate._disable_invariant_checks = True
+    try:
+        yield
+    finally:
+        aggregate._disable_invariant_checks = False
+
+    try:
+        _validate_status_transitions(aggregate, start_values)
+        aggregate._postcheck()
+    except ValidationError as exc:
+        raise ValidationError(exc.messages, codes=exc.codes, location=location) from exc
 
 
 _F = TypeVar("_F", bound=typing.Callable[..., None])

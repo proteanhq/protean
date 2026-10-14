@@ -147,6 +147,18 @@ def _fully_qualified_name(cls: type) -> str:
 fqn = _fully_qualified_name
 
 
+def _callable_qualname(fn: Callable[..., Any]) -> str:
+    """Return ``module.qualname`` for a function or method.
+
+    A callable object without its own ``__qualname__`` (a class instance with
+    ``__call__``, a ``functools.partial``) is named by its class.
+    """
+    qualname = getattr(fn, "__qualname__", None)
+    if not isinstance(qualname, str):
+        return _fully_qualified_name(type(fn))
+    return f"{getattr(fn, '__module__', None)}.{qualname}"
+
+
 def _convert_str_values_to_list(value: Any) -> list[Any]:
     if not value:
         return []
