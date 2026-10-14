@@ -176,9 +176,12 @@ def run_verify(domain: str, path: str, env: str = "test") -> VerifyResult:
     a fresh interpreter per call, or a reset of the module cache between calls.
 
     All three stages run under the environment ``env``. ``PROTEAN_ENV`` is set to
-    it for the whole call, so init and check load that config overlay whatever
-    the caller exported, and the pytest child gets the same value. The caller's
-    ``PROTEAN_ENV`` (or its absence) is restored on every return path.
+    it for the whole call, and the pytest child gets the same value. The caller's
+    ``PROTEAN_ENV`` (or its absence) is restored on every return path. Init and
+    check load the ``env`` config overlay only when this call is the first to
+    import the domain module: a module already in ``sys.modules`` (imported by
+    the caller, or by an earlier call with a different ``env``) keeps the config
+    it loaded then, while the tests stage still runs under ``env``.
     """
     # Every stage starts "skipped"; a failure before it runs leaves it that way
     # so the envelope always carries all three keys.
@@ -197,7 +200,9 @@ def run_verify(domain: str, path: str, env: str = "test") -> VerifyResult:
 
     # A blank value would read as "no environment" to the domain config but
     # reach the pytest child as an empty ``PROTEAN_ENV``, splitting the stages.
-    if not env.strip():
+    # Surrounding spaces would match no overlay name, so they are dropped.
+    env = env.strip()
+    if not env:
         return _early_result(stages, _EXIT_USAGE, "--env must not be blank")
 
     # ``Domain.__init__`` reads ``PROTEAN_ENV`` when it loads config, and

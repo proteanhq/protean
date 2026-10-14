@@ -31,7 +31,7 @@ protean verify --env memory
 |--------|-------|---------|-------------|
 | `--domain` | `-d` | `.` | Path to the domain module (e.g. `my_app.domain`). Uses the same [domain discovery](project/discovery.md) as other commands. |
 | `--path` | | `.` | Project directory to run the tests in. `pytest` is invoked here, so it is where your project's test discovery is rooted. |
-| `--env` | | `test` | The environment (`PROTEAN_ENV`) that init, check and tests all run under. Must not be blank. |
+| `--env` | | `test` | The environment (`PROTEAN_ENV`) that init, check and tests all run under. Must not be blank; surrounding spaces are removed. |
 | `--json` | | `false` | Emit a JSON envelope on stdout instead of the human table. |
 
 `verify` runs `pytest` in a child process using the same interpreter that runs
@@ -44,8 +44,10 @@ All three stages run under the environment `--env` names. `verify` sets
 `PROTEAN_ENV` to that value before it imports the domain, so init and check load
 the matching [config overlay](../configuration/index.md#multiple-environments), and it
 passes the same value to the `pytest` child. A `PROTEAN_ENV` exported in your
-shell is ignored, and `PROTEAN_DEBUG` and `VIRTUAL_ENV` are removed from the
-child's environment. The child's `PROTEAN_ENV` also takes precedence over a
+shell does not change the config any stage loads, and `PROTEAN_DEBUG` and
+`VIRTUAL_ENV` are removed from the child's environment. The shell's value still
+picks the default log level and format, because `verify` sets up logging before
+the stages run. The child's `PROTEAN_ENV` also takes precedence over a
 `--protean-env` option in the project's pytest `addopts` or in
 `PYTEST_ADDOPTS`, so `--env` is the one place that picks the environment.
 

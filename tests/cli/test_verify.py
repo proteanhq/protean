@@ -881,6 +881,26 @@ class TestVerifyEnv:
             run_verify(_CLEAN_DOMAIN, str(tests_dir), env="memory")
         assert os.environ["PROTEAN_ENV"] == "prior"
 
+    def test_env_beats_protean_env_in_pytest_options(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("PROTEAN_ENV", raising=False)
+        monkeypatch.setenv("PYTEST_ADDOPTS", "--protean-env memory")
+        tests_dir = _write_test(tmp_path / "tests", _child_env_test("test"))
+        (tests_dir / "pytest.ini").write_text(
+            "[pytest]\naddopts = --protean-env memory\n"
+        )
+        result = run_verify(_CLEAN_DOMAIN, str(tests_dir))
+        assert result.exit_code == 0, result.tests_output
+        assert result.stages["tests"]["passed"] == 1
+
+    def test_surrounding_spaces_are_stripped_from_env(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("PROTEAN_ENV", raising=False)
+        domain, record = _write_env_recording_domain(tmp_path)
+        tests_dir = _write_test(tmp_path / "tests", _child_env_test("memory"))
+        result = run_verify(domain, str(tests_dir), env=" memory ")
+        assert result.exit_code == 0, result.tests_output
+        assert record.read_text() == "memory"
+        assert result.stages["tests"]["passed"] == 1
+
     @pytest.mark.parametrize("blank", ["", "  "], ids=["empty", "whitespace"])
     def test_blank_env_is_a_usage_error(self, tmp_path, monkeypatch, blank):
         monkeypatch.setenv("PROTEAN_ENV", "prior")
