@@ -18,6 +18,18 @@ protean check --format=json
 protean check --format=sarif > protean.sarif
 ```
 
+When `--domain` names a file, `check` imports it and walks the directory that
+holds it, the same way `Domain.init()` does. A domain declared as
+`Domain(__name__)` has a module name as its root path, which names no
+directory. `check` then checks the domain without walking any directory and
+logs a warning. If another module in that directory raises when it is
+imported, `check` exits `2` with one line that names the `--domain` value and
+the error.
+
+If the IR cannot be built, `check` reports the failure as one error, with
+`element` set to `to_ir` and the exception class name as its `code`, and
+exits `1`.
+
 ## Options
 
 | Option | Short | Default | Description |
@@ -52,7 +64,7 @@ driven by the **unfiltered** counts and gated by the `[lint].level` config key
 | Exit code | Meaning |
 |-----------|---------|
 | `0` | Nothing at or above the configured floor. |
-| `1` | A findings failure: validator errors, or a warning/info at or above the floor. The severity detail is in the envelope, not the code. |
+| `1` | A findings failure: validator errors, an IR-build error, or a warning/info at or above the floor. The severity detail is in the envelope, not the code. |
 | `2` | A usage or environment error: a bad `--domain`, `--level`, or `--format`; a domain that will not load; or a malformed `[lint]` config. |
 
 The single findings-failure code (`1`) replaced an earlier split (errors `1`,
@@ -120,7 +132,7 @@ check report under `data`, and the diagnostics list at the top level.
 |-------|------|-------------|
 | `domain` | str | The domain name. |
 | `status` | str | Fine-grained status: `pass`, `info`, `warn`, or `fail`. |
-| `errors` | list | Validator errors (malformed domains). Each has `code` and `message` and is always fatal. Present only when the domain fails to build; when non-empty, `diagnostics` is empty. |
+| `errors` | list | Fatal errors. Each has `code` and `message`. Holds validator errors when the domain is malformed, or one IR-build error (`element` `to_ir`, `level` `error`, the exception class name as `code`) when the domain is valid but its IR cannot be built. Empty when neither happens; when non-empty, `diagnostics` is empty. |
 | `counts` | object | `{errors, warnings, infos}` tallies. |
 
 On a usage/environment error (`status: "error"`, exit 2) `data` carries a single
