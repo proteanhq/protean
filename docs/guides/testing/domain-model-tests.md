@@ -140,9 +140,9 @@ by passing in the aggregates and checking the outcome.
 --8<-- "guides/testing/domain-model-tests/001.py:domain_service"
 ```
 
-The service confirms the order and leaves the inventory as it was. Reserving
-the stock happens later, through the `OrderConfirmed` event, so test that
-reaction separately.
+The service confirms the order and leaves the inventory as it was. The
+example does not reserve stock. If your domain reserves it in a later step,
+test that step on its own.
 
 ### Domain Service Invariants
 
