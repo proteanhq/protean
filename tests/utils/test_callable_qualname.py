@@ -2,7 +2,11 @@
 
 import functools
 
+import pytest
+
 from protean.utils import _callable_qualname
+
+pytestmark = pytest.mark.no_test_domain
 
 
 def stamp(aggregate):

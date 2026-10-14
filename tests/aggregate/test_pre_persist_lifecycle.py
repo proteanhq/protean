@@ -791,6 +791,31 @@ class TestPostInvariantFailuresNameTheHook:
 
         assert (ledger.updated_by, ledger.reviewer) == ("carol", "dave")
 
+    def test_a_raising_enricher_mid_atomic_change_is_undone(self, test_domain):
+        @test_domain.aggregate_enricher
+        def audit(aggregate):
+            if not isinstance(aggregate, Ledger):
+                return
+            aggregate.updated_by = "carol"
+            aggregate.raise_(LedgerAudited(ledger_id=aggregate.id))
+            raise RuntimeError("audit sink down")
+
+        repo = test_domain.repository_for(Ledger)
+        ledger = Ledger(reviewer="bob")
+        repo._dao.save(ledger, apply_hooks=False)
+        ledger = repo.get(ledger.id)
+
+        # Left in place, updated_by == reviewer would fail the block's exit
+        # check and hide the enricher's own exception.
+        with pytest.raises(RuntimeError, match="audit sink down"):
+            with atomic_change(ledger):
+                ledger.reviewer = "carol"
+                repo.add(ledger)
+
+        assert ledger.updated_by is None
+        assert ledger._events == []
+        assert repo.get(ledger.id).reviewer == "bob"
+
     def test_an_enricher_failure_through_dao_update(self, test_domain):
         @test_domain.aggregate_enricher
         def stamp_audit(aggregate):

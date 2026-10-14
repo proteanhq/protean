@@ -1005,9 +1005,9 @@ class _pre_persist_change(atomic_change):
     When the hook raises, the exit checks are skipped, so a check on its
     half-finished writes cannot hide the hook's own exception.
 
-    Inside a caller's own ``atomic_change`` block, ``_pre_persist_hook`` does
-    not open this block, and the caller's block checks the final state on its
-    exit.
+    With ``defer_checks``, used inside a caller's own ``atomic_change`` block,
+    a raising hook is still undone, but the exit checks do not run. The
+    caller's block checks the final state on its exit.
     """
 
     _run_precheck = False
@@ -1018,6 +1018,7 @@ class _pre_persist_change(atomic_change):
         location: str,
         *,
         writes_only: BaseEntity | None = None,
+        defer_checks: bool = False,
     ) -> None:
         """``writes_only`` names the one entity the hook writes to.
 
@@ -1028,6 +1029,7 @@ class _pre_persist_change(atomic_change):
         super().__init__(aggregate)
         self._location = location
         self._writes_only = writes_only
+        self._defer_checks = defer_checks
 
     def _take_snapshots(self) -> list[_EntitySnapshot]:
         if self._writes_only is None:
@@ -1051,6 +1053,10 @@ class _pre_persist_change(atomic_change):
             # A location the hook set on its own error is more specific.
             if isinstance(exc_val, ValidationError) and exc_val.location is None:
                 exc_val.location = self._location
+            return
+        if self._defer_checks:
+            self.aggregate._atomic_snapshots.pop()
+            self.aggregate._disable_invariant_checks = self._checks_were_disabled
             return
         try:
             super().__exit__(None, None, None)

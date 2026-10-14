@@ -78,18 +78,24 @@ def _pre_persist_hook(
     When the object belongs to an aggregate, the writes run in a
     ``_pre_persist_change`` block on the aggregate root. A projection, or an
     entity saved on its own, has no aggregate to check, so its writes run as
-    they are. So do writes made inside a caller's own ``atomic_change`` block:
-    the aggregate may be mid-change there. That block checks the final state
-    on its exit and undoes the in-memory changes if it fails, but a save made
-    inside it has already written its row.
+    they are. Inside a caller's own ``atomic_change`` block the aggregate may
+    be mid-change, so the block only undoes a raising hook's writes and leaves
+    the checks to the caller's block. That block checks the final state on its
+    exit and undoes the in-memory changes if it fails, but a save made inside
+    it has already written its row.
     """
     root = getattr(entity_obj, "_root", None) or entity_obj
-    if not isinstance(root, BaseAggregate) or root._disable_invariant_checks:
+    if not isinstance(root, BaseAggregate):
         yield
         return
 
     writes_only = entity_obj if writes_only_to_self else None
-    with _pre_persist_change(root, location, writes_only=writes_only):
+    with _pre_persist_change(
+        root,
+        location,
+        writes_only=writes_only,
+        defer_checks=root._disable_invariant_checks,
+    ):
         yield
 
 
