@@ -37,6 +37,19 @@ whose blocks, or whose closing, are still running at twice the timeout (code
 that catches the timeout, or a platform without ``SIGALRM``) stops the child;
 the file is reported as stuck and a new child runs the files after it.
 
+A file that leaves a non-daemon thread running after its closing fails at the
+cleanup step, naming the thread, because that thread would keep the child from
+exiting. A thread counts as the file's when the file's code started it, or when
+a thread the file started started it. A file that already failed at an earlier
+step keeps that failure. After the last file, the child's wait for its
+non-daemon threads and its ``atexit`` handlers get twice the timeout, and a
+child still waiting then is ended. A child that exits with a non-zero code, or
+is killed, after reporting every file fails the run. The one exception is a
+child the shutdown limit ended while a thread that a file of that child left
+running past its cleanup step was still running, since that file has already
+failed. It does not apply
+when a thread is still running at the end whose file passed its cleanup step.
+
 :func:`include_expander` builds a source transform that replaces
 ``--8<-- "<spec>"`` lines with the code they include, the way
 ``pymdownx.snippets`` does when it builds the docs. :func:`expand_includes`
@@ -298,21 +311,31 @@ def parse_problems(
 
 # A child exits with this code when a file runs past its hard limit.
 _STUCK_EXIT = 86
+# A child exits with this code when its shutdown runs past the hard limit.
+_SHUTDOWN_EXIT = 87
+# A child exits with this code instead when, at that limit, a thread that a
+# file left running past its cleanup step is still running, and no thread of a
+# file that passed that step is.
+_HELD_EXIT = 88
 
 # The child-interpreter runner. argv[1] is a JSON file holding the files and
 # their blocks, the per-file timeout, the hard limit, and the report path. For
 # each file it builds a fresh namespace, runs the non-fragment blocks in order,
 # initializes every Domain built for the file that registered an element, and
-# then closes any unit of work or domain context the file left open. It records
-# the first failure (the block's starting line, "init" or "cleanup") and the
+# then closes any unit of work or domain context the file left open, and checks
+# that no non-daemon thread the file started is still running. It records the
+# first failure (the block's starting line, "init" or "cleanup") and the
 # starting lines of the blocks it did not run. A file the parent could
 # not prepare carries an "error" and runs nothing.
 #
 # The report is a file of JSON lines, written and flushed as the child goes: a
-# "step" line before each block, the init step and the cleanup step, and a
-# "result" line after each file. If a file is still running at the hard limit,
-# a watchdog thread ends the child, and the parent reads which step was running
-# from the report. Writing to a file keeps start-up logging and the blocks' own
+# "step" line before each block, the init step and the cleanup step, a
+# "lingering" line naming the threads a file left running, a "result" line
+# after each file, and a "late" line after the last file naming any thread
+# still running that no "lingering" line covers. If a file is still running at
+# the hard limit, a watchdog thread ends the child, and the parent reads which
+# step was running from the report. After the last file, another watchdog ends
+# a thread join or an atexit handler that runs past the hard limit. Writing to a file keeps start-up logging and the blocks' own
 # output out of it.
 _RUNNER = """
 import builtins
@@ -480,91 +503,186 @@ def start_watchdog():
     return watchdog
 
 
-for index, item in enumerate(job["files"], start=job["first_index"]):
-    label = item["file"]
-    blocks = [b for b in item["blocks"] if not b["fragment"]]
-    if item.get("error"):
-        emit(
-            {
-                "result": {
-                    "file": label,
-                    "failure": item["error"],
-                    "not_run": [b["line"] for b in blocks],
-                }
-            }
-        )
-        continue
-    # Register the namespace as a real module: code that looks a class's
-    # module up in ``sys.modules`` (dataclasses, typing) must find it.
-    module = types.ModuleType("_dx_snippet_%d_" % index)
-    sys.modules[module.__name__] = module
-    namespace = module.__dict__
-    namespace["__file__"] = item["path"]
-    namespace["__builtins__"] = builtins
-    for name in protean.__all__:
-        namespace[name] = getattr(protean, name)
-    for name in protean.fields.__all__:
-        namespace[name] = getattr(protean.fields, name)
-    built.clear()
-    namespace["domain"] = Domain(name="Snippet%d" % index)
-    failure = None
-    not_run = []
-    step = None
-    watchdog = start_watchdog()
-    if has_alarm:
-        # A block may replace the handler; put it back for every file.
-        signal.signal(signal.SIGALRM, on_alarm)
-        signal.setitimer(signal.ITIMER_REAL, timeout)
+# Tag each thread with the file whose code started it: the running file when
+# the main thread starts it, and the starting thread's file otherwise. A thread
+# that a file's thread starts while a later file runs is then still the first
+# file's thread.
+current_file = None
+start_thread = threading.Thread.start
+
+
+def tagged_start(self):
+    parent = threading.current_thread()
+    if parent is threading.main_thread():
+        self._snippet_file = current_file
+    else:
+        self._snippet_file = getattr(parent, "_snippet_file", None)
+    return start_thread(self)
+
+
+threading.Thread.start = tagged_start
+# Bound once, so a block that replaces threading.enumerate cannot hide a thread.
+enumerate_threads = threading.enumerate
+
+
+def thread_name(thread):
+    # A page's Thread subclass may override ``name``.
     try:
+        return str(thread.name)
+    except Exception:
+        return object.__repr__(thread)
+
+
+def live_threads(label):
+    return [
+        thread
+        for thread in enumerate_threads()
+        if getattr(thread, "_snippet_file", None) == label and not thread.daemon
+    ]
+
+
+reported = set()
+
+
+def end_shutdown():
+    # A reported thread that finished before the shutdown hung did not hold it
+    # up, so only a reported thread still running here earns the held code. A
+    # thread of an unreported file may have started after the "late" check, and
+    # nothing else would report it, so it rules the held code out.
+    files = {
+        getattr(thread, "_snippet_file", None)
+        for thread in enumerate_threads()
+        if not thread.daemon
+    }
+    files.discard(None)
+    held = bool(files) and files <= reported
+    os._exit(job["held_exit"] if held else job["shutdown_exit"])
+
+
+try:
+    for index, item in enumerate(job["files"], start=job["first_index"]):
+        label = item["file"]
+        blocks = [b for b in item["blocks"] if not b["fragment"]]
+        if item.get("error"):
+            emit(
+                {
+                    "result": {
+                        "file": label,
+                        "failure": item["error"],
+                        "not_run": [b["line"] for b in blocks],
+                    }
+                }
+            )
+            continue
+        # Register the namespace as a real module: code that looks a class's
+        # module up in ``sys.modules`` (dataclasses, typing) must find it.
+        module = types.ModuleType("_dx_snippet_%d_" % index)
+        sys.modules[module.__name__] = module
+        namespace = module.__dict__
+        namespace["__file__"] = item["path"]
+        namespace["__builtins__"] = builtins
+        for name in protean.__all__:
+            namespace[name] = getattr(protean, name)
+        for name in protean.fields.__all__:
+            namespace[name] = getattr(protean.fields, name)
+        built.clear()
+        current_file = None
+        namespace["domain"] = Domain(name="Snippet%d" % index)
+        # Set after the prelude's Domain, so a thread that building it starts is
+        # not the page's.
+        current_file = label
+        failure = None
+        not_run = []
+        step = None
+        watchdog = start_watchdog()
+        if has_alarm:
+            # A block may replace the handler; put it back for every file.
+            signal.signal(signal.SIGALRM, on_alarm)
+            signal.setitimer(signal.ITIMER_REAL, timeout)
         try:
             try:
-                for position, block in enumerate(blocks):
-                    step = "line %d" % block["line"]
-                    not_run = [b["line"] for b in blocks[position + 1 :]]
+                try:
+                    for position, block in enumerate(blocks):
+                        step = "line %d" % block["line"]
+                        not_run = [b["line"] for b in blocks[position + 1 :]]
+                        emit({"step": step, "not_run": not_run})
+                        padded = "\\n" * (block["line"] - 1) + block["source"]
+                        before = {key: id(value) for key, value in namespace.items()}
+                        earlier = registered()
+                        # Domain() takes its root folder from the caller's file
+                        # name; a relative name would resolve against the scratch
+                        # folder.
+                        exec(compile(padded, item["path"], "exec"), namespace)
+                        check_no_replacement(earlier)
+                        annotate = namespace.pop("__annotate__", None)
+                        if annotate is not None:
+                            annotate(1)
+                        for key, value in list(namespace.items()):
+                            if before.get(key) != id(value):
+                                evaluate_annotations(value, namespace["__name__"])
+                    not_run = []
+                    step = "init"
                     emit({"step": step, "not_run": not_run})
-                    padded = "\\n" * (block["line"] - 1) + block["source"]
-                    before = {key: id(value) for key, value in namespace.items()}
-                    earlier = registered()
-                    # Domain() takes its root folder from the caller's file
-                    # name; a relative name would resolve against the scratch
-                    # folder.
-                    exec(compile(padded, item["path"], "exec"), namespace)
-                    check_no_replacement(earlier)
-                    annotate = namespace.pop("__annotate__", None)
-                    if annotate is not None:
-                        annotate(1)
-                    for key, value in list(namespace.items()):
-                        if before.get(key) != id(value):
-                            evaluate_annotations(value, namespace["__name__"])
+                    for candidate in list(built):
+                        if candidate.registry.elements:
+                            candidate.init(traverse=False)
+                finally:
+                    if has_alarm:
+                        signal.setitimer(signal.ITIMER_REAL, 0)
+            except SnippetTimeout:
+                failure = "%s: timed out after %s seconds" % (step, timeout)
+            except KeyboardInterrupt:
+                raise
+            except BaseException as exc:
+                failure = "%s: %s: %s" % (step, type(exc).__name__, exc)
+            if failure is None:
                 not_run = []
-                step = "init"
-                emit({"step": step, "not_run": not_run})
-                for candidate in list(built):
-                    if candidate.registry.elements:
-                        candidate.init(traverse=False)
-            finally:
-                if has_alarm:
-                    signal.setitimer(signal.ITIMER_REAL, 0)
-        except SnippetTimeout:
-            failure = "%s: timed out after %s seconds" % (step, timeout)
-        except KeyboardInterrupt:
-            raise
-        except BaseException as exc:
-            failure = "%s: %s: %s" % (step, type(exc).__name__, exc)
-        if failure is None:
-            not_run = []
-        # Closing gets its own hard limit, so a page whose block ran to the
-        # timeout still has the full limit to close what it left open. A close
-        # that ignores the timeout stops there, reported as the cleanup step.
-        watchdog.cancel()
-        watchdog = start_watchdog()
-        emit({"step": "cleanup", "not_run": not_run})
-        problem = close_left_open()
-        if failure is None and problem is not None:
-            failure = "cleanup: " + problem
-    finally:
-        watchdog.cancel()
-    emit({"result": {"file": label, "failure": failure, "not_run": not_run}})
+            # Closing gets its own hard limit, so a page whose block ran to the
+            # timeout still has the full limit to close what it left open. A close
+            # that ignores the timeout stops there, reported as the cleanup step.
+            watchdog.cancel()
+            watchdog = start_watchdog()
+            emit({"step": "cleanup", "not_run": not_run})
+            problem = close_left_open()
+            if failure is None and problem is not None:
+                failure = "cleanup: " + problem
+            # Checked after closing, because a teardown callback may join a
+            # thread the page started.
+            lingering = [thread_name(thread) for thread in live_threads(label)]
+            if lingering:
+                # A live non-daemon thread holds up the child's exit whatever the
+                # page's reported failure is, so the report records it even when
+                # a block failed first.
+                emit({"lingering": lingering})
+                reported.add(label)
+                if failure is None:
+                    failure = "cleanup: " + "; ".join(
+                        "thread %s is still running" % name for name in lingering
+                    )
+        finally:
+            watchdog.cancel()
+        emit({"result": {"file": label, "failure": failure, "not_run": not_run}})
+
+    # A thread a file's thread started after that file's cleanup check, still
+    # running now, holds up the exit as well.
+    late = [
+        "%s: thread %s" % (thread._snippet_file, thread_name(thread))
+        for thread in enumerate_threads()
+        if getattr(thread, "_snippet_file", None) not in (None, *reported)
+        and not thread.daemon
+    ]
+    if late:
+        emit({"late": late})
+finally:
+    report.close()
+    # Interpreter shutdown joins every non-daemon thread and then runs the
+    # atexit handlers. A daemon thread keeps running during both, so this
+    # timer ends a thread join or an atexit handler that never finishes. It
+    # starts here even when the loop above raised, because a thread a page
+    # left running would otherwise hold the child until the outer timeout.
+    shutdown_watchdog = threading.Timer(job["hard_timeout"], end_shutdown)
+    shutdown_watchdog.daemon = True
+    shutdown_watchdog.start()
 """
 
 
@@ -587,20 +705,28 @@ def _job_entry(
     }
 
 
-def _read_report(path: Path) -> tuple[list[dict], dict | None]:
-    """Return the finished results in a report, and the last step after them."""
+def _read_report(path: Path) -> tuple[list[dict], dict | None, bool, list[str]]:
+    """Return the finished results in a report, the last step after them,
+    whether a file left a thread running past its cleanup step, and the
+    threads still running after the last file whose file left none there."""
     results: list[dict] = []
     step = None
+    lingering = False
+    late: list[str] = []
     if not path.is_file():
-        return results, step
+        return results, step, lingering, late
     for line in path.read_text(encoding="utf-8").splitlines():
         record = json.loads(line)
         if "result" in record:
             results.append(record["result"])
             step = None
+        elif "lingering" in record:
+            lingering = True
+        elif "late" in record:
+            late = record["late"]
         else:
             step = record
-    return results, step
+    return results, step, lingering, late
 
 
 def run_snippets(
@@ -619,7 +745,17 @@ def run_snippets(
 
     A file still running at twice ``timeout``, or one that crashes the child,
     fails with the step that was running, and a new child runs the files after
-    it.
+    it. A file that leaves a non-daemon thread running fails at the cleanup
+    step, unless it already failed at an earlier step. The child's wait for
+    its non-daemon threads and its ``atexit`` handlers is ended at twice
+    ``timeout``.
+
+    Raises :class:`AssertionError` when a child stops outside a file. Also
+    raises it when the last child exits with a non-zero code, or is killed,
+    after reporting every file. The one exception is a child the shutdown
+    watchdog ended while a thread that a file of that child left running past
+    its cleanup step was still running, and with no thread still running whose
+    file passed that step.
     """
     work = tmp_path / "snippet-run"
     work.mkdir()
@@ -636,11 +772,16 @@ def run_snippets(
             "timeout": timeout,
             "hard_timeout": hard_timeout,
             "stuck_exit": _STUCK_EXIT,
+            "shutdown_exit": _SHUTDOWN_EXIT,
+            "held_exit": _HELD_EXIT,
             "report": str(report_path),
             "first_index": len(results),
             "files": pending,
         }
         job_path.write_text(json.dumps(job), encoding="utf-8")
+        # Each file may use the hard limit for its blocks and again for its
+        # cleanup, and the shutdown after the last file gets one more.
+        budget = hard_timeout * (2 * len(pending) + 1) + 60
         try:
             result = subprocess.run(
                 [sys.executable, "-c", _RUNNER, str(job_path)],
@@ -649,19 +790,37 @@ def run_snippets(
                 cwd=work,
                 stdin=subprocess.DEVNULL,
                 check=False,
-                timeout=hard_timeout * len(pending) + 60,
+                timeout=budget,
             )
-            stuck = result.returncode == _STUCK_EXIT
-            stopped = f"exit {result.returncode}"
+            returncode: int | None = result.returncode
+            clean = returncode == 0
+            stuck = returncode == _STUCK_EXIT
+            stopped = f"exit {returncode}"
             stderr = result.stderr
         except subprocess.TimeoutExpired as exc:
+            returncode = None
+            clean = False
             stuck = True
             stopped = "killed"
             raw = exc.stderr or ""
             stderr = raw.decode(errors="replace") if isinstance(raw, bytes) else raw
-        done, step = _read_report(report_path)
+        done, step, lingering, late = _read_report(report_path)
         results.extend(done)
         if len(results) == len(entries):
+            if returncode in (_SHUTDOWN_EXIT, _HELD_EXIT):
+                stopped += (
+                    f"; its shutdown was still running at {hard_timeout} "
+                    "seconds and the runner ended it"
+                )
+            if late:
+                stopped += "; still running: " + "; ".join(late)
+            # A thread a failed page left running holds up the shutdown until
+            # the shutdown watchdog ends it. That failure already covers it.
+            expected = lingering and not late and returncode == _HELD_EXIT
+            assert clean or expected, (
+                f"the snippet runner stopped after its last file ({stopped}):\n"
+                f"{stderr[-4000:]}"
+            )
             break
         assert step is not None, (
             f"the snippet runner stopped outside a file ({stopped}):\n{stderr[-4000:]}"
@@ -672,6 +831,8 @@ def run_snippets(
                 f"past the {timeout}-second timeout; the runner stopped it"
             )
         else:
+            # A thread an earlier page left running can also end the child.
+            # The step names the page that was running when it did.
             failure = (
                 f"{step['step']}: the runner crashed ({stopped}): "
                 f"{stderr[-2000:].strip()}"

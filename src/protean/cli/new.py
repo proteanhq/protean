@@ -269,7 +269,11 @@ def _run_from_model(
     # pytest run is covered too) and put it back afterwards.
     previous_protean_domain = os.environ.pop("PROTEAN_DOMAIN", None)
     try:
-        result = run_verify(f"{domain_path}:{domain_var}", project_directory)
+        # A freshly built project is verified under the test environment,
+        # whatever ``PROTEAN_ENV`` the caller's shell exports.
+        result = run_verify(
+            f"{domain_path}:{domain_var}", project_directory, env="test"
+        )
     finally:
         if previous_protean_domain is not None:
             os.environ["PROTEAN_DOMAIN"] = previous_protean_domain
