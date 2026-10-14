@@ -99,9 +99,13 @@ _PYTEST_NO_TESTS = 5
 # The counts are read from the final summary line only: earlier output (a
 # failure message such as "port 15432 failed", a ``-ra`` skip reason) can carry
 # the same "<N> passed" / "<N> failed" text. The line may sit inside a ``=====``
-# banner and end with an "(h:mm:ss)" suffix on long runs.
+# banner and end with an "(h:mm:ss)" or "(1 day, h:mm:ss)" suffix on long runs.
+# The body must follow pytest's stats grammar ("<N> <word>, ..." or "no tests
+# ran"), so a later line such as "Finished in 3s" printed by a plugin is not
+# taken for the summary.
 _SUMMARY_RE = re.compile(
-    r"^=*\s*(?P<body>.+?) in \d+(?:\.\d+)?s(?:\s*\([\d:]+\))?\s*=*$"
+    r"^=*\s*(?P<body>\d+ [a-z]+(?:, \d+ [a-z]+)*|no tests ran)"
+    r" in \d+(?:\.\d+)?s(?:\s*\([^)]*\))?\s*=*$"
 )
 _PASSED_RE = re.compile(r"\b(\d+) passed")
 _FAILED_RE = re.compile(r"\b(\d+) failed")
@@ -447,8 +451,11 @@ def _run_tests(path: str) -> tuple[dict[str, Any], str]:
         existing = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = src + os.pathsep + existing if existing else src
 
+    # ``--verbosity`` sets the level outright, where ``-q`` only lowers it: a
+    # project with ``addopts = -q`` plus a forced ``-q`` runs at -2, and pytest
+    # prints no summary line at that level.
     completed = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q"],
+        [sys.executable, "-m", "pytest", "--verbosity=-1"],
         cwd=path,
         capture_output=True,
         text=True,

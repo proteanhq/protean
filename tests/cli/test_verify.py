@@ -535,10 +535,49 @@ class TestVerifyTestCounts:
         assert stage["status"] == "fail"
         assert stage["returncode"] == 1
 
+    def test_project_quiet_addopts_still_prints_the_summary(self, tmp_path):
+        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST + _FAILING_TEST)
+        (tests_dir / "pytest.ini").write_text("[pytest]\naddopts = -q\n")
+
+        exit_code, stage = self._tests_stage(tests_dir)
+
+        assert exit_code == 5
+        assert stage["passed"] == 1
+        assert stage["failed"] == 1
+        assert stage["returncode"] == 1
+
+    def test_summary_shaped_stderr_line_is_ignored(self, tmp_path):
+        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST)
+        (tests_dir / "conftest.py").write_text(
+            "import sys\n\n"
+            "def pytest_unconfigure(config):\n"
+            "    sys.stderr.write('9 passed in 1s\\n')\n"
+        )
+
+        exit_code, stage = self._tests_stage(tests_dir)
+
+        assert exit_code == 0
+        assert stage["passed"] == 1
+        assert stage["failed"] == 0
+
+    def test_later_stdout_line_ending_in_seconds_is_not_the_summary(self, tmp_path):
+        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST)
+        (tests_dir / "conftest.py").write_text(
+            "def pytest_unconfigure(config):\n    print('Finished in 3s')\n"
+        )
+
+        exit_code, stage = self._tests_stage(tests_dir)
+
+        assert exit_code == 0
+        assert stage["passed"] == 1
+        assert stage["failed"] == 0
+
     @pytest.mark.parametrize(
         ("stdout", "expected"),
         [
             ("===== 2 failed, 3 passed in 0.12s =====\n", (3, 2)),
+            ("1 passed in 0.07s\nFinished in 3s\n", (1, 0)),
+            ("3 passed in 86401.00s (1 day, 0:00:01)\n", (3, 0)),
             ("1 failed, 1 passed in 0.01s\n", (1, 1)),
             ("==== 4 passed in 62.00s (0:01:02) ====\n", (4, 0)),
             ("no tests ran in 0.01s\n", (0, 0)),
