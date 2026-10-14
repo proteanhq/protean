@@ -20,6 +20,9 @@ protean verify --domain=my_app.domain --path=.
 
 # Machine-readable envelope (CI-friendly)
 protean verify --json
+
+# Run all three stages under the memory environment
+protean verify --env memory
 ```
 
 ## Options
@@ -28,6 +31,7 @@ protean verify --json
 |--------|-------|---------|-------------|
 | `--domain` | `-d` | `.` | Path to the domain module (e.g. `my_app.domain`). Uses the same [domain discovery](project/discovery.md) as other commands. |
 | `--path` | | `.` | Project directory to run the tests in. `pytest` is invoked here, so it is where your project's test discovery is rooted. |
+| `--env` | | `test` | The environment (`PROTEAN_ENV`) that init, check and tests all run under. Must not be blank. |
 | `--json` | | `false` | Emit a JSON envelope on stdout instead of the human table. |
 
 `verify` runs `pytest` in a child process using the same interpreter that runs
@@ -35,6 +39,15 @@ Protean (`sys.executable -m pytest`). If the project directory has a `src/`
 folder (the src-layout a scaffolded project uses), that folder is put on the
 child's `PYTHONPATH` so the project's own tests can import the package even
 before it is installed.
+
+All three stages run under the environment `--env` names. `verify` sets
+`PROTEAN_ENV` to that value before it imports the domain, so init and check load
+the matching [config overlay](../configuration/index.md#multiple-environments), and it
+passes the same value to the `pytest` child. A `PROTEAN_ENV` exported in your
+shell is ignored, and `PROTEAN_DEBUG` and `VIRTUAL_ENV` are removed from the
+child's environment. The child's `PROTEAN_ENV` also takes precedence over a
+`--protean-env` option in the project's pytest `addopts` or in
+`PYTEST_ADDOPTS`, so `--env` is the one place that picks the environment.
 
 ## Exit codes
 
@@ -45,7 +58,7 @@ ordered by precedence (init before check before tests):
 | Exit code | Meaning |
 |-----------|---------|
 | `0` | All green: init, check, and tests all pass. |
-| `2` | Usage error: the domain was not found, or `--path` is not a directory. |
+| `2` | Usage error: the domain was not found, `--path` is not a directory, or `--env` is blank. |
 | `3` | The domain was found but failed to initialize. |
 | `4` | Check failed: a malformed `[lint]` config, or findings at or above the `[lint].level` floor. |
 | `5` | Tests failed. |
@@ -104,7 +117,7 @@ check-stage diagnostics at the top level.
 | `data.stages.init.status` | `pass` or `fail` once init runs; `skipped` (with no other sub-keys) if `verify` aborts before init, for example when `--path` is not a directory. |
 | `data.stages.check` | The `status` plus the `counts`, `errors`, and `diagnostics` from `Domain.check()` (see the [check envelope](check.md#result-envelope)). A malformed `[lint]` config is reported here as a single synthetic error. |
 | `data.stages.tests` | The `status`, the pytest `returncode`, and best-effort `passed`/`failed` counts parsed from pytest's summary line. The returncode, not the parsed counts, decides pass/fail. |
-| `data.error` | Present only for a usage error caught before any stage ran, for example when `--path` is not a directory. It carries the same human-facing message that goes to stderr in the non-`--json` case. |
+| `data.error` | Present only for a usage error caught before any stage ran, for example when `--path` is not a directory or `--env` is blank. It carries the same human-facing message that goes to stderr in the non-`--json` case. |
 | `diagnostics` | The check-stage diagnostics, surfaced at the top level (empty when check never ran). |
 
 When `verify` aborts early (the domain is not found, exit 2; `--path` is not a
