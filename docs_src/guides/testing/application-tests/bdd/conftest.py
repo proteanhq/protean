@@ -9,3 +9,12 @@ def domain_initialized():
 
 
 # --8<-- [end:shared_steps]
+
+
+# --8<-- [start:markers]
+def pytest_configure(config):
+    for tag in ("ordering", "smoke", "happy_path", "validation"):
+        config.addinivalue_line("markers", f"{tag}: Gherkin tag")
+
+
+# --8<-- [end:markers]

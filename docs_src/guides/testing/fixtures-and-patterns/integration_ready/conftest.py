@@ -39,22 +39,3 @@ def _ctx(app_fixture):
 
 
 # --8<-- [end:conftest]
-
-
-from myapp.models import User
-
-
-def test_the_provider_follows_test_db():
-    provider = domain.providers["default"].conn_info["provider"]
-    assert provider == os.environ.get("TEST_DB", "memory")
-
-
-def test_a_user_round_trips():
-    repo = domain.repository_for(User)
-    user = User(name="Alice")
-    repo.add(user)
-    assert repo.get(user.id).name == "Alice"
-
-
-def test_data_is_reset_between_tests():
-    assert domain.repository_for(User).query.all().total == 0

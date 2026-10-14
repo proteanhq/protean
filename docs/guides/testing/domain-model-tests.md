@@ -23,12 +23,12 @@ model should have a corresponding test.
 Domain model tests use Protean's `DomainFixture` to initialize the domain
 with in-memory adapters (the default) and manage per-test cleanup. Set
 processing to `"sync"` so that events and commands are handled immediately
-within tests. In your project these fixtures go in `tests/conftest.py`, and
-`domain` is your application's domain (`from myapp import domain`):
+within tests. In your project these fixtures go in `tests/conftest.py`, and they import
+`domain` from your application's package (`bookstore` here):
 
 ```python
 # fragment
---8<-- "guides/testing/domain-model-tests/001.py:conftest"
+--8<-- "guides/testing/domain-model-tests/conftest.py:conftest"
 ```
 
 The tests on this page exercise this domain:
@@ -37,7 +37,7 @@ The tests on this page exercise this domain:
 
     ```python
     # fragment
-    --8<-- "guides/testing/domain-model-tests/001.py:domain"
+    --8<-- "guides/testing/domain-model-tests/bookstore/__init__.py:domain"
     ```
 
 `DomainFixture.setup()` calls `domain.init()` to discover and wire all

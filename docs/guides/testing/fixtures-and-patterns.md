@@ -27,7 +27,7 @@ Import it from `protean.integrations.pytest`:
 
 ```python
 # fragment
---8<-- "guides/testing/fixtures-and-patterns/001.py:import"
+--8<-- "guides/testing/fixtures-and-patterns/minimal/conftest.py:import"
 ```
 
 `DomainFixture` provides three methods:
@@ -52,7 +52,7 @@ looks like this. Here `domain` is your application's domain
 
 ```python
 # fragment
---8<-- "guides/testing/fixtures-and-patterns/001.py:conftest"
+--8<-- "guides/testing/fixtures-and-patterns/minimal/conftest.py:conftest"
 ```
 
 The examples in this section use the `User` aggregate from that domain:
@@ -91,7 +91,7 @@ For projects that test against both in-memory and real infrastructure,
 
 ```python
 # fragment
---8<-- "guides/testing/fixtures-and-patterns/002.py:conftest"
+--8<-- "guides/testing/fixtures-and-patterns/integration_ready/conftest.py:conftest"
 ```
 
 `DomainFixture` handles everything: `setup()` calls `domain.init()` and
@@ -112,6 +112,14 @@ TEST_DB=postgresql DATABASE_URL=postgresql://localhost/myapp_test pytest tests/
 TEST_DB=sqlite pytest tests/
 ```
 
+A test that reads the provider back confirms the switch took effect, so a typo
+in `TEST_DB` fails the run instead of quietly falling back to memory:
+
+```python
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/integration_ready/test_provider.py:provider_check"
+```
+
 ## Common Fixture Patterns
 
 ### Per-Test Data Cleanup
@@ -124,7 +132,15 @@ If you are not using `DomainFixture` and need manual cleanup:
 
 ```python
 # fragment
---8<-- "guides/testing/fixtures-and-patterns/003.py:manual_cleanup"
+--8<-- "guides/testing/fixtures-and-patterns/manual_cleanup/conftest.py:manual_cleanup"
+```
+
+Two tests that each expect an empty store show the cleanup works. Whichever
+runs second fails if data leaks between tests:
+
+```python
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/manual_cleanup/test_cleanup.py:tests"
 ```
 
 ### Repository Helper
@@ -133,14 +149,14 @@ Provide quick access to repositories for assertions:
 
 ```python
 # fragment
---8<-- "guides/testing/fixtures-and-patterns/001.py:repository_fixtures"
+--8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:repository_fixtures"
 ```
 
 Use them in tests:
 
 ```python
 # fragment
---8<-- "guides/testing/fixtures-and-patterns/001.py:repository_usage"
+--8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:repository_usage"
 ```
 
 ### Shared BDD Steps
@@ -224,7 +240,7 @@ If your domain uses module-level counters or caches, reset them between tests:
 
 ```python
 # fragment
---8<-- "guides/testing/fixtures-and-patterns/001.py:global_state"
+--8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:global_state"
 ```
 
 ## Test Organization Patterns
@@ -411,14 +427,14 @@ into every test that runs next:
 
 ```python
 # fragment
---8<-- "guides/testing/fixtures-and-patterns/001.py:frozen_clock"
+--8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:frozen_clock"
 ```
 
 A deadline test then states its intent directly, with nothing to race:
 
 ```python
 # fragment
---8<-- "guides/testing/fixtures-and-patterns/001.py:deadline"
+--8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:deadline"
 ```
 
 The default is `SystemClock`, which returns `datetime.now(UTC)`, so a domain you

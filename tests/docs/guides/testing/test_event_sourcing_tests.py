@@ -11,4 +11,4 @@ def test_the_event_sourcing_tests_pass():
     result = run_example_tests("guides/testing/event-sourcing-tests/001.py")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert outcome_counts(result) == {"passed": 13}
+    assert outcome_counts(result) == {"passed": 16}

@@ -1,11 +1,15 @@
 """Tests for the helpers the docs_src tests load and run examples with."""
 
+import re
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 import pytest
 
 from protean import Domain
+from tests.docs import support
 from tests.docs.support import (
     REPO_ROOT,
     load_example,
@@ -130,8 +134,12 @@ def test_a_package_parent_is_importable_in_the_child(tmp_path):
 
 
 def test_the_repo_pytest_config_does_not_apply(tmp_path):
-    # The repo config turns on --doctest-modules, which would collect and fail
-    # this docstring. The empty config leaves only the one test.
+    # A config above the example turns on --doctest-modules, as the repo's
+    # pyproject.toml does for a docs_src example. Without the empty -c config
+    # pytest would find it, collect this docstring and fail it.
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.pytest.ini_options]\naddopts = "--doctest-modules"\n'
+    )
     path = _example(
         tmp_path,
         '"""\n>>> 1 + 1\n3\n"""\n\n\ndef test_one():\n    pass\n',
@@ -148,16 +156,65 @@ def test_files_the_example_writes_land_outside_the_repo(tmp_path):
         tmp_path,
         "from pathlib import Path\n\n\ndef test_write():\n"
         "    Path('docs_example_output.txt').write_text('x')\n"
-        "    print(Path.cwd())\n",
+        "    print('cwd=' + str(Path.cwd()))\n",
     )
 
     result = run_example_tests(path, root=tmp_path, args=["-s"])
 
     assert result.returncode == 0, result.stdout + result.stderr
+    cwd = Path(re.search(r"cwd=(\S+)", result.stdout).group(1))
+    assert cwd.is_relative_to(Path(tempfile.gettempdir()).resolve())
+    assert not cwd.exists()
     assert not (REPO_ROOT / "docs_example_output.txt").exists()
     assert not (tmp_path / "docs_example_output.txt").exists()
     assert not (tmp_path / "__pycache__").exists()
     assert not (tmp_path / ".pytest_cache").exists()
+
+
+def test_pytest_settings_in_the_parent_env_do_not_reach_the_child(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-W error")
+    monkeypatch.setenv("PROTEAN_ENV", "docs-parent")
+    path = _example(
+        tmp_path,
+        "import os\nimport warnings\n\n\ndef test_env():\n"
+        "    warnings.warn('harmless')\n"
+        "    assert 'PYTEST_ADDOPTS' not in os.environ\n"
+        "    assert os.environ.get('PROTEAN_ENV') != 'docs-parent'\n",
+    )
+
+    result = run_example_tests(path, root=tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert outcome_counts(result) == {"passed": 1}
+
+
+def test_env_can_pass_a_pytest_setting_on(tmp_path):
+    path = _example(
+        tmp_path,
+        "import os\n\n\ndef test_env():\n"
+        "    assert os.environ['PROTEAN_ENV'] == 'chosen'\n",
+    )
+
+    result = run_example_tests(path, root=tmp_path, env={"PROTEAN_ENV": "chosen"})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_run_that_times_out_reports_its_output(tmp_path, monkeypatch):
+    monkeypatch.setattr(support, "EXAMPLE_TESTS_TIMEOUT", 2)
+    path = _example(
+        tmp_path,
+        "import time\n\n\ndef test_slow():\n"
+        "    print('started slow test', flush=True)\n"
+        "    time.sleep(30)\n",
+    )
+
+    with pytest.raises(TimeoutError, match="ran longer than 2s") as excinfo:
+        run_example_tests(path, root=tmp_path, args=["-s"])
+
+    assert "started slow test" in str(excinfo.value)
 
 
 def test_a_missing_example_to_run_raises(tmp_path):

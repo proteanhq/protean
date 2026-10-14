@@ -1,3 +1,5 @@
+import os
+
 # --8<-- [start:steps]
 # tests/integration/test_order_flow.py
 from myapp import domain
@@ -61,9 +63,6 @@ def check_projection(book_id, sold, title):
     assert catalog.copies_sold == sold
 
 
-# --8<-- [end:steps]
-
-
 @then(parsers.parse('the order status should be "{status}"'))
 def check_status(order, status):
     assert domain.repository_for(Order).get(order.id).status == status
@@ -79,3 +78,11 @@ def check_stock(book_id, title, expected):
 def check_history(customer, name, count):
     customer = domain.repository_for(Customer).get(customer.id)
     assert len(customer.order_history) == count
+
+
+# --8<-- [end:steps]
+
+
+def test_the_provider_follows_test_db():
+    provider = domain.providers["default"].conn_info["provider"]
+    assert provider == os.environ.get("TEST_DB", "memory")

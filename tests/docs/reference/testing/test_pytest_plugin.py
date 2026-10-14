@@ -13,10 +13,13 @@ pytestmark = pytest.mark.no_test_domain
 
 
 def test_the_opt_in_examples_pass():
-    result = run_example_tests("reference/testing/pytest-plugin/001.py")
+    result = run_example_tests(
+        "reference/testing/pytest-plugin/opt_in/test_opt_in.py",
+        args=["-W", "error::pytest.PytestUnknownMarkWarning"],
+    )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert outcome_counts(result) == {"passed": 2}
+    assert outcome_counts(result) == {"passed": 4}
 
 
 @pytest.fixture
@@ -44,3 +47,29 @@ def test_the_plugin_registers_the_documented_markers(bare_root):
     assert result.returncode == 0, result.stdout + result.stderr
     assert {"domain", "application", "integration", "slow", "bdd"} <= registered
     assert "no_test_domain" not in registered  # only the conformance opt-in adds it
+
+
+@pytest.mark.parametrize(
+    "args, env, expected",
+    [
+        pytest.param([], {}, "test", id="default"),
+        pytest.param(["--protean-env=staging"], {}, "staging", id="option"),
+        pytest.param(
+            ["--protean-env=staging"],
+            {"PROTEAN_ENV": "production"},
+            "production",
+            id="already-set",
+        ),
+    ],
+)
+def test_the_protean_env_option_sets_protean_env(tmp_path, args, env, expected):
+    (tmp_path / "test_env.py").write_text(
+        "import os\n\n\n"
+        "def test_env():\n"
+        f"    assert os.environ['PROTEAN_ENV'] == {expected!r}\n"
+    )
+
+    result = run_example_tests("test_env.py", args=args, env=env, root=tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert outcome_counts(result) == {"passed": 1}

@@ -114,7 +114,10 @@ provide the step definitions:
 
 Use `target_fixture` to pass data between steps. The return value of the step
 becomes a pytest fixture available to all subsequent steps in the same
-scenario:
+scenario. The `Given` steps that return the `book` and `customer` fixtures are
+shared steps, so they live in `tests/bdd/ordering/conftest.py`, shown under
+[Domain-Specific Shared Steps](#domain-specific-shared-steps). The test module
+holds the rest:
 
 ```python
 # fragment
@@ -240,7 +243,9 @@ the use case, and step definitions that invoke the service:
 ## Using Tags for Selective Execution
 
 Gherkin tags are converted to pytest markers. Use them to organize and filter
-scenarios:
+scenarios. The ordering feature above carries `@ordering` and `@smoke` on the
+feature, `@happy_path` on the first scenario and `@validation` on the stock
+check:
 
 ```gherkin
 @ordering @smoke
@@ -254,6 +259,14 @@ Feature: Place Order
     @validation
     Scenario: Cannot order more than available stock
         ...
+```
+
+Register the tags as markers in `tests/bdd/conftest.py`, so pytest does not
+warn about unknown marks and `--strict-markers` accepts them:
+
+```python
+# fragment
+--8<-- "guides/testing/application-tests/bdd/conftest.py:markers"
 ```
 
 Run selectively:

@@ -12,9 +12,10 @@ Like [application tests](./application-tests.md), we recommend using
 here. The only difference is the domain is configured with real infrastructure
 instead of in-memory adapters.
 
-Integration tests reuse the same feature files and step definitions as
-[application tests](./application-tests.md), but swap in real adapters
-(PostgreSQL, Redis, etc.) via configuration overrides. Use pytest markers to
+Integration tests are written the same way as
+[application tests](./application-tests.md), with feature files and step
+definitions, but they swap in real adapters (PostgreSQL, Redis, etc.) via
+configuration overrides. Use pytest markers to
 keep them separate from your fast in-memory suite.
 
 ## Configuring for Real Infrastructure
@@ -86,12 +87,19 @@ modes to `"async"`, so these handlers run only when the engine runs:
 
     ```python
     # fragment
-    --8<-- "guides/testing/integration-tests/001.py:domain"
+    --8<-- "guides/testing/integration-tests/fulfillment/__init__.py:domain"
     ```
 
     ```python
     # fragment
-    --8<-- "guides/testing/integration-tests/001.py:conftest"
+    --8<-- "guides/testing/integration-tests/conftest.py:conftest"
+    ```
+
+    The tests read an order back with a small helper in the test module:
+
+    ```python
+    # fragment
+    --8<-- "guides/testing/integration-tests/001.py:get_order"
     ```
 
 ```python
@@ -181,37 +189,24 @@ verifying that every layer works together through real infrastructure.
 ### Persistence Round-Trip
 
 ```gherkin
-# tests/integration/features/persistence.feature
-@integration
-Feature: Persistence
-    Verify that aggregates survive a round-trip through
-    the real database.
-
-    Background:
-        Given the domain is initialized
-
-    Scenario: Book survives persistence round-trip
-        Given a book "The Great Gatsby" by "F. Scott Fitzgerald" at 12.99
-        When the book is persisted and reloaded
-        Then the reloaded book should have title "The Great Gatsby"
-        And the reloaded book should have price 12.99
-
-    Scenario: Updated aggregate is persisted correctly
-        Given a book "Dune" by "Frank Herbert" at 15.99
-        And the book is persisted
-        When the book price is updated to 19.99
-        And the book is persisted and reloaded
-        Then the reloaded book should have price 19.99
+--8<-- "guides/testing/integration-tests/integration/features/persistence.feature"
 ```
 
 ## Step Definitions for Integration Tests
 
-Step definitions are the same as application tests. They import your domain and
-use `domain.process()` and `domain.repository_for()`:
+Step definitions are written the same way as in application tests. They import
+your domain and use `domain.process()` and `domain.repository_for()`:
 
 ```python
 # fragment
 --8<-- "guides/testing/integration-tests/integration/test_order_flow.py:steps"
+```
+
+The persistence feature's steps go in `tests/integration/test_persistence.py`:
+
+```python
+# fragment
+--8<-- "guides/testing/integration-tests/integration/test_persistence.py:steps"
 ```
 
 ## Separating Integration Tests
@@ -295,8 +290,9 @@ TEST_DB=postgresql DATABASE_URL=postgresql://localhost/myapp_test pytest tests/i
 TEST_DB=sqlite pytest tests/integration/
 ```
 
-This lets the same feature files and step definitions run against any adapter.
-The domain logic is identical, only the infrastructure changes.
+The integration feature files and step definitions then run unchanged against
+whichever adapter `TEST_DB` names. The domain logic is identical, only the
+infrastructure changes.
 
 ## Per-Test Data Cleanup
 

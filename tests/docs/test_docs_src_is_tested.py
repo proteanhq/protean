@@ -77,8 +77,15 @@ def _string_arg(node: ast.Call, keyword: str) -> str | None:
 
 
 def _pytest_run_files(path: str, root: Path, packages: dict[str, Path]) -> set[str]:
-    """Return the files a pytest run of ``path`` loads, relative to ``root``."""
-    example = root / path
+    """Return the files a pytest run of ``path`` loads, relative to ``root``.
+
+    Raises ``ValueError`` when ``path`` points outside ``root``, and
+    ``SyntaxError`` naming the file when one of those files does not parse.
+    """
+    root = root.resolve()
+    example = (root / path).resolve()
+    if not example.is_relative_to(root):
+        raise ValueError(f"run_example_tests({path!r}) points outside {root}")
     files = [example]
     folder = example.parent
     while folder.is_relative_to(root):
@@ -92,7 +99,10 @@ def _pytest_run_files(path: str, root: Path, packages: dict[str, Path]) -> set[s
     loaded = {file.relative_to(root).as_posix() for file in files}
     for file in files:
         if file.is_file():
-            tree = ast.parse(file.read_text(encoding="utf-8"))
+            try:
+                tree = ast.parse(file.read_text(encoding="utf-8"), filename=str(file))
+            except SyntaxError as exc:
+                raise SyntaxError(f"{file} does not parse: {exc}") from exc
             loaded |= imported_package_files(tree, root, packages)
     return loaded
 
@@ -104,9 +114,10 @@ def loaded_examples(
 
     ``test_files`` are read for ``load_example`` and ``run_example_tests``
     calls, and a ``run_example_tests`` call also loads the conftests and
-    package modules pytest would load with it; ``chapter_loaders`` maps more test files to the folder their
-    ``_load_chapter`` calls read. Both kinds are read for imports of a package
-    under ``root``, which load the package modules they name. A call that
+    package modules pytest would load with it; ``chapter_loaders`` maps more
+    test files to the folder their ``_load_chapter`` calls read. Both kinds
+    are read for imports of a package under ``root``, which load the package
+    modules they name. A call that
     passes its own ``root=`` loads from somewhere else, so it does not count.
     """
     packages = package_dirs(root)
@@ -302,6 +313,32 @@ class TestCoverageGuard:
             "tut/shop/__init__.py",
             "tut/shop/models.py",
         }
+
+    def test_a_run_example_tests_path_with_dot_dot_is_normalised(self, layout):
+        root, tests = layout
+        _write(root / "conftest.py", "x = 1\n")
+        _write(tests / "test_a.py", 'run_example_tests("tut/../guides/b.py")\n')
+
+        assert loaded_examples([tests / "test_a.py"], {}, root) == {
+            "conftest.py",
+            "guides/b.py",
+        }
+
+    @pytest.mark.parametrize("path", ["../outside/test_y.py", "/abs/test_y.py"])
+    def test_a_run_example_tests_path_outside_the_root_is_rejected(self, layout, path):
+        root, tests = layout
+        _write(tests / "test_a.py", f"run_example_tests({path!r})\n")
+
+        with pytest.raises(ValueError, match="points outside"):
+            loaded_examples([tests / "test_a.py"], {}, root)
+
+    def test_a_conftest_that_does_not_parse_is_named(self, layout):
+        root, tests = layout
+        _write(root / "guides/conftest.py", "def broken(:\n")
+        _write(tests / "test_a.py", 'run_example_tests("guides/b.py")\n')
+
+        with pytest.raises(SyntaxError, match="guides/conftest.py does not parse"):
+            loaded_examples([tests / "test_a.py"], {}, root)
 
     def test_a_load_example_call_does_not_load_conftests(self, layout):
         root, tests = layout

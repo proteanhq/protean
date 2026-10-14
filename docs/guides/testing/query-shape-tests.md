@@ -30,7 +30,9 @@ They are SQLAlchemy-specific. When the active provider is the in-memory adapter
 there is no engine to observe, so the context managers are no-ops and assert
 nothing. Mark tests that use them with `@pytest.mark.database` (or a specific
 backend marker) so they run against a real SQL backend where the assertion is
-meaningful.
+meaningful. Protean's pytest plugin does not register `database`, so register
+it in your `conftest.py`, as the fixtures below do, or pytest warns about an
+unknown mark.
 
 The examples on this page run against SQLite, with this domain and these
 fixtures:
@@ -39,12 +41,12 @@ fixtures:
 
     ```python
     # fragment
-    --8<-- "guides/testing/query-shape-tests/001.py:domain"
+    --8<-- "guides/testing/query-shape-tests/ticketing/__init__.py:domain"
     ```
 
     ```python
     # fragment
-    --8<-- "guides/testing/query-shape-tests/001.py:conftest"
+    --8<-- "guides/testing/query-shape-tests/conftest.py:conftest"
     ```
 
 ## `assert_query_count`
@@ -66,8 +68,10 @@ statements, so a failing assertion prints exactly what ran.
 ## `assert_no_subquery_wrap`
 
 Fails if any query wraps a count around a subquery, the
-`SELECT count(*) FROM (SELECT ... ) AS anon_1` shape that a naive
-`.limit(1).all().total` emits instead of a flat `SELECT count(*)`:
+`SELECT count(*) FROM (SELECT ... ) AS anon_1` shape, where a flat
+`SELECT count(*)` would do. The first test guards a repository count against
+that regression. The second issues a wrapped count on purpose and shows the
+assertion catches it:
 
 ```python
 # fragment

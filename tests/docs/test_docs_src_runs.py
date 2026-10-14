@@ -139,6 +139,7 @@ PYTEST_ONLY: frozenset[str] = frozenset(
         "guides/testing/application-tests/bdd/registration/test_activate_user.py",
         "guides/testing/application-tests/bdd/registration/test_register_user.py",
         "guides/testing/integration-tests/integration/test_order_flow.py",
+        "guides/testing/integration-tests/integration/test_persistence.py",
     }
 )
 

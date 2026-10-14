@@ -1,6 +1,5 @@
 import pytest
 from myapp import domain
-from myapp.models import User
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -22,12 +21,3 @@ def clean_data():
 
 
 # --8<-- [end:manual_cleanup]
-
-
-def test_a_user_is_saved():
-    domain.repository_for(User).add(User(name="Alice"))
-    assert domain.repository_for(User).query.all().total == 1
-
-
-def test_the_next_test_starts_empty():
-    assert domain.repository_for(User).query.all().total == 0

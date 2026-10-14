@@ -1,101 +1,8 @@
-# --8<-- [start:domain]
-from protean import Domain
-from protean.fields import Float, HasMany, Integer, String
-
-domain = Domain(name="Shop")
-
-
-@domain.entity(part_of="Order")
-class OrderItem:
-    product_id: String(max_length=50, required=True)
-    quantity: Integer(min_value=1, required=True)
-
-
-@domain.aggregate
-class Ticket:
-    title: String(max_length=100, required=True)
-    status: String(max_length=20, default="PENDING")
-
-
-@domain.repository(part_of=Ticket)
-class TicketRepository:
-    def find_pending(self, limit):
-        query = self._dao.query.filter(status="PENDING").limit(limit)
-        return query.all(with_total=False).items
-
-    def count_pending(self):
-        return self._dao.query.filter(status="PENDING").count()
-
-
-@domain.aggregate
-class Order:
-    customer_name: String(max_length=100, required=True)
-    status: String(max_length=20, default="PENDING")
-    total_amount: Float(default=0.0)
-    items = HasMany(OrderItem)
-
-
-# --8<-- [end:domain]
-
-
-# --8<-- [start:conftest]
-import pytest
-
-from protean.integrations.pytest import DomainFixture
-
-
-@pytest.fixture(scope="session")
-def app_fixture(tmp_path_factory):
-    # Query-shape assertions need a SQLAlchemy provider. SQLite needs no server.
-    database = tmp_path_factory.getbasetemp() / "shop.db"
-    domain.config["databases"]["default"] = {
-        "provider": "sqlite",
-        "database_uri": f"sqlite:///{database}",
-    }
-
-    fixture = DomainFixture(domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():
-        yield
-
-
-@pytest.fixture
-def ticket_repo():
-    return domain.repository_for(Ticket)
-
-
-@pytest.fixture
-def seeded_tickets(ticket_repo):
-    for number in range(20):
-        ticket_repo.add(Ticket(title=f"Ticket {number}"))
-
-
-@pytest.fixture
-def order_repo():
-    return domain.repository_for(Order)
-
-
-@pytest.fixture
-def order():
-    return Order(
-        customer_name="Alice",
-        items=[OrderItem(product_id="dune", quantity=2)],
-    )
-
-
-# --8<-- [end:conftest]
-
-
 # --8<-- [start:imports]
 import re
 
 import pytest
+from ticketing import domain
 
 from protean.integrations.pytest import (
     assert_no_overfetch,
@@ -122,6 +29,17 @@ def test_poll_issues_a_single_query(ticket_repo, seeded_tickets):
 def test_count_uses_a_flat_count(ticket_repo):
     with assert_no_subquery_wrap():
         ticket_repo.count_pending()
+
+
+@pytest.mark.database
+def test_a_wrapped_count_fails(ticket_repo):
+    engine = domain.providers["default"]._engine
+    wrapped = "SELECT count(*) FROM (SELECT id FROM ticket LIMIT 5) AS anon_1"
+
+    with pytest.raises(AssertionError):
+        with assert_no_subquery_wrap():
+            with engine.connect() as connection:
+                connection.exec_driver_sql(wrapped)
 
 
 # --8<-- [end:subquery_wrap]

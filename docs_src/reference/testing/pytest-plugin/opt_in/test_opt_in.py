@@ -1,7 +1,3 @@
-# --8<-- [start:opt_in]
-pytest_plugins = ["protean.integrations.pytest.adapter_conformance"]
-# --8<-- [end:opt_in]
-
 # --8<-- [start:tests]
 import pytest
 
@@ -23,3 +19,14 @@ def test_builds_its_own_domain(test_domain):
 
 
 # --8<-- [end:tests]
+
+# Each test keeps the domain it was given, so whichever runs second fails if
+# the fixture handed out the same instance twice.
+seen_domains = []
+
+
+@pytest.mark.parametrize("run", [1, 2])
+def test_each_test_gets_a_fresh_initialized_domain(test_domain, run):
+    assert test_domain.providers["default"].conn_info["provider"] == "memory"
+    assert all(earlier is not test_domain for earlier in seen_domains)
+    seen_domains.append(test_domain)

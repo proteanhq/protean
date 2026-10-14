@@ -12,7 +12,9 @@ pytestmark = pytest.mark.no_test_domain
 
 
 def test_the_query_shape_tests_pass():
-    result = run_example_tests("guides/testing/query-shape-tests/001.py")
+    result = run_example_tests(
+        "guides/testing/query-shape-tests/001.py", args=["--strict-markers"]
+    )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert outcome_counts(result) == {"passed": 5}
+    assert outcome_counts(result) == {"passed": 6}

@@ -13,7 +13,7 @@ for `DomainFixture` and `conftest.py` recipes.
 
 | Option | Default | Effect |
 |---|---|---|
-| `--protean-env=<name>` | `test` | Sets `PROTEAN_ENV` before test collection, so the matching `[<name>]` overlay in `domain.toml` applies when the domain is constructed at import time. |
+| `--protean-env=<name>` | `test` | Sets `PROTEAN_ENV` before test collection, unless the shell already set it, so the matching `[<name>]` overlay in `domain.toml` applies when the domain is constructed at import time. |
 | `--update-snapshots` | off | Causes `assert_snapshot()` calls to regenerate their reference files instead of comparing. |
 
 ## Registered markers
@@ -42,7 +42,7 @@ opts in explicitly:
 
 ```python
 # fragment
---8<-- "reference/testing/pytest-plugin/001.py:opt_in"
+--8<-- "reference/testing/pytest-plugin/opt_in/conftest.py:opt_in"
 ```
 
 When opted in, tests that construct their own `Domain(name="Test")`
@@ -51,7 +51,7 @@ for that test instead of building a domain:
 
 ```python
 # fragment
---8<-- "reference/testing/pytest-plugin/001.py:tests"
+--8<-- "reference/testing/pytest-plugin/opt_in/test_opt_in.py:tests"
 ```
 
 User application tests should construct their domain lifecycle with

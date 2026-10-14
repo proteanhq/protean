@@ -25,7 +25,7 @@ The examples on this page test this event-sourced `Order`:
 
     ```python
     # fragment
-    --8<-- "guides/testing/event-sourcing-tests/001.py:domain"
+    --8<-- "guides/testing/event-sourcing-tests/ordering_es/__init__.py:domain"
     ```
 
 ## The Three Words
@@ -49,7 +49,7 @@ for chaining:
 
 ```python
 # fragment
-given(Order, order_created).after(order_confirmed).after(payment_initiated)
+given(Order).after(order_created).after(order_confirmed)
 ```
 
 ### `.process(command)`
@@ -125,8 +125,7 @@ from the exception:
 
 ```python
 # fragment
-assert order.rejected
-assert "Order must be confirmed before payment" in order.rejection_messages
+--8<-- "guides/testing/event-sourcing-tests/001.py:rejection_messages"
 ```
 
 This works with `ValidationError` (flattens the `messages` dict) and other
@@ -149,7 +148,7 @@ If you need the aggregate instance directly:
 
 ```python
 # fragment
-assert isinstance(order.aggregate, Order)
+--8<-- "guides/testing/event-sourcing-tests/001.py:raw_aggregate"
 ```
 
 ## Complete Examples
@@ -229,20 +228,22 @@ prior successful commands:
 Event-sourced tests use the same `DomainFixture` setup as other Protean
 tests. The domain must have `event_processing` and `command_processing`
 set to `"sync"`. In your project these fixtures go in `tests/conftest.py`,
-and `domain` is your application's domain (`from myapp import domain`):
+and they import `domain` from your application's package (`ordering_es`
+here):
 
 ```python
 # fragment
---8<-- "guides/testing/event-sourcing-tests/001.py:conftest"
+--8<-- "guides/testing/event-sourcing-tests/conftest.py:conftest"
 ```
 
 ### Event Fixtures
 
-Define reusable event fixtures for your aggregate's history:
+Define reusable event fixtures for your aggregate's history in the same
+`conftest.py`, so every test module can use them:
 
 ```python
 # fragment
---8<-- "guides/testing/event-sourcing-tests/001.py:event_fixtures"
+--8<-- "guides/testing/event-sourcing-tests/conftest.py:event_fixtures"
 ```
 
 ## Design Notes

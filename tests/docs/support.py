@@ -87,7 +87,14 @@ def run_example_tests(
     not have it. pytest still loads every ``conftest.py`` in the example's
     folder and the folders above it. Protean's pytest plugin loads through its
     ``pytest11`` entry point. The cache plugin is off, so no ``.pytest_cache``
-    folder is written next to the example, and no ``__pycache__`` either.
+    folder is written next to the example, and ``PYTHONDONTWRITEBYTECODE`` is
+    set, so no ``__pycache__`` folder is written either. The ``PYTEST_*``
+    variables and ``PROTEAN_ENV`` in the parent's environment do not reach the
+    child unless ``env`` passes them, so a developer's shell settings do not
+    change the result.
+
+    A run that takes longer than ``EXAMPLE_TESTS_TIMEOUT`` seconds raises
+    ``TimeoutError`` with the output the child wrote so far in its message.
 
     Returns the finished process with its output. The caller checks
     ``returncode``; pytest exits with 5 when it collects no tests.
@@ -104,8 +111,13 @@ def run_example_tests(
     pythonpath = [str(root), *package_parents]
     if os.environ.get("PYTHONPATH"):
         pythonpath.append(os.environ["PYTHONPATH"])
+    inherited = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("PYTEST_") and name != "PROTEAN_ENV"
+    }
     child_env = {
-        **os.environ,
+        **inherited,
         "PYTHONPATH": os.pathsep.join(pythonpath),
         "PYTHONDONTWRITEBYTECODE": "1",
         **(env or {}),
@@ -113,25 +125,41 @@ def run_example_tests(
     with tempfile.TemporaryDirectory() as workdir:
         config = Path(workdir) / "pytest.ini"
         config.write_text("[pytest]\n", encoding="utf-8")
-        return subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                "-c",
-                str(config),
-                "-p",
-                "no:cacheprovider",
-                str(filepath),
-                *args,
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-            cwd=workdir,
-            env=child_env,
-            timeout=EXAMPLE_TESTS_TIMEOUT,
-        )
+        command = [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-c",
+            str(config),
+            "-p",
+            "no:cacheprovider",
+            str(filepath),
+            *args,
+        ]
+        try:
+            return subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workdir,
+                env=child_env,
+                timeout=EXAMPLE_TESTS_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # pytest shows the exception message and not its attributes, so
+            # the output the child wrote so far goes into the message.
+            output = _text(exc.stdout) + _text(exc.stderr)
+            raise TimeoutError(
+                f"{path} ran longer than {EXAMPLE_TESTS_TIMEOUT}s. "
+                f"Output so far:\n{output}"
+            ) from exc
+
+
+def _text(stream: str | bytes | None) -> str:
+    if isinstance(stream, bytes):
+        return stream.decode(errors="replace")
+    return stream or ""
 
 
 # The counts on pytest's last summary line: "3 passed, 1 skipped in 0.12s".

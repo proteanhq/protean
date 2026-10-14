@@ -4,8 +4,10 @@ from uuid import uuid4
 
 from myapp import domain
 from myapp.commands import Register
-from myapp.models import User
-from pytest_bdd import parsers, scenarios, then, when
+from myapp.models import Notification, User
+from pytest_bdd import given, parsers, scenarios, then, when
+
+from protean.exceptions import ValidationError
 
 scenarios("features/register_user.feature")
 
@@ -31,15 +33,6 @@ def user_has_status(email, status):
     users = domain.repository_for(User).query.all()
     user = next(u for u in users.items if u.email == email)
     assert user.status == status
-
-
-# --8<-- [end:steps]
-
-
-from myapp.models import Notification
-from pytest_bdd import given
-
-from protean.exceptions import ValidationError
 
 
 @then(parsers.parse('a welcome notification should have been sent to "{email}"'))
@@ -70,3 +63,6 @@ def registration_failed(registration_result, message):
     assert registration_result["success"] is False
     assert message in registration_result["error"]
     assert domain.repository_for(User).query.all().total == 1
+
+
+# --8<-- [end:steps]

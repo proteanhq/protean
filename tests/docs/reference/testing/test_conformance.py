@@ -1,5 +1,7 @@
 """The claims on ``docs/reference/testing/conformance.md`` hold under pytest."""
 
+import re
+
 import pytest
 
 from tests.docs.support import outcome_counts, run_example_tests
@@ -10,7 +12,9 @@ CONFORMANCE_PLUGIN = "protean.integrations.pytest.adapter_conformance"
 
 
 def test_the_opt_in_runs_tests_against_the_memory_adapter():
-    result = run_example_tests("reference/testing/conformance/001.py")
+    result = run_example_tests(
+        "reference/testing/conformance/opt_in/test_default_adapter.py"
+    )
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert outcome_counts(result) == {"passed": 1}
@@ -18,19 +22,41 @@ def test_the_opt_in_runs_tests_against_the_memory_adapter():
 
 def test_the_opt_in_provides_the_documented_fixtures():
     result = run_example_tests(
-        "reference/testing/conformance/001.py", args=["--fixtures"]
+        "reference/testing/conformance/opt_in/test_default_adapter.py",
+        args=["--fixtures"],
     )
 
-    listed = {line.split(" ", 1)[0] for line in result.stdout.splitlines() if line}
     assert result.returncode == 0, result.stdout + result.stderr
-    assert {
+    assert fixture_scopes(result.stdout) == {
+        "db_config": "session",
+        "store_config": "session",
+        "broker_config": "session",
+        "test_domain": "function",
+        "db": "function",
+        "run_around_tests": "function",
+    }
+
+
+def fixture_scopes(listing):
+    """Map each fixture in a ``--fixtures`` listing that the page names to its scope.
+
+    pytest prints ``name [session scope] -- file:line``; a function-scoped
+    fixture has no bracket.
+    """
+    documented = {
         "db_config",
         "store_config",
         "broker_config",
         "test_domain",
         "db",
         "run_around_tests",
-    } <= listed
+    }
+    scopes = {}
+    for line in listing.splitlines():
+        match = re.match(r"(\w+)(?: \[(\w+) scope\])? -- ", line)
+        if match and match[1] in documented:
+            scopes[match[1]] = match[2] or "function"
+    return scopes
 
 
 def test_the_plugin_adds_the_documented_options(tmp_path):

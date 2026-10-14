@@ -1,6 +1,6 @@
 # --8<-- [start:feature]
 # tests/bdd/ordering/features/place_order.feature
-@ordering
+@ordering @smoke
 Feature: Place Order
     Customers can place orders that trigger inventory updates
     and customer history tracking.
@@ -8,6 +8,7 @@ Feature: Place Order
     Background:
         Given the domain is initialized
 
+    @happy_path
     Scenario: Placing an order updates inventory
         Given a book "Dune" with 10 copies in stock
         And a customer "Alice"
@@ -21,6 +22,7 @@ Feature: Place Order
         When "Bob" places an order for 2 copies of "1984"
         Then "Bob" should have 1 order in their history
 
+    @validation
     Scenario: Cannot order more than available stock
         Given a book "Rare Book" with 2 copies in stock
         And a customer "Charlie"

@@ -1,33 +1,16 @@
-# --8<-- [start:color]
-import re
+import importlib.util
+from pathlib import Path
 
-
-class Color:
-    """An RGB color stored as a ``#RRGGBB`` hex string."""
-
-    def __init__(self, value: str) -> None:
-        normalized = str(value).upper()
-        if not re.fullmatch(r"#[0-9A-F]{6}", normalized):
-            raise ValueError(f"{value!r} is not a '#RRGGBB' hex color")
-        self.hex = normalized
-
-    def to_dict(self) -> str:
-        return self.hex
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, Color) and other.hex == self.hex
-
-    def __hash__(self) -> int:
-        return hash(self.hex)
-
-
-def parse_color(value: object) -> Color:
-    if isinstance(value, Color):
-        return value
-    return Color(value)
-
-
-# --8<-- [end:color]
+# The Color type is the one the custom-fields guide defines. Its folder name
+# has a hyphen, so it loads by file path.
+_spec = importlib.util.spec_from_file_location(
+    "custom_fields_example",
+    Path(__file__).parents[3] / "guides/domain-definition/fields/custom-fields/001.py",
+)
+_example = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_example)
+Color = _example.Color
+parse_color = _example.parse_color
 
 
 # --8<-- [start:test]

@@ -8,29 +8,6 @@ from pytest_bdd import given, parsers, scenarios, then, when
 scenarios("features/place_order.feature")
 
 
-@given(
-    parsers.parse('a book "{title}" with {stock:d} copies in stock'),
-    target_fixture="book",
-)
-def book_in_stock(title, stock):
-    book = Book(title=title, author="Test Author", price=Money(amount=15.99))
-    domain.repository_for(Book).add(book)
-
-    inventory = Inventory(book_id=book.id, title=title, quantity=stock)
-    domain.repository_for(Inventory).add(inventory)
-    return book
-
-
-@given(
-    parsers.parse('a customer "{name}"'),
-    target_fixture="customer",
-)
-def existing_customer(name):
-    customer = Customer(name=name)
-    domain.repository_for(Customer).add(customer)
-    return customer
-
-
 @when(
     parsers.parse('"{name}" places an order for {qty:d} copies of "{title}"'),
     target_fixture="order",
@@ -57,6 +34,12 @@ def check_stock(title, expected):
     inventories = domain.repository_for(Inventory).query.all()
     inv = next(i for i in inventories.items if i.title == title)
     assert inv.quantity == expected
+
+
+@then(parsers.parse('"{name}" should have {count:d} order in their history'))
+def check_history(customer, name, count):
+    customer = domain.repository_for(Customer).get(customer.id)
+    assert len(customer.order_history) == count
 
 
 # --8<-- [end:steps]
@@ -129,9 +112,3 @@ def check_total(order, expected):
 
 
 # --8<-- [end:outline_steps]
-
-
-@then(parsers.parse('"{name}" should have {count:d} order in their history'))
-def check_history(customer, name, count):
-    customer = domain.repository_for(Customer).get(customer.id)
-    assert len(customer.order_history) == count

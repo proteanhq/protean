@@ -1,35 +1,7 @@
-# --8<-- [start:conftest]
-# tests/conftest.py
 import pytest
-from myapp import domain
-
-# --8<-- [start:import]
-from protean.integrations.pytest import DomainFixture
-
-# --8<-- [end:import]
-
-
-@pytest.fixture(scope="session")
-def app_fixture():
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-
-    fixture = DomainFixture(domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():
-        yield
-
-
-# --8<-- [end:conftest]
-
 
 # --8<-- [start:repository_fixtures]
+from myapp import domain
 from myapp.models import Order, User
 
 
@@ -54,6 +26,12 @@ def test_user_is_persisted(user_repo):
 
 
 # --8<-- [end:repository_usage]
+
+
+def test_an_order_is_persisted(order_repo):
+    order = Order(customer_id="cust-1")
+    order_repo.add(order)
+    assert order_repo.get(order.id).customer_id == "cust-1"
 
 
 # --8<-- [start:global_state]
