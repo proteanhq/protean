@@ -39,7 +39,8 @@ the file is reported as stuck and a new child runs the files after it.
 
 :func:`include_expander` builds a source transform that replaces
 ``--8<-- "<spec>"`` lines with the code they include, the way
-``pymdownx.snippets`` does when it builds the docs. Any other ``--8<--`` line
+``pymdownx.snippets`` does when it builds the docs. :func:`expand_includes`
+does the same to a whole page. Any other ``--8<--`` line
 in a block is an include form the expander does not know, and fails.
 """
 
@@ -208,25 +209,38 @@ def include_expander(bases: Sequence[Path]) -> Callable[[Block], Block]:
     """
 
     def expand(block: Block) -> Block:
-        lines = []
-        changed = False
-        for line in block.source.splitlines():
-            match = _INCLUDE.match(line)
-            if match is None:
-                if _ANY_INCLUDE.match(line):
-                    raise SnippetError(f"unknown include form {line.strip()!r}")
-                lines.append(line)
-                continue
-            changed = True
-            indent = match.group("indent")
-            code = read_include(match.group("spec"), bases)
-            lines.extend(indent + part if part else part for part in code.split("\n"))
-        if not changed:
+        source = expand_includes(block.source, bases)
+        if source == block.source:
             return block
         # The marker is read from the page, never from included code.
-        return replace(block, source="\n".join(lines) + "\n")
+        return replace(block, source=source)
 
     return expand
+
+
+def expand_includes(text: str, bases: Sequence[Path]) -> str:
+    """Return ``text`` with each ``--8<--`` line replaced by the code it includes.
+
+    Each included line gets the include line's indentation in front of its own.
+    ``bases`` are the folders an include path is relative to, searched in
+    order. A ``--8<--`` line in any other form raises :class:`SnippetError`.
+    """
+    lines = []
+    changed = False
+    for line in text.splitlines():
+        match = _INCLUDE.match(line)
+        if match is None:
+            if _ANY_INCLUDE.match(line):
+                raise SnippetError(f"unknown include form {line.strip()!r}")
+            lines.append(line)
+            continue
+        changed = True
+        indent = match.group("indent")
+        code = read_include(match.group("spec"), bases)
+        lines.extend(indent + part if part else part for part in code.split("\n"))
+    if not changed:
+        return text
+    return "\n".join(lines) + "\n"
 
 
 def load_blocks(

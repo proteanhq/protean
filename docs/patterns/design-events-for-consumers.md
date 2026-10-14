@@ -450,18 +450,17 @@ class OrderPlaced(BaseEvent):
 
 
 # In the Fulfillment domain: subscriber consumes the event
-@domain.subscriber(channel="orders")
+@domain.subscriber(stream="orders")
 class OrderEventsSubscriber(BaseSubscriber):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
+    def __call__(self, payload: dict) -> None:
         # The subscriber can act entirely from the event data
         # No need to call back to the Order domain
+        event = payload["data"]
         current_domain.process(
             CreateShipment(
-                order_id=event.order_id,
-                customer_id=event.customer_id,
-                items=event.items,
+                order_id=event["order_id"],
+                customer_id=event["customer_id"],
+                items=event["items"],
             )
         )
 ```

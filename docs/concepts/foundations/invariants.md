@@ -50,21 +50,7 @@ the cluster cannot silently violate its own invariants. They are checked
 whenever the aggregate root's invariants are checked.
 
 ```python
-@domain.aggregate
-class Order:
-    total_amount = Float(required=True)
-    items = HasMany("OrderItem")
-
-    @invariant.post
-    def total_must_equal_sum_of_items(self):
-        expected = sum(item.subtotal for item in self.items)
-        if self.total_amount != expected:
-            raise ValidationError(
-                {"_entity": ["Total should be sum of item prices"]}
-            )
-
-# This raises ValidationError -- the invariant fires immediately
-order.total_amount = 50.0  # But items sum to 100.0
+--8<-- "concepts/foundations/invariants/001.py:model"
 ```
 
 ### Batching Changes with `atomic_change`
@@ -74,12 +60,7 @@ violate an invariant but are collectively valid. Protean provides the
 `atomic_change` context manager for this:
 
 ```python
-from protean.core.aggregate import atomic_change
-
-with atomic_change(order):
-    order.total_amount = 120.0               # Would fail invariant alone
-    order.add_items(OrderItem(subtotal=20))   # But together they're consistent
-# Invariants checked ONCE on exit -- both changes are valid together
+--8<-- "concepts/foundations/invariants/001.py:atomic_change"
 ```
 
 Inside the block, invariant checks are suspended. A pre-check runs on entry

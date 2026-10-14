@@ -192,7 +192,8 @@ underlying infrastructure.
 If a connection cannot be established for whatever reason, the Protean
 initialization procedure immediately halts and exits with an error message:
 
-```python hl_lines="8"
+```python hl_lines="9"
+# fragment
 --8<-- "adapters/001.py:full"
 ```
 

@@ -77,22 +77,6 @@ LABELS = [path.relative_to(DOCS).as_posix() for path in PAGES]
 # delete its entry.
 ALLOWLIST: frozenset[str] = frozenset(
     {
-        "concepts/async-processing/engine.md",
-        "concepts/async-processing/outbox.md",
-        "concepts/async-processing/priority-lanes.md",
-        "concepts/async-processing/stream-categories.md",
-        "concepts/async-processing/subscriptions.md",
-        "concepts/building-blocks/choosing-element-types.md",
-        "concepts/building-blocks/commands.md",
-        "concepts/foundations/invariants.md",
-        "concepts/internals/event-sourcing.md",
-        "concepts/internals/event-upcasting.md",
-        "concepts/internals/field-system.md",
-        "concepts/internals/query-system.md",
-        "concepts/internals/shadow-fields.md",
-        "concepts/observability/logging.md",
-        "concepts/philosophy/always-valid.md",
-        "concepts/ports-and-adapters/index.md",
         "guides/domain-behavior/domain-services.md",
         "guides/getting-started/es-tutorial/02-deposits-and-withdrawals.md",
         "guides/getting-started/es-tutorial/03-commands-and-pipeline.md",

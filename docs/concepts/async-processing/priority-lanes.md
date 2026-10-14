@@ -127,27 +127,14 @@ within a block. This is the recommended approach for migration scripts and
 batch jobs:
 
 ```python
-from protean.utils.processing import processing_priority, Priority
-
-# All events produced within this block get LOW priority
-with processing_priority(Priority.LOW):
-    for record in migration_data:
-        domain.process(UpdateCustomer(
-            customer_id=record["id"],
-            loyalty_tier=record["tier"],
-        ))
+--8<-- "concepts/async-processing/priority-lanes/001.py:customer"
+--8<-- "concepts/async-processing/priority-lanes/001.py:context_manager"
 ```
 
 Contexts can be nested. The innermost context wins:
 
 ```python
-with processing_priority(Priority.LOW):
-    domain.process(cmd1)  # LOW
-
-    with processing_priority(Priority.CRITICAL):
-        domain.process(cmd2)  # CRITICAL
-
-    domain.process(cmd3)  # LOW again
+--8<-- "concepts/async-processing/priority-lanes/001.py:nested"
 ```
 
 Priority is always restored when the context exits, even if an exception is
@@ -158,21 +145,14 @@ raised.
 Pass `priority` directly to `domain.process()` for one-off overrides:
 
 ```python
-from protean.utils.processing import Priority
-
-# This specific command gets BULK priority
-domain.process(
-    ReindexProduct(product_id="SKU-001"),
-    priority=Priority.BULK,
-)
+--8<-- "concepts/async-processing/priority-lanes/001.py:product"
+--8<-- "concepts/async-processing/priority-lanes/001.py:explicit"
 ```
 
 The explicit parameter takes precedence over any active context manager:
 
 ```python
-with processing_priority(Priority.LOW):
-    # This command uses CRITICAL despite the LOW context
-    domain.process(cmd, priority=Priority.CRITICAL)
+--8<-- "concepts/async-processing/priority-lanes/001.py:override"
 ```
 
 ### Priority Resolution Order

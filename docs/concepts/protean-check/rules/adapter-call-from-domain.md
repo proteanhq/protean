@@ -77,31 +77,14 @@ through the domain's provider configuration, so infrastructure can be swapped
 Flagged, a domain method constructs a concrete broker adapter:
 
 ```python
-import protean
-from protean import Domain
-from protean.fields import String
-
-domain = Domain(name="app")
-
-@domain.aggregate
-class Order:
-    name = String(max_length=50)
-
-    def provision(self):
-        # calls protean.adapters.* -> ADAPTER_CALL_IN_DOMAIN
-        return protean.adapters.broker.inline.InlineBroker("default", None, {})
+--8<-- "concepts/protean-check/rules/adapter-call-from-domain/001.py:flagged"
 ```
 
 Compliant, the domain names no adapter; a self-rooted repository call resolves
 to no FQN and is not flagged:
 
 ```python
-@domain.aggregate
-class Order:
-    name = String(max_length=50)
-
-    def total(self):
-        return self._dao.filter(name="x")   # self-rooted -> no finding
+--8<-- "concepts/protean-check/rules/adapter-call-from-domain/002.py:compliant"
 ```
 
 ## How to fix
@@ -115,12 +98,7 @@ class Order:
 Suppress the rule for a single element with `suppress_checks`:
 
 ```python
-@domain.aggregate(suppress_checks=["ADAPTER_CALL_IN_DOMAIN"])
-class Order:
-    name = String(max_length=50)
-
-    def provision(self):
-        return protean.adapters.broker.inline.InlineBroker("default", None, {})
+--8<-- "concepts/protean-check/rules/adapter-call-from-domain/003.py:suppressed"
 ```
 
 To adopt the rule on a codebase with pre-existing violations, grandfather the
