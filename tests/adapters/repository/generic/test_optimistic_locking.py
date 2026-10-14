@@ -634,6 +634,54 @@ class TestSameInstanceSavedRepeatedly:
 
         assert repo.get("c1")._version == kept + 1
 
+    def test_read_in_the_same_uow_does_not_stop_the_saved_instance_advancing(
+        self, test_domain
+    ):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+
+        counter.value = 1
+        with UnitOfWork():
+            repo.add(counter)
+            repo.get(counter.id)
+
+        assert counter._version == 1
+        assert counter._next_version == 2
+
+        stale = repo.get(counter.id)
+        counter.value = 2
+        with UnitOfWork():
+            repo.add(counter)
+
+        stale.value = 99
+        with pytest.raises(ExpectedVersionError), UnitOfWork():
+            repo.add(stale)
+
+        final = repo.get(counter.id)
+        assert final.value == 2
+        assert final._version == 2
+
+    def test_read_in_the_same_uow_does_not_stop_the_rollback_settling(
+        self, test_domain
+    ):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+
+        counter.value = 1
+        with pytest.raises(RuntimeError, match="abort"), UnitOfWork():
+            repo.add(counter)
+            repo.get(counter.id)
+            raise RuntimeError("abort")
+
+        kept = 0 if _undoes_writes_on_rollback(test_domain) else 1
+        assert repo.get(counter.id)._version == kept
+        assert counter._version == kept
+        assert counter._next_version == kept + 1
+
     def test_standalone_dao_save_advances_on_each_write(self, test_domain):
         dao = test_domain.repository_for(Counter)._dao
         counter = Counter(name="reused", value=0)
@@ -695,6 +743,17 @@ class TestEventIdsOnSameInstance:
             repo.add(reloaded)
 
         assert _stored_sequence_ids(test_domain, counter) == ["0.1", "1.1"]
+
+    def test_events_survive_a_read_of_the_same_aggregate_in_the_uow(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+
+        counter.bump()
+        with UnitOfWork():
+            repo.add(counter)
+            repo.get(counter.id)
+
+        assert _stored_sequence_ids(test_domain, counter) == ["0.1"]
 
     def test_events_between_adds_in_one_uow_get_distinct_ids(self, test_domain):
         repo = test_domain.repository_for(Counter)

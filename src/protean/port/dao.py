@@ -731,7 +731,7 @@ class BaseDAO(metaclass=ABCMeta):
             # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
             #   like persisting events raised by the aggregate.
             if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
-                current_uow._add_to_identity_map(entity_obj)
+                current_uow._add_to_identity_map(entity_obj, saved=True)
 
             return entity_obj
         except ValidationError as exc:
@@ -857,7 +857,7 @@ class BaseDAO(metaclass=ABCMeta):
             if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
                 # The element may have changed from the time it was loaded or may have been
                 #   updated multiple times. We retain the last copy in seen.
-                current_uow._add_to_identity_map(entity_obj)
+                current_uow._add_to_identity_map(entity_obj, saved=True)
 
             return entity_obj
         except Exception as exc:

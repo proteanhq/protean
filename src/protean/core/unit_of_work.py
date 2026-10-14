@@ -90,6 +90,13 @@ class UnitOfWork:
         self._sessions: dict[str, SessionProtocol] = {}
         self._messages_to_dispatch: list[tuple[str, dict[str, Any], str | None]] = []
         self._identity_map: defaultdict[str, dict[Any, Any]] = defaultdict(dict)
+        # The identity map holds one instance per aggregate id, so a read
+        # replaces an instance saved earlier in the transaction. Every tracked
+        # instance is also kept here by object identity, with its provider, so
+        # its events are still gathered and, if it was saved, its versions
+        # still settled.
+        self._tracked: dict[int, tuple[str, Any]] = {}
+        self._saved: set[int] = set()
 
         # A UnitOfWork started while another is already active on this context is
         # a participant in the outer transaction (see ``start``). ``_nested`` marks
@@ -127,37 +134,36 @@ class UnitOfWork:
 
         return None
 
-    def _add_to_identity_map(self, aggregate: Any) -> None:
+    def _add_to_identity_map(self, aggregate: Any, saved: bool = False) -> None:
         id_f = id_field(aggregate)
         assert id_f is not None
         assert id_f.field_name is not None
         identifier = getattr(aggregate, id_f.field_name)
         self._identity_map[aggregate.meta_.provider][identifier] = aggregate
+        self._tracked[id(aggregate)] = (aggregate.meta_.provider, aggregate)
+        if saved:
+            self._saved.add(id(aggregate))
 
     def _gather_events(self) -> defaultdict[str, list[Any]]:
-        """Gather all events from items in the identity map"""
+        """Gather all events from the instances tracked in this transaction"""
         all_events: defaultdict[str, list[Any]] = defaultdict(list)
-        for provider, identity_map in self._identity_map.items():
-            for item in identity_map.values():
-                if item._events:
-                    all_events[provider].extend(item._events)
+        for provider, item in self._tracked.values():
+            if item._events:
+                all_events[provider].extend(item._events)
         return all_events
 
     def _clear_events_from_items(self) -> None:
-        """Clear events from all items in the identity map"""
-        for items in self._identity_map.values():
-            for item in items.values():
-                # Clear events from the item
-                item._events = []
+        """Clear events from the instances tracked in this transaction"""
+        for _, item in self._tracked.values():
+            item._events = []
 
     def _state_based_items(self) -> list[tuple[str, Any]]:
-        """Aggregates in the identity map whose versions the DAO manages,
-        each with the name of its provider."""
+        """Aggregates saved in this transaction whose versions the DAO
+        manages, each with the name of its provider."""
         return [
             (provider_name, item)
-            for provider_name, items in self._identity_map.items()
-            for item in items.values()
-            if not item.meta_.is_event_sourced
+            for key, (provider_name, item) in self._tracked.items()
+            if key in self._saved and not item.meta_.is_event_sourced
         ]
 
     def _advance_next_versions(self, provider_name: str) -> None:
@@ -324,10 +330,9 @@ class UnitOfWork:
         # aggregates is a design smell (consider using domain events for
         # cross-aggregate coordination instead).
         aggregate_classes_with_events: set[type] = set()
-        for identity_map in self._identity_map.values():
-            for item in identity_map.values():
-                if item._events:
-                    aggregate_classes_with_events.add(type(item))
+        for _, item in self._tracked.values():
+            if item._events:
+                aggregate_classes_with_events.add(type(item))
         if len(aggregate_classes_with_events) > 1:
             class_names = sorted(cls.__name__ for cls in aggregate_classes_with_events)
             logger.warning(
@@ -615,6 +620,8 @@ class UnitOfWork:
         self._sessions = {}
         self._messages_to_dispatch = []
         self._identity_map = defaultdict(dict)
+        self._tracked = {}
+        self._saved = set()
         self._in_progress = False
 
     def rollback(self) -> None:
