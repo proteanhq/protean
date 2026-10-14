@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, ClassVar, get_args
 
 from protean._deprecation import deprecated_from_registry
-from protean.core.aggregate import atomic_change
+from protean.core.aggregate import BaseAggregate, _pre_persist_change
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
 from protean.core.queryset import QuerySet, ResultSet
@@ -23,6 +23,7 @@ from protean.utils.reflection import declared_fields, fields, id_field, unique_f
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.fields.base import Field
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,9 @@ logger = logging.getLogger(__name__)
 _DELETE_IN_CHUNK_SIZE = 900
 
 
-def _lifecycle_timestamp_fields(entity_obj: Any, *, is_create: bool) -> dict[str, Any]:
+def _lifecycle_timestamp_fields(
+    entity_obj: Any, *, is_create: bool
+) -> "dict[str, Field]":
     """Return the ``auto_now`` / ``auto_now_add`` fields this save stamps.
 
     Django-parity semantics: ``auto_now`` fields are stamped on every save;
@@ -46,7 +49,7 @@ def _lifecycle_timestamp_fields(entity_obj: Any, *, is_create: bool) -> dict[str
     }
 
 
-def _stamp_lifecycle_timestamps(entity_obj: Any, to_stamp: dict[str, Any]) -> None:
+def _stamp_lifecycle_timestamps(entity_obj: Any, to_stamp: "dict[str, Field]") -> None:
     """Set each DateTime/Date field in ``to_stamp`` to the current time.
 
     A single ``now``, read from the domain's injectable clock (so frozen-clock
@@ -70,17 +73,19 @@ def _stamp_lifecycle_timestamps(entity_obj: Any, to_stamp: dict[str, Any]) -> No
 def _pre_persist_hook(entity_obj: Any, location: str) -> Iterator[None]:
     """Run one pre-persist hook's writes on ``entity_obj``.
 
-    For an entity or aggregate, the writes run in an ``atomic_change`` block on
-    the root without its ``@invariant.pre`` checks, so the post-invariants run
-    once afterwards and a failure names the hook. A projection has no
-    invariants, so its writes run as they are.
+    When the object belongs to an aggregate, the writes run in a
+    ``_pre_persist_change`` block on the aggregate root. A projection, or an
+    entity saved on its own, has no aggregate to check, so its writes run as
+    they are. So do writes made inside a caller's own ``atomic_change`` block:
+    the aggregate may be mid-change there, and that block checks every write
+    on its exit.
     """
-    if not isinstance(entity_obj, BaseEntity):
+    root = getattr(entity_obj, "_root", None) or entity_obj
+    if not isinstance(root, BaseAggregate) or root._disable_invariant_checks:
         yield
         return
 
-    root = entity_obj._root if entity_obj._root is not None else entity_obj
-    with atomic_change(root, precheck=False, location=location):
+    with _pre_persist_change(root, location):
         yield
 
 
@@ -786,8 +791,10 @@ class BaseDAO(metaclass=ABCMeta):
 
         The ``@invariant.pre`` checks do not run on these writes. The
         post-invariants run once after the stamping and once after each
-        enricher. A failure undoes that hook's writes and raises
-        ``ValidationError`` whose ``location`` names the hook.
+        enricher. When a check fails, or a hook raises, that hook's writes are
+        undone and the save aborts. A ``ValidationError`` carries a
+        ``location`` that names the hook; any other exception propagates as it
+        was raised.
 
         ``save`` calls this unless ``apply_hooks=False``. A caller that must run
         the hooks earlier than the write (so a raising enricher fails before any
@@ -809,7 +816,10 @@ class BaseDAO(metaclass=ABCMeta):
             and current_domain._aggregate_enrichers
         ):
             for enricher in current_domain._aggregate_enrichers:
-                location = f"aggregate enricher {_callable_qualname(enricher)}"
+                location = (
+                    f"aggregate enricher {_callable_qualname(enricher)} "
+                    f"on {type(entity_obj).__qualname__}"
+                )
                 with _pre_persist_hook(entity_obj, location):
                     enricher(entity_obj)
 
@@ -893,7 +903,11 @@ class BaseDAO(metaclass=ABCMeta):
             # with the persistence store after a failed save.
             if expected_version is not None:
                 entity_obj._version = expected_version
-            logger.error(f"Failed saving entity because {exc}")
+            location = getattr(exc, "location", None)
+            logger.error(
+                f"Failed saving entity because {exc}"
+                + (f" (at {location})" if location else "")
+            )
             raise
 
     @deprecated_from_registry("dao_update")

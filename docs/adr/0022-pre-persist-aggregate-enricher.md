@@ -170,6 +170,10 @@ counted as a modification of a closed account, and the save failed (#1663).
   valid before the hook ran, so the error has to say which hook made it
   invalid. The save aborts, and the version advance is rolled back, as when an
   enricher raises. The hook's writes are undone too.
-- **One mechanism.** Each hook runs inside an `atomic_change` block opened
-  with `precheck=False` and a `location`, so the hook writes are checked and
-  undone the same way as any other batched change.
+- **One mechanism.** Each hook runs in a private subclass of `atomic_change`
+  that skips the entry pre-check and names the hook in a failure. The hook's
+  writes are checked and undone the same way as any other batched change. If
+  the hook itself raises, its writes are undone and its exception propagates.
+  A `ValidationError` it raises gets the hook's `location` unless it already
+  carries one. A save made inside the caller's own `atomic_change` block leaves
+  the checks to that block, which runs them on its exit.

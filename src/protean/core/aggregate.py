@@ -881,25 +881,13 @@ class atomic_change:
     Events raised inside the block are discarded, and ``_version`` and
     ``_event_position`` go back to their values from block entry.
     An exception raised by the block body does not undo the block's changes.
-
-    ``precheck=False`` skips the ``@invariant.pre`` checks on entry. The
-    pre-persist hooks in ``BaseDAO.save`` use it: an ``auto_now`` stamp or an
-    enricher's audit field is not a business change, so the checks that guard
-    business changes against the current state do not apply. ``location``
-    replaces the ``location`` of a ``ValidationError`` from the exit checks,
-    so the error names what wrote the change.
     """
 
-    def __init__(
-        self,
-        aggregate: Any,
-        *,
-        precheck: bool = True,
-        location: str | None = None,
-    ) -> None:
+    #: Whether entering the block runs the aggregate's ``@invariant.pre`` checks.
+    _run_precheck: ClassVar[bool] = True
+
+    def __init__(self, aggregate: Any) -> None:
         self.aggregate = aggregate
-        self._run_precheck = precheck
-        self._location = location
         self._entity_snapshots: list[_EntitySnapshot] = []
         self._event_mark: tuple[int, int, int] = (0, 0, 0)
         self._checks_were_disabled = False
@@ -936,15 +924,11 @@ class atomic_change:
                 self._validate_status_transitions()
 
             self.aggregate._postcheck()
-        except BaseException as exc:
+        except BaseException:
             _restore_entities(self._entity_snapshots)
             # Events raised inside the block describe changes that were just
             # undone, so they go too.
             self.aggregate._rewind_events(self._event_mark)
-            if self._location is not None and isinstance(exc, ValidationError):
-                raise ValidationError(
-                    exc.messages, codes=exc.codes, location=self._location
-                ) from exc
             raise
         finally:
             self.aggregate._disable_invariant_checks = self._checks_were_disabled
@@ -997,6 +981,52 @@ class atomic_change:
                         ]
                     }
                 )
+
+
+class _pre_persist_change(atomic_change):
+    """The block ``BaseDAO.save`` runs each pre-persist hook in.
+
+    An ``auto_now`` stamp or an enricher's audit field is not a business
+    change, so the ``@invariant.pre`` checks, which guard a business change
+    against the current state, do not run on entry. The exit checks run as in
+    ``atomic_change``. When they fail, or when the hook itself raises, the
+    hook's writes are undone. A ``ValidationError`` gets ``location`` naming
+    the hook, because the aggregate was valid before the hook ran. One the
+    hook raised keeps a ``location`` it already has.
+
+    When the hook raises, the exit checks are skipped, so a check on its
+    half-finished writes cannot hide the hook's own exception.
+
+    Inside a caller's own ``atomic_change`` block, ``_pre_persist_hook`` does
+    not open this block: the caller's block checks every write on its exit.
+    """
+
+    _run_precheck = False
+
+    def __init__(self, aggregate: "BaseAggregate", location: str) -> None:
+        super().__init__(aggregate)
+        self._location = location
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        if exc_val is not None:
+            self.aggregate._atomic_snapshots.pop()
+            self.aggregate._disable_invariant_checks = self._checks_were_disabled
+            _restore_entities(self._entity_snapshots)
+            self.aggregate._rewind_events(self._event_mark)
+            # A location the hook set on its own error is more specific.
+            if isinstance(exc_val, ValidationError) and exc_val.location is None:
+                exc_val.location = self._location
+            return
+        try:
+            super().__exit__(None, None, None)
+        except ValidationError as exc:
+            exc.location = self._location
+            raise
 
 
 _F = TypeVar("_F", bound=typing.Callable[..., None])

@@ -5,6 +5,7 @@ to the maximum extent possible.
 """
 
 import contextlib
+import functools
 import importlib.metadata
 import inspect
 import keyword
@@ -150,13 +151,17 @@ fqn = _fully_qualified_name
 def _callable_qualname(fn: Callable[..., Any]) -> str:
     """Return ``module.qualname`` for a function or method.
 
-    A callable object without its own ``__qualname__`` (a class instance with
-    ``__call__``, a ``functools.partial``) is named by its class.
+    A ``functools.partial`` is named after the function it wraps. Any other
+    callable object without its own ``__qualname__`` (a class instance with
+    ``__call__``) is named by its class.
     """
+    if isinstance(fn, functools.partial):
+        return f"functools.partial({_callable_qualname(fn.func)})"
     qualname = getattr(fn, "__qualname__", None)
     if not isinstance(qualname, str):
         return _fully_qualified_name(type(fn))
-    return f"{getattr(fn, '__module__', None)}.{qualname}"
+    module = getattr(fn, "__module__", None) or type(fn).__module__
+    return f"{module}.{qualname}"
 
 
 def _convert_str_values_to_list(value: Any) -> list[Any]:

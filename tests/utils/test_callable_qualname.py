@@ -29,5 +29,22 @@ def test_a_callable_object_is_named_by_its_class():
     assert _callable_qualname(Stamper()) == f"{__name__}.Stamper"
 
 
-def test_a_partial_is_named_by_the_partial_class():
-    assert _callable_qualname(functools.partial(stamp)) == "functools.partial"
+def test_a_partial_is_named_after_the_function_it_wraps():
+    assert _callable_qualname(functools.partial(stamp)) == (
+        f"functools.partial({__name__}.stamp)"
+    )
+
+
+stamp_lambda = lambda aggregate: None
+
+
+def test_a_lambda_is_named_by_its_module():
+    assert _callable_qualname(stamp_lambda) == f"{__name__}.<lambda>"
+
+
+def test_a_function_without_a_module_falls_back_to_its_type_module():
+    def nameless(aggregate):
+        pass
+
+    nameless.__module__ = None
+    assert _callable_qualname(nameless).startswith("builtins.")

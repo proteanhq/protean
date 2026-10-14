@@ -119,6 +119,8 @@ writes are undone and the save is aborted with a `ValidationError` whose
 `location` names the enricher, for example
 `aggregate enricher myapp.audit.stamp_audit`. `auto_now` and `auto_now_add`
 stamping works the same way, and its `location` names the stamped fields.
+An enricher that raises has its writes undone too, and its own exception
+reaches the caller.
 
 Aggregate enrichers also fire for the records Protean itself saves through
 repositories, such as outbox rows and the message records of the in-memory event

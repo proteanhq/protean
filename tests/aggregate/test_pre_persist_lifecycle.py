@@ -17,8 +17,9 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate, atomic_change
 from protean.core.entity import BaseEntity, invariant
+from protean.core.projection import BaseProjection
 from protean.exceptions import IncorrectUsageError, ObjectNotFoundError, ValidationError
-from protean.fields import Date, DateTime, HasMany, Status, String
+from protean.fields import Date, DateTime, HasMany, Identifier, Status, String
 from protean.utils.globals import g
 from tests.shared import FrozenClock
 
@@ -107,6 +108,11 @@ class Reading(BaseAggregate):
             raise ValidationError({"updated_at": ["Readings are frozen in 2031"]})
 
 
+class AccountSummary(BaseProjection):
+    account_id: Identifier(identifier=True)
+    updated_at: DateTime(auto_now=True)
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Post)
@@ -116,6 +122,7 @@ def register_elements(test_domain):
     test_domain.register(Ledger)
     test_domain.register(Batch)
     test_domain.register(Reading)
+    test_domain.register(AccountSummary)
     test_domain.init(traverse=False)
 
 
@@ -704,7 +711,7 @@ class TestPostInvariantFailuresNameTheHook:
         assert "archive" in exc.value.location
         assert repo.get(batch.id).stage == "DRAFT"
 
-    def test_a_raising_enricher_keeps_its_own_exception(self, test_domain):
+    def test_a_raising_enricher_keeps_its_messages_and_names_itself(self, test_domain):
         @test_domain.aggregate_enricher
         def reject(aggregate):
             raise ValidationError({"_audit": ["no actor"]})
@@ -714,4 +721,153 @@ class TestPostInvariantFailuresNameTheHook:
             repo.add(Ledger())
 
         assert exc.value.messages == {"_audit": ["no actor"]}
-        assert exc.value.location is None
+        assert exc.value.location is not None
+        assert "reject" in exc.value.location
+
+    def test_a_location_the_enricher_set_is_kept(self, test_domain):
+        @test_domain.aggregate_enricher
+        def reject(aggregate):
+            raise ValidationError({"_audit": ["no actor"]}, location="audit.actor")
+
+        repo = test_domain.repository_for(Ledger)
+        with pytest.raises(ValidationError) as exc:
+            repo.add(Ledger())
+
+        assert exc.value.location == "audit.actor"
+
+    def test_a_crashing_enricher_is_not_hidden_by_an_invariant_failure(
+        self, test_domain
+    ):
+        # The half-finished write breaks the post-invariant. The enricher's
+        # own error is what the caller sees, and its write is undone.
+        @test_domain.aggregate_enricher
+        def half_done(aggregate):
+            if not isinstance(aggregate, Ledger):
+                return
+            aggregate.updated_by = "alice"
+            raise RuntimeError("actor lookup failed")
+
+        repo = test_domain.repository_for(Ledger)
+        ledger = Ledger(reviewer="alice")
+
+        with pytest.raises(RuntimeError, match="actor lookup failed"):
+            repo.add(ledger)
+
+        assert ledger.updated_by is None
+        with pytest.raises(ObjectNotFoundError):
+            repo.get(ledger.id)
+
+    def test_a_save_mid_atomic_change_leaves_the_checks_to_the_block(self, test_domain):
+        # updated_by == reviewer is invalid for a moment inside the block,
+        # when the save runs. The block's exit check sees the final state.
+        @test_domain.aggregate_enricher
+        def stamp_audit(aggregate):
+            if isinstance(aggregate, Ledger):
+                aggregate.updated_by = "carol"
+
+        repo = test_domain.repository_for(Ledger)
+        ledger = Ledger(reviewer="bob")
+        repo._dao.save(ledger, apply_hooks=False)
+        ledger = repo.get(ledger.id)
+
+        with atomic_change(ledger):
+            ledger.reviewer = "carol"
+            repo.add(ledger)
+            ledger.reviewer = "dave"
+
+        assert (ledger.updated_by, ledger.reviewer) == ("carol", "dave")
+
+    def test_an_enricher_failure_through_dao_update(self, test_domain):
+        @test_domain.aggregate_enricher
+        def stamp_audit(aggregate):
+            if isinstance(aggregate, Ledger):
+                aggregate.updated_by = "alice"
+
+        repo = test_domain.repository_for(Ledger)
+        ledger = Ledger(reviewer="alice")
+        repo._dao.save(ledger, apply_hooks=False)
+        stored = repo.get(ledger.id)
+        version_before = stored._version
+
+        with pytest.raises(ValidationError) as exc:
+            repo._dao.update(stored, status="REVIEWED")
+
+        assert exc.value.location is not None
+        assert "stamp_audit" in exc.value.location
+        assert stored._version == version_before
+        assert repo.get(ledger.id).status == "OPEN"
+
+    def test_an_auto_now_failure_through_dao_update(self, test_domain):
+        test_domain.clock = FrozenClock(datetime(2030, 6, 1, tzinfo=UTC))
+        repo = test_domain.repository_for(Reading)
+        reading = Reading()
+        repo.add(reading)
+        stored = repo.get(reading.id)
+        test_domain.clock = FrozenClock(datetime(2031, 6, 1, tzinfo=UTC))
+
+        with pytest.raises(ValidationError) as exc:
+            repo._dao.update(stored, value="42")
+
+        assert exc.value.location == "auto_now stamping of updated_at on Reading"
+        assert repo.get(reading.id).value is None
+
+    def test_a_failed_stamp_skips_the_enrichers(self, test_domain):
+        calls = []
+        test_domain.register_aggregate_enricher(lambda a: calls.append(type(a)))
+        test_domain.clock = FrozenClock(datetime(2031, 6, 1, tzinfo=UTC))
+
+        with pytest.raises(ValidationError) as exc:
+            test_domain.repository_for(Reading).add(Reading())
+
+        assert exc.value.location == "auto_now stamping of updated_at on Reading"
+        assert calls == []
+
+    def test_the_enricher_sees_the_stamped_value(self, test_domain):
+        t0 = datetime(2030, 6, 1, tzinfo=UTC)
+        test_domain.clock = FrozenClock(t0)
+        seen = []
+        test_domain.register_aggregate_enricher(
+            lambda a: seen.append(a.updated_at) if isinstance(a, Reading) else None
+        )
+
+        test_domain.repository_for(Reading).add(Reading())
+
+        assert seen == [t0]
+
+    def test_the_aggregate_saves_after_a_failed_hook(self, test_domain):
+        @test_domain.aggregate_enricher
+        def stamp_audit(aggregate):
+            if isinstance(aggregate, Ledger):
+                aggregate.updated_by = "alice"
+
+        repo = test_domain.repository_for(Ledger)
+        ledger = Ledger(reviewer="alice")
+        with pytest.raises(ValidationError):
+            repo.add(ledger)
+
+        ledger.reviewer = "bob"
+        repo.add(ledger)
+
+        got = repo.get(ledger.id)
+        assert (got.updated_by, got.reviewer) == ("alice", "bob")
+
+
+class TestHookWritesOnObjectsWithoutAnAggregate:
+    def test_an_entity_saved_on_its_own_is_stamped(self, test_domain):
+        t0 = datetime(2030, 6, 1, tzinfo=UTC)
+        test_domain.clock = FrozenClock(t0)
+        entry = Entry(memo="loose", account_id="a1")
+
+        test_domain.repository_for(Entry)._dao.save(entry)
+
+        assert entry.updated_at == t0
+
+    def test_a_projection_is_stamped(self, test_domain):
+        t0 = datetime(2030, 6, 1, tzinfo=UTC)
+        test_domain.clock = FrozenClock(t0)
+        summary = AccountSummary(account_id="a1")
+
+        test_domain.repository_for(AccountSummary).add(summary)
+
+        got = test_domain.repository_for(AccountSummary).get("a1")
+        assert got.updated_at == t0
