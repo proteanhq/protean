@@ -136,7 +136,7 @@ worrying about currency mismatches:
 
 ### Address: Multi-Field Group
 
-Six fields that form a single concept.
+Five fields that form a single concept.
 
 **Before: flat primitives**
 
@@ -144,7 +144,7 @@ Six fields that form a single concept.
 --8<-- "patterns/replace-primitives-with-value-objects/006.py:customer"
 ```
 
-Twelve address fields on one aggregate. To add a "work address," you'd add
+Ten address fields on one aggregate. To add a "work address," you'd add
 five more. To validate that a complete address was provided, you check
 each field individually.
 
@@ -154,7 +154,7 @@ each field individually.
 --8<-- "patterns/replace-primitives-with-value-objects/007.py:address"
 ```
 
-The aggregate went from twelve fields to two. Adding a work address is one more
+The ten address fields became two `Address` fields. Adding a work address is one more
 field. The `Address` value object validates itself. You can't create a partial
 address with just a city and no street.
 

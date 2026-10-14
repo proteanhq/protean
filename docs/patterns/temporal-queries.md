@@ -182,8 +182,9 @@ reporting tools without defensive wrappers.
 
 ### Identity map bypass
 
-Within a Unit of Work, once you pass an aggregate to `repo.add()`, later
-`get()` calls return that same instance from the identity map. Temporal
+Within a Unit of Work, once you pass an aggregate with pending events to
+`repo.add()`, later `get()` calls return that same instance from the identity
+map. An aggregate with no pending events is not stored there. Temporal
 queries **bypass** this cache:
 
 ```python
