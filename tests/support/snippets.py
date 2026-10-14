@@ -37,6 +37,13 @@ whose blocks, or whose closing, are still running at twice the timeout (code
 that catches the timeout, or a platform without ``SIGALRM``) stops the child;
 the file is reported as stuck and a new child runs the files after it.
 
+A file that leaves a non-daemon thread running after its closing fails at the
+cleanup step, naming the thread, because that thread would keep the child from
+exiting. After the last file, the child's shutdown gets twice the timeout, and
+a child still shutting down then is ended. A child that exits with a non-zero
+code, or is killed, after reporting every file fails the run, unless a file
+left a thread running, which is already reported as that file's failure.
+
 :func:`include_expander` builds a source transform that replaces
 ``--8<-- "<spec>"`` lines with the code they include, the way
 ``pymdownx.snippets`` does when it builds the docs. :func:`expand_includes`
@@ -298,21 +305,26 @@ def parse_problems(
 
 # A child exits with this code when a file runs past its hard limit.
 _STUCK_EXIT = 86
+# A child exits with this code when its shutdown runs past the hard limit.
+_SHUTDOWN_EXIT = 87
 
 # The child-interpreter runner. argv[1] is a JSON file holding the files and
 # their blocks, the per-file timeout, the hard limit, and the report path. For
 # each file it builds a fresh namespace, runs the non-fragment blocks in order,
 # initializes every Domain built for the file that registered an element, and
-# then closes any unit of work or domain context the file left open. It records
-# the first failure (the block's starting line, "init" or "cleanup") and the
+# then closes any unit of work or domain context the file left open, and checks
+# that no non-daemon thread the file started is still running. It records the
+# first failure (the block's starting line, "init" or "cleanup") and the
 # starting lines of the blocks it did not run. A file the parent could
 # not prepare carries an "error" and runs nothing.
 #
 # The report is a file of JSON lines, written and flushed as the child goes: a
-# "step" line before each block, the init step and the cleanup step, and a
-# "result" line after each file. If a file is still running at the hard limit,
-# a watchdog thread ends the child, and the parent reads which step was running
-# from the report. Writing to a file keeps start-up logging and the blocks' own
+# "step" line before each block, the init step and the cleanup step, a
+# "lingering" line naming the threads a file left running, and a "result" line
+# after each file. If a file is still running at the hard limit, a watchdog
+# thread ends the child, and the parent reads which step was running from the
+# report. After the last file, another watchdog ends a shutdown that runs past
+# the hard limit. Writing to a file keeps start-up logging and the blocks' own
 # output out of it.
 _RUNNER = """
 import builtins
@@ -480,6 +492,14 @@ def start_watchdog():
     return watchdog
 
 
+def lingering_threads(baseline):
+    return [
+        thread
+        for thread in threading.enumerate()
+        if thread not in baseline and not thread.daemon and thread.is_alive()
+    ]
+
+
 for index, item in enumerate(job["files"], start=job["first_index"]):
     label = item["file"]
     blocks = [b for b in item["blocks"] if not b["fragment"]]
@@ -510,6 +530,9 @@ for index, item in enumerate(job["files"], start=job["first_index"]):
     failure = None
     not_run = []
     step = None
+    # Taken before the watchdog starts, though the watchdog is a daemon and
+    # would be left out of the check anyway.
+    baseline = set(threading.enumerate())
     watchdog = start_watchdog()
     if has_alarm:
         # A block may replace the handler; put it back for every file.
@@ -562,9 +585,31 @@ for index, item in enumerate(job["files"], start=job["first_index"]):
         problem = close_left_open()
         if failure is None and problem is not None:
             failure = "cleanup: " + problem
+        # Checked after closing, because a teardown callback may join a
+        # thread the page started.
+        lingering = lingering_threads(baseline)
+        if lingering:
+            # A live non-daemon thread holds up the child's exit whatever the
+            # page's reported failure is, so the parent hears about it even
+            # when a block failed first.
+            emit({"lingering": [thread.name for thread in lingering]})
+            if failure is None:
+                failure = "cleanup: " + "; ".join(
+                    "thread %s is still running" % thread.name
+                    for thread in lingering
+                )
     finally:
         watchdog.cancel()
     emit({"result": {"file": label, "failure": failure, "not_run": not_run}})
+
+report.close()
+# Interpreter shutdown waits for every non-daemon thread. A daemon thread keeps
+# running during that wait, so this one ends a shutdown that never finishes.
+shutdown_watchdog = threading.Timer(
+    job["hard_timeout"], os._exit, args=(job["shutdown_exit"],)
+)
+shutdown_watchdog.daemon = True
+shutdown_watchdog.start()
 """
 
 
@@ -587,20 +632,24 @@ def _job_entry(
     }
 
 
-def _read_report(path: Path) -> tuple[list[dict], dict | None]:
-    """Return the finished results in a report, and the last step after them."""
+def _read_report(path: Path) -> tuple[list[dict], dict | None, bool]:
+    """Return the finished results in a report, the last step after them, and
+    whether a file left a thread running."""
     results: list[dict] = []
     step = None
+    lingering = False
     if not path.is_file():
-        return results, step
+        return results, step, lingering
     for line in path.read_text(encoding="utf-8").splitlines():
         record = json.loads(line)
         if "result" in record:
             results.append(record["result"])
             step = None
+        elif "lingering" in record:
+            lingering = True
         else:
             step = record
-    return results, step
+    return results, step, lingering
 
 
 def run_snippets(
@@ -619,7 +668,11 @@ def run_snippets(
 
     A file still running at twice ``timeout``, or one that crashes the child,
     fails with the step that was running, and a new child runs the files after
-    it.
+    it. A file that leaves a non-daemon thread running fails at the cleanup
+    step, and the child's shutdown is ended at twice ``timeout``.
+
+    Raises :class:`AssertionError` when the child exits with a non-zero code,
+    or is killed, after reporting every file and no file left a thread running.
     """
     work = tmp_path / "snippet-run"
     work.mkdir()
@@ -636,6 +689,7 @@ def run_snippets(
             "timeout": timeout,
             "hard_timeout": hard_timeout,
             "stuck_exit": _STUCK_EXIT,
+            "shutdown_exit": _SHUTDOWN_EXIT,
             "report": str(report_path),
             "first_index": len(results),
             "files": pending,
@@ -651,17 +705,26 @@ def run_snippets(
                 check=False,
                 timeout=hard_timeout * len(pending) + 60,
             )
+            clean = result.returncode == 0
             stuck = result.returncode == _STUCK_EXIT
             stopped = f"exit {result.returncode}"
             stderr = result.stderr
         except subprocess.TimeoutExpired as exc:
+            clean = False
             stuck = True
             stopped = "killed"
             raw = exc.stderr or ""
             stderr = raw.decode(errors="replace") if isinstance(raw, bytes) else raw
-        done, step = _read_report(report_path)
+        done, step, lingering = _read_report(report_path)
         results.extend(done)
         if len(results) == len(entries):
+            # A thread left running holds up the child's exit until the
+            # shutdown watchdog ends it, and the page that left it has
+            # already failed, so that exit is expected.
+            assert clean or lingering, (
+                f"the snippet runner stopped after its last file ({stopped}):\n"
+                f"{stderr[-4000:]}"
+            )
             break
         assert step is not None, (
             f"the snippet runner stopped outside a file ({stopped}):\n{stderr[-4000:]}"

@@ -8,6 +8,7 @@ under ``tmp_path`` and run them through the same code.
 from __future__ import annotations
 
 import signal
+import time
 from pathlib import Path
 
 import pytest
@@ -709,3 +710,107 @@ def test_a_page_that_crashes_the_runner_is_reported_and_the_next_page_runs(
         "failure": "line 2: ValueError: c ran",
         "not_run": [],
     }
+
+
+LINGERING = (
+    "```python\n"
+    "import threading, time\n"
+    "threading.Thread(target=time.sleep, args=(600,), name='sleeper').start()\n"
+    "```\n"
+)
+
+
+def test_a_page_that_leaves_a_thread_running_fails_at_cleanup(tmp_path, bases):
+    page = _write(tmp_path, LINGERING, "a.md")
+    started = time.monotonic()
+    results = _run(tmp_path, [page], bases, timeout=0.5)
+    elapsed = time.monotonic() - started
+    assert results == [
+        {
+            "file": "a.md",
+            "failure": "cleanup: thread sleeper is still running",
+            "not_run": [],
+        }
+    ]
+    # The shutdown watchdog ends the child at 1 second; the outer limit is 61.
+    assert elapsed < 30
+
+
+def test_only_the_page_that_left_a_thread_running_fails(tmp_path, bases):
+    lingering = _write(tmp_path, LINGERING, "a.md")
+    after = _write(tmp_path, "```python\nvalue = 1\n```\n", "b.md")
+    assert _run(tmp_path, [lingering, after], bases, timeout=0.5) == [
+        {
+            "file": "a.md",
+            "failure": "cleanup: thread sleeper is still running",
+            "not_run": [],
+        },
+        {"file": "b.md", "failure": None, "not_run": []},
+    ]
+
+
+@pytest.mark.parametrize(
+    "start",
+    [
+        "threading.Thread(target=time.sleep, args=(600,), daemon=True).start()",
+        (
+            "thread = threading.Thread(target=time.sleep, args=(0.01,))\n"
+            "thread.start()\n"
+            "thread.join()"
+        ),
+    ],
+    ids=["daemon", "joined"],
+)
+def test_a_daemon_or_finished_thread_passes(tmp_path, bases, start):
+    page = _write(
+        tmp_path, f"```python\nimport threading, time\n{start}\n```\n", "a.md"
+    )
+    assert _run(tmp_path, [page], bases, timeout=0.5) == [
+        {"file": "a.md", "failure": None, "not_run": []}
+    ]
+
+
+def test_a_thread_joined_by_a_teardown_callback_passes(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "import threading, time\n"
+        "stop = threading.Event()\n"
+        "thread = threading.Thread(target=stop.wait, args=(600,))\n"
+        "thread.start()\n"
+        "def finish(exc):\n"
+        "    stop.set()\n"
+        "    thread.join()\n"
+        "domain.teardown_domain_context(finish)\n"
+        "domain.domain_context().push()\n"
+        "```\n",
+        "a.md",
+    )
+    assert _run(tmp_path, [page], bases, timeout=0.5) == [
+        {"file": "a.md", "failure": None, "not_run": []}
+    ]
+
+
+def test_a_block_failure_before_a_thread_check_keeps_the_block_failure(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "import threading, time\n"
+        "threading.Thread(target=time.sleep, args=(600,), name='sleeper').start()\n"
+        "raise ValueError('boom')\n"
+        "```\n",
+        "a.md",
+    )
+    assert _run(tmp_path, [page], bases, timeout=0.5) == [
+        {"file": "a.md", "failure": "line 2: ValueError: boom", "not_run": []}
+    ]
+
+
+def test_a_child_that_exits_badly_after_every_result_fails_the_run(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\nimport atexit, os\natexit.register(os._exit, 3)\n```\n",
+        "a.md",
+    )
+    with pytest.raises(AssertionError, match=r"stopped after its last file \(exit 3\)"):
+        _run(tmp_path, [page], bases, timeout=0.5)
