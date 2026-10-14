@@ -39,10 +39,11 @@ the file is reported as stuck and a new child runs the files after it.
 
 A file that leaves a non-daemon thread running after its closing fails at the
 cleanup step, naming the thread, because that thread would keep the child from
-exiting. After the last file, the child's shutdown gets twice the timeout, and
-a child still shutting down then is ended. A child that exits with a non-zero
-code, or is killed, after reporting every file fails the run, unless a file
-left a thread running, which is already reported as that file's failure.
+exiting. A file that already failed at an earlier step keeps that failure. After
+the last file, the child's shutdown gets twice the timeout, and a child still
+shutting down then is ended. A child that exits with a non-zero code, or is
+killed, after reporting every file fails the run, unless a file left a thread
+running, since that thread is what held up the exit.
 
 :func:`include_expander` builds a source transform that replaces
 ``--8<-- "<spec>"`` lines with the code they include, the way
@@ -669,7 +670,8 @@ def run_snippets(
     A file still running at twice ``timeout``, or one that crashes the child,
     fails with the step that was running, and a new child runs the files after
     it. A file that leaves a non-daemon thread running fails at the cleanup
-    step, and the child's shutdown is ended at twice ``timeout``.
+    step, unless it already failed at an earlier step, and the child's
+    shutdown is ended at twice ``timeout``.
 
     Raises :class:`AssertionError` when the child exits with a non-zero code,
     or is killed, after reporting every file and no file left a thread running.
