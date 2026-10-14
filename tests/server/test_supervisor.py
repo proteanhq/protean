@@ -501,9 +501,9 @@ class TestWorkerEntryBootstrapLevel:
     def test_log_level_flag_wins_over_protean_log_level(self, monkeypatch):
         monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")
 
-        level = _root_level_at_derive(kwargs={"log_level": "WARNING"})
+        level = _root_level_at_derive(kwargs={"log_level": "ERROR"})
 
-        assert level == logging.WARNING
+        assert level == logging.ERROR
 
     def test_defaults_to_info_without_flag_or_variable(self, monkeypatch):
         monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
@@ -511,12 +511,44 @@ class TestWorkerEntryBootstrapLevel:
         assert _root_level_at_derive() == logging.INFO
 
     def test_defaults_to_info_under_development_env(self, monkeypatch):
-        # The PROTEAN_ENV map would pick DEBUG here. The parent bootstraps at
-        # INFO, so the worker does too.
+        # The PROTEAN_ENV map would pick DEBUG here. With no logging flag, the
+        # parent bootstraps at INFO, so the worker does too.
         monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
         monkeypatch.setenv("PROTEAN_ENV", "development")
 
         assert _root_level_at_derive() == logging.INFO
+
+    def test_log_format_alone_resolves_the_level_like_the_parent(self, monkeypatch):
+        # With only --log-format, the parent leaves the level to
+        # PROTEAN_LOG_LEVEL and then the PROTEAN_ENV map.
+        monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
+        monkeypatch.setenv("PROTEAN_ENV", "development")
+
+        level = _root_level_at_derive(kwargs={"log_format": "json"})
+
+        assert level == logging.DEBUG
+
+    def test_log_format_reaches_the_bootstrap(self):
+        with (
+            patch("protean.utils.domain_discovery.derive_domain", return_value=None),
+            patch("protean.utils.logging.configure_logging") as mock_configure,
+            pytest.raises(SystemExit),
+        ):
+            _worker_entry("d", test_mode=False, worker_id=0, log_format="json")
+
+        mock_configure.assert_called_once_with(format="json")
+
+    def test_log_level_and_format_both_reach_the_bootstrap(self):
+        with (
+            patch("protean.utils.domain_discovery.derive_domain", return_value=None),
+            patch("protean.utils.logging.configure_logging") as mock_configure,
+            pytest.raises(SystemExit),
+        ):
+            _worker_entry(
+                "d", test_mode=False, worker_id=0, log_level="ERROR", log_format="json"
+            )
+
+        mock_configure.assert_called_once_with(level="ERROR", format="json")
 
     def test_protean_log_level_does_not_override_log_config(self, monkeypatch):
         monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")

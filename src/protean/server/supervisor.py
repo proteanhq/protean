@@ -473,9 +473,11 @@ def _worker_entry(
             (single-worker mode) the worker uses direct handlers from
             ``configure_logging()``.
         log_level: Passed to ``Domain.configure_logging()`` in place of
-            ``[logging].level``, as the CLI's ``--log-level`` does.
+            ``[logging].level``, as the CLI's ``--log-level`` does. Also the
+            level of the bootstrap logging before the domain loads.
         log_format: Passed to ``Domain.configure_logging()`` in place of
-            ``[logging].format``, as the CLI's ``--log-format`` does.
+            ``[logging].format``, as the CLI's ``--log-format`` does. Also the
+            format of the bootstrap logging before the domain loads.
         log_config: A ``dictConfig`` dict, as the CLI's ``--log-config``
             loads. When given, the worker applies it and skips
             ``Domain.configure_logging()``.
@@ -488,14 +490,25 @@ def _worker_entry(
     # does in the parent process. It is applied first, before the worker's own
     # logger exists, so its ``disable_existing_loggers`` cannot silence that
     # logger, and no bootstrap handler is left on the root beside it.
-    # Otherwise, bootstrap logging at the parent's level so the worker has
-    # *some* output for derive/init errors. The domain's own configuration
-    # (which carries ``[logging].redact``, per-logger overrides, etc.)
-    # replaces it below.
+    # Otherwise, bootstrap logging the way the parent's CLI callback and
+    # ``server`` command do, so the worker has *some* output for derive/init
+    # errors at the parent's level and format. With a level or format flag the
+    # parent calls ``configure_logging`` with just those, so an unset level
+    # resolves through ``PROTEAN_LOG_LEVEL`` and then the ``PROTEAN_ENV`` map.
+    # With no flag it uses ``PROTEAN_LOG_LEVEL`` or INFO. The domain's own
+    # configuration (which carries ``[logging].redact``, per-logger overrides,
+    # etc.) replaces it below.
     if log_config is not None:
         configure_logging(dict_config=log_config)
+    elif log_level is None and log_format is None:
+        configure_logging(level=os.getenv("PROTEAN_LOG_LEVEL", "INFO"))
     else:
-        configure_logging(level=log_level or os.getenv("PROTEAN_LOG_LEVEL", "INFO"))
+        bootstrap: dict[str, Any] = {}
+        if log_level is not None:
+            bootstrap["level"] = log_level
+        if log_format is not None:
+            bootstrap["format"] = log_format
+        configure_logging(**bootstrap)
 
     worker_logger = logging.getLogger(f"protean.server.worker-{worker_id}")
     worker_logger.info(f"Worker {worker_id} (PID {os.getpid()}) starting...")
