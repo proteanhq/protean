@@ -46,7 +46,7 @@ from protean.ir.constants import (
     is_persistence_call,
 )
 from protean.ir.diagnostics import Diagnostic, DiagnosticCode, build_diagnostic
-from protean.utils import _DEPRECATED_PLUMBING, fqn
+from protean.utils import _DEPRECATED_PLUMBING, _callable_qualname, fqn
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
 from protean.utils.upcasting import (
@@ -362,6 +362,11 @@ class IRBuilder:
         if upcasters:
             ir["upcasters"] = upcasters
 
+        # Sparse for the same reason: enricher-free domains keep their IR.
+        enrichers = self._build_enrichers()
+        if enrichers:
+            ir["enrichers"] = enrichers
+
         # Materialize raise/invoke edges as a post-pass over the assembled
         # clusters, flows and projections (the per-element extractors do not
         # hold a cluster's whole element set, which ``invokes`` needs).
@@ -550,6 +555,10 @@ class IRBuilder:
             entry["sanitize"] = True
         if field.increment:
             entry["increment"] = True
+        if field.auto_now:
+            entry["auto_now"] = True
+        if field.auto_now_add:
+            entry["auto_now_add"] = True
         if getattr(field, "description", None):
             entry["description"] = field.description
 
@@ -1924,6 +1933,24 @@ class IRBuilder:
         return {
             name: sorted(edges, key=lambda e: (e["from_version"], e["to_version"]))
             for name, edges in sorted(edges_by_event.items())
+        }
+
+    def _build_enrichers(self) -> dict[str, list[str]]:
+        """List the registered enrichers by qualified name, per kind.
+
+        Each list keeps registration order, because enrichers run in that
+        order and a later one can overwrite what an earlier one set. A kind
+        with no enrichers is left out.
+        """
+        registered = {
+            "aggregate": self._domain._aggregate_enrichers,
+            "command": self._domain._command_enrichers,
+            "event": self._domain._event_enrichers,
+        }
+        return {
+            kind: [_callable_qualname(fn) for fn in enrichers]
+            for kind, enrichers in registered.items()
+            if enrichers
         }
 
     # ------------------------------------------------------------------

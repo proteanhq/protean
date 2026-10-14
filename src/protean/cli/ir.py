@@ -485,6 +485,15 @@ def _print_diff_text(
         for key, vals in sorted(domain_changed.items()):
             print(f"  [yellow]~ {key}: {vals['left']} → {vals['right']}[/yellow]")
 
+    # Enrichers, per kind, in registration order
+    enrichers_changed = result.get("enrichers", {}).get("changed", {})
+    if enrichers_changed:
+        print("\n[bold]Enrichers[/bold]")
+        for kind, vals in sorted(enrichers_changed.items()):
+            left = ", ".join(vals["left"] or []) or "none"
+            right = ", ".join(vals["right"] or []) or "none"
+            print(f"  [yellow]~ {kind}: {left} → {right}[/yellow]")
+
     print()
 
 
