@@ -123,10 +123,10 @@ check-stage diagnostics at the top level.
 | `diagnostics` | The check-stage diagnostics, surfaced at the top level (empty when check never ran). |
 
 When `verify` aborts early (the domain is not found, exit 2; `--path` is not a
-directory, exit 2; or init fails, exit 3), the stages that never ran are
-reported as a bare `{ "status": "skipped" }` **without** their other sub-keys. A
-consumer that reads, say, `data.stages.check.counts` must guard for the skipped
-shape (or check the top-level `status`/`data.verdict` first). The domain-not-found
+directory, exit 2; `--env` is blank, exit 2; or init fails, exit 3), the stages
+that never ran are reported as a bare `{ "status": "skipped" }` **without**
+their other sub-keys. A consumer that reads, say, `data.stages.check.counts`
+must guard for the skipped shape (or check the top-level `status`/`data.verdict` first). The domain-not-found
 and init-failure cases carry their message under `data.stages.init.error`
 instead of `data.error`, since those are tied to the init stage.
 

@@ -87,7 +87,7 @@ command that sets no explicit exit code already conforms.
 | Exit code | Meaning |
 |-----------|---------|
 | `0` | All green: init, check, and tests pass. |
-| `2` | Usage: the domain was not found, or `--path` is not a directory. |
+| `2` | Usage: the domain was not found, `--path` is not a directory, or `--env` is blank. |
 | `3` | Init failed: the domain was found but did not initialize. |
 | `4` | Check failed: a malformed `[lint]` config, or findings at or above the floor. |
 | `5` | Tests failed. |
