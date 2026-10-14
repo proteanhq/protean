@@ -455,7 +455,7 @@ def _format_sarif(result: dict[str, Any], domain: Any) -> dict[str, Any]:
     ``errors`` and ``diagnostics`` are mutually exclusive per run and carry
     different shapes, so each list is handled separately: ``errors`` (validator
     errors, or the IR-build error) become location-less ``error`` results with
-    no rule metadata; rule ``diagnostics`` carry the #774 metadata and attempt
+    no rule metadata; rule ``diagnostics`` carry their rule metadata and attempt
     FQN-based location resolution. ``reportingDescriptor`` objects are
     deduplicated by code across both lists (first occurrence wins).
     """
