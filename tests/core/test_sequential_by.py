@@ -283,6 +283,42 @@ class TestFieldExistenceValidation:
 
         assert test_domain._partition_keys["test::order"] == "order_id"
 
+    @pytest.mark.parametrize("value", ["order_id", "", 1, 0, ["order_id"]])
+    def test_pm_rejects_a_value_that_is_not_a_boolean(self, test_domain, value):
+        class OrderPM(BaseProcessManager):
+            order_id = Identifier(identifier=True)
+
+            @handle(OrderPlaced, start=True, correlate="order_id")
+            def on_placed(self, event):
+                pass
+
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(OrderPM, sequential_by=value)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+        message = str(exc.value)
+        assert (
+            f"Process Manager `OrderPM` declares `sequential_by={value!r}`, "
+            f"but it takes a boolean" in message
+        )
+
+    def test_pm_with_false_does_not_partition(self, test_domain):
+        class OrderPM(BaseProcessManager):
+            order_id = Identifier(identifier=True)
+
+            @handle(OrderPlaced, start=True, correlate="order_id")
+            def on_placed(self, event):
+                pass
+
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(OrderPM, sequential_by=False)
+        test_domain.init(traverse=False)
+
+        assert test_domain._partition_keys == {}
+
 
 # --- One-key-per-category validation ----------------------------------------
 

@@ -330,8 +330,9 @@ Command handlers include a `handlers` map (`__type__` → list of method names),
 
 `sequential_by` appears when the handler was registered with that option. It
 is a non-empty string: the name of the message field used as the partition
-key, so messages with the same key value are handled in order. The key is
-absent when the option is unset.
+key. The key is absent when the option is unset. What the key does at runtime
+depends on the handler kind and the broker; see
+[`sequential_by`](../../reference/server/sequential-by.md).
 
 ### Event Handler
 
@@ -588,9 +589,12 @@ Process managers are stateful, event-driven coordinators. They include:
 - `handlers` with lifecycle metadata (`start`, `end`, `correlate`)
 - `transition_event` (auto-generated event: `fqn` and `__type__` only)
 - `sequential_by` (optional boolean). `true` means the process manager opted
-  in to ordered processing. Each handled event's stream category is then
-  partitioned by the field that its handler's `correlate` setting names. The
-  key is absent when the option is unset.
+  in to partitioning: each handled event's stream category is partitioned by
+  the event field that its handler's `correlate` maps to the correlation value.
+  `false` has the same effect as leaving the option unset. The key is absent
+  when the option is unset. See
+  [`sequential_by`](../../reference/server/sequential-by.md) for the runtime
+  guarantee.
 
 ### Subscribers
 

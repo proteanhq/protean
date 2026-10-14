@@ -437,7 +437,11 @@ class HandlerConfigurator:
         # event's ``correlate`` spec maps to the correlation value.
         for element in registry._elements[DomainObjects.PROCESS_MANAGER.value].values():
             pm_cls = element.cls
-            if not getattr(pm_cls.meta_, "sequential_by", None):
+            key = getattr(pm_cls.meta_, "sequential_by", None)
+            if key is None:
+                continue
+            self._assert_boolean_key(key, pm_cls)
+            if not key:
                 continue
             for _, method in _discover_handler_methods(pm_cls):
                 target = method._target_cls
@@ -519,6 +523,23 @@ class HandlerConfigurator:
                 f"but it takes the name of a field on the handled messages, "
                 f'such as `sequential_by="order_id"`. The boolean form '
                 f"`sequential_by=True` is for process managers only (ADR-0028)."
+            )
+
+    @staticmethod
+    def _assert_boolean_key(key: Any, pm_cls: type[Any]) -> None:
+        """Raise unless *key* is a boolean.
+
+        A process manager partitions by its ``correlate`` fields, so it takes no
+        field name. Without this check a copied ``sequential_by="order_id"``
+        would turn partitioning on by truthiness and the IR would carry a
+        string the schema rejects.
+        """
+        if not isinstance(key, bool):
+            raise IncorrectUsageError(
+                f"Process Manager `{pm_cls.__name__}` declares "
+                f"`sequential_by={key!r}`, but it takes a boolean. Set "
+                f"`sequential_by=True` to partition each handled event's "
+                f"category by the field its `correlate` maps (ADR-0028)."
             )
 
     @staticmethod

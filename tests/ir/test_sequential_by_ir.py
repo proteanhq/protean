@@ -7,6 +7,7 @@ boolean opt-in for process managers; a field name for projectors too).
 
 import copy
 import json
+from pathlib import Path
 
 import jsonschema
 import pytest
@@ -256,13 +257,14 @@ class TestSequentialBySchema:
         errors = [error.message for error in validator.iter_errors(ir)]
         assert errors == []
 
+    @pytest.mark.parametrize("value", ["", True, 5])
     @pytest.mark.parametrize(
         "name",
         ["PartitionedOrderHandler", "OrderCommandHandler", "PartitionedOrderProjector"],
     )
-    def test_empty_partition_key_is_rejected(self, name):
+    def test_partition_key_that_is_not_a_field_name_is_rejected(self, name, value):
         ir = _build_ir()
-        _element(ir, name)["sequential_by"] = ""
+        _element(ir, name)["sequential_by"] = value
         assert _error_paths(ir) == [_path_to(ir, name)]
 
     def test_string_on_process_manager_is_rejected(self):
@@ -274,3 +276,33 @@ class TestSequentialBySchema:
         ir = _build_ir()
         _element(ir, "OrderPM")["sequential_by"] = False
         assert _error_paths(ir) == []
+
+
+_SPEC_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "docs"
+    / "concepts"
+    / "internals"
+    / "ir-specification.md"
+)
+
+
+def _spec_section(start, end):
+    text = _SPEC_PATH.read_text()
+    begin = text.index(start)
+    return text[begin : text.index(end, begin)]
+
+
+@pytest.mark.no_test_domain
+class TestSequentialBySpecification:
+    @pytest.mark.parametrize(
+        "start, end",
+        [
+            ("### Command Handler", "### Event Handler"),
+            ("### Event Handler", "### Other Cluster Elements"),
+            ("**Projectors** specify", "**Queries**"),
+            ("### Process Managers", "### Subscribers"),
+        ],
+    )
+    def test_each_kind_documents_the_key(self, start, end):
+        assert "`sequential_by`" in _spec_section(start, end)
