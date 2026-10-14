@@ -2880,8 +2880,8 @@ class Domain:
         _install_root_filter(ProteanCorrelationFilter())
         if telemetry_enabled:
             _install_root_filter(OTelTraceContextFilter())
-        # The two installs above append after any redaction filter already
-        # there, and the context filters write the ids redaction may need to
+        # These installs append after any redaction filter already there,
+        # and the context filters write the ids redaction may need to
         # mask, so move redaction back after them on the root logger and on
         # each root handler.
         _move_redaction_filter_last()
