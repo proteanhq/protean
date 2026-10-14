@@ -779,6 +779,9 @@ def run_snippets(
             "files": pending,
         }
         job_path.write_text(json.dumps(job), encoding="utf-8")
+        # Each file may use the hard limit for its blocks and again for its
+        # cleanup, and the shutdown after the last file gets one more.
+        budget = hard_timeout * (2 * len(pending) + 1) + 60
         try:
             result = subprocess.run(
                 [sys.executable, "-c", _RUNNER, str(job_path)],
@@ -787,7 +790,7 @@ def run_snippets(
                 cwd=work,
                 stdin=subprocess.DEVNULL,
                 check=False,
-                timeout=hard_timeout * len(pending) + 60,
+                timeout=budget,
             )
             returncode: int | None = result.returncode
             clean = returncode == 0
