@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import decimal
 import json
+import math
 import re
 from typing import Any
 
@@ -11,7 +12,7 @@ import jsonschema
 import pytest
 
 from protean import Domain
-from protean.fields import Custom, Decimal, Float, List, String
+from protean.fields import Custom, Decimal, Float, Integer, List, String
 from protean.ir import SCHEMA_PATH
 from protean.ir.builder import IRBuilder
 from protean.ir.diff import _AVRO_CHANGE_SAFETY, classify_changes, diff_ir
@@ -108,6 +109,200 @@ class TestBuilder:
         ir = _build(prices=List(content_type=Decimal))
 
         assert _field(ir, "prices")["content_type"] == "Decimal"
+
+
+def _validate(ir: dict[str, Any]) -> None:
+    jsonschema.validate(ir, json.loads(SCHEMA_PATH.read_text()))
+    json.dumps(ir)
+
+
+class TestDecimalBounds:
+    def test_to_ir_writes_decimal_bounds_on_a_decimal_field_as_strings(self):
+        domain = Domain(name="Decimals")
+        account = type(
+            "Account",
+            (),
+            {
+                "__module__": __name__,
+                "x": Decimal(
+                    min_value=decimal.Decimal("0.01"),
+                    max_value=decimal.Decimal("999.99"),
+                ),
+            },
+        )
+        domain.aggregate(account)
+        domain.init(traverse=False)
+
+        ir = domain.to_ir()
+
+        field = _field(ir, "x")
+        assert field["min_value"] == "0.01"
+        assert field["max_value"] == "999.99"
+        assert type(field["min_value"]) is str
+        assert type(field["max_value"]) is str
+        _validate(ir)
+
+    def test_trailing_zero_is_kept(self):
+        ir = _build(x=Decimal(min_value=decimal.Decimal("0.010")))
+
+        assert _field(ir, "x")["min_value"] == "0.010"
+        _validate(ir)
+
+    def test_decimal_bound_on_a_float_field_is_a_float(self):
+        ir = _build(x=Float(min_value=decimal.Decimal("0.5")))
+
+        bound = _field(ir, "x")["min_value"]
+        assert bound == 0.5
+        assert type(bound) is float
+        _validate(ir)
+
+    def test_integral_decimal_bound_on_an_integer_field_is_an_int(self):
+        ir = _build(x=Integer(max_value=decimal.Decimal(10)))
+
+        bound = _field(ir, "x")["max_value"]
+        assert bound == 10
+        assert type(bound) is int
+        _validate(ir)
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [("10.5", 10.5), ("Infinity", float("inf")), ("NaN", None)],
+    )
+    def test_non_integral_decimal_bound_for_an_integer_type_is_a_float(
+        self, value, expected
+    ):
+        # An Integer field rejects such a bound when it is declared, so the
+        # helper is exercised directly.
+        bound = IRBuilder._ir_bound(decimal.Decimal(value), "Integer")
+
+        assert type(bound) is float
+        if expected is None:
+            assert math.isnan(bound)
+        else:
+            assert bound == expected
+
+    @pytest.mark.parametrize(
+        ("spec", "key", "expected"),
+        [
+            (Integer(min_value=0), "min_value", 0),
+            (Float(max_value=1.5), "max_value", 1.5),
+            (Float(min_value=2), "min_value", 2),
+            (Decimal(min_value=0), "min_value", 0),
+            (Decimal(max_value=2.5), "max_value", 2.5),
+        ],
+    )
+    def test_int_and_float_bounds_are_unchanged(self, spec, key, expected):
+        ir = _build(x=spec)
+
+        bound = _field(ir, "x")[key]
+        assert bound == expected
+        assert type(bound) is type(expected)
+        _validate(ir)
+
+    def test_custom_decimal_field_writes_its_bound_as_a_string(self):
+        ir = _build(x=Custom(decimal.Decimal, min_value=decimal.Decimal("1.50")))
+
+        field = _field(ir, "x")
+        assert field["kind"] == "custom"
+        assert field["type"] == "Decimal"
+        assert field["min_value"] == "1.50"
+        _validate(ir)
+
+    def test_exponent_form_is_kept(self):
+        ir = _build(x=Decimal(max_value=decimal.Decimal("1E+2")))
+
+        assert _field(ir, "x")["max_value"] == "1E+2"
+        _validate(ir)
+
+    def test_integral_decimal_bound_on_a_float_field_is_a_float(self):
+        ir = _build(x=Float(min_value=decimal.Decimal(2)))
+
+        bound = _field(ir, "x")["min_value"]
+        assert bound == 2.0
+        assert type(bound) is float
+        _validate(ir)
+
+    def test_custom_decimal_field_writes_its_max_value_as_a_string(self):
+        ir = _build(x=Custom(decimal.Decimal, max_value=decimal.Decimal("9.90")))
+
+        assert _field(ir, "x")["max_value"] == "9.90"
+        _validate(ir)
+
+    def test_string_bound_on_an_integer_field_is_written_as_an_int(self):
+        ir = _build(
+            x=Integer(min_value="5"),
+            y=Custom(int, max_value="7"),
+        )
+
+        assert _field(ir, "x")["min_value"] == 5
+        assert type(_field(ir, "x")["min_value"]) is int
+        assert _field(ir, "y")["kind"] == "custom"
+        assert _field(ir, "y")["max_value"] == 7
+        assert type(_field(ir, "y")["max_value"]) is int
+        _validate(ir)
+
+    def test_string_bound_on_a_float_type_is_written_as_a_float(self):
+        # A Float field rejects a string bound when it is declared, so the
+        # helper is exercised directly.
+        bound = IRBuilder._ir_bound("2.5", "Float")
+
+        assert bound == 2.5
+        assert type(bound) is float
+
+    def test_non_numeric_string_bound_on_an_integer_type_is_left_as_is(self):
+        assert IRBuilder._ir_bound("abc", "Integer") == "abc"
+
+    def test_string_bound_on_a_decimal_field_stays_a_string(self):
+        ir = _build(x=Decimal(min_value="0.01"))
+
+        assert _field(ir, "x")["min_value"] == "0.01"
+        _validate(ir)
+
+    @pytest.mark.parametrize(
+        "ir_type", ["String", "Integer", "Float", "Boolean", "Date", "DateTime"]
+    )
+    @pytest.mark.parametrize("key", ["min_value", "max_value"])
+    @pytest.mark.parametrize("kind", ["standard", "custom"])
+    def test_schema_rejects_a_string_bound_on_a_non_decimal_field(
+        self, ir_type, key, kind
+    ):
+        ir = _build(x=Integer(min_value=1, max_value=2))
+        field = _field(ir, "x")
+        field["kind"] = kind
+        field["type"] = ir_type
+        field[key] = "5"
+
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(ir, json.loads(SCHEMA_PATH.read_text()))
+
+    def test_generator_writes_numeric_minimum_and_maximum_for_non_decimal_fields(
+        self,
+    ):
+        ir = _build(
+            f=Float(required=True, min_value=decimal.Decimal("0.5")),
+            i=Integer(required=True, max_value=decimal.Decimal(10)),
+            d=Decimal(
+                required=True,
+                min_value=decimal.Decimal("0.01"),
+                max_value=decimal.Decimal("9.99"),
+            ),
+        )
+
+        props = generate_element_schema(_aggregate(ir))["properties"]
+        assert props["f"]["minimum"] == 0.5
+        assert props["i"]["maximum"] == 10
+        assert type(props["i"]["maximum"]) is int
+        assert props["d"]["type"] == "string"
+        assert "minimum" not in props["d"]
+        assert "maximum" not in props["d"]
+
+    @pytest.mark.parametrize("bad", [True, {"value": "1"}, ["1"]])
+    def test_schema_rejects_a_bound_that_is_neither_number_nor_string(self, bad):
+        ir = _build(x=Decimal(min_value=decimal.Decimal(1)))
+        _field(ir, "x")["min_value"] = bad
+
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(ir, json.loads(SCHEMA_PATH.read_text()))
 
 
 class TestSchemaValidation:
