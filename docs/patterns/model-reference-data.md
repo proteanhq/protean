@@ -60,9 +60,8 @@ concept.**
 
 ## The Pattern
 
-Model each *kind* of reference data as its own domain type. A
-shared physical table, if you truly need one, is an adapter detail, decided
-last, expressed in the model layer, invisible to the domain.
+Model each *kind* of reference data as its own domain type, with its own
+table.
 
 ```
 One True Lookup Table:
@@ -251,23 +250,18 @@ pattern is unchanged.
 
 ---
 
-## The single physical table as an adapter escape hatch
+## A single physical table is not supported
 
 Sometimes a legacy `master_data` table is an immovable infrastructure
-constraint: a shared database that other systems already read. That constraint
-belongs in the **model layer**, never the domain. Keep the domain concepts
-distinct and point their custom models at the same `schema_name`:
+constraint: a shared database that other systems already read. Protean cannot
+map several aggregates onto that one table. Each aggregate gets its own table,
+and two database models cannot share a `schema_name`. With a SQL provider, the
+second model on the same `schema_name` fails at startup with SQLAlchemy's
+`InvalidRequestError: Table 'master_data' is already defined`.
 
-```python
---8<-- "patterns/model-reference-data/004.py:shared_table"
-```
-
-The domain still sees `Currency` and `Country` as separate, fully-typed
-concepts; only the adapter knows they share a table. Treat this as a true escape
-hatch: a `category` discriminator column and per-concept scoping must be managed
-in the custom models and repositories yourself, and Protean will not synthesize
-that filtering for you. Reach for it only when a separate table per concept is
-genuinely not an option.
+Keep `Currency` and `Country` as separate aggregates with separate tables. If
+other systems must still read `master_data`, keep that table in step outside
+the domain model.
 
 ---
 
@@ -303,8 +297,7 @@ class Currency:
 
 A `Currency` is always a currency. A `category` field that exists only to
 distinguish rows in a shared table is a persistence concern that has leaked into
-the domain. If a shared table is unavoidable, the discriminator lives in the
-custom model, not the aggregate.
+the domain.
 
 ### Scattering raw lookups through domain logic
 
@@ -353,10 +346,6 @@ its own, and a missing currency is obvious instead of a dangling integer.
   For data that must be immediately consistent on the write path, validate
   against the aggregate repository, not the cached projection.
 
-- **The shared-table escape hatch carries ongoing cost**: Discriminator scoping,
-  migrations, and query filtering become your responsibility. Accept it only
-  when a table-per-concept is truly off the table.
-
 ---
 
 ## Summary
@@ -367,12 +356,10 @@ its own, and a missing currency is obvious instead of a dangling integer.
 | Closed code + label/behavior | Enumeration value object | None | VO invariant, at construction |
 | Editable, queryable | Aggregate keyed by `code` | Own table | Aggregate invariant |
 | Read everywhere, written rarely | Cache-backed projection | Cache/provider | Refreshed by projector |
-| Legacy shared table required | Aggregates + custom models on one `schema_name` | Shared table (adapter) | Aggregate invariant |
 
 One physical table is not one domain concept. Model each kind of reference data
 as its own type: an enumeration value object when it is closed and static, or
-an aggregate keyed by its natural code when it is editable. Treat any shared
-storage table as an adapter detail, never a domain model.
+an aggregate keyed by its natural code when it is editable.
 
 ---
 

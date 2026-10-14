@@ -30,13 +30,6 @@ def currencies():
         yield module
 
 
-@pytest.fixture
-def shared_table():
-    module = load_example("patterns/model-reference-data/004.py")
-    with module.domain.domain_context():
-        yield module
-
-
 class TestFieldChoices:
     def test_status_defaults_to_draft(self, choices):
         assert choices.Order().status == "draft"
@@ -172,25 +165,3 @@ class TestCurrencyRepository:
 
         with pytest.raises(ValidationError):
             currencies.validate_currency("EUR")
-
-
-class TestSharedTable:
-    def test_both_models_point_at_the_shared_table(self, shared_table):
-        assert shared_table.CurrencyModel.meta_.schema_name == "master_data"
-        assert shared_table.CountryModel.meta_.schema_name == "master_data"
-
-    def test_each_concept_keeps_its_own_type(self, shared_table):
-        domain = shared_table.domain
-        domain.repository_for(shared_table.Currency).add(
-            shared_table.Currency(code="USD", name="US Dollar", symbol="$")
-        )
-        domain.repository_for(shared_table.Country).add(
-            shared_table.Country(code="IN", name="India")
-        )
-
-        assert domain.repository_for(shared_table.Currency).get("USD").name == (
-            "US Dollar"
-        )
-        assert domain.repository_for(shared_table.Country).get("IN").name == "India"
-        with pytest.raises(ObjectNotFoundError):
-            domain.repository_for(shared_table.Currency).get("IN")
