@@ -169,4 +169,7 @@ counted as a modification of a closed account, and the save failed (#1663).
   the stamped field names) or the enricher's qualified name. The aggregate was
   valid before the hook ran, so the error has to say which hook made it
   invalid. The save aborts, and the version advance is rolled back, as when an
-  enricher raises.
+  enricher raises. The hook's writes are undone too.
+- **One mechanism.** Each hook runs inside an `atomic_change` block opened
+  with `precheck=False` and a `location`, so the hook writes are checked and
+  undone the same way as any other batched change.

@@ -114,8 +114,9 @@ The aggregate's `@invariant.pre` checks do not run on an enricher's writes,
 because stamping an audit field is not a business change. So a closed aggregate
 whose pre-invariant rejects changes can still be saved. The `@invariant.post`
 checks run once after each enricher, and the status-transition rules still
-apply to a status field it changes. When one of them fails, the save is aborted
-with a `ValidationError` whose `location` names the enricher, for example
+apply to a status field it changes. When one of them fails, the enricher's
+writes are undone and the save is aborted with a `ValidationError` whose
+`location` names the enricher, for example
 `aggregate enricher myapp.audit.stamp_audit`. `auto_now` and `auto_now_add`
 stamping works the same way, and its `location` names the stamped fields.
 

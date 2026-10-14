@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, ClassVar, get_args
 
 from protean._deprecation import deprecated_from_registry
-from protean.core.aggregate import _without_prechecks
+from protean.core.aggregate import atomic_change
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
 from protean.core.queryset import QuerySet, ResultSet
@@ -32,32 +32,31 @@ logger = logging.getLogger(__name__)
 _DELETE_IN_CHUNK_SIZE = 900
 
 
-def _lifecycle_timestamp_fields(entity_obj: Any, *, is_create: bool) -> list[str]:
-    """Name the ``auto_now`` / ``auto_now_add`` fields this save stamps.
+def _lifecycle_timestamp_fields(entity_obj: Any, *, is_create: bool) -> dict[str, Any]:
+    """Return the ``auto_now`` / ``auto_now_add`` fields this save stamps.
 
     Django-parity semantics: ``auto_now`` fields are stamped on every save;
     ``auto_now_add`` fields only on the initial (create) save.
     """
-    return [
-        name
+    return {
+        name: field_obj
         for name, field_obj in fields(entity_obj).items()
         if getattr(field_obj, "auto_now", False)
         or (is_create and getattr(field_obj, "auto_now_add", False))
-    ]
+    }
 
 
-def _stamp_lifecycle_timestamps(entity_obj: Any, names: list[str]) -> None:
-    """Set each named DateTime/Date field to the current time.
+def _stamp_lifecycle_timestamps(entity_obj: Any, to_stamp: dict[str, Any]) -> None:
+    """Set each DateTime/Date field in ``to_stamp`` to the current time.
 
     A single ``now``, read from the domain's injectable clock (so frozen-clock
     tests apply), is shared across all stamped fields on this entity.
     """
     now = _domain_now()
-    entity_fields = fields(entity_obj)
-    for name in names:
+    for name, field_obj in to_stamp.items():
         # ``_python_type`` may be Optional-wrapped (auto_now fields are not
         # required); unwrap to the underlying date/datetime to pick the value.
-        base_type: Any = getattr(entity_fields[name], "_python_type", None)
+        base_type: Any = getattr(field_obj, "_python_type", None)
         base_type = next(
             (a for a in get_args(base_type) if a is not type(None)), base_type
         )
@@ -71,17 +70,17 @@ def _stamp_lifecycle_timestamps(entity_obj: Any, names: list[str]) -> None:
 def _pre_persist_hook(entity_obj: Any, location: str) -> Iterator[None]:
     """Run one pre-persist hook's writes on ``entity_obj``.
 
-    For an entity or aggregate, the writes skip the root's ``@invariant.pre``
-    checks, and its post-invariants run once afterwards, raising with
-    ``location`` naming the hook (see ``_without_prechecks``). A projection has
-    no invariants, so its writes run as they are.
+    For an entity or aggregate, the writes run in an ``atomic_change`` block on
+    the root without its ``@invariant.pre`` checks, so the post-invariants run
+    once afterwards and a failure names the hook. A projection has no
+    invariants, so its writes run as they are.
     """
     if not isinstance(entity_obj, BaseEntity):
         yield
         return
 
     root = entity_obj._root if entity_obj._root is not None else entity_obj
-    with _without_prechecks(root, location=location):
+    with atomic_change(root, precheck=False, location=location):
         yield
 
 
@@ -787,8 +786,8 @@ class BaseDAO(metaclass=ABCMeta):
 
         The ``@invariant.pre`` checks do not run on these writes. The
         post-invariants run once after the stamping and once after each
-        enricher, and a failure raises ``ValidationError`` whose ``location``
-        names the hook.
+        enricher. A failure undoes that hook's writes and raises
+        ``ValidationError`` whose ``location`` names the hook.
 
         ``save`` calls this unless ``apply_hooks=False``. A caller that must run
         the hooks earlier than the write (so a raising enricher fails before any

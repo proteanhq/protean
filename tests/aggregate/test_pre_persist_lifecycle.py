@@ -579,7 +579,12 @@ class TestPreInvariantsDoNotRunOnHookWrites:
         got = repo.get(ledger.id)
         assert (got.updated_by, got.reviewer) == ("alice", "bob")
 
-    def test_inside_atomic_change_the_block_runs_the_checks_on_exit(self, test_domain):
+    def test_a_business_change_inside_atomic_change_is_blamed_on_the_aggregate(
+        self, test_domain
+    ):
+        # ``updated_by`` is already "alice" from the first save, so the
+        # enricher writes nothing new. The block's own change breaks the
+        # invariant, and the block's exit check reports it.
         @test_domain.aggregate_enricher
         def stamp_audit(aggregate):
             if isinstance(aggregate, Ledger):
@@ -598,6 +603,7 @@ class TestPreInvariantsDoNotRunOnHookWrites:
         assert exc.value.messages == {
             "_ledger": ["The updater cannot also review the ledger"]
         }
+        assert exc.value.location == "Ledger"
 
 
 class TestPostInvariantFailuresNameTheHook:
@@ -629,6 +635,9 @@ class TestPostInvariantFailuresNameTheHook:
         assert exc.value.codes, "the invariant's diagnostic code is kept"
         assert stored._version == version_before
         assert repo.get(ledger.id).status == "OPEN"  # nothing persisted
+        # The enricher's write is undone along with the failed check.
+        assert stored.updated_by is None
+        assert stored.status == "REVIEWED"
 
     def test_an_enricher_failure_aborts_the_create(self, test_domain):
         @test_domain.aggregate_enricher

@@ -5,8 +5,6 @@ import inspect
 import logging
 import typing
 from collections import defaultdict
-from collections.abc import Iterator
-from contextlib import contextmanager
 from enum import Enum
 from functools import partial
 from types import TracebackType
@@ -883,16 +881,32 @@ class atomic_change:
     Events raised inside the block are discarded, and ``_version`` and
     ``_event_position`` go back to their values from block entry.
     An exception raised by the block body does not undo the block's changes.
+
+    ``precheck=False`` skips the ``@invariant.pre`` checks on entry. The
+    pre-persist hooks in ``BaseDAO.save`` use it: an ``auto_now`` stamp or an
+    enricher's audit field is not a business change, so the checks that guard
+    business changes against the current state do not apply. ``location``
+    replaces the ``location`` of a ``ValidationError`` from the exit checks,
+    so the error names what wrote the change.
     """
 
-    def __init__(self, aggregate: Any) -> None:
+    def __init__(
+        self,
+        aggregate: Any,
+        *,
+        precheck: bool = True,
+        location: str | None = None,
+    ) -> None:
         self.aggregate = aggregate
+        self._run_precheck = precheck
+        self._location = location
         self._entity_snapshots: list[_EntitySnapshot] = []
         self._event_mark: tuple[int, int, int] = (0, 0, 0)
         self._checks_were_disabled = False
 
     def __enter__(self) -> None:
-        self.aggregate._precheck()
+        if self._run_precheck:
+            self.aggregate._precheck()
         self._entity_snapshots = _snapshot_entity_trees([self.aggregate])
         self.aggregate._atomic_snapshots.append(self._entity_snapshots)
         self._event_mark = self.aggregate._event_mark()
@@ -919,111 +933,70 @@ class atomic_change:
         # the block body leaves its changes in place.
         try:
             if exc_type is None:
-                # The first entry snapshot is the aggregate's own, taken on entry.
-                _validate_status_transitions(
-                    self.aggregate, self._entity_snapshots[0].values
-                )
+                self._validate_status_transitions()
 
             self.aggregate._postcheck()
-        except BaseException:
+        except BaseException as exc:
             _restore_entities(self._entity_snapshots)
             # Events raised inside the block describe changes that were just
             # undone, so they go too.
             self.aggregate._rewind_events(self._event_mark)
+            if self._location is not None and isinstance(exc, ValidationError):
+                raise ValidationError(
+                    exc.messages, codes=exc.codes, location=self._location
+                ) from exc
             raise
         finally:
             self.aggregate._disable_invariant_checks = self._checks_were_disabled
 
+    def _validate_status_transitions(self) -> None:
+        """Validate start-to-end status transitions within the atomic block."""
+        fields_dict = getattr(self.aggregate.__class__, _FIELDS, {})
+        # The first entry snapshot is the aggregate's own, taken on entry.
+        start_values = self._entity_snapshots[0].values
 
-def _validate_status_transitions(aggregate: Any, start_values: dict[str, Any]) -> None:
-    """Validate each status field's transition from ``start_values`` to now.
+        for fname, fobj in fields_dict.items():
+            if not isinstance(fobj, ResolvedField) or not fobj.transitions:
+                continue
 
-    Only the aggregate's own status fields are checked. A field whose value
-    did not change, or that started as ``None``, passes.
-    """
-    fields_dict = getattr(aggregate.__class__, _FIELDS, {})
+            start_value = start_values.get(fname)
+            end_value = getattr(self.aggregate, fname, None)
 
-    for fname, fobj in fields_dict.items():
-        if not isinstance(fobj, ResolvedField) or not fobj.transitions:
-            continue
+            start = start_value.value if isinstance(start_value, Enum) else start_value
+            end = end_value.value if isinstance(end_value, Enum) else end_value
 
-        start_value = start_values.get(fname)
-        end_value = getattr(aggregate, fname, None)
+            if start == end or start is None:
+                continue
 
-        start = start_value.value if isinstance(start_value, Enum) else start_value
-        end = end_value.value if isinstance(end_value, Enum) else end_value
+            transitions = fobj.transitions
 
-        if start == end or start is None:
-            continue
+            if start not in transitions:
+                raise ValidationError(
+                    {
+                        fname: [
+                            (
+                                f"Invalid status transition from '{start}'. "
+                                f"'{start}' is a terminal state with no "
+                                "allowed transitions"
+                            )
+                        ]
+                    }
+                )
 
-        transitions = fobj.transitions
-
-        if start not in transitions:
-            raise ValidationError(
-                {
-                    fname: [
-                        (
-                            f"Invalid status transition from '{start}'. "
-                            f"'{start}' is a terminal state with no "
-                            "allowed transitions"
-                        )
-                    ]
-                }
-            )
-
-        allowed = transitions[start]
-        if end not in allowed:
-            allowed_str = ", ".join(allowed)
-            raise ValidationError(
-                {
-                    fname: [
-                        (
-                            f"Invalid status transition from '{start}' "
-                            f"to '{end}'. "
-                            f"Allowed transitions: {allowed_str}"
-                        )
-                    ]
-                }
-            )
-
-
-@contextmanager
-def _without_prechecks(aggregate: Any, *, location: str) -> Iterator[None]:
-    """Run writes on ``aggregate`` without its ``@invariant.pre`` checks.
-
-    ``BaseDAO.save`` stamps ``auto_now`` fields and runs aggregate enrichers
-    just before the write. Those writes are not business changes, and a
-    pre-invariant guards a business change against the state before it, so
-    the pre-invariants do not run on them. The status-transition rules and the
-    post-invariants still run, once, when the block exits without an error.
-    Their ``ValidationError`` is raised again with ``location``, because the
-    aggregate was valid before the block and the caller knows what wrote it.
-    An exception raised by the block body propagates unchanged.
-
-    Inside an ``atomic_change`` block checks are already off, and that block
-    runs them on its own exit, so nothing runs here.
-    """
-    if aggregate._disable_invariant_checks:
-        yield
-        return
-
-    fields_dict = getattr(aggregate.__class__, _FIELDS, {})
-    start_values = {
-        name: getattr(aggregate, name, None)
-        for name, field_obj in fields_dict.items()
-        if isinstance(field_obj, ResolvedField) and field_obj.transitions
-    }
-    aggregate._disable_invariant_checks = True
-    try:
-        yield
-    finally:
-        aggregate._disable_invariant_checks = False
-
-    try:
-        _validate_status_transitions(aggregate, start_values)
-        aggregate._postcheck()
-    except ValidationError as exc:
-        raise ValidationError(exc.messages, codes=exc.codes, location=location) from exc
+            allowed = transitions[start]
+            if end not in allowed:
+                allowed_str = ", ".join(allowed)
+                raise ValidationError(
+                    {
+                        fname: [
+                            (
+                                f"Invalid status transition from '{start}' "
+                                f"to '{end}'. "
+                                f"Allowed transitions: {allowed_str}"
+                            )
+                        ]
+                    }
+                )
 
 
 _F = TypeVar("_F", bound=typing.Callable[..., None])
