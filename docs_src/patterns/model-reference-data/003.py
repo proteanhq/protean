@@ -21,7 +21,10 @@ class Currency:
 
     @invariant.post
     def code_must_be_iso_4217(self):
-        if len(self.code) != 3 or not self.code.isalpha():
+        code = self.code
+        if not (
+            len(code) == 3 and code.isascii() and code.isalpha() and code.isupper()
+        ):
             raise ValidationError(
                 {"code": ["Currency code must be a 3-letter ISO 4217 code"]}
             )

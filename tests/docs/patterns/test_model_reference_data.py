@@ -100,9 +100,10 @@ class TestCurrencyAggregate:
         with pytest.raises(ObjectNotFoundError):
             repo.get("GBP")
 
-    def test_a_code_that_is_not_three_letters_is_rejected(self, currencies):
+    @pytest.mark.parametrize("code", ["U5D", "usd", "ÉUR"])
+    def test_a_code_that_is_not_three_letters_is_rejected(self, currencies, code):
         with pytest.raises(ValidationError) as exc:
-            currencies.Currency(code="U5D", name="Bad")
+            currencies.Currency(code=code, name="Bad")
 
         assert exc.value.messages["code"] == [
             "Currency code must be a 3-letter ISO 4217 code"
