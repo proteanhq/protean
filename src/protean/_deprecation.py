@@ -479,6 +479,23 @@ DEPRECATIONS: dict[str, Deprecation] = {
                 "per-call RemovedInProtean020Warning is the only detector."
             ),
         ),
+        Deprecation(
+            slug="pm_sequential_by_non_boolean",
+            name="non-boolean `sequential_by` on a process manager",
+            since="0.18.0",
+            removal="0.20.0",
+            detection="runtime",
+            alternative=(
+                "Set `sequential_by=True`. A process manager partitions each "
+                "handled event's category by the field its `correlate` maps "
+                "(ADR-0028)."
+            ),
+            reason=(
+                "`domain.init()` stores the value back as a boolean, so a built "
+                "domain no longer carries it for a rule to read; the "
+                "RemovedInProtean020Warning at init is the only detector."
+            ),
+        ),
     )
 }
 

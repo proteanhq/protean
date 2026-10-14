@@ -79,7 +79,7 @@ command that sets no explicit exit code already conforms.
 | Exit code | Meaning |
 |-----------|---------|
 | `0` | Nothing at or above the configured `[lint].level` floor. |
-| `1` | A findings failure: validator errors, or a warning/info at or above the floor. |
+| `1` | A findings failure: validator errors, an IR-build error, or a warning/info at or above the floor. |
 | `2` | Usage/environment: a bad `--domain`, `--level`, or `--format`; a domain that will not load; a malformed `[lint]` config. |
 
 **`protean verify`** (the stage classes are pinned above the shared `0`/`2`):

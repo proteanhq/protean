@@ -5,23 +5,7 @@
 A developer adds email validation to a `User` aggregate:
 
 ```python
-@domain.aggregate
-class User:
-    user_id: Auto(identifier=True)
-    email: String(required=True, max_length=254)
-    role: String(required=True, choices=["admin", "member", "guest"])
-
-    @invariant.post
-    def email_must_be_valid(self):
-        if self.email and "@" not in self.email:
-            raise ValidationError({"email": ["Invalid email format"]})
-
-    @invariant.post
-    def admin_must_have_company_email(self):
-        if self.role == "admin" and not self.email.endswith("@company.com"):
-            raise ValidationError(
-                {"email": ["Admins must use a company email address"]}
-            )
+--8<-- "patterns/validation-layering/001.py:user"
 ```
 
 Two validations, both on the aggregate's invariants, but they serve different
@@ -89,15 +73,7 @@ commands, and events.
 **When it runs:** At object construction, when a value is assigned to a field.
 
 ```python
-@domain.aggregate
-class Product:
-    product_id: Auto(identifier=True)
-    name: String(required=True, max_length=200)
-    sku: String(required=True, max_length=20)
-    price: Float(required=True, min_value=0.0)
-    weight_kg: Float(min_value=0.0)
-    stock_count: Integer(min_value=0, default=0)
-    status: String(choices=["draft", "active", "discontinued"], default="draft")
+--8<-- "patterns/validation-layering/002.py:product"
 ```
 
 **What this catches:**
@@ -131,54 +107,7 @@ internal consistency, and constraints that define what makes a concept valid.
 construction or field assignment).
 
 ```python
-@domain.value_object
-class Email:
-    address: String(required=True, max_length=254)
-
-    @invariant.post
-    def must_have_valid_format(self):
-        if not self.address or "@" not in self.address:
-            raise ValidationError(
-                {"address": ["Must be a valid email address"]}
-            )
-        local, _, domain_part = self.address.partition("@")
-        if not local or not domain_part or "." not in domain_part:
-            raise ValidationError(
-                {"address": ["Must be a valid email address"]}
-            )
-
-
-@domain.value_object
-class Money:
-    amount: Float(required=True)
-    currency: String(max_length=3, required=True)
-
-    @invariant.post
-    def amount_must_be_non_negative(self):
-        if self.amount < 0:
-            raise ValidationError(
-                {"amount": ["Amount cannot be negative"]}
-            )
-
-    @invariant.post
-    def currency_must_be_valid(self):
-        if self.currency not in {"USD", "EUR", "GBP", "JPY", "CAD"}:
-            raise ValidationError(
-                {"currency": [f"Invalid currency: {self.currency}"]}
-            )
-
-
-@domain.value_object
-class DateRange:
-    start_date: Date(required=True)
-    end_date: Date(required=True)
-
-    @invariant.post
-    def end_must_be_after_start(self):
-        if self.end_date <= self.start_date:
-            raise ValidationError(
-                {"end_date": ["End date must be after start date"]}
-            )
+--8<-- "patterns/validation-layering/003.py:value_objects"
 ```
 
 **What this catches:**
@@ -210,46 +139,7 @@ cross-field consistency, state machine rules, and domain-specific constraints.
 before specific operations (pre-invariants).
 
 ```python
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)
-    items = HasMany(OrderItem)
-    status: String(default="draft")
-    total = ValueObject(Money)
-    discount = ValueObject(Money)
-
-    @invariant.post
-    def must_have_items_when_placed(self):
-        """An order cannot be placed without items."""
-        if self.status != "draft" and not self.items:
-            raise ValidationError(
-                {"items": ["Order must have at least one item"]}
-            )
-
-    @invariant.post
-    def discount_cannot_exceed_total(self):
-        """Discount cannot be larger than the order total."""
-        if (self.discount and self.total and
-                self.discount.amount > self.total.amount):
-            raise ValidationError(
-                {"discount": ["Discount cannot exceed order total"]}
-            )
-
-    @invariant.post
-    def total_must_match_items(self):
-        """Order total must match sum of item totals."""
-        if self.items and self.total:
-            expected = sum(
-                item.unit_price * item.quantity for item in self.items
-            )
-            if abs(self.total.amount - expected) > 0.01:
-                raise ValidationError(
-                    {"total": [
-                        f"Total {self.total.amount} does not match "
-                        f"items total {expected}"
-                    ]}
-                )
+--8<-- "patterns/validation-layering/003.py:aggregate"
 ```
 
 **What this catches:**
@@ -257,6 +147,7 @@ class Order:
 - Placing an order with no items (cross-field: status + items)
 - Discount exceeding total (cross-field: discount + total)
 - Total mismatch with item sum (cross-collection: total + items)
+- Placing an order that is not a draft (state machine rule, in `place()`)
 
 **What this should NOT catch:**
 
@@ -282,50 +173,7 @@ and domain services.
 service.
 
 ```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler(BaseCommandHandler):
-
-    @handle(CancelOrder)
-    def cancel_order(self, command: CancelOrder):
-        repo = current_domain.repository_for(Order)
-        order = repo.get(command.order_id)
-
-        # Layer 4: Authorization check
-        if command.cancelled_by_role != "admin" and command.cancelled_by != order.customer_id:
-            raise ValidationError(
-                {"authorization": ["Only the customer or an admin can cancel"]}
-            )
-
-        # Layer 4: Time-based business rule
-        if order.placed_at and (datetime.now(timezone.utc) - order.placed_at).hours > 24:
-            raise ValidationError(
-                {"timing": ["Orders cannot be cancelled after 24 hours"]}
-            )
-
-        # Delegate to aggregate method (which has its own Layer 3 invariants)
-        order.cancel(command.reason)
-        repo.add(order)
-
-
-@domain.domain_service(part_of=[Account, CreditPolicy])
-class TransferValidationService:
-    """Cross-aggregate validation that checks multiple aggregates."""
-
-    @classmethod
-    def validate_transfer(cls, source: Account, policy: CreditPolicy, amount: float):
-        # Layer 4: Cross-aggregate business rule
-        if amount > policy.max_single_transfer:
-            raise ValidationError(
-                {"amount": [
-                    f"Transfer exceeds policy limit of {policy.max_single_transfer}"
-                ]}
-            )
-
-        # Layer 4: External state check
-        if source.is_frozen:
-            raise ValidationError(
-                {"account": ["Source account is frozen"]}
-            )
+--8<-- "patterns/validation-layering/003.py:guards"
 ```
 
 **What this catches:**
@@ -343,51 +191,32 @@ class TransferValidationService:
 
 ---
 
-## The Layers in Action
+## Command Validation
 
-Consider a complete flow for placing an order:
+Commands validate their own fields at Layer 1, ensuring that the data
+structure is correct before it reaches the handler:
 
 ```python
-# --- Layer 1: Field Constraints ---
-# Triggered at command construction
-command = PlaceOrder(
-    order_id="ord-123",
-    customer_id="cust-456",
-    items=[{"product_id": "prod-1", "quantity": 2, "unit_price": 29.99}],
-    total=59.98,
-    currency="USD",
-)
-# If order_id is missing → ValidationError (required field)
-# If total is negative → ValidationError (min_value constraint)
-# If currency is not a string → Type error
+--8<-- "patterns/validation-layering/003.py:command"
+```
 
+If `total` is negative or `customer_id` is missing, the error is caught at
+command construction, before the handler even runs. This is the earliest
+possible feedback.
 
-# --- Layer 4: Handler Guards ---
-@handle(PlaceOrder)
-def place_order(self, command: PlaceOrder):
-    # Check customer credit status (cross-aggregate)
-    credit = current_domain.repository_for(CustomerCredit).get(command.customer_id)
-    if credit.is_suspended:
-        raise ValidationError({"credit": ["Customer credit is suspended"]})
+Commands should validate data structure and presence, not business rules.
+"Is `customer_id` provided?" is a command concern. "Does this customer exist?"
+is a handler concern.
 
-    # --- Layer 2: Value Object Invariants ---
-    # Triggered when constructing the Money value object
-    total = Money(amount=command.total, currency=command.currency)
-    # If currency is "XYZ" → ValidationError (invalid currency in Money VO)
+---
 
-    # --- Layer 3: Aggregate Invariants ---
-    order = Order(
-        order_id=command.order_id,
-        customer_id=command.customer_id,
-        items=command.items,
-        total=total,
-    )
-    order.place()
-    # @invariant.post checks: must have items, total must match items
-    # If no items → ValidationError
-    # If total doesn't match → ValidationError
+## The Layers in Action
 
-    current_domain.repository_for(Order).add(order)
+Consider a complete flow for placing an order with the `PlaceOrder` command
+above:
+
+```python
+--8<-- "patterns/validation-layering/003.py:in_action"
 ```
 
 Each layer catches different kinds of errors at progressively deeper levels
@@ -419,6 +248,7 @@ of the processing pipeline.
 ### Business Rules in Field Validators
 
 ```python
+# fragment
 # Anti-pattern: business rule encoded as a field constraint
 class Order:
     discount_percent: Float(max_value=50.0)  # "Max 50% discount" is a business rule
@@ -429,20 +259,13 @@ the maximum discount to 60%, you're modifying the field schema instead of the
 business rule layer. Use an invariant instead:
 
 ```python
-class Order:
-    discount_percent: Float(min_value=0.0, max_value=100.0)  # Physical range
-
-    @invariant.post
-    def discount_within_policy(self):
-        if self.discount_percent > 50.0:
-            raise ValidationError(
-                {"discount_percent": ["Discount cannot exceed 50%"]}
-            )
+--8<-- "patterns/validation-layering/004.py:discount_policy"
 ```
 
 ### Duplicating Validation Across Layers
 
 ```python
+# fragment
 # Anti-pattern: email validated in both VO and aggregate
 @domain.value_object
 class Email:
@@ -472,6 +295,7 @@ don't cover.
 ### Authorization in Aggregate Invariants
 
 ```python
+# fragment
 # Anti-pattern: authorization check in aggregate
 class Order:
     @invariant.post
@@ -491,6 +315,7 @@ authorization rule: "only admins can set discounts above 20%."
 ### All Validation in the Handler
 
 ```python
+# fragment
 # Anti-pattern: all validation in the handler, aggregate is a data bag
 @handle(PlaceOrder)
 def place_order(self, command: PlaceOrder):
@@ -513,31 +338,6 @@ Every validation is in the handler. The aggregate has no invariants, no
 protection. Any code that creates an `Order` (another handler, a test, an
 import script) can create invalid instances. Distribute validation across
 layers so each layer protects its own concerns.
-
----
-
-## Command Validation
-
-Commands validate their own fields at Layer 1, ensuring that the data
-structure is correct before it reaches the handler:
-
-```python
-@domain.command(part_of=Order)
-class PlaceOrder(BaseCommand):
-    order_id: Identifier(identifier=True)
-    customer_id: Identifier(required=True)
-    items: List(required=True)
-    total: Float(required=True, min_value=0.0)
-    currency: String(required=True, max_length=3)
-```
-
-If `total` is negative or `customer_id` is missing, the error is caught at
-command construction, before the handler even runs. This is the earliest
-possible feedback.
-
-Commands should validate data structure and presence, not business rules.
-"Is `customer_id` provided?" is a command concern. "Does this customer exist?"
-is a handler concern.
 
 ---
 

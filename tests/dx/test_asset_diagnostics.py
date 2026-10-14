@@ -3,9 +3,9 @@
 ``tests/dx/test_examples.py`` proves each ``skills/*/assets/*.py`` initializes.
 This test runs ``Domain.check(traverse=False)`` on each asset's domains and
 collects every validation error and every diagnostic at level ``warning`` or
-``error``. When validation passes but the IR fails to build, ``check`` returns
-no diagnostics, so the test builds the IR itself and records
-``IR_BUILD_FAILED`` for that asset.
+``error``. When the IR fails to build, ``check`` reports that as an error on
+the ``to_ir`` element, and the test records it as ``IR_BUILD_FAILED`` for that
+asset.
 
 Four completeness codes are ignored for every asset. A teaching asset shows one
 concept and is not a whole application, so an aggregate without a command
@@ -54,9 +54,8 @@ COMPLETENESS_CODES = frozenset(
     }
 )
 
-# Recorded, in place of a diagnostic code, for a domain whose validation passes
-# but whose IR fails to build. ``Domain.check`` returns no diagnostics then, so
-# without this code the asset would look clean.
+# Recorded, in place of the exception class name ``Domain.check`` reports as the
+# error code, for a domain whose validation passes but whose IR fails to build.
 IR_BUILD_FAILED = "IR_BUILD_FAILED"
 
 EXEMPT_NAMES = frozenset({"saga_before_unclosed.py", "audit_sample_codebase.py"})
@@ -87,8 +86,8 @@ def discover_assets(skills_root: Path) -> list[Path]:
 # The child-interpreter runner. argv[1] is the skills root, argv[2] a JSON list
 # of asset paths, argv[3] the report path. For each asset it records the codes
 # ``Domain.check`` returns at level warning or error, ``IR_BUILD_FAILED`` when
-# the IR does not build, or the exception that stopped it. It writes a file, not a stream, so start-up logging on stderr
-# cannot corrupt the report.
+# the IR does not build, or the exception that stopped it. It writes a file,
+# not a stream, so start-up logging on stderr cannot corrupt the report.
 _RUNNER = """
 import importlib.util
 import json
@@ -121,20 +120,19 @@ for index, path in enumerate(assets):
         found = set()
         for domain in domains.values():
             report = domain.check(traverse=False)
-            found.update(entry["code"] for entry in report["errors"])
+            for entry in report["errors"]:
+                if entry["element"] == "to_ir":
+                    found.add("IR_BUILD_FAILED")
+                    ir_failures[label] = entry["message"].removeprefix(
+                        "Could not build the IR: "
+                    )
+                else:
+                    found.add(entry["code"])
             found.update(
                 entry["code"]
                 for entry in report["diagnostics"]
                 if entry.get("level") in ("warning", "error")
             )
-            if not report["errors"]:
-                # ``check`` drops an IR build failure and returns no
-                # diagnostics, so build the IR again to see the failure.
-                try:
-                    domain.to_ir()
-                except Exception as exc:
-                    found.add("IR_BUILD_FAILED")
-                    ir_failures[label] = "%s: %s" % (type(exc).__name__, exc)
         codes[label] = sorted(found)
     except Exception as exc:  # report the asset, then keep going
         crashes[label] = "%s: %s" % (type(exc).__name__, exc)

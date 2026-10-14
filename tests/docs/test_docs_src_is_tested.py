@@ -43,9 +43,7 @@ CHAPTER_LOADERS: dict[Path, str] = {
 }
 
 # docs_src examples that no test loads yet. Remove an entry when a test loads it.
-ALLOWLIST: set[str] = {
-    "adapters/001.py",
-}
+ALLOWLIST: set[str] = set()
 
 
 def _docs_src_files(root: Path) -> set[str]:

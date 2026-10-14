@@ -16,15 +16,7 @@ Each field inside an embedded Value Object produces one shadow field on the
 parent entity:
 
 ```python
-class Address(BaseValueObject):
-    street: String(max_length=200)
-    city: String(max_length=100)
-    zip_code: String(max_length=10)
-
-@domain.aggregate
-class Customer:
-    name: String(max_length=100, required=True)
-    billing_address: ValueObject(Address)
+--8<-- "concepts/internals/shadow-fields/001.py:value_object"
 ```
 
 `Customer` gets three shadow fields:
@@ -38,10 +30,7 @@ class Customer:
 Each `Reference` produces one shadow field, the foreign key:
 
 ```python
-@domain.entity(part_of="Order")
-class LineItem:
-    description: String(max_length=200)
-    order = Reference("Order")
+--8<-- "concepts/internals/shadow-fields/001.py:reference"
 ```
 
 `LineItem` gets one shadow field:
@@ -69,10 +58,7 @@ Use `referenced_as` on a Reference field to control the shadow field name
 (i.e. the database column name):
 
 ```python
-@domain.entity(part_of="Order")
-class LineItem:
-    description: String(max_length=200)
-    order = Reference("Order", referenced_as="order_number")
+--8<-- "concepts/internals/shadow-fields/002.py:reference_referenced_as"
 ```
 
 Without `referenced_as`, the shadow field would be `order_id`. With it,
@@ -82,14 +68,7 @@ For ValueObject fields, apply `referenced_as` on the inner fields of the
 Value Object itself:
 
 ```python
-class Address(BaseValueObject):
-    street: String(max_length=200, referenced_as="addr_street")
-    city: String(max_length=100, referenced_as="addr_city")
-
-@domain.aggregate
-class Customer:
-    name: String(max_length=100, required=True)
-    billing_address: ValueObject(Address)
+--8<-- "concepts/internals/shadow-fields/002.py:value_object_referenced_as"
 ```
 
 Instead of the default `billing_address_street` and `billing_address_city`,
@@ -126,12 +105,7 @@ Any matching keyword arguments are extracted from `kwargs` before Pydantic
 validation:
 
 ```python
-customer = Customer(
-    name="Alice",
-    billing_address_street="123 Main",  # Extracted as shadow kwarg
-    billing_address_city="NYC",          # Extracted as shadow kwarg
-    billing_address_zip_code="10001",    # Extracted as shadow kwarg
-)
+--8<-- "concepts/internals/shadow-fields/001.py:extraction"
 ```
 
 **2. Preservation.** Extracted values are pushed onto a thread-local stack
@@ -143,9 +117,7 @@ to `__dict__`. If a ValueObject field was not explicitly provided, Protean
 reconstructs it from the shadow values:
 
 ```python
-# These two are equivalent:
-Customer(name="Alice", billing_address=Address(street="123 Main", city="NYC", zip_code="10001"))
-Customer(name="Alice", billing_address_street="123 Main", billing_address_city="NYC", billing_address_zip_code="10001")
+--8<-- "concepts/internals/shadow-fields/001.py:equivalent"
 ```
 
 ### Assignment
@@ -154,11 +126,7 @@ When you assign to a ValueObject or Reference field, the descriptor
 automatically updates the shadow fields:
 
 ```python
-customer.billing_address = Address(street="456 Oak", city="LA", zip_code="90001")
-# Automatically sets:
-#   customer.__dict__["billing_address_street"] = "456 Oak"
-#   customer.__dict__["billing_address_city"] = "LA"
-#   customer.__dict__["billing_address_zip_code"] = "90001"
+--8<-- "concepts/internals/shadow-fields/001.py:assignment"
 ```
 
 Setting a field to `None` clears the shadow fields.
@@ -168,8 +136,7 @@ Setting a field to `None` clears the shadow fields.
 Shadow fields can be read and written directly:
 
 ```python
-customer.billing_address_street  # "456 Oak"
-customer.billing_address_street = "789 Pine"  # Updates shadow, marks entity as changed
+--8<-- "concepts/internals/shadow-fields/001.py:direct_access"
 ```
 
 ---
@@ -185,16 +152,7 @@ The `attributes()` reflection function (used by database adapters) returns
 shadow fields instead of the parent VO/Reference:
 
 ```python
-from protean.utils.reflection import attributes
-
-attributes(Customer)
-# Returns: {
-#   "name": <ResolvedField for name>,
-#   "billing_address_street": <_ShadowField for street>,
-#   "billing_address_city": <_ShadowField for city>,
-#   "billing_address_zip_code": <_ShadowField for zip_code>,
-#   "id": <ResolvedField for id>,
-# }
+--8<-- "concepts/internals/shadow-fields/001.py:attributes"
 ```
 
 Database adapters iterate `attributes()` to generate table columns. Each

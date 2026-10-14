@@ -83,37 +83,13 @@ it mechanically, at build time, from the code as written.
 Flagged, a repository filters on a field the aggregate does not index:
 
 ```python
-from protean import Domain, Index
-from protean.core.repository import BaseRepository
-from protean.fields import Identifier, String
-
-domain = Domain(name="app")
-
-@domain.aggregate(indexes=[Index("status")])
-class Order:
-    order_id = Identifier(identifier=True)
-    status = String(max_length=20)
-    reference = String(max_length=40)   # not indexed
-
-@domain.repository(part_of=Order)
-class OrderRepository:
-    def by_reference(self, reference):
-        # filters `reference`, which no index covers -> UNINDEXED_FILTER_PATH
-        return self._dao.filter(reference=reference)
-
-    def open(self):
-        # filters `status`, the leading column of Index("status") -> no finding
-        return self._dao.filter(status="open")
+--8<-- "concepts/protean-check/rules/unindexed-filter-path/001.py:flagged"
 ```
 
 Compliant. The filtered field is indexed:
 
 ```python
-@domain.aggregate(indexes=[Index("status"), Index("reference")])
-class Order:
-    order_id = Identifier(identifier=True)
-    status = String(max_length=20)
-    reference = String(max_length=40)   # now indexed -> no finding
+--8<-- "concepts/protean-check/rules/unindexed-filter-path/002.py:compliant"
 ```
 
 ## How to fix
@@ -130,14 +106,7 @@ Suppress the rule for a single aggregate with `suppress_checks` (it resolves
 against the aggregate FQN the finding is attributed to):
 
 ```python
-@domain.aggregate(
-    indexes=[Index("status")],
-    suppress_checks=["UNINDEXED_FILTER_PATH"],
-)
-class Order:
-    order_id = Identifier(identifier=True)
-    status = String(max_length=20)
-    reference = String(max_length=40)
+--8<-- "concepts/protean-check/rules/unindexed-filter-path/003.py:suppressed"
 ```
 
 Or grandfather a fixed number of existing findings while adopting the rule, via

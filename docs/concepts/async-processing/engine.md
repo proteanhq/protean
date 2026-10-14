@@ -24,17 +24,7 @@ When you create an Engine instance, it automatically discovers and registers all
 handlers from your domain:
 
 ```python
-from protean.server import Engine
-
-# Create an engine for your domain
-engine = Engine(domain)
-
-# Or with options
-engine = Engine(
-    domain,
-    test_mode=False,  # Set True for deterministic testing
-    debug=False,      # Set True for verbose logging
-)
+--8<-- "concepts/async-processing/engine/001.py:create"
 ```
 
 ## Subscription Registration
@@ -52,14 +42,8 @@ handler, inferring the stream category and resolving configuration:
 a `StreamSubscription` or an `EventStoreSubscription`, for the handler.
 
 ```python
-# Example: How the engine registers an event handler
-handler_cls = OrderEventHandler
-stream_category = engine._infer_stream_category(handler_cls)  # e.g., "orders"
-
-subscription = engine.subscription_factory.create_subscription(
-    handler=handler_cls,
-    stream_category=stream_category,
-)
+--8<-- "concepts/async-processing/engine/001.py:order"
+--8<-- "concepts/async-processing/engine/001.py:register"
 ```
 
 ### Command dispatch
@@ -71,20 +55,8 @@ would compete for the same messages, the dispatcher reads each command once and
 routes it to the correct handler based on the command type:
 
 ```python
-# Two command handlers for the same aggregate
-@domain.command_handler(part_of=User)
-class RegisterUserHandler:
-    @handle(RegisterUser)
-    def register(self, command): ...
-
-@domain.command_handler(part_of=User)
-class DeactivateUserHandler:
-    @handle(DeactivateUser)
-    def deactivate(self, command): ...
-
-# The engine creates ONE subscription keyed as "commands:{stream_category}"
-# that routes RegisterUser → RegisterUserHandler
-# and DeactivateUser → DeactivateUserHandler
+--8<-- "concepts/async-processing/engine/002.py:user"
+--8<-- "concepts/async-processing/engine/002.py:handlers"
 ```
 
 The `CommandDispatcher` caches the deserialized domain object between handler
@@ -96,11 +68,7 @@ For external message subscribers, the Engine creates `BrokerSubscription`
 instances that connect to the configured message broker:
 
 ```python
-@domain.subscriber(broker="default", stream="external_events")
-class ExternalEventSubscriber:
-    @handle("OrderCreated")
-    def handle_order_created(self, event):
-        ...
+--8<-- "concepts/async-processing/engine/003.py:subscriber"
 ```
 
 ### Outbox Processors
@@ -217,7 +185,8 @@ handlers need ambient context from the original request.
    `domain_context()`:
 
 ```python
-# Simplified from engine.py — what the Engine does for each message
+# fragment
+# Simplified from engine.py: what the Engine does for each message
 extensions = message.metadata.extensions or {}
 
 with self.domain.domain_context(**extensions):
@@ -235,11 +204,7 @@ In addition to restoring enricher-injected values, the Engine sets
 use this to access the full message metadata:
 
 ```python
-# Access the full extensions dict
-tenant_id = g.message_in_context.metadata.extensions.get("tenant_id")
-
-# Or use the restored g attribute directly (simpler)
-tenant_id = g.tenant_id
+--8<-- "concepts/async-processing/engine/001.py:context"
 ```
 
 After the handler completes (or fails), the domain context is torn down and `g`

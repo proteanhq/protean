@@ -49,11 +49,8 @@ numbers are included in commands for precise tracking of origin and intent.
 Each command is assigned a version number (defaulting to `1`), ensuring that
 commands can evolve over time. Set `__version__` on the class to override:
 
-```python
-@domain.command(part_of=Order)
-class PlaceOrder:
-    __version__ = 2
-    ...
+```python hl_lines="8"
+--8<-- "concepts/building-blocks/commands/001.py:versioned"
 ```
 
 Since commands are handled by a single aggregate through a command handler,

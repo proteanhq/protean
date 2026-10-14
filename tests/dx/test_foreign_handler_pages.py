@@ -25,6 +25,7 @@ from pathlib import Path
 import pytest
 
 from protean import dx
+from tests.support.snippets import expand_includes
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -36,6 +37,9 @@ if not PACK_ROOT.is_dir():
         "DX pack is not unpacked on disk; the pages are read by path",
         allow_module_level=True,
     )
+
+# The folders an include path is relative to, as in mkdocs.yml.
+SNIPPET_BASES = (REPO_ROOT / "docs_src", REPO_ROOT / "examples")
 
 SKILLS = ("event-handler", "add-event", "add-use-case", "refactor-introduce-events")
 GUIDE = REPO_ROOT / "docs" / "guides" / "consume-state" / "event-handlers.md"
@@ -66,6 +70,11 @@ def _pages() -> list[Path]:
     pages += sorted((PACK_ROOT / "rules").glob("*.md"))
     pages += [page for page in (GUIDE, *DOCS_PAGES) if page.is_file()]
     return pages
+
+
+def _read(page: Path) -> str:
+    """The page's text with its ``--8<--`` includes expanded, as the docs show it."""
+    return expand_includes(page.read_text(), SNIPPET_BASES)
 
 
 def _unlabelled_foreign_handlers(text: str) -> list[int]:
@@ -104,7 +113,7 @@ def test_no_page_shows_an_unlabelled_foreign_handler() -> None:
     found = {
         str(page): lines
         for page in pages
-        if (lines := _unlabelled_foreign_handlers(page.read_text()))
+        if (lines := _unlabelled_foreign_handlers(_read(page)))
     }
     assert found == {}
 
@@ -197,7 +206,7 @@ HAND_OFF_LINK = "guides/consume-state/event-handlers.md#defining-an-event-handle
 def test_the_stream_category_pages_keep_the_explanation_and_point_to_the_hand_off(
     page: Path,
 ) -> None:
-    text = page.read_text()
+    text = _read(page)
     any_handlers = [
         handler
         for block in FENCE.finditer(text)

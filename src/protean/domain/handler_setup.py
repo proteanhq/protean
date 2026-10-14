@@ -13,6 +13,7 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
+from protean._deprecation import external_stacklevel, warn_from_registry
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.core.process_manager import _generate_pm_transition_event
@@ -437,7 +438,11 @@ class HandlerConfigurator:
         # event's ``correlate`` spec maps to the correlation value.
         for element in registry._elements[DomainObjects.PROCESS_MANAGER.value].values():
             pm_cls = element.cls
-            if not getattr(pm_cls.meta_, "sequential_by", None):
+            key = getattr(pm_cls.meta_, "sequential_by", None)
+            if key is None:
+                continue
+            key = self._coerce_boolean_key(key, pm_cls)
+            if not key:
                 continue
             for _, method in _discover_handler_methods(pm_cls):
                 target = method._target_cls
@@ -520,6 +525,26 @@ class HandlerConfigurator:
                 f'such as `sequential_by="order_id"`. The boolean form '
                 f"`sequential_by=True` is for process managers only (ADR-0028)."
             )
+
+    @staticmethod
+    def _coerce_boolean_key(key: Any, pm_cls: type[Any]) -> bool:
+        """Return *key* as a boolean, warning when it is not one.
+
+        A process manager partitions by its ``correlate`` fields, so it takes no
+        field name. Before 0.18 any truthy value turned partitioning on, so a
+        copied ``sequential_by="order_id"`` worked like ``True``. That still
+        works until 0.20.0, but the value is stored back as a boolean so the IR
+        carries what the schema allows.
+        """
+        if isinstance(key, bool):
+            return key
+        warn_from_registry(
+            "pm_sequential_by_non_boolean",
+            f"`sequential_by={key!r}` on Process Manager `{pm_cls.__name__}`",
+            stacklevel=external_stacklevel(),
+        )
+        pm_cls.meta_.sequential_by = bool(key)
+        return bool(key)
 
     @staticmethod
     def _assert_partition_field(

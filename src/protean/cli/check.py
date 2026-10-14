@@ -48,6 +48,7 @@ from typing import Annotated, Any, NoReturn
 
 import typer
 from rich import print
+from rich.markup import escape
 
 import protean
 from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions
@@ -183,7 +184,14 @@ def check(
     if suppressions_error:
         _fail_usage(format, f"Invalid config: {suppressions_error}")
 
-    result = derived_domain.check()
+    try:
+        result = derived_domain.check()
+    # Traversal imports every sibling module of the domain file, and any of them
+    # can raise. Report it as one line, never a traceback.
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: check runs user code
+        _fail_usage(
+            format, f"Error checking domain '{domain}': {type(exc).__name__}: {exc}"
+        )
 
     # Exit code and every machine format come from the UNFILTERED result;
     # ``--level`` is a display filter that shapes only the human rich/quiet views
@@ -308,7 +316,7 @@ def _print_quiet(result: dict[str, Any]) -> None:
 
 def _print_rich(result: dict[str, Any]) -> None:
     """Print a rich-formatted check report to the terminal."""
-    domain_name = result["domain"]
+    domain_name = escape(result["domain"])
     status = result["status"]
     counts = result["counts"]
 
@@ -336,7 +344,7 @@ def _print_rich(result: dict[str, Any]) -> None:
     if result["errors"]:
         print(f"\n  [bold red]Errors ({counts['errors']}):[/bold red]")
         for err in result["errors"]:
-            print(f"    [red]✗[/red] {err['message']}")
+            print(f"    [red]✗[/red] {escape(err['message'])}")
 
     # Diagnostics — split by level for display
     warnings = [d for d in result["diagnostics"] if d.get("level") == "warning"]
@@ -346,15 +354,15 @@ def _print_rich(result: dict[str, Any]) -> None:
         print(f"\n  [bold yellow]Warnings ({len(warnings)}):[/bold yellow]")
         for diag in warnings:
             code = diag.get("code", "")
-            prefix = f"[dim]{code}:[/dim] " if code else ""
-            print(f"    [yellow]![/yellow] {prefix}{diag['message']}")
+            prefix = f"[dim]{escape(code)}:[/dim] " if code else ""
+            print(f"    [yellow]![/yellow] {prefix}{escape(diag['message'])}")
 
     if infos:
         print(f"\n  [bold cyan]Info ({len(infos)}):[/bold cyan]")
         for diag in infos:
             code = diag.get("code", "")
-            prefix = f"[dim]{code}:[/dim] " if code else ""
-            print(f"    [cyan]·[/cyan] {prefix}{diag['message']}")
+            prefix = f"[dim]{escape(code)}:[/dim] " if code else ""
+            print(f"    [cyan]·[/cyan] {prefix}{escape(diag['message'])}")
 
     if status == "pass":
         print("\n  [green]All checks passed.[/green]")
@@ -446,11 +454,11 @@ def _format_sarif(result: dict[str, Any], domain: Any) -> dict[str, Any]:
     """Render a check result as a SARIF 2.1.0 document.
 
     ``errors`` and ``diagnostics`` are mutually exclusive per run and carry
-    different shapes, so each list is handled separately: validator ``errors``
-    become location-less ``error`` results with no rule metadata; rule
-    ``diagnostics`` carry the #774 metadata and attempt FQN-based location
-    resolution. ``reportingDescriptor`` objects are deduplicated by code across
-    both lists (first occurrence wins).
+    different shapes, so each list is handled separately: ``errors`` (validator
+    errors, or the IR-build error) become location-less ``error`` results with
+    no rule metadata; rule ``diagnostics`` carry their rule metadata and attempt
+    FQN-based location resolution. ``reportingDescriptor`` objects are
+    deduplicated by code across both lists (first occurrence wins).
     """
     module_map = _element_module_map(domain)
     rules: dict[str, dict[str, Any]] = {}
@@ -479,7 +487,8 @@ def _format_sarif(result: dict[str, Any], domain: Any) -> dict[str, Any]:
             ),
         }
 
-    # Validator errors: no FQN, no rule metadata, always error, no location.
+    # Errors (validator or IR-build): no FQN, no rule metadata, always error,
+    # no location.
     for err in result.get("errors", []):
         code = err["code"]
         _descriptor(code, err.get("message", code), None, None)

@@ -58,26 +58,14 @@ detects the same mismatch mechanically, at build time, for every aggregate.
 Flagged. An unbounded `Text` field is indexed:
 
 ```python
-from protean import Domain, Index
-from protean.fields import Text
-
-domain = Domain(name="app")
-
-@domain.aggregate(indexes=[Index("body")])
-class Note:
-    body = Text()          # unbounded; indexed -> UNBOUNDED_INDEXED_STRING
+--8<-- "concepts/protean-check/rules/unbounded-indexed-string/001.py:flagged"
 ```
 
 Compliant. A bounded `String` field is indexed, and the unbounded field is left
 out of every index:
 
 ```python
-from protean.fields import String, Text
-
-@domain.aggregate(indexes=[Index("slug")])
-class Article:
-    slug = String(max_length=120)   # bounded; indexed -> no finding
-    body = Text()                   # unbounded but not indexed -> no finding
+--8<-- "concepts/protean-check/rules/unbounded-indexed-string/002.py:compliant"
 ```
 
 ## How to fix
@@ -91,10 +79,5 @@ class Article:
 Suppress the rule for a single aggregate with `suppress_checks`:
 
 ```python
-@domain.aggregate(
-    indexes=[Index("body")],
-    suppress_checks=["UNBOUNDED_INDEXED_STRING"],
-)
-class Note:
-    body = Text()
+--8<-- "concepts/protean-check/rules/unbounded-indexed-string/003.py:suppressed"
 ```

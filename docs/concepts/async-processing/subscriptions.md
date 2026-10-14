@@ -49,15 +49,11 @@ configuration.
 ### Broker Subscriptions
 
 Broker subscriptions connect **subscribers** to external message brokers. They
-are used for consuming messages from systems outside your domain:
+are used for consuming messages from systems outside your domain. A subscriber
+receives each message's payload in its `__call__` method:
 
 ```python
-@domain.subscriber(broker="default", stream="external_orders")
-class ExternalOrderSubscriber:
-    @handle("OrderReceived")
-    def handle_order_received(self, event):
-        # Process external order
-        ...
+--8<-- "concepts/async-processing/subscriptions/001.py:subscriber"
 ```
 
 ## Stream Categories {#stream-categories}
@@ -69,10 +65,7 @@ Subscriptions connect handlers to **[stream categories](./stream-categories.md)*
 When you define a handler, it subscribes to a specific stream category:
 
 ```python
-@domain.event_handler(part_of=Order)
-class OrderEventHandler:
-    # Subscribes to Order's stream category ("order")
-    ...
+--8<-- "concepts/async-processing/subscriptions/002.py:handler"
 ```
 
 The engine creates a subscription that:
@@ -87,14 +80,7 @@ The engine creates a subscription that:
 Handlers automatically subscribe to their associated aggregate's stream category:
 
 ```python
-@domain.aggregate
-class Order:
-    ...  # Stream category: "order"
-
-@domain.event_handler(part_of=Order)
-class OrderEventHandler:
-    # Automatically subscribes to "order" stream category
-    ...
+--8<-- "concepts/async-processing/subscriptions/003.py:default_category"
 ```
 
 ### Custom Stream Category Subscription
@@ -104,35 +90,25 @@ stream such as `all_orders` usually reads every event on it with
 `@handle("$any")`, for a report or an audit log:
 
 ```python
-@domain.event_handler(part_of=Order, stream_category="all_orders")
-class OrderReportHandler:
-    # Subscribes to "all_orders" instead of Order's default
-
-    @handle("$any")
-    def record(self, event):
-        ...
+--8<-- "concepts/async-processing/subscriptions/002.py:custom_category"
 ```
 
 ### Cross-Aggregate Coordination
 
 When an `Order` event must change `Inventory`, the event handler stays with
 `Order` and subscribes to the `order` stream. It issues a command that is part
-of `Inventory`, and Inventory's command handler does the write:
+of `Inventory`, and Inventory's command handler does the write. Take an `Order`
+that raises `OrderShipped`, and an `Inventory` that changes through a
+`ReduceStock` command:
 
 ```python
-@domain.event_handler(part_of=Order)
-class OrderEventHandler:
-    """Asks Inventory to reduce stock when an order ships."""
+--8<-- "concepts/async-processing/subscriptions/004.py:model"
+```
 
-    @handle(OrderShipped)
-    def reduce_stock(self, event):
-        current_domain.process(
-            ReduceStock(
-                order_id=event.order_id,
-                product_id=event.product_id,
-                quantity=event.quantity,
-            )
-        )
+The event handler on `Order` issues the command:
+
+```python
+--8<-- "concepts/async-processing/subscriptions/004.py:hand_off"
 ```
 
 An event handler that is part of `Inventory` but handles `OrderShipped`, an
@@ -158,6 +134,7 @@ When a subscription starts, it performs type-specific initialization:
 Subscriptions run a continuous polling loop:
 
 ```python
+# fragment
 async def poll(self):
     while self.keep_going and not self.engine.shutting_down:
         # Get next batch of messages

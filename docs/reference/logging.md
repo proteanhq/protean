@@ -742,7 +742,7 @@ their own list.
 - **structlog pipeline:** the processor returned by
   `make_redaction_processor()` is appended to `extra_processors` so it
   runs **last**, after every caller-supplied processor.
-- **stdlib pipeline:** when a redact list is configured, `ProteanRedactionFilter` is attached to the root logger and to each of its handlers.
+- **stdlib pipeline:** when a redact list is configured, `ProteanRedactionFilter` is attached to the root logger and to each of its handlers. It runs after Protean's correlation and trace-context filters, so `correlation_id`, `causation_id`, `trace_id` and `span_id` are masked when the redact list names them.
 - **`log_method_call`:** inherits redaction transparently because it
   routes through the same pipeline.
 

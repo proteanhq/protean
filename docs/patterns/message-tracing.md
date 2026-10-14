@@ -206,14 +206,14 @@ When one Protean service consumes events from another (via subscribers), the
 `correlation_id` from the source event should be forwarded:
 
 ```python
-@domain.subscriber(channel="payments")
+@domain.subscriber(stream="payments")
 class PaymentSubscriber:
-    def __call__(self, message):
-        # Extract correlation_id from the incoming external event
-        correlation_id = message.get("metadata", {}).get("correlation_id")
+    def __call__(self, message: dict) -> None:
+        # Extract correlation_id from the incoming event's domain metadata
+        correlation_id = message["metadata"]["domain"].get("correlation_id")
 
         domain.process(
-            ConfirmPayment(order_id=message["order_id"]),
+            ConfirmPayment(order_id=message["data"]["order_id"]),
             correlation_id=correlation_id,
         )
 ```

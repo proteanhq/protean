@@ -328,11 +328,20 @@ fact event class that appears in the cluster's `events` section with both
 Command handlers include a `handlers` map (`__type__` → list of method names),
 `stream_category`, and a `subscription` block.
 
+`sequential_by` appears when the handler was registered with that option. It
+is a non-empty string: the name of the message field used as the partition
+key. The key is absent when the option is unset. What the key does at runtime
+depends on the handler kind and the broker; see
+[`sequential_by`](../../reference/server/sequential-by.md).
+
 ### Event Handler
 
 Event handlers include a `handlers` map, an optional `source_stream` for origin
 filtering, `stream_category`, and a `subscription` block. The `$any` wildcard
 key means the handler processes all events on its stream.
+
+Event handlers carry an optional `sequential_by` too, with the same meaning
+and type as on command handlers.
 
 ### Other Cluster Elements
 
@@ -550,7 +559,9 @@ aggregate streams.
 order_by, limit), `identity_field`, and `fields`.
 
 **Projectors** specify `projector_for` (FQN), `aggregates` (sorted list of
-aggregate FQNs), `stream_categories`, `subscription`, and `handlers`.
+aggregate FQNs), `stream_categories`, `subscription`, and `handlers`. A
+projector registered with `sequential_by` carries it as a non-empty string
+naming the partition key field. The key is absent when the option is unset.
 
 **Queries** carry `__type__` but **not** `__version__`, because queries are
 local read-side operations, not cross-context messages. Format:
@@ -577,6 +588,13 @@ Process managers are stateful, event-driven coordinators. They include:
 - `stream_categories` (what they subscribe to)
 - `handlers` with lifecycle metadata (`start`, `end`, `correlate`)
 - `transition_event` (auto-generated event: `fqn` and `__type__` only)
+- `sequential_by` (optional boolean). `true` means the process manager opted
+  in to partitioning: each handled event's stream category is partitioned by
+  the event field that its handler's `correlate` maps to the correlation value.
+  `false` has the same effect as leaving the option unset. The key is absent
+  when the option is unset. See
+  [`sequential_by`](../../reference/server/sequential-by.md) for the runtime
+  guarantee.
 
 ### Subscribers
 

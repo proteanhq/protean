@@ -51,41 +51,13 @@ directly on the field. Protean enforces them on construction and on every
 assignment.
 
 ```python
-from protean import Domain
-from protean.fields import Float, HasMany, Identifier, Integer, String
-
-domain = Domain()
-
-
-@domain.aggregate
-class Order:
-    customer_id: Identifier(required=True)
-    status: String(max_length=20, default="draft")
-    items = HasMany("OrderItem")
-
-
-@domain.entity(part_of=Order)
-class OrderItem:
-    product_name: String(required=True, max_length=200)
-    quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True, min_value=0.01)
+--8<-- "concepts/philosophy/always-valid/001.py:fields"
 ```
 
 These constraints catch the most basic errors immediately:
 
 ```python
-# Missing required field → ValidationError
-order = Order()  # customer_id is required
-
-# Type violation → ValidationError
-item = OrderItem(product_name="Widget", quantity="abc", unit_price=10.0)
-
-# Range violation → ValidationError
-item = OrderItem(product_name="Widget", quantity=0, unit_price=10.0)
-# quantity must be >= 1
-
-# Even after construction, assignments are checked
-item.unit_price = -5.0  # ValidationError: min_value is 0.01
+--8<-- "concepts/philosophy/always-valid/001.py:field_checks"
 ```
 
 Field constraints are **declarative**, visible right in the field definition,
@@ -107,43 +79,13 @@ currency and rules about sign. When a concept has internal rules, wrap it in a
 **value object** with invariants.
 
 ```python
-from protean import Domain, invariant
-from protean.exceptions import ValidationError
-from protean.fields import Float, String
-
-domain = Domain()
-
-
-@domain.value_object
-class Money:
-    amount: Float(required=True)
-    currency: String(required=True, max_length=3)
-
-    @invariant.post
-    def amount_must_be_non_negative(self):
-        if self.amount < 0:
-            raise ValidationError(
-                {"amount": ["Amount cannot be negative"]}
-            )
-
-    @invariant.post
-    def currency_must_be_recognized(self):
-        valid = {"USD", "EUR", "GBP", "JPY", "CAD"}
-        if self.currency not in valid:
-            raise ValidationError(
-                {"currency": [f"Unrecognized currency: {self.currency}"]}
-            )
+--8<-- "concepts/philosophy/always-valid/002.py:money"
 ```
 
 Now use it in the Order:
 
-```python
-@domain.aggregate
-class Order:
-    customer_id: Identifier(required=True)
-    status: String(max_length=20, default="draft")
-    total = ValueObject(Money)
-    items = HasMany("OrderItem")
+```python hl_lines="8"
+--8<-- "concepts/philosophy/always-valid/002.py:order"
 ```
 
 The `Money` value object validates itself at construction. If someone tries to
@@ -151,12 +93,7 @@ create `Money(amount=-5, currency="XYZ")`, the invariants fire immediately, befo
 aggregate.
 
 ```python
-# Invalid at construction → ValidationError
-Money(amount=-5, currency="USD")   # "Amount cannot be negative"
-Money(amount=10, currency="XYZ")   # "Unrecognized currency: XYZ"
-
-# When assigned to an aggregate, the VO validates itself
-order.total = Money(amount=50, currency="FAKE")  # ValidationError
+--8<-- "concepts/philosophy/always-valid/002.py:money_checks"
 ```
 
 Value object invariants are **context-free**. An `Email` is either valid or
@@ -180,57 +117,14 @@ concept, not just that its fields have the right types, but that it's
 internally consistent.
 
 ```python
-from protean import Domain, invariant
-from protean.exceptions import ValidationError
-from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
-
-domain = Domain()
-
-
-@domain.aggregate
-class Order:
-    customer_id: Identifier(required=True)
-    status: String(max_length=20, default="draft")
-    total = ValueObject(Money)
-    items = HasMany("OrderItem")
-
-    @invariant.post
-    def must_have_items_when_placed(self):
-        if self.status != "draft" and not self.items:
-            raise ValidationError(
-                {"items": ["Order must have at least one item"]}
-            )
-
-    @invariant.post
-    def total_must_match_items(self):
-        if self.items and self.total:
-            expected = sum(
-                item.quantity * item.unit_price for item in self.items
-            )
-            if abs(self.total.amount - expected) > 0.01:
-                raise ValidationError(
-                    {"total": [
-                        f"Total {self.total.amount} does not match "
-                        f"items total {expected}"
-                    ]}
-                )
+--8<-- "concepts/philosophy/always-valid/003.py:setup"
+--8<-- "concepts/philosophy/always-valid/003.py:aggregate"
 ```
 
 These invariants run automatically:
 
 ```python
-# After construction
-order = Order(
-    customer_id="cust-1",
-    status="confirmed",  # not draft, but no items → ValidationError
-)
-
-# After every field assignment
-order.status = "confirmed"  # triggers post-invariants → checks items
-
-# Recursively through child entities
-order.add_items(OrderItem(product_name="Widget", quantity=2, unit_price=10.0))
-# Post-invariants run on the aggregate root, checking all rules
+--8<-- "concepts/philosophy/always-valid/003.py:invariant_checks"
 ```
 
 ### Batching changes with `atomic_change`
@@ -239,14 +133,7 @@ Sometimes multiple changes are individually invalid but collectively valid.
 Protean provides `atomic_change` for this:
 
 ```python
-from protean.core.aggregate import atomic_change
-
-with atomic_change(order):
-    order.total = Money(amount=120.0, currency="USD")
-    order.add_items(OrderItem(
-        product_name="Gadget", quantity=4, unit_price=30.0
-    ))
-# Invariants checked ONCE on exit -- both changes valid together
+--8<-- "concepts/philosophy/always-valid/003.py:atomic_change"
 ```
 
 Inside the block, invariant checks are suspended. A pre-check runs on entry
@@ -268,50 +155,7 @@ what state other aggregates are in. These rules live in command handlers,
 application services, or domain services, outside the aggregate.
 
 ```python
-from datetime import datetime, timezone
-
-from protean import handle
-from protean.fields import Identifier, String
-from protean.utils.globals import current_domain
-
-
-@domain.command(part_of=Order)
-class CancelOrder:
-    order_id: Identifier(required=True)
-    cancelled_by: Identifier(required=True)
-    cancelled_by_role: String(required=True)
-    reason: String(max_length=500)
-
-
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(CancelOrder)
-    def cancel_order(self, command: CancelOrder):
-        repo = current_domain.repository_for(Order)
-        order = repo.get(command.order_id)
-
-        # Guard: authorization
-        if (command.cancelled_by_role != "admin"
-                and command.cancelled_by != order.customer_id):
-            raise ValidationError(
-                {"authorization": [
-                    "Only the customer or an admin can cancel"
-                ]}
-            )
-
-        # Guard: time-based business rule
-        if order.placed_at:
-            hours = (datetime.now(timezone.utc) - order.placed_at).total_seconds() / 3600
-            if hours > 24:
-                raise ValidationError(
-                    {"timing": [
-                        "Orders cannot be cancelled after 24 hours"
-                    ]}
-                )
-
-        # Delegate to aggregate (which has its own Layer 3 invariants)
-        order.cancel(command.reason)
-        repo.add(order)
+--8<-- "concepts/philosophy/always-valid/004.py:handler"
 ```
 
 **What belongs here:** Authorization ("only admins can..."), time-based rules,
