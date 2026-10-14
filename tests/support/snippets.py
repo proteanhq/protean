@@ -45,8 +45,8 @@ step keeps that failure. After the last file, the child's wait for its
 non-daemon threads and its ``atexit`` handlers get twice the timeout, and a
 child still waiting then is ended. A child that exits with a non-zero code, or
 is killed, after reporting every file fails the run. The one exception is a
-child ended that way while a file that failed for leaving a thread running
-still held it up.
+child ended that way while a thread still held it up that a file left running
+past its cleanup step, since that file has already failed.
 
 :func:`include_expander` builds a source transform that replaces
 ``--8<-- "<spec>"`` lines with the code they include, the way
@@ -686,8 +686,8 @@ def _job_entry(
 
 def _read_report(path: Path) -> tuple[list[dict], dict | None, bool, list[str]]:
     """Return the finished results in a report, the last step after them,
-    whether a file failed for leaving a thread running, and the threads still
-    running after the last file that no failed file accounts for."""
+    whether a file left a thread running past its cleanup step, and the
+    threads still running after the last file whose file left none there."""
     results: list[dict] = []
     step = None
     lingering = False
@@ -732,7 +732,8 @@ def run_snippets(
     Raises :class:`AssertionError` when a child stops outside a file. Also
     raises it when the last child exits with a non-zero code, or is killed,
     after reporting every file, unless the shutdown watchdog ended it while a
-    file of that child that failed for leaving a thread running held it up.
+    thread that a file of that child left running past its cleanup step held
+    it up.
     """
     work = tmp_path / "snippet-run"
     work.mkdir()
