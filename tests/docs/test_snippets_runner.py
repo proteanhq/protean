@@ -878,19 +878,27 @@ def test_a_thread_whose_name_raises_is_still_reported(tmp_path, bases):
     )
 
 
-# Page A's thread starts a non-daemon thread while page B sleeps.
+# Page A's thread starts a non-daemon thread once page B's module exists, and
+# page B waits for that thread, so the thread starts while page B runs.
 SPAWNS_LATER = (
     "```python\n"
-    "import threading, time\n"
+    "import sys, threading, time\n"
     "def spawn():\n"
-    "    time.sleep(0.2)\n"
+    "    while '_dx_snippet_1_' not in sys.modules:\n"
+    "        time.sleep(0.01)\n"
     "    threading.Thread(\n"
     "        target=time.sleep, args=(600,), name='child-of-a', daemon=False\n"
     "    ).start()\n"
     "threading.Thread(target=spawn, name='spawner', daemon={daemon}).start()\n"
     "```\n"
 )
-SLEEPS = "```python\nimport time\ntime.sleep(0.4)\n```\n"
+SLEEPS = (
+    "```python\n"
+    "import threading, time\n"
+    "while not any(t.name == 'child-of-a' for t in threading.enumerate()):\n"
+    "    time.sleep(0.01)\n"
+    "```\n"
+)
 
 
 def test_a_thread_started_by_a_page_thread_is_not_blamed_on_the_next_page(
@@ -915,6 +923,28 @@ def test_a_passing_page_whose_thread_starts_one_later_fails_the_run(tmp_path, ba
         AssertionError, match=r"exit 87; .*; still running: a\.md: thread child-of-a"
     ):
         _run(tmp_path, [first, second], bases, timeout=0.5)
+
+
+def test_a_failed_page_thread_does_not_hide_a_thread_started_after_the_last_page(
+    tmp_path, bases
+):
+    # Page B's thread starts its child once the report is closed, after the
+    # runner's last check for threads, while page A's thread still runs.
+    lingering = _write(tmp_path, LINGERING, "a.md")
+    spawns_at_shutdown = _write(
+        tmp_path,
+        "```python\n"
+        "import sys, threading, time\n"
+        "def spawn():\n"
+        "    while not sys.modules['__main__'].report.closed:\n"
+        "        time.sleep(0.01)\n"
+        "    threading.Thread(target=time.sleep, args=(600,), daemon=False).start()\n"
+        "threading.Thread(target=spawn, daemon=True).start()\n"
+        "```\n",
+        "b.md",
+    )
+    with pytest.raises(AssertionError, match=r"\(exit 87; its shutdown was still"):
+        _run(tmp_path, [lingering, spawns_at_shutdown], bases, timeout=0.5)
 
 
 def test_a_page_that_leaves_a_thread_does_not_hide_a_bad_exit(tmp_path, bases):

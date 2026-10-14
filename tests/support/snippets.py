@@ -314,7 +314,8 @@ _STUCK_EXIT = 86
 # A child exits with this code when its shutdown runs past the hard limit.
 _SHUTDOWN_EXIT = 87
 # A child exits with this code instead when, at that limit, a thread that a
-# file left running past its cleanup step is still running.
+# file left running past its cleanup step is still running, and no thread of a
+# file that passed that step is.
 _HELD_EXIT = 88
 
 # The child-interpreter runner. argv[1] is a JSON file holding the files and
@@ -545,11 +546,16 @@ reported = set()
 
 def end_shutdown():
     # A reported thread that finished before the shutdown hung did not hold it
-    # up, so only a reported thread still running here earns the held code.
-    held = any(
-        getattr(thread, "_snippet_file", None) in reported and not thread.daemon
+    # up, so only a reported thread still running here earns the held code. A
+    # thread of an unreported file may have started after the "late" check, and
+    # nothing else would report it, so it rules the held code out.
+    files = {
+        getattr(thread, "_snippet_file", None)
         for thread in enumerate_threads()
-    )
+        if not thread.daemon
+    }
+    files.discard(None)
+    held = bool(files) and files <= reported
     os._exit(job["held_exit"] if held else job["shutdown_exit"])
 
 
