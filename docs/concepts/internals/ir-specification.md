@@ -431,7 +431,7 @@ All possible keys (no single field has all of them):
 | `default` | Default value (see serialization rules below) |
 | `description` | Human-readable description |
 | `max_length`, `min_length` | String length constraints |
-| `max_value`, `min_value` | Numeric bounds |
+| `max_value`, `min_value` | Value bounds. A `Decimal` field writes them as decimal strings (`"0.01"`); other fields write numbers |
 | `precision`, `scale` | Total digits and digits after the decimal point, on a `Decimal` field that sets them (added in v0.3.0) |
 | `choices` | Sorted list of allowed values |
 | `sanitize` | Present only for an explicit `sanitize=True` (declared intent); absent for an unset field, even one sanitized via a domain default |

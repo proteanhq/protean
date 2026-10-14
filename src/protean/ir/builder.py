@@ -543,9 +543,9 @@ class IRBuilder:
         if field.min_length is not None:
             entry["min_length"] = field.min_length
         if field.min_value is not None:
-            entry["min_value"] = field.min_value
+            entry["min_value"] = self._ir_bound(field.min_value, entry["type"])
         if field.max_value is not None:
-            entry["max_value"] = field.max_value
+            entry["max_value"] = self._ir_bound(field.max_value, entry["type"])
         # Only a Decimal field's spec carries precision and scale.
         if field.precision is not None:
             entry["precision"] = field.precision
@@ -609,6 +609,29 @@ class IRBuilder:
                 entry["default"] = self._serialize_default(field, field.default)
 
         return entry
+
+    @staticmethod
+    def _ir_bound(value: Any, ir_type: str) -> Any:
+        """Return a JSON-encodable form of a ``min_value`` / ``max_value`` bound.
+
+        JSON cannot encode a ``decimal.Decimal``. A Decimal field keeps its bound
+        as a decimal string, which is lossless and keeps trailing zeros. Other
+        fields need a number, because the JSON Schema generator writes their
+        bounds as ``minimum`` / ``maximum``. An integral bound on an Integer
+        field becomes an ``int``; a fractional one becomes a ``float`` so the
+        bound is never truncated. ``int`` and ``float`` bounds come back as is.
+        """
+        if not isinstance(value, decimal.Decimal):
+            return value
+        if ir_type == "Decimal":
+            return str(value)
+        if (
+            ir_type == "Integer"
+            and value.is_finite()
+            and value == value.to_integral_value()
+        ):
+            return int(value)
+        return float(value)
 
     @staticmethod
     def _serialize_default(field: Any, default: Any) -> Any:
