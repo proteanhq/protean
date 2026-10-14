@@ -48,6 +48,7 @@ from typing import Annotated, Any, NoReturn
 
 import typer
 from rich import print
+from rich.markup import escape
 
 import protean
 from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions
@@ -315,7 +316,7 @@ def _print_quiet(result: dict[str, Any]) -> None:
 
 def _print_rich(result: dict[str, Any]) -> None:
     """Print a rich-formatted check report to the terminal."""
-    domain_name = result["domain"]
+    domain_name = escape(result["domain"])
     status = result["status"]
     counts = result["counts"]
 
@@ -343,7 +344,7 @@ def _print_rich(result: dict[str, Any]) -> None:
     if result["errors"]:
         print(f"\n  [bold red]Errors ({counts['errors']}):[/bold red]")
         for err in result["errors"]:
-            print(f"    [red]✗[/red] {err['message']}")
+            print(f"    [red]✗[/red] {escape(err['message'])}")
 
     # Diagnostics — split by level for display
     warnings = [d for d in result["diagnostics"] if d.get("level") == "warning"]
@@ -353,15 +354,15 @@ def _print_rich(result: dict[str, Any]) -> None:
         print(f"\n  [bold yellow]Warnings ({len(warnings)}):[/bold yellow]")
         for diag in warnings:
             code = diag.get("code", "")
-            prefix = f"[dim]{code}:[/dim] " if code else ""
-            print(f"    [yellow]![/yellow] {prefix}{diag['message']}")
+            prefix = f"[dim]{escape(code)}:[/dim] " if code else ""
+            print(f"    [yellow]![/yellow] {prefix}{escape(diag['message'])}")
 
     if infos:
         print(f"\n  [bold cyan]Info ({len(infos)}):[/bold cyan]")
         for diag in infos:
             code = diag.get("code", "")
-            prefix = f"[dim]{code}:[/dim] " if code else ""
-            print(f"    [cyan]·[/cyan] {prefix}{diag['message']}")
+            prefix = f"[dim]{escape(code)}:[/dim] " if code else ""
+            print(f"    [cyan]·[/cyan] {prefix}{escape(diag['message'])}")
 
     if status == "pass":
         print("\n  [green]All checks passed.[/green]")

@@ -21,6 +21,7 @@ from protean.cli.check import (
     _escape_annotation,
     _escape_property,
     _format_sarif,
+    _print_rich,
     _resolve_sarif_location,
     _workspace_relative_uri,
 )
@@ -1024,6 +1025,28 @@ class TestCheckSingleFileDomain:
         assert "Could not build the IR" in result.output
         assert "All checks passed" not in result.output
         assert "Traceback" not in result.output
+
+    def test_rich_report_prints_bracketed_messages_verbatim(self, capsys):
+        # An IR-build error carries the raw exception text, which can hold a
+        # token rich would read as markup and reject.
+        _print_rich(
+            {
+                "domain": "Shop[/b]",
+                "status": "fail",
+                "errors": [{"message": "Could not build the IR: KeyError: '[/bold]'"}],
+                "diagnostics": [
+                    {"level": "warning", "code": "[x]", "message": "warn [/red]"},
+                    {"level": "info", "code": "[y]", "message": "info [dim]"},
+                ],
+                "counts": {"errors": 1, "warnings": 1, "infos": 1},
+            }
+        )
+
+        out = capsys.readouterr().out
+        assert "Shop[/b]" in out
+        assert "KeyError: '[/bold]'" in out
+        assert "[x]: warn [/red]" in out
+        assert "[y]: info [dim]" in out
 
     def test_sibling_that_raises_on_import_exits_with_one_line(self, tmp_path):
         path = tmp_path / "broken_sibling_1685.py"
