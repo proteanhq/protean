@@ -225,16 +225,7 @@ block until the first transaction commits, then re-evaluate the WHERE clause,
 so only one worker succeeds:
 
 ```python
-# Simplified view of the per-message compare-and-swap inside _claim():
-claimed_count = dao._update_all(
-    Q(id=message.id, status__in=["pending", "failed"]),   # Only eligible messages
-    {
-        "status": "processing",
-        "locked_by": worker_id,
-        "locked_until": now + timedelta(minutes=5),
-    },
-)
-# claimed_count > 0 only for the winning worker
+--8<-- "concepts/async-processing/outbox/001.py:claim"
 ```
 
 This prevents the TOCTOU (Time-Of-Check-Time-Of-Use) race condition where two

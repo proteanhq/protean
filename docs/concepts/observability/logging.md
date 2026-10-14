@@ -14,7 +14,8 @@ stream has been conventional wisdom for more than a decade, but most
 codebases still produce human-formatted strings and call it a day:
 
 ```python
-# The old way — looks readable, queries like grep
+# fragment
+# The old way: looks readable, queries like grep
 logger.info(f"Refunded ${amount} for order {order_id} because {reason}")
 ```
 
@@ -27,8 +28,7 @@ reason is free text or a code. Answering any question means reading the text.
 Structured logs invert that:
 
 ```python
-# The Protean way — event name is stable, fields are queryable
-logger.info("payment_refunded", order_id="ord-123", amount=19.99, reason="customer_request")
+--8<-- "concepts/observability/logging/001.py:structured"
 ```
 
 `event=payment_refunded AND reason=customer_request` is a viable query.

@@ -39,13 +39,7 @@ This structure ensures that:
 Internally, Protean prefixes stream categories with the domain name to create fully qualified stream categories. This ensures uniqueness across different domains in multi-domain applications:
 
 ```python
-# Your aggregate definition
-@domain.aggregate
-class Order:
-    ...
-
-# Internally becomes: "ecommerce::order"
-# Where "ecommerce" is your domain name
+--8<-- "concepts/async-processing/stream-categories/001.py:order"
 ```
 
 ## Defining Stream Categories
@@ -55,24 +49,13 @@ class Order:
 Stream categories are primarily defined at the aggregate level. By default, the stream category is automatically derived as the snake_case version of the aggregate's class name:
 
 ```python
-@domain.aggregate
-class User:
-    ...
-# Stream category: "user"
-
-@domain.aggregate
-class OrderItem:
-    ...
-# Stream category: "order_item"
+--8<-- "concepts/async-processing/stream-categories/001.py:default_names"
 ```
 
 You can explicitly specify a stream category:
 
 ```python
-@domain.aggregate(stream_category="customer_orders")
-class Order:
-    ...
-# Stream category: "customer_orders"
+--8<-- "concepts/async-processing/stream-categories/002.py:explicit"
 ```
 
 Learn more in the [Aggregates configuration](../../guides/domain-definition/aggregates.md#stream_category) section.
@@ -95,13 +78,12 @@ Learn more in the [Events metadata](../../guides/domain-definition/events.md#str
 
 ### Commands
 
-Commands follow the same pattern as events - they're routed to their target aggregate's stream category:
+Commands are routed by their target aggregate's stream category too. They go to a
+separate command stream, `<stream_category>:command`, so a command for `Order` is
+stored in `ecommerce::order:command-<id>`:
 
 ```python
-@domain.command(part_of=Order)
-class PlaceOrder:
-    order_id: Identifier(required=True)
-    # Routes to Order's stream category
+--8<-- "concepts/async-processing/stream-categories/001.py:command"
 ```
 
 ## Stream Categories in Handlers
@@ -113,13 +95,7 @@ Handlers (event handlers, command handlers, and projectors) use stream categorie
 Handlers automatically subscribe to their associated aggregate's stream category:
 
 ```python
-@domain.event_handler(part_of=Order)
-class OrderEventHandler:
-    # Subscribes to Order's stream category ("order")
-
-    @handle(OrderPlaced)
-    def handle_order_placed(self, event):
-        ...
+--8<-- "concepts/async-processing/stream-categories/003.py:default_handler"
 ```
 
 ### Explicit Stream Categories
@@ -127,13 +103,7 @@ class OrderEventHandler:
 Handlers can explicitly specify which stream category to subscribe to:
 
 ```python
-@domain.event_handler(part_of=Order, stream_category="all_orders")
-class OrderReportHandler:
-    # Subscribes to "all_orders" instead of Order's default
-
-    @handle("$any")
-    def record(self, event):
-        ...
+--8<-- "concepts/async-processing/stream-categories/003.py:explicit_handler"
 ```
 
 This allows multiple aggregates to publish to shared stream categories for specific use cases.
@@ -144,37 +114,19 @@ for a report or an audit log, and leaves every aggregate as it is.
 
 When an event on one aggregate's stream must change another aggregate, the
 handler stays with the aggregate that owns the event. It issues a command, and
-the other aggregate's command handler does the write:
+the other aggregate's command handler does the write. Take an `Order` that
+raises `OrderShipped`, and an `Inventory` that changes through a `ReduceStock`
+command:
 
 ```python
-@domain.event_handler(part_of=Order)
-class OrderEventHandler:
-    """Asks Inventory to reduce stock when an order ships."""
+--8<-- "concepts/async-processing/stream-categories/004.py:model"
+```
 
-    @handle(OrderShipped)
-    def reduce_stock(self, event):
-        current_domain.process(
-            ReduceStock(
-                order_id=event.order_id,
-                product_id=event.product_id,
-                quantity=event.quantity,
-            )
-        )
+The event handler on `Order` issues the command, and Inventory's command handler
+applies it:
 
-
-@domain.command_handler(part_of=Inventory)
-class InventoryCommandHandler:
-    @handle(ReduceStock)
-    def reduce_stock(self, command):
-        repo = current_domain.repository_for(Inventory)
-        inventory = repo.get(command.product_id)
-
-        # Events arrive at least once. Skip an order already applied.
-        if command.order_id in inventory.applied_order_ids:
-            return
-
-        inventory.reduce_stock(command.order_id, command.quantity)
-        repo.add(inventory)
+```python
+--8<-- "concepts/async-processing/stream-categories/004.py:hand_off"
 ```
 
 In this example:
@@ -207,13 +159,16 @@ When the engine starts, it:
 
 1. Identifies all handlers (event handlers, command handlers, projectors)
 2. Infers or reads their stream category
-3. Creates a subscription for each handler to its stream category
+3. Creates a subscription for each event handler and projector on its stream
+   category, and one subscription per command stream category, which hands
+   each command to the handler registered for it
 4. Begins polling for messages
 
 ```python
+# fragment
 # Example: How the engine creates subscriptions
 handler_cls = OrderEventHandler
-stream_category = "order"  # Inferred from handler
+stream_category = "ecommerce::order"  # Inferred from handler
 
 subscription = engine.subscription_factory.create_subscription(
     handler=handler_cls,
@@ -226,15 +181,7 @@ subscription = engine.subscription_factory.create_subscription(
 Multiple handlers can subscribe to the same stream category. Each handler gets its own subscription with independent position tracking:
 
 ```python
-@domain.event_handler(part_of=Order)
-class OrderNotificationHandler:
-    # Subscription 1 to "order" stream
-    ...
-
-@domain.event_handler(part_of=Order)
-class OrderAnalyticsHandler:
-    # Subscription 2 to "order" stream
-    ...
+--8<-- "concepts/async-processing/stream-categories/005.py:same_stream"
 ```
 
 Both handlers receive all events from the `order` stream category, but process them independently at their own pace.
@@ -246,10 +193,7 @@ Learn more in [Subscriptions](./subscriptions.md#stream-categories).
 For event-sourced aggregates (marked with `event_sourced=True`), stream categories become even more critical:
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Account:
-    account_number: String(required=True)
-    balance: Float(default=0.0)
+--8<-- "concepts/async-processing/stream-categories/006.py:event_sourced"
 ```
 
 In event-sourced aggregates:
@@ -266,12 +210,7 @@ The stream for an event-sourced aggregate instance (e.g., `ecommerce::account-12
 When aggregates are configured with `fact_events=True`, Protean generates special fact events that use a modified stream category:
 
 ```python
-@domain.aggregate(fact_events=True)
-class User:
-    ...
-
-# Regular events: ecommerce::user-123
-# Fact events: ecommerce::user-fact-123
+--8<-- "concepts/async-processing/stream-categories/006.py:fact_events"
 ```
 
 Fact event streams use the pattern `<stream_category>-fact-<aggregate_id>`, allowing separate subscription management for fact events versus delta events.
@@ -285,15 +224,8 @@ Learn more in [Raising Events](../../guides/domain-behavior/raising-events.md#fa
 Choose stream categories that clearly indicate the aggregate's purpose and align with your domain language:
 
 ```python
-# Good
-@domain.aggregate(stream_category="customer_order")
-class Order:
-    ...
-
-# Less clear
-@domain.aggregate(stream_category="ord")
-class Order:
-    ...
+--8<-- "concepts/async-processing/stream-categories/007.py:descriptive"
+--8<-- "concepts/async-processing/stream-categories/007.py:less_clear"
 ```
 
 ### 2. Be Consistent
@@ -301,15 +233,7 @@ class Order:
 Use a consistent naming convention across your domain:
 
 ```python
-# Consistent: all use snake_case
-stream_category="customer_order"
-stream_category="order_item"
-stream_category="order_shipment"
-
-# Inconsistent: mixed styles
-stream_category="customerOrder"
-stream_category="order-item"
-stream_category="OrderShipment"
+--8<-- "concepts/async-processing/stream-categories/008.py:consistent"
 ```
 
 ### 3. Consider Logical Grouping
@@ -317,17 +241,7 @@ stream_category="OrderShipment"
 Related aggregates can share prefixes to indicate their relationship:
 
 ```python
-@domain.aggregate(stream_category="order")
-class Order:
-    ...
-
-@domain.aggregate(stream_category="order_item")
-class OrderItem:
-    ...
-
-@domain.aggregate(stream_category="order_shipment")
-class Shipment:
-    ...
+--8<-- "concepts/async-processing/stream-categories/008.py:grouping"
 ```
 
 ### 4. Override When Necessary
@@ -335,10 +249,7 @@ class Shipment:
 Use explicit stream categories when the default doesn't align with your domain language:
 
 ```python
-# Default would be "purchase_order"
-@domain.aggregate(stream_category="order")
-class PurchaseOrder:
-    ...
+--8<-- "concepts/async-processing/stream-categories/008.py:override"
 ```
 
 ### 5. Change Another Aggregate Through a Command
@@ -372,14 +283,7 @@ Don't use overly generic stream categories that make it unclear what messages th
 The simplest pattern - one aggregate, one handler:
 
 ```python
-@domain.aggregate
-class Order:
-    ...
-
-@domain.event_handler(part_of=Order)
-class OrderEventHandler:
-    # Subscribes to Order's stream category
-    ...
+--8<-- "concepts/async-processing/stream-categories/009.py:single_handler"
 ```
 
 ### Pattern 2: Single Aggregate, Multiple Handlers
@@ -387,21 +291,7 @@ class OrderEventHandler:
 Multiple handlers processing events from the same aggregate:
 
 ```python
-@domain.aggregate
-class Order:
-    ...
-
-@domain.event_handler(part_of=Order)
-class OrderNotificationHandler:
-    ...
-
-@domain.event_handler(part_of=Order)
-class OrderAnalyticsHandler:
-    ...
-
-@domain.projector(projector_for=OrderSummary, aggregates=[Order])
-class OrderSummaryProjector:
-    ...
+--8<-- "concepts/async-processing/stream-categories/010.py:multiple_handlers"
 ```
 
 Each handler subscribes to the `order` stream category independently.
@@ -412,23 +302,7 @@ One aggregate reacting to another's events. The event handler stays with
 `Order` and issues a command that `Inventory` handles:
 
 ```python
-@domain.aggregate
-class Order:
-    ...
-
-@domain.aggregate
-class Inventory:
-    ...
-
-@domain.event_handler(part_of=Order)
-class OrderEventHandler:
-    """Issues ReduceStock to Inventory when an order ships."""
-    ...
-
-@domain.command_handler(part_of=Inventory)
-class InventoryCommandHandler:
-    """Applies ReduceStock to Inventory and skips an order already applied."""
-    ...
+--8<-- "concepts/async-processing/stream-categories/011.py:cross_aggregate"
 ```
 
 ### Pattern 4: Multi-Aggregate Projections
@@ -436,15 +310,5 @@ class InventoryCommandHandler:
 Projections built from multiple aggregate streams:
 
 ```python
-@domain.projector(
-    projector_for=SalesDashboard,
-    stream_categories=[
-        Order.meta_.stream_category,     # "<domain>::order"
-        Customer.meta_.stream_category,  # "<domain>::customer"
-        Product.meta_.stream_category,   # "<domain>::product"
-    ],
-)
-class SalesDashboardProjector:
-    """Builds comprehensive sales view from multiple sources."""
-    ...
+--8<-- "concepts/async-processing/stream-categories/012.py:multi_aggregate"
 ```

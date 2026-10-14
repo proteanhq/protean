@@ -52,8 +52,9 @@ Like every other element, `@domain.upcaster(...)` routes through
 - is stored in the `_DomainRegistry` (the general element registry),
 - appears in the IR elements index (so `protean ir show` lists it), and
 - is validated by `domain.check()`: a malformed registration (a duplicate,
-  cyclic, or non-convergent chain, or a string `event_type`) is reported as a
-  structured error instead of crashing `protean check` with a traceback.
+  cyclic, or non-convergent chain, or an `event_type` string that names no
+  registered event) is reported as a structured error instead of crashing
+  `protean check` with a traceback.
 
 Upcasters remain **infrastructure helpers** for schema migration, so the
 lifecycle steps that only apply to business elements do not touch them:
@@ -67,8 +68,8 @@ Registration flow:
    which runs `upcaster_factory()` for validation and stores the class in the registry.
 2. During `domain.init()`, `_build_upcaster_chains()` reads the registered
    upcasters from the registry and builds the chain (fail-fast: a malformed
-   chain raises `ConfigurationError`, and a string `event_type` raises
-   `IncorrectUsageError`).
+   chain raises `ConfigurationError`, and so does an `event_type` string that
+   names no registered event).
 3. `domain.check()` runs the same chain build under the collecting validator
    (`DomainValidator.validate_all()`), surfacing a malformed chain as an error
    (exit code 1) rather than raising.
@@ -83,21 +84,22 @@ consistent meta-option handling.
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `event_type` | Event class | The **current** event class this upcaster targets |
+| `event_type` | Event class or `str` | The **current** event class this upcaster targets. A string is resolved by name when the chain is built |
 | `from_version` | `int` | Source version (e.g. `1`) |
 | `to_version` | `int` | Target version (e.g. `2`) |
 
 **Validation** (in `upcaster_factory()`):
 
-- `event_type` must be a `BaseEvent` subclass
+- `event_type` must be a `BaseEvent` subclass or a string
 - `from_version` and `to_version` must both be positive integers
 - `from_version` must differ from `to_version`
 
 **Abstract method:**
 
 ```python
+# fragment
 @abstractmethod
-def upcast(self, data: dict) -> dict:
+def upcast(self, data: dict[str, Any]) -> dict[str, Any]:
     """Transform raw event data from from_version to to_version."""
 ```
 
@@ -110,18 +112,19 @@ typed event objects.
 The decorator method on `Domain` supports both decorator-with-args and
 direct-call registration:
 
-```python
-# Decorator syntax
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class MyUpcaster(BaseUpcaster):
-    def upcast(self, data): ...
+??? example "The event and aggregate this example uses"
 
-# Direct registration (e.g. in test fixtures)
-domain.upcaster(MyUpcaster, event_type=OrderPlaced, from_version=1, to_version=2)
+    ```python
+    --8<-- "concepts/internals/event-upcasting/001.py:events"
+    ```
+
+```python
+--8<-- "concepts/internals/event-upcasting/001.py:registration"
 ```
 
-Both paths call `upcaster_factory()` for validation and append the result to
-`domain._upcasters`.
+Both paths call `upcaster_factory()` for validation and store the result in
+the domain registry. Together the two upcasters above form the chain
+`v1 → v2 → v3`.
 
 ## Chain Building
 
@@ -131,13 +134,14 @@ Both paths call `upcaster_factory()` for validation and append the result to
 internal structures:
 
 ```python
+# fragment
 class UpcasterChain:
     # Pre-build: edges collected during registration
-    _edges: dict[str, list[tuple[str, str, type]]]
+    _edges: dict[str, list[tuple[int, int, type]]]
     # {event_base_type: [(from_version, to_version, upcaster_cls), ...]}
 
     # Post-build: pre-computed chains for O(1) lookup
-    _chains: dict[tuple[str, str], list[Any]]
+    _chains: dict[tuple[str, int], list[Any]]
     # {(event_base_type, from_version): [upcaster_instance, ...]}
 
     # Post-build: old type strings → current event class
@@ -153,17 +157,19 @@ This ordering is critical because chain validation needs the type string
 registry to verify that terminal versions match registered event classes.
 
 ```python
+# fragment
 # In Domain.init():
 self._set_and_record_event_and_command_type()  # populates _events_and_commands
-self._build_upcaster_chains()                  # uses _events_and_commands
+if validate:
+    self._build_upcaster_chains()  # uses _events_and_commands
 self._setup_command_handlers()
 ```
 
 The method:
 
 1. Iterates `domain._upcasters`
-2. Computes `event_base_type` from the event class:
-   `"{domain.camel_case_name}.{event_class.__name__}"`. This matches the prefix
+2. Computes `event_base_type` from the event class name (or the `event_type`
+   string): `"{domain.camel_case_name}.{event_name}"`. This matches the prefix
    of type strings (e.g. `"MyDomain.OrderPlaced"`)
 3. Registers each edge in `UpcasterChain`
 4. Calls `build_chains(events_and_commands)` to validate and pre-compute
@@ -189,6 +195,7 @@ as a `from_version`. This must be exactly one version, if zero or multiple termi
 versions exist, the chain is invalid.
 
 ```python
+# fragment
 terminal_versions = all_to_versions - all_from_versions
 assert len(terminal_versions) == 1  # or ConfigurationError
 ```
@@ -196,7 +203,7 @@ assert len(terminal_versions) == 1  # or ConfigurationError
 **3. Verify terminal matches registered event**
 
 The terminal version must correspond to a registered event class. The expected
-type string is `"{event_base_type}.{terminal_version}"` and must exist in
+type string is `"{event_base_type}.v{terminal_version}"` and must exist in
 `_events_and_commands`.
 
 **4. Walk chains from each source version**
@@ -205,6 +212,7 @@ For each `from_version` that appears as a source, walk the adjacency map
 collecting upcaster instances until reaching the terminal:
 
 ```python
+# fragment
 chain = []
 v = start_version
 while v in adjacency:
@@ -225,8 +233,9 @@ free, this is safe and avoids per-event instantiation overhead.
 **5. Store results**
 
 ```python
+# fragment
 self._chains[(event_base_type, start_version)] = chain
-self._version_map[f"{event_base_type}.{start_version}"] = current_cls
+self._version_map[f"{event_base_type}.v{start_version}"] = current_cls
 ```
 
 After building, `_edges` is cleared. It is no longer needed.
@@ -249,9 +258,10 @@ at runtime during deserialization. The following errors are caught:
 ### The `to_domain_object()` Integration
 
 The integration lives in `Message.to_domain_object()` in
-`src/protean/utils/eventing.py`. The change is minimal:
+`src/protean/utils/eventing.py`. The upcasting part is short:
 
 ```python
+# fragment
 def to_domain_object(self):
     type_string = self.metadata.headers.type
     element_cls = current_domain._events_and_commands.get(type_string)
@@ -264,14 +274,19 @@ def to_domain_object(self):
 
         if element_cls is None:
             raise ConfigurationError(
-                f"Message type {type_string} is not registered"
+                f"Message type {type_string} is not registered with the domain."
             )
 
-        base_type, _, from_version = type_string.rpartition(".")
+        base_type, _, version_str = type_string.rpartition(".")
+        from_version = int(version_str.lstrip("v"))
         data = upcaster_chain.upcast(base_type, from_version, data)
 
     return element_cls(_metadata=self.metadata, **data)
 ```
+
+The real method also maps renamed field names and, in lenient mode, drops
+fields the class no longer has. It re-raises any failure, including the
+`ConfigurationError` above, as a `DeserializationError`.
 
 ### Type String Parsing
 
@@ -279,7 +294,7 @@ Type strings follow the format `"{DomainName}.{EventName}.{version}"`.
 The `rpartition(".")` call splits on the **last** dot:
 
 - `"MyDomain.OrderPlaced.v1"` → `base_type="MyDomain.OrderPlaced"`,
-  `from_version="v1"`
+  `from_version=1` (the `v` prefix is stripped and the rest parsed as an int)
 
 This handles event names that contain dots correctly (though Protean event
 names conventionally don't).
@@ -289,6 +304,7 @@ names conventionally don't).
 `UpcasterChain.upcast()` is a simple loop:
 
 ```python
+# fragment
 def upcast(self, event_base_type, from_version, data):
     chain = self._chains.get((event_base_type, from_version))
     if not chain:
@@ -307,17 +323,19 @@ O(n) where n is the number of version hops (typically 1-3).
 After upcasting, the event is constructed with the **original metadata**:
 
 ```python
+# fragment
 return element_cls(_metadata=self.metadata, **data)
 ```
 
 This means `metadata.headers.type` still contains the old type string
 (e.g. `"Domain.OrderPlaced.v1"`) even though the constructed event is the
-current version. However, `metadata.domain.version` contains the stored
-version which accurately reflects what was originally written to the store.
+current version. That header tells you which version was actually stored.
 
-The `_metadata` parameter in `BaseEvent.__init__` uses this metadata to set
-internal tracking fields. The metadata is preserved for audit and debugging
-purposes. It tells you which version was actually stored.
+`metadata.domain.version` is different. `BaseEvent.__init__` rebuilds the
+domain metadata and sets `version` from the event class, so on the
+constructed event it reads the current version (`3` for a `v1` message
+upcast to `v3`). The stored version stays on the `Message` that was read
+(`message.metadata.domain.version`).
 
 ## All Deserialization Paths
 

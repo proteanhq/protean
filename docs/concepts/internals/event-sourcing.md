@@ -42,21 +42,26 @@ Events the handler raised itself are removed too. Field changes the handler
 made stay in place.
 
 ```python
+# fragment
 # Inside raise_():
-version_before = self._version
-position_before = self._event_position
-events_count_before = len(self._events)
-
+mark = self._event_mark()
 try:
     # Steps 2 to 5. For ES aggregates and non-fact events, this ends with:
     #     with atomic_change(self):
     #         self._apply_handler(event_with_metadata)
     self._record_event(event, stream)
 except BaseException:
-    self._version = version_before
-    self._event_position = position_before
-    del self._events[events_count_before:]
+    self._rewind_events(mark)
     raise
+
+
+def _event_mark(self):
+    return len(self._events), self._version, self._event_position
+
+
+def _rewind_events(self, mark):
+    events_count, self._version, self._event_position = mark
+    del self._events[events_count:]
 ```
 
 Fact events are excluded because they are auto-generated snapshots that don't
@@ -88,6 +93,7 @@ increments `_version`. Used exclusively during aggregate reconstitution from
 events:
 
 ```python
+# fragment
 def _apply(self, event):
     previous = self._replaying
     self._replaying = True
@@ -140,27 +146,27 @@ All state beyond identity is populated by the creation event's `@apply`
 handler when the factory calls `raise_()`:
 
 ```python
-@classmethod
-def place(cls, customer_name):
-    order = cls._create_new()
-    order.raise_(OrderPlaced(
-        order_id=str(order.id),
-        customer_name=customer_name,
-    ))
-    return order
+--8<-- "concepts/internals/event-sourcing/001.py:place"
 ```
 
 ### `from_events(events)`
 
 Reconstructs an aggregate from a list of stored events:
 
-1. Calls `_create_for_reconstitution()` to get a blank aggregate
-2. Applies each event via `_apply()` (handler + version increment)
-3. Enables invariant checks after all events are applied
+1. Raises `IncorrectUsageError` if the list is empty
+2. Calls `_create_for_reconstitution()` to get a blank aggregate
+3. Applies each event via `_apply()` (handler + version increment)
+4. Enables invariant checks after all events are applied
 
 ```python
+# fragment
 @classmethod
 def from_events(cls, events):
+    if not events:
+        raise IncorrectUsageError(
+            f"Cannot reconstitute `{cls.__name__}` from an empty event list"
+        )
+
     aggregate = cls._create_for_reconstitution()
     for event in events:
         aggregate._apply(event)
@@ -206,6 +212,7 @@ on an ES aggregate, the framework returns an empty list instead of
 attempting a database query:
 
 ```python
+# fragment
 # In Association.__get__:
 root = getattr(instance, "_root", None) or instance
 if getattr(getattr(root, "meta_", None), "is_event_sourced", False):
@@ -245,15 +252,14 @@ events that occurred after the snapshot.
 Manual snapshot creation bypasses the threshold and always produces a fresh
 snapshot by replaying the entire event stream:
 
+??? example "The domain this example uses"
+
+    ```python
+    --8<-- "concepts/internals/event-sourcing/002.py:domain"
+    ```
+
 ```python
-# Single aggregate instance
-domain.create_snapshot(UserAggregate, "user-id-123")
-
-# All instances of one aggregate
-count = domain.create_snapshots(UserAggregate)
-
-# All event-sourced aggregates in the domain
-results = domain.create_all_snapshots()  # {"User": 42, "Order": 15}
+--8<-- "concepts/internals/event-sourcing/002.py:api"
 ```
 
 Manual snapshots are useful after data migrations, bulk event imports, or
@@ -389,14 +395,14 @@ before a subsequent `Transacted` event from the `transaction` category.
 
 ### Programmatic API
 
-```python
-# Rebuild a single projection
-result = domain.rebuild_projection(Balances)
-assert result.success
-print(f"{result.events_dispatched} events, {result.events_skipped} skipped")
+??? example "The domain this example uses"
 
-# Rebuild all projections
-results = domain.rebuild_all_projections()  # {"Balances": RebuildResult, ...}
+    ```python
+    --8<-- "concepts/internals/event-sourcing/003.py:domain"
+    ```
+
+```python
+--8<-- "concepts/internals/event-sourcing/003.py:api"
 ```
 
 The same functionality is available via the CLI:

@@ -46,7 +46,7 @@ translates them to Pydantic's API vocabulary:
 | `min_length=1` | `Field(min_length=1)` |
 | `max_value=100` | `Field(le=100)` |
 | `min_value=0` | `Field(ge=0)` |
-| `required=True` | No default set (Pydantic enforces presence) |
+| `required=True` | No default set (Pydantic enforces presence); a string also gets `Field(min_length=1)` |
 | `required=False` | Type becomes `Optional[T]`, `default=None` |
 | `default="hello"` | `Field(default="hello")` |
 | `choices=("a", "b")` | Type becomes `Literal["a", "b"]` |
@@ -65,17 +65,8 @@ Pydantic's `ModelMetaclass.__new__` executes, it sees a standard Pydantic
 model:
 
 ```python
-# What you write:
-class Product(BaseEntity):
-    name: String(max_length=50, required=True)
-    price: Float(min_value=0, default=0.0)
-    status: String(choices=("active", "discontinued"), default="active")
-
-# What Pydantic sees after metaclass resolution:
-class Product(BaseEntity):
-    name: Annotated[str, Field(max_length=50)]
-    price: Annotated[float, Field(ge=0, default=0.0)]
-    status: Annotated[Literal["active", "discontinued"], Field(default="active")]
+--8<-- "concepts/internals/field-system/001.py:what_you_write"
+--8<-- "concepts/internals/field-system/002.py:what_pydantic_sees"
 ```
 
 Pydantic has no awareness that FieldSpec ever existed. This is by design,
@@ -91,10 +82,7 @@ ecosystem.
 Protean supports three ways to define fields:
 
 ```python
-class Product(BaseEntity):
-    name: String(max_length=50)                        # annotation
-    price: Float(min_value=0)                         # assignment
-    metadata: Annotated[dict, Field(default_factory=dict)]  # raw Pydantic
+--8<-- "concepts/internals/field-system/003.py:three_styles"
 ```
 
 Each style exists for a specific reason.
@@ -104,6 +92,7 @@ Each style exists for a specific reason.
 This is the recommended style. Fields are declared as type annotations:
 
 ```python
+# fragment
 name: String(max_length=50)
 ```
 
@@ -124,6 +113,7 @@ and lets Pydantic proceed normally.
 Fields are assigned as class variables:
 
 ```python
+# fragment
 name = String(max_length=50)
 ```
 
@@ -142,6 +132,7 @@ Standard Python type annotations and Pydantic `Field()` are passed through
 untouched:
 
 ```python
+# fragment
 metadata: Annotated[dict, Field(default_factory=dict)]
 score: float = 0.0
 ```
@@ -230,8 +221,8 @@ constructed.
 
 When `choices` is active, the type becomes `Literal[...]`, making Pydantic's
 runtime `max_length` validation redundant (Literal restricts exact values).
-However, `max_length` is preserved in `json_schema_extra` because database
-adapters still need it for VARCHAR column sizing. The constraint serves
+However, `max_length` stays on the field, because database adapters still
+need it for VARCHAR column sizing. The constraint serves
 different purposes at different layers.
 
 ### `identifier=True` on non-String fields

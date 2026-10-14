@@ -65,6 +65,7 @@ The DAO's `.query` property returns a fresh `QuerySet` instance. The QuerySet
 is the primary query-building interface:
 
 ```python
+# fragment
 # DAO.__init__()
 self.query = QuerySet(self, domain, self.entity_cls)
 ```
@@ -75,6 +76,7 @@ original QuerySet is never mutated. This clone-on-write design enables safe
 chaining:
 
 ```python
+# fragment
 base = dao.query.filter(country="CA")       # QuerySet 1
 adults = base.filter(age__gte=18)            # QuerySet 2 (clone of 1)
 children = base.filter(age__lt=18)           # QuerySet 3 (clone of 1)
@@ -89,6 +91,7 @@ When a QuerySet is evaluated (via `.all()`, iteration, `len()`, etc.), it
 calls the DAO's `_filter` method:
 
 ```python
+# fragment
 results = self._owner_dao._filter(
     self._criteria,     # Q object tree
     self._offset,       # int
@@ -141,6 +144,7 @@ A Q object extends `Node`, which holds:
 - **`negated`**: A boolean flag that inverts the match.
 
 ```python
+# fragment
 Q(name="John", age=3)
 # Node(connector=AND, children=[("age", 3), ("name", "John")])
 # Note: kwargs are sorted alphabetically
@@ -190,6 +194,7 @@ connector, it flattens the children into one level instead of nesting. This
 keeps the tree shallow for simple AND/AND or OR/OR combinations:
 
 ```python
+# fragment
 Q(a=1) & Q(b=2) & Q(c=3)
 
 # Without squashing:  AND(AND(a=1, b=2), c=3)   [nested]
@@ -211,6 +216,7 @@ The provider's `_extract_lookup` method splits a composite key into the
 field name and the lookup class:
 
 ```python
+# fragment
 provider._extract_lookup("age__gte")
 # → ("age", GteLookup)
 
@@ -224,6 +230,7 @@ Each database provider registers its own lookup implementations using
 `RegisterLookupMixin`:
 
 ```python
+# fragment
 class SQLAlchemyProvider(BaseProvider):
     ...
 
@@ -239,6 +246,7 @@ SQLAlchemyProvider.register_lookup(GteLookup)
 Every lookup extends `BaseLookup` and implements `as_expression()`:
 
 ```python
+# fragment
 class BaseLookup:
     lookup_name: str    # e.g., "exact", "gte", "contains"
 
@@ -331,6 +339,7 @@ QuerySet translates between **field names** (what domain code uses) and
 in `_filter_or_exclude`:
 
 ```python
+# fragment
 # User writes:
 dao.query.filter(user_id="123")
 
@@ -346,6 +355,7 @@ concerns into query code.
 The same translation applies to `order_by`:
 
 ```python
+# fragment
 dao.query.order_by("-user_id")
 # → Resolved to order_by=["-user_reference_id"]
 ```
@@ -448,6 +458,7 @@ The clone-on-write pattern preserves the type, chaining `.filter()` on a `ReadOn
 another `ReadOnlyQuerySet`, because `_clone()` uses `self.__class__()`.
 
 ```python
+# fragment
 # domain.view_for().query returns a ReadOnlyQuerySet
 view = domain.view_for(OrderSummary)
 qs = view.query
@@ -472,6 +483,7 @@ cache operations), `domain.connection_for()` provides the underlying
 connection object:
 
 ```python
+# fragment
 conn = domain.connection_for(OrderSummary)
 # conn is now the raw SQLAlchemy session, Elasticsearch client,
 # Redis client, etc., depending on the projection's backing store
@@ -516,6 +528,7 @@ the version on the entity. If they differ (another process updated the
 aggregate in the meantime), an `ExpectedVersionError` is raised.
 
 ```python
+# fragment
 # In BaseDAO.save():
 if entity_obj._version != -1:
     # existing entity → check version

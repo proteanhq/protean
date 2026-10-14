@@ -68,13 +68,7 @@ One of the most critical decisions in Domain-Driven Design is choosing the right
 
 #### Order (Aggregate)
 ```python
-@domain.aggregate
-class Order:
-    order_number: String(max_length=20, required=True)
-    customer_id: String(required=True)
-    status: String(choices=['pending', 'confirmed', 'shipped'], default='pending')
-    total_amount = ValueObject(Money)
-    created_at: DateTime(default=datetime.utcnow)
+--8<-- "concepts/building-blocks/choosing-element-types/001.py:order"
 ```
 
 **Why Aggregate?**
@@ -86,12 +80,7 @@ class Order:
 
 #### OrderItem (Entity)
 ```python
-@domain.entity(part_of=Order)
-class OrderItem:
-    product_id: String(required=True)
-    quantity: Integer(min_value=1, required=True)
-    unit_price = ValueObject(Money)
-    line_total = ValueObject(Money)
+--8<-- "concepts/building-blocks/choosing-element-types/001.py:order_item"
 ```
 
 **Why Entity?**
@@ -103,15 +92,7 @@ class OrderItem:
 
 #### Money (Value Object)
 ```python
-@domain.value_object
-class Money:
-    amount = Decimal(required=True, min_value=0)
-    currency: String(max_length=3, required=True)
-
-    def add(self, other):
-        if self.currency != other.currency:
-            raise ValueError("Cannot add different currencies")
-        return Money(amount=self.amount + other.amount, currency=self.currency)
+--8<-- "concepts/building-blocks/choosing-element-types/001.py:money"
 ```
 
 **Why Value Object?**
@@ -126,33 +107,17 @@ class Money:
 
 #### Post (Aggregate)
 ```python
-@domain.aggregate
-class Post:
-    title: String(max_length=200, required=True)
-    content: Text()
-    author_id: String(required=True)
-    published_at: DateTime()
-    status: String(choices=['draft', 'published'], default='draft')
+--8<-- "concepts/building-blocks/choosing-element-types/002.py:post"
 ```
 
 #### Comment (Entity)
 ```python
-@domain.entity(part_of=Post)
-class Comment:
-    content: String(max_length=500, required=True)
-    author_id: String(required=True)
-    created_at: DateTime(default=datetime.utcnow)
+--8<-- "concepts/building-blocks/choosing-element-types/002.py:comment"
 ```
 
 #### Email (Value Object)
 ```python
-@domain.value_object
-class Email:
-    address: String(max_length=255, required=True)
-
-    def clean(self):
-        if '@' not in self.address:
-            raise ValidationError("Invalid email format")
+--8<-- "concepts/building-blocks/choosing-element-types/002.py:email"
 ```
 
 ## Common Code Smells and Anti-Patterns
@@ -161,19 +126,12 @@ class Email:
 
 **Too Many Aggregates**
 ```python
-# ❌ Bad: Making every entity an aggregate
-@domain.aggregate
-class User: ...
-
-@domain.aggregate
-class Address: ...  # Should be Value Object
-
-@domain.aggregate
-class Phone: ...    # Should be Value Object
+--8<-- "concepts/building-blocks/choosing-element-types/003.py:too_many_aggregates"
 ```
 
 **God Aggregate**
 ```python
+# fragment
 # ❌ Bad: Aggregate trying to manage too much
 @domain.aggregate
 class Order:
@@ -185,6 +143,7 @@ class Order:
 
 **Missing Aggregate**
 ```python
+# fragment
 # ❌ Bad: Entity without an aggregate
 @domain.entity  # Missing part_of parameter
 class Comment:
@@ -196,15 +155,12 @@ class Comment:
 
 **Entity as Value Object**
 ```python
-# ❌ Bad: Treating entities like value objects
-def process_order(order_item_data):
-    # Creating new entity instead of referencing existing one
-    item = OrderItem(**order_item_data)
-    # Should retrieve existing entity by ID
+--8<-- "concepts/building-blocks/choosing-element-types/001.py:entity_as_value_object"
 ```
 
 **Direct Entity Access**
 ```python
+# fragment
 # ❌ Bad: Accessing entity directly instead of through aggregate
 item = repository.get_order_item(item_id)  # Wrong!
 # Should be: order.get_item(item_id)
@@ -214,6 +170,7 @@ item = repository.get_order_item(item_id)  # Wrong!
 
 **Mutable Value Object**
 ```python
+# fragment
 # ❌ Bad: Trying to modify value object
 address = Address(street="123 Main St", city="NYC")
 address.street = "456 Oak Ave"  # Will raise IncorrectUsageError
@@ -221,25 +178,18 @@ address.street = "456 Oak Ave"  # Will raise IncorrectUsageError
 
 **Value Object with Identity**
 ```python
+# fragment
 # ❌ Bad: Adding identity to value object
 @domain.value_object
 class Money:
-    id: Auto()  # Will raise IncorrectUsageError
+    id: Auto(identifier=True)  # Will raise IncorrectUsageError
     amount = Decimal()
     currency: String()
 ```
 
 **Primitive Obsession**
 ```python
-# ❌ Bad: Using primitives instead of value objects
-@domain.aggregate
-class User:
-    email: String()  # Should be ValueObject(Email)
-    phone: String()  # Should be ValueObject(Phone)
-    address_line1: String()  # Should be ValueObject(Address)
-    address_line2: String()
-    city: String()
-    postal_code: String()
+--8<-- "concepts/building-blocks/choosing-element-types/004.py:primitive_obsession"
 ```
 
 ## Team Decision Flow

@@ -55,6 +55,7 @@ the view offers one convenience, `filter_call_sites(cls)`, which enumerates a
 repository's `filter` call-sites and the fields each filters on:
 
 ```python
+# fragment
 def _diagnose_unindexed_filters(self, ir):
     """Flag a repository filter on a field that carries no index."""
     # Walking `ir` for each repository class and its indexed fields is elided
