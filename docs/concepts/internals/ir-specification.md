@@ -655,7 +655,13 @@ any other callable object without its own `__qualname__` is named by its class.
 - A kind with no enrichers is left out, and the section is omitted when the
   domain registers none (added in v0.3.0)
 - `protean ir diff` reports a kind whose list changed, including a change of
-  order, with the old and new lists
+  order, with the old and new lists. Two lambdas in one module, or two
+  instances of one class, get the same name, so a swap between them is not
+  reported
+- Domain traversal loads the root directory's files first, then each
+  subdirectory in name order, with the files in each directory sorted by name.
+  So enrichers registered by traversed modules land in the same order on every
+  machine
 
 ---
 
