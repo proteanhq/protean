@@ -29,10 +29,11 @@ from protean._deprecation import (
     DEPRECATIONS,
     Deprecation,
 )
-from protean.fields import List, String
+from protean.fields import Identifier, List, String
 from protean.ir.builder import IRBuilder
 from protean.server.reloader import Reloader
 from protean.server.supervisor import Supervisor
+from protean.utils.mixins import handle
 from tests.ir.support import deprecated_usage_domain, infra_import_domain
 
 # Every test here builds the domains it needs. Skip the autouse ``test_domain``
@@ -91,8 +92,8 @@ def _deprecation_diagnostics(ir: dict) -> list[dict]:
 
 
 class TestRegistryCompleteness:
-    def test_registry_holds_fourteen_active_deprecations(self) -> None:
-        assert len(DEPRECATIONS) == 14
+    def test_registry_holds_fifteen_active_deprecations(self) -> None:
+        assert len(DEPRECATIONS) == 15
 
     def test_every_entry_is_well_formed(self) -> None:
         for slug, entry in DEPRECATIONS.items():
@@ -406,6 +407,30 @@ def _trigger_reloader_debug() -> None:
     Reloader(domain_path="d", debug=True)
 
 
+def _trigger_pm_sequential_by_non_boolean() -> None:
+    domain = Domain(name="PMSequentialBy", root_path=".")
+
+    @domain.aggregate
+    class Order:
+        order_id = Identifier(identifier=True)
+
+    @domain.event(part_of=Order)
+    class OrderPlaced:
+        order_id = Identifier()
+
+    @domain.process_manager(
+        stream_categories=["pm_sequential_by::order"], sequential_by=1
+    )
+    class OrderPM:
+        order_id = Identifier(identifier=True)
+
+        @handle(OrderPlaced, start=True, correlate="order_id")
+        def on_placed(self, event):
+            pass
+
+    domain.init(traverse=False)
+
+
 # Each runtime deprecation's slug → a callable that exercises its deprecated
 # path. Keyed by slug so the completeness test below can prove the map and the
 # registry's runtime arm stay in lock-step: adding a runtime entry without a
@@ -417,6 +442,7 @@ _RUNTIME_TRIGGERS: dict[str, Callable[[], None]] = {
     "queryset_update": _trigger_queryset_update,
     "supervisor_debug": _trigger_supervisor_debug,
     "reloader_debug": _trigger_reloader_debug,
+    "pm_sequential_by_non_boolean": _trigger_pm_sequential_by_non_boolean,
 }
 
 
