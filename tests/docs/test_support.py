@@ -204,17 +204,22 @@ def test_env_can_pass_a_pytest_setting_on(tmp_path):
 
 def test_a_run_that_times_out_reports_its_output(tmp_path, monkeypatch):
     monkeypatch.setattr(support, "EXAMPLE_TESTS_TIMEOUT", 2)
-    path = _example(
-        tmp_path,
-        "import time\n\n\ndef test_slow():\n"
-        "    print('started slow test', flush=True)\n"
-        "    time.sleep(30)\n",
-    )
+    path = _example(tmp_path, "def test_slow():\n    pass\n")
+    timeouts = []
+
+    def time_out(command, *, timeout, **kwargs):
+        timeouts.append(timeout)
+        raise subprocess.TimeoutExpired(
+            command, timeout, output=b"started slow test\n", stderr=b"warning\n"
+        )
+
+    monkeypatch.setattr(support.subprocess, "run", time_out)
 
     with pytest.raises(TimeoutError, match="ran longer than 2s") as excinfo:
-        run_example_tests(path, root=tmp_path, args=["-s"])
+        run_example_tests(path, root=tmp_path)
 
-    assert "started slow test" in str(excinfo.value)
+    assert timeouts == [2]
+    assert "started slow test\nwarning" in str(excinfo.value)
 
 
 def test_a_missing_example_to_run_raises(tmp_path):

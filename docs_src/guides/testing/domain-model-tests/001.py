@@ -102,6 +102,12 @@ def test_order_total_must_match_items():
 # --8<-- [end:invalid_state]
 
 
+def test_an_order_without_items_must_have_a_zero_total():
+    with pytest.raises(ValidationError) as exc:
+        Order(customer_name="Alice", total_amount=100.0, items=[])
+    assert "Total should be sum of item prices" in str(exc.value.messages)
+
+
 # --8<-- [start:valid_state]
 def test_order_with_matching_total_is_valid():
     order = Order(

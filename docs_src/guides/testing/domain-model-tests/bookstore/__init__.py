@@ -53,7 +53,7 @@ class Order:
 
     @invariant.post
     def total_should_be_sum_of_item_prices(self):
-        if self.items and self.total_amount != sum(i.subtotal for i in self.items):
+        if self.total_amount != sum(i.subtotal for i in self.items):
             raise ValidationError({"_entity": ["Total should be sum of item prices"]})
 
     @invariant.pre

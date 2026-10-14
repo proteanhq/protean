@@ -11,4 +11,4 @@ def test_the_domain_model_tests_pass():
     result = run_example_tests("guides/testing/domain-model-tests/001.py")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert outcome_counts(result) == {"passed": 10}
+    assert outcome_counts(result) == {"passed": 11}

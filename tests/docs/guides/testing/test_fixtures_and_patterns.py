@@ -52,4 +52,4 @@ def test_the_manual_cleanup_resets_data_between_tests():
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert outcome_counts(result) == {"passed": 2}
+    assert outcome_counts(result) == {"passed": 4}
