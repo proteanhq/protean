@@ -52,14 +52,21 @@ def test_rollback_keeps_the_written_version_when_the_provider_has_no_transaction
     tally = _saved_tally(test_domain)
     provider_cls = type(test_domain.providers["default"])
 
-    with patch.object(
-        provider_cls,
-        "capabilities",
-        new_callable=PropertyMock,
-        return_value=DatabaseCapabilities.BASIC_STORAGE,
+    # The memory session buffers writes until commit, so a rollback alone would
+    # discard the write. Committing on rollback makes it behave like a store
+    # without transactions, where the write has already landed.
+    with (
+        patch.object(
+            provider_cls,
+            "capabilities",
+            new_callable=PropertyMock,
+            return_value=DatabaseCapabilities.BASIC_STORAGE,
+        ),
+        patch.object(MemorySession, "rollback", MemorySession.commit),
     ):
         _add_and_roll_back(test_domain, tally)
 
+    assert test_domain.repository_for(Tally).get(tally.id)._version == 1
     assert tally._version == 1
     assert tally._next_version == 2
 
