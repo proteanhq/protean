@@ -34,7 +34,7 @@ def stamp_audit_user(aggregate):
         return
     user = g.get("current_user")
     aggregate.updated_by = user
-    if aggregate.created_by is None:  # set once, on create; preserved after
+    if aggregate.state_.is_new:  # set once, on create; preserved after
         aggregate.created_by = user
 
 

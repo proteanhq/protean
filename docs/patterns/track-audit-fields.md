@@ -55,10 +55,11 @@ which return metadata), and it runs on both create and update:
 --8<-- "patterns/track-audit-fields/001.py:enricher"
 ```
 
-Setting `created_by` only when it is unset keeps it stable across later
-updates, while `updated_by` refreshes every time. The enricher runs each time a
-repository saves an aggregate to a database. Event-sourced aggregates are stored
-as events, so the enricher never runs for them. The enricher also runs for the
+Setting `created_by` only when the aggregate is new keeps it stable across
+later updates, even when the create ran with no user. `updated_by` refreshes
+every time. The enricher runs each time a repository saves an aggregate to a
+database. Event-sourced aggregates are stored as events, so the enricher never
+runs for them. The enricher also runs for the
 records Protean itself saves through repositories, such as outbox rows and the
 message records of the in-memory event store. The `hasattr` check skips any
 aggregate without audit fields.

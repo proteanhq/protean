@@ -65,3 +65,19 @@ def test_saving_without_a_user_leaves_the_audit_users_empty(example):
     assert stored.created_by is None
     assert stored.updated_by is None
     assert stored.created_at is not None
+
+
+def test_a_later_update_does_not_claim_an_anonymous_create(example):
+    repo = example.domain.repository_for(example.Article)
+    article = example.Article(title="Anonymous", body="...")
+    repo.add(article)
+
+    with example.domain.domain_context(current_user="bob"):
+        repo = example.domain.repository_for(example.Article)
+        stored = repo.get(article.id)
+        stored.title = "Edited"
+        repo.add(stored)
+
+    final = example.domain.repository_for(example.Article).get(article.id)
+    assert final.created_by is None
+    assert final.updated_by == "bob"
