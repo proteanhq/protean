@@ -1,11 +1,12 @@
-"""IR extraction of save-time hooks: ``auto_now`` / ``auto_now_add`` field
-flags and registered aggregate, command and event enrichers.
+"""IR extraction of ``auto_now`` / ``auto_now_add`` field
+flags and of registered aggregate, command and event enrichers.
 
 Both are sparse. A field entry carries a flag only when it is set, and the
 ``domain`` section lists an enricher kind only when one is registered, so
 domains that use neither keep a byte-identical IR and checksum.
 """
 
+import functools
 import json
 import re
 
@@ -23,6 +24,7 @@ from protean.ir import SCHEMA_PATH
 from protean.ir.builder import IRBuilder
 from protean.ir.diff import diff_ir
 
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 ENRICHER_KEYS = ("aggregate_enrichers", "command_enrichers", "event_enrichers")
 
 
@@ -45,6 +47,25 @@ def add_trace(event, aggregate):
 class CallableEnricher:
     def __call__(self, aggregate):
         pass
+
+
+class EnricherHolder:
+    def stamp(self, aggregate):
+        pass
+
+
+def _make_nested_enricher():
+    def nested(aggregate):
+        pass
+
+    return nested
+
+
+def _moduleless_enricher(aggregate):
+    pass
+
+
+_moduleless_enricher.__module__ = None
 
 
 def _order_cls(*, created_flag=None, updated_flag=None):
@@ -159,6 +180,30 @@ class TestEnrichers:
             "tests.ir.test_save_hooks_ir.CallableEnricher"
         ]
 
+    def test_bound_method_uses_its_qualified_name(self):
+        ir = _build_ir(enrichers=[("aggregate", EnricherHolder().stamp)])
+        assert ir["domain"]["aggregate_enrichers"] == [
+            "tests.ir.test_save_hooks_ir.EnricherHolder.stamp"
+        ]
+
+    def test_nested_function_uses_its_qualified_name(self):
+        ir = _build_ir(enrichers=[("aggregate", _make_nested_enricher())])
+        assert ir["domain"]["aggregate_enrichers"] == [
+            "tests.ir.test_save_hooks_ir._make_nested_enricher.<locals>.nested"
+        ]
+
+    def test_partial_named_by_the_function_it_wraps(self):
+        ir = _build_ir(
+            enrichers=[("aggregate", functools.partial(functools.partial(stamp_audit)))]
+        )
+        assert ir["domain"]["aggregate_enrichers"] == [
+            "tests.ir.test_save_hooks_ir.stamp_audit"
+        ]
+
+    def test_function_without_a_module_named_by_its_type(self):
+        ir = _build_ir(enrichers=[("aggregate", _moduleless_enricher)])
+        assert ir["domain"]["aggregate_enrichers"] == ["builtins.function"]
+
     def test_no_enrichers_no_keys(self):
         ir = _build_ir()
         for key in ENRICHER_KEYS:
@@ -212,6 +257,7 @@ class TestDiff:
         change = self._field_change(result, "created_at")
         assert change == {"auto_now_add": {"left": True, "right": None}}
         assert result["summary"]["has_changes"] is True
+        assert result["summary"]["has_breaking_changes"] is False
 
     def test_flag_swapped(self):
         left = _build_ir(_order_cls(created_flag="auto_now_add"))
@@ -239,6 +285,18 @@ class TestDiff:
             "command_enrichers": {"left": [_qualname(add_user)], "right": None}
         }
         assert result["summary"]["has_changes"] is True
+        assert result["summary"]["has_breaking_changes"] is False
+
+    def test_swapped_partial_enricher_is_reported(self):
+        left = _build_ir(enrichers=[("aggregate", functools.partial(stamp_audit))])
+        right = _build_ir(enrichers=[("aggregate", functools.partial(stamp_tenant))])
+        result = diff_ir(left, right)
+        assert result["domain"]["changed"] == {
+            "aggregate_enrichers": {
+                "left": [_qualname(stamp_audit)],
+                "right": [_qualname(stamp_tenant)],
+            }
+        }
 
     def test_enricher_reordered(self):
         left = _build_ir(
@@ -277,12 +335,26 @@ class TestDiffCli:
         )
         # Exit code 2 means "changes found, none breaking".
         assert result.exit_code == 2, result.output
-        output = re.sub(r"\s+", "", result.output)
+        output = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", result.output))
         assert "DomainConfig" in output
         assert (
             "~aggregate_enrichers:None→['tests.ir.test_save_hooks_ir.stamp_audit']"
             in output
         )
+
+    def test_text_output_keeps_square_brackets_in_values(self, tmp_path):
+        left = tmp_path / "left.json"
+        right = tmp_path / "right.json"
+        ir = _build_ir()
+        left.write_text(json.dumps(ir), encoding="utf-8")
+        ir["domain"]["name"] = "Shop[red]Front"
+        right.write_text(json.dumps(ir), encoding="utf-8")
+        result = CliRunner().invoke(
+            app, ["ir", "diff", "-l", str(left), "-r", str(right)]
+        )
+        assert result.exit_code == 2, result.output
+        output = re.sub(r"\s+", "", ANSI_ESCAPE.sub("", result.output))
+        assert "~name:IRSaveHooks→Shop[red]Front" in output
 
 
 def _schema():
@@ -300,6 +372,11 @@ class TestSchema:
                 ("event", add_trace),
             ],
         )
+        fields = _order_fields(ir)
+        assert fields["created_at"]["auto_now_add"] is True
+        assert fields["updated_on"]["auto_now"] is True
+        for key in ENRICHER_KEYS:
+            assert ir["domain"][key]
         jsonschema.validate(ir, _schema())
 
     def test_non_boolean_flag_is_rejected(self):
@@ -317,5 +394,11 @@ class TestSchema:
     def test_empty_enricher_list_is_rejected(self):
         ir = _build_ir()
         ir["domain"]["aggregate_enrichers"] = []
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(ir, _schema())
+
+    def test_empty_enricher_name_is_rejected(self):
+        ir = _build_ir(enrichers=[("command", add_user)])
+        ir["domain"]["command_enrichers"] = [""]
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(ir, _schema())

@@ -171,7 +171,8 @@ clear it.
 
 ## Domain Metadata
 
-The `domain` section captures bounded context identity and global configuration.
+The `domain` section captures bounded context identity, global configuration,
+and the enrichers registered on the domain.
 
 ```json
 {
@@ -201,10 +202,17 @@ The `domain` section captures bounded context identity and global configuration.
 | `event_enrichers` | `domain.register_event_enricher` | Same, for event enrichers (added in v0.3.0) |
 
 The three enricher keys are sparse: each appears only when at least one enricher
-of that kind is registered. Order is kept because enrichers run in registration
-order, and a later enricher can overwrite the keys an earlier one set. So
-`protean ir diff` reports an enricher that was added, removed or moved. A
-callable instance is recorded under its class's qualified name.
+of that kind is registered. The lists keep registration order, unlike the other
+lists in the IR, because enrichers run in that order and a later enricher can
+overwrite what an earlier one set. `protean ir diff` reports an enricher that
+was added, removed or moved. Domain traversal loads modules in sorted path
+order, so enrichers registered by traversed modules land in the same order on
+every machine.
+
+An enricher is named by its `__module__` and `__qualname__`. A
+`functools.partial` is named by the function it wraps. A callable instance is
+named by its class. Two lambdas in one module, or two instances of one class,
+get the same name, so `protean ir diff` does not report a swap between them.
 
 Database connection strings, broker URLs, and other deployment-specific settings
 are excluded. The IR captures structural identity, not deployment topology.
@@ -443,8 +451,8 @@ All possible keys (no single field has all of them):
 | `choices` | Sorted list of allowed values |
 | `sanitize` | Present only for an explicit `sanitize=True` (declared intent); absent for an unset field, even one sanitized via a domain default |
 | `increment` | Auto-increment flag |
-| `auto_now` | `true` on a `Date` or `DateTime` field set to the current time on every save (added in v0.3.0) |
-| `auto_now_add` | `true` on a `Date` or `DateTime` field set to the current time on the first save (added in v0.3.0) |
+| `auto_now` | `true` on a `Date` or `DateTime` field declared with `auto_now=True` (added in v0.3.0) |
+| `auto_now_add` | `true` on a `Date` or `DateTime` field declared with `auto_now_add=True` (added in v0.3.0) |
 | `content_type` | Element type of a container (`List`, `ValueObjectList`) |
 | `auto_generated` | `true` for framework-injected fields |
 | `target` | FQN of the associated element (associations) |
@@ -690,6 +698,8 @@ attributes.
 
 All lists are sorted: FQNs alphabetically, `choices` alphabetically, handler
 method names alphabetically, contracts by `__type__`.
+The one exception is the `domain` section's enricher lists, which keep
+registration order (see [Domain Metadata](#domain-metadata)).
 
 ### Value Normalization
 

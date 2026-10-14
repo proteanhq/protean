@@ -248,8 +248,8 @@
         "scale": { "type": "integer", "description": "Number of digits after the decimal point. Set only on a Decimal field that declares it." },
         "choices": { "type": "array", "items": { "type": "string" } },
         "sanitize": { "type": "boolean" },
-        "auto_now": { "type": "boolean", "description": "Set only when true: the field is set to the current time on every save." },
-        "auto_now_add": { "type": "boolean", "description": "Set only when true: the field is set to the current time on the first save." },
+        "auto_now": { "type": "boolean", "description": "Set only when true: the field is declared with auto_now=True." },
+        "auto_now_add": { "type": "boolean", "description": "Set only when true: the field is declared with auto_now_add=True." },
         "description": { "type": "string" },
         "auto_generated": { "type": "boolean" }
       },

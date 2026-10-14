@@ -13,6 +13,7 @@ from __future__ import annotations
 import ast
 import datetime as _dt
 import decimal
+import functools
 import hashlib
 import importlib
 import json
@@ -279,9 +280,14 @@ def validate_lint_table(lint_config: Any) -> str | None:
 def _callable_qualname(fn: Any) -> str:
     """Return ``module.qualname`` for a registered enricher.
 
-    A callable instance (a class with ``__call__``) has no ``__qualname__`` of
-    its own, so it is named by its class.
+    A ``functools.partial`` is named by the function it wraps, so its bound
+    arguments are not part of the name. A callable instance (a class with
+    ``__call__``) has no ``__qualname__`` of its own, so it is named by its
+    class. Two lambdas in one module, or two instances of one class, get the
+    same name.
     """
+    while isinstance(fn, functools.partial):
+        fn = fn.func
     module = getattr(fn, "__module__", None)
     qualname = getattr(fn, "__qualname__", None)
     if not isinstance(module, str) or not isinstance(qualname, str):
@@ -405,8 +411,8 @@ class IRBuilder:
             "normalized_name": self._domain.normalized_name,
         }
         # Sparse, so enricher-free domains keep a byte-identical IR (and
-        # checksum). Registration order is kept because enrichers run FIFO and
-        # a later one overwrites an earlier one's keys.
+        # checksum). Registration order is kept because enrichers run in that
+        # order and a later one can overwrite what an earlier one set.
         for key, enrichers in (
             ("aggregate_enrichers", self._domain._aggregate_enrichers),
             ("command_enrichers", self._domain._command_enrichers),
