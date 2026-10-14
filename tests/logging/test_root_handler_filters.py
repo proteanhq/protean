@@ -457,6 +457,7 @@ def _assert_redaction_runs_last() -> None:
         assert isinstance(protean_filters[-1], ProteanRedactionFilter)
 
 
+@pytest.mark.no_test_domain
 class TestMoveRedactionFilterLast:
     def test_no_redaction_filter_leaves_filters_alone(self):
         root = logging.getLogger()
@@ -710,6 +711,26 @@ class TestRedactionRunsAfterContextFilters:
             _log_on_child()
         assert records
         assert records[-1].correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
+
+    def test_dict_config_reconfigure_with_new_key_masks_both_keys(self, test_domain):
+        test_domain.config["telemetry"] = {"enabled": False}
+        test_domain.config["logging"] = {}
+        records: list[logging.LogRecord] = []
+        config = _dict_config(records)
+
+        test_domain.configure_logging(dict_config=config, redact=["correlation_id"])
+        test_domain.configure_logging(dict_config=config, redact=["causation_id"])
+
+        handler = logging.getLogger().handlers[0]
+        assert _count(handler, ProteanRedactionFilter) == 2
+        _assert_redaction_runs_last()
+        with test_domain.domain_context():
+            g.correlation_id = "secret-corr-123"
+            g.causation_id = "secret-caus-456"
+            _log_on_child()
+        assert records
+        assert records[-1].correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
+        assert records[-1].causation_id == "[REDACTED]"  # type: ignore[attr-defined]
 
     def test_worker_queue_handler_keeps_redaction_last(self, test_domain):
         test_domain.config["logging"] = {"redact": ["correlation_id"]}

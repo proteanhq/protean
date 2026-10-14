@@ -311,9 +311,22 @@ def configure_logging(
             _install_root_filter(ProteanRedactionFilter(redact))
         # Root-logger filters do not run for records from child loggers, so
         # Protean filters the dict declared on the root logger alone also go
-        # on each root handler.
-        for filter_ in list(logging.getLogger().filters):
-            if isinstance(filter_, _PROTEAN_ROOT_FILTERS):
+        # on each root handler. dictConfig() keeps the root logger's existing
+        # filters, so the root can hold several redaction filters with
+        # different keys. Each one goes on every handler that does not
+        # already mask all its keys: copying only the first of its class
+        # would leave the other filters' keys unmasked.
+        root = logging.getLogger()
+        for filter_ in list(root.filters):
+            if isinstance(filter_, ProteanRedactionFilter):
+                for handler in root.handlers:
+                    masked: set[str] = set()
+                    for existing in handler.filters:
+                        if isinstance(existing, ProteanRedactionFilter):
+                            masked |= existing._keys
+                    if not filter_._keys <= masked:
+                        handler.addFilter(filter_)
+            elif isinstance(filter_, _PROTEAN_ROOT_FILTERS):
                 _install_root_filter(filter_)
         _move_redaction_filter_last()
         return
