@@ -41,7 +41,7 @@ import random
 import sys
 import time
 from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
@@ -52,6 +52,9 @@ from protean.integrations.logging import (
     LOG_RECORD_RESERVED_ATTRS as _RESERVED_LOG_RECORD_ATTRS,
 )
 from protean.integrations.logging import (
+    OTelTraceContextFilter,
+    ProteanCorrelationFilter,
+    ProteanRedactionFilter,
     make_redaction_processor,
 )
 from protean.utils.globals import current_domain, g
@@ -174,6 +177,57 @@ def _install_root_filter(filter_: logging.Filter) -> None:
             target.addFilter(filter_)
 
 
+# The filters that write context ids onto log records, and the full set of
+# filters Protean attaches to the root logger and its handlers.
+_CONTEXT_FILTERS = (ProteanCorrelationFilter, OTelTraceContextFilter)
+_PROTEAN_ROOT_FILTERS = (*_CONTEXT_FILTERS, ProteanRedactionFilter)
+
+
+def _move_redaction_filter_last() -> None:
+    """Move each ``ProteanRedactionFilter`` after the last Protean context filter.
+
+    Covers the root logger and each of its handlers. Stdlib runs filters in
+    list order, and the correlation and trace-context filters write
+    ``correlation_id``, ``causation_id``, ``trace_id`` and ``span_id`` onto
+    the record. Redaction has to run after them, or a configured key among
+    those ids reaches the formatter unmasked.
+
+    A target is changed only when a redaction filter sits before a context
+    filter. The redaction filters then go right after the last context
+    filter, and every other filter keeps its relative order, so a filter
+    already after redaction and after the last context filter stays after
+    redaction. Filters keep their identity, and the new list is
+    bound in place of the old one, so a record being filtered on another
+    thread finishes its pass over the old list.
+    """
+    root = logging.getLogger()
+    targets: list[logging.Filterer] = [root, *root.handlers]
+    for target in targets:
+        filters = list(target.filters)
+        context_positions = [
+            i for i, f in enumerate(filters) if isinstance(f, _CONTEXT_FILTERS)
+        ]
+        if not context_positions:
+            continue
+        last_context = context_positions[-1]
+        if not any(
+            isinstance(f, ProteanRedactionFilter) for f in filters[:last_context]
+        ):
+            continue
+        redaction = [f for f in filters if isinstance(f, ProteanRedactionFilter)]
+        head = [
+            f
+            for f in filters[: last_context + 1]
+            if not isinstance(f, ProteanRedactionFilter)
+        ]
+        tail = [
+            f
+            for f in filters[last_context + 1 :]
+            if not isinstance(f, ProteanRedactionFilter)
+        ]
+        target.filters = [*head, *redaction, *tail]
+
+
 def configure_logging(
     level: str | None = None,
     format: str = "auto",
@@ -221,13 +275,20 @@ def configure_logging(
             dict is expected to include any handlers/formatters desired. After
             applying, ``ProteanCorrelationFilter`` is still installed on the
             root logger and its handlers for consistency with
-            ``Domain.configure_logging()``.
+            ``Domain.configure_logging()``, and so is
+            ``ProteanRedactionFilter`` when ``redact`` is given. Protean
+            filters the dict declares on the root logger are copied to each
+            root handler too.
         redact: Optional list of field names to mask in log output. Values are
             replaced with ``"[REDACTED]"`` on log records (stdlib) and event
             dicts (structlog). Matching is case-insensitive. When ``None``
             (default), redaction is disabled — opt in by passing an explicit
             list, or configure ``[logging].redact`` in ``domain.toml`` so
-            ``Domain.configure_logging()`` forwards it here.
+            ``Domain.configure_logging()`` forwards it here. On the root
+            logger and each root handler, any ``ProteanRedactionFilter``
+            (one a ``dict_config`` declared included) is moved after the
+            correlation and trace-context filters, so it can mask the ids
+            they write.
     """
     # Append the redaction processor so it runs AFTER any caller-supplied
     # processors (correlation, OTel, custom enrichment), guaranteeing that
@@ -245,15 +306,29 @@ def configure_logging(
         # Install ProteanCorrelationFilter on the root logger and its handlers
         # so correlation_id and causation_id are available in every log
         # record, matching the behavior of Domain.configure_logging().
-        with suppress(ImportError):
-            from protean.integrations.logging import (  # noqa: PLC0415
-                ProteanCorrelationFilter,
-                ProteanRedactionFilter,
-            )
-
-            _install_root_filter(ProteanCorrelationFilter())
-            if redact:
-                _install_root_filter(ProteanRedactionFilter(redact))
+        _install_root_filter(ProteanCorrelationFilter())
+        if redact:
+            _install_root_filter(ProteanRedactionFilter(redact))
+        # Root-logger filters do not run for records from child loggers, so
+        # Protean filters the dict declared on the root logger alone also go
+        # on each root handler. dictConfig() keeps the root logger's existing
+        # filters, so the root can hold several redaction filters with
+        # different keys. Each one goes on every handler that does not
+        # already mask all its keys: copying only the first of its class
+        # would leave the other filters' keys unmasked.
+        root = logging.getLogger()
+        for filter_ in list(root.filters):
+            if isinstance(filter_, ProteanRedactionFilter):
+                for handler in root.handlers:
+                    masked: set[str] = set()
+                    for existing in handler.filters:
+                        if isinstance(existing, ProteanRedactionFilter):
+                            masked |= existing._keys
+                    if not filter_._keys <= masked:
+                        handler.addFilter(filter_)
+            elif isinstance(filter_, _PROTEAN_ROOT_FILTERS):
+                _install_root_filter(filter_)
+        _move_redaction_filter_last()
         return
 
     env = _detect_env()
@@ -283,9 +358,8 @@ def configure_logging(
 
     # --- redaction filter on the root logger and its handlers (stdlib path) ---
     if redact:
-        from protean.integrations.logging import ProteanRedactionFilter  # noqa: PLC0415
-
         _install_root_filter(ProteanRedactionFilter(redact))
+        _move_redaction_filter_last()
 
     # --- per-logger overrides ---
     if per_logger:

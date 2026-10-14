@@ -403,6 +403,11 @@ class ProteanRedactionFilter(logging.Filter):
     logger itself does not run for records that propagate from child
     loggers such as ``logging.getLogger("myapp.orders")``.
 
+    Add it after ``ProteanCorrelationFilter`` and ``OTelTraceContextFilter``.
+    Filters run in the order they were added, and those two write
+    ``correlation_id``, ``causation_id``, ``trace_id`` and ``span_id`` onto
+    the record, so a redaction filter added before them cannot mask those ids.
+
     Example::
 
         import logging

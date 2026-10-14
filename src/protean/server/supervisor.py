@@ -38,24 +38,12 @@ from types import FrameType
 from typing import Any, Optional
 
 from protean._deprecation import warn_from_registry
-from protean.integrations.logging import (
-    OTelTraceContextFilter,
-    ProteanCorrelationFilter,
-    ProteanRedactionFilter,
-    _keep_record_context,
-)
-from protean.utils.logging import _install_root_filter
+from protean.integrations.logging import _keep_record_context
+from protean.utils.logging import _PROTEAN_ROOT_FILTERS, _install_root_filter
 
 logger = logging.getLogger(__name__)
 
 _SHUTDOWN_TIMEOUT_SECONDS = 30
-
-# The filters Protean attaches to the root logger and its handlers.
-_PROTEAN_ROOT_FILTERS = (
-    ProteanCorrelationFilter,
-    OTelTraceContextFilter,
-    ProteanRedactionFilter,
-)
 
 # The values the CLI's ``--log-level`` and ``--log-format`` flags accept.
 _LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
