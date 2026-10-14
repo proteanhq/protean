@@ -513,7 +513,7 @@ class TestVerifyTestCounts:
         (tests_dir / "pytest.ini").write_text("[pytest]\naddopts = -ra\n")
 
         # The skip reason must reach the output, or this test proves nothing.
-        _, output = _run_tests(str(tests_dir))
+        _, output = _run_tests(str(tests_dir), "test")
         assert "0 passed on this platform" in output
 
         exit_code, stage = self._tests_stage(tests_dir)
@@ -711,22 +711,27 @@ class TestVerifySubprocessEnv:
         monkeypatch.setenv("VIRTUAL_ENV", "/tmp/bogus-venv-should-not-leak")
         monkeypatch.setenv("PROTEAN_ENV", "leaked")
         monkeypatch.setenv("PROTEAN_DEBUG", "1")
-        # PROTEAN_ENV is special: the Protean pytest plugin re-establishes it via
-        # ``setdefault`` at collection time. Popping it in verify lets the plugin's
-        # own default ("test") win instead of the leaked parent value — so the
-        # observable effect is "not the leaked value", not "absent". VIRTUAL_ENV
-        # and PROTEAN_DEBUG are only ever read, so they stay absent.
+        # PROTEAN_ENV is not dropped but replaced: the child gets ``--env``.
         body = (
             "import os\n"
             "def test_env_scrubbed():\n"
             "    assert 'VIRTUAL_ENV' not in os.environ\n"
             "    assert 'PROTEAN_DEBUG' not in os.environ\n"
-            "    assert os.environ.get('PROTEAN_ENV') != 'leaked'\n"
+            "    assert os.environ.get('PROTEAN_ENV') == 'memory'\n"
         )
         tests_dir = _write_test(tmp_path / "tests", body)
         result = runner.invoke(
             app,
-            ["verify", "-d", _CLEAN_DOMAIN, "--path", str(tests_dir), "--json"],
+            [
+                "verify",
+                "-d",
+                _CLEAN_DOMAIN,
+                "--path",
+                str(tests_dir),
+                "--env",
+                "memory",
+                "--json",
+            ],
         )
         # If verify did not scrub the vars, the child test asserts False → the
         # tests stage fails → exit 4.
@@ -759,6 +764,176 @@ class TestVerifySubprocessEnv:
         data = json.loads(result.stdout)
         assert data["data"]["stages"]["tests"]["status"] == "pass"
         assert data["data"]["stages"]["tests"]["passed"] == 1
+
+
+_ENV_RECORDING_DOMAIN = """\
+import os
+from pathlib import Path
+
+from protean import Domain
+
+Path(__file__).with_suffix(".env").write_text(os.environ.get("PROTEAN_ENV", "<unset>"))
+
+domain = Domain(name="EnvRecording")
+"""
+
+
+def _write_env_recording_domain(tmp_path: Path) -> tuple[str, Path]:
+    """Write a domain module that records the ``PROTEAN_ENV`` it was imported
+    under, and return its ``--domain`` spec and the record file.
+
+    The module name is unique per test so an earlier import cached in
+    ``sys.modules`` cannot stand in for this one."""
+    module_name = f"verify_env_domain_{tmp_path.name.replace('-', '_')}"
+    module = tmp_path / f"{module_name}.py"
+    module.write_text(_ENV_RECORDING_DOMAIN)
+    return f"{module}:domain", module.with_suffix(".env")
+
+
+def _child_env_test(expected: str) -> str:
+    return (
+        "import os\n"
+        "def test_child_env():\n"
+        f"    assert os.environ['PROTEAN_ENV'] == {expected!r}\n"
+    )
+
+
+class TestVerifyEnv:
+    """All three stages run under the one environment ``--env`` names (default
+    ``test``): init and check see it as ``PROTEAN_ENV`` in this process, and the
+    pytest child gets the same value. The caller's ``PROTEAN_ENV`` is put back."""
+
+    def test_env_option_applies_to_init_and_tests(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("PROTEAN_ENV", raising=False)
+        domain, record = _write_env_recording_domain(tmp_path)
+        tests_dir = _write_test(tmp_path / "tests", _child_env_test("memory"))
+        result = runner.invoke(
+            app,
+            [
+                "verify",
+                "-d",
+                domain,
+                "--path",
+                str(tests_dir),
+                "--env",
+                "memory",
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert record.read_text() == "memory"
+        data = json.loads(result.stdout)
+        assert data["data"]["stages"]["tests"]["passed"] == 1
+
+    def test_shell_exported_env_is_ignored(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PROTEAN_ENV", "memory")
+        domain, record = _write_env_recording_domain(tmp_path)
+        tests_dir = _write_test(tmp_path / "tests", _child_env_test("test"))
+        result = runner.invoke(
+            app,
+            ["verify", "-d", domain, "--path", str(tests_dir), "--json"],
+        )
+        assert result.exit_code == 0, result.output
+        assert record.read_text() == "test"
+        data = json.loads(result.stdout)
+        assert data["data"]["stages"]["tests"]["passed"] == 1
+        assert os.environ["PROTEAN_ENV"] == "memory"
+
+    def test_callers_env_is_restored(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PROTEAN_ENV", "prior")
+        domain, record = _write_env_recording_domain(tmp_path)
+        tests_dir = _write_test(tmp_path / "tests", _child_env_test("memory"))
+        result = run_verify(domain, str(tests_dir), env="memory")
+        assert result.exit_code == 0, result.tests_output
+        assert record.read_text() == "memory"
+        assert os.environ["PROTEAN_ENV"] == "prior"
+
+    def test_absent_env_stays_absent(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("PROTEAN_ENV", raising=False)
+        domain, record = _write_env_recording_domain(tmp_path)
+        tests_dir = _write_test(tmp_path / "tests", _child_env_test("memory"))
+        result = run_verify(domain, str(tests_dir), env="memory")
+        assert result.exit_code == 0, result.tests_output
+        assert record.read_text() == "memory"
+        assert "PROTEAN_ENV" not in os.environ
+
+    @pytest.mark.parametrize(
+        "domain, code",
+        [(_INIT_FAIL_DOMAIN, 3), ("no_such_module_for_verify_env", 2)],
+        ids=["init-fails", "domain-not-found"],
+    )
+    @pytest.mark.parametrize("prior", ["prior", None], ids=["present", "absent"])
+    def test_env_is_restored_on_early_return(
+        self, tmp_path, monkeypatch, domain, code, prior
+    ):
+        if prior is None:
+            monkeypatch.delenv("PROTEAN_ENV", raising=False)
+        else:
+            monkeypatch.setenv("PROTEAN_ENV", prior)
+        result = run_verify(domain, str(tmp_path), env="memory")
+        assert result.exit_code == code
+        assert os.environ.get("PROTEAN_ENV") == prior
+
+    def test_env_is_restored_when_a_stage_raises(self, tmp_path, monkeypatch):
+        """An exception escaping a stage still puts the caller's value back."""
+        monkeypatch.setenv("PROTEAN_ENV", "prior")
+        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST)
+        verify_module = sys.modules["protean.cli.verify"]
+
+        def exploding_run_tests(path: str, env: str) -> Any:
+            assert os.environ["PROTEAN_ENV"] == "memory"
+            raise RuntimeError("tests stage blew up")
+
+        monkeypatch.setattr(verify_module, "_run_tests", exploding_run_tests)
+        with pytest.raises(RuntimeError, match="tests stage blew up"):
+            run_verify(_CLEAN_DOMAIN, str(tests_dir), env="memory")
+        assert os.environ["PROTEAN_ENV"] == "prior"
+
+    def test_env_beats_protean_env_in_pytest_options(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("PROTEAN_ENV", raising=False)
+        monkeypatch.setenv("PYTEST_ADDOPTS", "--protean-env memory")
+        tests_dir = _write_test(tmp_path / "tests", _child_env_test("test"))
+        (tests_dir / "pytest.ini").write_text(
+            "[pytest]\naddopts = --protean-env memory\n"
+        )
+        result = run_verify(_CLEAN_DOMAIN, str(tests_dir))
+        assert result.exit_code == 0, result.tests_output
+        assert result.stages["tests"]["passed"] == 1
+
+    def test_surrounding_spaces_are_stripped_from_env(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("PROTEAN_ENV", raising=False)
+        domain, record = _write_env_recording_domain(tmp_path)
+        tests_dir = _write_test(tmp_path / "tests", _child_env_test("memory"))
+        result = run_verify(domain, str(tests_dir), env=" memory ")
+        assert result.exit_code == 0, result.tests_output
+        assert record.read_text() == "memory"
+        assert result.stages["tests"]["passed"] == 1
+
+    @pytest.mark.parametrize("blank", ["", "  "], ids=["empty", "whitespace"])
+    def test_blank_env_is_a_usage_error(self, tmp_path, monkeypatch, blank):
+        monkeypatch.setenv("PROTEAN_ENV", "prior")
+        domain, record = _write_env_recording_domain(tmp_path)
+        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST)
+        result = runner.invoke(
+            app,
+            [
+                "verify",
+                "-d",
+                domain,
+                "--path",
+                str(tests_dir),
+                "--env",
+                blank,
+                "--json",
+            ],
+        )
+        assert result.exit_code == 2, result.output
+        data = json.loads(result.stdout)
+        assert data["status"] == "error"
+        assert data["data"]["error"] == "--env must not be blank"
+        # Rejected before init: the domain module was never imported.
+        assert not record.exists()
+        assert os.environ["PROTEAN_ENV"] == "prior"
 
 
 def _generate_scaffold(tmp_path: Path) -> Path:

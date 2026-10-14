@@ -148,7 +148,7 @@ def test_from_model_runs_the_pipeline_and_maps_the_verify_code(
 
     calls: list[tuple[str, str]] = []
 
-    def fake_run_verify(domain: str, path: str) -> VerifyResult:
+    def fake_run_verify(domain: str, path: str, env: str) -> VerifyResult:
         calls.append((domain, path))
         status = "pass" if exit_code == 0 else "fail"
         return VerifyResult(
@@ -262,7 +262,7 @@ def test_from_model_prints_the_failure_detail_on_a_failed_verify(tmp_path, monke
     model_file = tmp_path / "model.txt"
     model_file.write_text(_VALID_MODEL, encoding="utf-8")
 
-    def fake_run_verify(domain: str, path: str) -> VerifyResult:
+    def fake_run_verify(domain: str, path: str, env: str) -> VerifyResult:
         return VerifyResult(
             stages={
                 "init": {"status": "pass"},
@@ -420,7 +420,7 @@ def test_from_model_ignores_a_stray_protean_domain_env_var(tmp_path, monkeypatch
 
     seen: list[str | None] = []
 
-    def fake_run_verify(domain: str, path: str) -> VerifyResult:
+    def fake_run_verify(domain: str, path: str, env: str) -> VerifyResult:
         seen.append(os.environ.get("PROTEAN_DOMAIN"))
         return VerifyResult(
             stages={
@@ -482,7 +482,7 @@ def test_from_model_reports_the_init_error_line(tmp_path, monkeypatch):
     model_file = tmp_path / "model.txt"
     model_file.write_text(_VALID_MODEL, encoding="utf-8")
 
-    def fake_run_verify(domain: str, path: str) -> VerifyResult:
+    def fake_run_verify(domain: str, path: str, env: str) -> VerifyResult:
         return VerifyResult(
             stages={
                 "init": {"status": "fail"},
@@ -525,7 +525,7 @@ def test_from_model_keeps_the_cli_log_configuration(tmp_path, monkeypatch):
     def fake_route(log_already_configured: bool = False) -> None:
         routed.append(log_already_configured)
 
-    def fake_run_verify(domain: str, path: str) -> VerifyResult:
+    def fake_run_verify(domain: str, path: str, env: str) -> VerifyResult:
         return VerifyResult(
             stages={
                 "init": {"status": "pass"},
@@ -563,3 +563,45 @@ def test_from_model_keeps_the_cli_log_configuration(tmp_path, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert routed == [True], "the callback's flag must reach route_logs_to_stderr"
+
+
+def test_from_model_verifies_under_the_test_env_whatever_the_shell_exports(
+    tmp_path, monkeypatch
+):
+    """A freshly built project is verified under the ``test`` environment, so a
+    ``PROTEAN_ENV`` exported in the caller's shell does not pick the overlay the
+    verdict is computed under."""
+    from protean.cli.verify import VerifyResult
+
+    verify_module = sys.modules["protean.cli.verify"]
+
+    out = tmp_path / "out"
+    out.mkdir(parents=True, exist_ok=True)
+    model_file = tmp_path / "model.txt"
+    model_file.write_text(_VALID_MODEL, encoding="utf-8")
+
+    monkeypatch.setenv("PROTEAN_ENV", "memory")
+
+    seen: list[str] = []
+
+    def fake_run_verify(domain: str, path: str, env: str) -> VerifyResult:
+        seen.append(env)
+        return VerifyResult(
+            stages={
+                "init": {"status": "pass"},
+                "check": {"status": "pass"},
+                "tests": {"status": "pass"},
+            },
+            exit_code=0,
+            status="pass",
+        )
+
+    monkeypatch.setattr(verify_module, "run_verify", fake_run_verify)
+
+    result = runner.invoke(
+        app,
+        ["new", "modelapp", "-o", str(out), "--from-model", str(model_file)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert seen == ["test"]

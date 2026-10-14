@@ -20,6 +20,17 @@ Usage::
     # Machine-readable envelope (CI-friendly)
     protean verify --json
 
+    # Run all three stages under the ``memory`` environment
+    protean verify --env memory
+
+All three stages run under one environment, named by ``--env`` (default
+``test``). ``verify`` sets ``PROTEAN_ENV`` to it before the domain is imported,
+so init and check load that config overlay, and passes the same value to the
+pytest child. A ``PROTEAN_ENV`` exported in the shell does not change the
+config any stage loads, and the caller's value is restored when ``run_verify``
+returns. The shell's value still picks the default log level and format,
+because ``verify`` sets up logging before the stages run.
+
 Under ``--json`` the result is the shared CLI envelope (see
 :mod:`protean.cli.result`): the verdict and per-stage tree under ``data``, the
 check-stage diagnostics at the top level, and a coarse ``status``.
@@ -28,8 +39,9 @@ Exit codes follow the CLI-wide convention (see :mod:`protean.cli.result`), with
 the stage classes pinned. Ordered by precedence:
 
     0 — all green: init, check, and tests all pass
-    2 — a usage error: the domain was not found, or ``--path`` is not a
-        directory (Click also exits ``2`` for a malformed command line)
+    2 — a usage error: the domain was not found, ``--path`` is not a
+        directory, or ``--env`` is blank (Click also exits ``2`` for a
+        malformed command line)
     3 — the domain was found but failed to initialize
     4 — check failed (a malformed ``[lint]`` config, or findings at or above
         the ``[lint].level`` floor)
@@ -148,16 +160,16 @@ class VerifyResult:
     envelope_error: str = ""
 
 
-def run_verify(domain: str, path: str) -> VerifyResult:
+def run_verify(domain: str, path: str, env: str = "test") -> VerifyResult:
     """Run init + check + tests and return the result, without printing or exiting.
 
     This is the compute-only core behind ``protean verify``: it discovers and
     initializes the domain, runs ``Domain.check``, runs the project's pytest suite
     in ``path``, and maps the outcome to the settled exit code. The early
-    usage/init failures (a bad ``--path``, a domain that is not found or fails to
-    load) become early returns carrying the same stage tree, error line, status
-    class, and exit code they mapped to before. The ``verify`` command emits the
-    result and exits; ``protean new --from-model`` maps ``result.exit_code``.
+    usage/init failures (a bad ``--path``, a blank ``env``, a domain that is not
+    found or fails to load) become early returns that carry the stage tree, an
+    error line, a status class and an exit code. The ``verify`` command emits
+    the result and exits; ``protean new --from-model`` maps ``result.exit_code``.
 
     Init and check run in the calling process, so this is meant for one call per
     process (the CLI's use). A second call in the same process for a different
@@ -165,6 +177,14 @@ def run_verify(domain: str, path: str) -> VerifyResult:
     ``__import__`` caches the module under its dotted name, so the second call
     re-inits the first domain. Verifying several projects from one process needs
     a fresh interpreter per call, or a reset of the module cache between calls.
+
+    All three stages run under the environment ``env``. ``PROTEAN_ENV`` is set to
+    it for the whole call, and the pytest child gets the same value. The caller's
+    ``PROTEAN_ENV`` (or its absence) is restored on every return path. Init and
+    check load the ``env`` config overlay only when this call is the first to
+    import the domain module: a module already in ``sys.modules`` (imported by
+    the caller, or by an earlier call with a different ``env``) keeps the config
+    it loaded then, while the tests stage still runs under ``env``.
     """
     # Every stage starts "skipped"; a failure before it runs leaves it that way
     # so the envelope always carries all three keys.
@@ -181,6 +201,31 @@ def run_verify(domain: str, path: str) -> VerifyResult:
         msg = f"--path is not a directory: {path}"
         return _early_result(stages, _EXIT_USAGE, msg)
 
+    # A blank name selects no config overlay, yet on the command line it looks
+    # like a choice was made. Surrounding spaces would match no overlay name,
+    # so they are dropped.
+    env = env.strip()
+    if not env:
+        return _early_result(stages, _EXIT_USAGE, "--env must not be blank")
+
+    # ``Domain.__init__`` reads ``PROTEAN_ENV`` when it loads config, and
+    # ``derive_domain`` constructs the domain by importing its module, so the
+    # variable must be set before init starts.
+    previous_env = os.environ.get("PROTEAN_ENV")
+    os.environ["PROTEAN_ENV"] = env
+    try:
+        return _run_stages(stages, domain, path, env)
+    finally:
+        if previous_env is None:
+            os.environ.pop("PROTEAN_ENV", None)
+        else:
+            os.environ["PROTEAN_ENV"] = previous_env
+
+
+def _run_stages(
+    stages: dict[str, dict[str, Any]], domain: str, path: str, env: str
+) -> VerifyResult:
+    """Run init, check and tests in order and map the outcome to a result."""
     # --- Init stage -------------------------------------------------------
     try:
         derived_domain = derive_domain(domain)
@@ -234,7 +279,7 @@ def run_verify(domain: str, path: str) -> VerifyResult:
     # --- Tests stage ------------------------------------------------------
     # Run tests even when check failed, so the envelope carries every stage's
     # result; exit precedence (check before tests) is applied below.
-    tests_stage, tests_output = _run_tests(path)
+    tests_stage, tests_output = _run_tests(path, env)
     stages["tests"] = tests_stage
 
     status: EnvelopeStatus = "pass" if _verdict(stages) == "pass" else "fail"
@@ -293,6 +338,13 @@ def verify(
             help="Project directory to run the tests in (where pytest is invoked)",
         ),
     ] = ".",
+    env: Annotated[
+        str,
+        typer.Option(
+            "--env",
+            help="Environment (PROTEAN_ENV) that init, check and tests all run under",
+        ),
+    ] = "test",
     json_output: Annotated[
         bool,
         typer.Option(
@@ -313,7 +365,7 @@ def verify(
         log_already_configured=bool(parent_obj.get(CTX_LOG_CONFIGURED))
     )
 
-    result = run_verify(domain, path)
+    result = run_verify(domain, path, env)
 
     # The red error line goes to stderr so ``--json`` stdout stays a single
     # parseable object.
@@ -430,26 +482,31 @@ def _parse_counts(stdout: str) -> tuple[int, int]:
     return 0, 0
 
 
-def _run_tests(path: str) -> tuple[dict[str, Any], str]:
-    """Run the project's pytest suite in ``path`` and summarize the outcome.
+def _run_tests(path: str, env: str) -> tuple[dict[str, Any], str]:
+    """Run the project's pytest suite in ``path`` under ``env`` and summarize the
+    outcome.
 
     Returns the envelope stage dict plus the raw pytest output (kept out of the
     envelope, used only for the human table).
     """
-    env = dict(os.environ)
+    child_env = dict(os.environ)
     # Env hygiene, mirroring the scaffold-test harness: drop VIRTUAL_ENV so a
     # leaked value cannot point the child at a different source tree than
-    # ``sys.executable``, and drop PROTEAN_ENV/PROTEAN_DEBUG so a value exported
-    # in the parent shell does not leak into the project's own test run.
-    for var in ("VIRTUAL_ENV", "PROTEAN_ENV", "PROTEAN_DEBUG"):
-        env.pop(var, None)
+    # ``sys.executable``, and drop PROTEAN_DEBUG so a value exported in the
+    # parent shell does not leak into the project's own test run. The child
+    # gets the environment verify chose for all stages; the Protean pytest
+    # plugin only ``setdefault``s PROTEAN_ENV, so this value wins over its
+    # ``--protean-env`` option.
+    for var in ("VIRTUAL_ENV", "PROTEAN_DEBUG"):
+        child_env.pop(var, None)
+    child_env["PROTEAN_ENV"] = env
     # A src-layout project that has not been installed still needs its ``src``
     # on the path for its own tests to import the package — the common state
     # right after ``protean new``. Prepend it when present; harmless otherwise.
     src = os.path.join(path, "src")
     if os.path.isdir(src):
-        existing = env.get("PYTHONPATH", "")
-        env["PYTHONPATH"] = src + os.pathsep + existing if existing else src
+        existing = child_env.get("PYTHONPATH", "")
+        child_env["PYTHONPATH"] = src + os.pathsep + existing if existing else src
 
     # ``--verbosity`` sets the level outright, where ``-q`` only lowers it: a
     # project with ``addopts = -q`` plus a forced ``-q`` runs at -2, and pytest
@@ -462,7 +519,7 @@ def _run_tests(path: str) -> tuple[dict[str, Any], str]:
         # Decode leniently: under a non-UTF-8 locale, pytest output with
         # non-decodable bytes would otherwise raise ``UnicodeDecodeError`` here.
         errors="replace",
-        env=env,
+        env=child_env,
         check=False,
     )
     output = completed.stdout + completed.stderr
