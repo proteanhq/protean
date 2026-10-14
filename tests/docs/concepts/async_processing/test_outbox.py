@@ -1,5 +1,7 @@
 """The examples on ``docs/concepts/async-processing/outbox.md`` behave as the page says."""
 
+from datetime import timedelta
+
 import pytest
 
 from protean.server import Engine
@@ -74,3 +76,37 @@ def test_a_published_message_cannot_be_claimed():
 
         assert example.claim(repo._dao, message, "worker-1", now) == 0
         assert repo.get(message.id).status == OutboxStatus.PUBLISHED.value
+
+
+def test_a_message_under_an_expired_lock_can_be_reclaimed():
+    example = load_example("concepts/async-processing/outbox/001.py")
+    example.domain.init(traverse=False)
+    _place_order(example, "order-1")
+
+    with example.domain.domain_context():
+        repo = example.domain._get_outbox_repo("default")
+        message = _outbox_rows(example)[0]
+        now = example.domain.clock.now()
+
+        assert example.claim(repo._dao, message, "worker-1", now) == 1
+        assert example.claim(repo._dao, message, "worker-2", now) == 0
+
+        after_expiry = now + timedelta(minutes=6)
+        assert example.claim(repo._dao, message, "worker-2", after_expiry) == 1
+        assert repo.get(message.id).locked_by == "worker-2"
+
+
+def test_a_message_with_no_retries_left_cannot_be_claimed():
+    example = load_example("concepts/async-processing/outbox/001.py")
+    example.domain.init(traverse=False)
+    _place_order(example, "order-1")
+
+    with example.domain.domain_context():
+        repo = example.domain._get_outbox_repo("default")
+        message = _outbox_rows(example)[0]
+        message.retry_count = message.max_retries
+        repo.add(message)
+        now = example.domain.clock.now()
+
+        assert example.claim(repo._dao, message, "worker-1", now) == 0
+        assert repo.get(message.id).status == OutboxStatus.PENDING.value
