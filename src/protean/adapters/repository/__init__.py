@@ -137,6 +137,35 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
 
         self._providers = provider_objects
 
+    def validate_identity_capacity(self) -> None:
+        """Refuse an identity a SQL provider cannot store.
+
+        Runs ``_refuse_unstorable_identity`` for every aggregate, entity and
+        projection whose provider is a SQLAlchemy provider. Models are built
+        lazily, so this makes ``Domain.init()`` report the problem before the
+        first repository call does.
+
+        Raises:
+            ConfigurationError: An element on a SQLAlchemy provider would get
+                an identity its column cannot hold.
+        """
+        try:
+            # SQLAlchemy is an optional extra; without it no SQL provider exists.
+            from protean.adapters.repository.sqlalchemy import (  # noqa: PLC0415
+                SAProvider,
+                _refuse_unstorable_identity,
+            )
+        except ImportError:  # pragma: no cover - sqlalchemy backs every SAProvider
+            return
+
+        providers = self._providers or {}
+        registry = self.domain.registry
+        for records in (registry.aggregates, registry.entities, registry.projections):
+            for record in records.values():
+                provider = providers.get(record.cls.meta_.provider)
+                if isinstance(provider, SAProvider):
+                    _refuse_unstorable_identity(record.cls, provider)
+
     def get_connection(self, provider_name: str = "default") -> Any:
         """Fetch connection from Provider"""
         if self._providers is None:

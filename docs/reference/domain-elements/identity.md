@@ -54,7 +54,10 @@ are allowed.
 
 - **`integer`**: Anything that is castable to an integer
 is accepted. Strings like `1` are allowed. So are UUIDs because they can be
-represented as integer values.
+represented as integer values. A SQL provider cannot store a UUID's 128-bit
+integer, so on SQL an `integer` identity needs the `function` strategy or
+`Auto(increment=True)` (see
+[`identity_type`](../configuration/index.md#identity_type)).
 
 ```ipython
 In [1]: import uuid

@@ -96,6 +96,34 @@ Supported options are `integer`, `string`, and `uuid`.
 
 Default: `string`
 
+!!! note
+    On a SQL provider (SQLite, PostgreSQL, MySQL/MariaDB or MSSQL), an
+    `integer` identity cannot use the `uuid` strategy. That strategy makes a
+    128-bit integer, and the integer column an `integer` domain gets cannot
+    hold it. The rule also applies when the identifier sets
+    `identity_type="integer"` or `identity_strategy="uuid"` itself, even
+    though the column then follows the domain's `identity_type`. Use one of
+    these:
+
+    - `identity_strategy = "function"`, with an `identity_function` that
+      returns integers that fit the column. The id is set when the object
+      is created.
+    - [`Auto(increment=True)`](../fields/simple-fields.md#auto) on the
+      identifier. The database assigns the id, so it stays unset until the
+      first save.
+
+    On an `integer` domain, the identity column is an integer column for
+    every generated identifier. An identifier that sets
+    `identity_type="string"` or `"uuid"` itself does not fit it and is
+    refused too.
+
+    Otherwise `Domain.init()` raises `ConfigurationError`, naming the
+    aggregate, entity or projection and its provider. An element whose
+    custom database model declares the identity column is not checked,
+    because the model sets that column's type. The memory provider
+    holds the 128-bit value. Elasticsearch stores it as a string, so it
+    loads back as a string. Neither is affected.
+
 ### `command_processing`
 
 Whether to process commands synchronously or asynchronously.

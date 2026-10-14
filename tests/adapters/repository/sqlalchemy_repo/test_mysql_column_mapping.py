@@ -524,8 +524,7 @@ class TestDeclaredIndexKeyWidths:
         """An INT identity is small, and four bytes is the whole margin at the
         boundary: a VARCHAR(768) fills the budget, so an index over it and the
         identity is 3076 and InnoDB refuses it. Measured on the render path,
-        because an integer identity cannot currently build a model at all
-        (`Integer() takes no arguments`, filed separately)."""
+        which needs no MySQL server."""
 
         class Keyed(BaseAggregate):
             slug: String(max_length=max_length)

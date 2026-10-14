@@ -80,7 +80,14 @@ Supported types are `string`, `uuid`, and `integer`:
 |---|---|---|
 | `string` (default) | `"9cf4ddc4-2919-..."` | You want portability across every adapter |
 | `uuid` | `"9cf4ddc4-..."` (a string; stored in a native UUID column) | Your database has a native UUID column (e.g. PostgreSQL) |
-| `integer` | `154702789254628181...` | Your persistence layer requires integer ids |
+| `integer` | `154702789254628181...` | Your persistence layer requires integer ids (on SQL, see below) |
+
+An `integer` identity under the default `uuid` strategy is a 128-bit
+number. The memory provider holds it, and Elasticsearch stores it as a
+string. On a SQL provider no integer column holds it, so `Domain.init()` raises
+`ConfigurationError`. There, pair `integer` with
+`identity_strategy = "function"` or with `Auto(increment=True)`. See the
+note under [`identity_type`](../../reference/configuration/index.md#identity_type).
 
 You can also override the type for a single aggregate without changing
 the domain default:
@@ -210,6 +217,8 @@ defer identity generation to the database.
 | `ValidationError` | An identity field that generates nothing (for example `String(identifier=True, required=True)`) is left empty. The caller must supply a value. |
 | `ConfigurationError` | `identity_strategy="function"` is configured but no `identity_function` was passed to `Domain(...)` or `Auto(...)`. |
 | `ConfigurationError` | An unknown `identity_strategy` or `identity_type` value is set in configuration. |
+| `ConfigurationError` | On a SQL provider, a generated identifier gets an `integer` identity under the `uuid` strategy. Raised by `Domain.init()`. |
+| `ConfigurationError` | On a SQL provider with `identity_type = "integer"`, a generated identifier sets `identity_type="string"` or `"uuid"` itself. Its column is an integer column, so the value does not fit. Raised by `Domain.init()`. |
 
 ---
 

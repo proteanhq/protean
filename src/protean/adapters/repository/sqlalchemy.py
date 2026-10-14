@@ -66,10 +66,16 @@ from protean.fields.association import Reference, _ReferenceField
 from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject, _ShadowField
 from protean.fields.resolved import ResolvedField
-from protean.fields.spec import FieldSpec
+from protean.fields.spec import _UNSET, FieldSpec
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
-from protean.utils import Database, IdentityType, _fully_qualified_name, occ_trace
+from protean.utils import (
+    Database,
+    IdentityStrategy,
+    IdentityType,
+    _fully_qualified_name,
+    occ_trace,
+)
 from protean.utils.container import Options
 from protean.utils.globals import _domain_context_stack, current_domain, current_uow
 from protean.utils.logging import get_logging_config_value
@@ -243,6 +249,24 @@ class GUID(TypeDecorator[uuid.UUID]):
             return value
 
 
+class _IntegerIdentity(TypeDecorator[int]):
+    """An integer identity column.
+
+    A declared ``Auto`` or ``Identifier`` field holds its value as a string
+    even when ``identity_type`` is ``integer``. psycopg 3 binds a ``str`` as
+    text, and PostgreSQL has no ``integer = text`` operator, so the value goes
+    back to an ``int`` before it is bound.
+    """
+
+    impl = sa_types.Integer
+    cache_ok = True
+
+    def process_bind_param(self, value: typing.Any, dialect: typing.Any) -> typing.Any:
+        if isinstance(value, str):
+            return int(value)
+        return value
+
+
 class MSSQLJSON(TypeDecorator[typing.Any]):
     """JSON type for MSSQL using NVARCHAR storage with automatic serialization."""
 
@@ -279,7 +303,7 @@ def _get_identity_type() -> type[sa_types.TypeEngine[typing.Any]]:
     Default to `Identity.STRING`
     """
     if current_domain.config["identity_type"] == IdentityType.INTEGER.value:
-        return sa_types.Integer
+        return _IntegerIdentity
     elif current_domain.config["identity_type"] == IdentityType.STRING.value:
         return sa_types.String
     elif current_domain.config["identity_type"] == IdentityType.UUID.value:
@@ -287,6 +311,105 @@ def _get_identity_type() -> type[sa_types.TypeEngine[typing.Any]]:
     else:
         raise ConfigurationError(
             f"Unknown Identity Type {current_domain.config['identity_type']}"
+        )
+
+
+def _refuse_unstorable_identity(
+    element_cls: typing.Any, provider: BaseProvider
+) -> None:
+    """Refuse an identity this SQL provider cannot store.
+
+    Applies to an identifier that ``_generate_identity`` fills in: an ``Auto``,
+    an ``Identifier`` with no default, or the implicit ``id``. Its effective
+    ``identity_type`` and ``identity_strategy`` are the field's own when set,
+    and the domain configuration otherwise. Two cases are refused:
+
+    - An integer identity under the ``uuid`` strategy. It is ``uuid4().int``,
+      a 128-bit number, and no SQL integer column holds it.
+    - An identity that is not an integer on a domain whose ``identity_type``
+      is ``integer``. The column type follows the domain setting, so the
+      column is an integer column and the generated value does not fit it.
+
+    Identifiers the database assigns (``increment=True``), abstract elements
+    and the elements of an event-sourced aggregate have no generated value in
+    a SQL table, so they are skipped. So is an element whose custom database
+    model for this provider declares the identity column itself.
+
+    Raises:
+        ConfigurationError: The element would get an identity its column
+            cannot hold.
+    """
+    meta = element_cls.meta_
+    cluster = getattr(meta, "aggregate_cluster", None) or element_cls
+    if getattr(meta, "abstract", False) or getattr(
+        cluster.meta_, "is_event_sourced", False
+    ):
+        return
+
+    id_fld = id_field(element_cls)
+    if id_fld is None or getattr(id_fld, "increment", False):
+        return
+
+    # A custom database model that declares the identity column decides its
+    # type, so the domain mapping this check reasons about does not apply.
+    models = provider.domain._database_models.get(
+        _fully_qualified_name(element_cls), {}
+    )
+    custom_model = models.get(provider.__database__) or models.get(None)
+    attribute_name = id_fld.attribute_name or id_fld.field_name
+    if custom_model is not None and isinstance(
+        vars(custom_model).get(attribute_name), Column
+    ):
+        return
+
+    spec = getattr(element_cls, "__protean_field_meta__", {}).get(id_fld.field_name)
+    if spec is not None:
+        if spec.field_kind not in ("identifier", "auto") or spec.default is not _UNSET:
+            return
+        identity_type = getattr(spec, "_identity_type", None)
+        identity_strategy = getattr(spec, "_identity_strategy", None)
+    elif getattr(id_fld, "_auto_generated", False):
+        identity_type = identity_strategy = None
+    else:
+        return
+
+    config = provider.domain.config
+    domain_type = config["identity_type"]
+    identity_type = identity_type or domain_type
+    identity_strategy = identity_strategy or config["identity_strategy"]
+    integer = IdentityType.INTEGER.value
+    element_type = getattr(element_cls, "element_type", None)
+    kind = element_type.value.title() if element_type else "Element"
+    owner = (
+        f"{kind} `{element_cls.__name__}` "
+        f"on provider `{provider.name}` ({provider.__database__})"
+    )
+
+    if identity_type == integer and identity_strategy == IdentityStrategy.UUID.value:
+        if domain_type == integer:
+            reason = "no SQL integer column holds it"
+        else:
+            reason = (
+                "SQL providers do not support it. The column type follows the "
+                f'domain `identity_type` ("{domain_type}"), not the field'
+            )
+        raise ConfigurationError(
+            f"{owner} uses an integer identity under the `uuid` identity "
+            f"strategy. The `uuid` strategy makes a 128-bit integer, and "
+            f'{reason}. Set `identity_strategy = "function"` with an '
+            f"`identity_function` that returns integers that fit the column, "
+            f"so the id is set when the object is created. Or declare the "
+            f"identifier as `Auto(increment=True)`, so the database assigns "
+            f"the id on the first save."
+        )
+
+    if domain_type == integer and identity_type != integer:
+        raise ConfigurationError(
+            f"{owner} generates a {identity_type} identity, but the domain "
+            f'`identity_type` is "integer", so its column is an integer column. '
+            f"The column type follows the domain setting, not the field. Drop "
+            f"`identity_type` from the field, or store the identifier in a "
+            f"domain whose `identity_type` matches it."
         )
 
 
@@ -678,6 +801,7 @@ _MYSQL_FIXED_KEY_WIDTHS: dict[typing.Any, int] = {
     sa_types.Boolean: 1,  # TINYINT
     sa_types.SmallInteger: 2,
     sa_types.Integer: 4,
+    _IntegerIdentity: 4,
     sa_types.BigInteger: 8,
     sa_types.Date: 3,
 }
@@ -1356,7 +1480,14 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         # index or join on, and the key-width guard then reports
                         # a missing max_length on a column nobody declared.
                         type_kwargs["length"] = _IDENTITY_STRING_LENGTH
-                    elif resolved_type is str and isinstance(field_obj, ResolvedField):
+                    elif (
+                        resolved_type is str
+                        and isinstance(field_obj, ResolvedField)
+                        and not field_obj.identifier
+                    ):
+                        # ``field_mapping_for`` types an identity column, not
+                        # the field's own max_length, and an Integer or GUID
+                        # column takes no length.
                         type_kwargs["length"] = field_obj.max_length
                     elif resolved_type is decimal.Decimal and isinstance(
                         field_obj, ResolvedField
@@ -2395,6 +2526,10 @@ class SAProvider(BaseProvider):
         if cache_key in self._database_model_classes:
             return self._database_model_classes[cache_key]
 
+        # ``Domain.init()`` runs the same check, but an element registered
+        # after it, or a domain that never calls it, reaches this point first.
+        _refuse_unstorable_identity(entity_cls, self)
+
         # If `database_model_cls` is already subclassed from SqlAlchemyModel,
         #   this method call is a no-op
         if issubclass(database_model_cls, SqlalchemyModel):
@@ -2467,6 +2602,8 @@ class SAProvider(BaseProvider):
         if cache_key in self._database_model_classes:
             database_model_cls = self._database_model_classes[cache_key]
         else:
+            _refuse_unstorable_identity(entity_cls, self)
+
             # Construct a new Meta object with existing values
             meta_ = Options()
             meta_.part_of = entity_cls

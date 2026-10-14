@@ -270,9 +270,13 @@ The [Identity](../domain-elements/identity.md) section covers identities in Prot
 
 ## Identifier
 
-An Identifier. It always stores its value as a string. The `identity_type`
+An Identifier. It always holds its value as a string. The `identity_type`
 configuration attribute does not change that, and `Identifier` takes no
-`identity_type` argument.
+`identity_type` argument. On a SQL provider the column type does follow the
+domain's `identity_type`, so on an `integer` domain the string is stored in
+an integer column. An `Identifier` with no default then gets a 128-bit
+integer under the `uuid` strategy, which `Domain.init()` refuses (see
+[`identity_type`](../configuration/index.md#identity_type)).
 
 ```python hl_lines="13"
 --8<-- "guides/domain-definition/fields/simple-fields/008.py:full"
