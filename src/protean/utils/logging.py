@@ -52,6 +52,7 @@ from protean.integrations.logging import (
     LOG_RECORD_RESERVED_ATTRS as _RESERVED_LOG_RECORD_ATTRS,
 )
 from protean.integrations.logging import (
+    ProteanRedactionFilter,
     make_redaction_processor,
 )
 from protean.utils.globals import current_domain, g
@@ -174,6 +175,30 @@ def _install_root_filter(filter_: logging.Filter) -> None:
             target.addFilter(filter_)
 
 
+def _move_redaction_filter_last() -> None:
+    """Move every ``ProteanRedactionFilter`` to the end of each filter list.
+
+    Covers the root logger and each of its handlers. Stdlib runs filters in
+    list order, and the correlation and trace-context filters write
+    ``correlation_id``, ``causation_id``, ``trace_id`` and ``span_id`` onto
+    the record. Redaction has to run after them, or a configured key among
+    those ids reaches the formatter unmasked.
+
+    Filters keep their identity and their relative order. A target without a
+    redaction filter is left as it is.
+    """
+    root = logging.getLogger()
+    targets: list[logging.Filterer] = [root, *root.handlers]
+    for target in targets:
+        redaction = [f for f in target.filters if isinstance(f, ProteanRedactionFilter)]
+        if not redaction:
+            continue
+        others = [
+            f for f in target.filters if not isinstance(f, ProteanRedactionFilter)
+        ]
+        target.filters[:] = [*others, *redaction]
+
+
 def configure_logging(
     level: str | None = None,
     format: str = "auto",
@@ -248,12 +273,12 @@ def configure_logging(
         with suppress(ImportError):
             from protean.integrations.logging import (  # noqa: PLC0415
                 ProteanCorrelationFilter,
-                ProteanRedactionFilter,
             )
 
             _install_root_filter(ProteanCorrelationFilter())
             if redact:
                 _install_root_filter(ProteanRedactionFilter(redact))
+        _move_redaction_filter_last()
         return
 
     env = _detect_env()
@@ -283,9 +308,8 @@ def configure_logging(
 
     # --- redaction filter on the root logger and its handlers (stdlib path) ---
     if redact:
-        from protean.integrations.logging import ProteanRedactionFilter  # noqa: PLC0415
-
         _install_root_filter(ProteanRedactionFilter(redact))
+        _move_redaction_filter_last()
 
     # --- per-logger overrides ---
     if per_logger:

@@ -167,6 +167,7 @@ from protean.utils.logging import (
     TailSamplingFilter,
     TailSamplingProcessor,
     _install_root_filter,
+    _move_redaction_filter_last,
     access_logger,
     configure_logging,
 )
@@ -2879,6 +2880,9 @@ class Domain:
         _install_root_filter(ProteanCorrelationFilter())
         if telemetry_enabled:
             _install_root_filter(OTelTraceContextFilter())
+        # The context filters write the ids that redaction may need to mask,
+        # so redaction has to stay last on every target.
+        _move_redaction_filter_last()
 
         # Tail sampling filter on the protean.access stdlib logger — covers
         # the primary wide event emission path (access_logger is a stdlib

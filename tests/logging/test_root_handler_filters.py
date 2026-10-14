@@ -25,7 +25,11 @@ from protean.integrations.logging import (
 from protean.server.supervisor import _build_queue_listener, _install_worker_log_queue
 from protean.utils.eventing import DomainMeta, Message, MessageHeaders, Metadata
 from protean.utils.globals import g
-from protean.utils.logging import _install_root_filter, configure_logging
+from protean.utils.logging import (
+    _install_root_filter,
+    _move_redaction_filter_last,
+    configure_logging,
+)
 
 CHILD_LOGGER = "ordering.x"
 
@@ -435,3 +439,202 @@ class TestMultiWorkerQueuePath:
         assert records[-1].trace_id == ""  # type: ignore[attr-defined]
         assert records[-1].span_id == ""  # type: ignore[attr-defined]
         assert records[-1].trace_flags == 0  # type: ignore[attr-defined]
+
+
+_PROTEAN_FILTERS = (
+    ProteanCorrelationFilter,
+    OTelTraceContextFilter,
+    ProteanRedactionFilter,
+)
+
+
+def _assert_redaction_runs_last() -> None:
+    root = logging.getLogger()
+    assert root.handlers
+    for target in [root, *root.handlers]:
+        protean_filters = [f for f in target.filters if isinstance(f, _PROTEAN_FILTERS)]
+        assert protean_filters
+        assert isinstance(protean_filters[-1], ProteanRedactionFilter)
+
+
+class TestMoveRedactionFilterLast:
+    def test_no_redaction_filter_leaves_filters_alone(self):
+        root = logging.getLogger()
+        correlation, otel = ProteanCorrelationFilter(), OTelTraceContextFilter()
+        root.filters = [correlation, otel]
+        handler = _Recorder([])
+        handler.filters = [otel, correlation]
+        root.handlers = [handler]
+
+        _move_redaction_filter_last()
+
+        assert root.filters == [correlation, otel]
+        assert handler.filters == [otel, correlation]
+
+    def test_moves_redaction_after_others_and_keeps_relative_order(self):
+        root = logging.getLogger()
+        first_redact = ProteanRedactionFilter(["a"])
+        second_redact = ProteanRedactionFilter(["b"])
+        correlation, otel = ProteanCorrelationFilter(), OTelTraceContextFilter()
+        user = logging.Filter("user")
+        root.filters = [first_redact, correlation, second_redact, user, otel]
+        handler = _Recorder([])
+        handler.filters = [second_redact, otel, first_redact, correlation]
+        root.handlers = [handler]
+
+        _move_redaction_filter_last()
+
+        assert root.filters == [correlation, user, otel, first_redact, second_redact]
+        assert handler.filters == [otel, correlation, second_redact, first_redact]
+
+    def test_without_handlers_only_root_is_reordered(self):
+        root = logging.getLogger()
+        redact, correlation = ProteanRedactionFilter(), ProteanCorrelationFilter()
+        root.filters = [redact, correlation]
+        root.handlers = []
+
+        _move_redaction_filter_last()
+
+        assert root.filters == [correlation, redact]
+
+
+class TestRedactionRunsAfterContextFilters:
+    """Ids written by the context filters are masked when listed in ``redact``."""
+
+    def _format_with_ids(self, records: list[logging.LogRecord]) -> str:
+        assert records
+        return logging.Formatter(
+            "corr=%(correlation_id)s caus=%(causation_id)s %(message)s"
+        ).format(records[-1])
+
+    def test_correlation_ids_masked_on_default_path(self, test_domain):
+        test_domain.config["logging"] = {"redact": ["correlation_id", "causation_id"]}
+        records: list[logging.LogRecord] = []
+        with test_domain.domain_context():
+            test_domain.configure_logging(level="DEBUG", format="json")
+            _record_root_handler(records)
+            g.correlation_id = "secret-corr-123"
+            g.causation_id = "secret-caus-456"
+            logging.getLogger(CHILD_LOGGER).warning("order placed")
+
+        output = self._format_with_ids(records)
+        assert output == "corr=[REDACTED] caus=[REDACTED] order placed"
+        assert "secret-corr-123" not in output
+        assert "secret-caus-456" not in output
+
+    def test_ids_masked_on_dict_config_path_with_telemetry(self, telemetry_domain):
+        telemetry_domain.config["logging"] = {
+            "redact": ["correlation_id", "causation_id", "trace_id", "span_id"]
+        }
+        records: list[logging.LogRecord] = []
+        with telemetry_domain.domain_context():
+            telemetry_domain.configure_logging(dict_config=_dict_config(records))
+            g.correlation_id = "secret-corr-123"
+            g.causation_id = "secret-caus-456"
+            tracer = SDKTracerProvider().get_tracer("test")
+            with tracer.start_as_current_span("redacted-span"):
+                logging.getLogger(CHILD_LOGGER).warning("order placed")
+
+        assert self._format_with_ids(records) == (
+            "corr=[REDACTED] caus=[REDACTED] order placed"
+        )
+        assert records[-1].trace_id == "[REDACTED]"  # type: ignore[attr-defined]
+        assert records[-1].span_id == "[REDACTED]"  # type: ignore[attr-defined]
+
+    def test_correlation_ids_masked_on_root_logger_records(self, test_domain):
+        test_domain.config["logging"] = {"redact": ["correlation_id"]}
+        records: list[logging.LogRecord] = []
+        with test_domain.domain_context():
+            test_domain.configure_logging(level="DEBUG", format="json")
+            _record_root_handler(records)
+            g.correlation_id = "secret-corr-123"
+            logging.getLogger().warning("on root")
+
+        assert records
+        assert records[-1].correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
+
+    def test_trace_ids_masked_with_telemetry(self, telemetry_domain):
+        telemetry_domain.config["logging"] = {"redact": ["trace_id", "span_id"]}
+        telemetry_domain.configure_logging(level="DEBUG", format="json")
+        records: list[logging.LogRecord] = []
+        _record_root_handler(records)
+        tracer = SDKTracerProvider().get_tracer("test")
+        with tracer.start_as_current_span("redacted-span") as span:
+            _log_on_child()
+        context = span.get_span_context()
+
+        assert records
+        assert records[-1].trace_id == "[REDACTED]"  # type: ignore[attr-defined]
+        assert records[-1].span_id == "[REDACTED]"  # type: ignore[attr-defined]
+        assert f"{context.trace_id:032x}" not in vars(records[-1]).values()
+
+    def test_ids_kept_when_not_listed_in_redact(self, telemetry_domain):
+        telemetry_domain.config["logging"] = {"redact": ["password"]}
+        records: list[logging.LogRecord] = []
+        with telemetry_domain.domain_context():
+            telemetry_domain.configure_logging(level="DEBUG", format="json")
+            _record_root_handler(records)
+            g.correlation_id = "corr-123"
+            tracer = SDKTracerProvider().get_tracer("test")
+            with tracer.start_as_current_span("plain-span") as span:
+                _log_on_child(password="s3cret")
+        context = span.get_span_context()
+
+        assert records
+        assert records[-1].correlation_id == "corr-123"  # type: ignore[attr-defined]
+        assert records[-1].trace_id == f"{context.trace_id:032x}"  # type: ignore[attr-defined]
+        assert records[-1].password == "[REDACTED]"  # type: ignore[attr-defined]
+
+    @pytest.mark.parametrize("telemetry", [False, True])
+    def test_order_on_default_path_after_one_and_two_calls(
+        self, test_domain, telemetry
+    ):
+        test_domain.config["telemetry"] = {"enabled": telemetry}
+        test_domain.config["logging"] = {"redact": ["correlation_id"]}
+
+        test_domain.configure_logging(level="DEBUG", format="json")
+        _assert_redaction_runs_last()
+
+        test_domain.configure_logging(level="DEBUG", format="json")
+        _assert_redaction_runs_last()
+
+    def test_order_on_dict_config_path_after_one_and_two_calls(self, test_domain):
+        test_domain.config["telemetry"] = {"enabled": True}
+        records: list[logging.LogRecord] = []
+        config = _dict_config(records)
+
+        test_domain.configure_logging(dict_config=config, redact=["correlation_id"])
+        _assert_redaction_runs_last()
+
+        test_domain.configure_logging(dict_config=config, redact=["correlation_id"])
+        _assert_redaction_runs_last()
+
+        with test_domain.domain_context():
+            g.correlation_id = "secret-corr-123"
+            _log_on_child()
+        assert records
+        assert records[-1].correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
+
+    @pytest.mark.no_test_domain
+    def test_standalone_call_after_domain_call_keeps_redaction_last(self):
+        records: list[logging.LogRecord] = []
+        config = _dict_config(records)
+        root = logging.getLogger()
+        # The order an earlier configure call leaves when it installs the
+        # correlation filter after redaction.
+        earlier_redact = ProteanRedactionFilter(["correlation_id"])
+        root.filters = [earlier_redact, ProteanCorrelationFilter()]
+        with patch.dict("os.environ", {}, clear=True):
+            configure_logging(dict_config=config, redact=["correlation_id"])
+
+        _assert_redaction_runs_last()
+        assert root.filters[-1] is earlier_redact
+
+    def test_worker_queue_handler_keeps_redaction_last(self, test_domain):
+        test_domain.config["logging"] = {"redact": ["correlation_id"]}
+        test_domain.configure_logging(level="DEBUG", format="json")
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+
+        _install_worker_log_queue(log_queue)  # type: ignore[arg-type]
+
+        _assert_redaction_runs_last()
