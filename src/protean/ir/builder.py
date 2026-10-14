@@ -616,12 +616,12 @@ class IRBuilder:
 
         JSON cannot encode a ``decimal.Decimal``. On a Decimal field such a
         bound becomes ``str(value)``, which is lossless and keeps trailing
-        zeros. An Integer or Float field always gets a number, because the JSON
-        Schema generator writes its bounds as ``minimum`` / ``maximum``: a
-        ``decimal.Decimal`` or numeric string bound is converted, to an ``int``
-        when it is integral on an Integer field and to a ``float`` otherwise,
-        so a fractional bound on an Integer field is not rounded to an integer.
-        Any other bound comes back as is.
+        zeros. On any other field it becomes a number, because the JSON Schema
+        generator writes those bounds as ``minimum`` / ``maximum``: an ``int``
+        when it is integral on an Integer field, and a ``float`` otherwise, so
+        a fractional bound on an Integer field is not rounded to an integer.
+        A numeric string bound on an Integer or Float field is converted the
+        same way. Every other bound comes back as is.
         """
         if isinstance(value, str) and ir_type in ("Integer", "Float"):
             try:
