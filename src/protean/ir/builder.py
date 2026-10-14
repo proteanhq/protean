@@ -614,13 +614,21 @@ class IRBuilder:
     def _ir_bound(value: Any, ir_type: str) -> Any:
         """Return a JSON-encodable form of a ``min_value`` / ``max_value`` bound.
 
-        JSON cannot encode a ``decimal.Decimal``. A Decimal field keeps its bound
-        as a decimal string, which is lossless and keeps trailing zeros. Other
-        fields need a number, because the JSON Schema generator writes their
-        bounds as ``minimum`` / ``maximum``. An integral bound on an Integer
-        field becomes an ``int``; a fractional one becomes a ``float`` so the
-        bound is never truncated. ``int`` and ``float`` bounds come back as is.
+        JSON cannot encode a ``decimal.Decimal``. On a Decimal field such a
+        bound becomes ``str(value)``, which is lossless and keeps trailing
+        zeros. An Integer or Float field always gets a number, because the JSON
+        Schema generator writes its bounds as ``minimum`` / ``maximum``: a
+        ``decimal.Decimal`` or numeric string bound is converted, to an ``int``
+        when it is integral on an Integer field and to a ``float`` otherwise,
+        so a fractional bound on an Integer field is not rounded to an integer.
+        Any other bound comes back as is.
         """
+        if isinstance(value, str) and ir_type in ("Integer", "Float"):
+            try:
+                value = decimal.Decimal(value)
+            except decimal.InvalidOperation:
+                # Not a number, so the schema reports it rather than the builder.
+                return value
         if not isinstance(value, decimal.Decimal):
             return value
         if ir_type == "Decimal":

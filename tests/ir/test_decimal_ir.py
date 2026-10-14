@@ -208,6 +208,71 @@ class TestDecimalBounds:
         assert field["min_value"] == "1.50"
         _validate(ir)
 
+    def test_exponent_form_is_kept(self):
+        ir = _build(x=Decimal(max_value=decimal.Decimal("1E+2")))
+
+        assert _field(ir, "x")["max_value"] == "1E+2"
+        _validate(ir)
+
+    def test_integral_decimal_bound_on_a_float_field_is_a_float(self):
+        ir = _build(x=Float(min_value=decimal.Decimal(2)))
+
+        bound = _field(ir, "x")["min_value"]
+        assert bound == 2.0
+        assert type(bound) is float
+        _validate(ir)
+
+    def test_custom_decimal_field_writes_its_max_value_as_a_string(self):
+        ir = _build(x=Custom(decimal.Decimal, max_value=decimal.Decimal("9.90")))
+
+        assert _field(ir, "x")["max_value"] == "9.90"
+        _validate(ir)
+
+    def test_string_bound_on_an_integer_field_is_written_as_an_int(self):
+        ir = _build(
+            x=Integer(min_value="5"),
+            y=Custom(int, max_value="7"),
+        )
+
+        assert _field(ir, "x")["min_value"] == 5
+        assert type(_field(ir, "x")["min_value"]) is int
+        assert _field(ir, "y")["kind"] == "custom"
+        assert _field(ir, "y")["max_value"] == 7
+        assert type(_field(ir, "y")["max_value"]) is int
+        _validate(ir)
+
+    def test_string_bound_on_a_float_type_is_written_as_a_float(self):
+        # A Float field rejects a string bound when it is declared, so the
+        # helper is exercised directly.
+        bound = IRBuilder._ir_bound("2.5", "Float")
+
+        assert bound == 2.5
+        assert type(bound) is float
+
+    def test_non_numeric_string_bound_on_an_integer_type_is_left_as_is(self):
+        assert IRBuilder._ir_bound("abc", "Integer") == "abc"
+
+    def test_string_bound_on_a_decimal_field_stays_a_string(self):
+        ir = _build(x=Decimal(min_value="0.01"))
+
+        assert _field(ir, "x")["min_value"] == "0.01"
+        _validate(ir)
+
+    @pytest.mark.parametrize("ir_type", ["Integer", "Float"])
+    @pytest.mark.parametrize("key", ["min_value", "max_value"])
+    @pytest.mark.parametrize("kind", ["standard", "custom"])
+    def test_schema_rejects_a_string_bound_on_an_integer_or_float_field(
+        self, ir_type, key, kind
+    ):
+        ir = _build(x=Integer(min_value=1, max_value=2))
+        field = _field(ir, "x")
+        field["kind"] = kind
+        field["type"] = ir_type
+        field[key] = "5"
+
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(ir, json.loads(SCHEMA_PATH.read_text()))
+
     def test_generator_writes_numeric_minimum_and_maximum_for_non_decimal_fields(
         self,
     ):
