@@ -7,6 +7,7 @@ under ``tmp_path`` and run them through the same code.
 
 from __future__ import annotations
 
+import re
 import signal
 import time
 from pathlib import Path
@@ -733,7 +734,7 @@ def test_a_page_that_leaves_a_thread_running_fails_at_cleanup(tmp_path, bases):
         }
     ]
     # The shutdown watchdog ends the child at 1 second; the outer limit is 61.
-    assert elapsed < 30
+    assert elapsed < 10
 
 
 def test_only_the_page_that_left_a_thread_running_fails(tmp_path, bases):
@@ -814,3 +815,135 @@ def test_a_child_that_exits_badly_after_every_result_fails_the_run(tmp_path, bas
     )
     with pytest.raises(AssertionError, match=r"stopped after its last file \(exit 3\)"):
         _run(tmp_path, [page], bases, timeout=0.5)
+
+
+def test_a_page_names_every_thread_it_left_running(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "import threading, time\n"
+        "threading.Thread(target=time.sleep, args=(600,), name='one').start()\n"
+        "threading.Thread(target=time.sleep, args=(600,), name='two').start()\n"
+        "```\n",
+        "a.md",
+    )
+    assert _run(tmp_path, [page], bases, timeout=0.5) == [
+        {
+            "file": "a.md",
+            "failure": (
+                "cleanup: thread one is still running; thread two is still running"
+            ),
+            "not_run": [],
+        }
+    ]
+
+
+def test_a_page_that_replaces_threading_enumerate_still_fails(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "import threading, time\n"
+        "threading.Thread(target=time.sleep, args=(600,), name='sleeper').start()\n"
+        "threading.enumerate = lambda: []\n"
+        "```\n",
+        "a.md",
+    )
+    assert _run(tmp_path, [page], bases, timeout=0.5) == [
+        {
+            "file": "a.md",
+            "failure": "cleanup: thread sleeper is still running",
+            "not_run": [],
+        }
+    ]
+
+
+def test_a_thread_whose_name_raises_is_still_reported(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "import threading, time\n"
+        "class Odd(threading.Thread):\n"
+        "    @property\n"
+        "    def name(self):\n"
+        "        raise RuntimeError('no name')\n"
+        "Odd(target=time.sleep, args=(600,)).start()\n"
+        "```\n",
+        "a.md",
+    )
+    [result] = _run(tmp_path, [page], bases, timeout=0.5)
+    assert result["file"] == "a.md"
+    assert re.fullmatch(
+        r"cleanup: thread <_dx_snippet_0_\.Odd object at 0x[0-9a-f]+> is still running",
+        result["failure"],
+    )
+
+
+# Page A's thread starts a non-daemon thread while page B sleeps.
+SPAWNS_LATER = (
+    "```python\n"
+    "import threading, time\n"
+    "def spawn():\n"
+    "    time.sleep(0.2)\n"
+    "    threading.Thread(\n"
+    "        target=time.sleep, args=(600,), name='child-of-a', daemon=False\n"
+    "    ).start()\n"
+    "threading.Thread(target=spawn, name='spawner', daemon={daemon}).start()\n"
+    "```\n"
+)
+SLEEPS = "```python\nimport time\ntime.sleep(0.4)\n```\n"
+
+
+def test_a_thread_started_by_a_page_thread_is_not_blamed_on_the_next_page(
+    tmp_path, bases
+):
+    first = _write(tmp_path, SPAWNS_LATER.format(daemon=False), "a.md")
+    second = _write(tmp_path, SLEEPS, "b.md")
+    assert _run(tmp_path, [first, second], bases, timeout=0.5) == [
+        {
+            "file": "a.md",
+            "failure": "cleanup: thread spawner is still running",
+            "not_run": [],
+        },
+        {"file": "b.md", "failure": None, "not_run": []},
+    ]
+
+
+def test_a_passing_page_whose_thread_starts_one_later_fails_the_run(tmp_path, bases):
+    first = _write(tmp_path, SPAWNS_LATER.format(daemon=True), "a.md")
+    second = _write(tmp_path, SLEEPS, "b.md")
+    with pytest.raises(
+        AssertionError, match=r"exit 87; .*; still running: a\.md: thread child-of-a"
+    ):
+        _run(tmp_path, [first, second], bases, timeout=0.5)
+
+
+def test_a_page_that_leaves_a_thread_does_not_hide_a_bad_exit(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "import atexit, os, threading, time\n"
+        "threading.Thread(target=time.sleep, args=(0.3,)).start()\n"
+        "atexit.register(os._exit, 3)\n"
+        "```\n",
+        "a.md",
+    )
+    with pytest.raises(AssertionError, match=r"stopped after its last file \(exit 3\)"):
+        _run(tmp_path, [page], bases, timeout=0.5)
+
+
+def test_a_shutdown_that_never_finishes_fails_the_run(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\nimport atexit, time\natexit.register(time.sleep, 600)\n```\n",
+        "a.md",
+    )
+    started = time.monotonic()
+    with pytest.raises(
+        AssertionError,
+        match=(
+            r"\(exit 87; its shutdown was still running at 1\.0 seconds "
+            r"and the runner ended it\)"
+        ),
+    ):
+        _run(tmp_path, [page], bases, timeout=0.5)
+    assert time.monotonic() - started < 10
