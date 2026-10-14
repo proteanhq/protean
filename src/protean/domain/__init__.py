@@ -884,9 +884,11 @@ class Domain:
         logger.debug(f"Loading domain from {root_dir}...")
 
         # Identify subdirectories
+        # Sorted so modules load, and enrichers register, in the same order
+        # on every filesystem. `os.listdir` returns entries in arbitrary order.
         subdirectories = [
             name
-            for name in os.listdir(root_dir)
+            for name in sorted(os.listdir(root_dir))
             if os.path.isdir(os.path.join(root_dir, name))
             and name not in ["__pycache__"]
         ]
@@ -907,7 +909,7 @@ class Domain:
 
         # Traverse directories one by one
         for directory in directories_to_traverse:
-            for filename in os.listdir(directory):
+            for filename in sorted(os.listdir(directory)):
                 package_path = directory[len(str(system_folder_path)) + 1 :]
                 module_name = package_path.replace(os.sep, ".")
                 full_file_path = os.path.join(directory, filename)

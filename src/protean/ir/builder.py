@@ -46,7 +46,7 @@ from protean.ir.constants import (
     is_persistence_call,
 )
 from protean.ir.diagnostics import Diagnostic, DiagnosticCode, build_diagnostic
-from protean.utils import _DEPRECATED_PLUMBING, fqn
+from protean.utils import _DEPRECATED_PLUMBING, _callable_qualname, fqn
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
 from protean.utils.upcasting import (
@@ -362,6 +362,11 @@ class IRBuilder:
         if upcasters:
             ir["upcasters"] = upcasters
 
+        # Sparse for the same reason: enricher-free domains keep their IR.
+        enrichers = self._build_enrichers()
+        if enrichers:
+            ir["enrichers"] = enrichers
+
         # Materialize raise/invoke edges as a post-pass over the assembled
         # clusters, flows and projections (the per-element extractors do not
         # hold a cluster's whole element set, which ``invokes`` needs).
@@ -538,9 +543,9 @@ class IRBuilder:
         if field.min_length is not None:
             entry["min_length"] = field.min_length
         if field.min_value is not None:
-            entry["min_value"] = field.min_value
+            entry["min_value"] = self._ir_bound(field.min_value, entry["type"])
         if field.max_value is not None:
-            entry["max_value"] = field.max_value
+            entry["max_value"] = self._ir_bound(field.max_value, entry["type"])
         # Only a Decimal field's spec carries precision and scale.
         if field.precision is not None:
             entry["precision"] = field.precision
@@ -550,6 +555,10 @@ class IRBuilder:
             entry["sanitize"] = True
         if field.increment:
             entry["increment"] = True
+        if field.auto_now:
+            entry["auto_now"] = True
+        if field.auto_now_add:
+            entry["auto_now_add"] = True
         if getattr(field, "description", None):
             entry["description"] = field.description
 
@@ -600,6 +609,37 @@ class IRBuilder:
                 entry["default"] = self._serialize_default(field, field.default)
 
         return entry
+
+    @staticmethod
+    def _ir_bound(value: Any, ir_type: str) -> Any:
+        """Return a JSON-encodable form of a ``min_value`` / ``max_value`` bound.
+
+        JSON cannot encode a ``decimal.Decimal``. On a Decimal field such a
+        bound becomes ``str(value)``, which is lossless and keeps trailing
+        zeros. On any other field it becomes a number, because the JSON Schema
+        generator writes those bounds as ``minimum`` / ``maximum``: an ``int``
+        when it is integral on an Integer field, and a ``float`` otherwise, so
+        a fractional bound on an Integer field is not rounded to an integer.
+        A numeric string bound on an Integer or Float field is converted the
+        same way. Every other bound comes back as is.
+        """
+        if isinstance(value, str) and ir_type in ("Integer", "Float"):
+            try:
+                value = decimal.Decimal(value)
+            except decimal.InvalidOperation:
+                # Not a number, so the schema reports it rather than the builder.
+                return value
+        if not isinstance(value, decimal.Decimal):
+            return value
+        if ir_type == "Decimal":
+            return str(value)
+        if (
+            ir_type == "Integer"
+            and value.is_finite()
+            and value == value.to_integral_value()
+        ):
+            return int(value)
+        return float(value)
 
     @staticmethod
     def _serialize_default(field: Any, default: Any) -> Any:
@@ -1924,6 +1964,24 @@ class IRBuilder:
         return {
             name: sorted(edges, key=lambda e: (e["from_version"], e["to_version"]))
             for name, edges in sorted(edges_by_event.items())
+        }
+
+    def _build_enrichers(self) -> dict[str, list[str]]:
+        """List the registered enrichers by qualified name, per kind.
+
+        Each list keeps registration order, because enrichers run in that
+        order and a later one can overwrite what an earlier one set. A kind
+        with no enrichers is left out.
+        """
+        registered = {
+            "aggregate": self._domain._aggregate_enrichers,
+            "command": self._domain._command_enrichers,
+            "event": self._domain._event_enrichers,
+        }
+        return {
+            kind: [_callable_qualname(fn) for fn in enrichers]
+            for kind, enrichers in registered.items()
+            if enrichers
         }
 
     # ------------------------------------------------------------------

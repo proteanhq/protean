@@ -1,10 +1,12 @@
 import datetime
 import logging
 from abc import ABCMeta, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, ClassVar, get_args
 
 from protean._deprecation import deprecated_from_registry
+from protean.core.aggregate import BaseAggregate, _pre_persist_change
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
 from protean.core.queryset import QuerySet, ResultSet
@@ -14,13 +16,14 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.port.provider import BaseProvider
-from protean.utils import DomainObjects
+from protean.utils import DomainObjects, _callable_qualname
 from protean.utils.globals import _domain_now, current_domain, current_uow
 from protean.utils.query import Q
 from protean.utils.reflection import declared_fields, fields, id_field, unique_fields
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.fields.base import Field
 
 logger = logging.getLogger(__name__)
 
@@ -30,23 +33,30 @@ logger = logging.getLogger(__name__)
 _DELETE_IN_CHUNK_SIZE = 900
 
 
-def _stamp_lifecycle_timestamps(entity_obj: Any, *, is_create: bool) -> None:
-    """Stamp ``auto_now`` / ``auto_now_add`` DateTime/Date fields on save.
+def _lifecycle_timestamp_fields(
+    entity_obj: Any, *, is_create: bool
+) -> "dict[str, Field]":
+    """Return the ``auto_now`` / ``auto_now_add`` fields this save stamps.
 
-    Django-parity semantics: ``auto_now`` fields are set to the current time on
-    every save; ``auto_now_add`` fields only on the initial (create) save. A
-    single ``now``, read from the domain's injectable clock (so frozen-clock
+    Django-parity semantics: ``auto_now`` fields are stamped on every save;
+    ``auto_now_add`` fields only on the initial (create) save.
+    """
+    return {
+        name: field_obj
+        for name, field_obj in fields(entity_obj).items()
+        if getattr(field_obj, "auto_now", False)
+        or (is_create and getattr(field_obj, "auto_now_add", False))
+    }
+
+
+def _stamp_lifecycle_timestamps(entity_obj: Any, to_stamp: "dict[str, Field]") -> None:
+    """Set each DateTime/Date field in ``to_stamp`` to the current time.
+
+    A single ``now``, read from the domain's injectable clock (so frozen-clock
     tests apply), is shared across all stamped fields on this entity.
     """
-    now: datetime.datetime | None = None
-    for name, field_obj in fields(entity_obj).items():
-        if not (
-            getattr(field_obj, "auto_now", False)
-            or (is_create and getattr(field_obj, "auto_now_add", False))
-        ):
-            continue
-        if now is None:
-            now = _domain_now()
+    now = _domain_now()
+    for name, field_obj in to_stamp.items():
         # ``_python_type`` may be Optional-wrapped (auto_now fields are not
         # required); unwrap to the underlying date/datetime to pick the value.
         base_type: Any = getattr(field_obj, "_python_type", None)
@@ -57,6 +67,36 @@ def _stamp_lifecycle_timestamps(entity_obj: Any, *, is_create: bool) -> None:
             now.date() if base_type is datetime.date else now
         )
         setattr(entity_obj, name, value)
+
+
+@contextmanager
+def _pre_persist_hook(
+    entity_obj: Any, location: str, *, writes_only_to_self: bool = False
+) -> Iterator[None]:
+    """Run one pre-persist hook's writes on ``entity_obj``.
+
+    When the object belongs to an aggregate, the writes run in a
+    ``_pre_persist_change`` block on the aggregate root. A projection, or an
+    entity saved on its own, has no aggregate to check, so its writes run as
+    they are. Inside a caller's own ``atomic_change`` block the aggregate may
+    be mid-change, so the block only undoes a raising hook's writes and leaves
+    the checks to the caller's block. That block checks the final state on its
+    exit and undoes the in-memory changes if it fails, but a save made inside
+    it has already written its row.
+    """
+    root = getattr(entity_obj, "_root", None) or entity_obj
+    if not isinstance(root, BaseAggregate):
+        yield
+        return
+
+    writes_only = entity_obj if writes_only_to_self else None
+    with _pre_persist_change(
+        root,
+        location,
+        writes_only=writes_only,
+        defer_checks=root._disable_invariant_checks,
+    ):
+        yield
 
 
 class BaseDAO(metaclass=ABCMeta):
@@ -760,20 +800,40 @@ class BaseDAO(metaclass=ABCMeta):
     def _apply_pre_persist_hooks(self, entity_obj: Any) -> None:
         """Stamp ``auto_now``/``auto_now_add`` fields, then run aggregate enrichers.
 
+        The ``@invariant.pre`` checks do not run on these writes. On an
+        aggregate, the post-invariants run once after the stamping and once
+        after each enricher, unless the save runs inside an open
+        ``atomic_change`` block (see ``_pre_persist_hook``). When a check
+        fails, or a hook raises, that hook's writes are undone and the save
+        aborts. A ``ValidationError`` carries a ``location`` that names the
+        hook; any other exception propagates as it was raised.
+
         ``save`` calls this unless ``apply_hooks=False``. A caller that must run
         the hooks earlier than the write (so a raising enricher fails before any
         other store is touched) calls it directly and then saves with
         ``apply_hooks=False``.
         """
         is_create = not entity_obj.state_.is_persisted
-        _stamp_lifecycle_timestamps(entity_obj, is_create=is_create)
+        stamped = _lifecycle_timestamp_fields(entity_obj, is_create=is_create)
+        if stamped:
+            location = (
+                f"auto_now stamping of {', '.join(stamped)} "
+                f"on {type(entity_obj).__qualname__}"
+            )
+            with _pre_persist_hook(entity_obj, location, writes_only_to_self=True):
+                _stamp_lifecycle_timestamps(entity_obj, stamped)
         if (
             entity_obj.element_type == DomainObjects.AGGREGATE
             and current_domain
             and current_domain._aggregate_enrichers
         ):
             for enricher in current_domain._aggregate_enrichers:
-                enricher(entity_obj)
+                location = (
+                    f"aggregate enricher {_callable_qualname(enricher)} "
+                    f"on {type(entity_obj).__qualname__}"
+                )
+                with _pre_persist_hook(entity_obj, location):
+                    enricher(entity_obj)
 
     def save(self, entity_obj: Any, *, apply_hooks: bool = True) -> Any:
         """Create or update an entity in the data store, depending on its state. An identity for entity record is
@@ -865,7 +925,11 @@ class BaseDAO(metaclass=ABCMeta):
             # with the persistence store after a failed save.
             if expected_version is not None:
                 entity_obj._version = expected_version
-            logger.error(f"Failed saving entity because {exc}")
+            location = getattr(exc, "location", None)
+            logger.error(
+                f"Failed saving entity because {exc}"
+                + (f" (at {location})" if location else "")
+            )
             raise
 
     @deprecated_from_registry("dao_update")

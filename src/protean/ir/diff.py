@@ -37,8 +37,10 @@ def diff_ir(
     """Compare two IR dicts and return a structured diff.
 
     The result contains per-section diffs (clusters, projections, flows,
-    contracts, diagnostics, domain) plus a summary with counts and
-    breaking-change flags.
+    contracts, diagnostics, domain, enrichers) plus a summary with counts and
+    breaking-change flags. An enricher kind whose list changed, including a
+    change of order, appears under ``enrichers["changed"]`` with its left and
+    right lists.
 
     Compares only the content sections below; the derived/volatile keys in
     :data:`protean.ir.constants.VOLATILE_IR_KEYS` (``$schema``, ``ir_version``,
@@ -80,6 +82,10 @@ def diff_ir(
     result["domain"] = _diff_domain(
         left.get("domain", {}),
         right.get("domain", {}),
+    )
+    result["enrichers"] = _diff_flat_dict(
+        left.get("enrichers", {}),
+        right.get("enrichers", {}),
     )
     result["summary"] = _build_summary(result, left, right)
 
@@ -821,6 +827,7 @@ def _build_summary(
         or bool(result.get("contracts", {}).get("removed"))
         or bool(result.get("diagnostics", {}))
         or bool(result.get("domain", {}).get("changed"))
+        or bool(result.get("enrichers", {}).get("changed"))
     )
 
     return {

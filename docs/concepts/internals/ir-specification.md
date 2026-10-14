@@ -145,6 +145,7 @@ clear it.
 | `contracts` | Published language: events available to other BCs | Derived from `published` annotations |
 | `elements` | Flat index by element type for O(1) lookup | Derived from all sections |
 | `diagnostics` | Builder warnings and errors | Informational, IR is valid regardless |
+| `enrichers` | Registered aggregate, command and event enrichers | `Domain.register_*_enricher()` |
 
 ### Top-Level Metadata
 
@@ -155,6 +156,7 @@ clear it.
 | `generated_at` | string | yes | ISO 8601 UTC timestamp |
 | `checksum` | string | yes | `sha256:` prefixed hex digest |
 | `contracts` | object | no | Omitted when no published events |
+| `enrichers` | object | no | Omitted when the domain registers no enrichers |
 | `diagnostics` | list | yes | May be empty `[]` |
 
 ### Checksum Algorithm
@@ -429,11 +431,13 @@ All possible keys (no single field has all of them):
 | `default` | Default value (see serialization rules below) |
 | `description` | Human-readable description |
 | `max_length`, `min_length` | String length constraints |
-| `max_value`, `min_value` | Numeric bounds |
+| `max_value`, `min_value` | Value bounds. A `decimal.Decimal` bound on a field whose `type` is `Decimal` (a `Decimal` field, or a `Custom` field over `decimal.Decimal`) is written as a decimal string (`"0.01"`). An `Integer` field writes an integral `decimal.Decimal` or numeric-string bound as an integer. Any other `decimal.Decimal` bound, and a numeric-string bound on a `Float` field, is written as a float. An `int` or `float` bound stays a number |
 | `precision`, `scale` | Total digits and digits after the decimal point, on a `Decimal` field that sets them (added in v0.3.0) |
 | `choices` | Sorted list of allowed values |
 | `sanitize` | Present only for an explicit `sanitize=True` (declared intent); absent for an unset field, even one sanitized via a domain default |
 | `increment` | Auto-increment flag |
+| `auto_now` | `true` on a `Date` or `DateTime` field that is set to the current time on every save (added in v0.3.0) |
+| `auto_now_add` | `true` on a `Date` or `DateTime` field that is set to the current time on the save that creates the record (added in v0.3.0) |
 | `content_type` | Element type of a container (`List`, `ValueObjectList`) |
 | `auto_generated` | `true` for framework-injected fields |
 | `target` | FQN of the associated element (associations) |
@@ -627,6 +631,40 @@ The `contracts` section summarizes the bounded context's published events:
 
 ---
 
+## Enrichers
+
+The `enrichers` section lists the enrichers registered on the domain, by kind.
+An enricher is a function the framework calls on every message or save: an
+aggregate enricher sets fields on an aggregate just before it is persisted, and
+a command or event enricher adds keys to a message's metadata. Each entry is the
+enricher's qualified name (`module.qualname`). A `functools.partial` is
+recorded as `functools.partial(module.qualname)` of the function it wraps, and
+any other callable object without its own `__qualname__` is named by its class.
+
+```json
+{
+  "enrichers": {
+    "aggregate": ["ecommerce.audit.stamp_actor"],
+    "command": ["ecommerce.audit.add_request_id"]
+  }
+}
+```
+
+- Each list keeps registration order, because enrichers run in that order and
+  a later one can overwrite what an earlier one set
+- A kind with no enrichers is left out, and the section is omitted when the
+  domain registers none (added in v0.3.0)
+- `protean ir diff` reports a kind whose list changed, including a change of
+  order, with the old and new lists. Two lambdas in one module, or two
+  instances of one class, get the same name, so a swap between them is not
+  reported
+- Domain traversal loads the root directory's files first, then each
+  subdirectory in name order, with the files in each directory sorted by name.
+  So enrichers registered by traversed modules land in the same order on every
+  machine
+
+---
+
 ## Elements Index
 
 A flat lookup table mapping element types to sorted FQN lists:
@@ -678,7 +716,9 @@ attributes.
 ### List Ordering
 
 All lists are sorted: FQNs alphabetically, `choices` alphabetically, handler
-method names alphabetically, contracts by `__type__`.
+method names alphabetically, contracts by `__type__`. The one exception is the
+`enrichers` lists, which keep registration order because the order changes
+what a save or a message ends up with.
 
 ### Value Normalization
 
