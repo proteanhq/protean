@@ -1062,3 +1062,20 @@ def test_asset_check_matches_check_without_traversal(asset):
     assert reported["data"]["errors"] == expected["errors"]
     assert reported["diagnostics"] == expected["diagnostics"]
     assert reported["data"]["errors"] or reported["diagnostics"]
+
+
+@pytest.mark.no_test_domain
+@pytest.mark.parametrize(
+    "asset",
+    sorted(
+        str(path.relative_to(_SKILLS_ROOT))
+        for path in _SKILLS_ROOT.glob("*/assets/*.py")
+    ),
+)
+def test_check_on_every_asset_exits_without_a_traceback(asset):
+    result = _check_in_child(
+        "-m", "protean", "check", "-d", str(_SKILLS_ROOT / asset), "-f", "json"
+    )
+
+    assert "Traceback" not in result.stderr + result.stdout
+    assert result.returncode in (0, 1, 2)
