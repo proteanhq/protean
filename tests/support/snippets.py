@@ -45,8 +45,9 @@ step keeps that failure. After the last file, the child's wait for its
 non-daemon threads and its ``atexit`` handlers get twice the timeout, and a
 child still waiting then is ended. A child that exits with a non-zero code, or
 is killed, after reporting every file fails the run. The one exception is a
-child the shutdown limit ended after a file of that child left a thread running
-past its cleanup step, since that file has already failed. It does not apply
+child the shutdown limit ended while a thread that a file of that child left
+running past its cleanup step was still running, since that file has already
+failed. It does not apply
 when a thread is still running at the end whose file passed its cleanup step.
 
 :func:`include_expander` builds a source transform that replaces
@@ -312,6 +313,9 @@ def parse_problems(
 _STUCK_EXIT = 86
 # A child exits with this code when its shutdown runs past the hard limit.
 _SHUTDOWN_EXIT = 87
+# A child exits with this code instead when, at that limit, a thread that a
+# file left running past its cleanup step is still running.
+_HELD_EXIT = 88
 
 # The child-interpreter runner. argv[1] is a JSON file holding the files and
 # their blocks, the per-file timeout, the hard limit, and the report path. For
@@ -537,6 +541,18 @@ def live_threads(label):
 
 
 reported = set()
+
+
+def end_shutdown():
+    # A reported thread that finished before the shutdown hung did not hold it
+    # up, so only a reported thread still running here earns the held code.
+    held = any(
+        getattr(thread, "_snippet_file", None) in reported and not thread.daemon
+        for thread in enumerate_threads()
+    )
+    os._exit(job["held_exit"] if held else job["shutdown_exit"])
+
+
 try:
     for index, item in enumerate(job["files"], start=job["first_index"]):
         label = item["file"]
@@ -658,9 +674,7 @@ finally:
     # timer ends a thread join or an atexit handler that never finishes. It
     # starts here even when the loop above raised, because a thread a page
     # left running would otherwise hold the child until the outer timeout.
-    shutdown_watchdog = threading.Timer(
-        job["hard_timeout"], os._exit, args=(job["shutdown_exit"],)
-    )
+    shutdown_watchdog = threading.Timer(job["hard_timeout"], end_shutdown)
     shutdown_watchdog.daemon = True
     shutdown_watchdog.start()
 """
@@ -733,9 +747,9 @@ def run_snippets(
     Raises :class:`AssertionError` when a child stops outside a file. Also
     raises it when the last child exits with a non-zero code, or is killed,
     after reporting every file. The one exception is a child the shutdown
-    watchdog ended after a file of that child left a thread running past its
-    cleanup step, and with no thread still running whose file passed that
-    step.
+    watchdog ended while a thread that a file of that child left running past
+    its cleanup step was still running, and with no thread still running whose
+    file passed that step.
     """
     work = tmp_path / "snippet-run"
     work.mkdir()
@@ -753,6 +767,7 @@ def run_snippets(
             "hard_timeout": hard_timeout,
             "stuck_exit": _STUCK_EXIT,
             "shutdown_exit": _SHUTDOWN_EXIT,
+            "held_exit": _HELD_EXIT,
             "report": str(report_path),
             "first_index": len(results),
             "files": pending,
@@ -783,7 +798,7 @@ def run_snippets(
         done, step, lingering, late = _read_report(report_path)
         results.extend(done)
         if len(results) == len(entries):
-            if returncode == _SHUTDOWN_EXIT:
+            if returncode in (_SHUTDOWN_EXIT, _HELD_EXIT):
                 stopped += (
                     f"; its shutdown was still running at {hard_timeout} "
                     "seconds and the runner ended it"
@@ -792,7 +807,7 @@ def run_snippets(
                 stopped += "; still running: " + "; ".join(late)
             # A thread a failed page left running holds up the shutdown until
             # the shutdown watchdog ends it. That failure already covers it.
-            expected = lingering and not late and returncode == _SHUTDOWN_EXIT
+            expected = lingering and not late and returncode == _HELD_EXIT
             assert clean or expected, (
                 f"the snippet runner stopped after its last file ({stopped}):\n"
                 f"{stderr[-4000:]}"

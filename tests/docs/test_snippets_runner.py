@@ -931,6 +931,22 @@ def test_a_page_that_leaves_a_thread_does_not_hide_a_bad_exit(tmp_path, bases):
         _run(tmp_path, [page], bases, timeout=0.5)
 
 
+def test_a_finished_page_thread_does_not_hide_a_hung_shutdown(tmp_path, bases):
+    # The thread is still running at cleanup but finishes before the shutdown,
+    # so the atexit handler, not the thread, is what the watchdog ends.
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "import atexit, threading, time\n"
+        "threading.Thread(target=time.sleep, args=(0.3,)).start()\n"
+        "atexit.register(time.sleep, 600)\n"
+        "```\n",
+        "a.md",
+    )
+    with pytest.raises(AssertionError, match=r"\(exit 87; its shutdown was still"):
+        _run(tmp_path, [page], bases, timeout=0.5)
+
+
 def test_a_shutdown_that_never_finishes_fails_the_run(tmp_path, bases):
     page = _write(
         tmp_path,
