@@ -1,34 +1,7 @@
-# --8<-- [start:domain]
-from protean import Domain
-from protean.exceptions import ValidationError
-from protean.fields import Float, String
-
-domain = Domain(name="Accounts")
-
-
-@domain.aggregate
-class User:
-    name: String(max_length=100, required=True)
-    email: String(max_length=254)
-    status: String(max_length=20, default="INACTIVE")
-
-    def activate(self):
-        if not self.email:
-            raise ValidationError({"email": ["email required for activation"]})
-        self.status = "ACTIVE"
-
-
-@domain.aggregate
-class Order:
-    customer_name: String(max_length=100, required=True)
-    total_amount: Float(default=0.0)
-
-
-# --8<-- [end:domain]
-
-
 # --8<-- [start:conftest]
+# tests/conftest.py
 import pytest
+from myapp import domain
 
 # --8<-- [start:import]
 from protean.integrations.pytest import DomainFixture
@@ -57,6 +30,9 @@ def _ctx(app_fixture):
 
 
 # --8<-- [start:repository_fixtures]
+from myapp.models import Order, User
+
+
 @pytest.fixture
 def user_repo():
     return domain.repository_for(User)

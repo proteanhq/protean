@@ -27,6 +27,7 @@ within tests. In your project these fixtures go in `tests/conftest.py`, and
 `domain` is your application's domain (`from myapp import domain`):
 
 ```python
+# fragment
 --8<-- "guides/testing/domain-model-tests/001.py:conftest"
 ```
 
@@ -35,6 +36,7 @@ The tests on this page exercise this domain:
 ??? example "The domain under test"
 
     ```python
+    # fragment
     --8<-- "guides/testing/domain-model-tests/001.py:domain"
     ```
 
@@ -58,6 +60,7 @@ Test that aggregate methods correctly mutate state. These are methods **you**
 wrote, your business logic:
 
 ```python
+# fragment
 --8<-- "guides/testing/domain-model-tests/001.py:state_transition"
 ```
 
@@ -66,6 +69,7 @@ wrote, your business logic:
 Verify that your aggregate methods raise the expected domain events:
 
 ```python
+# fragment
 --8<-- "guides/testing/domain-model-tests/001.py:event_raising"
 ```
 
@@ -76,6 +80,7 @@ logic in entity methods, especially when they affect the parent aggregate's
 state:
 
 ```python
+# fragment
 --8<-- "guides/testing/domain-model-tests/001.py:entity"
 ```
 
@@ -86,6 +91,7 @@ do not need to test these properties. Instead, test any **custom logic** you
 define on your value objects:
 
 ```python
+# fragment
 --8<-- "guides/testing/domain-model-tests/001.py:value_object"
 ```
 
@@ -99,6 +105,7 @@ is correct** and catches the violations you intend.
 ### Testing That Invalid State Is Rejected
 
 ```python
+# fragment
 --8<-- "guides/testing/domain-model-tests/001.py:invalid_state"
 ```
 
@@ -108,6 +115,7 @@ Don't just test the negative case, verify that correctly constructed aggregates
 pass your invariant:
 
 ```python
+# fragment
 --8<-- "guides/testing/domain-model-tests/001.py:valid_state"
 ```
 
@@ -118,6 +126,7 @@ guard conditions, test that your guard logic correctly rejects invalid
 operations:
 
 ```python
+# fragment
 --8<-- "guides/testing/domain-model-tests/001.py:pre_invariant"
 ```
 
@@ -127,6 +136,7 @@ Domain services hold business rules that span multiple aggregates. Test them
 by passing in the aggregates and checking the outcome.
 
 ```python
+# fragment
 --8<-- "guides/testing/domain-model-tests/001.py:domain_service"
 ```
 
@@ -140,6 +150,7 @@ Domain services can also have pre-invariants. Test that they reject invalid
 input:
 
 ```python
+# fragment
 --8<-- "guides/testing/domain-model-tests/001.py:domain_service_invariant"
 ```
 

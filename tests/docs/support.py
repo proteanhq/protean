@@ -75,15 +75,19 @@ def run_example_tests(
     ``path`` is relative to ``root``, as in :func:`load_example`. The child runs
     ``python -m pytest <file>`` from a fresh temporary folder, so files the
     tests write (a SQLite database, say) land there and not in the repo.
-    ``root`` goes first on ``PYTHONPATH``, followed by the repo root and the
-    parent's ``PYTHONPATH``. ``env`` adds environment variables, and ``args``
-    adds pytest options after the file.
+    ``root`` and the parent folder of every package under it go on
+    ``PYTHONPATH``, as in ``test_docs_src_runs.py``, so an example imports a
+    ``docs_src`` package such as ``myapp`` by its folder name. The parent's
+    ``PYTHONPATH`` follows them. ``env`` adds environment variables, and
+    ``args`` adds pytest options after the file.
 
-    The child finds the repo's ``pyproject.toml`` as its ini file, so its
-    ``addopts``, markers and asyncio mode apply. Protean's pytest plugin loads
-    through its ``pytest11`` entry point. The cache plugin is off, so no
-    ``.pytest_cache`` folder is written next to the example, and no
-    ``__pycache__`` either.
+    The child gets an empty config file from the temporary folder with ``-c``,
+    so the repo's ``[tool.pytest.ini_options]`` (``--doctest-modules``,
+    ``testpaths``, the warning filters) does not apply: a reader's project would
+    not have it. pytest still loads every ``conftest.py`` in the example's
+    folder and the folders above it. Protean's pytest plugin loads through its
+    ``pytest11`` entry point. The cache plugin is off, so no ``.pytest_cache``
+    folder is written next to the example, and no ``__pycache__`` either.
 
     Returns the finished process with its output. The caller checks
     ``returncode``; pytest exits with 5 when it collects no tests.
@@ -94,7 +98,10 @@ def run_example_tests(
     if not filepath.is_file():
         raise FileNotFoundError(f"no docs_src example at {path}")
 
-    pythonpath = [str(root), str(REPO_ROOT)]
+    package_parents = sorted(
+        {str(folder.parent) for folder in package_dirs(root).values()}
+    )
+    pythonpath = [str(root), *package_parents]
     if os.environ.get("PYTHONPATH"):
         pythonpath.append(os.environ["PYTHONPATH"])
     child_env = {
@@ -104,11 +111,15 @@ def run_example_tests(
         **(env or {}),
     }
     with tempfile.TemporaryDirectory() as workdir:
+        config = Path(workdir) / "pytest.ini"
+        config.write_text("[pytest]\n", encoding="utf-8")
         return subprocess.run(
             [
                 sys.executable,
                 "-m",
                 "pytest",
+                "-c",
+                str(config),
                 "-p",
                 "no:cacheprovider",
                 str(filepath),

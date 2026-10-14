@@ -41,6 +41,7 @@ a fresh, initialized domain. It activates only when your root `conftest.py`
 opts in explicitly:
 
 ```python
+# fragment
 --8<-- "reference/testing/pytest-plugin/001.py:opt_in"
 ```
 
@@ -49,6 +50,7 @@ should add `@pytest.mark.no_test_domain`. The fixture then yields `None`
 for that test instead of building a domain:
 
 ```python
+# fragment
 --8<-- "reference/testing/pytest-plugin/001.py:tests"
 ```
 

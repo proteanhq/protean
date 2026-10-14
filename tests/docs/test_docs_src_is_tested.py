@@ -8,6 +8,10 @@ source for these calls and imports, without running it:
 - a ``load_example("<path>")`` or ``run_example_tests("<path>")`` call in any
   file under ``tests/docs/`` loads the example at that path (relative to
   ``docs_src``);
+- a ``run_example_tests("<path>")`` call also loads every ``conftest.py`` in
+  the example's folder and the folders above it, because pytest loads them,
+  and the ``docs_src`` package modules that the example and those conftests
+  import;
 - a ``_load_chapter(<n>)`` call in a tutorial test loads ``ch<nn>.py`` from that
   tutorial's folder;
 - an import of a ``docs_src`` package in any of those files loads the modules
@@ -72,13 +76,35 @@ def _string_arg(node: ast.Call, keyword: str) -> str | None:
     return None
 
 
+def _pytest_run_files(path: str, root: Path, packages: dict[str, Path]) -> set[str]:
+    """Return the files a pytest run of ``path`` loads, relative to ``root``."""
+    example = root / path
+    files = [example]
+    folder = example.parent
+    while folder.is_relative_to(root):
+        conftest = folder / "conftest.py"
+        if conftest.is_file():
+            files.append(conftest)
+        if folder == root:
+            break
+        folder = folder.parent
+
+    loaded = {file.relative_to(root).as_posix() for file in files}
+    for file in files:
+        if file.is_file():
+            tree = ast.parse(file.read_text(encoding="utf-8"))
+            loaded |= imported_package_files(tree, root, packages)
+    return loaded
+
+
 def loaded_examples(
     test_files: list[Path], chapter_loaders: dict[Path, str], root: Path
 ) -> set[str]:
     """Return the ``root``-relative paths the given test files load.
 
     ``test_files`` are read for ``load_example`` and ``run_example_tests``
-    calls; ``chapter_loaders`` maps more test files to the folder their
+    calls, and a ``run_example_tests`` call also loads the conftests and
+    package modules pytest would load with it; ``chapter_loaders`` maps more test files to the folder their
     ``_load_chapter`` calls read. Both kinds are read for imports of a package
     under ``root``, which load the package modules they name. A call that
     passes its own ``root=`` loads from somewhere else, so it does not count.
@@ -95,7 +121,9 @@ def loaded_examples(
                     kw.arg == "root" for kw in node.keywords
                 ):
                     path = _string_arg(node, "path")
-                    if path is not None:
+                    if path is not None and name == "run_example_tests":
+                        loaded |= _pytest_run_files(path, root, packages)
+                    elif path is not None:
                         loaded.add(path)
                 elif (
                     name == "_load_chapter"
@@ -256,6 +284,31 @@ class TestCoverageGuard:
         _write(tests / "test_a.py", 'run_example_tests("guides/b.py")\n')
 
         assert loaded_examples([tests / "test_a.py"], {}, root) == {"guides/b.py"}
+
+    def test_a_run_example_tests_call_loads_conftests_above_and_their_imports(
+        self, layout
+    ):
+        root, tests = layout
+        _write(root / "conftest.py", "x = 1\n")
+        _write(root / "guides/deep/conftest.py", "from shop import models\n")
+        _write(root / "guides/deep/test_x.py", "import shop\n")
+        _write(root / "guides/other/conftest.py", "x = 1\n")
+        _write(tests / "test_a.py", 'run_example_tests("guides/deep/test_x.py")\n')
+
+        assert loaded_examples([tests / "test_a.py"], {}, root) == {
+            "conftest.py",
+            "guides/deep/conftest.py",
+            "guides/deep/test_x.py",
+            "tut/shop/__init__.py",
+            "tut/shop/models.py",
+        }
+
+    def test_a_load_example_call_does_not_load_conftests(self, layout):
+        root, tests = layout
+        _write(root / "guides/conftest.py", "x = 1\n")
+        _write(tests / "test_a.py", 'load_example("guides/a.py")\n')
+
+        assert loaded_examples([tests / "test_a.py"], {}, root) == {"guides/a.py"}
 
     def test_a_run_example_tests_call_with_its_own_root_does_not_count(self, layout):
         root, tests = layout

@@ -1,7 +1,7 @@
 """The examples on ``docs/guides/testing/fixtures-and-patterns.md`` pass under pytest.
 
-The BDD step examples on the page are not covered here: they need pytest-bdd,
-which the test environment does not install.
+The page's BDD steps come from the application-tests folder, and
+``test_application_tests.py`` runs them.
 """
 
 import pytest

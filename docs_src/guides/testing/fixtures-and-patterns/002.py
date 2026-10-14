@@ -1,18 +1,8 @@
-from protean import Domain
-from protean.fields import String
-
-domain = Domain(name="Accounts")
-
-
-@domain.aggregate
-class User:
-    name: String(max_length=100, required=True)
-
-
 # --8<-- [start:conftest]
 import os
 
 import pytest
+from myapp import domain
 
 from protean.integrations.pytest import DomainFixture
 
@@ -49,6 +39,9 @@ def _ctx(app_fixture):
 
 
 # --8<-- [end:conftest]
+
+
+from myapp.models import User
 
 
 def test_the_provider_follows_test_db():

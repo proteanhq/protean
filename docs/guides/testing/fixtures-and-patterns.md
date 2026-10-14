@@ -26,6 +26,7 @@ and data cleanup across **all** adapters (providers, brokers, and event store).
 Import it from `protean.integrations.pytest`:
 
 ```python
+# fragment
 --8<-- "guides/testing/fixtures-and-patterns/001.py:import"
 ```
 
@@ -50,15 +51,17 @@ looks like this. Here `domain` is your application's domain
 (`from myapp import domain`):
 
 ```python
+# fragment
 --8<-- "guides/testing/fixtures-and-patterns/001.py:conftest"
 ```
 
-The examples in this section use this domain:
+The examples in this section use the `User` aggregate from that domain:
 
-??? example "The domain under test"
+??? example "The `User` aggregate under test"
 
     ```python
-    --8<-- "guides/testing/fixtures-and-patterns/001.py:domain"
+    # fragment
+    --8<-- "guides/testing/myapp/models.py:user"
     ```
 
 The session-scoped `app_fixture` initializes the domain **once** for the
@@ -87,6 +90,7 @@ For projects that test against both in-memory and real infrastructure,
 `tests/conftest.py` picks the database from an environment variable:
 
 ```python
+# fragment
 --8<-- "guides/testing/fixtures-and-patterns/002.py:conftest"
 ```
 
@@ -119,6 +123,7 @@ brokers, and the event store after each test. If you use the recommended
 If you are not using `DomainFixture` and need manual cleanup:
 
 ```python
+# fragment
 --8<-- "guides/testing/fixtures-and-patterns/003.py:manual_cleanup"
 ```
 
@@ -127,12 +132,14 @@ If you are not using `DomainFixture` and need manual cleanup:
 Provide quick access to repositories for assertions:
 
 ```python
+# fragment
 --8<-- "guides/testing/fixtures-and-patterns/001.py:repository_fixtures"
 ```
 
 Use them in tests:
 
 ```python
+# fragment
 --8<-- "guides/testing/fixtures-and-patterns/001.py:repository_usage"
 ```
 
@@ -142,14 +149,8 @@ Steps that appear across multiple feature files belong in `conftest.py`.
 pytest-bdd discovers step definitions defined there automatically.
 
 ```python
-# tests/bdd/conftest.py
-from pytest_bdd import given
-
-
-@given("the domain is initialized")
-def domain_initialized():
-    """Background step — domain is already initialized by the fixture."""
-    pass
+# fragment
+--8<-- "guides/testing/application-tests/bdd/conftest.py:shared_steps"
 ```
 
 The domain is already initialized by the root `conftest.py` via
@@ -158,35 +159,8 @@ The domain is already initialized by the root `conftest.py` via
 Domain-specific shared steps go in that directory's `conftest.py`:
 
 ```python
-# tests/bdd/ordering/conftest.py
-from pytest_bdd import given, parsers
-
-from myapp import domain
-from myapp.models import Book, Customer, Inventory, Money
-
-
-@given(
-    parsers.parse('a customer "{name}"'),
-    target_fixture="customer",
-)
-def existing_customer(name):
-    customer = Customer(name=name)
-    domain.repository_for(Customer).add(customer)
-    return customer
-
-
-@given(
-    parsers.parse('a book "{title}" with {stock:d} copies in stock'),
-    target_fixture="book",
-)
-def book_in_stock(title, stock):
-    book = Book(
-        title=title, author="Test Author", price=Money(amount=15.99)
-    )
-    domain.repository_for(Book).add(book)
-    inventory = Inventory(book_id=book.id, title=title, quantity=stock)
-    domain.repository_for(Inventory).add(inventory)
-    return book
+# fragment
+--8<-- "guides/testing/application-tests/bdd/ordering/conftest.py:ordering_steps"
 ```
 
 These steps are available to all test modules under
@@ -249,6 +223,7 @@ teardown, and per-test data cleanup automatically.
 If your domain uses module-level counters or caches, reset them between tests:
 
 ```python
+# fragment
 --8<-- "guides/testing/fixtures-and-patterns/001.py:global_state"
 ```
 
@@ -435,12 +410,14 @@ it sees whatever time you say. Restore it afterwards, or the frozen time leaks
 into every test that runs next:
 
 ```python
+# fragment
 --8<-- "guides/testing/fixtures-and-patterns/001.py:frozen_clock"
 ```
 
 A deadline test then states its intent directly, with nothing to race:
 
 ```python
+# fragment
 --8<-- "guides/testing/fixtures-and-patterns/001.py:deadline"
 ```
 

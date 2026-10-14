@@ -110,6 +110,7 @@ The conformance plugin is **not auto-registered**. Load it explicitly in your
 `conftest.py`:
 
 ```python
+# fragment
 --8<-- "reference/testing/conformance/001.py:opt_in"
 ```
 
@@ -269,6 +270,7 @@ The same idea applies to custom fields built with
 field runs against itself, so you can prove your field before you depend on it.
 
 ```python
+# fragment
 --8<-- "reference/testing/conformance/002.py:import"
 ```
 
@@ -289,12 +291,14 @@ custom-field contract:
 It raises `AssertionError` on any violation, so drop it straight into a test:
 
 ```python
+# fragment
 --8<-- "reference/testing/conformance/002.py:test"
 ```
 
 ??? example "The `Color` type under test"
 
     ```python
+    # fragment
     --8<-- "reference/testing/conformance/002.py:color"
     ```
 

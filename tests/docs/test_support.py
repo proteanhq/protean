@@ -78,7 +78,8 @@ def test_a_failing_example_names_the_failing_test(tmp_path):
     result = run_example_tests(path, root=tmp_path)
 
     assert result.returncode == 1
-    assert "test_example.py::test_bad" in result.stdout
+    assert " test_bad " in result.stdout
+    assert " test_good " not in result.stdout
     assert outcome_counts(result) == {"failed": 1, "passed": 1}
 
 
@@ -112,6 +113,34 @@ def test_the_example_root_is_importable_in_the_child(tmp_path):
     result = run_example_tests(path, root=tmp_path)
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_package_parent_is_importable_in_the_child(tmp_path):
+    package = tmp_path / "guides" / "shared" / "shop"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("NAME = 'shop'\n")
+    path = _example(
+        tmp_path,
+        "from shop import NAME\n\n\ndef test_name():\n    assert NAME == 'shop'\n",
+    )
+
+    result = run_example_tests(path, root=tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_repo_pytest_config_does_not_apply(tmp_path):
+    # The repo config turns on --doctest-modules, which would collect and fail
+    # this docstring. The empty config leaves only the one test.
+    path = _example(
+        tmp_path,
+        '"""\n>>> 1 + 1\n3\n"""\n\n\ndef test_one():\n    pass\n',
+    )
+
+    result = run_example_tests(path, root=tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert outcome_counts(result) == {"passed": 1}
 
 
 def test_files_the_example_writes_land_outside_the_repo(tmp_path):

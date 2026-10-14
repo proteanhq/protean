@@ -15,6 +15,7 @@ production. A fourth, `capture_queries`, yields the raw statements for custom
 assertions the three do not cover (such as INSERT ordering):
 
 ```python
+# fragment
 --8<-- "guides/testing/query-shape-tests/001.py:imports"
 ```
 
@@ -37,10 +38,12 @@ fixtures:
 ??? example "The domain and fixtures under test"
 
     ```python
+    # fragment
     --8<-- "guides/testing/query-shape-tests/001.py:domain"
     ```
 
     ```python
+    # fragment
     --8<-- "guides/testing/query-shape-tests/001.py:conftest"
     ```
 
@@ -50,6 +53,7 @@ Asserts an exact number of queries (data round trips) are issued in the block.
 Catches N+1 patterns and accidental extra round trips:
 
 ```python
+# fragment
 --8<-- "guides/testing/query-shape-tests/001.py:query_count"
 ```
 
@@ -66,6 +70,7 @@ Fails if any query wraps a count around a subquery, the
 `.limit(1).all().total` emits instead of a flat `SELECT count(*)`:
 
 ```python
+# fragment
 --8<-- "guides/testing/query-shape-tests/001.py:subquery_wrap"
 ```
 
@@ -75,6 +80,7 @@ Fails if any `LIMIT` exceeds the rows the caller actually needs. Pass the
 expected row count; the assertion allows headroom via `ratio` (default `1.5`):
 
 ```python
+# fragment
 --8<-- "guides/testing/query-shape-tests/001.py:overfetch"
 ```
 
@@ -90,6 +96,7 @@ example, an insert-ordering check that a parent row is written before its
 children:
 
 ```python
+# fragment
 --8<-- "guides/testing/query-shape-tests/001.py:capture_queries"
 ```
 
@@ -106,6 +113,7 @@ provider. For tests that manage their own domain or target a non-default
 provider, pass the engine explicitly:
 
 ```python
+# fragment
 --8<-- "guides/testing/query-shape-tests/001.py:explicit_engine"
 ```
 

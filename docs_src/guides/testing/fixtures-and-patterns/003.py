@@ -1,14 +1,6 @@
 import pytest
-
-from protean import Domain
-from protean.fields import String
-
-domain = Domain(name="Accounts")
-
-
-@domain.aggregate
-class User:
-    name: String(max_length=100, required=True)
+from myapp import domain
+from myapp.models import User
 
 
 @pytest.fixture(scope="session", autouse=True)

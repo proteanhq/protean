@@ -8,6 +8,7 @@ full command processing pipeline (command handler, aggregate method,
 repository, unit of work, and event store) in three words:
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:three_words"
 ```
 
@@ -23,6 +24,7 @@ The examples on this page test this event-sourced `Order`:
 ??? example "The domain under test"
 
     ```python
+    # fragment
     --8<-- "guides/testing/event-sourcing-tests/001.py:domain"
     ```
 
@@ -67,6 +69,7 @@ Call `.process()` multiple times to build up aggregate state through the real
 pipeline, no hand-crafted event fixtures needed:
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:chaining"
 ```
 
@@ -80,6 +83,7 @@ After chaining:
 - `.accepted` / `.rejected` reflects the **last** `.process()` call.
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:events_vs_all_events"
 ```
 
@@ -103,12 +107,14 @@ After `.process()`, the result object provides:
 Attribute access is proxied to the underlying aggregate:
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:aggregate_state"
 ```
 
 ### Accepted or Rejected
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:accepted_or_rejected"
 ```
 
@@ -133,6 +139,7 @@ New events raised by the command are available via `.events`. The `EventLog`
 class uses Python's own vocabulary:
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:event_log"
 ```
 
@@ -154,6 +161,7 @@ history events. The command handler must return the aggregate identifier so
 that the DSL can locate the aggregate in the event store:
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:create_command"
 ```
 
@@ -163,6 +171,7 @@ Seed the aggregate's history and then process a command that depends on
 that state:
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:command_with_history"
 ```
 
@@ -172,6 +181,7 @@ When a command violates a business rule, the exception is captured and the
 aggregate reflects the pre-command state:
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:rejection"
 ```
 
@@ -180,6 +190,7 @@ aggregate reflects the pre-command state:
 Use `.after()` or pass multiple events to `given()`:
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:multiple_history"
 ```
 
@@ -188,6 +199,7 @@ Use `.after()` or pass multiple events to `given()`:
 Access event fields through the `EventLog`:
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:event_attributes"
 ```
 
@@ -196,6 +208,7 @@ Access event fields through the `EventLog`:
 Use multi-command chaining to test a complete user journey:
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:lifecycle"
 ```
 
@@ -205,6 +218,7 @@ When a chained command fails, the aggregate reflects the state from
 prior successful commands:
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:rejection_mid_chain"
 ```
 
@@ -218,6 +232,7 @@ set to `"sync"`. In your project these fixtures go in `tests/conftest.py`,
 and `domain` is your application's domain (`from myapp import domain`):
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:conftest"
 ```
 
@@ -226,6 +241,7 @@ and `domain` is your application's domain (`from myapp import domain`):
 Define reusable event fixtures for your aggregate's history:
 
 ```python
+# fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:event_fixtures"
 ```
 
