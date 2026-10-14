@@ -592,6 +592,7 @@
             "element_type": { "const": "COMMAND_HANDLER" },
             "part_of": { "type": "string", "minLength": 1 },
             "stream_category": { "type": "string", "minLength": 1 },
+            "sequential_by": { "type": "string", "minLength": 1 },
             "resilience": { "$ref": "#/$defs/resilience" },
             "subscription": { "$ref": "#/$defs/subscription" },
             "handlers": { "$ref": "#/$defs/standard_handler_map" },
@@ -612,6 +613,7 @@
             "element_type": { "const": "EVENT_HANDLER" },
             "part_of": { "type": "string", "minLength": 1 },
             "stream_category": { "type": "string", "minLength": 1 },
+            "sequential_by": { "type": "string", "minLength": 1 },
             "source_stream": {
               "oneOf": [
                 { "type": "string" },
@@ -712,6 +714,7 @@
               "items": { "type": "string" },
               "minItems": 1
             },
+            "sequential_by": { "type": "string", "minLength": 1 },
             "subscription": { "$ref": "#/$defs/subscription" },
             "handlers": { "$ref": "#/$defs/standard_handler_map" },
             "method_edges": { "$ref": "#/$defs/method_edges" }
@@ -790,6 +793,7 @@
               "items": { "type": "string" },
               "minItems": 1
             },
+            "sequential_by": { "type": "boolean" },
             "subscription": { "$ref": "#/$defs/subscription" },
             "handlers": {
               "type": "object",

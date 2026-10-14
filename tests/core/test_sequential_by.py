@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from protean._deprecation import RemovedInProtean020Warning
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
@@ -282,6 +283,49 @@ class TestFieldExistenceValidation:
         test_domain.init(traverse=False)
 
         assert test_domain._partition_keys["test::order"] == "order_id"
+
+    @pytest.mark.parametrize(
+        "value, enabled",
+        [("order_id", True), (1, True), (["order_id"], True), ("", False), (0, False)],
+    )
+    def test_pm_non_boolean_is_deprecated_and_coerced(
+        self, test_domain, value, enabled
+    ):
+        class OrderPM(BaseProcessManager):
+            order_id = Identifier(identifier=True)
+
+            @handle(OrderPlaced, start=True, correlate="order_id")
+            def on_placed(self, event):
+                pass
+
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(OrderPM, sequential_by=value)
+
+        with pytest.warns(RemovedInProtean020Warning) as caught:
+            test_domain.init(traverse=False)
+
+        message = str(caught[0].message)
+        assert f"`sequential_by={value!r}` on Process Manager `OrderPM`" in message
+        assert "Set `sequential_by=True`" in message
+        assert OrderPM.meta_.sequential_by is enabled
+        expected = {"test::order": "order_id"} if enabled else {}
+        assert test_domain._partition_keys == expected
+
+    def test_pm_with_false_does_not_partition(self, test_domain):
+        class OrderPM(BaseProcessManager):
+            order_id = Identifier(identifier=True)
+
+            @handle(OrderPlaced, start=True, correlate="order_id")
+            def on_placed(self, event):
+                pass
+
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(OrderPM, sequential_by=False)
+        test_domain.init(traverse=False)
+
+        assert test_domain._partition_keys == {}
 
 
 # --- One-key-per-category validation ----------------------------------------
