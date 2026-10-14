@@ -5,6 +5,7 @@
 A developer raises a domain event when an order is placed:
 
 ```python
+# fragment
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
     order_id: Identifier(required=True)
@@ -14,6 +15,7 @@ The event carries just the order ID. Downstream, an event handler needs to
 send a confirmation email:
 
 ```python
+# fragment
 @domain.event_handler(part_of=Notification)
 class NotificationEventHandler(BaseEventHandler):
 
@@ -37,6 +39,7 @@ Notification handler shouldn't know about the Order aggregate at all, it's in a
 different bounded context. Now a projector also needs the data:
 
 ```python
+# fragment
 @domain.projector(projector_for=OrderSummaryProjection, aggregates=[Order])
 class OrderSummaryProjector(BaseProjector):
 
@@ -127,35 +130,7 @@ Delta events capture **the specific change** that occurred. They carry the data
 relevant to that particular state transition:
 
 ```python
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    customer_name: String(required=True)
-    customer_email: String(required=True)
-    items: List(required=True)
-    total: Float(required=True)
-    placed_at: DateTime(required=True)
-
-
-@domain.event(part_of=Order)
-class OrderShipped(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    customer_email: String(required=True)
-    tracking_number: String(required=True)
-    carrier: String(required=True)
-    shipped_at: DateTime(required=True)
-
-
-@domain.event(part_of=Order)
-class OrderItemAdded(BaseEvent):
-    order_id: Identifier(required=True)
-    product_id: Identifier(required=True)
-    product_name: String(required=True)
-    quantity: Integer(required=True)
-    unit_price: Float(required=True)
-    new_total: Float(required=True)
+--8<-- "patterns/design-events-for-consumers/001.py:delta_events"
 ```
 
 Delta events are **specific and intentional**. Each event type carries exactly
@@ -175,14 +150,7 @@ Fact events capture **the aggregate's complete state** after a change. Protean
 can generate these automatically:
 
 ```python
-@domain.aggregate(fact_events=True)
-class Order:
-    order_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)
-    items = HasMany(OrderItem)
-    status: String(default="draft")
-    total: Float(default=0.0)
-    # ...
+--8<-- "patterns/design-events-for-consumers/002.py:fact_events"
 ```
 
 With `fact_events=True`, Protean automatically raises a `OrderFactEvent` after
@@ -215,23 +183,7 @@ delta events for meaningful operations, and let fact events provide a catch-all
 for projections:
 
 ```python
-@domain.aggregate(fact_events=True)
-class Order:
-    # ... fields ...
-
-    def place(self):
-        self.status = "placed"
-        self.placed_at = datetime.now(timezone.utc)
-        # Delta event with specific operation semantics
-        self.raise_(OrderPlaced(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            customer_email=self.customer_email,
-            items=[item.to_dict() for item in self.items],
-            total=self.total,
-            placed_at=self.placed_at,
-        ))
-        # Fact event is also auto-raised on persistence
+--8<-- "patterns/design-events-for-consumers/003.py:combined"
 ```
 
 Consumers that care about the specific operation listen for `OrderPlaced`.
@@ -247,11 +199,7 @@ Every aggregate that a consumer might need to correlate should have its
 identity in the event:
 
 ```python
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)      # This aggregate
-    customer_id: Identifier(required=True)    # Referenced aggregate
-    shipping_address_id: Identifier()         # Referenced aggregate
+--8<-- "patterns/design-events-for-consumers/004.py:identifiers"
 ```
 
 Even if a consumer doesn't need all of them, including identifiers is cheap
@@ -262,20 +210,7 @@ and enables future consumers without changing the event.
 Think about what each consumer does with this event:
 
 ```python
-# Notification handler needs: customer_email, customer_name, order summary
-# Projector needs: order details for the read model
-# Loyalty handler needs: customer_id, total (to calculate points)
-# Analytics handler needs: items, total, placed_at (for reporting)
-
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    customer_name: String(required=True)      # For notifications
-    customer_email: String(required=True)     # For notifications
-    items: List(required=True)                # For projections, analytics
-    total: Float(required=True)              # For loyalty, analytics
-    placed_at: DateTime(required=True)        # For analytics, projections
+--8<-- "patterns/design-events-for-consumers/005.py:consumer_fields"
 ```
 
 ### 3. Include Cross-Aggregate Data at Event Time
@@ -284,37 +219,7 @@ When the event references data from another aggregate, include a snapshot of
 that data in the event. Don't force consumers to look it up:
 
 ```python
-@domain.aggregate
-class Order:
-    # ... fields ...
-
-    def place(self, customer_name: str, customer_email: str):
-        self.status = "placed"
-        # Include customer data in the event -- the handler passes it in
-        self.raise_(OrderPlaced(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            customer_name=customer_name,
-            customer_email=customer_email,
-            items=[item.to_dict() for item in self.items],
-            total=self.total,
-            placed_at=datetime.now(timezone.utc),
-        ))
-
-
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler(BaseCommandHandler):
-
-    @handle(PlaceOrder)
-    def place_order(self, command: PlaceOrder):
-        # Command carries the cross-aggregate data
-        repo = current_domain.repository_for(Order)
-        order = repo.get(command.order_id)
-        order.place(
-            customer_name=command.customer_name,
-            customer_email=command.customer_email,
-        )
-        repo.add(order)
+--8<-- "patterns/design-events-for-consumers/006.py:place"
 ```
 
 The command carries the customer data because the caller (API layer) already
@@ -327,6 +232,7 @@ Events should carry enough context, not the entire aggregate. Data that no
 consumer needs should be omitted:
 
 ```python
+# fragment
 # Too much -- includes internal implementation details
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
@@ -359,15 +265,7 @@ design is to **work backward from the projection**:
 ### Step 1: Define the Projection
 
 ```python
-@domain.projection
-class OrderSummaryProjection:
-    order_id: Identifier(identifier=True)
-    customer_name: String()
-    status: String()
-    item_count: Integer()
-    total: Float()
-    placed_at: DateTime()
-    shipped_at: DateTime()
+--8<-- "patterns/design-events-for-consumers/007.py:projection"
 ```
 
 ### Step 2: Identify What Data Each Event Must Carry
@@ -382,47 +280,13 @@ For the projector to build this projection:
 ### Step 3: Design Events to Satisfy the Projection
 
 ```python
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_name: String(required=True)
-    items: List(required=True)
-    total: Float(required=True)
-    placed_at: DateTime(required=True)
-
-
-@domain.event(part_of=Order)
-class OrderShipped(BaseEvent):
-    order_id: Identifier(required=True)
-    shipped_at: DateTime(required=True)
+--8<-- "patterns/design-events-for-consumers/007.py:events"
 ```
 
 ### Step 4: Write the Projector
 
 ```python
-@domain.projector(projector_for=OrderSummaryProjection, aggregates=[Order])
-class OrderSummaryProjector(BaseProjector):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        # No aggregate loading needed -- event has everything
-        projection = OrderSummaryProjection(
-            order_id=event.order_id,
-            customer_name=event.customer_name,
-            status="placed",
-            item_count=len(event.items),
-            total=event.total,
-            placed_at=event.placed_at,
-        )
-        current_domain.repository_for(OrderSummaryProjection).add(projection)
-
-    @handle(OrderShipped)
-    def on_order_shipped(self, event: OrderShipped):
-        repo = current_domain.repository_for(OrderSummaryProjection)
-        projection = repo.get(event.order_id)
-        projection.status = "shipped"
-        projection.shipped_at = event.shipped_at
-        repo.add(projection)
+--8<-- "patterns/design-events-for-consumers/007.py:projector"
 ```
 
 Every projector method works entirely from the event data. No aggregate loading,
@@ -437,32 +301,8 @@ the payload design becomes even more critical. The consuming domain should
 never need to query back to the producing domain.
 
 ```python
-# In the Order domain: event published to the broker
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    customer_email: String(required=True)
-    items: List(required=True)
-    total: Float(required=True)
-    currency: String(required=True)
-    placed_at: DateTime(required=True)
-
-
-# In the Fulfillment domain: subscriber consumes the event
-@domain.subscriber(stream="orders")
-class OrderEventsSubscriber(BaseSubscriber):
-    def __call__(self, payload: dict) -> None:
-        # The subscriber can act entirely from the event data
-        # No need to call back to the Order domain
-        event = payload["data"]
-        current_domain.process(
-            CreateShipment(
-                order_id=event["order_id"],
-                customer_id=event["customer_id"],
-                items=event["items"],
-            )
-        )
+--8<-- "patterns/design-events-for-consumers/008.py:published_event"
+--8<-- "patterns/design-events-for-consumers/009.py:subscriber"
 ```
 
 If the event doesn't carry enough data, the Fulfillment domain must call back
@@ -479,10 +319,7 @@ Events used purely for internal framework mechanics (e.g., triggering a
 projection rebuild) can be thin:
 
 ```python
-# Internal trigger -- no external consumers
-@domain.event(part_of=Order)
-class OrderProjectionStale(BaseEvent):
-    order_id: Identifier(required=True)
+--8<-- "patterns/design-events-for-consumers/010.py:internal_trigger"
 ```
 
 ### Events with Fact Event Fallback
@@ -491,12 +328,7 @@ If you use `fact_events=True` on the aggregate, delta events can be thinner
 because consumers that need full state can listen for the fact event instead:
 
 ```python
-# Thin delta event for specific consumers
-@domain.event(part_of=Order)
-class OrderCancelled(BaseEvent):
-    order_id: Identifier(required=True)
-    reason: String(required=True)
-    # Consumers that need full order state use the OrderFactEvent instead
+--8<-- "patterns/design-events-for-consumers/010.py:thin_delta"
 ```
 
 ### Single-Consumer Events
@@ -512,6 +344,7 @@ consider that consumers may be added later.
 ### The "Just Load It" Event
 
 ```python
+# fragment
 # Anti-pattern: event that's useless without a query
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
@@ -522,6 +355,7 @@ class OrderPlaced(BaseEvent):
 ### The event that carries everything
 
 ```python
+# fragment
 # Anti-pattern: event with every field from the aggregate
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
@@ -549,6 +383,7 @@ fields (item_count from items, subtotal from items) are noise.
 ### Exposing Internal State
 
 ```python
+# fragment
 # Anti-pattern: leaking implementation details
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):

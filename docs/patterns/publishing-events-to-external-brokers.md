@@ -12,11 +12,7 @@ partner systems, or downstream services need to consume them. You mark events
 with `published=True` to signal this intent:
 
 ```python
-@domain.event(part_of=Order, published=True)
-class OrderShipped(BaseEvent):
-    order_id: Identifier(required=True)
-    shipped_at: DateTime(required=True)
-    tracking_number: String(max_length=50)
+--8<-- "patterns/publishing-events-to-external-brokers/001.py:published_event"
 ```
 
 Without external dispatch, `published=True` is a semantic marker with no
@@ -27,6 +23,7 @@ You could work around this by writing an event handler that manually publishes
 to a second broker:
 
 ```python
+# fragment
 # Anti-pattern: manual relay handler
 @domain.event_handler(part_of=Order)
 class ExternalRelayHandler(BaseEventHandler):
@@ -191,18 +188,7 @@ an external consumer needs:
 ### Step 1: Mark events as published
 
 ```python
-@domain.event(part_of=Order, published=True)
-class OrderShipped(BaseEvent):
-    order_id: Identifier(required=True)
-    shipped_at: DateTime(required=True)
-    tracking_number: String(max_length=50)
-
-
-@domain.event(part_of=Order)
-class OrderNoteAdded(BaseEvent):
-    """Internal-only event — not published."""
-    order_id: Identifier(required=True)
-    note: Text()
+--8<-- "patterns/publishing-events-to-external-brokers/002.py:events"
 ```
 
 Only `OrderShipped` will be dispatched to external brokers.
@@ -211,6 +197,9 @@ Only `OrderShipped` will be dispatched to external brokers.
 ### Step 2: Configure external brokers
 
 ```toml
+[server]
+default_subscription_type = "stream"
+
 [brokers.default]
 provider = "redis"
 URI = "redis://localhost:6379/0"
@@ -248,20 +237,7 @@ additional flags or commands needed.
 In the consuming bounded context, use a subscriber to receive the event:
 
 ```python
-# In the Fulfillment domain
-@fulfillment.subscriber(broker="default", stream="myapp::order")
-class OrderEventSubscriber(BaseSubscriber):
-
-    def __call__(self, payload: dict) -> None:
-        event_type = payload.get("metadata", {}).get("headers", {}).get("type", "")
-        if "OrderShipped" in event_type:
-            data = payload.get("data", {})
-            fulfillment.process(
-                CreateShipment(
-                    order_id=data["order_id"],
-                    tracking_number=data["tracking_number"],
-                )
-            )
+--8<-- "patterns/publishing-events-to-external-brokers/003.py:subscriber"
 ```
 
 The subscriber acts as an anti-corruption layer, translating the external
@@ -275,6 +251,7 @@ producing domain's internal event classes.
 ### Manual relay handlers
 
 ```python
+# fragment
 # Bad: bypasses outbox guarantees
 @domain.event_handler(part_of=Order)
 class ManualRelay(BaseEventHandler):
@@ -289,6 +266,7 @@ transactional guarantees, retries, and failure isolation automatically.
 ### Publishing all events externally
 
 ```python
+# fragment
 # Bad: every event is published
 @domain.event(part_of=Order, published=True)
 class OrderNoteAdded(BaseEvent):
@@ -303,6 +281,7 @@ maintain.
 ### Relying on internal metadata in consumers
 
 ```python
+# fragment
 # Bad: consumer depends on internal fields
 def __call__(self, payload: dict):
     priority = payload["metadata"]["domain"]["priority"]  # Stripped!

@@ -92,7 +92,11 @@ When the Order domain adds `discount_code` to `OrderPlaced`:
 - **With shared classes:** Both domains must update the shared library, both
   must redeploy.
 - **With shared schemas:** The Order domain adds the field to its class. The
-  Fulfillment domain's class ignores the extra field until it chooses to add it.
+  Fulfillment domain's consumer keeps only the fields its own class declares,
+  so it skips `discount_code` until the domain adds the field to that class.
+  Protean events reject undeclared fields by default, so the consumer filters
+  the payload before building its event (see the consumer-side contract test
+  below).
 
 ### Independent Deployment
 
@@ -105,29 +109,7 @@ The Fulfillment domain doesn't need every field the Order domain publishes.
 With its own class, it defines only the fields it cares about:
 
 ```python
-# Order domain publishes this
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    customer_email: String(required=True)
-    items: List(required=True)
-    subtotal: Float(required=True)
-    tax: Float(required=True)
-    total: Float(required=True)
-    currency: String(required=True)
-    discount_code: String()
-    placed_at: DateTime(required=True)
-    ip_address: String()
-    user_agent: String()
-
-
-# Fulfillment domain only needs this
-@domain.event(part_of=Shipment)
-class ExternalOrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    items: List(required=True)
+--8<-- "patterns/sharing-event-classes-across-domains/001.py:subset"
 ```
 
 The Fulfillment domain ignores `customer_email`, `tax`, `discount_code`,
@@ -217,58 +199,13 @@ events match what consumers expect:
 ### Publisher-Side Contract Test
 
 ```python
-class TestOrderPlacedContract:
-    """Verify that OrderPlaced events conform to the published schema."""
-
-    def test_order_placed_has_required_fields(self, test_domain):
-        order = Order(
-            customer_id="cust-123",
-            total=100.0,
-        )
-        order.items.add(OrderItem(product_id="prod-1", quantity=2))
-        order.place()
-
-        event = order._events[0]
-        event_dict = event.to_dict()
-
-        # Verify contract fields exist and have correct types
-        assert "order_id" in event_dict
-        assert isinstance(event_dict["order_id"], str)
-        assert "customer_id" in event_dict
-        assert isinstance(event_dict["customer_id"], str)
-        assert "items" in event_dict
-        assert isinstance(event_dict["items"], list)
-        assert "total" in event_dict
-        assert isinstance(event_dict["total"], (int, float))
+--8<-- "patterns/sharing-event-classes-across-domains/002.py:publisher_test"
 ```
 
 ### Consumer-Side Contract Test
 
 ```python
-class TestExternalOrderPlacedConsumption:
-    """Verify that we can consume OrderPlaced events from the Order domain."""
-
-    def test_can_deserialize_order_placed(self, test_domain):
-        # Simulate an event payload from the external domain
-        external_payload = {
-            "order_id": "ord-123",
-            "customer_id": "cust-456",
-            "items": [
-                {"product_id": "prod-1", "quantity": 2},
-                {"product_id": "prod-2", "quantity": 1},
-            ],
-            "total": 75.0,
-            "placed_at": "2024-06-15T10:30:00Z",
-            # Fields we don't use but should tolerate
-            "customer_email": "user@example.com",
-            "discount_code": "SAVE10",
-        }
-
-        event = ExternalOrderPlaced(**external_payload)
-
-        assert event.order_id == "ord-123"
-        assert event.customer_id == "cust-456"
-        assert len(event.items) == 2
+--8<-- "patterns/sharing-event-classes-across-domains/003.py:consumer_test"
 ```
 
 These tests run independently in each domain. If the publisher changes the
@@ -290,12 +227,7 @@ agree to share a subset of their domain model. This is appropriate when:
 - The coupling is intentional and documented
 
 ```python
-# shared_kernel/events.py -- intentionally shared
-class OrderPlacedEvent(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    items: List(required=True)
-    total: Float(required=True)
+--8<-- "patterns/sharing-event-classes-across-domains/004.py:shared_kernel"
 ```
 
 A shared kernel is a conscious architectural decision, not an accidental
@@ -315,16 +247,7 @@ string. There is no code-level import between domains, but you get typed events
 and IDE support:
 
 ```python
-# Fulfillment domain's own class, not imported from Billing
-class PaymentReceived(BaseEvent):
-    payment_id = Identifier(required=True)
-    order_id = Identifier(required=True)
-    amount = Float()
-
-# Register with the type string the Billing domain publishes
-fulfillment_domain.register_external_event(
-    PaymentReceived, "Billing.PaymentReceived.v1"
-)
+--8<-- "patterns/sharing-event-classes-across-domains/005.py:external_event"
 ```
 
 This gives you the benefits of typed events (validation, autocomplete,
@@ -367,6 +290,7 @@ accidental shared kernel, coupling by convenience, not by design.
 ### Exposing Internal Events
 
 ```python
+# fragment
 # Anti-pattern: sharing events that include internal details
 class OrderPlaced(BaseEvent):
     order_id: Identifier(required=True)
