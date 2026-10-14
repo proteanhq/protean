@@ -117,3 +117,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0043](0043-typed-query-dispatch.md) | Typed query dispatch through a generic query base |
 | [0044](0044-custom-field-extension-contract.md) | The custom-field extension point is a public `Custom` factory |
 | [0045](0045-handle-only-the-errors-you-expect.md) | Handle only the errors you expect |
+| [0046](0046-one-aggregate-instance-per-unit-of-work.md) | One aggregate instance per Unit of Work |

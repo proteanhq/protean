@@ -172,11 +172,9 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
         # Temporal queries always bypass the identity map.
         if not is_temporal and current_uow:
-            identity_map = current_uow._identity_map.get(
-                self.meta_.part_of.meta_.provider, {}
-            )
-            if identifier in identity_map:
-                return cast(BaseAggregate, identity_map[identifier])
+            tracked = current_uow._tracked_instance(self.meta_.part_of, identifier)
+            if tracked is not None:
+                return tracked
 
         store = self._domain.event_store.store
         if store is None:
@@ -199,6 +197,8 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
         if is_temporal:
             aggregate._is_temporal = True
+        elif current_uow:
+            current_uow._add_to_identity_map(aggregate)
 
         return aggregate
 

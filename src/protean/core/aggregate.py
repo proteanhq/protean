@@ -331,7 +331,10 @@ class BaseAggregate(BaseEntity):
             _metadata=metadata,
         )
 
-        self._event_position = self._event_position + 1
+        # A fact event goes to its own stream and is appended without a
+        # version check, so it does not move this stream's position.
+        if not event.__class__.meta_.is_fact_event:
+            self._event_position = self._event_position + 1
         self._events.append(event_with_metadata)
 
         # For ES aggregates, apply the event handler to mutate state in-place.

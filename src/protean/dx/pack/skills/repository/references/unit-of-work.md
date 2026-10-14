@@ -122,7 +122,7 @@ When no UoW is active:
 
 ## Identity Map
 
-The UoW keeps an **identity map**: a record of the aggregates it loads and saves during the transaction. At commit it collects the events those aggregates raised and dispatches them. A state-based aggregate enters the map on every `get()`, but the repository does not read from the map, so two `get()` calls of the same id return two separate objects. An event-sourced aggregate enters the map only when `add()` saves it with new events. After that, a `get()` of the same id in that UoW returns the same object. Before that `add()`, two `get()` calls return two separate objects.
+The UoW keeps an **identity map**: one instance of each aggregate it loads or saves during the transaction. At commit it collects the events those aggregates raised and dispatches them. Once an aggregate is in the map, a `get()` or query of the same id in that UoW returns the same object, with any changes made to it since. This holds for state-based and event-sourced aggregates. A temporal query on an event-sourced aggregate (`at_version` or `as_of`) does not use the map.
 
 ## Transactional Guarantees
 

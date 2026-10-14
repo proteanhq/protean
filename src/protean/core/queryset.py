@@ -374,9 +374,9 @@ class QuerySet:
             entity = self._owner_dao.database_model_cls.to_entity(item)
             entity.state_.mark_retrieved()
 
-            # Sync event position and register in UoW identity map
-            self._owner_dao._sync_event_position(entity)
-            self._owner_dao._track_in_uow(entity)
+            # Sync event position and register in UoW identity map, or take
+            # the instance the UoW already tracks
+            entity = self._owner_dao._track_in_uow(entity)
 
             entity_items.append(entity)
 
@@ -478,9 +478,9 @@ class QuerySet:
             entity = self._owner_dao.database_model_cls.to_entity(item)
             entity.state_.mark_retrieved()
 
-            # Sync event position and register in UoW identity map
-            self._owner_dao._sync_event_position(entity)
-            self._owner_dao._track_in_uow(entity)
+            # Sync event position and register in UoW identity map, or take
+            # the instance the UoW already tracks
+            entity = self._owner_dao._track_in_uow(entity)
 
             entity_items.append(entity)
         results.items = entity_items

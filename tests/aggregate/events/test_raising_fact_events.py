@@ -2,6 +2,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
+from protean.core.unit_of_work import UnitOfWork
 from protean.fields import Identifier, String
 
 
@@ -107,3 +108,46 @@ def test_fact_event_follows_a_regular_event_raised_in_the_same_save(test_domain)
     assert fact[0].to_domain_object()._metadata.headers.id == (
         f"test::member-fact-{member.id}-0.2"
     )
+
+
+def _joined_positions(test_domain, member):
+    messages = test_domain.event_store.store.read(f"test::member-{member.id}")
+    return [message.metadata.event_store.position for message in messages]
+
+
+def test_a_fact_event_does_not_move_the_aggregate_stream_position(test_domain):
+    member = Member(name="John Doe")
+    member.raise_(MemberJoined(member_id=member.id))
+    test_domain.repository_for(Member).add(member)
+
+    assert member._event_position == 0
+
+
+def test_an_instance_with_fact_events_raises_again_after_a_save(test_domain):
+    repo = test_domain.repository_for(Member)
+    member = Member(name="John Doe")
+    member.raise_(MemberJoined(member_id=member.id))
+    repo.add(member)
+
+    member.name = "Jane Doe"
+    member.raise_(MemberJoined(member_id=member.id))
+    repo.add(member)
+
+    assert _joined_positions(test_domain, member) == [0, 1]
+
+
+def test_an_instance_with_fact_events_saves_twice_in_one_unit_of_work(test_domain):
+    repo = test_domain.repository_for(Member)
+    member = Member(name="John Doe")
+    repo.add(member)
+
+    with UnitOfWork():
+        loaded = repo.get(member.id)
+        loaded.raise_(MemberJoined(member_id=member.id))
+        repo.add(loaded)
+
+        loaded.name = "Jane Doe"
+        loaded.raise_(MemberJoined(member_id=member.id))
+        repo.add(loaded)
+
+    assert _joined_positions(test_domain, member) == [0, 1]

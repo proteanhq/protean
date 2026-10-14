@@ -246,17 +246,36 @@ class BaseDAO(metaclass=ABCMeta):
             assert last_message.metadata.event_store is not None
             entity._event_position = last_message.metadata.event_store.position
 
-    def _track_in_uow(self, entity: BaseEntity) -> None:
-        """Register the aggregate in the active Unit of Work's identity map.
+    def _track_in_uow(self, entity: BaseEntity) -> BaseEntity:
+        """Return the instance to hand back for an aggregate just loaded.
 
-        Tracking loaded aggregates lets the UoW collect domain events
-        raised during the transaction and persist them on commit.
+        Inside a Unit of Work, an aggregate already tracked there is returned
+        in place of the loaded copy. Two copies of one aggregate in one
+        transaction would each count versions and event positions from the
+        store, which has not seen the other copy's pending changes.
 
-        This is a no-op for non-aggregate entities or when there is no
-        active UoW.
+        Otherwise the loaded aggregate's event position is synced from the
+        event store and, inside a Unit of Work, the aggregate is registered so
+        that the UoW collects the events it raises and persists them on
+        commit. Non-aggregate entities are returned unchanged.
         """
-        if current_uow and entity.element_type == DomainObjects.AGGREGATE:
+        if not isinstance(entity, BaseAggregate):
+            return entity
+
+        in_uow = not self._is_standalone
+        if in_uow:
+            id_f = id_field(entity)
+            assert id_f is not None and id_f.field_name is not None
+            tracked = current_uow._tracked_instance(
+                type(entity), getattr(entity, id_f.field_name)
+            )
+            if tracked is not None:
+                return tracked
+
+        self._sync_event_position(entity)
+        if in_uow:
             current_uow._add_to_identity_map(entity)
+        return entity
 
     def outside_uow(self) -> "BaseDAO":
         """When called, the DAO is instructed to work outside active transactions."""

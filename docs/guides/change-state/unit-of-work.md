@@ -222,15 +222,21 @@ When an exception is raised inside a UoW block:
 
 ## The identity map
 
-The UoW maintains an **identity map**, a dictionary of all aggregates that have
-been persisted via `repository.add()` during the current transaction. The identity map serves
-two purposes:
+The UoW maintains an **identity map**: one instance of each aggregate that it
+has loaded or saved during the current transaction. The identity map serves
+three purposes:
 
-1. **Event collection**: At commit time, the UoW walks the identity map to
+1. **One instance per aggregate**: Inside a UoW, a `get()` or a query that
+   finds an aggregate already in the map returns that same instance, with any
+   changes made to it since. Two copies of one aggregate would each count from
+   the stored version, so saving the second would fail with
+   `ExpectedVersionError`.
+
+2. **Event collection**: At commit time, the UoW walks the identity map to
    gather all events raised by tracked aggregates. Without the identity map,
    events raised between `add()` and `commit()` would be lost.
 
-2. **Per-provider tracking**: Aggregates are grouped by their database
+3. **Per-provider tracking**: Aggregates are grouped by their database
    provider, so the UoW can commit each provider's session independently.
 
 ## One transaction, one aggregate

@@ -23,6 +23,7 @@ from protean.utils.telemetry import (
 )
 
 if TYPE_CHECKING:
+    from protean.core.aggregate import BaseAggregate
     from protean.port.provider import SessionProtocol
 
 
@@ -89,13 +90,15 @@ class UnitOfWork:
 
         self._sessions: dict[str, SessionProtocol] = {}
         self._messages_to_dispatch: list[tuple[str, dict[str, Any], str | None]] = []
-        self._identity_map: defaultdict[str, dict[Any, Any]] = defaultdict(dict)
-        # The identity map holds one instance per aggregate id, so a read
-        # replaces an instance saved earlier in the transaction. Every saved
-        # instance is also kept here by object identity, with its provider, so
-        # its events are still gathered and its versions still settled. Read
-        # copies are not, so a batch of reads holds only the latest of each.
-        self._saved: dict[int, tuple[str, Any]] = {}
+        # One instance per aggregate for the whole transaction, keyed by
+        # provider and then by aggregate class and id. A read of an aggregate
+        # already here returns this instance, so its versions and event
+        # position never have to be reconciled across copies.
+        self._identity_map: defaultdict[str, dict[tuple[type, Any], Any]] = defaultdict(
+            dict
+        )
+        # The identity-map entries that were saved, by provider, class and id.
+        self._saved: set[tuple[str, type, Any]] = set()
 
         # A UnitOfWork started while another is already active on this context is
         # a participant in the outer transaction (see ``start``). ``_nested`` marks
@@ -133,36 +136,36 @@ class UnitOfWork:
 
         return None
 
-    def _add_to_identity_map(self, aggregate: Any, saved: bool = False) -> None:
+    @staticmethod
+    def _identity_key(aggregate: Any) -> tuple[type, Any]:
         id_f = id_field(aggregate)
         assert id_f is not None
         assert id_f.field_name is not None
-        identifier = getattr(aggregate, id_f.field_name)
-        provider_map = self._identity_map[aggregate.meta_.provider]
+        return type(aggregate), getattr(aggregate, id_f.field_name)
 
-        # A copy read again in this transaction synced its event position from
-        # the store, which has not seen the events still pending on the copy it
-        # replaces. Starting from that copy's position queues its events after
-        # those, instead of both claiming the same stream position.
-        previous = provider_map.get(identifier)
-        if not saved and previous is not None and previous is not aggregate:
-            aggregate._event_position = max(
-                aggregate._event_position, previous._event_position
-            )
+    def _tracked_instance(
+        self, aggregate_cls: "type[BaseAggregate]", identifier: Any
+    ) -> "BaseAggregate | None":
+        """The instance of ``aggregate_cls`` with ``identifier`` already
+        tracked in this transaction, if there is one."""
+        provider_map = self._identity_map.get(aggregate_cls.meta_.provider, {})
+        return provider_map.get((aggregate_cls, identifier))
 
-        provider_map[identifier] = aggregate
+    def _add_to_identity_map(self, aggregate: Any, saved: bool = False) -> None:
+        provider_name = aggregate.meta_.provider
+        key = self._identity_key(aggregate)
+        self._identity_map[provider_name][key] = aggregate
         if saved:
-            self._saved[id(aggregate)] = (aggregate.meta_.provider, aggregate)
+            self._saved.add((provider_name, *key))
 
     def _tracked_items(self) -> list[tuple[str, Any]]:
         """Every instance tracked in this transaction, each with the name of
-        its provider: the saved instances in the order they were saved, then
-        the latest read copy of each aggregate that was not saved."""
-        items = dict(self._saved)
-        for provider_name, identity_map in self._identity_map.items():
-            for item in identity_map.values():
-                items.setdefault(id(item), (provider_name, item))
-        return list(items.values())
+        its provider."""
+        return [
+            (provider_name, item)
+            for provider_name, identity_map in self._identity_map.items()
+            for item in identity_map.values()
+        ]
 
     def _gather_events(self) -> defaultdict[str, list[Any]]:
         """Gather all events from the instances tracked in this transaction"""
@@ -182,8 +185,9 @@ class UnitOfWork:
         manages, each with the name of its provider."""
         return [
             (provider_name, item)
-            for provider_name, item in self._saved.values()
-            if not item.meta_.is_event_sourced
+            for provider_name, identity_map in self._identity_map.items()
+            for key, item in identity_map.items()
+            if (provider_name, *key) in self._saved and not item.meta_.is_event_sourced
         ]
 
     def _advance_next_versions(self, provider_name: str) -> None:
@@ -640,7 +644,7 @@ class UnitOfWork:
         self._sessions = {}
         self._messages_to_dispatch = []
         self._identity_map = defaultdict(dict)
-        self._saved = {}
+        self._saved = set()
         self._in_progress = False
 
     def rollback(self) -> None:
