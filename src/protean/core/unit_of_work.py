@@ -91,12 +91,11 @@ class UnitOfWork:
         self._messages_to_dispatch: list[tuple[str, dict[str, Any], str | None]] = []
         self._identity_map: defaultdict[str, dict[Any, Any]] = defaultdict(dict)
         # The identity map holds one instance per aggregate id, so a read
-        # replaces an instance saved earlier in the transaction. Every tracked
+        # replaces an instance saved earlier in the transaction. Every saved
         # instance is also kept here by object identity, with its provider, so
-        # its events are still gathered and, if it was saved, its versions
-        # still settled.
-        self._tracked: dict[int, tuple[str, Any]] = {}
-        self._saved: set[int] = set()
+        # its events are still gathered and its versions still settled. Read
+        # copies are not, so a batch of reads holds only the latest of each.
+        self._saved: dict[int, tuple[str, Any]] = {}
 
         # A UnitOfWork started while another is already active on this context is
         # a participant in the outer transaction (see ``start``). ``_nested`` marks
@@ -139,22 +138,43 @@ class UnitOfWork:
         assert id_f is not None
         assert id_f.field_name is not None
         identifier = getattr(aggregate, id_f.field_name)
-        self._identity_map[aggregate.meta_.provider][identifier] = aggregate
-        self._tracked[id(aggregate)] = (aggregate.meta_.provider, aggregate)
+        provider_map = self._identity_map[aggregate.meta_.provider]
+
+        # A copy read again in this transaction synced its event position from
+        # the store, which has not seen the events still pending on the copy it
+        # replaces. Starting from that copy's position queues its events after
+        # those, instead of both claiming the same stream position.
+        previous = provider_map.get(identifier)
+        if not saved and previous is not None and previous is not aggregate:
+            aggregate._event_position = max(
+                aggregate._event_position, previous._event_position
+            )
+
+        provider_map[identifier] = aggregate
         if saved:
-            self._saved.add(id(aggregate))
+            self._saved[id(aggregate)] = (aggregate.meta_.provider, aggregate)
+
+    def _tracked_items(self) -> list[tuple[str, Any]]:
+        """Every instance tracked in this transaction, each with the name of
+        its provider: the saved instances in the order they were saved, then
+        the latest read copy of each aggregate that was not saved."""
+        items = dict(self._saved)
+        for provider_name, identity_map in self._identity_map.items():
+            for item in identity_map.values():
+                items.setdefault(id(item), (provider_name, item))
+        return list(items.values())
 
     def _gather_events(self) -> defaultdict[str, list[Any]]:
         """Gather all events from the instances tracked in this transaction"""
         all_events: defaultdict[str, list[Any]] = defaultdict(list)
-        for provider, item in self._tracked.values():
+        for provider, item in self._tracked_items():
             if item._events:
                 all_events[provider].extend(item._events)
         return all_events
 
     def _clear_events_from_items(self) -> None:
         """Clear events from the instances tracked in this transaction"""
-        for _, item in self._tracked.values():
+        for _, item in self._tracked_items():
             item._events = []
 
     def _state_based_items(self) -> list[tuple[str, Any]]:
@@ -162,8 +182,8 @@ class UnitOfWork:
         manages, each with the name of its provider."""
         return [
             (provider_name, item)
-            for key, (provider_name, item) in self._tracked.items()
-            if key in self._saved and not item.meta_.is_event_sourced
+            for provider_name, item in self._saved.values()
+            if not item.meta_.is_event_sourced
         ]
 
     def _advance_next_versions(self, provider_name: str) -> None:
@@ -330,7 +350,7 @@ class UnitOfWork:
         # aggregates is a design smell (consider using domain events for
         # cross-aggregate coordination instead).
         aggregate_classes_with_events: set[type] = set()
-        for _, item in self._tracked.values():
+        for _, item in self._tracked_items():
             if item._events:
                 aggregate_classes_with_events.add(type(item))
         if len(aggregate_classes_with_events) > 1:
@@ -620,8 +640,7 @@ class UnitOfWork:
         self._sessions = {}
         self._messages_to_dispatch = []
         self._identity_map = defaultdict(dict)
-        self._tracked = {}
-        self._saved = set()
+        self._saved = {}
         self._in_progress = False
 
     def rollback(self) -> None:

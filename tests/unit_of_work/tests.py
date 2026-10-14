@@ -182,10 +182,10 @@ class TestUnitOfWorkAdditionalCoverage:
                 uow = UnitOfWork()
                 uow.start()
 
-                # Simulate an aggregate tracked with a pending event
+                # Simulate events in identity map
                 mock_item = Mock()
                 mock_item._events = [mock_event]
-                uow._tracked[id(mock_item)] = ("default", mock_item)
+                uow._identity_map["default"]["test-id"] = mock_item
 
                 uow.commit()
 

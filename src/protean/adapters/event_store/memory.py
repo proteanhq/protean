@@ -61,7 +61,10 @@ class MemoryMessageRepository(BaseRepository):
     def stream_version(self, stream_name: str) -> int:
         repo = current_domain.repository_for(MemoryMessage)
         results = (
-            repo._dao.query.filter(stream_name=stream_name).order_by("-position").all()
+            repo._dao.query.filter(stream_name=stream_name)
+            .order_by("-position")
+            .limit(1)
+            .all()
         )
 
         if results.items:
