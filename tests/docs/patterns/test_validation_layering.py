@@ -180,6 +180,14 @@ def test_order_cannot_be_placed_without_items(layers):
     assert exc.value.messages["items"] == ["Order must have at least one item"]
 
 
+def test_draft_order_without_items_can_be_cancelled(layers):
+    order = layers.Order(customer_id="cust-1")
+
+    order.cancel("changed mind")
+
+    assert order.status == "cancelled"
+
+
 def test_discount_cannot_exceed_total(layers):
     with pytest.raises(ValidationError) as exc:
         layers.Order(

@@ -82,7 +82,7 @@ class Order:
     @invariant.post
     def must_have_items_when_placed(self):
         """An order cannot be placed without items."""
-        if self.status != "draft" and not self.items:
+        if self.status == "placed" and not self.items:
             raise ValidationError({"items": ["Order must have at least one item"]})
 
     @invariant.post
