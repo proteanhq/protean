@@ -245,8 +245,8 @@
         "default": {},
         "max_length": { "type": "integer" },
         "min_length": { "type": "integer" },
-        "max_value": { "type": ["number", "string"], "description": "Upper bound. A decimal.Decimal bound on a Decimal field is written as a decimal string. On an Integer or Float field it must be a number." },
-        "min_value": { "type": ["number", "string"], "description": "Lower bound. A decimal.Decimal bound on a Decimal field is written as a decimal string. On an Integer or Float field it must be a number." },
+        "max_value": { "type": ["number", "string"], "description": "Upper bound. A decimal.Decimal bound on a Decimal field is written as a decimal string. On any other field it must be a number." },
+        "min_value": { "type": ["number", "string"], "description": "Lower bound. A decimal.Decimal bound on a Decimal field is written as a decimal string. On any other field it must be a number." },
         "precision": { "type": "integer", "description": "Total number of significant digits. Set only on a Decimal field that declares it." },
         "scale": { "type": "integer", "description": "Number of digits after the decimal point. Set only on a Decimal field that declares it." },
         "choices": { "type": "array", "items": { "type": "string" } },
@@ -257,7 +257,7 @@
         "auto_generated": { "type": "boolean" }
       },
       "required": ["kind", "type"],
-      "if": { "properties": { "type": { "enum": ["Integer", "Float"] } } },
+      "if": { "properties": { "type": { "not": { "const": "Decimal" } } } },
       "then": {
         "properties": {
           "max_value": { "type": "number" },
@@ -410,15 +410,15 @@
         "required": { "type": "boolean" },
         "unique": { "type": "boolean" },
         "default": {},
-        "max_value": { "type": ["number", "string"], "description": "Upper bound. A decimal.Decimal bound on a Decimal field is written as a decimal string. On an Integer or Float field it must be a number." },
-        "min_value": { "type": ["number", "string"], "description": "Lower bound. A decimal.Decimal bound on a Decimal field is written as a decimal string. On an Integer or Float field it must be a number." },
+        "max_value": { "type": ["number", "string"], "description": "Upper bound. A decimal.Decimal bound on a Decimal field is written as a decimal string. On any other field it must be a number." },
+        "min_value": { "type": ["number", "string"], "description": "Lower bound. A decimal.Decimal bound on a Decimal field is written as a decimal string. On any other field it must be a number." },
         "precision": { "type": "integer" },
         "scale": { "type": "integer" },
         "description": { "type": "string" },
         "auto_generated": { "type": "boolean" }
       },
       "required": ["kind", "type"],
-      "if": { "properties": { "type": { "enum": ["Integer", "Float"] } } },
+      "if": { "properties": { "type": { "not": { "const": "Decimal" } } } },
       "then": {
         "properties": {
           "max_value": { "type": "number" },

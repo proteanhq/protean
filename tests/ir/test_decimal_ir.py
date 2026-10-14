@@ -258,10 +258,12 @@ class TestDecimalBounds:
         assert _field(ir, "x")["min_value"] == "0.01"
         _validate(ir)
 
-    @pytest.mark.parametrize("ir_type", ["Integer", "Float"])
+    @pytest.mark.parametrize(
+        "ir_type", ["String", "Integer", "Float", "Boolean", "Date", "DateTime"]
+    )
     @pytest.mark.parametrize("key", ["min_value", "max_value"])
     @pytest.mark.parametrize("kind", ["standard", "custom"])
-    def test_schema_rejects_a_string_bound_on_an_integer_or_float_field(
+    def test_schema_rejects_a_string_bound_on_a_non_decimal_field(
         self, ir_type, key, kind
     ):
         ir = _build(x=Integer(min_value=1, max_value=2))
