@@ -16,6 +16,13 @@ needs no `libmysqlclient` on the machine. The extra pulls `cryptography` with
 it, which PyMySQL needs for the RSA key exchange that `caching_sha2_password`
 and `sha256_password` use on an unencrypted connection.
 
+If PyMySQL cannot be imported, `domain.init()` raises a `ConfigurationError`
+that names the extra to install. This covers a `database_uri` that names
+PyMySQL (`mysql+pymysql://`, `mariadb+pymysql://`) and one that names no
+driver (`mysql://`). A `database_uri` that names another driver, such as
+`mysql+mysqldb://`, goes to SQLAlchemy as written. SQLAlchemy reads a plain
+`mysql://` as mysqlclient, so write `+pymysql` into the URL.
+
 ## Configure TLS explicitly
 
 **Do not assume the driver encrypts the connection.** Whether PyMySQL starts

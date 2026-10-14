@@ -2661,18 +2661,23 @@ _POSTGRESQL_DRIVERS: dict[str, str] = {
 }
 
 
-def _postgresql_driver_import_error(driver: str) -> ImportError | None:
-    """The error importing ``driver`` raises, or ``None`` when it imports.
+def _driver_import_error(module: str) -> ImportError | None:
+    """The error importing ``module`` raises, or ``None`` when it imports.
 
-    psycopg 3 can be installed and still fail to import, when neither its binary
-    package nor a system ``libpq`` is present, so this imports the module rather
-    than only looking for it.
+    A driver can be installed and still fail to import: psycopg 3 without its
+    binary package or a system ``libpq``, pyodbc without unixODBC. So this
+    imports the module rather than only looking for it.
     """
     try:
-        importlib.import_module(driver)
+        importlib.import_module(module)
     except ImportError as exc:
         return exc
     return None
+
+
+def _postgresql_driver_import_error(driver: str) -> ImportError | None:
+    """The error importing the PostgreSQL ``driver`` raises, or ``None``."""
+    return _driver_import_error(driver)
 
 
 class PostgresqlProvider(SAProvider):
@@ -2812,8 +2817,52 @@ class SqliteProvider(SAProvider):
         return conn
 
 
+# The default driver of each provider that has one, with the extra that installs
+# it.
+_DEFAULT_DRIVER_EXTRAS: dict[str, str] = {
+    "pymysql": "protean[mysql]",
+    "pyodbc": "protean[mssql]",
+}
+
+
+def _require_default_driver(
+    database: str, url: URL, backends: frozenset[str], driver: str
+) -> None:
+    """Fail with the extra to install when ``url`` needs ``driver`` and it is missing.
+
+    A URL naming no driver, or naming ``driver``, is checked. A URL for another
+    backend, or naming another driver, goes to SQLAlchemy as written, so an
+    installed alternative driver keeps working.
+    """
+    backend, _, named = url.drivername.partition("+")
+    if backend not in backends or (named and named != driver):
+        return
+
+    error = _driver_import_error(driver)
+    if error is not None:
+        raise ConfigurationError(
+            f"Database '{database}' uses a '{url.drivername}://' URL, but the "
+            f"'{driver}' driver cannot be imported ({error}). Install it with "
+            f'`pip install "{_DEFAULT_DRIVER_EXTRAS[driver]}"`.'
+        ) from error
+
+
 class MssqlProvider(SAProvider):
+    """Provider for SQL Server, on the pyodbc driver.
+
+    A ``database_uri`` naming no driver (``mssql://``) or pyodbc
+    (``mssql+pyodbc://``) fails at ``domain.init()`` with the extra that installs
+    pyodbc when it cannot be imported. That includes pyodbc installed without the
+    unixODBC system library. A URI naming another driver goes to SQLAlchemy as
+    written.
+    """
+
     __database__ = SAProvider.databases.mssql.value
+
+    def _engine_url(self) -> URL:
+        url = super()._engine_url()
+        _require_default_driver(self.name, url, frozenset({"mssql"}), "pyodbc")
+        return url
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
@@ -2888,6 +2937,10 @@ class MysqlProvider(SAProvider):
     The charset is pinned to ``utf8mb4`` and is not configurable, so a collation
     from another charset is rejected at construction rather than at
     ``CREATE TABLE``.
+
+    A ``database_uri`` naming no driver or PyMySQL fails at ``domain.init()``
+    with the extra that installs PyMySQL when it cannot be imported. A URI
+    naming another driver (``mysql+mysqldb://``) goes to SQLAlchemy as written.
     """
 
     __database__ = SAProvider.databases.mysql.value
@@ -2926,6 +2979,11 @@ class MysqlProvider(SAProvider):
         self._collation = self._resolve_collation(name, conn_info)
         self._validate_connect_args(name, conn_info)
         super().__init__(name, domain, conn_info)
+
+    def _engine_url(self) -> URL:
+        url = super()._engine_url()
+        _require_default_driver(self.name, url, _MYSQL_DIALECTS, "pymysql")
+        return url
 
     @staticmethod
     def _validate_connect_args(name: str, conn_info: dict[str, typing.Any]) -> None:
