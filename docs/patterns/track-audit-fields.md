@@ -38,24 +38,7 @@ carry the bookkeeping.
 ### An abstract audit base
 
 ```python
-from protean import Domain
-from protean.fields import DateTime, String
-
-domain = Domain()
-
-
-@domain.aggregate(abstract=True, auto_add_id_field=False)
-class Audited:
-    created_at: DateTime(auto_now_add=True)   # stamped once, on create
-    updated_at: DateTime(auto_now=True)       # stamped on every save
-    created_by: String(max_length=50)
-    updated_by: String(max_length=50)
-
-
-@domain.aggregate
-class Article(Audited):
-    title: String(max_length=200)
-    body: String(max_length=5000)
+--8<-- "patterns/track-audit-fields/001.py:base"
 ```
 
 `auto_now_add` and `auto_now` are Django-parity flags on `DateTime` (and
@@ -69,17 +52,7 @@ saved. It **mutates the aggregate in place** (unlike event/command enrichers,
 which return metadata), and it runs on both create and update:
 
 ```python
-from protean.utils.globals import g
-
-
-@domain.aggregate_enricher
-def stamp_audit_user(aggregate):
-    if not hasattr(aggregate, "updated_by"):  # a framework record, such as an outbox row
-        return
-    user = g.get("current_user")
-    aggregate.updated_by = user
-    if aggregate.created_by is None:   # set once, on create; preserved after
-        aggregate.created_by = user
+--8<-- "patterns/track-audit-fields/001.py:enricher"
 ```
 
 Setting `created_by` only when it is unset keeps it stable across later
@@ -96,9 +69,7 @@ The enricher reads `current_user` off the domain context, so put it there at the
 edge of your application (an HTTP middleware, a CLI entry point, a worker):
 
 ```python
-with domain.domain_context(current_user="alice"):
-    repo = domain.repository_for(Article)
-    repo.add(Article(title="Hello", body="..."))
+--8<-- "patterns/track-audit-fields/001.py:supply"
 ```
 
 ## Applying the Pattern
@@ -106,27 +77,7 @@ with domain.domain_context(current_user="alice"):
 Create and update, end to end:
 
 ```python
-# Create — as "alice"
-with domain.domain_context(current_user="alice"):
-    repo = domain.repository_for(Article)
-    article = Article(title="Draft", body="...")
-    repo.add(article)
-    article_id = article.id
-
-stored = domain.repository_for(Article).get(article_id)
-# stored.created_at and stored.updated_at are set
-# stored.created_by == stored.updated_by == "alice"
-
-# Update — as "bob"
-with domain.domain_context(current_user="bob"):
-    repo = domain.repository_for(Article)
-    article = repo.get(article_id)
-    article.title = "Published"
-    repo.add(article)
-
-final = domain.repository_for(Article).get(article_id)
-# final.created_at unchanged; final.updated_at advanced
-# final.created_by == "alice"; final.updated_by == "bob"
+--8<-- "patterns/track-audit-fields/001.py:round_trip"
 ```
 
 ## Where it applies

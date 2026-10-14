@@ -5,20 +5,7 @@
 A developer models a `User` aggregate:
 
 ```python
-@domain.aggregate
-class User:
-    user_id: Auto(identifier=True)
-    name: String(required=True)
-    email: String(required=True)
-    phone: String()
-    address_line1: String()
-    address_line2: String()
-    city: String()
-    state: String()
-    postal_code: String()
-    country: String()
-    balance_amount: Float(default=0.0)
-    balance_currency: String(default="USD")
+--8<-- "patterns/replace-primitives-with-value-objects/001.py:user"
 ```
 
 This compiles, tests pass, and the application works, until it doesn't.
@@ -98,15 +85,7 @@ The simplest case, a string with format rules.
 **Before: primitive**
 
 ```python
-@domain.aggregate
-class User:
-    user_id: Auto(identifier=True)
-    email: String(required=True)
-
-    @invariant.post
-    def email_must_be_valid(self):
-        if self.email and "@" not in self.email:
-            raise ValidationError({"email": ["Invalid email address"]})
+--8<-- "patterns/replace-primitives-with-value-objects/002.py:user"
 ```
 
 The validation is on the aggregate, but it's a concern of the email concept
@@ -116,28 +95,7 @@ this check.
 **After: value object**
 
 ```python
-@domain.value_object
-class Email:
-    address: String(required=True, max_length=254)
-
-    @invariant.post
-    def must_be_valid_format(self):
-        if not self.address or "@" not in self.address:
-            raise ValidationError(
-                {"address": ["Must be a valid email address"]}
-            )
-
-        local, _, domain_part = self.address.partition("@")
-        if not local or not domain_part or "." not in domain_part:
-            raise ValidationError(
-                {"address": ["Must be a valid email address"]}
-            )
-
-
-@domain.aggregate
-class User:
-    user_id: Auto(identifier=True)
-    email = ValueObject(Email, required=True)
+--8<-- "patterns/replace-primitives-with-value-objects/003.py:email"
 ```
 
 Now `Email` validates itself. Creating `Email(address="bad")` raises a
@@ -145,11 +103,7 @@ Now `Email` validates itself. Creating `Email(address="bad")` raises a
 invariant. Any aggregate that uses `Email` gets validation automatically.
 
 ```python
-# Valid
-user = User(email=Email(address="user@example.com"))
-
-# Invalid -- raises ValidationError at Email construction
-user = User(email=Email(address="not-an-email"))
+--8<-- "patterns/replace-primitives-with-value-objects/003.py:usage"
 ```
 
 ### Money: Compound Value
@@ -159,14 +113,7 @@ Two fields that are meaningless apart.
 **Before: disconnected primitives**
 
 ```python
-@domain.aggregate
-class Product:
-    product_id: Auto(identifier=True)
-    name: String(required=True)
-    price_amount: Float(required=True)
-    price_currency: String(max_length=3, required=True)
-    cost_amount: Float(required=True)
-    cost_currency: String(max_length=3, required=True)
+--8<-- "patterns/replace-primitives-with-value-objects/004.py:product"
 ```
 
 Can you calculate margin? `price_amount - cost_amount`, but only if the
@@ -176,53 +123,7 @@ You could set `price_currency="XYZ"` and the system would happily store it.
 **After: value object with operations**
 
 ```python
-@domain.value_object
-class Money:
-    amount: Float(required=True)
-    currency: String(max_length=3, required=True)
-
-    @invariant.post
-    def amount_must_be_non_negative(self):
-        if self.amount < 0:
-            raise ValidationError(
-                {"amount": ["Amount cannot be negative"]}
-            )
-
-    @invariant.post
-    def currency_must_be_valid(self):
-        valid_currencies = {"USD", "EUR", "GBP", "JPY", "CAD", "AUD"}
-        if self.currency not in valid_currencies:
-            raise ValidationError(
-                {"currency": [f"Currency must be one of {valid_currencies}"]}
-            )
-
-    def add(self, other: "Money") -> "Money":
-        if self.currency != other.currency:
-            raise ValidationError(
-                {"currency": ["Cannot add different currencies"]}
-            )
-        return Money(amount=self.amount + other.amount, currency=self.currency)
-
-    def subtract(self, other: "Money") -> "Money":
-        if self.currency != other.currency:
-            raise ValidationError(
-                {"currency": ["Cannot subtract different currencies"]}
-            )
-        return Money(amount=self.amount - other.amount, currency=self.currency)
-
-    def multiply(self, factor: float) -> "Money":
-        return Money(amount=self.amount * factor, currency=self.currency)
-
-
-@domain.aggregate
-class Product:
-    product_id: Auto(identifier=True)
-    name: String(required=True)
-    price = ValueObject(Money, required=True)
-    cost = ValueObject(Money, required=True)
-
-    def margin(self) -> Money:
-        return self.price.subtract(self.cost)
+--8<-- "patterns/replace-primitives-with-value-objects/005.py:money"
 ```
 
 Now `Money` enforces its own rules: non-negative amounts, valid currencies,
@@ -230,21 +131,7 @@ and same-currency arithmetic. The `Product` aggregate uses `Money` without
 worrying about currency mismatches:
 
 ```python
-product = Product(
-    name="Widget",
-    price=Money(amount=29.99, currency="USD"),
-    cost=Money(amount=12.50, currency="USD"),
-)
-
-margin = product.margin()  # Money(amount=17.49, currency="USD")
-
-# This raises ValidationError: "Cannot subtract different currencies"
-bad_product = Product(
-    name="Widget",
-    price=Money(amount=29.99, currency="USD"),
-    cost=Money(amount=12.50, currency="EUR"),
-)
-bad_product.margin()
+--8<-- "patterns/replace-primitives-with-value-objects/005.py:usage"
 ```
 
 ### Address: Multi-Field Group
@@ -254,20 +141,7 @@ Six fields that form a single concept.
 **Before: flat primitives**
 
 ```python
-@domain.aggregate
-class Customer:
-    customer_id: Auto(identifier=True)
-    name: String(required=True)
-    shipping_street: String()
-    shipping_city: String()
-    shipping_state: String()
-    shipping_postal_code: String()
-    shipping_country: String()
-    billing_street: String()
-    billing_city: String()
-    billing_state: String()
-    billing_postal_code: String()
-    billing_country: String()
+--8<-- "patterns/replace-primitives-with-value-objects/006.py:customer"
 ```
 
 Twelve address fields on one aggregate. To add a "work address," you'd add
@@ -277,28 +151,7 @@ each field individually.
 **After: value object**
 
 ```python
-@domain.value_object
-class Address:
-    street: String(required=True)
-    city: String(required=True)
-    state: String(required=True)
-    postal_code: String(required=True)
-    country: String(max_length=2, required=True)
-
-    @invariant.post
-    def country_must_be_iso_code(self):
-        if len(self.country) != 2 or not self.country.isalpha():
-            raise ValidationError(
-                {"country": ["Country must be a 2-letter ISO code"]}
-            )
-
-
-@domain.aggregate
-class Customer:
-    customer_id: Auto(identifier=True)
-    name: String(required=True)
-    shipping_address = ValueObject(Address)
-    billing_address = ValueObject(Address)
+--8<-- "patterns/replace-primitives-with-value-objects/007.py:address"
 ```
 
 The aggregate went from twelve fields to two. Adding a work address is one more
@@ -306,23 +159,7 @@ field. The `Address` value object validates itself. You can't create a partial
 address with just a city and no street.
 
 ```python
-customer = Customer(
-    name="Jane Smith",
-    shipping_address=Address(
-        street="123 Main St",
-        city="Springfield",
-        state="IL",
-        postal_code="62701",
-        country="US",
-    ),
-    billing_address=Address(
-        street="456 Oak Ave",
-        city="Chicago",
-        state="IL",
-        postal_code="60601",
-        country="US",
-    ),
-)
+--8<-- "patterns/replace-primitives-with-value-objects/007.py:usage"
 ```
 
 ### DateRange: Value Object with Behavior
@@ -330,36 +167,7 @@ customer = Customer(
 A concept with operations beyond storage.
 
 ```python
-@domain.value_object
-class DateRange:
-    start_date: Date(required=True)
-    end_date: Date(required=True)
-
-    @invariant.post
-    def end_must_be_after_start(self):
-        if self.end_date <= self.start_date:
-            raise ValidationError(
-                {"end_date": ["End date must be after start date"]}
-            )
-
-    def contains(self, date) -> bool:
-        return self.start_date <= date <= self.end_date
-
-    def overlaps(self, other: "DateRange") -> bool:
-        return self.start_date <= other.end_date and other.start_date <= self.end_date
-
-    def duration_days(self) -> int:
-        return (self.end_date - self.start_date).days
-
-
-@domain.aggregate
-class Campaign:
-    campaign_id: Auto(identifier=True)
-    name: String(required=True)
-    active_period = ValueObject(DateRange, required=True)
-
-    def is_active_on(self, date) -> bool:
-        return self.active_period.contains(date)
+--8<-- "patterns/replace-primitives-with-value-objects/008.py:date_range"
 ```
 
 The `DateRange` value object knows how to check containment, overlap, and
@@ -376,11 +184,7 @@ Protean's `ValueObject` association field embeds a value object directly inside
 an aggregate or entity:
 
 ```python
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    total = ValueObject(Money, required=True)
-    shipping_address = ValueObject(Address)
+--8<-- "patterns/replace-primitives-with-value-objects/009.py:order"
 ```
 
 The value object is stored as part of the aggregate's data. When the aggregate
@@ -393,20 +197,13 @@ Protean enforces immutability on value objects. After construction, fields
 cannot be changed:
 
 ```python
-email = Email(address="user@example.com")
-email.address = "other@example.com"  # Raises IncorrectUsageError
+--8<-- "patterns/replace-primitives-with-value-objects/003.py:immutable"
 ```
 
 To "change" a value object, you replace it entirely:
 
 ```python
-customer.shipping_address = Address(
-    street="789 Pine St",
-    city="Oakland",
-    state="CA",
-    postal_code="94607",
-    country="US",
-)
+--8<-- "patterns/replace-primitives-with-value-objects/007.py:replace"
 ```
 
 This aligns with the DDD principle: value objects are replaced, not mutated.
@@ -416,6 +213,7 @@ This aligns with the DDD principle: value objects are replaced, not mutated.
 Protean explicitly rejects identifier fields on value objects:
 
 ```python
+# fragment
 @domain.value_object
 class Money:
     id: Auto(identifier=True)  # Raises IncorrectUsageError
@@ -431,10 +229,7 @@ objects (which are defined by their attributes).
 Two value objects with the same attributes are equal:
 
 ```python
-money1 = Money(amount=100.0, currency="USD")
-money2 = Money(amount=100.0, currency="USD")
-
-assert money1 == money2  # True -- same attributes, same value object
+--8<-- "patterns/replace-primitives-with-value-objects/005.py:equality"
 ```
 
 This is automatic in Protean. You don't need to implement `__eq__`.
@@ -444,16 +239,7 @@ This is automatic in Protean. You don't need to implement `__eq__`.
 Value objects support `@invariant.post`, just like aggregates:
 
 ```python
-@domain.value_object
-class Percentage:
-    value: Float(required=True)
-
-    @invariant.post
-    def must_be_between_zero_and_hundred(self):
-        if not (0 <= self.value <= 100):
-            raise ValidationError(
-                {"value": ["Percentage must be between 0 and 100"]}
-            )
+--8<-- "patterns/replace-primitives-with-value-objects/010.py:percentage"
 ```
 
 The invariant fires at construction time. An invalid `Percentage` cannot exist.
@@ -468,54 +254,13 @@ aggregate to the value object:
 **Before: validation on the aggregate**
 
 ```python
-@domain.aggregate
-class User:
-    email: String(required=True)
-    phone: String()
-
-    @invariant.post
-    def email_must_be_valid(self):
-        # Email validation on the User aggregate
-        if self.email and "@" not in self.email:
-            raise ValidationError({"email": ["Invalid email"]})
-
-    @invariant.post
-    def phone_must_be_valid(self):
-        # Phone validation on the User aggregate
-        if self.phone and not self.phone.replace("+", "").replace("-", "").isdigit():
-            raise ValidationError({"phone": ["Invalid phone number"]})
+--8<-- "patterns/replace-primitives-with-value-objects/011.py:user"
 ```
 
 **After: validation on the value objects**
 
 ```python
-@domain.value_object
-class Email:
-    address: String(required=True, max_length=254)
-
-    @invariant.post
-    def must_be_valid(self):
-        if "@" not in self.address:
-            raise ValidationError({"address": ["Invalid email"]})
-
-
-@domain.value_object
-class Phone:
-    number: String(required=True, max_length=20)
-
-    @invariant.post
-    def must_be_valid(self):
-        digits = self.number.replace("+", "").replace("-", "").replace(" ", "")
-        if not digits.isdigit():
-            raise ValidationError({"number": ["Invalid phone number"]})
-
-
-@domain.aggregate
-class User:
-    user_id: Auto(identifier=True)
-    email = ValueObject(Email, required=True)
-    phone = ValueObject(Phone)
-    # No email or phone validation invariants needed on User
+--8<-- "patterns/replace-primitives-with-value-objects/012.py:value_objects"
 ```
 
 The aggregate's invariants now focus on **business rules**, things like "a user
@@ -529,31 +274,7 @@ the value object's responsibility.
 Value objects can contain other value objects:
 
 ```python
-@domain.value_object
-class GeoLocation:
-    latitude: Float(required=True)
-    longitude: Float(required=True)
-
-    @invariant.post
-    def coordinates_must_be_valid(self):
-        if not (-90 <= self.latitude <= 90):
-            raise ValidationError(
-                {"latitude": ["Latitude must be between -90 and 90"]}
-            )
-        if not (-180 <= self.longitude <= 180):
-            raise ValidationError(
-                {"longitude": ["Longitude must be between -180 and 180"]}
-            )
-
-
-@domain.value_object
-class Address:
-    street: String(required=True)
-    city: String(required=True)
-    state: String(required=True)
-    postal_code: String(required=True)
-    country: String(max_length=2, required=True)
-    location = ValueObject(GeoLocation)  # Optional geo coordinates
+--8<-- "patterns/replace-primitives-with-value-objects/013.py:nested"
 ```
 
 An `Address` can optionally include a `GeoLocation`. Both are value objects,
@@ -623,6 +344,7 @@ timestamps.
 ### Wrapping Without Validating
 
 ```python
+# fragment
 # Anti-pattern: value object that adds no value
 @domain.value_object
 class Name:
@@ -637,6 +359,7 @@ or composition.
 ### Mutable State Through Backdoors
 
 ```python
+# fragment
 # Anti-pattern: trying to work around immutability
 email = Email(address="old@example.com")
 email._value_object_data["address"] = "new@example.com"  # Don't do this

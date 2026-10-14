@@ -57,17 +57,7 @@ Indexes are declared with the `indexes=` decorator option, using portable
 `Index` objects:
 
 ```python
-from protean import Index, Q
-
-
-@domain.aggregate(indexes=[
-    Index("status", "priority", desc=("priority",),
-          where=Q(status__in=["pending", "failed"]), name="ix_active"),
-    Index("message_id", unique=True),
-    Index("correlation_id"),
-])
-class Outbox:
-    ...
+--8<-- "patterns/index-aggregates-for-query-paths/001.py:outbox"
 ```
 
 The portable subset (composite, descending, unique, naming) is honored by every
@@ -78,8 +68,11 @@ SQL Server. Storage-specific indexes (GIN, BRIN, expression indexes) drop to
 `Index.from_sql(dialect, ddl)`, keeping the aggregate clean while still
 expressing the tuning.
 
-This is exactly how Protean's own `Outbox` is indexed, the example above ships
-with the framework. See the [Indexes
+Protean's own `Outbox` is indexed the same way. The framework ships the same
+partial polling index on `status` and `priority` (named `ix_outbox_active`) and
+the same `correlation_id` index. Its unique index covers `message_id` and
+`target_broker` together, because the framework writes one outbox row per
+target broker for each message. See the [Indexes
 reference](../reference/domain-elements/indexes.md) for the full option set and
 [ADR-0014](../adr/0014-aggregate-metadata-decorator-params-over-meta-class.md)
 for why indexes live on the decorator.
@@ -99,14 +92,7 @@ paths beyond primary-key load:
   it partial.
 
 ```python
-@domain.aggregate(indexes=[
-    Index("email", unique=True),                       # uniqueness invariant
-    Index("organization_id"),                          # foreign lookup
-    Index("status", "created_at", desc=("created_at",), # filter + sort
-          where=Q(status="open"), name="ix_open"),     # hot subset
-])
-class Ticket:
-    ...
+--8<-- "patterns/index-aggregates-for-query-paths/002.py:ticket"
 ```
 
 Then render and review the DDL before it reaches a database:
