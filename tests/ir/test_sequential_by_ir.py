@@ -5,6 +5,7 @@ carries the declared value (a field name for event/command handlers, the
 boolean opt-in for process managers; a field name for projectors too).
 """
 
+import copy
 import json
 
 import jsonschema
@@ -157,3 +158,119 @@ class TestSequentialByIR:
 
     def test_ir_validates_against_schema(self):
         jsonschema.validate(_build_ir(), json.loads(SCHEMA_PATH.read_text()))
+
+
+_SEQUENTIAL_KINDS = ("event_handler", "command_handler", "projector", "process_manager")
+
+
+def _schema():
+    return json.loads(SCHEMA_PATH.read_text())
+
+
+def _strict_schema():
+    """Close the four handler definitions to keys the schema does not declare.
+
+    ``additionalProperties`` sees only sibling ``properties``, so the
+    ``base_element`` keys are merged into the object branch before closing it.
+    """
+    schema = copy.deepcopy(_schema())
+    base_properties = schema["$defs"]["base_element"]["properties"]
+    for kind in _SEQUENTIAL_KINDS:
+        branch = schema["$defs"][kind]["allOf"][1]
+        branch["properties"] = {**base_properties, **branch["properties"]}
+        branch["additionalProperties"] = False
+    return schema
+
+
+def _all_with_sequential_by(ir):
+    cluster = _order_cluster(ir)
+    projectors = [
+        entry
+        for projection in ir["projections"].values()
+        for entry in projection["projectors"].values()
+    ]
+    return [
+        *cluster["event_handlers"].values(),
+        *cluster["command_handlers"].values(),
+        *projectors,
+        *ir["flows"]["process_managers"].values(),
+    ]
+
+
+def _element(ir, name):
+    for element in _all_with_sequential_by(ir):
+        if element["name"] == name:
+            return element
+    pytest.fail(f"{name} not found in the IR")
+
+
+def _error_paths(ir):
+    validator = jsonschema.Draft202012Validator(_schema())
+    return [list(error.absolute_path) for error in validator.iter_errors(ir)]
+
+
+def _path_to(ir, name):
+    """Return the JSON path to ``name``'s ``sequential_by`` key."""
+    cluster_fqn, cluster = next(
+        (fqn, c)
+        for fqn, c in ir["clusters"].items()
+        if c["aggregate"]["name"] == "Order"
+    )
+    for section in ("event_handlers", "command_handlers"):
+        for fqn, element in cluster[section].items():
+            if element["name"] == name:
+                return ["clusters", cluster_fqn, section, fqn, "sequential_by"]
+    for projection_fqn, projection in ir["projections"].items():
+        for fqn, element in projection["projectors"].items():
+            if element["name"] == name:
+                return [
+                    "projections",
+                    projection_fqn,
+                    "projectors",
+                    fqn,
+                    "sequential_by",
+                ]
+    for fqn, element in ir["flows"]["process_managers"].items():
+        if element["name"] == name:
+            return ["flows", "process_managers", fqn, "sequential_by"]
+    pytest.fail(f"{name} not found in the IR")
+
+
+@pytest.mark.no_test_domain
+class TestSequentialBySchema:
+    def test_ir_validates_when_handler_definitions_are_closed(self):
+        ir = _build_ir()
+        carrying = {
+            element["element_type"]
+            for element in _all_with_sequential_by(ir)
+            if "sequential_by" in element
+        }
+        assert carrying == {
+            "EVENT_HANDLER",
+            "COMMAND_HANDLER",
+            "PROJECTOR",
+            "PROCESS_MANAGER",
+        }
+
+        validator = jsonschema.Draft202012Validator(_strict_schema())
+        errors = [error.message for error in validator.iter_errors(ir)]
+        assert errors == []
+
+    @pytest.mark.parametrize(
+        "name",
+        ["PartitionedOrderHandler", "OrderCommandHandler", "PartitionedOrderProjector"],
+    )
+    def test_empty_partition_key_is_rejected(self, name):
+        ir = _build_ir()
+        _element(ir, name)["sequential_by"] = ""
+        assert _error_paths(ir) == [_path_to(ir, name)]
+
+    def test_string_on_process_manager_is_rejected(self):
+        ir = _build_ir()
+        _element(ir, "OrderPM")["sequential_by"] = "x"
+        assert _error_paths(ir) == [_path_to(ir, "OrderPM")]
+
+    def test_false_on_process_manager_validates(self):
+        ir = _build_ir()
+        _element(ir, "OrderPM")["sequential_by"] = False
+        assert _error_paths(ir) == []
