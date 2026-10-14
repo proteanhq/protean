@@ -241,6 +241,8 @@ test = [
     "pytest-xdist>=3.8.0",
     # Parses the teaching skills' SKILL.md frontmatter in tests/dx/.
     "pyyaml>=6.0.3",
+    # The testing guides teach pytest-bdd step definitions; their docs_src examples run against it.
+    "pytest-bdd>=9.0.0",
 ]
 docs = [
     "mkdocs>=1.6.1,<2",
