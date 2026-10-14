@@ -68,10 +68,11 @@ SQL Server. Storage-specific indexes (GIN, BRIN, expression indexes) drop to
 `Index.from_sql(dialect, ddl)`, keeping the aggregate clean while still
 expressing the tuning.
 
-Protean's own `Outbox` is indexed the same way. The framework ships the same
-partial polling index on `status` and `priority` (named `ix_outbox_active`) and
-the same `correlation_id` index. Its unique index covers `message_id` and
-`target_broker` together, because the framework writes one outbox row per
+Protean's own `Outbox` is indexed almost the same way, with two differences.
+Its partial polling index on `status` and `priority` is named
+`ix_outbox_active`, and its unique index covers `message_id` and
+`target_broker` together. The `correlation_id` index is the same. The unique
+index covers two fields because the framework writes one outbox row per
 target broker for each message. See the [Indexes
 reference](../reference/domain-elements/indexes.md) for the full option set and
 [ADR-0014](../adr/0014-aggregate-metadata-decorator-params-over-meta-class.md)

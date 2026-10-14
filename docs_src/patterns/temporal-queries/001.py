@@ -252,8 +252,10 @@ class AccountAuditService(BaseApplicationService):
 from fastapi import FastAPI, HTTPException, Query
 
 from protean.exceptions import ObjectNotFoundError
+from protean.integrations.fastapi import DomainContextMiddleware
 
 app = FastAPI()
+app.add_middleware(DomainContextMiddleware, route_domain_map={"/": compliance})
 
 
 @app.get("/accounts/{account_id}/at-version/{version}")
@@ -278,9 +280,12 @@ async def get_account_as_of(
     timestamp: str = Query(..., description="ISO-8601 timestamp"),
 ):
     try:
-        account = AccountAuditService().get_account_as_of(
-            account_id, datetime.fromisoformat(timestamp)
-        )
+        as_of = datetime.fromisoformat(timestamp)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        account = AccountAuditService().get_account_as_of(account_id, as_of)
     except ObjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

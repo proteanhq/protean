@@ -116,7 +116,7 @@ def test_as_of_a_write_time_includes_that_event(example, write_times):
 
 
 def test_as_of_just_before_a_write_excludes_that_event(example, write_times):
-    assert write_times[1] < write_times[2]  # the two saves wrote at different times
+    assert write_times[1] < write_times[2]  # each event has its own write time
 
     before_limit_raise = write_times[2] - timedelta(microseconds=1)
     account = example.account_at_quarter_end(before_limit_raise)
@@ -198,8 +198,27 @@ def test_compare_of_a_version_with_itself_finds_no_changes(example):
     assert result["changes"] == {}
 
 
-def test_api_returns_the_account_at_a_version(example):
-    response = TestClient(example.app).get("/accounts/acct-1001/at-version/2")
+@pytest.fixture
+def api():
+    """A client for the page's app, with no domain context open around it.
+
+    The app's ``DomainContextMiddleware`` has to supply the context, as it does
+    in production. The write times are read while the history is written.
+    """
+    module = load_example("patterns/temporal-queries/001.py")
+    with module.compliance.domain_context():
+        module.record_account_history()
+        rows = module.compliance.event_store.store._read(STREAM)
+        times = [datetime.fromisoformat(row["time"]) for row in rows]
+    assert len(times) == 5
+    yield TestClient(module.app), times
+    with module.compliance.domain_context():
+        module.compliance.event_store.store._data_reset()
+
+
+def test_api_returns_the_account_at_a_version(api):
+    client, _ = api
+    response = client.get("/accounts/acct-1001/at-version/2")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -211,9 +230,10 @@ def test_api_returns_the_account_at_a_version(example):
     }
 
 
-def test_api_returns_the_account_as_of_a_time(example, write_times):
-    response = TestClient(example.app).get(
-        "/accounts/acct-1001/as-of", params={"timestamp": write_times[3].isoformat()}
+def test_api_returns_the_account_as_of_a_time(api):
+    client, times = api
+    response = client.get(
+        "/accounts/acct-1001/as-of", params={"timestamp": times[3].isoformat()}
     )
 
     assert response.status_code == 200
@@ -221,19 +241,26 @@ def test_api_returns_the_account_as_of_a_time(example, write_times):
     assert response.json()["daily_transaction_limit"] == 100_000.00
 
 
-def test_api_returns_404_for_an_unknown_account(example):
-    response = TestClient(example.app).get("/accounts/acct-9999/at-version/0")
+def test_api_returns_404_for_an_unknown_account(api):
+    client, _ = api
+    response = client.get("/accounts/acct-9999/at-version/0")
 
     assert response.status_code == 404
 
 
-def test_api_returns_404_before_the_first_event(example, write_times):
-    early = (write_times[0] - timedelta(seconds=1)).isoformat()
-    response = TestClient(example.app).get(
-        "/accounts/acct-1001/as-of", params={"timestamp": early}
-    )
+def test_api_returns_404_before_the_first_event(api):
+    client, times = api
+    early = (times[0] - timedelta(seconds=1)).isoformat()
+    response = client.get("/accounts/acct-1001/as-of", params={"timestamp": early})
 
     assert response.status_code == 404
+
+
+def test_api_returns_422_for_a_timestamp_that_is_not_iso_8601(api):
+    client, _ = api
+    response = client.get("/accounts/acct-1001/as-of", params={"timestamp": "garbage"})
+
+    assert response.status_code == 422
 
 
 # --- read-only safety ---------------------------------------------------------

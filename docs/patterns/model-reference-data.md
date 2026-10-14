@@ -390,5 +390,5 @@ storage table as an adapter detail, never a domain model.
 
     **Guides:**
 
-    - [Database Models](../guides/change-state/database-models.md): Custom `@domain.model` mappings and `schema_name`.
+    - [Database Models](../guides/change-state/database-models.md): Custom `@domain.database_model` mappings and `schema_name`.
     - [Repositories](../guides/change-state/repositories.md): Custom repository methods for retrieving collections.

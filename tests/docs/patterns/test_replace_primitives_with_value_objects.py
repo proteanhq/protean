@@ -173,12 +173,19 @@ class TestEmailValueObject:
         assert "address" in exc.value.messages
 
     def test_rejects_an_address_longer_than_254(self, email_example):
-        address = "a" * 250 + "@example.com"
+        # 255 characters: one over the page's limit, inside String's default 255.
+        address = "a" * 243 + "@example.com"
+        assert len(address) == 255
 
         with pytest.raises(ValidationError) as exc:
             email_example.Email(address=address)
 
         assert "address" in exc.value.messages
+
+    def test_accepts_an_address_of_exactly_254(self, email_example):
+        address = "a" * 242 + "@example.com"
+
+        assert email_example.Email(address=address).address == address
 
     def test_accepts_a_valid_address(self, email_example):
         email = email_example.Email(address="user@example.com")

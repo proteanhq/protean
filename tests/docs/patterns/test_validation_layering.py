@@ -335,10 +335,11 @@ def check_value_object(layers, case):
 
 
 def check_aggregate(layers, case):
-    # The aggregate gets a valid Money: the currency is the value object's concern.
+    # The aggregate gets a valid Money and a customer: the currency is the value
+    # object's concern, and a missing customer_id is the command's.
     command = case["command"]
     layers.Order(
-        customer_id=command.get("customer_id"),
+        customer_id=command.get("customer_id", "cust-456"),
         items=order_items(layers, command["items"]),
         total=layers.Money(amount=command["total"], currency="USD"),
     ).place()
@@ -362,10 +363,8 @@ LAYER_CHECKS = {
     "guard": check_guard,
 }
 
-# Pairs a layer can not be asked about. The guard can not see an input the
-# command refuses to build, and the Order's own required ``customer_id`` is a
-# Layer 1 field constraint, so it rejects the field input by the same rule.
-UNREACHABLE = {("guard", "field"), ("aggregate", "field")}
+# The guard can not be asked about an input the command refuses to build.
+UNREACHABLE = {("guard", "field")}
 
 OTHER_LAYER_PAIRS = [
     (layer, owner)
@@ -395,8 +394,8 @@ def test_every_layer_has_an_input_and_is_checked_against_the_others():
 
 @pytest.mark.parametrize("layer", ["guard", "value_object", "aggregate"])
 def test_place_order_flow_stops_at_the_owning_layer(layers, layer):
-    # The handler runs guard, value object, aggregate in that order. Getting
-    # exactly the owner's error shows every earlier layer accepted the input.
+    # Getting exactly the owner's error shows every earlier layer accepted the
+    # input. The order of the layers is checked separately below.
     case = LAYER_INPUTS[layer]
     seed_credit(layers, case["suspended"])
 
@@ -406,6 +405,38 @@ def test_place_order_flow_stops_at_the_owning_layer(layers, layer):
     assert exc.value.messages == LAYER_ERRORS[layer]
     with pytest.raises(ObjectNotFoundError):
         layers.domain.repository_for(layers.Order).get("ord-123")
+
+
+@pytest.mark.parametrize(
+    ("command", "suspended", "first"),
+    [
+        ({**VALID_COMMAND, "currency": "XYZ"}, True, "guard"),
+        ({**VALID_COMMAND, "currency": "XYZ", "total": 50.0}, False, "value_object"),
+    ],
+)
+def test_place_order_flow_runs_the_guard_then_the_value_object_then_the_aggregate(
+    layers, command, suspended, first
+):
+    seed_credit(layers, suspended)
+
+    with pytest.raises(ValidationError) as exc:
+        layers.domain.process(layers.PlaceOrder(**command), asynchronous=False)
+
+    assert exc.value.messages == LAYER_ERRORS[first]
+
+
+@pytest.mark.parametrize(
+    ("change", "field"),
+    [
+        ({"total": -1.0}, "total"),
+        ({"currency": "USDX"}, "currency"),
+    ],
+)
+def test_place_order_command_rejects_bad_field_values(layers, change, field):
+    with pytest.raises(ValidationError) as exc:
+        layers.PlaceOrder(**{**VALID_COMMAND, **change})
+
+    assert list(exc.value.messages) == [field]
 
 
 def test_submit_order_passes_every_layer(layers):
