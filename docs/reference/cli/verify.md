@@ -49,7 +49,9 @@ shell does not change the config any stage loads, and `PROTEAN_DEBUG` and
 picks the default log level and format, because `verify` sets up logging before
 the stages run. The child's `PROTEAN_ENV` also takes precedence over a
 `--protean-env` option in the project's pytest `addopts` or in
-`PYTEST_ADDOPTS`, so `--env` is the one place that picks the environment.
+`PYTEST_ADDOPTS`. Project test code that sets `PROTEAN_ENV` itself, such as a
+`conftest.py` or a pytest-env `env` setting, still changes the tests stage
+only.
 
 ## Exit codes
 
@@ -126,9 +128,10 @@ When `verify` aborts early (the domain is not found, exit 2; `--path` is not a
 directory, exit 2; `--env` is blank, exit 2; or init fails, exit 3), the stages
 that never ran are reported as a bare `{ "status": "skipped" }` **without**
 their other sub-keys. A consumer that reads, say, `data.stages.check.counts`
-must guard for the skipped shape (or check the top-level `status`/`data.verdict` first). The domain-not-found
-and init-failure cases carry their message under `data.stages.init.error`
-instead of `data.error`, since those are tied to the init stage.
+must guard for the skipped shape (or check the top-level `status`/`data.verdict`
+first). The domain-not-found and init-failure cases carry their message under
+`data.stages.init.error` instead of `data.error`, since those are tied to the
+init stage.
 
 ## Related
 

@@ -40,7 +40,8 @@ the stage classes pinned. Ordered by precedence:
 
     0 — all green: init, check, and tests all pass
     2 — a usage error: the domain was not found, ``--path`` is not a
-        directory, or ``--env`` is blank (Click also exits ``2`` for a malformed command line)
+        directory, or ``--env`` is blank (Click also exits ``2`` for a
+        malformed command line)
     3 — the domain was found but failed to initialize
     4 — check failed (a malformed ``[lint]`` config, or findings at or above
         the ``[lint].level`` floor)
@@ -165,10 +166,10 @@ def run_verify(domain: str, path: str, env: str = "test") -> VerifyResult:
     This is the compute-only core behind ``protean verify``: it discovers and
     initializes the domain, runs ``Domain.check``, runs the project's pytest suite
     in ``path``, and maps the outcome to the settled exit code. The early
-    usage/init failures (a blank ``env``, a bad ``--path``, a domain that is not found or fails to
-    load) become early returns carrying the same stage tree, error line, status
-    class, and exit code they mapped to before. The ``verify`` command emits the
-    result and exits; ``protean new --from-model`` maps ``result.exit_code``.
+    usage/init failures (a bad ``--path``, a blank ``env``, a domain that is not
+    found or fails to load) become early returns that carry the stage tree, an
+    error line, a status class and an exit code. The ``verify`` command emits
+    the result and exits; ``protean new --from-model`` maps ``result.exit_code``.
 
     Init and check run in the calling process, so this is meant for one call per
     process (the CLI's use). A second call in the same process for a different
@@ -200,9 +201,9 @@ def run_verify(domain: str, path: str, env: str = "test") -> VerifyResult:
         msg = f"--path is not a directory: {path}"
         return _early_result(stages, _EXIT_USAGE, msg)
 
-    # A blank value would read as "no environment" to the domain config but
-    # reach the pytest child as an empty ``PROTEAN_ENV``, splitting the stages.
-    # Surrounding spaces would match no overlay name, so they are dropped.
+    # A blank name selects no config overlay, yet on the command line it looks
+    # like a choice was made. Surrounding spaces would match no overlay name,
+    # so they are dropped.
     env = env.strip()
     if not env:
         return _early_result(stages, _EXIT_USAGE, "--env must not be blank")

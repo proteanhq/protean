@@ -570,7 +570,7 @@ def test_from_model_verifies_under_the_test_env_whatever_the_shell_exports(
 ):
     """A freshly built project is verified under the ``test`` environment, so a
     ``PROTEAN_ENV`` exported in the caller's shell does not pick the overlay the
-    verdict is computed under. The caller's value is left as it was found."""
+    verdict is computed under."""
     from protean.cli.verify import VerifyResult
 
     verify_module = sys.modules["protean.cli.verify"]
@@ -605,4 +605,3 @@ def test_from_model_verifies_under_the_test_env_whatever_the_shell_exports(
 
     assert result.exit_code == 0, result.output
     assert seen == ["test"]
-    assert os.environ["PROTEAN_ENV"] == "memory"

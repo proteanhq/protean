@@ -711,19 +711,27 @@ class TestVerifySubprocessEnv:
         monkeypatch.setenv("VIRTUAL_ENV", "/tmp/bogus-venv-should-not-leak")
         monkeypatch.setenv("PROTEAN_ENV", "leaked")
         monkeypatch.setenv("PROTEAN_DEBUG", "1")
-        # PROTEAN_ENV is not dropped but replaced: the child gets the
-        # environment verify runs every stage under (``--env``, default "test").
+        # PROTEAN_ENV is not dropped but replaced: the child gets ``--env``.
         body = (
             "import os\n"
             "def test_env_scrubbed():\n"
             "    assert 'VIRTUAL_ENV' not in os.environ\n"
             "    assert 'PROTEAN_DEBUG' not in os.environ\n"
-            "    assert os.environ.get('PROTEAN_ENV') == 'test'\n"
+            "    assert os.environ.get('PROTEAN_ENV') == 'memory'\n"
         )
         tests_dir = _write_test(tmp_path / "tests", body)
         result = runner.invoke(
             app,
-            ["verify", "-d", _CLEAN_DOMAIN, "--path", str(tests_dir), "--json"],
+            [
+                "verify",
+                "-d",
+                _CLEAN_DOMAIN,
+                "--path",
+                str(tests_dir),
+                "--env",
+                "memory",
+                "--json",
+            ],
         )
         # If verify did not scrub the vars, the child test asserts False → the
         # tests stage fails → exit 4.
