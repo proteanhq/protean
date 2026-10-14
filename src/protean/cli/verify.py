@@ -26,8 +26,10 @@ Usage::
 All three stages run under one environment, named by ``--env`` (default
 ``test``). ``verify`` sets ``PROTEAN_ENV`` to it before the domain is imported,
 so init and check load that config overlay, and passes the same value to the
-pytest child. A ``PROTEAN_ENV`` exported in the shell is ignored, and the
-caller's value is restored when ``run_verify`` returns.
+pytest child. A ``PROTEAN_ENV`` exported in the shell does not change the
+config any stage loads, and the caller's value is restored when ``run_verify``
+returns. The shell's value still picks the default log level and format,
+because ``verify`` sets up logging before the stages run.
 
 Under ``--json`` the result is the shared CLI envelope (see
 :mod:`protean.cli.result`): the verdict and per-stage tree under ``data``, the
