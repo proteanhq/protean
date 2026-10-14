@@ -733,7 +733,7 @@ def test_a_page_that_leaves_a_thread_running_fails_at_cleanup(tmp_path, bases):
             "not_run": [],
         }
     ]
-    # The shutdown watchdog ends the child at 1 second; the outer limit is 61.
+    # The shutdown watchdog ends the child at 1 second, far inside the outer limit.
     assert elapsed < 10
 
 
