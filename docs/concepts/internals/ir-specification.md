@@ -205,9 +205,10 @@ The three enricher keys are sparse: each appears only when at least one enricher
 of that kind is registered. The lists keep registration order, unlike the other
 lists in the IR, because enrichers run in that order and a later enricher can
 overwrite what an earlier one set. `protean ir diff` reports an enricher that
-was added, removed or moved. Domain traversal loads modules in sorted path
-order, so enrichers registered by traversed modules land in the same order on
-every machine.
+was added, removed or moved. Domain traversal loads the root directory's
+files first, then each subdirectory in name order, with the files in each
+directory sorted by name. So enrichers registered by traversed modules land in
+the same order on every machine.
 
 An enricher is named by its `__module__` and `__qualname__`. A
 `functools.partial` is named by the function it wraps. A callable instance is
