@@ -10,10 +10,7 @@ from decimal import Decimal
 
 import pytest
 
-from protean import Domain
 from protean.exceptions import IncorrectUsageError, ValidationError
-from protean.fields import Auto, String
-from protean.fields import Decimal as DecimalField
 from protean.utils.reflection import id_field
 from tests.docs.support import load_example
 
@@ -190,40 +187,24 @@ def test_primitive_email_accepts_what_the_email_value_object_rejects():
 
 
 def test_entity_without_part_of_is_rejected():
-    domain = Domain(name="MissingAggregate")
-    with pytest.raises(IncorrectUsageError) as exc:
-
-        @domain.entity
-        class Comment:
-            content: String(max_length=500)
-
-    assert "needs to be associated with an Aggregate" in str(exc.value)
+    with pytest.raises(
+        IncorrectUsageError,
+        match="Entity `Comment` needs to be associated with an Aggregate",
+    ):
+        load_example("concepts/building-blocks/choosing-element-types/005.py")
 
 
 def test_assigning_to_a_value_object_field_is_rejected():
-    domain = Domain(name="MutableValueObject")
-
-    @domain.value_object
-    class Address:
-        street: String()
-        city: String()
-
-    domain.init(traverse=False)
-    with domain.domain_context():
-        address = Address(street="123 Main St", city="NYC")
-        with pytest.raises(IncorrectUsageError):
-            address.street = "456 Oak Ave"
-        assert address.street == "123 Main St"
+    with pytest.raises(
+        IncorrectUsageError,
+        match="Value Objects are immutable and cannot be modified once created",
+    ):
+        load_example("concepts/building-blocks/choosing-element-types/006.py")
 
 
 def test_value_object_with_an_identifier_field_is_rejected():
-    domain = Domain(name="ValueObjectWithIdentity")
-    with pytest.raises(IncorrectUsageError) as exc:
-
-        @domain.value_object
-        class Money:
-            id: Auto(identifier=True)
-            amount = DecimalField()
-            currency: String()
-
-    assert "cannot contain fields marked 'identifier'" in str(exc.value)
+    with pytest.raises(
+        IncorrectUsageError,
+        match="Value Objects cannot contain fields marked 'identifier'",
+    ):
+        load_example("concepts/building-blocks/choosing-element-types/007.py")

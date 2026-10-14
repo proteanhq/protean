@@ -158,7 +158,7 @@ registry to verify that terminal versions match registered event classes.
 
 ```python
 # fragment
-# In Domain.init():
+# In Domain._prepare(), which Domain.init() calls:
 self._set_and_record_event_and_command_type()  # populates _events_and_commands
 if validate:
     self._build_upcaster_chains()  # uses _events_and_commands

@@ -20,14 +20,14 @@ class Order: ...
 class User: ...
 
 
-# Stream category: "user"
+# Stream category: "ecommerce::user"
 
 
 @domain.aggregate
 class OrderItem: ...
 
 
-# Stream category: "order_item"
+# Stream category: "ecommerce::order_item"
 # --8<-- [end:default_names]
 
 
@@ -35,7 +35,7 @@ class OrderItem: ...
 @domain.command(part_of=Order)
 class PlaceOrder:
     order_id: Identifier(required=True)
-    # Routes to Order's stream category
+    # Routes to Order's command stream ("ecommerce::order:command")
 
 
 # --8<-- [end:command]

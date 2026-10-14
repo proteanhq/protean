@@ -59,6 +59,7 @@ def test_the_subscriber_consumes_a_message_from_the_broker():
 
         _run_engine(example.domain)
 
+        assert example.external_orders == [{"order_id": "ext-1"}]
         # The subscriber's consumer group has read and acknowledged the
         # message, so nothing is left for it. A new group still sees it.
         assert broker.read("external_orders", group, 10) == []
@@ -108,7 +109,6 @@ def test_the_report_handler_reads_the_all_orders_category():
         returned = Return()
         returned.raise_(ReturnRequested(return_id=returned.id))
         example.domain.repository_for(Return).add(returned)
-        requested_at = _last_position(example.domain)
 
         order = example.Order()
         order.raise_(OrderPlaced(order_id=order.id))
@@ -120,8 +120,8 @@ def test_the_report_handler_reads_the_all_orders_category():
         report = engine.subscriptions[fqn(example.OrderReportHandler)]
         handler = engine.subscriptions[fqn(example.OrderEventHandler)]
         assert report.stream_category == "all_orders"
-        # Each subscription tracks its position in its own category only.
-        assert report.current_position == requested_at
+        # The report handler records only the event on its own category.
+        assert [event["return_id"] for event in example.report] == [returned.id]
         assert handler.current_position == placed_at
 
 

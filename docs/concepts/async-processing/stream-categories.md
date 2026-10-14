@@ -89,10 +89,12 @@ stored in `ecommerce::order:command-<id>`:
 ## Stream Categories in Handlers
 
 Handlers (event handlers, command handlers, and projectors) use stream categories to determine which message streams they subscribe to.
+Event handlers and projectors read the aggregate's stream category. Command
+handlers read its command stream, `<stream_category>:command`, as shown above.
 
 ### Default Behavior
 
-Handlers automatically subscribe to their associated aggregate's stream category:
+An event handler subscribes to its aggregate's stream category by default:
 
 ```python
 --8<-- "concepts/async-processing/stream-categories/003.py:default_handler"

@@ -100,6 +100,9 @@ def test_upcast_event_keeps_the_stored_type_string(example):
     event = message.to_domain_object()
 
     assert event._metadata.headers.type == "Ordering.OrderPlaced.v1"
+    # Pins the current behaviour the page describes: BaseEvent.__init__ resets
+    # the domain version to the class's version. If the event starts keeping
+    # the stored version, update this assertion and the page together.
     assert event._metadata.domain.version == 3
     assert message.metadata.domain.version == 1
 

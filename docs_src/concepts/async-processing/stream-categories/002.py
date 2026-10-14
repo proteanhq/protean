@@ -8,5 +8,5 @@ domain = Domain(name="ecommerce")
 class Order: ...
 
 
-# Stream category: "customer_orders"
+# Stream category: "ecommerce::customer_orders"
 # --8<-- [end:explicit]

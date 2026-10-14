@@ -144,11 +144,7 @@ class Order:
 **Missing Aggregate**
 ```python
 # fragment
-# ❌ Bad: Entity without an aggregate
-@domain.entity  # Missing part_of parameter
-class Comment:
-    content: String(max_length=500)
-# Error: Entity needs to be associated with an Aggregate
+--8<-- "concepts/building-blocks/choosing-element-types/005.py:missing_aggregate"
 ```
 
 ### 🚩 Entity Red Flags
@@ -171,20 +167,13 @@ item = repository.get_order_item(item_id)  # Wrong!
 **Mutable Value Object**
 ```python
 # fragment
-# ❌ Bad: Trying to modify value object
-address = Address(street="123 Main St", city="NYC")
-address.street = "456 Oak Ave"  # Will raise IncorrectUsageError
+--8<-- "concepts/building-blocks/choosing-element-types/006.py:mutable_value_object"
 ```
 
 **Value Object with Identity**
 ```python
 # fragment
-# ❌ Bad: Adding identity to value object
-@domain.value_object
-class Money:
-    id: Auto(identifier=True)  # Will raise IncorrectUsageError
-    amount = Decimal()
-    currency: String()
+--8<-- "concepts/building-blocks/choosing-element-types/007.py:value_object_with_identity"
 ```
 
 **Primitive Obsession**

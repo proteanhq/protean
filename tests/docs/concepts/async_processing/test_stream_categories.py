@@ -28,12 +28,6 @@ def _place_order(example):
     return order
 
 
-def _last_position(domain):
-    """Return the event store position of the last stored message."""
-    message = domain.event_store.store.read("$all")[-1]
-    return message.metadata.event_store.global_position
-
-
 # Messages are grouped per aggregate under the domain-prefixed category
 
 
@@ -67,7 +61,6 @@ def test_an_event_is_stored_in_its_aggregate_instance_stream():
 
 def test_a_command_goes_to_its_aggregate_command_stream():
     example = load_example("concepts/async-processing/stream-categories/001.py")
-    example.domain.config["command_processing"] = "async"
     with _init(example):
         example.domain.process(example.PlaceOrder(order_id="123"))
 
@@ -92,14 +85,13 @@ def test_a_handler_takes_its_aggregate_category():
 def test_the_default_handler_consumes_the_order_event():
     example = load_example("concepts/async-processing/stream-categories/003.py")
     with _init(example):
-        _place_order(example)
-        placed_at = _last_position(example.domain)
+        order = _place_order(example)
         engine = _run_engine(example.domain)
 
-        handler = engine.subscriptions[fqn(example.OrderEventHandler)]
+        assert example.handled_orders == [order.id]
+        # The order event is on "ecommerce::order", not on "all_orders".
+        assert example.report == []
         report = engine.subscriptions[fqn(example.OrderReportHandler)]
-        assert handler.current_position == placed_at
-        # The order event is on "order", not on "all_orders".
         assert report.current_position == -1
 
 
@@ -119,12 +111,11 @@ def test_an_explicit_handler_category_reads_the_shared_stream():
         returned = Return()
         returned.raise_(ReturnRequested(return_id=returned.id))
         example.domain.repository_for(Return).add(returned)
-        requested_at = _last_position(example.domain)
         engine = _run_engine(example.domain)
 
-        report = engine.subscriptions[fqn(example.OrderReportHandler)]
+        assert [event["return_id"] for event in example.report] == [returned.id]
+        assert example.handled_orders == []
         handler = engine.subscriptions[fqn(example.OrderEventHandler)]
-        assert report.current_position == requested_at
         assert handler.current_position == -1
 
 
@@ -183,8 +174,7 @@ def test_a_repeated_command_for_the_same_order_is_skipped():
 def test_each_handler_on_a_stream_gets_its_own_subscription():
     example = load_example("concepts/async-processing/stream-categories/005.py")
     with _init(example):
-        _place_order(example)
-        placed_at = _last_position(example.domain)
+        order = _place_order(example)
         engine = _run_engine(example.domain)
 
         notification = engine.subscriptions[fqn(example.OrderNotificationHandler)]
@@ -192,9 +182,9 @@ def test_each_handler_on_a_stream_gets_its_own_subscription():
         assert notification is not analytics
         assert notification.stream_category == "ecommerce::order"
         assert analytics.stream_category == "ecommerce::order"
-        # Each tracks its own position over the same event.
-        assert notification.current_position == placed_at
-        assert analytics.current_position == placed_at
+        # Each subscription delivers the same event to its own handler.
+        assert example.notified == [order.id]
+        assert example.counted == [order.id]
 
 
 # Event sourcing and fact events

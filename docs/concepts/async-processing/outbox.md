@@ -243,17 +243,18 @@ Each outbox message carries lock metadata:
 
 ### Lock Lifecycle
 
-1. Worker fetches a batch of `PENDING` messages.
-2. The worker claims the batch via `claim_batch()`, which (through `_claim()`)
-   runs an atomic database operation per message that sets the status to
-   `PROCESSING` and records the worker ID and lock expiry.
-3. If the claim succeeds, the worker publishes the message to the broker and
-   marks it as `PUBLISHED`. If publishing fails, the message is marked as
-   `FAILED` for retry.
-4. If the claim fails (another worker already claimed it), the worker skips
-   that message and moves on.
-5. All operations happen within a `UnitOfWork`, so the claim, publish, and
-   status update are atomic.
+1. The worker calls `claim_batch()`, which selects and claims eligible
+   messages in one step. A message is eligible under the rules in the `claim`
+   example above: it is `PENDING`, `FAILED` and due for retry, or `PROCESSING`
+   under an expired lock, and it has retries left. Through `_claim()`, each
+   claim sets the status to `PROCESSING` and records the worker ID and lock
+   expiry.
+2. `claim_batch()` returns only the messages this worker won. A message that
+   another worker claimed first is not in the batch.
+3. The claim commits on its own, before any publishing starts.
+4. For each claimed message, the worker publishes to the broker outside any
+   transaction. It then records the result in a short `UnitOfWork`: `PUBLISHED`
+   on success, or `FAILED` for retry when publishing failed.
 
 ### Stale Lock Recovery
 

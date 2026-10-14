@@ -63,7 +63,8 @@ def show_money_checks():
     except ValidationError as exc:
         print(exc.messages)  # {'currency': ['Unrecognized currency: XYZ']}
 
-    # When assigned to an aggregate, the VO validates itself
+    # The value object checks itself while it is built, before the assignment
+    # runs. Here the currency field's max_length rejects "FAKE".
     order = Order(customer_id="cust-1")
     try:
         order.total = Money(amount=50, currency="FAKE")

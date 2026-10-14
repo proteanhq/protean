@@ -123,6 +123,10 @@ SERVICE_ENV: dict[str, dict[str, str]] = {
 EXPECTED_EXCEPTIONS: dict[str, str] = {
     # Points at a database that does not exist to show the error.
     "adapters/001.py": "ConfigurationError",
+    # Anti-patterns the page shows failing.
+    "concepts/building-blocks/choosing-element-types/005.py": "IncorrectUsageError",
+    "concepts/building-blocks/choosing-element-types/006.py": "IncorrectUsageError",
+    "concepts/building-blocks/choosing-element-types/007.py": "IncorrectUsageError",
 }
 
 # Seconds one example may run before the runner stops it and reports it.

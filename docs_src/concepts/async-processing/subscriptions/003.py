@@ -5,12 +5,12 @@ domain = Domain(name="ecommerce")
 
 # --8<-- [start:default_category]
 @domain.aggregate
-class Order: ...  # Stream category: "order"
+class Order: ...  # Stream category: "ecommerce::order"
 
 
 @domain.event_handler(part_of=Order)
 class OrderEventHandler:
-    # Automatically subscribes to "order" stream category
+    # Automatically subscribes to the "ecommerce::order" stream category
     ...
 
 

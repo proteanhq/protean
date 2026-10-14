@@ -110,3 +110,37 @@ def test_a_message_with_no_retries_left_cannot_be_claimed():
 
         assert example.claim(repo._dao, message, "worker-1", now) == 0
         assert repo.get(message.id).status == OutboxStatus.PENDING.value
+
+
+def test_a_failed_message_due_for_retry_can_be_claimed():
+    example = load_example("concepts/async-processing/outbox/001.py")
+    example.domain.init(traverse=False)
+    _place_order(example, "order-1")
+
+    with example.domain.domain_context():
+        repo = example.domain._get_outbox_repo("default")
+        message = _outbox_rows(example)[0]
+        now = example.domain.clock.now()
+        message.status = OutboxStatus.FAILED.value
+        message.next_retry_at = now - timedelta(seconds=1)
+        repo.add(message)
+
+        assert example.claim(repo._dao, message, "worker-1", now) == 1
+        assert repo.get(message.id).status == OutboxStatus.PROCESSING.value
+
+
+def test_a_message_waiting_for_its_retry_time_cannot_be_claimed():
+    example = load_example("concepts/async-processing/outbox/001.py")
+    example.domain.init(traverse=False)
+    _place_order(example, "order-1")
+
+    with example.domain.domain_context():
+        repo = example.domain._get_outbox_repo("default")
+        message = _outbox_rows(example)[0]
+        now = example.domain.clock.now()
+        message.status = OutboxStatus.FAILED.value
+        message.next_retry_at = now + timedelta(minutes=1)
+        repo.add(message)
+
+        assert example.claim(repo._dao, message, "worker-1", now) == 0
+        assert repo.get(message.id).status == OutboxStatus.FAILED.value
