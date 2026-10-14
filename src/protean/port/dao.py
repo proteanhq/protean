@@ -70,22 +70,26 @@ def _stamp_lifecycle_timestamps(entity_obj: Any, to_stamp: "dict[str, Field]") -
 
 
 @contextmanager
-def _pre_persist_hook(entity_obj: Any, location: str) -> Iterator[None]:
+def _pre_persist_hook(
+    entity_obj: Any, location: str, *, writes_only_to_self: bool = False
+) -> Iterator[None]:
     """Run one pre-persist hook's writes on ``entity_obj``.
 
     When the object belongs to an aggregate, the writes run in a
     ``_pre_persist_change`` block on the aggregate root. A projection, or an
     entity saved on its own, has no aggregate to check, so its writes run as
     they are. So do writes made inside a caller's own ``atomic_change`` block:
-    the aggregate may be mid-change there, and that block checks every write
-    on its exit.
+    the aggregate may be mid-change there. That block checks the final state
+    on its exit and undoes the in-memory changes if it fails, but a save made
+    inside it has already written its row.
     """
     root = getattr(entity_obj, "_root", None) or entity_obj
     if not isinstance(root, BaseAggregate) or root._disable_invariant_checks:
         yield
         return
 
-    with _pre_persist_change(root, location):
+    writes_only = entity_obj if writes_only_to_self else None
+    with _pre_persist_change(root, location, writes_only=writes_only):
         yield
 
 
@@ -789,12 +793,13 @@ class BaseDAO(metaclass=ABCMeta):
     def _apply_pre_persist_hooks(self, entity_obj: Any) -> None:
         """Stamp ``auto_now``/``auto_now_add`` fields, then run aggregate enrichers.
 
-        The ``@invariant.pre`` checks do not run on these writes. The
-        post-invariants run once after the stamping and once after each
-        enricher. When a check fails, or a hook raises, that hook's writes are
-        undone and the save aborts. A ``ValidationError`` carries a
-        ``location`` that names the hook; any other exception propagates as it
-        was raised.
+        The ``@invariant.pre`` checks do not run on these writes. On an
+        aggregate, the post-invariants run once after the stamping and once
+        after each enricher, unless the save runs inside an open
+        ``atomic_change`` block (see ``_pre_persist_hook``). When a check
+        fails, or a hook raises, that hook's writes are undone and the save
+        aborts. A ``ValidationError`` carries a ``location`` that names the
+        hook; any other exception propagates as it was raised.
 
         ``save`` calls this unless ``apply_hooks=False``. A caller that must run
         the hooks earlier than the write (so a raising enricher fails before any
@@ -808,7 +813,7 @@ class BaseDAO(metaclass=ABCMeta):
                 f"auto_now stamping of {', '.join(stamped)} "
                 f"on {type(entity_obj).__qualname__}"
             )
-            with _pre_persist_hook(entity_obj, location):
+            with _pre_persist_hook(entity_obj, location, writes_only_to_self=True):
                 _stamp_lifecycle_timestamps(entity_obj, stamped)
         if (
             entity_obj.element_type == DomainObjects.AGGREGATE

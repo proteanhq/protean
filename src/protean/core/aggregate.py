@@ -24,6 +24,7 @@ from protean.core.entity import (
     _EntitySnapshot,
     _EntityState,
     _restore_entities,
+    _snapshot_entity,
     _snapshot_entity_trees,
 )
 from protean.core.event import BaseEvent
@@ -895,7 +896,7 @@ class atomic_change:
     def __enter__(self) -> None:
         if self._run_precheck:
             self.aggregate._precheck()
-        self._entity_snapshots = _snapshot_entity_trees([self.aggregate])
+        self._entity_snapshots = self._take_snapshots()
         self.aggregate._atomic_snapshots.append(self._entity_snapshots)
         self._event_mark = self.aggregate._event_mark()
         # An enclosing block, such as the one around an ``@apply`` handler
@@ -904,6 +905,13 @@ class atomic_change:
         # check can still fail and undo the whole block.
         self._checks_were_disabled = self.aggregate._disable_invariant_checks
         self.aggregate._disable_invariant_checks = True
+
+    def _take_snapshots(self) -> list[_EntitySnapshot]:
+        """Snapshot what the block can change: the aggregate and its children.
+
+        The aggregate's own snapshot comes first.
+        """
+        return _snapshot_entity_trees([self.aggregate])
 
     def __exit__(
         self,
@@ -998,14 +1006,36 @@ class _pre_persist_change(atomic_change):
     half-finished writes cannot hide the hook's own exception.
 
     Inside a caller's own ``atomic_change`` block, ``_pre_persist_hook`` does
-    not open this block: the caller's block checks every write on its exit.
+    not open this block, and the caller's block checks the final state on its
+    exit.
     """
 
     _run_precheck = False
 
-    def __init__(self, aggregate: "BaseAggregate", location: str) -> None:
+    def __init__(
+        self,
+        aggregate: "BaseAggregate",
+        location: str,
+        *,
+        writes_only: BaseEntity | None = None,
+    ) -> None:
+        """``writes_only`` names the one entity the hook writes to.
+
+        The ``auto_now`` stamp writes fields of a single entity, so the block
+        snapshots only the aggregate and that entity. Without it the whole
+        tree is snapshotted, since an enricher can change any child.
+        """
         super().__init__(aggregate)
         self._location = location
+        self._writes_only = writes_only
+
+    def _take_snapshots(self) -> list[_EntitySnapshot]:
+        if self._writes_only is None:
+            return super()._take_snapshots()
+        snapshots = [_snapshot_entity(self.aggregate)]
+        if self._writes_only is not self.aggregate:
+            snapshots.append(_snapshot_entity(self._writes_only))
+        return snapshots
 
     def __exit__(
         self,

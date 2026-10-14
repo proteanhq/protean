@@ -70,11 +70,13 @@ mechanism; the audit *user* model stays app-defined.
   mutator.
 - The mechanism is symmetric with the enrichers developers already know, so
   there is little new surface to learn.
-- The hook does **not** bypass validation: the post-invariants still hold after
-  it, and status-transition rules still apply to what it writes. The
-  pre-invariants do not run on the hook's writes (see
-  [Amendment](#amendment-october-2026-hook-writes-and-invariants)). The hook
-  does not touch `_events`, so event raising is unaffected.
+- On an aggregate saved on its own, the hook does **not** bypass validation:
+  the post-invariants still hold after it, and status-transition rules still
+  apply to what it writes. The pre-invariants do not run on the hook's writes
+  (see [Amendment](#amendment-october-2026-hook-writes-and-invariants)), and
+  neither does any check when the save runs inside the caller's own
+  `atomic_change` block. The hook does not touch `_events`, so event raising
+  is unaffected.
 - The enricher fires on every aggregate persisted through the repository, so it
   must stay fast (read from `g`, not from I/O). This is the same constraint the
   event/command enrichers already carry.
@@ -176,4 +178,7 @@ counted as a modification of a closed account, and the save failed (#1663).
   the hook itself raises, its writes are undone and its exception propagates.
   A `ValidationError` it raises gets the hook's `location` unless it already
   carries one. A save made inside the caller's own `atomic_change` block leaves
-  the checks to that block, which runs them on its exit.
+  the checks to that block, which runs them on its exit. That block undoes
+  only the in-memory state, so a write it rejects may already be stored. A
+  save inside the block behaved this way before the amendment too, for
+  business changes and hook writes alike.

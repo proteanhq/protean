@@ -195,7 +195,12 @@ class TestEnricherDiff:
             _build(aggregate=[stamp_actor, stamp_tenant]),
             _build(aggregate=[stamp_tenant, stamp_actor]),
         )
-        assert set(result["enrichers"]["changed"]) == {"aggregate"}
+        assert result["enrichers"]["changed"] == {
+            "aggregate": {
+                "left": [f"{__name__}.stamp_actor", f"{__name__}.stamp_tenant"],
+                "right": [f"{__name__}.stamp_tenant", f"{__name__}.stamp_actor"],
+            }
+        }
         assert result["summary"]["has_changes"] is True
 
     def test_text_diff_prints_the_enricher_change(self, tmp_path):

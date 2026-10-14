@@ -17,7 +17,9 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate, atomic_change
 from protean.core.entity import BaseEntity, invariant
+from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import IncorrectUsageError, ObjectNotFoundError, ValidationError
 from protean.fields import Date, DateTime, HasMany, Identifier, Status, String
 from protean.utils.globals import g
@@ -89,6 +91,10 @@ class BatchStage(Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class LedgerAudited(BaseEvent):
+    ledger_id: Identifier()
+
+
 class Batch(BaseAggregate):
     stage: Status(
         BatchStage,
@@ -101,6 +107,7 @@ class Batch(BaseAggregate):
 class Reading(BaseAggregate):
     value: String(max_length=50)
     updated_at: DateTime(auto_now=True)
+    created_at: DateTime(auto_now_add=True)
 
     @invariant.post
     def not_stamped_in_a_maintenance_window(self):
@@ -120,6 +127,7 @@ def register_elements(test_domain):
     test_domain.register(Account)
     test_domain.register(Entry, part_of=Account)
     test_domain.register(Ledger)
+    test_domain.register(LedgerAudited, part_of=Ledger)
     test_domain.register(Batch)
     test_domain.register(Reading)
     test_domain.register(AccountSummary)
@@ -547,18 +555,24 @@ class TestPreInvariantsDoNotRunOnHookWrites:
     def test_a_child_entity_stamp_does_not_run_the_root_pre_invariants(
         self, test_domain
     ):
+        t0 = datetime(2030, 6, 1, 12, 0, tzinfo=UTC)
+        test_domain.clock = FrozenClock(t0)
         repo = test_domain.repository_for(Account)
         account = Account(entries=[Entry(memo="opening")])
         repo.add(account)
 
+        # Change the child too, so the save writes it and stamps it.
+        test_domain.clock.advance(timedelta(minutes=5))
         account = repo.get(account.id)
+        account.entries[0].memo = "adjusted"
         account.close()
         repo.add(account)
 
         got = repo.get(account.id)
         assert got.status == "CLOSED"
         assert len(got.entries) == 1
-        assert got.entries[0].updated_at is not None
+        assert got.entries[0].memo == "adjusted"
+        assert got.entries[0].updated_at == t0 + timedelta(minutes=5)
 
     def test_the_pre_invariant_still_rejects_a_business_change(self, test_domain):
         _, account = _closed_account(test_domain)
@@ -819,7 +833,10 @@ class TestPostInvariantFailuresNameTheHook:
         with pytest.raises(ValidationError) as exc:
             test_domain.repository_for(Reading).add(Reading())
 
-        assert exc.value.location == "auto_now stamping of updated_at on Reading"
+        # On create both fields are stamped, and the location names both.
+        assert exc.value.location == (
+            "auto_now stamping of updated_at, created_at on Reading"
+        )
         assert calls == []
 
     def test_the_enricher_sees_the_stamped_value(self, test_domain):
@@ -850,6 +867,58 @@ class TestPostInvariantFailuresNameTheHook:
 
         got = repo.get(ledger.id)
         assert (got.updated_by, got.reviewer) == ("alice", "bob")
+
+    def test_a_raising_enricher_drops_the_events_it_raised(self, test_domain):
+        @test_domain.aggregate_enricher
+        def audit(aggregate):
+            if not isinstance(aggregate, Ledger):
+                return
+            aggregate.raise_(LedgerAudited(ledger_id=aggregate.id))
+            raise RuntimeError("audit sink down")
+
+        ledger = Ledger()
+        with pytest.raises(RuntimeError, match="audit sink down"):
+            test_domain.repository_for(Ledger).add(ledger)
+
+        assert ledger._events == []
+
+    def test_checks_are_back_on_after_a_raising_enricher(self, test_domain):
+        @test_domain.aggregate_enricher
+        def crash(aggregate):
+            if not isinstance(aggregate, Ledger):
+                return
+            raise RuntimeError("actor lookup failed")
+
+        ledger = Ledger(reviewer="alice")
+        with pytest.raises(RuntimeError):
+            test_domain.repository_for(Ledger).add(ledger)
+
+        with pytest.raises(ValidationError):
+            ledger.updated_by = "alice"
+
+
+class TestPreInvariantsOnOtherSavePaths:
+    def test_a_closed_aggregate_saves_inside_a_unit_of_work(self, test_domain):
+        repo, account = _closed_account(test_domain)
+
+        with UnitOfWork():
+            repo.add(account)
+
+        assert repo.get(account.id).status == "CLOSED"
+
+    def test_a_closed_aggregate_saves_through_queryset_update(self, test_domain):
+        t0 = datetime(2030, 6, 1, tzinfo=UTC)
+        test_domain.clock = FrozenClock(t0)
+        repo = test_domain.repository_for(Account)
+        account = Account()
+        repo.add(account)
+
+        test_domain.clock.advance(timedelta(minutes=5))
+        repo._dao.query.filter(id=account.id).update(status="CLOSED")
+
+        got = repo.get(account.id)
+        assert got.status == "CLOSED"
+        assert got.updated_at == t0 + timedelta(minutes=5)
 
 
 class TestHookWritesOnObjectsWithoutAnAggregate:

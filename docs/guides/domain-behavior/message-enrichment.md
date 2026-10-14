@@ -117,7 +117,7 @@ checks run once after each enricher, and the status-transition rules still
 apply to a status field it changes. When one of them fails, the enricher's
 writes are undone and the save is aborted with a `ValidationError` whose
 `location` names the enricher, for example
-`aggregate enricher myapp.audit.stamp_audit`. `auto_now` and `auto_now_add`
+`aggregate enricher myapp.audit.stamp_audit on Account`. `auto_now` and `auto_now_add`
 stamping works the same way, and its `location` names the stamped fields.
 An enricher that raises has its writes undone too, and its own exception
 reaches the caller.

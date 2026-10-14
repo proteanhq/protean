@@ -637,8 +637,9 @@ The `enrichers` section lists the enrichers registered on the domain, by kind.
 An enricher is a function the framework calls on every message or save: an
 aggregate enricher sets fields on an aggregate just before it is persisted, and
 a command or event enricher adds keys to a message's metadata. Each entry is the
-enricher's qualified name (`module.qualname`). A callable object without its own
-`__qualname__` is named by its class.
+enricher's qualified name (`module.qualname`). A `functools.partial` is
+recorded as `functools.partial(module.qualname)` of the function it wraps, and
+any other callable object without its own `__qualname__` is named by its class.
 
 ```json
 {
