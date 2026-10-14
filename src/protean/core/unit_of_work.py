@@ -495,6 +495,11 @@ class UnitOfWork:
             if _uow_stack.top is self:
                 _uow_stack.pop()
 
+            # A provider that opened no session (Elasticsearch, for one) has
+            # already kept its writes, so its aggregates advance now.
+            for provider_name in self._identity_map.keys() - self._sessions.keys():
+                self._advance_next_versions(provider_name)
+
             # Commit the relational session (aggregate state + outbox rows).
             # Advance versions as each provider commits: if a later provider
             # fails, the rollback must not rewind aggregates whose write is
