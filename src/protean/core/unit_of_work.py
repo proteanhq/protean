@@ -160,12 +160,13 @@ class UnitOfWork:
             if not item.meta_.is_event_sourced
         ]
 
-    def _advance_next_versions(self) -> None:
-        """Move each saved aggregate's ``_next_version`` past the version just
-        committed, so a later save of the same instance writes a new version
-        and its events get new ids, as they would after a reload."""
-        for _, item in self._state_based_items():
-            item._next_version = item._version + 1
+    def _advance_next_versions(self, provider_name: str) -> None:
+        """Move each aggregate saved through ``provider_name`` past the version
+        just committed, so a later save of the same instance writes a new
+        version and its events get new ids, as they would after a reload."""
+        for item_provider, item in self._state_based_items():
+            if item_provider == provider_name:
+                item._next_version = item._version + 1
 
     def _settle_versions_on_rollback(self) -> None:
         """Make each saved aggregate's versions match its store after a rollback.
@@ -495,10 +496,12 @@ class UnitOfWork:
                 _uow_stack.pop()
 
             # Commit the relational session (aggregate state + outbox rows).
-            for session in self._sessions.values():
+            # Advance versions as each provider commits: if a later provider
+            # fails, the rollback must not rewind aggregates whose write is
+            # already durable.
+            for provider_name, session in self._sessions.items():
                 session.commit()
-
-            self._advance_next_versions()
+                self._advance_next_versions(provider_name)
 
             # Dispatch messages to their designated broker
             for stream, message, broker_name in self._messages_to_dispatch:
