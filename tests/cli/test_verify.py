@@ -471,6 +471,144 @@ class TestVerifyInternals:
         assert "kaboom" in stage["errors"][0]["message"]
 
 
+class TestVerifyTestCounts:
+    """The pass/fail counts come from pytest's final summary line, not from the
+    first "<N> passed" / "<N> failed" text anywhere in the output."""
+
+    def _tests_stage(self, tests_dir: Path) -> tuple[int, dict[str, Any]]:
+        result = runner.invoke(
+            app,
+            ["verify", "-d", _CLEAN_DOMAIN, "--path", str(tests_dir), "--json"],
+        )
+        return result.exit_code, json.loads(result.stdout)["data"]["stages"]["tests"]
+
+    def test_number_in_failure_message_is_not_the_failed_count(self, tmp_path):
+        body = (
+            "def test_db():\n"
+            "    raise AssertionError("
+            "'connection to server on port 15432 failed')\n"
+        )
+        tests_dir = _write_test(tmp_path / "tests", body)
+
+        exit_code, stage = self._tests_stage(tests_dir)
+
+        assert exit_code == 5
+        assert stage["failed"] == 1
+        assert stage["passed"] == 0
+        assert stage["status"] == "fail"
+        assert stage["returncode"] == 1
+
+    def test_skip_reason_is_not_the_passed_count(self, tmp_path):
+        from protean.cli.verify import _run_tests
+
+        body = (
+            "import pytest\n\n"
+            "def test_ok():\n"
+            "    assert True\n\n"
+            "@pytest.mark.skip(reason='0 passed on this platform')\n"
+            "def test_skipped():\n"
+            "    pass\n"
+        )
+        tests_dir = _write_test(tmp_path / "tests", body)
+        (tests_dir / "pytest.ini").write_text("[pytest]\naddopts = -ra\n")
+
+        # The skip reason must reach the output, or this test proves nothing.
+        _, output = _run_tests(str(tests_dir))
+        assert "0 passed on this platform" in output
+
+        exit_code, stage = self._tests_stage(tests_dir)
+
+        assert exit_code == 0
+        assert stage["passed"] == 1
+        assert stage["failed"] == 0
+        assert stage["status"] == "pass"
+        assert stage["returncode"] == 0
+
+    def test_one_pass_and_one_fail(self, tmp_path):
+        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST + _FAILING_TEST)
+
+        exit_code, stage = self._tests_stage(tests_dir)
+
+        assert exit_code == 5
+        assert stage["passed"] == 1
+        assert stage["failed"] == 1
+        assert stage["status"] == "fail"
+        assert stage["returncode"] == 1
+
+    def test_project_quiet_addopts_still_prints_the_summary(self, tmp_path):
+        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST + _FAILING_TEST)
+        (tests_dir / "pytest.ini").write_text("[pytest]\naddopts = -q\n")
+
+        exit_code, stage = self._tests_stage(tests_dir)
+
+        assert exit_code == 5
+        assert stage["passed"] == 1
+        assert stage["failed"] == 1
+        assert stage["returncode"] == 1
+
+    def test_summary_shaped_stderr_line_is_ignored(self, tmp_path):
+        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST)
+        (tests_dir / "conftest.py").write_text(
+            "import sys\n\n"
+            "def pytest_unconfigure(config):\n"
+            "    sys.stderr.write('9 passed in 1s\\n')\n"
+        )
+
+        exit_code, stage = self._tests_stage(tests_dir)
+
+        assert exit_code == 0
+        assert stage["passed"] == 1
+        assert stage["failed"] == 0
+
+    def test_later_stdout_line_ending_in_seconds_is_not_the_summary(self, tmp_path):
+        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST)
+        (tests_dir / "conftest.py").write_text(
+            "def pytest_unconfigure(config):\n    print('Finished in 3s')\n"
+        )
+
+        exit_code, stage = self._tests_stage(tests_dir)
+
+        assert exit_code == 0
+        assert stage["passed"] == 1
+        assert stage["failed"] == 0
+
+    @pytest.mark.parametrize(
+        ("stdout", "expected"),
+        [
+            ("===== 2 failed, 3 passed in 0.12s =====\n", (3, 2)),
+            ("1 passed in 0.07s\nFinished in 3s\n", (1, 0)),
+            ("3 passed in 86401.00s (1 day, 0:00:01)\n", (3, 0)),
+            ("1 failed, 1 passed in 0.01s\n", (1, 1)),
+            ("==== 4 passed in 62.00s (0:01:02) ====\n", (4, 0)),
+            ("no tests ran in 0.01s\n", (0, 0)),
+            ("1 error in 0.10s\n", (0, 0)),
+            ("collecting ...\nsomething went wrong\n", (0, 0)),
+            ("", (0, 0)),
+            ("1 passed, 2 xfailed in 0.1s\n", (1, 0)),
+            ("1 passed, 1 xpassed in 0.1s\n", (1, 0)),
+            (
+                (
+                    "FAILED test_x.py::test_a - 99 failed\n"
+                    "SKIPPED [1] test_x.py:3: 0 passed\n"
+                    "1 failed, 7 passed in 0.20s\n"
+                ),
+                (7, 1),
+            ),
+            (
+                (
+                    "\x1b[31m\x1b[1m1 failed\x1b[0m, \x1b[32m5 passed\x1b[0m"
+                    "\x1b[31m in 0.10s\x1b[0m\n"
+                ),
+                (5, 1),
+            ),
+        ],
+    )
+    def test_parse_counts_reads_the_summary_line(self, stdout, expected):
+        from protean.cli.verify import _parse_counts
+
+        assert _parse_counts(stdout) == expected
+
+
 class TestVerifyUsageErrors:
     """``verify``'s own usage errors exit 2 with a clean message, no traceback."""
 

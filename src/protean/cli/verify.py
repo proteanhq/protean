@@ -96,8 +96,21 @@ _PYTEST_NO_TESTS = 5
 
 # Best-effort parse of pytest's summary line ("2 passed", "1 failed, 3 passed").
 # The subprocess returncode — not these counts — is authoritative for pass/fail.
-_PASSED_RE = re.compile(r"(\d+) passed")
-_FAILED_RE = re.compile(r"(\d+) failed")
+# The counts are read from the final summary line only: earlier output (a
+# failure message such as "port 15432 failed", a ``-ra`` skip reason) can carry
+# the same "<N> passed" / "<N> failed" text. The line may sit inside a ``=====``
+# banner and end with an "(h:mm:ss)" or "(1 day, h:mm:ss)" suffix on long runs.
+# The body must follow pytest's stats grammar ("<N> <word>, ..." or "no tests
+# ran"), so a later line such as "Finished in 3s" printed by a plugin is not
+# taken for the summary.
+_SUMMARY_RE = re.compile(
+    r"^=*\s*(?P<body>\d+ [a-z]+(?:, \d+ [a-z]+)*|no tests ran)"
+    r" in \d+(?:\.\d+)?s(?:\s*\([^)]*\))?\s*=*$"
+)
+_PASSED_RE = re.compile(r"\b(\d+) passed")
+_FAILED_RE = re.compile(r"\b(\d+) failed")
+# A project that forces ``--color=yes`` wraps the summary in ANSI escapes.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 _STAGES = ("init", "check", "tests")
 
@@ -397,6 +410,26 @@ def _run_check(domain: Any) -> tuple[bool, dict[str, Any]]:
     return check_failed, stage
 
 
+def _parse_counts(stdout: str) -> tuple[int, int]:
+    """Return the ``(passed, failed)`` counts from pytest's final summary line.
+
+    A count missing from the summary is 0, and output with no summary line at
+    all gives ``(0, 0)``.
+    """
+    for line in reversed(stdout.splitlines()):
+        match = _SUMMARY_RE.match(_ANSI_RE.sub("", line).strip())
+        if match is None:
+            continue
+        body = match.group("body")
+        passed_match = _PASSED_RE.search(body)
+        failed_match = _FAILED_RE.search(body)
+        return (
+            int(passed_match.group(1)) if passed_match else 0,
+            int(failed_match.group(1)) if failed_match else 0,
+        )
+    return 0, 0
+
+
 def _run_tests(path: str) -> tuple[dict[str, Any], str]:
     """Run the project's pytest suite in ``path`` and summarize the outcome.
 
@@ -418,8 +451,11 @@ def _run_tests(path: str) -> tuple[dict[str, Any], str]:
         existing = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = src + os.pathsep + existing if existing else src
 
+    # ``--verbosity`` sets the level outright, where ``-q`` only lowers it: a
+    # project with ``addopts = -q`` plus a forced ``-q`` runs at -2, and pytest
+    # prints no summary line at that level.
     completed = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q"],
+        [sys.executable, "-m", "pytest", "--verbosity=-1"],
         cwd=path,
         capture_output=True,
         text=True,
@@ -432,12 +468,10 @@ def _run_tests(path: str) -> tuple[dict[str, Any], str]:
     output = completed.stdout + completed.stderr
     returncode = completed.returncode
 
-    passed = 0
-    if (match := _PASSED_RE.search(output)) is not None:
-        passed = int(match.group(1))
-    failed = 0
-    if (match := _FAILED_RE.search(output)) is not None:
-        failed = int(match.group(1))
+    # pytest writes its summary to stdout; stderr is appended after it in
+    # ``output``, so parsing only stdout keeps a trailing stderr line from
+    # being mistaken for the summary.
+    passed, failed = _parse_counts(completed.stdout)
 
     # returncode is authoritative: 0 = passed, 5 = no tests collected (a pass),
     # anything else = failure. A missed count parse never flips this.
