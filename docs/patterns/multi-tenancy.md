@@ -110,30 +110,15 @@ Every request arrives with a tenant identifier, from an auth token, a request
 header, a subdomain, or an API key. Extract it early and store it in `g`:
 
 ```python
-# middleware.py
-
-from protean.utils.globals import g
-
-
-class TenantMiddleware:
-    """Extract tenant_id from the auth token and store it in g."""
-
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http":
-            headers = dict(scope.get("headers", []))
-            token = headers.get(b"authorization", b"").decode()
-
-            g.tenant_id = decode_tenant_from_token(token)
-            g.user_id = decode_user_from_token(token)
-
-        await self.app(scope, receive, send)
+--8<-- "patterns/multi-tenancy/001.py:middleware"
 ```
 
 From this point forward, any code running in this request can access
 `g.tenant_id`.
+
+`g` exists only inside a domain context, so `TenantMiddleware` must run inside
+Protean's `DomainContextMiddleware`, which pushes a domain context for each
+request. You wire both into the app after defining the domain in Step 2.
 
 ### Step 2: Register Enrichers
 
@@ -141,26 +126,21 @@ Enrichers automatically inject `g.tenant_id` into every event and command's
 `metadata.extensions`. Register them during domain setup:
 
 ```python
-# domain.py
-
-from protean import Domain
-from protean.utils.globals import g
-
-domain = Domain(__file__, "SaasApp")
-
-
-@domain.event_enricher
-def enrich_event_with_tenant(event, aggregate):
-    return {"tenant_id": getattr(g, "tenant_id", None)}
-
-
-@domain.command_enricher
-def enrich_command_with_tenant(command):
-    return {"tenant_id": getattr(g, "tenant_id", None)}
+--8<-- "patterns/multi-tenancy/001.py:domain"
 ```
 
 Now every event raised by any aggregate automatically carries `tenant_id` in
 its metadata, without the aggregate knowing about tenants.
+
+Then add both middlewares to the FastAPI app. Starlette runs the middleware
+added last first, so add `TenantMiddleware` before `DomainContextMiddleware`:
+
+```python
+--8<-- "patterns/multi-tenancy/001.py:app"
+```
+
+The endpoint reads `g.tenant_id` and stores it on the new order. `Order` is
+defined in Step 3.
 
 ### Step 3: Model Tenant ID on Aggregates
 
@@ -168,21 +148,7 @@ The `tenant_id` field on aggregates is a **domain modeling decision**, not an
 infrastructure hack. It's how you ensure data belongs to the right tenant:
 
 ```python
-@domain.aggregate
-class Order:
-    order_id = Auto(identifier=True)
-    tenant_id = String(required=True)
-    customer_id = Identifier(required=True)
-    status = String(default="draft")
-    total = Float(default=0.0)
-
-    def place(self):
-        self.status = "placed"
-        self.raise_(OrderPlaced(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            total=self.total,
-        ))
+--8<-- "patterns/multi-tenancy/001.py:aggregate"
 ```
 
 Notice: `place()` does not mention tenants. The enricher handles
@@ -193,18 +159,12 @@ business methods.
 ### Step 4: Filter Queries by Tenant
 
 Every repository query should include the tenant filter. This is the
-developer's responsibility. Protean does not auto-inject query filters:
+developer's responsibility. Protean does not auto-inject query filters.
+`find_by` takes field values as keyword arguments. `find` takes a `Q`
+expression:
 
 ```python
-# In a command handler or application service
-
-repo = current_domain.repository_for(Order)
-
-# Always filter by tenant
-order = repo.find_by(id=order_id, tenant_id=g.tenant_id)
-
-# For listing
-orders = repo.find(tenant_id=g.tenant_id, status="placed")
+--8<-- "patterns/multi-tenancy/001.py:queries"
 ```
 
 !!! warning "No automatic query scoping"
@@ -213,13 +173,12 @@ orders = repo.find(tenant_id=g.tenant_id, status="placed")
     conscious design choice. Automatic scoping hides behavior and makes
     debugging harder. The developer is responsible for correct filtering.
 
-    If you want a convenience wrapper, create a base class or helper:
+    If you want a convenience wrapper, create a base class or helper. This one
+    returns a query that is already filtered to the current tenant, so callers
+    can add more filters, such as `tenant_query(Order).filter(status="placed").all()`:
 
     ```python
-    def tenant_repo(aggregate_cls):
-        """Return a repository pre-filtered to the current tenant."""
-        repo = current_domain.repository_for(aggregate_cls)
-        return repo.find(tenant_id=g.tenant_id)
+    --8<-- "patterns/multi-tenancy/001.py:tenant_query"
     ```
 
 ### Step 5: Access Tenant in Async Handlers
@@ -229,26 +188,13 @@ into `g` automatically. Handlers see the same `g.tenant_id` that was present
 in the original request:
 
 ```python
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def reserve_stock(self, event: OrderPlaced):
-        # g.tenant_id is restored from metadata.extensions
-        tenant_id = g.tenant_id
-
-        repo = current_domain.repository_for(Inventory)
-        inventory = repo.find_by(
-            product_id=event.product_id,
-            tenant_id=tenant_id,
-        )
-        inventory.reserve(event.order_id, event.quantity)
-        repo.add(inventory)
+--8<-- "patterns/multi-tenancy/001.py:handler"
 ```
 
 You can also access extensions directly from the message:
 
 ```python
+# fragment
 tenant_id = g.message_in_context.metadata.extensions.get("tenant_id")
 ```
 
@@ -303,56 +249,16 @@ Tests that only care about business logic can ignore tenants, enrichers produce
 `None` values, which is harmless:
 
 ```python
-class TestOrderPlacement:
-
-    def test_business_logic_without_tenant(self, test_domain):
-        """Business logic works without tenant context."""
-        order = Order(
-            tenant_id="test-tenant",
-            customer_id="cust-1",
-            total=99.99,
-        )
-        order.place()
-        assert order.status == "placed"
-
-    def test_enrichment_with_tenant_context(self, test_domain):
-        """Enrichers populate extensions when g.tenant_id is set."""
-        g.tenant_id = "acme-corp"
-
-        order = Order(
-            tenant_id="acme-corp",
-            customer_id="cust-1",
-            total=99.99,
-        )
-        order.place()
-
-        event = order._events[0]
-        assert event._metadata.extensions["tenant_id"] == "acme-corp"
-        # Business payload is clean
-        assert not hasattr(event, "tenant_id")
+--8<-- "patterns/multi-tenancy/001.py:tests"
 ```
 
-For testing async handlers with tenant context, construct messages with
-extensions:
+For testing async handlers with tenant context, raise the event under a
+tenant context, build a message from it, and hand the message to the engine.
+The message carries the tenant in `metadata.extensions`, and the engine
+restores it into `g` before the handler runs:
 
 ```python
-@pytest.mark.asyncio
-async def test_handler_sees_tenant_from_extensions(self, test_domain):
-    """Event handler receives tenant context from metadata.extensions."""
-    message = Message(
-        data={...},
-        metadata=Metadata(
-            headers=MessageHeaders(id="msg-1", type="...", stream="..."),
-            domain=DomainMeta(kind="EVENT", stream_category="order"),
-            extensions={"tenant_id": "acme-corp"},
-        ),
-    )
-
-    engine = Engine(domain=test_domain, test_mode=True)
-    await engine.handle_message(MyEventHandler, message)
-
-    # Verify handler saw the correct tenant
-    assert captured_tenant_id == "acme-corp"
+--8<-- "patterns/multi-tenancy/001.py:handler_test"
 ```
 
 ---
@@ -362,6 +268,7 @@ async def test_handler_sees_tenant_from_extensions(self, test_domain):
 ### Putting Tenant ID in Every Event Payload
 
 ```python
+# fragment
 # Anti-pattern: tenant_id in the event's business fields
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
@@ -379,6 +286,7 @@ event payload.
 ### Forgetting Tenant Filters on Queries
 
 ```python
+# fragment
 # Anti-pattern: no tenant filter → cross-tenant data leak
 order = repo.get(order_id)
 ```
@@ -389,12 +297,14 @@ multi-tenant system, every query must include the tenant scope.
 **Fix:** Always filter by tenant:
 
 ```python
-order = repo.find_by(id=order_id, tenant_id=g.tenant_id)
+# fragment
+order = repo.find_by(order_id=order_id, tenant_id=g.tenant_id)
 ```
 
 ### Accessing g.tenant_id Inside Aggregate Methods
 
 ```python
+# fragment
 # Anti-pattern: aggregate knows about request context
 @domain.aggregate
 class Order:

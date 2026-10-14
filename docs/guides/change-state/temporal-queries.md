@@ -96,8 +96,9 @@ Temporal queries handle snapshots correctly:
 ## Identity map bypass
 
 Temporal queries always bypass the Unit of Work's identity map. Even if the
-aggregate was already loaded in the current transaction, a temporal query
-replays events from the event store to ensure the historical state is accurate:
+identity map holds the aggregate in the current transaction (because it was
+passed to `repo.add()` with pending events), a temporal query replays events
+from the event store to ensure the historical state is accurate:
 
 ```python
 --8<-- "guides/change-state/temporal-queries/001.py:identity_map"

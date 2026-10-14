@@ -353,7 +353,7 @@ A repository with user-defined methods that go beyond standard CRUD operations, 
 
 ### Database Model
 
-A persistence-technology-specific data schema that maps domain elements to their storage representation. Database models handle the translation between domain objects and the underlying storage format (relational tables, document structures, etc.). In Protean, database models are defined with the `@domain.model` decorator.
+A persistence-technology-specific data schema that maps domain elements to their storage representation. Database models handle the translation between domain objects and the underlying storage format (relational tables, document structures, etc.). In Protean, database models are defined with the `@domain.database_model` decorator.
 
 [Learn more →](guides/change-state/persist-aggregates.md) | **See also**: [Repository](#repository), [Provider](#provider)
 

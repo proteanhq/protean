@@ -9,6 +9,7 @@ inherited from database-first thinking, is to store all of it in one shared
 table:
 
 ```python
+# fragment
 @domain.aggregate
 class MasterData:
     master_id: Auto(identifier=True)
@@ -59,9 +60,8 @@ concept.**
 
 ## The Pattern
 
-Model each *kind* of reference data as its own domain type. A
-shared physical table, if you truly need one, is an adapter detail, decided
-last, expressed in the model layer, invisible to the domain.
+Model each *kind* of reference data as its own domain type, with its own
+table.
 
 ```
 One True Lookup Table:
@@ -108,11 +108,7 @@ When a value is just a constrained string, `choices` makes invalid values
 unrepresentable at the field level, with no extra type:
 
 ```python
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    status: String(choices=["draft", "placed", "shipped", "delivered"],
-                   default="draft")
+--8<-- "patterns/model-reference-data/001.py:choices"
 ```
 
 ### Enumeration value objects for richer closed sets
@@ -154,6 +150,7 @@ system and participates in aggregate invariants:
 **Before: a row in the lookup table**
 
 ```python
+# fragment
 # status is a foreign key into MasterData WHERE category='ORDER_STATUS'
 order.status_id = 4471   # what does 4471 mean? a join will tell you.
 ```
@@ -161,49 +158,14 @@ order.status_id = 4471   # what does 4471 mean? a join will tell you.
 **After: an enumeration value object**
 
 ```python
-@domain.value_object
-class OrderStatus:
-    code: String(required=True)
-    label: String(required=True)
-
-    @invariant.post
-    def code_must_be_known(self):
-        if self.code not in _ORDER_STATUSES:
-            raise ValidationError(
-                {"code": [f"Unknown order status: {self.code}"]}
-            )
-
-    @classmethod
-    def of(cls, code: str) -> "OrderStatus":
-        return cls(code=code, label=_ORDER_STATUSES[code])
-
-    @classmethod
-    def all(cls) -> list["OrderStatus"]:
-        return [cls(code=c, label=l) for c, l in _ORDER_STATUSES.items()]
-
-
-_ORDER_STATUSES = {
-    "draft": "Draft",
-    "placed": "Placed",
-    "shipped": "Shipped",
-    "delivered": "Delivered",
-}
+--8<-- "patterns/model-reference-data/002.py:value_object"
 ```
 
 Now the status is a typed concept, the registry is the single source of truth,
-and an aggregate invariant can reference it directly:
+and an aggregate holds it as a field:
 
 ```python
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    status = ValueObject(OrderStatus)
-
-# Valid
-order = Order(status=OrderStatus.of("placed"))
-
-# Invalid: raises ValidationError at construction, no database round-trip
-order = Order(status=OrderStatus(code="teleported", label="?"))
+--8<-- "patterns/model-reference-data/002.py:aggregate"
 ```
 
 The validity of an order status is now part of the *always-valid* guarantee,
@@ -216,34 +178,16 @@ deactivates an obsolete one, or fixes a symbol. That lifecycle makes it an
 aggregate. The natural `code` is its identity:
 
 ```python
-@domain.aggregate
-class Currency:
-    code: String(identifier=True, max_length=3)   # "USD" is the identity
-    name: String(required=True)
-    symbol: String(max_length=4)
-    minor_units: Integer(default=2)                # 2 for USD, 0 for JPY
-    is_active: Boolean(default=True)
-
-    @invariant.post
-    def code_must_be_iso_4217(self):
-        if len(self.code) != 3 or not self.code.isalpha():
-            raise ValidationError(
-                {"code": ["Currency code must be a 3-letter ISO 4217 code"]}
-            )
-
-    def deactivate(self) -> None:
-        self.is_active = False
-        self.raise_(CurrencyDeactivated(code=self.code))
+--8<-- "patterns/model-reference-data/003.py:aggregate"
 ```
 
 Each kind of reference data is its own aggregate, with its own table
 (`currency`, `country`, `tax_code`), its own fields, and its own rules. That is
-the DDD-correct outcome: distinct concepts, distinctly stored. Loading one is an
-ordinary repository call:
+the DDD-correct outcome: distinct concepts, distinctly stored. Seeding the set and
+loading one are ordinary repository calls:
 
 ```python
-repo = current_domain.repository_for(Currency)
-usd = repo.get("USD")            # the code IS the identity
+--8<-- "patterns/model-reference-data/003.py:load_one"
 ```
 
 ### A list of a kind: the `code → value` map
@@ -253,26 +197,13 @@ currencies" or "give me the `code → Currency` map for a dropdown." Express it
 once on a custom repository, not as a `filter(...)` copied into every consumer:
 
 ```python
-@domain.repository(part_of=Currency)
-class CurrencyRepository:
-    def all_active(self) -> list[Currency]:
-        return self.query.filter(is_active=True).all().items
-
-    def as_map(self) -> dict[str, Currency]:
-        """code → Currency, ready for validation or a dropdown."""
-        return {c.code: c for c in self.all_active()}
+--8<-- "patterns/model-reference-data/003.py:repository"
 ```
 
 Consumers get a typed list or a typed map, never raw rows:
 
 ```python
-repo = current_domain.repository_for(Currency)
-
-currencies = repo.all_active()           # list[Currency]
-by_code = repo.as_map()                  # {"USD": Currency(...), "EUR": ...}
-
-if command.currency not in by_code:
-    raise ValidationError({"currency": ["Unknown currency"]})
+--8<-- "patterns/model-reference-data/003.py:consumer"
 ```
 
 ### App-wide read access: a cache-backed catalog projection
@@ -283,6 +214,7 @@ into a cache-backed read model, refreshed by a projector when the aggregate
 changes:
 
 ```python
+# fragment
 @domain.projection(cache="redis")
 class CurrencyOption:
     code: String(identifier=True)
@@ -318,45 +250,18 @@ pattern is unchanged.
 
 ---
 
-## The single physical table as an adapter escape hatch
+## A single physical table is not supported
 
 Sometimes a legacy `master_data` table is an immovable infrastructure
-constraint: a shared database that other systems already read. That constraint
-belongs in the **model layer**, never the domain. Keep the domain concepts
-distinct and point their custom models at the same `schema_name`:
+constraint: a shared database that other systems already read. Protean cannot
+map several aggregates onto that one table. Each aggregate gets its own table,
+and two database models cannot share a `schema_name`. With a SQL provider, the
+second model on the same `schema_name` fails at startup with SQLAlchemy's
+`InvalidRequestError: Table 'master_data' is already defined`.
 
-```python
-@domain.aggregate
-class Currency:
-    code: String(identifier=True, max_length=3)
-    name: String(required=True)
-    symbol: String(max_length=4)
-
-
-@domain.model(part_of=Currency)
-class CurrencyModel:
-    class Meta:
-        schema_name = "master_data"      # the shared physical table
-
-
-@domain.aggregate
-class Country:
-    code: String(identifier=True, max_length=2)
-    name: String(required=True)
-
-
-@domain.model(part_of=Country)
-class CountryModel:
-    class Meta:
-        schema_name = "master_data"      # same table, different concept
-```
-
-The domain still sees `Currency` and `Country` as separate, fully-typed
-concepts; only the adapter knows they share a table. Treat this as a true escape
-hatch: a `category` discriminator column and per-concept scoping must be managed
-in the custom models and repositories yourself, and Protean will not synthesize
-that filtering for you. Reach for it only when a separate table per concept is
-genuinely not an option.
+Keep `Currency` and `Country` as separate aggregates with separate tables. If
+other systems must still read `master_data`, keep that table in step outside
+the domain model.
 
 ---
 
@@ -365,6 +270,7 @@ genuinely not an option.
 ### Modeling the lookup table in the domain
 
 ```python
+# fragment
 # Anti-pattern: the storage shape becomes a domain concept
 @domain.aggregate
 class MasterData:
@@ -381,6 +287,7 @@ the concepts, not the table.
 ### The discriminator as a domain field
 
 ```python
+# fragment
 # Anti-pattern: leaking the storage discriminator into the model
 @domain.aggregate
 class Currency:
@@ -390,12 +297,12 @@ class Currency:
 
 A `Currency` is always a currency. A `category` field that exists only to
 distinguish rows in a shared table is a persistence concern that has leaked into
-the domain. If a shared table is unavoidable, the discriminator lives in the
-custom model, not the aggregate.
+the domain.
 
 ### Scattering raw lookups through domain logic
 
 ```python
+# fragment
 # Anti-pattern: every consumer re-implements the lookup
 valid = current_domain.repository_for(MasterData).query.filter(
     category="CURRENCY", active=True
@@ -411,6 +318,7 @@ repository method (`CurrencyRepository.as_map()`), written once.
 ### Foreign keys to the surrogate id
 
 ```python
+# fragment
 # Anti-pattern: pointing at the opaque lookup-table id
 order.currency_id = 4471          # what currency is 4471? nobody knows without a join
 ```
@@ -438,10 +346,6 @@ its own, and a missing currency is obvious instead of a dangling integer.
   For data that must be immediately consistent on the write path, validate
   against the aggregate repository, not the cached projection.
 
-- **The shared-table escape hatch carries ongoing cost**: Discriminator scoping,
-  migrations, and query filtering become your responsibility. Accept it only
-  when a table-per-concept is truly off the table.
-
 ---
 
 ## Summary
@@ -452,12 +356,10 @@ its own, and a missing currency is obvious instead of a dangling integer.
 | Closed code + label/behavior | Enumeration value object | None | VO invariant, at construction |
 | Editable, queryable | Aggregate keyed by `code` | Own table | Aggregate invariant |
 | Read everywhere, written rarely | Cache-backed projection | Cache/provider | Refreshed by projector |
-| Legacy shared table required | Aggregates + custom models on one `schema_name` | Shared table (adapter) | Aggregate invariant |
 
 One physical table is not one domain concept. Model each kind of reference data
 as its own type: an enumeration value object when it is closed and static, or
-an aggregate keyed by its natural code when it is editable. Treat any shared
-storage table as an adapter detail, never a domain model.
+an aggregate keyed by its natural code when it is editable.
 
 ---
 
@@ -475,5 +377,5 @@ storage table as an adapter detail, never a domain model.
 
     **Guides:**
 
-    - [Database Models](../guides/change-state/database-models.md): Custom `@domain.model` mappings and `schema_name`.
+    - [Database Models](../guides/change-state/database-models.md): Custom `@domain.database_model` mappings and `schema_name`.
     - [Repositories](../guides/change-state/repositories.md): Custom repository methods for retrieving collections.
