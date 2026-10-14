@@ -131,7 +131,9 @@ with no edged method carries no `method_edges` key.
 
 The same domain always produces **byte-identical** IR JSON (excluding the
 `generated_at` timestamp). Keys are sorted alphabetically at every level,
-lists are sorted, and optional attributes with default values are omitted.
+and optional attributes with default values are omitted. Lists are sorted,
+except the `domain` section's enricher lists, which keep registration order
+because enrichers run in that order.
 
 This makes the IR safe to commit to source control and diff across versions.
 The `checksum` field (SHA-256 of the canonical JSON) provides a quick staleness
