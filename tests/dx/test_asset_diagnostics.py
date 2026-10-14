@@ -3,9 +3,9 @@
 ``tests/dx/test_examples.py`` proves each ``skills/*/assets/*.py`` initializes.
 This test runs ``Domain.check(traverse=False)`` on each asset's domains and
 collects every validation error and every diagnostic at level ``warning`` or
-``error``. When validation passes but the IR fails to build, ``check`` returns
-no diagnostics, so the test builds the IR itself and records
-``IR_BUILD_FAILED`` for that asset.
+``error``. When the IR fails to build, ``check`` reports that as an error on
+the ``to_ir`` element, and the test records it as ``IR_BUILD_FAILED`` for that
+asset.
 
 Four completeness codes are ignored for every asset. A teaching asset shows one
 concept and is not a whole application, so an aggregate without a command
@@ -86,8 +86,8 @@ def discover_assets(skills_root: Path) -> list[Path]:
 # The child-interpreter runner. argv[1] is the skills root, argv[2] a JSON list
 # of asset paths, argv[3] the report path. For each asset it records the codes
 # ``Domain.check`` returns at level warning or error, ``IR_BUILD_FAILED`` when
-# the IR does not build, or the exception that stopped it. It writes a file, not a stream, so start-up logging on stderr
-# cannot corrupt the report.
+# the IR does not build, or the exception that stopped it. It writes a file,
+# not a stream, so start-up logging on stderr cannot corrupt the report.
 _RUNNER = """
 import importlib.util
 import json
