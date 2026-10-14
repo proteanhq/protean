@@ -45,8 +45,9 @@ step keeps that failure. After the last file, the child's wait for its
 non-daemon threads and its ``atexit`` handlers get twice the timeout, and a
 child still waiting then is ended. A child that exits with a non-zero code, or
 is killed, after reporting every file fails the run. The one exception is a
-child ended that way while a thread still held it up that a file left running
-past its cleanup step, since that file has already failed.
+child the shutdown limit ended after a file of that child left a thread running
+past its cleanup step, since that file has already failed. It does not apply
+when a thread is still running at the end whose file passed its cleanup step.
 
 :func:`include_expander` builds a source transform that replaces
 ``--8<-- "<spec>"`` lines with the code they include, the way
@@ -731,9 +732,10 @@ def run_snippets(
 
     Raises :class:`AssertionError` when a child stops outside a file. Also
     raises it when the last child exits with a non-zero code, or is killed,
-    after reporting every file, unless the shutdown watchdog ended it while a
-    thread that a file of that child left running past its cleanup step held
-    it up.
+    after reporting every file. The one exception is a child the shutdown
+    watchdog ended after a file of that child left a thread running past its
+    cleanup step, and with no thread still running whose file passed that
+    step.
     """
     work = tmp_path / "snippet-run"
     work.mkdir()
