@@ -276,6 +276,19 @@ def validate_lint_table(lint_config: Any) -> str | None:
     return None
 
 
+def _callable_qualname(fn: Any) -> str:
+    """Return ``module.qualname`` for a registered enricher.
+
+    A callable instance (a class with ``__call__``) has no ``__qualname__`` of
+    its own, so it is named by its class.
+    """
+    module = getattr(fn, "__module__", None)
+    qualname = getattr(fn, "__qualname__", None)
+    if not isinstance(module, str) or not isinstance(qualname, str):
+        return fqn(type(fn))
+    return f"{module}.{qualname}"
+
+
 class IRBuilder:
     """Build the Intermediate Representation for a Protean domain.
 
@@ -382,7 +395,7 @@ class IRBuilder:
 
     def _build_domain_metadata(self) -> dict[str, Any]:
         cfg = self._domain.config
-        return {
+        metadata: dict[str, Any] = {
             "camel_case_name": self._domain.camel_case_name,
             "command_processing": cfg["command_processing"],
             "event_processing": cfg["event_processing"],
@@ -391,6 +404,17 @@ class IRBuilder:
             "name": self._domain.name,
             "normalized_name": self._domain.normalized_name,
         }
+        # Sparse, so enricher-free domains keep a byte-identical IR (and
+        # checksum). Registration order is kept because enrichers run FIFO and
+        # a later one overwrites an earlier one's keys.
+        for key, enrichers in (
+            ("aggregate_enrichers", self._domain._aggregate_enrichers),
+            ("command_enrichers", self._domain._command_enrichers),
+            ("event_enrichers", self._domain._event_enrichers),
+        ):
+            if enrichers:
+                metadata[key] = [_callable_qualname(fn) for fn in enrichers]
+        return metadata
 
     # ------------------------------------------------------------------
     # Deprecation extraction
@@ -550,6 +574,10 @@ class IRBuilder:
             entry["sanitize"] = True
         if field.increment:
             entry["increment"] = True
+        if field.auto_now:
+            entry["auto_now"] = True
+        if field.auto_now_add:
+            entry["auto_now_add"] = True
         if getattr(field, "description", None):
             entry["description"] = field.description
 

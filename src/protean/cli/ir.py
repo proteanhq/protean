@@ -483,7 +483,8 @@ def _print_diff_text(
     if domain_changed:
         print("\n[bold]Domain Config[/bold]")
         for key, vals in sorted(domain_changed.items()):
-            print(f"  [yellow]~ {key}: {vals['left']} → {vals['right']}[/yellow]")
+            left, right = escape(str(vals["left"])), escape(str(vals["right"]))
+            print(f"  [yellow]~ {key}: {left} → {right}[/yellow]")
 
     print()
 

@@ -248,6 +248,8 @@
         "scale": { "type": "integer", "description": "Number of digits after the decimal point. Set only on a Decimal field that declares it." },
         "choices": { "type": "array", "items": { "type": "string" } },
         "sanitize": { "type": "boolean" },
+        "auto_now": { "type": "boolean", "description": "Set only when true: the field is set to the current time on every save." },
+        "auto_now_add": { "type": "boolean", "description": "Set only when true: the field is set to the current time on the first save." },
         "description": { "type": "string" },
         "auto_generated": { "type": "boolean" }
       },
@@ -1026,7 +1028,10 @@
         "identity_strategy": { "enum": ["uuid", "function", "database"] },
         "identity_type": { "enum": ["string", "integer"] },
         "event_processing": { "enum": ["sync", "async"] },
-        "command_processing": { "enum": ["sync", "async"] }
+        "command_processing": { "enum": ["sync", "async"] },
+        "aggregate_enrichers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "description": "Qualified names of the registered aggregate enrichers, in registration order. Present only when at least one is registered." },
+        "command_enrichers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "description": "Qualified names of the registered command enrichers, in registration order. Present only when at least one is registered." },
+        "event_enrichers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "description": "Qualified names of the registered event enrichers, in registration order. Present only when at least one is registered." }
       },
       "required": [
         "name", "normalized_name", "camel_case_name",

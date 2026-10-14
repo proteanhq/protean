@@ -196,6 +196,15 @@ The `domain` section captures bounded context identity and global configuration.
 | `identity_type` | Config | `"string"` or `"integer"` |
 | `event_processing` | Config | `"sync"` or `"async"` |
 | `command_processing` | Config | `"sync"` or `"async"` |
+| `aggregate_enrichers` | `domain.register_aggregate_enricher` | Qualified names (`module.qualname`) of the registered aggregate enrichers, in registration order (added in v0.3.0) |
+| `command_enrichers` | `domain.register_command_enricher` | Same, for command enrichers (added in v0.3.0) |
+| `event_enrichers` | `domain.register_event_enricher` | Same, for event enrichers (added in v0.3.0) |
+
+The three enricher keys are sparse: each appears only when at least one enricher
+of that kind is registered. Order is kept because enrichers run in registration
+order, and a later enricher can overwrite the keys an earlier one set. So
+`protean ir diff` reports an enricher that was added, removed or moved. A
+callable instance is recorded under its class's qualified name.
 
 Database connection strings, broker URLs, and other deployment-specific settings
 are excluded. The IR captures structural identity, not deployment topology.
@@ -434,6 +443,8 @@ All possible keys (no single field has all of them):
 | `choices` | Sorted list of allowed values |
 | `sanitize` | Present only for an explicit `sanitize=True` (declared intent); absent for an unset field, even one sanitized via a domain default |
 | `increment` | Auto-increment flag |
+| `auto_now` | `true` on a `Date` or `DateTime` field set to the current time on every save (added in v0.3.0) |
+| `auto_now_add` | `true` on a `Date` or `DateTime` field set to the current time on the first save (added in v0.3.0) |
 | `content_type` | Element type of a container (`List`, `ValueObjectList`) |
 | `auto_generated` | `true` for framework-injected fields |
 | `target` | FQN of the associated element (associations) |
