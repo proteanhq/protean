@@ -100,6 +100,7 @@ class BaseCommand(BaseMessageType):
             PlaceOrder({"order_id": "abc"}, amount=100)
         """
         incoming_metadata = kwargs.pop("_metadata", None)
+        rebuild = bool(kwargs.pop("_rebuild", False))
 
         # Support template dict pattern: Command({"key": "val"}, key2="val2")
         # Keyword args take precedence over template dict values.
@@ -118,6 +119,7 @@ class BaseCommand(BaseMessageType):
         template_metadata = kwargs.pop("_metadata", None)
         if incoming_metadata is None:
             incoming_metadata = template_metadata
+        kwargs.pop("_rebuild", None)
         kwargs.pop("_version", None)
 
         try:
@@ -126,7 +128,7 @@ class BaseCommand(BaseMessageType):
             raise ValidationError(convert_pydantic_errors(e)) from e
 
         # Build metadata
-        self._build_metadata(incoming_metadata)
+        self._build_metadata(incoming_metadata, rebuild=rebuild)
 
         object.__setattr__(self, "_initialized", True)
 
@@ -136,7 +138,9 @@ class BaseCommand(BaseMessageType):
                 f"`{self.__class__.__name__}` should be registered with a domain"
             )
 
-    def _build_metadata(self, incoming: Metadata | None) -> None:
+    def _build_metadata(
+        self, incoming: Metadata | None, *, rebuild: bool = False
+    ) -> None:
         """Build metadata for the command from incoming metadata or defaults."""
         version = (
             self.__class__.__version__ if hasattr(self.__class__, "__version__") else 1
@@ -190,6 +194,17 @@ class BaseCommand(BaseMessageType):
             incoming.domain if incoming and hasattr(incoming, "domain") else None
         )
 
+        # A stored message's trace IDs are history: keep them as stored, even
+        # when empty. The context belongs to whatever is being handled now.
+        if rebuild and existing_domain:
+            correlation_id = existing_domain.correlation_id
+            causation_id = existing_domain.causation_id
+        else:
+            if existing_domain and existing_domain.correlation_id:
+                correlation_id = existing_domain.correlation_id
+            if existing_domain and existing_domain.causation_id:
+                causation_id = existing_domain.causation_id
+
         # Build domain metadata — preserve values from _enrich_command() if set
         domain_meta = DomainMeta(
             kind="COMMAND",
@@ -202,12 +217,8 @@ class BaseCommand(BaseMessageType):
             asynchronous=existing_domain.asynchronous
             if existing_domain and hasattr(existing_domain, "asynchronous")
             else True,
-            correlation_id=existing_domain.correlation_id
-            if existing_domain and existing_domain.correlation_id
-            else correlation_id,
-            causation_id=existing_domain.causation_id
-            if existing_domain and existing_domain.causation_id
-            else causation_id,
+            correlation_id=correlation_id,
+            causation_id=causation_id,
         )
 
         # Also preserve envelope if it exists

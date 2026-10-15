@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -9,7 +10,14 @@ from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
 from protean.utils import Processing, fqn
-from protean.utils.eventing import DomainMeta, MessageEnvelope, MessageHeaders, Metadata
+from protean.utils.eventing import (
+    DomainMeta,
+    Message,
+    MessageEnvelope,
+    MessageHeaders,
+    Metadata,
+)
+from protean.utils.globals import g
 
 
 class UserLoggedIn(BaseEvent):
@@ -330,3 +338,89 @@ def test_trace_ids_survive_rebuilding_an_event_from_its_metadata():
 
     assert rebuilt._metadata.domain.correlation_id == "checkout-42"
     assert rebuilt._metadata.domain.causation_id == "cmd-1"
+
+
+def _raised_event(correlation_id=None, causation_id=None):
+    user = User(id=str(uuid4()), email="john@example.com", name="John")
+    user.login()
+    event = user._events[-1]
+    if correlation_id is None and causation_id is None:
+        return event
+    domain = event._metadata.domain.model_copy(
+        update={"correlation_id": correlation_id, "causation_id": causation_id}
+    )
+    metadata = event._metadata.model_copy(update={"domain": domain})
+    return UserLoggedIn(event.payload, _metadata=metadata)
+
+
+@contextmanager
+def _in_context(message):
+    g.message_in_context = message
+    try:
+        yield message
+    finally:
+        g.pop("message_in_context", None)
+
+
+def _other_message():
+    return Message.from_domain_object(
+        _raised_event(correlation_id="corr-X", causation_id="cause-X")
+    )
+
+
+class TestTraceIdsOnRebuildFromStoredMessage:
+    def test_root_event_keeps_empty_trace_ids(self):
+        root = _raised_event()
+        assert root._metadata.domain.correlation_id is None
+        assert root._metadata.domain.causation_id is None
+        stored = Message.from_domain_object(root)
+
+        with _in_context(_other_message()):
+            rebuilt = stored.to_domain_object()
+
+        assert rebuilt._metadata.domain.correlation_id is None
+        assert rebuilt._metadata.domain.causation_id is None
+
+    def test_stored_trace_ids_win_over_context(self):
+        stored = Message.from_domain_object(
+            _raised_event(correlation_id="checkout-42", causation_id="cmd-1")
+        )
+
+        with _in_context(_other_message()):
+            rebuilt = stored.to_domain_object()
+
+        assert rebuilt._metadata.domain.correlation_id == "checkout-42"
+        assert rebuilt._metadata.domain.causation_id == "cmd-1"
+
+    def test_message_in_context_does_not_cause_itself(self):
+        stored = Message.from_domain_object(_raised_event())
+
+        with _in_context(stored):
+            rebuilt = stored.to_domain_object()
+
+        assert stored.metadata.headers.id is not None
+        assert rebuilt._metadata.domain.causation_id != stored.metadata.headers.id
+        assert rebuilt._metadata.domain.causation_id is None
+        assert rebuilt._metadata.domain.correlation_id is None
+
+    def test_direct_construction_still_inherits_context_trace_ids(self):
+        # Process manager transitions and seeded test events pass metadata
+        # with no trace IDs and rely on the context to fill them in.
+        root = _raised_event()
+
+        with _in_context(_other_message()) as other:
+            event = UserLoggedIn(root.payload, _metadata=root._metadata)
+
+        assert event._metadata.domain.correlation_id == "corr-X"
+        assert event._metadata.domain.causation_id == other.metadata.headers.id
+
+    def test_rebuild_flag_in_template_dict_is_not_a_field(self):
+        root = _raised_event()
+
+        with _in_context(_other_message()):
+            event = UserLoggedIn(
+                {**root.payload, "_rebuild": True}, _metadata=root._metadata
+            )
+
+        assert event.user_id == root.user_id
+        assert "_rebuild" not in event.to_dict()
