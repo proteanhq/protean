@@ -30,6 +30,8 @@ namespace.
 All files run in one child interpreter, each under its own module name and its
 own ``Domain``, so registrations stay out of the test process. The child starts
 in a temporary directory, so a relative path in a block resolves inside it.
+A caller can put folders at the front of the child's ``sys.path``, so a block
+can import a package that lives in one of them.
 Each file has a timeout, enforced with ``SIGALRM`` where the platform has it.
 Closing what a file left open (a unit of work or a domain context) gets the
 same timeout again, because a rollback or a teardown callback can hang. A file
@@ -435,6 +437,7 @@ def check_no_replacement(earlier):
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     job = json.load(handle)
+sys.path[:0] = job["pythonpath"]
 timeout = job["timeout"]
 report = open(job["report"], "a", encoding="utf-8")
 
@@ -735,13 +738,16 @@ def run_snippets(
     tmp_path: Path,
     timeout: float = FILE_TIMEOUT,
     expand: Callable[[Block], Block] | None = None,
+    pythonpath: Sequence[Path] = (),
 ) -> list[dict]:
     """Run each file's blocks in a child interpreter and return its results.
 
     Each result is ``{"file", "failure", "not_run"}``, with ``file`` relative
     to ``root``. ``expand`` transforms each block before it runs; a
     :class:`SnippetError` it raises becomes the file's failure, and none of the
-    file's blocks run.
+    file's blocks run. ``pythonpath`` folders go at the front of the child's
+    ``sys.path`` before the first file runs, so a block can import a package
+    from one of them.
 
     A file still running at twice ``timeout``, or one that crashes the child,
     fails with the step that was running, and a new child runs the files after
@@ -776,6 +782,7 @@ def run_snippets(
             "held_exit": _HELD_EXIT,
             "report": str(report_path),
             "first_index": len(results),
+            "pythonpath": [str(folder) for folder in pythonpath],
             "files": pending,
         }
         job_path.write_text(json.dumps(job), encoding="utf-8")

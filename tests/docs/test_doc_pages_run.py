@@ -24,7 +24,9 @@ and every include must resolve. A ``python`` block that starts with ``>>>`` is
 a REPL transcript and must use a ``pycon`` fence.
 
 All pages run once, in one child interpreter, and each page is its own test
-case, so a failure names the page.
+case, so a failure names the page. The tutorial folder in ``docs_src`` is on
+the child's ``sys.path``, so a tutorial page can import the ``bookshelf``
+package its chapters build.
 """
 
 from __future__ import annotations
@@ -49,6 +51,9 @@ pytestmark = pytest.mark.no_test_domain
 # The folders an include path is relative to, searched in order. They must
 # match ``pymdownx.snippets.base_path`` in mkdocs.yml.
 SNIPPET_BASES = (REPO_ROOT / "docs_src", REPO_ROOT / "examples")
+
+# Folders the child interpreter imports from, ahead of everything else.
+PYTHONPATH = (REPO_ROOT / "docs_src" / "guides" / "getting-started" / "tutorial",)
 
 # Folders under docs/ whose pages are not run: the decision records keep their
 # code as it was when the decision was made, and the API pages are generated.
@@ -145,7 +150,11 @@ ALLOWLIST: frozenset[str] = frozenset(
 @pytest.fixture(scope="module")
 def page_results(tmp_path_factory: pytest.TempPathFactory) -> dict[str, dict]:
     results = run_snippets(
-        DOCS, PAGES, tmp_path_factory.mktemp("doc-pages"), expand=expand
+        DOCS,
+        PAGES,
+        tmp_path_factory.mktemp("doc-pages"),
+        expand=expand,
+        pythonpath=PYTHONPATH,
     )
     assert [r["file"] for r in results] == LABELS
     return {r["file"]: r for r in results}

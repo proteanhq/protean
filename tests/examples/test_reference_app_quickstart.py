@@ -2,7 +2,8 @@
 
 The module lives outside the package tree (under ``examples/``), so it is
 loaded by file path with ``spec_from_file_location``, the same pattern
-``tests/test_tutorial.py`` uses for the hyphenated ``getting-started`` path.
+``load_example`` in ``tests/docs/support.py`` uses for the hyphenated
+``getting-started`` path.
 
 Each test builds its own domain, so the class carries
 ``@pytest.mark.no_test_domain`` to opt out of the shared ``test_domain``

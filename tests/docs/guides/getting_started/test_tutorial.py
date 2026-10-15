@@ -1,7 +1,7 @@
 """Tests for the Bookshelf tutorial source files.
 
-Each test imports the actual chapter module from docs_src/ and exercises
-its domain objects, commands, and assertions — the same logic as the
+Each test loads the chapter module from ``docs_src`` with ``load_example`` and
+exercises its domain objects, commands, and assertions, the same logic as the
 chapter's ``if __name__ == "__main__"`` block.
 
 Runs with in-memory adapters by default.  Pass ``--db``, ``--store``,
@@ -13,8 +13,6 @@ files, and ch10 imports from it, so the ``tutorial/`` folder goes on
 ``sys.path`` before either is loaded.
 """
 
-import importlib.util
-import os
 import subprocess
 import sys
 import types
@@ -23,48 +21,22 @@ import pytest
 from fastapi.testclient import TestClient
 
 from protean.exceptions import ValidationError
-
-# ---------------------------------------------------------------------------
-# Module loading helper
-# ---------------------------------------------------------------------------
-_TUTORIAL_DIR = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "docs_src",
-    "guides",
-    "getting-started",
-    "tutorial",
-)
-_TUTORIAL_DIR = os.path.abspath(_TUTORIAL_DIR)
+from tests.docs.support import DOCS_SRC, load_example
 
 # Chapter 9's ``bookshelf`` package lives in the tutorial folder.
+_TUTORIAL_DIR = str(DOCS_SRC / "guides" / "getting-started" / "tutorial")
 if _TUTORIAL_DIR not in sys.path:
     sys.path.insert(0, _TUTORIAL_DIR)
 
-
-def _load_chapter(num: int) -> types.ModuleType:
-    """Load a chapter module by number.
-
-    Uses spec_from_file_location to handle hyphenated directory names
-    in the path (``getting-started``).
-    """
-    name = f"tutorial_ch{num:02d}"
-    filepath = os.path.join(_TUTORIAL_DIR, f"ch{num:02d}.py")
-    spec = importlib.util.spec_from_file_location(name, filepath)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-
-# Load chapter modules at module level (each has its own Domain instance)
-ch01 = _load_chapter(1)
-ch02 = _load_chapter(2)
-ch03 = _load_chapter(3)
-ch04 = _load_chapter(4)
-ch05 = _load_chapter(5)
-ch06 = _load_chapter(6)
-ch07 = _load_chapter(7)
+# Load chapter modules at module level (each has its own Domain instance).
+# ``load_example`` runs a chapter afresh on every call, so load each one once.
+ch01 = load_example("guides/getting-started/tutorial/ch01.py")
+ch02 = load_example("guides/getting-started/tutorial/ch02.py")
+ch03 = load_example("guides/getting-started/tutorial/ch03.py")
+ch04 = load_example("guides/getting-started/tutorial/ch04.py")
+ch05 = load_example("guides/getting-started/tutorial/ch05.py")
+ch06 = load_example("guides/getting-started/tutorial/ch06.py")
+ch07 = load_example("guides/getting-started/tutorial/ch07.py")
 
 # Chapter 9 is the ``bookshelf`` package. Import its modules before ch10, and
 # record what they registered: ch10 calls ``domain.init()``, whose traversal
@@ -78,13 +50,13 @@ import bookshelf.projections
 
 _BOOKSHELF_REGISTERED = set(bookshelf.domain.registry._elements_by_name)
 
-ch10 = _load_chapter(10)
-ch13 = _load_chapter(13)
-ch14 = _load_chapter(14)
-ch15 = _load_chapter(15)
-ch19 = _load_chapter(19)
-ch20 = _load_chapter(20)
-ch21 = _load_chapter(21)
+ch10 = load_example("guides/getting-started/tutorial/ch10.py")
+ch13 = load_example("guides/getting-started/tutorial/ch13.py")
+ch14 = load_example("guides/getting-started/tutorial/ch14.py")
+ch15 = load_example("guides/getting-started/tutorial/ch15.py")
+ch19 = load_example("guides/getting-started/tutorial/ch19.py")
+ch20 = load_example("guides/getting-started/tutorial/ch20.py")
+ch21 = load_example("guides/getting-started/tutorial/ch21.py")
 
 # Chapters that have projections (need DB artifact create/drop with real DBs)
 _HAS_PROJECTIONS = {ch07, bookshelf, ch10, ch21}

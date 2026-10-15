@@ -1,7 +1,7 @@
 """Tests for the Event Sourcing tutorial source files (ch01-ch22).
 
-Each test imports the actual chapter module from docs_src/ and exercises
-its domain objects, commands, and assertions — the same logic as the
+Each test loads the chapter module from ``docs_src`` with ``load_example`` and
+exercises its domain objects, commands, and assertions, the same logic as the
 chapter's ``if __name__ == "__main__"`` block.
 
 Runs with in-memory adapters by default.  Pass ``--db``, ``--store``,
@@ -9,68 +9,38 @@ and ``--broker`` to pytest to exercise real adapters (same flags used
 by the rest of the test suite).
 """
 
-import importlib.util
-import os
-import sys
 import types
 from datetime import UTC, datetime
 
 import pytest
 
 from protean.exceptions import IncorrectUsageError, ValidationError
+from tests.docs.support import load_example
 
-# ---------------------------------------------------------------------------
-# Module loading helper
-# ---------------------------------------------------------------------------
-_TUTORIAL_DIR = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "docs_src",
-    "guides",
-    "getting-started",
-    "es-tutorial",
-)
-_TUTORIAL_DIR = os.path.abspath(_TUTORIAL_DIR)
-
-
-def _load_chapter(num: int) -> types.ModuleType:
-    """Load a chapter module by number.
-
-    Uses spec_from_file_location to handle hyphenated directory names
-    in the path (``getting-started``, ``es-tutorial``).
-    """
-    name = f"es_tutorial_ch{num:02d}"
-    filepath = os.path.join(_TUTORIAL_DIR, f"ch{num:02d}.py")
-    spec = importlib.util.spec_from_file_location(name, filepath)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-
-# Load all 22 chapters at module level (each has its own Domain instance)
-ch01 = _load_chapter(1)
-ch02 = _load_chapter(2)
-ch03 = _load_chapter(3)
-ch04 = _load_chapter(4)
-ch05 = _load_chapter(5)
-ch06 = _load_chapter(6)
-ch07 = _load_chapter(7)
-ch08 = _load_chapter(8)
-ch09 = _load_chapter(9)
-ch10 = _load_chapter(10)
-ch11 = _load_chapter(11)
-ch12 = _load_chapter(12)
-ch13 = _load_chapter(13)
-ch14 = _load_chapter(14)
-ch15 = _load_chapter(15)
-ch16 = _load_chapter(16)
-ch17 = _load_chapter(17)
-ch18 = _load_chapter(18)
-ch19 = _load_chapter(19)
-ch20 = _load_chapter(20)
-ch21 = _load_chapter(21)
-ch22 = _load_chapter(22)
+# Load all 22 chapters at module level (each has its own Domain instance).
+# ``load_example`` runs a chapter afresh on every call, so load each one once.
+ch01 = load_example("guides/getting-started/es-tutorial/ch01.py")
+ch02 = load_example("guides/getting-started/es-tutorial/ch02.py")
+ch03 = load_example("guides/getting-started/es-tutorial/ch03.py")
+ch04 = load_example("guides/getting-started/es-tutorial/ch04.py")
+ch05 = load_example("guides/getting-started/es-tutorial/ch05.py")
+ch06 = load_example("guides/getting-started/es-tutorial/ch06.py")
+ch07 = load_example("guides/getting-started/es-tutorial/ch07.py")
+ch08 = load_example("guides/getting-started/es-tutorial/ch08.py")
+ch09 = load_example("guides/getting-started/es-tutorial/ch09.py")
+ch10 = load_example("guides/getting-started/es-tutorial/ch10.py")
+ch11 = load_example("guides/getting-started/es-tutorial/ch11.py")
+ch12 = load_example("guides/getting-started/es-tutorial/ch12.py")
+ch13 = load_example("guides/getting-started/es-tutorial/ch13.py")
+ch14 = load_example("guides/getting-started/es-tutorial/ch14.py")
+ch15 = load_example("guides/getting-started/es-tutorial/ch15.py")
+ch16 = load_example("guides/getting-started/es-tutorial/ch16.py")
+ch17 = load_example("guides/getting-started/es-tutorial/ch17.py")
+ch18 = load_example("guides/getting-started/es-tutorial/ch18.py")
+ch19 = load_example("guides/getting-started/es-tutorial/ch19.py")
+ch20 = load_example("guides/getting-started/es-tutorial/ch20.py")
+ch21 = load_example("guides/getting-started/es-tutorial/ch21.py")
+ch22 = load_example("guides/getting-started/es-tutorial/ch22.py")
 
 # Chapters that don't call domain.init() at module level
 _NEEDS_INIT = {ch05, ch08, ch17, ch18, ch21}
