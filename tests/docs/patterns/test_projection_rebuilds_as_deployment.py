@@ -4,6 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from protean import Engine
+from protean.utils import fqn
+from protean.utils.dlq import failed_positions_stream
 from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -128,6 +130,31 @@ def test_v2_is_built_beside_the_live_projection(blue_green):
     assert v2[0]["tax"] == 8.0
     assert blue_green.OrderSummaryV2.meta_.schema_name == "order_summary_v2"
     assert blue_green.OrderSummary.meta_.schema_name == "order_summary"
+
+
+def test_engine_after_a_rebuild_replays_into_v2_without_failing(blue_green):
+    repo = blue_green.domain.repository_for(blue_green.Order)
+    order = blue_green.Order(customer_name="Ada", subtotal=100.0, tax=8.0)
+    order.place()
+    repo.add(order)
+    blue_green.rebuild_v2()
+    order = repo.get(order.id)
+    order.ship()
+    repo.add(order)
+
+    engine = Engine(blue_green.domain, test_mode=True)
+    engine.run()
+
+    assert engine.exit_code == 0
+    failed = failed_positions_stream(
+        fqn(blue_green.OrderSummaryV2Projector),
+        blue_green.Order.meta_.stream_category,
+    )
+    assert blue_green.domain.event_store.store.read(failed) == []
+    v2 = _rows(blue_green, blue_green.OrderSummaryV2)
+    assert [(r["customer_name"], r["status"], r["total"]) for r in v2] == [
+        ("Ada", "shipped", 108.0),
+    ]
 
 
 def test_switched_endpoint_reads_the_new_projection(blue_green):

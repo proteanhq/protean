@@ -180,6 +180,13 @@ Stop the Engine for the rebuild, or rebuild before the Engine starts with the
 new projector. Reads do not go through the Engine, so the old projection keeps
 answering queries. Its updates wait until the Engine starts again.
 
+A rebuild does not move the new projector's subscription position. When the
+Engine first runs the new projector, it starts at the beginning of the event
+store and delivers the events the rebuild already replayed. That is why the
+`OrderPlaced` handler in Step 2 skips an order whose row already exists. A
+handler that inserts without that check fails on the second delivery with a
+uniqueness error.
+
 **Step 4: Switch traffic.**
 
 Once the rebuild completes and you have verified the data, update the API or

@@ -112,7 +112,16 @@ def test_subscriber_forwards_the_source_correlation_id(example, client):
     assert confirmed.metadata.domain.correlation_id == "pay-777"
 
 
-@pytest.mark.parametrize("message", [{}, {"metadata": {}}])
+@pytest.mark.parametrize(
+    "message",
+    [
+        {},
+        {"metadata": {}},
+        {"metadata": None},
+        {"metadata": {"domain": None}},
+        {"metadata": {"domain": {"correlation_id": ""}}},
+    ],
+)
 def test_subscriber_starts_a_new_chain_without_domain_metadata(
     example, client, message
 ):

@@ -1,4 +1,5 @@
 from protean import Domain, handle
+from protean.exceptions import ObjectNotFoundError
 from protean.fields import Float, Identifier, String
 from protean.utils.globals import current_domain
 
@@ -97,6 +98,13 @@ class OrderSummaryV2Projector:
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):
         repo = current_domain.repository_for(OrderSummaryV2)
+        # A rebuild may already hold this row: the new projector's first Engine
+        # run starts at the beginning of the event store and replays it
+        try:
+            repo.get(event.order_id)
+            return
+        except ObjectNotFoundError:
+            pass
         repo.add(
             OrderSummaryV2(
                 order_id=event.order_id,
