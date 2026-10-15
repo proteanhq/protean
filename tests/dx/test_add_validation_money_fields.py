@@ -1,8 +1,8 @@
 """The add-validation skill's assets store money as ``Decimal``.
 
 A ``Float`` money field cannot hold 0.1 exactly, so a total of 0.3 does not
-equal subtotals of 0.1 and 0.2 and the order's invariant rejects a correct
-order. These tests pin the field shape the skill teaches, check that the
+equal the sum of subtotals of 0.1 and 0.2 and the order's invariant rejects a
+correct order. These tests pin the field shape the skill teaches, check that the
 order invariant compares exactly, and run each changed asset as a script.
 """
 
@@ -94,11 +94,28 @@ def test_salary_minimum_is_a_decimal():
     assert isinstance(field.min_value, D)
 
 
-def test_order_total_default_is_not_a_float():
-    default = _ir_field(LAYER3, "Order", "total_amount")["default"]
+def test_salary_below_the_minimum_is_rejected():
+    ns = _load(LAYER1)
+    domain = ns["domain"]
+    domain.init(traverse=False)
+    with domain.domain_context():
+        with pytest.raises(ValidationError) as exc:
+            ns["Employee"](
+                name="Jane Doe",
+                age=30,
+                department="ENGINEERING",
+                salary=D("0.009"),
+                employee_code="EMP-0001",
+            )
 
-    assert default == 0
-    assert not isinstance(default, float)
+    assert list(exc.value.messages) == ["salary"]
+
+
+def test_order_total_default_is_a_decimal():
+    default = fields(_load(LAYER3)["Order"])["total_amount"].default
+
+    assert default == D(0)
+    assert isinstance(default, D)
 
 
 @pytest.mark.parametrize("field_name", ["latitude", "longitude"])
@@ -142,16 +159,39 @@ def test_order_total_mismatch_is_still_rejected():
     ]
 
 
+# Each demo catches the ``ValidationError`` of an invalid case and prints it
+# under a label, so a case that stops raising drops its line and exits 0.
 @pytest.mark.parametrize(
-    ("asset", "expected_line"),
+    ("asset", "expected_labels"),
     [
-        (LAYER1, "Employee: Jane Doe, Dept: ENGINEERING"),
-        (LAYER2, "Booking: BK-001"),
-        (LAYER3, "Order: ORD-001, Total: $100"),
-        (ALL_LAYERS, "Created: Blue Widget, Stock: 50"),
+        (
+            LAYER1,
+            [
+                "Employee: Jane Doe, Dept: ENGINEERING",
+                "Missing name:",
+                "Age too low:",
+                "Bad department:",
+                "Bad code:",
+            ],
+        ),
+        (
+            LAYER2,
+            [
+                "Booking: BK-001",
+                "Date invariant:",
+                "Money invariant:",
+                "Currency invariant:",
+                "Coordinate invariant:",
+            ],
+        ),
+        (LAYER3, ["Order: ORD-001, Total: $100", "Total mismatch:", "Bad quantity:"]),
+        (
+            ALL_LAYERS,
+            ["Created: Blue Widget, Stock: 50", "Restocked: 150", "Unauthorized:"],
+        ),
     ],
 )
-def test_demo_runs_as_a_script(asset, expected_line):
+def test_demo_runs_as_a_script(asset, expected_labels):
     # validation_all_layers.py logs a traceback on stderr for its expected
     # unauthorized case, so only the return code and stdout are checked.
     result = subprocess.run(
@@ -166,4 +206,29 @@ def test_demo_runs_as_a_script(asset, expected_line):
     assert result.returncode == 0, (
         f"{asset} exited {result.returncode}:\n{result.stderr}"
     )
-    assert expected_line in result.stdout.splitlines(), result.stdout
+    lines = result.stdout.splitlines()
+    missing = [
+        label
+        for label in expected_labels
+        if not any(line.startswith(label) for line in lines)
+    ]
+    assert missing == [], result.stdout
+
+
+SKILL_DIR = PACK_ROOT / dx.SKILLS_DIR / "add-validation"
+
+
+def test_layer2_reference_teaches_a_decimal_money_amount():
+    text = (SKILL_DIR / "references" / "layer2-value-object-invariants.md").read_text()
+
+    assert "amount: Decimal(precision=19, scale=4, required=True)" in text
+    assert "Float(" not in text
+
+
+def test_skill_tip_names_a_decimal_field_for_money():
+    text = (SKILL_DIR / "SKILL.md").read_text()
+    tip = [line for line in text.splitlines() if line.startswith("6. ")]
+
+    assert len(tip) == 1, tip
+    assert "Decimal(precision=19, scale=4, min_value=0)" in tip[0]
+    assert "Float(" not in tip[0]

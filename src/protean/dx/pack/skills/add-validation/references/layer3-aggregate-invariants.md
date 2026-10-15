@@ -113,7 +113,7 @@ class OrderItem:
 @domain.aggregate
 class Order:
     items = HasMany("OrderItem")
-    total_amount: Decimal(precision=19, scale=4, default=0)
+    total_amount: Decimal(precision=19, scale=4, default=D("0"))
 
     @invariant.post
     def total_must_equal_sum_of_items(self):

@@ -55,7 +55,7 @@ class Order:
     order_id: String(required=True, max_length=20, identifier=True)
     customer_name: String(required=True, max_length=100)
     status: String(max_length=20, default="draft")
-    total_amount: Decimal(precision=19, scale=4, default=0)
+    total_amount: Decimal(precision=19, scale=4, default=D("0"))
     items = HasMany("OrderItem")
 
     # --- POST-INVARIANTS: checked after initialization and attribute changes ---

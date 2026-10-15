@@ -11,6 +11,7 @@ The complete implementation is in [assets/validation_layer2_vo_invariants.py](..
 ```python
 from protean import invariant
 from protean.exceptions import ValidationError
+from protean.fields import Decimal, String
 
 @domain.value_object
 class Money:
