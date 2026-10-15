@@ -18,6 +18,15 @@ pyodbc is a binding, not a driver. Install
 [Microsoft ODBC Driver 18 for SQL Server](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server)
 separately through your operating system's package manager.
 
+If pyodbc cannot be imported, `domain.init()` raises a `ConfigurationError`
+that names the extra to install. This covers a `database_uri` that names pyodbc
+(`mssql+pyodbc://`) and one that names no driver (`mssql://`). pyodbc
+installed without the unixODBC system library fails to import, so it fails the
+same way. A `database_uri` that names another driver, such as
+`mssql+pymssql://`, goes to SQLAlchemy as written.
+So does a database config with a `module` key, which hands SQLAlchemy
+the DBAPI module to use in place of the URL's driver.
+
 ## Configuration
 
 ```toml

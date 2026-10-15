@@ -16,6 +16,16 @@ needs no `libmysqlclient` on the machine. The extra pulls `cryptography` with
 it, which PyMySQL needs for the RSA key exchange that `caching_sha2_password`
 and `sha256_password` use on an unencrypted connection.
 
+If PyMySQL cannot be imported, `domain.init()` raises a `ConfigurationError`
+that names the extra to install. This covers a `database_uri` that names
+PyMySQL (`mysql+pymysql://`, `mariadb+pymysql://`). SQLAlchemy connects a plain
+`mysql://` or `mariadb://` through mysqlclient, so Protean checks that URL for
+mysqlclient. When mysqlclient is missing, the error asks you to add `+pymysql`
+to the URL and install the extra. A `database_uri` that names another
+driver, such as `mysql+mysqldb://`, goes to SQLAlchemy as written.
+So does a database config with a `module` key, which hands SQLAlchemy
+the DBAPI module to use in place of the URL's driver.
+
 ## Configure TLS explicitly
 
 **Do not assume the driver encrypts the connection.** Whether PyMySQL starts
