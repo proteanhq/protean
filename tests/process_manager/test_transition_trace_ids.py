@@ -43,8 +43,12 @@ def test_transition_inherits_trace_ids_of_message_in_context(test_domain):
     domain = booked._metadata.domain.model_copy(
         update={"correlation_id": "corr-X", "causation_id": "cause-X"}
     )
+    headers = booked._metadata.headers.model_copy(update={"id": "booked-msg-1"})
     booked = ShipmentBooked(
-        booked.payload, _metadata=booked._metadata.model_copy(update={"domain": domain})
+        booked.payload,
+        _metadata=booked._metadata.model_copy(
+            update={"domain": domain, "headers": headers}
+        ),
     )
     in_context = Message.from_domain_object(booked)
 
@@ -58,4 +62,5 @@ def test_transition_inherits_trace_ids_of_message_in_context(test_domain):
     messages = test_domain.event_store.store.read(stream)
     assert len(messages) == 1
     assert messages[0].metadata.domain.correlation_id == "corr-X"
-    assert messages[0].metadata.domain.causation_id == in_context.metadata.headers.id
+    assert in_context.metadata.headers.id == "booked-msg-1"
+    assert messages[0].metadata.domain.causation_id == "booked-msg-1"
