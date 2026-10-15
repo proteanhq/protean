@@ -293,7 +293,16 @@ class TestTraceIdsOnRebuildFromStoredMessage:
     def test_rebuild_flag_in_template_dict_is_not_a_field(self, test_domain):
         root = _root_command(test_domain)
 
-        command = Login({**root.payload, "_rebuild": True}, _metadata=root._metadata)
+        with _in_context(_other_message(test_domain)) as other:
+            command = Login(
+                {**root.payload, "_rebuild": True}, _metadata=root._metadata
+            )
 
         assert command.user_id == root.user_id
         assert "_rebuild" not in command.to_dict()
+        # A `_rebuild` key in the template dict does not switch on rebuild
+        assert (
+            command._metadata.domain.correlation_id
+            == root._metadata.domain.correlation_id
+        )
+        assert command._metadata.domain.causation_id == other.metadata.headers.id

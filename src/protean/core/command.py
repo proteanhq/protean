@@ -194,8 +194,9 @@ class BaseCommand(BaseMessageType):
             incoming.domain if incoming and hasattr(incoming, "domain") else None
         )
 
-        # A stored message's trace IDs are history: keep them as stored, even
-        # when empty. The context belongs to whatever is being handled now.
+        # On a rebuild, copy the stored IDs, including `None`.
+        # `g.message_in_context` holds the message being handled now, which
+        # did not cause the stored one.
         if rebuild and existing_domain:
             correlation_id = existing_domain.correlation_id
             causation_id = existing_domain.causation_id

@@ -9,6 +9,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
+from protean.testing import given
 from protean.utils import Processing, fqn
 from protean.utils.eventing import (
     DomainMeta,
@@ -414,13 +415,39 @@ class TestTraceIdsOnRebuildFromStoredMessage:
         assert event._metadata.domain.correlation_id == "corr-X"
         assert event._metadata.domain.causation_id == other.metadata.headers.id
 
+    def test_stored_correlation_with_empty_causation_keeps_causation_empty(self):
+        stored = Message.from_domain_object(
+            _raised_event(correlation_id="checkout-42", causation_id=None)
+        )
+
+        with _in_context(_other_message()):
+            rebuilt = stored.to_domain_object()
+
+        assert rebuilt._metadata.domain.correlation_id == "checkout-42"
+        assert rebuilt._metadata.domain.causation_id is None
+
+    def test_seeded_event_inherits_context_trace_ids(self, test_domain):
+        root = _raised_event()
+        result = given(User, root)
+
+        with _in_context(_other_message()) as other:
+            aggregate_id = result._seed_events(test_domain)
+
+        messages = test_domain.event_store.store.read(f"test::user-{aggregate_id}")
+        assert len(messages) == 1
+        assert messages[0].metadata.domain.correlation_id == "corr-X"
+        assert messages[0].metadata.domain.causation_id == other.metadata.headers.id
+
     def test_rebuild_flag_in_template_dict_is_not_a_field(self):
         root = _raised_event()
 
-        with _in_context(_other_message()):
+        with _in_context(_other_message()) as other:
             event = UserLoggedIn(
                 {**root.payload, "_rebuild": True}, _metadata=root._metadata
             )
 
         assert event.user_id == root.user_id
         assert "_rebuild" not in event.to_dict()
+        # A `_rebuild` key in the template dict does not switch on rebuild
+        assert event._metadata.domain.correlation_id == "corr-X"
+        assert event._metadata.domain.causation_id == other.metadata.headers.id
