@@ -9,8 +9,9 @@ range of `domain.view_for()` and build a cross-aggregate projection.
 
 `domain.view_for()` returns a `ReadView`. Its `query` property gives
 you a `ReadOnlyQuerySet`. The examples below query the `StorefrontView`
-projection that we build later in this chapter. Each one is a small function
-that takes the view as `catalog`. The `ReadOnlyQuerySet` supports:
+projection that we build later in this chapter. Each one is a small function.
+The first one gets the view with `domain.view_for(StorefrontView)`, and the
+rest take that view as `catalog`. The `ReadOnlyQuerySet` supports:
 
 ### Filtering
 
