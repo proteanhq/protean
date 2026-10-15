@@ -436,8 +436,10 @@ def _resolve_python_type(shim: ResolvedField) -> type | None:
     """Extract the core Python type from a ResolvedField.
 
     Unwraps Optional/Union, and normalises generic aliases
-    (``list[X]`` → ``list``, ``dict[K,V]`` → ``dict``). An annotation that is
-    not a class, such as a ``Literal``, gives ``None``.
+    (``list[X]`` → ``list``, ``dict[K,V]`` → ``dict``). A ``Literal`` (the
+    type a field with ``choices`` resolves to) whose values all share one
+    mapped type resolves to that type. Any other ``Literal``, or any other
+    annotation that is not a class, gives ``None``.
     """
     python_type = shim._python_type
 
@@ -448,6 +450,16 @@ def _resolve_python_type(shim: ResolvedField) -> type | None:
         if args:
             python_type = args[0]
             origin = typing.get_origin(python_type)
+
+    # Literal["a", "b"] → str. Exact type() matching keeps bool apart from
+    # int, so mixed choices such as [True, 1] stay unresolved.
+    if origin is typing.Literal:
+        value_types = {type(v) for v in typing.get_args(python_type)}
+        if len(value_types) == 1:
+            (value_type,) = value_types
+            if value_type in _PYTHON_TYPE_TO_SA:
+                return value_type
+        return None
 
     # Handle generic aliases: list[X] → list, dict[K, V] → dict
     if origin is list or python_type is list:
