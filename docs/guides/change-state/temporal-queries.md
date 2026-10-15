@@ -114,6 +114,10 @@ from the event store to ensure the historical state is accurate:
 | Both `at_version` and `as_of` provided | `IncorrectUsageError` |
 | `raise_()` on a temporal aggregate | `IncorrectUsageError` |
 
+To get `None` instead of `ObjectNotFoundError`, call
+[`get_or_none()`](./repositories.md#get_or_none-on-an-event-sourced-repository)
+with the same arguments.
+
 ---
 
 !!! tip "See also"

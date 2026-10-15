@@ -4,6 +4,8 @@ Each test loads its example fresh, so every test gets its own domain and its
 own memory database.
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from protean.core.repository import BaseRepository
@@ -290,3 +292,37 @@ def test_dao_delete_removes_the_stored_record(entry_point):
 
     assert repo.get_or_none("42") is None
     assert repo.query.all().total == 0
+
+
+@pytest.fixture
+def event_sourced():
+    """The event-sourced `Account`, opened with 100 and then topped up by 50."""
+    module = load_example("guides/change-state/repositories/005.py")
+    module.domain.init(traverse=False)
+    with module.domain.domain_context():
+        repo = module.domain.repository_for(module.Account)
+        repo.add(module.Account.open("acc-1", 100.0))
+        account = repo.get("acc-1")
+        account.deposit(50.0)
+        repo.add(account)
+        yield module
+
+
+def test_event_sourced_get_or_none_returns_the_latest_state(event_sourced):
+    assert event_sourced.balance_or_zero("acc-1") == 150.0
+
+
+def test_event_sourced_get_or_none_returns_none_for_an_unknown_id(event_sourced):
+    assert event_sourced.balance_or_zero("unknown") == 0.0
+
+
+def test_event_sourced_get_or_none_with_at_version(event_sourced):
+    assert event_sourced.balance_at_version("acc-1", 0) == 100.0
+    assert event_sourced.balance_at_version("acc-1", 5) is None
+
+
+def test_event_sourced_get_or_none_with_as_of(event_sourced):
+    now = datetime.now(UTC)
+
+    assert event_sourced.balance_as_of("acc-1", now + timedelta(hours=1)) == 150.0
+    assert event_sourced.balance_as_of("acc-1", now - timedelta(days=1)) is None

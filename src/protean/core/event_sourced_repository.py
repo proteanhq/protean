@@ -127,9 +127,10 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
         Raises:
             IncorrectUsageError: When both ``at_version`` and ``as_of`` are
-                provided (they are mutually exclusive).
+                provided (they are mutually exclusive), or when no event
+                store is configured.
             ObjectNotFoundError: When no stream with *identifier* is found,
-                or the requested version/time predates all events.
+                or the requested version/time has no events.
 
         Returns:
             The fully-loaded aggregate object.
@@ -154,6 +155,58 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
                 set_span_error(span, exc)
                 raise
 
+    def get_or_none(
+        self,
+        identifier: str,
+        *,
+        at_version: int | None = None,
+        as_of: datetime | None = None,
+    ) -> Any | None:
+        """Retrieve an Aggregate from a stream of Events, same as ``get()``,
+        but return ``None`` instead of raising ``ObjectNotFoundError``.
+
+        Takes the same arguments as ``get()`` and follows the same rules:
+        the identity map inside a UnitOfWork, and temporal queries with
+        ``at_version`` or ``as_of`` that return a read-only aggregate.
+
+        Args:
+            identifier: Aggregate identifier.
+            at_version: Reconstitute to this exact version (0-indexed).
+                Version 0 is the state after the first event.
+            as_of: Reconstitute the aggregate as of this timestamp.
+                Only events written on or before ``as_of`` are applied.
+
+        Raises:
+            IncorrectUsageError: When both ``at_version`` and ``as_of`` are
+                provided, or when no event store is configured.
+
+        Returns:
+            The fully-loaded aggregate object, or ``None`` when no stream
+            with *identifier* is found, or the requested version/time has
+            no events. Every other error propagates.
+        """
+        tracer = self._domain.tracer
+
+        with tracer.start_as_current_span(
+            "protean.repository.get_or_none",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            span.set_attribute("protean.aggregate.type", self.meta_.part_of.__name__)
+            span.set_attribute("protean.repository.kind", "event_sourced")
+            span.set_attribute(
+                "protean.provider",
+                self._domain.event_store.store.__class__.__name__,
+            )
+
+            try:
+                return self._do_get(identifier, at_version=at_version, as_of=as_of)
+            except ObjectNotFoundError:
+                return None
+            except Exception as exc:  # marks the span as failed, then re-raises
+                set_span_error(span, exc)
+                raise
+
     def _do_get(
         self,
         identifier: str,
@@ -161,7 +214,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         at_version: int | None = None,
         as_of: datetime | None = None,
     ) -> Any:
-        """Internal get logic wrapped by the ``protean.repository.get`` span."""
+        """Internal get logic shared by ``get()`` and ``get_or_none()``."""
         if at_version is not None and as_of is not None:
             raise IncorrectUsageError(
                 "Cannot specify both `at_version` and `as_of`; "
