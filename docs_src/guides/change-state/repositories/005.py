@@ -1,5 +1,7 @@
-from datetime import UTC, datetime, timedelta
+# --8<-- [start:imports]
+from datetime import datetime
 
+# --8<-- [end:imports]
 from protean import Domain, apply
 from protean.fields import Float, Identifier
 
@@ -86,4 +88,5 @@ if __name__ == "__main__":
         print(balance_or_zero("unknown"))  # 0.0
         print(balance_at_version("acc-1", 0))  # 100.0
         print(balance_at_version("acc-1", 5))  # None
-        print(balance_as_of("acc-1", datetime.now(UTC) - timedelta(days=1)))  # None
+        long_ago = datetime.fromisoformat("2000-01-01T00:00:00+00:00")
+        print(balance_as_of("acc-1", long_ago))  # None

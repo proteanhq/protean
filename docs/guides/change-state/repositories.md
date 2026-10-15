@@ -212,6 +212,7 @@ Every other error still raises. Passing both `at_version` and `as_of` raises
 `IncorrectUsageError`, and so does a domain with no event store.
 
 ```python
+--8<-- "guides/change-state/repositories/005.py:imports"
 --8<-- "guides/change-state/repositories/005.py:event_sourced_get_or_none"
 ```
 
