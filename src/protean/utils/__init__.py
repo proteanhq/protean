@@ -119,11 +119,9 @@ OptionalStdlibDatetime = Annotated[datetime | None, AfterValidator(_stdlib_timez
 """A nullable ``datetime`` field type whose parsed values carry a stdlib ``timezone``."""
 
 
-def _stdlib_timezone_each(v: Any) -> Any:
+def _stdlib_timezone_each(v: list[Any]) -> list[Any]:
     """Apply :func:`_stdlib_timezone` to each element of a list of datetimes."""
-    if isinstance(v, list):
-        return [_stdlib_timezone(item) for item in v]
-    return v
+    return [_stdlib_timezone(item) for item in v]
 
 
 class _TypeMatcher:
