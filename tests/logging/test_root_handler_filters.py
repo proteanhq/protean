@@ -531,6 +531,40 @@ class TestMultiWorkerQueuePath:
         ]
         assert redaction[0] in root.filters
 
+    def test_redaction_filter_only_on_root_is_collected(self, test_domain):
+        test_domain.config["telemetry"] = {"enabled": False}
+        test_domain.config["logging"] = {"redact": ["correlation_id"]}
+        test_domain.configure_logging(level="DEBUG", format="json")
+        root = logging.getLogger()
+        root_only = ProteanRedactionFilter(["causation_id"])
+        root.addFilter(root_only)
+        assert all(root_only not in h.filters for h in root.handlers)
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+
+        _install_worker_log_queue(log_queue)  # type: ignore[arg-type]
+
+        assert root_only in root.handlers[0].filters
+        record = self._queued_child_record(test_domain, log_queue)
+        assert record.correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
+        assert record.causation_id == "[REDACTED]"  # type: ignore[attr-defined]
+
+    def test_redaction_placed_before_correlation_on_root_runs_last(self, test_domain):
+        test_domain.config["telemetry"] = {"enabled": False}
+        test_domain.config["logging"] = {"redact": ["correlation_id"]}
+        test_domain.configure_logging(level="DEBUG", format="json")
+        root = logging.getLogger()
+        root.filters = sorted(
+            root.filters, key=lambda f: not isinstance(f, ProteanRedactionFilter)
+        )
+        assert isinstance(root.filters[0], ProteanRedactionFilter)
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+
+        _install_worker_log_queue(log_queue)  # type: ignore[arg-type]
+
+        _assert_redaction_runs_last()
+        record = self._queued_child_record(test_domain, log_queue)
+        assert record.correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
+
 
 _PROTEAN_FILTERS = (
     ProteanCorrelationFilter,

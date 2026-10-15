@@ -439,7 +439,7 @@ def _install_worker_log_queue(
     redaction_filters = [
         f
         for target in (root, *root.handlers)
-        for f in getattr(target, "filters", ())
+        for f in target.filters
         if isinstance(f, ProteanRedactionFilter)
     ]
     for handler in list(root.handlers):

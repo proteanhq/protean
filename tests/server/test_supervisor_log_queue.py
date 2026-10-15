@@ -83,6 +83,7 @@ class TestInstallWorkerLogQueue:
         saved = list(root.handlers)
         try:
             tracker = MagicMock(spec=logging.Handler)
+            tracker.filters = []
             root.handlers = [tracker]
 
             q: multiprocessing.Queue = multiprocessing.Queue(-1)
