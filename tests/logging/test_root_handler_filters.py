@@ -440,6 +440,131 @@ class TestMultiWorkerQueuePath:
         assert records[-1].span_id == ""  # type: ignore[attr-defined]
         assert records[-1].trace_flags == 0  # type: ignore[attr-defined]
 
+    def _queued_child_record(
+        self, domain: Domain, log_queue: "queue.Queue[logging.LogRecord]"
+    ) -> logging.LogRecord:
+        with domain.domain_context():
+            g.correlation_id = "secret-corr-123"
+            g.causation_id = "secret-caus-456"
+            _log_on_child()
+        return log_queue.get_nowait()
+
+    def test_two_dict_config_calls_mask_both_keys(self, test_domain):
+        test_domain.config["telemetry"] = {"enabled": False}
+        test_domain.config["logging"] = {}
+        config = _dict_config([])
+        test_domain.configure_logging(dict_config=config, redact=["correlation_id"])
+        test_domain.configure_logging(dict_config=config, redact=["causation_id"])
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+
+        _install_worker_log_queue(log_queue)  # type: ignore[arg-type]
+
+        queue_handler = logging.getLogger().handlers[0]
+        assert _count(queue_handler, ProteanRedactionFilter) == 2
+        _assert_redaction_runs_last()
+        record = self._queued_child_record(test_domain, log_queue)
+        assert record.correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
+        assert record.causation_id == "[REDACTED]"  # type: ignore[attr-defined]
+
+    def test_two_redaction_filters_declared_on_root_mask_both_keys(self, test_domain):
+        test_domain.config["telemetry"] = {"enabled": False}
+        test_domain.config["logging"] = {}
+        config = _dict_config([])
+        config["filters"] = {
+            "red_corr": {"()": lambda: ProteanRedactionFilter(["correlation_id"])},
+            "red_caus": {"()": lambda: ProteanRedactionFilter(["causation_id"])},
+        }
+        config["root"]["filters"] = ["red_corr", "red_caus"]
+        test_domain.configure_logging(dict_config=config)
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+
+        _install_worker_log_queue(log_queue)  # type: ignore[arg-type]
+
+        queue_handler = logging.getLogger().handlers[0]
+        assert _count(queue_handler, ProteanRedactionFilter) == 2
+        _assert_redaction_runs_last()
+        record = self._queued_child_record(test_domain, log_queue)
+        assert record.correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
+        assert record.causation_id == "[REDACTED]"  # type: ignore[attr-defined]
+
+    def test_two_default_path_calls_mask_both_keys(self, test_domain):
+        test_domain.config["telemetry"] = {"enabled": False}
+        test_domain.config["logging"] = {"redact": ["correlation_id"]}
+        test_domain.configure_logging(level="DEBUG", format="json")
+        test_domain.config["logging"] = {"redact": ["causation_id"]}
+        test_domain.configure_logging(level="DEBUG", format="json")
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+
+        _install_worker_log_queue(log_queue)  # type: ignore[arg-type]
+
+        _assert_redaction_runs_last()
+        record = self._queued_child_record(test_domain, log_queue)
+        assert record.causation_id == "[REDACTED]"  # type: ignore[attr-defined]
+        assert record.correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
+
+    def test_same_keys_twice_leave_one_redaction_filter(self, telemetry_domain):
+        telemetry_domain.config["logging"] = {"redact": ["correlation_id"]}
+        telemetry_domain.configure_logging(level="DEBUG", format="json")
+        telemetry_domain.configure_logging(level="DEBUG", format="json")
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+
+        _install_worker_log_queue(log_queue)  # type: ignore[arg-type]
+
+        queue_handler = logging.getLogger().handlers[0]
+        assert _count(queue_handler, ProteanRedactionFilter) == 1
+        assert isinstance(queue_handler.filters[-1], ProteanRedactionFilter)
+        _assert_redaction_runs_last()
+
+    def test_handler_filter_with_covered_keys_is_not_added(self, test_domain):
+        test_domain.config["logging"] = {"redact": ["correlation_id", "causation_id"]}
+        test_domain.configure_logging(level="DEBUG", format="json")
+        root = logging.getLogger()
+        root.handlers[0].addFilter(ProteanRedactionFilter(["causation_id"]))
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+
+        _install_worker_log_queue(log_queue)  # type: ignore[arg-type]
+
+        queue_handler = root.handlers[0]
+        assert _count(queue_handler, ProteanRedactionFilter) == 1
+        redaction = [
+            f for f in queue_handler.filters if isinstance(f, ProteanRedactionFilter)
+        ]
+        assert redaction[0] in root.filters
+
+    def test_redaction_filter_only_on_root_is_collected(self, test_domain):
+        test_domain.config["telemetry"] = {"enabled": False}
+        test_domain.config["logging"] = {"redact": ["correlation_id"]}
+        test_domain.configure_logging(level="DEBUG", format="json")
+        root = logging.getLogger()
+        root_only = ProteanRedactionFilter(["causation_id"])
+        root.addFilter(root_only)
+        assert all(root_only not in h.filters for h in root.handlers)
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+
+        _install_worker_log_queue(log_queue)  # type: ignore[arg-type]
+
+        assert root_only in root.handlers[0].filters
+        record = self._queued_child_record(test_domain, log_queue)
+        assert record.correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
+        assert record.causation_id == "[REDACTED]"  # type: ignore[attr-defined]
+
+    def test_redaction_placed_before_correlation_on_root_runs_last(self, test_domain):
+        test_domain.config["telemetry"] = {"enabled": False}
+        test_domain.config["logging"] = {"redact": ["correlation_id"]}
+        test_domain.configure_logging(level="DEBUG", format="json")
+        root = logging.getLogger()
+        root.filters = sorted(
+            root.filters, key=lambda f: not isinstance(f, ProteanRedactionFilter)
+        )
+        assert isinstance(root.filters[0], ProteanRedactionFilter)
+        log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+
+        _install_worker_log_queue(log_queue)  # type: ignore[arg-type]
+
+        _assert_redaction_runs_last()
+        record = self._queued_child_record(test_domain, log_queue)
+        assert record.correlation_id == "[REDACTED]"  # type: ignore[attr-defined]
+
 
 _PROTEAN_FILTERS = (
     ProteanCorrelationFilter,

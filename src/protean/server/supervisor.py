@@ -38,8 +38,13 @@ from types import FrameType
 from typing import Any, Optional
 
 from protean._deprecation import warn_from_registry
-from protean.integrations.logging import _keep_record_context
-from protean.utils.logging import _PROTEAN_ROOT_FILTERS, _install_root_filter
+from protean.integrations.logging import ProteanRedactionFilter, _keep_record_context
+from protean.utils.logging import (
+    _PROTEAN_ROOT_FILTERS,
+    _add_redaction_filter_if_uncovered,
+    _install_root_filter,
+    _move_redaction_filter_last,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -421,15 +426,33 @@ def _install_worker_log_queue(
     (correlation, trace context, redaction) on the root logger stay there and
     also go on the ``QueueHandler``, so records from child loggers get them
     in the worker, where the domain context is active.
+
+    The root logger and its old handlers can hold redaction filters with
+    different keys, for example after ``configure_logging()`` ran twice. The
+    ``QueueHandler`` gets every redaction filter whose keys it does not
+    already mask, so it masks the union of the keys they held. Redaction
+    runs after the correlation and trace-context filters on it.
     """
     root = logging.getLogger()
+    # Collected before the swap: once the old handlers are removed, the keys
+    # only they held are gone.
+    redaction_filters = [
+        f
+        for target in (root, *root.handlers)
+        for f in target.filters
+        if isinstance(f, ProteanRedactionFilter)
+    ]
     for handler in list(root.handlers):
         root.removeHandler(handler)
         handler.close()
-    root.addHandler(logging.handlers.QueueHandler(queue))
+    queue_handler = logging.handlers.QueueHandler(queue)
+    root.addHandler(queue_handler)
     for filter_ in list(root.filters):
         if isinstance(filter_, _PROTEAN_ROOT_FILTERS):
             _install_root_filter(filter_)
+    for filter_ in redaction_filters:
+        _add_redaction_filter_if_uncovered(queue_handler, filter_)
+    _move_redaction_filter_last()
 
 
 def _worker_entry(
