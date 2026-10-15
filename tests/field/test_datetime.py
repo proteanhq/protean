@@ -56,3 +56,24 @@ def test_serialized_datetime_round_trips():
     ):
         encoded = _serialize(value)
         assert Timestamped(at=encoded).at == value
+
+
+# --- parsed offsets carry a stdlib timezone, not pydantic-core's TzInfo ---
+
+
+def test_offset_string_is_parsed_to_a_stdlib_timezone():
+    at = Timestamped(at="2024-01-02T03:04:05+05:30").at
+
+    assert type(at.tzinfo) is timezone
+    assert at.utcoffset() == timedelta(hours=5, minutes=30)
+
+
+def test_z_suffix_is_parsed_to_utc():
+    at = Timestamped(at="2024-01-02T03:04:05Z").at
+
+    assert type(at.tzinfo) is timezone
+    assert at == datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+
+def test_naive_string_stays_naive():
+    assert Timestamped(at="2024-01-02T03:04:05").at.tzinfo is None
