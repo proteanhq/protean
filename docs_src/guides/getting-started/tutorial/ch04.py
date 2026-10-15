@@ -30,6 +30,7 @@ class Order:
     )
     items = HasMany("OrderItem")
 
+    # --8<-- [start:behaviour_methods]
     def add_item(self, book_title: str, quantity: int, unit_price: Money):
         """Add an item to this order."""
         self.add_items(
@@ -48,6 +49,8 @@ class Order:
         """Mark the order as shipped."""
         self.status = OrderStatus.SHIPPED.value
 
+    # --8<-- [end:behaviour_methods]
+
     @invariant.post
     def order_must_have_items(self):
         if not self.items or len(self.items) == 0:
@@ -64,12 +67,15 @@ class Order:
                     {"_entity": ["A confirmed order must have at least 1 item"]}
                 )
 
+    # --8<-- [start:pre_invariant]
     @invariant.pre
     def cannot_modify_shipped_order(self):
         if self.status == OrderStatus.SHIPPED.value:
             raise ValidationError(
                 {"_entity": ["Cannot modify an order that has been shipped"]}
             )
+
+    # --8<-- [end:pre_invariant]
 
 
 # --8<-- [end:aggregate]

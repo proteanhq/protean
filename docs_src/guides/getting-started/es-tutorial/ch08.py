@@ -271,6 +271,17 @@ class AccountSummaryProjector:
 # --8<-- [end:domain_setup]
 
 
+# --8<-- [start:queue_deposit]
+def queue_deposit(account_id: str) -> None:
+    # This returns immediately: the command is queued
+    domain.process(
+        MakeDeposit(account_id=account_id, amount=500.00, reference="paycheck")
+    )
+
+
+# --8<-- [end:queue_deposit]
+
+
 # --8<-- [start:configuration_example]
 # ---------------------------------------------------------------
 # domain.toml — place this file alongside your domain module

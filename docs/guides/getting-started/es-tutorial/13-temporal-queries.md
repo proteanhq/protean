@@ -12,12 +12,8 @@ history, we can reconstruct the aggregate at **any historical point**.
 Use `at_version` to reconstruct the aggregate after a specific event:
 
 ```python
-with domain.domain_context():
-    repo = domain.repository_for(Account)
-
-    # What was the state after the 5th event?
-    account_v5 = repo.get("acc-7742", at_version=5)
-    print(f"Balance at version 5: ${account_v5.balance:.2f}")
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch13.py:at_version"
 ```
 
 Versions are 0-indexed. `at_version=0` gives you the state after the
@@ -29,11 +25,8 @@ after the sixth event.
 Use `as_of` to reconstruct the aggregate at a specific point in time:
 
 ```python
-from datetime import datetime, timezone
-
-march_15 = datetime(2025, 3, 15, 16, 0, tzinfo=timezone.utc)
-account_march = repo.get("acc-7742", as_of=march_15)
-print(f"Balance on March 15: ${account_march.balance:.2f}")
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch13.py:as_of"
 ```
 
 Protean filters events by their timestamp, including only events
@@ -48,13 +41,8 @@ written on or before the requested time.
 Historical state must not be modified. Protean enforces this:
 
 ```python
-try:
-    account_march.raise_(DepositMade(
-        account_id="acc-7742", amount=100.00
-    ))
-except IncorrectUsageError as e:
-    print(e)
-    # "Cannot raise events on a temporally-loaded aggregate..."
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch13.py:read_only"
 ```
 
 When an aggregate is loaded with `at_version` or `as_of`, it is marked as

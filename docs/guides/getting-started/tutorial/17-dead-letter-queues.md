@@ -1,6 +1,6 @@
 # Chapter 17: Handling Failures with Dead Letter Queues
 
-A deployment introduced a bug in the `BookReportProjector`. It crashes on books
+A deployment introduced a bug in the `BookReportHandler`. It crashes on books
 without an ISBN (the field is optional). The server retries the message three
 times, then moves it to the **dead-letter queue** (DLQ). Meanwhile, new books
 are being added but the marketing dashboard is not updating.
@@ -23,8 +23,8 @@ List DLQ entries:
 $ protean dlq list --domain bookshelf
 Dead Letter Queue:
   ID          Stream                Handler              Error                  Time
-  msg-001     bookshelf::book-fact  BookReportProjector   KeyError: 'isbn'      2024-03-15 10:23:45
-  msg-002     bookshelf::book-fact  BookReportProjector   KeyError: 'isbn'      2024-03-15 10:24:12
+  msg-001     bookshelf::book-fact  BookReportHandler     KeyError: 'isbn'      2024-03-15 10:23:45
+  msg-002     bookshelf::book-fact  BookReportHandler     KeyError: 'isbn'      2024-03-15 10:24:12
 ```
 
 ## Inspecting a Failed Message
@@ -35,10 +35,10 @@ Get the full details of a failed message:
 $ protean dlq inspect msg-001 --domain bookshelf
 Message ID: msg-001
 Stream: bookshelf::book-fact
-Handler: BookReportProjector
+Handler: BookReportHandler
 Error: KeyError: 'isbn'
 Traceback:
-  File "bookshelf/projections.py", line 42, in on_book_report
+  File "bookshelf/handlers.py", line 42, in on_book_fact
     report.isbn = event.isbn  # isbn is None for this book!
     ...
 Payload:
@@ -48,23 +48,15 @@ First failure: 2024-03-15 10:23:45
 Last failure: 2024-03-15 10:23:52
 ```
 
-Now we can see the issue: the projector assumes `isbn` is always present.
+Now we can see the issue: the handler assumes `isbn` is always present.
 
 ## The Fix-and-Replay Cycle
 
-1. **Fix the bug**: Handle the `None` case in the projector:
+1. **Fix the bug**: Handle the `None` case in the handler:
 
 ```python
-@on(BookFactEvent)
-def on_book_report(self, event):
-    report = BookReport(
-        book_id=event.id,
-        title=event.title,
-        author=event.author,
-        price=event.price,
-        isbn=event.isbn or "",  # Handle None
-    )
-    current_domain.repository_for(BookReport).add(report)
+# fragment
+--8<-- "guides/getting-started/tutorial/ch15.py:handler"
 ```
 
 2. **Deploy the fix** and restart the server.

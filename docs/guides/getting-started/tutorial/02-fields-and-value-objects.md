@@ -10,14 +10,17 @@ Our Book currently has just `title`, `author`, `isbn`, and `price`. A real
 bookstore needs more. Let's add several new fields:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch02.py:field_imports"
 ```
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch02.py:genre_enum"
 ```
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch02.py:aggregate"
 ```
 
@@ -56,12 +59,14 @@ immutable object defined by its attributes, with no identity of its own
 for more).
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch02.py:money_vo"
 ```
 
 Now embed it in the `Book` aggregate using a `ValueObject` field:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch02.py:aggregate"
 ```
 
@@ -69,13 +74,8 @@ Notice that `price` is now declared with `ValueObject(Money)` instead of
 `Float()`. When we create a book, we pass a `Money` instance:
 
 ```python
-book = Book(
-    title="The Great Gatsby",
-    author="F. Scott Fitzgerald",
-    price=Money(amount=12.99),
-)
-print(f"Price: ${book.price.amount} {book.price.currency}")
-# Price: $12.99 USD
+# fragment
+--8<-- "guides/getting-started/tutorial/ch02.py:money_price"
 ```
 
 The currency defaults to `"USD"` because we set `default="USD"` on the
@@ -87,12 +87,8 @@ Two value objects with the same attributes are considered equal. Identity does
 not matter, only the values:
 
 ```python
-price1 = Money(amount=12.99, currency="USD")
-price2 = Money(amount=12.99, currency="USD")
-price3 = Money(amount=14.99, currency="USD")
-
-print(price1 == price2)  # True — same values
-print(price1 == price3)  # False — different amount
+# fragment
+--8<-- "guides/getting-started/tutorial/ch02.py:value_equality"
 ```
 
 ## The Address Value Object
@@ -100,6 +96,7 @@ print(price1 == price3)  # False — different amount
 Let's also create an `Address` value object for shipping addresses:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch02.py:address_vo"
 ```
 
@@ -108,6 +105,7 @@ We will use this in the next chapter when we build the `Order` aggregate.
 ## Putting It Together
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch02.py:usage"
 ```
 

@@ -27,10 +27,12 @@ First, we define a `Transfer` aggregate to represent the transfer
 itself:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch09.py:transfer_events"
 ```
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch09.py:transfer_aggregate"
 ```
 
@@ -42,6 +44,7 @@ The `FundsTransferPM` process manager listens to events from both
 the Transfer and Account streams and coordinates the flow:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch09.py:process_manager"
 ```
 

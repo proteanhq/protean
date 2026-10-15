@@ -29,6 +29,15 @@ class AddBook:
 domain.init(traverse=False)
 
 
+# --8<-- [start:per_command]
+def add_bulk_book() -> None:
+    domain.process(
+        AddBook(title="...", author="...", price_amount=9.99),
+        priority=Priority.BULK,
+    )
+
+
+# --8<-- [end:per_command]
 # --8<-- [start:import_script]
 # import_vintage_press.py
 def import_catalog(csv_path: str):

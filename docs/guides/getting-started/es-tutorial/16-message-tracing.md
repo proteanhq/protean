@@ -33,14 +33,8 @@ MakeDeposit (causation_id: null)
 Set it explicitly when processing a command:
 
 ```python
-domain.process(
-    MakeDeposit(
-        account_id="acc-7742",
-        amount=15_000.00,
-        reference="DEP-9921",
-    ),
-    correlation_id="audit-trail-dep-9921",
-)
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch16.py:correlated_deposit"
 ```
 
 If you do not set a correlation ID, Protean generates one automatically.
@@ -89,17 +83,8 @@ $ protean events search --type=DepositMade --trace --domain=fidelis
 Use the causation chain API for programmatic access:
 
 ```python
-with domain.domain_context():
-    event_store = domain.event_store
-
-    # Walk UP from a message to the root command
-    chain = event_store.trace_causation(message_id)
-
-    # Walk DOWN from a message to all its effects
-    effects = event_store.trace_effects(message_id, recursive=True)
-
-    # Build the full tree for a correlation ID
-    tree = event_store.build_causation_tree("audit-trail-dep-9921")
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch16.py:programmatic_tracing"
 ```
 
 The `CausationNode` tree structure contains:

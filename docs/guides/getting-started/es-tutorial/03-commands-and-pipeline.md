@@ -11,6 +11,7 @@ event store, call the appropriate domain method, and persist the result.
 Commands are imperative: they describe what we want to happen.
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch03.py:commands"
 ```
 
@@ -34,6 +35,7 @@ Protean which aggregate the command targets.
 A command handler receives commands and orchestrates the work:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch03.py:command_handler"
 ```
 
@@ -57,6 +59,7 @@ in Chapter 2).
 The `domain.process()` method ties everything together:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch03.py:usage"
 ```
 
@@ -85,8 +88,8 @@ When you call `domain.process(OpenAccount(...))`, Protean:
 For now we configure synchronous processing:
 
 ```python
-domain.config["event_processing"] = "sync"
-domain.config["command_processing"] = "sync"
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch03.py:sync_config"
 ```
 
 In Chapter 8, we will switch to asynchronous processing where commands

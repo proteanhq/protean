@@ -9,10 +9,11 @@ and ``--broker`` to pytest to exercise real adapters (same flags used
 by the rest of the test suite).
 
 Chapter 9 splits the code into a ``bookshelf`` package next to the chapter
-files, and ch10 imports from it, so the ``tutorial/`` folder goes on
-``sys.path`` before either is loaded.
+files, and chapter 10 adds ``bookshelf/api.py`` to it. The ``tutorial/``
+folder goes on ``sys.path`` so the package imports by its name.
 """
 
+import runpy
 import subprocess
 import sys
 import types
@@ -21,7 +22,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from protean.exceptions import ValidationError
-from tests.docs.support import DOCS_SRC, load_example
+from protean.utils.processing import Priority
+from tests.docs.support import (
+    DOCS_SRC,
+    load_example,
+    outcome_counts,
+    run_example_tests,
+)
 
 # Chapter 9's ``bookshelf`` package lives in the tutorial folder.
 _TUTORIAL_DIR = str(DOCS_SRC / "guides" / "getting-started" / "tutorial")
@@ -37,9 +44,10 @@ ch04 = load_example("guides/getting-started/tutorial/ch04.py")
 ch05 = load_example("guides/getting-started/tutorial/ch05.py")
 ch06 = load_example("guides/getting-started/tutorial/ch06.py")
 ch07 = load_example("guides/getting-started/tutorial/ch07.py")
+ch08 = load_example("guides/getting-started/tutorial/ch08.py")
 
-# Chapter 9 is the ``bookshelf`` package. Import its modules before ch10, and
-# record what they registered: ch10 calls ``domain.init()``, whose traversal
+# Chapter 9 is the ``bookshelf`` package. Import its modules before the API, and
+# record what they registered: the API calls ``domain.init()``, whose traversal
 # would register the modules again and hide a module that registers nothing.
 import bookshelf
 import bookshelf.commands
@@ -50,16 +58,19 @@ import bookshelf.projections
 
 _BOOKSHELF_REGISTERED = set(bookshelf.domain.registry._elements_by_name)
 
-ch10 = load_example("guides/getting-started/tutorial/ch10.py")
+import bookshelf.api
+
+ch12 = load_example("guides/getting-started/tutorial/ch12.py")
 ch13 = load_example("guides/getting-started/tutorial/ch13.py")
 ch14 = load_example("guides/getting-started/tutorial/ch14.py")
 ch15 = load_example("guides/getting-started/tutorial/ch15.py")
+ch16 = load_example("guides/getting-started/tutorial/ch16.py")
 ch19 = load_example("guides/getting-started/tutorial/ch19.py")
 ch20 = load_example("guides/getting-started/tutorial/ch20.py")
 ch21 = load_example("guides/getting-started/tutorial/ch21.py")
 
 # Chapters that have projections (need DB artifact create/drop with real DBs)
-_HAS_PROJECTIONS = {ch07, bookshelf, ch10, ch21}
+_HAS_PROJECTIONS = {ch07, bookshelf, bookshelf.api, ch21}
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +157,16 @@ class TestTutorialCh01(_TutorialBase):
             assert saved.author == "F. Scott Fitzgerald"
             assert saved.price == 12.99
 
+    def test_script_prints_the_created_book(self, capsys):
+        """Ch1: Running the chapter prints the book it created."""
+        runpy.run_path(
+            str(DOCS_SRC / "guides/getting-started/tutorial/ch01.py"),
+            run_name="__main__",
+        )
+        lines = capsys.readouterr().out.splitlines()
+        assert lines[0] == "Created: The Great Gatsby by F. Scott Fitzgerald"
+        assert lines[1].startswith("ID: ")
+
 
 @pytest.mark.no_test_domain
 class TestTutorialCh02(_TutorialBase):
@@ -186,6 +207,19 @@ class TestTutorialCh02(_TutorialBase):
                 zip_code="62704",
             )
             assert addr.country == "US"
+
+    def test_price_a_book_prints_money(self, capsys):
+        """Ch2: The price is a Money value object that defaults to USD."""
+        with ch02.domain.domain_context():
+            book = ch02.price_a_book()
+        assert book.price == ch02.Money(amount=12.99, currency="USD")
+        assert capsys.readouterr().out == "Price: $12.99 USD\n"
+
+    def test_value_objects_compare_by_value(self, capsys):
+        """Ch2: Two Money objects with the same values are equal."""
+        with ch02.domain.domain_context():
+            assert ch02.compare_prices() == (True, False)
+        assert capsys.readouterr().out == "True\nFalse\n"
 
 
 @pytest.mark.no_test_domain
@@ -402,6 +436,29 @@ class TestTutorialCh07(_TutorialBase):
             assert updated.title == "The Great Gatsby"
 
 
+@pytest.mark.no_test_domain
+class TestTutorialCh08(_TutorialBase):
+    _chapter_mod = ch08
+
+    def test_book_declares_its_indexes(self):
+        """Ch8: The aggregate lists a unique isbn index and a category index."""
+        indexes = {index.fields: index.unique for index in ch08.Book.meta_.indexes}
+        assert indexes == {("isbn",): True, ("category",): False}
+
+    def test_second_book_with_the_same_isbn_is_rejected(self):
+        """Ch8: The unique index stops a duplicate isbn."""
+        domain = ch08.domain
+        with domain.domain_context():
+            repo = domain.repository_for(ch08.Book)
+            repo.add(ch08.Book(isbn="9780441013593", title="Dune", category="sf"))
+
+            with pytest.raises(ValidationError) as exc:
+                repo.add(
+                    ch08.Book(isbn="9780441013593", title="Dune again", category="sf")
+                )
+            assert "isbn" in exc.value.messages
+
+
 # ---------------------------------------------------------------------------
 # PART II (continued): The Package and the API (Ch 9-10)
 # ---------------------------------------------------------------------------
@@ -463,15 +520,15 @@ class TestTutorialCh09(_TutorialBase):
 
 @pytest.mark.no_test_domain
 class TestTutorialCh10(_TutorialBase):
-    _chapter_mod = ch10
+    _chapter_mod = bookshelf.api
 
     def test_chapter_uses_the_package_domain(self):
         """Ch10: The API is built on chapter 9's domain, not a new one."""
-        assert ch10.domain is bookshelf.domain
+        assert bookshelf.api.domain is bookshelf.domain
 
     def test_added_book_shows_in_the_catalog(self):
         """Ch10: POST a book, then read it back from the catalog endpoint."""
-        client = TestClient(ch10.app)
+        client = TestClient(bookshelf.api.app)
 
         response = client.post(
             "/books",
@@ -484,6 +541,79 @@ class TestTutorialCh10(_TutorialBase):
         assert entry.status_code == 200
         assert entry.json()["title"] == "Dune"
         assert entry.json()["price"] == 9.99
+
+
+def _assert_passed(result, passed: int) -> None:
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert outcome_counts(result) == {"passed": passed}
+
+
+class TestTutorialCh11:
+    """Ch11: The chapter's test files pass against the ``bookshelf`` package."""
+
+    def test_invariants(self):
+        result = run_example_tests(
+            "guides/getting-started/tutorial/tests/test_invariants.py"
+        )
+        _assert_passed(result, 2)
+
+    def test_value_objects(self):
+        result = run_example_tests(
+            "guides/getting-started/tutorial/tests/test_value_objects.py"
+        )
+        _assert_passed(result, 1)
+
+    def test_commands(self):
+        result = run_example_tests(
+            "guides/getting-started/tutorial/tests/test_commands.py"
+        )
+        _assert_passed(result, 2)
+
+    def test_events(self):
+        result = run_example_tests(
+            "guides/getting-started/tutorial/tests/test_events.py"
+        )
+        _assert_passed(result, 1)
+
+    def test_projections(self):
+        result = run_example_tests(
+            "guides/getting-started/tutorial/tests/test_projections.py"
+        )
+        _assert_passed(result, 1)
+
+    def test_api(self):
+        result = run_example_tests("guides/getting-started/tutorial/tests/test_api.py")
+        _assert_passed(result, 3)
+
+    def test_integration(self):
+        result = run_example_tests(
+            "guides/getting-started/tutorial/tests/test_integration.py"
+        )
+        _assert_passed(result, 1)
+
+
+@pytest.mark.no_test_domain
+class TestTutorialCh12(_TutorialBase):
+    _chapter_mod = bookshelf
+
+    def test_async_command_is_stored_not_handled(self):
+        """Ch12: With async processing the command waits in the store."""
+        domain = bookshelf.domain
+        domain.config["command_processing"] = "async"
+        try:
+            with domain.domain_context():
+                ch12.queue_book()
+
+                books = domain.repository_for(bookshelf.models.Book).query.all()
+                assert books.total == 0
+
+                category = f"{bookshelf.models.Book.meta_.stream_category}:command"
+                stored = domain.event_store.store.read(category)
+                assert [m.metadata.headers.type for m in stored] == [
+                    "Bookshelf.AddBook.v1"
+                ]
+        finally:
+            domain.config["command_processing"] = "sync"
 
 
 # ---------------------------------------------------------------------------
@@ -857,6 +987,42 @@ class TestTutorialCh15(_TutorialBase):
             assert last_fact.price == 15.99
             assert last_fact.title == "The Great Gatsby"
 
+    def test_report_stores_an_empty_isbn_for_a_book_without_one(self):
+        """Ch15: The handler turns a missing isbn into an empty string."""
+        domain = ch15.domain
+        with domain.domain_context():
+            book = ch15.Book.add_to_catalog(
+                title="Dune", author="Frank Herbert", price=9.99
+            )
+            domain.repository_for(ch15.Book).add(book)
+
+            report = domain.repository_for(ch15.BookReport).get(book.id)
+            assert report.title == "Dune"
+            assert report.isbn == ""
+
+
+@pytest.mark.no_test_domain
+class TestTutorialCh16(_TutorialBase):
+    _chapter_mod = bookshelf
+
+    def test_trace_prints_the_command_and_its_event(self, capsys):
+        """Ch16: The causation tree starts at the command and shows its event."""
+        with bookshelf.domain.domain_context():
+            trace_id = ch16.add_traced_book()
+            tree = ch16.print_trace(trace_id)
+
+        assert tree is not None
+        assert capsys.readouterr().out.splitlines() == [
+            "Bookshelf.AddBook.v1 (COMMAND)",
+            "  Bookshelf.BookAdded.v1 (EVENT)",
+        ]
+
+    def test_unknown_correlation_id_prints_nothing(self, capsys):
+        """Ch16: A correlation ID with no messages has no tree."""
+        with bookshelf.domain.domain_context():
+            assert ch16.print_trace("no-such-trace") is None
+        assert capsys.readouterr().out == ""
+
 
 # ---------------------------------------------------------------------------
 # PART IV: Production Operations (Ch 19)
@@ -894,6 +1060,31 @@ class TestTutorialCh19(_TutorialBase):
 
             saved_bulk = repo.get(bulk_book.id)
             assert saved_bulk.title == "Bulk Imported Book"
+
+    def _stored_add_book_commands(self):
+        domain = ch19.domain
+        domain.config["command_processing"] = "async"
+        try:
+            with domain.domain_context():
+                ch19.add_bulk_book()
+                category = f"{ch19.Book.meta_.stream_category}:command"
+                return domain.event_store.store.read(category)
+        finally:
+            domain.config["command_processing"] = "sync"
+
+    def test_bulk_command_is_queued(self):
+        """Ch19: ``add_bulk_book`` queues the AddBook command."""
+        stored = self._stored_add_book_commands()
+        assert [m.metadata.headers.type for m in stored] == [ch19.AddBook.__type__]
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="CommandProcessor.enrich rebuilds the command and drops its priority",
+    )
+    def test_bulk_command_keeps_its_priority(self):
+        """Ch19: The queued command carries the BULK priority."""
+        stored = self._stored_add_book_commands()
+        assert stored[0].metadata.domain.priority == Priority.BULK.value
 
 
 # ---------------------------------------------------------------------------
@@ -1197,3 +1388,72 @@ class TestTutorialCh21(_TutorialBase):
             # Query via domain.view_for()
             results = domain.view_for(ch21.StorefrontView).query.all()
             assert results.total == 2
+
+    def _add_books(self, books):
+        for title, author, price in books:
+            book = ch21.Book(title=title, author=author, price=price)
+            book.raise_(
+                ch21.BookAdded(book_id=book.id, title=title, author=author, price=price)
+            )
+            ch21.domain.repository_for(ch21.Book).add(book)
+
+    def test_query_patterns(self, capsys):
+        """Ch21: Filter, exclude, order, paginate, and chain on the view."""
+        domain = ch21.domain
+        with domain.domain_context():
+            self._add_books(
+                [
+                    ("1984", "George Orwell", 14.99),
+                    ("Animal Farm", "George Orwell", 9.99),
+                    ("Homage to Catalonia", "George Orwell", 22.50),
+                    ("Dune", "Frank Herbert", 9.99),
+                    ("Lost Pages", "Unknown", 5.00),
+                ]
+            )
+            for n in range(7):
+                self._add_books([(f"Filler {n}", "Frank Herbert", 30.0 + n)])
+
+            by_orwell, cheap_orwell = ch21.filter_books()
+            assert by_orwell.total == 3
+            assert sorted(b.title for b in cheap_orwell.items) == [
+                "1984",
+                "Animal Farm",
+            ]
+
+            catalog = domain.view_for(ch21.StorefrontView)
+            known = ch21.exclude_unknown(catalog)
+            assert known.total == 11
+            assert "Lost Pages" not in [b.title for b in known.items]
+
+            cheapest, dearest, by_author = ch21.order_books(catalog)
+            assert cheapest.first.title == "Lost Pages"
+            assert dearest.first.title == "Filler 6"
+            assert [b.author for b in by_author.items][:2] == [
+                "Frank Herbert",
+                "Frank Herbert",
+            ]
+            assert by_author.first.title == "Filler 6"
+
+            page1, page2 = ch21.paginate(catalog)
+            assert len(page1.items) == 10
+            assert len(page2.items) == 2
+            assert capsys.readouterr().out.splitlines() == [
+                "1",
+                "10",
+                "2",
+                "True",
+                "2",
+                "True",
+            ]
+
+            chained = ch21.cheapest_orwell_books(catalog)
+            assert [b.title for b in chained.items] == ["1984", "Animal Farm"]
+
+    def test_query_set_blocks_writes(self):
+        """Ch21: ``update`` and ``delete`` on the view raise NotSupportedError."""
+        domain = ch21.domain
+        with domain.domain_context():
+            self._add_books([("Dune", "Frank Herbert", 9.99)])
+            catalog = domain.view_for(ch21.StorefrontView)
+            assert ch21.try_to_write(catalog) == ["update", "delete"]
+            assert catalog.query.all().first.price == 9.99

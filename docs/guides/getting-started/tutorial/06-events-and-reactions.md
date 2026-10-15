@@ -18,6 +18,7 @@ When a book is added to the catalog, we want to record that fact as a
 already happened:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch06.py:book_event"
 ```
 
@@ -26,6 +27,7 @@ already happened:
 Events are raised inside aggregate methods using `self.raise_()`:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch06.py:book_aggregate"
 ```
 
@@ -36,12 +38,14 @@ events are never lost due to transaction failures.
 Let's also raise events from the Order aggregate:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch06.py:order_aggregate"
 ```
 
 And define the Order events:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch06.py:order_events"
 ```
 
@@ -51,6 +55,7 @@ Before we build the event handler, we need something for it to manage.
 Let's create an `Inventory` aggregate:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch06.py:inventory"
 ```
 
@@ -60,6 +65,7 @@ An **event handler** listens for specific events and performs side
 effects. Let's create one that stocks inventory when a book is added:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch06.py:book_event_handler"
 ```
 
@@ -70,6 +76,7 @@ from the Book aggregate. When a `BookAdded` event is raised, the
 We can also handle Order events to send notifications:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch06.py:order_event_handler"
 ```
 
@@ -82,12 +89,14 @@ change. Here are the commands for placing, confirming, and shipping
 orders:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch06.py:commands"
 ```
 
 And the command handlers that orchestrate the flow:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch06.py:command_handlers"
 ```
 
@@ -102,6 +111,7 @@ Let's see the complete flow, adding a book triggers inventory creation, and
 order lifecycle events trigger notifications. Everything flows through `domain.process()`:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch06.py:usage"
 ```
 

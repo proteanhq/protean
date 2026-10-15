@@ -73,22 +73,14 @@ identifier lookups need indexes to stay fast. The catalog is browsed by
 `Book` aggregate:
 
 ```python
-from protean import Index
-
-@domain.aggregate(indexes=[
-    Index("isbn", unique=True),
-    Index("category"),
-])
-class Book:
-    isbn = String(max_length=20, required=True)
-    title = String(max_length=255, required=True)
-    category = String(max_length=64)
-    ...
+# fragment
+--8<-- "guides/getting-started/tutorial/ch08.py:indexes"
 ```
 
 `protean database setup` creates these indexes alongside the table. The same
-declaration works unchanged on every SQL backend, and on the in-memory provider
-you used in earlier chapters, where it is ignored. See [Declaring
+declaration works unchanged on every SQL backend. The in-memory provider you
+used in earlier chapters has no indexes to create, but it still rejects a
+second book with the same `isbn`. See [Declaring
 Indexes](../../domain-definition/indexes.md) for composite, descending, and
 partial indexes.
 

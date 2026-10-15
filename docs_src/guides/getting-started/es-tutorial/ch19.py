@@ -14,7 +14,16 @@ from protean import Domain, apply, handle, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier, String
 from protean.utils.globals import current_domain
+
+# --8<-- [start:priority_enum]
 from protean.utils.processing import Priority, processing_priority
+
+# Priority.BULK     = -100
+# Priority.LOW      = -50
+# Priority.NORMAL   =  0   (default)
+# Priority.HIGH     =  50
+# Priority.CRITICAL =  100
+# --8<-- [end:priority_enum]
 
 # --8<-- [start:domain_setup]
 domain = Domain("fidelis")
@@ -162,6 +171,62 @@ domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 
 
+# --8<-- [start:migrate_legacy_accounts]
+def migrate_legacy_accounts(legacy_accounts: list[dict]) -> None:
+    with processing_priority(Priority.BULK):
+        for i, legacy in enumerate(legacy_accounts):
+            domain.process(
+                OpenAccount(
+                    account_number=legacy["number"],
+                    holder_name=legacy["name"],
+                    opening_deposit=legacy["balance"],
+                )
+            )
+            if i % 10_000 == 0:
+                print(f"Migrated {i:,} accounts...")
+
+    print(f"Migration complete: {len(legacy_accounts):,} accounts queued.")
+
+
+# --8<-- [end:migrate_legacy_accounts]
+# --8<-- [start:nested_priorities]
+def migrate_around_a_vip_deposit(vip_account_id: str) -> None:
+    with processing_priority(Priority.BULK):
+        # These go to backfill stream
+        domain.process(
+            OpenAccount(
+                account_number="MIGR-001",
+                holder_name="Ada Lovelace",
+                opening_deposit=100.0,
+            )
+        )
+
+        # But a critical real-time deposit still goes to primary
+        with processing_priority(Priority.CRITICAL):
+            domain.process(MakeDeposit(account_id=vip_account_id, amount=1_000_000))
+
+        # Back to BULK for remaining migration
+        domain.process(
+            OpenAccount(
+                account_number="MIGR-002",
+                holder_name="Alan Turing",
+                opening_deposit=250.0,
+            )
+        )
+
+
+# --8<-- [end:nested_priorities]
+# --8<-- [start:per_command_priority]
+def open_migrated_account() -> str:
+    return domain.process(
+        OpenAccount(
+            account_number="MIGR-001", holder_name="Ada Lovelace", opening_deposit=100.0
+        ),
+        priority=Priority.BULK,
+    )
+
+
+# --8<-- [end:per_command_priority]
 # --8<-- [start:migration_example]
 if __name__ == "__main__":
     with domain.domain_context():

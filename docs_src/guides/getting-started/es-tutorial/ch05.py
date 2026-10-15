@@ -10,7 +10,11 @@ import pytest
 from protean import Domain, apply, handle, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier, String
+
+# --8<-- [start:given_import]
 from protean.testing import given
+
+# --8<-- [end:given_import]
 from protean.utils.globals import current_domain
 
 domain = Domain("fidelis")

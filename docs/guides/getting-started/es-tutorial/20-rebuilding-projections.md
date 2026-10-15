@@ -19,13 +19,8 @@ materializes automatically.
 ## Rebuilding Programmatically
 
 ```python
-with domain.domain_context():
-    result = domain.rebuild_projection("AccountReport")
-    print(
-        f"Rebuilt '{result.projection_name}': "
-        f"{result.events_dispatched} events processed, "
-        f"{result.events_skipped} skipped"
-    )
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch20.py:rebuild"
 ```
 
 The `RebuildResult` contains:

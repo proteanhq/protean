@@ -19,6 +19,7 @@ changes arrive as **commands**. Formal requests to do something, named with
 imperative verbs:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch05.py:command"
 ```
 
@@ -31,6 +32,7 @@ A **command handler** receives the command and orchestrates the state
 change:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch05.py:handler"
 ```
 
@@ -42,6 +44,7 @@ the result. Each handler method runs in a transaction automatically.
 To dispatch a command, use `domain.process()`:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch05.py:usage"
 ```
 

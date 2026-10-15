@@ -17,6 +17,7 @@ from protean.core.projector import on
 from protean.exceptions import ValidationError
 from protean.fields import DateTime, Float, Identifier, Integer, String
 from protean.utils.globals import current_domain
+from protean.utils.projection_rebuilder import RebuildResult
 
 # --8<-- [start:domain_setup]
 domain = Domain("fidelis")
@@ -212,6 +213,19 @@ domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 
 
+# --8<-- [start:rebuild]
+def rebuild_account_summaries() -> RebuildResult:
+    with domain.domain_context():
+        result = domain.rebuild_projection(AccountSummary)
+        print(
+            f"Rebuilt '{result.projection_name}': "
+            f"{result.events_dispatched} events processed, "
+            f"{result.events_skipped} skipped"
+        )
+    return result
+
+
+# --8<-- [end:rebuild]
 # --8<-- [start:rebuild_example]
 if __name__ == "__main__":
     with domain.domain_context():
@@ -248,7 +262,7 @@ if __name__ == "__main__":
         )
 
         # Rebuild the projection from scratch by replaying all events
-        result = domain.rebuild_projection(AccountSummary)
+        result = rebuild_account_summaries()
 
         print("\n=== Rebuild Result ===")
         print(f"Projection: {result.projection_name}")

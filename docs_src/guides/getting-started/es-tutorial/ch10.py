@@ -65,8 +65,10 @@ class Account:
     holder_name: String(max_length=100, required=True)
     balance: Float(default=0.0)
     status: String(max_length=20, default="ACTIVE")
+    # --8<-- [start:signatories_field]
     signatories: HasMany(AuthorizedSignatory)
 
+    # --8<-- [end:signatories_field]
     @invariant.post
     def balance_must_not_be_negative(self):
         if self.balance is not None and self.balance < 0:
@@ -109,6 +111,7 @@ class Account:
             )
         )
 
+    # --8<-- [start:add_signatory]
     def add_signatory(self, name: str, email: str, role: str = "OPERATOR") -> None:
         self.raise_(
             SignatoryAdded(
@@ -119,6 +122,7 @@ class Account:
             )
         )
 
+    # --8<-- [end:add_signatory]
     def remove_signatory(self, email: str) -> None:
         signatory = next((s for s in self.signatories if s.email == email), None)
         if signatory is None:
@@ -148,6 +152,7 @@ class Account:
     def on_withdrawal_made(self, event: WithdrawalMade):
         self.balance -= event.amount
 
+    # --8<-- [start:on_signatory_added]
     @apply
     def on_signatory_added(self, event: SignatoryAdded):
         self.add_signatories(
@@ -157,6 +162,8 @@ class Account:
                 email=event.signatory_email,
             )
         )
+
+    # --8<-- [end:on_signatory_added]
 
     @apply
     def on_signatory_removed(self, event: SignatoryRemoved):

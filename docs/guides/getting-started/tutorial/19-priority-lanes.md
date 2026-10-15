@@ -30,6 +30,7 @@ enabled = true
 ## The Import Script
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch19.py:import_script"
 ```
 
@@ -40,10 +41,8 @@ backfill stream instead of the primary stream.
 You can also set priority per command:
 
 ```python
-domain.process(
-    AddBook(title="...", author="...", price_amount=9.99),
-    priority=Priority.BULK,
-)
+# fragment
+--8<-- "guides/getting-started/tutorial/ch19.py:per_command"
 ```
 
 ## Running the Import

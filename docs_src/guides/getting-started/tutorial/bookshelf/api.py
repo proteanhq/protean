@@ -1,17 +1,19 @@
 # --8<-- [start:full]
 # --8<-- [start:app_setup]
-from bookshelf import domain
-from bookshelf.commands import AddBook, ConfirmOrder, PlaceOrder, ShipOrder
-from bookshelf.projections import BookCatalog
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from bookshelf import domain
+from bookshelf.commands import AddBook, ConfirmOrder, PlaceOrder, ShipOrder
+from bookshelf.projections import BookCatalog
 from protean.integrations.fastapi import (
     DomainContextMiddleware,
     register_exception_handlers,
 )
 
-domain.init()
+# --8<-- [start:init_domain]
+domain.init()  # traverse=True by default: scans bookshelf/ for elements
+# --8<-- [end:init_domain]
 
 app = FastAPI(title="Bookshelf API")
 

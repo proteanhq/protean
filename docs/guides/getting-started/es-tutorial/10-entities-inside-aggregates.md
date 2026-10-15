@@ -10,6 +10,7 @@ how event-sourced aggregates handle child entities through events.
 An entity is an object with identity that lives inside an aggregate:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch10.py:entity"
 ```
 
@@ -22,6 +23,7 @@ Adding and removing signatories are state changes, so they flow through
 events:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch10.py:signatory_events"
 ```
 
@@ -31,21 +33,10 @@ The `Account` aggregate uses `HasMany` to declare a collection of
 signatories, and `@apply` handlers manage the entity lifecycle:
 
 ```python
-signatories = HasMany(AuthorizedSignatory)
-
-def add_signatory(self, name: str, role: str, email: str) -> None:
-    self.raise_(SignatoryAdded(
-        account_id=str(self.id),
-        name=name,
-        role=role,
-        email=email,
-    ))
-
-@apply
-def on_signatory_added(self, event: SignatoryAdded):
-    self.add_signatories(
-        AuthorizedSignatory(name=event.name, role=event.role, email=event.email)
-    )
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch10.py:signatories_field"
+--8<-- "guides/getting-started/es-tutorial/ch10.py:add_signatory"
+--8<-- "guides/getting-started/es-tutorial/ch10.py:on_signatory_added"
 ```
 
 Key points:

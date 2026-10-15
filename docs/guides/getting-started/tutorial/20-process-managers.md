@@ -25,6 +25,7 @@ compensation logic.
 First, we need a Shipping aggregate to represent shipments:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch20.py:shipping"
 ```
 
@@ -51,6 +52,7 @@ released the order takes no stock.
 The `OrderFulfillmentPM` coordinates the fulfillment workflow:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch20.py:process_manager"
 ```
 
@@ -141,6 +143,7 @@ or cancelling the order.
 ## Testing the Process Manager
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch20.py:tests"
 ```
 

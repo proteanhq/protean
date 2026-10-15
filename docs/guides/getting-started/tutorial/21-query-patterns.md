@@ -3,62 +3,41 @@
 The storefront needs rich browsing capabilities: filter books by author,
 sort by price, paginate results, and show inventory availability
 alongside book information. In this chapter we will explore the full
-full range of `domain.view_for()` and build a cross-aggregate projection.
+range of `domain.view_for()` and build a cross-aggregate projection.
 
 ## ReadOnlyQuerySet in detail
 
 `domain.view_for()` returns a `ReadView`. Its `query` property gives
-you a `ReadOnlyQuerySet` that supports:
+you a `ReadOnlyQuerySet`. The examples below query the `StorefrontView`
+projection that we build later in this chapter. Each one is a small function
+that takes the view as `catalog`. The `ReadOnlyQuerySet` supports:
 
 ### Filtering
 
 ```python
-catalog = domain.view_for(BookCatalog)
-
-# Exact match
-results = catalog.query.filter(author="George Orwell").all()
-
-# Multiple conditions (AND)
-results = catalog.query.filter(
-    author="George Orwell",
-    price__lte=15.00,
-).all()
+# fragment
+--8<-- "guides/getting-started/tutorial/ch21.py:filtering"
 ```
 
 ### Excluding
 
 ```python
-# Exclude specific values
-results = catalog.query.exclude(author="Unknown").all()
+# fragment
+--8<-- "guides/getting-started/tutorial/ch21.py:excluding"
 ```
 
 ### Ordering
 
 ```python
-# Ascending
-results = catalog.query.order_by("price").all()
-
-# Descending (prefix with -)
-results = catalog.query.order_by("-price").all()
-
-# Multiple fields
-results = catalog.query.order_by("author", "-price").all()
+# fragment
+--8<-- "guides/getting-started/tutorial/ch21.py:ordering"
 ```
 
 ### Pagination
 
 ```python
-# First page (10 items)
-page1 = catalog.query.limit(10).offset(0).all()
-page1.page         # 1
-page1.page_size    # 10 (alias for limit)
-page1.total_pages  # total pages based on matching records
-page1.has_next     # True if more pages exist
-
-# Second page
-page2 = catalog.query.limit(10).offset(10).all()
-page2.page         # 2
-page2.has_prev     # True
+# fragment
+--8<-- "guides/getting-started/tutorial/ch21.py:pagination"
 ```
 
 ### Chaining
@@ -66,24 +45,18 @@ page2.has_prev     # True
 All methods can be chained:
 
 ```python
-results = (
-    catalog.query
-    .filter(author="George Orwell")
-    .exclude(price__gt=20.00)
-    .order_by("-price")
-    .limit(10)
-    .all()
-)
+# fragment
+--8<-- "guides/getting-started/tutorial/ch21.py:chaining"
 ```
 
 ### Read-Only Enforcement
 
-`ReadOnlyQuerySet` blocks all mutation operations:
+`ReadOnlyQuerySet` blocks all mutation operations. Both calls below raise
+`NotSupportedError`:
 
 ```python
-# These all raise ReadOnlyQuerySetError
-catalog.query.update(price=0)      # blocked
-catalog.query.delete()              # blocked
+# fragment
+--8<-- "guides/getting-started/tutorial/ch21.py:read_only"
 ```
 
 This enforces the CQRS principle: read models are read-only. Changes
@@ -97,12 +70,14 @@ levels*, data from two aggregates (Book and Inventory).
 ### The StorefrontView Projection
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch21.py:projection"
 ```
 
 ### The StorefrontProjector
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch21.py:projector"
 ```
 
@@ -115,6 +90,7 @@ can query directly.
 Update the API with rich query support:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch21.py:api_endpoints"
 ```
 

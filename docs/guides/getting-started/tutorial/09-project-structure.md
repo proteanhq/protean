@@ -38,6 +38,7 @@ tests/
 The domain lives in `bookshelf/__init__.py`:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/bookshelf/__init__.py:domain_init"
 ```
 
@@ -46,6 +47,7 @@ The domain lives in `bookshelf/__init__.py`:
 Aggregates, entities, and value objects go in `bookshelf/models.py`:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/bookshelf/models.py:models"
 ```
 
@@ -54,6 +56,7 @@ Aggregates, entities, and value objects go in `bookshelf/models.py`:
 Domain events go in `bookshelf/events.py`:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/bookshelf/events.py:events"
 ```
 
@@ -62,6 +65,7 @@ Domain events go in `bookshelf/events.py`:
 Commands go in `bookshelf/commands.py`:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/bookshelf/commands.py:commands"
 ```
 
@@ -70,6 +74,7 @@ Commands go in `bookshelf/commands.py`:
 Command handlers and event handlers go in `bookshelf/handlers.py`:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/bookshelf/handlers.py:handlers"
 ```
 
@@ -78,6 +83,7 @@ Command handlers and event handlers go in `bookshelf/handlers.py`:
 Projections and projectors go in `bookshelf/projections.py`:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/bookshelf/projections.py:projections"
 ```
 
@@ -88,13 +94,12 @@ a proper package structure, Protean auto-discovers all domain elements
 by scanning the package.
 
 `bookshelf/__init__.py` only creates the domain. The code that starts the
-application imports it and calls `init()` once. In the next chapter, that
-is the API module:
+application imports `domain` from the package and calls `init()` once. In the
+next chapter, that is the API module:
 
 ```python
-from bookshelf import domain
-
-domain.init()  # traverse=True by default: scans bookshelf/ for elements
+# fragment
+--8<-- "guides/getting-started/tutorial/bookshelf/api.py:init_domain"
 ```
 
 This finds all `@domain.aggregate`, `@domain.command`, `@domain.event`,

@@ -30,13 +30,9 @@ Pass a `correlation_id` when dispatching commands to make tracing
 easier:
 
 ```python
-import uuid
-
-trace_id = str(uuid.uuid4())
-domain.process(
-    AddBook(title="Dune", author="Frank Herbert", price_amount=15.99),
-    correlation_id=trace_id,
-)
+# fragment
+--8<-- "guides/getting-started/tutorial/ch16.py:uuid_import"
+--8<-- "guides/getting-started/tutorial/ch16.py:correlation"
 ```
 
 All downstream events and handler invocations inherit this correlation
@@ -62,17 +58,20 @@ shows where the gap is.
 
 ## Programmatic Tracing
 
-You can also trace programmatically:
+You can also trace programmatically. The event store's
+`build_causation_tree()` returns the tree for a correlation ID, starting at
+the first command:
 
 ```python
-from protean.utils.globals import current_domain
+# fragment
+--8<-- "guides/getting-started/tutorial/ch16.py:programmatic"
+```
 
-# Get all events for a correlation ID
-events = current_domain.event_store.events_of(
-    correlation_id="abc-123"
-)
-for event in events:
-    print(f"{event.__class__.__name__} caused by {event._metadata.causation_id}")
+For the book added above, this prints:
+
+```
+Bookshelf.AddBook.v1 (COMMAND)
+  Bookshelf.BookAdded.v1 (EVENT)
 ```
 
 ## Debugging the Customer's Issue

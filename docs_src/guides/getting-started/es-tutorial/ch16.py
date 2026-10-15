@@ -12,6 +12,8 @@ programmatically.
 from protean import Domain, apply, handle, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier, String
+from protean.port.event_store import CausationNode
+from protean.utils.eventing import Message
 from protean.utils.globals import current_domain
 
 domain = Domain("fidelis")
@@ -183,6 +185,38 @@ domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 
 
+# --8<-- [start:correlated_deposit]
+def make_large_deposit(account_id: str) -> None:
+    domain.process(
+        MakeDeposit(
+            account_id=account_id,
+            amount=15_000.00,
+            reference="DEP-9921",
+        ),
+        correlation_id="audit-trail-dep-9921",
+    )
+
+
+# --8<-- [end:correlated_deposit]
+# --8<-- [start:programmatic_tracing]
+def trace(
+    message_id: str,
+) -> tuple[list[Message], list[Message], CausationNode | None]:
+    event_store = domain.event_store.store
+
+    # Walk UP from a message to the root command
+    chain = event_store.trace_causation(message_id)
+
+    # Walk DOWN from a message to all its effects
+    effects = event_store.trace_effects(message_id, recursive=True)
+
+    # Build the full tree for a correlation ID
+    tree = event_store.build_causation_tree("audit-trail-dep-9921")
+
+    return chain, effects, tree
+
+
+# --8<-- [end:programmatic_tracing]
 # --8<-- [start:usage]
 if __name__ == "__main__":
     with domain.domain_context():
@@ -198,14 +232,7 @@ if __name__ == "__main__":
         print(f"Account opened: {account_id}")
 
         # Make a large deposit using the same correlation_id
-        domain.process(
-            MakeDeposit(
-                account_id=account_id,
-                amount=15000.00,
-                reference="wire-transfer-001",
-            ),
-            correlation_id="audit-trail-dep-9921",
-        )
+        make_large_deposit(account_id)
         print("Deposit of $15,000.00 made")
 
         # Build the causation tree for the correlation ID
@@ -224,6 +251,11 @@ if __name__ == "__main__":
                     print_children(child, indent + 1)
 
             print_children(tree)
+
+            # Walk up and down from the opening command
+            chain, effects, _ = trace(tree.message_id)
+            print(f"\nChain to root: {[m.metadata.headers.type for m in chain]}")
+            print(f"Effects: {[m.metadata.headers.type for m in effects]}")
 
         # Verify final balance
         repo = current_domain.repository_for(Account)

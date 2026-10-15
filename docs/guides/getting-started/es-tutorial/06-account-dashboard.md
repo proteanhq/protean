@@ -19,6 +19,7 @@ automatically.
 ## Defining the Projection
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch06.py:projection"
 ```
 
@@ -32,6 +33,7 @@ Notice:
 ## Defining the Projector
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch06.py:projector"
 ```
 
@@ -54,6 +56,7 @@ Key concepts:
 ## Trying It Out
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch06.py:usage"
 ```
 

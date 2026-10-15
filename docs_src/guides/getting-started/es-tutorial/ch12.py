@@ -198,6 +198,21 @@ domain.config["command_processing"] = "sync"
 domain.config["snapshot_threshold"] = 5
 
 
+# --8<-- [start:on_demand]
+def snapshot_accounts(account_id: str) -> tuple[bool, int]:
+    with domain.domain_context():
+        # Snapshot a single account
+        created = domain.create_snapshot(Account, account_id)
+
+        # Snapshot all accounts
+        count = domain.create_snapshots(Account)
+
+    return created, count
+
+
+# --8<-- [end:on_demand]
+
+
 # --8<-- [start:usage]
 if __name__ == "__main__":
     with domain.domain_context():

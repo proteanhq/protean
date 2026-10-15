@@ -17,6 +17,7 @@ They are upgraded on the fly whenever they are read.
 First, bump the event to v2 and add the new field:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch11.py:deposit_made_v2"
 ```
 
@@ -26,6 +27,7 @@ schema. Historical events stored as `"v1"` will need transformation.
 ## Writing the Upcaster
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch11.py:upcaster"
 ```
 
@@ -56,22 +58,9 @@ happens at read time, lazily.
 Later, regulations add a `currency` field. Bump to v3:
 
 ```python
-@domain.event(part_of=Account)
-class DepositMade:
-    __version__ = 3
-
-    account_id: Identifier(required=True)
-    amount: Float(required=True)
-    source_type: String(default="unknown")
-    currency: String(default="USD")  # NEW in v3
-    reference: String()
-
-
-@domain.upcaster(event_type=DepositMade, from_version=2, to_version=3)
-class UpcastDepositV2ToV3(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["currency"] = "USD"
-        return data
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch11_v3.py:deposit_made_v3"
+--8<-- "guides/getting-started/es-tutorial/ch11_v3.py:upcaster_v2_to_v3"
 ```
 
 Protean automatically chains: **v1 → v2 → v3**. A historical v1 event

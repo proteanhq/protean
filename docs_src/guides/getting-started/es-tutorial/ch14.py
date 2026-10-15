@@ -236,10 +236,12 @@ class PayFlowWebhookSubscriber:
         else:
             print(f"[PayFlow] Ignoring unknown event type: {event_type}")
 
+    # --8<-- [start:handle_error]
     @classmethod
     def handle_error(cls, exc: Exception, message: dict) -> None:
         """Custom error handler for PayFlow webhook processing failures."""
         print(f"[PayFlow] Error processing webhook: {exc} | Payload: {message}")
+        # --8<-- [end:handle_error]
 
 
 # --8<-- [end:subscriber]
@@ -271,6 +273,16 @@ def add_request_context(command) -> dict:
 
 
 # --8<-- [end:command_enricher]
+@domain.event_handler(part_of=Account)
+class DepositAuditHandler:
+    # --8<-- [start:read_extensions]
+    @handle(DepositMade)
+    def on_deposit(self, event: DepositMade):
+        tenant_id = event._metadata.extensions.get("tenant_id")
+        # --8<-- [end:read_extensions]
+        print(f"[Audit] Deposit for tenant {tenant_id}")
+
+
 domain.init(traverse=False)
 domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"

@@ -1,9 +1,14 @@
 # --8<-- [start:full]
 # --8<-- [start:imports_and_aggregate]
+# --8<-- [start:domain_import]
 from protean import Domain
+
+# --8<-- [end:domain_import]
 from protean.fields import Float, String
 
+# --8<-- [start:domain_instance]
 domain = Domain()
+# --8<-- [end:domain_instance]
 
 
 # --8<-- [start:aggregate]
@@ -19,6 +24,7 @@ class Book:
 # --8<-- [end:imports_and_aggregate]
 
 
+# --8<-- [start:create_book]
 domain.init(traverse=False)
 
 
@@ -34,6 +40,7 @@ if __name__ == "__main__":
         )
         print(f"Created: {book.title} by {book.author}")
         print(f"ID: {book.id}")
+        # --8<-- [end:create_book]
 
         # Persist it
         repo = domain.repository_for(Book)

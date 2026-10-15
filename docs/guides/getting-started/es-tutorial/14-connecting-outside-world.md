@@ -14,6 +14,7 @@ A subscriber consumes messages from an external system and translates
 them into domain operations:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch14.py:subscriber"
 ```
 
@@ -35,9 +36,8 @@ commands). The domain never sees the raw webhook format.
 Subscribers can override `handle_error` for custom error handling:
 
 ```python
-@classmethod
-def handle_error(cls, exc: Exception, message: dict) -> None:
-    print(f"[PayFlow Error] Failed to process webhook: {exc}")
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch14.py:handle_error"
 ```
 
 This is called when `__call__` raises an exception, giving you a chance
@@ -51,10 +51,12 @@ event payload itself, infrastructure concerns like tenant IDs, request IDs, and
 user context:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch14.py:event_enricher"
 ```
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch14.py:command_enricher"
 ```
 
@@ -88,11 +90,13 @@ In event handlers and projectors, access enrichment data through the
 event's metadata:
 
 ```python
-@handle(DepositMade)
-def on_deposit(self, event: DepositMade):
-    tenant_id = event._metadata.extensions.get("tenant_id")
-    request_id = event._metadata.extensions.get("request_id")
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch14.py:read_extensions"
 ```
+
+An event carries what the event enrichers returned. What a command
+enricher returns stays on the command's metadata, so `request_id` is not
+on the `DepositMade` event.
 
 ## What We Built
 

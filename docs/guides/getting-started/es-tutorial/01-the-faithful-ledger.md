@@ -24,9 +24,8 @@ Create a file called `fidelis.py`. Every Protean application begins
 with a **Domain**:
 
 ```python
-from protean import Domain
-
-domain = Domain("fidelis")
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch01.py:domain"
 ```
 
 Protean ships with in-memory adapters for databases, brokers, and event
@@ -39,6 +38,7 @@ In Event Sourcing, we define what **happened** before we define the
 aggregate. Our first event records the fact that an account was opened:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch01.py:event"
 ```
 
@@ -51,6 +51,7 @@ what number it was assigned, and how much was deposited.
 Now let's define the `Account` aggregate with `event_sourced=True`:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch01.py:aggregate"
 ```
 
@@ -82,6 +83,7 @@ There is a lot happening here. Let's break it down:
 Let's create an account and persist it:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch01.py:usage"
 ```
 

@@ -9,10 +9,12 @@ A bookstore doesn't just sell books. It takes orders. An order contains
 multiple items, has a shipping address, and tracks its status. Let's model it:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch03.py:imports"
 ```
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch03.py:order_with_status"
 ```
 
@@ -31,6 +33,7 @@ to the Order aggregate. Unlike value objects, entities can be individually
 tracked:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch03.py:order_item_entity"
 ```
 

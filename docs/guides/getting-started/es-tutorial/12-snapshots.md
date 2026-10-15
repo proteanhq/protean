@@ -47,12 +47,8 @@ You can create snapshots on demand, useful for maintenance, after migrations,
 or to optimize specific aggregates:
 
 ```python
-with domain.domain_context():
-    # Snapshot a single account
-    domain.create_snapshot(Account, "acc-corporate-001")
-
-    # Snapshot all accounts
-    domain.create_snapshots(Account)
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch12.py:on_demand"
 ```
 
 ## CLI Commands

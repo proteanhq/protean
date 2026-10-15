@@ -146,10 +146,8 @@ With async processing enabled, `domain.process()` publishes the command
 to the command stream instead of executing it immediately:
 
 ```python
-# This returns immediately — the command is queued
-domain.process(
-    MakeDeposit(account_id=account_id, amount=500.00, reference="paycheck")
-)
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch08.py:queue_deposit"
 ```
 
 The server picks up the command from the Redis stream and dispatches it

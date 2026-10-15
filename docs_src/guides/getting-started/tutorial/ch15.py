@@ -62,7 +62,7 @@ class Book:
 # --8<-- [start:projection]
 @domain.projection
 class BookReport:
-    """Marketing dashboard projection — populated from fact events.
+    """Marketing dashboard projection: populated from fact events.
 
     When running with ``protean server`` (async processing), the
     ``BookReportHandler`` below maintains this projection automatically.
@@ -84,7 +84,7 @@ class BookReportHandler:
     """Consumes fact events to maintain the BookReport projection.
 
     Each fact event contains the complete current state, so we simply
-    overwrite the projection entry — no need to apply deltas.
+    overwrite the projection entry: no need to apply deltas.
 
     When running with async event processing (``protean server``), this
     handler is automatically subscribed to the ``<domain>::book-fact``
@@ -104,14 +104,14 @@ class BookReportHandler:
             report.title = event.title
             report.author = event.author
             report.price = event.price
-            report.isbn = event.isbn or ""
+            report.isbn = event.isbn or ""  # isbn is optional
         except Exception:
             report = BookReport(
                 book_id=event.id,
                 title=event.title,
                 author=event.author,
                 price=event.price,
-                isbn=event.isbn or "",
+                isbn=event.isbn or "",  # isbn is optional
             )
 
         repo.add(report)
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     with domain.domain_context():
         book_repo = domain.repository_for(Book)
 
-        # Add a book — triggers both the BookAdded event and a fact event
+        # Add a book: triggers both the BookAdded event and a fact event
         print("=== Adding a Book ===")
         gatsby = Book.add_to_catalog(
             title="The Great Gatsby",
@@ -138,7 +138,7 @@ if __name__ == "__main__":
         )
         book_repo.add(gatsby)
 
-        # Update price — triggers a new fact event with complete state
+        # Update price: triggers a new fact event with complete state
         print("\n=== Updating Price ===")
         gatsby.update_price(15.99)
         book_repo.add(gatsby)
