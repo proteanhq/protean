@@ -110,8 +110,16 @@ The conformance plugin is **not auto-registered**. Load it explicitly in your
 `conftest.py`:
 
 ```python
-# conftest.py
-pytest_plugins = ["protean.integrations.pytest.adapter_conformance"]
+# fragment
+--8<-- "reference/testing/conformance/opt_in/conftest.py:opt_in"
+```
+
+Tests under that `conftest.py` then receive a `test_domain` configured with the
+adapter under test, `memory` unless you pass `--db`:
+
+```python
+# fragment
+--8<-- "reference/testing/conformance/opt_in/test_default_adapter.py:test"
 ```
 
 ### CLI Options
@@ -134,9 +142,9 @@ The plugin provides these fixtures:
 | `db_config` | session | Resolves provider configuration from CLI options |
 | `store_config` | session | Default event store config (memory) |
 | `broker_config` | session | Default broker config (inline) |
-| `test_domain` | autouse | Creates a Domain configured with the adapter under test |
+| `test_domain` | function, autouse | Creates a Domain configured with the adapter under test |
 | `db` | function | Creates/drops database artifacts around each test |
-| `run_around_tests` | autouse | Resets data after each test |
+| `run_around_tests` | function, autouse | Resets data after each test |
 
 ### Auto-Skip Behavior
 
@@ -154,6 +162,7 @@ External adapter packages can override the `db_config` fixture for full
 control:
 
 ```python
+# fragment
 # tests/conftest.py
 import pytest
 
@@ -232,6 +241,7 @@ pip install protean
 ### 2. Create `conftest.py`
 
 ```python
+# fragment
 import pytest
 
 pytest_plugins = ["protean.integrations.pytest.adapter_conformance"]
@@ -268,9 +278,8 @@ The same idea applies to custom fields built with
 field runs against itself, so you can prove your field before you depend on it.
 
 ```python
-from protean.integrations.pytest.custom_field_conformance import (
-    run_custom_field_conformance,
-)
+# fragment
+--8<-- "reference/testing/conformance/002.py:import"
 ```
 
 `run_custom_field_conformance(field, *, valid_input, expected, invalid_input)`
@@ -290,25 +299,16 @@ custom-field contract:
 It raises `AssertionError` on any violation, so drop it straight into a test:
 
 ```python
-from pydantic import PlainSerializer, PlainValidator
-
-from protean.fields import Custom
-
-
-def test_color_field_conformance():
-    field = Custom(
-        Color,
-        validators=[PlainValidator(parse_color)],
-        serializers=[PlainSerializer(lambda c: c.hex, return_type=str)],
-        required=True,
-    )
-    run_custom_field_conformance(
-        field,
-        valid_input="#3366ff",
-        expected=Color("#3366FF"),
-        invalid_input="not-a-color",
-    )
+# fragment
+--8<-- "reference/testing/conformance/002.py:test"
 ```
+
+??? example "The `Color` type under test"
+
+    ```python
+    # fragment
+    --8<-- "guides/domain-definition/fields/custom-fields/001.py:type"
+    ```
 
 The custom type needs a meaningful `__eq__` (the harness compares with `==`) and a
 `to_dict()` that returns a value your parser accepts back, so the round-trip holds.

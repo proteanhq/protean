@@ -74,27 +74,7 @@ format that maps directly to your domain language.
 ### A Command Processing Scenario
 
 ```gherkin
-# tests/bdd/registration/features/register_user.feature
-Feature: User Registration
-    Users should be able to register through the Register command
-    and receive a welcome notification.
-
-    Background:
-        Given the domain is initialized
-
-    Scenario: Register a new user
-        When a Register command is processed for "john@example.com"
-        Then a user should exist with email "john@example.com"
-        And the user status should be "INACTIVE"
-
-    Scenario: Registration triggers a welcome notification
-        When a Register command is processed for "jane@example.com"
-        Then a welcome notification should have been sent to "jane@example.com"
-
-    Scenario: Duplicate registration is rejected
-        Given a user already exists with email "john@example.com"
-        When a Register command is processed for "john@example.com"
-        Then the command should fail with error "already registered"
+--8<-- "guides/testing/application-tests/bdd/registration/features/register_user.feature"
 ```
 
 Use `Background` to express setup steps shared by every scenario in a feature
@@ -103,33 +83,7 @@ file. Only `Given` steps belong in a Background.
 ### An Event Handler Scenario
 
 ```gherkin
-# tests/bdd/ordering/features/place_order.feature
-@ordering
-Feature: Place Order
-    Customers can place orders that trigger inventory updates
-    and customer history tracking.
-
-    Background:
-        Given the domain is initialized
-
-    Scenario: Placing an order updates inventory
-        Given a book "Dune" with 10 copies in stock
-        And a customer "Alice"
-        When "Alice" places an order for 2 copies of "Dune"
-        Then the order should be confirmed
-        And "Dune" should have 8 copies in stock
-
-    Scenario: Placing an order records customer history
-        Given a book "1984" with 5 copies in stock
-        And a customer "Bob"
-        When "Bob" places an order for 1 copy of "1984"
-        Then "Bob" should have 1 order in their history
-
-    Scenario: Cannot order more than available stock
-        Given a book "Rare Book" with 2 copies in stock
-        And a customer "Charlie"
-        When "Charlie" tries to order 10 copies of "Rare Book"
-        Then the order should be rejected with "Insufficient stock"
+--8<-- "guides/testing/application-tests/bdd/ordering/features/place_order.feature:feature"
 ```
 
 ### Scenario Outlines for Data-Driven Tests
@@ -137,17 +91,7 @@ Feature: Place Order
 Use Scenario Outlines when the same flow applies to multiple inputs:
 
 ```gherkin
-    Scenario Outline: Order total is calculated correctly
-        Given a customer "Alice"
-        And "Alice" adds <quantity> copies of a book priced at <price>
-        When "Alice" places the order
-        Then the order total should be <total>
-
-        Examples:
-            | quantity | price | total  |
-            | 1        | 10.00 | 10.00  |
-            | 3        | 20.00 | 60.00  |
-            | 2        | 15.50 | 31.00  |
+--8<-- "guides/testing/application-tests/bdd/ordering/features/place_order.feature:outline"
 ```
 
 ## Writing Step Definitions
@@ -162,105 +106,22 @@ automatically creates a test function for each scenario. You only need to
 provide the step definitions:
 
 ```python
-# tests/bdd/registration/test_register_user.py
-from uuid import uuid4
-
-from pytest_bdd import scenarios, when, then, parsers
-
-from myapp import domain
-from myapp.commands import Register
-from myapp.models import User
-
-scenarios("features/register_user.feature")
-
-
-@when(parsers.parse('a Register command is processed for "{email}"'))
-def process_register(email):
-    domain.process(
-        Register(user_id=str(uuid4()), email=email, name="Test User")
-    )
-
-
-@then(parsers.parse('a user should exist with email "{email}"'))
-def user_exists(email):
-    users = domain.repository_for(User).query.all()
-    match = [u for u in users.items if u.email == email]
-    assert len(match) == 1
-
-
-@then(parsers.parse('the user status should be "{status}"'))
-def user_has_status(email, status):
-    users = domain.repository_for(User).query.all()
-    user = next(u for u in users.items if u.email == email)
-    assert user.status == status
+# fragment
+--8<-- "guides/testing/application-tests/bdd/registration/test_register_user.py:steps"
 ```
 
 ### Sharing State with `target_fixture`
 
 Use `target_fixture` to pass data between steps. The return value of the step
 becomes a pytest fixture available to all subsequent steps in the same
-scenario:
+scenario. The `Given` steps that return the `book` and `customer` fixtures are
+shared steps, so they live in `tests/bdd/ordering/conftest.py`, shown under
+[Domain-Specific Shared Steps](#domain-specific-shared-steps). The test module
+holds the rest:
 
 ```python
-# tests/bdd/ordering/test_place_order.py
-from pytest_bdd import scenarios, given, when, then, parsers
-
-from myapp import domain
-from myapp.commands import PlaceOrder
-from myapp.models import Book, Customer, Inventory, Money, Order, OrderItemVO
-
-scenarios("features/place_order.feature")
-
-
-@given(
-    parsers.parse('a book "{title}" with {stock:d} copies in stock'),
-    target_fixture="book",
-)
-def book_in_stock(title, stock):
-    book = Book(title=title, author="Test Author", price=Money(amount=15.99))
-    domain.repository_for(Book).add(book)
-
-    inventory = Inventory(book_id=book.id, title=title, quantity=stock)
-    domain.repository_for(Inventory).add(inventory)
-    return book
-
-
-@given(
-    parsers.parse('a customer "{name}"'),
-    target_fixture="customer",
-)
-def existing_customer(name):
-    customer = Customer(name=name)
-    domain.repository_for(Customer).add(customer)
-    return customer
-
-
-@when(
-    parsers.parse('"{name}" places an order for {qty:d} copies of "{title}"'),
-    target_fixture="order",
-)
-def place_order(customer, book, name, qty, title):
-    domain.process(
-        PlaceOrder(
-            customer_id=customer.id,
-            items=[OrderItemVO(book_id=book.id, quantity=qty)],
-            total=book.price.amount * qty,
-        )
-    )
-    orders = domain.repository_for(Order).query.all()
-    return orders.items[0]
-
-
-@then("the order should be confirmed")
-def order_confirmed(order):
-    assert order.status == "CONFIRMED"
-
-
-@then(parsers.parse('"{title}" should have {expected:d} copies in stock'))
-def check_stock(title, expected):
-    inventories = domain.repository_for(Inventory).query.all()
-    inv = next(i for i in inventories.items if i.title == title)
-    assert inv.quantity == expected
+# fragment
+--8<-- "guides/testing/application-tests/bdd/ordering/test_place_order.py:steps"
 ```
 
 The flow of fixtures through a scenario looks like this:
@@ -292,30 +153,8 @@ When testing that a command is rejected, capture the exception in the `@when`
 step and verify it in `@then`:
 
 ```python
-@when(
-    parsers.parse(
-        '"{name}" tries to order {qty:d} copies of "{title}"'
-    ),
-    target_fixture="order_result",
-)
-def try_place_order(customer, book, name, qty, title):
-    try:
-        domain.process(
-            PlaceOrder(
-                customer_id=customer.id,
-                items=[OrderItemVO(book_id=book.id, quantity=qty)],
-                total=book.price.amount * qty,
-            )
-        )
-        return {"success": True}
-    except ValidationError as exc:
-        return {"success": False, "error": str(exc.messages)}
-
-
-@then(parsers.parse('the order should be rejected with "{message}"'))
-def order_rejected(order_result, message):
-    assert order_result["success"] is False
-    assert message in order_result["error"]
+# fragment
+--8<-- "guides/testing/application-tests/bdd/ordering/test_place_order.py:expected_failure"
 ```
 
 ### Scenario Outline Steps
@@ -324,43 +163,8 @@ For Scenario Outlines, use `parsers.parse` with format specifiers to extract
 typed values:
 
 ```python
-@given(
-    parsers.parse(
-        '"{name}" adds {quantity:d} copies of a book priced at {price:f}'
-    ),
-    target_fixture="cart",
-)
-def add_to_cart(customer, name, quantity, price):
-    book = Book(
-        title="Test Book", author="Author", price=Money(amount=price)
-    )
-    domain.repository_for(Book).add(book)
-    return {"book": book, "quantity": quantity}
-
-
-@when(
-    parsers.parse('"{name}" places the order'),
-    target_fixture="order",
-)
-def place_order_from_cart(customer, cart, name):
-    domain.process(
-        PlaceOrder(
-            customer_id=customer.id,
-            items=[
-                OrderItemVO(
-                    book_id=cart["book"].id, quantity=cart["quantity"]
-                )
-            ],
-            total=cart["book"].price.amount * cart["quantity"],
-        )
-    )
-    orders = domain.repository_for(Order).query.all()  # noqa: E501
-    return orders.items[0]
-
-
-@then(parsers.parse("the order total should be {expected:f}"))
-def check_total(order, expected):
-    assert float(order.total) == expected
+# fragment
+--8<-- "guides/testing/application-tests/bdd/ordering/test_place_order.py:outline_steps"
 ```
 
 Common format specifiers for `parsers.parse`:
@@ -381,18 +185,20 @@ pytest-bdd discovers step definitions defined there automatically.
 
 The root `conftest.py` uses `DomainFixture` to initialize the domain and
 manage per-test cleanup (see [Fixtures and Patterns](./fixtures-and-patterns.md)
-for the full setup). The BDD-level `conftest.py` only needs to define
-shared steps:
+for the full setup):
+
+??? example "The root `conftest.py` these tests run under"
+
+    ```python
+    # fragment
+    --8<-- "guides/testing/application-tests/conftest.py:conftest"
+    ```
+
+The BDD-level `conftest.py` only needs to define shared steps:
 
 ```python
-# tests/bdd/conftest.py
-from pytest_bdd import given
-
-
-@given("the domain is initialized")
-def domain_initialized():
-    """Background step — domain is already initialized by the fixture."""
-    pass
+# fragment
+--8<-- "guides/testing/application-tests/bdd/conftest.py:shared_steps"
 ```
 
 Since the root `conftest.py` uses `DomainFixture` to call `domain.init()`,
@@ -406,35 +212,8 @@ Steps shared within a single domain concept go in that directory's
 `conftest.py`:
 
 ```python
-# tests/bdd/ordering/conftest.py
-from pytest_bdd import given, parsers
-
-from myapp import domain
-from myapp.models import Book, Customer, Inventory, Money
-
-
-@given(
-    parsers.parse('a customer "{name}"'),
-    target_fixture="customer",
-)
-def existing_customer(name):
-    customer = Customer(name=name)
-    domain.repository_for(Customer).add(customer)
-    return customer
-
-
-@given(
-    parsers.parse('a book "{title}" with {stock:d} copies in stock'),
-    target_fixture="book",
-)
-def book_in_stock(title, stock):
-    book = Book(
-        title=title, author="Test Author", price=Money(amount=15.99)
-    )
-    domain.repository_for(Book).add(book)
-    inventory = Inventory(book_id=book.id, title=title, quantity=stock)
-    domain.repository_for(Inventory).add(inventory)
-    return book
+# fragment
+--8<-- "guides/testing/application-tests/bdd/ordering/conftest.py:ordering_steps"
 ```
 
 These steps are now available to all test modules under
@@ -453,78 +232,20 @@ Application services coordinate use cases. Write feature files that describe
 the use case, and step definitions that invoke the service:
 
 ```gherkin
-# tests/bdd/registration/features/activate_user.feature
-Feature: User Activation
-    Registered users can be activated through the application service.
-
-    Background:
-        Given the domain is initialized
-
-    Scenario: Activate a registered user
-        Given a registered user "john@example.com"
-        When the user is activated
-        Then the user status should be "ACTIVE"
-
-    Scenario: Cannot activate a non-existent user
-        When activation is attempted for a non-existent user
-        Then the operation should fail with "not found"
+--8<-- "guides/testing/application-tests/bdd/registration/features/activate_user.feature"
 ```
 
 ```python
-# tests/bdd/registration/test_activate_user.py
-from pytest_bdd import scenarios, given, when, then, parsers
-
-from myapp import domain
-from myapp.models import User
-from myapp.services import UserApplicationServices
-
-scenarios("features/activate_user.feature")
-
-
-@given(
-    parsers.parse('a registered user "{email}"'),
-    target_fixture="user_id",
-)
-def registered_user(email):
-    app_service = UserApplicationServices()
-    return app_service.register_user(email=email, name="Test User")
-
-
-@when("the user is activated")
-def activate_user(user_id):
-    app_service = UserApplicationServices()
-    app_service.activate_user(user_id)
-
-
-@when(
-    "activation is attempted for a non-existent user",
-    target_fixture="activation_result",
-)
-def activate_nonexistent():
-    try:
-        app_service = UserApplicationServices()
-        app_service.activate_user("nonexistent-id")
-        return {"success": True}
-    except ObjectNotFoundError as exc:
-        return {"success": False, "error": str(exc)}
-
-
-@then(parsers.parse('the user status should be "{status}"'))
-def check_status(user_id, status):
-    user = domain.repository_for(User).get(user_id)
-    assert user.status == status
-
-
-@then(parsers.parse('the operation should fail with "{message}"'))
-def check_failure(activation_result, message):
-    assert activation_result["success"] is False
-    assert message in activation_result["error"]
+# fragment
+--8<-- "guides/testing/application-tests/bdd/registration/test_activate_user.py:steps"
 ```
 
 ## Using Tags for Selective Execution
 
 Gherkin tags are converted to pytest markers. Use them to organize and filter
-scenarios:
+scenarios. The ordering feature above carries `@ordering` and `@smoke` on the
+feature, `@happy_path` on the first scenario and `@validation` on the stock
+check:
 
 ```gherkin
 @ordering @smoke
@@ -538,6 +259,14 @@ Feature: Place Order
     @validation
     Scenario: Cannot order more than available stock
         ...
+```
+
+Register the tags as markers in `tests/bdd/conftest.py`, so pytest does not
+warn about unknown marks and `--strict-markers` accepts them:
+
+```python
+# fragment
+--8<-- "guides/testing/application-tests/bdd/conftest.py:markers"
 ```
 
 Run selectively:

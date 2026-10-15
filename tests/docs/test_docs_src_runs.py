@@ -27,7 +27,9 @@ a test that carries the marker. A service marker with a ``--<service>`` option
 ``sqlite``) is skipped in the core lane and runs in the FULL leg. The
 ``fastapi`` marker has no such option, so its group runs in both.
 A file that shows an error on purpose is listed in ``EXPECTED_EXCEPTIONS``, and
-passes only if it raises that exception.
+passes only if it raises that exception. A file that can run only inside a
+pytest session is listed in ``PYTEST_ONLY`` and is not run here; its behaviour
+test runs it under pytest with ``run_example_tests``.
 
 The include guard at the end requires every ``docs_src`` file to be included
 by a documentation page with ``--8<--``, so files no page shows do not pile up.
@@ -128,6 +130,18 @@ EXPECTED_EXCEPTIONS: dict[str, str] = {
     "concepts/building-blocks/choosing-element-types/006.py": "IncorrectUsageError",
     "concepts/building-blocks/choosing-element-types/007.py": "IncorrectUsageError",
 }
+
+# pytest-bdd step files. Their ``scenarios()`` call reads the config of the
+# running pytest session, so importing them outside pytest raises IndexError.
+PYTEST_ONLY: frozenset[str] = frozenset(
+    {
+        "guides/testing/application-tests/bdd/ordering/test_place_order.py",
+        "guides/testing/application-tests/bdd/registration/test_activate_user.py",
+        "guides/testing/application-tests/bdd/registration/test_register_user.py",
+        "guides/testing/integration-tests/integration/test_order_flow.py",
+        "guides/testing/integration-tests/integration/test_persistence.py",
+    }
+)
 
 # Seconds one example may run before the runner stops it and reports it.
 EXAMPLE_TIMEOUT = 60
@@ -369,14 +383,20 @@ def test_tables_name_only_existing_examples():
     # A table entry for a file that was renamed or deleted would sit there
     # unnoticed and could hide a new file with the old name.
     stale = sorted(
-        path for path in [*MARKERS, *EXPECTED_EXCEPTIONS] if path not in EXAMPLES
+        path
+        for path in [*MARKERS, *EXPECTED_EXCEPTIONS, *PYTEST_ONLY]
+        if path not in EXAMPLES
     )
     assert stale == [], f"table entries name no docs_src example: {stale}"
 
 
 @pytest.mark.parametrize("marker", _group_params())
 def test_every_example_runs_and_initializes(marker, tmp_path):
-    examples = [path for path in EXAMPLES if MARKERS.get(path) == marker]
+    examples = [
+        path
+        for path in EXAMPLES
+        if MARKERS.get(path) == marker and path not in PYTEST_ONLY
+    ]
     assert examples, f"no examples in the {marker or 'core'} group"
 
     report = run_examples(

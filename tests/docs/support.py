@@ -4,14 +4,21 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import os
 import re
+import subprocess
 import sys
+import tempfile
 import types
+from collections.abc import Sequence
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS_SRC = REPO_ROOT / "docs_src"
 DOCS = REPO_ROOT / "docs"
+
+# Seconds one child pytest run of an example may take before it is stopped.
+EXAMPLE_TESTS_TIMEOUT = 120
 
 
 def module_name_for(path: str) -> str:
@@ -54,6 +61,126 @@ def load_example(path: str, root: Path = DOCS_SRC) -> types.ModuleType:
         sys.modules.pop(name, None)
         raise
     return module
+
+
+def run_example_tests(
+    path: str,
+    *,
+    env: dict[str, str] | None = None,
+    args: Sequence[str] = (),
+    root: Path = DOCS_SRC,
+) -> subprocess.CompletedProcess[str]:
+    """Run the pytest tests in the example at ``path`` in a child process.
+
+    ``path`` is relative to ``root``, as in :func:`load_example`. The child runs
+    ``python -m pytest <file>`` from a fresh temporary folder, so files the
+    tests write (a SQLite database, say) land there and not in the repo.
+    ``root`` and the parent folder of every package under it go on
+    ``PYTHONPATH``, as in ``test_docs_src_runs.py``, so an example imports a
+    ``docs_src`` package such as ``myapp`` by its folder name. The parent's
+    ``PYTHONPATH`` follows them. ``env`` adds environment variables, and
+    ``args`` adds pytest options after the file.
+
+    The child gets an empty config file from the temporary folder with ``-c``,
+    so the repo's ``[tool.pytest.ini_options]`` (``--doctest-modules``,
+    ``testpaths``, the warning filters) does not apply: a reader's project would
+    not have it. pytest still loads every ``conftest.py`` in the example's
+    folder and the folders above it. Protean's pytest plugin loads through its
+    ``pytest11`` entry point. The cache plugin is off, so no ``.pytest_cache``
+    folder is written next to the example, and ``PYTHONDONTWRITEBYTECODE`` is
+    set, so no ``__pycache__`` folder is written either. The ``PYTEST_*``
+    variables and ``PROTEAN_ENV`` in the parent's environment do not reach the
+    child unless ``env`` passes them, so a developer's shell settings do not
+    change the result.
+
+    A run that takes longer than ``EXAMPLE_TESTS_TIMEOUT`` seconds raises
+    ``TimeoutError`` with the output the child wrote so far in its message.
+
+    Returns the finished process with its output. The caller checks
+    ``returncode``; pytest exits with 5 when it collects no tests.
+    ``test_docs_src_is_tested.py`` reads the string literal passed as ``path``,
+    so pass a literal.
+    """
+    filepath = root / path
+    if not filepath.is_file():
+        raise FileNotFoundError(f"no docs_src example at {path}")
+
+    package_parents = sorted(
+        {str(folder.parent) for folder in package_dirs(root).values()}
+    )
+    pythonpath = [str(root), *package_parents]
+    if os.environ.get("PYTHONPATH"):
+        pythonpath.append(os.environ["PYTHONPATH"])
+    inherited = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("PYTEST_") and name != "PROTEAN_ENV"
+    }
+    child_env = {
+        **inherited,
+        "PYTHONPATH": os.pathsep.join(pythonpath),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        **(env or {}),
+    }
+    with tempfile.TemporaryDirectory() as workdir:
+        config = Path(workdir) / "pytest.ini"
+        config.write_text("[pytest]\n", encoding="utf-8")
+        command = [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-c",
+            str(config),
+            "-p",
+            "no:cacheprovider",
+            str(filepath),
+            *args,
+        ]
+        try:
+            return subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workdir,
+                env=child_env,
+                timeout=EXAMPLE_TESTS_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # pytest shows the exception message and not its attributes, so
+            # the output the child wrote so far goes into the message.
+            output = _text(exc.stdout) + _text(exc.stderr)
+            raise TimeoutError(
+                f"{path} ran longer than {EXAMPLE_TESTS_TIMEOUT}s. "
+                f"Output so far:\n{output}"
+            ) from exc
+
+
+def _text(stream: str | bytes | None) -> str:
+    if isinstance(stream, bytes):
+        return stream.decode(errors="replace")
+    return stream or ""
+
+
+# The counts on pytest's last summary line: "3 passed, 1 skipped in 0.12s".
+_SUMMARY_COUNT = re.compile(r"(\d+) (passed|failed|errors?|skipped|xfailed|xpassed)\b")
+
+
+def outcome_counts(result: subprocess.CompletedProcess[str]) -> dict[str, int]:
+    """Return the outcome counts from the summary line of a child pytest run.
+
+    ``{"passed": 3, "skipped": 1}`` for a run that ended with
+    ``3 passed, 1 skipped in 0.12s``. The count for ``error`` and ``errors``
+    is reported as ``"errors"``. A run with no summary line gives ``{}``.
+    """
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    if not lines:
+        return {}
+    counts: dict[str, int] = {}
+    for number, outcome in _SUMMARY_COUNT.findall(lines[-1]):
+        key = "errors" if outcome.startswith("error") else outcome
+        counts[key] = int(number)
+    return counts
 
 
 def package_dirs(root: Path) -> dict[str, Path]:

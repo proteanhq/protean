@@ -48,6 +48,14 @@ parse_color = _mod.parse_color
 Palette = _mod.Palette
 example_domain = _mod.domain
 
+_conformance_spec = importlib.util.spec_from_file_location(
+    "docs_src_reference_testing_conformance_002",
+    os.path.join(_docs_src, "reference", "testing", "conformance", "002.py"),
+)
+assert _conformance_spec is not None and _conformance_spec.loader is not None
+_conformance_example = importlib.util.module_from_spec(_conformance_spec)
+_conformance_spec.loader.exec_module(_conformance_example)
+
 
 # ---------------------------------------------------------------------------
 # A local Point type for the direct factory tests, so they do not lean on the
@@ -635,21 +643,9 @@ class TestCallableDefaultConformance:
 # ===========================================================================
 class TestWorkedExampleConformance:
     def test_example_field_passes_conformance(self):
-        # Rebuild the field exactly as the reference page states it, then run the
-        # reusable harness. "Written from the page alone" is literally true: this
-        # uses only Color, parse_color, Custom, and the two Pydantic objects.
-        field = Custom(
-            Color,
-            validators=[PlainValidator(parse_color)],
-            serializers=[PlainSerializer(lambda c: c.hex, return_type=str)],
-            required=True,
-        )
-        run_custom_field_conformance(
-            field,
-            valid_input="#3366ff",
-            expected=Color("#3366FF"),
-            invalid_input="not-a-color",
-        )
+        # The test the reference page shows, so the page and this suite cannot
+        # drift apart.
+        _conformance_example.test_color_field_conformance()
 
     def test_optional_example_field_passes_conformance(self):
         field = Custom(

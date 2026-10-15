@@ -8,6 +8,7 @@ in isolated subprocess pytest sessions, verifying that the plugin
 fixtures and hooks work end-to-end.
 """
 
+import shutil
 import subprocess
 import sys
 from importlib import metadata
@@ -25,6 +26,13 @@ from protean.integrations.pytest.adapter_conformance import (
     resolve_db_config,
 )
 from protean.port.provider import DatabaseCapabilities
+
+# The opt-in the conformance reference page shows, read from the file the page
+# includes so the page and these tests cannot drift apart.
+DOCS_OPT_IN = (
+    Path(__file__).parents[3]
+    / "docs_src/reference/testing/conformance/opt_in/conftest.py"
+).read_text()
 
 
 class TestOptionRegistration:
@@ -351,26 +359,39 @@ class TestCollectionModifyItems:
 class TestConformancePluginIntegration:
     """Integration tests running the plugin in isolated subprocess pytest sessions.
 
-    Each test creates a temporary directory with a conftest that loads
-    the conformance plugin, then runs pytest as a subprocess against the
-    generic test files. This verifies fixtures, markers, and capability-skipping
-    work end-to-end.
+    Each test copies one generic test file into a temporary directory next to
+    a conftest that loads the conformance plugin, then runs pytest there under
+    an empty ini file. Run in place, the generic files would pick up this
+    repository's own conftest, which defines the same fixtures, and the
+    plugin would never be exercised.
     """
 
     def _run_pytest_subprocess(
-        self, tmp_path: Path, conftest_content: str, extra_args: list[str]
+        self,
+        tmp_path: Path,
+        conftest_content: str,
+        test_file: str,
+        extra_args: list[str],
     ) -> subprocess.CompletedProcess[str]:
-        """Run pytest in a subprocess with an isolated conftest."""
-        conftest = tmp_path / "conftest.py"
-        conftest.write_text(conftest_content)
+        """Run one generic test file in a subprocess with an isolated conftest."""
+        from protean.testing import get_generic_test_dir
+
+        (tmp_path / "conftest.py").write_text(conftest_content)
+        (tmp_path / "pytest.ini").write_text("[pytest]\n")
+        shutil.copy(get_generic_test_dir() / test_file, tmp_path / test_file)
 
         cmd = [
             sys.executable,
             "-m",
             "pytest",
-            "--override-ini=addopts=",
+            "-c",
+            "pytest.ini",
+            "-p",
+            "no:cacheprovider",
             "--tb=short",
             "-q",
+            "-rs",
+            test_file,
             *extra_args,
         ]
         return subprocess.run(
@@ -384,62 +405,40 @@ class TestConformancePluginIntegration:
 
     def test_plugin_runs_basic_storage_tests(self, tmp_path: Path):
         """The conformance plugin can run basic_storage tests against memory."""
-        from protean.testing import get_generic_test_dir
-
-        generic_dir = get_generic_test_dir()
         result = self._run_pytest_subprocess(
             tmp_path,
-            'pytest_plugins = ["protean.integrations.pytest.adapter_conformance"]',
-            [
-                str(generic_dir / "test_crud.py"),
-                "--db=MEMORY",
-                "-m",
-                "basic_storage",
-            ],
+            DOCS_OPT_IN,
+            "test_crud.py",
+            ["--db=MEMORY", "-m", "basic_storage"],
         )
-        assert result.returncode == 0
+        assert result.returncode == 0, result.stdout + result.stderr
         assert "passed" in result.stdout
 
-    def test_plugin_deselects_unsupported_capabilities(self, tmp_path: Path):
-        """Tests for capabilities the provider lacks are deselected."""
-        from protean.testing import get_generic_test_dir
-
-        generic_dir = get_generic_test_dir()
+    def test_plugin_skips_unsupported_capabilities(self, tmp_path: Path):
+        """Tests for capabilities the provider lacks are skipped."""
         result = self._run_pytest_subprocess(
-            tmp_path,
-            'pytest_plugins = ["protean.integrations.pytest.adapter_conformance"]',
-            [
-                str(generic_dir / "test_native_json.py"),
-                "--db=MEMORY",
-            ],
+            tmp_path, DOCS_OPT_IN, "test_native_json.py", ["--db=MEMORY"]
         )
-        # Memory lacks NATIVE_JSON — all tests should be deselected (exit code 5)
-        assert result.returncode == 5
-        assert "deselected" in result.stdout
+        # Memory lacks NATIVE_JSON, so every test skips and none runs
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "lacks required capability: native_json" in result.stdout
+        assert "passed" not in result.stdout
         assert "failed" not in result.stdout
 
     def test_plugin_works_with_user_overridden_db_config(self, tmp_path: Path):
         """User can override db_config fixture in their own conftest."""
-        from protean.testing import get_generic_test_dir
-
-        generic_dir = get_generic_test_dir()
-        conftest = """
+        conftest = (
+            DOCS_OPT_IN
+            + """
 import pytest
-
-pytest_plugins = ["protean.integrations.pytest.adapter_conformance"]
 
 @pytest.fixture(scope="session")
 def db_config():
     return {"provider": "memory"}
 """
-        result = self._run_pytest_subprocess(
-            tmp_path,
-            conftest,
-            [
-                str(generic_dir / "test_crud.py"),
-                "-m",
-                "basic_storage",
-            ],
         )
-        assert result.returncode == 0
+        result = self._run_pytest_subprocess(
+            tmp_path, conftest, "test_crud.py", ["-m", "basic_storage"]
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
         assert "passed" in result.stdout

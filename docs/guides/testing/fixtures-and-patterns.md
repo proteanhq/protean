@@ -14,8 +14,8 @@ Protean is installed, no configuration required. The plugin provides:
 - **`--protean-env` CLI option**: Sets `PROTEAN_ENV` before test collection
   (default: `test`), so `domain.toml` environment overlays are applied when
   Domain instances are constructed at import time.
-- **Standard markers**: Registers `domain`, `application`, `integration`, and
-  `slow` markers so `--strict-markers` doesn't complain.
+- **Standard markers**: Registers `domain`, `application`, `integration`,
+  `slow`, and `bdd` markers so `--strict-markers` doesn't complain.
 
 ### `DomainFixture`
 
@@ -26,7 +26,8 @@ and data cleanup across **all** adapters (providers, brokers, and event store).
 Import it from `protean.integrations.pytest`:
 
 ```python
-from protean.integrations.pytest import DomainFixture
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/minimal/conftest.py:import"
 ```
 
 `DomainFixture` provides three methods:
@@ -45,33 +46,23 @@ infrastructure.
 
 ### Minimal conftest.py
 
-For projects that use only in-memory adapters (the default):
+For projects that use only in-memory adapters (the default), `tests/conftest.py`
+looks like this. Here `domain` is your application's domain
+(`from myapp import domain`):
 
 ```python
-# tests/conftest.py
-import pytest
-
-from protean.integrations.pytest import DomainFixture
-
-from myapp import domain
-
-
-@pytest.fixture(scope="session")
-def app_fixture():
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-
-    fixture = DomainFixture(domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():
-        yield
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/minimal/conftest.py:conftest"
 ```
+
+The examples in this section use the `User` aggregate from that domain:
+
+??? example "The `User` aggregate under test"
+
+    ```python
+    # fragment
+    --8<-- "guides/testing/myapp/models.py:user"
+    ```
 
 The session-scoped `app_fixture` initializes the domain **once** for the
 entire test run. The per-test `_ctx` fixture activates the domain context
@@ -95,48 +86,12 @@ automatically.
 
 ### Integration-Ready conftest.py
 
-For projects that test against both in-memory and real infrastructure:
+For projects that test against both in-memory and real infrastructure,
+`tests/conftest.py` picks the database from an environment variable:
 
 ```python
-# tests/conftest.py
-import os
-
-import pytest
-
-from protean.integrations.pytest import DomainFixture
-
-from myapp import domain
-
-
-@pytest.fixture(scope="session")
-def app_fixture():
-    db_provider = os.environ.get("TEST_DB", "memory")
-
-    if db_provider == "postgresql":
-        domain.config["databases"]["default"] = {
-            "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
-            "database_uri": os.environ["DATABASE_URL"],
-        }
-    elif db_provider == "sqlite":
-        domain.config["databases"]["default"] = {
-            "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
-            "database_uri": "sqlite:///test.db",
-        }
-    # Default: in-memory (no override needed)
-
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-
-    fixture = DomainFixture(domain)
-    fixture.setup()    # calls domain.init() + creates schema
-    yield fixture
-    fixture.teardown()  # drops schema
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():  # resets all data on exit
-        yield
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/integration_ready/conftest.py:conftest"
 ```
 
 `DomainFixture` handles everything: `setup()` calls `domain.init()` and
@@ -157,6 +112,14 @@ TEST_DB=postgresql DATABASE_URL=postgresql://localhost/myapp_test pytest tests/
 TEST_DB=sqlite pytest tests/
 ```
 
+A test that reads the provider back confirms the switch took effect, so a typo
+in `TEST_DB` fails the run instead of quietly falling back to memory:
+
+```python
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/integration_ready/test_provider.py:provider_check"
+```
+
 ## Common Fixture Patterns
 
 ### Per-Test Data Cleanup
@@ -168,14 +131,16 @@ brokers, and the event store after each test. If you use the recommended
 If you are not using `DomainFixture` and need manual cleanup:
 
 ```python
-@pytest.fixture(autouse=True)
-def clean_data():
-    yield
-    # Reset all adapter data after each test
-    for provider in domain.providers.values():
-        provider._data_reset()
-    for broker in domain.brokers.values():
-        broker._data_reset()
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/manual_cleanup/conftest.py:manual_cleanup"
+```
+
+Two tests that each expect an empty store show the cleanup works. Whichever
+runs second fails if data leaks between tests:
+
+```python
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/manual_cleanup/test_cleanup.py:tests"
 ```
 
 ### Repository Helper
@@ -183,27 +148,15 @@ def clean_data():
 Provide quick access to repositories for assertions:
 
 ```python
-from myapp import domain
-from myapp.models import User, Order
-
-
-@pytest.fixture
-def user_repo():
-    return domain.repository_for(User)
-
-
-@pytest.fixture
-def order_repo():
-    return domain.repository_for(Order)
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:repository_fixtures"
 ```
 
 Use them in tests:
 
 ```python
-def test_user_is_persisted(user_repo):
-    user_repo.add(User(name="Alice", email="alice@example.com"))
-    users = user_repo.query.all()
-    assert len(users.items) == 1
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:repository_usage"
 ```
 
 ### Shared BDD Steps
@@ -212,14 +165,8 @@ Steps that appear across multiple feature files belong in `conftest.py`.
 pytest-bdd discovers step definitions defined there automatically.
 
 ```python
-# tests/bdd/conftest.py
-from pytest_bdd import given
-
-
-@given("the domain is initialized")
-def domain_initialized():
-    """Background step — domain is already initialized by the fixture."""
-    pass
+# fragment
+--8<-- "guides/testing/application-tests/bdd/conftest.py:shared_steps"
 ```
 
 The domain is already initialized by the root `conftest.py` via
@@ -228,35 +175,8 @@ The domain is already initialized by the root `conftest.py` via
 Domain-specific shared steps go in that directory's `conftest.py`:
 
 ```python
-# tests/bdd/ordering/conftest.py
-from pytest_bdd import given, parsers
-
-from myapp import domain
-from myapp.models import Book, Customer, Inventory, Money
-
-
-@given(
-    parsers.parse('a customer "{name}"'),
-    target_fixture="customer",
-)
-def existing_customer(name):
-    customer = Customer(name=name)
-    domain.repository_for(Customer).add(customer)
-    return customer
-
-
-@given(
-    parsers.parse('a book "{title}" with {stock:d} copies in stock'),
-    target_fixture="book",
-)
-def book_in_stock(title, stock):
-    book = Book(
-        title=title, author="Test Author", price=Money(amount=15.99)
-    )
-    domain.repository_for(Book).add(book)
-    inventory = Inventory(book_id=book.id, title=title, quantity=stock)
-    domain.repository_for(Inventory).add(inventory)
-    return book
+# fragment
+--8<-- "guides/testing/application-tests/bdd/ordering/conftest.py:ordering_steps"
 ```
 
 These steps are available to all test modules under
@@ -275,6 +195,7 @@ Override specific configuration for a subset of tests using a separate
 `DomainFixture` in that directory's `conftest.py`:
 
 ```python
+# fragment
 # tests/integration/conftest.py
 import pytest
 
@@ -286,11 +207,11 @@ from myapp import domain
 @pytest.fixture(scope="session")
 def app_fixture():
     domain.config["databases"]["default"] = {
-        "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
+        "provider": "postgresql",
         "database_uri": "postgresql://postgres:postgres@localhost:5432/myapp_test",
     }
     domain.config["brokers"]["default"] = {
-        "provider": "protean.adapters.broker.redis.RedisBroker",
+        "provider": "redis",
         "URI": "redis://localhost:6379/0",
     }
     domain.config["event_processing"] = "sync"
@@ -318,14 +239,8 @@ teardown, and per-test data cleanup automatically.
 If your domain uses module-level counters or caches, reset them between tests:
 
 ```python
-counter = 0
-
-
-@pytest.fixture(autouse=True)
-def reset_counter():
-    global counter
-    counter = 0
-    yield
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:global_state"
 ```
 
 ## Test Organization Patterns
@@ -511,53 +426,15 @@ it sees whatever time you say. Restore it afterwards, or the frozen time leaks
 into every test that runs next:
 
 ```python
-# tests/conftest.py
-from datetime import UTC, datetime
-
-import pytest
-
-from myapp import domain
-
-
-class FrozenClock:
-    """A `Clock` is anything with a `now()` returning an aware UTC datetime."""
-
-    def __init__(self, moment: datetime) -> None:
-        self.moment = moment
-
-    def now(self) -> datetime:
-        return self.moment
-
-
-@pytest.fixture
-def frozen_clock():
-    original = domain.clock
-    domain.clock = FrozenClock(datetime(2030, 1, 1, tzinfo=UTC))
-    yield domain.clock
-    domain.clock = original
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:frozen_clock"
 ```
 
 A deadline test then states its intent directly, with nothing to race:
 
 ```python
-from datetime import timedelta
-
-from protean.utils.eventing import MessageHeaders
-
-
-def test_a_message_past_its_deadline_is_expired(frozen_clock):
-    headers = MessageHeaders(deadline=frozen_clock.now() - timedelta(seconds=1))
-
-    assert headers.is_expired()
-
-
-def test_time_passing_expires_it(frozen_clock):
-    headers = MessageHeaders(deadline=frozen_clock.now() + timedelta(hours=1))
-    assert not headers.is_expired()
-
-    frozen_clock.moment += timedelta(hours=2)  # move time, do not wait for it
-
-    assert headers.is_expired()
+# fragment
+--8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:deadline"
 ```
 
 The default is `SystemClock`, which returns `datetime.now(UTC)`, so a domain you
@@ -574,6 +451,7 @@ code moves; the clock is a seam the framework maintains.
 ### Don't Mock Domain Objects
 
 ```python
+# fragment
 # BAD: Mocking hides real behavior
 user = Mock(spec=User)
 user.status = "ACTIVE"
@@ -587,6 +465,7 @@ assert user.status == "ACTIVE"
 ### Don't Share State Between Tests
 
 ```python
+# fragment
 # BAD: Module-level state without cleanup
 users_created = []
 
@@ -610,6 +489,7 @@ Protean guarantees that fields, value objects, and event dispatch work
 correctly. Don't waste tests on behavior the framework already ensures:
 
 ```python
+# fragment
 # BAD: Testing that required=True works
 def test_string_required():
     with pytest.raises(ValidationError):

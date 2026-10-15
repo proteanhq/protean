@@ -8,9 +8,8 @@ full command processing pipeline (command handler, aggregate method,
 repository, unit of work, and event store) in three words:
 
 ```python
-from protean.testing import given
-
-order = given(Order, order_created, order_confirmed).process(initiate_payment)
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:three_words"
 ```
 
 *"Given an Order after order_created and order_confirmed, process
@@ -20,6 +19,15 @@ Every `.process()` call runs through the real pipeline (command handler,
 aggregate loading, event store writes) with no mocks. For testing
 non-event-sourced aggregates, see [Application Tests](./application-tests.md).
 
+The examples on this page test this event-sourced `Order`:
+
+??? example "The domain under test"
+
+    ```python
+    # fragment
+    --8<-- "guides/testing/event-sourcing-tests/ordering_es/__init__.py:domain"
+    ```
+
 ## The Three Words
 
 ### `given(AggregateCls, *events)`
@@ -28,6 +36,7 @@ Entry point. Pass the aggregate class and zero or more past domain events
 that constitute the aggregate's history:
 
 ```python
+# fragment
 given(Order)                                    # no history (create command)
 given(Order, order_created)                     # one history event
 given(Order, order_created, order_confirmed)    # multiple history events
@@ -39,7 +48,8 @@ Accumulate more history events. Maps to BDD "And given" steps. Returns self
 for chaining:
 
 ```python
-given(Order, order_created).after(order_confirmed).after(payment_initiated)
+# fragment
+given(Order).after(order_created).after(order_confirmed)
 ```
 
 ### `.process(command)`
@@ -49,6 +59,7 @@ event store with given events, then calls `domain.process(command)`. Returns
 self:
 
 ```python
+# fragment
 order = given(Order, order_created, order_confirmed).process(initiate_payment)
 ```
 
@@ -58,15 +69,8 @@ Call `.process()` multiple times to build up aggregate state through the real
 pipeline, no hand-crafted event fixtures needed:
 
 ```python
-order = (
-    given(Order)
-    .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
-    .process(ConfirmOrder(order_id=oid))
-    .process(InitiatePayment(order_id=oid, payment_id="pay-001"))
-)
-
-assert order.accepted
-assert order.status == "PAYMENT_PENDING"
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:chaining"
 ```
 
 Each `.process()` runs the command through the real pipeline. The event store
@@ -79,18 +83,8 @@ After chaining:
 - `.accepted` / `.rejected` reflects the **last** `.process()` call.
 
 ```python
-order = (
-    given(Order)
-    .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
-    .process(ConfirmOrder(order_id=oid))
-)
-
-# .events has only the last command's events
-assert OrderConfirmed in order.events
-assert OrderCreated not in order.events
-
-# .all_events has everything
-assert order.all_events.types == [OrderCreated, OrderConfirmed]
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:events_vs_all_events"
 ```
 
 ### When to Use Which Pattern
@@ -113,17 +107,15 @@ After `.process()`, the result object provides:
 Attribute access is proxied to the underlying aggregate:
 
 ```python
-assert order.status == "PAYMENT_PENDING"
-assert order.customer == "Alice"
-assert order.pricing.grand_total == 99.99  # deep access works
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:aggregate_state"
 ```
 
 ### Accepted or Rejected
 
 ```python
-assert order.accepted          # command processed without exception
-assert order.rejected          # command raised an exception
-assert order.rejection is None # the exception object, or None
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:accepted_or_rejected"
 ```
 
 ### Rejection Messages
@@ -132,8 +124,8 @@ For cleaner error assertions, use `.rejection_messages`, a flat list of error st
 from the exception:
 
 ```python
-assert order.rejected
-assert "Order must be confirmed before payment" in order.rejection_messages
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:rejection_messages"
 ```
 
 This works with `ValidationError` (flattens the `messages` dict) and other
@@ -146,38 +138,8 @@ New events raised by the command are available via `.events`. The `EventLog`
 class uses Python's own vocabulary:
 
 ```python
-# Presence check
-assert PaymentPending in order.events
-
-# Truthiness
-assert order.events          # truthy when non-empty
-assert not order.events      # falsy when empty
-
-# Access by type (first match; raises KeyError if missing)
-assert order.events[PaymentPending].payment_id == "pay-001"
-
-# Safe access (returns None if missing)
-assert order.events.get(PaymentFailed) is None
-
-# First and last event
-assert order.events.first is order.events[0]
-assert order.events.last is order.events[-1]
-
-# Ordered type list
-assert order.events.types == [PaymentPending]
-
-# Count
-assert len(order.events) == 1
-
-# All events of a type
-assert len(order.events.of_type(ItemAdded)) == 3
-
-# Iteration
-for event in order.events:
-    print(event)
-
-# Access by index
-assert order.events[0].payment_id == "pay-001"
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:event_log"
 ```
 
 ### Raw Aggregate
@@ -185,7 +147,8 @@ assert order.events[0].payment_id == "pay-001"
 If you need the aggregate instance directly:
 
 ```python
-assert isinstance(order.aggregate, Order)
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:raw_aggregate"
 ```
 
 ## Complete Examples
@@ -197,18 +160,8 @@ history events. The command handler must return the aggregate identifier so
 that the DSL can locate the aggregate in the event store:
 
 ```python
-from protean.testing import given
-
-
-def test_create_order(test_domain):
-    order = given(Order).process(
-        CreateOrder(order_id="ord-1", customer="Alice", amount=99.99)
-    )
-
-    assert order.accepted
-    assert OrderCreated in order.events
-    assert order.status == "CREATED"
-    assert order.customer == "Alice"
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:create_command"
 ```
 
 ### Testing a Command with History
@@ -217,14 +170,8 @@ Seed the aggregate's history and then process a command that depends on
 that state:
 
 ```python
-def test_confirm_order(order_created):
-    order = given(Order, order_created).process(
-        ConfirmOrder(order_id=order_created.order_id)
-    )
-
-    assert order.accepted
-    assert OrderConfirmed in order.events
-    assert order.status == "CONFIRMED"
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:command_with_history"
 ```
 
 ### Testing Command Rejection
@@ -233,13 +180,8 @@ When a command violates a business rule, the exception is captured and the
 aggregate reflects the pre-command state:
 
 ```python
-def test_cannot_pay_unconfirmed_order(order_created, initiate_payment):
-    order = given(Order, order_created).process(initiate_payment)
-
-    assert order.rejected
-    assert "Order must be confirmed" in order.rejection_messages
-    assert not order.events
-    assert order.status == "CREATED"  # unchanged
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:rejection"
 ```
 
 ### Testing with Multiple History Events
@@ -247,18 +189,8 @@ def test_cannot_pay_unconfirmed_order(order_created, initiate_payment):
 Use `.after()` or pass multiple events to `given()`:
 
 ```python
-def test_payment_on_confirmed_order(
-    order_created, order_confirmed, initiate_payment
-):
-    order = (
-        given(Order, order_created)
-        .after(order_confirmed)
-        .process(initiate_payment)
-    )
-
-    assert order.accepted
-    assert PaymentPending in order.events
-    assert order.events[PaymentPending].payment_id == "pay-001"
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:multiple_history"
 ```
 
 ### Testing Event Attributes
@@ -266,14 +198,8 @@ def test_payment_on_confirmed_order(
 Access event fields through the `EventLog`:
 
 ```python
-def test_payment_event_carries_payment_id(order_created, order_confirmed):
-    order = given(Order, order_created, order_confirmed).process(
-        InitiatePayment(order_id=order_created.order_id, payment_id="pay-42")
-    )
-
-    event = order.events[PaymentPending]
-    assert event.payment_id == "pay-42"
-    assert event.order_id == order_created.order_id
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:event_attributes"
 ```
 
 ### Testing a Full Lifecycle
@@ -281,20 +207,8 @@ def test_payment_event_carries_payment_id(order_created, order_confirmed):
 Use multi-command chaining to test a complete user journey:
 
 ```python
-def test_order_lifecycle():
-    oid = str(uuid4())
-    order = (
-        given(Order)
-        .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
-        .process(ConfirmOrder(order_id=oid))
-        .process(InitiatePayment(order_id=oid, payment_id="pay-001"))
-    )
-
-    assert order.accepted
-    assert order.status == "PAYMENT_PENDING"
-    assert order.all_events.types == [
-        OrderCreated, OrderConfirmed, PaymentPending
-    ]
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:lifecycle"
 ```
 
 ### Testing Rejection Mid-Chain
@@ -303,17 +217,8 @@ When a chained command fails, the aggregate reflects the state from
 prior successful commands:
 
 ```python
-def test_cannot_pay_without_confirming():
-    oid = str(uuid4())
-    order = (
-        given(Order)
-        .process(CreateOrder(order_id=oid, customer="Alice", amount=99.99))
-        .process(InitiatePayment(order_id=oid, payment_id="pay-001"))
-    )
-
-    assert order.rejected
-    assert "must be confirmed" in order.rejection_messages
-    assert order.status == "CREATED"  # reflects state after CreateOrder
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/001.py:rejection_mid_chain"
 ```
 
 ## Test Setup
@@ -322,68 +227,23 @@ def test_cannot_pay_without_confirming():
 
 Event-sourced tests use the same `DomainFixture` setup as other Protean
 tests. The domain must have `event_processing` and `command_processing`
-set to `"sync"`:
+set to `"sync"`. In your project these fixtures go in `tests/conftest.py`,
+and they import `domain` from your application's package (`ordering_es`
+here):
 
 ```python
-# tests/conftest.py
-import pytest
-
-from protean.integrations.pytest import DomainFixture
-
-from myapp import domain
-
-
-@pytest.fixture(scope="session")
-def app_fixture():
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-
-    fixture = DomainFixture(domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():
-        yield
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/conftest.py:conftest"
 ```
 
 ### Event Fixtures
 
-Define reusable event fixtures for your aggregate's history:
+Define reusable event fixtures for your aggregate's history in the same
+`conftest.py`, so every test module can use them:
 
 ```python
-# tests/conftest.py (or tests/ordering/conftest.py)
-from uuid import uuid4
-
-from myapp.events import OrderCreated, OrderConfirmed
-from myapp.commands import InitiatePayment
-
-
-@pytest.fixture
-def order_id():
-    return str(uuid4())
-
-
-@pytest.fixture
-def order_created(order_id):
-    return OrderCreated(
-        order_id=order_id, customer="Alice", amount=99.99
-    )
-
-
-@pytest.fixture
-def order_confirmed(order_id):
-    return OrderConfirmed(order_id=order_id)
-
-
-@pytest.fixture
-def initiate_payment(order_id):
-    return InitiatePayment(
-        order_id=order_id, payment_id="pay-001"
-    )
+# fragment
+--8<-- "guides/testing/event-sourcing-tests/conftest.py:event_fixtures"
 ```
 
 ## Design Notes

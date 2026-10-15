@@ -1,11 +1,22 @@
-"""Tests for ``load_example``, the helper the docs_src tests load examples with."""
+"""Tests for the helpers the docs_src tests load and run examples with."""
 
+import re
+import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 import pytest
 
 from protean import Domain
-from tests.docs.support import load_example, module_name_for
+from tests.docs import support
+from tests.docs.support import (
+    REPO_ROOT,
+    load_example,
+    module_name_for,
+    outcome_counts,
+    run_example_tests,
+)
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -43,3 +54,200 @@ def test_a_failing_example_is_not_left_in_sys_modules(tmp_path):
         load_example("broken.py", root=tmp_path)
 
     assert module_name_for("broken.py") not in sys.modules
+
+
+# --- run_example_tests and outcome_counts --------------------------------------
+
+
+def _example(tmp_path, source):
+    (tmp_path / "test_example.py").write_text(source)
+    return "test_example.py"
+
+
+def test_a_passing_example_exits_zero_and_reports_its_count(tmp_path):
+    path = _example(tmp_path, "def test_one():\n    assert 1 + 1 == 2\n")
+
+    result = run_example_tests(path, root=tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert outcome_counts(result) == {"passed": 1}
+
+
+def test_a_failing_example_names_the_failing_test(tmp_path):
+    path = _example(
+        tmp_path,
+        "def test_good():\n    pass\n\n\ndef test_bad():\n    assert 1 == 2\n",
+    )
+
+    result = run_example_tests(path, root=tmp_path)
+
+    assert result.returncode == 1
+    assert " test_bad " in result.stdout
+    assert " test_good " not in result.stdout
+    assert outcome_counts(result) == {"failed": 1, "passed": 1}
+
+
+def test_an_example_without_tests_exits_five(tmp_path):
+    path = _example(tmp_path, "x = 1\n")
+
+    result = run_example_tests(path, root=tmp_path)
+
+    assert result.returncode == 5
+
+
+def test_env_reaches_the_child(tmp_path):
+    path = _example(
+        tmp_path,
+        "import os\n\n\ndef test_env():\n"
+        "    assert os.environ['DOCS_EXAMPLE_FLAG'] == 'on'\n",
+    )
+
+    result = run_example_tests(path, root=tmp_path, env={"DOCS_EXAMPLE_FLAG": "on"})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_example_root_is_importable_in_the_child(tmp_path):
+    (tmp_path / "helper.py").write_text("VALUE = 42\n")
+    path = _example(
+        tmp_path,
+        "from helper import VALUE\n\n\ndef test_v():\n    assert VALUE == 42\n",
+    )
+
+    result = run_example_tests(path, root=tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_package_parent_is_importable_in_the_child(tmp_path):
+    package = tmp_path / "guides" / "shared" / "shop"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("NAME = 'shop'\n")
+    path = _example(
+        tmp_path,
+        "from shop import NAME\n\n\ndef test_name():\n    assert NAME == 'shop'\n",
+    )
+
+    result = run_example_tests(path, root=tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_repo_pytest_config_does_not_apply(tmp_path):
+    # A config above the example turns on --doctest-modules, as the repo's
+    # pyproject.toml does for a docs_src example. Without the empty -c config
+    # pytest would find it, collect this docstring and fail it.
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.pytest.ini_options]\naddopts = "--doctest-modules"\n'
+    )
+    path = _example(
+        tmp_path,
+        '"""\n>>> 1 + 1\n3\n"""\n\n\ndef test_one():\n    pass\n',
+    )
+
+    result = run_example_tests(path, root=tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert outcome_counts(result) == {"passed": 1}
+
+
+def test_files_the_example_writes_land_outside_the_repo(tmp_path):
+    path = _example(
+        tmp_path,
+        "from pathlib import Path\n\n\ndef test_write():\n"
+        "    Path('docs_example_output.txt').write_text('x')\n"
+        "    print('cwd=' + str(Path.cwd()))\n",
+    )
+
+    result = run_example_tests(path, root=tmp_path, args=["-s"])
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    cwd = Path(re.search(r"cwd=(\S+)", result.stdout).group(1))
+    assert cwd.is_relative_to(Path(tempfile.gettempdir()).resolve())
+    assert not cwd.exists()
+    assert not (REPO_ROOT / "docs_example_output.txt").exists()
+    assert not (tmp_path / "docs_example_output.txt").exists()
+    assert not (tmp_path / "__pycache__").exists()
+    assert not (tmp_path / ".pytest_cache").exists()
+
+
+def test_pytest_settings_in_the_parent_env_do_not_reach_the_child(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-W error")
+    monkeypatch.setenv("PROTEAN_ENV", "docs-parent")
+    path = _example(
+        tmp_path,
+        "import os\nimport warnings\n\n\ndef test_env():\n"
+        "    warnings.warn('harmless')\n"
+        "    assert 'PYTEST_ADDOPTS' not in os.environ\n"
+        "    assert os.environ.get('PROTEAN_ENV') != 'docs-parent'\n",
+    )
+
+    result = run_example_tests(path, root=tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert outcome_counts(result) == {"passed": 1}
+
+
+def test_env_can_pass_a_pytest_setting_on(tmp_path):
+    path = _example(
+        tmp_path,
+        "import os\n\n\ndef test_env():\n"
+        "    assert os.environ['PROTEAN_ENV'] == 'chosen'\n",
+    )
+
+    result = run_example_tests(path, root=tmp_path, env={"PROTEAN_ENV": "chosen"})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_run_that_times_out_reports_its_output(tmp_path, monkeypatch):
+    monkeypatch.setattr(support, "EXAMPLE_TESTS_TIMEOUT", 2)
+    path = _example(tmp_path, "def test_slow():\n    pass\n")
+    timeouts = []
+
+    def time_out(command, *, timeout, **kwargs):
+        timeouts.append(timeout)
+        raise subprocess.TimeoutExpired(
+            command, timeout, output=b"started slow test\n", stderr=b"warning\n"
+        )
+
+    monkeypatch.setattr(support.subprocess, "run", time_out)
+
+    with pytest.raises(TimeoutError, match="ran longer than 2s") as excinfo:
+        run_example_tests(path, root=tmp_path)
+
+    assert timeouts == [2]
+    assert "started slow test\nwarning" in str(excinfo.value)
+
+
+def test_a_missing_example_to_run_raises(tmp_path):
+    with pytest.raises(FileNotFoundError, match="no docs_src example at nope.py"):
+        run_example_tests("nope.py", root=tmp_path)
+
+
+def _done(stdout):
+    return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout)
+
+
+def test_outcome_counts_reads_the_last_summary_line():
+    stdout = (
+        "collected 6 items\n\n"
+        "=== 3 passed, 1 failed, 1 skipped, 2 errors in 0.12s ===\n\n"
+    )
+
+    assert outcome_counts(_done(stdout)) == {
+        "passed": 3,
+        "failed": 1,
+        "skipped": 1,
+        "errors": 2,
+    }
+
+
+def test_outcome_counts_folds_a_single_error_into_errors():
+    assert outcome_counts(_done("=== 1 error in 0.01s ===\n")) == {"errors": 1}
+
+
+def test_outcome_counts_of_no_output_is_empty():
+    assert outcome_counts(_done("")) == {}

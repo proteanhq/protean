@@ -12,9 +12,10 @@ Like [application tests](./application-tests.md), we recommend using
 here. The only difference is the domain is configured with real infrastructure
 instead of in-memory adapters.
 
-Integration tests reuse the same feature files and step definitions as
-[application tests](./application-tests.md), but swap in real adapters
-(PostgreSQL, Redis, etc.) via configuration overrides. Use pytest markers to
+Integration tests are written the same way as
+[application tests](./application-tests.md), with feature files and step
+definitions, but they swap in real adapters (PostgreSQL, Redis, etc.) via
+configuration overrides. Use pytest markers to
 keep them separate from your fast in-memory suite.
 
 ## Configuring for Real Infrastructure
@@ -24,6 +25,7 @@ your database, broker, or event store settings in a dedicated `conftest.py`
 and use `DomainFixture` to manage the lifecycle:
 
 ```python
+# fragment
 # tests/integration/conftest.py
 import pytest
 from pytest_bdd import given
@@ -36,11 +38,11 @@ from myapp import domain
 @pytest.fixture(scope="session")
 def app_fixture():
     domain.config["databases"]["default"] = {
-        "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
+        "provider": "postgresql",
         "database_uri": "postgresql://postgres:postgres@localhost:5432/myapp_test",
     }
     domain.config["brokers"]["default"] = {
-        "provider": "protean.adapters.broker.redis.RedisBroker",
+        "provider": "redis",
         "URI": "redis://localhost:6379/0",
     }
     domain.config["event_processing"] = "sync"
@@ -74,50 +76,43 @@ def domain_initialized():
 
 For integration tests that exercise async message flows (event handlers,
 projectors, process managers), use the server's **test mode**. It processes
-all available messages and cascading events, then exits:
+all available messages and cascading events, then exits.
+
+The examples in this section test the domain below. Placing an order raises
+`OrderPlaced`. An event handler reserves stock and raises `InventoryReserved`,
+and a second handler marks the order shipped. The fixtures set both processing
+modes to `"async"`, so these handlers run only when the engine runs:
+
+??? example "The domain and fixtures under test"
+
+    ```python
+    # fragment
+    --8<-- "guides/testing/integration-tests/fulfillment/__init__.py:domain"
+    ```
+
+    ```python
+    # fragment
+    --8<-- "guides/testing/integration-tests/conftest.py:conftest"
+    ```
+
+    The tests read an order back with a small helper in the test module:
+
+    ```python
+    # fragment
+    --8<-- "guides/testing/integration-tests/001.py:get_order"
+    ```
 
 ```python
-from protean.server import Engine
-
-def test_order_creates_inventory_reservation():
-    """Test that creating an order reserves inventory."""
-    # Arrange: Create order (raises events)
-    with domain.domain_context():
-        order = Order.create(
-            customer_id="123",
-            items=[OrderItem(product_id="ABC", quantity=5)]
-        )
-        domain.repository_for(Order).add(order)
-
-    # Act: Process events in test mode
-    engine = Engine(domain, test_mode=True)
-    engine.run()
-
-    # Assert: Verify inventory was reserved
-    with domain.domain_context():
-        reservation = domain.repository_for(Reservation).get_by_order(order.id)
-        assert reservation is not None
-        assert reservation.quantity == 5
+# fragment
+--8<-- "guides/testing/integration-tests/001.py:engine_test_mode"
 ```
 
-Test mode handles cascading events automatically, if processing one event
+Test mode handles cascading events automatically. If processing one event
 raises another, the engine continues until all chains are complete:
 
 ```python
-def test_order_fulfillment_flow():
-    """Test complete order fulfillment flow."""
-    # Order created -> Inventory reserved -> Payment processed -> Order shipped
-    with domain.domain_context():
-        order = Order.create(...)
-        domain.repository_for(Order).add(order)
-
-    # Process all cascading events
-    engine = Engine(domain, test_mode=True)
-    engine.run()
-
-    with domain.domain_context():
-        order = domain.repository_for(Order).get(order.id)
-        assert order.status == "shipped"
+# fragment
+--8<-- "guides/testing/integration-tests/001.py:cascade"
 ```
 
 You can also invoke test mode from the CLI:
@@ -143,20 +138,8 @@ inline; in async mode it drains a bounded test-mode engine before returning. It
 returns a `ProcessResult`:
 
 ```python
-from protean.testing import process_and_wait
-
-def test_placing_an_order_reserves_inventory():
-    outcome = process_and_wait(
-        PlaceOrder(order_id="o1", product_id="ABC", qty=5), domain
-    )
-
-    assert outcome.succeeded
-    assert OrderPlaced in outcome.events
-    assert outcome.events[OrderPlaced].order_id == "o1"
-
-    with domain.domain_context():
-        reservation = domain.repository_for(Reservation).get("o1")
-        assert reservation.quantity == 5
+# fragment
+--8<-- "guides/testing/integration-tests/001.py:process_and_wait"
 ```
 
 A `ProcessResult` exposes exactly what an integration test asserts on:
@@ -170,11 +153,8 @@ A `ProcessResult` exposes exactly what an integration test asserts on:
 `outcome.events` is an `EventLog` with Pythonic access by type or index:
 
 ```python
-assert OrderPlaced in outcome.events                 # membership by type
-assert outcome.events[OrderPlaced].order_id == "o1"  # first event of a type
-assert outcome.events.get(OrderCancelled) is None    # safe access, no KeyError
-assert outcome.events.types == [OrderPlaced, InventoryReserved]
-assert len(outcome.events) == 2
+# fragment
+--8<-- "guides/testing/integration-tests/001.py:event_log"
 ```
 
 ### Waiting for a condition with `drain`
@@ -184,15 +164,8 @@ When you drive the flow yourself, or need to wait for a later cascade to settle,
 the copy-pasted `for _ in range(N): Engine(...).run()` loop:
 
 ```python
-from protean.testing import drain
-
-def test_order_ships_after_payment():
-    process_and_wait(PlaceOrder(order_id="o1", product_id="ABC", qty=5), domain)
-    process_and_wait(ConfirmPayment(order_id="o1", amount=50.0), domain)
-
-    drain(domain, until=lambda: get_order("o1").status == "shipped")
-
-    assert get_order("o1").status == "shipped"
+# fragment
+--8<-- "guides/testing/integration-tests/001.py:drain"
 ```
 
 `drain` is bounded by `max_cycles` (default 5) so a never-satisfied `until`
@@ -210,122 +183,30 @@ verifying that every layer works together through real infrastructure.
 ### Command Through to Projection
 
 ```gherkin
-# tests/integration/features/order_flow.feature
-@integration
-Feature: End-to-End Order Flow
-    Verify the complete order lifecycle from book creation
-    through order fulfillment, including event-driven side effects.
-
-    Background:
-        Given the domain is initialized
-
-    Scenario: Full order lifecycle
-        Given a book "Dune" is added to the catalog at 15.99
-        And the book has 10 copies in stock
-        And a customer "Alice" exists
-        When "Alice" places an order for 2 copies of "Dune"
-        And the order is fulfilled
-        Then the order status should be "CONFIRMED"
-        And "Dune" should have 8 copies in stock
-        And the catalog projection should show 2 copies sold for "Dune"
-
-    Scenario: Order updates customer history across aggregates
-        Given a book "1984" is added to the catalog at 11.99
-        And the book has 5 copies in stock
-        And a customer "Bob" exists
-        When "Bob" places an order for 1 copy of "1984"
-        Then "Bob" should have 1 order in their history
+--8<-- "guides/testing/integration-tests/integration/features/order_flow.feature:feature"
 ```
 
 ### Persistence Round-Trip
 
 ```gherkin
-# tests/integration/features/persistence.feature
-@integration
-Feature: Persistence
-    Verify that aggregates survive a round-trip through
-    the real database.
-
-    Background:
-        Given the domain is initialized
-
-    Scenario: Book survives persistence round-trip
-        Given a book "The Great Gatsby" by "F. Scott Fitzgerald" at 12.99
-        When the book is persisted and reloaded
-        Then the reloaded book should have title "The Great Gatsby"
-        And the reloaded book should have price 12.99
-
-    Scenario: Updated aggregate is persisted correctly
-        Given a book "Dune" by "Frank Herbert" at 15.99
-        And the book is persisted
-        When the book price is updated to 19.99
-        And the book is persisted and reloaded
-        Then the reloaded book should have price 19.99
+--8<-- "guides/testing/integration-tests/integration/features/persistence.feature"
 ```
 
 ## Step Definitions for Integration Tests
 
-Step definitions are the same as application tests. They import your domain and
-use `domain.process()` and `domain.repository_for()`:
+Step definitions are written the same way as in application tests. They import
+your domain and use `domain.process()` and `domain.repository_for()`:
 
 ```python
-# tests/integration/test_order_flow.py
-from pytest_bdd import scenarios, given, when, then, parsers
+# fragment
+--8<-- "guides/testing/integration-tests/integration/test_order_flow.py:steps"
+```
 
-from myapp import domain
-from myapp.commands import AddBook, PlaceOrder
-from myapp.models import Book, BookCatalog, Customer, Inventory, Order
+The persistence feature's steps go in `tests/integration/test_persistence.py`:
 
-scenarios("features/order_flow.feature")
-
-
-@given(
-    parsers.parse('a book "{title}" is added to the catalog at {price:f}'),
-    target_fixture="book_id",
-)
-def add_book(title, price):
-    return domain.process(
-        AddBook(title=title, author="Test Author", price_amount=price)
-    )
-
-
-@given(
-    parsers.parse("the book has {quantity:d} copies in stock"),
-)
-def stock_book(book_id, quantity):
-    inventory = Inventory(book_id=book_id, title="", quantity=quantity)
-    domain.repository_for(Inventory).add(inventory)
-
-
-@given(
-    parsers.parse('a customer "{name}" exists'),
-    target_fixture="customer",
-)
-def existing_customer(name):
-    customer = Customer(name=name)
-    domain.repository_for(Customer).add(customer)
-    return customer
-
-
-@when(
-    parsers.parse('"{name}" places an order for {qty:d} copies of "{title}"'),
-    target_fixture="order",
-)
-def place_order(customer, book_id, name, qty, title):
-    domain.process(
-        PlaceOrder(
-            customer_id=customer.id,
-            items=[{"book_id": book_id, "quantity": qty}],
-        )
-    )
-    orders = domain.repository_for(Order).query.all()
-    return orders.items[0]
-
-
-@then(parsers.parse('the catalog projection should show {sold:d} copies sold for "{title}"'))
-def check_projection(book_id, sold, title):
-    catalog = domain.repository_for(BookCatalog).get(book_id)
-    assert catalog.copies_sold == sold
+```python
+# fragment
+--8<-- "guides/testing/integration-tests/integration/test_persistence.py:steps"
 ```
 
 ## Separating Integration Tests
@@ -387,48 +268,13 @@ tests/
     complete setup.
 
 For projects that need finer-grained control or want to switch individual
-adapters independently, use environment variables to switch configuration:
+adapters independently, use environment variables to switch configuration.
+This fixture goes in `tests/integration/conftest.py`, and `domain` is your
+application's domain (`from myapp import domain`):
 
 ```python
-# tests/integration/conftest.py
-import os
-
-import pytest
-
-from protean.integrations.pytest import DomainFixture
-
-from myapp import domain
-
-
-@pytest.fixture(scope="session")
-def app_fixture():
-    db_provider = os.environ.get("TEST_DB", "memory")
-
-    if db_provider == "postgresql":
-        domain.config["databases"]["default"] = {
-            "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
-            "database_uri": os.environ["DATABASE_URL"],
-        }
-    elif db_provider == "sqlite":
-        domain.config["databases"]["default"] = {
-            "provider": "protean.adapters.repository.sqlalchemy.SAProvider",
-            "database_uri": "sqlite:///test.db",
-        }
-    # Default: in-memory (no override needed)
-
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-
-    fixture = DomainFixture(domain)
-    fixture.setup()    # domain.init() + create schema
-    yield fixture
-    fixture.teardown()  # drop schema
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():  # resets all data on exit
-        yield
+# fragment
+--8<-- "guides/testing/integration-tests/integration/conftest.py:conftest"
 ```
 
 Then switch adapters from the command line:
@@ -444,8 +290,9 @@ TEST_DB=postgresql DATABASE_URL=postgresql://localhost/myapp_test pytest tests/i
 TEST_DB=sqlite pytest tests/integration/
 ```
 
-This lets the same feature files and step definitions run against any adapter.
-The domain logic is identical, only the infrastructure changes.
+The integration feature files and step definitions then run unchanged against
+whichever adapter `TEST_DB` names. The domain logic is identical, only the
+infrastructure changes.
 
 ## Per-Test Data Cleanup
 
