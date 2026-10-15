@@ -1,5 +1,4 @@
 import threading
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
@@ -9,6 +8,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.exceptions import ExpectedVersionError
 from protean.port.event_store import BaseEventStore
+from protean.utils import StdlibDatetime
 from protean.utils.eventing import Metadata
 from protean.utils.globals import _domain_now, current_domain
 
@@ -29,7 +29,7 @@ class MemoryMessage(BaseAggregate):
     position: int | None = None
 
     # Message creation time
-    time: datetime | None = None
+    time: StdlibDatetime | None = None
 
     # Unique ID of the message
     id: str = Field(default_factory=lambda: str(uuid4()))

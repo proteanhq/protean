@@ -12,7 +12,7 @@ import keyword
 import logging
 import types
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from enum import Enum, StrEnum
 from typing import (
     TYPE_CHECKING,
@@ -28,9 +28,10 @@ from typing import (
 )
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, BeforeValidator
+from pydantic import AfterValidator, BaseModel, BeforeValidator
 from pydantic import Field as PydanticField
 from pydantic.fields import FieldInfo
+from pydantic_core import TzInfo
 
 from protean._deprecation import warn_from_registry
 from protean.exceptions import ConfigurationError
@@ -90,6 +91,25 @@ def ensure_utc_aware(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=UTC)
     return dt
+
+
+def _stdlib_timezone(v: Any) -> Any:
+    """Replace pydantic-core's ``TzInfo`` on a parsed datetime with ``datetime.timezone``.
+
+    Pydantic parses an offset string such as ``"...+05:30"`` or ``"...Z"`` into a
+    datetime whose ``tzinfo`` is pydantic-core's own ``TzInfo``. On Python 3.11,
+    freeing one of those while the interpreter tears its modules down can crash
+    the process with SIGSEGV inside pydantic-core, and a domain held in a module
+    global keeps its stored messages alive until then. A ``datetime.timezone``
+    with the same offset is the same instant and has no such cleanup.
+    """
+    if isinstance(v, datetime) and isinstance(v.tzinfo, TzInfo):
+        return v.replace(tzinfo=timezone(cast(timedelta, v.utcoffset())))
+    return v
+
+
+StdlibDatetime = Annotated[datetime, AfterValidator(_stdlib_timezone)]
+"""A ``datetime`` field type whose parsed values carry a stdlib ``timezone``."""
 
 
 class _TypeMatcher:

@@ -40,7 +40,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index
 from protean.core.repository import BaseRepository
 from protean.fields import Auto
-from protean.utils import fqn
+from protean.utils import StdlibDatetime, fqn
 from protean.utils.globals import current_domain
 from protean.utils.query import Q
 
@@ -64,7 +64,7 @@ class ProcessedMessage(BaseAggregate):
     # Out of scope for the injectable clock (issue 9.1.7): a default_factory has
     # no ``now`` argument and this is a creation timestamp, not a time-boundary
     # comparison. Left as real UTC deliberately (same class as ``Outbox.created_at``).
-    processed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    processed_at: StdlibDatetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # On a relational provider the composite unique index is the concurrency
