@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from protean.integrations.pytest import DomainFixture
 
 
 def pytest_collection_modifyitems(config, items):
@@ -22,8 +23,8 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def bootstrap_domain():
-    """Initialise the domain and activate its context for the whole session.
+def domain_fixture():
+    """Set up the domain once for the whole session, and drop its schema at the end.
 
     This is a session-scoped autouse fixture, not ``pytest_sessionstart``, on
     purpose. ``pytest_sessionstart`` in a nested ``conftest.py`` only fires when
@@ -32,38 +33,25 @@ def bootstrap_domain():
     and every test would fail with "no domain context". An autouse fixture runs
     for any invocation that collects a test under this package.
 
-    Protean's pytest plugin defaults ``PROTEAN_ENV`` to ``test`` before
-    collection (without overriding an already-set value), so domain modules
-    read the right config when they are imported.
+    ``DomainFixture.setup()`` initialises the domain and creates the database
+    tables, so a project scaffolded with any database choice runs its tests on
+    the first try. ``teardown()`` drops them again.
+
+    The domain loads its config when it is constructed. Protean's pytest plugin
+    defaults ``PROTEAN_ENV`` to ``test`` before collection (without overriding
+    an already-set value), so the domain module reads the right config when it
+    is imported.
     """
     from {{ package_name }}.domain import {{ domain_name }} as domain
 
-    domain.config = domain.load_config()
-    domain.init()
-    with domain.domain_context():
-        # Create the database tables the read-side projection needs. This is a
-        # no-op for the in-memory provider and idempotent for real databases, so
-        # a project scaffolded with any database choice runs its tests on the
-        # first try. It builds provider models, which read the active domain, so
-        # it must run inside the context above.
-        domain.setup_database()
-        yield
+    fixture = DomainFixture(domain)
+    fixture.setup()
+    yield fixture
+    fixture.teardown()
 
 
 @pytest.fixture(autouse=True)
-def run_around_tests():
-    """Fixture to automatically cleanup infrastructure after every test"""
-    yield
-
-    from {{ package_name }}.domain import {{ domain_name }} as domain
-
-    # Clear all databases
-    for provider in domain.providers.values():
-        provider._data_reset()
-
-    # Clear all brokers
-    for broker in domain.brokers.values():
-        broker._data_reset()
-
-    # Drain event stores
-    domain.event_store.store._data_reset()
+def _domain_context(domain_fixture):
+    """Run each test in a fresh domain context, and reset all data after it."""
+    with domain_fixture.domain_context():
+        yield

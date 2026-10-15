@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import tomllib
@@ -211,6 +212,110 @@ class TestGeneratedProjectStarts:
             "An opt-out project must still ship at least one passing test so "
             f"`pytest` does not exit 5 on nothing:\n{completed.stdout}"
         )
+
+    @pytest.mark.parametrize(
+        ("label", "extra"),
+        [
+            ("memory database", []),
+            ("sqlite database", ["-d", "database=sqlite"]),
+        ],
+        # Ids must not be a bare provider keyword; see
+        # test_generated_test_suite_runs_and_passes.
+        ids=["memory database", "sqlite database"],
+    )
+    def test_generated_tests_do_not_see_each_others_data(self, tmp_path, label, extra):
+        """Data one generated test writes is gone before the next test runs.
+
+        The first test persists an aggregate, the second runs after it in file
+        order and requires the repository to be empty. It passes only if the
+        generated conftest resets the stores after every test.
+        """
+        project = _generate(tmp_path, extra)
+        (
+            project / "tests" / "scaffolded" / "application" / "test_isolation.py"
+        ).write_text(
+            "from scaffolded.domain import scaffolded as domain\n"
+            "from scaffolded.example.aggregate import Example\n"
+            "\n"
+            "\n"
+            "def test_1_writes_an_example():\n"
+            "    example = Example.create(name='Leaky')\n"
+            "    domain.repository_for(Example).add(example)\n"
+            "    assert domain.repository_for(Example).get(example.id).name == 'Leaky'\n"
+            "\n"
+            "\n"
+            "def test_2_sees_no_example():\n"
+            "    assert domain.repository_for(Example).query.all().total == 0\n",
+            encoding="utf-8",
+        )
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "tests/scaffolded/application/test_isolation.py",
+            ],
+            cwd=project,
+            env=_subprocess_env(project),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert completed.returncode == 0, (
+            f"Generated tests ({label}) leak data into each other:\n"
+            f"{completed.stdout}\n{completed.stderr}"
+        )
+        assert re.search(r"\b2 passed\b", completed.stdout), completed.stdout
+
+    def test_generated_suite_drops_the_schema_at_session_end(self, tmp_path):
+        """The generated session fixture drops the tables it created.
+
+        The sqlite file the scaffold's `domain.toml` points at holds the
+        example tables while the suite runs. After the session ends, none of
+        them is left behind.
+        """
+        project = _generate(tmp_path, ["-d", "database=sqlite"])
+        db_file = project / "scaffolded.db"
+
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "tests"],
+            cwd=project,
+            env=_subprocess_env(project),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+
+        assert db_file.exists(), "the suite did not use the scaffold's sqlite file"
+        with sqlite3.connect(db_file) as conn:
+            tables = [
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            ]
+        assert tables == [], f"tables left after the session: {tables}"
+
+    def test_generated_conftest_uses_domain_fixture(self, tmp_path):
+        """The rendered conftest uses the documented DomainFixture recipe."""
+        project = _generate(tmp_path, [])
+        tests_dir = project / "tests" / "scaffolded"
+        conftest = (tests_dir / "conftest.py").read_text(encoding="utf-8")
+
+        assert "from protean.integrations.pytest import DomainFixture" in conftest
+        for leftover in ("load_config(", "run_around_tests", "_data_reset("):
+            assert leftover not in conftest, (
+                f"the generated conftest still carries {leftover!r}"
+            )
+
+        example_tests = (tests_dir / "application" / "test_example.py").read_text(
+            encoding="utf-8"
+        )
+        assert "bootstrap_domain" not in example_tests
 
     def test_example_package_init_has_no_submodule_imports(self, tmp_path):
         """The rendered example `__init__.py` must stay side-effect free.

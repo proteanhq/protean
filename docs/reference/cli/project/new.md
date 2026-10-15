@@ -162,7 +162,7 @@ commands with their handlers in capability files.
 tests/
 ├── README.md
 └── <package_name>/
-    ├── conftest.py         # Initialises the domain for the test session
+    ├── conftest.py         # Sets up the domain with DomainFixture
     ├── test_smoke.py       # Always generated: asserts the domain boots
     ├── domain/            # Domain logic tests
     │   └── __init__.py

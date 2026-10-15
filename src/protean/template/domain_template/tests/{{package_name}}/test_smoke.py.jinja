@@ -10,5 +10,5 @@ from protean import current_domain
 
 
 def test_domain_boots():
-    """The session fixture initialises the domain and activates its context."""
+    """The fixtures in ``conftest.py`` set up the domain and activate its context."""
     assert current_domain.name == "{{ domain_name }}"
