@@ -25,18 +25,19 @@ class Product:
 # --8<-- [start:multi-domain]
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize all domains
-    for d in [identity_domain, catalogue_domain]:
-        d.init()
-        with d.domain_context():
-            d.setup_database()
-
-    yield
-
-    # Shutdown
-    for d in [identity_domain, catalogue_domain]:
-        with d.domain_context():
-            pass  # Cleanup if needed
+    initialized = []
+    try:
+        # Initialize all domains
+        for d in [identity_domain, catalogue_domain]:
+            d.init()
+            initialized.append(d)
+            with d.domain_context():
+                d.setup_database()
+        yield
+    finally:
+        # Shutdown: close only the domains whose init() finished, in reverse order
+        for d in reversed(initialized):
+            d.close()
 
 
 app = FastAPI(lifespan=lifespan)

@@ -18,6 +18,7 @@ import importlib.util
 import inspect
 import os
 import types
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -179,3 +180,19 @@ class TestReferenceAppApi:
             # A fresh quickstart load still resolves the in-memory default.
             blog = _load_module("reference_app_blog", _BLOG_PATH)
             assert blog.domain.config["databases"]["default"]["provider"] == "memory"
+
+    def test_lifespan_closes_the_domain_when_database_setup_fails(
+        self, tmp_path, monkeypatch
+    ):
+        _pin_config_env(monkeypatch, tmp_path / "reference_app.db")
+
+        api = _load_module("reference_app_api", _API_PATH)
+        failing_setup = patch.object(
+            api.domain, "setup_database", side_effect=RuntimeError("setup failed")
+        )
+        with patch.object(api.domain, "close", wraps=api.domain.close) as close:
+            with failing_setup, pytest.raises(RuntimeError, match="setup failed"):
+                with TestClient(api.app):
+                    pass
+
+        close.assert_called_once_with()
