@@ -57,8 +57,8 @@ def _lifespans(source: str) -> list[ast.AsyncFunctionDef]:
 def lifespan_yields(source: str) -> list[tuple[int, bool]]:
     """Return ``(line, closed)`` for each ``yield`` in an ``async def lifespan``.
 
-    ``closed`` is true when the ``yield`` sits in the body of a ``try`` whose
-    ``finally`` contains a ``.close()`` call.
+    ``closed`` is true when the ``yield`` sits in the body or the ``else`` block
+    of a ``try`` whose ``finally`` contains a ``.close()`` call.
     """
     found: list[tuple[int, bool]] = []
     for lifespan in _lifespans(source):
