@@ -35,12 +35,13 @@ The `RebuildResult` contains:
 ```shell
 # Rebuild a specific projection
 $ protean projection rebuild --projection=AccountSummary --domain=fidelis
-Rebuilt projection 'AccountSummary': 245,000 events processed, 12 skipped.
+Rebuilt projection 'AccountSummary': 245000 events processed through 1 projector(s) across 1 category/categories.
+  (12 events skipped)
 
 # Rebuild all projections
 $ protean projection rebuild --domain=fidelis
-  AccountSummary: 245,000 events processed
-Rebuilt 1 projection(s), 245,000 total events processed.
+  AccountSummary: 245000 events processed
+Rebuilt 1 projection(s), 245000 total events processed.
 ```
 
 Use `--batch-size` to control memory usage for large replays:
