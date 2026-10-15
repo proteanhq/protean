@@ -1077,7 +1077,8 @@ class TestEventSourcedRepositoryGetOrNoneSpan:
             s for s in spans if s.name == "protean.repository.get_or_none"
         ]
         assert len(get_or_none_spans) == 1
-        assert get_or_none_spans[0].status.status_code != StatusCode.ERROR
+        assert get_or_none_spans[0].status.status_code == StatusCode.UNSET
+        assert get_or_none_spans[0].events == ()
 
     def test_propagated_error_marks_span_as_error(self, test_domain, span_exporter):
         span_exporter.clear()

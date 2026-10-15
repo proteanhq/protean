@@ -202,14 +202,14 @@ configuration.
 The event-sourced repository also has `get_or_none()`. It takes the same
 arguments as `get()`: the identifier, plus an optional `at_version` or `as_of`
 for a temporal query. Where `get()` raises `ObjectNotFoundError`,
-`get_or_none()` returns `None`. That covers three cases:
+`get_or_none()` returns `None`. For example:
 
 - There is no event stream for the identifier.
 - `at_version` is past the last version in the stream.
 - `as_of` is earlier than the first event in the stream.
 
-Every other error still raises. Passing both `at_version` and `as_of` raises
-`IncorrectUsageError`, and so does a domain with no event store.
+Every other error still raises. For example, passing both `at_version` and
+`as_of` raises `IncorrectUsageError`.
 
 ```python
 --8<-- "guides/change-state/repositories/005.py:imports"

@@ -127,9 +127,10 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
         Raises:
             IncorrectUsageError: When both ``at_version`` and ``as_of`` are
-                provided (they are mutually exclusive).
+                provided (they are mutually exclusive), or when no event
+                store is configured.
             ObjectNotFoundError: When no stream with *identifier* is found,
-                or the requested version/time predates all events.
+                or the requested version/time has no events.
 
         Returns:
             The fully-loaded aggregate object.

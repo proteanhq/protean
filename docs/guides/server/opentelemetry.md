@@ -138,6 +138,7 @@ instrumentation point creates an OTel span with relevant attributes.
 |-----------|-----------|-------------|
 | `protean.repository.add` | Repository / EventSourcedRepository | Persist an aggregate |
 | `protean.repository.get` | Repository / EventSourcedRepository | Load an aggregate by identity |
+| `protean.repository.get_or_none` | Repository / EventSourcedRepository | Load an aggregate by identity, or return `None` when it is not found |
 | `protean.event_store.append` | EventStore port | Append events/commands to the event store |
 | `protean.uow.commit` | UnitOfWork | Commit a Unit of Work transaction |
 
