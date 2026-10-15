@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from protean import dx
+from tests.support.lifespan import lifespan_yields
 from tests.support.snippets import extract_blocks
 
 pytestmark = pytest.mark.no_test_domain
@@ -166,3 +167,14 @@ def test_the_event_sourced_skill_keeps_rules_13_and_14():
     )
     assert "13. **A failed handler writes no events**" in text
     assert "14. **`reserved=[...]` names removed fields**" in text
+
+
+def test_every_add_command_lifespan_closes_the_domain_in_a_finally():
+    yields = [
+        (label, line, closed)
+        for label, source in runnable_sources("add-command")
+        for line, closed in lifespan_yields(source)
+    ]
+
+    assert len({label for label, _, _ in yields}) >= 4
+    assert [y for y in yields if not y[2]] == []

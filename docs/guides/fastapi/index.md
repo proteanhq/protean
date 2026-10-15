@@ -149,8 +149,9 @@ pushes reaches the endpoint in that thread.
 
 FastAPI's [lifespan events](https://fastapi.tiangolo.com/advanced/events/)
 let you run setup and teardown logic that wraps the entire application
-lifetime. This is the recommended place to initialize domains, set up
-database schemas, and clean up on shutdown.
+lifetime. This is the recommended place to initialize domains and set up
+database schemas. On shutdown, the lifespan calls `domain.close()`, which
+releases the provider, broker, cache and event store connections.
 
 ### Using the lifespan context manager
 
@@ -165,13 +166,15 @@ database schemas, and clean up on shutdown.
 |---------|-------|-----|
 | `domain.init()` | Startup (lifespan) | Traverses elements, resolves references, connects adapters, once per process |
 | `domain.setup_database()` | Startup (lifespan) | Creates tables and outbox, once per deployment |
+| `domain.close()` | Shutdown (lifespan `finally`) | Releases adapter connections, and runs even when the app exits through an exception |
 | Domain context push/pop | Middleware | Each request needs its own context for thread-local state |
 | Exception mapping | App setup | Registered once at import time |
 
 ### Multi-domain startup
 
 When your application serves multiple bounded contexts, initialize each
-domain in the lifespan:
+domain in the lifespan. On shutdown, the lifespan closes only the domains
+that started, in reverse order:
 
 ```python
 --8<-- "guides/fastapi/index/008.py:multi-domain"

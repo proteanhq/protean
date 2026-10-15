@@ -1,11 +1,13 @@
 """The examples on the FastAPI integration guide behave as the page says."""
 
 import re
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.docs.support import load_example
+from tests.docs.support import DOCS_SRC, load_example
+from tests.support.lifespan import lifespan_yields
 
 pytestmark = [pytest.mark.no_test_domain, pytest.mark.fastapi]
 
@@ -168,6 +170,106 @@ def test_the_multi_domain_lifespan_initializes_every_domain():
         assert all(d.event_store.store is not None for d in domains)
         assert client.get("/customers/1").json() == {"domain": "Identity"}
         assert client.get("/products/1").json() == {"domain": "Catalogue"}
+
+
+def test_the_lifespan_closes_the_domain_on_shutdown_and_not_before():
+    example = load_example("guides/fastapi/index/007.py")
+
+    with patch.object(example.domain, "close", wraps=example.domain.close) as close:
+        with TestClient(example.app) as client:
+            client.post("/orders", json={"customer_name": "Alice"})
+            assert close.call_count == 0
+
+    close.assert_called_once_with()
+
+
+def test_the_lifespan_closes_the_domain_when_the_app_exits_on_an_error():
+    example = load_example("guides/fastapi/index/007.py")
+
+    with patch.object(example.domain, "close", wraps=example.domain.close) as close:
+        with pytest.raises(RuntimeError, match="app stopped"):
+            with TestClient(example.app):
+                raise RuntimeError("app stopped")
+
+    close.assert_called_once_with()
+
+
+def _record_closes(domains, closed):
+    """Patch ``close`` on each domain to record its name, then really close it."""
+    patches = []
+    for d in domains:
+
+        def recording_close(d=d, original=d.close):
+            closed.append(d.name)
+            original()
+
+        patches.append(patch.object(d, "close", side_effect=recording_close))
+    return patches
+
+
+def test_the_multi_domain_lifespan_closes_every_domain_in_reverse_order():
+    example = load_example("guides/fastapi/index/008.py")
+    closed = []
+    patches = _record_closes(
+        [example.identity_domain, example.catalogue_domain], closed
+    )
+
+    with patches[0], patches[1]:
+        with TestClient(example.app):
+            assert closed == []
+
+    assert closed == ["Catalogue", "Identity"]
+
+
+def test_the_multi_domain_lifespan_closes_only_the_domains_that_started():
+    example = load_example("guides/fastapi/index/008.py")
+    closed = []
+    patches = _record_closes(
+        [example.identity_domain, example.catalogue_domain], closed
+    )
+    failing_init = patch.object(
+        example.catalogue_domain, "init", side_effect=RuntimeError("init failed")
+    )
+
+    with patches[0], patches[1], failing_init:
+        with pytest.raises(RuntimeError, match="init failed"):
+            with TestClient(example.app):
+                pass
+
+    assert closed == ["Identity"]
+
+
+@pytest.mark.parametrize("path", ["007.py", "008.py"])
+def test_every_lifespan_yield_sits_in_a_try_that_closes_the_domain(path):
+    source = (DOCS_SRC / "guides/fastapi/index" / path).read_text(encoding="utf-8")
+
+    yields = lifespan_yields(source)
+
+    assert yields
+    assert all(closed for _, closed in yields), yields
+
+
+def test_the_yield_check_flags_a_bare_yield_and_a_finally_without_close():
+    bare = "async def lifespan(app):\n    domain.init()\n    yield\n"
+    no_close = (
+        "async def lifespan(app):\n"
+        "    try:\n"
+        "        yield\n"
+        "    finally:\n"
+        "        domain.flush()\n"
+    )
+    closed = (
+        "async def lifespan(app):\n"
+        "    try:\n"
+        "        yield\n"
+        "    finally:\n"
+        "        domain.close()\n"
+    )
+
+    assert lifespan_yields(bare) == [(3, False)]
+    assert lifespan_yields(no_close) == [(3, False)]
+    assert lifespan_yields(closed) == [(3, True)]
+    assert lifespan_yields("async def other(app):\n    yield\n") == []
 
 
 def test_module_level_init_lets_requests_use_the_domain_at_once():

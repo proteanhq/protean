@@ -143,7 +143,11 @@ from protean.utils.globals import current_domain
 async def lifespan(app: FastAPI):
     # Wire the commands and handlers once, before the app takes requests
     domain.init()
-    yield
+    try:
+        yield
+    finally:
+        # Release the adapter connections on shutdown, even after an error
+        domain.close()
 
 
 app = FastAPI(lifespan=lifespan)

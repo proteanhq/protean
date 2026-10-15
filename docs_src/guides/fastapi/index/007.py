@@ -31,12 +31,11 @@ async def lifespan(app: FastAPI):
     with domain.domain_context():
         domain.setup_database()
 
-    yield
-
-    # Shutdown: release resources
-    with domain.domain_context():
-        # Any cleanup logic here
-        pass
+    try:
+        yield
+    finally:
+        # Shutdown: release adapter connections, even if the app exits on an error
+        domain.close()
 
 
 app = FastAPI(lifespan=lifespan)

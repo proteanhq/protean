@@ -1,5 +1,7 @@
 """The examples on the multi-domain applications guide behave as the page says."""
 
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -7,7 +9,8 @@ from protean.domain.context import has_domain_context
 from protean.exceptions import ConfigurationError
 from protean.utils import DomainObjects
 from protean.utils.globals import current_domain
-from tests.docs.support import load_example
+from tests.docs.support import DOCS_SRC, load_example
+from tests.support.lifespan import lifespan_yields
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -144,6 +147,38 @@ def test_the_lifespan_initializes_every_domain_before_serving(example):
         response = client.post("/customers", json={"name": "Alice"})
 
     assert response.json() == {"domain": "Identity"}
+
+
+def test_the_lifespan_closes_every_domain_in_reverse_order_on_shutdown(example):
+    domains = [
+        example.identity_domain,
+        example.catalogue_domain,
+        example.fulfillment_domain,
+    ]
+    closed = []
+    patches = []
+    for d in domains:
+
+        def recording_close(d=d, original=d.close):
+            closed.append(d.name)
+            original()
+
+        patches.append(patch.object(d, "close", side_effect=recording_close))
+
+    with patches[0], patches[1], patches[2]:
+        with TestClient(example.app):
+            assert closed == []
+
+    assert closed == ["Fulfillment", "Catalogue", "Identity"]
+
+
+def test_the_lifespan_yield_sits_in_a_try_that_closes_the_domains():
+    path = DOCS_SRC / "guides/multi-domain-applications/001.py"
+
+    yields = lifespan_yields(path.read_text(encoding="utf-8"))
+
+    assert yields
+    assert all(closed for _, closed in yields), yields
 
 
 def test_the_subscriber_translates_the_payload_into_a_stored_recipient(example):
