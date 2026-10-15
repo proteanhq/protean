@@ -18,6 +18,7 @@ from uuid import uuid4
 
 from pydantic import AfterValidator, BeforeValidator
 from pydantic import Field as PydanticField
+from pydantic_core import TzInfo
 
 from protean.exceptions import ConfigurationError
 from protean.exceptions import ValidationError as ProteanValidationError
@@ -407,6 +408,9 @@ class FieldSpec:
         ):
             extra_validators.append(BeforeValidator(_coerce_to_str))
 
+        if self.python_type is _dt.datetime:
+            extra_validators.append(AfterValidator(_stdlib_timezone))
+
         # Sanitization via AfterValidator. The field's length bounds are
         # re-enforced on the sanitized (stored) value so a value that passes on
         # write always round-trips through serialization and replay — bleach can
@@ -644,6 +648,20 @@ def _coerce_to_str(v: Any) -> str:
     if v is None:
         return v  # type: ignore[return-value]
     return str(v)
+
+
+def _stdlib_timezone(v: Any) -> Any:
+    """Replace pydantic-core's ``TzInfo`` on a parsed datetime with ``datetime.timezone``.
+
+    Pydantic parses an offset string such as ``"...+05:30"`` or ``"...Z"`` into a
+    datetime whose ``tzinfo`` is pydantic-core's own ``TzInfo``. On Python 3.11,
+    freeing one of those during interpreter shutdown can crash the process with
+    SIGSEGV inside pydantic-core. A ``datetime.timezone`` with the same offset is
+    the same instant and has no such cleanup.
+    """
+    if isinstance(v, _dt.datetime) and isinstance(v.tzinfo, TzInfo):
+        return v.replace(tzinfo=_dt.timezone(v.utcoffset()))  # type: ignore[arg-type]
+    return v
 
 
 def _sanitize_string(v: str) -> str:
