@@ -64,10 +64,9 @@ async def lifespan(app: FastAPI):
     # would persist to SQLite.
     domain.config = Config2.load_from_path(APP_DIR)
     domain.init(traverse=False)
-    with domain.domain_context():
-        domain.setup_database()
-
     try:
+        with domain.domain_context():
+            domain.setup_database()
         yield
     finally:
         domain.close()
