@@ -60,18 +60,20 @@ them across copies.
 ## Consequences
 
 - Events raised on an aggregate in a transaction are all gathered at commit,
-  however many times the aggregate was read.
+  however many times the aggregate was read. An event-sourced aggregate's
+  events are gathered once `add()` has saved it.
 - Version and event-position conflicts inside one transaction come only from
   another writer.
 - A second `get()` of an aggregate in a Unit of Work returns the first result,
   with any changes made to it that were not saved. This is how the identity
   map in SQLAlchemy's session and in Hibernate behaves. Code that read an
-  aggregate again to throw its changes away now gets them back, and those
-  changes and the events raised with them are saved when the transaction
-  commits. To abandon a change, code raises an exception so the Unit of Work
-  rolls back, or reads the stored state in a new Unit of Work. A change that
-  breaks an invariant needs neither, because Protean undoes the assignment
-  when the check fails.
+  aggregate again to throw its changes away now gets them back. Saving it with
+  `add()` writes those changes. The events raised with them are saved at
+  commit even without `add()` on a state-based aggregate, and only through
+  `add()` on an event-sourced one. To abandon a change, code raises an
+  exception so the Unit of Work rolls back, or reads the stored state in a new
+  Unit of Work. A change that breaks an invariant needs neither, because
+  Protean undoes the assignment when the check fails.
 - A query returns tracked instances whose in-memory fields can differ from the
   stored row that made them match. A filter on a field changed in memory but
   not yet flushed can return an instance whose field no longer meets the
