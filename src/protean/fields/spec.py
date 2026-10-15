@@ -32,6 +32,7 @@ from protean.utils import (
     _generate_identity,
     _normalize_deprecated,
     _stdlib_timezone,
+    _stdlib_timezone_each,
 )
 from protean.utils.globals import current_domain
 
@@ -410,6 +411,10 @@ class FieldSpec:
 
         if self.python_type is _dt.datetime:
             extra_validators.append(AfterValidator(_stdlib_timezone))
+        elif self.python_type == list[_dt.datetime]:
+            # On the list itself, not its element type: adapters and the IR
+            # read the element type and expect a plain ``datetime``.
+            extra_validators.append(AfterValidator(_stdlib_timezone_each))
 
         # Sanitization via AfterValidator. The field's length bounds are
         # re-enforced on the sanitized (stored) value so a value that passes on

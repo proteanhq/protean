@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 from pydantic import TypeAdapter
 
-from protean.utils import StdlibDatetime, _stdlib_timezone
+from protean.utils import OptionalStdlibDatetime, StdlibDatetime, _stdlib_timezone
 from protean.utils.eventing import MessageHeaders
 
 
@@ -51,3 +51,12 @@ def test_message_headers_read_from_strings_carry_a_stdlib_timezone():
     assert type(headers.time.tzinfo) is timezone
     assert type(headers.deadline.tzinfo) is timezone
     assert headers.deadline.utcoffset() == timedelta(hours=5, minutes=30)
+
+
+def test_the_nullable_type_parses_to_a_stdlib_timezone_and_accepts_none():
+    adapter = TypeAdapter(OptionalStdlibDatetime)
+
+    assert adapter.validate_python(None) is None
+    parsed = adapter.validate_python("2024-01-02T03:04:05+05:30")
+    assert type(parsed.tzinfo) is timezone
+    assert parsed.utcoffset() == timedelta(hours=5, minutes=30)

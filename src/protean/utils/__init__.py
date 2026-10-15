@@ -111,6 +111,20 @@ def _stdlib_timezone(v: Any) -> Any:
 StdlibDatetime = Annotated[datetime, AfterValidator(_stdlib_timezone)]
 """A ``datetime`` field type whose parsed values carry a stdlib ``timezone``."""
 
+# The validator sits outside the ``| None`` union on purpose. Pydantic strips an
+# outer ``Annotated`` from the field type, so adapters still see
+# ``datetime | None``. ``StdlibDatetime | None`` would leave the ``Annotated``
+# inside the union, and the SQL adapter would map the column to a string.
+OptionalStdlibDatetime = Annotated[datetime | None, AfterValidator(_stdlib_timezone)]
+"""A nullable ``datetime`` field type whose parsed values carry a stdlib ``timezone``."""
+
+
+def _stdlib_timezone_each(v: Any) -> Any:
+    """Apply :func:`_stdlib_timezone` to each element of a list of datetimes."""
+    if isinstance(v, list):
+        return [_stdlib_timezone(item) for item in v]
+    return v
+
 
 class _TypeMatcher:
     """Allow assertion on object type.
