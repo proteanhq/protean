@@ -7,14 +7,17 @@ is compiled offline. The live round trips sit in ``sqlite/`` and
 ``postgresql/``, and the SQL Server key-column check in ``mssql/``.
 """
 
+import datetime
 import decimal
 import enum
+import typing
 
 import pytest
 from sqlalchemy import types as sa_types
 from sqlalchemy.schema import CreateTable
 
 from protean import Domain, Index
+from protean.adapters.repository.elasticsearch import _es_field_mapping_for
 from protean.adapters.repository.sqlalchemy import (
     MysqlProvider,
     PostgresqlProvider,
@@ -24,8 +27,9 @@ from protean.adapters.repository.sqlalchemy import (
 )
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Boolean, Float, Integer, String
+from protean.fields import Boolean, Date, DateTime, Float, Integer, String
 from protean.fields import Decimal as ProteanDecimal
+from protean.fields import Status as StatusField
 from protean.utils.reflection import attributes
 from tests.shared import MARIADB_URI, MYSQL_URI, POSTGRES_URI
 
@@ -35,6 +39,11 @@ pytestmark = pytest.mark.no_test_domain
 class Status(enum.Enum):
     DRAFT = "draft"
     PUBLISHED = "published"
+
+
+class Grade(enum.IntEnum):
+    LOW = 1
+    HIGH = 2
 
 
 class MixedEnum(enum.Enum):
@@ -57,9 +66,19 @@ class Graded(BaseAggregate):
         precision=5,
         scale=2,
     )
+    day: Date(choices=[datetime.date(2026, 1, 1), datetime.date(2026, 2, 1)])
+    moment: DateTime(
+        choices=[datetime.datetime(2026, 1, 1, 9), datetime.datetime(2026, 1, 1, 17)]
+    )
+    grade: Integer(choices=Grade)
+    stage: StatusField(Grade)
+    named_stage: StatusField(Status, max_length=10)
     mixed: String(max_length=20, choices=["a", 1])
     bool_and_int: String(max_length=20, choices=[True, 1])
     mixed_enum: String(max_length=20, choices=MixedEnum)
+    # The split spelling of Literal[1, "a"], which must map the same way.
+    literal_union: typing.Literal[1] | typing.Literal["a"] | None = None  # noqa: PYI030
+    literal_or_str: typing.Literal[1] | str | None = None
 
 
 def host_domain(aggregates):
@@ -133,15 +152,24 @@ class TestResolvedType:
             ("ratio", float),
             ("flag", bool),
             ("price", decimal.Decimal),
+            ("day", datetime.date),
+            ("moment", datetime.datetime),
+            ("grade", int),
+            ("stage", int),
+            ("named_stage", str),
         ],
     )
     def test_choices_sharing_one_type_resolve_to_it(self, attribute, expected):
         assert _resolve_python_type(attributes(Graded)[attribute]) is expected
 
-    @pytest.mark.parametrize("attribute", ["mixed", "bool_and_int", "mixed_enum"])
+    @pytest.mark.parametrize(
+        "attribute",
+        ["mixed", "bool_and_int", "mixed_enum", "literal_union", "literal_or_str"],
+    )
     def test_choices_of_mixed_types_stay_unresolved(self, attribute):
         """``True`` is an ``int`` to ``isinstance``, so ``[True, 1]`` is checked
-        by exact type and counts as mixed."""
+        by exact type and counts as mixed. A union with a ``Literal`` arm is
+        mixed too, whatever its first arm is."""
         assert _resolve_python_type(attributes(Graded)[attribute]) is None
 
 
@@ -156,6 +184,31 @@ class TestColumnDdl:
     def test_an_integer_with_choices_is_an_integer_column(self, dialect, attribute):
         assert compiled_type(Graded, dialect, attribute) == "INTEGER"
 
+    @on(["sqlite", "postgresql", "mysql", "mariadb"])
+    @pytest.mark.parametrize("attribute", ["grade", "stage"])
+    def test_int_enum_choices_are_an_integer_column(self, dialect, attribute):
+        assert compiled_type(Graded, dialect, attribute) == "INTEGER"
+
+    @on(["sqlite", "postgresql", "mysql", "mariadb"])
+    def test_a_status_keeps_its_max_length(self, dialect):
+        assert compiled_type(Graded, dialect, "named_stage") == "VARCHAR(10)"
+
+    @on(["sqlite", "postgresql", "mysql", "mariadb"])
+    def test_a_date_with_choices_is_a_date_column(self, dialect):
+        assert compiled_type(Graded, dialect, "day") == "DATE"
+
+    @pytest.mark.parametrize(
+        ("dialect", "expected"),
+        [
+            ("sqlite", "DATETIME"),
+            ("postgresql", "TIMESTAMP WITHOUT TIME ZONE"),
+            ("mysql", "DATETIME(6)"),
+        ],
+        ids=["on-sqlite", "on-postgresql", "on-mysql"],
+    )
+    def test_a_datetime_with_choices_is_a_datetime_column(self, dialect, expected):
+        assert compiled_type(Graded, dialect, "moment") == expected
+
     @on(["sqlite", "postgresql"])
     def test_a_boolean_with_choices_is_a_boolean_column(self, dialect):
         assert compiled_type(Graded, dialect, "flag") == "BOOLEAN"
@@ -164,7 +217,10 @@ class TestColumnDdl:
     def test_a_decimal_with_choices_keeps_precision_and_scale(self, dialect):
         assert compiled_type(Graded, dialect, "price") == "NUMERIC(5, 2)"
 
-    @pytest.mark.parametrize("attribute", ["mixed", "bool_and_int", "mixed_enum"])
+    @pytest.mark.parametrize(
+        "attribute",
+        ["mixed", "bool_and_int", "mixed_enum", "literal_union", "literal_or_str"],
+    )
     def test_mixed_choices_keep_an_unsized_string_column(self, attribute):
         table, _ = table_and_engine(Graded, "sqlite")
         column_type = table.c[attribute].type
@@ -179,6 +235,14 @@ class TestColumnDdl:
 
         assert "status VARCHAR(20)" in ddl
         assert "status TEXT" not in ddl
+
+
+class TestElasticsearchMapping:
+    @pytest.mark.parametrize("attribute", ["level", "ratio", "flag", "day"])
+    def test_choices_fields_stay_keyword_fields(self, attribute):
+        """The Elasticsearch adapter has its own resolver, which does not read
+        the type off a ``Literal``."""
+        assert _es_field_mapping_for(attributes(Graded)[attribute]).name == "keyword"
 
 
 class TestMysqlKeyWidths:
