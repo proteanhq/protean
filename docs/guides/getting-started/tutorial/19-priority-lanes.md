@@ -30,6 +30,7 @@ enabled = true
 ## The Import Script
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch19.py:import_script"
 ```
 
@@ -40,10 +41,8 @@ backfill stream instead of the primary stream.
 You can also set priority per command:
 
 ```python
-domain.process(
-    AddBook(title="...", author="...", price_amount=9.99),
-    priority=Priority.BULK,
-)
+# fragment
+--8<-- "guides/getting-started/tutorial/ch19.py:per_command"
 ```
 
 ## Running the Import
@@ -55,11 +54,11 @@ Start the import in one terminal while the server processes both lanes:
 $ protean server --domain bookshelf
 
 # Terminal 2 — run the bulk import
-$ python import_vintage_press.py
-Importing 50,000 books with BULK priority...
-Progress: 10,000 / 50,000
-Progress: 20,000 / 50,000
+$ python import_vintage_press.py vintage_press.csv
+Progress: 10,000 books imported...
+Progress: 20,000 books imported...
 ...
+Import complete: 50,000 books imported with BULK priority.
 
 # Terminal 3 — production traffic continues normally
 $ curl -X POST http://localhost:8000/orders ...   # instant response

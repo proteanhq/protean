@@ -20,6 +20,7 @@ give us that.
 A projection is a flat data structure optimized for queries:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch07.py:projection"
 ```
 
@@ -33,6 +34,7 @@ primary key.
 A **projector** listens to events and maintains the projection:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch07.py:projector"
 ```
 
@@ -51,6 +53,7 @@ Projections are queried using `domain.view_for()`, which returns a `ReadView`.
 The CQRS read-side API:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch07.py:usage"
 ```
 

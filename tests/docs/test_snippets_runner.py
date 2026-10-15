@@ -371,6 +371,78 @@ def test_a_broken_include_fails_the_page_and_runs_nothing(tmp_path, bases):
     }
 
 
+def _write_package(tmp_path: Path) -> Path:
+    folder = tmp_path / "importable"
+    (folder / "shelf").mkdir(parents=True)
+    (folder / "shelf" / "__init__.py").write_text("TITLE = 'Dune'\n")
+    return folder
+
+
+def test_a_block_imports_a_package_from_a_pythonpath_folder(tmp_path, bases):
+    folder = _write_package(tmp_path)
+    page = _write(
+        tmp_path, "```python\nfrom shelf import TITLE\nassert TITLE == 'Dune'\n```\n"
+    )
+
+    results = run_snippets(
+        tmp_path / "docs",
+        [page],
+        tmp_path,
+        expand=include_expander(bases),
+        pythonpath=[folder],
+    )
+
+    assert results == [{"file": "page.md", "failure": None, "not_run": []}]
+
+
+def test_without_the_pythonpath_folder_the_import_fails(tmp_path, bases):
+    _write_package(tmp_path)
+    page = _write(tmp_path, "```python\nfrom shelf import TITLE\n```\n")
+
+    (result,) = _run(tmp_path, [page], bases)
+
+    assert result["failure"] == ("line 2: ModuleNotFoundError: No module named 'shelf'")
+
+
+def test_a_pythonpath_folder_comes_before_the_standard_library(tmp_path, bases):
+    folder = tmp_path / "pkgs"
+    folder.mkdir()
+    (folder / "tabnanny.py").write_text("TITLE = 'Dune'\n", encoding="utf-8")
+    page = _write(
+        tmp_path, "```python\nimport tabnanny\nassert tabnanny.TITLE == 'Dune'\n```\n"
+    )
+
+    results = run_snippets(
+        tmp_path / "docs",
+        [page],
+        tmp_path,
+        expand=include_expander(bases),
+        pythonpath=[folder],
+    )
+
+    assert results == [{"file": "page.md", "failure": None, "not_run": []}]
+
+
+def test_a_relative_pythonpath_folder_resolves_against_the_caller(
+    tmp_path, bases, monkeypatch
+):
+    _write_package(tmp_path)
+    page = _write(
+        tmp_path, "```python\nfrom shelf import TITLE\nassert TITLE == 'Dune'\n```\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    results = run_snippets(
+        tmp_path / "docs",
+        [page],
+        tmp_path,
+        expand=include_expander(bases),
+        pythonpath=[Path("importable")],
+    )
+
+    assert results == [{"file": "page.md", "failure": None, "not_run": []}]
+
+
 def test_a_fragment_is_skipped_and_the_blocks_after_it_run(tmp_path, bases):
     page = _write(
         tmp_path,

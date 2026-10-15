@@ -12,10 +12,12 @@ what about an **activity feed** that combines account transactions
 and transfers into one unified view?
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch22.py:activity_feed_projection"
 ```
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch22.py:activity_feed_projector"
 ```
 

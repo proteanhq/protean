@@ -8,6 +8,8 @@ from bookshelf.events import (
     OrderConfirmed,
     OrderShipped,
 )
+from protean import invariant
+from protean.exceptions import ValidationError
 from protean.fields import (
     Float,
     HasMany,
@@ -71,6 +73,11 @@ class Order:
     )
     items = HasMany("OrderItem")
 
+    def add_item(self, book_title: str, quantity: int, unit_price: Money):
+        self.add_items(
+            OrderItem(book_title=book_title, quantity=quantity, unit_price=unit_price)
+        )
+
     def confirm(self):
         self.status = OrderStatus.CONFIRMED.value
         self.raise_(OrderConfirmed(order_id=self.id, customer_name=self.customer_name))
@@ -78,6 +85,20 @@ class Order:
     def ship(self):
         self.status = OrderStatus.SHIPPED.value
         self.raise_(OrderShipped(order_id=self.id, customer_name=self.customer_name))
+
+    @invariant.post
+    def order_must_have_items(self):
+        if not self.items:
+            raise ValidationError(
+                {"_entity": ["An order must contain at least one item"]}
+            )
+
+    @invariant.pre
+    def cannot_modify_shipped_order(self):
+        if self.status == OrderStatus.SHIPPED.value:
+            raise ValidationError(
+                {"_entity": ["Cannot modify an order that has been shipped"]}
+            )
 
 
 @domain.entity(part_of=Order)

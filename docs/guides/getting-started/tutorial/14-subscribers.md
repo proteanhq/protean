@@ -21,6 +21,7 @@ into domain operations.
 ## Defining the Subscriber
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch14.py:subscriber"
 ```
 
@@ -33,10 +34,12 @@ arrives, `__call__` receives the raw dict payload. We inspect the
 We need a new command and handler for restocking:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch14.py:restock_command"
 ```
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch14.py:restock_handler"
 ```
 
@@ -69,6 +72,7 @@ format, only the subscriber needs to change.
 ## Testing the Subscriber
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch14.py:tests"
 ```
 

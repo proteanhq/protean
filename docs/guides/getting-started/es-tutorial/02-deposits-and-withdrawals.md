@@ -10,6 +10,7 @@ Sourcing: **all state changes flow exclusively through events**.
 A deposit and a withdrawal are two distinct facts:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch02.py:deposit_withdrawal_events"
 ```
 
@@ -23,6 +24,7 @@ Now we add domain methods to the `Account` aggregate and the
 corresponding `@apply` handlers:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch02.py:aggregate"
 ```
 
@@ -44,6 +46,7 @@ time. Replay trusts the event history.
 Let's exercise the full lifecycle:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch02.py:main_usage"
 ```
 

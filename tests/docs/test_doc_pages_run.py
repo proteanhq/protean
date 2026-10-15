@@ -24,7 +24,9 @@ and every include must resolve. A ``python`` block that starts with ``>>>`` is
 a REPL transcript and must use a ``pycon`` fence.
 
 All pages run once, in one child interpreter, and each page is its own test
-case, so a failure names the page.
+case, so a failure names the page. The tutorial folder in ``docs_src`` is on
+the child's ``sys.path``, so a tutorial page can import the ``bookshelf``
+package its chapters build.
 """
 
 from __future__ import annotations
@@ -49,6 +51,9 @@ pytestmark = pytest.mark.no_test_domain
 # The folders an include path is relative to, searched in order. They must
 # match ``pymdownx.snippets.base_path`` in mkdocs.yml.
 SNIPPET_BASES = (REPO_ROOT / "docs_src", REPO_ROOT / "examples")
+
+# Folders the child interpreter imports from, ahead of everything else.
+PYTHONPATH = (REPO_ROOT / "docs_src" / "guides" / "getting-started" / "tutorial",)
 
 # Folders under docs/ whose pages are not run: the decision records keep their
 # code as it was when the decision was made, and the API pages are generated.
@@ -78,40 +83,7 @@ LABELS = [path.relative_to(DOCS).as_posix() for path in PAGES]
 ALLOWLIST: frozenset[str] = frozenset(
     {
         "guides/domain-behavior/domain-services.md",
-        "guides/getting-started/es-tutorial/02-deposits-and-withdrawals.md",
-        "guides/getting-started/es-tutorial/03-commands-and-pipeline.md",
-        "guides/getting-started/es-tutorial/04-business-rules.md",
-        "guides/getting-started/es-tutorial/05-testing-the-ledger.md",
-        "guides/getting-started/es-tutorial/06-account-dashboard.md",
-        "guides/getting-started/es-tutorial/07-reacting-to-events.md",
-        "guides/getting-started/es-tutorial/08-going-async.md",
-        "guides/getting-started/es-tutorial/09-transferring-funds.md",
-        "guides/getting-started/es-tutorial/10-entities-inside-aggregates.md",
-        "guides/getting-started/es-tutorial/11-event-upcasting.md",
-        "guides/getting-started/es-tutorial/12-snapshots.md",
-        "guides/getting-started/es-tutorial/13-temporal-queries.md",
-        "guides/getting-started/es-tutorial/14-connecting-outside-world.md",
-        "guides/getting-started/es-tutorial/16-message-tracing.md",
-        "guides/getting-started/es-tutorial/19-priority-lanes.md",
-        "guides/getting-started/es-tutorial/20-rebuilding-projections.md",
-        "guides/getting-started/es-tutorial/22-the-full-picture.md",
-        "guides/getting-started/tutorial/02-fields-and-value-objects.md",
-        "guides/getting-started/tutorial/03-entities-and-associations.md",
-        "guides/getting-started/tutorial/04-business-rules.md",
-        "guides/getting-started/tutorial/05-commands.md",
-        "guides/getting-started/tutorial/06-events-and-reactions.md",
-        "guides/getting-started/tutorial/07-projections.md",
-        "guides/getting-started/tutorial/09-project-structure.md",
-        "guides/getting-started/tutorial/10-api.md",
-        "guides/getting-started/tutorial/11-testing.md",
-        "guides/getting-started/tutorial/12-going-async.md",
         "guides/getting-started/tutorial/13-domain-services.md",
-        "guides/getting-started/tutorial/14-subscribers.md",
-        "guides/getting-started/tutorial/16-message-tracing.md",
-        "guides/getting-started/tutorial/17-dead-letter-queues.md",
-        "guides/getting-started/tutorial/19-priority-lanes.md",
-        "guides/getting-started/tutorial/20-process-managers.md",
-        "guides/getting-started/tutorial/21-query-patterns.md",
         "patterns/application-service-vs-command-handler.md",
         "patterns/calling-external-systems-from-handlers.md",
         "patterns/classify-async-processing-errors.md",
@@ -145,7 +117,11 @@ ALLOWLIST: frozenset[str] = frozenset(
 @pytest.fixture(scope="module")
 def page_results(tmp_path_factory: pytest.TempPathFactory) -> dict[str, dict]:
     results = run_snippets(
-        DOCS, PAGES, tmp_path_factory.mktemp("doc-pages"), expand=expand
+        DOCS,
+        PAGES,
+        tmp_path_factory.mktemp("doc-pages"),
+        expand=expand,
+        pythonpath=PYTHONPATH,
     )
     assert [r["file"] for r in results] == LABELS
     return {r["file"]: r for r in results}

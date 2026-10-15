@@ -39,12 +39,14 @@ class WithdrawalMade:
     reference: String()
 
 
+# --8<-- [start:fact_events_aggregate]
 @domain.aggregate(event_sourced=True, fact_events=True)
 class Account:
     account_number: String(max_length=20, required=True)
     holder_name: String(max_length=100, required=True)
     balance: Float(default=0.0)
     status: String(max_length=20, default="ACTIVE")
+    # --8<-- [end:fact_events_aggregate]
 
     @invariant.post
     def balance_must_not_be_negative(self):

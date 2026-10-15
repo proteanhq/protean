@@ -1,8 +1,10 @@
 # --8<-- [start:full]
+# --8<-- [start:domain]
 from protean import Domain, apply
 from protean.fields import Float, Identifier, String
 
 domain = Domain("fidelis")
+# --8<-- [end:domain]
 
 
 # --8<-- [start:event]

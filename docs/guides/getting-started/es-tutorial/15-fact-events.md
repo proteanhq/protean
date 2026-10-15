@@ -25,13 +25,8 @@ stand.
 Add `fact_events=True` to the aggregate:
 
 ```python
-@domain.aggregate(event_sourced=True, fact_events=True)
-class Account:
-    account_number: String(max_length=20, required=True)
-    holder_name: String(max_length=100, required=True)
-    balance: Float(default=0.0)
-    status: String(max_length=20, default="ACTIVE")
-    ...
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch15.py:fact_events_aggregate"
 ```
 
 Now every time the aggregate is persisted via `repo.add()`, Protean
@@ -44,10 +39,12 @@ A projector that consumes fact events is simpler than one that consumes
 delta events, because every fact event is a complete state snapshot:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch15.py:report_projection"
 ```
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch15.py:report_projector"
 ```
 

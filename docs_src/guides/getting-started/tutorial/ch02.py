@@ -76,6 +76,31 @@ class Book:
 domain.init(traverse=False)
 
 
+# --8<-- [start:money_price]
+def price_a_book() -> Book:
+    book = Book(
+        title="The Great Gatsby",
+        author="F. Scott Fitzgerald",
+        price=Money(amount=12.99),
+    )
+    print(f"Price: ${book.price.amount} {book.price.currency}")
+    # Price: $12.99 USD
+    return book
+
+
+# --8<-- [end:money_price]
+# --8<-- [start:value_equality]
+def compare_prices() -> tuple[bool, bool]:
+    price1 = Money(amount=12.99, currency="USD")
+    price2 = Money(amount=12.99, currency="USD")
+    price3 = Money(amount=14.99, currency="USD")
+
+    print(price1 == price2)  # True: same values
+    print(price1 == price3)  # False: different amount
+    return price1 == price2, price1 == price3
+
+
+# --8<-- [end:value_equality]
 # --8<-- [start:usage]
 if __name__ == "__main__":
     with domain.domain_context():

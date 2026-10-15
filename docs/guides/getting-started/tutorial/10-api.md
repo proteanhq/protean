@@ -21,7 +21,8 @@ pip install fastapi uvicorn
 Create `bookshelf/api.py`:
 
 ```python
---8<-- "guides/getting-started/tutorial/ch10.py:app_setup"
+# fragment
+--8<-- "guides/getting-started/tutorial/bookshelf/api.py:app_setup"
 ```
 
 `DomainContextMiddleware` ensures every request runs inside the correct
@@ -35,7 +36,8 @@ Each write endpoint translates an HTTP request into a command and
 dispatches it:
 
 ```python
---8<-- "guides/getting-started/tutorial/ch10.py:write_endpoints"
+# fragment
+--8<-- "guides/getting-started/tutorial/bookshelf/api.py:write_endpoints"
 ```
 
 The pattern is always the same:
@@ -51,7 +53,8 @@ Read endpoints query projections using `domain.view_for()`, which returns a
 `ReadView`. The read-side entry point for projections:
 
 ```python
---8<-- "guides/getting-started/tutorial/ch10.py:read_endpoints"
+# fragment
+--8<-- "guides/getting-started/tutorial/bookshelf/api.py:read_endpoints"
 ```
 
 `domain.view_for(BookCatalog)` returns a `ReadView` with `get()` for
@@ -108,7 +111,7 @@ far, domain logic, command flows, and API endpoints.
 ## Full Source
 
 ```python
---8<-- "guides/getting-started/tutorial/ch10.py:full"
+--8<-- "guides/getting-started/tutorial/bookshelf/api.py:full"
 ```
 
 ## Next

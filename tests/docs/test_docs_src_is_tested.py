@@ -12,8 +12,6 @@ source for these calls and imports, without running it:
   the example's folder and the folders above it, because pytest loads them,
   and the ``docs_src`` package modules that the example and those conftests
   import;
-- a ``_load_chapter(<n>)`` call in a tutorial test loads ``ch<nn>.py`` from that
-  tutorial's folder;
 - an import of a ``docs_src`` package in any of those files loads the modules
   it names: ``import bookshelf`` loads only ``bookshelf/__init__.py``, and
   ``import bookshelf.models`` also loads ``bookshelf/models.py``.
@@ -43,12 +41,6 @@ TESTS_DOCS = REPO_ROOT / "tests" / "docs"
 
 # Calls whose first argument names a docs_src example the test loads.
 LOADERS = {"load_example", "run_example_tests"}
-
-# Test file -> the docs_src folder its `_load_chapter(n)` calls load from.
-CHAPTER_LOADERS: dict[Path, str] = {
-    REPO_ROOT / "tests" / "test_tutorial.py": "guides/getting-started/tutorial",
-    REPO_ROOT / "tests" / "test_es_tutorial.py": "guides/getting-started/es-tutorial",
-}
 
 # docs_src examples that no test loads yet. Remove an entry when a test loads it.
 ALLOWLIST: set[str] = set()
@@ -107,23 +99,19 @@ def _pytest_run_files(path: str, root: Path, packages: dict[str, Path]) -> set[s
     return loaded
 
 
-def loaded_examples(
-    test_files: list[Path], chapter_loaders: dict[Path, str], root: Path
-) -> set[str]:
+def loaded_examples(test_files: list[Path], root: Path) -> set[str]:
     """Return the ``root``-relative paths the given test files load.
 
     ``test_files`` are read for ``load_example`` and ``run_example_tests``
     calls, and a ``run_example_tests`` call also loads the conftests and
-    package modules pytest would load with it; ``chapter_loaders`` maps more
-    test files to the folder their ``_load_chapter`` calls read. Both kinds
-    are read for imports of a package under ``root``, which load the package
-    modules they name. A call that
-    passes its own ``root=`` loads from somewhere else, so it does not count.
+    package modules pytest would load with it. They are also read for imports
+    of a package under ``root``, which load the package modules they name. A
+    call that passes its own ``root=`` loads from somewhere else, so it does
+    not count.
     """
     packages = package_dirs(root)
     loaded: set[str] = set()
-    for test_file in [*test_files, *chapter_loaders]:
-        chapter_dir = chapter_loaders.get(test_file)
+    for test_file in test_files:
         tree = ast.parse(test_file.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
@@ -136,14 +124,6 @@ def loaded_examples(
                         loaded |= _pytest_run_files(path, root, packages)
                     elif path is not None:
                         loaded.add(path)
-                elif (
-                    name == "_load_chapter"
-                    and chapter_dir is not None
-                    and node.args
-                    and isinstance(node.args[0], ast.Constant)
-                    and isinstance(node.args[0].value, int)
-                ):
-                    loaded.add(f"{chapter_dir}/ch{node.args[0].value:02d}.py")
         loaded |= imported_package_files(tree, root, packages)
     return loaded
 
@@ -163,12 +143,12 @@ def coverage_problems(
 
 
 def _real_loaded() -> set[str]:
-    return loaded_examples(sorted(TESTS_DOCS.rglob("*.py")), CHAPTER_LOADERS, DOCS_SRC)
+    return loaded_examples(sorted(TESTS_DOCS.rglob("*.py")), DOCS_SRC)
 
 
 def test_the_loaded_set_is_read_from_real_tests():
     # A parser that matched nothing would leave every file in the allowlist and
-    # pass. Pin known loads: a chapter loader, a package import, load_example.
+    # pass. Pin known loads: tutorial chapters, a package import, load_example.
     loaded = _real_loaded()
     assert "guides/getting-started/tutorial/ch01.py" in loaded
     assert "guides/getting-started/es-tutorial/ch22.py" in loaded
@@ -209,14 +189,15 @@ def layout(tmp_path):
 
 
 class TestCoverageGuard:
-    def test_load_example_calls_chapter_loaders_and_package_imports_count(self, layout):
+    def test_load_example_calls_and_package_imports_count(self, layout):
         root, tests = layout
         _write(tests / "test_a.py", 'load_example("guides/a.py")\n')
-        _write(tests / "test_tut.py", "import shop.models\n_load_chapter(1)\n")
-
-        loaded = loaded_examples(
-            [tests / "test_a.py"], {tests / "test_tut.py": "tut"}, root
+        _write(
+            tests / "test_tut.py",
+            'import shop.models\nload_example("tut/ch01.py")\n',
         )
+
+        loaded = loaded_examples([tests / "test_a.py", tests / "test_tut.py"], root)
 
         assert loaded == {
             "guides/a.py",
@@ -229,12 +210,12 @@ class TestCoverageGuard:
         root, tests = layout
         _write(tests / "test_a.py", 'load_example("guides/a.py", root=tmp)\n')
 
-        assert loaded_examples([tests / "test_a.py"], {}, root) == set()
+        assert loaded_examples([tests / "test_a.py"], root) == set()
 
     def test_a_file_neither_loaded_nor_allowlisted_is_named(self, layout):
         root, tests = layout
         _write(tests / "test_a.py", 'load_example(path="guides/a.py")\n')
-        loaded = loaded_examples([tests / "test_a.py"], {}, root)
+        loaded = loaded_examples([tests / "test_a.py"], root)
 
         untested, stale = coverage_problems(
             root,
@@ -253,7 +234,7 @@ class TestCoverageGuard:
     def test_an_allowlisted_file_that_is_loaded_is_named_stale(self, layout):
         root, tests = layout
         _write(tests / "test_a.py", 'load_example("guides/a.py")\n')
-        loaded = loaded_examples([tests / "test_a.py"], {}, root)
+        loaded = loaded_examples([tests / "test_a.py"], root)
         allowlist = _docs_src_files(root)
 
         untested, stale = coverage_problems(root, loaded, allowlist)
@@ -273,7 +254,7 @@ class TestCoverageGuard:
     def test_importing_only_the_package_does_not_load_its_modules(self, layout):
         root, tests = layout
         _write(tests / "test_tut.py", "import shop\n")
-        loaded = loaded_examples([], {tests / "test_tut.py": "tut"}, root)
+        loaded = loaded_examples([tests / "test_tut.py"], root)
 
         untested, _ = coverage_problems(
             root, loaded, {"guides/a.py", "guides/b.py", "tut/ch01.py", "tut/ch02.py"}
@@ -286,7 +267,7 @@ class TestCoverageGuard:
         root, tests = layout
         _write(tests / "test_tut.py", "from shop import models\n")
 
-        loaded = loaded_examples([], {tests / "test_tut.py": "tut"}, root)
+        loaded = loaded_examples([tests / "test_tut.py"], root)
 
         assert loaded == {"tut/shop/__init__.py", "tut/shop/models.py"}
 
@@ -294,7 +275,7 @@ class TestCoverageGuard:
         root, tests = layout
         _write(tests / "test_a.py", 'run_example_tests("guides/b.py")\n')
 
-        assert loaded_examples([tests / "test_a.py"], {}, root) == {"guides/b.py"}
+        assert loaded_examples([tests / "test_a.py"], root) == {"guides/b.py"}
 
     def test_a_run_example_tests_call_loads_conftests_above_and_their_imports(
         self, layout
@@ -306,7 +287,7 @@ class TestCoverageGuard:
         _write(root / "guides/other/conftest.py", "x = 1\n")
         _write(tests / "test_a.py", 'run_example_tests("guides/deep/test_x.py")\n')
 
-        assert loaded_examples([tests / "test_a.py"], {}, root) == {
+        assert loaded_examples([tests / "test_a.py"], root) == {
             "conftest.py",
             "guides/deep/conftest.py",
             "guides/deep/test_x.py",
@@ -319,7 +300,7 @@ class TestCoverageGuard:
         _write(root / "conftest.py", "x = 1\n")
         _write(tests / "test_a.py", 'run_example_tests("tut/../guides/b.py")\n')
 
-        assert loaded_examples([tests / "test_a.py"], {}, root) == {
+        assert loaded_examples([tests / "test_a.py"], root) == {
             "conftest.py",
             "guides/b.py",
         }
@@ -330,7 +311,7 @@ class TestCoverageGuard:
         _write(tests / "test_a.py", f"run_example_tests({path!r})\n")
 
         with pytest.raises(ValueError, match="points outside"):
-            loaded_examples([tests / "test_a.py"], {}, root)
+            loaded_examples([tests / "test_a.py"], root)
 
     def test_a_conftest_that_does_not_parse_is_named(self, layout):
         root, tests = layout
@@ -338,26 +319,26 @@ class TestCoverageGuard:
         _write(tests / "test_a.py", 'run_example_tests("guides/b.py")\n')
 
         with pytest.raises(SyntaxError, match="guides/conftest.py does not parse"):
-            loaded_examples([tests / "test_a.py"], {}, root)
+            loaded_examples([tests / "test_a.py"], root)
 
     def test_a_load_example_call_does_not_load_conftests(self, layout):
         root, tests = layout
         _write(root / "guides/conftest.py", "x = 1\n")
         _write(tests / "test_a.py", 'load_example("guides/a.py")\n')
 
-        assert loaded_examples([tests / "test_a.py"], {}, root) == {"guides/a.py"}
+        assert loaded_examples([tests / "test_a.py"], root) == {"guides/a.py"}
 
     def test_a_run_example_tests_call_with_its_own_root_does_not_count(self, layout):
         root, tests = layout
         _write(tests / "test_a.py", 'run_example_tests("guides/b.py", root=tmp)\n')
 
-        assert loaded_examples([tests / "test_a.py"], {}, root) == set()
+        assert loaded_examples([tests / "test_a.py"], root) == set()
 
     def test_a_load_example_call_through_the_module_counts(self, layout):
         root, tests = layout
         _write(tests / "test_a.py", 'support.load_example("guides/b.py")\n')
 
-        assert loaded_examples([tests / "test_a.py"], {}, root) == {"guides/b.py"}
+        assert loaded_examples([tests / "test_a.py"], root) == {"guides/b.py"}
 
     def test_two_packages_with_the_same_folder_name_are_rejected(self, layout):
         root, _ = layout

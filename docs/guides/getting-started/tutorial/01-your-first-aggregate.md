@@ -22,9 +22,9 @@ Now create a file called `bookshelf.py`. Every Protean application begins
 with a **Domain**, the central registry for all your business logic:
 
 ```python
-from protean import Domain
-
-domain = Domain()
+# fragment
+--8<-- "guides/getting-started/tutorial/ch01.py:domain_import"
+--8<-- "guides/getting-started/tutorial/ch01.py:domain_instance"
 ```
 
 Protean ships with in-memory adapters for databases, brokers, and event
@@ -40,6 +40,7 @@ building block of a Protean domain (see
 Let's define a `Book`:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch01.py:imports_and_aggregate"
 ```
 
@@ -59,18 +60,8 @@ With the aggregate defined, let's create an instance. Add this to the
 bottom of `bookshelf.py`:
 
 ```python
-domain.init(traverse=False)
-
-if __name__ == "__main__":
-    with domain.domain_context():
-        book = Book(
-            title="The Great Gatsby",
-            author="F. Scott Fitzgerald",
-            isbn="9780743273565",
-            price=12.99,
-        )
-        print(f"Created: {book.title} by {book.author}")
-        print(f"ID: {book.id}")
+# fragment
+--8<-- "guides/getting-started/tutorial/ch01.py:create_book"
 ```
 
 Two important steps happen here:
@@ -101,6 +92,7 @@ Creating a `Book` object gives you an in-memory instance, but it is not
 persisted yet. To save and retrieve books, use a **repository**:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch01.py:usage"
 ```
 

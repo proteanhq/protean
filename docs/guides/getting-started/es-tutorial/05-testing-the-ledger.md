@@ -10,7 +10,8 @@ events, process this command."
 Protean provides a `given()` function that starts a test sentence:
 
 ```python
-from protean.testing import given
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch05.py:given_import"
 ```
 
 The DSL chains three concepts:
@@ -24,12 +25,14 @@ The DSL chains three concepts:
 Create a `conftest.py` that initializes the domain:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch05.py:conftest"
 ```
 
 And create reusable event fixtures:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch05.py:fixtures"
 ```
 
@@ -39,6 +42,7 @@ When no prior events exist, use `given(Account)` with no event
 arguments:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch05.py:test_create"
 ```
 
@@ -57,6 +61,7 @@ Key assertions:
 When an account already exists, seed the event store with prior events:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch05.py:test_deposit"
 ```
 
@@ -70,6 +75,7 @@ loads the aggregate (which now has a $1,000 balance from the
 When a command violates a business rule, use `.rejected`:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch05.py:test_rejection"
 ```
 
@@ -85,6 +91,7 @@ When a command violates a business rule, use `.rejected`:
 Test an entire lifecycle by chaining `.process()` calls:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch05.py:test_lifecycle"
 ```
 
@@ -97,6 +104,7 @@ accumulates events across **all** chained commands.
 Verify that the "cannot close with balance" invariant works:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch05.py:test_close_rejection"
 ```
 

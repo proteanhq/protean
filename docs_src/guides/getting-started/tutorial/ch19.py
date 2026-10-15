@@ -1,8 +1,9 @@
 # --8<-- [start:full]
 import csv
 
-from protean import Domain
-from protean.fields import Float, String, Text
+from protean import Domain, handle
+from protean.fields import Float, Identifier, String, Text
+from protean.utils.globals import current_domain
 from protean.utils.processing import Priority, processing_priority
 
 domain = Domain("bookshelf")
@@ -26,9 +27,39 @@ class AddBook:
     description: Text()
 
 
+@domain.event(part_of=Book)
+class BookAdded:
+    book_id: Identifier(required=True)
+    title: String(max_length=200, required=True)
+
+
+@domain.command_handler(part_of=Book)
+class BookCommandHandler:
+    @handle(AddBook)
+    def add_book(self, command: AddBook) -> None:
+        book = Book(
+            title=command.title,
+            author=command.author,
+            isbn=command.isbn,
+            price=command.price_amount,
+            description=command.description,
+        )
+        book.raise_(BookAdded(book_id=book.id, title=book.title))
+        current_domain.repository_for(Book).add(book)
+
+
 domain.init(traverse=False)
 
 
+# --8<-- [start:per_command]
+def add_bulk_book() -> None:
+    domain.process(
+        AddBook(title="...", author="...", price_amount=9.99),
+        priority=Priority.BULK,
+    )
+
+
+# --8<-- [end:per_command]
 # --8<-- [start:import_script]
 # import_vintage_press.py
 def import_catalog(csv_path: str):

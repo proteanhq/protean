@@ -34,6 +34,19 @@ class AddBook:
     price_amount: Float(required=True)
 
 
+@domain.command_handler(part_of=Book)
+class BookCommandHandler:
+    @handle(AddBook)
+    def add_book(self, command: AddBook) -> None:
+        book = Book(
+            title=command.title,
+            author=command.author,
+            isbn=command.isbn,
+            price=command.price_amount,
+        )
+        current_domain.repository_for(Book).add(book)
+
+
 # --8<-- [start:restock_command]
 @domain.command(part_of=Inventory)
 class RestockInventory:

@@ -21,6 +21,7 @@ Both consume events, but their responsibilities are different.
 ## The Compliance Alert Handler
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch07.py:compliance_handler"
 ```
 
@@ -31,6 +32,7 @@ it prints an alert. In a real system, this would create a
 ## The Notification Handler
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch07.py:notification_handler"
 ```
 
@@ -53,6 +55,7 @@ the event.
 ## Trying It Out
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch07.py:usage"
 ```
 
@@ -72,6 +75,7 @@ aggregates. For example, a compliance handler could create an
 investigation:
 
 ```python
+# fragment
 @handle(DepositMade)
 def on_large_deposit(self, event: DepositMade):
     if event.amount >= 10_000:

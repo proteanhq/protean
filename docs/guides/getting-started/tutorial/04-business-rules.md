@@ -10,6 +10,7 @@ Let's add a rule: every order must have at least one item. A
 every subsequent mutation:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch04.py:aggregate"
 ```
 
@@ -30,12 +31,8 @@ A **pre-invariant** is checked *before* state changes are applied. We
 use it to prevent invalid operations:
 
 ```python
-@invariant.pre
-def cannot_modify_shipped_order(self):
-    if self.status == OrderStatus.SHIPPED.value:
-        raise ValidationError(
-            {"_entity": ["Cannot modify an order that has been shipped"]}
-        )
+# fragment
+--8<-- "guides/getting-started/tutorial/ch04.py:pre_invariant"
 ```
 
 This prevents any modifications once an order has been shipped:
@@ -52,23 +49,8 @@ Rather than mutating aggregate fields directly, we encapsulate behavior
 in methods:
 
 ```python
-def add_item(self, book_title: str, quantity: int, unit_price: Money):
-    """Add an item to this order."""
-    self.add_items(
-        OrderItem(
-            book_title=book_title,
-            quantity=quantity,
-            unit_price=unit_price,
-        )
-    )
-
-def confirm(self):
-    """Confirm the order for processing."""
-    self.status = OrderStatus.CONFIRMED.value
-
-def ship(self):
-    """Mark the order as shipped."""
-    self.status = OrderStatus.SHIPPED.value
+# fragment
+--8<-- "guides/getting-started/tutorial/ch04.py:behaviour_methods"
 ```
 
 Methods become the **public API** of the aggregate. External code calls
@@ -78,6 +60,7 @@ business logic inside the aggregate where invariants can enforce it.
 ## Putting It Together
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch04.py:usage"
 ```
 

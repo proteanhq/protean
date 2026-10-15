@@ -1,6 +1,8 @@
 # --8<-- [start:full]
 from protean import Domain
 from protean.core.projector import on
+from protean.core.queryset import ResultSet
+from protean.core.view import ReadView
 from protean.fields import Boolean, Float, Identifier, Integer, String
 from protean.utils.globals import current_domain
 
@@ -92,8 +94,94 @@ class StorefrontProjector:
 domain.init(traverse=False)
 
 
+# --8<-- [start:filtering]
+def filter_books() -> tuple[ResultSet, ResultSet]:
+    catalog = domain.view_for(StorefrontView)
+
+    # Exact match
+    by_orwell = catalog.query.filter(author="George Orwell").all()
+
+    # Multiple conditions (AND)
+    cheap_orwell = catalog.query.filter(
+        author="George Orwell",
+        price__lte=15.00,
+    ).all()
+    return by_orwell, cheap_orwell
+
+
+# --8<-- [end:filtering]
+# --8<-- [start:excluding]
+def exclude_unknown(catalog: ReadView) -> ResultSet:
+    # Exclude specific values
+    return catalog.query.exclude(author="Unknown").all()
+
+
+# --8<-- [end:excluding]
+# --8<-- [start:ordering]
+def order_books(catalog: ReadView) -> tuple[ResultSet, ResultSet, ResultSet]:
+    # Ascending
+    cheapest_first = catalog.query.order_by("price").all()
+
+    # Descending (prefix with -)
+    dearest_first = catalog.query.order_by("-price").all()
+
+    # Multiple fields
+    by_author = catalog.query.order_by(["author", "-price"]).all()
+    return cheapest_first, dearest_first, by_author
+
+
+# --8<-- [end:ordering]
+# --8<-- [start:pagination]
+def paginate(catalog: ReadView) -> tuple[ResultSet, ResultSet]:
+    # First page (10 items)
+    page1 = catalog.query.limit(10).offset(0).all()
+    print(page1.page)  # 1
+    print(page1.page_size)  # 10 (alias for limit)
+    print(page1.total_pages)  # total pages based on matching records
+    print(page1.has_next)  # True if more pages exist
+
+    # Second page
+    page2 = catalog.query.limit(10).offset(10).all()
+    print(page2.page)  # 2
+    print(page2.has_prev)  # True
+    return page1, page2
+
+
+# --8<-- [end:pagination]
+# --8<-- [start:chaining]
+def cheapest_orwell_books(catalog: ReadView) -> ResultSet:
+    return (
+        catalog.query.filter(author="George Orwell")
+        .exclude(price__gt=20.00)
+        .order_by("-price")
+        .limit(10)
+        .all()
+    )
+
+
+# --8<-- [end:chaining]
+# --8<-- [start:read_only]
+from protean.exceptions import NotSupportedError
+
+
+def try_to_write(catalog: ReadView) -> list[str]:
+    blocked = []
+    try:
+        catalog.query.update(price=0)
+    except NotSupportedError:
+        blocked.append("update")
+    try:
+        catalog.query.delete()
+    except NotSupportedError:
+        blocked.append("delete")
+    return blocked
+
+
+# --8<-- [end:read_only]
+
+
 # --8<-- [start:api_endpoints]
-# bookshelf/api.py — enhanced storefront endpoint
+# bookshelf/api.py: enhanced storefront endpoint
 
 
 # @app.get("/storefront")

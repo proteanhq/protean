@@ -10,7 +10,11 @@ import pytest
 from protean import Domain, apply, handle, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier, String
+
+# --8<-- [start:given_import]
 from protean.testing import given
+
+# --8<-- [end:given_import]
 from protean.utils.globals import current_domain
 
 domain = Domain("fidelis")
@@ -277,8 +281,8 @@ def test_full_account_lifecycle(account_opened):
 
 # --8<-- [end:test_lifecycle]
 # --8<-- [start:test_close_rejection]
-def test_cannot_close_with_balance(account_opened):
-    result = given(Account, account_opened).process(
+def test_cannot_close_with_balance(funded_account):
+    result = given(Account, *funded_account).process(
         CloseAccount(account_id="acc-123", reason="Customer request")
     )
 

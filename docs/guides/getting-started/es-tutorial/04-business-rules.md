@@ -53,6 +53,7 @@ Here is how they work:
 We also add an `AccountClosed` event and a `close()` method:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch04.py:account_closed_event"
 ```
 
@@ -73,6 +74,7 @@ And the corresponding `@apply` handler:
 Let's exercise both invariants:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/es-tutorial/ch04.py:usage"
 ```
 

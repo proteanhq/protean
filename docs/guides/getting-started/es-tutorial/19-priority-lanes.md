@@ -43,13 +43,8 @@ events are processed only when the primary is empty.
 ## The Priority Enum
 
 ```python
-from protean.utils.processing import Priority
-
-# Priority.BULK     = -100
-# Priority.LOW      = -50
-# Priority.NORMAL   =  0   (default)
-# Priority.HIGH     =  50
-# Priority.CRITICAL =  100
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch19.py:priority_enum"
 ```
 
 Events with priority **below the threshold** (default: 0) are routed to
@@ -60,21 +55,8 @@ the backfill stream. Everything else goes to the primary stream.
 Wrap bulk operations in the `processing_priority()` context manager:
 
 ```python
-from protean.utils.processing import processing_priority, Priority
-
-
-def migrate_legacy_accounts(legacy_accounts: list[dict]) -> None:
-    with processing_priority(Priority.BULK):
-        for i, legacy in enumerate(legacy_accounts):
-            domain.process(OpenAccount(
-                account_number=legacy["number"],
-                holder_name=legacy["name"],
-                opening_deposit=legacy["balance"],
-            ))
-            if i % 10_000 == 0:
-                print(f"Migrated {i:,} accounts...")
-
-    print(f"Migration complete: {len(legacy_accounts):,} accounts queued.")
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch19.py:migrate_legacy_accounts"
 ```
 
 All commands within the `processing_priority(Priority.BULK)` context
@@ -86,20 +68,8 @@ through the primary stream at full speed.
 Contexts nest. The innermost wins:
 
 ```python
-with processing_priority(Priority.BULK):
-    # These go to backfill stream
-    domain.process(OpenAccount(
-        account_number="MIGR-001", holder_name="Ada Lovelace", opening_deposit=100.0
-    ))
-
-    # But a critical real-time deposit still goes to primary
-    with processing_priority(Priority.CRITICAL):
-        domain.process(MakeDeposit(account_id="acc-vip", amount=1_000_000))
-
-    # Back to BULK for remaining migration
-    domain.process(OpenAccount(
-        account_number="MIGR-002", holder_name="Alan Turing", opening_deposit=250.0
-    ))
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch19.py:nested_priorities"
 ```
 
 ## Per-Command Priority
@@ -107,12 +77,8 @@ with processing_priority(Priority.BULK):
 You can also set priority on individual commands:
 
 ```python
-domain.process(
-    OpenAccount(
-        account_number="MIGR-001", holder_name="Ada Lovelace", opening_deposit=100.0
-    ),
-    priority=Priority.BULK,
-)
+# fragment
+--8<-- "guides/getting-started/es-tutorial/ch19.py:per_command_priority"
 ```
 
 ## Monitoring the Migration

@@ -147,8 +147,10 @@ class AccountCommandHandler:
 
 # --8<-- [end:command_handler]
 domain.init(traverse=False)
+# --8<-- [start:sync_config]
 domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
+# --8<-- [end:sync_config]
 
 
 # --8<-- [start:usage]

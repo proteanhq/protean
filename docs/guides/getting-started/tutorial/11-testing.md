@@ -16,29 +16,7 @@ Protean ships with a pytest plugin and `DomainFixture` that handles
 initialization, context management, and cleanup. Create a `conftest.py`:
 
 ```python
-import pytest
-
-from protean.integrations.pytest import DomainFixture
-from protean.utils.globals import current_domain
-
-from bookshelf import domain
-
-
-@pytest.fixture(scope="session")
-def app_fixture():
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-
-    fixture = DomainFixture(domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():
-        yield
+--8<-- "guides/getting-started/tutorial/tests/conftest.py:full"
 ```
 
 `DomainFixture.setup()` calls `domain.init()` to discover and wire all
@@ -53,27 +31,7 @@ Test the business rules *you* wrote, invariants, state guards, and meaningful
 state transitions:
 
 ```python
-from bookshelf.models import Book, Order, OrderItem, Money
-
-def test_order_must_have_items():
-    with pytest.raises(ValidationError) as exc:
-        Order(customer_name="Alice")
-    assert "at least one item" in str(exc.value.messages)
-
-def test_cannot_modify_shipped_order():
-    order = Order(
-        customer_name="Alice",
-        items=[
-            OrderItem(
-                book_title="Gatsby", quantity=1, price=Money(amount=12.99)
-            )
-        ],
-    )
-    order.ship()
-
-    with pytest.raises(ValidationError) as exc:
-        order.add_item("Another Book", 1, Money(amount=9.99))
-    assert "shipped" in str(exc.value.messages)
+--8<-- "guides/getting-started/tutorial/tests/test_invariants.py:full"
 ```
 
 ### Testing Value Objects
@@ -82,15 +40,7 @@ Value object tests should focus on domain behavior, equality semantics and any
 custom logic:
 
 ```python
-from bookshelf.models import Money
-
-def test_money_equality():
-    m1 = Money(amount=12.99, currency="USD")
-    m2 = Money(amount=12.99, currency="USD")
-    m3 = Money(amount=14.99, currency="USD")
-
-    assert m1 == m2
-    assert m1 != m3
+--8<-- "guides/getting-started/tutorial/tests/test_value_objects.py:full"
 ```
 
 ## Testing Commands and Handlers
@@ -99,36 +49,7 @@ Test the full command processing flow. The `_ctx` fixture ensures
 `current_domain` is available:
 
 ```python
-from bookshelf.commands import AddBook
-from bookshelf.models import Book, Inventory
-
-def test_add_book_command():
-    book_id = current_domain.process(
-        AddBook(
-            title="The Great Gatsby",
-            author="F. Scott Fitzgerald",
-            price_amount=12.99,
-        ),
-        asynchronous=False,
-    )
-
-    book = current_domain.repository_for(Book).get(book_id)
-    assert book.title == "The Great Gatsby"
-    assert book.price.amount == 12.99
-
-def test_add_book_raises_event():
-    current_domain.process(
-        AddBook(
-            title="Dune",
-            author="Frank Herbert",
-            price_amount=15.99,
-        ),
-        asynchronous=False,
-    )
-
-    # With sync processing, the event handler runs immediately
-    inventories = current_domain.repository_for(Inventory).query.all()
-    assert inventories.total == 1
+--8<-- "guides/getting-started/tutorial/tests/test_commands.py:full"
 ```
 
 ## Testing Events and Event Handlers
@@ -136,21 +57,7 @@ def test_add_book_raises_event():
 Verify that events trigger the expected reactions:
 
 ```python
-from bookshelf.models import Book, Inventory, Money
-
-def test_book_added_creates_inventory():
-    """When a book is added, an inventory record should be created."""
-    book = Book(
-        title="1984",
-        author="George Orwell",
-        price=Money(amount=11.99),
-    )
-    book.add_to_catalog()
-    current_domain.repository_for(Book).add(book)
-
-    inventories = current_domain.repository_for(Inventory).query.all()
-    assert inventories.total == 1
-    assert inventories.items[0].title == "1984"
+--8<-- "guides/getting-started/tutorial/tests/test_events.py:full"
 ```
 
 ## Testing Projections
@@ -159,20 +66,7 @@ Verify that projectors maintain projections correctly using
 `domain.view_for()`:
 
 ```python
-from bookshelf.models import Book, BookCatalog
-
-def test_book_catalog_projection():
-    """Adding a book should create a catalog entry."""
-    book = Book.add_to_catalog(
-        title="Dune",
-        author="Frank Herbert",
-        price_amount=15.99,
-    )
-    current_domain.repository_for(Book).add(book)
-
-    entries = current_domain.view_for(BookCatalog).query.all()
-    assert entries.total == 1
-    assert entries.items[0].title == "Dune"
+--8<-- "guides/getting-started/tutorial/tests/test_projections.py:full"
 ```
 
 ## Testing API Endpoints
@@ -180,36 +74,7 @@ def test_book_catalog_projection():
 Test the FastAPI endpoints using `TestClient`:
 
 ```python
-from fastapi.testclient import TestClient
-from bookshelf.api import app
-
-client = TestClient(app)
-
-def test_add_book_endpoint():
-    response = client.post("/books", json={
-        "title": "The Great Gatsby",
-        "author": "F. Scott Fitzgerald",
-        "price_amount": 12.99,
-    })
-    assert response.status_code == 200
-    assert "book_id" in response.json()
-
-def test_browse_catalog():
-    # Add a book first
-    client.post("/books", json={
-        "title": "Dune",
-        "author": "Frank Herbert",
-        "price_amount": 15.99,
-    })
-
-    response = client.get("/catalog")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["total"] >= 1
-
-def test_book_not_found():
-    response = client.get("/catalog/nonexistent-id")
-    assert response.status_code == 404
+--8<-- "guides/getting-started/tutorial/tests/test_api.py:full"
 ```
 
 ## Integration Testing
@@ -217,36 +82,20 @@ def test_book_not_found():
 Test complete flows from command to final state:
 
 ```python
-from bookshelf.commands import AddBook
-from bookshelf.models import Order, OrderItem, Money
-
-def test_full_order_flow():
-    """End-to-end: add book -> place order -> verify."""
-    book_id = current_domain.process(
-        AddBook(title="Dune", author="Frank Herbert", price_amount=15.99),
-        asynchronous=False,
-    )
-
-    order = Order(
-        customer_name="Alice",
-        items=[
-            OrderItem(
-                book_title="Dune", quantity=2, price=Money(amount=15.99)
-            )
-        ],
-    )
-    current_domain.repository_for(Order).add(order)
-
-    order.confirm()
-    current_domain.repository_for(Order).add(order)
-
-    saved = current_domain.repository_for(Order).get(order.id)
-    assert saved.status == "CONFIRMED"
+--8<-- "guides/getting-started/tutorial/tests/test_integration.py:full"
 ```
 
 ## Running Tests
 
-Run the tests:
+The tests import `bookshelf`, so pytest needs the project folder on the import
+path. Add this to `pyproject.toml`:
+
+```toml
+[tool.pytest.ini_options]
+pythonpath = ["."]
+```
+
+Then run the tests from the project folder:
 
 ```shell
 $ pytest -v

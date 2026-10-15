@@ -96,7 +96,8 @@ MARKERS: dict[str, str] = {
     "guides/fastapi/testing-endpoints/001.py": "fastapi",
     "guides/fastapi/testing-endpoints/002.py": "fastapi",
     "guides/observability/correlation-and-causation/002.py": "fastapi",
-    "guides/getting-started/tutorial/ch10.py": "fastapi",
+    "guides/getting-started/tutorial/bookshelf": "fastapi",
+    "guides/getting-started/tutorial/tests/test_api.py": "fastapi",
     "guides/server/hardening/001.py": "fastapi",
     "guides/server/monitoring/001.py": "fastapi",
     "guides/server/opentelemetry/001.py": "fastapi",
@@ -201,9 +202,9 @@ spec = json.loads(pathlib.Path(sys.argv[1]).read_text())
 root = pathlib.Path(spec["root"])
 timeout = spec["timeout"]
 # Examples import each other by their path under docs_src, as the test suite's
-# conftest allows, so the child puts the root on sys.path the same way. A file
-# that imports a docs_src package (ch10 imports bookshelf) finds it by its
-# folder name, so each package's parent folder goes on sys.path too.
+# conftest allows, so the child puts the root on sys.path the same way. A
+# docs_src package such as bookshelf is imported by its folder name, so each
+# package's parent folder goes on sys.path too.
 sys.path.insert(0, str(root))
 for init in sorted(root.rglob("__init__.py")):
     sys.path.insert(0, str(init.parent.parent))

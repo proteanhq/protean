@@ -190,6 +190,41 @@ domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 
 
+# --8<-- [start:at_version]
+def account_at_version(account_id: str, version: int) -> Account:
+    repo = current_domain.repository_for(Account)
+
+    # What was the state after the given event?
+    account = repo.get(account_id, at_version=version)
+    print(f"Balance at version {version}: ${account.balance:.2f}")
+    return account
+
+
+# --8<-- [end:at_version]
+# --8<-- [start:as_of]
+def account_as_of(account_id: str, moment: datetime) -> Account:
+    repo = current_domain.repository_for(Account)
+
+    account = repo.get(account_id, as_of=moment)
+    print(f"Balance on {moment:%B %d}: ${account.balance:.2f}")
+    return account
+
+
+# --8<-- [end:as_of]
+# --8<-- [start:read_only]
+def try_to_change(account: Account) -> str:
+    try:
+        account.raise_(
+            DepositMade(account_id=str(account.id), amount=100.00, reference="late")
+        )
+    except IncorrectUsageError as e:
+        # "Cannot raise events on a temporally-loaded aggregate..."
+        print(e.args[0])
+        return e.args[0]
+    return ""
+
+
+# --8<-- [end:read_only]
 # --8<-- [start:temporal_usage]
 if __name__ == "__main__":
     with domain.domain_context():
@@ -236,33 +271,17 @@ if __name__ == "__main__":
 
         # --- Temporal query: at_version ---
         # at_version=2 replays events 0, 1, and 2 (the first 3 events)
-        historical = repo.get(account_id, at_version=2)
-        print(
-            f"Balance at version 2: ${historical.balance:.2f} "
-            f"(version {historical._version})"
-        )
+        historical = account_at_version(account_id, 2)
         assert historical.balance == 1700.00  # 1000 + 500 + 200
 
         # --- Temporal query: as_of ---
         # Load the aggregate as it was at the midpoint timestamp
-        snapshot_in_time = repo.get(account_id, as_of=midpoint)
-        print(
-            f"Balance at midpoint: ${snapshot_in_time.balance:.2f} "
-            f"(version {snapshot_in_time._version})"
-        )
+        snapshot_in_time = account_as_of(account_id, midpoint)
         assert snapshot_in_time.balance == 1700.00  # Before rent withdrawal
 
         # --- Temporal aggregates are read-only ---
-        try:
-            historical.raise_(
-                DepositMade(
-                    account_id=str(historical.id),
-                    amount=100.00,
-                    reference="should-fail",
-                )
-            )
-        except IncorrectUsageError as e:
-            print(f"\nRead-only guard: {e.args[0]}")
+        message = try_to_change(historical)
+        assert message.startswith("Cannot raise events")
 
         print("\nAll checks passed!")
 # --8<-- [end:temporal_usage]
