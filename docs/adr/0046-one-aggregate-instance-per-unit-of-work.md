@@ -47,6 +47,10 @@ A Unit of Work holds one instance of each aggregate for the whole transaction.
   match changes.
 - An aggregate is added to the map on its first read or save in the
   transaction. This applies to state-based and event-sourced aggregates.
+- Being in the map does not make an event-sourced aggregate's events commit.
+  Its events are its state, and `add()` raises its fact event, so its events
+  commit only once `add()` has saved it. A state-based aggregate's events
+  commit once it is read, as before.
 - A read through a DAO set to work outside the Unit of Work (`outside_uow()`)
   and a temporal query (`at_version` or `as_of`) do not use the map.
 

@@ -92,7 +92,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
                 fact_event_obj = aggregate._fact_event_cls(**payload)
                 aggregate.raise_(fact_event_obj)
 
-            uow._add_to_identity_map(aggregate)
+            uow._add_to_identity_map(aggregate, saved=True)
 
             # If we started a UnitOfWork, commit it now
             if own_current_uow:

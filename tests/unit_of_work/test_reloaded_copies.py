@@ -38,12 +38,24 @@ class Opened(BaseEvent):
     ledger_id: Identifier()
 
 
+class Renamed(BaseEvent):
+    ledger_id: Identifier()
+    name: String(max_length=50)
+
+
 class Ledger(BaseAggregate):
     name: String(max_length=50)
 
     @apply
     def opened(self, event: Opened) -> None:
         self.id = event.ledger_id
+
+    @apply
+    def renamed(self, event: Renamed) -> None:
+        self.name = event.name
+
+    def rename(self, name: str) -> None:
+        self.raise_(Renamed(ledger_id=self.id, name=name))
 
 
 @pytest.fixture(autouse=True)
@@ -52,8 +64,9 @@ def register_elements(test_domain):
     test_domain.register(Bumped, part_of=Tally)
     test_domain.register(Marker)
     test_domain.register(Pinged, part_of=Marker)
-    test_domain.register(Ledger, event_sourced=True)
+    test_domain.register(Ledger, event_sourced=True, fact_events=True)
     test_domain.register(Opened, part_of=Ledger)
+    test_domain.register(Renamed, part_of=Ledger)
     test_domain.init(traverse=False)
 
 
@@ -85,7 +98,7 @@ def test_a_second_get_returns_the_instance_already_tracked(test_domain, tally):
 
         assert second is first
         assert found is first
-        tracked = [item for _, item in uow._tracked_items()]
+        tracked = [item for _, item in uow._items_to_commit()]
         assert len(tracked) == 1
         assert tracked[0] is first
 
@@ -174,14 +187,48 @@ def test_aggregates_of_two_types_with_one_id_are_tracked_apart(test_domain):
     assert len(store.read(f"{Marker.meta_.stream_category}-shared")) == 1
 
 
-def test_an_event_sourced_get_returns_the_instance_already_tracked(test_domain):
-    repo = test_domain.repository_for(Ledger)
+@pytest.fixture
+def ledger(test_domain) -> Ledger:
     ledger = Ledger(name="l")
     ledger.raise_(Opened(ledger_id=ledger.id))
-    repo.add(ledger)
+    test_domain.repository_for(Ledger).add(ledger)
+    return ledger
+
+
+def _ledger_streams(test_domain, ledger: Ledger) -> tuple[int, int]:
+    store = test_domain.event_store.store
+    category = Ledger.meta_.stream_category
+    return (
+        len(store.read(f"{category}-{ledger.id}")),
+        len(store.read(f"{category}-fact-{ledger.id}")),
+    )
+
+
+def test_an_event_sourced_get_returns_the_instance_already_tracked(test_domain, ledger):
+    repo = test_domain.repository_for(Ledger)
 
     with UnitOfWork():
         first = repo.get(ledger.id)
         second = repo.get(ledger.id)
 
         assert second is first
+
+
+def test_events_raised_on_an_event_sourced_read_need_an_add_to_commit(
+    test_domain, ledger
+):
+    with UnitOfWork():
+        test_domain.repository_for(Ledger).get(ledger.id).rename("unsaved")
+
+    assert _ledger_streams(test_domain, ledger) == (1, 1)
+
+
+def test_an_add_after_an_event_sourced_read_commits_its_fact_event(test_domain, ledger):
+    repo = test_domain.repository_for(Ledger)
+
+    with UnitOfWork():
+        loaded = repo.get(ledger.id)
+        loaded.rename("saved")
+        repo.add(loaded)
+
+    assert _ledger_streams(test_domain, ledger) == (2, 2)

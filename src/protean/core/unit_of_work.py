@@ -158,26 +158,32 @@ class UnitOfWork:
         if saved:
             self._saved.add((provider_name, *key))
 
-    def _tracked_items(self) -> list[tuple[str, Any]]:
-        """Every instance tracked in this transaction, each with the name of
-        its provider."""
+    def _items_to_commit(self) -> list[tuple[str, Any]]:
+        """The instances whose events this transaction commits, each with the
+        name of its provider.
+
+        An event-sourced aggregate counts only once ``add()`` has saved it.
+        Its events are its state, and ``add()`` is where its fact event is
+        raised, so a read alone must not persist what was raised on it.
+        """
         return [
             (provider_name, item)
             for provider_name, identity_map in self._identity_map.items()
-            for item in identity_map.values()
+            for key, item in identity_map.items()
+            if not item.meta_.is_event_sourced or (provider_name, *key) in self._saved
         ]
 
     def _gather_events(self) -> defaultdict[str, list[Any]]:
         """Gather all events from the instances tracked in this transaction"""
         all_events: defaultdict[str, list[Any]] = defaultdict(list)
-        for provider, item in self._tracked_items():
+        for provider, item in self._items_to_commit():
             if item._events:
                 all_events[provider].extend(item._events)
         return all_events
 
     def _clear_events_from_items(self) -> None:
         """Clear events from the instances tracked in this transaction"""
-        for _, item in self._tracked_items():
+        for _, item in self._items_to_commit():
             item._events = []
 
     def _state_based_items(self) -> list[tuple[str, Any]]:
@@ -354,7 +360,7 @@ class UnitOfWork:
         # aggregates is a design smell (consider using domain events for
         # cross-aggregate coordination instead).
         aggregate_classes_with_events: set[type] = set()
-        for _, item in self._tracked_items():
+        for _, item in self._items_to_commit():
             if item._events:
                 aggregate_classes_with_events.add(type(item))
         if len(aggregate_classes_with_events) > 1:
