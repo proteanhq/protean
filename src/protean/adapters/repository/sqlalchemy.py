@@ -2666,7 +2666,8 @@ def _driver_import_error(module: str) -> ImportError | None:
 
     A driver can be installed and still fail to import: psycopg 3 without its
     binary package or a system ``libpq``, pyodbc without unixODBC. So this
-    imports the module rather than only looking for it.
+    imports the module, which catches a driver that is installed but fails to
+    load.
     """
     try:
         importlib.import_module(module)
@@ -2826,24 +2827,44 @@ _DEFAULT_DRIVER_EXTRAS: dict[str, str] = {
 
 
 def _require_default_driver(
-    database: str, url: URL, backends: frozenset[str], driver: str
+    database: str,
+    url: URL,
+    backends: frozenset[str],
+    driver: str,
+    driverless_module: str,
 ) -> None:
-    """Fail with the extra to install when ``url`` needs ``driver`` and it is missing.
+    """Fail with the extra to install when ``url`` needs a driver that is missing.
 
-    A URL naming no driver, or naming ``driver``, is checked. A URL for another
-    backend, or naming another driver, goes to SQLAlchemy as written, so an
-    installed alternative driver keeps working.
+    A URL naming ``driver`` is checked for ``driver``. A URL naming no driver is
+    checked for ``driverless_module``, the module SQLAlchemy loads for it. A URL
+    for another backend, or naming another driver, goes to SQLAlchemy as
+    written, so an installed alternative driver keeps working.
     """
-    backend, _, named = url.drivername.partition("+")
-    if backend not in backends or (named and named != driver):
+    backend, plus, named = url.drivername.partition("+")
+    if backend not in backends or (plus and named != driver):
         return
 
-    error = _driver_import_error(driver)
+    extra = _DEFAULT_DRIVER_EXTRAS[driver]
+    if plus or driverless_module == driver:
+        error = _driver_import_error(driver)
+        if error is not None:
+            raise ConfigurationError(
+                f"Database '{database}' uses a '{url.drivername}://' URL, but the "
+                f"'{driver}' driver cannot be imported ({error}). Install it with "
+                f'`pip install "{extra}"`.'
+            ) from error
+        return
+
+    # SQLAlchemy reads a plain mysql:// as mysqlclient. Installing the extra
+    # alone would not fix that URL, so the message also asks for the driver in it.
+    error = _driver_import_error(driverless_module)
     if error is not None:
         raise ConfigurationError(
-            f"Database '{database}' uses a '{url.drivername}://' URL, but the "
-            f"'{driver}' driver cannot be imported ({error}). Install it with "
-            f'`pip install "{_DEFAULT_DRIVER_EXTRAS[driver]}"`.'
+            f"Database '{database}' uses a '{url.drivername}://' URL, which "
+            f"SQLAlchemy connects through '{driverless_module}', and it cannot be "
+            f"imported ({error}). Write '{backend}+{driver}://' to use the "
+            f"'{driver}' driver, and install it with "
+            f'`pip install "{extra}"`.'
         ) from error
 
 
@@ -2861,7 +2882,9 @@ class MssqlProvider(SAProvider):
 
     def _engine_url(self) -> URL:
         url = super()._engine_url()
-        _require_default_driver(self.name, url, frozenset({"mssql"}), "pyodbc")
+        _require_default_driver(
+            self.name, url, frozenset({"mssql"}), "pyodbc", "pyodbc"
+        )
         return url
 
     @property
@@ -2938,8 +2961,10 @@ class MysqlProvider(SAProvider):
     from another charset is rejected at construction rather than at
     ``CREATE TABLE``.
 
-    A ``database_uri`` naming no driver or PyMySQL fails at ``domain.init()``
-    with the extra that installs PyMySQL when it cannot be imported. A URI
+    A ``database_uri`` naming PyMySQL fails at ``domain.init()`` with the extra
+    that installs it when PyMySQL cannot be imported. SQLAlchemy reads a URI
+    naming no driver (``mysql://``) as mysqlclient, so that URI is checked for
+    ``MySQLdb`` and the error asks for ``mysql+pymysql://`` and the extra. A URI
     naming another driver (``mysql+mysqldb://``) goes to SQLAlchemy as written.
     """
 
@@ -2982,7 +3007,7 @@ class MysqlProvider(SAProvider):
 
     def _engine_url(self) -> URL:
         url = super()._engine_url()
-        _require_default_driver(self.name, url, _MYSQL_DIALECTS, "pymysql")
+        _require_default_driver(self.name, url, _MYSQL_DIALECTS, "pymysql", "MySQLdb")
         return url
 
     @staticmethod

@@ -18,10 +18,11 @@ and `sha256_password` use on an unencrypted connection.
 
 If PyMySQL cannot be imported, `domain.init()` raises a `ConfigurationError`
 that names the extra to install. This covers a `database_uri` that names
-PyMySQL (`mysql+pymysql://`, `mariadb+pymysql://`) and one that names no
-driver (`mysql://`). A `database_uri` that names another driver, such as
-`mysql+mysqldb://`, goes to SQLAlchemy as written. SQLAlchemy reads a plain
-`mysql://` as mysqlclient, so write `+pymysql` into the URL.
+PyMySQL (`mysql+pymysql://`, `mariadb+pymysql://`). SQLAlchemy connects a plain
+`mysql://` or `mariadb://` through mysqlclient, so Protean checks that URL for
+mysqlclient. When mysqlclient is missing, the error asks you to add `+pymysql`
+to the URL and install the extra. A `database_uri` that names another
+driver, such as `mysql+mysqldb://`, goes to SQLAlchemy as written.
 
 ## Configure TLS explicitly
 
