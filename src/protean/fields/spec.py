@@ -13,7 +13,7 @@ import inspect
 import warnings
 from collections.abc import Callable, Iterable
 from enum import Enum
-from typing import Annotated, Any, Literal, final
+from typing import Annotated, Any, Literal, final, get_args, get_origin
 from uuid import uuid4
 
 from pydantic import AfterValidator, BeforeValidator
@@ -31,6 +31,8 @@ from protean.utils import (
     TRUTHY_FLAG_SPELLINGS,
     _generate_identity,
     _normalize_deprecated,
+    _stdlib_timezone,
+    _stdlib_timezone_each,
 )
 from protean.utils.globals import current_domain
 
@@ -407,6 +409,13 @@ class FieldSpec:
         ):
             extra_validators.append(BeforeValidator(_coerce_to_str))
 
+        if self.python_type is _dt.datetime:
+            extra_validators.append(AfterValidator(_stdlib_timezone))
+        elif _is_datetime_list(self.python_type):
+            # On the list itself, not its element type: adapters and the IR
+            # read the element type and expect a plain ``datetime``.
+            extra_validators.append(AfterValidator(_stdlib_timezone_each))
+
         # Sanitization via AfterValidator. The field's length bounds are
         # re-enforced on the sanitized (stored) value so a value that passes on
         # write always round-trips through serialization and replay — bleach can
@@ -634,6 +643,14 @@ def resolve_fieldspecs(cls: type) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+def _is_datetime_list(tp: Any) -> bool:
+    """Whether ``tp`` is a list of datetimes, at any depth of nesting."""
+    args = get_args(tp)
+    if get_origin(tp) is not list or len(args) != 1:
+        return False
+    return args[0] is _dt.datetime or _is_datetime_list(args[0])
+
+
 def _coerce_to_str(v: Any) -> str:
     """Coerce a value to ``str`` for identifier/auto fields.
 

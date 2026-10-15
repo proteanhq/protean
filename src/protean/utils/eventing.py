@@ -25,6 +25,7 @@ from protean.fields.base import FieldBase
 from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
+from protean.utils import OptionalStdlibDatetime
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import _domain_now, current_domain
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, fields
@@ -131,7 +132,7 @@ class MessageHeaders(BaseValueObject):
     id: str | None = None
 
     # Time of event generation
-    time: datetime | None = None
+    time: OptionalStdlibDatetime = None
 
     # Type of the event
     # Format: <domain-name>.<event-class-name>.<event-version>
@@ -148,7 +149,7 @@ class MessageHeaders(BaseValueObject):
 
     # Absolute deadline (UTC) after which a command must not be executed.
     # Propagated through the message chain so downstream commands inherit it.
-    deadline: datetime | None = None
+    deadline: OptionalStdlibDatetime = None
 
     @classmethod
     def build(cls, **kwargs: Any) -> "MessageHeaders":

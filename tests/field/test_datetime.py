@@ -1,7 +1,8 @@
 from datetime import UTC, datetime, timedelta, timezone
 
 from protean.core.value_object import BaseValueObject
-from protean.fields import DateTime
+from protean.fields import DateTime, List
+from protean.utils.reflection import fields
 
 
 def utc_now():
@@ -10,6 +11,11 @@ def utc_now():
 
 class Timestamped(BaseValueObject):
     at: DateTime(required=True)
+
+
+class Schedule(BaseValueObject):
+    slots: List(content_type=DateTime())
+    weeks: List(content_type=List(content_type=DateTime()))
 
 
 def _serialize(value):
@@ -56,3 +62,48 @@ def test_serialized_datetime_round_trips():
     ):
         encoded = _serialize(value)
         assert Timestamped(at=encoded).at == value
+
+
+# --- parsed offsets carry a stdlib timezone, not pydantic-core's TzInfo ---
+
+
+def test_offset_string_is_parsed_to_a_stdlib_timezone():
+    at = Timestamped(at="2024-01-02T03:04:05+05:30").at
+
+    assert type(at.tzinfo) is timezone
+    assert at.utcoffset() == timedelta(hours=5, minutes=30)
+
+
+def test_z_suffix_is_parsed_to_utc():
+    at = Timestamped(at="2024-01-02T03:04:05Z").at
+
+    assert type(at.tzinfo) is timezone
+    assert at == datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+
+def test_naive_string_stays_naive():
+    assert Timestamped(at="2024-01-02T03:04:05").at.tzinfo is None
+
+
+def test_list_elements_parsed_from_strings_carry_a_stdlib_timezone():
+    slots = Schedule(slots=["2024-01-02T03:04:05Z", "2024-01-02T03:04:05+05:30"]).slots
+
+    assert [type(slot.tzinfo) for slot in slots] == [timezone, timezone]
+    assert slots[1].utcoffset() == timedelta(hours=5, minutes=30)
+
+
+def test_list_element_type_stays_a_plain_datetime():
+    assert fields(Schedule)["slots"].content_type is datetime
+
+
+def test_nested_list_elements_parsed_from_strings_carry_a_stdlib_timezone():
+    weeks = Schedule(
+        weeks=[["2024-01-02T03:04:05Z"], ["2024-01-09T03:04:05+05:30"]]
+    ).weeks
+
+    assert [type(day.tzinfo) for week in weeks for day in week] == [timezone, timezone]
+    assert weeks[1][0].utcoffset() == timedelta(hours=5, minutes=30)
+
+
+def test_nested_list_element_type_stays_a_list_of_plain_datetimes():
+    assert fields(Schedule)["weeks"].content_type == list[datetime]

@@ -15,7 +15,14 @@ from protean.core.index import Index
 from protean.core.repository import BaseRepository
 from protean.exceptions import DeserializationError, ValidationError
 from protean.fields import Auto
-from protean.utils import DomainObjects, ensure_utc_aware, fqn, outbox_trace
+from protean.utils import (
+    DomainObjects,
+    OptionalStdlibDatetime,
+    StdlibDatetime,
+    ensure_utc_aware,
+    fqn,
+    outbox_trace,
+)
 from protean.utils.eventing import Metadata
 from protean.utils.globals import _domain_now
 from protean.utils.query import F, Q
@@ -143,12 +150,12 @@ class Outbox(BaseAggregate):
     # at field-definition time with no ``now`` argument and no reliable domain
     # context, and this is a creation timestamp (aggregate identity), not a
     # deadline/lock boundary. Left as real UTC deliberately.
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    published_at: datetime | None = None
+    created_at: StdlibDatetime = Field(default_factory=lambda: datetime.now(UTC))
+    published_at: OptionalStdlibDatetime = None
     retry_count: int = 0
 
     # Last processed timestamp and error details
-    last_processed_at: datetime | None = None
+    last_processed_at: OptionalStdlibDatetime = None
     last_error: dict[str, Any] | None = None
 
     status: Annotated[str, Field(max_length=32)] = OutboxStatus.PENDING.value
@@ -157,10 +164,10 @@ class Outbox(BaseAggregate):
     max_retries: int = 3
 
     # When to attempt next retry (for exponential backoff)
-    next_retry_at: datetime | None = None
+    next_retry_at: OptionalStdlibDatetime = None
 
     # Lock mechanism to prevent concurrent processing
-    locked_until: datetime | None = None
+    locked_until: OptionalStdlibDatetime = None
     # Worker/process identifier
     locked_by: Annotated[str | None, Field(max_length=128)] = None
 
