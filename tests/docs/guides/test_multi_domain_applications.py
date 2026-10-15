@@ -10,7 +10,7 @@ from protean.exceptions import ConfigurationError
 from protean.utils import DomainObjects
 from protean.utils.globals import current_domain
 from tests.docs.support import DOCS_SRC, load_example
-from tests.support.lifespan import lifespan_yields
+from tests.support.lifespan import empty_with_blocks, lifespan_yields
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -175,10 +175,12 @@ def test_the_lifespan_closes_every_domain_in_reverse_order_on_shutdown(example):
 def test_the_lifespan_yield_sits_in_a_try_that_closes_the_domains():
     path = DOCS_SRC / "guides/multi-domain-applications/001.py"
 
-    yields = lifespan_yields(path.read_text(encoding="utf-8"))
+    source = path.read_text(encoding="utf-8")
+    yields = lifespan_yields(source)
 
     assert yields
     assert all(closed for _, closed in yields), yields
+    assert empty_with_blocks(source) == []
 
 
 def test_the_subscriber_translates_the_payload_into_a_stored_recipient(example):

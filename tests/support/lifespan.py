@@ -2,7 +2,8 @@
 
 A lifespan with a bare ``yield`` leaves the provider, broker, cache and event
 store connections open when the app stops. Each ``yield`` must sit inside a
-``try`` whose ``finally`` calls ``.close()``.
+``try`` whose ``finally`` calls ``.close()``. The check reads the source, so it
+looks for a ``.close()`` call on any receiver and does not follow branches.
 """
 
 from __future__ import annotations
@@ -45,14 +46,36 @@ def _yields_under(node: ast.AST, closed: bool) -> list[tuple[int, bool]]:
     return found
 
 
+def _lifespans(source: str) -> list[ast.AsyncFunctionDef]:
+    return [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "lifespan"
+    ]
+
+
 def lifespan_yields(source: str) -> list[tuple[int, bool]]:
     """Return ``(line, closed)`` for each ``yield`` in an ``async def lifespan``.
 
     ``closed`` is true when the ``yield`` sits in the body of a ``try`` whose
-    ``finally`` calls ``.close()``.
+    ``finally`` contains a ``.close()`` call.
     """
     found: list[tuple[int, bool]] = []
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "lifespan":
-            found.extend(_yields_in(node.body, closed=False))
+    for lifespan in _lifespans(source):
+        found.extend(_yields_in(lifespan.body, closed=False))
     return found
+
+
+def empty_with_blocks(source: str) -> list[int]:
+    """Return the line of each ``with`` block in a lifespan whose body is ``pass``.
+
+    An empty ``with domain.domain_context(): pass`` after the ``yield`` looks
+    like cleanup but releases nothing.
+    """
+    return [
+        node.lineno
+        for lifespan in _lifespans(source)
+        for node in ast.walk(lifespan)
+        if isinstance(node, (ast.With, ast.AsyncWith))
+        and all(isinstance(stmt, ast.Pass) for stmt in node.body)
+    ]

@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
                 d.setup_database()
         yield
     finally:
-        # Shutdown: close only the domains that started, in reverse order
+        # Shutdown: close only the domains whose init() finished, in reverse order
         for d in reversed(initialized):
             d.close()
 

@@ -67,9 +67,10 @@ async def lifespan(app: FastAPI):
     with domain.domain_context():
         domain.setup_database()
 
-    yield
-
-    domain.close()
+    try:
+        yield
+    finally:
+        domain.close()
 
 
 app = FastAPI(lifespan=lifespan)

@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from protean import dx
-from tests.support.lifespan import lifespan_yields
+from tests.support.lifespan import empty_with_blocks, lifespan_yields
 from tests.support.snippets import extract_blocks
 
 pytestmark = pytest.mark.no_test_domain
@@ -178,3 +178,16 @@ def test_every_add_command_lifespan_closes_the_domain_in_a_finally():
 
     assert len({label for label, _, _ in yields}) >= 4
     assert [y for y in yields if not y[2]] == []
+
+
+def test_no_add_command_lifespan_keeps_an_empty_cleanup_block():
+    sources = [
+        (label, source)
+        for label, source in runnable_sources("add-command")
+        if lifespan_yields(source)
+    ]
+
+    assert len(sources) >= 4
+    assert [
+        (label, empty_with_blocks(s)) for label, s in sources if empty_with_blocks(s)
+    ] == []

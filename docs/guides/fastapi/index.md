@@ -166,7 +166,7 @@ releases the provider, broker, cache and event store connections.
 |---------|-------|-----|
 | `domain.init()` | Startup (lifespan) | Traverses elements, resolves references, connects adapters, once per process |
 | `domain.setup_database()` | Startup (lifespan) | Creates tables and outbox, once per deployment |
-| `domain.close()` | Shutdown (lifespan `finally`) | Releases adapter connections, and runs even when the app exits through an exception |
+| `domain.close()` | Shutdown (lifespan `finally`) | Releases adapter connections. Once `init()` has finished, runs even when the app exits through an exception |
 | Domain context push/pop | Middleware | Each request needs its own context for thread-local state |
 | Exception mapping | App setup | Registered once at import time |
 
@@ -174,7 +174,7 @@ releases the provider, broker, cache and event store connections.
 
 When your application serves multiple bounded contexts, initialize each
 domain in the lifespan. On shutdown, the lifespan closes only the domains
-that started, in reverse order:
+whose `init()` finished, in reverse order:
 
 ```python
 --8<-- "guides/fastapi/index/008.py:multi-domain"

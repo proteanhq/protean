@@ -28,10 +28,9 @@ class Order:
 async def lifespan(app: FastAPI):
     # Startup: initialize domain and prepare infrastructure
     domain.init()
-    with domain.domain_context():
-        domain.setup_database()
-
     try:
+        with domain.domain_context():
+            domain.setup_database()
         yield
     finally:
         # Shutdown: release adapter connections, even if the app exits on an error

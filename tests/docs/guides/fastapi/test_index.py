@@ -1,5 +1,6 @@
 """The examples on the FastAPI integration guide behave as the page says."""
 
+import asyncio
 import re
 from unittest.mock import patch
 
@@ -7,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.docs.support import DOCS_SRC, load_example
-from tests.support.lifespan import lifespan_yields
+from tests.support.lifespan import empty_with_blocks, lifespan_yields
 
 pytestmark = [pytest.mark.no_test_domain, pytest.mark.fastapi]
 
@@ -194,6 +195,36 @@ def test_the_lifespan_closes_the_domain_when_the_app_exits_on_an_error():
     close.assert_called_once_with()
 
 
+def test_the_lifespan_closes_the_domain_when_an_error_reaches_the_yield():
+    example = load_example("guides/fastapi/index/007.py")
+
+    async def throw_at_the_yield():
+        cm = example.lifespan(example.app)
+        await cm.__aenter__()
+        error = RuntimeError("cancelled")
+        # False means the error was not swallowed and goes on to the caller.
+        return await cm.__aexit__(RuntimeError, error, None)
+
+    with patch.object(example.domain, "close", wraps=example.domain.close) as close:
+        assert asyncio.run(throw_at_the_yield()) is False
+
+    close.assert_called_once_with()
+
+
+def test_the_lifespan_closes_the_domain_when_database_setup_fails():
+    example = load_example("guides/fastapi/index/007.py")
+    failing_setup = patch.object(
+        example.domain, "setup_database", side_effect=RuntimeError("setup failed")
+    )
+
+    with patch.object(example.domain, "close", wraps=example.domain.close) as close:
+        with failing_setup, pytest.raises(RuntimeError, match="setup failed"):
+            with TestClient(example.app):
+                pass
+
+    close.assert_called_once_with()
+
+
 def _record_closes(domains, closed):
     """Patch ``close`` on each domain to record its name, then really close it."""
     patches = []
@@ -247,6 +278,25 @@ def test_every_lifespan_yield_sits_in_a_try_that_closes_the_domain(path):
 
     assert yields
     assert all(closed for _, closed in yields), yields
+    assert empty_with_blocks(source) == []
+
+
+def test_the_empty_block_check_flags_a_with_whose_body_is_pass():
+    empty = (
+        "async def lifespan(app):\n"
+        "    yield\n"
+        "    with domain.domain_context():\n"
+        "        pass\n"
+    )
+    full = (
+        "async def lifespan(app):\n"
+        "    with domain.domain_context():\n"
+        "        domain.setup_database()\n"
+        "    yield\n"
+    )
+
+    assert empty_with_blocks(empty) == [3]
+    assert empty_with_blocks(full) == []
 
 
 def test_the_yield_check_flags_a_bare_yield_and_a_finally_without_close():
