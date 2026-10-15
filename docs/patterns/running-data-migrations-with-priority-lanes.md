@@ -172,9 +172,15 @@ redis-cli XINFO GROUPS identity::customer:backfill
 
 `lag` (Redis 7 and later) is the number of entries the group has not read
 yet. `pending` is the number it has read but not acknowledged. When both are
-`0` on the backfill stream, all migration events have been processed. `XLEN`
-does not tell you this: it counts every entry still stored in the stream, read
-or not.
+`0` for every group on the backfill stream, every event published to it has
+been handled. `XLEN` does not tell you this: it counts every entry still
+stored in the stream, read or not.
+
+Zero lag does not mean the migration succeeded. Outbox records may still be
+waiting to be published, and a message whose handler failed is acknowledged
+once it moves to the dead-letter stream (`identity::customer:backfill:dlq`).
+Treat the migration as done only when the outbox has no unpublished records
+and the dead-letter stream holds no migration events.
 
 If you are running the [Observatory](../reference/server/observability.md),
 look for `outbox.published` traces with

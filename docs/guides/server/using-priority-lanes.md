@@ -108,8 +108,15 @@ redis-cli XINFO GROUPS crm::customer:backfill
 
 `lag` (Redis 7 and later) is the number of entries the group has not read
 yet. `pending` is the number it has read but not acknowledged. When both are
-`0` on the backfill stream, the batch has been processed. `XLEN` does not tell
-you this: it counts every entry still stored in the stream, read or not.
+`0` for every group on the backfill stream, every event published to it has
+been handled. `XLEN` does not tell you this: it counts every entry still
+stored in the stream, read or not.
+
+Zero lag does not mean the batch succeeded. Outbox records may still be
+waiting to be published (see below), and a message whose handler failed is
+acknowledged once it moves to the dead-letter stream
+(`crm::customer:backfill:dlq`). Treat the batch as done only when the outbox
+has no unpublished records and the dead-letter stream holds no batch events.
 
 ### Check Outbox Records
 

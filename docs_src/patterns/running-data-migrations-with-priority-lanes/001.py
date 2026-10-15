@@ -85,15 +85,17 @@ def determine_tier(lifetime_spend: float) -> str:
 
 def customers_in_batches(batch_size: int):
     # A query returns 100 records unless told otherwise, so page through
-    # the table instead of reading it with a single `all()`.
-    repo = domain.repository_for(Customer)
-    offset = 0
-    while True:
-        page = repo.query.order_by("id").offset(offset).limit(batch_size).all()
+    # the table instead of reading it with a single `all()`. Production
+    # keeps writing while the script runs, so each page starts after the
+    # last ID seen. With an offset, deleting a row from an earlier page
+    # would shift a later row back past the offset, and it would be skipped.
+    query = domain.repository_for(Customer).query.order_by("id").limit(batch_size)
+    page = query.all()
+    while page.items:
         yield page
         if not page.has_next:
             return
-        offset += batch_size
+        page = query.filter(id__gt=page.items[-1].id).all()
 
 
 def run_migration(batch_size: int = 100, dry_run: bool = False):

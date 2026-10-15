@@ -93,3 +93,18 @@ def test_dry_run_changes_nothing(example):
     (customer,) = example.domain.repository_for(example.Customer).query.all().items
     assert customer.loyalty_tier is None
     assert _published(example) == {PRIMARY: [], BACKFILL: []}
+
+
+def test_paging_reaches_every_customer_when_an_earlier_one_is_deleted(example):
+    _add_customers(example, [100] * 4)
+    repo = example.domain.repository_for(example.Customer)
+
+    seen = []
+    for page in example.customers_in_batches(batch_size=2):
+        if not seen:
+            repo._dao.delete(page.items[0])
+        seen.extend(c.id for c in page.items)
+
+    expected = sorted(c.id for c in repo.query.limit(None).all().items)
+    assert len(expected) == 3
+    assert set(expected) <= set(seen)
