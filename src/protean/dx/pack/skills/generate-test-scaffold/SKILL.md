@@ -169,7 +169,7 @@ Test full sequences: create → modify → verify final state + side effects.
 
 ### Step 7: Set up test infrastructure
 
-Use the pytest integration in `protean.integrations.pytest`. Do not build a test domain by hand. Put one `conftest.py` at the root of the test suite:
+Use the pytest integration in `protean.integrations.pytest`. Do not build a test domain by hand. A project made by `protean new` already has this setup in `tests/<package>/conftest.py`, so keep that file and skip this step. Otherwise, put one `conftest.py` at the root of the test suite:
 
 ```python
 # fragment

@@ -30,17 +30,22 @@ def domain_fixture():
     purpose. ``pytest_sessionstart`` in a nested ``conftest.py`` only fires when
     the collection path passes through this directory, so a plain ``pytest`` or
     ``make test`` (both driven by ``testpaths = ["tests"]``) would never run it
-    and every test would fail with "no domain context". An autouse fixture runs
-    for any invocation that collects a test under this package.
+    and every test that touches the domain would fail outside a domain context.
+    An autouse fixture runs for any invocation that collects a test under this
+    package.
 
     ``DomainFixture.setup()`` initialises the domain and creates the database
-    tables, so a project scaffolded with any database choice runs its tests on
-    the first try. ``teardown()`` drops them again.
+    tables. ``teardown()`` drops them again. The tests use the database named in
+    ``domain.toml``, the same one the app uses. With any database other than
+    ``memory``, its tables are gone after a test run. Run ``protean db setup`` to create them again before starting the
+    app. Server databases such as PostgreSQL must be running, and the database
+    must exist, before the tests start.
 
     The domain loads its config when it is constructed. Protean's pytest plugin
     defaults ``PROTEAN_ENV`` to ``test`` before collection (without overriding
     an already-set value), so the domain module reads the right config when it
-    is imported.
+    is imported. ``domain.toml`` has no separate ``[test]`` database, so that
+    config points at the same database as development.
     """
     from {{ package_name }}.domain import {{ domain_name }} as domain
 
@@ -52,6 +57,10 @@ def domain_fixture():
 
 @pytest.fixture(autouse=True)
 def _domain_context(domain_fixture):
-    """Run each test in a fresh domain context, and reset all data after it."""
+    """Run each test in a fresh domain context.
+
+    After the test, the fixture resets the data in every database, broker and
+    event store. Caches are not reset.
+    """
     with domain_fixture.domain_context():
         yield

@@ -80,7 +80,9 @@ def _subprocess_env(project: Path) -> dict[str, str]:
     ``PROTEAN_DEBUG`` are dropped too: Protean's pytest plugin only sets
     ``PROTEAN_ENV`` with ``setdefault``, so a value already exported in the
     parent shell would otherwise leak into the generated project's own test
-    run and make it non-deterministic.
+    run and make it non-deterministic. ``DATABASE_URL`` would point the
+    generated ``domain.toml`` at another database, and ``PYTEST_ADDOPTS``
+    could reorder or filter the child's tests.
     """
     src = str(project / "src")
     existing = os.environ.get("PYTHONPATH", "")
@@ -91,6 +93,8 @@ def _subprocess_env(project: Path) -> dict[str, str]:
     env.pop("VIRTUAL_ENV", None)
     env.pop("PROTEAN_ENV", None)
     env.pop("PROTEAN_DEBUG", None)
+    env.pop("DATABASE_URL", None)
+    env.pop("PYTEST_ADDOPTS", None)
     return env
 
 
@@ -228,7 +232,9 @@ class TestGeneratedProjectStarts:
 
         The first test persists an aggregate, the second runs after it in file
         order and requires the repository to be empty. It passes only if the
-        generated conftest resets the stores after every test.
+        generated conftest resets the stores after every test. The third
+        requires exactly one domain context on the stack, so a context held
+        open for the whole session, under the per-test one, fails it.
         """
         project = _generate(tmp_path, extra)
         (
@@ -245,7 +251,13 @@ class TestGeneratedProjectStarts:
             "\n"
             "\n"
             "def test_2_sees_no_example():\n"
-            "    assert domain.repository_for(Example).query.all().total == 0\n",
+            "    assert domain.repository_for(Example).query.all().total == 0\n"
+            "\n"
+            "\n"
+            "def test_3_runs_in_exactly_one_domain_context():\n"
+            "    from protean.utils.globals import _domain_context_stack\n"
+            "\n"
+            "    assert len(_domain_context_stack._var.get([])) == 1\n",
             encoding="utf-8",
         )
 
@@ -268,7 +280,7 @@ class TestGeneratedProjectStarts:
             f"Generated tests ({label}) leak data into each other:\n"
             f"{completed.stdout}\n{completed.stderr}"
         )
-        assert re.search(r"\b2 passed\b", completed.stdout), completed.stdout
+        assert re.search(r"\b3 passed\b", completed.stdout), completed.stdout
 
     def test_generated_suite_drops_the_schema_at_session_end(self, tmp_path):
         """The generated session fixture drops the tables it created.
@@ -289,6 +301,9 @@ class TestGeneratedProjectStarts:
             check=False,
         )
         assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+        # The example tests write to the tables, so a run that passed them
+        # had tables while it ran.
+        assert re.search(r"\b[1-9]\d* passed\b", completed.stdout), completed.stdout
 
         assert db_file.exists(), "the suite did not use the scaffold's sqlite file"
         with sqlite3.connect(db_file) as conn:
