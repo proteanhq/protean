@@ -16,7 +16,7 @@ Scenario:
 
 Usage:
     # Layer 1: Field constraints validate on creation
-    price = Price(amount=29.99, currency="USD")
+    price = Price(amount=D("29.99"), currency="USD")
 
     # Layer 2: VO invariant validates amount >= 0
     # Layer 3: Aggregate invariant validates stock >= reserved
@@ -28,11 +28,12 @@ Usage:
     )
 """
 
+from decimal import Decimal as D
 from enum import Enum
 
 from protean import Domain, handle, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, Integer, String, ValueObject
+from protean.fields import Decimal, Integer, String, ValueObject
 
 # Domain setup
 domain = Domain()
@@ -47,12 +48,12 @@ domain = Domain()
 class Price:
     """Price value object demonstrating Layer 1 + Layer 2.
 
-    Layer 1: amount (required float), currency (required, 3-char string)
+    Layer 1: amount (required decimal), currency (required, 3-char string)
     Layer 2: amount must be non-negative, currency must be recognized
     """
 
     # Layer 1: Field constraints
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, min_length=3, required=True)
 
     # Layer 2: Cross-field / concept invariants
@@ -193,7 +194,7 @@ if __name__ == "__main__":  # pragma: no cover
         inv = Inventory(
             product_id="WIDGET-01",
             product_name="Blue Widget",
-            price=Price(amount=29.99, currency="USD"),
+            price=Price(amount=D("29.99"), currency="USD"),
             current_stock=50,
         )
         domain.repository_for(Inventory).add(inv)

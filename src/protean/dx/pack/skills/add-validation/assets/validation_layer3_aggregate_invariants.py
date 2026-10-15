@@ -20,17 +20,23 @@ Usage:
         order_id="ORD-001",
         customer_name="Jane Doe",
         status="draft",
-        total_amount=100.0,
+        total_amount=D("100"),
         items=[
-            OrderItem(product_name="Widget", quantity=4, price=10.0, subtotal=40.0),
-            OrderItem(product_name="Gadget", quantity=3, price=20.0, subtotal=60.0),
+            OrderItem(
+                product_name="Widget", quantity=4, price=D("10"), subtotal=D("40")
+            ),
+            OrderItem(
+                product_name="Gadget", quantity=3, price=D("20"), subtotal=D("60")
+            ),
         ],
     )
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, HasMany, Integer, String
+from protean.fields import Decimal, HasMany, Integer, String
 
 # Domain setup
 domain = Domain()
@@ -49,7 +55,7 @@ class Order:
     order_id: String(required=True, max_length=20, identifier=True)
     customer_name: String(required=True, max_length=100)
     status: String(max_length=20, default="draft")
-    total_amount: Float(default=0.0)
+    total_amount: Decimal(precision=19, scale=4, default=0)
     items = HasMany("OrderItem")
 
     # --- POST-INVARIANTS: checked after initialization and attribute changes ---
@@ -105,8 +111,8 @@ class OrderItem:
 
     product_name: String(required=True, max_length=100)
     quantity: Integer(required=True)
-    price: Float(required=True)
-    subtotal: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
+    subtotal: Decimal(precision=19, scale=4, required=True)
 
     @invariant.post
     def quantity_must_be_positive(self):
@@ -137,10 +143,14 @@ if __name__ == "__main__":  # pragma: no cover
             order_id="ORD-001",
             customer_name="Jane Doe",
             status="draft",
-            total_amount=100.0,
+            total_amount=D("100"),
             items=[
-                OrderItem(product_name="Widget", quantity=4, price=10.0, subtotal=40.0),
-                OrderItem(product_name="Gadget", quantity=3, price=20.0, subtotal=60.0),
+                OrderItem(
+                    product_name="Widget", quantity=4, price=D("10"), subtotal=D("40")
+                ),
+                OrderItem(
+                    product_name="Gadget", quantity=3, price=D("20"), subtotal=D("60")
+                ),
             ],
         )
         print(f"Order: {order.order_id}, Total: ${order.total_amount}")
@@ -150,10 +160,13 @@ if __name__ == "__main__":  # pragma: no cover
             Order(
                 order_id="ORD-002",
                 customer_name="Bad Total",
-                total_amount=999.0,
+                total_amount=D("999"),
                 items=[
                     OrderItem(
-                        product_name="Widget", quantity=2, price=10.0, subtotal=20.0
+                        product_name="Widget",
+                        quantity=2,
+                        price=D("10"),
+                        subtotal=D("20"),
                     ),
                 ],
             )
@@ -162,6 +175,6 @@ if __name__ == "__main__":  # pragma: no cover
 
         # Invalid: zero quantity
         try:
-            OrderItem(product_name="Widget", quantity=0, price=10.0, subtotal=0.0)
+            OrderItem(product_name="Widget", quantity=0, price=D("10"), subtotal=D("0"))
         except ValidationError as e:
             print(f"Bad quantity: {e}")

@@ -14,7 +14,7 @@ from protean.exceptions import ValidationError
 
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, required=True)
 
     @invariant.post
@@ -29,7 +29,7 @@ class Money:
 2. **One rule per invariant** — Keep them granular and focused
 3. **Descriptive names** — Name as business rules: `end_must_be_after_start`
 4. **Raise with field context** — Use `{"field_name": ["message"]}` format
-5. **Field constraints first** — Use `Float(min_value=0)` before writing an invariant
+5. **Field constraints first** — Use `Decimal(precision=19, scale=4, min_value=0)` before writing an invariant
 
 ## When to Use Layer 2
 

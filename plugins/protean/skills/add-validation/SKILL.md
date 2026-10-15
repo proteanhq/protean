@@ -299,7 +299,7 @@ Is it a single-field data constraint?
 3. **One rule per invariant** — Keep invariants granular. One business rule per decorated method.
 4. **Use descriptive invariant names** — Name invariants as business rules: `total_must_equal_sum_of_items`, not `validate_total`.
 5. **Raise `ValidationError` with field context** — Use `{"field_name": ["message"]}` format. Use `"_entity"` key for aggregate-level rules.
-6. **Don't duplicate across layers** — If `Float(min_value=0)` handles it, don't also add an invariant for the same check.
+6. **Don't duplicate across layers** — If `Decimal(precision=19, scale=4, min_value=0)` handles it, don't also add an invariant for the same check.
 7. **Pre-invariants don't run on initialization** — `@invariant.pre` only runs before attribute changes AFTER the object is created.
 
 ## Common mistakes
