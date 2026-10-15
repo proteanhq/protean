@@ -120,8 +120,13 @@ OptionalStdlibDatetime = Annotated[datetime | None, AfterValidator(_stdlib_timez
 
 
 def _stdlib_timezone_each(v: list[Any]) -> list[Any]:
-    """Apply :func:`_stdlib_timezone` to each element of a list of datetimes."""
-    return [_stdlib_timezone(item) for item in v]
+    """Apply :func:`_stdlib_timezone` to each datetime in a list, nested or not."""
+    return [
+        _stdlib_timezone_each(item)
+        if isinstance(item, list)
+        else _stdlib_timezone(item)
+        for item in v
+    ]
 
 
 class _TypeMatcher:

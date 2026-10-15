@@ -13,7 +13,7 @@ import inspect
 import warnings
 from collections.abc import Callable, Iterable
 from enum import Enum
-from typing import Annotated, Any, Literal, final
+from typing import Annotated, Any, Literal, final, get_args, get_origin
 from uuid import uuid4
 
 from pydantic import AfterValidator, BeforeValidator
@@ -411,7 +411,7 @@ class FieldSpec:
 
         if self.python_type is _dt.datetime:
             extra_validators.append(AfterValidator(_stdlib_timezone))
-        elif self.python_type == list[_dt.datetime]:
+        elif _is_datetime_list(self.python_type):
             # On the list itself, not its element type: adapters and the IR
             # read the element type and expect a plain ``datetime``.
             extra_validators.append(AfterValidator(_stdlib_timezone_each))
@@ -643,6 +643,14 @@ def resolve_fieldspecs(cls: type) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+def _is_datetime_list(tp: Any) -> bool:
+    """Whether ``tp`` is a list of datetimes, at any depth of nesting."""
+    args = get_args(tp)
+    if get_origin(tp) is not list or len(args) != 1:
+        return False
+    return args[0] is _dt.datetime or _is_datetime_list(args[0])
+
+
 def _coerce_to_str(v: Any) -> str:
     """Coerce a value to ``str`` for identifier/auto fields.
 
