@@ -1,9 +1,11 @@
 """Tests for the Example slice: the command/event write path and the
 projection read path.
 
-The domain is initialised and its context activated by the session-scoped
-``bootstrap_domain`` fixture in ``conftest.py``, so these tests run against a
-live domain with no extra setup. Both ``command_processing`` and
+The session fixture in ``conftest.py`` sets the domain up once with
+``DomainFixture``. A per-test fixture activates its context and, after each
+test, resets the data in its databases, brokers and event store. These tests
+run against a live domain with no extra setup and see none of each other's
+stored data. Both ``command_processing`` and
 ``event_processing`` are ``sync`` in ``domain.toml``, so ``process`` runs the
 handler inline and the projector fires before it returns; the read-path
 assertion needs no async wait.

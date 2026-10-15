@@ -27,11 +27,11 @@ Separate the **schema lifecycle** from the **data lifecycle**:
 
 1. **Schema** (tables, indexes, constraints) is created once at the start of the test session and dropped once at the end. This is the expensive operation, but it only happens twice per test run.
 
-2. **Data** (rows, messages, cached entries) is reset after every test. This
+2. **Data** (rows, messages, events) is reset after every test. This
    is cheap. It truncates tables and flushes in-memory stores rather than
    recreating them.
 
-3. **All infrastructure** (database providers, brokers, event stores, caches) is cleaned up, not just the database. A test that publishes an event to a broker is just as capable of leaking state as one that writes a row to PostgreSQL.
+3. **All infrastructure** (database providers, brokers, event stores) is cleaned up, not just the database. `DomainFixture` does not reset caches. A test that publishes an event to a broker is just as capable of leaking state as one that writes a row to PostgreSQL.
 
 ```
 Session start:   create schema for all providers
