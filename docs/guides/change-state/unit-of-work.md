@@ -230,7 +230,10 @@ three purposes:
    finds an aggregate already in the map returns that same instance, with any
    changes made to it since. Two copies of one aggregate would each count from
    the stored version, so saving the second would fail with
-   `ExpectedVersionError`.
+   `ExpectedVersionError`. This is how the identity map in SQLAlchemy's
+   session and in Hibernate behaves. A second `get()` does not throw away
+   unsaved changes. To abandon a change, raise an exception so the UoW rolls
+   back. To read the stored state, read the aggregate in a new UoW.
 
 2. **Event collection**: At commit time, the UoW walks the identity map to
    gather all events raised by tracked aggregates. Without the identity map,
