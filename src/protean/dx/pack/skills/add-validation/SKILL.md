@@ -39,8 +39,10 @@ Before adding a validation, understand:
 Use for single-field data type rules. These are the simplest and most common validations.
 
 ```python
-from protean.fields import Decimal, Integer, String
+from decimal import Decimal as D
 from enum import Enum
+
+from protean.fields import Decimal, Integer, String
 
 class OrderStatus(Enum):
     DRAFT = "DRAFT"
@@ -54,7 +56,7 @@ class Order:
 
     # Range constraints
     quantity: Integer(required=True, min_value=1, max_value=10000)
-    price: Decimal(precision=19, scale=4, required=True, min_value=0.01)
+    price: Decimal(precision=19, scale=4, required=True, min_value=D("0.01"))
 
     # Length constraints
     notes: String(max_length=500)
@@ -124,6 +126,8 @@ Use for business rules that enforce consistency across an aggregate's state. Sup
 Money fields are `Decimal`, so the total compares exactly. With `Float` fields, subtotals of 0.1 and 0.2 do not add up to a total of 0.3.
 
 ```python
+from decimal import Decimal as D
+
 from protean import invariant
 from protean.exceptions import ValidationError
 from protean.fields import Decimal, HasMany, Integer, String
@@ -141,7 +145,7 @@ class LineItem:
 class Order:
     status: String(default="draft")
     items = HasMany("LineItem")
-    total_amount: Decimal(precision=19, scale=4, default=0)
+    total_amount: Decimal(precision=19, scale=4, default=D("0"))
 
     def place(self):
         self.status = "placed"
@@ -299,7 +303,7 @@ Is it a single-field data constraint?
 3. **One rule per invariant** — Keep invariants granular. One business rule per decorated method.
 4. **Use descriptive invariant names** — Name invariants as business rules: `total_must_equal_sum_of_items`, not `validate_total`.
 5. **Raise `ValidationError` with field context** — Use `{"field_name": ["message"]}` format. Use `"_entity"` key for aggregate-level rules.
-6. **Don't duplicate across layers** — If `Float(min_value=0)` handles it, don't also add an invariant for the same check.
+6. **Don't duplicate across layers** — If `Decimal(precision=19, scale=4, min_value=0)` handles it, don't also add an invariant for the same check.
 7. **Pre-invariants don't run on initialization** — `@invariant.pre` only runs before attribute changes AFTER the object is created.
 
 ## Common mistakes

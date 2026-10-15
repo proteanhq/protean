@@ -19,16 +19,17 @@ Usage:
         name="Jane Doe",
         age=30,
         department="ENGINEERING",
-        salary=75000.0,
+        salary=D("75000"),
         employee_code="EMP-1234",
     )
 """
 
+from decimal import Decimal as D
 from enum import Enum
 
 from protean import Domain
 from protean.exceptions import ValidationError
-from protean.fields import Float, Integer, String
+from protean.fields import Decimal, Integer, String
 from protean.fields.validators import RegexValidator
 
 # Domain setup
@@ -67,7 +68,7 @@ class Employee:
     department: String(required=True, max_length=15, choices=Department)
 
     # Positive value constraint
-    salary: Float(required=True, min_value=0.01)
+    salary: Decimal(precision=19, scale=4, required=True, min_value=D("0.01"))
 
     # Custom format validator
     employee_code: String(
@@ -92,7 +93,7 @@ if __name__ == "__main__":  # pragma: no cover
             name="Jane Doe",
             age=30,
             department="ENGINEERING",
-            salary=75000.0,
+            salary=D("75000"),
             employee_code="EMP-1234",
         )
         print(f"Employee: {emp.name}, Dept: {emp.department}")
@@ -100,7 +101,9 @@ if __name__ == "__main__":  # pragma: no cover
 
         # Invalid: missing required field
         try:
-            Employee(age=25, department="SALES", salary=50000, employee_code="EMP-0001")
+            Employee(
+                age=25, department="SALES", salary=D("50000"), employee_code="EMP-0001"
+            )
         except ValidationError as e:
             print(f"Missing name: {e}")
 
@@ -110,7 +113,7 @@ if __name__ == "__main__":  # pragma: no cover
                 name="Too Young",
                 age=15,
                 department="HR",
-                salary=30000,
+                salary=D("30000"),
                 employee_code="EMP-0002",
             )
         except ValidationError as e:
@@ -122,7 +125,7 @@ if __name__ == "__main__":  # pragma: no cover
                 name="Bad Dept",
                 age=25,
                 department="FINANCE",
-                salary=50000,
+                salary=D("50000"),
                 employee_code="EMP-0003",
             )
         except ValidationError as e:
@@ -134,7 +137,7 @@ if __name__ == "__main__":  # pragma: no cover
                 name="Bad Code",
                 age=25,
                 department="SALES",
-                salary=50000,
+                salary=D("50000"),
                 employee_code="INVALID",
             )
         except ValidationError as e:

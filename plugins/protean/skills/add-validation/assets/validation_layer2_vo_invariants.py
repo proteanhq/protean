@@ -18,14 +18,16 @@ Usage:
     booking = Booking(
         booking_id="BK-001",
         dates=DateRange(start_date="2024-06-01", end_date="2024-06-15"),
-        price=Money(amount=1500.0, currency="USD"),
+        price=Money(amount=D("1500"), currency="USD"),
         location=GeoCoordinate(latitude=40.7128, longitude=-74.006),
     )
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, String, ValueObject
+from protean.fields import Decimal, Float, String, ValueObject
 
 # Domain setup
 domain = Domain()
@@ -85,7 +87,7 @@ class Money:
     Layer 2: amount must be non-negative, currency must be valid ISO code.
     """
 
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, min_length=3, required=True)
 
     @invariant.post
@@ -124,7 +126,7 @@ if __name__ == "__main__":  # pragma: no cover
         booking = Booking(
             booking_id="BK-001",
             dates=DateRange(start_date="2024-06-01", end_date="2024-06-15"),
-            price=Money(amount=1500.0, currency="USD"),
+            price=Money(amount=D("1500"), currency="USD"),
             location=GeoCoordinate(latitude=40.7128, longitude=-74.006),
         )
         print(f"Booking: {booking.booking_id}")
@@ -137,13 +139,13 @@ if __name__ == "__main__":  # pragma: no cover
 
         # Invalid money (negative)
         try:
-            Money(amount=-100.0, currency="USD")
+            Money(amount=D("-100"), currency="USD")
         except ValidationError as e:
             print(f"Money invariant: {e}")
 
         # Invalid currency
         try:
-            Money(amount=100.0, currency="XYZ")
+            Money(amount=D("100"), currency="XYZ")
         except ValidationError as e:
             print(f"Currency invariant: {e}")
 
