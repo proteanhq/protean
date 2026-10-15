@@ -177,6 +177,22 @@ def _install_root_filter(filter_: logging.Filter) -> None:
             target.addFilter(filter_)
 
 
+def _add_redaction_filter_if_uncovered(
+    target: logging.Filterer, filter_: ProteanRedactionFilter
+) -> None:
+    """Add ``filter_`` to ``target`` unless ``target`` already masks all its keys.
+
+    The keys of every ``ProteanRedactionFilter`` on ``target`` count together,
+    so a filter whose keys are split across two existing filters is not added.
+    """
+    masked: set[str] = set()
+    for existing in target.filters:
+        if isinstance(existing, ProteanRedactionFilter):
+            masked |= existing._keys
+    if not filter_._keys <= masked:
+        target.addFilter(filter_)
+
+
 # The filters that write context ids onto log records, and the full set of
 # filters Protean attaches to the root logger and its handlers.
 _CONTEXT_FILTERS = (ProteanCorrelationFilter, OTelTraceContextFilter)
@@ -320,12 +336,7 @@ def configure_logging(
         for filter_ in list(root.filters):
             if isinstance(filter_, ProteanRedactionFilter):
                 for handler in root.handlers:
-                    masked: set[str] = set()
-                    for existing in handler.filters:
-                        if isinstance(existing, ProteanRedactionFilter):
-                            masked |= existing._keys
-                    if not filter_._keys <= masked:
-                        handler.addFilter(filter_)
+                    _add_redaction_filter_if_uncovered(handler, filter_)
             elif isinstance(filter_, _PROTEAN_ROOT_FILTERS):
                 _install_root_filter(filter_)
         _move_redaction_filter_last()
