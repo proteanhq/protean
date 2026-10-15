@@ -23,7 +23,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # The FULL run and the per-adapter suites after it can pass 40 minutes on a
+    # slow runner, and a timeout reports the leg as cancelled with no result.
+    timeout-minutes: 60
     # pytest turns its own fault handler off when the session ends, so a crash
     # in native code during interpreter shutdown leaves only an exit code of
     # -11. With the handler on from startup, pytest switches it back on at the
