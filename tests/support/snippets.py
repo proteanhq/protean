@@ -362,6 +362,18 @@ def on_alarm(signum, frame):
 
 has_alarm = hasattr(signal, "setitimer")
 
+# The first domain a process initializes loads the default adapters, and a
+# busy machine can stretch that past a short timeout. Pay it here, before any
+# file's timeout starts, so the first file that initializes a domain is not
+# charged for it.
+warm_up = Domain(name="snippet-runner-warm-up")
+warm_up.init(traverse=False)
+with warm_up.domain_context():
+    warm_up_uow = protean.UnitOfWork()
+    warm_up_uow.start()
+    warm_up_uow.rollback()
+del warm_up, warm_up_uow
+
 # Record every Domain built while a file runs, so the init step reaches a
 # Domain that a later block rebinds, deletes or stores out of the namespace.
 # Hook ``__new__``, not ``__init__``: ``Domain.__init__`` names an unnamed

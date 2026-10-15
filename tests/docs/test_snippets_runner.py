@@ -661,6 +661,23 @@ def test_the_per_file_timeout_is_thirty_seconds():
     assert FILE_TIMEOUT == 30.0
 
 
+def test_the_first_page_to_initialize_a_domain_loads_no_adapters(tmp_path, bases):
+    page = _write(
+        tmp_path,
+        "```python\n"
+        "import sys\n"
+        "before = set(sys.modules)\n"
+        "domain.init(traverse=False)\n"
+        "loaded = sorted(m for m in set(sys.modules) - before"
+        " if m.startswith('protean.adapters'))\n"
+        "assert not loaded, loaded\n"
+        "```\n",
+    )
+    assert _run(tmp_path, [page], bases) == [
+        {"file": "page.md", "failure": None, "not_run": []}
+    ]
+
+
 def test_a_page_that_catches_the_timeout_is_stopped_and_the_next_page_runs(
     tmp_path, bases
 ):
