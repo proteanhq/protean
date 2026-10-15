@@ -15,6 +15,7 @@ Verifies that:
 - Parent-child span relationships are correct.
 """
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -33,6 +34,7 @@ from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
 from protean.core.query import BaseQuery
 from protean.core.query_handler import BaseQueryHandler
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Float, Identifier, String
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.globals import current_domain, g
@@ -1038,6 +1040,59 @@ class TestEventSourcedRepositoryGetSpan:
             and s.attributes.get("protean.repository.kind") == "event_sourced"
         )
         assert "protean.provider" in get_span.attributes
+
+
+class TestEventSourcedRepositoryGetOrNoneSpan:
+    """BaseEventSourcedRepository.get_or_none() emits ``protean.repository.get_or_none``."""
+
+    def test_hit_emits_one_span_and_no_get_span(self, test_domain, span_exporter):
+        wallet_id = str(uuid4())
+        test_domain.process(
+            OpenWallet(wallet_id=wallet_id, owner="Alice"),
+            asynchronous=False,
+        )
+        span_exporter.clear()
+
+        wallet = test_domain.repository_for(Wallet).get_or_none(wallet_id)
+        assert wallet is not None
+
+        spans = span_exporter.get_finished_spans()
+        get_or_none_spans = [
+            s for s in spans if s.name == "protean.repository.get_or_none"
+        ]
+        assert len(get_or_none_spans) == 1
+        span = get_or_none_spans[0]
+        assert span.attributes["protean.repository.kind"] == "event_sourced"
+        assert span.attributes["protean.aggregate.type"] == "Wallet"
+        assert "protean.provider" in span.attributes
+        assert not [s for s in spans if s.name == "protean.repository.get"]
+
+    def test_miss_does_not_mark_span_as_error(self, test_domain, span_exporter):
+        span_exporter.clear()
+
+        assert test_domain.repository_for(Wallet).get_or_none("missing") is None
+
+        spans = span_exporter.get_finished_spans()
+        get_or_none_spans = [
+            s for s in spans if s.name == "protean.repository.get_or_none"
+        ]
+        assert len(get_or_none_spans) == 1
+        assert get_or_none_spans[0].status.status_code != StatusCode.ERROR
+
+    def test_propagated_error_marks_span_as_error(self, test_domain, span_exporter):
+        span_exporter.clear()
+
+        with pytest.raises(IncorrectUsageError):
+            test_domain.repository_for(Wallet).get_or_none(
+                "missing", at_version=0, as_of=datetime.now(UTC)
+            )
+
+        spans = span_exporter.get_finished_spans()
+        get_or_none_spans = [
+            s for s in spans if s.name == "protean.repository.get_or_none"
+        ]
+        assert len(get_or_none_spans) == 1
+        assert get_or_none_spans[0].status.status_code == StatusCode.ERROR
 
 
 # ---------------------------------------------------------------------------
