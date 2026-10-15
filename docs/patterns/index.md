@@ -212,8 +212,8 @@ If you are new to these patterns, these sequences build on each other:
 - **[Treat Projection Rebuilds as a Deployment Strategy](projection-rebuilds-as-deployment.md)**:
   Rebuild projections from the event store instead of migrating database
   schemas. Covers simple rebuilds, blue-green deployment with `schema_name`,
-  monitoring progress with `RebuildResult`, and using priority lanes for
-  background rebuilds.
+  monitoring progress with `RebuildResult`, and keeping large rebuilds away
+  from production traffic.
 
 - **[Bridge the Eventual Consistency Gap in User Interfaces](eventual-consistency-in-uis.md)**:
   Three strategies for handling the delay between CQRS writes and reads:

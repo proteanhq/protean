@@ -289,8 +289,10 @@ starve production traffic:
   Use `Priority.BULK` to ensure import events do not delay real-time
   operations.
 
-- **Re-indexing / re-projection**: Rebuilding a projection from scratch by
-  replaying historical events. Tag the replay commands with `Priority.LOW`.
+- **Re-indexing by commands**: Re-sending commands for historical records so
+  their handlers rebuild derived state. Tag those commands with
+  `Priority.LOW`. `domain.rebuild_projection()` reads the event store directly
+  and does not go through the broker, so priority lanes do not apply to it.
 
 - **Backfill jobs**: Enriching existing records with data from an external
   API. These jobs can run for hours without affecting production throughput.

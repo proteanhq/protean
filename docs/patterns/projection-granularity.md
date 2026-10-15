@@ -12,6 +12,7 @@ The most common first instinct is to create one projection per aggregate that
 mirrors its structure:
 
 ```python
+# fragment
 # Anti-pattern: projection that mirrors the Order aggregate 1:1
 @domain.aggregate
 class Order:
@@ -62,6 +63,7 @@ The opposite instinct is to create a perfectly denormalized projection for
 every API endpoint or UI component:
 
 ```python
+# fragment
 # Anti-pattern: hyper-specific projections for every endpoint
 @domain.projection
 class OrderListItem:       # For GET /orders
@@ -168,80 +170,28 @@ For every screen, API resource, or query pattern, ask these questions:
 
 ## Applying the Pattern
 
-### Example 1: Cross-aggregate projection
-
-An order summary page needs data from three aggregates: Order (status, total),
-Customer (name, email), and Product (item names). Instead of three projections
-with joins, build one denormalized projection:
+The examples below share one domain. `Order` and `Customer` are the
+write-side aggregates, and their events carry the data the projections need:
 
 ```python
-@domain.projection
-class OrderSummary:
-    """Serves the order list page and the order detail page.
+--8<-- "patterns/projection-granularity/001.py:model"
+```
 
-    Combines data from Order, Customer, and Product aggregates
-    into a single denormalized read model.
-    """
-    order_id: Identifier(identifier=True)
-    customer_id: Identifier()
-    customer_name: String()
-    customer_email: String()
-    status: String()
-    total: Float()
-    item_count: Integer()
-    placed_at: DateTime()
-    shipped_at: DateTime()
-    tracking_number: String()
+### Example 1: Cross-aggregate projection
+
+An order summary page needs data from two aggregates: Order (status, total,
+item count) and Customer (name, email). Instead of two projections joined at
+read time, build one denormalized projection:
+
+```python
+--8<-- "patterns/projection-granularity/001.py:order_summary"
 ```
 
 The projector listens to events from multiple aggregates using
 `stream_categories`:
 
 ```python
-from protean.core.projector import on
-
-
-@domain.projector(
-    projector_for=OrderSummary,
-    stream_categories=[
-        Order.meta_.stream_category,     # "<domain>::order"
-        Customer.meta_.stream_category,  # "<domain>::customer"
-    ],
-)
-class OrderSummaryProjector:
-
-    @on(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced) -> None:
-        repo = current_domain.repository_for(OrderSummary)
-        repo.add(OrderSummary(
-            order_id=event.order_id,
-            customer_id=event.customer_id,
-            customer_name=event.customer_name,
-            customer_email=event.customer_email,
-            status="placed",
-            total=event.total,
-            item_count=len(event.items),
-            placed_at=event.placed_at,
-        ))
-
-    @on(OrderShipped)
-    def on_order_shipped(self, event: OrderShipped) -> None:
-        repo = current_domain.repository_for(OrderSummary)
-        summary = repo.get(event.order_id)
-        summary.status = "shipped"
-        summary.shipped_at = event.shipped_at
-        summary.tracking_number = event.tracking_number
-        repo.add(summary)
-
-    @on(CustomerNameChanged)
-    def on_customer_name_changed(self, event: CustomerNameChanged) -> None:
-        """Update all orders for this customer when their name changes."""
-        view = current_domain.view_for(OrderSummary)
-        results = view.query.filter(customer_id=event.customer_id).all()
-        repo = current_domain.repository_for(OrderSummary)
-        for order in results.items:
-            order.customer_name = event.new_name
-            repo.add(order)
+--8<-- "patterns/projection-granularity/001.py:order_summary_projector"
 ```
 
 !!! note "Cross-aggregate ordering"
@@ -265,71 +215,21 @@ projection would add unnecessary I/O for data that is only ever looked up
 by a single key:
 
 ```python
-@domain.projection(cache="default")
-class WarehouseDashboard:
-    """Real-time order status counts for the warehouse display.
-
-    Cache-backed because:
-    - Looked up by a single key (warehouse_id)
-    - Updates frequently (every order status change)
-    - Never queried with filters or sorting
-    - Acceptable to lose on cache eviction (rebuilt from events)
-    """
-    warehouse_id: Identifier(identifier=True)
-    pending_count: Integer(default=0)
-    processing_count: Integer(default=0)
-    shipped_count: Integer(default=0)
-    delivered_count: Integer(default=0)
-    last_updated: DateTime()
+--8<-- "patterns/projection-granularity/001.py:dashboard"
 ```
 
+A cache-backed projection has no repository, so `repository_for()` raises an
+error for it. The projector reads the cached record through `view_for()` and
+writes it back through `cache_for()`:
+
 ```python
-from datetime import datetime, timezone
-
-
-@domain.projector(
-    projector_for=WarehouseDashboard,
-    aggregates=[Order],
-)
-class WarehouseDashboardProjector:
-
-    @on(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced) -> None:
-        repo = current_domain.repository_for(WarehouseDashboard)
-        try:
-            dashboard = repo.get(event.warehouse_id)
-        except ObjectNotFoundError:
-            dashboard = WarehouseDashboard(
-                warehouse_id=event.warehouse_id,
-            )
-        dashboard.pending_count += 1
-        dashboard.last_updated = datetime.now(timezone.utc)
-        repo.add(dashboard)
-
-    @on(OrderShipped)
-    def on_order_shipped(self, event: OrderShipped) -> None:
-        repo = current_domain.repository_for(WarehouseDashboard)
-        dashboard = repo.get(event.warehouse_id)
-        dashboard.processing_count -= 1
-        dashboard.shipped_count += 1
-        dashboard.last_updated = datetime.now(timezone.utc)
-        repo.add(dashboard)
-
-    @on(OrderDelivered)
-    def on_order_delivered(self, event: OrderDelivered) -> None:
-        repo = current_domain.repository_for(WarehouseDashboard)
-        dashboard = repo.get(event.warehouse_id)
-        dashboard.shipped_count -= 1
-        dashboard.delivered_count += 1
-        dashboard.last_updated = datetime.now(timezone.utc)
-        repo.add(dashboard)
+--8<-- "patterns/projection-granularity/001.py:dashboard_projector"
 ```
 
 The API layer reads from the cache via `ReadView`:
 
 ```python
-view = domain.view_for(WarehouseDashboard)
-dashboard = view.get("warehouse-east-1")
+--8<-- "patterns/projection-granularity/001.py:dashboard_read"
 ```
 
 !!! warning "Cache-backed limitations"
@@ -346,21 +246,7 @@ A customer service tool needs to search orders by date range, status, and
 customer name. This requires a database-backed projection:
 
 ```python
-@domain.projection(provider="default")
-class OrderHistory:
-    """Searchable order history for customer service.
-
-    Database-backed because it needs filtering, ordering, and pagination.
-    """
-    order_id: Identifier(identifier=True)
-    customer_id: Identifier()
-    customer_name: String()
-    status: String()
-    total: Float()
-    placed_at: DateTime()
-    shipped_at: DateTime()
-    cancelled_at: DateTime()
-    cancellation_reason: String()
+--8<-- "patterns/projection-granularity/001.py:order_history"
 ```
 
 The projector follows the same pattern as Example 1, listening to `order` and `customer`
@@ -368,22 +254,7 @@ stream categories, handling each event type to create or update the projection.
 The key difference is in how consumers query it:
 
 ```python
-view = domain.view_for(OrderHistory)
-
-# Find all orders for a customer, newest first
-orders = view.query.filter(customer_id="cust-123").order_by("-placed_at").all()
-
-# Find cancelled orders in a date range
-cancelled = (
-    view.query
-    .filter(status="cancelled")
-    .filter(cancelled_at__gte=start_date)
-    .filter(cancelled_at__lte=end_date)
-    .all()
-)
-
-# Count pending orders
-pending_count = view.query.filter(status="placed").all().total
+--8<-- "patterns/projection-granularity/001.py:order_history_queries"
 ```
 
 Database-backed projections give you the full `ReadView` query API: `filter()`,
@@ -399,56 +270,13 @@ detail page needs a few extra fields (tracking number, cancellation reason).
 Instead of two projections, use one with optional fields:
 
 ```python
-@domain.projection
-class OrderView:
-    """Serves both the order list and order detail endpoints.
-
-    The list endpoint returns: order_id, customer_name, status, total, placed_at
-    The detail endpoint returns: all fields
-
-    One projection, two serializers in the API layer.
-    """
-    order_id: Identifier(identifier=True)
-    customer_id: Identifier()
-    customer_name: String()
-    customer_email: String()
-    status: String()
-    total: Float()
-    item_count: Integer()
-    placed_at: DateTime()
-    # Detail-only fields (optional, populated when available)
-    shipped_at: DateTime()
-    delivered_at: DateTime()
-    tracking_number: String()
-    cancellation_reason: String()
+--8<-- "patterns/projection-granularity/001.py:order_view"
 ```
 
 The API layer selects which fields to expose:
 
 ```python
-# In your FastAPI or equivalent API layer
-
-def get_orders():
-    """GET /orders -- list view, subset of fields."""
-    view = domain.view_for(OrderView)
-    orders = view.query.order_by("-placed_at").limit(50).all()
-    return [
-        {
-            "order_id": o.order_id,
-            "customer_name": o.customer_name,
-            "status": o.status,
-            "total": o.total,
-            "placed_at": o.placed_at,
-        }
-        for o in orders
-    ]
-
-
-def get_order(order_id: str):
-    """GET /orders/{id} -- detail view, all fields."""
-    view = domain.view_for(OrderView)
-    order = view.get(order_id)
-    return order.to_dict()
+--8<-- "patterns/projection-granularity/001.py:order_view_api"
 ```
 
 This approach works because:
@@ -477,22 +305,7 @@ pattern matches the aggregate structure exactly and the data lives in one
 aggregate, query the aggregate's repository directly:
 
 ```python
-# No projection needed -- the aggregate is the read model
-@domain.aggregate
-class Product:
-    product_id: Auto(identifier=True)
-    name: String(required=True)
-    description: Text()
-    price: Float(required=True)
-    category: String()
-    is_active: Boolean(default=True)
-
-
-# The product detail page needs exactly these fields.
-# No cross-aggregate data, no denormalization needed.
-# Query the aggregate repository directly.
-repo = domain.repository_for(Product)
-product = repo.get(product_id)
+--8<-- "patterns/projection-granularity/001.py:product"
 ```
 
 Create a projection only when the read model's shape differs from the write
@@ -507,6 +320,7 @@ support well.
 ### The carbon copy projection
 
 ```python
+# fragment
 # Anti-pattern: projection is a field-for-field copy of the aggregate
 @domain.aggregate
 class Invoice:
@@ -535,6 +349,7 @@ name, precompute derived fields) or remove the projection entirely.
 ### The per-endpoint explosion
 
 ```python
+# fragment
 # Anti-pattern: separate projections for every slight variation
 @domain.projection
 class InvoiceListView:       # list page
@@ -568,6 +383,7 @@ optional fields and let the API layer select what to return.
 ### The projector that queries aggregates
 
 ```python
+# fragment
 # Anti-pattern: projector loads aggregates to fill projection fields
 @domain.projector(projector_for=OrderSummary, aggregates=[Order])
 class OrderSummaryProjector:

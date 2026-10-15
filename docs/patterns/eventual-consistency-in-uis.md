@@ -38,11 +38,12 @@ duplicate submissions, and eroded trust.
 ### Adding `time.sleep()` hacks
 
 ```python
+# fragment
 # Anti-pattern: sleeping and hoping
 @app.post("/orders")
 async def create_order(data: OrderData):
     service = OrderService()
-    order = service.place_order(data.dict())
+    order = service.place_order(data.model_dump())
 
     # "Give the projector time to catch up"
     import time
@@ -58,8 +59,7 @@ slow for normal traffic, and it blocks the API worker thread.
 
 ```toml
 # Anti-pattern: disabling async processing in production
-[event_processing]
-default = "sync"
+event_processing = "sync"
 ```
 
 This eliminates the gap by running projectors inline during the commit, but
@@ -105,7 +105,7 @@ multiple entities. The write side returns one aggregate; the list needs many.
 
 ### 3. Version polling (coordination strategy)
 
-The write endpoint returns the aggregate's `_version` alongside the entity
+The write endpoint returns the aggregate's version alongside the entity
 data. The frontend passes this version to the read endpoint, which polls the
 projection until its version matches or exceeds the expected version, or until
 a timeout.
@@ -134,74 +134,7 @@ The following examples use an e-commerce domain. First, the shared domain
 elements that all three strategies build on:
 
 ```python
-from protean.fields import Auto, DateTime, Float, Identifier, Integer, String
-
-from protean import handle
-from protean.core.application_service import use_case, BaseApplicationService
-from protean.core.projector import on
-from protean import current_domain
-
-
-@domain.event(part_of="Order")
-class OrderPlaced:
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    customer_name = String(required=True)
-    total = Float(required=True)
-    item_count = Integer(required=True)
-    placed_at = DateTime(required=True)
-
-
-@domain.aggregate
-class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
-    customer_name = String(required=True)
-    total = Float(default=0.0)
-    item_count = Integer(default=0)
-    status = String(default="draft")
-    placed_at = DateTime()
-
-    def place(self) -> None:
-        self.status = "placed"
-        from datetime import datetime, timezone
-        self.placed_at = datetime.now(timezone.utc)
-        self.raise_(OrderPlaced(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            customer_name=self.customer_name,
-            total=self.total,
-            item_count=self.item_count,
-            placed_at=self.placed_at,
-        ))
-
-
-@domain.projection
-class OrderSummary:
-    order_id = Identifier(identifier=True)
-    customer_id = Identifier()
-    customer_name = String()
-    total = Float()
-    item_count = Integer()
-    status = String()
-    placed_at = DateTime()
-
-
-@domain.projector(projector_for=OrderSummary, aggregates=[Order])
-class OrderSummaryProjector:
-
-    @on(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced) -> None:
-        repo = current_domain.repository_for(OrderSummary)
-        repo.add(OrderSummary(
-            order_id=event.order_id,
-            customer_id=event.customer_id,
-            customer_name=event.customer_name,
-            total=event.total,
-            item_count=event.item_count,
-            status="placed",
-            placed_at=event.placed_at,
-        ))
+--8<-- "patterns/eventual-consistency-in-uis/001.py:model"
 ```
 
 ---
@@ -212,34 +145,14 @@ The application service returns the aggregate after the write. The API
 forwards enough data for the frontend to display optimistically.
 
 ```python
-@domain.application_service(part_of=Order)
-class OrderService(BaseApplicationService):
-
-    @use_case
-    def place_order(self, order_data: dict) -> Order:
-        order = Order(**order_data)
-        order.place()
-        repo = current_domain.repository_for(Order)
-        repo.add(order)
-        return order
+--8<-- "patterns/eventual-consistency-in-uis/001.py:service"
 ```
 
 The API endpoint returns the write-side data:
 
 ```python
-@app.post("/orders")
-async def create_order(data: OrderData):
-    service = OrderService()
-    order = service.place_order(data.dict())
-
-    # Return enough data for the frontend to display immediately
-    return {
-        "order_id": order.order_id,
-        "customer_name": order.customer_name,
-        "total": order.total,
-        "status": order.status,
-        "placed_at": order.placed_at.isoformat(),
-    }, 201
+--8<-- "patterns/eventual-consistency-in-uis/001.py:request"
+--8<-- "patterns/eventual-consistency-in-uis/001.py:optimistic_api"
 ```
 
 The frontend receives this response and inserts it directly into its local
@@ -269,54 +182,15 @@ background.
 
 When the UI navigates to a detail page after a write, the application service
 can return the aggregate's state directly. The frontend uses this for the
-initial render and switches to projection reads for subsequent loads.
+initial render and switches to projection reads for subsequent loads. The
+`OrderService` from Strategy 1 already returns the saved aggregate.
+
+The API layer provides two read paths: the POST response carries the
+write-side state (for the immediate post-write redirect), and the GET endpoint
+reads the projection (for normal reads):
 
 ```python
-@domain.application_service(part_of=Order)
-class OrderService(BaseApplicationService):
-
-    @use_case
-    def place_order(self, order_data: dict) -> Order:
-        order = Order(**order_data)
-        order.place()
-        repo = current_domain.repository_for(Order)
-        repo.add(order)
-        return order
-
-    @use_case
-    def get_order(self, order_id: str) -> Order:
-        """Read from the write side when immediate consistency is needed."""
-        repo = current_domain.repository_for(Order)
-        return repo.get(order_id)
-```
-
-The API layer provides two read paths: one from the write side (for the
-immediate post-write redirect) and one from the projection (for normal reads):
-
-```python
-@app.post("/orders")
-async def create_order(data: OrderData):
-    service = OrderService()
-    order = service.place_order(data.dict())
-
-    # Return the write-side state directly
-    return {
-        "order_id": order.order_id,
-        "customer_name": order.customer_name,
-        "total": order.total,
-        "item_count": order.item_count,
-        "status": order.status,
-        "placed_at": order.placed_at.isoformat(),
-        "_version": order._version,
-    }, 201
-
-
-@app.get("/orders/{order_id}")
-async def get_order(order_id: str):
-    """Normal read path -- from the projection."""
-    view = domain.view_for(OrderSummary)
-    summary = view.get(order_id)
-    return summary.to_dict()
+--8<-- "patterns/eventual-consistency-in-uis/001.py:write_side_api"
 ```
 
 The frontend uses the POST response data for the initial detail page render and
@@ -336,64 +210,21 @@ the aggregate, the API layer passes it through.
 ### Strategy 3: Version polling
 
 For critical transitions where the user must see confirmed read-side state,
-return the aggregate's `_version` from the write endpoint and have the
+return the aggregate's version from the write endpoint and have the
 frontend poll the read endpoint until the projection catches up.
 
-The application service returns the aggregate with its version:
+The order carries its version through the events. `OrderPlaced` and
+`OrderConfirmed` hold the version the order has once the change is saved, and
+the projector stores it on `OrderSummary.version`.
+
+The write endpoints return the saved order's `_version` as `version`. The read
+endpoint compares it with the version the projection stored:
 
 ```python
-@domain.application_service(part_of=Order)
-class OrderService(BaseApplicationService):
-
-    @use_case
-    def place_order(self, order_data: dict) -> Order:
-        order = Order(**order_data)
-        order.place()
-        repo = current_domain.repository_for(Order)
-        repo.add(order)
-        return order
+--8<-- "patterns/eventual-consistency-in-uis/001.py:polling_api"
 ```
 
-The API endpoint returns `_version` in the response:
-
-```python
-@app.post("/orders")
-async def create_order(data: OrderData):
-    service = OrderService()
-    order = service.place_order(data.dict())
-
-    return {
-        "order_id": order.order_id,
-        "status": order.status,
-        "_version": order._version,
-    }, 201
-
-
-@app.get("/orders/{order_id}")
-async def get_order(order_id: str, min_version: int | None = None):
-    """Read from projection, optionally waiting for a minimum version.
-
-    If min_version is provided and the projection has not caught up,
-    return 202 Accepted to signal the client to retry.
-    """
-    view = domain.view_for(OrderSummary)
-    try:
-        summary = view.get(order_id)
-    except ObjectNotFoundError:
-        if min_version is not None:
-            # Projection has not created this record yet
-            return {"status": "pending"}, 202
-        raise
-
-    # Check if the projection is at the expected version
-    # (projection version tracking depends on your schema)
-    if min_version is not None and summary._version < min_version:
-        return {"status": "pending"}, 202
-
-    return summary.to_dict()
-```
-
-The frontend extracts `_version` from the POST response, then polls the GET
+The frontend takes `version` from the POST response, then polls the GET
 endpoint with `?min_version=N`. On each poll:
 
 - **HTTP 200** means the projection has caught up, use the response body.
@@ -402,10 +233,10 @@ endpoint with `?min_version=N`. On each poll:
   show a "processing" indicator.
 
 !!! note "Version tracking in projections"
-    Protean's aggregates carry `_version` automatically. To use version polling,
-    your projection needs to store the source aggregate's version. Include a
-    `version` field in your projection and populate it from the event metadata
-    in the projector. The exact mechanism depends on your event schema design.
+    Protean's aggregates carry `_version` automatically, and saving a change
+    moves it up by one. A projection does not track it for you. To use version
+    polling, give the projection a `version` field and fill it in the
+    projector, as `OrderSummary` does above from the version its events carry.
 
 ---
 
@@ -417,26 +248,13 @@ that eliminates the gap entirely for non-production environments:
 
 ```toml
 # domain.toml -- development/test configuration
-[event_processing]
-default = "sync"
+event_processing = "sync"
 ```
 
 Or in test fixtures:
 
 ```python
-import pytest
-from protean import Domain
-
-
-@pytest.fixture
-def domain():
-    domain = Domain(__file__, "Testing")
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-
-    with domain.domain_context():
-        domain.init()
-        yield domain
+--8<-- "patterns/eventual-consistency-in-uis/001.py:sync_fixture"
 ```
 
 With synchronous processing, projectors run inline during the `UnitOfWork`
@@ -444,23 +262,7 @@ commit. The projection is updated before the `@use_case` method returns,
 so there is no gap:
 
 ```python
-def test_order_appears_in_projection_immediately(domain):
-    # Arrange
-    service = OrderService()
-
-    # Act -- place the order (projector runs synchronously)
-    order = service.place_order({
-        "customer_id": "cust-123",
-        "customer_name": "Alice",
-        "total": 99.99,
-        "item_count": 3,
-    })
-
-    # Assert -- projection is already updated
-    view = domain.view_for(OrderSummary)
-    summary = view.get(order.order_id)
-    assert summary.status == "placed"
-    assert summary.total == 99.99
+--8<-- "patterns/eventual-consistency-in-uis/001.py:sync_test"
 ```
 
 !!! warning "Synchronous processing is for development and testing only"
@@ -477,11 +279,12 @@ def test_order_appears_in_projection_immediately(domain):
 ### The `time.sleep()` bridge
 
 ```python
+# fragment
 # Anti-pattern: arbitrary sleep hoping the projector catches up
 @app.post("/orders")
 async def create_order(data: OrderData):
     service = OrderService()
-    order = service.place_order(data.dict())
+    order = service.place_order(data.model_dump())
 
     import time
     time.sleep(1)  # Hope for the best
@@ -507,8 +310,7 @@ behavior regardless of load.
 
 ```toml
 # Anti-pattern: sync processing in production to avoid the gap
-[event_processing]
-default = "sync"
+event_processing = "sync"
 ```
 
 This eliminates the consistency gap but introduces worse problems:
@@ -522,12 +324,13 @@ This eliminates the consistency gap but introduces worse problems:
 ### Ignoring the gap entirely
 
 ```python
+# fragment
 # Anti-pattern: pretending the gap does not exist
-@app.post("/orders")
-async def create_order(data: OrderData):
+@app.post("/orders", status_code=201)
+def create_order(data: OrderData):
     service = OrderService()
-    service.place_order(data.dict())
-    return {"status": "created"}, 201
+    service.place_order(data.model_dump())
+    return {"status": "created"}
 
 # Frontend immediately fetches the order list
 # New order may or may not appear
@@ -541,9 +344,10 @@ noticeable. Plan for it.
 ### Read-your-writes via direct database queries
 
 ```python
+# fragment
 # Anti-pattern: bypassing the projection to query the write database
 @app.get("/orders")
-async def list_orders():
+def list_orders():
     repo = domain.repository_for(Order)
     orders = repo.query.all().items
     return [o.to_dict() for o in orders]
