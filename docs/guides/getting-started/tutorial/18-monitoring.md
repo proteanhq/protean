@@ -16,7 +16,7 @@ OrderCommandHandler           bookshelf::order:command  0      0        0
 BookEventHandler              bookshelf::book           0      0        0
 OrderEventHandler             bookshelf::order          2      1        0
 BookCatalogProjector          bookshelf::book           0      0        0
-BookReportProjector           bookshelf::book-fact      0      0        3
+BookReportHandler             bookshelf::book-fact      0      0        3
 ```
 
 Key metrics:

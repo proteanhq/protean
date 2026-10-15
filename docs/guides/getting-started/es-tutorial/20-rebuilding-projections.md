@@ -1,7 +1,7 @@
 # Chapter 20: Rebuilding the World
 
 The finance team changes their regulatory reporting requirements. The
-`AccountReport` projection needs new fields and different aggregation
+`AccountSummary` projection needs new fields and different aggregation
 logic. Rather than writing a complex data migration, we
 **rebuild the projection from scratch**: truncate the existing data,
 replay all events through the updated projector, and the new projection
@@ -34,20 +34,19 @@ The `RebuildResult` contains:
 
 ```shell
 # Rebuild a specific projection
-$ protean projection rebuild --projection=AccountReport --domain=fidelis
-Rebuilt projection 'AccountReport': 245,000 events processed, 12 skipped.
+$ protean projection rebuild --projection=AccountSummary --domain=fidelis
+Rebuilt projection 'AccountSummary': 245,000 events processed, 12 skipped.
 
 # Rebuild all projections
 $ protean projection rebuild --domain=fidelis
   AccountSummary: 245,000 events processed
-  AccountReport: 245,000 events processed
-Rebuilt 2 projection(s), 490,000 total events processed.
+Rebuilt 1 projection(s), 245,000 total events processed.
 ```
 
 Use `--batch-size` to control memory usage for large replays:
 
 ```shell
-$ protean projection rebuild --projection=AccountReport --batch-size=1000 --domain=fidelis
+$ protean projection rebuild --projection=AccountSummary --batch-size=1000 --domain=fidelis
 ```
 
 ## Upcasters Apply Automatically

@@ -142,16 +142,17 @@ queues, and horizontal scaling.
 
 ## Sending Commands Asynchronously
 
-With async processing enabled, `domain.process()` publishes the command
-to the command stream instead of executing it immediately:
+With async processing enabled, `domain.process()` does not run the handler.
+It stores the command in the event store, in the aggregate's command stream,
+and returns:
 
 ```python
 # fragment
 --8<-- "guides/getting-started/es-tutorial/ch08.py:queue_deposit"
 ```
 
-The server picks up the command from the Redis stream and dispatches it
-to the command handler asynchronously.
+The server reads the stored command and dispatches it to the command
+handler.
 
 ## What We Built
 

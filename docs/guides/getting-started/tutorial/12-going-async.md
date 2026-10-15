@@ -124,21 +124,22 @@ Each handler gets its own **consumer group** in Redis. This means:
    └───────────┘ └─────────┘ └───────────┘
 ```
 
-The API returns immediately after writing the command to the outbox.
-The server processes it asynchronously.
+The API returns as soon as the command is stored. The server processes it
+later.
 
 ## Sending Commands Asynchronously
 
-With async processing enabled, `domain.process()` publishes the command
-to the command stream instead of executing it immediately:
+With async processing enabled, `domain.process()` does not run the handler.
+It stores the command in the event store, in the aggregate's command stream,
+and returns:
 
 ```python
 # fragment
 --8<-- "guides/getting-started/tutorial/ch12.py:queue_book"
 ```
 
-The server picks up the command from the Redis stream and dispatches it
-to the command handler asynchronously.
+The server reads the stored command and dispatches it to the command
+handler.
 
 ## Verifying Async Processing
 

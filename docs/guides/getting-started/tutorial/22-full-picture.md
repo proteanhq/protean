@@ -54,9 +54,9 @@ to go from here.
 | Commands | 8+ | AddBook, PlaceOrder, ConfirmOrder, ShipOrder, ReserveInventory, CreateShipment, ... |
 | Events | 6+ | BookAdded, OrderConfirmed, OrderShipped, InventoryReserved, ShipmentFailed, ... |
 | Command Handlers | 4+ | BookCommandHandler, OrderCommandHandler, InventoryCommandHandler, ShipmentCommandHandler |
-| Event Handlers | 2 | BookEventHandler, OrderEventHandler |
+| Event Handlers | 3 | BookEventHandler, OrderEventHandler, BookReportHandler |
 | Projections | 3 | BookCatalog, BookReport, StorefrontView |
-| Projectors | 3 | BookCatalogProjector, BookReportProjector, StorefrontProjector |
+| Projectors | 2 | BookCatalogProjector, StorefrontProjector |
 | Domain Services | 1 | OrderFulfillmentService |
 | Process Managers | 1 | OrderFulfillmentPM |
 | Subscribers | 1 | BookSupplyWebhookSubscriber |

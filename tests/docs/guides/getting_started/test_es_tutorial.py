@@ -14,8 +14,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from protean.exceptions import ValidationError
-from tests.docs.support import load_example
+from protean.exceptions import ObjectNotFoundError, ValidationError
+from tests.docs.support import load_example, outcome_counts, run_example_tests
 
 # Load all 22 chapters at module level (each has its own Domain instance).
 # ``load_example`` runs a chapter afresh on every call, so load each one once.
@@ -282,8 +282,22 @@ class TestESTutorialCh05(_ESTutorialBase):
 
     def test_cannot_close_with_balance(self):
         """Ch5: Rejection when closing account with non-zero balance."""
+        funded = [
+            self._make_account_opened(),
+            ch05.DepositMade(account_id="acc-123", amount=500.00, reference="paycheck"),
+            ch05.DepositMade(account_id="acc-123", amount=200.00, reference="refund"),
+        ]
         with ch05.domain.domain_context():
-            ch05.test_cannot_close_with_balance(self._make_account_opened())
+            ch05.test_cannot_close_with_balance(funded)
+
+
+class TestESTutorialCh05UnderPytest:
+    """Ch5: the chapter's conftest and fixtures drive its tests under pytest."""
+
+    def test_the_chapter_file_passes_under_pytest(self):
+        result = run_example_tests("guides/getting-started/es-tutorial/ch05.py")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert outcome_counts(result) == {"passed": 5}
 
 
 # ---------------------------------------------------------------------------
@@ -593,6 +607,24 @@ class TestESTutorialCh11ChainedUpcasters(_ESTutorialBase):
             assert account.last_source_type == "unknown"
             assert account.currency == "USD"
 
+    def test_each_upcaster_adds_its_field(self):
+        """Ch11: each upcaster adds the field its version introduced."""
+        assert ch11_v3.UpcastDepositV1ToV2().upcast({"amount": 50.0}) == {
+            "amount": 50.0,
+            "source_type": "unknown",
+        }
+        assert ch11_v3.UpcastDepositV2ToV3().upcast(
+            {"amount": 50.0, "source_type": "payroll"}
+        ) == {"amount": 50.0, "source_type": "payroll", "currency": "USD"}
+
+    def test_a_v1_payload_runs_through_both_upcasters_in_order(self):
+        """Ch11: the chain for a v1 deposit applies v1 to v2, then v2 to v3."""
+        base_type = ch11_v3.DepositMade.__type__.rsplit(".", 1)[0]
+
+        upcast = ch11_v3.domain._upcaster_chain.upcast(base_type, 1, {"amount": 50.0})
+
+        assert upcast == {"amount": 50.0, "source_type": "unknown", "currency": "USD"}
+
     def test_v2_deposit_keeps_its_source_and_gains_currency(self):
         """Ch11: a stored v2 deposit only passes through the v2 to v3 upcaster."""
         domain = ch11_v3.domain
@@ -674,6 +706,11 @@ class TestESTutorialCh12(_ESTutorialBase):
         with domain.domain_context():
             account = domain.repository_for(ch12.Account).get(account_ids[0])
             assert account.balance == 1100.00
+
+    def test_snapshot_of_a_missing_account_fails(self):
+        """Ch12: snapshotting an account that does not exist raises."""
+        with pytest.raises(ObjectNotFoundError):
+            ch12.snapshot_accounts("no-such-account")
 
 
 @pytest.mark.no_test_domain
@@ -907,12 +944,17 @@ class TestESTutorialCh16(_ESTutorialBase):
             assert deposit.metadata.domain.correlation_id == "audit-trail-dep-9921"
 
             chain, effects, tree = ch16.trace(deposit.metadata.headers.id)
+            command_id = chain[0].metadata.headers.id
+            _, command_effects, _ = ch16.trace(command_id)
 
         assert [m.metadata.headers.type.rsplit(".", 2)[1] for m in chain] == [
             "MakeDeposit",
             "DepositMade",
         ]
         assert effects == []
+        assert [m.metadata.headers.id for m in command_effects] == [
+            deposit.metadata.headers.id
+        ]
         assert tree is not None
         assert tree.message_type.endswith(".OpenAccount.v1")
         assert [child.message_type.rsplit(".", 2)[1] for child in tree.children] == [

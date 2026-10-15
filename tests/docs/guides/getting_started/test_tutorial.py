@@ -4,9 +4,9 @@ Each test loads the chapter module from ``docs_src`` with ``load_example`` and
 exercises its domain objects, commands, and assertions, the same logic as the
 chapter's ``if __name__ == "__main__"`` block.
 
-Runs with in-memory adapters by default.  Pass ``--db``, ``--store``,
-and ``--broker`` to pytest to exercise real adapters (same flags used
-by the rest of the test suite).
+Runs with in-memory adapters by default. The ``--db``, ``--store`` and
+``--broker`` flags reconfigure each chapter's domain, but most chapters fail
+under ``--db`` because these tests create no tables for them.
 
 Chapter 9 splits the code into a ``bookshelf`` package next to the chapter
 files, and chapter 10 adds ``bookshelf/api.py`` to it. The ``tutorial/``
@@ -21,7 +21,7 @@ import types
 import pytest
 from fastapi.testclient import TestClient
 
-from protean.exceptions import ValidationError
+from protean.exceptions import NotSupportedError, ValidationError
 from protean.utils.processing import Priority
 from tests.docs.support import (
     DOCS_SRC,
@@ -542,6 +542,37 @@ class TestTutorialCh10(_TutorialBase):
         assert entry.json()["title"] == "Dune"
         assert entry.json()["price"] == 9.99
 
+    def test_order_is_placed_confirmed_and_shipped(self):
+        """Ch10: the order endpoints move an order from pending to shipped."""
+        client = TestClient(bookshelf.api.app)
+
+        placed = client.post(
+            "/orders",
+            json={
+                "customer_name": "Alice",
+                "book_title": "The Great Gatsby",
+                "quantity": 1,
+                "unit_price_amount": 12.99,
+            },
+        )
+        assert placed.status_code == 200
+        order_id = placed.json()["order_id"]
+
+        def status() -> str:
+            with bookshelf.domain.domain_context():
+                repo = bookshelf.domain.repository_for(bookshelf.models.Order)
+                return repo.get(order_id).status
+
+        assert status() == "PENDING"
+
+        confirmed = client.post(f"/orders/{order_id}/confirm")
+        assert confirmed.json() == {"status": "confirmed"}
+        assert status() == "CONFIRMED"
+
+        shipped = client.post(f"/orders/{order_id}/ship")
+        assert shipped.json() == {"status": "shipped"}
+        assert status() == "SHIPPED"
+
 
 def _assert_passed(result, passed: int) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
@@ -935,23 +966,46 @@ class TestTutorialCh14(_TutorialBase):
     _chapter_mod = ch14
 
     def test_subscriber_translates_new_book_webhook(self):
-        """Ch14: BookSupplyWebhookSubscriber creates a book from webhook."""
+        """Ch14: the subscriber turns a new-book message into a stored book."""
         domain = ch14.domain
         with domain.domain_context():
-            # The subscriber has no command handler for AddBook, so we
-            # test the subscriber's translation logic by calling it and
-            # verifying the command would be dispatched.
-            # Since there is no command handler registered, we test the
-            # aggregate and restock command path instead.
+            ch14.BookSupplyWebhookSubscriber()(
+                {
+                    "event_type": "new_book_available",
+                    "title": "War and Peace",
+                    "author": "Leo Tolstoy",
+                    "isbn": "9780199232765",
+                    "price": 18.99,
+                }
+            )
+
+            books = domain.repository_for(ch14.Book).query.all().items
+            assert [(b.title, b.author, b.isbn, b.price) for b in books] == [
+                ("War and Peace", "Leo Tolstoy", "9780199232765", 18.99)
+            ]
+
+    def test_subscriber_translates_stock_replenished_webhook(self):
+        """Ch14: the subscriber turns a restock message into a stock change."""
+        domain = ch14.domain
+        with domain.domain_context():
             inv = ch14.Inventory(book_id="book-1", title="War and Peace", quantity=5)
             inv_repo = domain.repository_for(ch14.Inventory)
             inv_repo.add(inv)
 
-            # RestockInventory has a handler — test that path
-            domain.process(ch14.RestockInventory(book_id=inv.id, quantity=20))
+            ch14.BookSupplyWebhookSubscriber()(
+                {
+                    "event_type": "stock_replenished",
+                    "book_id": inv.id,
+                    "quantity": 20,
+                }
+            )
 
-            updated = inv_repo.get(inv.id)
-            assert updated.quantity == 25  # 5 + 20
+            assert inv_repo.get(inv.id).quantity == 25
+
+    def test_page_test_passes(self):
+        """Ch14: the test the page shows passes against the chapter code."""
+        with ch14.domain.domain_context():
+            ch14.test_new_book_available_webhook()
 
 
 @pytest.mark.no_test_domain
@@ -1061,29 +1115,77 @@ class TestTutorialCh19(_TutorialBase):
             saved_bulk = repo.get(bulk_book.id)
             assert saved_bulk.title == "Bulk Imported Book"
 
-    def _stored_add_book_commands(self):
+    @staticmethod
+    def _outbox_priorities(run) -> dict[str, int]:
+        """Run ``run`` on a fresh copy of the chapter with the outbox on.
+
+        Maps the title of each ``BookAdded`` event to the priority its outbox
+        row carries. A fresh copy keeps the outbox off the shared chapter
+        domain. Commands are handled in-process, as the server would handle
+        them, so the handler's events reach the outbox.
+        """
+        chapter = load_example("guides/getting-started/tutorial/ch19.py")
+        domain = chapter.domain
+        domain.config["enable_outbox"] = True
+        domain.config["command_processing"] = "sync"
+        domain._initialize()
+        with domain.domain_context():
+            run(chapter)
+            rows = domain._get_outbox_repo("default")._dao.query.all().items
+        return {row.data["title"]: row.priority for row in rows}
+
+    def test_import_runs_at_bulk_priority(self, tmp_path, capsys):
+        """Ch19: the import stores each row and tags its events BULK."""
+        csv_path = tmp_path / "vintage_press.csv"
+        csv_path.write_text(
+            "title,author,isbn,price\n"
+            "Homage to Catalonia,George Orwell,9780141183053,22.50\n"
+            "Down and Out in Paris and London,George Orwell,,11.00\n"
+        )
+
+        priorities = self._outbox_priorities(
+            lambda chapter: chapter.import_catalog(str(csv_path))
+        )
+
+        assert priorities == {
+            "Homage to Catalonia": Priority.BULK.value,
+            "Down and Out in Paris and London": Priority.BULK.value,
+        }
+        assert capsys.readouterr().out.splitlines() == [
+            "Import complete: 2 books imported with BULK priority."
+        ]
+
+    def test_per_command_priority(self):
+        """Ch19: the priority argument applies to that one command."""
+
+        def run(chapter):
+            chapter.add_bulk_book()
+            chapter.domain.process(
+                chapter.AddBook(title="Walden", author="Thoreau", price_amount=8.0)
+            )
+
+        priorities = self._outbox_priorities(run)
+
+        assert priorities == {"...": Priority.BULK.value, "Walden": 0}
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason="enrich rebuilds the command and drops its priority (issue #1826)",
+    )
+    def test_queued_command_keeps_its_priority(self):
+        """Ch19: a command queued for the server carries its BULK priority."""
         domain = ch19.domain
         domain.config["command_processing"] = "async"
         try:
             with domain.domain_context():
                 ch19.add_bulk_book()
                 category = f"{ch19.Book.meta_.stream_category}:command"
-                return domain.event_store.store.read(category)
+                stored = domain.event_store.store.read(category)
         finally:
             domain.config["command_processing"] = "sync"
 
-    def test_bulk_command_is_queued(self):
-        """Ch19: ``add_bulk_book`` queues the AddBook command."""
-        stored = self._stored_add_book_commands()
         assert [m.metadata.headers.type for m in stored] == [ch19.AddBook.__type__]
-
-    @pytest.mark.xfail(
-        strict=True,
-        reason="CommandProcessor.enrich rebuilds the command and drops its priority",
-    )
-    def test_bulk_command_keeps_its_priority(self):
-        """Ch19: The queued command carries the BULK priority."""
-        stored = self._stored_add_book_commands()
         assert stored[0].metadata.domain.priority == Priority.BULK.value
 
 
@@ -1449,6 +1551,21 @@ class TestTutorialCh21(_TutorialBase):
             chained = ch21.cheapest_orwell_books(catalog)
             assert [b.title for b in chained.items] == ["1984", "Animal Farm"]
 
+    def test_chaining_stops_at_the_limit(self):
+        """Ch21: the chained query returns at most ten books, dearest first."""
+        domain = ch21.domain
+        with domain.domain_context():
+            self._add_books(
+                [(f"Essay {n:02d}", "George Orwell", 5.0 + n) for n in range(12)]
+            )
+            self._add_books([("Homage to Catalonia", "George Orwell", 22.50)])
+
+            chained = ch21.cheapest_orwell_books(domain.view_for(ch21.StorefrontView))
+
+            assert [b.title for b in chained.items] == [
+                f"Essay {n:02d}" for n in range(11, 1, -1)
+            ]
+
     def test_query_set_blocks_writes(self):
         """Ch21: ``update`` and ``delete`` on the view raise NotSupportedError."""
         domain = ch21.domain
@@ -1457,3 +1574,40 @@ class TestTutorialCh21(_TutorialBase):
             catalog = domain.view_for(ch21.StorefrontView)
             assert ch21.try_to_write(catalog) == ["update", "delete"]
             assert catalog.query.all().first.price == 9.99
+            with pytest.raises(NotSupportedError):
+                catalog.query.update(price=0)
+            with pytest.raises(NotSupportedError):
+                catalog.query.delete()
+
+    def test_storefront_endpoint(self):
+        """Ch21: the storefront endpoint filters, sorts and pages the view."""
+        domain = ch21.domain
+        with domain.domain_context():
+            self._add_books(
+                [
+                    ("Animal Farm", "George Orwell", 9.99),
+                    ("1984", "George Orwell", 14.99),
+                    ("Dune", "Frank Herbert", 8.99),
+                ]
+            )
+            storefront = domain.repository_for(ch21.StorefrontView)
+            dune = storefront.query.filter(title="Dune").all().first
+            inventory = ch21.Inventory(book_id=dune.book_id, title="Dune", quantity=4)
+            inventory.raise_(
+                ch21.InventoryStocked(book_id=dune.book_id, title="Dune", quantity=4)
+            )
+            domain.repository_for(ch21.Inventory).add(inventory)
+
+            orwell = ch21.browse_storefront(author="George Orwell")
+            assert [e["title"] for e in orwell["entries"]] == ["1984", "Animal Farm"]
+            assert orwell["total"] == 2
+
+            in_stock = ch21.browse_storefront(in_stock=True)
+            assert [(e["title"], e["quantity"]) for e in in_stock["entries"]] == [
+                ("Dune", 4)
+            ]
+
+            second_page = ch21.browse_storefront(sort="-price", limit=2, offset=2)
+            assert [e["title"] for e in second_page["entries"]] == ["Dune"]
+            assert (second_page["total"], second_page["page"]) == (3, 2)
+            assert (second_page["page_size"], second_page["total_pages"]) == (2, 2)

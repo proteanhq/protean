@@ -1,8 +1,9 @@
 # --8<-- [start:full]
 import csv
 
-from protean import Domain
-from protean.fields import Float, String, Text
+from protean import Domain, handle
+from protean.fields import Float, Identifier, String, Text
+from protean.utils.globals import current_domain
 from protean.utils.processing import Priority, processing_priority
 
 domain = Domain("bookshelf")
@@ -24,6 +25,27 @@ class AddBook:
     isbn: String(max_length=13)
     price_amount: Float(required=True)
     description: Text()
+
+
+@domain.event(part_of=Book)
+class BookAdded:
+    book_id: Identifier(required=True)
+    title: String(max_length=200, required=True)
+
+
+@domain.command_handler(part_of=Book)
+class BookCommandHandler:
+    @handle(AddBook)
+    def add_book(self, command: AddBook) -> None:
+        book = Book(
+            title=command.title,
+            author=command.author,
+            isbn=command.isbn,
+            price=command.price_amount,
+            description=command.description,
+        )
+        book.raise_(BookAdded(book_id=book.id, title=book.title))
+        current_domain.repository_for(Book).add(book)
 
 
 domain.init(traverse=False)

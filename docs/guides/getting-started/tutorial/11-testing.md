@@ -87,7 +87,15 @@ Test complete flows from command to final state:
 
 ## Running Tests
 
-Run the tests:
+The tests import `bookshelf`, so pytest needs the project folder on the import
+path. Add this to `pyproject.toml`:
+
+```toml
+[tool.pytest.ini_options]
+pythonpath = ["."]
+```
+
+Then run the tests from the project folder:
 
 ```shell
 $ pytest -v

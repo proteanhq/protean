@@ -747,7 +747,8 @@ def run_snippets(
     :class:`SnippetError` it raises becomes the file's failure, and none of the
     file's blocks run. ``pythonpath`` folders go at the front of the child's
     ``sys.path`` before the first file runs, so a block can import a package
-    from one of them.
+    from one of them. A relative folder resolves against the caller's working
+    directory, because the child runs in a temporary one.
 
     A file still running at twice ``timeout``, or one that crashes the child,
     fails with the step that was running, and a new child runs the files after
@@ -782,7 +783,7 @@ def run_snippets(
             "held_exit": _HELD_EXIT,
             "report": str(report_path),
             "first_index": len(results),
-            "pythonpath": [str(folder) for folder in pythonpath],
+            "pythonpath": [str(Path(folder).resolve()) for folder in pythonpath],
             "files": pending,
         }
         job_path.write_text(json.dumps(job), encoding="utf-8")
