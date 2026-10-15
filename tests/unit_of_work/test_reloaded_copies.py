@@ -232,3 +232,41 @@ def test_an_add_after_an_event_sourced_read_commits_its_fact_event(test_domain, 
         repo.add(loaded)
 
     assert _ledger_streams(test_domain, ledger) == (2, 2)
+
+
+def test_a_lazy_query_returns_the_instance_already_tracked(test_domain, tally):
+    repo = test_domain.repository_for(Tally)
+
+    with UnitOfWork():
+        first = repo.get(tally.id)
+        query = repo._dao.query.filter(name="t")
+
+        assert query.first is first
+        assert query[0] is first
+        assert list(query) == [first]
+        assert next(iter(query)) is first
+
+
+def test_a_lazy_query_outside_a_unit_of_work_returns_copies(test_domain, tally):
+    query = test_domain.repository_for(Tally)._dao.query.filter(name="t")
+
+    assert query.first is not query.first
+
+
+def test_a_save_after_a_lazy_query_settles_the_original_instance(test_domain, tally):
+    repo = test_domain.repository_for(Tally)
+
+    with UnitOfWork():
+        first = repo.get(tally.id)
+        first.bump()
+        repo.add(first)
+
+        found = repo._dao.query.filter(name="t").first
+        found.bump()
+        repo.add(found)
+
+    assert _bumped(test_domain, tally) == [(0, 1), (1, 2)]
+
+    first.bump()
+    repo.add(first)
+    assert repo.get(tally.id).value == 3

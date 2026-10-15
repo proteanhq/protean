@@ -234,7 +234,9 @@ three purposes:
 
 2. **Event collection**: At commit time, the UoW walks the identity map to
    gather all events raised by tracked aggregates. Without the identity map,
-   events raised between `add()` and `commit()` would be lost.
+   events raised between `add()` and `commit()` would be lost. An
+   event-sourced aggregate's events are collected only once `add()` has saved
+   it, because `add()` is where its fact event is raised.
 
 3. **Per-provider tracking**: Aggregates are grouped by their database
    provider, so the UoW can commit each provider's session independently.

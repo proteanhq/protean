@@ -440,6 +440,12 @@ aggregates, adds them to the active Unit of Work's identity map. When the
 identity map already holds an aggregate, `all()` returns that instance in place
 of the copy it just loaded.
 
+Reading a QuerySet without calling `all()` (iterating it, indexing it, or
+reading `first`, `last` or `items`) hands out a deep copy of the cached
+results, so changing one result does not change the next read. An aggregate
+the identity map tracks is the exception: it is handed out as is, so these
+reads return the same instance that `all()` does.
+
 **Key source file:** `src/protean/core/queryset.py`
 
 ---

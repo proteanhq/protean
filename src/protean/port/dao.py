@@ -262,20 +262,25 @@ class BaseDAO(metaclass=ABCMeta):
         if not isinstance(entity, BaseAggregate):
             return entity
 
-        in_uow = not self._is_standalone
-        if in_uow:
-            id_f = id_field(entity)
-            assert id_f is not None and id_f.field_name is not None
-            tracked = current_uow._tracked_instance(
-                type(entity), getattr(entity, id_f.field_name)
-            )
-            if tracked is not None:
-                return tracked
+        tracked = self._tracked_in_uow(entity)
+        if tracked is not None:
+            return tracked
 
         self._sync_event_position(entity)
-        if in_uow:
+        if not self._is_standalone:
             current_uow._add_to_identity_map(entity)
         return entity
+
+    def _tracked_in_uow(self, entity: BaseEntity) -> BaseAggregate | None:
+        """The instance of ``entity``'s aggregate that the active Unit of
+        Work tracks, if this DAO works inside one and it tracks one."""
+        if self._is_standalone or not isinstance(entity, BaseAggregate):
+            return None
+        id_f = id_field(entity)
+        assert id_f is not None and id_f.field_name is not None
+        return current_uow._tracked_instance(
+            type(entity), getattr(entity, id_f.field_name)
+        )
 
     def outside_uow(self) -> "BaseDAO":
         """When called, the DAO is instructed to work outside active transactions."""

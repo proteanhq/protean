@@ -518,7 +518,14 @@ class QuerySet:
     @property
     def _data(self) -> "ResultSet":
         active_data = self._result_cache if self._result_cache else self.all()
-        temp_data = copy.deepcopy(active_data)
+        # A copy of an aggregate the Unit of Work tracks would be a second
+        # instance of it in the transaction, so those are handed out as is.
+        memo: dict[int, Any] = {
+            id(item): item
+            for item in active_data.items
+            if self._owner_dao._tracked_in_uow(item) is item
+        }
+        temp_data = copy.deepcopy(active_data, memo)
 
         return temp_data
 
