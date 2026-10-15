@@ -202,8 +202,10 @@ This stitches the causal chain across service boundaries. When the Engine
 delivers a broker message, it already puts the message's `correlation_id` in
 context before it calls the subscriber, so a command the subscriber processes
 picks it up. Passing it explicitly keeps the link when the subscriber runs some
-other way, such as a direct call in a test or a script. A message from a
-system that sends no domain metadata starts a new chain with a generated ID.
+other way, such as a direct call in a test or a script. The Engine looks for
+the ID at `metadata.domain.correlation_id`, then `metadata.correlation_id`,
+then a top-level `correlation_id`. A message with none of these starts a new
+chain with a generated ID.
 
 ## Testing Trace Propagation
 

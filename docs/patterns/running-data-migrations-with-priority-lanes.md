@@ -183,9 +183,9 @@ Treat the migration as done only when the outbox has no unpublished records
 and the dead-letter stream holds no migration events.
 
 If you are running the [Observatory](../reference/server/observability.md),
-look for `outbox.published` traces with
-`stream=identity::customer:backfill` to confirm migration events are being
-routed correctly.
+`outbox.published` traces show each migration event as it is published. Their
+`stream` field is the stream category (`identity::customer`), not the backfill
+stream, so use `XINFO GROUPS` above to confirm which lane the events went to.
 
 ---
 
