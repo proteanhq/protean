@@ -163,7 +163,8 @@ class OrderSummaryProjector:
     def on_customer_name_changed(self, event: CustomerNameChanged) -> None:
         """Update all orders for this customer when their name changes."""
         view = current_domain.view_for(OrderSummary)
-        results = view.query.filter(customer_id=event.customer_id).all()
+        # A query stops at 100 records unless the limit is lifted
+        results = view.query.filter(customer_id=event.customer_id).limit(None).all()
         repo = current_domain.repository_for(OrderSummary)
         for order in results.items:
             order.customer_name = event.new_name
@@ -182,7 +183,9 @@ class WarehouseDashboard:
     - Looked up by a single key (warehouse_id)
     - Updates frequently (every order status change)
     - Never queried with filters or sorting
-    - Acceptable to lose on cache eviction (rebuilt from events)
+    - Acceptable to lose on cache eviction: a rebuild from events restores
+      it, and until then shipping or delivering an order for that warehouse
+      fails with ObjectNotFoundError
     """
 
     warehouse_id: Identifier(identifier=True)
@@ -267,7 +270,12 @@ class OrderHistory:
 def customer_orders(customer_id: str):
     """All orders for a customer, newest first."""
     view = domain.view_for(OrderHistory)
-    return view.query.filter(customer_id=customer_id).order_by("-placed_at").all()
+    return (
+        view.query.filter(customer_id=customer_id)
+        .order_by("-placed_at")
+        .limit(None)
+        .all()
+    )
 
 
 def cancelled_between(start_date: datetime, end_date: datetime):

@@ -46,8 +46,9 @@ class Order:
                 total=self.total,
                 item_count=self.item_count,
                 placed_at=self.placed_at,
-                # Saving the change moves _version up by one, so the event
-                # carries the version the order will have once it is saved.
+                # Saving an aggregate stored as state moves _version up by
+                # one, so the event carries the version the order will have
+                # once it is saved.
                 version=self._version + 1,
             )
         )

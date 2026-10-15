@@ -233,8 +233,11 @@ endpoint with `?min_version=N`. On each poll:
   show a "processing" indicator.
 
 !!! note "Version tracking in projections"
-    Protean's aggregates carry `_version` automatically, and saving a change
-    moves it up by one. A projection does not track it for you. To use version
+    Protean's aggregates carry `_version` automatically. For an aggregate
+    stored as state, saving a change moves it up by one. An event-sourced
+    aggregate moves it up by one for each event it raises, so an operation
+    that raises two events moves it up by two. A projection does not track
+    `_version` for you. To use version
     polling, give the projection a `version` field and fill it in the
     projector, as `OrderSummary` does above from the version its events carry.
 

@@ -257,9 +257,12 @@ The key difference is in how consumers query it:
 --8<-- "patterns/projection-granularity/001.py:order_history_queries"
 ```
 
-Database-backed projections give you the full `ReadView` query API: `filter()`,
-`order_by()`, `limit()`, `count()`, and `exists()`. This is what makes them the
-right choice when the consumer needs to search, sort, or paginate.
+Database-backed projections give you the full `ReadView`: `get()`,
+`find_by()`, `count()`, `exists()`, and `view.query` with `filter()`,
+`order_by()`, `limit()`, and `offset()`. This is what makes them the right
+choice when the consumer needs to search, sort, or paginate. A query returns
+at most 100 records unless you set a limit, so `customer_orders()` passes
+`limit(None)` to get every order.
 
 ---
 

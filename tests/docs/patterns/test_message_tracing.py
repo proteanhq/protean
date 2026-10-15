@@ -88,7 +88,45 @@ def test_causation_api_walks_up_down_and_builds_the_tree(example, client):
     ]
 
 
+def _confirmations(example, order_id):
+    return [
+        m
+        for m in _order_messages(example, order_id)
+        if m.metadata.headers.type == "MyApp.PaymentConfirmed.v1"
+    ]
+
+
 def test_subscriber_forwards_the_source_correlation_id(example, client):
+    order_id = _place_through_api(client, "req-abc-123")
+
+    # A direct call has no broker message in context, so only the subscriber's
+    # own forwarding can carry the id to the event.
+    example.PaymentSubscriber()(
+        {
+            "data": {"order_id": order_id},
+            "metadata": {"domain": {"correlation_id": "pay-777"}},
+        }
+    )
+
+    (confirmed,) = _confirmations(example, order_id)
+    assert confirmed.metadata.domain.correlation_id == "pay-777"
+
+
+@pytest.mark.parametrize("message", [{}, {"metadata": {}}])
+def test_subscriber_starts_a_new_chain_without_domain_metadata(
+    example, client, message
+):
+    order_id = _place_through_api(client, "req-abc-123")
+
+    example.PaymentSubscriber()({**message, "data": {"order_id": order_id}})
+
+    (confirmed,) = _confirmations(example, order_id)
+    generated = confirmed.metadata.domain.correlation_id
+    assert len(generated) == 32
+    assert generated != "req-abc-123"
+
+
+def test_engine_delivers_a_broker_message_to_the_subscriber(example, client):
     order_id = _place_through_api(client, "req-abc-123")
     example.domain.brokers["default"].publish(
         "payments",
@@ -100,13 +138,8 @@ def test_subscriber_forwards_the_source_correlation_id(example, client):
 
     Engine(example.domain, test_mode=True).run()
 
-    confirmed = [
-        m
-        for m in _order_messages(example, order_id)
-        if m.metadata.headers.type == "MyApp.PaymentConfirmed.v1"
-    ]
-    assert len(confirmed) == 1
-    assert confirmed[0].metadata.domain.correlation_id == "pay-777"
+    (confirmed,) = _confirmations(example, order_id)
+    assert confirmed.metadata.domain.correlation_id == "pay-777"
 
 
 def test_dsl_records_a_generated_correlation_id_and_the_commands_id(example):

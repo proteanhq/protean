@@ -95,7 +95,7 @@ Protean provides a `Priority` enum with five levels. The numeric values are
 
 | Level | Value | Use Case |
 |-------|------:|----------|
-| `BULK` | -100 | Mass data imports, re-indexing, full re-projections. Lowest priority, processed only when nothing else is pending. |
+| `BULK` | -100 | Mass data imports and re-indexing by commands. Lowest priority, processed only when nothing else is pending. `domain.rebuild_projection()` does not go through the broker, so no priority applies to it. |
 | `LOW` | -50 | Data migrations, background backfills, non-urgent batch jobs. Routed to the backfill lane. |
 | `NORMAL` | 0 | All production traffic. The default for every command unless explicitly overridden. |
 | `HIGH` | 50 | Time-sensitive operations like payment processing. Processed via the primary lane with higher outbox priority ordering. |

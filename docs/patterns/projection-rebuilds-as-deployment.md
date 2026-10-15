@@ -170,7 +170,15 @@ Keep the old `OrderSummary` running. Deploy a new class alongside it:
 ```
 
 During the rebuild, the old `OrderSummary` continues serving traffic. The new
-`order_summary_v2` table is being populated in the background.
+`order_summary_v2` table fills from the event store.
+
+A rebuild empties the projection's table, reads the events, and then replays
+them. If the Engine is processing events for the same projection at that time,
+the rebuild can erase a row the Engine just wrote for an event it did not read.
+That is why `protean projection rebuild` asks you to stop the server first.
+Stop the Engine for the rebuild, or rebuild before the Engine starts with the
+new projector. Reads do not go through the Engine, so the old projection keeps
+answering queries. Its updates wait until the Engine starts again.
 
 **Step 4: Switch traffic.**
 
@@ -192,9 +200,9 @@ explicitly to preserve the table name.
 
 !!! warning "Keep both projectors running during the transition"
     While both projections are live, both projectors must be processing events.
-    New events that arrive during the rebuild must be applied to both the old
-    and new projections. The Engine handles this automatically since both
-    projectors are registered in the domain.
+    Once the rebuild finishes and the Engine runs again, new events must be
+    applied to both the old and new projections. The Engine handles this
+    automatically since both projectors are registered in the domain.
 
 ---
 
@@ -233,11 +241,13 @@ The load a large rebuild adds falls on the event store and on the projection's
 database. To keep it away from production:
 
 - Run the rebuild in its own process, with `protean projection rebuild` or a
-  script like the one above, not inside a web worker or the Engine.
+  script like the one above. Do not run it in a web worker.
 - Rebuild into a new `schema_name` with the blue-green steps above, so readers
   never see a half-built table.
 - Use `batch_size` to set how many events each round trip to the event store
-  reads: `domain.rebuild_projection(OrderSummaryV2, batch_size=200)`.
+  reads: `domain.rebuild_projection(OrderSummaryV2, batch_size=200)`. It does
+  not lower the total. The rebuild still reads every event in the projector's
+  stream categories and holds them in memory before it replays them.
 
 Priority lanes help when a backfill sends commands through `domain.process()`,
 because those commands raise events that go through the outbox and the broker.
@@ -363,7 +373,7 @@ projection's schema or data mapping.
 | **Upcaster validation** | Not exercised | Every upcaster is tested end-to-end |
 | **Rollback** | Reverse migration script | Redeploy old projection, rebuild again |
 | **Production safety** | Test migration in staging | Test rebuild in staging |
-| **Background execution** | Custom batching logic | Separate process + `batch_size` |
+| **Background execution** | Custom batching logic | Separate process, server stopped |
 | **Progress monitoring** | Custom logging | `RebuildResult` stats |
 | **CLI support** | Manual scripts | `protean projection rebuild` |
 | **Idempotency** | Depends on script | Always, truncate and replay |

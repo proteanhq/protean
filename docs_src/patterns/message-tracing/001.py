@@ -158,8 +158,9 @@ def explain(event_message, command_message, correlation_id: str):
 @domain.subscriber(stream="payments")
 class PaymentSubscriber:
     def __call__(self, message: dict) -> None:
-        # Extract correlation_id from the incoming event's domain metadata
-        correlation_id = message["metadata"]["domain"].get("correlation_id")
+        # A message from a system outside Protean may have no domain metadata
+        domain_metadata = message.get("metadata", {}).get("domain", {})
+        correlation_id = domain_metadata.get("correlation_id")
 
         current_domain.process(
             ConfirmPayment(order_id=message["data"]["order_id"]),

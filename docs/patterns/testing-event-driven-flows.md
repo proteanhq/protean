@@ -176,7 +176,7 @@ an `OrderDashboard` projection that tracks order status.
 
 ### Domain setup
 
-The domain lives in `ecommerce/domain.py`. `InventoryEventHandler` belongs to
+The domain is in `ecommerce/domain.py`. `InventoryEventHandler` belongs to
 `Inventory` but listens to the order stream, so it names that stream with
 `stream_category`. Without it, the handler would listen to the inventory stream
 and never receive `OrderPlaced`.
@@ -233,9 +233,11 @@ back to sync afterwards:
 
 ### Testing error handling paths
 
-Level 3 is essential for testing `handle_error()` overrides. Put a handler
-that fails on purpose in its own test module, so the other tests do not
-register it:
+Level 3 is essential for testing `handle_error()` overrides. A decorator
+registers a handler on its domain when the module is imported, and pytest
+imports every test module before it runs any test. So a handler that fails on
+purpose goes on a small domain of its own, built in its test module. The
+shared domain never sees it:
 
 ```python
 # fragment
@@ -348,7 +350,7 @@ mode (Level 3) after dispatching the command.
 | **Processing mode** | None (direct calls) | `event_processing = "sync"` | `Engine(test_mode=True)` |
 | **Speed** | Microseconds | Milliseconds | Seconds |
 | **Infrastructure** | None | None | Event store, broker |
-| **Deterministic** | Yes | Yes | Yes (runs until every subscription is idle) |
+| **Deterministic** | Yes | Yes | Yes (runs until every subscription is idle, for about one second at most) |
 | **Catches** | Logic bugs, wrong events | Wiring, routing, projections | Subscription config, priority lanes, error paths |
 | **Test count** | Many (majority) | Some (key flows) | Few (infra-specific) |
 | **Typical assertion** | `order.status`, `order._events` | `domain.view_for(P).get(id)` | `domain.view_for(P).get(id)` after `engine.run()` |

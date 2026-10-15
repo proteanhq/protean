@@ -2,6 +2,7 @@
 import pytest
 from ecommerce.domain import Inventory, Order, OrderDashboard, PlaceOrder, domain
 
+from protean.exceptions import ObjectNotFoundError
 from protean.server.engine import Engine
 
 
@@ -33,12 +34,16 @@ class TestOrderFlowAsync:
             )
         )
 
+        # Nothing has processed the event yet
+        view = domain.view_for(OrderDashboard)
+        with pytest.raises(ObjectNotFoundError):
+            view.get("ord-async-001")
+
         # Run the engine in test mode until every subscription is idle
         engine = Engine(domain, test_mode=True)
         engine.run()
 
         # After engine.run() completes, all pending events have been processed
-        view = domain.view_for(OrderDashboard)
         dashboard = view.get("ord-async-001")
 
         assert dashboard.status == "placed"

@@ -50,6 +50,7 @@ def test_order_summary_combines_order_and_customer_data(example):
     assert summary.status == "placed"
     assert summary.total == 30.0
     assert summary.item_count == 2
+    assert summary.placed_at is not None
 
 
 def test_order_summary_follows_events_from_both_aggregates(example):
@@ -127,24 +128,42 @@ def test_order_history_queries_filter_sort_and_count(example):
 
     cancelled = example.cancelled_between(now - timedelta(days=3), now)
     assert [o.order_id for o in cancelled] == ["o-1"]
+    assert (
+        example.cancelled_between(
+            now - timedelta(days=3), now - timedelta(days=2)
+        ).items
+        == []
+    )
 
     assert example.pending_count() == 1
 
 
 def test_one_order_view_serves_the_list_and_the_detail_endpoint(example):
-    example.domain.repository_for(example.OrderView).add(
+    now = datetime.now(UTC)
+    repo = example.domain.repository_for(example.OrderView)
+    repo.add(
         example.OrderView(
             order_id="o-1",
             customer_name="Ada",
             status="shipped",
             total=30.0,
-            placed_at=datetime.now(UTC),
+            placed_at=now,
             tracking_number="TRK-1",
+            cancellation_reason="none",
+        )
+    )
+    repo.add(
+        example.OrderView(
+            order_id="o-0",
+            customer_name="Grace",
+            status="placed",
+            total=12.0,
+            placed_at=now - timedelta(days=1),
         )
     )
 
     listing = example.get_orders()
-    assert len(listing) == 1
+    assert [o["order_id"] for o in listing] == ["o-1", "o-0"]
     assert set(listing[0]) == {
         "order_id",
         "customer_name",
@@ -155,7 +174,7 @@ def test_one_order_view_serves_the_list_and_the_detail_endpoint(example):
 
     detail = example.get_order("o-1")
     assert detail["tracking_number"] == "TRK-1"
-    assert "cancellation_reason" in detail
+    assert detail["cancellation_reason"] == "none"
 
 
 def test_product_is_read_from_its_own_repository(example):
@@ -163,3 +182,33 @@ def test_product_is_read_from_its_own_repository(example):
     example.domain.repository_for(example.Product).add(product)
 
     assert example.product_detail(product.id).name == "Lamp"
+
+
+def test_reads_for_one_customer_reach_past_the_default_query_limit(example):
+    summaries = example.domain.repository_for(example.OrderSummary)
+    history = example.domain.repository_for(example.OrderHistory)
+    now = datetime.now(UTC)
+    for n in range(130):
+        summaries.add(
+            example.OrderSummary(
+                order_id=f"o-{n}", customer_id="c1", customer_name="Ada"
+            )
+        )
+        history.add(
+            example.OrderHistory(
+                order_id=f"o-{n}",
+                customer_id="c1",
+                status="placed",
+                placed_at=now - timedelta(minutes=n),
+            )
+        )
+
+    example.OrderSummaryProjector().on_customer_name_changed(
+        example.CustomerNameChanged(customer_id="c1", new_name="Bea")
+    )
+
+    view = example.domain.view_for(example.OrderSummary)
+    names = {view.get(f"o-{n}").customer_name for n in range(130)}
+    assert names == {"Bea"}
+    orders = example.customer_orders("c1")
+    assert [o.order_id for o in orders] == [f"o-{n}" for n in range(130)]

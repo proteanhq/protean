@@ -2,20 +2,36 @@
 from typing import ClassVar
 
 import pytest
-from ecommerce.domain import Inventory, OrderPlaced, PlaceOrder, domain
 
-from protean import handle
+from protean import Domain, handle
+from protean.fields import Identifier
+from protean.integrations.pytest import DomainFixture
 from protean.server.engine import Engine
 
+failures = Domain(name="failures", config={"event_processing": "async"})
 
-@domain.event_handler(part_of=Inventory, stream_category="ecommerce::order")
-class FailingInventoryHandler:
+
+@failures.aggregate
+class Shipment:
+    order_id = Identifier(required=True)
+
+    def dispatch(self):
+        self.raise_(ShipmentDispatched(order_id=self.order_id))
+
+
+@failures.event(part_of=Shipment)
+class ShipmentDispatched:
+    order_id = Identifier(required=True)
+
+
+@failures.event_handler(part_of=Shipment)
+class FailingShipmentHandler:
     """A handler that deliberately fails, for testing error classification."""
 
     errors_captured: ClassVar[list[dict]] = []
 
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
+    @handle(ShipmentDispatched)
+    def on_dispatched(self, event: ShipmentDispatched):
         raise ConnectionError("Database temporarily unavailable")
 
     @classmethod
@@ -28,39 +44,35 @@ class FailingInventoryHandler:
         )
 
 
+@pytest.fixture
+def failures_ctx():
+    fixture = DomainFixture(failures)
+    fixture.setup()
+    FailingShipmentHandler.errors_captured.clear()
+    with fixture.domain_context():
+        yield
+    fixture.teardown()
+
+
+@pytest.mark.usefixtures("failures_ctx")
 class TestErrorHandling:
     """Level 3: Verify error classification and handle_error behavior."""
 
-    @pytest.fixture(autouse=True)
-    def async_events(self):
-        domain.config["event_processing"] = "async"
-        FailingInventoryHandler.errors_captured.clear()
-        yield
-        domain.config["event_processing"] = "sync"
-
     def test_handle_error_receives_exception(self):
         """Verify that handle_error is called when a handler raises."""
-        domain.repository_for(Inventory).add(
-            Inventory(product_id="prod-1", available_quantity=10)
-        )
-        domain.process(
-            PlaceOrder(
-                order_id="ord-err-001",
-                customer_id="cust-123",
-                product_id="prod-1",
-                total=50.0,
-            )
-        )
+        shipment = Shipment(order_id="ord-err-001")
+        shipment.dispatch()
+        failures.repository_for(Shipment).add(shipment)
 
-        engine = Engine(domain, test_mode=True)
+        engine = Engine(failures, test_mode=True)
         engine.run()
 
         # The handler failed, but handle_error captured the exception
-        assert len(FailingInventoryHandler.errors_captured) > 0
-        captured = FailingInventoryHandler.errors_captured[0]
+        assert len(FailingShipmentHandler.errors_captured) > 0
+        captured = FailingShipmentHandler.errors_captured[0]
         assert isinstance(captured["exception"], ConnectionError)
         assert "temporarily unavailable" in str(captured["exception"])
-        assert captured["message_type"] == "Ecommerce.OrderPlaced.v1"
+        assert captured["message_type"] == "Failures.ShipmentDispatched.v1"
 
 
 # --8<-- [end:errors]

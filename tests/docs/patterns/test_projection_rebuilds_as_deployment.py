@@ -76,9 +76,13 @@ def test_original_projection_holds_only_the_total(before):
 def test_rebuild_reproduces_the_rows_with_the_new_fields(after, capsys):
     _place_orders(after)
     built_live = _rows(after, after.OrderSummary)
-    assert len(built_live) == 2
-    assert built_live[0]["subtotal"] == 100.0
-    assert built_live[0]["shipping"] == 5.0
+    assert [
+        (r["customer_name"], r["subtotal"], r["tax"], r["shipping"], r["total"])
+        for r in built_live
+    ] == [
+        ("Ada", 100.0, 8.0, 5.0, 113.0),
+        ("Grace", 40.0, 3.2, 0.0, 43.2),
+    ]
 
     result = after.rebuild_order_summary()
 
@@ -112,6 +116,7 @@ def test_v2_is_built_beside_the_live_projection(blue_green):
 
     result = blue_green.rebuild_v2()
 
+    assert result.projection_name == "OrderSummaryV2"
     assert result.success
     assert result.events_dispatched == 3
     assert _rows(blue_green, blue_green.OrderSummary) == live
@@ -121,6 +126,8 @@ def test_v2_is_built_beside_the_live_projection(blue_green):
         ("Grace", "placed", 43.2),
     ]
     assert v2[0]["tax"] == 8.0
+    assert blue_green.OrderSummaryV2.meta_.schema_name == "order_summary_v2"
+    assert blue_green.OrderSummary.meta_.schema_name == "order_summary"
 
 
 def test_switched_endpoint_reads_the_new_projection(blue_green):

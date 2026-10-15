@@ -26,7 +26,7 @@ Without priority lanes:
   Production event ──┐
   Migration event  ──┤
   Migration event  ──┤──► Single Redis Stream ──► [Processed in FIFO order]
-  Production event ──┤      "customer"             Migration events block
+  Production event ──┤      "identity::customer"   Migration events block
   Migration event  ──┘                              production traffic
 ```
 
@@ -51,11 +51,11 @@ them accordingly.
 ```
 With priority lanes:
 
-  Production events ──► Outbox(priority=0)  ──► "customer"           ──► [Drained first]
-                                                                           Non-blocking read
-                                                                                │
-  Migration events  ──► Outbox(priority=-50) ──► "customer:backfill" ──► [Drained when idle]
-                                                                           Only when primary empty
+  Production events ──► Outbox(priority=0)  ──► "identity::customer"           ──► [Drained first]
+                                                                                     Non-blocking read
+                                                                                          │
+  Migration events  ──► Outbox(priority=-50) ──► "identity::customer:backfill" ──► [Drained when idle]
+                                                                                     Only when primary empty
 ```
 
 The migration script does not need to know about streams, consumer groups, or
@@ -86,8 +86,8 @@ with processing_priority(Priority.LOW):
 
 The OutboxProcessor checks each message's priority against a configurable
 threshold (default: 0). Messages below the threshold are published to the
-backfill stream (e.g., `customer:backfill`) instead of the primary stream
-(e.g., `customer`).
+backfill stream (here `identity::customer:backfill`) instead of the primary
+stream (`identity::customer`).
 
 ### 3. StreamSubscription Draining
 
@@ -172,12 +172,14 @@ redis-cli XINFO GROUPS identity::customer:backfill
 
 `lag` (Redis 7 and later) is the number of entries the group has not read
 yet. `pending` is the number it has read but not acknowledged. When both are
-`0` on the backfill stream, all migration events have been processed. `XLEN` does not tell you
-this: it counts every entry still stored in the stream, read or not.
+`0` on the backfill stream, all migration events have been processed. `XLEN`
+does not tell you this: it counts every entry still stored in the stream, read
+or not.
 
 If you are running the [Observatory](../reference/server/observability.md),
-look for `outbox.published` traces with `stream=identity::customer:backfill` to confirm
-migration events are being routed correctly.
+look for `outbox.published` traces with
+`stream=identity::customer:backfill` to confirm migration events are being
+routed correctly.
 
 ---
 
