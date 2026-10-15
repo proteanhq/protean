@@ -24,6 +24,8 @@ that names the extra to install. This covers a `database_uri` that names pyodbc
 installed without the unixODBC system library fails to import, so it fails the
 same way. A `database_uri` that names another driver, such as
 `mssql+pymssql://`, goes to SQLAlchemy as written.
+So does a database config with a `module` key, which hands SQLAlchemy
+the DBAPI module to use in place of the URL's driver.
 
 ## Configuration
 

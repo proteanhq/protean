@@ -23,6 +23,8 @@ PyMySQL (`mysql+pymysql://`, `mariadb+pymysql://`). SQLAlchemy connects a plain
 mysqlclient. When mysqlclient is missing, the error asks you to add `+pymysql`
 to the URL and install the extra. A `database_uri` that names another
 driver, such as `mysql+mysqldb://`, goes to SQLAlchemy as written.
+So does a database config with a `module` key, which hands SQLAlchemy
+the DBAPI module to use in place of the URL's driver.
 
 ## Configure TLS explicitly
 

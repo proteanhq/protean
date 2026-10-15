@@ -204,6 +204,36 @@ class TestAlternativeDriverGoesToSqlalchemy:
         )
 
 
+class TestExplicitModuleSkipsTheCheck:
+    @pytest.mark.parametrize(
+        "provider_cls, provider, uri, blocked",
+        [
+            (MysqlProvider, "mysql", f"mysql://{MYSQL_PARTS}", ("pymysql", "MySQLdb")),
+            (MysqlProvider, "mysql", f"mysql+pymysql://{MYSQL_PARTS}", ("pymysql",)),
+            (MssqlProvider, "mssql", f"mssql://{MSSQL_PARTS}", ("pyodbc",)),
+            (MssqlProvider, "mssql", f"mssql+pyodbc://{MSSQL_PARTS}", ("pyodbc",)),
+        ],
+        ids=["mysql-url", "mysql+pymysql-url", "mssql-url", "mssql+pyodbc-url"],
+    )
+    def test_the_engine_uses_the_supplied_module(
+        self, test_domain, block, provider_cls, provider, uri, blocked
+    ):
+        block(*blocked)
+        dbapi = types.ModuleType("supplied_dbapi")
+        dbapi.paramstyle = "format"
+        dbapi.version_info = (2, 2, 0, "final", 0)
+        dbapi.__version__ = dbapi.version = "2.2.0"
+        dbapi.Cursor = type("Cursor", (), {"nextset": None})
+
+        engine = provider_cls(
+            name="orders",
+            domain=test_domain,
+            conn_info={"provider": provider, "database_uri": uri, "module": dbapi},
+        )._engine
+
+        assert engine.dialect.dbapi is dbapi
+
+
 class TestDriverPresent:
     def test_mysql_keeps_the_url_as_configured(self, test_domain):
         pytest.importorskip("pymysql")

@@ -2839,6 +2839,9 @@ def _require_default_driver(
     checked for ``driverless_module``, the module SQLAlchemy loads for it. A URL
     for another backend, or naming another driver, goes to SQLAlchemy as
     written, so an installed alternative driver keeps working.
+
+    Callers skip this when ``conn_info`` has a ``module``. SQLAlchemy uses that
+    DBAPI module and never imports the URL's driver.
     """
     backend, plus, named = url.drivername.partition("+")
     if backend not in backends or (plus and named != driver):
@@ -2874,17 +2877,18 @@ class MssqlProvider(SAProvider):
     A ``database_uri`` naming no driver (``mssql://``) or pyodbc
     (``mssql+pyodbc://``) fails at ``domain.init()`` with the extra that installs
     pyodbc when it cannot be imported. That includes pyodbc installed without the
-    unixODBC system library. A URI naming another driver goes to SQLAlchemy as
-    written.
+    unixODBC system library. A URI naming another driver, or a ``conn_info``
+    with a ``module``, goes to SQLAlchemy as written.
     """
 
     __database__ = SAProvider.databases.mssql.value
 
     def _engine_url(self) -> URL:
         url = super()._engine_url()
-        _require_default_driver(
-            self.name, url, frozenset({"mssql"}), "pyodbc", "pyodbc"
-        )
+        if self.conn_info.get("module") is None:
+            _require_default_driver(
+                self.name, url, frozenset({"mssql"}), "pyodbc", "pyodbc"
+            )
         return url
 
     @property
@@ -3007,7 +3011,10 @@ class MysqlProvider(SAProvider):
 
     def _engine_url(self) -> URL:
         url = super()._engine_url()
-        _require_default_driver(self.name, url, _MYSQL_DIALECTS, "pymysql", "MySQLdb")
+        if self.conn_info.get("module") is None:
+            _require_default_driver(
+                self.name, url, _MYSQL_DIALECTS, "pymysql", "MySQLdb"
+            )
         return url
 
     @staticmethod
