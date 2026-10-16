@@ -1,3 +1,4 @@
+# --8<-- [start:setup]
 from protean import Domain
 from protean.core.database_model import BaseDatabaseModel
 from protean.fields import String
@@ -9,6 +10,9 @@ domain = Domain(name="Accounts")
 class User:
     email: String(max_length=255, required=True)
     full_name: String(max_length=100)
+
+
+# --8<-- [end:setup]
 
 
 # --8<-- [start:fix]
