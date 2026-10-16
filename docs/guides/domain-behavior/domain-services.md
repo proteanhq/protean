@@ -39,13 +39,15 @@ method in the Domain Service can be a class method, that receives all
 the input necessary for performing the business function. The method checks
 the stock itself and returns the order.
 
-```python hl_lines="1-2"
---8<-- "guides/domain-behavior/008.py:105:117"
+```python hl_lines="2-3"
+# fragment
+--8<-- "guides/domain-behavior/008.py:service"
 ```
 
 Invoking it is straightforward:
 
-```shell
+```python
+# fragment
 OrderPlacementService.place_order(order, inventories)
 ```
 
@@ -65,14 +67,16 @@ OrderPlacementService.place_order(order, inventories)
 In this flavor, the Domain Service is instantiated with the aggregates and each
 method performs a distinct business function.
 
-```python hl_lines="1-2 9"
---8<-- "guides/domain-behavior/007.py:105:123"
+```python hl_lines="2-3 10"
+# fragment
+--8<-- "guides/domain-behavior/007.py:service"
 ```
 
 You would then instantiate the Domain Service, passing the relevant aggregates
 and invoke the methods on the instance.
 
-```shell
+```python
+# fragment
 service = OrderPlacementService(order, inventories)
 service.place_order()
 ```
@@ -82,11 +86,13 @@ service.place_order()
 If you have a single business function, you can model it as a callable
 class:
 
-```python hl_lines="1-2 9"
---8<-- "guides/domain-behavior/006.py:106:124"
+```python hl_lines="2-3 10"
+# fragment
+--8<-- "guides/domain-behavior/006.py:service"
 ```
 
-```shell
+```python
+# fragment
 service = place_order(order, inventories)
 service()
 ```
@@ -167,26 +173,8 @@ builds the whole flow, including the event handler and the inventory command.
 ### Handler Integration Example
 
 ```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(PlaceOrder)
-    def handle_place_order(self, command: PlaceOrder):
-        order_repo = current_domain.repository_for(Order)
-        inventory_repo = current_domain.repository_for(Inventory)
-
-        # Load aggregates
-        order = order_repo.get(command.order_id)
-        inventories = [
-            inventory_repo.get(item.product_id)
-            for item in order.items
-        ]
-
-        # Invoke the domain service. The invariants run here
-        service = place_order(order, inventories)
-        service()
-
-        # Persist only the primary aggregate
-        order_repo.add(order)
+# fragment
+--8<-- "guides/domain-behavior/domain-services/001.py:handler"
 ```
 
 ## Invariants
@@ -209,7 +197,7 @@ change never happens.
 
 ## A Full-Blown Example
 
-```python hl_lines="109-141"
+```python hl_lines="105-150"
 --8<-- "guides/domain-behavior/006.py:full"
 ```
 

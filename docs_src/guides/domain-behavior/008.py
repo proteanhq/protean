@@ -102,6 +102,7 @@ class Inventory:
         )
 
 
+# --8<-- [start:service]
 @domain.domain_service(part_of=[Order, Inventory])
 class OrderPlacementService:
     @classmethod
@@ -115,3 +116,4 @@ class OrderPlacementService:
 
         order.confirm()
         return order
+        # --8<-- [end:service]

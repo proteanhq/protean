@@ -102,6 +102,7 @@ class Inventory:
         )
 
 
+# --8<-- [start:service]
 @domain.domain_service(part_of=[Order, Inventory])
 class OrderPlacementService:
     def __init__(self, order, inventories):
@@ -121,6 +122,7 @@ class OrderPlacementService:
             )
             if inventory is None or inventory.quantity < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
+                # --8<-- [end:service]
 
     @invariant.pre
     def order_payment_method_should_be_valid(self):

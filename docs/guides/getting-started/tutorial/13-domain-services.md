@@ -38,6 +38,7 @@ own transaction, through an event and a command.
 ## The Fulfillment Service
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch13.py:service"
 ```
 
@@ -71,6 +72,7 @@ The `ConfirmOrder` handler now loads inventory records and delegates to
 the domain service:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch13.py:handler"
 ```
 
@@ -101,6 +103,7 @@ handler in Order's cluster reacts to it and sends one `ReserveInventory`
 command per title. Inventory's command handler does the reservation:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch13.py:reservation"
 ```
 
@@ -143,6 +146,7 @@ asynchronous processing, the reservation runs shortly after, in the server.
 Test both the happy path and the out-of-stock scenario:
 
 ```python
+# fragment
 --8<-- "guides/getting-started/tutorial/ch13.py:tests"
 ```
 
