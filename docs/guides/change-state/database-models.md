@@ -2,8 +2,8 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span>
 
-Protean auto-generates database models for every aggregate and entity.
-Custom database models let you override the default storage schema when
+Protean auto-generates database models for every aggregate and entity, and for
+every projection stored in a database rather than a cache. Custom database models let you override the default storage schema when
 you need adapter-specific tuning, custom table names, Elasticsearch analyzers,
 or a different model for each database type.
 
@@ -58,7 +58,7 @@ handled by auto-generation:
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `part_of` | class | **Required.** The aggregate or entity this model maps to |
+| `part_of` | class | **Required.** The aggregate, entity or projection this model maps to |
 | `schema_name` | str | Override the storage table/collection name |
 | `database` | str | The database type this model applies to: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or `elasticsearch`. This is not a provider name. It has no default: without it, the model is used for any database type that has no model of its own. |
 

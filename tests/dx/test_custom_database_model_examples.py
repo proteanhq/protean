@@ -20,8 +20,9 @@ own imports, decorators and columns all have to work.
 
 Two tests pin framework behaviour rather than page text: an element decorator
 really does reject a ``database_model=`` option, and a column with no matching
-field really is rejected. Those are the claims the pages make in prose,
-so they are asserted here rather than left as assertions about wording.
+field really is rejected. The pages tell readers to use
+``@domain.database_model`` and to back every column with a field, and these two
+tests pin the framework behaviour behind that instruction.
 """
 
 import re
@@ -57,6 +58,10 @@ PROJECTION_PAGE = "projection/references/configuration-options.md"
 REJECTED_CALL = re.compile(
     r"@domain\.(?:aggregate|entity|projection)\([^)]*\bdatabase_model\s*="
 )
+
+# A backticked `database_model` that is not the `@domain.database_model`
+# decorator names the element option, in prose or in a table row.
+BARE_OPTION_MENTION = re.compile(r"(?<!domain\.)`database_model`")
 
 if not PACK_ROOT.is_dir():
     pytest.skip(
@@ -279,4 +284,21 @@ class TestNoPageTeachesTheRejectedOption:
         assert not offenders, (
             "these option tables list `database_model` as a supported option, "
             f"but element decorators reject it:\n{offenders}"
+        )
+
+    def test_no_prose_names_a_database_model_option(self):
+        # The code-block check cannot see prose. A skill page once said the
+        # option existed and was ignored, which stopped being true when the
+        # element decorators began rejecting it. `@domain.database_model` is
+        # the decorator and stays allowed.
+        offenders = [
+            f"{page.relative_to(PACK_ROOT).as_posix()}: {line.strip()}"
+            for page in sorted(PACK_ROOT.rglob("*.md"))
+            for line in page.read_text().splitlines()
+            if BARE_OPTION_MENTION.search(line)
+        ]
+
+        assert not offenders, (
+            "these lines name a `database_model` element option, which the "
+            "element decorators reject:\n" + "\n".join(offenders)
         )

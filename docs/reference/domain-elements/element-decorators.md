@@ -363,10 +363,10 @@ Guide: [Repositories](../../guides/change-state/repositories.md)
 ### `Domain.database_model`
 
 Maps a domain element to a specific database schema. Used to customize how
-aggregates or entities are stored.
+aggregates, entities or projections are stored.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| **`part_of`** | — | **Required.** Associated aggregate or entity |
-| `database` | `None` | Database type (e.g. `"SQLALCHEMY"`) |
+| **`part_of`** | — | **Required.** Associated aggregate, entity or projection |
+| `database` | `None` | Database type: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or `elasticsearch` |
 | `schema_name` | from aggregate | Table or collection name |

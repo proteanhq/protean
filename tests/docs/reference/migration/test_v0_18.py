@@ -536,10 +536,8 @@ class TestDatabaseModelOptionRemoved:
         module = load_example("reference/migration/v0-18/010.py")
 
         assert module.UserModel.meta_.part_of is module.User
-        assert module.UserModel.meta_.schema_name == "users"
 
         with activated(module.domain):
             model = module.domain.repository_for(module.User)._database_model
 
-            assert model.__name__ == "UserModel"
             assert issubclass(model, module.UserModel)

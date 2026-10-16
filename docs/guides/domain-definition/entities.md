@@ -66,11 +66,6 @@ field.
 The name to store and retrieve the entity from the persistence store. By
 default, `schema_name` is the snake case version of the Entity's name.
 
-Protean builds the entity's database model from its fields. To control the
-mapping yourself, register your own model with
-`@domain.database_model(part_of=<Entity>)`, as described in
-[Database Models](../change-state/database-models.md).
-
 ### `provider`
 
 Inherited from the parent aggregate. Entities are always persisted in the same
@@ -97,6 +92,13 @@ aggregates:
 ```
 
 See [Declaring Indexes](indexes.md) for the full workflow.
+
+## Custom Database Models
+
+Protean builds the entity's database model from its fields. To control the
+mapping yourself, register your own model with
+`@domain.database_model(part_of=<Entity>)`, as described in
+[Database Models](../change-state/database-models.md).
 
 ## Sharing Fields Through a Base Class
 

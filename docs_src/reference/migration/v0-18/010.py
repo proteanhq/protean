@@ -9,14 +9,13 @@ domain = Domain(name="Accounts")
 @domain.aggregate
 class User:
     email: String(max_length=255, required=True)
-    full_name: String(max_length=100)
 
 
 # --8<-- [end:setup]
 
 
 # --8<-- [start:fix]
-@domain.database_model(part_of=User, schema_name="users")
+@domain.database_model(part_of=User)
 class UserModel(BaseDatabaseModel):
     pass
 
