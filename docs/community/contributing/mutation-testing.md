@@ -66,13 +66,17 @@ function, and the clean run on unmutated code). To check a file, run it alone in
 `.venv-mutation` under coverage and read the module's line in the report:
 
 ```shell
+.venv-mutation/bin/python -m coverage erase
 .venv-mutation/bin/python -m coverage run -m pytest <file>
 .venv-mutation/bin/python -m coverage combine
 .venv-mutation/bin/python -m coverage report --include=<module>
 ```
 
 The project's coverage settings write one data file per process, so
-`coverage combine` has to run before `coverage report`. They also turn on
+`coverage combine` has to run before `coverage report`. Those files stay on
+disk between runs, and `coverage combine` merges every one it finds, so
+`coverage erase` comes first. Without it, data left by an earlier run can
+credit the file with lines it never ran. The settings also turn on
 branch coverage, so the `Cover` column mixes statements and branches. The
 coverage figures below are statement coverage, worked out from the report's
 `Stmts` and `Miss` columns as (Stmts − Miss) / Stmts.
