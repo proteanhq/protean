@@ -6,6 +6,7 @@ import pytest
 
 from protean import apply
 from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
@@ -22,6 +23,10 @@ from protean.utils.globals import g
 
 
 class UserLoggedIn(BaseEvent):
+    user_id: Identifier(identifier=True)
+
+
+class Login(BaseCommand):
     user_id: Identifier(identifier=True)
 
 
@@ -42,6 +47,7 @@ class User(BaseAggregate):
 def register_elements(test_domain):
     test_domain.register(User, event_sourced=True)
     test_domain.register(UserLoggedIn, part_of=User)
+    test_domain.register(Login, part_of=User)
     test_domain.init(traverse=False)
 
 
@@ -451,3 +457,76 @@ class TestTraceIdsOnRebuildFromStoredMessage:
         # A `_rebuild` key in the template dict does not switch on rebuild
         assert event._metadata.domain.correlation_id == "corr-X"
         assert event._metadata.domain.causation_id == other.metadata.headers.id
+
+
+def _with_origin_stream(event, origin_stream):
+    message = Message.from_domain_object(event)
+    domain = message.metadata.domain.model_copy(update={"origin_stream": origin_stream})
+    metadata = message.metadata.model_copy(update={"domain": domain})
+    return message.model_copy(update={"metadata": metadata})
+
+
+def _command_from_stream_b(test_domain):
+    command = test_domain._command_processor.enrich(
+        Login(user_id=str(uuid4())), asynchronous=True
+    )
+    message = Message.from_domain_object(command)
+    domain = message.metadata.domain.model_copy(
+        update={"origin_stream": "test::stream-b"}
+    )
+    metadata = message.metadata.model_copy(update={"domain": domain})
+    message = message.model_copy(update={"metadata": metadata})
+    # Events built while handling this command take its origin stream
+    assert message.metadata.domain.kind == "COMMAND"
+    assert message.metadata.domain.origin_stream == "test::stream-b"
+    return message
+
+
+class TestOriginStreamOnRebuildFromStoredMessage:
+    def test_stored_origin_stream_wins_over_context(self, test_domain):
+        stored = _with_origin_stream(_raised_event(), "test::stream-a")
+        assert stored.metadata.domain.origin_stream == "test::stream-a"
+
+        with _in_context(_command_from_stream_b(test_domain)):
+            rebuilt = stored.to_domain_object()
+
+        assert rebuilt._metadata.domain.origin_stream == "test::stream-a"
+
+    def test_empty_stored_origin_stream_stays_empty(self, test_domain):
+        stored = _with_origin_stream(_raised_event(), None)
+        assert stored.metadata.domain.origin_stream is None
+
+        with _in_context(_command_from_stream_b(test_domain)):
+            rebuilt = stored.to_domain_object()
+
+        assert rebuilt._metadata.domain.origin_stream is None
+
+    def test_stored_origin_stream_kept_with_no_message_in_context(self):
+        stored = _with_origin_stream(_raised_event(), "test::stream-a")
+
+        rebuilt = stored.to_domain_object()
+
+        assert rebuilt._metadata.domain.origin_stream == "test::stream-a"
+
+    def test_direct_construction_still_takes_origin_stream_from_context(
+        self, test_domain
+    ):
+        root = _raised_event()
+
+        with _in_context(_command_from_stream_b(test_domain)):
+            event = UserLoggedIn(root.payload, _metadata=root._metadata)
+
+        assert event._metadata.domain.origin_stream == "test::stream-b"
+
+    def test_rebuild_flag_in_template_dict_does_not_keep_origin_stream(
+        self, test_domain
+    ):
+        stored = _with_origin_stream(_raised_event(), "test::stream-a")
+        root = stored.to_domain_object()
+
+        with _in_context(_command_from_stream_b(test_domain)):
+            event = UserLoggedIn(
+                {**root.payload, "_rebuild": True}, _metadata=root._metadata
+            )
+
+        assert event._metadata.domain.origin_stream == "test::stream-b"
