@@ -447,9 +447,10 @@ def _resolve_python_type(shim: ResolvedField) -> type | None:
     origin = typing.get_origin(python_type)
     if origin is types.UnionType or origin is typing.Union:
         args = [a for a in typing.get_args(python_type) if a is not type(None)]
-        # A union that mixes a Literal with other arms (Literal[1] | str)
-        # can hold values of more than one type, so it gets no column type.
-        if len(args) > 1 and any(typing.get_origin(a) is typing.Literal for a in args):
+        # A union led by a Literal (Literal[1] | str) can hold values of more
+        # than one type, so it gets no column type. A union led by any other
+        # arm keeps that arm's column, as it did before Literals resolved.
+        if len(args) > 1 and typing.get_origin(args[0]) is typing.Literal:
             return None
         if args:
             python_type = args[0]

@@ -79,6 +79,9 @@ class Graded(BaseAggregate):
     # The split spelling of Literal[1, "a"], which must map the same way.
     literal_union: typing.Literal[1] | typing.Literal["a"] | None = None  # noqa: PYI030
     literal_or_str: typing.Literal[1] | str | None = None
+    # A union led by a non-Literal arm maps to that arm's column.
+    int_or_literal: int | typing.Literal[1, 2] | None = None
+    list_or_literal: list[int] | typing.Literal["unknown"] | None = None
 
 
 def host_domain(aggregates):
@@ -157,6 +160,8 @@ class TestResolvedType:
             ("grade", int),
             ("stage", int),
             ("named_stage", str),
+            ("int_or_literal", int),
+            ("list_or_literal", list),
         ],
     )
     def test_choices_sharing_one_type_resolve_to_it(self, attribute, expected):
@@ -168,8 +173,8 @@ class TestResolvedType:
     )
     def test_choices_of_mixed_types_stay_unresolved(self, attribute):
         """``True`` is an ``int`` to ``isinstance``, so ``[True, 1]`` is checked
-        by exact type and counts as mixed. A union with a ``Literal`` arm is
-        mixed too, whatever its first arm is."""
+        by exact type and counts as mixed. A union led by a ``Literal`` arm is
+        mixed too."""
         assert _resolve_python_type(attributes(Graded)[attribute]) is None
 
 
@@ -227,6 +232,12 @@ class TestColumnDdl:
 
         assert type(column_type) is sa_types.String
         assert column_type.length is None
+
+    def test_a_union_led_by_a_non_literal_arm_keeps_that_arms_column(self):
+        table, _ = table_and_engine(Graded, "sqlite")
+
+        assert type(table.c["int_or_literal"].type) is sa_types.Integer
+        assert type(table.c["list_or_literal"].type) is sa_types.JSON
 
     @on(["mysql", "mariadb"])
     def test_the_whole_create_table_has_no_text_for_a_sized_choice(self, dialect):
