@@ -79,6 +79,8 @@ class Graded(BaseAggregate):
     # The split spelling of Literal[1, "a"], which must map the same way.
     literal_union: typing.Literal[1] | typing.Literal["a"] | None = None  # noqa: PYI030
     literal_or_str: typing.Literal[1] | str | None = None
+    # Choices of one type that has no column mapping.
+    byte_code: typing.Literal[b"a", b"b"] | None = None
     # A union led by a non-Literal arm maps to that arm's column.
     int_or_literal: int | typing.Literal[1, 2] | None = None
     list_or_literal: list[int] | typing.Literal["unknown"] | None = None
@@ -177,6 +179,9 @@ class TestResolvedType:
         mixed too."""
         assert _resolve_python_type(attributes(Graded)[attribute]) is None
 
+    def test_choices_of_an_unmapped_type_stay_unresolved(self):
+        assert _resolve_python_type(attributes(Graded)["byte_code"]) is None
+
 
 class TestColumnDdl:
     @on(["sqlite", "postgresql", "mysql", "mariadb"])
@@ -229,6 +234,13 @@ class TestColumnDdl:
     def test_mixed_choices_keep_an_unsized_string_column(self, attribute):
         table, _ = table_and_engine(Graded, "sqlite")
         column_type = table.c[attribute].type
+
+        assert type(column_type) is sa_types.String
+        assert column_type.length is None
+
+    def test_choices_of_an_unmapped_type_keep_an_unsized_string_column(self):
+        table, _ = table_and_engine(Graded, "sqlite")
+        column_type = table.c["byte_code"].type
 
         assert type(column_type) is sa_types.String
         assert column_type.length is None
