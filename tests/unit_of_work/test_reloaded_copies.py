@@ -415,3 +415,44 @@ def test_a_projection_evaluated_before_the_unit_of_work_reads_the_stored_state(
 
     with UnitOfWork():
         assert query.first.value == 5
+
+
+def test_a_raw_query_with_no_matches_runs_as_the_raw_query_again(test_domain, tally):
+    repo = test_domain.repository_for(Tally)
+    repo.add(Tally(name="other"))
+    query = repo._dao.query
+    assert query.raw('{"name": "missing"}').items == []
+
+    with UnitOfWork():
+        assert query.items == []
+
+    assert query.items == []
+
+
+def test_a_raw_query_that_failed_to_run_again_retries_as_the_raw_query(
+    test_domain, tally, monkeypatch
+):
+    repo = test_domain.repository_for(Tally)
+    repo.add(Tally(name="other"))
+    query = repo._dao.query
+    query.raw('{"name": "t"}')
+
+    dao = repo._dao
+    original_raw = dao._raw
+    calls = []
+
+    def failing_once(query_string, data=None):
+        calls.append(query_string)
+        if len(calls) == 1:
+            raise RuntimeError("database unavailable")
+        return original_raw(query_string, data)
+
+    monkeypatch.setattr(dao, "_raw", failing_once)
+
+    with UnitOfWork():
+        with pytest.raises(RuntimeError):
+            query.first
+
+        assert [item.id for item in query.items] == [tally.id]
+
+    assert calls == ['{"name": "t"}', '{"name": "t"}']

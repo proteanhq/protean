@@ -532,16 +532,17 @@ class QuerySet:
     def _data(self) -> "ResultSet":
         uow = self._active_uow()
         transaction = uow._transaction if uow else None
-        if not self._result_cache:
-            active_data = self.all()
-        elif self._result_cache_transaction is not transaction:
+        if self._result_cache and self._result_cache_transaction is transaction:
+            active_data = self._result_cache
+        elif self._refill_cache is not None:
             # A cache filled in another transaction, or outside one, holds
             # what was stored then and instances this transaction does not
-            # track, so the query runs again for this one.
-            assert self._refill_cache is not None
+            # track, so the query runs again for this one. An empty or failed
+            # fill runs again as the same query, because a `raw()` query is
+            # not the query this QuerySet's criteria build.
             active_data = self._refill_cache()
         else:
-            active_data = self._result_cache
+            active_data = self.all()
 
         if uow is None:
             return copy.deepcopy(active_data)
