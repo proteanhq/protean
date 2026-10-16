@@ -82,8 +82,6 @@ LABELS = [path.relative_to(DOCS).as_posix() for path in PAGES]
 # delete its entry.
 ALLOWLIST: frozenset[str] = frozenset(
     {
-        "guides/domain-behavior/domain-services.md",
-        "guides/getting-started/tutorial/13-domain-services.md",
         "patterns/application-service-vs-command-handler.md",
         "patterns/calling-external-systems-from-handlers.md",
         "patterns/classify-async-processing-errors.md",

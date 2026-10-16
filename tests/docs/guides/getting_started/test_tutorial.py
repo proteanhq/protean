@@ -736,6 +736,31 @@ class TestTutorialCh13(_TutorialBase):
             assert updated_inv.quantity == 7  # 10 - 3
             assert updated_inv.reserved_order_ids == [order.id]
 
+            confirmations = [
+                event
+                for event in (
+                    message.to_domain_object()
+                    for message in domain.event_store.store.read("$all")
+                )
+                if isinstance(event, ch13.OrderConfirmed)
+            ]
+            assert [(e.order_id, e.items) for e in confirmations] == [
+                (order.id, [{"book_title": "Dune", "quantity": 3}])
+            ]
+            category = f"{ch13.Inventory.meta_.stream_category}:command"
+            reservations = [
+                message.to_domain_object()
+                for message in domain.event_store.store.read(category)
+            ]
+            assert [(c.order_id, c.book_title, c.quantity) for c in reservations] == [
+                (order.id, "Dune", 3)
+            ]
+
+    def test_page_tests_pass(self):
+        """Ch13: the tests the page shows pass against the chapter code."""
+        ch13.test_confirm_order_with_stock()
+        ch13.test_confirm_order_out_of_stock()
+
     def test_repeated_confirm_order_raises_one_order_confirmed(self):
         """Ch13: a second ConfirmOrder for a confirmed order changes nothing."""
         domain = ch13.domain
@@ -865,6 +890,14 @@ class TestTutorialCh13(_TutorialBase):
             updated = inv_repo.get(inv.id)
             assert updated.quantity == 5  # 10 - 2 - 3
             assert updated.reserved_order_ids == [order.id]
+            category = f"{ch13.Inventory.meta_.stream_category}:command"
+            reservations = [
+                message.to_domain_object()
+                for message in domain.event_store.store.read(category)
+            ]
+            assert [(c.order_id, c.book_title, c.quantity) for c in reservations] == [
+                (order.id, "Dune", 5)
+            ]
 
     def test_service_checks_lines_for_the_same_book_together(self):
         """Ch13: 2 + 3 copies of one book against a stock of 4 is rejected."""
