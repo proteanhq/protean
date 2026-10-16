@@ -12,6 +12,7 @@ from protean.fields import (
     Integer,
     List,
     String,
+    ValueObject,
 )
 
 domain = Domain()
@@ -21,6 +22,8 @@ domain.config["command_processing"] = "sync"
 class OrderStatus(Enum):
     PENDING = "PENDING"
     CONFIRMED = "CONFIRMED"
+    SHIPPED = "SHIPPED"
+    DELIVERED = "DELIVERED"
 
 
 @domain.aggregate
@@ -30,7 +33,13 @@ class Order:
     status: String(choices=OrderStatus, default=OrderStatus.PENDING.value)
     payment_id: Identifier()
 
+    @invariant.post
+    def order_should_contain_items(self):
+        if not self.items or len(self.items) == 0:
+            raise ValidationError({"_entity": ["Order must contain at least one item"]})
+
     def quantities_by_product(self) -> dict[str, int]:
+        """Total quantity per product, adding up lines for the same product."""
         totals: dict[str, int] = {}
         for item in self.items:
             totals[item.product_id] = totals.get(item.product_id, 0) + item.quantity
@@ -50,13 +59,6 @@ class Order:
         )
 
 
-@domain.entity(part_of=Order)
-class OrderItem:
-    product_id: Identifier(required=True)
-    quantity: Integer()
-    price: Float()
-
-
 @domain.event(part_of=Order)
 class OrderConfirmed:
     order_id: Identifier(required=True)
@@ -64,10 +66,41 @@ class OrderConfirmed:
     confirmed_at: DateTime(required=True)
 
 
+@domain.entity(part_of=Order)
+class OrderItem:
+    product_id: Identifier(required=True)
+    quantity: Integer()
+    price: Float()
+
+
+@domain.value_object(part_of="Inventory")
+class Warehouse:
+    location: String()
+    contact: String()
+
+
+@domain.event(part_of="Inventory")
+class StockReserved:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True)
+    reserved_at: DateTime(required=True)
+
+
 @domain.aggregate
 class Inventory:
-    product_id: Identifier(identifier=True)
+    product_id: Identifier(required=True)
     quantity: Integer()
+    warehouse = ValueObject(Warehouse)
+
+    def reserve_stock(self, quantity: int):
+        self.quantity -= quantity
+        self.raise_(
+            StockReserved(
+                product_id=self.product_id,
+                quantity=quantity,
+                reserved_at=datetime.now(UTC),
+            )
+        )
 
 
 @domain.domain_service(part_of=[Order, Inventory])
@@ -90,6 +123,33 @@ class place_order:
             if inventory is None or inventory.quantity < quantity:
                 raise ValidationError({"_service": ["Product is out of stock"]})
 
+    @invariant.pre
+    def order_payment_method_should_be_valid(self):
+        if not self.order.payment_id:
+            raise ValidationError(
+                {"_service": ["Order must have a valid payment method"]}
+            )
+
+    @invariant.post
+    def order_should_be_confirmed(self):
+        if self.order.status != OrderStatus.CONFIRMED.value:
+            raise ValidationError({"_service": ["Order was not confirmed"]})
+
+    @invariant.post
+    def confirmation_should_list_every_ordered_item(self):
+        confirmations = [e for e in self.order._events if isinstance(e, OrderConfirmed)]
+        ordered = self.order.quantities_by_product()
+        listed: dict[str, int] = {}
+        for line in confirmations[-1].items if confirmations else []:
+            listed[line["product_id"]] = (
+                listed.get(line["product_id"], 0) + line["quantity"]
+            )
+
+        if listed != ordered:
+            raise ValidationError(
+                {"_service": ["The confirmation does not list every ordered item"]}
+            )
+
 
 @domain.command(part_of=Order)
 class PlaceOrder:
@@ -104,9 +164,17 @@ class OrderCommandHandler:
         order_repo = current_domain.repository_for(Order)
         inventory_repo = current_domain.repository_for(Inventory)
 
-        # Load aggregates
         order = order_repo.get(command.order_id)
-        inventories = [inventory_repo.get(item.product_id) for item in order.items]
+        if order.status == OrderStatus.CONFIRMED.value:
+            # A repeated PlaceOrder would raise OrderConfirmed a second time.
+            return
+
+        # Load the stock record of each ordered product. A product with no
+        # record is left out, and the service rejects the order.
+        inventories = []
+        for product_id in order.quantities_by_product():
+            found = inventory_repo.query.filter(product_id=product_id).all()
+            inventories.extend(found.items)
 
         # Invoke the domain service. The invariants run here
         service = place_order(order, inventories)

@@ -57,14 +57,14 @@ def test_two_lines_for_one_product_cannot_exceed_its_stock(flavor):
     assert exc.value.messages == {"_service": ["Product is out of stock"]}
     assert order.status == example.OrderStatus.PENDING.value
     assert not [e for e in order._events if isinstance(e, example.OrderConfirmed)]
-    assert [i.quantity for i in inventories] == [4]
 
 
 def test_two_lines_within_the_stock_confirm_the_order(flavor):
     example, place = flavor
     order = _order(example, 3, 1)
+    inventories = _stock(example, 4)
 
-    place(order, _stock(example, 4))
+    place(order, inventories)
 
     assert order.status == example.OrderStatus.CONFIRMED.value
     [confirmed] = [e for e in order._events if isinstance(e, example.OrderConfirmed)]
@@ -72,6 +72,10 @@ def test_two_lines_within_the_stock_confirm_the_order(flavor):
         {"product_id": "P", "quantity": 3},
         {"product_id": "P", "quantity": 1},
     ]
+    # The service leaves stock alone: the inventory reserves it later, through
+    # the command issued for OrderConfirmed.
+    assert [i.quantity for i in inventories] == [4]
+    assert not [e for i in inventories for e in i._events]
 
 
 @pytest.fixture(params=[_callable_class, _instance_method])
@@ -105,14 +109,14 @@ def handler_example():
         yield example
 
 
-def _store_order(example, stock):
+def _store_order(example, stock, product_id="P"):
     example.domain.repository_for(example.Inventory).add(
         example.Inventory(product_id="P", quantity=stock)
     )
     order = example.Order(
         customer_id="c-1",
         payment_id="p-1",
-        items=[example.OrderItem(product_id="P", quantity=3)],
+        items=[example.OrderItem(product_id=product_id, quantity=3)],
     )
     example.domain.repository_for(example.Order).add(order)
     return order
@@ -139,7 +143,10 @@ def test_the_handler_confirms_the_order_and_saves_only_the_order(
 
     stored = domain.repository_for(example.Order).get(order.id)
     assert stored.status == example.OrderStatus.CONFIRMED.value
-    assert domain.repository_for(example.Inventory).get("P").quantity == 4
+    [inventory] = (
+        domain.repository_for(example.Inventory).query.filter(product_id="P").all()
+    ).items
+    assert inventory.quantity == 4
     # A save of an unchanged Inventory writes nothing, so count the
     # repository.add calls to catch a handler that saves one anyway.
     saved = [
@@ -161,3 +168,31 @@ def test_the_handler_leaves_an_out_of_stock_order_pending(handler_example):
     assert exc.value.messages == {"_service": ["Product is out of stock"]}
     stored = example.domain.repository_for(example.Order).get(order.id)
     assert stored.status == example.OrderStatus.PENDING.value
+
+
+def test_the_handler_rejects_a_product_with_no_stock_record(handler_example):
+    example = handler_example
+    order = _store_order(example, stock=4, product_id="missing")
+
+    with pytest.raises(ValidationError) as exc:
+        example.domain.process(example.PlaceOrder(order_id=order.id))
+
+    assert exc.value.messages == {"_service": ["Product is out of stock"]}
+    stored = example.domain.repository_for(example.Order).get(order.id)
+    assert stored.status == example.OrderStatus.PENDING.value
+
+
+def test_a_repeated_command_confirms_the_order_once(handler_example):
+    example = handler_example
+    domain = example.domain
+    order = _store_order(example, stock=4)
+
+    domain.process(example.PlaceOrder(order_id=order.id))
+    domain.process(example.PlaceOrder(order_id=order.id))
+
+    confirmed = [
+        m
+        for m in domain.event_store.store.read("$all")
+        if m.metadata.headers.type == example.OrderConfirmed.__type__
+    ]
+    assert len(confirmed) == 1

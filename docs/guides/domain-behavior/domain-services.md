@@ -46,7 +46,8 @@ the stock itself and returns the order.
 
 Invoking it is straightforward:
 
-```shell
+```python
+# fragment
 OrderPlacementService.place_order(order, inventories)
 ```
 
@@ -74,7 +75,8 @@ method performs a distinct business function.
 You would then instantiate the Domain Service, passing the relevant aggregates
 and invoke the methods on the instance.
 
-```shell
+```python
+# fragment
 service = OrderPlacementService(order, inventories)
 service.place_order()
 ```
@@ -89,7 +91,8 @@ class:
 --8<-- "guides/domain-behavior/006.py:service"
 ```
 
-```shell
+```python
+# fragment
 service = place_order(order, inventories)
 service()
 ```
