@@ -82,6 +82,16 @@ def pytest_addoption(parser):
     parser.addoption(
         "--sendgrid", action="store_true", default=False, help="Run Sendgrid tests"
     )
+    parser.addoption(
+        "--service-tests",
+        action="store",
+        default="all",
+        choices=("all", "none", "only"),
+        help=(
+            "Keep every test (all), leave out the tests that need a service "
+            "(none), or keep only those (only)"
+        ),
+    )
 
     # Options to run Database tests
     parser.addoption(
@@ -126,8 +136,48 @@ def pytest_addoption(parser):
     )
 
 
+# The keywords whose tests need a running service, each switched on by the
+# option of the same name. ``item.keywords`` holds a test's markers and also the
+# names of its parent packages, so a test under ``mssql/`` needs MSSQL even
+# without the ``mssql`` marker. ``-m`` sees only markers, which is why
+# ``--service-tests`` selects with this list.
+SERVICE_KEYWORDS = (
+    "sqlite",
+    "postgresql",
+    "elasticsearch",
+    "mssql",
+    "mysql",
+    "redis",
+    "message_db",
+    "sendgrid",
+)
+
+
+def _select_service_tests(config, items) -> None:
+    """Apply ``--service-tests``, with the same check as the skips below."""
+    choice = config.getoption("--service-tests")
+    if choice == "all":
+        return
+
+    keep_service_tests = choice == "only"
+    selected = []
+    deselected = []
+    for item in items:
+        needs_service = any(keyword in item.keywords for keyword in SERVICE_KEYWORDS)
+        if needs_service == keep_service_tests:
+            selected.append(item)
+        else:
+            deselected.append(item)
+
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = selected
+
+
 def pytest_collection_modifyitems(config, items):
     """Configure special markers on tests, so as to control execution"""
+    _select_service_tests(config, items)
+
     run_slow = run_pending = run_sqlite = run_postgresql = run_elasticsearch = (
         run_redis
     ) = run_message_db = run_sendgrid = run_mssql = run_mysql = False

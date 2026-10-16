@@ -1,3 +1,5 @@
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -10,6 +12,9 @@ from typer.testing import CliRunner
 from protean.cli import app
 from protean.cli.test import (
     CAPABILITY_MARKER_MAP,
+    COVERAGE_BASE_CMD,
+    FULL_MATRIX_IN_MEMORY,
+    FULL_MATRIX_SERVICES,
     PYTEST_BASE_CMD,
     TEST_CONFIGS,
     CapabilityResult,
@@ -26,6 +31,7 @@ from protean.cli.test import (
 from protean.cli.test import (
     test_adapter as cli_test_adapter,
 )
+from tests.conftest import SERVICE_KEYWORDS, _select_service_tests
 
 
 @pytest.fixture
@@ -168,12 +174,12 @@ class TestTestRunner:
         """Test test suite generation."""
         suites = mock_runner.generate_test_suites()
 
-        # Full Matrix, one per database, one per broker, one per non-memory
-        # event store. Every term is derived, so adding an adapter to
-        # TEST_CONFIGS that the generator does not pick up fails here.
+        # The two full matrix suites, one per database, one per broker, one
+        # per non-memory event store. Every term is derived, so adding an
+        # adapter to TEST_CONFIGS that the generator does not pick up fails here.
         event_stores = [s for s in TEST_CONFIGS["eventstores"] if s != "MEMORY"]
         expected = (
-            1
+            2
             + len(TEST_CONFIGS["databases"])
             + len(TEST_CONFIGS["brokers"])
             + len(event_stores)
@@ -181,7 +187,7 @@ class TestTestRunner:
         assert len(suites) == expected
         suite_names = [suite.name for suite in suites]
 
-        assert "Full Matrix" in suite_names
+        assert suite_names[:2] == [FULL_MATRIX_IN_MEMORY, FULL_MATRIX_SERVICES]
         assert all(f"Database: {db}" in suite_names for db in TEST_CONFIGS["databases"])
         assert all(
             f"Broker: {broker}" in suite_names for broker in TEST_CONFIGS["brokers"]
@@ -252,7 +258,7 @@ class TestTestRunner:
         """Test run_full_suite_with_matrix_first runs matrix first, then parallel."""
         # Create test suites
         suites = [
-            TestSuite("Full Matrix", ["echo", "matrix"]),
+            TestSuite(FULL_MATRIX_IN_MEMORY, ["echo", "matrix"]),
             TestSuite("Database: MEMORY", ["echo", "db1"]),
             TestSuite("Broker: REDIS", ["echo", "broker1"]),
         ]
@@ -327,7 +333,7 @@ class TestCLICommands:
                 standalone_mode=False,
             )
 
-            mock_instance.run_full_suite.assert_called_once_with(True)
+            mock_instance.run_full_suite.assert_called_once_with(True, "0")
 
     def test_coverage_with_diff_report(self, cli_runner):
         """Test coverage category generates diff report on success."""
@@ -477,7 +483,7 @@ class TestSequentialExecution:
     def test_sequential_execution_success(self, mock_runner, capsys):
         """Test successful sequential execution."""
         suites = [
-            TestSuite("Full Matrix", ["echo", "test1"]),
+            TestSuite(FULL_MATRIX_IN_MEMORY, ["echo", "test1"]),
             TestSuite("Database: MEMORY", ["echo", "test2"]),
         ]
 
@@ -487,7 +493,7 @@ class TestSequentialExecution:
         assert result == 0
         captured = capsys.readouterr()
         assert "⏱️  Starting sequential test execution..." in captured.out
-        assert "Running full test matrix..." in captured.out
+        assert f"Running tests for {FULL_MATRIX_IN_MEMORY}…" in captured.out
         assert "Running tests for Database: MEMORY…" in captured.out
 
 
@@ -552,7 +558,8 @@ class TestSharedDatabaseSuites:
         assert suites["Database: POSTGRESQL_PSYCOPG2"].shared_database == "postgresql"
         assert suites["Database: MYSQL"].shared_database is None
         assert suites["Database: MARIADB"].shared_database is None
-        assert suites["Full Matrix"].shared_database is None
+        assert suites[FULL_MATRIX_IN_MEMORY].shared_database is None
+        assert suites[FULL_MATRIX_SERVICES].shared_database is None
 
     @staticmethod
     def _track_overlap(runner):
@@ -616,7 +623,7 @@ class TestSharedDatabaseSuites:
     def test_matrix_first_run_serializes_shared_database_suites(self):
         runner = TestRunner()
         suites = [
-            TestSuite("Full Matrix", ["matrix"]),
+            TestSuite(FULL_MATRIX_SERVICES, ["matrix"]),
             TestSuite("Database: A", ["a"], shared_database="postgresql"),
             TestSuite("Database: B", ["b"], shared_database="postgresql"),
         ]
@@ -626,6 +633,196 @@ class TestSharedDatabaseSuites:
 
         assert result == 0
         assert state["peak"] == 1
+
+
+class TestFullMatrixSplit:
+    """FULL runs the tests that need no service apart from the ones that do."""
+
+    @staticmethod
+    def _suites(workers: str = "logical") -> dict[str, TestSuite]:
+        return {s.name: s for s in TestRunner().generate_test_suites(workers)}
+
+    @staticmethod
+    def _option(cmd: list[str], name: str) -> str:
+        # Look after ``pytest``, so coverage's own ``-m pytest`` is skipped.
+        pytest_args = cmd[cmd.index("pytest") + 1 :]
+        return pytest_args[pytest_args.index(name) + 1]
+
+    def test_in_memory_suite_leaves_out_every_service_test(self):
+        cmd = self._suites()[FULL_MATRIX_IN_MEMORY].command
+
+        assert "--service-tests=none" in cmd
+
+    def test_in_memory_suite_spreads_over_the_workers(self):
+        cmd = self._suites("4")[FULL_MATRIX_IN_MEMORY].command
+
+        assert self._option(cmd, "-n") == "4"
+        assert self._option(cmd, "--dist") == "loadfile"
+
+    def test_zero_workers_runs_the_in_memory_suite_in_one_process(self):
+        cmd = self._suites("0")[FULL_MATRIX_IN_MEMORY].command
+
+        assert "-n" not in cmd
+
+    def test_services_suite_runs_only_service_tests_in_one_process(self):
+        cmd = self._suites("4")[FULL_MATRIX_SERVICES].command
+
+        assert "--service-tests=only" in cmd
+        assert "-n" not in cmd
+
+    @pytest.mark.parametrize("name", [FULL_MATRIX_IN_MEMORY, FULL_MATRIX_SERVICES])
+    def test_both_suites_switch_on_every_matrix_flag_under_coverage(self, name):
+        cmd = self._suites()[name].command
+
+        assert cmd[: len(COVERAGE_BASE_CMD)] == COVERAGE_BASE_CMD
+        for flag in TEST_CONFIGS["full_matrix_flags"]:
+            assert flag in cmd
+        assert cmd[-1] == "tests"
+
+    def test_every_matrix_service_flag_is_a_service_keyword(self):
+        flags = [f for f in TEST_CONFIGS["full_matrix_flags"] if f != "--slow"]
+
+        assert flags
+        for flag in flags:
+            assert flag.removeprefix("--") in SERVICE_KEYWORDS
+
+    @staticmethod
+    def _select(choice: str, items: list[Mock]) -> tuple[list[Mock], list[Mock]]:
+        config = Mock()
+        config.getoption.return_value = choice
+        deselected: list[Mock] = []
+        config.hook.pytest_deselected.side_effect = lambda items: deselected.extend(
+            items
+        )
+        _select_service_tests(config, items)
+        return items, deselected
+
+    @staticmethod
+    def _items() -> list[Mock]:
+        marked = Mock(keywords={"test_a": 1, "redis": 1})
+        under_a_service_package = Mock(keywords={"test_b": 1, "mssql": 1})
+        plain = Mock(keywords={"test_c": 1, "database": 1})
+        return [marked, under_a_service_package, plain]
+
+    def test_none_keeps_only_the_tests_that_need_no_service(self):
+        marked, packaged, plain = self._items()
+
+        kept, deselected = self._select("none", [marked, packaged, plain])
+
+        assert kept == [plain]
+        assert deselected == [marked, packaged]
+
+    def test_only_keeps_only_the_tests_that_need_a_service(self):
+        marked, packaged, plain = self._items()
+
+        kept, deselected = self._select("only", [marked, packaged, plain])
+
+        assert kept == [marked, packaged]
+        assert deselected == [plain]
+
+    def test_all_keeps_every_test(self):
+        items = self._items()
+
+        kept, deselected = self._select("all", list(items))
+
+        assert kept == items
+        assert deselected == []
+
+    @pytest.mark.parametrize(("choice", "collected"), [("none", 0), ("only", 2)])
+    def test_a_test_under_a_service_package_counts_as_a_service_test(
+        self, choice, collected
+    ):
+        # This file's tests carry no ``mssql`` marker. They need MSSQL because
+        # they sit under the ``mssql`` package.
+        path = "tests/adapters/repository/sqlalchemy_repo/mssql/test_mssql_provider.py"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "--collect-only",
+                "-q",
+                f"--service-tests={choice}",
+                "--mssql",
+                path,
+            ],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).resolve().parents[2],
+            check=False,
+        )
+
+        node_ids = [line for line in result.stdout.splitlines() if "::" in line]
+        assert len(node_ids) == collected, result.stdout
+
+    def test_matrix_suites_run_in_order_before_the_rest(self):
+        runner = TestRunner()
+        started: list[str] = []
+        guard = threading.Lock()
+
+        def run_command(cmd):
+            with guard:
+                started.append(cmd[0])
+            return 0
+
+        runner.run_command = run_command
+        suites = [
+            TestSuite("Database: A", ["a"]),
+            TestSuite(FULL_MATRIX_SERVICES, ["services"]),
+            TestSuite(FULL_MATRIX_IN_MEMORY, ["in-memory"]),
+        ]
+
+        result = runner.run_full_suite_with_matrix_first(suites)
+
+        assert result == 0
+        suite_commands = [c for c in started if c != "coverage"]
+        assert suite_commands == ["services", "in-memory", "a"]
+
+    def test_a_failing_matrix_suite_does_not_stop_the_others(self, capsys):
+        runner = TestRunner()
+        started: list[str] = []
+
+        def run_command(cmd):
+            started.append(cmd[0])
+            return 1 if cmd[0] == "in-memory" else 0
+
+        runner.run_command = run_command
+        suites = [
+            TestSuite(FULL_MATRIX_IN_MEMORY, ["in-memory"]),
+            TestSuite(FULL_MATRIX_SERVICES, ["services"]),
+            TestSuite("Database: A", ["a"]),
+        ]
+
+        result = runner.run_full_suite_with_matrix_first(suites)
+
+        assert result != 0
+        assert [c for c in started if c != "coverage"] == ["in-memory", "services", "a"]
+        assert (
+            f"⚠️  {FULL_MATRIX_IN_MEMORY} tests failed, but continuing"
+            in capsys.readouterr().out
+        )
+
+    @pytest.mark.parametrize("category", ["FULL", "COVERAGE"])
+    @pytest.mark.parametrize(
+        ("args", "workers"),
+        [([], "logical"), (["--workers", "3"], "3"), (["--sequential"], "0")],
+    )
+    def test_cli_passes_the_workers_to_the_full_suite(
+        self, cli_runner, monkeypatch, category, args, workers
+    ):
+        monkeypatch.delenv("PROTEAN_TEST_WORKERS", raising=False)
+        with patch("protean.cli.test.TestRunner") as mock_runner_class:
+            mock_instance = Mock()
+            mock_instance.run_full_suite.return_value = 0
+            mock_runner_class.return_value = mock_instance
+
+            cli_runner.invoke(
+                app, ["test", "--category", category, *args], standalone_mode=False
+            )
+
+            mock_instance.run_full_suite.assert_called_once_with(
+                args == ["--sequential"], workers
+            )
 
 
 class TestStyleInjection:
