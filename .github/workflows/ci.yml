@@ -30,7 +30,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Sized for `Python 3.14 Full`, the slowest leg. GitHub reports a job that
+    # runs out of time as cancelled, which does not count as a failure.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -209,10 +211,13 @@ jobs:
           fail_ci_if_error: true
 
   # A red push to main opens or updates the `ci-failure` issue, the same one
-  # the nightly run uses.
+  # the nightly run uses. A job that hits its timeout ends as `cancelled`, not
+  # `failure`, so that counts as red too. `cancelled()` is true only when the
+  # whole run was cancelled, which is what a newer push to main does, and that
+  # is not reported.
   report-main-failure:
     needs: [test, mypy, lint, dx-pack, docs-deploy]
-    if: ${{ failure() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ !cancelled() && (failure() || contains(needs.*.result, 'cancelled')) && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     name: Report main failure
@@ -228,7 +233,7 @@ jobs:
         with:
           run-name: CI on main
           details: >-
-            A job in the push-to-main run went red. It is the only per-commit run
+            A job in the push-to-main run failed or ran out of time. It is the only per-commit run
             of the full adapter suite and the project coverage floor, so a
             failure here was not caught on the PR.
 

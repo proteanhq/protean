@@ -64,7 +64,9 @@ jobs:
   notify:
     name: Report nightly failure
     needs: test
-    if: failure()
+    # A leg that hits its timeout ends as `cancelled`, not `failure`, so that
+    # counts as red too. A manually cancelled run is not reported.
+    if: ${{ !cancelled() && (failure() || needs.test.result == 'cancelled') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -78,6 +80,6 @@ jobs:
         with:
           run-name: Nightly CI
           details: >-
-            A `Python X Full` leg went red. This catches adapter regressions on
+            A `Python X Full` leg failed or ran out of time. This catches adapter regressions on
             the Python versions that per-PR CI exercises in-memory only, and
             floors that only break against a real service.
