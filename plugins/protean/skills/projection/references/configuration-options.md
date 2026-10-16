@@ -87,9 +87,6 @@ class CustomInventoryModel(BaseDatabaseModel):
     name = Column(Text)
 ```
 
-The `database_model` option on `@domain.projection` is not read by anything, so
-passing your model there leaves the auto-generated one in place.
-
 ## Query options
 
 ### limit

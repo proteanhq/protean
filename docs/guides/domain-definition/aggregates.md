@@ -226,7 +226,7 @@ stream rather than loaded from a database. Business methods must use
 [Event Sourcing pathway](../pathways/event-sourcing.md) for a complete
 walkthrough. (The old `is_event_sourced` spelling is a deprecated alias.)
 
-For details on `auto_add_id_field`, `schema_name`, `database_model`, and
+For details on `auto_add_id_field`, `schema_name`, and
 other options, see
 [element decorators](../../reference/domain-elements/element-decorators.md).
 

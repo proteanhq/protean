@@ -71,9 +71,7 @@ class ProductInventory:
 | `externally_populated` | `False` | Set `True` when a subscriber or event handler fills the projection. `check` then skips `PROJECTION_WITHOUT_PROJECTOR` and `UNSOURCED_PROJECTION_FIELD` for it |
 
 To control the database mapping, register your own model with
-`@domain.database_model(part_of=...)`. There is a `database_model` option on
-`@domain.projection`, but nothing reads it, so a model passed there is ignored
-and the auto-generated one stays in place. See
+`@domain.database_model(part_of=...)`. See
 [Custom database models](references/configuration-options.md).
 
 ## Supported field types

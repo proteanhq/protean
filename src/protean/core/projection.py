@@ -116,7 +116,6 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
     _default_options: ClassVar[list[tuple[str, Any]]] = [
         ("abstract", False),
         ("cache", None),
-        ("database_model", None),
         # When True, the projection is populated by a subscriber or event
         # handler (the anti-corruption-layer / cross-domain pattern) rather
         # than a co-located @projector. Suppresses PROJECTION_WITHOUT_PROJECTOR.

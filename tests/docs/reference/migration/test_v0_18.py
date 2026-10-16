@@ -520,3 +520,24 @@ class TestNonDictPositionalArgument:
     def test_renamed_from_with_an_empty_alias_still_raises_value_error(self):
         with pytest.raises(ValueError, match="renamed_from"):
             String(renamed_from=[""])
+
+
+class TestDatabaseModelOptionRemoved:
+    def test_the_old_decorator_option_raises(self):
+        domain = Domain(name="Accounts")
+
+        with pytest.raises(ConfigurationError, match="database_model"):
+
+            @domain.aggregate(database_model="UserModel")
+            class User:
+                email: String(max_length=255, required=True)
+
+    def test_the_fix_registers_the_custom_model(self):
+        module = load_example("reference/migration/v0-18/010.py")
+
+        assert module.UserModel.meta_.part_of is module.User
+
+        with activated(module.domain):
+            model = module.domain.repository_for(module.User)._database_model
+
+            assert issubclass(model, module.UserModel)

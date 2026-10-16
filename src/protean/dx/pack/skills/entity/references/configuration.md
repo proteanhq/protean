@@ -159,9 +159,7 @@ class LineItemModel(BaseDatabaseModel):
 - Mapping to legacy database schemas
 
 **Important:**
-- Register the model with `@domain.database_model`. The `database_model` option
-  on `@domain.entity` is not read by anything, so passing your model there
-  leaves the auto-generated one in place.
+- Register the model with `@domain.database_model(part_of=<Entity>)`.
 - Every column must match a field declared on the entity. A column for anything
   else is rejected at registration with `IncorrectUsageError`.
 - Custom models are provider-specific (a SQLAlchemy model won't work with

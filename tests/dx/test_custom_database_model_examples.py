@@ -8,19 +8,21 @@ SQLAlchemy is a dev dependency.
 
 The snippets are executed, not matched. Each test pulls the fenced ``python``
 block straight out of the reference page and runs it, so a page whose code stops
-being valid Python, names a column no field backs, or drifts back to the inert
-``database_model=`` option fails here. A copy of the snippet kept in this file
-would pass while the shipped page rotted, which is the whole failure this guards.
+being valid Python, names a column no field backs, or drifts back to the
+rejected ``database_model=`` element option fails here. A copy of the snippet
+kept in this file would pass while the shipped page rotted, which is the whole
+failure this guards.
 
 The page is a fragment, not a module: it assumes a ``domain`` and the field types
 are already in scope, the way the rest of the page does. The namespace below
 supplies exactly those, and nothing the snippet is meant to show for itself. Its
 own imports, decorators and columns all have to work.
 
-Two tests pin framework behaviour rather than page text: the inert
-``database_model=`` option really is accepted and ignored, and a column with no
-matching field really is rejected. Those are the claims the pages make in prose,
-so they are asserted here rather than left as assertions about wording.
+Two tests pin framework behaviour rather than page text: an element decorator
+really does reject a ``database_model=`` option, and a column with no matching
+field really is rejected. The pages tell readers to use
+``@domain.database_model`` and to back every column with a field, and these two
+tests pin the framework behaviour behind that instruction.
 """
 
 import re
@@ -32,7 +34,7 @@ from sqlalchemy import Column, Text
 from protean import dx
 from protean.core.database_model import BaseDatabaseModel
 from protean.domain import Domain
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import Decimal, Float, HasMany, Identifier, Integer, String
 
 # These build their own domains and read package data; they never touch the
@@ -46,16 +48,20 @@ AGGREGATE_PAGE = "aggregate/references/configuration.md"
 ENTITY_PAGE = "entity/references/configuration.md"
 PROJECTION_PAGE = "projection/references/configuration-options.md"
 
-# The elements that declare a `database_model` option nothing reads. Each is a
-# way for a page to teach a model registration that is silently ignored.
+# The elements that reject a `database_model` option. A page that passes one
+# teaches code that fails at registration.
 #
 # `database_model=` has to be matched anywhere in the call, not just right after
 # the paren: on the entity page it sat behind `part_of=`, so a check anchored to
 # the opening paren walked straight past the one real instance in the pack.
 # `[^)]*` spans newlines, so a decorator broken over several lines is covered.
-INERT_CALL = re.compile(
+REJECTED_CALL = re.compile(
     r"@domain\.(?:aggregate|entity|projection)\([^)]*\bdatabase_model\s*="
 )
+
+# A backticked `database_model` that is not the `@domain.database_model`
+# decorator names the element option, in prose or in a table row.
+BARE_OPTION_MENTION = re.compile(r"(?<!domain\.)`database_model`")
 
 if not PACK_ROOT.is_dir():
     pytest.skip(
@@ -139,27 +145,21 @@ class TestAggregateCustomDatabaseModel:
             # Protean still fills in the fields the model left alone.
             assert "full_name" in model.__table__.c
 
-    def test_the_inert_decorator_option_leaves_the_generated_model_in_place(self):
-        # This is what the reference page warns about: passing the model to
-        # `@domain.aggregate` is accepted and then ignored, so the aggregate
-        # keeps its auto-generated model and the custom mapping never applies.
+    def test_the_decorator_option_is_rejected_at_registration(self):
+        # Passing the model to `@domain.aggregate` raises; the model has to be
+        # registered with `@domain.database_model(part_of=...)` instead.
         domain = _sqlite_domain()
 
         class DetachedUserModel(BaseDatabaseModel):
             email = Column(Text, unique=True)
 
-        @domain.aggregate(database_model=DetachedUserModel)
-        class User:
-            email: String(required=True, max_length=255)
+        with pytest.raises(ConfigurationError) as exc:
 
-        domain.init(traverse=False)
-        with domain.domain_context():
-            model = domain.repository_for(User)._database_model
+            @domain.aggregate(database_model=DetachedUserModel)
+            class User:
+                email: String(required=True, max_length=255)
 
-            assert model is not DetachedUserModel
-            assert model.__tablename__ == "user"
-            # Auto-generated from the String field, so it is not the custom Text.
-            assert not isinstance(model.__table__.c.email.type, Text)
+        assert "database_model" in str(exc.value)
 
     def test_a_column_with_no_matching_field_is_rejected(self):
         # The page states this as the constraint that keeps a custom model honest.
@@ -246,12 +246,12 @@ class TestProjectionCustomDatabaseModel:
             assert "product_id" in model.__table__.c
 
 
-class TestNoPageTeachesTheInertOption:
+class TestNoPageTeachesTheRejectedOption:
     """The pack-wide sweep, not a per-page check.
 
     Executing the three snippets above only covers the sections that teach this
-    on purpose. The inert form runs without error, so anywhere else it appears it
-    would execute fine and teach the wrong thing. It has turned up twice in two
+    on purpose. The rejected form fails at registration, so anywhere else it
+    appears it teaches code that does not run. It has turned up twice in two
     places the section-level check could not see: a projection option table
     advertising `database_model` as supported, and an entity page whose whole
     example used it. So this walks every markdown page in the pack.
@@ -263,13 +263,13 @@ class TestNoPageTeachesTheInertOption:
             for block in _python_blocks(page.relative_to(REFERENCES).as_posix()):
                 offenders.extend(
                     f"{page.relative_to(REFERENCES)}: {match.group(0).strip()}"
-                    for match in INERT_CALL.finditer(block)
+                    for match in REJECTED_CALL.finditer(block)
                 )
 
         assert not offenders, (
-            "these examples pass a model to an element decorator, where it is "
-            "accepted and ignored; register it with `@domain.database_model` "
-            "instead:\n" + "\n".join(offenders)
+            "these examples pass a model to an element decorator, which "
+            "rejects it at registration; register it with "
+            "`@domain.database_model` instead:\n" + "\n".join(offenders)
         )
 
     def test_no_option_table_advertises_database_model(self):
@@ -283,5 +283,22 @@ class TestNoPageTeachesTheInertOption:
 
         assert not offenders, (
             "these option tables list `database_model` as a supported option, "
-            f"but nothing reads it:\n{offenders}"
+            f"but element decorators reject it:\n{offenders}"
+        )
+
+    def test_no_prose_names_a_database_model_option(self):
+        # The code-block check cannot see prose. A skill page once said the
+        # option existed and was ignored, which stopped being true when the
+        # element decorators began rejecting it. `@domain.database_model` is
+        # the decorator and stays allowed.
+        offenders = [
+            f"{page.relative_to(PACK_ROOT).as_posix()}: {line.strip()}"
+            for page in sorted(PACK_ROOT.rglob("*.md"))
+            for line in page.read_text().splitlines()
+            if BARE_OPTION_MENTION.search(line)
+        ]
+
+        assert not offenders, (
+            "these lines name a `database_model` element option, which the "
+            "element decorators reject:\n" + "\n".join(offenders)
         )
