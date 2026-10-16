@@ -194,12 +194,13 @@ class BaseCommand(BaseMessageType):
             incoming.domain if incoming and hasattr(incoming, "domain") else None
         )
 
-        # On a rebuild, copy the stored IDs, including `None`.
-        # `g.message_in_context` holds the message being handled now, which
-        # did not cause the stored one.
+        # On a rebuild, copy the stored IDs and origin stream, including
+        # `None`. `g.message_in_context` holds the message being handled now,
+        # which did not cause the stored one.
         if rebuild and existing_domain:
             correlation_id = existing_domain.correlation_id
             causation_id = existing_domain.causation_id
+            origin_stream = existing_domain.origin_stream
         else:
             if existing_domain and existing_domain.correlation_id:
                 correlation_id = existing_domain.correlation_id
