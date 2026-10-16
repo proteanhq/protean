@@ -205,3 +205,67 @@ def test_aggregate_tracks_event_version_after_multiple_updates_with_multiple_eve
 
     assert refreshed_user._version == 3
     assert refreshed_user._event_position == 3
+
+
+def _stored_events(test_domain, user):
+    return [
+        message.to_domain_object()
+        for message in test_domain.event_store.store.read(f"test::user-{user.id}")
+    ]
+
+
+def test_same_instance_saved_twice_gives_each_event_a_distinct_id(user, test_domain):
+    repo = test_domain.repository_for(User)
+    repo.add(user)
+
+    user.activate()
+    repo.add(user)
+
+    events = _stored_events(test_domain, user)
+    assert len(events) == 2
+
+    assert events[0]._metadata.headers.id == f"test::user-{user.id}-0.1"
+    assert events[0]._metadata.domain.sequence_id == "0.1"
+    assert events[1]._metadata.headers.id == f"test::user-{user.id}-1.1"
+    assert events[1]._metadata.domain.sequence_id == "1.1"
+
+
+def test_same_instance_event_ids_match_the_reload_path(test_domain):
+    repo = test_domain.repository_for(User)
+
+    reused = User.register(name="John Doe", email="john.doe@gmail.com")
+    repo.add(reused)
+    reused.activate()
+    repo.add(reused)
+
+    reloaded = User.register(name="Jane Doe", email="jane.doe@gmail.com")
+    repo.add(reloaded)
+    refreshed = repo.get(reloaded.id)
+    refreshed.activate()
+    repo.add(refreshed)
+
+    reused_sequence = [
+        event._metadata.domain.sequence_id
+        for event in _stored_events(test_domain, reused)
+    ]
+    reloaded_sequence = [
+        event._metadata.domain.sequence_id
+        for event in _stored_events(test_domain, reloaded)
+    ]
+    assert reused_sequence == ["0.1", "1.1"]
+    assert reused_sequence == reloaded_sequence
+
+
+def test_child_event_on_same_instance_gets_a_new_version(test_domain):
+    repo = test_domain.repository_for(User)
+    user = User(name="John Doe", email="john.doe@gmail.com")
+    user.account = Account(password_hash="hashed_password")
+    repo.add(user)
+
+    user.account.change_password("new_password")
+    repo.add(user)
+
+    events = _stored_events(test_domain, user)
+    assert len(events) == 1
+    assert events[0]._metadata.domain.sequence_id == "1.1"
+    assert repo.get(user.id)._version == 1

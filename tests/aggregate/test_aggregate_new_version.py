@@ -45,3 +45,40 @@ def test_aggregate_after_multiple_persistences_has_next_version_incremented(
     refreshed_user = test_domain.repository_for(User).get(user.id)
     assert refreshed_user._version == 10
     assert refreshed_user._next_version == 11
+
+
+def test_same_instance_saved_repeatedly_tracks_the_stored_version(test_domain):
+    repo = test_domain.repository_for(User)
+    user = User(name="John Doe", email="john.doe@example.com")
+
+    repo.add(user)
+    assert user._version == 0
+    assert user._next_version == 1
+
+    for i in range(1, 4):
+        user.name = f"Jane Doe {i}"
+        repo.add(user)
+
+        stored = repo.get(user.id)
+        assert stored._version == i
+        assert user._version == stored._version
+        assert user._next_version == stored._next_version
+
+
+def test_failed_update_leaves_both_versions_where_they_were(test_domain):
+    repo = test_domain.repository_for(User)
+    user = User(name="John Doe", email="john.doe@example.com")
+    repo.add(user)
+
+    def failing_enricher(aggregate):
+        raise RuntimeError("enricher failed")
+
+    test_domain.register_aggregate_enricher(failing_enricher)
+
+    user.name = "Jane Doe"
+    with pytest.raises(RuntimeError, match="enricher failed"):
+        repo.add(user)
+
+    assert user._version == 0
+    assert user._next_version == 1
+    assert repo.get(user.id)._version == 0

@@ -11,16 +11,35 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
+from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ExpectedVersionError, ObjectNotFoundError
-from protean.fields import HasMany, HasOne, Integer, Reference, String, ValueObject
+from protean.fields import (
+    HasMany,
+    HasOne,
+    Identifier,
+    Integer,
+    Reference,
+    String,
+    ValueObject,
+)
+from protean.port.provider import DatabaseCapabilities
 from protean.utils.globals import current_uow
 
 
 class Counter(BaseAggregate):
     name: String(max_length=100, required=True)
     value: Integer(default=0)
+
+    def bump(self):
+        self.value += 1
+        self.raise_(CounterBumped(counter_id=self.id, value=self.value))
+
+
+class CounterBumped(BaseEvent):
+    counter_id: Identifier(required=True)
+    value: Integer(required=True)
 
 
 class Money(BaseValueObject):
@@ -73,6 +92,7 @@ class Bin(BaseEntity):
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Counter)
+    test_domain.register(CounterBumped, part_of=Counter)
     test_domain.register(Money)
     test_domain.register(Order)
     test_domain.register(OrderLine, part_of=Order)
@@ -451,3 +471,303 @@ class TestChildOnlyMutationVersioning:
         final = test_domain.repository_for(Order).get(order_id)
         assert final._version == 1
         assert final.lines[0].quantity == 10
+
+
+@pytest.mark.basic_storage
+class TestSameInstanceSavedRepeatedly:
+    """Saving one instance again without reloading writes a new version each time."""
+
+    def test_stored_version_advances_on_each_save(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+
+        stored_versions = []
+        for value in range(3):
+            counter.value = value
+            with UnitOfWork():
+                repo.add(counter)
+
+            stored = repo.get(counter.id)
+            stored_versions.append(stored._version)
+            assert counter._next_version == stored._version + 1
+
+        assert stored_versions == [0, 1, 2]
+
+    def test_stale_copy_is_rejected_after_reused_instance_saves_twice(
+        self, test_domain
+    ):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+
+        stale = repo.get(counter.id)
+
+        for value in (1, 2):
+            counter.value = value
+            with UnitOfWork():
+                repo.add(counter)
+
+        stale.value = 99
+        with pytest.raises(ExpectedVersionError), UnitOfWork():
+            repo.add(stale)
+
+        final = repo.get(counter.id)
+        assert final.value == 2
+        assert final._version == 2
+
+    def test_stale_save_leaves_versions_unchanged(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+
+        winner = repo.get(counter.id)
+        winner.value = 1
+        with UnitOfWork():
+            repo.add(winner)
+
+        counter.value = 2
+        with pytest.raises(ExpectedVersionError), UnitOfWork():
+            repo.add(counter)
+
+        assert counter._version == 0
+        assert counter._next_version == 1
+
+    def test_stale_copy_is_rejected_after_one_reused_save(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+
+        stale = repo.get(counter.id)
+
+        counter.value = 1
+        with UnitOfWork():
+            repo.add(counter)
+
+        stale.value = 99
+        with pytest.raises(ExpectedVersionError), UnitOfWork():
+            repo.add(stale)
+
+        final = repo.get(counter.id)
+        assert final.value == 1
+        assert final._version == 1
+
+    def test_new_aggregate_added_twice_in_one_uow_writes_one_version(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+
+        with UnitOfWork():
+            repo.add(counter)
+            counter.value = 1
+            repo.add(counter)
+
+        stored = repo.get(counter.id)
+        assert stored.value == 1
+        assert stored._version == 0
+        assert counter._version == 0
+        assert counter._next_version == 1
+
+    def test_loaded_aggregate_added_thrice_in_one_uow_writes_one_version(
+        self, test_domain
+    ):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+
+        loaded = repo.get(counter.id)
+        with UnitOfWork():
+            for value in (1, 2, 3):
+                loaded.value = value
+                repo.add(loaded)
+
+        stored = repo.get(counter.id)
+        assert stored.value == 3
+        assert stored._version == 1
+        assert loaded._next_version == 2
+
+    def test_reused_instance_can_retry_after_a_rollback(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+
+        counter.value = 1
+        with pytest.raises(RuntimeError, match="abort"), UnitOfWork():
+            repo.add(counter)
+            raise RuntimeError("abort")
+
+        # A provider without transactions keeps the write despite the rollback.
+        kept = 0 if _undoes_writes_on_rollback(test_domain) else 1
+        assert repo.get(counter.id)._version == kept
+        assert counter._version == kept
+        assert counter._next_version == kept + 1
+
+        counter.value = 2
+        with UnitOfWork():
+            repo.add(counter)
+
+        stored = repo.get(counter.id)
+        assert stored.value == 2
+        assert stored._version == kept + 1
+
+    def test_loaded_instance_can_retry_after_a_rollback(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        with UnitOfWork():
+            repo.add(Counter(id="c1", name="loaded", value=0))
+
+        loaded = repo.get("c1")
+        loaded.value = 1
+        with pytest.raises(RuntimeError, match="abort"), UnitOfWork():
+            repo.add(loaded)
+            raise RuntimeError("abort")
+
+        kept = 0 if _undoes_writes_on_rollback(test_domain) else 1
+        assert repo.get("c1")._version == kept
+        assert loaded._version == kept
+
+        loaded.value = 2
+        with UnitOfWork():
+            repo.add(loaded)
+
+        assert repo.get("c1")._version == kept + 1
+
+    def test_read_in_the_same_uow_does_not_stop_the_saved_instance_advancing(
+        self, test_domain
+    ):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+
+        counter.value = 1
+        with UnitOfWork():
+            repo.add(counter)
+            repo.get(counter.id)
+
+        assert counter._version == 1
+        assert counter._next_version == 2
+
+        stale = repo.get(counter.id)
+        counter.value = 2
+        with UnitOfWork():
+            repo.add(counter)
+
+        stale.value = 99
+        with pytest.raises(ExpectedVersionError), UnitOfWork():
+            repo.add(stale)
+
+        final = repo.get(counter.id)
+        assert final.value == 2
+        assert final._version == 2
+
+    def test_read_in_the_same_uow_does_not_stop_the_rollback_settling(
+        self, test_domain
+    ):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+
+        counter.value = 1
+        with pytest.raises(RuntimeError, match="abort"), UnitOfWork():
+            repo.add(counter)
+            repo.get(counter.id)
+            raise RuntimeError("abort")
+
+        kept = 0 if _undoes_writes_on_rollback(test_domain) else 1
+        assert repo.get(counter.id)._version == kept
+        assert counter._version == kept
+        assert counter._next_version == kept + 1
+
+    def test_standalone_dao_save_advances_on_each_write(self, test_domain):
+        dao = test_domain.repository_for(Counter)._dao
+        counter = Counter(name="reused", value=0)
+
+        dao.save(counter)
+        assert counter._next_version == 1
+
+        counter.value = 1
+        dao.save(counter)
+
+        assert counter._version == 1
+        assert counter._next_version == 2
+        assert test_domain.repository_for(Counter).get(counter.id)._version == 1
+
+
+def _undoes_writes_on_rollback(test_domain):
+    provider = test_domain.providers["default"]
+    return provider.has_capability(
+        DatabaseCapabilities.TRANSACTIONS
+    ) or provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS)
+
+
+def _stored_sequence_ids(test_domain, counter):
+    messages = test_domain.event_store.store.read(f"test::counter-{counter.id}")
+    return [
+        message.to_domain_object()._metadata.domain.sequence_id for message in messages
+    ]
+
+
+@pytest.mark.basic_storage
+class TestEventIdsOnSameInstance:
+    """Events raised on one instance across saves never share an id."""
+
+    def test_events_across_two_saves_get_distinct_ids(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+
+        counter.bump()
+        with UnitOfWork():
+            repo.add(counter)
+
+        counter.bump()
+        with UnitOfWork():
+            repo.add(counter)
+
+        assert _stored_sequence_ids(test_domain, counter) == ["0.1", "1.1"]
+
+    def test_event_raised_after_the_last_add_keeps_a_distinct_id(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+
+        with UnitOfWork():
+            repo.add(counter)
+            counter.bump()
+
+        reloaded = repo.get(counter.id)
+        reloaded.bump()
+        with UnitOfWork():
+            repo.add(reloaded)
+
+        assert _stored_sequence_ids(test_domain, counter) == ["0.1", "1.1"]
+
+    def test_events_survive_a_read_of_the_same_aggregate_in_the_uow(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+
+        counter.bump()
+        with UnitOfWork():
+            repo.add(counter)
+            repo.get(counter.id)
+
+        assert _stored_sequence_ids(test_domain, counter) == ["0.1"]
+
+    def test_events_between_adds_in_one_uow_get_distinct_ids(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="reused", value=0)
+
+        with UnitOfWork():
+            counter.bump()
+            repo.add(counter)
+            counter.bump()
+            repo.add(counter)
+
+        reloaded = repo.get(counter.id)
+        reloaded.bump()
+        with UnitOfWork():
+            repo.add(reloaded)
+
+        assert _stored_sequence_ids(test_domain, counter) == ["0.1", "0.2", "1.1"]

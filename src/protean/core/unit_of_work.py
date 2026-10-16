@@ -23,6 +23,7 @@ from protean.utils.telemetry import (
 )
 
 if TYPE_CHECKING:
+    from protean.core.aggregate import BaseAggregate
     from protean.port.provider import SessionProtocol
 
 
@@ -89,7 +90,15 @@ class UnitOfWork:
 
         self._sessions: dict[str, SessionProtocol] = {}
         self._messages_to_dispatch: list[tuple[str, dict[str, Any], str | None]] = []
-        self._identity_map: defaultdict[str, dict[Any, Any]] = defaultdict(dict)
+        # One instance per aggregate for the whole transaction, keyed by
+        # provider and then by aggregate class and id. A read of an aggregate
+        # already here returns this instance, so its versions and event
+        # position never have to be reconciled across copies.
+        self._identity_map: defaultdict[str, dict[tuple[type, Any], Any]] = defaultdict(
+            dict
+        )
+        # The identity-map entries that were saved, by provider, class and id.
+        self._saved: set[tuple[str, type, Any]] = set()
 
         # A UnitOfWork started while another is already active on this context is
         # a participant in the outer transaction (see ``start``). ``_nested`` marks
@@ -127,28 +136,92 @@ class UnitOfWork:
 
         return None
 
-    def _add_to_identity_map(self, aggregate: Any) -> None:
+    @staticmethod
+    def _identity_key(aggregate: Any) -> tuple[type, Any]:
         id_f = id_field(aggregate)
         assert id_f is not None
         assert id_f.field_name is not None
-        identifier = getattr(aggregate, id_f.field_name)
-        self._identity_map[aggregate.meta_.provider][identifier] = aggregate
+        return type(aggregate), getattr(aggregate, id_f.field_name)
+
+    def _tracked_instance(
+        self, aggregate_cls: "type[BaseAggregate]", identifier: Any
+    ) -> "BaseAggregate | None":
+        """The instance of ``aggregate_cls`` with ``identifier`` already
+        tracked in this transaction, if there is one."""
+        provider_map = self._identity_map.get(aggregate_cls.meta_.provider, {})
+        return provider_map.get((aggregate_cls, identifier))
+
+    def _add_to_identity_map(self, aggregate: Any, saved: bool = False) -> None:
+        provider_name = aggregate.meta_.provider
+        key = self._identity_key(aggregate)
+        self._identity_map[provider_name][key] = aggregate
+        if saved:
+            self._saved.add((provider_name, *key))
+
+    def _items_to_commit(self) -> list[tuple[str, Any]]:
+        """The instances whose events this transaction commits, each with the
+        name of its provider.
+
+        An event-sourced aggregate counts only once ``add()`` has saved it.
+        Its events are its state, and ``add()`` is where its fact event is
+        raised, so a read alone must not persist what was raised on it.
+        """
+        return [
+            (provider_name, item)
+            for provider_name, identity_map in self._identity_map.items()
+            for key, item in identity_map.items()
+            if not item.meta_.is_event_sourced or (provider_name, *key) in self._saved
+        ]
 
     def _gather_events(self) -> defaultdict[str, list[Any]]:
-        """Gather all events from items in the identity map"""
+        """Gather all events from the instances tracked in this transaction"""
         all_events: defaultdict[str, list[Any]] = defaultdict(list)
-        for provider, identity_map in self._identity_map.items():
-            for item in identity_map.values():
-                if item._events:
-                    all_events[provider].extend(item._events)
+        for provider, item in self._items_to_commit():
+            if item._events:
+                all_events[provider].extend(item._events)
         return all_events
 
     def _clear_events_from_items(self) -> None:
-        """Clear events from all items in the identity map"""
-        for items in self._identity_map.values():
-            for item in items.values():
-                # Clear events from the item
-                item._events = []
+        """Clear events from the instances tracked in this transaction"""
+        for _, item in self._items_to_commit():
+            item._events = []
+
+    def _state_based_items(self) -> list[tuple[str, Any]]:
+        """Aggregates saved in this transaction whose versions the DAO
+        manages, each with the name of its provider."""
+        return [
+            (provider_name, item)
+            for provider_name, identity_map in self._identity_map.items()
+            for key, item in identity_map.items()
+            if (provider_name, *key) in self._saved and not item.meta_.is_event_sourced
+        ]
+
+    def _advance_next_versions(self, provider_name: str) -> None:
+        """Move each aggregate saved through ``provider_name`` past the version
+        just committed, so a later save of the same instance writes a new
+        version and its events get new ids, as they would after a reload."""
+        for item_provider, item in self._state_based_items():
+            if item_provider == provider_name:
+                item._next_version = item._version + 1
+
+    def _settle_versions_on_rollback(self) -> None:
+        """Make each saved aggregate's versions match its store after a rollback.
+
+        Where the provider undoes the write, ``_version`` goes back to the
+        version the instance had before this transaction. ``_next_version``
+        only advances on commit, so it is still one past that version.
+
+        A provider without transactions has already kept the write, so its
+        aggregates advance as they would on commit.
+        """
+        for provider_name, item in self._state_based_items():
+            provider = self.domain.providers[provider_name]
+            if provider.has_capability(
+                DatabaseCapabilities.TRANSACTIONS
+            ) or provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS):
+                item._version = item._next_version - 1
+            else:
+                item._next_version = item._version + 1
 
     def start(self) -> None:
         """Begin the transaction and push this UnitOfWork onto the context stack.
@@ -287,10 +360,9 @@ class UnitOfWork:
         # aggregates is a design smell (consider using domain events for
         # cross-aggregate coordination instead).
         aggregate_classes_with_events: set[type] = set()
-        for identity_map in self._identity_map.values():
-            for item in identity_map.values():
-                if item._events:
-                    aggregate_classes_with_events.add(type(item))
+        for _, item in self._items_to_commit():
+            if item._events:
+                aggregate_classes_with_events.add(type(item))
         if len(aggregate_classes_with_events) > 1:
             class_names = sorted(cls.__name__ for cls in aggregate_classes_with_events)
             logger.warning(
@@ -458,9 +530,18 @@ class UnitOfWork:
             if _uow_stack.top is self:
                 _uow_stack.pop()
 
+            # A provider that opened no session (Elasticsearch, for one) has
+            # already kept its writes, so its aggregates advance now.
+            for provider_name in self._identity_map.keys() - self._sessions.keys():
+                self._advance_next_versions(provider_name)
+
             # Commit the relational session (aggregate state + outbox rows).
-            for session in self._sessions.values():
+            # Advance versions as each provider commits: if a later provider
+            # fails, the rollback must not rewind aggregates whose write is
+            # already durable.
+            for provider_name, session in self._sessions.items():
                 session.commit()
+                self._advance_next_versions(provider_name)
 
             # Dispatch messages to their designated broker
             for stream, message, broker_name in self._messages_to_dispatch:
@@ -569,6 +650,7 @@ class UnitOfWork:
         self._sessions = {}
         self._messages_to_dispatch = []
         self._identity_map = defaultdict(dict)
+        self._saved = set()
         self._in_progress = False
 
     def rollback(self) -> None:
@@ -605,6 +687,8 @@ class UnitOfWork:
         # cannot pop a parent UnitOfWork off the stack.
         if _uow_stack.top is self:
             _uow_stack.pop()
+
+        self._settle_versions_on_rollback()
 
         try:
             for session in self._sessions.values():

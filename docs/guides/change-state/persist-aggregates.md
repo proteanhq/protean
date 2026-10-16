@@ -121,7 +121,7 @@ Out[7]:
  'body': 'Lorem ipsum dolor sit amet, consectetur adipiscing...',
  'published': False,
  'id': '1',
- '_version': 0}
+ '_version': 1}
 ```
 
 ---

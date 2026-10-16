@@ -185,6 +185,7 @@ class TestUnitOfWorkAdditionalCoverage:
                 # Simulate events in identity map
                 mock_item = Mock()
                 mock_item._events = [mock_event]
+                mock_item.meta_.is_event_sourced = False
                 uow._identity_map["default"]["test-id"] = mock_item
 
                 uow.commit()

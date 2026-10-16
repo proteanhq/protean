@@ -92,7 +92,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
                 fact_event_obj = aggregate._fact_event_cls(**payload)
                 aggregate.raise_(fact_event_obj)
 
-            uow._add_to_identity_map(aggregate)
+            uow._add_to_identity_map(aggregate, saved=True)
 
             # If we started a UnitOfWork, commit it now
             if own_current_uow:
@@ -225,11 +225,9 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
         # Temporal queries always bypass the identity map.
         if not is_temporal and current_uow:
-            identity_map = current_uow._identity_map.get(
-                self.meta_.part_of.meta_.provider, {}
-            )
-            if identifier in identity_map:
-                return cast(BaseAggregate, identity_map[identifier])
+            tracked = current_uow._tracked_instance(self.meta_.part_of, identifier)
+            if tracked is not None:
+                return tracked
 
         store = self._domain.event_store.store
         if store is None:
@@ -252,6 +250,8 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
         if is_temporal:
             aggregate._is_temporal = True
+        elif current_uow:
+            current_uow._add_to_identity_map(aggregate)
 
         return aggregate
 

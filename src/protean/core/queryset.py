@@ -374,9 +374,9 @@ class QuerySet:
             entity = self._owner_dao.database_model_cls.to_entity(item)
             entity.state_.mark_retrieved()
 
-            # Sync event position and register in UoW identity map
-            self._owner_dao._sync_event_position(entity)
-            self._owner_dao._track_in_uow(entity)
+            # Sync event position and register in UoW identity map, or take
+            # the instance the UoW already tracks
+            entity = self._owner_dao._track_in_uow(entity)
 
             entity_items.append(entity)
 
@@ -478,9 +478,9 @@ class QuerySet:
             entity = self._owner_dao.database_model_cls.to_entity(item)
             entity.state_.mark_retrieved()
 
-            # Sync event position and register in UoW identity map
-            self._owner_dao._sync_event_position(entity)
-            self._owner_dao._track_in_uow(entity)
+            # Sync event position and register in UoW identity map, or take
+            # the instance the UoW already tracks
+            entity = self._owner_dao._track_in_uow(entity)
 
             entity_items.append(entity)
         results.items = entity_items
@@ -518,7 +518,14 @@ class QuerySet:
     @property
     def _data(self) -> "ResultSet":
         active_data = self._result_cache if self._result_cache else self.all()
-        temp_data = copy.deepcopy(active_data)
+        # A copy of an aggregate the Unit of Work tracks would be a second
+        # instance of it in the transaction, so those are handed out as is.
+        memo: dict[int, Any] = {
+            id(item): item
+            for item in active_data.items
+            if self._owner_dao._tracked_in_uow(item) is item
+        }
+        temp_data = copy.deepcopy(active_data, memo)
 
         return temp_data
 
