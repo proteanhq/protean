@@ -122,8 +122,7 @@ fi
 # --- 1. build/refresh the dedicated 3.12 mutation env (leaves .venv alone) -------
 echo ">>> Syncing .venv-mutation (Python 3.12)..."
 # The Observatory targets need `server` for FastAPI and `redis` for the Redis
-# broker their test domain configures. Leaving out `telemetry` keeps metrics.py
-# on its hand-written path.
+# broker their test domain configures. `telemetry` is left out on purpose.
 UV_PROJECT_ENVIRONMENT="$MVENV" uv sync --python 3.12 \
   --extra sqlite --extra server --extra redis --group test --group mutation >/dev/null
 

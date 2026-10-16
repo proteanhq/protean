@@ -58,9 +58,12 @@ temporary `setup.cfg` it writes for mutmut's config) when it finishes.
 Targets live in a `case` block in `scripts/mutation.sh`. Each maps a name to a
 module and the fast test subset that exercises it. Pick the smallest set of tests
 that covers the module's behaviour; a broad subset only slows the run without
-finding more survivors. Drop a test file the module never runs, since it only
-adds time to every mutant. To check a file, run it alone in `.venv-mutation`
-under coverage and read the module's line in the report:
+finding more survivors. Drop a test file the module never runs. mutmut runs
+each mutant against only the tests that call the mutated function, so such a
+file does not slow the per-mutant runs, but it adds time to mutmut's two
+whole-subset runs at the start (the run that records which tests call which
+function, and the clean run on unmutated code). To check a file, run it alone in
+`.venv-mutation` under coverage and read the module's line in the report:
 
 ```shell
 .venv-mutation/bin/python -m coverage run -m pytest <file>
@@ -69,44 +72,68 @@ under coverage and read the module's line in the report:
 ```
 
 The project's coverage settings write one data file per process, so
-`coverage combine` has to run before `coverage report`.
+`coverage combine` has to run before `coverage report`. They also turn on
+branch coverage, so the `Cover` column mixes statements and branches. The
+coverage figures below are statement coverage, worked out from the report's
+`Stmts` and `Miss` columns as (Stmts − Miss) / Stmts.
 
 ### IR and Observatory targets
 
-| Target | Module | Test subset | Line coverage | One run |
+| Target | Module | Test subset | Statement coverage | One run |
 |---|---|---|---|---|
-| `ir-builder` | `src/protean/ir/builder.py` | `tests/ir/test_ir_builder.py` and the six `tests/ir/test_*_extraction.py` files (command and event, database model, description, field, handler, index) | 73.9% (1304 of 1765 lines) | 31 min 6 s |
-| `ir-diff` | `src/protean/ir/diff.py` | `tests/ir/test_diff.py`, `tests/ir/test_compatibility.py` | 93.2% (618 of 663 lines) | 5 min 1 s |
-| `observatory-api` | `src/protean/server/observatory/api.py` | `tests/server/observatory/test_observatory_api.py`, `tests/server/observatory/test_trace_decoding.py` | 88.3% (564 of 639 lines) | 58 s |
-| `observatory-timeline` | `src/protean/server/observatory/routes/timeline.py` | `tests/server/observatory/test_observatory_timeline_api.py`, `tests/server/observatory/test_trace_search.py` | 93.7% (445 of 475 lines) | 1 min 45 s |
-| `observatory-metrics` | `src/protean/server/observatory/metrics.py` | `tests/server/observatory/test_observatory_metrics.py` | 50.0% (197 of 394 lines) | 3 min 31 s |
+| `ir-builder` | `src/protean/ir/builder.py` | `tests/ir/test_ir_builder.py` and the six `tests/ir/test_*_extraction.py` files (command and event, database model, description, field, handler, index) | 73.9% (1304 of 1765 statements) | 31 min 6 s |
+| `ir-diff` | `src/protean/ir/diff.py` | `tests/ir/test_diff.py`, `tests/ir/test_compatibility.py` | 93.2% (618 of 663 statements) | 5 min 1 s |
+| `observatory-api` | `src/protean/server/observatory/api.py` | `tests/server/observatory/test_observatory_api.py`, `tests/server/observatory/test_trace_decoding.py` | 88.3% (564 of 639 statements) | 58 s |
+| `observatory-timeline` | `src/protean/server/observatory/routes/timeline.py` | `tests/server/observatory/test_observatory_timeline_api.py`, `tests/server/observatory/test_trace_search.py` | 93.7% (445 of 475 statements) | 1 min 45 s |
+| `observatory-metrics` | `src/protean/server/observatory/metrics.py` | `tests/server/observatory/test_observatory_metrics.py` | 50.0% (197 of 394 statements) | 3 min 31 s |
 
-The coverage figures were measured with the commands above, in `.venv-mutation`.
+The coverage figures were measured in `.venv-mutation` with the commands above,
+running the whole subset, and computed from the `Stmts` and `Miss` columns.
 The run times are the wall-clock time of one `make mutation` run on a laptop
 with an Intel Core i7-1165G7 (4 cores, 8 threads) and 30 GB of RAM, running
 Linux.
+
+Two files were left out to keep the runs short. Adding
+`tests/ir/test_builder_coverage.py` to `ir-builder` raises its coverage to about
+79%, and `ir-builder` is already the slowest target. Adding
+`tests/server/observatory/test_causation_enrichment.py` to
+`observatory-timeline` raises its coverage to about 99%. Add them when the extra
+run time is worth it, and re-measure the counts.
 
 A few things about this environment shape the results for these targets:
 
 - **Decorated functions get no mutants.** mutmut 3 skips any function that
   has a decorator other than `@staticmethod` or `@classmethod`, along with its
   body. The FastAPI route handlers in `api.py` and `timeline.py` are
-  `@router.get(...)` functions, so mutmut mutates only the module-level helpers
+  decorated route handlers (`@router.get(...)`, `@router.post(...)`,
+  `@router.delete(...)`), so mutmut mutates only the module-level helpers
   those handlers call. That is why `observatory-api` produces fewer than 200
   mutants from a module of over 1,300 lines.
 - **The environment installs the `server` and `redis` extras.** The
   Observatory tests import FastAPI, and their test domain configures the Redis
   broker, which needs the `redis` client package. A running Redis server is not
-  needed.
+  needed. If one is listening on `127.0.0.1:56379` (the port `docker-compose.yml`
+  maps), every test's teardown sends it `FLUSHALL`, so a mutation run wipes
+  that Redis over and over for as long as it runs. Do not run it while another
+  test run or worktree is using that Redis.
 - **The environment does not install the `telemetry` extra.** Without the
-  OpenTelemetry SDK, `metrics.py` serves its hand-written Prometheus text. Its
-  OpenTelemetry gauge code returns early, so the mutants in that code survive.
+  OpenTelemetry SDK, `metrics.py` serves its hand-written Prometheus text.
+- **The OpenTelemetry gauge code is not exercised.**
+  `_register_infrastructure_gauges` returns early unless a domain has gone
+  through `init_telemetry()` and has a meter provider. The Observatory test
+  domain does not enable telemetry, so the function returns early whether or not
+  the SDK is installed, and the mutants in it survive. The tests that exercise
+  it, such as `tests/server/test_telemetry_metrics.py`, are outside the subset.
 - **Redis-marked tests skip.** mutmut passes no `--redis` option, so the 19
   Redis-marked tests in `test_observatory_api.py` and the 13 in
   `test_observatory_metrics.py` do not run. The metrics tests that check the
-  Prometheus output line by line are among them. That is why
-  `observatory-metrics` scores low, and a mutant that only these tests would
-  reach survives.
+  Prometheus output line by line are among them, so a mutant that only these
+  tests would reach survives.
+
+`observatory-metrics` scores low for both of the last two reasons. Of its 1,029
+survivors, 414 are in `_hand_rolled_metrics`, which the skipped Redis-marked
+tests check, and 445 are in `_register_infrastructure_gauges`, which returns
+early.
 
 Compare a run on a branch with a run on `main` in the same environment. The two
 runs then skip the same code, so their counts can be compared.
