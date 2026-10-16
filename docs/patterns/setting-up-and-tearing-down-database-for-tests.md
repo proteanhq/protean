@@ -368,7 +368,7 @@ def test_no_orders_exist():
     assert len(orders.items) == 0  # FAILS: order from previous test
 ```
 
-Fix: use `DomainFixture.domain_context()` which resets all data automatically, or add a `function`-scoped `clean_data` fixture that calls `_data_reset()` on all providers and brokers.
+Fix: use `DomainFixture.domain_context()` which resets all data automatically, or add a `function`-scoped `clean_data` fixture that calls `_data_reset()` on all providers, all brokers and the event store.
 
 ### Recreating Schema Per Test
 
@@ -408,7 +408,7 @@ If your test raises domain events that are published to a broker, the broker acc
 --8<-- "patterns/setting-up-and-tearing-down-database-for-tests/manual_cleanup/conftest.py:clean_data"
 ```
 
-Pairs of tests that each expect an empty database, broker stream and event store show that every store is reset:
+These pairs of tests each expect an empty database, broker stream and event store at the start, so the second test of a pair fails if a store kept data. With the in-memory adapters, the provider reset also empties the event store, because the memory event store keeps its messages in the memory provider. The last line of `clean_data` matters for a separate event store such as MessageDB:
 
 ```python
 # fragment

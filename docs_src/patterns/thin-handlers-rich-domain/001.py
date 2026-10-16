@@ -85,6 +85,7 @@ class Account:
 # --8<-- [end:account]
 
 
+# --8<-- [start:handler]
 @domain.command_handler(part_of=Account)
 class AccountCommandHandler(BaseCommandHandler):
     @handle(WithdrawMoney)
@@ -93,3 +94,6 @@ class AccountCommandHandler(BaseCommandHandler):
         account = repo.get(command.account_id)
         account.withdraw(command.amount)
         repo.add(account)
+
+
+# --8<-- [end:handler]

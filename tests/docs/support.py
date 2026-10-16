@@ -210,7 +210,8 @@ def imported_package_files(
 
     ``import shop`` loads only ``shop/__init__.py``. ``import shop.models``,
     ``from shop.models import Thing`` and ``from shop import models`` also load
-    ``shop/models.py``. Paths are relative to ``root``.
+    ``shop/models.py``, and ``import shop.orders.models`` loads
+    ``shop/orders/models.py``. Paths are relative to ``root``.
     """
     dotted: list[str] = []
     for node in ast.walk(tree):
@@ -228,7 +229,12 @@ def imported_package_files(
         if folder is None:
             continue
         loaded.add((folder / "__init__.py").relative_to(root).as_posix())
-        module = folder / f"{rest.split('.')[0]}.py"
-        if rest and module.is_file():
-            loaded.add(module.relative_to(root).as_posix())
+        # ``shop.orders.models`` may name a module in a plain subfolder.
+        for part in rest.split(".") if rest else []:
+            if (folder / f"{part}.py").is_file():
+                loaded.add((folder / f"{part}.py").relative_to(root).as_posix())
+                break
+            folder = folder / part
+            if not folder.is_dir():
+                break
     return loaded

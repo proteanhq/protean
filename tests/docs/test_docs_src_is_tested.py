@@ -271,6 +271,26 @@ class TestCoverageGuard:
 
         assert loaded == {"tut/shop/__init__.py", "tut/shop/models.py"}
 
+    def test_an_import_of_a_module_in_a_plain_subfolder_loads_it(self, layout):
+        root, tests = layout
+        _write(root / "tut/shop/orders/models.py", "x = 1\n")
+        _write(root / "tut/shop/orders/other.py", "x = 1\n")
+        _write(tests / "test_tut.py", "from shop.orders.models import Order\n")
+
+        loaded = loaded_examples([tests / "test_tut.py"], root)
+
+        assert loaded == {"tut/shop/__init__.py", "tut/shop/orders/models.py"}
+
+    def test_an_import_of_a_missing_subfolder_module_loads_only_the_package(
+        self, layout
+    ):
+        root, tests = layout
+        _write(tests / "test_tut.py", "import shop.orders.models\n")
+
+        loaded = loaded_examples([tests / "test_tut.py"], root)
+
+        assert loaded == {"tut/shop/__init__.py"}
+
     def test_a_run_example_tests_call_counts(self, layout):
         root, tests = layout
         _write(tests / "test_a.py", 'run_example_tests("guides/b.py")\n')

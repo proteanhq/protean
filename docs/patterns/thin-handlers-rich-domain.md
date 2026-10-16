@@ -187,13 +187,7 @@ All withdrawal logic (status check, daily limits, balance check, total
 tracking) is in the aggregate. The handler is:
 
 ```python
-# fragment
-@handle(WithdrawMoney)
-def withdraw(self, command: WithdrawMoney):
-    repo = current_domain.repository_for(Account)
-    account = repo.get(command.account_id)
-    account.withdraw(command.amount)
-    repo.add(account)
+--8<-- "patterns/thin-handlers-rich-domain/001.py:handler"
 ```
 
 ### Domain Services: Cross-Aggregate Coordination
@@ -203,6 +197,7 @@ domain service:
 
 ```python
 --8<-- "patterns/thin-handlers-rich-domain/002.py:transfer"
+--8<-- "patterns/thin-handlers-rich-domain/002.py:handler"
 ```
 
 The handler loads both aggregates and calls the domain service. The domain
@@ -359,13 +354,7 @@ Some legitimate additions to the three-line pattern:
 ### Loading Additional Data for Domain Services
 
 ```python
-# fragment
-@handle(TransferMoney)
-def transfer(self, command: TransferMoney):
-    source = account_repo.get(command.from_account_id)
-    policy = policy_repo.get(source.credit_policy_id)  # Extra load
-    TransferService(source, policy).validate_and_debit(command.amount, ...)
-    account_repo.add(source)
+--8<-- "patterns/thin-handlers-rich-domain/002.py:handler"
 ```
 
 Loading a second aggregate for a domain service is fine. The handler is still

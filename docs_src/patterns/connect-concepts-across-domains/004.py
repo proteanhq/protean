@@ -44,16 +44,12 @@ class CustomerEventSubscriber:
 
     def _handle_registration(self, payload: dict) -> None:
         repo = shipping.repository_for(Recipient)
-        recipient = Recipient(
-            customer_id=payload["customer_id"],
-            name=payload["name"],
-            delivery_address=Address(
-                street=payload.get("street", ""),
-                city=payload.get("city", ""),
-                zip_code=payload.get("zip_code", ""),
-            ),
-        )
-        repo.add(recipient)
+        # A redelivered registration must not create a second recipient
+        if repo.query.filter(customer_id=payload["customer_id"]).all().items:
+            return
+
+        # The address arrives later, with CustomerAddressUpdated
+        repo.add(Recipient(customer_id=payload["customer_id"], name=payload["name"]))
 
     def _handle_address_update(self, payload: dict) -> None:
         repo = shipping.repository_for(Recipient)

@@ -99,3 +99,33 @@ with domain.domain_context():
         asynchronous=False,
     )
 # --8<-- [end:per_call]
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+from protean.integrations.fastapi import DomainContextMiddleware
+
+app = FastAPI()
+app.add_middleware(DomainContextMiddleware, route_domain_map={"/": domain})
+
+
+class PaymentWebhookPayload(BaseModel):
+    order_id: str
+    payment_id: str
+    amount: float
+
+
+# --8<-- [start:webhook]
+@app.post("/webhooks/payment", status_code=200)
+def payment_webhook(payload: PaymentWebhookPayload):
+    domain.process(
+        ConfirmPayment(
+            order_id=payload.order_id,
+            payment_id=payload.payment_id,
+            amount=payload.amount,
+        )
+    )
+    return {"status": "accepted"}
+
+
+# --8<-- [end:webhook]

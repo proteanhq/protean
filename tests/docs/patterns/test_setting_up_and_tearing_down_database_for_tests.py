@@ -48,7 +48,10 @@ def test_the_env_switch_conftest_follows_test_db(env):
     assert "test_the_provider_follows_test_db PASSED" in result.stdout
 
 
-def test_the_manual_cleanup_resets_providers_brokers_and_the_event_store():
+# The memory event store keeps its messages in the memory provider, so the
+# provider reset already empties it. The event-store pair checks the result,
+# not that clean_data's own event-store line ran.
+def test_the_manual_cleanup_resets_the_database_and_the_broker():
     _assert_passed(
         run_example_tests(
             "patterns/setting-up-and-tearing-down-database-for-tests/manual_cleanup/test_cleanup.py"

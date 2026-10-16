@@ -39,6 +39,14 @@ class CustomerEmailUpdated:
 
 
 @sales.event(part_of=Customer)
+class CustomerAddressUpdated:
+    customer_id: Identifier(required=True)
+    street: String(required=True)
+    city: String(required=True)
+    zip_code: String(required=True)
+
+
+@sales.event(part_of=Customer)
 class CustomerDeactivated:
     customer_id: Identifier(required=True)
     reason: String()

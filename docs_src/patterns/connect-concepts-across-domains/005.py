@@ -1,5 +1,5 @@
 from protean import Domain
-from protean.fields import Auto, Float, Identifier, String
+from protean.fields import Auto, Float, Identifier, List, String
 
 domain = Domain(name="CustomerViews")
 
@@ -31,6 +31,7 @@ from protean.utils.globals import current_domain
 
 @domain.event(part_of=BillingAccount)
 class InvoiceIssued:
+    invoice_id: Identifier(required=True)
     customer_id: Identifier(required=True)
     amount: Float(required=True)
 
@@ -44,6 +45,7 @@ class CustomerDashboard:
     email: String()
     account_status: String()
     total_invoiced: Float(default=0.0)
+    invoice_ids: List(content_type=String)
 
 
 @domain.projector(
@@ -54,20 +56,29 @@ class CustomerDashboard:
     ],
 )
 class CustomerDashboardProjector:
+    # Events can arrive more than once, so each handler skips a repeat
     @on(CustomerRegistered)
     def on_customer_registered(self, event: CustomerRegistered):
+        repo = current_domain.repository_for(CustomerDashboard)
+        if repo.query.filter(customer_id=event.customer_id).all().items:
+            return
+
         dashboard = CustomerDashboard(
             customer_id=event.customer_id,
             name=event.name,
             email=event.email,
         )
-        current_domain.repository_for(CustomerDashboard).add(dashboard)
+        repo.add(dashboard)
 
     @on(InvoiceIssued)
     def on_invoice_issued(self, event: InvoiceIssued):
         repo = current_domain.repository_for(CustomerDashboard)
         dashboard = repo.get(event.customer_id)
+        if event.invoice_id in dashboard.invoice_ids:
+            return
+
         dashboard.total_invoiced += event.amount
+        dashboard.invoice_ids = [*dashboard.invoice_ids, event.invoice_id]
         repo.add(dashboard)
 
 

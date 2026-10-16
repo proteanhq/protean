@@ -28,3 +28,30 @@ class ProductService(BaseApplicationService):
 # --8<-- [end:product_service]
 
 domain.init(traverse=False)
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+from protean.integrations.fastapi import DomainContextMiddleware
+
+app = FastAPI()
+app.add_middleware(DomainContextMiddleware, route_domain_map={"/": domain})
+
+
+class CreateProductRequest(BaseModel):
+    name: str
+    price: float
+
+
+# --8<-- [start:endpoint]
+@app.post("/products")
+def create_product(payload: CreateProductRequest):
+    service = ProductService()
+    product = service.create_product(
+        name=payload.name,
+        price=payload.price,
+    )
+    return {"id": str(product.product_id), "name": product.name}
+
+
+# --8<-- [end:endpoint]

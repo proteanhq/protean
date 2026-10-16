@@ -71,3 +71,37 @@ class UserService(BaseApplicationService):
 # --8<-- [end:user_service]
 
 domain.init(traverse=False)
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+from protean.integrations.fastapi import DomainContextMiddleware
+
+app = FastAPI()
+app.add_middleware(DomainContextMiddleware, route_domain_map={"/": domain})
+
+
+class CreateUserRequest(BaseModel):
+    email: str
+    name: str
+    password: str
+
+
+# --8<-- [start:endpoint]
+@app.post("/users", status_code=201)
+def create_user(payload: CreateUserRequest):
+    service = UserService()
+    user = service.register_user(
+        email=payload.email,
+        name=payload.name,
+        password=payload.password,
+    )
+    return {
+        "id": str(user.user_id),
+        "email": user.email,
+        "name": user.name,
+        "status": user.status,
+    }
+
+
+# --8<-- [end:endpoint]

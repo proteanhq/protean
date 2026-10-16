@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from protean.exceptions import ValidationError
+from protean.exceptions import TransactionError, ValidationError
 from tests.docs.support import load_example, outcome_counts, run_example_tests
 
 pytestmark = pytest.mark.no_test_domain
@@ -175,6 +175,68 @@ def test_refund_after_window_is_rejected_and_order_is_unchanged(refunds):
     assert order._events == []
 
 
+def test_refund_window_accepts_a_naive_delivery_time(refunds):
+    # SQLite stores no time zone, so a reloaded order holds a naive value
+    order = refunds.Order(
+        customer_id="cust-1",
+        status="delivered",
+        total=100.0,
+        delivered_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(days=3),
+    )
+    assert order.delivered_at.tzinfo is None
+
+    order.request_refund(reason="Damaged")
+
+    assert order.status == "refund_requested"
+
+
+def test_refund_window_expires_for_a_naive_delivery_time(refunds):
+    order = refunds.Order(
+        customer_id="cust-1",
+        status="delivered",
+        total=100.0,
+        delivered_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(days=31),
+    )
+
+    with pytest.raises(ValidationError) as exc:
+        order.request_refund(reason="Changed mind")
+
+    assert exc.value.messages == {"timing": ["Refund window has expired (30 days)"]}
+
+
+@pytest.mark.parametrize(
+    ("values", "amount", "messages"),
+    [
+        ({}, 0.0, {"amount": ["Refund amount must be positive"]}),
+        ({}, -10.0, {"amount": ["Refund amount must be positive"]}),
+        (
+            {"partial_refund_amount": 100.0},
+            None,
+            {"amount": ["Nothing is left to refund"]},
+        ),
+    ],
+    ids=["zero", "negative", "fully_refunded"],
+)
+def test_refund_amount_rule_rejects_and_order_is_unchanged(
+    refunds, values, amount, messages
+):
+    order = refunds.Order(
+        customer_id="cust-1",
+        status="delivered",
+        total=100.0,
+        delivered_at=datetime.now(UTC),
+        **values,
+    )
+
+    with pytest.raises(ValidationError) as exc:
+        order.request_refund(amount=amount, reason="Changed mind")
+
+    assert exc.value.messages == messages
+    assert order.status == "delivered"
+    assert order.refund_amount is None
+    assert order._events == []
+
+
 def test_thin_handler_tests_pass():
     result = run_example_tests("patterns/thin-handlers-rich-domain/test_refund.py")
     assert result.returncode == 0, result.stdout + result.stderr
@@ -292,6 +354,49 @@ def test_withdraw_rule_rejects_and_leaves_stored_account_unchanged(
     assert stored.daily_withdrawal_total == values.get("daily_withdrawal_total", 0.0)
 
 
+@pytest.mark.parametrize(
+    ("values", "amount", "messages"),
+    [
+        (
+            {"balance": 1000.0, "status": "frozen"},
+            100.0,
+            {"status": ["Cannot withdraw from a non-active account"]},
+        ),
+        (
+            {"balance": 1000.0},
+            -5.0,
+            {"amount": ["Withdrawal amount must be positive"]},
+        ),
+        (
+            {
+                "balance": 10000.0,
+                "daily_withdrawal_total": 4800.0,
+                "last_withdrawal_date": date.today(),
+            },
+            300.0,
+            {"amount": ["Daily withdrawal limit of 5000.0 exceeded"]},
+        ),
+        (
+            {"balance": 100.0, "overdraft_limit": 50.0},
+            151.0,
+            {"balance": ["Insufficient funds"]},
+        ),
+    ],
+    ids=["non_active", "not_positive", "daily_limit", "insufficient_funds"],
+)
+def test_the_account_aggregate_enforces_each_withdrawal_rule(
+    accounts, values, amount, messages
+):
+    account = accounts.Account(**values)
+
+    with pytest.raises(ValidationError) as exc:
+        account.withdraw(amount)
+
+    assert exc.value.messages == messages
+    assert account.balance == values["balance"]
+    assert account._events == []
+
+
 # --- Value Objects: Concept-Level Logic ---
 
 
@@ -348,6 +453,18 @@ def test_order_placed_reserves_inventory_through_the_aggregate(warehouse):
     assert first.reserved_for == [order.order_id]
 
 
+def test_order_placed_for_too_much_stock_is_rejected_by_the_aggregate(warehouse):
+    _stock(warehouse, "prod-1", 1)
+
+    # Sync event processing runs the handler inside the order's unit of work,
+    # so the commit wraps the aggregate's error.
+    with pytest.raises(TransactionError, match="Only 1 units of prod-1 left"):
+        _place(warehouse, [{"product_id": "prod-1", "quantity": 2}])
+
+    stored = warehouse.domain.repository_for(warehouse.Inventory).get("prod-1")
+    assert (stored.available, stored.reserved) == (1, 0)
+
+
 def test_reserve_twice_for_one_order_reserves_once(warehouse):
     inventory = warehouse.Inventory(product_id="prod-1", available=5)
 
@@ -396,6 +513,17 @@ def test_place_order_without_items_is_rejected_and_nothing_is_stored(ordering):
     assert ordering.domain.repository_for(ordering.Order).query.all().items == []
 
 
+def test_the_order_aggregate_rejects_placing_an_order_with_no_items(ordering):
+    order = ordering.Order(order_id="ord-1", customer_id="cust-1")
+
+    with pytest.raises(ValidationError) as exc:
+        order.place()
+
+    assert exc.value.messages == {"items": ["Cannot place an order with no items"]}
+    assert order.status == "draft"
+    assert order._events == []
+
+
 # --- Domain Services: Cross-Aggregate Coordination ---
 
 
@@ -424,6 +552,79 @@ def test_transfer_debits_the_source_through_the_aggregate(transfers):
 
     stored = transfers.domain.repository_for(transfers.Account).get(source.account_id)
     assert stored.balance == 700.0
+    stream = f"{transfers.Account.meta_.stream_category}-{source.account_id}"
+    assert [m.data for m in transfers.domain.event_store.store.read(stream)] == [
+        {
+            "account_id": source.account_id,
+            "amount": 300.0,
+            "transfer_id": "txn-1",
+            "target_account_id": "acc-2",
+        }
+    ]
+
+
+def _service(transfers, *, balance=1000.0, risk_score=2.0):
+    policy = transfers.CreditPolicy(max_transfer_amount=500.0, max_risk_score=5.0)
+    source = transfers.Account(
+        balance=balance, risk_score=risk_score, credit_policy_id=policy.policy_id
+    )
+    return source, transfers.TransferService(source, policy)
+
+
+@pytest.mark.parametrize(
+    "values, amount, messages",
+    [
+        ({}, 600.0, {"amount": ["Exceeds policy limit of 500.0"]}),
+        (
+            {"risk_score": 8.0},
+            300.0,
+            {"risk": ["Account risk score exceeds policy threshold"]},
+        ),
+    ],
+    ids=["policy_limit", "risk_score"],
+)
+def test_the_transfer_service_enforces_the_policy_rules(
+    transfers, values, amount, messages
+):
+    source, service = _service(transfers, **values)
+
+    with pytest.raises(ValidationError) as exc:
+        service.validate_and_debit(amount, "txn-1", "acc-2")
+
+    assert exc.value.messages == messages
+    assert source.balance == 1000.0
+    assert source._events == []
+
+
+def test_the_transfer_service_debits_through_the_aggregate(transfers):
+    source, service = _service(transfers)
+
+    service.validate_and_debit(300.0, "txn-1", "acc-2")
+
+    assert source.balance == 700.0
+    [event] = source._events
+    assert isinstance(event, transfers.MoneyDebited)
+    assert (event.amount, event.transfer_id) == (300.0, "txn-1")
+
+
+@pytest.mark.parametrize(
+    "amount, messages",
+    [
+        (1500.0, {"balance": ["Insufficient funds"]}),
+        (0.0, {"amount": ["Transfer amount must be positive"]}),
+        (-1000.0, {"amount": ["Transfer amount must be positive"]}),
+    ],
+    ids=["insufficient_funds", "zero", "negative"],
+)
+def test_the_account_aggregate_enforces_the_debit_rules(transfers, amount, messages):
+    account = transfers.Account(balance=1000.0, credit_policy_id="policy-1")
+
+    with pytest.raises(ValidationError) as exc:
+        account.debit(amount, "txn-1", "acc-2")
+
+    assert exc.value.messages == messages
+    assert account.balance == 1000.0
+    assert account._events == []
 
 
 @pytest.mark.parametrize(
@@ -435,8 +636,9 @@ def test_transfer_debits_the_source_through_the_aggregate(transfers):
             {"risk": ["Account risk score exceeds policy threshold"]},
         ),
         ({"balance": 100.0}, {"balance": ["Insufficient funds"]}),
+        ({"amount": -1000.0}, {"amount": ["Transfer amount must be positive"]}),
     ],
-    ids=["policy_limit", "risk_score", "insufficient_funds"],
+    ids=["policy_limit", "risk_score", "insufficient_funds", "negative_amount"],
 )
 def test_transfer_that_breaks_a_rule_leaves_the_balance_unchanged(
     transfers, values, messages

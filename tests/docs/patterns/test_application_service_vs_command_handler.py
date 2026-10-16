@@ -3,6 +3,7 @@
 import hashlib
 
 import pytest
+from fastapi.testclient import TestClient
 
 from protean.exceptions import ValidationError
 from tests.docs.support import load_example
@@ -68,6 +69,25 @@ def test_register_user_raises_user_registered(users):
             {"user_id": user.user_id, "email": "jane@example.com", "name": "Jane"},
         )
     ]
+
+
+@pytest.mark.fastapi
+def test_the_users_endpoint_registers_a_user():
+    example = load_example("patterns/application-service-vs-command-handler/001.py")
+    response = TestClient(example.app).post(
+        "/users", json={"email": "jane@example.com", "name": "Jane", "password": "pw"}
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert (body["email"], body["name"], body["status"]) == (
+        "jane@example.com",
+        "Jane",
+        "active",
+    )
+    with example.domain.domain_context():
+        stored = example.domain.repository_for(example.User).get(body["id"])
+        assert stored.email == "jane@example.com"
 
 
 # --- Command Handler: Order Payment Processing ---
@@ -147,6 +167,28 @@ def test_async_processing_stores_the_command_and_returns(payments):
     ]
 
 
+@pytest.mark.fastapi
+def test_the_payment_webhook_accepts_the_command_and_returns(payments):
+    order = _pending_order(payments)
+
+    response = TestClient(payments.app).post(
+        "/webhooks/payment",
+        json={"order_id": order.order_id, "payment_id": "pay-789", "amount": 99.99},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted"}
+    # Processing is asynchronous, so the order waits for the server.
+    assert _reload(payments, order).status == "pending_payment"
+    stream = f"{payments.Order.meta_.stream_category}:command"
+    assert _messages(payments.domain, stream)[1:] == [
+        (
+            "ConfirmPayment",
+            {"order_id": order.order_id, "payment_id": "pay-789", "amount": 99.99},
+        )
+    ]
+
+
 @pytest.mark.parametrize(
     ("status", "amount", "error"),
     [
@@ -194,6 +236,21 @@ def test_product_service_returns_the_created_product():
 
         assert product.product_id is not None
         stored = example.domain.repository_for(example.Product).get(product.product_id)
+        assert (stored.name, stored.price) == ("Lamp", 24.5)
+
+
+@pytest.mark.fastapi
+def test_the_products_endpoint_returns_the_created_product():
+    example = load_example("patterns/application-service-vs-command-handler/003.py")
+    response = TestClient(example.app).post(
+        "/products", json={"name": "Lamp", "price": 24.5}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "Lamp"
+    with example.domain.domain_context():
+        stored = example.domain.repository_for(example.Product).get(body["id"])
         assert (stored.name, stored.price) == ("Lamp", 24.5)
 
 

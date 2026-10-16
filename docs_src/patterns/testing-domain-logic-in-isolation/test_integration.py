@@ -34,6 +34,9 @@ class TestOrderPersistence:
 # --8<-- [start:handler]
 class TestOrderCommandHandlerIntegration:
     def test_place_order_through_handler(self):
+        # The _ctx fixture resets the data, so each test starts empty
+        assert domain.repository_for(Order).query.all().items == []
+
         # In sync mode, OrderPlaced reaches InventoryEventHandler too,
         # so the product must be in stock
         inventory_repo = domain.repository_for(Inventory)
@@ -59,8 +62,10 @@ class TestOrderCommandHandlerIntegration:
 # --8<-- [start:event_handler]
 class TestInventoryReservationIntegration:
     def test_order_placed_triggers_reservation(self):
-        # Set up inventory
         inventory_repo = domain.repository_for(Inventory)
+        assert inventory_repo.query.all().items == []
+
+        # Set up inventory
         inventory = Inventory(product_id="prod-1", available_quantity=100)
         inventory_repo.add(inventory)
 

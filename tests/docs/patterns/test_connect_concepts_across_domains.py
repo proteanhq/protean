@@ -156,91 +156,90 @@ def test_fact_events_carry_the_whole_customer():
         )
 
 
-REGISTERED = {
-    "type": "Sales.CustomerRegistered.v1",
-    "customer_id": "c-123",
-    "name": "Jane Doe",
-    "email": "jane@example.com",
-    "street": "1 Main St",
-    "city": "Springfield",
-    "zip_code": "12345",
-}
+def _sales_payloads():
+    """Return Sales' own events as the payloads the Shipping subscriber reads.
 
-
-def _recipient(example, customer_id="c-123"):
-    repo = example.shipping.repository_for(example.Recipient)
-    return repo.find_by(customer_id=customer_id)
-
-
-def test_the_subscriber_creates_a_recipient_from_a_registration():
-    example = load_example("patterns/connect-concepts-across-domains/004.py")
-    example.shipping.init(traverse=False)
-    with example.shipping.domain_context():
-        example.CustomerEventSubscriber()(REGISTERED)
-
-        recipient = _recipient(example)
-        assert recipient.customer_id == "c-123"
-        assert recipient.name == "Jane Doe"
-        assert recipient.delivery_address == example.Address(
-            street="1 Main St", city="Springfield", zip_code="12345"
+    The payloads come from the Sales event classes, so a field Sales drops or
+    renames breaks the Shipping tests too.
+    """
+    sales = load_example("patterns/connect-concepts-across-domains/002.py")
+    sales.sales.init(traverse=False)
+    with sales.sales.domain_context():
+        registered = sales.CustomerRegistered(
+            customer_id="c-123", name="Jane Doe", email="jane@example.com"
+        )
+        moved = sales.CustomerAddressUpdated(
+            customer_id="c-123", street="9 Elm Rd", city="Shelbyville", zip_code="67890"
+        )
+        return (
+            {"type": "Sales.CustomerRegistered.v1", **registered.payload},
+            {"type": "Sales.CustomerAddressUpdated.v1", **moved.payload},
         )
 
 
-def test_the_subscriber_updates_the_address_of_the_correlated_recipient():
+REGISTERED, ADDRESS_UPDATED = _sales_payloads()
+
+
+def _recipients(example):
+    return example.shipping.repository_for(example.Recipient).query.all().items
+
+
+@pytest.fixture
+def shipping():
     example = load_example("patterns/connect-concepts-across-domains/004.py")
     example.shipping.init(traverse=False)
     with example.shipping.domain_context():
-        subscriber = example.CustomerEventSubscriber()
-        subscriber(REGISTERED)
-        subscriber(
-            {
-                "type": "Sales.CustomerAddressUpdated.v1",
-                "customer_id": "c-123",
-                "street": "9 Elm Rd",
-                "city": "Shelbyville",
-                "zip_code": "67890",
-            }
-        )
-
-        recipient = _recipient(example)
-        assert recipient.name == "Jane Doe"
-        assert recipient.delivery_address == example.Address(
-            street="9 Elm Rd", city="Shelbyville", zip_code="67890"
-        )
-        repo = example.shipping.repository_for(example.Recipient)
-        assert repo.query.all().total == 1
+        yield example
 
 
-def test_the_subscriber_ignores_events_shipping_does_not_care_about():
-    example = load_example("patterns/connect-concepts-across-domains/004.py")
-    example.shipping.init(traverse=False)
-    with example.shipping.domain_context():
-        example.CustomerEventSubscriber()(
-            {"type": "Sales.CustomerEmailUpdated.v1", "customer_id": "c-123"}
-        )
+def test_the_subscriber_creates_a_recipient_from_a_registration(shipping):
+    shipping.CustomerEventSubscriber()(REGISTERED)
 
-        repo = example.shipping.repository_for(example.Recipient)
-        assert repo.query.all().total == 0
-        assert example.CustomerEventSubscriber.meta_.stream == "sales_customer_events"
+    [recipient] = _recipients(shipping)
+    assert recipient.customer_id == "c-123"
+    assert recipient.name == "Jane Doe"
+    assert recipient.delivery_address is None
 
 
-def test_an_address_update_for_an_unknown_customer_fails():
-    example = load_example("patterns/connect-concepts-across-domains/004.py")
-    example.shipping.init(traverse=False)
-    with example.shipping.domain_context():
-        with pytest.raises(ObjectNotFoundError):
-            example.CustomerEventSubscriber()(
-                {
-                    "type": "Sales.CustomerAddressUpdated.v1",
-                    "customer_id": "c-404",
-                    "street": "9 Elm Rd",
-                    "city": "Shelbyville",
-                    "zip_code": "67890",
-                }
-            )
+def test_a_redelivered_registration_creates_no_second_recipient(shipping):
+    subscriber = shipping.CustomerEventSubscriber()
+    subscriber(REGISTERED)
+    subscriber(REGISTERED)
+    subscriber(ADDRESS_UPDATED)
 
-        repo = example.shipping.repository_for(example.Recipient)
-        assert repo.query.all().total == 0
+    [recipient] = _recipients(shipping)
+    assert recipient.delivery_address == shipping.Address(
+        street="9 Elm Rd", city="Shelbyville", zip_code="67890"
+    )
+
+
+def test_the_subscriber_updates_the_address_of_the_correlated_recipient(shipping):
+    subscriber = shipping.CustomerEventSubscriber()
+    subscriber(REGISTERED)
+    subscriber(ADDRESS_UPDATED)
+
+    [recipient] = _recipients(shipping)
+    assert recipient.customer_id == "c-123"
+    assert recipient.name == "Jane Doe"
+    assert recipient.delivery_address == shipping.Address(
+        street="9 Elm Rd", city="Shelbyville", zip_code="67890"
+    )
+
+
+def test_the_subscriber_ignores_events_shipping_does_not_care_about(shipping):
+    shipping.CustomerEventSubscriber()(
+        {"type": "Sales.CustomerEmailUpdated.v1", "customer_id": "c-123"}
+    )
+
+    assert _recipients(shipping) == []
+    assert shipping.CustomerEventSubscriber.meta_.stream == "sales_customer_events"
+
+
+def test_an_address_update_for_an_unknown_customer_fails(shipping):
+    with pytest.raises(ObjectNotFoundError):
+        shipping.CustomerEventSubscriber()(ADDRESS_UPDATED)
+
+    assert _recipients(shipping) == []
 
 
 def test_the_projector_builds_the_dashboard_and_adds_invoice_totals():
@@ -260,9 +259,13 @@ def test_the_projector_builds_the_dashboard_and_adds_invoice_totals():
         domain.repository_for(example.Customer).add(customer)
 
         account = example.BillingAccount(customer_id=customer.customer_id)
-        for amount in (100.0, 25.5):
+        for invoice_id, amount in (("inv-1", 100.0), ("inv-2", 25.5)):
             account.raise_(
-                example.InvoiceIssued(customer_id=customer.customer_id, amount=amount)
+                example.InvoiceIssued(
+                    invoice_id=invoice_id,
+                    customer_id=customer.customer_id,
+                    amount=amount,
+                )
             )
         domain.repository_for(example.BillingAccount).add(account)
 
@@ -274,6 +277,28 @@ def test_the_projector_builds_the_dashboard_and_adds_invoice_totals():
             "jane@example.com",
             125.5,
         )
+
+
+def test_the_projector_skips_a_repeated_event():
+    example = load_example("patterns/connect-concepts-across-domains/005.py")
+    domain = example.domain
+    domain.init(traverse=False)
+    with domain.domain_context():
+        projector = example.CustomerDashboardProjector()
+        registered = example.CustomerRegistered(
+            customer_id="c-1", name="Jane Doe", email="jane@example.com"
+        )
+        invoiced = example.InvoiceIssued(
+            invoice_id="inv-1", customer_id="c-1", amount=10.0
+        )
+
+        for _ in range(2):
+            projector.on_customer_registered(registered)
+            projector.on_invoice_issued(invoiced)
+
+        [dashboard] = domain.repository_for(example.CustomerDashboard).query.all().items
+        assert (dashboard.name, dashboard.total_invoiced) == ("Jane Doe", 10.0)
+        assert dashboard.invoice_ids == ["inv-1"]
 
 
 def test_the_projector_reads_both_streams():

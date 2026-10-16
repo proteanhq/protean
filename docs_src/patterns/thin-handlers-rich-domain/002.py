@@ -23,6 +23,9 @@ class Account:
     credit_policy_id: Identifier(required=True)
 
     def debit(self, amount: float, transfer_id: str, target_account_id: str) -> None:
+        if amount <= 0:
+            raise ValidationError({"amount": ["Transfer amount must be positive"]})
+
         if amount > self.balance:
             raise ValidationError({"balance": ["Insufficient funds"]})
 
@@ -84,6 +87,10 @@ class TransferService:
         self.source.debit(amount, transfer_id, target_account_id)
 
 
+# --8<-- [end:transfer]
+
+
+# --8<-- [start:handler]
 @domain.command_handler(part_of=Account)
 class AccountCommandHandler(BaseCommandHandler):
     @handle(TransferMoney)
@@ -92,6 +99,7 @@ class AccountCommandHandler(BaseCommandHandler):
         policy_repo = current_domain.repository_for(CreditPolicy)
 
         source = account_repo.get(command.from_account_id)
+        # A second aggregate, loaded for the domain service
         policy = policy_repo.get(source.credit_policy_id)
 
         TransferService(source, policy).validate_and_debit(
@@ -103,4 +111,4 @@ class AccountCommandHandler(BaseCommandHandler):
         account_repo.add(source)
 
 
-# --8<-- [end:transfer]
+# --8<-- [end:handler]

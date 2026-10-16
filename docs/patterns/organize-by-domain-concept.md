@@ -133,9 +133,27 @@ Each capability file contains both the command definitions and the handler
 for that capability. One concept, one file. Here the `addresses.py`
 capability file sits next to the `Customer` aggregate it changes:
 
+```
+src/identity/
+├── __init__.py        # The domain
+└── customer/
+    ├── customer.py    # The aggregate
+    └── addresses.py   # A capability
+```
+
+`customer/customer.py` holds the aggregate:
+
 ```python
---8<-- "patterns/organize-by-domain-concept/001.py:customer"
---8<-- "patterns/organize-by-domain-concept/001.py:addresses"
+# fragment
+--8<-- "patterns/organize-by-domain-concept/identity/customer/customer.py:customer"
+```
+
+`customer/addresses.py` holds the commands and the handler for managing
+addresses:
+
+```python
+# fragment
+--8<-- "patterns/organize-by-domain-concept/identity/customer/addresses.py:addresses"
 ```
 
 This optimizes for the most common developer workflow: understanding or

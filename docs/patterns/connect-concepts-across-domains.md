@@ -88,10 +88,10 @@ The solution has three parts:
 │              │                                      │  customer_id │
 └──────────────┘                                      │  (correlated)│
        │                                              └──────────────┘
-       │              CustomerRegistered
+       │              CustomerAddressUpdated
        │         ─ ─ ─{ customer_id: "c-123" }─ ─ ─ ┐
-       │              name: "Jane Doe"               │
-       ▼              address: "..."                 ▼
+       │              street: "1 Main St"            │
+       ▼              city: "Springfield"            ▼
 ┌──────────────┐                              ┌──────────────┐
 │              │                              │              │
 │  Shipping    │                              │   Support    │
@@ -249,6 +249,10 @@ context's schema from leaking into the Shipping domain. If Sales changes how it
 structures customer events, only the subscriber needs to change, the `Recipient`
 aggregate and the rest of the Shipping domain remain untouched.
 
+A registration creates a recipient with a name and no address. The address
+comes with `CustomerAddressUpdated`. A subscriber can also receive the same
+message twice, so it skips a registration for a customer it already knows.
+
 ### Cross-Context Projections
 
 For read-only views that combine data from multiple aggregates or contexts,
@@ -262,6 +266,9 @@ simultaneously:
 Projections are ideal for query scenarios that span multiple aggregates. They
 are read-optimized, denormalized, and eventually consistent, exactly what you
 need for cross-context views.
+
+The projector keeps the ids of the invoices it has counted, so an
+`InvoiceIssued` that arrives twice adds to the total once.
 
 ---
 

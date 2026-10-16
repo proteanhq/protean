@@ -90,7 +90,11 @@ class Order:
             )
 
         if self.delivered_at:
-            days_since = (datetime.now(UTC) - self.delivered_at).days
+            delivered_at = self.delivered_at
+            # A database without time zones, such as SQLite, returns a naive value
+            if delivered_at.tzinfo is None:
+                delivered_at = delivered_at.replace(tzinfo=UTC)
+            days_since = (datetime.now(UTC) - delivered_at).days
             if days_since > self.REFUND_WINDOW_DAYS:
                 raise ValidationError(
                     {
@@ -103,9 +107,16 @@ class Order:
     def _calculate_refund_amount(self, requested_amount: float | None = None) -> float:
         """Calculate the actual refund amount."""
         max_refundable = self.total - self.partial_refund_amount
-        if requested_amount and requested_amount < max_refundable:
-            return requested_amount
-        return max_refundable
+        if max_refundable <= 0:
+            raise ValidationError({"amount": ["Nothing is left to refund"]})
+
+        if requested_amount is None:
+            return max_refundable
+
+        if requested_amount <= 0:
+            raise ValidationError({"amount": ["Refund amount must be positive"]})
+
+        return min(requested_amount, max_refundable)
 
     def _needs_shipment_intercept(self) -> bool:
         """Check if we need to intercept the shipment."""

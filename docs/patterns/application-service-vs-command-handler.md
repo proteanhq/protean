@@ -35,7 +35,7 @@ class UserCommandHandler(BaseCommandHandler):
 
 The handler works, but the API endpoint needs the newly created user with its
 generated ID. `domain.process()` is fire-and-forget by default. It stores the
-command and returns the command's position in the event store, not the user.
+command and returns the command's position in the event store.
 The developer forces synchronous execution:
 
 ```python
@@ -179,20 +179,7 @@ The API endpoint uses the service directly:
 
 ```python
 # fragment
-@app.post("/users", status_code=201)
-def create_user(payload: CreateUserRequest):
-    service = UserService()
-    user = service.register_user(
-        email=payload.email,
-        name=payload.name,
-        password=payload.password,
-    )
-    return {
-        "id": str(user.user_id),
-        "email": user.email,
-        "name": user.name,
-        "status": user.status,
-    }
+--8<-- "patterns/application-service-vs-command-handler/001.py:endpoint"
 ```
 
 No `domain.process()`, no command object, no async/sync flag. The `@use_case`
@@ -212,16 +199,7 @@ The webhook endpoint dispatches the command and returns immediately:
 
 ```python
 # fragment
-@app.post("/webhooks/payment", status_code=200)
-def payment_webhook(payload: PaymentWebhookPayload):
-    domain.process(
-        ConfirmPayment(
-            order_id=payload.order_id,
-            payment_id=payload.payment_id,
-            amount=payload.amount,
-        )
-    )
-    return {"status": "accepted"}
+--8<-- "patterns/application-service-vs-command-handler/002.py:webhook"
 ```
 
 `domain.process()` stores the command in the event store and returns. The
@@ -346,14 +324,7 @@ The endpoint then calls the service and returns the product it gets back:
 
 ```python
 # fragment
-@app.post("/products")
-def create_product(payload: CreateProductRequest):
-    service = ProductService()
-    product = service.create_product(
-        name=payload.name,
-        price=payload.price,
-    )
-    return {"id": str(product.product_id), "name": product.name}
+--8<-- "patterns/application-service-vs-command-handler/003.py:endpoint"
 ```
 
 ### Using Application Services for Event Reactions
