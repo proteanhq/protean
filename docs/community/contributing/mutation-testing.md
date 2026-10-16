@@ -22,11 +22,13 @@ MUT_FILTER="_run_invariants|_validate_status_transition" make mutation TARGET=en
 Targets currently defined include `outbox`, `entity`, `status-field`,
 `event-sourcing`, `repositories-dao`, `upcaster`, `unit-of-work` (the transaction
 boundary), `sync-dispatch` (breadth-first synchronous event dispatch, ADR-0016),
-and `checkpoint` (the `$all` gap-safe checkpoint path in the event-store
-subscription).
+`checkpoint` (the `$all` gap-safe checkpoint path in the event-store
+subscription), and five targets for the IR and the Observatory: `ir-builder`,
+`ir-diff`, `observatory-api`, `observatory-timeline` and `observatory-metrics`
+(see "IR and Observatory targets" below).
 
 `checkpoint` mutates a large module (`event_store_subscription.py`), so it is
-the slowest target: mutmut mutates the whole file. `MUT_FILTER` does not change
+one of the slower targets: mutmut mutates the whole file. `MUT_FILTER` does not change
 that. It narrows the printed **survivor list** to the checkpoint methods so
 they are easy to pick out of the report (see "Reading the report" below). What
 keeps the run tractable is the tight test subset the target already uses.
@@ -42,8 +44,8 @@ which:
 1. Builds a dedicated Python 3.12 environment at `.venv-mutation` (see the
    caveat below). The project `.venv` is never touched.
 2. Mutates the target module and runs a **fast subset** of its unit tests
-   against each mutant, not the whole suite. A per-module subset keeps a run to
-   a few minutes.
+   against each mutant, not the whole suite. A per-module subset keeps most runs to
+   a few minutes. `ir-builder`, the largest module, takes about half an hour.
 3. Prints a mutation score and the list of surviving mutants.
 
 It uses [mutmut](https://github.com/boxed/mutmut) 3.x, which copies the source
@@ -56,7 +58,58 @@ temporary `setup.cfg` it writes for mutmut's config) when it finishes.
 Targets live in a `case` block in `scripts/mutation.sh`. Each maps a name to a
 module and the fast test subset that exercises it. Pick the smallest set of tests
 that covers the module's behaviour; a broad subset only slows the run without
-finding more survivors.
+finding more survivors. Drop a test file the module never runs, since it only
+adds time to every mutant. To check a file, run it alone in `.venv-mutation`
+under coverage and read the module's line in the report:
+
+```shell
+.venv-mutation/bin/python -m coverage run -m pytest <file>
+.venv-mutation/bin/python -m coverage combine
+.venv-mutation/bin/python -m coverage report --include=<module>
+```
+
+The project's coverage settings write one data file per process, so
+`coverage combine` has to run before `coverage report`.
+
+### IR and Observatory targets
+
+| Target | Module | Test subset | Line coverage | One run |
+|---|---|---|---|---|
+| `ir-builder` | `src/protean/ir/builder.py` | `tests/ir/test_ir_builder.py` and the six `tests/ir/test_*_extraction.py` files (command and event, database model, description, field, handler, index) | 73.9% (1304 of 1765 lines) | 31 min 6 s |
+| `ir-diff` | `src/protean/ir/diff.py` | `tests/ir/test_diff.py`, `tests/ir/test_compatibility.py` | 93.2% (618 of 663 lines) | 5 min 1 s |
+| `observatory-api` | `src/protean/server/observatory/api.py` | `tests/server/observatory/test_observatory_api.py`, `tests/server/observatory/test_trace_decoding.py` | 88.3% (564 of 639 lines) | 58 s |
+| `observatory-timeline` | `src/protean/server/observatory/routes/timeline.py` | `tests/server/observatory/test_observatory_timeline_api.py`, `tests/server/observatory/test_trace_search.py` | 93.7% (445 of 475 lines) | 1 min 45 s |
+| `observatory-metrics` | `src/protean/server/observatory/metrics.py` | `tests/server/observatory/test_observatory_metrics.py` | 50.0% (197 of 394 lines) | 3 min 31 s |
+
+The coverage figures were measured with the commands above, in `.venv-mutation`.
+The run times are the wall-clock time of one `make mutation` run on a laptop
+with an Intel Core i7-1165G7 (4 cores, 8 threads) and 30 GB of RAM, running
+Linux.
+
+A few things about this environment shape the results for these targets:
+
+- **Decorated functions get no mutants.** mutmut 3 skips any function that
+  has a decorator other than `@staticmethod` or `@classmethod`, along with its
+  body. The FastAPI route handlers in `api.py` and `timeline.py` are
+  `@router.get(...)` functions, so mutmut mutates only the module-level helpers
+  those handlers call. That is why `observatory-api` produces fewer than 200
+  mutants from a module of over 1,300 lines.
+- **The environment installs the `server` and `redis` extras.** The
+  Observatory tests import FastAPI, and their test domain configures the Redis
+  broker, which needs the `redis` client package. A running Redis server is not
+  needed.
+- **The environment does not install the `telemetry` extra.** Without the
+  OpenTelemetry SDK, `metrics.py` serves its hand-written Prometheus text. Its
+  OpenTelemetry gauge code returns early, so the mutants in that code survive.
+- **Redis-marked tests skip.** mutmut passes no `--redis` option, so the 19
+  Redis-marked tests in `test_observatory_api.py` and the 13 in
+  `test_observatory_metrics.py` do not run. The metrics tests that check the
+  Prometheus output line by line are among them. That is why
+  `observatory-metrics` scores low, and a mutant that only these tests would
+  reach survives.
+
+Compare a run on a branch with a run on `main` in the same environment. The two
+runs then skip the same code, so their counts can be compared.
 
 ## Reading the report
 
