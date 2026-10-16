@@ -34,6 +34,7 @@ to a different stream.
 wrestles with timing:
 
 ```python
+# fragment
 # FRAGILE: How long do we sleep? Too short and the test is flaky.
 # Too long and the suite is slow.
 def test_order_flow(self):
@@ -90,6 +91,7 @@ After `domain.process()` returns, the full chain has already executed. You can
 assert on projection state immediately:
 
 ```python
+# fragment
 domain.process(PlaceOrder(...))
 
 # No sleep, no engine, no async -- everything already ran
@@ -131,6 +133,7 @@ retry_delay = 0
 ```
 
 ```python
+# fragment
 engine = Engine(domain, test_mode=True)
 engine.run()
 
@@ -173,121 +176,23 @@ an `OrderDashboard` projection that tracks order status.
 
 ### Domain setup
 
+The domain is in `ecommerce/domain.py`. `InventoryEventHandler` belongs to
+`Inventory` but listens to the order stream, so it names that stream with
+`stream_category`. Without it, the handler would listen to the inventory stream
+and never receive `OrderPlaced`.
+
 ```python
-from protean import Domain
-from protean.fields import Auto, Float, Identifier, Integer, String
-from protean.utils.globals import current_domain
-
-domain = Domain(__file__, "ecommerce")
-
-
-@domain.aggregate
-class Order:
-    order_id = Auto(identifier=True)
-    customer_id = Identifier(required=True)
-    status = String(default="draft")
-    total = Float(default=0.0)
-
-    def place(self):
-        self.status = "placed"
-        self.raise_(OrderPlaced(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            total=self.total,
-        ))
-
-
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    total = Float(required=True)
-
-
-@domain.command(part_of=Order)
-class PlaceOrder(BaseCommand):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    total = Float(required=True)
-
-
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler(BaseCommandHandler):
-
-    @handle(PlaceOrder)
-    def place_order(self, command: PlaceOrder):
-        repo = current_domain.repository_for(Order)
-        order = Order(
-            order_id=command.order_id,
-            customer_id=command.customer_id,
-            total=command.total,
-        )
-        order.place()
-        repo.add(order)
-
-
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(Inventory)
-        inventory = repo.get(event.customer_id)
-        inventory.reserve(order_id=event.order_id)
-        repo.add(inventory)
-
-
-@domain.projection
-class OrderDashboard(BaseProjection):
-    order_id = Identifier(identifier=True)
-    customer_id = Identifier()
-    status = String()
-    total = Float()
-
-
-@domain.projector(projector_for=OrderDashboard, aggregates=[Order])
-class OrderDashboardProjector(BaseProjector):
-
-    @on(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(OrderDashboard)
-        repo.add(OrderDashboard(
-            order_id=event.order_id,
-            customer_id=event.customer_id,
-            status="placed",
-            total=event.total,
-        ))
+--8<-- "patterns/testing-event-driven-flows/ecommerce/domain.py:domain"
 ```
 
 ### Test fixtures
 
-A `conftest.py` that initializes the domain with sync processing and provides
-a per-test context:
+A `tests/conftest.py` that initializes the domain with sync processing and
+provides a per-test context. `DomainFixture` resets the data after each test:
 
 ```python
-# tests/conftest.py
-import pytest
-
-from protean.integrations.pytest import DomainFixture
-
-from ecommerce.domain import domain
-
-
-@pytest.fixture(scope="session")
-def app_fixture():
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-
-    fixture = DomainFixture(domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():
-        yield
+# fragment
+--8<-- "patterns/testing-event-driven-flows/conftest.py:fixtures"
 ```
 
 ### Level 1: Domain unit tests
@@ -295,36 +200,8 @@ def _ctx(app_fixture):
 Test the aggregate's business logic and event raising directly:
 
 ```python
-import pytest
-
-
-class TestOrderPlacement:
-    """Level 1: Test aggregate behavior in isolation."""
-
-    def test_placing_order_transitions_status(self):
-        order = Order(
-            customer_id="cust-123",
-            total=99.95,
-        )
-
-        order.place()
-
-        assert order.status == "placed"
-
-    def test_placing_order_raises_order_placed_event(self):
-        order = Order(
-            customer_id="cust-123",
-            total=99.95,
-        )
-
-        order.place()
-
-        assert len(order._events) == 1
-        event = order._events[0]
-        assert isinstance(event, OrderPlaced)
-        assert event.order_id == order.order_id
-        assert event.customer_id == "cust-123"
-        assert event.total == 99.95
+# fragment
+--8<-- "patterns/testing-event-driven-flows/test_order_placement.py:level1"
 ```
 
 These tests run in microseconds. They verify that `Order.place()` produces
@@ -335,47 +212,8 @@ the correct state and the correct event payload.
 Test the full command-to-projection chain with sync processing:
 
 ```python
-class TestOrderFlowSync:
-    """Level 2: Test the full chain with sync event processing."""
-
-    def test_place_order_updates_projection(self):
-        """Command -> handler -> aggregate -> event -> projector -> projection."""
-        domain.process(
-            PlaceOrder(
-                order_id="ord-001",
-                customer_id="cust-123",
-                total=99.95,
-            )
-        )
-
-        # Projection is updated synchronously -- no sleep, no engine
-        view = domain.view_for(OrderDashboard)
-        dashboard = view.get("ord-001")
-
-        assert dashboard is not None
-        assert dashboard.status == "placed"
-        assert dashboard.customer_id == "cust-123"
-        assert dashboard.total == 99.95
-
-    def test_event_chain_fires_downstream_handlers(self):
-        """Verify that OrderPlaced triggers InventoryEventHandler."""
-        # Pre-populate inventory
-        repo = domain.repository_for(Inventory)
-        repo.add(Inventory(product_id="prod-1", available_quantity=100))
-
-        domain.process(
-            PlaceOrder(
-                order_id="ord-003",
-                customer_id="cust-123",
-                total=50.0,
-            )
-        )
-
-        # In sync mode, the InventoryEventHandler fires inline
-        # during the same UoW commit that persists the Order
-        inventory = repo.get("prod-1")
-        # Assert that the handler processed the event
-        assert inventory is not None
+# fragment
+--8<-- "patterns/testing-event-driven-flows/test_order_flow_sync.py:level2"
 ```
 
 These tests verify the **wiring**: commands reach handlers, events reach
@@ -384,150 +222,38 @@ unit-test speed because sync processing has no async overhead.
 
 ### Level 3: Async E2E tests
 
-Test the async engine for scenarios that require the full infrastructure:
+Test the async engine for scenarios that require the full infrastructure. The
+`async_events` fixture switches event processing to async for one test and
+back to sync afterwards:
 
 ```python
-import pytest
-
-from protean.server.engine import Engine
-
-
-@pytest.mark.no_test_domain
-class TestOrderFlowAsync:
-    """Level 3: Test with the real async Engine in test mode."""
-
-    @pytest.fixture(autouse=True)
-    def setup_domain(self):
-        """Initialize the domain with async processing for engine tests."""
-        domain.config["event_processing"] = "async"
-        domain.config["command_processing"] = "sync"
-
-        domain.init()
-        with domain.domain_context():
-            yield
-
-    def test_full_async_flow(self):
-        """Command -> handler -> event -> engine processes -> projection updated."""
-        # Submit the command (sync command processing, async event processing)
-        domain.process(
-            PlaceOrder(
-                order_id="ord-async-001",
-                customer_id="cust-123",
-                total=75.00,
-            )
-        )
-
-        # Run the engine in test mode until every subscription is idle
-        engine = Engine(domain, test_mode=True)
-        engine.run()
-
-        # After engine.run() completes, all pending events have been processed
-        view = domain.view_for(OrderDashboard)
-        dashboard = view.get("ord-async-001")
-
-        assert dashboard is not None
-        assert dashboard.status == "placed"
-        assert dashboard.total == 75.00
-
-        # Also verify the aggregate was persisted through the chain
-        order = domain.repository_for(Order).get("ord-async-001")
-        assert order.status == "placed"
+# fragment
+--8<-- "patterns/testing-event-driven-flows/test_order_flow_async.py:level3"
 ```
 
 ### Testing error handling paths
 
-Level 3 is essential for testing `handle_error()` overrides:
+Level 3 is essential for testing `handle_error()` overrides. A decorator
+registers a handler on its domain when the module is imported, and pytest
+imports every test module before it runs any test. So a handler that fails on
+purpose goes on a small domain of its own, built in its test module. The
+shared domain never sees it:
 
 ```python
-@domain.event_handler(part_of=Inventory)
-class FailingInventoryHandler(BaseEventHandler):
-    """A handler that deliberately fails, for testing error classification."""
-
-    _errors_captured: list = []
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        raise ConnectionError("Database temporarily unavailable")
-
-    @classmethod
-    def handle_error(cls, exc: Exception, message) -> None:
-        cls._errors_captured.append({
-            "exception": exc,
-            "message_type": type(message).__name__,
-        })
-
-
-@pytest.mark.no_test_domain
-class TestErrorHandling:
-    """Level 3: Verify error classification and handle_error behavior."""
-
-    @pytest.fixture(autouse=True)
-    def setup_domain(self):
-        domain.config["event_processing"] = "async"
-        domain.init()
-        with domain.domain_context():
-            FailingInventoryHandler._errors_captured.clear()
-            yield
-
-    def test_handle_error_receives_exception(self):
-        """Verify that handle_error is called when a handler raises."""
-        domain.process(
-            PlaceOrder(
-                order_id="ord-err-001",
-                customer_id="cust-123",
-                total=50.0,
-            )
-        )
-
-        engine = Engine(domain, test_mode=True)
-        engine.run()
-
-        # The handler failed, but handle_error captured the exception
-        assert len(FailingInventoryHandler._errors_captured) > 0
-        captured = FailingInventoryHandler._errors_captured[0]
-        assert isinstance(captured["exception"], ConnectionError)
-        assert "temporarily unavailable" in str(captured["exception"])
+# fragment
+--8<-- "patterns/testing-event-driven-flows/test_error_handling.py:errors"
 ```
 
 ### Testing priority lane routing
 
+Priority lanes route events through the outbox to broker streams, so the
+`priority_lanes` fixture switches the server to stream subscriptions and turns
+lanes on. The test processes the command with `Priority.LOW` and checks that
+the event went to the backfill stream and not the primary one:
+
 ```python
-from protean.utils.processing import Priority
-
-
-@pytest.mark.no_test_domain
-class TestPriorityLanes:
-    """Level 3: Verify priority-based event routing."""
-
-    @pytest.fixture(autouse=True)
-    def setup_domain(self):
-        domain.config["event_processing"] = "async"
-        domain.config["server"] = {
-            "priority_lanes": {"enabled": True, "threshold": Priority.NORMAL},
-        }
-        domain.init()
-        with domain.domain_context():
-            yield
-
-    def test_backfill_events_route_to_backfill_lane(self):
-        """Events below the threshold are routed to the backfill stream."""
-        domain.process(
-            PlaceOrder(
-                order_id="ord-pri-001",
-                customer_id="cust-456",
-                total=50.0,
-            ),
-            priority=Priority.BACKFILL,
-        )
-
-        # In test mode, backfill events are still processed (the primary
-        # stream is empty, so the backfill stream is polled).
-        engine = Engine(domain, test_mode=True)
-        engine.run()
-
-        view = domain.view_for(OrderDashboard)
-        dashboard = view.get("ord-pri-001")
-        assert dashboard is not None
+# fragment
+--8<-- "patterns/testing-event-driven-flows/test_order_flow_async.py:priority"
 ```
 
 ---
@@ -537,6 +263,7 @@ class TestPriorityLanes:
 ### Using `time.sleep()` for synchronization
 
 ```python
+# fragment
 # WRONG: Arbitrary sleep durations are fragile.
 def test_order_flow(self):
     domain.process(PlaceOrder(...))
@@ -554,6 +281,7 @@ for deterministic execution.
 ### Testing handlers without the full chain
 
 ```python
+# fragment
 # WRONG: Testing a handler with a manually constructed event.
 def test_inventory_handler(self):
     event = OrderPlaced(
@@ -577,6 +305,7 @@ test would still pass.
 ### Skipping E2E tests entirely
 
 ```python
+# fragment
 # WRONG: "Our unit tests cover everything."
 # No Level 2 or Level 3 tests exist. The team discovers in production
 # that the OrderDashboardProjector was never registered, or that
@@ -592,6 +321,7 @@ only surface when the full chain runs.
 ### Mixing async and sync in the same test
 
 ```python
+# fragment
 # WRONG: Sending a command synchronously but expecting async event processing.
 def test_confused_flow(self):
     domain.config["event_processing"] = "async"
@@ -620,7 +350,7 @@ mode (Level 3) after dispatching the command.
 | **Processing mode** | None (direct calls) | `event_processing = "sync"` | `Engine(test_mode=True)` |
 | **Speed** | Microseconds | Milliseconds | Seconds |
 | **Infrastructure** | None | None | Event store, broker |
-| **Deterministic** | Yes | Yes | Yes (3 fixed cycles) |
+| **Deterministic** | Yes | Yes | Yes (runs until every subscription is idle, for about one second at most) |
 | **Catches** | Logic bugs, wrong events | Wiring, routing, projections | Subscription config, priority lanes, error paths |
 | **Test count** | Many (majority) | Some (key flows) | Few (infra-specific) |
 | **Typical assertion** | `order.status`, `order._events` | `domain.view_for(P).get(id)` | `domain.view_for(P).get(id)` after `engine.run()` |

@@ -15,12 +15,7 @@ for six months. The `OrderSummary` projection was originally designed with a
 separately:
 
 ```python
-@domain.projection
-class OrderSummary:
-    order_id = Identifier(identifier=True)
-    customer_name = String(max_length=100)
-    total = Float()          # Original field
-    status = String(max_length=20)
+--8<-- "patterns/projection-rebuilds-as-deployment/001.py:before"
 ```
 
 The developer's instinct (trained by years of traditional database migrations)
@@ -54,9 +49,9 @@ not treated rebuilds as a deployment operation in its own right. They do not kno
   rebuild exercises the entire upcaster chain. If that chain has never been
   tested end-to-end, the rebuild is the worst time to find out.
 
-- **How to run rebuilds without blocking production**: A naive rebuild that
-  replays 500,000 events through the same pipeline as production traffic will
-  starve real-time consumers.
+- **How to run rebuilds without hurting production**: A rebuild that replays
+  500,000 events reads the whole event store and rewrites the projection's
+  table, on the same databases that production traffic uses.
 
 The result: projections become as rigid as traditional database tables, schema
 changes accumulate technical debt, and the team loses the ability to freely
@@ -90,8 +85,9 @@ The core principles:
    events dispatched, events skipped, and errors. Treat a rebuild with
    skipped events as a warning that needs investigation.
 
-5. **Use priority lanes for background rebuilds**: Route rebuild work through
-   the backfill lane so production event processing is not affected.
+5. **Run large rebuilds in their own process**: A rebuild reads the event
+   store directly and does not go through the broker, so run it apart from the
+   web workers and the Engine, against a new `schema_name`.
 
 ---
 
@@ -102,49 +98,29 @@ The core principles:
 The most common scenario: you add, rename, or remove fields on a projection.
 Deploy the updated projector, then rebuild.
 
+The examples use this `Order` aggregate. Its `OrderPlaced` event already
+carries the subtotal, tax, and shipping:
+
+```python
+--8<-- "patterns/projection-rebuilds-as-deployment/001.py:model"
+```
+
 **Before**, original projection:
 
 ```python
-@domain.projection
-class OrderSummary:
-    order_id = Identifier(identifier=True)
-    customer_name = String(max_length=100)
-    total = Float()
-    status = String(max_length=20)
+--8<-- "patterns/projection-rebuilds-as-deployment/001.py:before"
 ```
 
 **After**: the updated projection, with the total decomposed:
 
 ```python
-@domain.projection
-class OrderSummary:
-    order_id = Identifier(identifier=True)
-    customer_name = String(max_length=100)
-    subtotal = Float()
-    tax = Float()
-    shipping = Float()
-    total = Float()
-    status = String(max_length=20)
+--8<-- "patterns/projection-rebuilds-as-deployment/002.py:after"
 ```
 
 The projector is updated to populate the new fields:
 
 ```python
-@domain.projector(projector_for=OrderSummary, aggregates=[Order])
-class OrderSummaryProjector:
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(OrderSummary)
-        repo.add(OrderSummary(
-            order_id=event.order_id,
-            customer_name=event.customer_name,
-            subtotal=event.subtotal,
-            tax=event.tax,
-            shipping=event.shipping,
-            total=event.subtotal + event.tax + event.shipping,
-            status="placed",
-        ))
+--8<-- "patterns/projection-rebuilds-as-deployment/002.py:projector"
 ```
 
 Deploy the code, then rebuild:
@@ -157,17 +133,7 @@ protean projection rebuild --domain=my_app.ordering --projection=OrderSummary
 Or from within a script:
 
 ```python
-from my_app.ordering.domain import ordering as domain
-from my_app.ordering.projections import OrderSummary
-
-domain.init()
-with domain.domain_context():
-    result = domain.rebuild_projection(OrderSummary)
-
-    print(f"Events dispatched: {result.events_dispatched}")
-    print(f"Events skipped:    {result.events_skipped}")
-    print(f"Errors:            {result.errors}")
-    print(f"Success:           {result.success}")
+--8<-- "patterns/projection-rebuilds-as-deployment/002.py:rebuild"
 ```
 
 !!! note "Rebuild is idempotent"
@@ -188,72 +154,38 @@ where the projection is empty or incomplete. Blue-green deployment solves this.
 Keep the old `OrderSummary` running. Deploy a new class alongside it:
 
 ```python
-# The existing projection -- still serving traffic
-@domain.projection
-class OrderSummary:
-    order_id = Identifier(identifier=True)
-    customer_name = String(max_length=100)
-    total = Float()
-    status = String(max_length=20)
-
-
-# The new projection -- different schema_name, same data
-@domain.projection(schema_name="order_summary_v2")
-class OrderSummaryV2:
-    order_id = Identifier(identifier=True)
-    customer_name = String(max_length=100)
-    subtotal = Float()
-    tax = Float()
-    shipping = Float()
-    total = Float()
-    status = String(max_length=20)
+--8<-- "patterns/projection-rebuilds-as-deployment/003.py:blue_green"
 ```
 
 **Step 2: Deploy a projector for the new projection.**
 
 ```python
-@domain.projector(projector_for=OrderSummaryV2, aggregates=[Order])
-class OrderSummaryV2Projector:
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(OrderSummaryV2)
-        repo.add(OrderSummaryV2(
-            order_id=event.order_id,
-            customer_name=event.customer_name,
-            subtotal=event.subtotal,
-            tax=event.tax,
-            shipping=event.shipping,
-            total=event.subtotal + event.tax + event.shipping,
-            status="placed",
-        ))
-
-    @handle(OrderShipped)
-    def on_order_shipped(self, event: OrderShipped):
-        repo = current_domain.repository_for(OrderSummaryV2)
-        summary = repo.get(event.order_id)
-        summary.status = "shipped"
-        repo.add(summary)
+--8<-- "patterns/projection-rebuilds-as-deployment/003.py:v2_projector"
 ```
 
 **Step 3: Rebuild the new projection in the background.**
 
 ```python
-domain.init()
-with domain.domain_context():
-    result = domain.rebuild_projection(OrderSummaryV2)
-
-    if result.success:
-        print(
-            f"OrderSummaryV2 rebuilt: "
-            f"{result.events_dispatched} events processed"
-        )
-    else:
-        print(f"Rebuild failed: {result.errors}")
+--8<-- "patterns/projection-rebuilds-as-deployment/003.py:rebuild_v2"
 ```
 
 During the rebuild, the old `OrderSummary` continues serving traffic. The new
-`order_summary_v2` table is being populated in the background.
+`order_summary_v2` table fills from the event store.
+
+A rebuild empties the projection's table, reads the events, and then replays
+them. If the Engine is processing events for the same projection at that time,
+the rebuild can erase a row the Engine just wrote for an event it did not read.
+That is why `protean projection rebuild` asks you to stop the server first.
+Stop the Engine for the rebuild, or rebuild before the Engine starts with the
+new projector. Reads do not go through the Engine, so the old projection keeps
+answering queries. Its updates wait until the Engine starts again.
+
+A rebuild does not move the new projector's subscription position. When the
+Engine first runs the new projector, it starts at the beginning of the event
+store and delivers the events the rebuild already replayed. That is why the
+`OrderPlaced` handler in Step 2 skips an order whose row already exists. A
+handler that inserts without that check fails on the second delivery with a
+uniqueness error.
 
 **Step 4: Switch traffic.**
 
@@ -262,18 +194,8 @@ query layer to read from `OrderSummaryV2` instead of `OrderSummary`. This can
 be a feature flag, a configuration change, or a code deployment.
 
 ```python
-# Before: reading from the old projection
-@app.get("/orders/{order_id}/summary")
-async def get_order_summary(order_id: str):
-    repo = domain.repository_for(OrderSummary)
-    return repo.get(order_id)
-
-
-# After: reading from the new projection
-@app.get("/orders/{order_id}/summary")
-async def get_order_summary(order_id: str):
-    repo = domain.repository_for(OrderSummaryV2)
-    return repo.get(order_id)
+--8<-- "patterns/projection-rebuilds-as-deployment/003.py:api_before"
+--8<-- "patterns/projection-rebuilds-as-deployment/003.py:api_after"
 ```
 
 **Step 5: Clean up.**
@@ -285,9 +207,9 @@ explicitly to preserve the table name.
 
 !!! warning "Keep both projectors running during the transition"
     While both projections are live, both projectors must be processing events.
-    New events that arrive during the rebuild must be applied to both the old
-    and new projections. The Engine handles this automatically since both
-    projectors are registered in the domain.
+    Once the rebuild finishes and the Engine runs again, new events must be
+    applied to both the old and new projections. The Engine handles this
+    automatically since both projectors are registered in the domain.
 
 ---
 
@@ -297,28 +219,7 @@ The `RebuildResult` dataclass provides all the information you need to assess
 a rebuild:
 
 ```python
-from protean.utils.projection_rebuilder import RebuildResult
-
-domain.init()
-with domain.domain_context():
-    result: RebuildResult = domain.rebuild_projection(OrderSummaryV2)
-
-    # Basic outcome
-    print(f"Projection:   {result.projection_name}")
-    print(f"Success:      {result.success}")
-
-    # Volume stats
-    print(f"Dispatched:   {result.events_dispatched}")
-    print(f"Skipped:      {result.events_skipped}")
-
-    # Infrastructure stats
-    print(f"Projectors:   {result.projectors_processed}")
-    print(f"Categories:   {result.categories_processed}")
-
-    # Errors (empty list on success)
-    if result.errors:
-        for error in result.errors:
-            print(f"  ERROR: {error}")
+--8<-- "patterns/projection-rebuilds-as-deployment/003.py:monitor"
 ```
 
 `events_skipped` is the critical metric. A skipped event means either:
@@ -335,68 +236,30 @@ with domain.domain_context():
 
 ---
 
-### Using priority lanes for background rebuilds
+### Keeping a large rebuild away from production traffic
 
-For large projections, a rebuild replays thousands or millions of events. If
-these events share the pipeline with production traffic, production latency
-degrades. Use priority lanes to route rebuild work to the backfill stream.
+A rebuild does not go through the broker. `rebuild_projection()` reads events
+from the event store and calls the projector's handlers in the same process.
+It writes no outbox rows and publishes nothing to a broker stream, so it never
+sits in the queue ahead of production events. For the same reason,
+`processing_priority()` and priority lanes have no effect on a rebuild.
 
-Write a rebuild script that wraps `domain.process()` calls inside a low-priority
-context:
+The load a large rebuild adds falls on the event store and on the projection's
+database. To keep it away from production:
 
-```python
-"""rebuild_with_priority.py
+- Run the rebuild in its own process, with `protean projection rebuild` or a
+  script like the one above. Do not run it in a web worker.
+- Rebuild into a new `schema_name` with the blue-green steps above, so readers
+  never see a half-built table.
+- Use `batch_size` to set how many events each round trip to the event store
+  reads: `domain.rebuild_projection(OrderSummaryV2, batch_size=200)`. It does
+  not lower the total. The rebuild still reads every event in the projector's
+  stream categories and holds them in memory before it replays them.
 
-Rebuild projections using the backfill lane so production
-event processing is not affected.
-"""
-
-import logging
-
-from my_app.ordering.domain import ordering as domain
-from my_app.ordering.projections import OrderSummaryV2
-from protean.utils.processing import processing_priority, Priority
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
-def rebuild_via_backfill():
-    domain.init()
-
-    with domain.domain_context():
-        # Tag all replay work as low priority.
-        # Events produced during the rebuild are routed
-        # to the backfill stream, not the primary stream.
-        with processing_priority(Priority.LOW):
-            result = domain.rebuild_projection(OrderSummaryV2)
-
-        if result.success:
-            logger.info(
-                "Rebuild complete: %d events dispatched, %d skipped",
-                result.events_dispatched,
-                result.events_skipped,
-            )
-        else:
-            logger.error("Rebuild failed: %s", result.errors)
-
-
-if __name__ == "__main__":
-    rebuild_via_backfill()
-```
-
-!!! note "Priority lanes must be enabled"
-    Priority lanes require `enabled = true` under `[server.priority_lanes]`
-    in `domain.toml`, and a Redis broker:
-
-    ```toml
-    [server.priority_lanes]
-    enabled = true
-    ```
-
-    See
-    [Priority Lanes](../concepts/async-processing/priority-lanes.md) for
-    configuration details.
+Priority lanes help when a backfill sends commands through `domain.process()`,
+because those commands raise events that go through the outbox and the broker.
+See [Running Data Migrations with Priority
+Lanes](running-data-migrations-with-priority-lanes.md).
 
 ---
 
@@ -405,6 +268,7 @@ if __name__ == "__main__":
 ### ALTER TABLE on a projection instead of rebuilding
 
 ```python
+# fragment
 # BAD: Treating a projection like a traditional database table
 # This bypasses the event-driven architecture entirely.
 
@@ -473,6 +337,7 @@ protean projection rebuild --domain=my_app.ordering --projection=OrderSummary
 ### Rebuilding without stopping or isolating the projection
 
 ```python
+# fragment
 # BAD: Rebuilding a projection that is actively serving queries
 # Users see empty or partial results during the rebuild.
 
@@ -515,7 +380,7 @@ projection's schema or data mapping.
 | **Upcaster validation** | Not exercised | Every upcaster is tested end-to-end |
 | **Rollback** | Reverse migration script | Redeploy old projection, rebuild again |
 | **Production safety** | Test migration in staging | Test rebuild in staging |
-| **Background execution** | Custom batching logic | `processing_priority(Priority.LOW)` |
+| **Background execution** | Custom batching logic | Separate process, server stopped |
 | **Progress monitoring** | Custom logging | `RebuildResult` stats |
 | **CLI support** | Manual scripts | `protean projection rebuild` |
 | **Idempotency** | Depends on script | Always, truncate and replay |
