@@ -249,10 +249,13 @@ class TestTestRunner:
         """Test run_full_suite with sequential=True."""
         mock_runner.run_test_suites_sequentially = Mock(return_value=0)
 
-        result = mock_runner.run_full_suite(sequential=True)
+        result = mock_runner.run_full_suite(sequential=True, workers="4")
 
         assert result == 0
         mock_runner.run_test_suites_sequentially.assert_called_once()
+        (suites,) = mock_runner.run_test_suites_sequentially.call_args.args
+        in_memory = next(s for s in suites if s.name == FULL_MATRIX_IN_MEMORY)
+        assert "-n" not in in_memory.command
 
     def test_run_full_suite_with_matrix_first(self, mock_runner, capsys):
         """Test run_full_suite_with_matrix_first runs matrix first, then parallel."""
@@ -320,8 +323,9 @@ class TestCLICommands:
             )
             assert result.exit_code == 0
 
-    def test_sequential_flag(self, cli_runner):
+    def test_sequential_flag(self, cli_runner, monkeypatch):
         """Test sequential flag is passed correctly."""
+        monkeypatch.delenv("PROTEAN_TEST_WORKERS", raising=False)
         with patch("protean.cli.test.TestRunner") as mock_runner_class:
             mock_instance = Mock()
             mock_instance.run_full_suite.return_value = 0

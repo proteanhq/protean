@@ -537,10 +537,10 @@ class TestRunner:
 
         By default, runs the full matrix test suites first, then runs
         the remaining suites in parallel. With sequential=True, runs
-        all suites sequentially. ``workers`` is passed to
-        ``generate_test_suites``.
+        all suites sequentially, each in one process, whatever ``workers``
+        says. Otherwise ``workers`` is passed to ``generate_test_suites``.
         """
-        suites = self.generate_test_suites(workers)
+        suites = self.generate_test_suites("0" if sequential else workers)
 
         if sequential:
             return self.run_test_suites_sequentially(suites)
