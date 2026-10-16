@@ -5,6 +5,7 @@
 A developer writes a command handler for processing refunds:
 
 ```python
+# fragment
 @domain.command_handler(part_of=Order)
 class OrderCommandHandler(BaseCommandHandler):
 
@@ -128,6 +129,7 @@ Load. Call. Save. Everything else belongs in the domain model.
 ### Before: Thick Handler
 
 ```python
+# fragment
 @handle(RequestRefund)
 def request_refund(self, command: RequestRefund):
     repo = current_domain.repository_for(Order)
@@ -161,89 +163,8 @@ def request_refund(self, command: RequestRefund):
 ### After: Thin Handler, Rich Aggregate
 
 ```python
-# --- The handler: thin ---
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler(BaseCommandHandler):
-
-    @handle(RequestRefund)
-    def request_refund(self, command: RequestRefund):
-        repo = current_domain.repository_for(Order)
-        order = repo.get(command.order_id)
-        order.request_refund(
-            amount=command.amount,
-            reason=command.reason,
-        )
-        repo.add(order)
-
-
-# --- The aggregate: rich ---
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)
-    items = HasMany(OrderItem)
-    status: String(default="draft")
-    total: Float(default=0.0)
-    partial_refund_amount: Float(default=0.0)
-    refund_amount: Float()
-    refund_reason: String()
-    refund_requested_at: DateTime()
-    delivered_at: DateTime()
-    tracking_number: String()
-
-    REFUND_WINDOW_DAYS = 30
-
-    def request_refund(self, amount: float = None, reason: str = "") -> None:
-        """Request a refund for this order."""
-        self._validate_refund_eligibility()
-
-        refund_amount = self._calculate_refund_amount(amount)
-
-        self.status = "refund_requested"
-        self.refund_amount = refund_amount
-        self.refund_requested_at = datetime.now(timezone.utc)
-        self.refund_reason = reason
-
-        self.raise_(RefundRequested(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            amount=refund_amount,
-            reason=reason,
-        ))
-
-        if self._needs_shipment_intercept():
-            self.raise_(ShipmentInterceptRequested(
-                order_id=self.order_id,
-                tracking_number=self.tracking_number,
-            ))
-
-    def _validate_refund_eligibility(self) -> None:
-        """Check if this order can be refunded."""
-        if self.status not in ("shipped", "delivered"):
-            raise ValidationError(
-                {"status": ["Only shipped or delivered orders can be refunded"]}
-            )
-
-        if self.delivered_at:
-            days_since = (datetime.now(timezone.utc) - self.delivered_at).days
-            if days_since > self.REFUND_WINDOW_DAYS:
-                raise ValidationError(
-                    {"timing": [
-                        f"Refund window has expired "
-                        f"({self.REFUND_WINDOW_DAYS} days)"
-                    ]}
-                )
-
-    def _calculate_refund_amount(self, requested_amount: float = None) -> float:
-        """Calculate the actual refund amount."""
-        max_refundable = self.total - self.partial_refund_amount
-        if requested_amount and requested_amount < max_refundable:
-            return requested_amount
-        return max_refundable
-
-    def _needs_shipment_intercept(self) -> bool:
-        """Check if we need to intercept the shipment."""
-        return self.status == "shipped" and not self.delivered_at
+--8<-- "patterns/thin-handlers-rich-domain/refunds/domain.py:aggregate"
+--8<-- "patterns/thin-handlers-rich-domain/refunds/domain.py:handler"
 ```
 
 The handler is 5 lines. The aggregate has the business logic organized into
@@ -259,71 +180,14 @@ Logic that depends only on the aggregate's own state belongs in aggregate
 methods:
 
 ```python
-@domain.aggregate
-class Account:
-    account_id: Auto(identifier=True)
-    balance: Float(default=0.0)
-    overdraft_limit: Float(default=0.0)
-    status: String(default="active")
-    daily_withdrawal_total: Float(default=0.0)
-    last_withdrawal_date: Date()
-
-    DAILY_WITHDRAWAL_LIMIT = 5000.0
-
-    def withdraw(self, amount: float) -> None:
-        """Withdraw money from this account."""
-        if self.status != "active":
-            raise ValidationError(
-                {"status": ["Cannot withdraw from a non-active account"]}
-            )
-
-        if amount <= 0:
-            raise ValidationError(
-                {"amount": ["Withdrawal amount must be positive"]}
-            )
-
-        self._check_daily_limit(amount)
-
-        if self.balance - amount < -self.overdraft_limit:
-            raise ValidationError(
-                {"balance": ["Insufficient funds"]}
-            )
-
-        self.balance -= amount
-        self._update_daily_total(amount)
-
-        self.raise_(MoneyWithdrawn(
-            account_id=self.account_id,
-            amount=amount,
-            new_balance=self.balance,
-        ))
-
-    def _check_daily_limit(self, amount: float) -> None:
-        today = date.today()
-        if self.last_withdrawal_date != today:
-            self.daily_withdrawal_total = 0.0
-
-        if self.daily_withdrawal_total + amount > self.DAILY_WITHDRAWAL_LIMIT:
-            raise ValidationError(
-                {"amount": [
-                    f"Daily withdrawal limit of "
-                    f"{self.DAILY_WITHDRAWAL_LIMIT} exceeded"
-                ]}
-            )
-
-    def _update_daily_total(self, amount: float) -> None:
-        today = date.today()
-        if self.last_withdrawal_date != today:
-            self.daily_withdrawal_total = amount
-        else:
-            self.daily_withdrawal_total += amount
-        self.last_withdrawal_date = today
+--8<-- "patterns/thin-handlers-rich-domain/001.py:account"
 ```
 
 All withdrawal logic (status check, daily limits, balance check, total
 tracking) is in the aggregate. The handler is:
 
 ```python
+# fragment
 @handle(WithdrawMoney)
 def withdraw(self, command: WithdrawMoney):
     repo = current_domain.repository_for(Account)
@@ -338,56 +202,7 @@ Logic that reads from multiple aggregates but modifies only one belongs in a
 domain service:
 
 ```python
-@domain.domain_service(part_of=[Account, CreditPolicy])
-class TransferService:
-    """Validates transfer eligibility across Account and CreditPolicy."""
-
-    @classmethod
-    def validate_and_debit(
-        cls,
-        source: Account,
-        policy: CreditPolicy,
-        amount: float,
-        transfer_id: str,
-        target_account_id: str,
-    ) -> None:
-        """Validate the transfer and debit the source account."""
-        if amount > policy.max_transfer_amount:
-            raise ValidationError(
-                {"amount": [
-                    f"Exceeds policy limit of {policy.max_transfer_amount}"
-                ]}
-            )
-
-        if source.risk_score > policy.max_risk_score:
-            raise ValidationError(
-                {"risk": ["Account risk score exceeds policy threshold"]}
-            )
-
-        # Delegate the actual debit to the aggregate
-        source.debit(amount, transfer_id, target_account_id)
-
-
-@domain.command_handler(part_of=Account)
-class AccountCommandHandler(BaseCommandHandler):
-
-    @handle(TransferMoney)
-    def transfer(self, command: TransferMoney):
-        account_repo = current_domain.repository_for(Account)
-        policy_repo = current_domain.repository_for(CreditPolicy)
-
-        source = account_repo.get(command.from_account_id)
-        policy = policy_repo.get(source.credit_policy_id)
-
-        TransferService.validate_and_debit(
-            source=source,
-            policy=policy,
-            amount=command.amount,
-            transfer_id=command.transfer_id,
-            target_account_id=command.to_account_id,
-        )
-
-        account_repo.add(source)
+--8<-- "patterns/thin-handlers-rich-domain/002.py:transfer"
 ```
 
 The handler loads both aggregates and calls the domain service. The domain
@@ -399,17 +214,7 @@ handles the actual state change. Each component has a clear responsibility.
 Logic intrinsic to a domain concept belongs in the value object:
 
 ```python
-@domain.value_object
-class Money:
-    amount: Float(required=True)
-    currency: String(max_length=3, required=True)
-
-    def add(self, other: "Money") -> "Money":
-        if self.currency != other.currency:
-            raise ValidationError(
-                {"currency": ["Cannot add different currencies"]}
-            )
-        return Money(amount=self.amount + other.amount, currency=self.currency)
+--8<-- "patterns/thin-handlers-rich-domain/003.py:money"
 ```
 
 Currency-matching logic lives in `Money`, not in the handler that adds two
@@ -469,6 +274,7 @@ testable**.
 ### Testing with Thick Handlers (Hard)
 
 ```python
+# fragment
 class TestRefund:
 
     def test_refund_eligibility(self, test_domain):
@@ -496,66 +302,20 @@ class TestRefund:
 
 ### Testing with Thin Handlers (Easy)
 
+The `test_domain` fixture comes from a `conftest.py` next to the tests. It
+initializes the domain and opens a domain context, so the aggregate can raise
+events:
+
 ```python
-class TestRefund:
+# fragment
+--8<-- "patterns/thin-handlers-rich-domain/conftest.py:fixture"
+```
 
-    def test_can_refund_delivered_order(self, test_domain):
-        order = Order(
-            status="delivered",
-            total=100.0,
-            delivered_at=datetime.now(timezone.utc),
-        )
+Each test builds an order and calls its method:
 
-        order.request_refund(reason="Changed mind")
-
-        assert order.status == "refund_requested"
-        assert order.refund_amount == 100.0
-        assert len(order._events) == 1
-        assert isinstance(order._events[0], RefundRequested)
-
-    def test_cannot_refund_draft_order(self, test_domain):
-        order = Order(status="draft", total=100.0)
-
-        with pytest.raises(ValidationError) as exc:
-            order.request_refund(reason="Changed mind")
-
-        assert "Only shipped or delivered orders" in str(exc.value)
-
-    def test_refund_window_expired(self, test_domain):
-        order = Order(
-            status="delivered",
-            total=100.0,
-            delivered_at=datetime.now(timezone.utc) - timedelta(days=31),
-        )
-
-        with pytest.raises(ValidationError) as exc:
-            order.request_refund(reason="Changed mind")
-
-        assert "Refund window has expired" in str(exc.value)
-
-    def test_partial_refund_calculation(self, test_domain):
-        order = Order(
-            status="delivered",
-            total=100.0,
-            partial_refund_amount=30.0,
-            delivered_at=datetime.now(timezone.utc),
-        )
-
-        order.request_refund(amount=50.0, reason="Partial")
-
-        assert order.refund_amount == 50.0
-
-    def test_partial_refund_capped_at_remaining(self, test_domain):
-        order = Order(
-            status="delivered",
-            total=100.0,
-            partial_refund_amount=30.0,
-            delivered_at=datetime.now(timezone.utc),
-        )
-
-        order.request_refund(amount=200.0, reason="Full")
-
-        assert order.refund_amount == 70.0  # Capped at remaining
+```python
+# fragment
+--8<-- "patterns/thin-handlers-rich-domain/test_refund.py:tests"
 ```
 
 Five focused tests, each testing a specific business rule, without any
@@ -568,24 +328,14 @@ infrastructure setup. Fast, readable, and comprehensive.
 Event handlers should be equally thin:
 
 ```python
-# Thin event handler
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(Inventory)
-        for item in event.items:
-            inventory = repo.get(item["product_id"])
-            inventory.reserve(
-                order_id=event.order_id,
-                quantity=item["quantity"],
-            )
-            repo.add(inventory)
+--8<-- "patterns/thin-handlers-rich-domain/004.py:event_handler"
 ```
 
 The reservation logic (checking availability, preventing double-reservation,
 updating quantities) lives in `Inventory.reserve()`, not in the handler.
+`OrderPlaced` belongs to `Order`, so `stream_category` points the handler at the
+order stream. Without it the handler would listen to the inventory stream and
+never see the event.
 
 ---
 
@@ -594,21 +344,7 @@ updating quantities) lives in `Inventory.reserve()`, not in the handler.
 Application services orchestrate use cases and should also be thin:
 
 ```python
-@domain.application_service(part_of=Order)
-class OrderApplicationService(BaseApplicationService):
-
-    @use_case
-    def place_order(self, order_id, customer_id, items, total, currency):
-        repo = current_domain.repository_for(Order)
-        order = Order(
-            order_id=order_id,
-            customer_id=customer_id,
-            total=Money(amount=total, currency=currency),
-        )
-        for item in items:
-            order.add_item(**item)
-        order.place()
-        repo.add(order)
+--8<-- "patterns/thin-handlers-rich-domain/005.py:application_service"
 ```
 
 Load or create, call domain methods, save. The application service coordinates
@@ -623,11 +359,12 @@ Some legitimate additions to the three-line pattern:
 ### Loading Additional Data for Domain Services
 
 ```python
+# fragment
 @handle(TransferMoney)
 def transfer(self, command: TransferMoney):
     source = account_repo.get(command.from_account_id)
     policy = policy_repo.get(source.credit_policy_id)  # Extra load
-    TransferService.validate_and_debit(source, policy, command.amount, ...)
+    TransferService(source, policy).validate_and_debit(command.amount, ...)
     account_repo.add(source)
 ```
 
@@ -637,6 +374,7 @@ just orchestrating.
 ### Creating New Aggregates
 
 ```python
+# fragment
 @handle(PlaceOrder)
 def place_order(self, command: PlaceOrder):
     order = Order(
@@ -654,6 +392,7 @@ Construction with multiple `add_item` calls is orchestration, not logic.
 ### Layer 4 Guards
 
 ```python
+# fragment
 @handle(CancelOrder)
 def cancel_order(self, command: CancelOrder):
     order = repo.get(command.order_id)

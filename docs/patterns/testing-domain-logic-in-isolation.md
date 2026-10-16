@@ -5,6 +5,7 @@
 A developer writes tests for an order placement feature:
 
 ```python
+# fragment
 class TestPlaceOrder:
 
     def test_place_order(self, test_domain):
@@ -68,33 +69,14 @@ Both types of tests are valuable. But domain unit tests should be the
 
 ### Test Setup
 
-The examples below assume a `conftest.py` that uses Protean's `DomainFixture`
-to initialize the domain and provide a per-test context:
+The examples below assume a `tests/conftest.py` that uses Protean's
+`DomainFixture` to initialize the domain and provide a per-test context. The
+domain and its elements live in an `isolation_shop` package, and the tests
+import them from `isolation_shop.domain`:
 
 ```python
-# tests/conftest.py
-import pytest
-
-from protean.integrations.pytest import DomainFixture
-
-from myapp import domain
-
-
-@pytest.fixture(scope="session")
-def app_fixture():
-    domain.config["event_processing"] = "sync"
-    domain.config["command_processing"] = "sync"
-
-    fixture = DomainFixture(domain)
-    fixture.setup()
-    yield fixture
-    fixture.teardown()
-
-
-@pytest.fixture(autouse=True)
-def _ctx(app_fixture):
-    with app_fixture.domain_context():
-        yield
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/conftest.py:fixtures"
 ```
 
 With this setup, every test runs within an active domain context and all
@@ -110,37 +92,8 @@ Test aggregate methods by constructing an aggregate, calling a method, and
 asserting the resulting state:
 
 ```python
-class TestOrderPlacement:
-
-    def test_placing_a_draft_order(self, test_domain):
-        order = Order(
-            customer_id="cust-123",
-            status="draft",
-            total=50.0,
-        )
-        order.items.add(OrderItem(
-            product_id="prod-1",
-            quantity=2,
-            unit_price=25.0,
-        ))
-
-        order.place()
-
-        assert order.status == "placed"
-        assert order.placed_at is not None
-
-    def test_placing_an_already_placed_order_fails(self, test_domain):
-        order = Order(
-            customer_id="cust-123",
-            status="placed",
-            total=50.0,
-        )
-
-        with pytest.raises(ValidationError) as exc:
-            order.place()
-
-        assert "Only draft orders can be placed" in str(exc.value)
-        assert order.status == "placed"  # State unchanged
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_aggregates.py:placement"
 ```
 
 No repository, no handler, no command. Just the aggregate and its behavior.
@@ -150,46 +103,8 @@ No repository, no handler, no command. Just the aggregate and its behavior.
 Each business rule gets its own test:
 
 ```python
-class TestAccountWithdrawal:
-
-    def test_successful_withdrawal(self, test_domain):
-        account = Account(balance=1000.0, overdraft_limit=50.0)
-
-        account.withdraw(200.0)
-
-        assert account.balance == 800.0
-
-    def test_withdrawal_respects_overdraft_limit(self, test_domain):
-        account = Account(balance=100.0, overdraft_limit=50.0)
-
-        # Can withdraw up to balance + overdraft
-        account.withdraw(150.0)
-        assert account.balance == -50.0
-
-    def test_withdrawal_exceeding_overdraft_fails(self, test_domain):
-        account = Account(balance=100.0, overdraft_limit=50.0)
-
-        with pytest.raises(ValidationError) as exc:
-            account.withdraw(200.0)
-
-        assert "Insufficient funds" in str(exc.value)
-        assert account.balance == 100.0  # State unchanged
-
-    def test_negative_withdrawal_fails(self, test_domain):
-        account = Account(balance=1000.0)
-
-        with pytest.raises(ValidationError) as exc:
-            account.withdraw(-50.0)
-
-        assert "must be positive" in str(exc.value)
-
-    def test_withdrawal_from_frozen_account_fails(self, test_domain):
-        account = Account(balance=1000.0, status="frozen")
-
-        with pytest.raises(ValidationError) as exc:
-            account.withdraw(100.0)
-
-        assert "non-active account" in str(exc.value)
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_aggregates.py:account_rules"
 ```
 
 Five tests, each targeting a specific business rule. Each runs in
@@ -200,50 +115,8 @@ milliseconds. Together, they comprehensively test the withdrawal behavior.
 Verify that aggregate methods raise the correct events:
 
 ```python
-class TestOrderEvents:
-
-    def test_placing_order_raises_order_placed(self, test_domain):
-        order = Order(
-            customer_id="cust-123",
-            total=100.0,
-        )
-        order.items.add(OrderItem(
-            product_id="prod-1",
-            quantity=1,
-            unit_price=100.0,
-        ))
-
-        order.place()
-
-        assert len(order._events) == 1
-        event = order._events[0]
-        assert isinstance(event, OrderPlaced)
-        assert event.order_id == order.order_id
-        assert event.customer_id == "cust-123"
-        assert event.total == 100.0
-
-    def test_cancelling_shipped_order_raises_shipment_intercept(self, test_domain):
-        order = Order(
-            customer_id="cust-123",
-            status="shipped",
-            tracking_number="TRK-789",
-        )
-
-        order.cancel("Customer changed mind")
-
-        events = order._events
-        assert len(events) == 2
-        assert isinstance(events[0], OrderCancelled)
-        assert isinstance(events[1], ShipmentInterceptRequested)
-        assert events[1].tracking_number == "TRK-789"
-
-    def test_no_event_raised_when_operation_fails(self, test_domain):
-        order = Order(status="draft")
-
-        with pytest.raises(ValidationError):
-            order.ship("TRK-123")
-
-        assert len(order._events) == 0  # No events on failure
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_aggregates.py:events"
 ```
 
 The `_events` list on the aggregate collects events raised via `raise_()`.
@@ -256,102 +129,29 @@ This allows direct inspection without infrastructure.
 ### Construction and Validation
 
 ```python
-class TestMoney:
-
-    def test_valid_money(self, test_domain):
-        money = Money(amount=100.0, currency="USD")
-
-        assert money.amount == 100.0
-        assert money.currency == "USD"
-
-    def test_negative_amount_rejected(self, test_domain):
-        with pytest.raises(ValidationError) as exc:
-            Money(amount=-10.0, currency="USD")
-
-        assert "cannot be negative" in str(exc.value)
-
-    def test_invalid_currency_rejected(self, test_domain):
-        with pytest.raises(ValidationError) as exc:
-            Money(amount=10.0, currency="XYZ")
-
-        assert "Invalid currency" in str(exc.value)
-
-    def test_zero_amount_allowed(self, test_domain):
-        money = Money(amount=0.0, currency="USD")
-        assert money.amount == 0.0
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_value_objects.py:construction"
 ```
 
 ### Equality
 
 ```python
-class TestMoneyEquality:
-
-    def test_same_values_are_equal(self, test_domain):
-        money1 = Money(amount=100.0, currency="USD")
-        money2 = Money(amount=100.0, currency="USD")
-        assert money1 == money2
-
-    def test_different_amounts_are_not_equal(self, test_domain):
-        money1 = Money(amount=100.0, currency="USD")
-        money2 = Money(amount=200.0, currency="USD")
-        assert money1 != money2
-
-    def test_different_currencies_are_not_equal(self, test_domain):
-        money1 = Money(amount=100.0, currency="USD")
-        money2 = Money(amount=100.0, currency="EUR")
-        assert money1 != money2
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_value_objects.py:equality"
 ```
 
 ### Operations
 
 ```python
-class TestMoneyOperations:
-
-    def test_adding_same_currency(self, test_domain):
-        result = Money(amount=30.0, currency="USD").add(
-            Money(amount=20.0, currency="USD")
-        )
-        assert result == Money(amount=50.0, currency="USD")
-
-    def test_adding_different_currencies_fails(self, test_domain):
-        with pytest.raises(ValidationError) as exc:
-            Money(amount=30.0, currency="USD").add(
-                Money(amount=20.0, currency="EUR")
-            )
-        assert "Cannot add different currencies" in str(exc.value)
-
-
-class TestDateRange:
-
-    def test_contains_date(self, test_domain):
-        range_ = DateRange(
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 12, 31),
-        )
-        assert range_.contains(date(2024, 6, 15)) is True
-        assert range_.contains(date(2025, 1, 1)) is False
-
-    def test_overlapping_ranges(self, test_domain):
-        range1 = DateRange(start_date=date(2024, 1, 1), end_date=date(2024, 6, 30))
-        range2 = DateRange(start_date=date(2024, 4, 1), end_date=date(2024, 12, 31))
-        assert range1.overlaps(range2) is True
-
-    def test_non_overlapping_ranges(self, test_domain):
-        range1 = DateRange(start_date=date(2024, 1, 1), end_date=date(2024, 3, 31))
-        range2 = DateRange(start_date=date(2024, 7, 1), end_date=date(2024, 12, 31))
-        assert range1.overlaps(range2) is False
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_value_objects.py:operations"
 ```
 
 ### Immutability
 
 ```python
-class TestValueObjectImmutability:
-
-    def test_value_object_is_immutable(self, test_domain):
-        email = Email(address="user@example.com")
-
-        with pytest.raises(IncorrectUsageError):
-            email.address = "other@example.com"
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_value_objects.py:immutability"
 ```
 
 ---
@@ -360,102 +160,34 @@ class TestValueObjectImmutability:
 
 ### Post-Invariants
 
+Protean runs post-invariants when an aggregate is created and after every
+change to it. When a change breaks one, Protean undoes the change:
+
 ```python
-class TestOrderInvariants:
-
-    def test_order_must_have_items_when_placed(self, test_domain):
-        order = Order(
-            customer_id="cust-123",
-            status="placed",
-            total=50.0,
-        )
-        # No items added -- invariant should fire
-
-        with pytest.raises(ValidationError) as exc:
-            # Trigger invariant check by modifying the aggregate
-            order.status = "placed"
-
-        assert "must have at least one item" in str(exc.value)
-
-    def test_discount_cannot_exceed_total(self, test_domain):
-        with pytest.raises(ValidationError) as exc:
-            Order(
-                customer_id="cust-123",
-                total=50.0,
-                discount=75.0,
-            )
-        assert "Discount cannot exceed" in str(exc.value)
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_invariants.py:post"
 ```
 
 ### Pre-Invariants
 
+Protean runs pre-invariants before every change, against the state the
+aggregate is in at that moment. Here a closed account rejects any change:
+
 ```python
-class TestAccountInvariants:
-
-    def test_balance_must_be_above_overdraft_limit(self, test_domain):
-        account = Account(balance=100.0, overdraft_limit=50.0)
-
-        # This should fail the invariant
-        with pytest.raises(ValidationError) as exc:
-            account.balance = -100.0  # Below -50 overdraft limit
-
-        assert "below overdraft limit" in str(exc.value)
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_invariants.py:pre"
 ```
 
 ---
 
 ## Testing Domain Services
 
-Domain services coordinate logic across aggregates. Test them by passing in
-aggregate instances directly:
+Domain services coordinate logic across aggregates. Test them by building the
+service with aggregate instances directly:
 
 ```python
-class TestTransferService:
-
-    def test_valid_transfer(self, test_domain):
-        source = Account(balance=1000.0, risk_score=2)
-        policy = CreditPolicy(max_transfer_amount=5000.0, max_risk_score=5)
-
-        TransferService.validate_and_debit(
-            source=source,
-            policy=policy,
-            amount=500.0,
-            transfer_id="txn-1",
-            target_account_id="acc-2",
-        )
-
-        assert source.balance == 500.0
-
-    def test_transfer_exceeding_policy_limit(self, test_domain):
-        source = Account(balance=10000.0, risk_score=2)
-        policy = CreditPolicy(max_transfer_amount=5000.0, max_risk_score=5)
-
-        with pytest.raises(ValidationError) as exc:
-            TransferService.validate_and_debit(
-                source=source,
-                policy=policy,
-                amount=7000.0,
-                transfer_id="txn-1",
-                target_account_id="acc-2",
-            )
-
-        assert "Exceeds policy limit" in str(exc.value)
-        assert source.balance == 10000.0  # Not debited
-
-    def test_transfer_with_high_risk_score(self, test_domain):
-        source = Account(balance=1000.0, risk_score=8)
-        policy = CreditPolicy(max_transfer_amount=5000.0, max_risk_score=5)
-
-        with pytest.raises(ValidationError) as exc:
-            TransferService.validate_and_debit(
-                source=source,
-                policy=policy,
-                amount=100.0,
-                transfer_id="txn-1",
-                target_account_id="acc-2",
-            )
-
-        assert "risk score exceeds" in str(exc.value)
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_domain_services.py:services"
 ```
 
 No repositories, no handlers. Construct the aggregates, pass them to the
@@ -466,47 +198,8 @@ service, assert results.
 ## Testing Entities Within Aggregates
 
 ```python
-class TestOrderItems:
-
-    def test_adding_items(self, test_domain):
-        order = Order(customer_id="cust-123")
-
-        order.add_item(
-            product_id="prod-1",
-            product_name="Widget",
-            quantity=2,
-            unit_price=15.0,
-        )
-
-        assert len(order.items) == 1
-        assert order.items[0].product_id == "prod-1"
-        assert order.items[0].quantity == 2
-
-    def test_removing_items(self, test_domain):
-        order = Order(customer_id="cust-123")
-        order.add_item(
-            product_id="prod-1",
-            product_name="Widget",
-            quantity=2,
-            unit_price=15.0,
-        )
-
-        order.remove_item("prod-1")
-
-        assert len(order.items) == 0
-
-    def test_updating_item_quantity(self, test_domain):
-        order = Order(customer_id="cust-123")
-        order.add_item(
-            product_id="prod-1",
-            product_name="Widget",
-            quantity=2,
-            unit_price=15.0,
-        )
-
-        order.update_item_quantity("prod-1", 5)
-
-        assert order.items[0].quantity == 5
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_entities.py:entities"
 ```
 
 Entities are tested through their parent aggregate, which is how they're
@@ -517,89 +210,29 @@ accessed in production.
 ## When Integration Tests Are Needed
 
 Domain unit tests don't replace integration tests. They complement them.
-Integration tests verify that the pipeline works end-to-end:
+Integration tests verify that the pipeline works end-to-end. They use the
+domain that `conftest.py` already initialized, with its repositories and
+handlers, so they need no setup of their own:
 
 ### Repository Integration
 
 ```python
-class TestOrderPersistence:
-
-    def test_order_round_trips_through_repository(self, test_domain):
-        test_domain.register(Order)
-        test_domain.init(traverse=False)
-
-        with test_domain.domain_context():
-            repo = test_domain.repository_for(Order)
-
-            order = Order(
-                customer_id="cust-123",
-                total=100.0,
-                status="placed",
-            )
-            repo.add(order)
-
-            retrieved = repo.get(order.order_id)
-            assert retrieved.customer_id == "cust-123"
-            assert retrieved.total == 100.0
-            assert retrieved.status == "placed"
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_integration.py:persistence"
 ```
 
 ### Handler Pipeline
 
 ```python
-class TestOrderCommandHandlerIntegration:
-
-    def test_place_order_through_handler(self, test_domain):
-        # Register all elements needed for the pipeline
-        test_domain.register(Order)
-        test_domain.register(PlaceOrder, part_of=Order)
-        test_domain.register(OrderCommandHandler, part_of=Order)
-        test_domain.init(traverse=False)
-
-        with test_domain.domain_context():
-            test_domain.process(PlaceOrder(
-                order_id="ord-123",
-                customer_id="cust-456",
-                items=[{"product_id": "p-1", "quantity": 1, "unit_price": 50.0}],
-                total=50.0,
-            ))
-
-            order = test_domain.repository_for(Order).get("ord-123")
-            assert order.status == "placed"
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_integration.py:handler"
 ```
 
 ### Event Handler Integration
 
 ```python
-class TestInventoryReservationIntegration:
-
-    def test_order_placed_triggers_reservation(self, test_domain):
-        # Register all elements for the event flow
-        test_domain.register(Order)
-        test_domain.register(Inventory)
-        test_domain.register(OrderPlaced, part_of=Order)
-        test_domain.register(InventoryEventHandler, part_of=Inventory)
-        test_domain.init(traverse=False)
-
-        with test_domain.domain_context():
-            # Set up inventory
-            inventory_repo = test_domain.repository_for(Inventory)
-            inventory = Inventory(product_id="prod-1", available_quantity=100)
-            inventory_repo.add(inventory)
-
-            # Simulate the event
-            event = OrderPlaced(
-                order_id="ord-123",
-                customer_id="cust-456",
-                items=[{"product_id": "prod-1", "quantity": 5}],
-                total=50.0,
-            )
-
-            handler = InventoryEventHandler()
-            handler.on_order_placed(event)
-
-            updated = inventory_repo.get("prod-1")
-            assert updated.available_quantity == 95
+# fragment
+--8<-- "patterns/testing-domain-logic-in-isolation/test_integration.py:event_handler"
 ```
 
 ---

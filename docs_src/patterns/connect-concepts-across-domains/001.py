@@ -7,15 +7,21 @@ domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 
 
+# --8<-- [start:same-domain-events]
 @domain.event(part_of="Customer")
 class CustomerRegistered:
     customer_id: Identifier(required=True)
+    name: String(required=True)
     email: String(required=True)
 
 
 @domain.event(part_of="Customer")
 class CustomerDeactivated:
     customer_id: Identifier(required=True)
+    reason: String()
+
+
+# --8<-- [end:same-domain-events]
 
 
 # --8<-- [start:same-domain]
