@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from uuid import uuid4
 
 import pytest
@@ -7,7 +8,8 @@ from protean.core.command import BaseCommand
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
 from protean.utils import Processing, fqn
-from protean.utils.eventing import MessageEnvelope
+from protean.utils.eventing import Message, MessageEnvelope
+from protean.utils.globals import g
 
 
 class User(BaseAggregate):
@@ -216,3 +218,91 @@ class TestCommandEnvelope:
             enriched1._metadata.envelope.checksum
             == enriched2._metadata.envelope.checksum
         )
+
+
+def _root_command(test_domain, **trace_ids):
+    command = test_domain._command_processor.enrich(
+        Login(user_id=str(uuid4())), asynchronous=True
+    )
+    if not trace_ids:
+        return command
+    domain = command._metadata.domain.model_copy(update=trace_ids)
+    metadata = command._metadata.model_copy(update={"domain": domain})
+    return Login(command.payload, _metadata=metadata)
+
+
+@contextmanager
+def _in_context(message):
+    g.message_in_context = message
+    try:
+        yield message
+    finally:
+        g.pop("message_in_context", None)
+
+
+def _other_message(test_domain):
+    return Message.from_domain_object(
+        _root_command(test_domain, correlation_id="corr-X", causation_id="cause-X")
+    )
+
+
+class TestTraceIdsOnRebuildFromStoredMessage:
+    def test_root_command_keeps_empty_causation_id(self, test_domain):
+        root = _root_command(test_domain)
+        stored_correlation_id = root._metadata.domain.correlation_id
+        assert stored_correlation_id is not None
+        assert root._metadata.domain.causation_id is None
+        stored = Message.from_domain_object(root)
+
+        with _in_context(_other_message(test_domain)):
+            rebuilt = stored.to_domain_object()
+
+        assert rebuilt._metadata.domain.correlation_id == stored_correlation_id
+        assert rebuilt._metadata.domain.causation_id is None
+
+    def test_root_command_keeps_both_empty_trace_ids(self, test_domain):
+        stored = Message.from_domain_object(
+            _root_command(test_domain, correlation_id=None, causation_id=None)
+        )
+
+        with _in_context(_other_message(test_domain)):
+            rebuilt = stored.to_domain_object()
+
+        assert rebuilt._metadata.domain.correlation_id is None
+        assert rebuilt._metadata.domain.causation_id is None
+
+    def test_message_in_context_does_not_cause_itself(self, test_domain):
+        stored = Message.from_domain_object(_root_command(test_domain))
+
+        with _in_context(stored):
+            rebuilt = stored.to_domain_object()
+
+        assert stored.metadata.headers.id is not None
+        assert rebuilt._metadata.domain.causation_id != stored.metadata.headers.id
+        assert rebuilt._metadata.domain.causation_id is None
+
+    def test_direct_construction_still_inherits_context_trace_ids(self, test_domain):
+        root = _root_command(test_domain, correlation_id=None, causation_id=None)
+
+        with _in_context(_other_message(test_domain)) as other:
+            command = Login(root.payload, _metadata=root._metadata)
+
+        assert command._metadata.domain.correlation_id == "corr-X"
+        assert command._metadata.domain.causation_id == other.metadata.headers.id
+
+    def test_rebuild_flag_in_template_dict_is_not_a_field(self, test_domain):
+        root = _root_command(test_domain)
+
+        with _in_context(_other_message(test_domain)) as other:
+            command = Login(
+                {**root.payload, "_rebuild": True}, _metadata=root._metadata
+            )
+
+        assert command.user_id == root.user_id
+        assert "_rebuild" not in command.to_dict()
+        # A `_rebuild` key in the template dict does not switch on rebuild
+        assert (
+            command._metadata.domain.correlation_id
+            == root._metadata.domain.correlation_id
+        )
+        assert command._metadata.domain.causation_id == other.metadata.headers.id

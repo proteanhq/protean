@@ -85,6 +85,7 @@ class BaseEvent(BaseMessageType):
             OrderPlaced({"order_id": "abc"}, amount=100)
         """
         incoming_metadata = kwargs.pop("_metadata", None)
+        rebuild = bool(kwargs.pop("_rebuild", False))
         expected_version = kwargs.pop("_expected_version", -1)
 
         # Support template dict pattern: Event({"key": "val"}, key2="val2")
@@ -104,6 +105,7 @@ class BaseEvent(BaseMessageType):
         template_metadata = kwargs.pop("_metadata", None)
         if incoming_metadata is None:
             incoming_metadata = template_metadata
+        kwargs.pop("_rebuild", None)
         template_expected_version = kwargs.pop("_expected_version", None)
         if expected_version == -1 and template_expected_version is not None:
             expected_version = template_expected_version
@@ -118,7 +120,7 @@ class BaseEvent(BaseMessageType):
         object.__setattr__(self, "_expected_version", expected_version)
 
         # Build metadata
-        self._build_metadata(incoming_metadata)
+        self._build_metadata(incoming_metadata, rebuild=rebuild)
 
         object.__setattr__(self, "_initialized", True)
 
@@ -128,7 +130,9 @@ class BaseEvent(BaseMessageType):
                 f"`{self.__class__.__name__}` should be registered with a domain"
             )
 
-    def _build_metadata(self, incoming: Metadata | None) -> None:
+    def _build_metadata(
+        self, incoming: Metadata | None, *, rebuild: bool = False
+    ) -> None:
         """Build metadata for the event from incoming metadata or defaults."""
         origin_stream = None
         correlation_id = None
@@ -171,6 +175,18 @@ class BaseEvent(BaseMessageType):
             incoming.domain if incoming and hasattr(incoming, "domain") else None
         )
 
+        # On a rebuild, copy the stored IDs, including `None`.
+        # `g.message_in_context` holds the message being handled now, which
+        # did not cause the stored one.
+        if rebuild and existing_domain:
+            correlation_id = existing_domain.correlation_id
+            causation_id = existing_domain.causation_id
+        else:
+            if existing_domain and existing_domain.correlation_id:
+                correlation_id = existing_domain.correlation_id
+            if existing_domain and existing_domain.causation_id:
+                causation_id = existing_domain.causation_id
+
         # Build domain metadata
         domain_meta = DomainMeta(
             kind="EVENT",
@@ -186,12 +202,8 @@ class BaseEvent(BaseMessageType):
             asynchronous=existing_domain.asynchronous
             if existing_domain and hasattr(existing_domain, "asynchronous")
             else True,
-            correlation_id=existing_domain.correlation_id
-            if existing_domain and existing_domain.correlation_id
-            else correlation_id,
-            causation_id=existing_domain.causation_id
-            if existing_domain and existing_domain.causation_id
-            else causation_id,
+            correlation_id=correlation_id,
+            causation_id=causation_id,
         )
 
         # Also preserve envelope if it exists
