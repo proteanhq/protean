@@ -1043,7 +1043,7 @@ class Message(Element, BaseModel, OptionsMixin):
             element_factory = cast(
                 "Callable[..., BaseEvent | BaseCommand]", element_cls
             )
-            return element_factory(_metadata=metadata, **data)
+            return element_factory(_metadata=metadata, _rebuild=True, **data)
 
         # any failure is re-raised as DeserializationError with context
         except Exception as e:

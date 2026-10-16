@@ -246,17 +246,41 @@ class BaseDAO(metaclass=ABCMeta):
             assert last_message.metadata.event_store is not None
             entity._event_position = last_message.metadata.event_store.position
 
-    def _track_in_uow(self, entity: BaseEntity) -> None:
-        """Register the aggregate in the active Unit of Work's identity map.
+    def _track_in_uow(self, entity: BaseEntity) -> BaseEntity:
+        """Return the instance to hand back for an aggregate just loaded.
 
-        Tracking loaded aggregates lets the UoW collect domain events
-        raised during the transaction and persist them on commit.
+        Inside a Unit of Work, an aggregate already tracked there is returned
+        in place of the loaded copy. Two copies of one aggregate in one
+        transaction would each count versions and event positions from the
+        store, which has not seen the other copy's pending changes.
 
-        This is a no-op for non-aggregate entities or when there is no
-        active UoW.
+        Otherwise the loaded aggregate's event position is synced from the
+        event store and, inside a Unit of Work, the aggregate is registered so
+        that the UoW collects the events it raises and persists them on
+        commit. Non-aggregate entities are returned unchanged.
         """
-        if current_uow and entity.element_type == DomainObjects.AGGREGATE:
+        if not isinstance(entity, BaseAggregate):
+            return entity
+
+        tracked = self._tracked_in_uow(entity)
+        if tracked is not None:
+            return tracked
+
+        self._sync_event_position(entity)
+        if not self._is_standalone:
             current_uow._add_to_identity_map(entity)
+        return entity
+
+    def _tracked_in_uow(self, entity: BaseEntity) -> BaseAggregate | None:
+        """The instance of ``entity``'s aggregate that the active Unit of
+        Work tracks, if this DAO works inside one and it tracks one."""
+        if self._is_standalone or not isinstance(entity, BaseAggregate):
+            return None
+        id_f = id_field(entity)
+        assert id_f is not None and id_f.field_name is not None
+        return current_uow._tracked_instance(
+            type(entity), getattr(entity, id_f.field_name)
+        )
 
     def outside_uow(self) -> "BaseDAO":
         """When called, the DAO is instructed to work outside active transactions."""
@@ -771,7 +795,7 @@ class BaseDAO(metaclass=ABCMeta):
             # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
             #   like persisting events raised by the aggregate.
             if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
-                current_uow._add_to_identity_map(entity_obj)
+                current_uow._add_to_identity_map(entity_obj, saved=True)
 
             return entity_obj
         except ValidationError as exc:
@@ -790,8 +814,9 @@ class BaseDAO(metaclass=ABCMeta):
         if entity_obj.state_.is_persisted:
             expected_version = entity_obj._version
 
-        # Advance to the next version — the model built from this entity
-        # will carry the incremented version for the UPDATE.
+        # Advance to the next version: the model built from this entity
+        # carries it for the write. ``_next_version`` moves on only once the
+        # write is committed (see ``save`` and ``UnitOfWork.commit``).
         entity_obj._version = entity_obj._next_version
 
         return expected_version
@@ -901,12 +926,22 @@ class BaseDAO(metaclass=ABCMeta):
             # Set Entity status to saved to let everybody know it has been persisted
             entity_obj.state_.mark_saved()
 
+            # A standalone write is already committed, so match what a reload
+            # would give. Under a UoW the commit advances ``_next_version``
+            # instead: until then, events raised on this instance belong to
+            # the version this transaction writes.
+            if (
+                self._is_standalone
+                and entity_obj.element_type == DomainObjects.AGGREGATE
+            ):
+                entity_obj._next_version = entity_obj._version + 1
+
             # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
             #   like persisting events raised by the aggregate.
             if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
                 # The element may have changed from the time it was loaded or may have been
                 #   updated multiple times. We retain the last copy in seen.
-                current_uow._add_to_identity_map(entity_obj)
+                current_uow._add_to_identity_map(entity_obj, saved=True)
 
             return entity_obj
         except Exception as exc:

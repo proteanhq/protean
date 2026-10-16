@@ -184,8 +184,8 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
               → DAO._filter(criteria, offset, limit, order_by)
                 # Must return ResultSet(items, total)
               → DatabaseModel.to_entity(item)         # your conversion
-              → DAO._sync_event_position(entity)
-              → DAO._track_in_uow(entity)
+              → DAO._track_in_uow(entity)             # reuse or register
+                → DAO._sync_event_position(entity)    # when not yet tracked
 
     Lifecycle::
 

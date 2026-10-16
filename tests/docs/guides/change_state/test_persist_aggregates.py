@@ -114,5 +114,5 @@ def test_adding_a_changed_post_again_updates_it(events):
             "body": "Lorem ipsum",
             "published": False,
             "id": "1",
-            "_version": 0,
+            "_version": 1,
         }

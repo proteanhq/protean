@@ -170,7 +170,7 @@ class TestTrackInUoW:
             refreshed = test_domain.repository_for(Customer).get(customer.id)
             # The aggregate should be in the identity map
             provider_name = refreshed.meta_.provider
-            assert customer.id in uow._identity_map[provider_name]
+            assert (Customer, customer.id) in uow._identity_map[provider_name]
 
     def test_non_aggregate_not_tracked(self, test_domain):
         """Non-aggregate entities should not be tracked in the UoW."""
@@ -214,7 +214,7 @@ class TestQuerySetIntegration:
             results = test_domain.repository_for(Customer)._dao.query.all()
             assert len(results) == 1
             provider_name = results.first.meta_.provider
-            assert customer.id in uow._identity_map[provider_name]
+            assert (Customer, customer.id) in uow._identity_map[provider_name]
 
     def test_raw_syncs_event_position(self, test_domain):
         """QuerySet.raw() syncs event position (previously missing)."""
@@ -245,4 +245,4 @@ class TestQuerySetIntegration:
             )
             assert len(results) == 1
             provider_name = results.first.meta_.provider
-            assert customer.id in uow._identity_map[provider_name]
+            assert (Customer, customer.id) in uow._identity_map[provider_name]

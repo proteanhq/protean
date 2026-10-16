@@ -1,7 +1,9 @@
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import String
+from protean.core.event import BaseEvent
+from protean.core.unit_of_work import UnitOfWork
+from protean.fields import Identifier, String
 
 
 class User(BaseAggregate):
@@ -10,9 +12,19 @@ class User(BaseAggregate):
     status: String(choices=["ACTIVE", "ARCHIVED"])
 
 
+class Member(BaseAggregate):
+    name: String(max_length=50, required=True)
+
+
+class MemberJoined(BaseEvent):
+    member_id: Identifier(required=True)
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(User, fact_events=True)
+    test_domain.register(Member, fact_events=True)
+    test_domain.register(MemberJoined, part_of=Member)
     test_domain.init(traverse=False)
 
 
@@ -60,3 +72,82 @@ def test_fact_event_version_metadata_after_second_edit(test_domain):
 
     assert event._metadata.headers.id.endswith("-1.1")
     assert event._metadata.domain.sequence_id == "1.1"
+
+
+def test_fact_events_on_same_instance_carry_the_saved_version(test_domain):
+    repo = test_domain.repository_for(User)
+    user = User(name="John Doe", email="john.doe@example.com")
+    repo.add(user)
+
+    user.name = "Jane Doe"
+    repo.add(user)
+
+    event_messages = test_domain.event_store.store.read(f"test::user-fact-{user.id}")
+    assert len(event_messages) == 2
+
+    events = [message.to_domain_object() for message in event_messages]
+    assert [event._metadata.domain.sequence_id for event in events] == ["0.1", "1.1"]
+    assert events[0]._metadata.headers.id.endswith("-0.1")
+    assert events[1]._metadata.headers.id.endswith("-1.1")
+    assert events[1].name == "Jane Doe"
+
+
+def test_fact_event_follows_a_regular_event_raised_in_the_same_save(test_domain):
+    member = Member(name="John Doe")
+    member.raise_(MemberJoined(member_id=member.id))
+    test_domain.repository_for(Member).add(member)
+
+    own = test_domain.event_store.store.read(f"test::member-{member.id}")
+    fact = test_domain.event_store.store.read(f"test::member-fact-{member.id}")
+    assert len(own) == 1
+    assert len(fact) == 1
+
+    assert own[0].to_domain_object()._metadata.headers.id == (
+        f"test::member-{member.id}-0.1"
+    )
+    assert fact[0].to_domain_object()._metadata.headers.id == (
+        f"test::member-fact-{member.id}-0.2"
+    )
+
+
+def _joined_positions(test_domain, member):
+    messages = test_domain.event_store.store.read(f"test::member-{member.id}")
+    return [message.metadata.event_store.position for message in messages]
+
+
+def test_a_fact_event_does_not_move_the_aggregate_stream_position(test_domain):
+    member = Member(name="John Doe")
+    member.raise_(MemberJoined(member_id=member.id))
+    test_domain.repository_for(Member).add(member)
+
+    assert member._event_position == 0
+
+
+def test_an_instance_with_fact_events_raises_again_after_a_save(test_domain):
+    repo = test_domain.repository_for(Member)
+    member = Member(name="John Doe")
+    member.raise_(MemberJoined(member_id=member.id))
+    repo.add(member)
+
+    member.name = "Jane Doe"
+    member.raise_(MemberJoined(member_id=member.id))
+    repo.add(member)
+
+    assert _joined_positions(test_domain, member) == [0, 1]
+
+
+def test_an_instance_with_fact_events_saves_twice_in_one_unit_of_work(test_domain):
+    repo = test_domain.repository_for(Member)
+    member = Member(name="John Doe")
+    repo.add(member)
+
+    with UnitOfWork():
+        loaded = repo.get(member.id)
+        loaded.raise_(MemberJoined(member_id=member.id))
+        repo.add(loaded)
+
+        loaded.name = "Jane Doe"
+        loaded.raise_(MemberJoined(member_id=member.id))
+        repo.add(loaded)
+
+    assert _joined_positions(test_domain, member) == [0, 1]

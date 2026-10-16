@@ -12,7 +12,7 @@ traffic.
 Consider this scenario: your e-commerce platform has been running for months.
 You need to backfill a `loyalty_tier` field onto 500,000 existing customer
 records. The migration script loads each customer, sets the tier, and saves,
-producing 500,000 `CustomerUpdated` events.
+producing 500,000 `LoyaltyTierAssigned` events.
 
 Those events flood the same Redis Stream that handles real-time customer
 registrations, order placements, and payment confirmations. The Engine processes
@@ -26,7 +26,7 @@ Without priority lanes:
   Production event ──┐
   Migration event  ──┤
   Migration event  ──┤──► Single Redis Stream ──► [Processed in FIFO order]
-  Production event ──┤      "customer"             Migration events block
+  Production event ──┤      "identity::customer"   Migration events block
   Migration event  ──┘                              production traffic
 ```
 
@@ -51,11 +51,11 @@ them accordingly.
 ```
 With priority lanes:
 
-  Production events ──► Outbox(priority=0)  ──► "customer"           ──► [Drained first]
-                                                                           Non-blocking read
-                                                                                │
-  Migration events  ──► Outbox(priority=-50) ──► "customer:backfill" ──► [Drained when idle]
-                                                                           Only when primary empty
+  Production events ──► Outbox(priority=0)  ──► "identity::customer"           ──► [Drained first]
+                                                                                     Non-blocking read
+                                                                                          │
+  Migration events  ──► Outbox(priority=-50) ──► "identity::customer:backfill" ──► [Drained when idle]
+                                                                                     Only when primary empty
 ```
 
 The migration script does not need to know about streams, consumer groups, or
@@ -86,8 +86,8 @@ with processing_priority(Priority.LOW):
 
 The OutboxProcessor checks each message's priority against a configurable
 threshold (default: 0). Messages below the threshold are published to the
-backfill stream (e.g., `customer:backfill`) instead of the primary stream
-(e.g., `customer`).
+backfill stream (here `identity::customer:backfill`) instead of the primary
+stream (`identity::customer`).
 
 ### 3. StreamSubscription Draining
 
@@ -108,103 +108,21 @@ For the full configuration and priority level reference, see
 
 ### A Complete Migration Script
 
-Here is a migration script that backfills a `loyalty_tier` field on existing
-customer records. The key is wrapping all `domain.process()` calls inside a
-`processing_priority(Priority.LOW)` context manager.
+The script works on this `Customer` aggregate. Priority lanes are switched on
+in the domain's configuration:
 
 ```python
-#!/usr/bin/env python
-"""migrate_loyalty_tiers.py
+--8<-- "patterns/running-data-migrations-with-priority-lanes/001.py:model"
+```
 
-Backfill loyalty_tier on all existing customers based on their
-total lifetime spend. Uses Priority.LOW so that events produced
-by this script are routed to the backfill lane.
-"""
+Here is a migration script that backfills a `loyalty_tier` field on existing
+customer records. The key is wrapping all `domain.process()` calls inside a
+`processing_priority(Priority.LOW)` context manager. The script reads
+customers one page at a time, because a query returns at most 100 records
+unless you set a limit.
 
-import logging
-import sys
-import time
-
-from my_app.identity.domain import identity as domain
-from my_app.identity.customer import Customer, UpdateCustomerTier
-from protean.utils.processing import processing_priority, Priority
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-)
-logger = logging.getLogger(__name__)
-
-TIER_THRESHOLDS = [
-    (10000, "platinum"),
-    (5000, "gold"),
-    (1000, "silver"),
-    (0, "bronze"),
-]
-
-
-def determine_tier(lifetime_spend: float) -> str:
-    for threshold, tier in TIER_THRESHOLDS:
-        if lifetime_spend >= threshold:
-            return tier
-    return "bronze"
-
-
-def run_migration(batch_size: int = 100, dry_run: bool = False):
-    domain.init()
-
-    with domain.domain_context():
-        repo = domain.repository_for(Customer)
-        customers = repo.query.all()
-
-        total = len(customers)
-        logger.info(f"Found {total} customers to migrate")
-
-        if dry_run:
-            logger.info("Dry run mode -- no changes will be made")
-            return
-
-        migrated = 0
-        errors = 0
-        start_time = time.time()
-
-        # Wrap the entire migration in a LOW priority context.
-        # Every command processed inside this block will produce
-        # events tagged with priority=-50, routed to backfill.
-        with processing_priority(Priority.LOW):
-            for i, customer in enumerate(customers):
-                try:
-                    tier = determine_tier(customer.lifetime_spend)
-                    domain.process(UpdateCustomerTier(
-                        customer_id=customer.id,
-                        loyalty_tier=tier,
-                    ))
-                    migrated += 1
-                except Exception as exc:
-                    logger.error(
-                        f"Failed to migrate customer {customer.id}: {exc}"
-                    )
-                    errors += 1
-
-                if (i + 1) % batch_size == 0:
-                    elapsed = time.time() - start_time
-                    rate = (i + 1) / elapsed if elapsed > 0 else 0
-                    logger.info(
-                        f"Progress: {i + 1}/{total} "
-                        f"({rate:.0f} records/sec, "
-                        f"{migrated} migrated, {errors} errors)"
-                    )
-
-        elapsed = time.time() - start_time
-        logger.info(
-            f"Migration complete: {migrated}/{total} migrated, "
-            f"{errors} errors, {elapsed:.1f}s elapsed"
-        )
-
-
-if __name__ == "__main__":
-    dry_run = "--dry-run" in sys.argv
-    run_migration(dry_run=dry_run)
+```python
+--8<-- "patterns/running-data-migrations-with-priority-lanes/001.py:script"
 ```
 
 ### Running the Script
@@ -229,33 +147,45 @@ python migrate_loyalty_tiers.py
 
 2. **The OutboxProcessor** reads these outbox records and checks
    `message.priority < threshold` (default threshold is 0). Since -50 < 0, the
-   events are published to `customer:backfill` instead of `customer`.
+   events are published to `identity::customer:backfill` instead of
+   `identity::customer`.
 
-3. **The StreamSubscription** first does a non-blocking read on `customer`
-   (primary). Only when the primary stream is empty does it read
-   `customer:backfill`, in one blocking read that waits on both streams.
-   Production events are always processed first.
+3. **The StreamSubscription** first does a non-blocking read on
+   `identity::customer` (primary). Only when the primary stream is empty does
+   it read `identity::customer:backfill`, in one blocking read that waits on
+   both streams. Production events are always processed first.
 
-4. **No handler changes needed**: The `CustomerProjector` processes events
-   identically regardless of which lane they arrived on.
+4. **No handler changes needed**: A projector processes events identically
+   regardless of which lane they arrived on.
 
 ### Monitoring During the Migration
 
-Monitor the backfill stream length to track progress:
+Watch the consumer groups on both streams to track progress:
 
 ```bash
-# Primary -- should stay near 0 during migration
-redis-cli XLEN customer
+# Primary -- lag should stay near 0 during migration
+redis-cli XINFO GROUPS identity::customer
 
-# Backfill -- will grow during migration, drain after
-redis-cli XLEN customer:backfill
+# Backfill -- lag grows during migration, then drains
+redis-cli XINFO GROUPS identity::customer:backfill
 ```
 
-When the backfill stream returns `0`, all migration events have been processed.
+`lag` (Redis 7 and later) is the number of entries the group has not read
+yet. `pending` is the number it has read but not acknowledged. When both are
+`0` for every group on the backfill stream, every event published to it has
+been handled. `XLEN` does not tell you this: it counts every entry still
+stored in the stream, read or not.
+
+Zero lag does not mean the migration succeeded. Outbox records may still be
+waiting to be published, and a message whose handler failed is acknowledged
+once it moves to the dead-letter stream (`identity::customer:backfill:dlq`).
+Treat the migration as done only when the outbox has no unpublished records
+and the dead-letter stream holds no migration events.
 
 If you are running the [Observatory](../reference/server/observability.md),
-look for `outbox.published` traces with `stream=customer:backfill` to confirm
-migration events are being routed correctly.
+`outbox.published` traces show each migration event as it is published. Their
+`stream` field is the stream category (`identity::customer`), not the backfill
+stream, so use `XINFO GROUPS` above to confirm which lane the events went to.
 
 ---
 
@@ -264,6 +194,7 @@ migration events are being routed correctly.
 ### Running migrations directly against the database
 
 ```python
+# fragment
 # BAD: Bypasses the domain model entirely
 db.execute("UPDATE customers SET loyalty_tier = 'gold' WHERE ...")
 ```

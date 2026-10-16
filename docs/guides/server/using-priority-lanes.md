@@ -51,7 +51,7 @@ created:
 
 ```
 DEBUG: Initialized priority lanes for CustomerProjector:
-       primary='customer', backfill='customer:backfill'
+       primary='crm::customer', backfill='crm::customer:backfill'
 ```
 
 ---
@@ -73,7 +73,9 @@ event produced inside the block is tagged with the specified priority:
 ```
 
 Use `Priority.LOW` for most batch jobs. Use `Priority.BULK` for the lowest
-priority work (mass imports, full re-projections).
+priority work, such as mass imports. A projection rebuild with
+`domain.rebuild_projection()` reads the event store directly and does not go
+through the broker, so no priority applies to it.
 
 ### Explicit Parameter
 
@@ -90,18 +92,31 @@ The explicit parameter takes precedence over any active context manager.
 
 ## Verify That Routing Works
 
-### Check Stream Lengths
+### Check Consumer Group Lag
 
-The primary stream length should stay near zero while backfill work is running.
-The backfill stream will grow during the batch and drain after it completes:
+Stream names are `<domain>::<stream category>`, so the `Customer` stream of
+the `CRM` domain is `crm::customer`. Watch the consumer groups on both
+streams:
 
 ```bash
-# Primary -- should stay near 0
-redis-cli XLEN customer
+# Primary -- lag should stay near 0
+redis-cli XINFO GROUPS crm::customer
 
-# Backfill -- grows during batch, drains after
-redis-cli XLEN customer:backfill
+# Backfill -- lag grows during the batch, then drains
+redis-cli XINFO GROUPS crm::customer:backfill
 ```
+
+`lag` (Redis 7 and later) is the number of entries the group has not read
+yet. `pending` is the number it has read but not acknowledged. When both are
+`0` for every group on the backfill stream, every event published to it has
+been handled. `XLEN` does not tell you this: it counts every entry still
+stored in the stream, read or not.
+
+Zero lag does not mean the batch succeeded. Outbox records may still be
+waiting to be published (see below), and a message whose handler failed is
+acknowledged once it moves to the dead-letter stream
+(`crm::customer:backfill:dlq`). Treat the batch as done only when the outbox
+has no unpublished records and the dead-letter stream holds no batch events.
 
 ### Check Outbox Records
 
@@ -134,7 +149,7 @@ Batch events should have a negative priority value (e.g., `-50` for
 2. Check that the backfill consumer group exists:
 
 ```bash
-redis-cli XINFO GROUPS customer:backfill
+redis-cli XINFO GROUPS crm::customer:backfill
 ```
 
 If no groups are listed, restart the Engine. It creates the backfill consumer
@@ -146,7 +161,7 @@ Events may have been produced by a different version of the domain model. Check
 the dead letter queue:
 
 ```bash
-redis-cli XRANGE customer:backfill:dlq - + COUNT 5
+redis-cli XRANGE crm::customer:backfill:dlq - + COUNT 5
 ```
 
 If the events have an outdated schema, write an

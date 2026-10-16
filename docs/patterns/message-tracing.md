@@ -52,20 +52,19 @@ PlaceOrder [corr=X, cause=None]              <-- root command
 
 The `correlation_id` should be generated as early as possible, ideally by the caller (API
 gateway, frontend, CLI). This lets you trace a request from the moment it
-enters the system:
+enters the system.
+
+The examples on this page use this ordering domain. Commands are processed
+synchronously, so `domain.process()` returns the command handler's result:
 
 ```python
-# In your FastAPI endpoint
-@router.post("/orders")
-async def place_order(request: PlaceOrderRequest):
-    correlation_id = request.headers.get(
-        "X-Correlation-ID",
-        uuid4().hex,  # Fallback: generate at the API boundary
-    )
-    domain.process(
-        PlaceOrder(**request.dict()),
-        correlation_id=correlation_id,
-    )
+--8<-- "patterns/message-tracing/001.py:model"
+```
+
+A FastAPI endpoint reads the caller's ID from the `X-Correlation-ID` header:
+
+```python
+--8<-- "patterns/message-tracing/001.py:endpoint"
 ```
 
 If no external `correlation_id` is provided, Protean generates one
@@ -131,6 +130,7 @@ The outbox stores `correlation_id` and `causation_id` as indexed columns
 alongside the full message metadata. This enables efficient queries:
 
 ```python
+# fragment
 # Find all messages from a business operation
 outbox_repo.find_by_correlation_id("a1b2c3d4...")
 
@@ -143,19 +143,7 @@ outbox_repo.find_by_causation_id("myapp::order-abc123-0.1")
 The event store provides methods to traverse causation chains programmatically:
 
 ```python
-store = domain.event_store.store
-
-# Walk UP from a message to the root command
-chain = store.trace_causation(event_message)
-# Returns [root_command, ..., target_message]
-
-# Walk DOWN from a command to find all its effects
-effects = store.trace_effects(command_message)
-# Returns downstream events/commands in chronological order
-
-# Build the full tree for a correlation ID
-root = store.build_causation_tree("a1b2c3d4...")
-# Returns a CausationNode with .children recursively populated
+--8<-- "patterns/message-tracing/001.py:causation_api"
 ```
 
 These methods answer the three debugging questions directly:
@@ -203,55 +191,36 @@ Generate IDs at the Protean boundary only when:
 ## Multi-Service Tracing
 
 When one Protean service consumes events from another (via subscribers), the
-`correlation_id` from the source event should be forwarded:
+`correlation_id` from the source event should be forwarded. A subscriber
+receives the published message as a `dict`:
 
 ```python
-@domain.subscriber(stream="payments")
-class PaymentSubscriber:
-    def __call__(self, message: dict) -> None:
-        # Extract correlation_id from the incoming event's domain metadata
-        correlation_id = message["metadata"]["domain"].get("correlation_id")
-
-        domain.process(
-            ConfirmPayment(order_id=message["data"]["order_id"]),
-            correlation_id=correlation_id,
-        )
+--8<-- "patterns/message-tracing/001.py:subscriber"
 ```
 
-This stitches the causal chain across service boundaries.
+This stitches the causal chain across service boundaries. When the Engine
+delivers a broker message, it already puts the message's `correlation_id` in
+context before it calls the subscriber, so a command the subscriber processes
+picks it up. Passing it explicitly keeps the link when the subscriber runs some
+other way, such as a direct call in a test or a script. The Engine looks for
+the ID at `metadata.domain.correlation_id`, then `metadata.correlation_id`,
+then a top-level `correlation_id`. A message with none of these starts a new
+chain with a generated ID.
 
 ## Testing Trace Propagation
 
-Protean's test DSL supports explicit correlation IDs:
+Protean's test DSL runs a command through `given(...).process()` and records
+the events it raised, with their trace metadata:
 
 ```python
-from protean.testing import given
-
-result = (
-    given(Order)
-    .when(PlaceOrder(customer_id="cust-1", items=[...]))
-    .then_events(OrderPlaced)
-)
-
-# Verify correlation_id was generated
-corr_id = result.events[0]._metadata.domain.correlation_id
-assert corr_id is not None
-assert len(corr_id) == 32  # UUID4 hex
-
-# Verify causation chain
-assert result.events[0]._metadata.domain.causation_id is not None
+--8<-- "patterns/message-tracing/001.py:dsl_generated"
 ```
 
-For multi-step chains, forward the correlation ID explicitly:
+For multi-step chains, pass the correlation ID to the next `process()` call
+explicitly:
 
 ```python
-result2 = result.process(
-    ReserveInventory(order_id=result.aggregate.id),
-    correlation_id=corr_id,
-)
-
-# Same correlation_id, different causation_id
-assert result2.events[0]._metadata.domain.correlation_id == corr_id
+--8<-- "patterns/message-tracing/001.py:dsl_forward"
 ```
 
 ## Key Takeaways

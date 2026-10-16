@@ -198,7 +198,14 @@ def test_a_use_case_runs_once_on_a_version_conflict():
     assert len(runs) == 1
 
 
-def test_a_state_based_get_enters_the_map_but_returns_a_new_object():
+def test_the_repository_page_says_a_get_returns_the_tracked_instance():
+    text = _page("repository/references/unit-of-work.md")
+
+    assert "returns the same object, with any changes made to it since" in text
+    assert "two separate objects" not in text
+
+
+def test_a_get_in_a_unit_of_work_returns_the_instance_already_tracked():
     domain, Order, *_ = _domain()
 
     with domain.domain_context():
@@ -207,7 +214,9 @@ def test_a_state_based_get_enters_the_map_but_returns_a_new_object():
 
         with UnitOfWork() as uow:
             first = domain.repository_for(Order).get(order.id)
+            first.name = "changed"
             second = domain.repository_for(Order).get(order.id)
 
-            assert order.id in uow._identity_map[Order.meta_.provider]
-            assert first is not second
+            assert (Order, order.id) in uow._identity_map[Order.meta_.provider]
+            assert second is first
+            assert second.name == "changed"

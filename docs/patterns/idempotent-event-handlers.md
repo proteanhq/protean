@@ -214,8 +214,10 @@ window (e.g., keep only the last 1000 or entries from the last 24 hours).
 
 ### Use Event Sequence Numbers
 
-When events come from a stream with guaranteed ordering, the stream position
-itself can serve as a deduplication marker:
+When a handler reads events in event store order, the event's global position
+can serve as a deduplication marker. The global position grows across the whole
+store. The stream position (`event_store.position`) restarts at 0 for each
+aggregate, so it cannot serve as one watermark shared by several aggregates:
 
 ```python
 @domain.event_handler(part_of=ProjectionState)
@@ -226,8 +228,8 @@ class ProjectionStateHandler(BaseEventHandler):
         repo = current_domain.repository_for(ProjectionState)
         state = repo.get("order-projection")
 
-        # Use stream position for deduplication
-        event_position = event._metadata.headers.sequence
+        # Use the store-wide global position for deduplication
+        event_position = event._metadata.event_store.global_position
         if event_position <= state.last_processed_position:
             return  # Already processed or older
 
