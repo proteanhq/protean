@@ -351,6 +351,13 @@ class TestOriginStreamOnRebuildFromStoredMessage:
 
         assert rebuilt._metadata.domain.origin_stream == "test::stream-a"
 
+    def test_stored_origin_stream_kept_with_no_message_in_context(self, test_domain):
+        stored = _with_origin_stream(_root_command(test_domain), "test::stream-a")
+
+        rebuilt = stored.to_domain_object()
+
+        assert rebuilt._metadata.domain.origin_stream == "test::stream-a"
+
     def test_direct_construction_still_takes_origin_stream_from_context(
         self, test_domain
     ):
