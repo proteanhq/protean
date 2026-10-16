@@ -3,18 +3,20 @@
 import copy
 import logging
 import math
-from collections.abc import Iterator, KeysView
+from collections.abc import Callable, Iterator, KeysView
 from typing import TYPE_CHECKING, Any
 
 from protean._deprecation import warn_from_registry
 from protean.exceptions import NotSupportedError
 from protean.fields.resolved import serialize_custom_value
 from protean.port.provider import DatabaseCapabilities
+from protean.utils.globals import _find_uow
 from protean.utils.query import Q
 from protean.utils.reflection import attributes, fields, id_field
 
 if TYPE_CHECKING:
     from protean.core.entity import BaseEntity
+    from protean.core.unit_of_work import UnitOfWork
     from protean.domain import Domain
     from protean.port.dao import BaseDAO
 
@@ -64,6 +66,9 @@ class QuerySet:
         self._entity_cls = entity_cls
         self._criteria = criteria or Q()
         self._result_cache: ResultSet | None = None
+        # The transaction the cache was filled in, and how to fill it again.
+        self._result_cache_transaction: object | None = None
+        self._refill_cache: Callable[[], ResultSet] | None = None
         self._offset = offset or 0
 
         # Field selection set via ``only()``. ``None`` means "fetch full
@@ -365,7 +370,7 @@ class QuerySet:
             results.items = self._owner_dao.database_model_cls.to_records(
                 results.items, self._only_fields
             )
-            self._result_cache = results
+            self._cache(results, lambda: self.all(with_total=with_total))
             return results
 
         # Convert the returned results to entity and return it
@@ -382,8 +387,7 @@ class QuerySet:
 
         results.items = entity_items
 
-        # Cache results
-        self._result_cache = results
+        self._cache(results, lambda: self.all(with_total=with_total))
 
         return results
 
@@ -485,8 +489,7 @@ class QuerySet:
             entity_items.append(entity)
         results.items = entity_items
 
-        # Cache results
-        self._result_cache = results
+        self._cache(results, lambda: self.raw(query, data))
 
         return results
 
@@ -515,19 +518,43 @@ class QuerySet:
     # Python Magic method support #
     ###############################
 
+    def _active_uow(self) -> "UnitOfWork | None":
+        """The Unit of Work this QuerySet's DAO reads through, if any."""
+        return None if self._owner_dao._is_standalone else _find_uow()
+
+    def _cache(self, results: "ResultSet", refill: Callable[[], "ResultSet"]) -> None:
+        uow = self._active_uow()
+        self._result_cache = results
+        self._result_cache_transaction = uow._transaction if uow else None
+        self._refill_cache = refill
+
     @property
     def _data(self) -> "ResultSet":
-        active_data = self._result_cache if self._result_cache else self.all()
-        # A copy of an aggregate the Unit of Work tracks would be a second
-        # instance of it in the transaction, so those are handed out as is.
-        memo: dict[int, Any] = {
-            id(item): item
-            for item in active_data.items
-            if self._owner_dao._tracked_in_uow(item) is item
-        }
-        temp_data = copy.deepcopy(active_data, memo)
+        uow = self._active_uow()
+        transaction = uow._transaction if uow else None
+        if not self._result_cache:
+            active_data = self.all()
+        elif self._result_cache_transaction is not transaction:
+            # A cache filled in another transaction, or outside one, holds
+            # what was stored then and instances this transaction does not
+            # track, so the query runs again for this one.
+            assert self._refill_cache is not None
+            active_data = self._refill_cache()
+        else:
+            active_data = self._result_cache
 
-        return temp_data
+        if uow is None:
+            return copy.deepcopy(active_data)
+
+        # A copy of an aggregate the Unit of Work tracks would be a second
+        # instance of it in the transaction, so the tracked instance is handed
+        # out in its place.
+        memo: dict[int, Any] = {}
+        for item in active_data.items:
+            tracked = self._owner_dao._tracked_in_uow(item)
+            if tracked is not None:
+                memo[id(item)] = tracked
+        return copy.deepcopy(active_data, memo)
 
     def __iter__(self) -> Any:
         """Return results on iteration"""

@@ -442,9 +442,17 @@ of the copy it just loaded.
 
 Reading a QuerySet without calling `all()` (iterating it, indexing it, or
 reading `first`, `last` or `items`) hands out a deep copy of the cached
-results, so changing one result does not change the next read. An aggregate
-the identity map tracks is the exception: it is handed out as is, so these
-reads return the same instance that `all()` does.
+results, so changing one result does not change the next read. Inside a Unit
+of Work, aggregates are the exception: a read hands out the instance the
+identity map tracks, the same instance that `all()` and `get()` return. Other
+results, such as entities that are not aggregates, are still copied.
+
+The cache belongs to the transaction it was filled in, or to no transaction
+when it was filled outside a Unit of Work. When a QuerySet is read in a
+different transaction, for example a QuerySet evaluated before a Unit of Work
+began and read inside it, or read again after its Unit of Work ended, the
+query runs again. The read then returns what is stored now, and the
+aggregates it loads are tracked by the current Unit of Work.
 
 **Key source file:** `src/protean/core/queryset.py`
 
