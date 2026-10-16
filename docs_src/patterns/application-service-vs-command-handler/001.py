@@ -4,6 +4,7 @@ domain = Domain(name="ApplicationServiceRegistration")
 
 # --8<-- [start:user_service]
 import hashlib
+import os
 from datetime import UTC, datetime
 
 from protean import current_domain
@@ -38,7 +39,9 @@ class User:
         )
 
     def _hash_password(self, password: str) -> str:
-        return hashlib.sha256(password.encode()).hexdigest()
+        salt = os.urandom(16)
+        digest = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
+        return f"{salt.hex()}:{digest.hex()}"
 
 
 @domain.event(part_of=User)

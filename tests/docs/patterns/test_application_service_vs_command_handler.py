@@ -43,7 +43,11 @@ def test_register_user_returns_the_registered_user(users):
     assert user.user_id is not None
     assert user.email == "jane@example.com"
     assert user.status == "active"
-    assert user.password_hash == hashlib.sha256(b"s3cret").hexdigest()
+    salt, digest = user.password_hash.split(":")
+    assert (
+        digest
+        == hashlib.scrypt(b"s3cret", salt=bytes.fromhex(salt), n=2**14, r=8, p=1).hex()
+    )
     assert user.registered_at is not None
 
 
