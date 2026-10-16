@@ -1,4 +1,6 @@
 # --8<-- [start:event_handler]
+from collections import Counter
+
 from protean import Domain, current_domain, handle
 from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ValidationError
@@ -47,13 +49,15 @@ class Inventory:
 class InventoryEventHandler(BaseEventHandler):
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(Inventory)
+        # reserve() runs once per order, so repeated lines are combined first
+        quantities = Counter()
         for item in event.items:
-            inventory = repo.get(item["product_id"])
-            inventory.reserve(
-                order_id=event.order_id,
-                quantity=item["quantity"],
-            )
+            quantities[item["product_id"]] += item["quantity"]
+
+        repo = current_domain.repository_for(Inventory)
+        for product_id, quantity in quantities.items():
+            inventory = repo.get(product_id)
+            inventory.reserve(order_id=event.order_id, quantity=quantity)
             repo.add(inventory)
 
 

@@ -465,6 +465,37 @@ def test_order_placed_for_too_much_stock_is_rejected_by_the_aggregate(warehouse)
     assert (stored.available, stored.reserved) == (1, 0)
 
 
+def test_order_placed_combines_repeated_lines_for_one_product(warehouse):
+    _stock(warehouse, "prod-1", 5)
+
+    _place(
+        warehouse,
+        [
+            {"product_id": "prod-1", "quantity": 2},
+            {"product_id": "prod-1", "quantity": 3},
+        ],
+    )
+
+    stored = warehouse.domain.repository_for(warehouse.Inventory).get("prod-1")
+    assert (stored.available, stored.reserved) == (0, 5)
+
+
+def test_repeated_lines_over_stock_are_rejected_and_stock_is_unchanged(warehouse):
+    _stock(warehouse, "prod-1", 4)
+
+    with pytest.raises(TransactionError, match="Only 4 units of prod-1 left"):
+        _place(
+            warehouse,
+            [
+                {"product_id": "prod-1", "quantity": 2},
+                {"product_id": "prod-1", "quantity": 3},
+            ],
+        )
+
+    stored = warehouse.domain.repository_for(warehouse.Inventory).get("prod-1")
+    assert (stored.available, stored.reserved) == (4, 0)
+
+
 def test_reserve_twice_for_one_order_reserves_once(warehouse):
     inventory = warehouse.Inventory(product_id="prod-1", available=5)
 
