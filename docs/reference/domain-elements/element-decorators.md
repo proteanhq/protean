@@ -60,7 +60,6 @@ logic, enforce invariants, and own the transaction lifecycle.
 | `provider` | `"default"` | Database provider name |
 | `schema_name` | `snake_case(cls)` | Table or collection name |
 | `stream_category` | `snake_case(cls)` | Message stream category |
-| `database_model` | `None` | Custom database model class |
 | `limit` | `100` | Default query result limit |
 | `reserved` | `()` | Names of removed fields that must never be reused. On an event-sourced aggregate, this earns the `field_removed` change a safe rating in `protean ir diff` and drops assignments to the name, and calls to its `add_<name>`/`remove_<name>` helpers, during replay. Child entities those calls would have added are dropped with them. See [Removing a field from an event-sourced aggregate](../migration/v0-18.md#removing-a-field-from-an-event-sourced-aggregate-needs-reserved) |
 
@@ -88,7 +87,6 @@ accessed through their parent aggregate and cannot exist independently.
 | `indexes` | `()` | List of [`Index`](indexes.md) declarations for the persistence layer |
 | `provider` | `"default"` | Database provider name |
 | `schema_name` | `snake_case(cls)` | Table or collection name |
-| `database_model` | `None` | Custom database model class |
 | `limit` | `100` | Default query result limit |
 
 Guide: [Entities](../../guides/domain-definition/entities.md) ·
@@ -275,7 +273,6 @@ fields (`Reference`, `HasOne`, `HasMany`) are not allowed.
 | `provider` | `"default"` | Database provider name |
 | `cache` | `None` | Cache provider (takes precedence over `provider`) |
 | `schema_name` | `snake_case(cls)` | Table or collection name |
-| `database_model` | `None` | Custom database model class |
 | `indexes` | `()` | List of [`Index`](indexes.md) declarations for the persistence layer |
 | `order_by` | `()` | Default field ordering |
 | `limit` | `100` | Default query result limit |

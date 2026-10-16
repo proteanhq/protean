@@ -32,7 +32,6 @@ and schema behavior:
 | `order_by` | `()` | Default field ordering for queries (e.g. `("-placed_at",)`) |
 | `limit` | `100` | Default maximum number of results returned by queries |
 | `abstract` | `False` | When `True`, the projection cannot be instantiated, use as a base class |
-| `database_model` | `None` | Custom database model class for advanced schema control |
 | `externally_populated` | `False` | When `True`, declares that a subscriber or event handler populates this projection (the anti-corruption-layer / cross-domain pattern) rather than a co-located `@projector`. Suppresses the `PROJECTION_WITHOUT_PROJECTOR` check warning |
 
 !!! warning "Default `limit=100` caps query results"

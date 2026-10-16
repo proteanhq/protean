@@ -377,7 +377,6 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     _default_options: ClassVar[list[tuple[str, Any]]] = [
         ("aggregate_cluster", None),
         ("auto_add_id_field", True),
-        ("database_model", None),
         ("indexes", ()),
         ("part_of", None),
         ("provider", "default"),

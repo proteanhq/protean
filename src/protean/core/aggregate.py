@@ -132,7 +132,6 @@ class BaseAggregate(BaseEntity):
         ("fact_events", False),
         ("indexes", ()),
         ("is_event_sourced", False),
-        ("database_model", None),
         ("provider", "default"),
         (
             "schema_name",
