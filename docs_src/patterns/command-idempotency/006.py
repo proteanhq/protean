@@ -10,10 +10,16 @@ domain = Domain(name="Transfers")
 class Account:
     account_id: Identifier(identifier=True)
     balance: Float(default=0.0)
+    debited_transfers: List(content_type=String)
     credited_transfers: List(content_type=String)
 
     def debit(self, amount: float, transfer_id: str, to_account: str) -> None:
+        # The source account remembers which transfers it has sent, so a
+        # repeated TransferMoney debits it and raises MoneyDebited only once.
+        if transfer_id in self.debited_transfers:
+            return
         self.balance -= amount
+        self.debited_transfers.append(transfer_id)
         self.raise_(
             MoneyDebited(
                 transfer_id=transfer_id,

@@ -187,9 +187,9 @@ window (e.g., keep only the last 1000 or entries from the last 24 hours).
 
 ### Use Event Sequence Numbers
 
-When a handler reads events in event store order, the event's global position
-can serve as a deduplication marker. The global position grows across the whole
-store. The stream position (`event_store.position`) restarts at 0 for each
+When a handler reads events strictly in event store order, the event's global
+position can serve as a deduplication marker. The global position grows across
+the whole store. The stream position (`event_store.position`) restarts at 0 for each
 aggregate, so it cannot serve as one watermark shared by several aggregates:
 
 ```python
@@ -198,6 +198,13 @@ aggregate, so it cannot serve as one watermark shared by several aggregates:
 
 This is particularly useful for projectors that rebuild from an event stream
 and need to track their position.
+
+Use the watermark only where processing stops at the first failure, such as a
+rebuild that halts on an error. A live event store subscription does not work
+that way. With recovery on (the default), it records a failed event, moves on to
+newer events, and retries the failed one later. By then the watermark has moved
+past the failed event's position, so the handler skips it and the order is never
+counted. For a live handler, track processed event IDs instead.
 
 ---
 
@@ -280,8 +287,12 @@ A separate process sends pending notifications and marks them as sent:
 --8<-- "patterns/idempotent-event-handlers/002.py:sender"
 ```
 
-Each pending notification is sent once and then marked as sent, so a later run
-of `send_pending_notifications` does not send it again.
+Once a notification is marked as sent and saved, a later run of
+`send_pending_notifications` does not send it again. The sender calls the
+provider before it saves the status. If the save fails or the process stops
+between the two, the notification stays pending and the next run sends it
+again. To rule that out, pass the notification's ID to the provider as an
+idempotency key, if the provider supports one.
 
 ---
 
@@ -388,7 +399,7 @@ deduplication).
 | Set-based operations | Handler sets state, doesn't accumulate | Low | High |
 | Check-before-act | Additive operations, moderate volume | Medium | High |
 | Processed event tracking | Multiple event types, need audit trail | Medium | High |
-| Global position tracking | Handlers that read events in store order | Medium | Medium |
+| Global position tracking | Rebuilds that stop at the first failure | Medium | Medium |
 | Upsert | Creating or updating projections | Low | High |
 | Status flags | External side effects | Medium | High |
 

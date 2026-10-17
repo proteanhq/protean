@@ -215,6 +215,24 @@ def test_the_global_position_skips_a_repeated_or_older_event(strategies):
     )
 
 
+def test_the_global_position_drops_an_older_event_retried_after_a_newer_one(
+    strategies,
+):
+    # The subscription moves past a failed event and the recovery pass retries
+    # it after newer events have run. The watermark then treats it as seen.
+    ex = strategies
+    repo = ex.domain.repository_for(ex.ProjectionState)
+    repo.add(ex.ProjectionState(state_id="order-projection"))
+    failed = _order_placed(ex, "o1", total=40.0)
+    later = _order_placed(ex, "o2", total=15.0)
+
+    ex.ProjectionStateHandler._handle(later)
+    ex.ProjectionStateHandler._handle(failed)
+
+    state = repo.get("order-projection")
+    assert (state.order_count, state.total_revenue) == (1, 15.0)
+
+
 # Strategy 3: upsert operations
 
 
