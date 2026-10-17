@@ -259,4 +259,4 @@ pip install protean[elasticsearch] # Adds the elasticsearch client
 
 ---
 
-*Test counts and the test-to-code ratio last updated: October 2026. Other figures: March 2026.*
+*The test total, the Test Breakdown table and the test-to-code ratio were last updated in October 2026. The Core vs. Integration and Infrastructure Coverage tables, Code Quality and Codebase Structure are from March 2026.*
