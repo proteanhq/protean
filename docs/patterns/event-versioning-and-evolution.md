@@ -7,13 +7,7 @@ track a `discount_code` field. The developer adds the field to the `Order`
 aggregate and to the `OrderPlaced` event:
 
 ```python
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    items: List(required=True)
-    total: Float(required=True)
-    discount_code: String()  # New field
+--8<-- "patterns/event-versioning-and-evolution/001.py:problem"
 ```
 
 The change works for new orders. But in an event-sourced system, the event
@@ -81,24 +75,8 @@ The most common evolution. Add a new field with a default value that preserves
 the behavior of events written before the field existed:
 
 ```python
-# Before: original event
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    items: List(required=True)
-    total: Float(required=True)
-
-
-# After: added discount_code and channel (same message version, no bump)
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    items: List(required=True)
-    total: Float(required=True)
-    discount_code: String(default=None)    # New, optional
-    channel: String(default="web")         # New, with sensible default
+--8<-- "patterns/event-versioning-and-evolution/002.py:before"
+--8<-- "patterns/event-versioning-and-evolution/003.py:after"
 ```
 
 Old events deserialize successfully: `discount_code` is `None`, `channel` is
@@ -117,12 +95,7 @@ that do know about them handle `None` / `"web"` as the legacy case.
 When a new business operation is introduced, create a new event type:
 
 ```python
-# New business operation: gift wrapping
-@domain.event(part_of=Order)
-class OrderGiftWrapped(BaseEvent):
-    order_id: Identifier(required=True)
-    wrapping_style: String(required=True)
-    gift_message: String()
+--8<-- "patterns/event-versioning-and-evolution/003.py:new_type"
 ```
 
 New event types don't affect existing consumers. Consumers that don't handle
@@ -134,6 +107,7 @@ Changing a field's type to accept a broader range of values is safe if the
 serialization format is compatible:
 
 ```python
+# fragment
 # Before: status as String with limited choices
 status = String(choices=["pending", "shipped"])
 
@@ -151,17 +125,8 @@ new one takes its place, so stored payloads no longer match. Declare the old
 name with `renamed_from` to make the rename backward-compatible instead:
 
 ```python
-# Before
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    name = String(required=True)
-
-# After: `name` becomes `customer_name`
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_name = String(required=True, renamed_from="name")
+--8<-- "patterns/event-versioning-and-evolution/004.py:before"
+--8<-- "patterns/event-versioning-and-evolution/005.py:after"
 ```
 
 A stored payload written with the old `name` key now deserializes into
@@ -191,63 +156,13 @@ The cleanest approach for significant schema changes. Create a new event type
 and keep the old one for historical events:
 
 ```python
-# Original event (keep for historical data)
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    items: List(required=True)
-    total: Float(required=True)
-
-
-# New event for the updated business process
-@domain.event(part_of=Order)
-class OrderPlacedV2(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    line_items: List(required=True)       # Renamed from 'items'
-    subtotal: Float(required=True)        # Changed semantics
-    tax: Float(required=True)             # New required field
-    total: Float(required=True)
-    currency: String(required=True)       # New required field
+--8<-- "patterns/event-versioning-and-evolution/006.py:event_types"
 ```
 
 The aggregate now raises `OrderPlacedV2`. Consumers must handle both types:
 
 ```python
-@domain.event_handler(part_of=Fulfillment)
-class FulfillmentEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def on_order_placed_v1(self, event: OrderPlaced):
-        """Handle historical events."""
-        self._create_fulfillment(
-            order_id=event.order_id,
-            items=event.items,
-            total=event.total,
-            currency="USD",  # Assumed for v1 events
-        )
-
-    @handle(OrderPlacedV2)
-    def on_order_placed_v2(self, event: OrderPlacedV2):
-        """Handle current events."""
-        self._create_fulfillment(
-            order_id=event.order_id,
-            items=event.line_items,
-            total=event.total,
-            currency=event.currency,
-        )
-
-    def _create_fulfillment(self, order_id, items, total, currency):
-        # Shared implementation
-        repo = current_domain.repository_for(Fulfillment)
-        fulfillment = Fulfillment(
-            order_id=order_id,
-            items=items,
-            total=total,
-            currency=currency,
-        )
-        repo.add(fulfillment)
+--8<-- "patterns/event-versioning-and-evolution/006.py:handler"
 ```
 
 **When to use:** Significant structural changes, changed semantics, new required
@@ -262,16 +177,8 @@ Once the aggregate raises the new event, mark the old one deprecated and point
 `superseded_by` at its replacement:
 
 ```python
-@domain.event(
-    part_of=Order,
-    deprecated={"since": "0.16", "removal": "0.19"},
-    superseded_by=OrderPlacedV2,          # an Event class or its name as a string
-)
-class OrderPlaced(BaseEvent):
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    items = List(required=True)
-    total = Float(required=True)
+--8<-- "patterns/event-versioning-and-evolution/007.py:domain"
+--8<-- "patterns/event-versioning-and-evolution/007.py:deprecated"
 ```
 
 The old class stays registered so historical events keep deserializing, but
@@ -301,37 +208,8 @@ chains upcasters automatically so that a v1 event passes through v1→v2 and
 v2→v3 before reaching handlers.
 
 ```python
-from protean.core.upcaster import BaseUpcaster
-
-# Current event definition (v3)
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    __version__ = 3
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    line_items = List(required=True)
-    subtotal = Float(required=True)
-    tax = Float(required=True)
-    total = Float(required=True)
-    currency = String(required=True)
-
-
-# v1 → v2: added currency field
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class UpcastOrderPlacedV1ToV2(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["currency"] = "USD"
-        return data
-
-
-# v2 → v3: renamed 'items' to 'line_items', split total into subtotal + tax
-@domain.upcaster(event_type=OrderPlaced, from_version=2, to_version=3)
-class UpcastOrderPlacedV2ToV3(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["line_items"] = data.pop("items", [])
-        data["subtotal"] = data["total"]
-        data["tax"] = 0.0
-        return data
+--8<-- "patterns/event-versioning-and-evolution/008.py:import"
+--8<-- "patterns/event-versioning-and-evolution/008.py:upcasters"
 ```
 
 Upcasting happens transparently during deserialization, between reading the raw
@@ -352,26 +230,10 @@ walkthrough with real-world examples.
 
 ### Strategy 3: Tolerant Reader
 
-Design consumers to be tolerant of missing, extra, or unexpected fields:
+Design consumers to be tolerant of fields an event may not carry:
 
 ```python
-@domain.event_handler(part_of=Analytics)
-class AnalyticsEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def track_order(self, event: OrderPlaced):
-        # Use getattr with defaults for fields that may not exist
-        channel = getattr(event, "channel", "unknown")
-        discount = getattr(event, "discount_code", None)
-        currency = getattr(event, "currency", "USD")
-
-        self._record_analytics(
-            order_id=event.order_id,
-            total=event.total,
-            channel=channel,
-            has_discount=discount is not None,
-            currency=currency,
-        )
+--8<-- "patterns/event-versioning-and-evolution/009.py:handler"
 ```
 
 The consumer handles whatever fields are present and provides sensible defaults
@@ -408,14 +270,7 @@ the new schema.
 This simplifies some evolution scenarios but creates others:
 
 ```python
-@domain.aggregate(fact_events=True)
-class Order:
-    order_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)
-    items = HasMany(OrderItem)
-    status: String(default="draft")
-    total: Float(default=0.0)
-    currency: String(default="USD")  # New field
+--8<-- "patterns/event-versioning-and-evolution/010.py:fact_events"
 ```
 
 **Benefits:**
@@ -466,16 +321,7 @@ operator migration (see [Migration Strategies](#migration-strategies)) is the on
 exception to this rule; a single stored event is never edited in place.
 
 ```python
-# NEVER do this:
-# event_store.update(event_id, corrected_data)
-
-# Instead, raise a correcting event:
-@domain.event(part_of=Order)
-class OrderTotalCorrected(BaseEvent):
-    order_id: Identifier(required=True)
-    old_total: Float(required=True)
-    new_total: Float(required=True)
-    correction_reason: String(required=True)
+--8<-- "patterns/event-versioning-and-evolution/011.py:correcting_event"
 ```
 
 ### Stream Position After Schema Changes
@@ -506,17 +352,7 @@ it will encounter every historical event version.
 they reach the handler:
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Order(BaseAggregate):
-    # ... fields ...
-
-    @apply
-    def on_order_placed(self, event: OrderPlaced):
-        """Always receives current schema — upcasters handle old versions."""
-        self.customer_id = event.customer_id
-        self.items = event.line_items
-        self.total = event.total
-        self.currency = event.currency
+--8<-- "patterns/event-versioning-and-evolution/012.py:aggregate"
 ```
 
 **Without upcasting:** The `@apply` handlers must handle all versions
@@ -524,21 +360,7 @@ manually, either with separate handlers for each version or tolerant-reader
 patterns:
 
 ```python
-@domain.aggregate(event_sourced=True)
-class Order(BaseAggregate):
-    @apply
-    def on_order_placed(self, event: OrderPlaced):
-        self.customer_id = event.customer_id
-        self.items = event.items
-        self.total = event.total
-        self.currency = getattr(event, "currency", "USD")
-
-    @apply
-    def on_order_placed_v2(self, event: OrderPlacedV2):
-        self.customer_id = event.customer_id
-        self.items = event.line_items
-        self.total = event.total
-        self.currency = event.currency
+--8<-- "patterns/event-versioning-and-evolution/013.py:aggregate"
 ```
 
 ---
@@ -578,6 +400,7 @@ and the stream name must stay stable.
 During a migration period, produce both old and new event types:
 
 ```python
+# fragment
 def place(self):
     # Raise both old and new events during transition.
     # For ES aggregates, each raise_() invokes its @apply handler —
@@ -627,6 +450,7 @@ Keep the transition period short.
 ### Changing Field Semantics
 
 ```python
+# fragment
 # Version 1: total includes tax
 class OrderPlaced(BaseEvent):
     total: Float()  # Includes tax
@@ -643,6 +467,7 @@ instead: `subtotal` for the tax-exclusive amount.
 ### Removing Fields
 
 ```python
+# fragment
 # Version 1
 class OrderPlaced(BaseEvent):
     customer_name: String()
@@ -659,6 +484,7 @@ and deprecate it in documentation.
 ### Required Fields on Existing Events
 
 ```python
+# fragment
 # NEVER add a required field to an existing event
 class OrderPlaced(BaseEvent):
     order_id: Identifier(required=True)

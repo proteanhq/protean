@@ -15,6 +15,7 @@ The naive solution is to add these fields directly to every event and command
 class:
 
 ```python
+# fragment
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
     order_id: Identifier(required=True)
@@ -42,7 +43,7 @@ This creates several problems:
   context.
 
 - **Coupling between domain logic and operational context**: The aggregate's
-  `place_order()` method now needs to know about tenants, users, and feature
+  `place()` method now needs to know about tenants, users, and feature
   flags. It reaches into request-scoped globals to populate fields that have
   nothing to do with order placement.
 
@@ -115,31 +116,7 @@ or a subdomain. The application stores this in Protean's global context `g`
 early in the request lifecycle.
 
 ```python
-# middleware.py -- FastAPI middleware that sets tenant context
-
-from protean.utils.globals import g
-
-class TenantContextMiddleware:
-    """Extract tenant_id from the auth token and store it in g."""
-
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http":
-            # Extract tenant from auth header (simplified)
-            headers = dict(scope.get("headers", []))
-            token = headers.get(b"authorization", b"").decode()
-            tenant_id = decode_tenant_from_token(token)
-            user_id = decode_user_from_token(token)
-
-            g.tenant_id = tenant_id
-            g.user_id = user_id
-            g.request_id = headers.get(
-                b"x-request-id", b""
-            ).decode() or str(uuid4())
-
-        await self.app(scope, receive, send)
+--8<-- "patterns/message-enrichment/002.py:middleware"
 ```
 
 ### Registering Enrichers
@@ -148,50 +125,7 @@ With tenant context available in `g`, register enrichers that inject it into
 every event and command. Do this during domain setup, before `domain.init()`:
 
 ```python
-# domain.py -- Domain initialization with enrichers
-
-from protean import Domain
-from protean.utils.globals import g
-
-domain = Domain(__file__, "SaasApp")
-
-
-# --- Event enrichers ---
-
-@domain.event_enricher
-def enrich_event_with_tenant(event, aggregate):
-    """Inject tenant context into every domain event."""
-    return {
-        "tenant_id": getattr(g, "tenant_id", None),
-    }
-
-
-@domain.event_enricher
-def enrich_event_with_audit(event, aggregate):
-    """Inject user and request context for audit trails."""
-    return {
-        "user_id": getattr(g, "user_id", None),
-        "request_id": getattr(g, "request_id", None),
-    }
-
-
-# --- Command enrichers ---
-
-@domain.command_enricher
-def enrich_command_with_tenant(command):
-    """Inject tenant context into every command."""
-    return {
-        "tenant_id": getattr(g, "tenant_id", None),
-    }
-
-
-@domain.command_enricher
-def enrich_command_with_audit(command):
-    """Inject user and request context into every command."""
-    return {
-        "user_id": getattr(g, "user_id", None),
-        "request_id": getattr(g, "request_id", None),
-    }
+--8<-- "patterns/message-enrichment/001.py:domain"
 ```
 
 ### Clean Domain Model
@@ -200,34 +134,7 @@ With enrichers handling cross-cutting metadata, the domain model carries only
 business data:
 
 ```python
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)
-    status: String(default="draft")
-    items: HasMany(OrderItem)
-    total: Float(default=0.0)
-
-    def place(self) -> None:
-        """Place the order and emit a domain event."""
-        self._validate_can_place()
-        self.status = "placed"
-        self.raise_(OrderPlaced(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            items=[item.to_dict() for item in self.items],
-            total=self.total,
-        ))
-
-
-@domain.event(part_of=Order)
-class OrderPlaced(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    items: List(required=True)
-    total: Float()
-    # No tenant_id, no user_id, no request_id.
-    # Enrichers handle that.
+--8<-- "patterns/message-enrichment/001.py:model"
 ```
 
 When `order.place()` calls `raise_()`, Protean runs all registered event
@@ -244,45 +151,17 @@ are available on the message object.
 
 #### Tenant-Scoped Event Handler
 
+The handler belongs to `Inventory` but reacts to an `Order` event, so it sets
+`stream_category` to the order stream:
+
 ```python
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def reserve_stock(self, event: OrderPlaced):
-        # Access enriched metadata from the message in context
-        tenant_id = g.message_in_context.metadata.extensions.get("tenant_id")
-
-        repo = current_domain.repository_for(Inventory)
-        for item in event.items:
-            inventory = repo.get(item["product_id"])
-            inventory.reserve(
-                order_id=event.order_id,
-                quantity=item["quantity"],
-                tenant_id=tenant_id,  # Pass to domain logic if needed
-            )
-            repo.add(inventory)
+--8<-- "patterns/message-enrichment/003.py:handler"
 ```
 
 #### Audit-Aware Projector
 
 ```python
-@domain.projector(projector_for=OrderAuditProjection, aggregates=[Order])
-class OrderAuditProjector(BaseProjector):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        extensions = g.message_in_context.metadata.extensions
-
-        repo = current_domain.repository_for(OrderAuditProjection)
-        repo.add(OrderAuditProjection(
-            order_id=event.order_id,
-            action="placed",
-            performed_by=extensions.get("user_id", "unknown"),
-            request_id=extensions.get("request_id"),
-            tenant_id=extensions.get("tenant_id"),
-            timestamp=g.message_in_context.metadata.headers.time,
-        ))
+--8<-- "patterns/message-enrichment/003.py:projector"
 ```
 
 ### Conditional Enrichment
@@ -291,18 +170,7 @@ Enrichers can inspect the event or aggregate to decide what metadata to add.
 This is useful when different event types need different extensions:
 
 ```python
-@domain.event_enricher
-def enrich_with_feature_flags(event, aggregate):
-    """Attach active feature flags only for events that need them."""
-    # Only enrich billing-related events
-    if event.__class__.__name__ in ("InvoiceGenerated", "PaymentProcessed"):
-        return {
-            "feature_flags": {
-                "new_pricing_model": is_feature_enabled("new_pricing_model"),
-                "tax_v2": is_feature_enabled("tax_v2"),
-            }
-        }
-    return {}
+--8<-- "patterns/message-enrichment/004.py:feature_flags"
 ```
 
 ### Combining Enrichers with Correlation IDs
@@ -313,14 +181,7 @@ Message enrichment complements Protean's built-in
 context that the framework does not manage:
 
 ```python
-@domain.event_enricher
-def enrich_with_tracing(event, aggregate):
-    """Bridge domain enrichment with external distributed tracing."""
-    traceparent = getattr(g, "traceparent", None)
-    return {
-        "trace_id": traceparent.trace_id if traceparent else None,
-        "span_id": traceparent.parent_id if traceparent else None,
-    }
+--8<-- "patterns/message-enrichment/004.py:tracing"
 ```
 
 This lets you correlate domain events with infrastructure spans in tools like
@@ -334,36 +195,11 @@ defined alongside the domain. For enrichers defined in separate modules or
 registered conditionally, use the functional form:
 
 ```python
-# enrichers.py -- reusable enrichers for multiple domains
-
-def tenant_enricher(event, aggregate):
-    return {"tenant_id": getattr(g, "tenant_id", None)}
-
-
-def audit_enricher(event, aggregate):
-    return {
-        "user_id": getattr(g, "user_id", None),
-        "request_id": getattr(g, "request_id", None),
-    }
-
-
-def tenant_command_enricher(command):
-    return {"tenant_id": getattr(g, "tenant_id", None)}
+--8<-- "patterns/message-enrichment/saasapp/enrichers.py:functions"
 ```
 
 ```python
-# domain.py -- register enrichers from the module
-
-from myapp.enrichers import (
-    tenant_enricher,
-    audit_enricher,
-    tenant_command_enricher,
-)
-
-domain = Domain(__file__, "SaasApp")
-domain.register_event_enricher(tenant_enricher)
-domain.register_event_enricher(audit_enricher)
-domain.register_command_enricher(tenant_command_enricher)
+--8<-- "patterns/message-enrichment/saasapp/domain.py:registration"
 ```
 
 ### Stamping Fields on the Aggregate
@@ -382,42 +218,7 @@ the global context. Tests that only care about business logic can ignore
 enrichers entirely. They just get empty extensions:
 
 ```python
-class TestOrderPlacement:
-
-    def test_business_logic_without_enrichment(self, test_domain):
-        """Enrichers run but produce None values -- harmless."""
-        order = Order(
-            customer_id="cust-1",
-            total=99.99,
-        )
-        order.add_item(product_id="prod-1", quantity=2, price=49.99)
-        order.place()
-
-        assert order.status == "placed"
-        assert len(order._events) == 1
-        assert isinstance(order._events[0], OrderPlaced)
-
-    def test_enrichment_with_tenant_context(self, test_domain):
-        """Set up g to verify enrichers populate extensions."""
-        g.tenant_id = "acme-corp"
-        g.user_id = "user-42"
-        g.request_id = "req-abc-123"
-
-        order = Order(
-            customer_id="cust-1",
-            total=99.99,
-        )
-        order.add_item(product_id="prod-1", quantity=2, price=49.99)
-        order.place()
-
-        event = order._events[0]
-        assert event._metadata.extensions["tenant_id"] == "acme-corp"
-        assert event._metadata.extensions["user_id"] == "user-42"
-        assert event._metadata.extensions["request_id"] == "req-abc-123"
-
-        # Business payload is clean
-        assert not hasattr(event, "tenant_id")
-        assert not hasattr(event, "user_id")
+--8<-- "patterns/message-enrichment/001.py:tests"
 ```
 
 ### End-to-End: Multi-Tenant SaaS
@@ -456,6 +257,7 @@ Putting it all together, here is the flow for a multi-tenant order placement:
 ### Adding Tenant ID to Every Event Class
 
 ```python
+# fragment
 # Anti-pattern: cross-cutting fields in event payload
 
 @domain.event(part_of=Order)
@@ -479,6 +281,7 @@ that inject them into `metadata.extensions`.
 ### Accessing g Directly in Domain Logic
 
 ```python
+# fragment
 # Anti-pattern: aggregate reaching into request context
 
 @domain.aggregate
@@ -506,6 +309,7 @@ infrastructure hooks, read from `g`.
 ### Building One Monolithic Enricher
 
 ```python
+# fragment
 # Anti-pattern: one enricher doing everything
 
 @domain.event_enricher
@@ -534,6 +338,7 @@ independently.
 ### Performing I/O in Enrichers
 
 ```python
+# fragment
 # Anti-pattern: database call inside an enricher
 
 @domain.event_enricher
