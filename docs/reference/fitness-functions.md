@@ -287,8 +287,8 @@ events are internal.
 | **Category** | `handler_completeness` |
 | **Level** | `warning` |
 
-**Why.** An aggregate with no command handler has no write path, nothing can
-change its state.
+**Why.** An aggregate with no command handler has no write path, so nothing
+can change its state.
 
 **Fix.** Add a command handler for the aggregate, or model it as a read-only
 projection if no writes are expected.
@@ -343,7 +343,7 @@ carrying it, or drop the field from the projection if nothing sources it.
 | **Level** | `warning` |
 
 **Why.** A projection with a query handler but no query has a read path that
-nothing can invoke, no query is registered for the handler to serve.
+nothing can invoke, because no query is registered for the handler to serve.
 
 **Fix.** Register a `Query(part_of=<projection>)` for the handler to serve, or
 remove the query handler if the projection needs no read path.
@@ -356,8 +356,8 @@ remove the query handler if the projection needs no read path.
 | **Level** | `warning` |
 
 **Why.** A projector handling an event the domain does not register is wired to a
-type that can never be dispatched, usually a stale reference after a rename or
-removal.
+type that can never be dispatched. It is usually a stale reference after a rename
+or removal.
 
 **Fix.** Register the event, or remove the handler for the orphaned type from the
 projector.

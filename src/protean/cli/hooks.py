@@ -242,7 +242,7 @@ def _check_staleness_single(
     # Report without fix
     if result.status == StalenessStatus.STALE:
         print(
-            f"IR is stale for {domain_module} — domain has changed since "
+            f"IR is stale for {domain_module}: the domain has changed since "
             "last materialization.",
             file=sys.stderr,
         )
@@ -252,7 +252,7 @@ def _check_staleness_single(
             print(f"  current: {result.domain_checksum[:16]}...", file=sys.stderr)
     elif result.status == StalenessStatus.VERSION_MISMATCH:
         print(
-            f"IR schema version mismatch for {domain_module} — the baseline was "
+            f"IR schema version mismatch for {domain_module}: the baseline was "
             f"built against schema {result.stored_version}, but the current "
             f"schema is {result.current_version}.",
             file=sys.stderr,
@@ -399,7 +399,7 @@ def _check_compat_single(
 
         if config.strictness == "warn":
             print(
-                "\n(strictness=warn — not blocking the commit)",
+                "\n(strictness=warn, so the commit is not blocked)",
                 file=sys.stderr,
             )
             return True

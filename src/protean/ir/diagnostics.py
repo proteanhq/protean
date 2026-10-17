@@ -281,7 +281,7 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         level="warning",
         meaning="An aggregate has no command handler, so no write path.",
         rationale=(
-            "An aggregate with no command handler has no write path \u2014 nothing "
+            "An aggregate with no command handler has no write path, so nothing "
             "can change its state."
         ),
         fix=(
@@ -709,7 +709,7 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         meaning="A projector handles an event the domain does not register.",
         rationale=(
             "A projector handling an event the domain does not register is "
-            "wired to a type that can never be dispatched \u2014 usually a stale "
+            "wired to a type that can never be dispatched. It is usually a stale "
             "reference after a rename or removal."
         ),
         fix=(
@@ -737,7 +737,7 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         meaning="A projection has a query handler but no query to serve.",
         rationale=(
             "A projection with a query handler but no query has a read path "
-            "that nothing can invoke \u2014 no query is registered for the handler "
+            "that nothing can invoke, because no query is registered for the handler "
             "to serve."
         ),
         fix=(

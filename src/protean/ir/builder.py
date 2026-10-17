@@ -2640,7 +2640,7 @@ class IRBuilder:
                         DiagnosticCode.AGGREGATE_WITHOUT_COMMAND_HANDLER,
                         element=aggregate["fqn"],
                         message=f"Aggregate `{aggregate['name']}` has no command handler "
-                        f"— no write path exists",
+                        f", so no write path exists",
                     )
                 )
 
@@ -4231,7 +4231,7 @@ class IRBuilder:
 
             if not isinstance(results, list):
                 logger.warning(
-                    "Custom lint rule %r returned %s instead of list — skipped",
+                    "Custom lint rule %r returned %s instead of a list, so it was skipped",
                     path,
                     type(results).__name__,
                 )
@@ -4240,20 +4240,21 @@ class IRBuilder:
             for item in results:
                 if not isinstance(item, dict):
                     logger.warning(
-                        "Custom lint rule %r returned non-dict item — skipped", path
+                        "Custom lint rule %r returned a non-dict item, so it was skipped",
+                        path,
                     )
                     continue
                 missing = self._REQUIRED_KEYS - set(item)
                 if missing:
                     logger.warning(
-                        "Custom lint rule %r returned item missing keys %s — skipped",
+                        "Custom lint rule %r returned item missing keys %s, so it was skipped",
                         path,
                         missing,
                     )
                     continue
                 if item["level"] not in self._VALID_LEVELS:
                     logger.warning(
-                        "Custom lint rule %r returned invalid level %r — skipped",
+                        "Custom lint rule %r returned invalid level %r, so it was skipped",
                         path,
                         item["level"],
                     )

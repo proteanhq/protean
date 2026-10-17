@@ -381,7 +381,7 @@ def _print_avro_verdict(report: CompatibilityReport) -> None:
         # Avro-neutral (e.g. a public→internal visibility flip).
         print(
             "  [dim](payload-compatible, but breaking changes are present "
-            "— see above)[/dim]"
+            "; see above)[/dim]"
         )
     for direction, change in report.avro_direction_breaks():
         print(f"  [dim]breaks {direction}:[/dim] {change.message}")
@@ -685,7 +685,7 @@ def _print_check_text(result: StalenessResult, protean_dir: str = ".protean") ->
             print(f"  checksum: {result.domain_checksum[:16]}…")
     elif result.status == StalenessStatus.STALE:
         print(
-            "[yellow]IR is stale — domain has changed since last materialization.[/yellow]"
+            "[yellow]IR is stale: the domain has changed since last materialization.[/yellow]"
         )
         if result.stored_checksum:
             print(f"  stored:  {escape(result.stored_checksum[:16])}…")
@@ -704,7 +704,7 @@ def _print_check_text(result: StalenessResult, protean_dir: str = ".protean") ->
         stored = escape(result.stored_version or "?")
         current = escape(result.current_version or "?")
         print(
-            "[yellow]IR schema version mismatch — the materialized baseline was "
+            "[yellow]IR schema version mismatch: the materialized baseline was "
             f"built against schema {stored}, but the current "
             f"schema is {current}.[/yellow]"
         )

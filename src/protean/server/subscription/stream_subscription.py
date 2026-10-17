@@ -804,12 +804,12 @@ class StreamSubscription(BaseSubscription):
                     successful_count += 1
                     logger.info(
                         f"[{self.subscriber_class_name}] Completed {message_type} "
-                        f"(ID: {short_id}...) — acked"
+                        f"(ID: {short_id}...): acked"
                     )
             else:
                 logger.warning(
                     f"[{self.subscriber_class_name}] Failed {message_type} "
-                    f"(ID: {short_id}...) — retrying"
+                    f"(ID: {short_id}...): retrying"
                 )
                 await self.handle_failed_message(identifier, payload, stream)
 
