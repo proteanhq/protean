@@ -266,6 +266,8 @@ class TestGeneratedProjectStarts:
                 sys.executable,
                 "-m",
                 "pytest",
+                "-p",
+                "no:randomly",
                 "-q",
                 "tests/scaffolded/application/test_isolation.py",
             ],
