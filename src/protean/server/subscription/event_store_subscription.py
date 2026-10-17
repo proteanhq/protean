@@ -946,7 +946,7 @@ class EventStoreSubscription(BaseSubscription):
             if not (message.metadata.domain and message.metadata.domain.asynchronous):
                 logger.info(
                     f"[{self.subscriber_class_name}] "
-                    f"{message_type} (pos: {position}) — already processed inline"
+                    f"{message_type} (pos: {position}): already processed inline"
                 )
                 # A skipped sync message is a non-failed advance past the cursor,
                 # the same transition the spec models as HandleOk. Emit before the
@@ -966,7 +966,7 @@ class EventStoreSubscription(BaseSubscription):
                 if existing and existing.get("status") == "success":
                     logger.info(
                         f"[{self.subscriber_class_name}] "
-                        f"{message_type} (ID: {short_id}...) — already processed (idempotent)"
+                        f"{message_type} (ID: {short_id}...): already processed (idempotent)"
                     )
                     # An idempotent skip is a non-failed advance (already handled),
                     # the same HandleOk transition the spec models. Emit before the

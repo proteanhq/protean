@@ -14,7 +14,7 @@ protean subscriptions status --domain=my_app
 ```
 
 ```
-                                     Subscriptions — my_app
+                                     Subscriptions: my_app
 ┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━━━━━┳━━━━━━━━━┓
 ┃ Handler         ┃ Type        ┃ Stream  ┃ Lag ┃ Lag (s) ┃ Pending ┃ DLQ ┃ Consumers ┃ Status  ┃
 ┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━━━━╇━━━━━━━━━┩

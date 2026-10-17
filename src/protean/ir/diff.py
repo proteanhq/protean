@@ -562,7 +562,7 @@ def _diff_contracts(
                     entry["message"] += (
                         f", scheduled for removal in v{deprecated['removal']}"
                     )
-                entry["message"] += " — removed prematurely)"
+                entry["message"] += "; removed prematurely)"
             breaking.append(entry)
 
     # Check events present in both for type/version/field changes

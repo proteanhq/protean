@@ -46,13 +46,15 @@ class IdempotencyStore:
             # an unreachable Redis disables dedup, not startup; logged
             except Exception:
                 logger.warning(
-                    "Could not connect to Redis at %s — idempotency dedup is disabled",
+                    "Could not connect to Redis at %s, so idempotency dedup is disabled",
                     redis_url,
                     exc_info=True,
                 )
                 self._redis = None
         else:
-            logger.debug("No redis_url configured for idempotency — dedup is disabled")
+            logger.debug(
+                "No redis_url configured for idempotency, so dedup is disabled"
+            )
 
     @property
     def is_active(self) -> bool:
@@ -80,7 +82,7 @@ class IdempotencyStore:
             return result
         except Exception:  # a failed lookup skips dedup, not the command; logged
             logger.warning(
-                "Idempotency check failed for key %s — proceeding without dedup",
+                "Idempotency check failed for key %s; proceeding without dedup",
                 idempotency_key,
                 exc_info=True,
             )

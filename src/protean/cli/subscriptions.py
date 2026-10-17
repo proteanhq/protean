@@ -85,7 +85,7 @@ def status(
         return
 
     # Rich table
-    table = Table(title=f"Subscriptions — {derived_domain.name}")
+    table = Table(title=f"Subscriptions: {derived_domain.name}")
     table.add_column("Handler", style="bold")
     table.add_column("Type")
     table.add_column("Stream")
