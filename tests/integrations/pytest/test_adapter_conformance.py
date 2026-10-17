@@ -388,6 +388,8 @@ class TestConformancePluginIntegration:
             "pytest.ini",
             "-p",
             "no:cacheprovider",
+            "-p",
+            "no:randomly",
             "--tb=short",
             "-q",
             "-rs",

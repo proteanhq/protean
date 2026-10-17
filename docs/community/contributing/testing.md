@@ -475,6 +475,60 @@ To avoid coverage failures:
 - Test all code paths, including error cases
 - Use pytest parametrization to test multiple scenarios efficiently
 
+### Auditing the suite
+
+`make test-audit` reports tests worth a second look. It runs the core suite,
+which needs no Docker, and writes `.test-audit/report.md` and
+`.test-audit/report.json`:
+
+```shell
+make test-audit
+```
+
+The report has four sections:
+
+- **Duplicate candidates.** The suite runs under coverage.py, and the audit
+  switches coverage.py's context (the label it stores each recorded arc
+  under) to the running test. An arc is a step from one line to the next. A
+  test is listed when its arcs are a subset of another test's arcs, next to
+  the test that covers it. The list is grouped by top-level test folder. Tests
+  that cover no source arcs of their own are listed apart.
+
+  Only arcs run in the test body count. Fixture setup and teardown, and any
+  child process the test starts, are not counted. Code that runs once per
+  worker process, such as an import or a cache filled on first use, counts
+  only for the first test on that worker. A test that failed or xfailed in
+  this run is left out, and so is a test whose every case was skipped.
+- **Private-state and coverage-named tests.** A scan of `tests/` (except
+  `tests/support/`) lists calls to `X.__new__(X)`, writes to private
+  attributes, patches of private names, files named `*_coverage.py`, and
+  docstrings or comments that say a test exists for coverage. A write through
+  `self` or `cls` in a test class, or to a mock the same function created, is
+  not listed. The two files that guard doc and deprecation coverage are not
+  scanned, and the report says why.
+- **The 50 slowest tests**, timed in a run without coverage.
+- **Order-dependent tests.** The suite runs again in a random order with
+  [pytest-randomly](https://github.com/pytest-dev/pytest-randomly). A test
+  that fails there and also failed in the coverage run, which keeps the
+  default order, is listed as a plain failure. Every other test that fails
+  there runs again alone, and one that passes alone is listed as
+  order-dependent. A flaky test can pass alone too, so check each one. A
+  test that is skipped or xfailed alone is listed on its own, since the
+  re-run did not show whether it passes. The section shows the seed.
+  `uv run python scripts/test_audit.py --seed <seed>` shuffles each file the
+  same way again.
+
+The report ranks candidates for review. The audit changes no test and writes
+only under `.test-audit/`. A test listed as a duplicate can still check a
+value the covering test does not.
+
+pytest-randomly is installed with the `test` group and turned off in
+`addopts`, so `protean test`, CI and `make mutation` run the suite in its usual
+order. The audit turns it on for its own run. A pytest run that a test starts,
+such as the one `protean verify` runs in a temporary project, keeps the usual
+order too: `tests/conftest.py` sets `PYTEST_ADDOPTS=-p no:randomly` for each
+test.
+
 ## Github Actions
 
 Protean's CI runs in three lanes, so a pull request's cost follows the size of the change rather than the number of adapters:
