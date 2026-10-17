@@ -26,7 +26,8 @@ a REPL transcript and must use a ``pycon`` fence.
 All pages run once, in one child interpreter, and each page is its own test
 case, so a failure names the page. The tutorial folder in ``docs_src`` is on
 the child's ``sys.path``, so a tutorial page can import the ``bookshelf``
-package its chapters build.
+package its chapters build. So is the message-enrichment folder, so that page's
+``domain.py`` block can import from the ``saasapp`` package.
 """
 
 from __future__ import annotations
@@ -53,7 +54,10 @@ pytestmark = pytest.mark.no_test_domain
 SNIPPET_BASES = (REPO_ROOT / "docs_src", REPO_ROOT / "examples")
 
 # Folders the child interpreter imports from, ahead of everything else.
-PYTHONPATH = (REPO_ROOT / "docs_src" / "guides" / "getting-started" / "tutorial",)
+PYTHONPATH = (
+    REPO_ROOT / "docs_src" / "guides" / "getting-started" / "tutorial",
+    REPO_ROOT / "docs_src" / "patterns" / "message-enrichment",
+)
 
 # Folders under docs/ whose pages are not run: the decision records keep their
 # code as it was when the decision was made, and the API pages are generated.
