@@ -170,7 +170,7 @@ def _write_plugin_tree(output: str) -> None:
     try:
         write_plugin(root, _plugin_version())
     except OSError as exc:
-        print(f"[red]error[/red] could not write the plugin tree — {escape(str(exc))}")
+        print(f"[red]error[/red] could not write the plugin tree: {escape(str(exc))}")
         raise typer.Exit(code=EXIT_USAGE) from exc
     print(f"[green]Wrote the Claude Code plugin tree under {escape(str(root))}[/green]")
 
@@ -209,7 +209,7 @@ def _project_root(path: str) -> Path:
     """
     root = Path(path)
     if not root.is_dir():
-        print(f"[red]error[/red] {escape(path)} — not a directory")
+        print(f"[red]error[/red] {escape(path)} is not a directory")
         raise typer.Exit(code=EXIT_USAGE)
     return root
 
@@ -234,7 +234,7 @@ def _render_managed_files() -> tuple[ManagedFile, ...]:
     try:
         return managed_files(PACK_VERSION)
     except Exception as exc:  # a broken pack exits 2 with one clean line
-        print(f"[red]error[/red] could not render the dx files — {escape(str(exc))}")
+        print(f"[red]error[/red] could not render the dx files: {escape(str(exc))}")
         raise typer.Exit(code=EXIT_USAGE) from exc
 
 
@@ -329,7 +329,7 @@ def _apply(path: str, *, only_installed_optional: bool = False) -> None:
         except ManagedFileConflict as exc:
             had_conflict = True
             print(
-                f"[red]conflict[/red] {escape(exc.target)} — "
+                f"[red]conflict[/red] {escape(exc.target)}: "
                 f"{escape(_conflict_hint(managed_file))}"
             )
         except ManagedFileError as exc:
@@ -489,7 +489,7 @@ def _check(path: str) -> None:
 
 def _error_line(target: str, exc: Exception) -> str:
     """Render one target's line for a filesystem error on apply/diff/check."""
-    return f"[red]error[/red] {escape(target)} — {escape(str(exc))}"
+    return f"[red]error[/red] {escape(target)}: {escape(str(exc))}"
 
 
 def _managed_region(managed_file: ManagedFile) -> str:
@@ -539,7 +539,7 @@ def _applied_line(result: ApplyResult, managed_file: ManagedFile) -> str:
         ApplyStatus.CREATE: f"[green]created[/green] {escape(result.target)}",
         ApplyStatus.UPDATE: f"[green]updated[/green] {escape(result.target)}",
         ApplyStatus.NO_CHANGE: (
-            f"[green]ok[/green] {escape(result.target)} — already up to date"
+            f"[green]ok[/green] {escape(result.target)} is already up to date"
         ),
     }
     line = messages[result.status]
@@ -554,14 +554,14 @@ def _pending_line(result: ApplyResult, managed_file: ManagedFile) -> str:
 
     target = escape(result.target)
     messages = {
-        ApplyStatus.CREATE: f"[cyan]create[/cyan] {target} — not installed yet",
+        ApplyStatus.CREATE: f"[cyan]create[/cyan] {target} is not installed yet",
         ApplyStatus.UPDATE: (
-            f"[yellow]update[/yellow] {target} — {_managed_region(managed_file)} "
+            f"[yellow]update[/yellow] {target}: {_managed_region(managed_file)} "
             "is stale"
         ),
-        ApplyStatus.NO_CHANGE: f"[green]ok[/green] {target} — up to date",
+        ApplyStatus.NO_CHANGE: f"[green]ok[/green] {target} is up to date",
         ApplyStatus.CONFLICT: (
-            f"[red]conflict[/red] {target} — "
+            f"[red]conflict[/red] {target}: "
             f"{_managed_region(managed_file)} was edited by hand"
         ),
     }

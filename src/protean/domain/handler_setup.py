@@ -598,7 +598,7 @@ class HandlerConfigurator:
                 f"Method `{method_name}` in Query Handler "
                 f"`{handler_cls.__name__}` is decorated with `@handle`, which "
                 f"wraps execution in a UnitOfWork. Query Handler methods must "
-                f"be stateless reads — use `@read` to handle a query here, or "
+                f"be stateless reads. Use `@read` to handle a query here, or "
                 f"move this method to a Command or Event Handler if it handles "
                 f"a command or event"
             )

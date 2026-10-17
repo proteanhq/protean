@@ -55,7 +55,7 @@ protean eventstore dlq list --domain=my_domain --json
 **Output**
 
 ```
-                    Exhausted positions — my_domain
+                    Exhausted positions: my_domain
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┓
 ┃ Handler                       ┃ Stream Category ┃ Exhausted Positions ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━┩

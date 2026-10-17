@@ -448,8 +448,8 @@ def test_check_fails_when_the_version_advances(tmp_path: Path, monkeypatch) -> N
     # the Markdown files, the key-path for .mcp.json, which has no block at all.
     # Flatten whitespace: rich wraps the line at the terminal width.
     flat = " ".join(result.output.split())
-    assert "update AGENTS.md — the managed block 'protean' is stale" in flat, flat
-    assert "update .mcp.json — the managed key 'mcpServers.protean' is stale" in flat, (
+    assert "update AGENTS.md: the managed block 'protean' is stale" in flat, flat
+    assert "update .mcp.json: the managed key 'mcpServers.protean' is stale" in flat, (
         flat
     )
     # check writes nothing, even on a stale block.
@@ -575,7 +575,7 @@ def test_check_flags_each_required_file_on_its_own(
     assert "Drift detected" in result.output
     # Flatten whitespace: rich wraps the line at the terminal width.
     flat = " ".join(result.output.split())
-    assert f"create {required} — not installed yet" in flat, flat
+    assert f"create {required} is not installed yet" in flat, flat
     # Scope is unchanged by the deletion: the optional files stay out.
     for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
         assert rel not in flat, f"check must not scan the un-installed {rel}: {flat}"

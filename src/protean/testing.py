@@ -1007,7 +1007,7 @@ class ProcessManagerResult:
             return getattr(self._pm_instance, name)
         raise AttributeError(
             f"'{type(self).__name__}' object has no attribute '{name}'. "
-            f"Process manager not found — did any start event match?"
+            f"Process manager not found. Did any start event match?"
         )
 
     def __repr__(self) -> str:

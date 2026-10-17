@@ -191,7 +191,7 @@ def status(
         print("No projections found in domain.")
         return
 
-    table = Table(title=f"Projections — {derived_domain.name}")
+    table = Table(title=f"Projections: {derived_domain.name}")
     table.add_column("Projection", style="bold")
     table.add_column("Projectors")
     table.add_column("Last Updated")

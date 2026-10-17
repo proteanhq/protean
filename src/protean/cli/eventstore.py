@@ -547,7 +547,7 @@ def list_dlq(
         print("No exhausted positions.")
         return
 
-    table = Table(title=f"Exhausted positions — {derived_domain.name}")
+    table = Table(title=f"Exhausted positions: {derived_domain.name}")
     table.add_column("Handler", style="bold")
     table.add_column("Stream Category")
     table.add_column("Exhausted Positions", style="red")
