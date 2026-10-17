@@ -524,6 +524,19 @@ class TestVerifyTestCounts:
         assert stage["status"] == "pass"
         assert stage["returncode"] == 0
 
+    def test_the_child_run_keeps_the_default_order(self, tmp_path):
+        body = (
+            "def test_randomly_is_off(pytestconfig):\n"
+            "    assert not pytestconfig.pluginmanager.hasplugin('randomly')\n"
+        )
+        tests_dir = _write_test(tmp_path / "tests", body)
+        (tests_dir / "pytest.ini").write_text("[pytest]\naddopts = -ra\n")
+
+        exit_code, stage = self._tests_stage(tests_dir)
+
+        assert exit_code == 0
+        assert stage["passed"] == 1
+
     def test_one_pass_and_one_fail(self, tmp_path):
         tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST + _FAILING_TEST)
 
@@ -891,7 +904,7 @@ class TestVerifyEnv:
 
     def test_env_beats_protean_env_in_pytest_options(self, tmp_path, monkeypatch):
         monkeypatch.delenv("PROTEAN_ENV", raising=False)
-        monkeypatch.setenv("PYTEST_ADDOPTS", "--protean-env memory")
+        monkeypatch.setenv("PYTEST_ADDOPTS", "-p no:randomly --protean-env memory")
         tests_dir = _write_test(tmp_path / "tests", _child_env_test("test"))
         (tests_dir / "pytest.ini").write_text(
             "[pytest]\naddopts = --protean-env memory\n"
