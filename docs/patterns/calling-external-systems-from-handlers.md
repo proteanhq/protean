@@ -6,6 +6,7 @@ A handler reacts to `OrderPlaced` by confirming the order and posting to a
 partner's webhook. The code reads naturally:
 
 ```python
+# fragment
 @handle(OrderPlaced)
 def confirm_and_notify(self, event):
     repo = current_domain.repository_for(Order)
@@ -41,53 +42,36 @@ Split the work into two methods:
   repository access it runs no transaction and holds no connection, so the call
   costs only wall-clock time.
 
+The examples below use this `Order` aggregate and a `post_to_partner` function
+that sends one payload to the partner's webhook:
+
+```python
+--8<-- "patterns/calling-external-systems-from-handlers/002.py:model"
+```
+
 When the two reactions are independent, they can sit in one handler class as
 sibling methods and run in any order:
 
 ```python
-@domain.event_handler(part_of=Order)
-class OrderReactions:
-    @handle(OrderPlaced)
-    def start_fulfilment(self, event):
-        repo = current_domain.repository_for(Order)
-        order = repo.get(event.order_id)
-        order.start_fulfilment()
-        repo.add(order)
-
-    @handle(OrderPlaced)
-    def notify_partner(self, event):
-        # No repository access, so this method runs no transaction.
-        httpx.post(PARTNER_URL, json={"order_id": event.order_id})
+--8<-- "patterns/calling-external-systems-from-handlers/002.py:siblings"
 ```
 
 When the call has to follow the write, or needs a value the write produces, the
 persisting method raises an event and the calling method handles that event:
 
 ```python
-@domain.event_handler(part_of=Order)
-class OrderConfirmation:
-    @handle(OrderPlaced)
-    def confirm(self, event):
-        repo = current_domain.repository_for(Order)
-        order = repo.get(event.order_id)
-        order.confirm()                     # raises OrderConfirmed
-        repo.add(order)
-
-
-@domain.event_handler(part_of=Order)
-class PartnerNotifier:
-    @handle(OrderConfirmed)
-    def notify_partner(self, event):
-        httpx.post(
-            PARTNER_URL,
-            json={"order_id": event.order_id, "confirmed_at": event.confirmed_at},
-        )
+--8<-- "patterns/calling-external-systems-from-handlers/003.py:chain"
 ```
 
 `OrderConfirmed` goes to the [outbox](../concepts/async-processing/outbox.md)
 inside the confirming transaction and is published once that transaction commits,
 so `notify_partner` runs after the write is durable. The value it needs travels
-on the event.
+on the event. `confirmed_at` is a `datetime`, which is not JSON, so
+`notify_partner` sends it as an ISO 8601 string.
+
+With sync event processing, `notify_partner` runs in the caller's thread right
+after the confirming commit. If the partner call fails, the caller gets a
+`TransactionError`, and the confirmed order stays saved.
 
 ---
 
@@ -125,23 +109,19 @@ The costly shape is a multi-facet sync: one external fetch produces a snapshot,
 several facets apply it to the same aggregate, and some facets depend on what an
 earlier facet wrote. A billing provider sync is a good example. One `Subscriber`
 aggregate holds contact details, a plan, and the feature flags the plan unlocks,
-and all three come from the provider.
+and all three come from the provider. A `ProfileSnapshot` holds one fetched
+copy of the provider's data. The two aggregates look like this:
+
+```python
+--8<-- "patterns/calling-external-systems-from-handlers/001.py:aggregates"
+```
 
 **Fetch once, persist the snapshot, raise one event.** One handler fetches the
 snapshot from the provider, then persists it. The fetch comes before any
 repository access, so it runs before the transaction opens.
 
 ```python
-@domain.event_handler(part_of=Subscriber)
-class ProfileFetch:
-    @handle(SubscriberSyncRequested)
-    def fetch_snapshot(self, event):
-        payload = httpx.get(f"{BILLING_URL}/subscribers/{event.subscriber_id}").json()
-
-        repo = current_domain.repository_for(ProfileSnapshot)
-        snapshot = ProfileSnapshot.from_payload(event.subscriber_id, payload)
-        snapshot.store()                    # raises ProfileSnapshotStored
-        repo.add(snapshot)
+--8<-- "patterns/calling-external-systems-from-handlers/001.py:fetch"
 ```
 
 Because the fetch precedes the persist, the call holds no lock, and `protean
@@ -192,12 +172,6 @@ apply an older snapshot over a newer one. If the order matters, store the
 provider's sequence number or timestamp on `Subscriber` and skip a snapshot that
 is older than the last one applied.
 
-The command handler uses these two aggregates:
-
-```python
---8<-- "patterns/calling-external-systems-from-handlers/001.py:aggregates"
-```
-
 ### When the two genuinely cannot be split
 
 Sometimes the write needs the call's result, so the two cannot go in separate
@@ -205,14 +179,8 @@ methods. An address validation service returns a normalized address, and the
 aggregate stores what the service returned:
 
 ```python
-@handle(AddressSubmitted)
-def normalize_and_store(self, event):
-    result = httpx.post(VALIDATOR_URL, json={"address": event.raw_address}).json()
-
-    repo = current_domain.repository_for(Customer)
-    customer = repo.get(event.customer_id)
-    customer.set_address(result["normalized"])
-    repo.add(customer)
+--8<-- "patterns/calling-external-systems-from-handlers/004.py:customer"
+--8<-- "patterns/calling-external-systems-from-handlers/004.py:normalize"
 ```
 
 Call first, then persist. Because the Unit of Work is lazy, the transaction opens

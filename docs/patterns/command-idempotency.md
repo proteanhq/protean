@@ -34,6 +34,7 @@ not a specific data shape or entity. This distinction is critical.
 Consider two calls that look identical:
 
 ```python
+# fragment
 # First call: user adds 3 units of product X
 domain.process(AddItemToCart(cart_id="c-1", product_id="X", quantity=3))
 
@@ -49,6 +50,7 @@ request.
 Now consider a retry of the same request:
 
 ```python
+# fragment
 # First attempt: network timeout, client didn't get the response
 domain.process(AddItemToCart(cart_id="c-1", product_id="X", quantity=3))
 
@@ -70,6 +72,7 @@ the idempotency key is a **header-level field provided by the caller**, not
 derived from the command payload.
 
 ```python
+# fragment
 # Each request gets a unique idempotency key from the API layer.
 # Retries of the same request reuse the same key.
 domain.process(
@@ -94,13 +97,19 @@ In practice, idempotency keys originate at the system boundary, the API layer,
 the message consumer, or the saga coordinator:
 
 ```python
+# fragment
+from fastapi import Header
+
+
 # In a FastAPI endpoint
 @app.post("/carts/{cart_id}/items")
-async def add_item(cart_id: str, request: AddItemRequest):
-    # The client sends an Idempotency-Key header
-    # (or the API layer generates one per request)
-    idempotency_key = request.headers.get("Idempotency-Key")
-
+async def add_item(
+    cart_id: str,
+    request: AddItemRequest,
+    # FastAPI reads the client's Idempotency-Key header into this argument.
+    # The API layer can also generate one key per request.
+    idempotency_key: str | None = Header(default=None),
+):
     result = domain.process(
         AddItemToCart(
             cart_id=cart_id,
@@ -113,12 +122,13 @@ async def add_item(cart_id: str, request: AddItemRequest):
 ```
 
 ```python
+# fragment
 # In a saga / process manager
 @handle(PaymentConfirmed)
 def on_payment_confirmed(self, event: PaymentConfirmed):
     # Use a deterministic key derived from the triggering event
     # so that retries of the same event produce the same key.
-    domain.process(
+    current_domain.process(
         ShipOrder(order_id=event.order_id),
         idempotency_key=f"ship-for-payment-{event._metadata.headers.id}",
     )
@@ -192,6 +202,9 @@ domain.process(command, idempotency_key="req-123")
    For sync commands, this is the handler's return value. For async commands,
    this is the event store position. The caller sees exactly the same
    response as the original submission.
+   The store keeps the result as JSON, so a sync handler called with an
+   idempotency key must return a JSON-serializable value, such as an
+   identifier or a count, and not an aggregate.
 
 2. **Cache miss or error entry**: Proceed normally, enrich the command, append
    to event store, process (sync or async), and cache the result on success.
@@ -211,17 +224,18 @@ because the first attempt actually succeeded.
 When explicit feedback is needed, callers can opt into raising an exception:
 
 ```python
+# fragment
 from protean.exceptions import DuplicateCommandError
 
 # Default: silent acknowledgment (retry-safe)
 result = domain.process(
-    PlaceOrder(order_id="ord-42", items=items),
+    AddItemToCart(cart_id="c-1", product_id="X", quantity=3),
     idempotency_key="req-abc",
 )
 
 # Retry with same key: returns the same result silently
 result_again = domain.process(
-    PlaceOrder(order_id="ord-42", items=items),
+    AddItemToCart(cart_id="c-1", product_id="X", quantity=3),
     idempotency_key="req-abc",
 )
 assert result == result_again
@@ -229,7 +243,7 @@ assert result == result_again
 # Explicit duplicate detection when the caller needs to know
 try:
     domain.process(
-        PlaceOrder(order_id="ord-42", items=items),
+        AddItemToCart(cart_id="c-1", product_id="X", quantity=3),
         idempotency_key="req-abc",
         raise_on_duplicate=True,
     )
@@ -302,23 +316,7 @@ idempotent. "Set the email to X" produces the same result whether executed once
 or ten times.
 
 ```python
-@domain.command(part_of=User)
-class UpdateEmail(BaseCommand):
-    user_id: Identifier(identifier=True)
-    new_email: String()
-
-
-@domain.command_handler(part_of=User)
-class UserCommandHandler(BaseCommandHandler):
-
-    @handle(UpdateEmail)
-    def update_email(self, command: UpdateEmail):
-        repo = current_domain.repository_for(User)
-        user = repo.get(command.user_id)
-        user.email = command.new_email
-        repo.add(user)
-        # Naturally idempotent: setting email to the same value
-        # produces the same aggregate state.
+--8<-- "patterns/command-idempotency/002.py:update_email"
 ```
 
 This is the simplest and most common pattern. If you can design your commands
@@ -336,31 +334,7 @@ as set-based operations, you get idempotency for free.
 Commands that create new aggregates can use existence checks:
 
 ```python
-@domain.command(part_of=Order)
-class PlaceOrder(BaseCommand):
-    order_id: Identifier(identifier=True)
-    items: List()
-    total: Float()
-
-
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler(BaseCommandHandler):
-
-    @handle(PlaceOrder)
-    def place_order(self, command: PlaceOrder):
-        repo = current_domain.repository_for(Order)
-
-        # If the order already exists, this command was already handled
-        existing = repo.get(command.order_id)
-        if existing:
-            return
-
-        order = Order(
-            order_id=command.order_id,
-            items=command.items,
-            total=command.total,
-        )
-        repo.add(order)
+--8<-- "patterns/command-idempotency/003.py:place_order"
 ```
 
 This pattern relies on the command carrying the aggregate's identity (the
@@ -377,33 +351,7 @@ this at Layers 1 and 2. But as defense-in-depth, or when keys aren't
 available, the handler can track processed commands on the aggregate:
 
 ```python
-@domain.command(part_of=Cart)
-class AddItemToCart(BaseCommand):
-    cart_id: Identifier(identifier=True)
-    product_id: String()
-    quantity: Integer()
-
-
-@domain.command_handler(part_of=Cart)
-class CartCommandHandler(BaseCommandHandler):
-
-    @handle(AddItemToCart)
-    def add_item(self, command: AddItemToCart):
-        repo = current_domain.repository_for(Cart)
-        cart = repo.get(command.cart_id)
-
-        # Check the command's idempotency key (if present) against
-        # a set of recently processed keys stored on the aggregate
-        idempotency_key = command._metadata.headers.idempotency_key
-        if idempotency_key and idempotency_key in cart.processed_commands:
-            return  # Already processed
-
-        cart.add_item(command.product_id, command.quantity)
-
-        if idempotency_key:
-            cart.processed_commands.append(idempotency_key)
-
-        repo.add(cart)
+--8<-- "patterns/command-idempotency/004.py:add_item"
 ```
 
 The `processed_commands` field on the aggregate serves as a bounded set of
@@ -411,69 +359,36 @@ recently processed command keys. For aggregates with high command volume,
 this set can be pruned periodically (keeping only the last N entries or
 entries within a time window).
 
-### Event-Sourced Aggregates: Use Expected Version
+### Event-Sourced Aggregates: Expected Version Alone Does Not Stop Duplicates
 
-Event-sourced aggregates in Protean use optimistic concurrency via
-`expected_version`. When a handler loads an aggregate, processes a command, and
-writes new events, the event store checks that the aggregate's stream version
-matches what was expected. If the command was already processed (meaning the
-aggregate has moved forward), the version check fails.
-
-```python
-@domain.aggregate(event_sourced=True)
-class BankAccount(BaseAggregate):
-    account_id: Identifier(identifier=True)
-    balance: Float(default=0.0)
-
-    @apply
-    def on_deposited(self, event: MoneyDeposited):
-        self.balance += event.amount
-
-
-@domain.command_handler(part_of=BankAccount)
-class BankAccountCommandHandler(BaseCommandHandler):
-
-    @handle(DepositMoney)
-    def deposit(self, command: DepositMoney):
-        repo = current_domain.repository_for(BankAccount)
-        account = repo.get(command.account_id)
-
-        account.raise_(MoneyDeposited(
-            account_id=command.account_id,
-            amount=command.amount,
-        ))
-        repo.add(account)
-        # If this command is replayed, expected_version will mismatch
-        # and raise ExpectedVersionError.
-```
-
-Handlers can catch `ExpectedVersionError` to treat version conflicts as
-successful no-ops when appropriate:
+Event-sourced aggregates in Protean use optimistic concurrency. A handler
+loads the aggregate at some version, raises new events, and adds it back to the
+repository. When the unit of work commits, the event store checks that the
+aggregate's stream is still at the version the handler loaded. If another copy
+of the command committed in between, the versions differ and the commit raises
+`ExpectedVersionError`.
 
 ```python
-from protean.exceptions import ExpectedVersionError
-
-@handle(DepositMoney)
-def deposit(self, command: DepositMoney):
-    try:
-        repo = current_domain.repository_for(BankAccount)
-        account = repo.get(command.account_id)
-        account.raise_(MoneyDeposited(
-            account_id=command.account_id,
-            amount=command.amount,
-        ))
-        repo.add(account)
-    except ExpectedVersionError:
-        # Command was likely already processed -- aggregate has moved
-        # past the expected version.
-        logger.info(
-            f"Duplicate command detected: "
-            f"{command._metadata.headers.idempotency_key}"
-        )
+--8<-- "patterns/command-idempotency/005.py:bank_account"
 ```
 
-This is a strong form of idempotency that comes from the event sourcing
-architecture itself. No additional tracking is needed.
+The version check alone does not stop a duplicate. When two copies run at the
+same time, both load the same version, the first commits, and the second
+fails its commit. A command handler then retries the second copy, because
+[version conflict auto-retry](../guides/server/error-handling.md#version-conflict-auto-retry)
+is on by default (`version_retry`, 3 retries). The retry loads the newer
+version, the check passes, and the deposit is applied a second time. A copy
+that arrives after the first one has committed takes the same path without
+any conflict. For both cases, pair the aggregate with an idempotency key
+(Layers 1 and 2), or track processed command keys on the aggregate as in the
+additive pattern above.
+
+The conflict surfaces when the unit of work commits, after the handler method
+returns. A `try`/`except ExpectedVersionError` inside the handler never sees it.
+The error says only that another write came first, not that it was the same
+command. Swallowing it would also drop a different command that happened to
+collide, so leave conflicts to the version retry. The error reaches the caller
+only when the retries run out or `version_retry` is turned off.
 
 ### Cross-Aggregate Commands
 
@@ -482,32 +397,16 @@ principle: **each aggregate is independently responsible for its own
 idempotency**.
 
 The command handler modifies only the primary aggregate. Downstream aggregates
-are modified through event handlers, which have their own subscription-level
-deduplication (Layer 2).
+are modified through event handlers, each in its own transaction.
+
+Layer 2 does not cover those event handlers. It checks the idempotency key, and
+events do not carry the key of the command that raised them. An event
+subscription relies on its stored position alone, so a redelivered event runs
+the handler again. Make the event handler idempotent itself, as described in
+[Idempotent Event Handlers](idempotent-event-handlers.md).
 
 ```python
-@domain.command(part_of=Account)
-class TransferMoney(BaseCommand):
-    transfer_id: Identifier(identifier=True)
-    from_account: String()
-    to_account: String()
-    amount: Float()
-
-
-@domain.command_handler(part_of=Account)
-class AccountCommandHandler(BaseCommandHandler):
-
-    @handle(TransferMoney)
-    def transfer(self, command: TransferMoney):
-        repo = current_domain.repository_for(Account)
-        source = repo.get(command.from_account)
-
-        # Only the source account is modified by the command handler
-        source.debit(command.amount, transfer_id=command.transfer_id)
-        repo.add(source)
-
-        # The MoneyDebited event triggers an event handler that credits
-        # the target account. That handler has its own dedup via Layer 2.
+--8<-- "patterns/command-idempotency/006.py:transfer"
 ```
 
 ### External Side Effects
@@ -521,6 +420,7 @@ developer must handle these explicitly.
 Track whether the side effect has already occurred:
 
 ```python
+# fragment
 @handle(SendWelcomeEmail)
 def send_welcome(self, command: SendWelcomeEmail):
     repo = current_domain.repository_for(User)
@@ -542,6 +442,7 @@ processors, notification services). Pass the command's idempotency key
 through:
 
 ```python
+# fragment
 @handle(ChargeCard)
 def charge_card(self, command: ChargeCard):
     stripe.PaymentIntent.create(
@@ -564,6 +465,7 @@ raise an event. A separate processor picks it up and executes it with retry
 and deduplication:
 
 ```python
+# fragment
 @handle(SendWelcomeEmail)
 def send_welcome(self, command: SendWelcomeEmail):
     repo = current_domain.repository_for(User)
@@ -601,9 +503,9 @@ On retry (same idempotency key):
 - If the handler succeeds this time, the result is cached in Redis and
   returned.
 
-The duplicate command in the event store is harmless. The subscription layer
-(Layer 2) will encounter it during async processing, check Redis, find a
-`success` entry, and skip it.
+The duplicate command in the event store is harmless. Both copies are marked
+as processed synchronously, and the subscription skips commands that were
+already handled inline.
 
 ### Asynchronous Processing
 
@@ -612,10 +514,16 @@ subscription picks it up, but the handler fails.
 
 - The subscription advances its position past the failed message (to avoid
   blocking subsequent messages).
-- The subscription's retry mechanism (configurable retries with backoff) will
-  re-attempt the message.
+- The subscription retries the message, up to `max_retries`, with a fixed
+  `retry_delay_seconds` between attempts. An event store subscription
+  retries on its recovery passes. See
+  [Classify async processing errors](classify-async-processing-errors.md#transient-errors-let-the-framework-retry)
+  for how each subscription type counts and spaces its retries.
 - If the handler eventually succeeds, the idempotency key is cached in Redis.
-- If all retries are exhausted, the message is logged for manual intervention.
+- If all retries are exhausted, a stream subscription moves the message to
+  its dead-letter stream (`enable_dlq`, on by default), and an event store
+  subscription marks the position exhausted in the event store's dead-letter
+  queue.
 
 If the caller retries with the same idempotency key before the subscription
 succeeds:
@@ -635,7 +543,7 @@ succeeds:
 | Overwriting a field (set email) | Naturally idempotent. Key optional but recommended. |
 | Creating a new aggregate | Key + check-then-act in handler as defense-in-depth. |
 | Adding items / incrementing counters | **Key required.** Framework dedup is essential; additive ops are not naturally safe. |
-| Event-sourced aggregate mutations | Key + expected version provides strong protection. |
+| Event-sourced aggregate mutations | **Key required.** The version retry re-runs a conflicting copy, so expected version alone does not stop a duplicate. |
 | Commands from sagas / process managers | Derive key from the triggering event's ID for deterministic dedup. |
 | Sending emails, calling external APIs | Key + pass-through to external service's own idempotency mechanism. |
 | Exactly-once side effects surviving crashes | Key + outbox pattern with events. |
@@ -669,12 +577,13 @@ Consider a `PlaceOrder` command flowing through the system:
 `idempotency:req-abc`. Not found. It enriches the command (setting
 `_metadata.headers.idempotency_key = "req-abc"`), appends to the event store,
 and processes synchronously. The handler creates the order and returns the
-order aggregate. The framework caches `{status: "success", result: <order>}`
-in Redis with a 24-hour TTL. Returns the order to the caller.
+order's identifier. The framework caches
+`{status: "success", result: "ord-42"}` in Redis with a 24-hour TTL and
+returns the identifier to the caller.
 
 **Client retries**: The client didn't receive the response (network issue) and
 retries with the same `Idempotency-Key: req-abc`. `domain.process()` checks
-Redis, finds the `success` entry, and returns the cached order immediately.
+Redis, finds the `success` entry, and returns the cached identifier immediately.
 No event store write, no handler invocation. The client sees the same response
 as if the first call had succeeded normally.
 
@@ -699,7 +608,7 @@ Idempotency behavior is configured in `domain.toml`:
 ```toml
 [idempotency]
 # Redis connection for the idempotency cache.
-# Defaults to the same Redis instance used for the broker.
+# Unset by default. Without it, Layers 1 and 2 do nothing.
 redis_url = "${REDIS_URL}"
 
 # Time-to-live for idempotency records in seconds.
@@ -711,6 +620,14 @@ ttl = 86400
 # Short TTL allows retries after transient failures.
 # Default: 60
 error_ttl = 60
+```
+
+The same settings can be made in code before the domain initializes. Here the
+Redis URL comes from the `REDIS_URL` environment variable, and the store stays
+off when the variable is unset:
+
+```python
+--8<-- "patterns/command-idempotency/001.py:config"
 ```
 
 ---

@@ -5,9 +5,9 @@
 An event handler processes `OrderPlaced` events and awards loyalty points:
 
 ```python
-@domain.event_handler(part_of=CustomerLoyalty)
-class LoyaltyEventHandler(BaseEventHandler):
-
+# fragment
+@domain.event_handler(part_of=Order)
+class LoyaltyEventHandler:
     @handle(OrderPlaced)
     def award_points(self, event: OrderPlaced):
         repo = current_domain.repository_for(CustomerLoyalty)
@@ -62,6 +62,17 @@ This is achieved through one of three strategies:
 3. **Upsert instead of insert**: Using database semantics that handle
    duplicates gracefully.
 
+The examples on this page react to events from an `Order` aggregate:
+
+```python
+--8<-- "patterns/idempotent-event-handlers/001.py:order"
+```
+
+Each handler that reacts to `OrderPlaced`, `OrderPaid` or `OrderShipped` is
+declared with `part_of=Order`, even when it changes another aggregate. A
+handler listens to the stream of the aggregate it is part of, so a handler
+declared with `part_of=CustomerLoyalty` would never receive `OrderPlaced`.
+
 ---
 
 ## Events vs Commands: Why Handlers Differ
@@ -75,13 +86,16 @@ Event handlers have different characteristics:
 | Semantics | Intent to change | Fact that occurred |
 | Can be rejected? | Yes | No (it already happened) |
 | Idempotency key | Caller-provided | Not applicable |
-| Framework dedup | Redis-backed cache (Layers 1-2) | Subscription position only |
+| Framework dedup | Redis-backed cache (Layers 1-2) | Subscription position; projectors can opt into `idempotent=True` |
 | Handler responsibility | Defense-in-depth | Primary defense |
 
 Because events don't carry caller-provided idempotency keys, the handler itself
 is the primary defense against duplicate processing. The subscription's position
 tracking provides some protection, but it's not sufficient (position updates
-are periodic, not per-message).
+are periodic, not per-message). A projector can opt into
+[`idempotent=True`](../guides/consume-state/projectors.md), which records a
+marker per event and skips a redelivered one. Event handlers have no such
+option.
 
 ---
 
@@ -96,19 +110,7 @@ Operations that **set** state rather than **add** to it are naturally
 idempotent:
 
 ```python
-@domain.event_handler(part_of=OrderStatus)
-class OrderStatusEventHandler(BaseEventHandler):
-
-    @handle(OrderShipped)
-    def on_order_shipped(self, event: OrderShipped):
-        repo = current_domain.repository_for(OrderStatus)
-        status = repo.get(event.order_id)
-        # Setting status to "shipped" is idempotent
-        # Doing it twice produces the same result
-        status.status = "shipped"
-        status.shipped_at = event.shipped_at
-        status.tracking_number = event.tracking_number
-        repo.add(status)
+--8<-- "patterns/idempotent-event-handlers/001.py:set_based"
 ```
 
 Setting `status = "shipped"` ten times leaves the status at "shipped". There's
@@ -130,20 +132,19 @@ entirely.
 For example, instead of incrementing a counter:
 
 ```python
+# fragment
 # Additive (NOT idempotent)
 def on_order_placed(self, event: OrderPlaced):
     stats.order_count += 1
     stats.total_revenue += event.total
 ```
 
-Consider maintaining the full state:
+Consider maintaining the full state. `record_order` keeps the orders keyed by
+order ID and recalculates the totals from them, so recording the same order
+twice changes nothing:
 
 ```python
-# Set-based (idempotent)
-def on_order_placed(self, event: OrderPlaced):
-    # Recalculate from the projection's stored orders
-    stats.record_order(event.order_id, event.total)
-    # record_order uses a set: adding the same order_id twice is a no-op
+--8<-- "patterns/idempotent-event-handlers/001.py:order_stats"
 ```
 
 ---
@@ -159,30 +160,14 @@ The simplest deduplication: check whether the event has already been processed
 before processing it.
 
 ```python
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def reserve_inventory(self, event: OrderPlaced):
-        repo = current_domain.repository_for(Inventory)
-
-        for item in event.items:
-            inventory = repo.get(item["product_id"])
-
-            # Check if this event's reservation was already applied
-            if event.order_id in inventory.reserved_for_orders:
-                continue  # Already processed, skip
-
-            inventory.reserve(
-                quantity=item["quantity"],
-                order_id=event.order_id,
-            )
-            repo.add(inventory)
+--8<-- "patterns/idempotent-event-handlers/001.py:check_before_act"
 ```
 
 The `Inventory` aggregate tracks which orders have already reserved stock.
 If the same `OrderPlaced` event arrives twice, the second delivery finds the
-order ID already in the set and skips.
+order ID already in `reserved_for_orders` and skips that product. The handler
+adds up the quantities for each product first, so an order that lists the same
+product on two lines reserves the total once.
 
 ### Track Processed Event IDs
 
@@ -190,23 +175,13 @@ For handlers that process many event types, maintain a set of processed event
 identifiers:
 
 ```python
-@domain.event_handler(part_of=CustomerLoyalty)
-class LoyaltyEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def award_points(self, event: OrderPlaced):
-        repo = current_domain.repository_for(CustomerLoyalty)
-        loyalty = repo.get(event.customer_id)
-
-        # Use the event's unique ID for deduplication
-        event_id = event._metadata.headers.id
-        if event_id in loyalty.processed_events:
-            return  # Already processed
-
-        loyalty.add_points(int(event.total))
-        loyalty.processed_events.append(event_id)
-        repo.add(loyalty)
+--8<-- "patterns/idempotent-event-handlers/001.py:processed_events"
 ```
+
+The handler assigns a new list instead of calling `append()` on the stored
+one. Protean tracks a change to a `List` field when you assign it. An in-place
+`append()` on its own is not seen as a change, so saving an aggregate whose only
+change is the append does not store it.
 
 The `processed_events` list is a bounded collection of recently processed
 event IDs. For high-volume aggregates, prune entries older than a retention
@@ -214,33 +189,24 @@ window (e.g., keep only the last 1000 or entries from the last 24 hours).
 
 ### Use Event Sequence Numbers
 
-When a handler reads events in event store order, the event's global position
-can serve as a deduplication marker. The global position grows across the whole
-store. The stream position (`event_store.position`) restarts at 0 for each
+When a handler reads events strictly in event store order, the event's global
+position can serve as a deduplication marker. The global position grows across
+the whole store. The stream position (`event_store.position`) restarts at 0 for each
 aggregate, so it cannot serve as one watermark shared by several aggregates:
 
 ```python
-@domain.event_handler(part_of=ProjectionState)
-class ProjectionStateHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(ProjectionState)
-        state = repo.get("order-projection")
-
-        # Use the store-wide global position for deduplication
-        event_position = event._metadata.event_store.global_position
-        if event_position <= state.last_processed_position:
-            return  # Already processed or older
-
-        # Process the event
-        state.apply_order_placed(event)
-        state.last_processed_position = event_position
-        repo.add(state)
+--8<-- "patterns/idempotent-event-handlers/001.py:global_position"
 ```
 
 This is particularly useful for projectors that rebuild from an event stream
 and need to track their position.
+
+Use the watermark only where processing stops at the first failure, such as a
+rebuild that halts on an error. A live event store subscription does not work
+that way. With recovery on (the default), it records a failed event, moves on to
+newer events, and retries the failed one later. By then the watermark has moved
+past the failed event's position, so the handler skips it and the order is never
+counted. For a live handler, track processed event IDs instead.
 
 ---
 
@@ -256,62 +222,23 @@ processes `OrderPlaced` to create an `OrderSummary` projection, a duplicate
 delivery would try to create a second record with the same ID:
 
 ```python
-@domain.projector(projector_for=OrderSummaryProjection, aggregates=[Order])
-class OrderSummaryProjector(BaseProjector):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(OrderSummaryProjection)
-
-        # Check if the projection already exists
-        existing = repo.get(event.order_id)
-        if existing:
-            # Already created -- update instead of insert
-            existing.customer_name = event.customer_name
-            existing.total = event.total
-            existing.placed_at = event.placed_at
-            existing.status = "placed"
-            repo.add(existing)
-        else:
-            # First time -- create
-            projection = OrderSummaryProjection(
-                order_id=event.order_id,
-                customer_name=event.customer_name,
-                status="placed",
-                total=event.total,
-                placed_at=event.placed_at,
-            )
-            repo.add(projection)
+--8<-- "patterns/idempotent-event-handlers/001.py:upsert_imports"
+--8<-- "patterns/idempotent-event-handlers/001.py:upsert"
 ```
 
-This pattern naturally handles both first delivery and duplicate delivery. The
-result is the same either way.
+`repo.get()` raises `ObjectNotFoundError` when no record has the ID, so the
+projector catches it to tell a first delivery from a repeat. This pattern
+handles both first delivery and duplicate delivery. The result is the same
+either way.
 
-### State Machine Guard
+### Existence Guard
 
-For handlers that trigger state transitions, use the aggregate's current state
-as a guard:
+For handlers that create an aggregate, check whether one already exists for the
+source of the event before creating it. `ShipmentRepository.find_by_order_id`
+looks the shipment up by order ID and returns `None` when there is none:
 
 ```python
-@domain.event_handler(part_of=Shipment)
-class ShipmentEventHandler(BaseEventHandler):
-
-    @handle(OrderPaid)
-    def create_shipment(self, event: OrderPaid):
-        repo = current_domain.repository_for(Shipment)
-
-        # Check if a shipment already exists for this order
-        existing = repo.find_by_order_id(event.order_id)
-        if existing:
-            return  # Shipment already created
-
-        shipment = Shipment(
-            order_id=event.order_id,
-            customer_id=event.customer_id,
-            items=event.items,
-            status="pending",
-        )
-        repo.add(shipment)
+--8<-- "patterns/idempotent-event-handlers/001.py:existence_guard"
 ```
 
 ---
@@ -324,47 +251,7 @@ Loyalty points are additive, awarding points twice doubles the reward. This
 requires explicit deduplication.
 
 ```python
-@domain.aggregate
-class CustomerLoyalty:
-    customer_id: Identifier(identifier=True)
-    points: Integer(default=0)
-    point_transactions = HasMany(PointTransaction)
-
-    def award_points(self, order_id: str, amount: int) -> None:
-        """Award loyalty points for an order, idempotently."""
-        # Check if points were already awarded for this order
-        for txn in self.point_transactions:
-            if txn.source_id == order_id:
-                return  # Already awarded
-
-        self.points += amount
-        self.point_transactions.add(PointTransaction(
-            source_id=order_id,
-            amount=amount,
-            type="earned",
-        ))
-
-
-@domain.entity(part_of=CustomerLoyalty)
-class PointTransaction:
-    source_id: Identifier(required=True)
-    amount: Integer(required=True)
-    type: String(required=True)
-
-
-@domain.event_handler(part_of=CustomerLoyalty)
-class LoyaltyEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def award_points(self, event: OrderPlaced):
-        repo = current_domain.repository_for(CustomerLoyalty)
-        loyalty = repo.get(event.customer_id)
-        # The aggregate method handles idempotency internally
-        loyalty.award_points(
-            order_id=event.order_id,
-            amount=int(event.total),
-        )
-        repo.add(loyalty)
+--8<-- "patterns/idempotent-event-handlers/002.py:loyalty"
 ```
 
 The idempotency logic lives in the aggregate's `award_points` method, not
@@ -374,52 +261,8 @@ in the handler. The handler is thin. The aggregate checks its
 ### Example 2: Inventory Reservation (Cross-Aggregate Side Effect)
 
 ```python
-@domain.aggregate
-class Inventory:
-    product_id: Identifier(identifier=True)
-    available_quantity: Integer(default=0)
-    reservations = HasMany(Reservation)
-
-    def reserve(self, order_id: str, quantity: int) -> None:
-        """Reserve inventory for an order, idempotently."""
-        # Check if already reserved for this order
-        for reservation in self.reservations:
-            if reservation.order_id == order_id:
-                return  # Already reserved
-
-        if self.available_quantity < quantity:
-            raise ValidationError(
-                {"quantity": [
-                    f"Insufficient inventory. Available: {self.available_quantity}"
-                ]}
-            )
-
-        self.available_quantity -= quantity
-        self.reservations.add(Reservation(
-            order_id=order_id,
-            quantity=quantity,
-        ))
-
-        self.raise_(InventoryReserved(
-            product_id=self.product_id,
-            order_id=order_id,
-            quantity=quantity,
-        ))
-
-
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(Inventory)
-        for item in event.items:
-            inventory = repo.get(item["product_id"])
-            inventory.reserve(
-                order_id=event.order_id,
-                quantity=item["quantity"],
-            )
-            repo.add(inventory)
+--8<-- "patterns/idempotent-event-handlers/002.py:inventory_imports"
+--8<-- "patterns/idempotent-event-handlers/002.py:inventory"
 ```
 
 The `Reservation` entity within the `Inventory` aggregate acts as a
@@ -432,51 +275,26 @@ External side effects (sending emails, calling APIs) require special care
 because they cannot be rolled back:
 
 ```python
-@domain.aggregate
-class Notification:
-    notification_id: Auto(identifier=True)
-    recipient_id: Identifier(required=True)
-    type: String(required=True)
-    source_event_id: Identifier(required=True)
-    status: String(default="pending")
-    sent_at: DateTime()
-
-    def mark_sent(self) -> None:
-        self.status = "sent"
-        self.sent_at = datetime.now(timezone.utc)
-
-
-@domain.event_handler(part_of=Notification)
-class NotificationEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def send_confirmation(self, event: OrderPlaced):
-        repo = current_domain.repository_for(Notification)
-
-        # Use event ID as the deduplication key
-        event_id = event._metadata.headers.id
-        existing = repo.find_by_source_event_id(event_id)
-
-        if existing and existing.status == "sent":
-            return  # Already sent
-
-        if not existing:
-            notification = Notification(
-                recipient_id=event.customer_id,
-                type="order_confirmation",
-                source_event_id=event_id,
-                status="pending",
-            )
-            repo.add(notification)
-
-        # The actual sending happens via the outbox pattern
-        # or a separate process that picks up pending notifications
+--8<-- "patterns/idempotent-event-handlers/002.py:notification_imports"
+--8<-- "patterns/idempotent-event-handlers/002.py:notification"
 ```
 
 Instead of sending the email directly (which can't be undone), the handler
-creates a `Notification` record. A separate process sends pending notifications
-and marks them as sent. If the event is redelivered, the handler finds the
-existing notification and skips.
+creates a `Notification` record. If the event is redelivered, the handler finds
+the existing notification and skips.
+
+A separate process sends pending notifications and marks them as sent:
+
+```python
+--8<-- "patterns/idempotent-event-handlers/002.py:sender"
+```
+
+Once a notification is marked as sent and saved, a later run of
+`send_pending_notifications` does not send it again. The sender calls the
+provider before it saves the status. If the save fails or the process stops
+between the two, the notification stays pending and the next run sends it
+again. To rule that out, pass the notification's ID to the provider as an
+idempotency key, if the provider supports one.
 
 ---
 
@@ -490,31 +308,7 @@ Projectors maintain read-optimized projections. They're typically idempotent
 by nature because they **set** the projection's state rather than accumulate it:
 
 ```python
-@domain.projector(projector_for=OrderDashboardProjection, aggregates=[Order])
-class OrderDashboardProjector(BaseProjector):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(OrderDashboardProjection)
-        # Upsert pattern: create or update
-        projection = repo.get(event.order_id)
-        if not projection:
-            projection = OrderDashboardProjection(order_id=event.order_id)
-
-        projection.customer_name = event.customer_name
-        projection.status = "placed"
-        projection.total = event.total
-        projection.placed_at = event.placed_at
-        repo.add(projection)
-
-    @handle(OrderShipped)
-    def on_order_shipped(self, event: OrderShipped):
-        repo = current_domain.repository_for(OrderDashboardProjection)
-        projection = repo.get(event.order_id)
-        if projection:
-            projection.status = "shipped"
-            projection.shipped_at = event.shipped_at
-            repo.add(projection)
+--8<-- "patterns/idempotent-event-handlers/001.py:dashboard"
 ```
 
 Each handler sets fields to specific values. Processing the same event twice
@@ -526,21 +320,7 @@ Event handlers that modify domain aggregates need more care because aggregates
 have business rules, invariants, and state machines:
 
 ```python
-@domain.event_handler(part_of=Account)
-class AccountEventHandler(BaseEventHandler):
-
-    @handle(MoneyDebited)
-    def credit_target(self, event: MoneyDebited):
-        repo = current_domain.repository_for(Account)
-        target = repo.get(event.target_account_id)
-
-        # Must deduplicate because credit is additive
-        if event.transfer_id in target.processed_transfers:
-            return
-
-        target.credit(event.amount)
-        target.processed_transfers.append(event.transfer_id)
-        repo.add(target)
+--8<-- "patterns/idempotent-event-handlers/001.py:account"
 ```
 
 The key difference: projectors typically use set-based operations (naturally
@@ -559,8 +339,9 @@ If the handler's behavior depends on the current time, two executions at
 different times may produce different results:
 
 ```python
+# fragment
 def on_order_placed(self, event: OrderPlaced):
-    # This is NOT idempotent -- running at different times changes the result
+    # This is NOT idempotent: running at different times changes the result
     if datetime.now() - event.placed_at > timedelta(hours=24):
         order.flag_as_delayed()
 ```
@@ -569,6 +350,7 @@ Mitigation: use the event's timestamp, not the current time, for time-dependent
 decisions:
 
 ```python
+# fragment
 def on_order_placed(self, event: OrderPlaced):
     # Better: use event time, not wall clock
     if event.expected_delivery_date < event.placed_at + timedelta(hours=24):
@@ -581,8 +363,9 @@ If the handler calls an external API that's not idempotent, duplicate
 processing produces duplicate external effects:
 
 ```python
+# fragment
 def on_order_placed(self, event: OrderPlaced):
-    # NOT idempotent -- sends duplicate SMS on redelivery
+    # NOT idempotent: sends duplicate SMS on redelivery
     sms_service.send(event.customer_phone, "Your order is confirmed!")
 ```
 
@@ -618,7 +401,7 @@ deduplication).
 | Set-based operations | Handler sets state, doesn't accumulate | Low | High |
 | Check-before-act | Additive operations, moderate volume | Medium | High |
 | Processed event tracking | Multiple event types, need audit trail | Medium | High |
-| Stream position tracking | Single-stream projections | Medium | Medium |
+| Global position tracking | Rebuilds that stop at the first failure | Medium | Medium |
 | Upsert | Creating or updating projections | Low | High |
 | Status flags | External side effects | Medium | High |
 

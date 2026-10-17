@@ -296,23 +296,29 @@ messages are consumed when running the [Protean server](../../concepts/async-pro
 When using Redis Streams (`subscription_type="stream"`), Protean supports
 automatic retries and dead-letter queuing for failed messages:
 
-- **`max_retries`** (default: `3`): The number of times a failed message is
-  re-delivered to the consumer before it is moved to the dead letter queue.
-  Each retry re-delivers the message from the pending entries list (PEL).
+- **`max_retries`** (default: `3`): The number of attempts in total,
+  counting the first, before a failed message is moved to the dead letter
+  queue. With the default, a message is tried 3 times. Each retry
+  re-delivers the message from the pending entries list (PEL).
 
-- **`enable_dlq`** (default: `False`): When enabled, messages that exhaust
-  their retry budget are moved to a separate dead-letter stream
-  (`<stream>:dlq`) instead of being silently dropped. You can inspect and
-  reprocess DLQ messages manually or with a scheduled job.
+- **`enable_dlq`** (default: `True`): Messages that exhaust their retry
+  budget are moved to a separate dead-letter stream (`<stream>:dlq`). You
+  can inspect and reprocess DLQ messages manually or with a scheduled job.
+  Set it to `False` to drop them instead.
 
 ```python
 --8<-- "guides/consume-state/event-handlers/002.py:dlq"
 ```
 
 !!! note "Event store subscriptions"
-    Retry and DLQ are only available with `subscription_type="stream"` (Redis
-    Streams). Event store subscriptions track position and re-read on restart
-    but do not have per-message retry semantics.
+    The settings above apply to `subscription_type="stream"` (Redis
+    Streams). An event store subscription keeps no dead-letter stream. It
+    records each failed position and retries it on a later recovery pass, up
+    to `max_retries` (default 3), set under
+    `[server.event_store_subscription]`. A position that still fails is marked
+    exhausted and skipped. The exhausted positions are the event store's
+    dead-letter queue, which you manage with
+    [`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md).
 
 See [Server → Configuration](../../reference/server/configuration.md) for detailed
 configuration options and the priority hierarchy.

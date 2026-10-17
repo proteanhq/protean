@@ -6,26 +6,9 @@ An e-commerce platform uses a projector to maintain an `OrderDashboard`
 projection:
 
 ```python
-@domain.projector(projector_for=OrderDashboard, aggregates=[Order])
-class OrderDashboardProjector(BaseProjector):
-
-    @on(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(OrderDashboard)
-        repo.add(OrderDashboard(
-            order_id=event.order_id,
-            customer_name=event.customer_name,
-            status="placed",
-            total=event.total,
-        ))
-
-    @on(OrderShipped)
-    def on_order_shipped(self, event: OrderShipped):
-        repo = current_domain.repository_for(OrderDashboard)
-        dashboard = repo.get(event.order_id)
-        dashboard.status = "shipped"
-        dashboard.shipped_at = event.shipped_at
-        repo.add(dashboard)
+--8<-- "patterns/classify-async-processing-errors/001.py:imports"
+--8<-- "patterns/classify-async-processing-errors/001.py:model"
+--8<-- "patterns/classify-async-processing-errors/001.py:problem"
 ```
 
 On Tuesday, the Elasticsearch cluster is temporarily unreachable. The
@@ -66,9 +49,9 @@ into one of three categories and respond accordingly:
 
 | Category | Examples | Strategy |
 |----------|----------|----------|
-| **Transient** | Network timeouts, lock contention, broker unavailability | Let the outbox retry with exponential backoff |
+| **Transient** | Network timeouts, lock contention, broker unavailability | Let the framework retry the message |
 | **Data error** | Schema mismatch, missing fields, invalid payload | Route to DLQ for manual inspection, alert the team |
-| **Logic error** | Business rule violations, incorrect calculations, unexpected `None` | Alert immediately, don't retry, fix the code, replay |
+| **Logic error** | Business rule violations, incorrect calculations, unexpected `None` | Alert immediately, fix the code, replay |
 
 The mental model:
 
@@ -76,7 +59,7 @@ The mental model:
 Exception raised in handler
     |
     +-- Is it transient?
-    |       Yes --> Log WARNING, let outbox retry handle it.
+    |       Yes --> Log WARNING, let the framework retry it.
     |
     +-- Is it a data problem?
     |       Yes --> Send to DLQ. Alert the team.
@@ -100,6 +83,7 @@ Protean's `HandlerMixin` provides a `handle_error` classmethod that the
 engine calls whenever a handler raises an exception:
 
 ```python
+# fragment
 @classmethod
 def handle_error(cls, exc: Exception, message: Message) -> None:
     """Called by the engine when this handler raises an exception.
@@ -121,7 +105,7 @@ The engine's processing flow:
 
 This means `handle_error` is your **classification hook**. It runs after the
 failure is already recorded in traces and logs. Its job is to decide what
-happens next: nothing (for transient errors the outbox will retry), DLQ
+happens next: nothing (for transient errors the framework will retry), DLQ
 routing, or immediate alerting.
 
 ---
@@ -133,58 +117,7 @@ routing, or immediate alerting.
 Build helpers that recognize common failure signatures:
 
 ```python
-import socket
-
-TRANSIENT_EXCEPTION_TYPES = (
-    ConnectionError,
-    TimeoutError,
-    socket.timeout,
-    OSError,
-)
-
-TRANSIENT_PATTERNS = (
-    "deadlock",
-    "lock timeout",
-    "connection reset",
-    "too many connections",
-)
-
-DATA_ERROR_TYPES = (
-    KeyError,
-    TypeError,
-    ValueError,
-)
-
-DATA_ERROR_PATTERNS = (
-    "missing required field",
-    "invalid type",
-    "schema",
-    "deserialization",
-)
-
-
-def _is_transient(exc: Exception) -> bool:
-    """Determine if an exception is transient and likely to succeed on retry."""
-    if isinstance(exc, BaseExceptionGroup):
-        # Retrying re-runs every sibling that an idempotency marker does not
-        # skip, so it only helps when all of them failed transiently.
-        return all(_is_transient(inner) for inner in exc.exceptions)
-    if isinstance(exc, TRANSIENT_EXCEPTION_TYPES):
-        return True
-    msg = str(exc).lower()
-    return any(p in msg for p in TRANSIENT_PATTERNS)
-
-
-def _is_data_error(exc: Exception) -> bool:
-    """Determine if an exception is caused by bad message data."""
-    if isinstance(exc, BaseExceptionGroup):
-        # One member blaming the message data is enough: a retry will hit the
-        # same bad payload.
-        return any(_is_data_error(inner) for inner in exc.exceptions)
-    if isinstance(exc, DATA_ERROR_TYPES):
-        return True
-    msg = str(exc).lower()
-    return any(p in msg for p in DATA_ERROR_PATTERNS)
+--8<-- "patterns/classify-async-processing-errors/001.py:classifiers"
 ```
 
 !!! warning "Classify the members of an `ExceptionGroup`"
@@ -203,57 +136,50 @@ def _is_data_error(exc: Exception) -> bool:
     transient list. If you use a third-party API, add its rate-limit
     and gateway-timeout exceptions.
 
-### Transient errors: let the outbox retry
+### Transient errors: let the framework retry
 
-Transient errors resolve themselves. The outbox already implements
-exponential backoff: `delay = min(base_delay * 2^retry_count, max_backoff)`.
-After `max_retries`, the status becomes `ABANDONED`.
+Transient errors resolve themselves. Protean retries a failed message in two
+places:
+
+- **In the handler.** With `transient_retry` turned on (it is off by
+  default), a handler that raises `ConnectionError`, `TimeoutError` or
+  `SendError` runs again in place, with exponential backoff, before the
+  failure leaves the handler. `handle_error` only sees the failure once these
+  retries run out. See
+  [Transient-failure retries](../guides/consume-state/event-handlers.md#transient-failure-retries).
+- **In the subscription.** The subscription that delivered the message
+  tries it again after a failure. `max_retries` (3 by default) sets when it
+  gives up, and the two subscription types retry differently:
+    - A stream subscription retries straight away, waiting
+      `retry_delay_seconds` (1 second by default) between attempts. It stops
+      after `max_retries` attempts in total, so 3 attempts by default.
+    - An event store subscription moves past the failed message and retries
+      it on a later recovery pass. A pass runs every
+      `recovery_interval_seconds` (30 seconds by default) and waits
+      `retry_delay_seconds` before each retry. It retries `max_retries` times
+      after the first failure, so 4 attempts by default. With
+      `enable_recovery` set to `False`, it does not retry at all.
+
+The subscription retries every failure, whatever `handle_error` decides.
+`handle_error` cannot stop a retry, and the engine calls it again after each
+failed attempt. A data or logic error therefore reaches your alert more than
+once, so deduplicate alerts by message id.
 
 For transient errors, the best action in `handle_error` is minimal logging:
 
 ```python
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def reserve_inventory(self, event: OrderPlaced):
-        repo = current_domain.repository_for(Inventory)
-        for item in event.items:
-            inventory = repo.get(item["product_id"])
-            inventory.reserve(
-                order_id=event.order_id,
-                quantity=item["quantity"],
-            )
-            repo.add(inventory)
-
-    @classmethod
-    def handle_error(cls, exc: Exception, message: Message) -> None:
-        if _is_transient(exc):
-            logger.warning(
-                "Transient error in %s, will retry: %s",
-                cls.__name__, exc,
-            )
-            return
-
-        if _is_data_error(exc):
-            logger.error(
-                "Data error in %s, message_id=%s: %s",
-                cls.__name__,
-                message.metadata.headers.id if message.metadata else "unknown",
-                exc, exc_info=True,
-            )
-            _alert_data_error(cls.__name__, exc, message)
-            return
-
-        # Logic error: alert immediately
-        logger.critical(
-            "Logic error in %s, message_id=%s: %s",
-            cls.__name__,
-            message.metadata.headers.id if message.metadata else "unknown",
-            exc, exc_info=True,
-        )
-        _alert_logic_error(cls.__name__, exc, message)
+--8<-- "patterns/classify-async-processing-errors/001.py:transient"
 ```
+
+The handler is `part_of=Inventory`, but `OrderPlaced` belongs to `Order`. An
+event handler reads its own aggregate's stream unless it sets
+`stream_category`, so this one names the order stream. Without it, the engine
+would never deliver `OrderPlaced` to the handler.
+
+The log calls pass `exc_info=exc`. That attaches the traceback of the
+exception `handle_error` received. `exc_info=True` reads the exception being
+handled at that moment instead, which is empty when the method runs outside
+an `except` block, as it does in a test.
 
 ### Data errors: route to DLQ
 
@@ -263,38 +189,7 @@ retries. In `handle_error`, you can alert proactively when you recognize
 a data problem:
 
 ```python
-@domain.event_handler(part_of=Shipping)
-class ShippingEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def create_shipment(self, event: OrderPlaced):
-        repo = current_domain.repository_for(Shipment)
-        repo.add(Shipment(
-            order_id=event.order_id,
-            customer_id=event.customer_id,
-            items=event.items,
-            status="pending",
-        ))
-
-    @classmethod
-    def handle_error(cls, exc: Exception, message: Message) -> None:
-        if _is_transient(exc):
-            logger.warning("Transient error in %s: %s", cls.__name__, exc)
-            return
-
-        if _is_data_error(exc):
-            logger.error(
-                "Data error in %s -- message will move to DLQ. "
-                "message_id=%s, type=%s, error=%s",
-                cls.__name__,
-                message.metadata.headers.id if message.metadata else "unknown",
-                message.metadata.headers.type if message.metadata else "unknown",
-                exc, exc_info=True,
-            )
-            _alert_data_error(cls.__name__, exc, message)
-            return
-
-        _alert_logic_error(cls.__name__, exc, message)
+--8<-- "patterns/classify-async-processing-errors/001.py:data_errors"
 ```
 
 !!! warning
@@ -307,45 +202,7 @@ Logic errors are bugs: a projector dividing by zero, a handler assuming a field
 that no longer exists. They fail identically on every retry.
 
 ```python
-@domain.projector(projector_for=OrderDashboard, aggregates=[Order])
-class OrderDashboardProjector(BaseProjector):
-
-    @on(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(OrderDashboard)
-        repo.add(OrderDashboard(
-            order_id=event.order_id,
-            customer_name=event.customer_name,
-            status="placed",
-            total=event.total,
-        ))
-
-    @on(OrderShipped)
-    def on_order_shipped(self, event: OrderShipped):
-        repo = current_domain.repository_for(OrderDashboard)
-        dashboard = repo.get(event.order_id)
-        dashboard.status = "shipped"
-        dashboard.shipped_at = event.shipped_at
-        repo.add(dashboard)
-
-    @classmethod
-    def handle_error(cls, exc: Exception, message: Message) -> None:
-        if _is_transient(exc):
-            logger.warning(
-                "Transient error in %s (projection may be stale): %s",
-                cls.__name__, exc,
-            )
-            return
-
-        # For projectors, any non-transient error means a stale read model
-        logger.critical(
-            "%s in %s -- projection is stale. message_id=%s, error=%s",
-            "Data error" if _is_data_error(exc) else "Logic error (BUG)",
-            cls.__name__,
-            message.metadata.headers.id if message.metadata else "unknown",
-            exc, exc_info=True,
-        )
-        _alert_stale_projection(cls.__name__, exc, message)
+--8<-- "patterns/classify-async-processing-errors/001.py:logic_errors"
 ```
 
 Note the escalation: transient errors log at `WARNING`, data errors at
@@ -358,114 +215,19 @@ To avoid repeating the classification logic in every handler, extract it
 into a mixin:
 
 ```python
-class ErrorClassificationMixin:
-    """Classifies handler exceptions into transient, data, and logic errors.
-
-    Subclasses override ``on_transient_error``, ``on_data_error``, or
-    ``on_logic_error`` to customize behavior per handler.
-    """
-
-    _extra_transient_types: tuple = ()
-    _extra_data_error_types: tuple = ()
-
-    @classmethod
-    def handle_error(cls, exc: Exception, message: Message) -> None:
-        if cls._classify_transient(exc):
-            cls.on_transient_error(exc, message)
-        elif cls._classify_data_error(exc):
-            cls.on_data_error(exc, message)
-        else:
-            cls.on_logic_error(exc, message)
-
-    @classmethod
-    def _classify_transient(cls, exc: Exception) -> bool:
-        # Retrying re-runs every sibling that an idempotency marker does not
-        # skip, so it only helps when all of them failed transiently.
-        if isinstance(exc, BaseExceptionGroup):
-            return all(cls._classify_transient(e) for e in exc.exceptions)
-        types = TRANSIENT_EXCEPTION_TYPES + cls._extra_transient_types
-        if isinstance(exc, types):
-            return True
-        msg = str(exc).lower()
-        return any(p in msg for p in TRANSIENT_PATTERNS)
-
-    @classmethod
-    def _classify_data_error(cls, exc: Exception) -> bool:
-        # A group means several sibling methods failed. One member blaming the
-        # message data is enough, since a retry hits the same payload.
-        if isinstance(exc, BaseExceptionGroup):
-            return any(cls._classify_data_error(e) for e in exc.exceptions)
-        types = DATA_ERROR_TYPES + cls._extra_data_error_types
-        if isinstance(exc, types):
-            return True
-        msg = str(exc).lower()
-        return any(p in msg for p in DATA_ERROR_PATTERNS)
-
-    @classmethod
-    def on_transient_error(cls, exc: Exception, message: Message) -> None:
-        logger.warning("Transient error in %s: %s", cls.__name__, exc)
-
-    @classmethod
-    def on_data_error(cls, exc: Exception, message: Message) -> None:
-        logger.error("Data error in %s: %s", cls.__name__, exc, exc_info=True)
-
-    @classmethod
-    def on_logic_error(cls, exc: Exception, message: Message) -> None:
-        logger.critical("Logic error in %s: %s", cls.__name__, exc, exc_info=True)
+--8<-- "patterns/classify-async-processing-errors/001.py:mixin"
 ```
 
 Use it in handlers:
 
 ```python
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler(ErrorClassificationMixin, BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def reserve_inventory(self, event: OrderPlaced):
-        repo = current_domain.repository_for(Inventory)
-        for item in event.items:
-            inventory = repo.get(item["product_id"])
-            inventory.reserve(order_id=event.order_id, quantity=item["quantity"])
-            repo.add(inventory)
-
-    @classmethod
-    def on_logic_error(cls, exc: Exception, message: Message) -> None:
-        super().on_logic_error(exc, message)
-        pagerduty.trigger(
-            summary=f"Logic error in {cls.__name__}: {exc}",
-            severity="critical",
-        )
+--8<-- "patterns/classify-async-processing-errors/002.py:handler"
 ```
 
 For projectors, add a subclass that elevates all non-transient errors:
 
 ```python
-class ProjectorErrorMixin(ErrorClassificationMixin):
-    """Elevated alerting for projector failures -- any non-transient error
-    means the read model is stale and users see wrong data."""
-
-    @classmethod
-    def on_data_error(cls, exc: Exception, message: Message) -> None:
-        super().on_data_error(exc, message)
-        _alert_stale_projection(cls.__name__, exc, message)
-
-    @classmethod
-    def on_logic_error(cls, exc: Exception, message: Message) -> None:
-        super().on_logic_error(exc, message)
-        _alert_stale_projection(cls.__name__, exc, message)
-
-
-@domain.projector(projector_for=OrderDashboard, aggregates=[Order])
-class OrderDashboardProjector(ProjectorErrorMixin, BaseProjector):
-
-    @on(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(OrderDashboard)
-        repo.add(OrderDashboard(
-            order_id=event.order_id,
-            status="placed",
-            total=event.total,
-        ))
+--8<-- "patterns/classify-async-processing-errors/002.py:projector"
 ```
 
 ### Subscribers follow the same pattern
@@ -474,14 +236,14 @@ Subscribers that consume messages from external brokers also have
 `handle_error`. The same classification applies:
 
 ```python
-@domain.subscriber(stream="payments::completed")
-class PaymentCompletedSubscriber(ErrorClassificationMixin, BaseSubscriber):
-
-    def __call__(self, payload: dict) -> None:
-        current_domain.process(
-            MarkOrderPaid(order_id=payload["order_id"], amount=payload["amount"])
-        )
+--8<-- "patterns/classify-async-processing-errors/002.py:subscriber_import"
+--8<-- "patterns/classify-async-processing-errors/002.py:subscriber"
 ```
+
+A subscriber's `handle_error` receives the raw broker payload, a `dict`, as
+its `message`. The mixin's default hooks do not read the
+message, so they work for both. An override on a subscriber that reads
+`message.metadata` would fail, so read the payload's keys there instead.
 
 ### Using the TraceEmitter
 
@@ -504,6 +266,7 @@ steady trickle indicates data quality issues.
 ### Silently swallowing errors
 
 ```python
+# fragment
 # WRONG: No handle_error override in production.
 @domain.event_handler(part_of=Account)
 class AccountEventHandler(BaseEventHandler):
@@ -523,6 +286,7 @@ read model diverges silently.
 ### Retrying logic errors
 
 ```python
+# fragment
 # WRONG: Retrying a division by zero will never succeed.
 @classmethod
 def handle_error(cls, exc: Exception, message: Message) -> None:
@@ -537,6 +301,7 @@ and delays the real fix.
 ### No monitoring on DLQ depth
 
 ```python
+# fragment
 # WRONG: Messages go to DLQ but nobody checks.
 @classmethod
 def handle_error(cls, exc: Exception, message: Message) -> None:
@@ -554,6 +319,7 @@ monitoring system.
 ### Catching exceptions inside the handler method
 
 ```python
+# fragment
 # WRONG: Swallowing exceptions inside the handler.
 @handle(OrderPlaced)
 def on_order_placed(self, event: OrderPlaced):
@@ -576,6 +342,7 @@ acknowledged and lost.
 ### Custom retry logic in handle_error
 
 ```python
+# fragment
 # WRONG: Rolling your own retry loop.
 @classmethod
 def handle_error(cls, exc: Exception, message: Message) -> None:
@@ -588,20 +355,21 @@ def handle_error(cls, exc: Exception, message: Message) -> None:
             continue
 ```
 
-**Why it's wrong:** The outbox and `StreamSubscription` already implement
-retry with exponential backoff. A custom retry loop blocks the engine's
-event loop and bypasses the `TraceEmitter`.
+**Why it's wrong:** The subscription already retries failed messages, and
+`transient_retry` retries transient failures with exponential backoff. A
+custom retry loop blocks the engine's event loop and bypasses the
+`TraceEmitter`.
 
 **Fix:** Trust the framework's retry infrastructure. Configure `max_retries`
-on the outbox or subscription instead.
+on the subscription, or turn on `transient_retry`, instead.
 
 ---
 
 ## Summary
 
-| Error Category | Recognition | Strategy | Retry? | Alert Level |
+| Error Category | Recognition | Strategy | Retry helps? | Alert Level |
 |---------------|-------------|----------|--------|-------------|
-| **Transient** | `ConnectionError`, `TimeoutError`, deadlock messages | Let outbox retry with exponential backoff | Yes (automatic) | `WARNING` |
+| **Transient** | `ConnectionError`, `TimeoutError`, deadlock messages | Let the framework retry the message | Yes | `WARNING` |
 | **Data error** | `KeyError`, `TypeError`, schema/deserialization messages | Route to DLQ, alert team | No | `ERROR` |
 | **Logic error** | Everything else (bugs, unexpected `None`, wrong calculations) | Alert immediately, fix code, replay from event store | No | `CRITICAL` |
 

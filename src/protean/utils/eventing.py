@@ -1112,6 +1112,9 @@ class Message(Element, BaseModel, OptionsMixin):
         """Build final metadata with envelope and expected version."""
         metadata_dict = metadata.to_dict()
         metadata_dict["envelope"] = envelope
+        # A message rebuilt from the store carries the positions of its
+        # earlier write. The store assigns new ones on this write.
+        metadata_dict["event_store"] = None
 
         if expected_version is not None and metadata_dict.get("domain"):
             metadata_dict["domain"]["expected_version"] = expected_version
