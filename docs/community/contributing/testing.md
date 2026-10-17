@@ -524,7 +524,10 @@ value the covering test does not.
 
 pytest-randomly is installed with the `test` group and turned off in
 `addopts`, so `protean test`, CI and `make mutation` run the suite in its usual
-order. The audit turns it on for its own run.
+order. The audit turns it on for its own run. A pytest run that a test starts,
+such as the one `protean verify` runs in a temporary project, keeps the usual
+order too: `tests/conftest.py` sets `PYTEST_ADDOPTS=-p no:randomly` for each
+test.
 
 ## Github Actions
 
