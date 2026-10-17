@@ -526,31 +526,53 @@ class TestStaticScan:
 
 
 class TestOrderDependence:
-    def test_a_test_that_passes_alone_is_order_dependent(self):
-        order_dependent, plain = audit.classify_failures(
-            ["t::flaky", "t::broken"], lambda nodeid: nodeid == "t::flaky"
+    def test_each_rerun_result_has_its_own_list(self):
+        results = {"t::flaky": "passed", "t::broken": "failed", "t::guard": "skipped"}
+
+        order_dependent, plain, skipped = audit.classify_failures(
+            results, results.__getitem__
         )
 
         assert order_dependent == ["t::flaky"]
         assert plain == ["t::broken"]
+        assert skipped == ["t::guard"]
 
     def test_a_test_that_failed_in_default_order_is_a_plain_failure(self):
         rerun: list[str] = []
 
-        def passes_alone(nodeid: str) -> bool:
+        def rerun_alone(nodeid: str) -> str:
             rerun.append(nodeid)
-            return True
+            return "passed"
 
-        order_dependent, plain = audit.classify_failures(
-            ["t::a", "t::b"], passes_alone, failed_in_default_order=["t::b"]
+        order_dependent, plain, skipped = audit.classify_failures(
+            ["t::a", "t::b"], rerun_alone, failed_in_default_order=["t::b"]
         )
 
         assert order_dependent == ["t::a"]
         assert plain == ["t::b"]
+        assert skipped == []
         assert rerun == ["t::a"]
 
     def test_no_failures_means_nothing_to_classify(self):
-        assert audit.classify_failures([], lambda nodeid: True) == ([], [])
+        assert audit.classify_failures([], lambda nodeid: "passed") == ([], [], [])
+
+    @pytest.mark.parametrize(
+        ("failed", "skipped", "result"),
+        [(False, False, "passed"), (True, False, "failed"), (False, True, "skipped")],
+    )
+    def test_a_rerun_result_comes_from_the_test_outcome(self, failed, skipped, result):
+        outcomes = [
+            audit.Outcome("t::other", 0.1, True, False),
+            audit.Outcome("t::a", 0.1, failed, skipped),
+        ]
+
+        assert audit.rerun_result(outcomes, "t::a") == result
+
+    def test_a_rerun_without_the_test_stops_the_stage(self):
+        outcomes = [audit.Outcome("t::other", 0.1, False, False)]
+
+        with pytest.raises(audit.StageError, match="no result for it"):
+            audit.rerun_result(outcomes, "t::a")
 
     def test_junit_outcomes_map_back_to_node_ids(self, tmp_path):
         xml = tmp_path / "run.xml"
@@ -610,29 +632,49 @@ class _Runner:
         return self.on_run(cmd, log)
 
 
-NODES = ["tests/a/test_b.py::test_flaky", "tests/a/test_b.py::test_broken"]
+NODES = [
+    "tests/a/test_b.py::test_flaky",
+    "tests/a/test_b.py::test_broken",
+    "tests/a/test_b.py::test_guard",
+]
+
+# What each test does when it runs again alone: the guard skips, as the
+# reclamation guards in ``tests/test_fd_hermeticity.py`` do, and pytest exits
+# 0 for it all the same.
+ALONE = {NODES[0]: (0, ""), NODES[1]: (1, "failure"), NODES[2]: (0, "skipped")}
+
+
+def _junit_path(cmd: list[str]) -> Path:
+    return Path(next(a for a in cmd if a.startswith("--junitxml=")).split("=", 1)[1])
 
 
 class TestRandomStage:
-    def _shuffled(self, seed_line: str, code: int = 1, rerun_code: int = 1):
+    def _shuffled(
+        self,
+        seed_line: str,
+        code: int = 1,
+        rerun_code: int | None = None,
+        write_rerun: bool = True,
+    ):
         def on_run(cmd, log):
             if "randomly" in cmd and log is not None:
                 log.write_text(f"Using {seed_line}\n", encoding="utf-8")
-                junit = next(a for a in cmd if a.startswith("--junitxml="))
                 _junit(
-                    Path(junit.split("=", 1)[1]),
-                    [(NODES[0], "3.0", "failure"), (NODES[1], "1.0", "failure")],
+                    _junit_path(cmd),
+                    [(nodeid, "1.0", "failure") for nodeid in NODES],
                 )
                 return code
-            # A re-run alone: only the flaky test passes.
-            return 0 if cmd[-1] == NODES[0] else rerun_code
+            alone_code, tag = ALONE[cmd[-1]]
+            if write_rerun:
+                _junit(_junit_path(cmd), [(cmd[-1], "0.1", tag)])
+            return alone_code if rerun_code is None else rerun_code
 
         return _Runner(on_run)
 
     def test_shuffles_with_the_seed_and_reruns_each_failure_alone(self, tmp_path):
         runner = self._shuffled("--randomly-seed=7")
 
-        times, order_dependent, plain = audit.random_stage(
+        times, order_dependent, plain, skipped = audit.random_stage(
             7, NODES, out_dir=tmp_path, runner=runner
         )
 
@@ -643,21 +685,24 @@ class TestRandomStage:
         assert log == tmp_path / "random-run.log"
         reruns = [cmd for cmd, _ in runner.calls[1:]]
         assert sorted(cmd[-1] for cmd in reruns) == sorted(NODES)
-        assert all(cmd[-3:-1] == ["-p", "no:randomly"] for cmd in reruns)
+        assert all(cmd[-4:-2] == ["-p", "no:randomly"] for cmd in reruns)
+        assert all(_junit_path(cmd) == tmp_path / "rerun.xml" for cmd in reruns)
         assert order_dependent == [NODES[0]]
         assert plain == [NODES[1]]
-        assert [o.nodeid for o in times] == NODES
+        assert skipped == [NODES[2]]
+        assert sorted(o.nodeid for o in times) == sorted(NODES)
 
     def test_a_failure_in_default_order_is_not_rerun(self, tmp_path):
         runner = self._shuffled("--randomly-seed=7")
 
-        _, order_dependent, plain = audit.random_stage(
+        _, order_dependent, plain, skipped = audit.random_stage(
             7, NODES, [NODES[0]], out_dir=tmp_path, runner=runner
         )
 
         assert order_dependent == []
-        assert plain == sorted(NODES)
-        assert [cmd[-1] for cmd, _ in runner.calls[1:]] == [NODES[1]]
+        assert plain == sorted(NODES[:2])
+        assert skipped == [NODES[2]]
+        assert sorted(cmd[-1] for cmd, _ in runner.calls[1:]) == sorted(NODES[1:])
 
     def test_a_missing_seed_line_stops_the_stage(self, tmp_path):
         runner = self._shuffled("--randomly-seed=8")
@@ -675,6 +720,12 @@ class TestRandomStage:
         runner = self._shuffled("--randomly-seed=7", rerun_code=4)
 
         with pytest.raises(audit.StageError, match="alone exited 4"):
+            audit.random_stage(7, NODES, out_dir=tmp_path, runner=runner)
+
+    def test_a_rerun_that_wrote_no_results_stops_the_stage(self, tmp_path):
+        runner = self._shuffled("--randomly-seed=7", write_rerun=False)
+
+        with pytest.raises(audit.StageError, match="wrote no JUnit results"):
             audit.random_stage(7, NODES, out_dir=tmp_path, runner=runner)
 
 
@@ -752,7 +803,7 @@ class TestMain:
 
         def random_stage(seed, nodeids, failed):
             seen.update(seed=seed, failed=failed)
-            return [], [], ["t.py::test_a"]
+            return [], [], ["t.py::test_a"], []
 
         self._stages(monkeypatch, tmp_path, random_stage)
 
@@ -802,6 +853,7 @@ def _report(**overrides):
         "slowest": [],
         "order_dependent": [],
         "plain_failures": [],
+        "skipped_alone": [],
     }
     return audit.Report(**{**fields, **overrides})
 
@@ -821,6 +873,7 @@ def _full_report():
         slowest=[audit.Outcome("tests/s.py::test_slow", 9.5, False, False)],
         order_dependent=["tests/o.py::test_flaky"],
         plain_failures=["tests/o.py::test_broken"],
+        skipped_alone=["tests/o.py::test_guard"],
     )
 
 
@@ -845,11 +898,14 @@ class TestReport:
         assert "1. `tests/s.py::test_slow`: 9.50s" in slow
         order = _section(markdown, "## Order-dependent tests")
         assert "--seed 1234" in order
-        passed_alone, failed_again = order.split("failed again alone", 1)
+        passed_alone, rest = order.split("failed again alone", 1)
+        failed_again, skipped_alone = rest.split("skipped or xfailed", 1)
         assert "- `tests/o.py::test_flaky`" in passed_alone
         assert "test_broken" not in passed_alone
         assert "- `tests/o.py::test_broken`" in failed_again
         assert "test_flaky" not in failed_again
+        assert "test_guard" not in passed_alone + failed_again
+        assert "- `tests/o.py::test_guard`" in skipped_alone
 
     def test_empty_sections_say_none(self):
         markdown = audit.render_markdown(_report())
@@ -873,6 +929,7 @@ class TestReport:
         assert data["slowest"] == [{"test": "tests/s.py::test_slow", "seconds": 9.5}]
         assert data["order_dependent"] == ["tests/o.py::test_flaky"]
         assert data["plain_failures"] == ["tests/o.py::test_broken"]
+        assert data["skipped_alone"] == ["tests/o.py::test_guard"]
 
 
 # Child pytest commands that read the repo's own config, whose ``addopts``

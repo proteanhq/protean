@@ -16,7 +16,9 @@ Three stages run against the core lane (no Docker), and their results go to
 3. **Random order.** pytest-randomly shuffles the suite with a recorded seed.
    The run gives the 50 slowest tests. A failure that also failed in the
    default-order coverage run is a plain failure. Every other failure is
-   re-run alone, and one that passes alone is listed as order-dependent.
+   re-run alone, and one that passes alone is listed as order-dependent. One
+   that is skipped or xfailed alone is listed apart, since the re-run did not
+   say whether it passes.
 
 The report ranks candidates. It changes and deletes no test; the only files
 it writes or removes are its own, under ``.test-audit/``. The script exits 0
@@ -534,12 +536,29 @@ def slowest(outcomes: Iterable[Outcome], limit: int = SLOWEST) -> list[Outcome]:
     ]
 
 
+def rerun_result(outcomes: Iterable[Outcome], nodeid: str) -> str:
+    """``"passed"``, ``"failed"`` or ``"skipped"`` for ``nodeid`` in a re-run.
+
+    pytest exits 0 when the only test is skipped or xfailed, so the exit code
+    alone cannot say the test passed.
+    """
+    mine = [outcome for outcome in outcomes if outcome.nodeid == nodeid]
+    if not mine:
+        raise StageError(f"re-running {nodeid} alone reported no result for it")
+    if any(outcome.failed for outcome in mine):
+        return "failed"
+    if any(outcome.skipped for outcome in mine):
+        return "skipped"
+    return "passed"
+
+
 def classify_failures(
     failed: Iterable[str],
-    passes_alone: Callable[[str], bool],
+    rerun_alone: Callable[[str], str],
     failed_in_default_order: Iterable[str] = (),
-) -> tuple[list[str], list[str]]:
-    """Split shuffled-run failures into (order-dependent, plain failures).
+) -> tuple[list[str], list[str], list[str]]:
+    """Split shuffled-run failures into (order-dependent, plain failures,
+    skipped alone).
 
     A test that passes when re-run alone in default order likely failed
     because of what ran before it, though a flaky test passes alone too. A test
@@ -549,12 +568,16 @@ def classify_failures(
     default_failures = set(failed_in_default_order)
     order_dependent: list[str] = []
     plain: list[str] = []
+    skipped_alone: list[str] = []
     for nodeid in sorted(set(failed)):
-        if nodeid not in default_failures and passes_alone(nodeid):
+        result = "failed" if nodeid in default_failures else rerun_alone(nodeid)
+        if result == "passed":
             order_dependent.append(nodeid)
+        elif result == "skipped":
+            skipped_alone.append(nodeid)
         else:
             plain.append(nodeid)
-    return order_dependent, plain
+    return order_dependent, plain, skipped_alone
 
 
 # ---------------------------------------------------------------------------
@@ -572,6 +595,7 @@ class Report:
     slowest: list[Outcome]
     order_dependent: list[str]
     plain_failures: list[str]
+    skipped_alone: list[str]
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -590,6 +614,7 @@ class Report:
             ],
             "order_dependent": self.order_dependent,
             "plain_failures": self.plain_failures,
+            "skipped_alone": self.skipped_alone,
         }
 
 
@@ -705,6 +730,15 @@ def render_markdown(report: Report) -> str:
         "",
     ]
     out += [f"- `{test}`" for test in report.plain_failures] or ["None."]
+    out += [
+        "",
+        (
+            "These failed in the shuffled run and were skipped or xfailed "
+            "when run alone, so the re-run did not show whether they pass:"
+        ),
+        "",
+    ]
+    out += [f"- `{test}`" for test in report.skipped_alone] or ["None."]
     return "\n".join(out) + "\n"
 
 
@@ -813,7 +847,7 @@ def random_stage(
     failed_in_default_order: Iterable[str] = (),
     out_dir: Path = OUT_DIR,
     runner: Runner = run,
-) -> tuple[list[Outcome], list[str], list[str]]:
+) -> tuple[list[Outcome], list[str], list[str], list[str]]:
     junit = out_dir / "random-run.xml"
     log = out_dir / "random-run.log"
     cmd = _pytest(
@@ -825,18 +859,31 @@ def random_stage(
     if f"--randomly-seed={seed}" not in log.read_text(encoding="utf-8"):
         raise StageError("pytest-randomly did not run, so the order was not shuffled")
 
-    def passes_alone(nodeid: str) -> bool:
-        code = runner(_pytest("-p", "no:randomly", nodeid), None)
+    rerun_junit = out_dir / "rerun.xml"
+
+    def rerun_alone(nodeid: str) -> str:
+        # A stale file from the previous re-run must not stand in for this one.
+        rerun_junit.unlink(missing_ok=True)
+        code = runner(
+            _pytest("-p", "no:randomly", f"--junitxml={rerun_junit}", nodeid), None
+        )
         if code not in RAN:
             raise StageError(f"re-running {nodeid} alone exited {code}")
-        return code == 0
+        if not rerun_junit.exists():
+            raise StageError(f"re-running {nodeid} alone wrote no JUnit results")
+        return rerun_result(read_junit(rerun_junit, [nodeid]), nodeid)
 
     outcomes = read_junit(junit, nodeids)
     failed = [outcome.nodeid for outcome in outcomes if outcome.failed]
-    order_dependent, plain = classify_failures(
-        failed, passes_alone, failed_in_default_order
+    order_dependent, plain, skipped_alone = classify_failures(
+        failed, rerun_alone, failed_in_default_order
     )
-    return slowest(o for o in outcomes if not o.skipped), order_dependent, plain
+    return (
+        slowest(o for o in outcomes if not o.skipped),
+        order_dependent,
+        plain,
+        skipped_alone,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -855,7 +902,7 @@ def main(argv: list[str] | None = None) -> int:
         private, coverage_named = static_scan(REPO)
         nodeids = collect(OUT_DIR / "collected.json")
         duplicates, no_arcs, failed_in_default_order = coverage_stage(nodeids)
-        times, order_dependent, plain = random_stage(
+        times, order_dependent, plain, skipped_alone = random_stage(
             seed, nodeids, failed_in_default_order
         )
     except StageError as exc:
@@ -871,6 +918,7 @@ def main(argv: list[str] | None = None) -> int:
         slowest=times,
         order_dependent=order_dependent,
         plain_failures=plain,
+        skipped_alone=skipped_alone,
     )
     (OUT_DIR / "report.json").write_text(
         json.dumps(report.to_json(), indent=2) + "\n", encoding="utf-8"

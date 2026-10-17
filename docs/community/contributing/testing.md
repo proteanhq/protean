@@ -524,8 +524,9 @@ The report has four sections:
   that fails there and also failed in the coverage run, which keeps the
   default order, is listed as a plain failure. Every other test that fails
   there runs again alone, and one that passes alone is listed as
-  order-dependent. A flaky test can pass alone too, so check each one. The
-  section shows the seed.
+  order-dependent. A flaky test can pass alone too, so check each one. A
+  test that is skipped or xfailed alone is listed on its own, since the
+  re-run did not show whether it passes. The section shows the seed.
   `uv run python scripts/test_audit.py --seed <seed>` shuffles each file the
   same way again.
 
