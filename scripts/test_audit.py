@@ -268,13 +268,17 @@ def analyse_coverage(
     """The duplicate candidates, and the tests that ran with no arcs of their own.
 
     Parametrized cases share one context, so the unit is the test function. A
-    function with a case that failed in this run is left out of both lists:
-    its arcs stop where it broke, so a subset would say nothing. A skipped
-    test records no arcs, so it is not listed as having none.
+    function with a case that failed or xfailed in this run is left out of
+    both lists: its arcs stop where it broke, so a subset would say nothing.
+    A function whose every case was skipped is left out too, since a skip
+    raised inside the body leaves the arcs it reached first. A function with
+    some cases passed and others skipped stays in.
     """
     outcomes = list(outcomes)
-    broken = {function_id(o.nodeid) for o in outcomes if o.failed}
-    tests = {function_id(nodeid) for nodeid in nodeids} - broken
+    broken = {function_id(o.nodeid) for o in outcomes if o.failed or o.xfailed}
+    ran = {function_id(o.nodeid) for o in outcomes if not o.skipped}
+    skipped = {function_id(o.nodeid) for o in outcomes if o.skipped} - ran
+    tests = {function_id(nodeid) for nodeid in nodeids} - broken - skipped
     arcsets = load_arcsets(data, tests)
     for outcome in outcomes:
         test = function_id(outcome.nodeid)
@@ -509,6 +513,8 @@ class Outcome:
     seconds: float
     failed: bool
     skipped: bool
+    # JUnit writes an xfail as a skip, so an xfail is also ``skipped``.
+    xfailed: bool = False
 
 
 def read_junit(xml: Path, nodeids: Iterable[str]) -> list[Outcome]:
@@ -518,13 +524,15 @@ def read_junit(xml: Path, nodeids: Iterable[str]) -> list[Outcome]:
     for case in ET.parse(xml).getroot().iter("testcase"):
         key = (case.get("classname", ""), case.get("name", ""))
         nodeid = by_key.get(key, "::".join(part for part in key if part))
+        skip = case.find("skipped")
         outcomes.append(
             Outcome(
                 nodeid=nodeid,
                 seconds=float(case.get("time", "0")),
                 failed=case.find("failure") is not None
                 or case.find("error") is not None,
-                skipped=case.find("skipped") is not None,
+                skipped=skip is not None,
+                xfailed=skip is not None and skip.get("type") == "pytest.xfail",
             )
         )
     return outcomes
@@ -654,8 +662,8 @@ def render_markdown(report: Report) -> str:
             "setup and teardown, and in a child process the test starts, are "
             "not counted. Code that runs once per worker process, such as an "
             "import or a cache filled on first use, counts only for the first "
-            "test on that worker. A test whose function failed in the coverage "
-            "run is left out."
+            "test on that worker. A test whose function failed or xfailed in the "
+            "coverage run is left out, and so is one whose every case skipped."
         ),
         "",
     ]

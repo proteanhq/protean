@@ -190,6 +190,57 @@ class TestAnalyseCoverage:
         assert duplicates == []
         assert no_arcs == []
 
+    def test_a_passing_test_is_not_covered_by_an_xfailed_one(self, tmp_path):
+        data = _data(
+            tmp_path,
+            {"t.py::test_a": {MOD: [(1, 2)]}, "t.py::test_xf": {MOD: [(1, 2), (2, 3)]}},
+        )
+        nodeids = ["t.py::test_a", "t.py::test_xf"]
+        outcomes = [
+            audit.Outcome("t.py::test_a", 0.1, False, False),
+            audit.Outcome("t.py::test_xf", 0.1, False, True, xfailed=True),
+        ]
+
+        duplicates, no_arcs = audit.analyse_coverage(data, nodeids, outcomes)
+
+        assert duplicates == []
+        assert no_arcs == []
+
+    def test_a_test_skipped_inside_its_body_is_left_out(self, tmp_path):
+        data = _data(
+            tmp_path,
+            {"t.py::test_a": {MOD: [(1, 2)]}, "t.py::test_sk": {MOD: [(1, 2), (2, 3)]}},
+        )
+        nodeids = ["t.py::test_a", "t.py::test_sk[1]", "t.py::test_sk[2]"]
+        outcomes = [
+            audit.Outcome("t.py::test_a", 0.1, False, False),
+            audit.Outcome("t.py::test_sk[1]", 0.1, False, True),
+            audit.Outcome("t.py::test_sk[2]", 0.1, False, True),
+        ]
+
+        duplicates, no_arcs = audit.analyse_coverage(data, nodeids, outcomes)
+
+        assert duplicates == []
+        assert no_arcs == []
+
+    def test_a_case_that_skips_keeps_its_passing_siblings_in(self, tmp_path):
+        data = _data(
+            tmp_path,
+            {"t.py::test_a": {MOD: [(1, 2)]}, "t.py::test_b": {MOD: [(1, 2), (2, 3)]}},
+        )
+        nodeids = ["t.py::test_a[1]", "t.py::test_a[2]", "t.py::test_b"]
+        outcomes = [
+            audit.Outcome("t.py::test_a[1]", 0.1, False, False),
+            audit.Outcome("t.py::test_a[2]", 0.1, False, True),
+            audit.Outcome("t.py::test_b", 0.1, False, False),
+        ]
+
+        duplicates, _ = audit.analyse_coverage(data, nodeids, outcomes)
+
+        assert [(d.test, d.covered_by) for d in duplicates] == [
+            ("t.py::test_a", "t.py::test_b")
+        ]
+
     def test_duplicates_group_by_top_level_folder(self):
         duplicates = [
             audit.Duplicate("tests/entity/fields/test_x.py::test_a", "b", 1, 2),
@@ -584,6 +635,8 @@ class TestOrderDependence:
             "<skipped/></testcase>"
             '<testcase classname="tests.a.test_b" name="test_f" time="0.2">'
             "<error/></testcase>"
+            '<testcase classname="tests.a.test_b" name="test_g" time="0.3">'
+            '<skipped type="pytest.xfail" message=""/></testcase>'
             "</testsuite></testsuites>",
             encoding="utf-8",
         )
@@ -591,6 +644,7 @@ class TestOrderDependence:
             "tests/a/test_b.py::TestC::test_d[1]",
             "tests/a/test_b.py::test_e",
             "tests/a/test_b.py::test_f",
+            "tests/a/test_b.py::test_g",
         ]
 
         outcomes = audit.read_junit(xml, nodeids)
@@ -599,6 +653,7 @@ class TestOrderDependence:
             audit.Outcome(nodeids[0], 2.5, failed=True, skipped=False),
             audit.Outcome(nodeids[1], 0.1, failed=False, skipped=True),
             audit.Outcome(nodeids[2], 0.2, failed=True, skipped=False),
+            audit.Outcome(nodeids[3], 0.3, failed=False, skipped=True, xfailed=True),
         ]
 
     def test_slowest_is_capped(self):

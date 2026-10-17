@@ -509,8 +509,8 @@ The report has four sections:
   Only arcs run in the test body count. Fixture setup and teardown, and any
   child process the test starts, are not counted. Code that runs once per
   worker process, such as an import or a cache filled on first use, counts
-  only for the first test on that worker. A test that failed in this run is
-  left out.
+  only for the first test on that worker. A test that failed or xfailed in
+  this run is left out, and so is a test whose every case was skipped.
 - **Private-state and coverage-named tests.** A scan of `tests/` (except
   `tests/support/`) lists calls to `X.__new__(X)`, writes to private
   attributes, patches of private names, files named `*_coverage.py`, and
