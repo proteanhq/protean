@@ -14,8 +14,9 @@ Three stages run against the core lane (no Docker), and their results go to
 2. **Static scan.** An ``ast`` pass over ``tests/`` flags tests that reach into
    private state, and files or comments that say they exist for coverage.
 3. **Random order.** pytest-randomly shuffles the suite with a recorded seed.
-   The run gives the 50 slowest tests, and every failure is re-run alone in
-   default order to tell an order-dependent test from a plain failure.
+   The run gives the 50 slowest tests. A failure that also failed in the
+   default-order coverage run is a plain failure. Every other failure is
+   re-run alone, and one that passes alone is listed as order-dependent.
 
 The report ranks candidates. It changes and deletes no test; the only files
 it writes or removes are its own, under ``.test-audit/``. The script exits 0

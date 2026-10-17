@@ -520,10 +520,11 @@ The report has four sections:
   scanned, and the report says why.
 - **The 50 slowest tests**, timed in a run without coverage.
 - **Order-dependent tests.** The suite runs again in a random order with
-  [pytest-randomly](https://github.com/pytest-dev/pytest-randomly). Each test
-  that fails there runs again alone. A test that passes alone is listed as
-  order-dependent, unless it also failed in the coverage run, which keeps the
-  default order. A flaky test can pass alone too, so check each one. The
+  [pytest-randomly](https://github.com/pytest-dev/pytest-randomly). A test
+  that fails there and also failed in the coverage run, which keeps the
+  default order, is listed as a plain failure. Every other test that fails
+  there runs again alone, and one that passes alone is listed as
+  order-dependent. A flaky test can pass alone too, so check each one. The
   section shows the seed.
   `uv run python scripts/test_audit.py --seed <seed>` shuffles each file the
   same way again.
