@@ -380,8 +380,8 @@ def _print_avro_verdict(report: CompatibilityReport) -> None:
         # A FULL payload verdict can still sit beside breaking changes that are
         # Avro-neutral (e.g. a public→internal visibility flip).
         print(
-            "  [dim](payload-compatible, but breaking changes are present "
-            "; see above)[/dim]"
+            "  [dim](payload-compatible, but breaking changes are present; "
+            "see above)[/dim]"
         )
     for direction, change in report.avro_direction_breaks():
         print(f"  [dim]breaks {direction}:[/dim] {change.message}")

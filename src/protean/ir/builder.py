@@ -2639,8 +2639,8 @@ class IRBuilder:
                     build_diagnostic(
                         DiagnosticCode.AGGREGATE_WITHOUT_COMMAND_HANDLER,
                         element=aggregate["fqn"],
-                        message=f"Aggregate `{aggregate['name']}` has no command handler "
-                        f", so no write path exists",
+                        message=f"Aggregate `{aggregate['name']}` has no command handler, "
+                        f"so no write path exists",
                     )
                 )
 
