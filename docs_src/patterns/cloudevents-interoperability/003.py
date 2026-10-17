@@ -48,7 +48,10 @@ def publish(broker, event):
 
 def consume(broker):
     """Service B: consume the CloudEvent and rebuild the event."""
-    identifier, cloud_event = broker.get_next("shared-topic", "fulfillment")
+    result = broker.get_next("shared-topic", "fulfillment")
+    if result is None:  # Nothing published yet, or the topic is drained
+        return None
+    identifier, cloud_event = result
     message = Message.from_cloudevent(cloud_event)
     event = message.to_domain_object()  # Works if the type is registered
     broker.ack("shared-topic", identifier, "fulfillment")

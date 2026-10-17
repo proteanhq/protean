@@ -106,3 +106,12 @@ def test_correlation_causation_and_checksum_survive_the_shared_topic_round_trip(
     assert event._metadata.domain.causation_id == stored.metadata.domain.causation_id
     assert event._metadata.domain.causation_id
     assert event._metadata.envelope.checksum == stored.metadata.envelope.checksum
+
+
+def test_consume_returns_none_when_the_shared_topic_is_empty():
+    example = load_example("patterns/cloudevents-interoperability/003.py")
+    example.domain.init(traverse=False)
+    with example.domain.domain_context():
+        broker = example.domain.brokers["default"]
+
+        assert example.consume(broker) is None
