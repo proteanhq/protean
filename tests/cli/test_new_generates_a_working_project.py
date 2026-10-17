@@ -167,7 +167,7 @@ class TestGeneratedProjectStarts:
         project = _generate(tmp_path, extra)
 
         completed = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "tests"],
+            [sys.executable, "-m", "pytest", "-p", "no:randomly", "-q", "tests"],
             cwd=project,
             env=_subprocess_env(project),
             capture_output=True,
@@ -197,7 +197,7 @@ class TestGeneratedProjectStarts:
         project = _generate(tmp_path, ["-d", "include_example=false"])
 
         completed = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "tests"],
+            [sys.executable, "-m", "pytest", "-p", "no:randomly", "-q", "tests"],
             cwd=project,
             env=_subprocess_env(project),
             capture_output=True,
@@ -293,7 +293,7 @@ class TestGeneratedProjectStarts:
         db_file = project / "scaffolded.db"
 
         completed = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "tests"],
+            [sys.executable, "-m", "pytest", "-p", "no:randomly", "-q", "tests"],
             cwd=project,
             env=_subprocess_env(project),
             capture_output=True,
