@@ -143,6 +143,24 @@ def test_check_before_act_reserves_stock_once_per_order(strategies):
     assert inventory.reserved_for_orders == ["o1"]
 
 
+def test_check_before_act_reserves_every_line_for_a_repeated_product(strategies):
+    ex = strategies
+    repo = ex.domain.repository_for(ex.Inventory)
+    repo.add(ex.Inventory(product_id="p1", available_quantity=10))
+    items = [
+        {"product_id": "p1", "quantity": 3},
+        {"product_id": "p1", "quantity": 2},
+    ]
+    message = _order_placed(ex, "o1", items=items)
+
+    ex.InventoryEventHandler._handle(message)
+    ex.InventoryEventHandler._handle(message)
+
+    inventory = repo.get("p1")
+    assert inventory.available_quantity == 5
+    assert inventory.reserved_for_orders == ["o1"]
+
+
 def test_check_before_act_reserves_stock_for_a_new_order(strategies):
     ex = strategies
     repo = ex.domain.repository_for(ex.Inventory)
@@ -424,6 +442,26 @@ def test_stock_is_reserved_once_per_order(worked):
     assert [(r.order_id, r.quantity) for r in inventory.reservations] == [("o1", 3)]
     reserved = _reserved_events(ex)
     assert [(m.data["order_id"], m.data["quantity"]) for m in reserved] == [("o1", 3)]
+
+
+def test_every_line_for_a_repeated_product_is_reserved_once(worked):
+    ex = worked
+    repo = ex.domain.repository_for(ex.Inventory)
+    repo.add(ex.Inventory(product_id="p1", available_quantity=10))
+    items = [
+        {"product_id": "p1", "quantity": 3},
+        {"product_id": "p1", "quantity": 2},
+    ]
+    message = _order_placed(ex, "o1", items=items)
+
+    ex.InventoryEventHandler._handle(message)
+    ex.InventoryEventHandler._handle(message)
+
+    inventory = repo.get("p1")
+    assert inventory.available_quantity == 5
+    assert [(r.order_id, r.quantity) for r in inventory.reservations] == [("o1", 5)]
+    reserved = _reserved_events(ex)
+    assert [(m.data["order_id"], m.data["quantity"]) for m in reserved] == [("o1", 5)]
 
 
 def test_stock_is_reserved_for_a_new_order(worked):

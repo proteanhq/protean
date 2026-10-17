@@ -150,12 +150,15 @@ class InventoryEventHandler:
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):
         repo = current_domain.repository_for(Inventory)
+        # One reservation per product: an order can list a product twice
+        quantities: dict[str, int] = {}
         for item in event.items:
-            inventory = repo.get(item["product_id"])
-            inventory.reserve(
-                order_id=event.order_id,
-                quantity=item["quantity"],
-            )
+            product_id = item["product_id"]
+            quantities[product_id] = quantities.get(product_id, 0) + item["quantity"]
+
+        for product_id, quantity in quantities.items():
+            inventory = repo.get(product_id)
+            inventory.reserve(order_id=event.order_id, quantity=quantity)
             repo.add(inventory)
 
 

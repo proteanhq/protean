@@ -165,7 +165,9 @@ before processing it.
 
 The `Inventory` aggregate tracks which orders have already reserved stock.
 If the same `OrderPlaced` event arrives twice, the second delivery finds the
-order ID already in `reserved_for_orders` and skips that item.
+order ID already in `reserved_for_orders` and skips that product. The handler
+adds up the quantities for each product first, so an order that lists the same
+product on two lines reserves the total once.
 
 ### Track Processed Event IDs
 
