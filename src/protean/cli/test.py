@@ -73,6 +73,14 @@ TEST_CONFIGS = {
     ],
 }
 
+# The two suites of FULL's first phase, split by the suite's own
+# ``--service-tests`` option (tests/conftest.py). The in-memory suite needs no
+# service, so it can spread over every CPU. The services suite stays in one
+# process, because its tests share databases, Redis keys and indexes.
+FULL_MATRIX_IN_MEMORY = "Full Matrix: in-memory"
+FULL_MATRIX_SERVICES = "Full Matrix: services"
+FULL_MATRIX_SUITES = (FULL_MATRIX_IN_MEMORY, FULL_MATRIX_SERVICES)
+
 
 class RunCategory(Enum):
     """Valid test run categories"""
@@ -277,17 +285,32 @@ class TestRunner:
         markers = self.database_capability_markers.get(capability, set())
         return " or ".join(sorted(markers))
 
-    def generate_test_suites(self) -> list[TestSuite]:
-        """Generate all test suites for comprehensive testing."""
+    def generate_test_suites(
+        self, workers: str = DEFAULT_CORE_WORKERS
+    ) -> list[TestSuite]:
+        """Generate all test suites for comprehensive testing.
+
+        ``workers`` spreads the in-memory part of the full matrix over that many
+        processes. ``"0"`` runs it in one process.
+        """
         suites = []
 
-        # Full matrix test
-        full_cmd = self.build_coverage_command(
+        matrix_flags = TEST_CONFIGS["full_matrix_flags"]
+        in_memory_cmd = self.build_coverage_command(
+            [
+                *self.build_core_command(workers),
+                "--service-tests=none",
+                *matrix_flags,
+                "tests",
+            ]
+        )
+        suites.append(TestSuite(FULL_MATRIX_IN_MEMORY, in_memory_cmd))
+        services_cmd = self.build_coverage_command(
             self.build_test_command(
-                extra_flags=TEST_CONFIGS["full_matrix_flags"] + ["tests"]
+                extra_flags=["--service-tests=only", *matrix_flags, "tests"]
             )
         )
-        suites.append(TestSuite("Full Matrix", full_cmd))
+        suites.append(TestSuite(FULL_MATRIX_SERVICES, services_cmd))
 
         # Database tests (capability-based)
         for db in TEST_CONFIGS["databases"]:
@@ -394,10 +417,7 @@ class TestRunner:
         self.track_exit_code(self.run_command(["coverage", "erase"]))
 
         for suite in suites:
-            if suite.name == "Full Matrix":
-                print("Running full test matrix...")
-            else:
-                print(f"Running tests for {suite.name}…")
+            print(f"Running tests for {suite.name}…")
 
             result = self.run_command(suite.command)
             self.track_exit_code(result)
@@ -466,27 +486,20 @@ class TestRunner:
 
         self.track_exit_code(self.run_command(["coverage", "erase"]))
 
-        # Find and run the full matrix test suite first
-        full_matrix_suite = None
-        remaining_suites = []
+        matrix_suites = [s for s in suites if s.name in FULL_MATRIX_SUITES]
+        remaining_suites = [s for s in suites if s.name not in FULL_MATRIX_SUITES]
 
-        for suite in suites:
-            if suite.name == "Full Matrix":
-                full_matrix_suite = suite
-            else:
-                remaining_suites.append(suite)
-
-        if full_matrix_suite:
+        if matrix_suites:
             print("🚀 Phase 1: Running full matrix test suite...")
-            result = self.run_single_suite(full_matrix_suite)
-            self.track_exit_code(result)
+            for suite in matrix_suites:
+                result = self.run_single_suite(suite)
+                self.track_exit_code(result)
 
-            # If full matrix fails, we might still want to run other suites
-            # but let's track the failure
-            if result != 0:
-                print(
-                    "⚠️  Full matrix tests failed, but continuing with remaining suites..."
-                )
+                # A failure is recorded, and the remaining suites still run.
+                if result != 0:
+                    print(
+                        f"⚠️  {suite.name} tests failed, but continuing with remaining suites..."
+                    )
 
         # Run remaining suites in parallel
         if remaining_suites:
@@ -517,14 +530,17 @@ class TestRunner:
         self._finalize_coverage_and_timing(start_time)
         return self.exit_status
 
-    def run_full_suite(self, sequential: bool = False) -> int:
+    def run_full_suite(
+        self, sequential: bool = False, workers: str = DEFAULT_CORE_WORKERS
+    ) -> int:
         """Run the complete test suite with coverage.
 
-        By default, runs the full matrix test suite first, then runs
+        By default, runs the full matrix test suites first, then runs
         the remaining suites in parallel. With sequential=True, runs
-        all suites sequentially.
+        all suites sequentially, each in one process, whatever ``workers``
+        says. Otherwise ``workers`` is passed to ``generate_test_suites``.
         """
-        suites = self.generate_test_suites()
+        suites = self.generate_test_suites("0" if sequential else workers)
 
         if sequential:
             return self.run_test_suites_sequentially(suites)
@@ -816,9 +832,10 @@ def test(
             "--workers",
             envvar="PROTEAN_TEST_WORKERS",
             help=(
-                "Worker processes for the CORE category: a number, 'auto' or "
-                "'logical'. 0 runs the suite in one process. The other "
-                "categories never use pytest-xdist and ignore this option."
+                "Worker processes for the core suite in CORE and PR, and for "
+                "the tests that need no service in FULL and COVERAGE: a "
+                "number, 'auto' or 'logical'. 0 runs them in one process. "
+                "EVENTSTORE, DATABASE and BROKER ignore this option."
             ),
         ),
     ] = DEFAULT_CORE_WORKERS,
@@ -864,10 +881,14 @@ def test(
             exit_code = runner.run_category_tests(category)
 
         case "FULL":
-            exit_code = runner.run_full_suite(sequential)
+            exit_code = runner.run_full_suite(
+                sequential, "0" if sequential else validate_workers(workers)
+            )
 
         case "COVERAGE":
-            exit_code = runner.run_full_suite(sequential)
+            exit_code = runner.run_full_suite(
+                sequential, "0" if sequential else validate_workers(workers)
+            )
             if exit_code == 0:
                 runner.generate_diff_coverage_report()
             else:

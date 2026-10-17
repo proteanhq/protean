@@ -15,7 +15,7 @@ protean test [OPTIONS]
 Options:
 
 - `-c, --category [CORE|EVENTSTORE|DATABASE|BROKER|COVERAGE|FULL|PR]`: Specifies which category of tests to run
-- `-n, --workers TEXT`: Worker processes for the `CORE` category: a number, `auto`, or `logical` (the default, one per logical CPU). `0` runs the suite in one process. You can also set it with the `PROTEAN_TEST_WORKERS` environment variable.
+- `-n, --workers TEXT`: Worker processes for the core suite in `CORE` and `PR`, and for the tests that need no service in `FULL` and `COVERAGE`: a number, `auto`, or `logical` (the default, one per logical CPU). `0` runs them in one process. You can also set it with the `PROTEAN_TEST_WORKERS` environment variable.
 - `-a, --adapter TEXT`: `PR` only. An adapter, or a group of adapters, from `tests/adapters.toml` to run. Repeat it for more. Without it, `PR` runs the adapters every pull request runs; with it, only the ones you name.
 - `--no-core`, `--no-adapters`: `PR` only. Skip the core suite, or the adapter suites (not both).
 
@@ -44,7 +44,11 @@ This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLI
 
 ### Parallel runs
 
-`CORE` runs on [pytest-xdist](https://pytest-xdist.readthedocs.io/) with `--dist loadfile`, so all the tests in one file run on the same worker. The other categories never use pytest-xdist and ignore `--workers`. Within one adapter's suite the tests share a database, Redis keys, Elasticsearch indexes, and the Message-DB `$all` stream. `FULL` and `COVERAGE` do run separate adapter suites side by side, up to three at a time, unless you pass `--sequential`.
+`CORE` runs on [pytest-xdist](https://pytest-xdist.readthedocs.io/) with `--dist loadfile`, so all the tests in one file run on the same worker. `PR` runs its core suite the same way.
+
+`FULL` and `COVERAGE` start with two passes over the whole suite, one after the other. The first runs every test that needs no service on pytest-xdist, as `CORE` does. The second runs the tests that need one, in a single process. A test needs a service when a flag such as `--redis` or `--mssql` is what lets it run: it carries that marker, or it sits under a package of that name, such as `tests/adapters/repository/sqlalchemy_repo/mssql/`. The suite's own `--service-tests=none` and `--service-tests=only` options make the split. After that they run the separate adapter suites side by side, up to three at a time.
+
+Tests that use a service run in one process, because within one adapter's suite they share a database, Redis keys, Elasticsearch indexes, and the Message-DB `$all` stream. `EVENTSTORE`, `DATABASE` and `BROKER` never use pytest-xdist and ignore `--workers`. With `--sequential`, `FULL` and `COVERAGE` run every suite one at a time and in one process.
 
 A test that passes alone but fails in a parallel run depends on state that another test left behind. The root `conftest.py` already resets the domain, the adapters, the global logging configuration, and the structlog context after every test. Fix that shared state in the test or its fixtures. To run the suite in one process, for example to rule out ordering, run:
 
