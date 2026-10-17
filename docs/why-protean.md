@@ -170,7 +170,7 @@ moving one aggregate from PostgreSQL to Elasticsearch is a configuration change.
 
 The engineering behind these capabilities:
 
-- A large test suite (**12,000+ tests**, about three lines of test per line of
+- A large test suite (**16,000+ tests**, about three lines of test per line of
   code). See [Quality](community/quality.md) for the current breakdown.
 - Every commit runs the in-memory core suite on **Python 3.11 through 3.14**
   and the 3.15 prerelease, plus the full adapter suite (PostgreSQL, Redis,

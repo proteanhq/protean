@@ -10,8 +10,8 @@ practices and metrics behind the framework.
 
 | Metric | Value |
 |---|---|
-| **Tests** | 12,445 |
-| **Test-to-Code Ratio** | 2.9:1 |
+| **Tests** | 16,607 |
+| **Test-to-Code Ratio** | 2.7:1 |
 | **Linting Violations** | 0 (Ruff) |
 | **Avg Cyclomatic Complexity** | 3.38 (A grade) |
 | **Maintainability Index** | A rank (95% of files) |
@@ -44,11 +44,11 @@ not pinned; what is pinned is that there is only **one place to change**.
 
 | Metric | Count |
 |---|---|
-| Total Tests | 12,445 |
-| Test Functions | 12,151 |
-| Test Classes | 2,737 |
-| Pytest Fixtures | 1,085 |
-| Parametrized Tests | 104 |
+| Total Tests | 16,607 |
+| Test Functions | 18,026 |
+| Test Classes | 3,315 |
+| Pytest Fixtures | 1,446 |
+| Parametrized Tests | 511 |
 
 ### Core vs. Integration
 
@@ -259,4 +259,4 @@ pip install protean[elasticsearch] # Adds the elasticsearch client
 
 ---
 
-*Last updated: March 2026*
+*Test counts and the test-to-code ratio last updated: October 2026. Other figures: March 2026.*

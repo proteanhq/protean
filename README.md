@@ -6,7 +6,7 @@
 [![Release](https://img.shields.io/pypi/v/protean?label=Release&style=flat-square)](https://pypi.org/project/protean/)
 [![Build Status](https://github.com/proteanhq/protean/actions/workflows/ci.yml/badge.svg)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/proteanhq/protean/graph/badge.svg?token=0sFuFdLBOx)](https://codecov.io/gh/proteanhq/protean)
-[![Tests](https://img.shields.io/badge/tests-12%2C000%2B-brightgreen)](https://docs.proteanhq.com/community/quality/)
+[![Tests](https://img.shields.io/badge/tests-16%2C000%2B-brightgreen)](https://docs.proteanhq.com/community/quality/)
 [![Maintainability](https://img.shields.io/badge/maintainability-A-brightgreen)](https://docs.proteanhq.com/community/quality/)
 
 **🗺️ Roadmap:** [where Protean is headed next](https://github.com/proteanhq/protean/discussions/1356), and the [current milestone](https://github.com/proteanhq/protean/milestones) for the issue-by-issue detail.
