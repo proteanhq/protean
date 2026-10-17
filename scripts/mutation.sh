@@ -71,7 +71,7 @@ case "$TARGET" in
     TESTS="tests/utils/test_sync_dispatch.py tests/process_manager/test_sync_dispatch_integration.py tests/process_manager/test_reentrant_cascade.py tests/event_handler/test_any_handler_sync_dispatch.py"
     ;;
   checkpoint)
-    # event_store_subscription.py is large, so this is the slowest target: mutmut
+    # event_store_subscription.py is large, so this is one of the slower targets: mutmut
     # mutates the whole module. MUT_FILTER does NOT reduce that — it only narrows
     # the printed survivor list to the checkpoint methods so they are easy to
     # find in the report, e.g.
@@ -81,9 +81,29 @@ case "$TARGET" in
     MODULE="src/protean/server/subscription/event_store_subscription.py"
     TESTS="tests/subscription tests/server/test_event_store_subscription_errors.py"
     ;;
+  ir-builder)
+    MODULE="src/protean/ir/builder.py"
+    TESTS="tests/ir/test_ir_builder.py tests/ir/test_command_event_extraction.py tests/ir/test_database_model_extraction.py tests/ir/test_description_extraction.py tests/ir/test_field_extraction.py tests/ir/test_handler_extraction.py tests/ir/test_index_extraction.py"
+    ;;
+  ir-diff)
+    MODULE="src/protean/ir/diff.py"
+    TESTS="tests/ir/test_diff.py tests/ir/test_compatibility.py"
+    ;;
+  observatory-api)
+    MODULE="src/protean/server/observatory/api.py"
+    TESTS="tests/server/observatory/test_observatory_api.py tests/server/observatory/test_trace_decoding.py"
+    ;;
+  observatory-timeline)
+    MODULE="src/protean/server/observatory/routes/timeline.py"
+    TESTS="tests/server/observatory/test_observatory_timeline_api.py tests/server/observatory/test_trace_search.py"
+    ;;
+  observatory-metrics)
+    MODULE="src/protean/server/observatory/metrics.py"
+    TESTS="tests/server/observatory/test_observatory_metrics.py"
+    ;;
   *)
     echo "Unknown mutation target: '$TARGET'" >&2
-    echo "Known targets: outbox, entity, status-field, event-sourcing, repositories-dao, upcaster, unit-of-work, sync-dispatch, checkpoint" >&2
+    echo "Known targets: outbox, entity, status-field, event-sourcing, repositories-dao, upcaster, unit-of-work, sync-dispatch, checkpoint, ir-builder, ir-diff, observatory-api, observatory-timeline, observatory-metrics" >&2
     exit 2
     ;;
 esac
@@ -101,8 +121,10 @@ fi
 
 # --- 1. build/refresh the dedicated 3.12 mutation env (leaves .venv alone) -------
 echo ">>> Syncing .venv-mutation (Python 3.12)..."
+# The Observatory targets need `server` for FastAPI and `redis` for the Redis
+# broker their test domain configures. `telemetry` is left out on purpose.
 UV_PROJECT_ENVIRONMENT="$MVENV" uv sync --python 3.12 \
-  --extra sqlite --group test --group mutation >/dev/null
+  --extra sqlite --extra server --extra redis --group test --group mutation >/dev/null
 
 # --- 2. always clean the working artifacts, even on crash -----------------------
 cleanup() { rm -rf "$REPO/mutants" "$REPO/setup.cfg" "$REPO/.mutmut-cache"; }

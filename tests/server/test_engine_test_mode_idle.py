@@ -420,6 +420,9 @@ class TestBrokerRedelivery:
         Engine(domain=test_domain, test_mode=True).run()
 
     def test_a_delayed_redelivery_is_not_waited_for(self, test_domain, calls):
+        # Test mode can run for up to 5s before it stops. The default 1s
+        # inline-broker delay lets a slow run under load see the redelivery.
+        test_domain.brokers["default"]._retry_delay = 60
         self._run(test_domain)
         assert len(calls) == 1
 

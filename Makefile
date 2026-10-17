@@ -48,7 +48,7 @@ typecheck:
 # target module and checking whether its fast unit-test subset notices. Uses
 # mutmut 3.x in a dedicated Python 3.12 env (.venv-mutation) — 3.14 is unreliable
 # for this; the project .venv is left untouched. Override the module with
-# TARGET=... (outbox | entity | status-field) and optionally focus the survivor
+# TARGET=... (the targets are listed in scripts/mutation.sh) and optionally focus the survivor
 # report with MUT_FILTER="<grep on mutant names>" (e.g. a method name). See
 # docs/community/contributing/mutation-testing.md.
 TARGET ?= outbox
