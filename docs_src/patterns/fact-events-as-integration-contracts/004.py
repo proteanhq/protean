@@ -25,7 +25,7 @@ analytics = Domain(name="Analytics")
 class CustomerMetrics:
     customer_id: Identifier(required=True)
     tier: String()
-    has_verified_email: Boolean(default=False)
+    email_domain: String()
     has_phone: Boolean(default=False)
     has_address: Boolean(default=False)
 
@@ -43,7 +43,7 @@ class CustomerAnalyticsSubscriber:
 
         # Extracts only the fields Analytics cares about
         metrics.tier = data.get("tier", "STANDARD")
-        metrics.has_verified_email = bool(data.get("email"))
+        metrics.email_domain = data["email"].split("@")[-1]
         metrics.has_phone = bool(data.get("phone"))
         metrics.has_address = bool(data.get("shipping_address"))
 

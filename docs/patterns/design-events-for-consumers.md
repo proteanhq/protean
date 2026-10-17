@@ -275,7 +275,6 @@ For the projector to build this projection:
 - `OrderPlaced` must carry: order_id, customer_name, items (to count),
   total, placed_at
 - `OrderShipped` must carry: order_id, shipped_at
-- `OrderCancelled` must carry: order_id
 
 ### Step 3: Design Events to Satisfy the Projection
 

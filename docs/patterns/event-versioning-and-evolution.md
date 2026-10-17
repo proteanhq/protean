@@ -230,7 +230,7 @@ walkthrough with real-world examples.
 
 ### Strategy 3: Tolerant Reader
 
-Design consumers to be tolerant of missing, extra, or unexpected fields:
+Design consumers to be tolerant of fields an event may not carry:
 
 ```python
 --8<-- "patterns/event-versioning-and-evolution/009.py:handler"

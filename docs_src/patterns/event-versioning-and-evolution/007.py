@@ -2,7 +2,7 @@ from protean import Domain
 from protean.fields import Auto, Float, Identifier, List, String
 
 # --8<-- [start:domain]
-# A later release, where the aggregate raises OrderPlacedV2
+# A later release that adds OrderPlacedV2 and deprecates OrderPlaced
 domain = Domain(name="DeprecatedEvent")
 # --8<-- [end:domain]
 

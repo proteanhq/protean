@@ -144,15 +144,7 @@ mechanics.
 Two Protean services communicate via CloudEvents over a message broker:
 
 ```python
-# fragment
-# Service A: publish
-message = Message.from_domain_object(event)
-broker.publish("shared-topic", message.to_cloudevent())
-
-# Service B: consume and reconstruct
-cloud_event = broker.receive("shared-topic")
-message = Message.from_cloudevent(cloud_event)
-event = message.to_domain_object()  # Works if type is registered
+--8<-- "patterns/cloudevents-interoperability/003.py:round_trip"
 ```
 
 The correlation ID, causation ID, and checksum survive the round-trip via

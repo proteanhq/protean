@@ -42,6 +42,9 @@ class ShipmentCommandHandler:
 @domain.subscriber(stream="orders")
 class OrderEventsSubscriber:
     def __call__(self, payload: dict) -> None:
+        if payload.get("type") != "OrderPlaced":
+            return
+
         # Validate the external data before trusting it
         if not payload.get("order_id"):
             logger.warning("Received OrderPlaced without order_id, skipping")

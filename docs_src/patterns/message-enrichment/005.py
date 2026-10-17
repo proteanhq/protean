@@ -21,13 +21,21 @@ def tenant_command_enricher(command):
 
 # --8<-- [end:functions]
 
-from protean import Domain, handle
+from protean import handle
 from protean.fields import Auto, Identifier
+
+# isort: split
+
+# --8<-- [start:registration]
+# domain.py -- register the enrichers from enrichers.py
+from protean import Domain
 
 domain = Domain(name="SaasApp")
 domain.register_event_enricher(tenant_enricher)
 domain.register_event_enricher(audit_enricher)
 domain.register_command_enricher(tenant_command_enricher)
+# --8<-- [end:registration]
+
 domain.config["command_processing"] = "sync"
 
 

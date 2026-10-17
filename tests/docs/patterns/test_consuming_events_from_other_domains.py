@@ -106,6 +106,30 @@ def test_the_payment_subscriber_maps_external_names_to_internal_ones(run):
     assert order.paid_at == datetime(2025, 1, 1, 10, 0, tzinfo=UTC)
 
 
+def test_the_payment_subscriber_ignores_other_event_types(run):
+    def add_order(example):
+        example.domain.repository_for(example.Order).add(
+            example.Order(order_id="ord-9")
+        )
+
+    example = run(
+        load_example("patterns/consuming-events-from-other-domains/002.py"),
+        "payments",
+        {
+            "type": "PaymentFailed",
+            "reference_id": "ord-9",
+            "transaction_id": "txn-1",
+            "amount": 42.0,
+            "currency_code": "EUR",
+            "confirmed_at": "2025-01-01T10:00:00+00:00",
+        },
+        setup=add_order,
+    )
+
+    order = example.domain.repository_for(example.Order).get("ord-9")
+    assert (order.status, order.payment_id) == ("PENDING", None)
+
+
 def test_stock_depleted_raises_product_became_unavailable(run):
     def add_product(example):
         example.domain.repository_for(example.Product).add(
@@ -124,6 +148,22 @@ def test_stock_depleted_raises_product_became_unavailable(run):
         "Catalogue.ProductBecameUnavailable.v1"
     ]
     assert messages[0].data["reason"] == "external_stock_depleted"
+
+
+def test_other_inventory_events_raise_nothing(run):
+    def add_product(example):
+        example.domain.repository_for(example.Product).add(
+            example.Product(product_id="sku-1", name="Mug")
+        )
+
+    example = run(
+        load_example("patterns/consuming-events-from-other-domains/003.py"),
+        "inventory-external",
+        {"type": "StockReplenished", "sku": "sku-1"},
+        setup=add_product,
+    )
+
+    assert example.domain.event_store.store.read("catalogue::product-sku-1") == []
 
 
 def test_the_filter_keeps_only_physical_items(run):
@@ -186,9 +226,29 @@ def test_the_subscriber_enriches_the_shipment_from_the_customer_profile(run):
     assert shipments[0].shipping_priority == "express"
 
 
+def test_the_enriching_subscriber_ignores_other_event_types(run):
+    def add_profile(example):
+        example.domain.repository_for(example.CustomerProfile).add(
+            example.CustomerProfile(customer_id="cust-1")
+        )
+
+    example = run(
+        load_example("patterns/consuming-events-from-other-domains/005.py"),
+        "orders",
+        {**ORDER_PLACED, "type": "OrderCancelled"},
+        setup=add_profile,
+    )
+
+    assert _shipments(example) == []
+
+
 @pytest.mark.parametrize("field", ["items", "line_items"])
 def test_the_subscriber_reads_items_under_either_name(run, field):
-    payload = {"order_id": "ord-1", field: [{"product_id": "prod-1"}]}
+    payload = {
+        "type": "OrderPlaced",
+        "order_id": "ord-1",
+        field: [{"product_id": "prod-1"}],
+    }
     example = run(
         load_example("patterns/consuming-events-from-other-domains/006.py"),
         "orders",
@@ -198,6 +258,16 @@ def test_the_subscriber_reads_items_under_either_name(run, field):
     shipments = _shipments(example)
     assert len(shipments) == 1
     assert shipments[0].items == [{"product_id": "prod-1"}]
+
+
+def test_the_versioned_subscriber_ignores_other_event_types(run):
+    example = run(
+        load_example("patterns/consuming-events-from-other-domains/006.py"),
+        "orders",
+        {**ORDER_PLACED, "type": "OrderCancelled"},
+    )
+
+    assert _shipments(example) == []
 
 
 def test_a_valid_payload_creates_a_shipment(run):
@@ -210,31 +280,46 @@ def test_a_valid_payload_creates_a_shipment(run):
     assert [s.order_id for s in _shipments(example)] == ["ord-1"]
 
 
+def test_the_validating_subscriber_ignores_other_event_types(run):
+    example = run(
+        load_example("patterns/consuming-events-from-other-domains/007.py"),
+        "orders",
+        {**ORDER_PLACED, "type": "OrderCancelled"},
+    )
+
+    assert _shipments(example) == []
+
+
 @pytest.mark.parametrize(
     "payload, level, message",
     [
         (
-            {"items": [{"product_id": "prod-1"}]},
+            {"type": "OrderPlaced", "items": [{"product_id": "prod-1"}]},
             logging.WARNING,
             "Received OrderPlaced without order_id, skipping",
         ),
         (
-            {"order_id": "ord-1", "items": []},
+            {"type": "OrderPlaced", "order_id": "ord-1", "items": []},
             logging.WARNING,
             "Received OrderPlaced with no items for ord-1",
         ),
         (
-            {"order_id": "ord-1", "customer_id": None, "items": [{"id": 1}]},
+            {"type": "OrderPlaced", "order_id": "ord-1", "items": [{"id": 1}]},
             logging.ERROR,
             "Failed to process OrderPlaced ord-1:",
         ),
         (
-            {"order_id": "ord-1", "items": [{"id": 1}]},
+            {
+                "type": "OrderPlaced",
+                "order_id": "ord-1",
+                "customer_id": "cust-1",
+                "items": "not-a-list",
+            },
             logging.ERROR,
             "Failed to process OrderPlaced ord-1:",
         ),
     ],
-    ids=["no-order-id", "no-items", "invalid-command", "no-customer-id"],
+    ids=["no-order-id", "no-items", "no-customer-id", "items-not-a-list"],
 )
 def test_a_bad_payload_is_logged_and_skipped(run, caplog, payload, level, message):
     with caplog.at_level(logging.WARNING):

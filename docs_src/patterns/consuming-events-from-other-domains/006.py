@@ -35,6 +35,9 @@ class ShipmentCommandHandler:
 
 # --8<-- [start:both_versions]
 def __call__(self, payload: dict) -> None:
+    if payload.get("type") != "OrderPlaced":
+        return
+
     # Handle both v1 and v2 field names
     items = payload.get("line_items") or payload.get("items", [])
 

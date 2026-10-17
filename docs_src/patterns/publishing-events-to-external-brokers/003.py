@@ -11,7 +11,7 @@ fulfillment = Domain(name="Fulfillment")
 class OrderEventSubscriber:
     def __call__(self, payload: dict) -> None:
         event_type = payload.get("metadata", {}).get("headers", {}).get("type", "")
-        if "OrderShipped" in event_type:
+        if event_type == "MyApp.OrderShipped.v1":
             data = payload.get("data", {})
             fulfillment.process(
                 CreateShipment(

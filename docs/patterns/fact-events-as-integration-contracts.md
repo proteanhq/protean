@@ -22,33 +22,34 @@ fulfillment = Domain(__file__, "Fulfillment")
 class CustomerEventSubscriber(BaseSubscriber):
 
     def __call__(self, payload: dict) -> None:
-        event_type = payload.get("type", "")
+        event_type = payload["metadata"]["headers"]["type"]
+        data = payload["data"]
 
         if "CustomerAddressChanged" in event_type:
-            self._update_address(payload)
+            self._update_address(data)
         elif "CustomerPhoneUpdated" in event_type:
-            self._update_phone(payload)
+            self._update_phone(data)
         elif "CustomerNameCorrected" in event_type:
-            self._update_name(payload)
+            self._update_name(data)
         elif "CustomerEmailVerified" in event_type:
-            self._update_email(payload)
+            self._update_email(data)
         elif "CustomerTierUpgraded" in event_type:
-            self._update_tier(payload)
+            self._update_tier(data)
 
-    def _update_address(self, payload: dict) -> None:
+    def _update_address(self, data: dict) -> None:
         repo = fulfillment.repository_for(ShippingProfile)
-        profile = repo.find_by(customer_id=payload["customer_id"])
+        profile = repo.find_by(customer_id=data["customer_id"])
         profile.update_address(
-            street=payload["new_street"],
-            city=payload["new_city"],
-            zip_code=payload["new_zip"],
+            street=data["new_street"],
+            city=data["new_city"],
+            zip_code=data["new_zip"],
         )
         repo.add(profile)
 
-    def _update_phone(self, payload: dict) -> None:
+    def _update_phone(self, data: dict) -> None:
         repo = fulfillment.repository_for(ShippingProfile)
-        profile = repo.find_by(customer_id=payload["customer_id"])
-        profile.phone = payload["new_phone"]
+        profile = repo.find_by(customer_id=data["customer_id"])
+        profile.phone = data["new_phone"]
         repo.add(profile)
 
     # ... and so on for every event type
@@ -125,7 +126,9 @@ from a history of deltas.
 The consuming domain receives a single event type (`CustomerFactEvent`) that
 always contains the complete customer state. It replaces its local
 representation wholesale, regardless of what specific change triggered the
-event. No taxonomy coupling. No delta reconstruction. No ordering sensitivity.
+event. No taxonomy coupling. No delta reconstruction. A duplicate snapshot does
+no harm, and a missed one is repaired by the next. Snapshots that arrive out of
+order still need a version check, or an older snapshot overwrites a newer one.
 
 ---
 
@@ -208,21 +211,22 @@ snapshots, each mapping the payload to its own local model.
 class CustomerEventSubscriber(BaseSubscriber):
 
     def __call__(self, payload: dict) -> None:
-        event_type = payload.get("type", "")
+        event_type = payload["metadata"]["headers"]["type"]
+        data = payload["data"]
 
         # Fulfillment must track every event type the Customer domain invents
         if "CustomerRegistered" in event_type:
-            self._create_profile(payload)
+            self._create_profile(data)
         elif "CustomerAddressChanged" in event_type:
-            self._update_address(payload)
+            self._update_address(data)
         elif "CustomerPhoneUpdated" in event_type:
-            self._update_phone(payload)
+            self._update_phone(data)
         elif "CustomerNameCorrected" in event_type:
-            self._update_name(payload)
+            self._update_name(data)
         elif "CustomerEmailVerified" in event_type:
-            self._update_email(payload)
+            self._update_email(data)
         elif "CustomerTierUpgraded" in event_type:
-            self._update_tier(payload)
+            self._update_tier(data)
         # Forgot CustomerPreferredLanguageSet -- local state drifts silently
 ```
 
@@ -250,8 +254,8 @@ class CustomerInternalHandler(BaseEventHandler):
         #
         # We have to diff against previous state to figure out
         # what action to take.
-        previous = load_previous_state(message.payload["customer_id"])
-        current = message.payload
+        previous = load_previous_state(message.data["customer_id"])
+        current = message.data
 
         if previous["tier"] != current["tier"]:
             recalculate_loyalty_benefits(current["customer_id"])
@@ -309,7 +313,7 @@ The two mechanisms serve different audiences.
 | Semantic meaning | High (named operation) | Low (generic "state changed") |
 | Best audience | Internal handlers, projectors | External subscribers, other bounded contexts |
 | Consumer complexity | Must handle each event type | One handler, replace entire local state |
-| Ordering sensitivity | Must process in order | Idempotent, latest snapshot wins |
+| Ordering sensitivity | Must process in order | Duplicates are harmless; out-of-order snapshots need a version check |
 | New field in producer | May require new event type | Automatically included in snapshot |
 | Taxonomy coupling | High (consumer tracks every event type) | None (one event type) |
 | Initialization | Must handle creation event + all deltas | First fact event bootstraps full state |

@@ -17,6 +17,17 @@ class ExternalOrderPlaced:
 
 
 # --8<-- [start:consumer_test]
+KNOWN_FIELDS = {"order_id", "customer_id", "items"}
+
+
+def external_order_placed(payload: dict) -> ExternalOrderPlaced:
+    """Build this domain's event from the publisher's payload."""
+    # Keep only the fields this domain declares
+    return ExternalOrderPlaced(
+        **{key: value for key, value in payload.items() if key in KNOWN_FIELDS}
+    )
+
+
 class TestExternalOrderPlacedConsumption:
     """Verify that we can consume OrderPlaced events from the Order domain."""
 
@@ -36,11 +47,7 @@ class TestExternalOrderPlacedConsumption:
             "discount_code": "SAVE10",
         }
 
-        # Keep only the fields this domain declares
-        known = {"order_id", "customer_id", "items"}
-        event = ExternalOrderPlaced(
-            **{key: value for key, value in external_payload.items() if key in known}
-        )
+        event = external_order_placed(external_payload)
 
         assert event.order_id == "ord-123"
         assert event.customer_id == "cust-456"

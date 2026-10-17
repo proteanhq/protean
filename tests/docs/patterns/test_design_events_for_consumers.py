@@ -267,8 +267,8 @@ def test_fulfillment_subscriber_creates_a_shipment_from_the_event_payload():
     ordering.domain.init(traverse=False)
     with ordering.domain.domain_context():
         event = ordering.OrderPlaced(
-            order_id="o1",
-            customer_id="c1",
+            order_id="ord-42",
+            customer_id="cust-42",
             customer_email="ada@example.com",
             items=[{"product_id": "p1", "quantity": 2}],
             total=19.5,
@@ -285,7 +285,10 @@ def test_fulfillment_subscriber_creates_a_shipment_from_the_event_payload():
             fulfillment.domain.repository_for(fulfillment.Shipment).query.all().items
         )
         assert len(shipments) == 1
-        assert (shipments[0].order_id, shipments[0].customer_id) == ("o1", "c1")
+        assert (shipments[0].order_id, shipments[0].customer_id) == (
+            "ord-42",
+            "cust-42",
+        )
         assert shipments[0].items == [{"product_id": "p1", "quantity": 2}]
 
 

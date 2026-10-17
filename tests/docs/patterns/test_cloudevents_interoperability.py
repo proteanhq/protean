@@ -83,3 +83,22 @@ def test_the_webhook_subscriber_ignores_other_cloudevent_types():
     payments = _payments({**STRIPE_EVENT, "type": "com.stripe.payment.failed"})
 
     assert payments == []
+
+
+def test_correlation_causation_and_checksum_survive_the_shared_topic_round_trip():
+    example = load_example("patterns/cloudevents-interoperability/003.py")
+    example.domain.init(traverse=False)
+    with example.domain.domain_context():
+        command = example.PlaceOrder(total=12.5)
+        example.domain.process(command, correlation_id="corr-1")
+        [stored] = example.domain.event_store.store.read("orders::order")
+
+        event = example.consume(example.domain.brokers["default"])
+
+    assert isinstance(event, example.OrderPlaced)
+    assert event.total == 12.5
+    assert event._metadata.headers.id == stored.metadata.headers.id
+    assert event._metadata.domain.correlation_id == "corr-1"
+    assert event._metadata.domain.causation_id == stored.metadata.domain.causation_id
+    assert event._metadata.domain.causation_id
+    assert event._metadata.envelope.checksum == stored.metadata.envelope.checksum

@@ -151,8 +151,30 @@ def test_the_latest_snapshot_overwrites_the_profile(customers):
     assert profiles[0].tier == "GOLD"
 
 
-def test_the_analytics_subscriber_keeps_only_what_it_needs(customers):
-    customer = _save_customer(customers, tier="SILVER")
+@pytest.mark.parametrize(
+    "values, has_phone, has_address",
+    [
+        ({}, False, False),
+        (
+            {
+                "phone": "555-0100",
+                "shipping_address": {"street": "1 Main St", "city": "London"},
+            },
+            True,
+            True,
+        ),
+    ],
+    ids=["bare", "with-phone-and-address"],
+)
+def test_the_analytics_subscriber_keeps_only_what_it_needs(
+    customers, values, has_phone, has_address
+):
+    if "shipping_address" in values:
+        values = {
+            **values,
+            "shipping_address": customers.Address(**values["shipping_address"]),
+        }
+    customer = _save_customer(customers, tier="SILVER", **values)
     envelope = _fact_envelopes(customers, customer.customer_id)[0]
 
     example = load_example("patterns/fact-events-as-integration-contracts/004.py")
@@ -164,6 +186,6 @@ def test_the_analytics_subscriber_keeps_only_what_it_needs(customers):
         )
 
     assert metrics.tier == "SILVER"
-    assert metrics.has_verified_email is True
-    assert metrics.has_phone is False
-    assert metrics.has_address is False
+    assert metrics.email_domain == "example.com"
+    assert metrics.has_phone is has_phone
+    assert metrics.has_address is has_address

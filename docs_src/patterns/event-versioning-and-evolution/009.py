@@ -17,7 +17,6 @@ class OrderPlaced:
     items: List(required=True)
     total: Float(required=True)
     discount_code: String(default=None)
-    channel: String(default="web")
 
 
 # --8<-- [start:handler]

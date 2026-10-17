@@ -36,6 +36,7 @@ class UpcastOrderPlacedV2ToV3(BaseUpcaster):
 # --8<-- [start:aggregate]
 @domain.aggregate(event_sourced=True)
 class Order:
+    order_id = Identifier(identifier=True)
     customer_id = Identifier()
     items = List()
     total = Float()
@@ -44,6 +45,7 @@ class Order:
     @apply
     def on_order_placed(self, event: OrderPlaced):
         """Always receives current schema — upcasters handle old versions."""
+        self.order_id = event.order_id
         self.customer_id = event.customer_id
         self.items = event.line_items
         self.total = event.total

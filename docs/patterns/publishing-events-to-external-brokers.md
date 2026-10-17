@@ -83,8 +83,8 @@ handles delivery semantics from that point.
    `asynchronous`, `priority`) are stripped.
 
 4. **Zero-change backward compatibility**: The feature activates only when
-   `external_brokers` is explicitly configured. Existing deployments are
-   unaffected.
+   the outbox is on and `external_brokers` is explicitly configured. Existing
+   deployments are unaffected.
 
 ---
 
@@ -92,10 +92,13 @@ handles delivery semantics from that point.
 
 ### Configuration
 
-Add the external broker(s) to your outbox configuration:
+Turn on the outbox and add the external broker(s) to its configuration:
 
 ```toml
 # domain.toml
+[server]
+default_subscription_type = "stream"     # Turns on the outbox
+
 [brokers.default]
 provider = "redis"
 URI = "redis://localhost:6379/0"
@@ -111,8 +114,9 @@ messages_per_tick = 50
 tick_interval = 1
 ```
 
-That's the only configuration change. No code changes to aggregates, events,
-or handlers.
+If your domain already uses stream subscriptions, the outbox is already on and
+`external_brokers` is the only new setting. No code changes to aggregates,
+events, or handlers.
 
 ### What Happens at Commit Time
 

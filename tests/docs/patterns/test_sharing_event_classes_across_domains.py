@@ -66,15 +66,18 @@ def test_the_consumer_reads_the_payload_the_publisher_raises():
     payload = order._events[0].to_dict()
 
     consumer = load_example("patterns/sharing-event-classes-across-domains/003.py")
-    known = _fields(consumer.ExternalOrderPlaced)
     with _context(consumer):
-        event = consumer.ExternalOrderPlaced(
-            **{key: value for key, value in payload.items() if key in known}
-        )
+        event = consumer.external_order_placed(payload)
 
     assert event.order_id == str(order.id)
     assert event.customer_id == "cust-123"
     assert event.items == [{"product_id": "prod-1", "quantity": 2}]
+
+
+def test_the_consumer_keeps_exactly_the_fields_its_class_declares():
+    example = load_example("patterns/sharing-event-classes-across-domains/003.py")
+
+    assert _fields(example.ExternalOrderPlaced) == example.KNOWN_FIELDS
 
 
 def test_the_consumer_class_rejects_fields_it_does_not_declare():

@@ -59,7 +59,7 @@ Each domain defines its own classes that conform to the agreed-upon schema.
 Shared (contract, not code):
   - Event name: "OrderPlaced"
   - Fields: order_id (string), customer_id (string), items (list), total (float)
-  - Published on channel: "orders"
+  - Published on stream: "orders"
 
 Order domain (publisher):
   @domain.event(part_of=Order)
@@ -75,11 +75,11 @@ Fulfillment domain (consumer):
       order_id = Identifier(...)
       customer_id = Identifier(...)
       items = List(...)
-      total = Float(...)
 ```
 
-Both classes serialize to and deserialize from the same JSON structure. They
-don't need to be the same Python class.
+Both classes read the same JSON structure. The Fulfillment class declares only
+the fields Fulfillment uses, so it leaves out `total`. They don't need to be
+the same Python class.
 
 ---
 
@@ -128,7 +128,7 @@ human-readable form:
 
 !!! example "OrderPlaced Event Schema"
 
-    Published on channel: `orders`
+    Published on stream: `orders`
 
     | Field | Type | Required | Description |
     |-------|------|----------|-------------|
@@ -209,9 +209,10 @@ events match what consumers expect:
 --8<-- "patterns/sharing-event-classes-across-domains/003.py:consumer_test"
 ```
 
-These tests run independently in each domain. If the publisher changes the
-schema in a way that breaks the contract, the consumer's contract test fails
-without needing shared code.
+These tests run independently in each domain, and both check against the
+agreed contract. The publisher's test fails if its event stops carrying a
+contract field. The consumer's test fails if its class can no longer read a
+payload in the contract's shape. Neither test needs shared code.
 
 ---
 

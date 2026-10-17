@@ -43,7 +43,7 @@ This creates several problems:
   context.
 
 - **Coupling between domain logic and operational context**: The aggregate's
-  `place_order()` method now needs to know about tenants, users, and feature
+  `place()` method now needs to know about tenants, users, and feature
   flags. It reaches into request-scoped globals to populate fields that have
   nothing to do with order placement.
 
@@ -199,19 +199,7 @@ registered conditionally, use the functional form:
 ```
 
 ```python
-# fragment
-# domain.py -- register enrichers from the module
-
-from myapp.enrichers import (
-    tenant_enricher,
-    audit_enricher,
-    tenant_command_enricher,
-)
-
-domain = Domain(name="SaasApp")
-domain.register_event_enricher(tenant_enricher)
-domain.register_event_enricher(audit_enricher)
-domain.register_command_enricher(tenant_command_enricher)
+--8<-- "patterns/message-enrichment/005.py:registration"
 ```
 
 ### Stamping Fields on the Aggregate

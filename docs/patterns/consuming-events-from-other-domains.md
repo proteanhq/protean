@@ -88,6 +88,16 @@ The subscriber:
 4. Constructs an internal `CreateShipment` command in the Fulfillment domain's language
 5. Dispatches the command for processing by the domain's own handlers
 
+!!!note "Payload shape"
+    The examples on this page read flat JSON payloads, like the ones under
+    [Handling External Schema Changes](#handling-external-schema-changes).
+    That is the shape a producer outside Protean usually sends. When the
+    producer is a Protean domain publishing through its outbox, the event
+    fields sit under `payload["data"]` and the event type under
+    `payload["metadata"]["headers"]["type"]`.
+    [Publishing Events to External Brokers](publishing-events-to-external-brokers.md#step-4-consume-on-the-other-side)
+    shows a subscriber that reads that shape.
+
 !!!note
     Subscribers deliberately receive raw `dict` payloads rather than typed
     domain objects. This is the anti-corruption boundary. Your domain does

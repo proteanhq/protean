@@ -1,3 +1,4 @@
+from protean import handle
 from protean.exceptions import ValidationError
 from protean.fields import Auto, Float, HasMany, Identifier, Integer, List, String
 
@@ -144,3 +145,15 @@ class TestOrderPlacement:
 
 
 # --8<-- [end:tests]
+
+
+@domain.command(part_of=Order)
+class PlaceOrder:
+    order_id: Identifier(required=True)
+
+
+@domain.command_handler(part_of=Order)
+class OrderCommandHandler:
+    @handle(PlaceOrder)
+    def place(self, command: PlaceOrder):
+        pass

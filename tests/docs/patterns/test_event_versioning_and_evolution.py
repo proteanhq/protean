@@ -220,16 +220,16 @@ def test_a_stored_v2_event_runs_only_the_last_upcaster():
 # Strategy 3: tolerant reader
 
 
-def test_the_tolerant_reader_fills_defaults_for_what_the_event_lacks():
+@pytest.mark.parametrize(
+    "discount, has_discount", [({"discount_code": "SAVE10"}, True), ({}, False)]
+)
+def test_the_tolerant_reader_fills_defaults_for_what_the_event_lacks(
+    discount, has_discount
+):
     example = load_example("patterns/event-versioning-and-evolution/009.py")
     with _context(example):
         event = example.OrderPlaced(
-            order_id="o1",
-            customer_id="c1",
-            items=[],
-            total=12.0,
-            discount_code="SAVE10",
-            channel="mobile",
+            order_id="o1", customer_id="c1", items=[], total=12.0, **discount
         )
         example.AnalyticsEventHandler._handle(event)
         record = example.domain.repository_for(example.Analytics)._dao.find_by(
@@ -237,8 +237,8 @@ def test_the_tolerant_reader_fills_defaults_for_what_the_event_lacks():
         )
 
     assert record.total == 12.0
-    assert record.channel == "mobile"
-    assert record.has_discount is True
+    assert record.channel == "unknown"
+    assert record.has_discount is has_discount
     assert record.currency == "USD"
 
 
@@ -286,6 +286,7 @@ def test_replay_with_upcasting_rebuilds_from_a_v1_event():
         )
         order = example.Order.from_events([event])
 
+    assert order.order_id == "o1"
     assert order.customer_id == "c1"
     assert order.items == ["a"]
     assert order.total == 8.0
@@ -310,5 +311,15 @@ def test_replay_without_upcasting_handles_both_versions():
         from_v1 = example.Order.from_events([v1])
         from_v2 = example.Order.from_events([v2])
 
-    assert (from_v1.items, from_v1.total, from_v1.currency) == (["a"], 8.0, "USD")
-    assert (from_v2.items, from_v2.total, from_v2.currency) == (["b"], 10.0, "EUR")
+    assert (from_v1.order_id, from_v1.items, from_v1.total, from_v1.currency) == (
+        "o1",
+        ["a"],
+        8.0,
+        "USD",
+    )
+    assert (from_v2.order_id, from_v2.items, from_v2.total, from_v2.currency) == (
+        "o2",
+        ["b"],
+        10.0,
+        "EUR",
+    )

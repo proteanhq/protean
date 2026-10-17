@@ -77,15 +77,18 @@ def test_the_fulfillment_subscriber_creates_a_shipment_from_the_external_message
     ]
 
 
-def test_the_subscriber_ignores_other_event_types():
+@pytest.mark.parametrize(
+    "event_type", ["MyApp.OrderNoteAdded.v1", "MyApp.OrderShippedLate.v1"]
+)
+def test_the_subscriber_ignores_other_event_types(event_type):
     consumer = load_example("patterns/publishing-events-to-external-brokers/003.py")
     consumer.fulfillment.init(traverse=False)
     with consumer.fulfillment.domain_context():
         consumer.fulfillment.brokers["default"].publish(
             "myapp::order",
             {
-                "data": {"order_id": "o1", "note": "hi"},
-                "metadata": {"headers": {"type": "MyApp.OrderNoteAdded.v1"}},
+                "data": {"order_id": "o1", "tracking_number": "TRK-1"},
+                "metadata": {"headers": {"type": event_type}},
             },
         )
         shipments = (

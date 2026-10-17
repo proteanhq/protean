@@ -54,6 +54,26 @@ def test_without_context_the_enrichers_write_none_values():
     }
 
 
+def test_the_command_enrichers_add_tenant_user_and_request():
+    example, context = _context(load_example("patterns/message-enrichment/001.py"))
+    with context:
+        g.tenant_id = "acme-corp"
+        g.user_id = "user-42"
+        g.request_id = "req-abc-123"
+        example.domain.process(example.PlaceOrder(order_id="ord-1"))
+        [stored] = [
+            message
+            for message in example.domain.event_store.store.read("$all")
+            if message.metadata.domain.kind == "COMMAND"
+        ]
+
+    assert stored.metadata.extensions == {
+        "tenant_id": "acme-corp",
+        "user_id": "user-42",
+        "request_id": "req-abc-123",
+    }
+
+
 def test_an_order_with_no_items_cannot_be_placed():
     example, context = _context(load_example("patterns/message-enrichment/001.py"))
     with context, pytest.raises(example.ValidationError):
