@@ -499,26 +499,38 @@ make test-audit
 
 The report has four sections:
 
-- **Duplicate candidates.** The suite runs under coverage.py with per-test
-  contexts, which record the test that ran each arc (a step from one line to
-  the next). A test is listed when its arcs are a subset of another test's
-  arcs, next to the test that covers it. The list is grouped by top-level test
-  folder. Tests that cover no source arcs of their own are listed apart.
-- **Private-state and coverage-named tests.** A scan of `tests/` lists calls
-  to `X.__new__(X)`, writes to private attributes of objects the test did not
-  create, patches of private names, files named `*_coverage.py`, and
-  docstrings or comments that say a test exists for coverage.
+- **Duplicate candidates.** The suite runs under coverage.py, and the audit
+  switches coverage.py's context (the label it stores each recorded arc
+  under) to the running test. An arc is a step from one line to the next. A
+  test is listed when its arcs are a subset of another test's arcs, next to
+  the test that covers it. The list is grouped by top-level test folder. Tests
+  that cover no source arcs of their own are listed apart.
+
+  Only arcs run in the test body count. Fixture setup and teardown, and any
+  child process the test starts, are not counted. Code that runs once per
+  worker process, such as an import or a cache filled on first use, counts
+  only for the first test on that worker. A test that failed in this run is
+  left out.
+- **Private-state and coverage-named tests.** A scan of `tests/` (except
+  `tests/support/`) lists calls to `X.__new__(X)`, writes to private
+  attributes, patches of private names, files named `*_coverage.py`, and
+  docstrings or comments that say a test exists for coverage. A write through
+  `self` or `cls` in a test class, or to a mock the same function created, is
+  not listed. The two files that guard doc and deprecation coverage are not
+  scanned, and the report says why.
 - **The 50 slowest tests**, timed in a run without coverage.
 - **Order-dependent tests.** The suite runs again in a random order with
   [pytest-randomly](https://github.com/pytest-dev/pytest-randomly). Each test
   that fails there runs again alone. A test that passes alone is listed as
-  order-dependent. The section shows the seed.
+  order-dependent, unless it also failed in the coverage run, which keeps the
+  default order. A flaky test can pass alone too, so check each one. The
+  section shows the seed.
   `uv run python scripts/test_audit.py --seed <seed>` shuffles each file the
   same way again.
 
-The report ranks candidates for review. It deletes nothing and changes no
-test: a test listed as a duplicate can still check a value the covering test
-does not.
+The report ranks candidates for review. The audit changes no test and writes
+only under `.test-audit/`. A test listed as a duplicate can still check a
+value the covering test does not.
 
 pytest-randomly is installed with the `test` group and turned off in
 `addopts`, so `protean test`, CI and `make mutation` run the suite in its usual

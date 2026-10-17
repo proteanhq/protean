@@ -61,8 +61,9 @@ mutation:
 verify-specs:
 	./specs/check.sh
 
-# Rank duplicate, private-state, slow and order-dependent tests in the core
-# lane. Writes .test-audit/report.md and report.json; deletes nothing. See
+# Rank duplicate, private-state, slow and order-dependent tests. The suite
+# runs are the core lane; the static scan reads all of tests/ except
+# tests/support/. Writes only under .test-audit/ and changes no test. See
 # docs/community/contributing/testing.md.
 test-audit:
 	uv run python scripts/test_audit.py

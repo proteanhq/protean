@@ -107,6 +107,8 @@ def _run_pytest(workdir: Path, target: Path, module: str) -> Outcome:
             "-q",
             "-p",
             "no:cacheprovider",
+            "-p",
+            "no:randomly",
             f"--rootdir={workdir}",
             f"--junitxml={report}",
             str(target),
