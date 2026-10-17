@@ -380,3 +380,23 @@ class TestOriginStreamOnRebuildFromStoredMessage:
             )
 
         assert command._metadata.domain.origin_stream == "test::stream-b"
+
+
+class TestStorePositions:
+    def test_a_fresh_command_has_no_store_positions(self):
+        assert Login(user_id=str(uuid4()))._metadata.event_store is None
+
+    def test_a_command_rebuilt_from_the_store_keeps_its_positions(self, test_domain):
+        identifier = str(uuid4())
+        test_domain.process(Login(user_id=identifier), asynchronous=True)
+
+        stored = test_domain.event_store.store.read_last_message(
+            f"test::user:command-{identifier}"
+        )
+        assert stored is not None
+        assert stored.metadata.event_store is not None
+        assert stored.metadata.event_store.position == 0
+
+        command = stored.to_domain_object()
+
+        assert command._metadata.event_store == stored.metadata.event_store

@@ -190,14 +190,6 @@ def test_an_event_with_a_new_id_awards_points(strategies):
     ]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason=(
-        "Message.to_domain_object() drops the event_store metadata, so the "
-        "handler sees event._metadata.event_store as None"
-    ),
-)
 def test_the_global_position_skips_a_repeated_or_older_event(strategies):
     ex = strategies
     repo = ex.domain.repository_for(ex.ProjectionState)
