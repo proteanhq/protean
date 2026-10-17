@@ -270,3 +270,189 @@ def test_a_save_after_a_lazy_query_settles_the_original_instance(test_domain, ta
     first.bump()
     repo.add(first)
     assert repo.get(tally.id).value == 3
+
+
+def test_a_query_evaluated_before_the_unit_of_work_returns_the_tracked_instance(
+    test_domain, tally
+):
+    repo = test_domain.repository_for(Tally)
+    query = repo._dao.query.filter(name="t")
+    assert query.first is not None
+
+    with UnitOfWork():
+        tracked = repo.get(tally.id)
+        tracked.bump()
+
+        found = query.first
+        assert found is tracked
+        found.bump()
+        repo.add(found)
+
+    assert _bumped(test_domain, tally) == [(0, 1), (1, 2)]
+
+
+def test_a_result_cached_before_the_unit_of_work_is_tracked_by_it(test_domain, tally):
+    repo = test_domain.repository_for(Tally)
+    query = repo._dao.query.filter(name="t")
+    assert query.first is not None
+
+    with UnitOfWork():
+        found = query.first
+        assert repo.get(tally.id) is found
+        found.bump()
+
+    assert _bumped(test_domain, tally) == [(0, 1)]
+
+
+def test_every_read_of_a_query_evaluated_earlier_returns_tracked_instances(
+    test_domain, tally
+):
+    repo = test_domain.repository_for(Tally)
+    other = Tally(name="t")
+    repo.add(other)
+    query = repo._dao.query.filter(name="t").order_by("id")
+    assert len(query.items) == 2
+
+    with UnitOfWork() as uow:
+        tracked = repo.get(tally.id)
+        first, second = query.items
+        assert {first.id, second.id} == {tally.id, other.id}
+        mine = first if first.id == tally.id else second
+        assert mine is tracked
+
+        reads = [list(query), [query[0], query[1]], [query.first, query.last]]
+        assert all(read == [first, second] for read in reads)
+        assert all(
+            a is b for read in reads for a, b in zip(read, (first, second), strict=True)
+        )
+        assert len(uow._items_to_commit()) == 2
+
+        first.bump()
+        second.bump()
+
+    assert _bumped(test_domain, tally) == [(0, 1)]
+    assert _bumped(test_domain, other) == [(0, 1)]
+
+
+def test_a_query_evaluated_before_the_unit_of_work_reads_the_stored_state_again(
+    test_domain, tally
+):
+    repo = test_domain.repository_for(Tally)
+    query = repo._dao.query.filter(name="t")
+    assert query.first.value == 0
+
+    changed = repo.get(tally.id)
+    changed.value = 5
+    repo.add(changed)
+
+    with UnitOfWork():
+        assert query.first.value == 5
+
+
+def test_a_raw_query_evaluated_before_the_unit_of_work_runs_again_in_it(
+    test_domain, tally
+):
+    repo = test_domain.repository_for(Tally)
+    query = repo._dao.query
+    query.raw('{"name": "t"}')
+
+    changed = repo.get(tally.id)
+    changed.value = 5
+    repo.add(changed)
+
+    with UnitOfWork():
+        found = query.first
+        assert found.value == 5
+        assert repo.get(tally.id) is found
+
+
+def test_a_query_read_again_after_its_unit_of_work_reads_the_stored_state(
+    test_domain, tally
+):
+    repo = test_domain.repository_for(Tally)
+    query = repo._dao.query.filter(name="t")
+
+    with UnitOfWork():
+        assert query.first.value == 0
+
+    changed = repo.get(tally.id)
+    changed.value = 5
+    repo.add(changed)
+
+    assert query.first.value == 5
+
+
+def test_a_unit_of_work_started_again_does_not_reuse_the_earlier_cache(
+    test_domain, tally
+):
+    repo = test_domain.repository_for(Tally)
+    query = repo._dao.query.filter(name="t")
+    uow = UnitOfWork()
+
+    with uow:
+        assert query.first.value == 0
+
+    changed = repo.get(tally.id)
+    changed.value = 5
+    repo.add(changed)
+
+    with uow:
+        found = query.first
+        assert found.value == 5
+        assert repo.get(tally.id) is found
+
+
+def test_a_projection_evaluated_before_the_unit_of_work_reads_the_stored_state(
+    test_domain, tally
+):
+    repo = test_domain.repository_for(Tally)
+    query = repo._dao.query.filter(name="t").only("id", "value")
+    assert query.first.value == 0
+
+    changed = repo.get(tally.id)
+    changed.value = 5
+    repo.add(changed)
+
+    with UnitOfWork():
+        assert query.first.value == 5
+
+
+def test_a_raw_query_with_no_matches_runs_as_the_raw_query_again(test_domain, tally):
+    repo = test_domain.repository_for(Tally)
+    repo.add(Tally(name="other"))
+    query = repo._dao.query
+    assert query.raw('{"name": "missing"}').items == []
+
+    with UnitOfWork():
+        assert query.items == []
+
+    assert query.items == []
+
+
+def test_a_raw_query_that_failed_to_run_again_retries_as_the_raw_query(
+    test_domain, tally, monkeypatch
+):
+    repo = test_domain.repository_for(Tally)
+    repo.add(Tally(name="other"))
+    query = repo._dao.query
+    query.raw('{"name": "t"}')
+
+    dao = repo._dao
+    original_raw = dao._raw
+    calls = []
+
+    def failing_once(query_string, data=None):
+        calls.append(query_string)
+        if len(calls) == 1:
+            raise RuntimeError("database unavailable")
+        return original_raw(query_string, data)
+
+    monkeypatch.setattr(dao, "_raw", failing_once)
+
+    with UnitOfWork():
+        with pytest.raises(RuntimeError):
+            query.first
+
+        assert [item.id for item in query.items] == [tally.id]
+
+    assert calls == ['{"name": "t"}', '{"name": "t"}']

@@ -99,6 +99,9 @@ class UnitOfWork:
         )
         # The identity-map entries that were saved, by provider, class and id.
         self._saved: set[tuple[str, type, Any]] = set()
+        # Identifies the transaction in progress. A UnitOfWork can be started
+        # again after it ends, so the object alone does not.
+        self._transaction: object | None = None
 
         # A UnitOfWork started while another is already active on this context is
         # a participant in the outer transaction (see ``start``). ``_nested`` marks
@@ -253,6 +256,8 @@ class UnitOfWork:
 
         if self._nested:
             return
+
+        self._transaction = object()
 
         # Log transaction capability warnings for each configured provider
         for provider_name, provider in self.domain.providers.items():
