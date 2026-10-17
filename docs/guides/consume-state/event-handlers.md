@@ -311,10 +311,13 @@ automatic retries and dead-letter queuing for failed messages:
 
 !!! note "Event store subscriptions"
     The settings above apply to `subscription_type="stream"` (Redis
-    Streams). An event store subscription has no DLQ. It records each failed
-    position and retries it on a later recovery pass, up to `max_retries`
-    (default 3), set under `[server.event_store_subscription]`. A position
-    that still fails is marked exhausted and skipped.
+    Streams). An event store subscription keeps no dead-letter stream. It
+    records each failed position and retries it on a later recovery pass, up
+    to `max_retries` (default 3), set under
+    `[server.event_store_subscription]`. A position that still fails is marked
+    exhausted and skipped. The exhausted positions are the event store's
+    dead-letter queue, which you manage with
+    [`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md).
 
 See [Server → Configuration](../../reference/server/configuration.md) for detailed
 configuration options and the priority hierarchy.

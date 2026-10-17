@@ -223,10 +223,13 @@ did:
 ```
 
 The unique constraint on `hubspot_id` prevents duplicates at the
-database level. A second `Client` with the same `hubspot_id` fails with a
-`ValidationError`, and its transaction rolls back. This is not an
-`ExpectedVersionError`, so the `@handle` version retry does not re-run the
-handler. The retry comes from the subscription instead: it delivers a
+database level. A second `Client` with the same `hubspot_id` fails, and its
+transaction rolls back. How it fails depends on timing. If the first Client
+is already committed, `repo.add` raises a `ValidationError`. If both runs
+pass `exists_for` before either commits, the database rejects the second
+commit, and the unit of work raises a `TransactionError` that wraps the
+database's integrity error. Neither is an `ExpectedVersionError`, so the
+`@handle` version retry does not re-run the handler. The retry comes from the subscription instead: it delivers a
 failed message again, up to its `max_retries` setting. On the
 next delivery, `exists_for` finds the Client and `on_created` returns
 without writing. The same redelivery covers an association event that

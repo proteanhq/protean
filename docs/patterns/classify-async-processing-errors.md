@@ -148,8 +148,12 @@ places:
   retries run out. See
   [Transient-failure retries](../guides/consume-state/event-handlers.md#transient-failure-retries).
 - **In the subscription.** The subscription that delivered the message
-  retries it up to `max_retries` times (3 by default), waiting
-  `retry_delay_seconds` (1 second by default) between attempts.
+  tries it again after a failure, waiting `retry_delay_seconds` (1 second by
+  default) between attempts. `max_retries` (3 by default) sets when it gives
+  up, and the two subscription types count it differently. A stream
+  subscription stops after `max_retries` attempts in total, so 3 attempts by
+  default. An event store subscription retries `max_retries` times after the
+  first failure, so 4 attempts by default.
 
 The subscription retries every failure, whatever `handle_error` decides.
 `handle_error` cannot stop a retry, and the engine calls it again after each

@@ -51,8 +51,9 @@ class HubspotClientHandler:
             return  # An earlier delivery already created this Client
 
         # Two runs can both pass the check above. The unique constraint
-        # makes the second add raise a ValidationError, so no duplicate
-        # is written and that run's transaction rolls back.
+        # makes the second write fail (a ValidationError at add, or a
+        # TransactionError at commit), so no duplicate is written and
+        # that run's transaction rolls back.
         repo.add(Client(hubspot_id=event.hubspot_id, name=event.name))
 
     @handle(HubspotAssociationChanged)

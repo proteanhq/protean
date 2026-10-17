@@ -359,7 +359,7 @@ recently processed command keys. For aggregates with high command volume,
 this set can be pruned periodically (keeping only the last N entries or
 entries within a time window).
 
-### Event-Sourced Aggregates: Expected Version Stops Concurrent Copies
+### Event-Sourced Aggregates: Expected Version Alone Does Not Stop Duplicates
 
 Event-sourced aggregates in Protean use optimistic concurrency. A handler
 loads the aggregate at some version, raises new events, and adds it back to the
@@ -372,18 +372,23 @@ of the command committed in between, the versions differ and the commit raises
 --8<-- "patterns/command-idempotency/005.py:bank_account"
 ```
 
-The version check covers copies that run at the same time: both load the same
-version, the first commits, and the second fails. It does not cover a copy that
-arrives after the first one has committed. That copy loads the newer version,
-the check passes, and the deposit is applied a second time. For those replays,
-pair the aggregate with an idempotency key (Layers 1 and 2), or track processed
-command keys on the aggregate as in the additive pattern above.
+The version check alone does not stop a duplicate. When two copies run at the
+same time, both load the same version, the first commits, and the second
+fails its commit. A command handler then retries the second copy, because
+[version conflict auto-retry](../guides/server/error-handling.md#version-conflict-auto-retry)
+is on by default (`version_retry`, 3 retries). The retry loads the newer
+version, the check passes, and the deposit is applied a second time. A copy
+that arrives after the first one has committed takes the same path without
+any conflict. For both cases, pair the aggregate with an idempotency key
+(Layers 1 and 2), or track processed command keys on the aggregate as in the
+additive pattern above.
 
 The conflict surfaces when the unit of work commits, after the handler method
 returns. A `try`/`except ExpectedVersionError` inside the handler never sees it.
 The error says only that another write came first, not that it was the same
 command. Swallowing it would also drop a different command that happened to
-collide, so let the error reach the caller.
+collide, so leave conflicts to the version retry. The error reaches the caller
+only when the retries run out or `version_retry` is turned off.
 
 ### Cross-Aggregate Commands
 
@@ -532,7 +537,7 @@ succeeds:
 | Overwriting a field (set email) | Naturally idempotent. Key optional but recommended. |
 | Creating a new aggregate | Key + check-then-act in handler as defense-in-depth. |
 | Adding items / incrementing counters | **Key required.** Framework dedup is essential; additive ops are not naturally safe. |
-| Event-sourced aggregate mutations | Key for replays. Expected version stops two concurrent copies from both writing. |
+| Event-sourced aggregate mutations | **Key required.** The version retry re-runs a conflicting copy, so expected version alone does not stop a duplicate. |
 | Commands from sagas / process managers | Derive key from the triggering event's ID for deterministic dedup. |
 | Sending emails, calling external APIs | Key + pass-through to external service's own idempotency mechanism. |
 | Exactly-once side effects surviving crashes | Key + outbox pattern with events. |
