@@ -11,6 +11,7 @@ A developer building a user registration endpoint reaches for a command handler
 because "commands sound right for changing state":
 
 ```python
+# fragment
 @domain.command(part_of=User)
 class RegisterUser(BaseCommand):
     email: String(required=True)
@@ -34,9 +35,11 @@ class UserCommandHandler(BaseCommandHandler):
 
 The handler works, but the API endpoint needs the newly created user with its
 generated ID. `domain.process()` is fire-and-forget by default. It stores the
-command and returns `None`. The developer forces synchronous execution:
+command and returns the command's position in the event store.
+The developer forces synchronous execution:
 
 ```python
+# fragment
 @app.post("/users")
 def create_user(payload: CreateUserRequest):
     command = RegisterUser(
@@ -50,8 +53,8 @@ def create_user(payload: CreateUserRequest):
     # But domain.process() doesn't return the user...
     # Now we have to query for it by email
     repo = domain.repository_for(User)
-    user = repo.query.filter(email=payload.email).first()
-    return {"id": user.id, "email": user.email}
+    user = repo.query.filter(email=payload.email).first
+    return {"id": user.user_id, "email": user.email}
 ```
 
 The code processes the command synchronously and then immediately queries for
@@ -62,6 +65,7 @@ Meanwhile, another developer on the same team uses an application service for
 processing incoming webhook events from a payment provider:
 
 ```python
+# fragment
 @domain.application_service(part_of=Order)
 class OrderService(BaseApplicationService):
 
@@ -165,59 +169,7 @@ The API endpoint needs to return the newly created user with its ID: a direct,
 synchronous operation.
 
 ```python
-# --- Domain elements ---
-
-@domain.aggregate
-class User:
-    user_id: Auto(identifier=True)
-    email: String(required=True, max_length=255)
-    name: String(required=True, max_length=100)
-    password_hash: String(max_length=255)
-    status: String(default="pending")
-    registered_at: DateTime()
-
-    def register(self, password: str) -> None:
-        """Complete the registration process."""
-        self.password_hash = self._hash_password(password)
-        self.status = "active"
-        self.registered_at = datetime.now(timezone.utc)
-
-        self.raise_(UserRegistered(
-            user_id=self.user_id,
-            email=self.email,
-            name=self.name,
-        ))
-
-    def _hash_password(self, password: str) -> str:
-        import hashlib
-        return hashlib.sha256(password.encode()).hexdigest()
-
-
-@domain.event(part_of=User)
-class UserRegistered(BaseEvent):
-    user_id: Identifier(required=True)
-    email: String(required=True)
-    name: String(required=True)
-
-
-# --- Application Service ---
-
-@domain.application_service(part_of=User)
-class UserService(BaseApplicationService):
-
-    @use_case
-    def register_user(self, email: str, name: str, password: str) -> User:
-        """Register a new user and return the created user.
-
-        The @use_case decorator wraps this method in a UnitOfWork,
-        so the aggregate is persisted and events are published
-        automatically when the method returns.
-        """
-        repo = current_domain.repository_for(User)
-        user = User(email=email, name=name)
-        user.register(password)
-        repo.add(user)
-        return user  # (1)
+--8<-- "patterns/application-service-vs-command-handler/001.py:user_service"
 ```
 
 1. The application service returns the user directly. The caller receives the
@@ -226,20 +178,8 @@ class UserService(BaseApplicationService):
 The API endpoint uses the service directly:
 
 ```python
-@app.post("/users", status_code=201)
-def create_user(payload: CreateUserRequest):
-    service = UserService()
-    user = service.register_user(
-        email=payload.email,
-        name=payload.name,
-        password=payload.password,
-    )
-    return {
-        "id": str(user.user_id),
-        "email": user.email,
-        "name": user.name,
-        "status": user.status,
-    }
+# fragment
+--8<-- "patterns/application-service-vs-command-handler/001.py:endpoint"
 ```
 
 No `domain.process()`, no command object, no async/sync flag. The `@use_case`
@@ -252,88 +192,14 @@ Payment confirmations arrive from an external webhook. The webhook must return
 `200 OK` immediately, a fire-and-forget operation.
 
 ```python
-# --- Domain elements ---
-
-@domain.aggregate
-class Order:
-    order_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)
-    status: String(default="draft")
-    total: Float(default=0.0)
-    payment_id: String()
-    paid_at: DateTime()
-
-    def confirm_payment(self, payment_id: str, amount: float) -> None:
-        """Confirm that payment has been received."""
-        if self.status != "pending_payment":
-            raise ValidationError(
-                {"status": ["Only orders pending payment can be confirmed"]}
-            )
-
-        if amount < self.total:
-            raise ValidationError(
-                {"amount": ["Payment amount is less than order total"]}
-            )
-
-        self.status = "paid"
-        self.payment_id = payment_id
-        self.paid_at = datetime.now(timezone.utc)
-
-        self.raise_(OrderPaid(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            payment_id=payment_id,
-            amount=amount,
-        ))
-
-
-@domain.command(part_of=Order)
-class ConfirmPayment(BaseCommand):
-    order_id: Identifier(required=True)
-    payment_id: String(required=True)
-    amount: Float(required=True)
-
-
-@domain.event(part_of=Order)
-class OrderPaid(BaseEvent):
-    order_id: Identifier(required=True)
-    customer_id: Identifier(required=True)
-    payment_id: String(required=True)
-    amount: Float(required=True)
-
-
-# --- Command Handler ---
-
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler(BaseCommandHandler):
-
-    @handle(ConfirmPayment)
-    def confirm_payment(self, command: ConfirmPayment):
-        """Process the payment confirmation.
-
-        This handler is invoked by the Protean engine when it reads
-        the ConfirmPayment command from the event store. The engine
-        wraps the handler in a UoW automatically.
-        """
-        repo = current_domain.repository_for(Order)
-        order = repo.get(command.order_id)
-        order.confirm_payment(command.payment_id, command.amount)
-        repo.add(order)
+--8<-- "patterns/application-service-vs-command-handler/002.py:order_handler"
 ```
 
 The webhook endpoint dispatches the command and returns immediately:
 
 ```python
-@app.post("/webhooks/payment", status_code=200)
-def payment_webhook(payload: PaymentWebhookPayload):
-    domain.process(
-        ConfirmPayment(
-            order_id=payload.order_id,
-            payment_id=payload.payment_id,
-            amount=payload.amount,
-        )
-    )
-    return {"status": "accepted"}
+# fragment
+--8<-- "patterns/application-service-vs-command-handler/002.py:webhook"
 ```
 
 `domain.process()` stores the command in the event store and returns. The
@@ -362,11 +228,7 @@ two mechanisms:
 **Per-call override:**
 
 ```python
-# Force synchronous processing for this specific call
-result = domain.process(
-    ConfirmPayment(order_id="ord-123", payment_id="pay-456", amount=99.99),
-    asynchronous=False,
-)
+--8<-- "patterns/application-service-vs-command-handler/002.py:per_call"
 ```
 
 **Global configuration:**
@@ -388,6 +250,7 @@ service instead.
 ### Defining Both for the Same Operation
 
 ```python
+# fragment
 # Anti-pattern: two coordination paths for the same operation
 
 @domain.application_service(part_of=Order)
@@ -434,6 +297,7 @@ service. If order placement should be async, use the command handler. Not both.
 ### Forcing Async When Sync Is Needed
 
 ```python
+# fragment
 # Anti-pattern: command handler for a synchronous use case
 
 @app.post("/products")
@@ -449,38 +313,27 @@ def create_product(payload: CreateProductRequest):
 ```
 
 If you always force synchronous processing and query for the result afterward,
-the command handler is the wrong tool:
+the command handler is the wrong tool. Use an application service for a
+synchronous use case:
 
 ```python
-# Fix: application service for synchronous use case
+--8<-- "patterns/application-service-vs-command-handler/003.py:product_service"
+```
 
-@domain.application_service(part_of=Product)
-class ProductService(BaseApplicationService):
+The endpoint then calls the service and returns the product it gets back:
 
-    @use_case
-    def create_product(self, name: str, price: float) -> Product:
-        repo = current_domain.repository_for(Product)
-        product = Product(name=name, price=price)
-        repo.add(product)
-        return product
-
-
-@app.post("/products")
-def create_product(payload: CreateProductRequest):
-    service = ProductService()
-    product = service.create_product(
-        name=payload.name,
-        price=payload.price,
-    )
-    return {"id": str(product.product_id), "name": product.name}
+```python
+# fragment
+--8<-- "patterns/application-service-vs-command-handler/003.py:endpoint"
 ```
 
 ### Using Application Services for Event Reactions
 
 ```python
+# fragment
 # Anti-pattern: application service called from an event handler
 
-@domain.event_handler(part_of=Inventory)
+@domain.event_handler(part_of=Order)
 class InventoryEventHandler(BaseEventHandler):
 
     @handle(OrderPlaced)
@@ -506,38 +359,21 @@ instead.
 **Fix:** Put the coordination logic directly in the event handler:
 
 ```python
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        repo = current_domain.repository_for(Inventory)
-        inventory = repo.get(event.product_id)
-        inventory.reserve(event.quantity)
-        repo.add(inventory)
+--8<-- "patterns/application-service-vs-command-handler/004.py:inventory"
+--8<-- "patterns/application-service-vs-command-handler/004.py:event_handler"
 ```
 
 Or, if the reaction should produce a command for another aggregate, use
 `domain.process()` from within the event handler:
 
 ```python
-@domain.event_handler(part_of=Inventory)
-class InventoryEventHandler(BaseEventHandler):
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced):
-        current_domain.process(
-            ReserveInventory(
-                product_id=event.product_id,
-                quantity=event.quantity,
-                order_id=event.order_id,
-            )
-        )
+--8<-- "patterns/application-service-vs-command-handler/005.py:event_handler"
 ```
 
 ### Mixing Invocation Styles Within a Bounded Context
 
 ```python
+# fragment
 # Anti-pattern: inconsistent coordination within the same context
 
 # Some operations use application services
@@ -573,7 +409,7 @@ for all API-triggered operations. If a specific operation must be async
 | Dimension | Application Service | Command Handler |
 |-----------|-------------------|-----------------|
 | **How it's invoked** | `service = MyService()` then `service.method(...)` | `domain.process(command)` |
-| **Return value** | Always returns a result to the caller | `None` by default (fire-and-forget) |
+| **Return value** | Always returns a result to the caller | The command's event store position by default (fire-and-forget) |
 | **Execution model** | Synchronous (always) | Async by default, sync with `asynchronous=False` |
 | **Transaction management** | `@use_case` wraps in `UnitOfWork` | Engine wraps in `UnitOfWork` |
 | **Idempotency** | Caller must implement | Built-in via `idempotency_key` param |

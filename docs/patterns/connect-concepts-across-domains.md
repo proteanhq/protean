@@ -88,10 +88,10 @@ The solution has three parts:
 │              │                                      │  customer_id │
 └──────────────┘                                      │  (correlated)│
        │                                              └──────────────┘
-       │              CustomerRegistered
+       │              CustomerAddressUpdated
        │         ─ ─ ─{ customer_id: "c-123" }─ ─ ─ ┐
-       │              name: "Jane Doe"               │
-       ▼              address: "..."                 ▼
+       │              street: "1 Main St"            │
+       ▼              city: "Springfield"            ▼
 ┌──────────────┐                              ┌──────────────┐
 │              │                              │              │
 │  Shipping    │                              │   Support    │
@@ -121,19 +121,7 @@ originate.
 For "Customer", this is typically the Sales or Identity context:
 
 ```python
-# Sales context -- the authority for Customer
-from protean import Domain
-from protean.fields import Auto, String, Identifier
-
-sales = Domain(__file__, "Sales")
-
-
-@sales.aggregate
-class Customer:
-    customer_id: Auto(identifier=True)
-    name: String(required=True, max_length=100)
-    email: String(required=True)
-    segment: String(choices=CustomerSegment, default="STANDARD")
+--8<-- "patterns/connect-concepts-across-domains/002.py:sales-customer"
 ```
 
 This aggregate owns the `customer_id`. When a customer is registered, this
@@ -149,23 +137,7 @@ The authoritative context raises events for every significant lifecycle change.
 These events carry the **shared identity** and the data that other contexts need:
 
 ```python
-@sales.event(part_of=Customer)
-class CustomerRegistered:
-    customer_id: Identifier(required=True)
-    name: String(required=True)
-    email: String(required=True)
-
-
-@sales.event(part_of=Customer)
-class CustomerEmailUpdated:
-    customer_id: Identifier(required=True)
-    new_email: String(required=True)
-
-
-@sales.event(part_of=Customer)
-class CustomerDeactivated:
-    customer_id: Identifier(required=True)
-    reason: String()
+--8<-- "patterns/connect-concepts-across-domains/002.py:sales-events"
 ```
 
 ### Delta Events vs. Fact Events
@@ -176,6 +148,7 @@ You have two choices for how events carry state across context boundaries:
 consuming contexts must process every event type and build up state incrementally:
 
 ```python
+# fragment
 # Consumer must handle each event type to build local state
 @handle(CustomerRegistered)
 def on_registered(self, event): ...
@@ -191,13 +164,7 @@ def on_address_updated(self, event): ...
 get a full snapshot with every event, simplifying their logic:
 
 ```python
-# Sales context: enable fact events
-@sales.aggregate(fact_events=True)
-class Customer:
-    customer_id: Auto(identifier=True)
-    name: String(required=True, max_length=100)
-    email: String(required=True)
-    segment: String(choices=CustomerSegment, default="STANDARD")
+--8<-- "patterns/connect-concepts-across-domains/003.py:fact-events"
 ```
 
 With `fact_events=True`, Protean automatically generates a fact event containing
@@ -246,6 +213,7 @@ for each change the other aggregate must make, and that aggregate's command
 handler does the write:
 
 ```python
+--8<-- "patterns/connect-concepts-across-domains/001.py:same-domain-events"
 --8<-- "patterns/connect-concepts-across-domains/001.py:same-domain"
 ```
 
@@ -273,67 +241,17 @@ message broker, use subscribers. Subscribers receive raw payloads from external
 systems and translate them into the local domain's language:
 
 ```python
-# Shipping context -- separate domain
-shipping = Domain(__file__, "Shipping")
-
-
-@shipping.aggregate
-class Recipient:
-    """Shipping context's model of a customer."""
-    recipient_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)  # Correlation ID
-    name: String(required=True)
-    delivery_address = ValueObject(Address)
-
-
-@shipping.subscriber(stream="sales_customer_events")
-class CustomerEventSubscriber:
-    """Consumes customer events from the Sales context's broker stream.
-
-    Acts as an anti-corruption layer: translates Sales' customer schema
-    into Shipping's Recipient model.
-    """
-
-    def __call__(self, payload: dict) -> None:
-        event_type = payload.get("type", "")
-
-        if "CustomerRegistered" in event_type:
-            self._handle_registration(payload)
-        elif "CustomerAddressUpdated" in event_type:
-            self._handle_address_update(payload)
-
-    def _handle_registration(self, payload: dict) -> None:
-        repo = shipping.repository_for(Recipient)
-        recipient = Recipient(
-            customer_id=payload["customer_id"],
-            name=payload["name"],
-            delivery_address=Address(
-                street=payload.get("street", ""),
-                city=payload.get("city", ""),
-                zip_code=payload.get("zip_code", ""),
-            ),
-        )
-        repo.add(recipient)
-
-    def _handle_address_update(self, payload: dict) -> None:
-        repo = shipping.repository_for(Recipient)
-        recipient = repo.find_by(
-            customer_id=payload["customer_id"]
-        )
-        recipient.update_address(
-            Address(
-                street=payload["street"],
-                city=payload["city"],
-                zip_code=payload["zip_code"],
-            )
-        )
-        repo.add(recipient)
+--8<-- "patterns/connect-concepts-across-domains/004.py:shipping"
 ```
 
 The subscriber is the **anti-corruption layer**. It prevents the Sales
 context's schema from leaking into the Shipping domain. If Sales changes how it
 structures customer events, only the subscriber needs to change, the `Recipient`
 aggregate and the rest of the Shipping domain remain untouched.
+
+A registration creates a recipient with a name and no address. The address
+comes with `CustomerAddressUpdated`. A subscriber can also receive the same
+message twice, so it skips a registration for a customer it already knows.
 
 ### Cross-Context Projections
 
@@ -342,45 +260,15 @@ use projectors. Projectors can subscribe to multiple stream categories
 simultaneously:
 
 ```python
-@domain.projection
-class CustomerDashboard:
-    """Read model combining data from Customer and BillingAccount."""
-    customer_id: Identifier(identifier=True)
-    name: String()
-    email: String()
-    account_status: String()
-    total_invoiced: Float(default=0.0)
-
-
-@domain.projector(
-    projector_for=CustomerDashboard,
-    stream_categories=[
-        Customer.meta_.stream_category,        # "<domain>::customer"
-        BillingAccount.meta_.stream_category,  # "<domain>::billing_account"
-    ],
-)
-class CustomerDashboardProjector:
-
-    @on(CustomerRegistered)
-    def on_customer_registered(self, event: CustomerRegistered):
-        dashboard = CustomerDashboard(
-            customer_id=event.customer_id,
-            name=event.name,
-            email=event.email,
-        )
-        current_domain.repository_for(CustomerDashboard).add(dashboard)
-
-    @on(InvoiceIssued)
-    def on_invoice_issued(self, event: InvoiceIssued):
-        repo = current_domain.repository_for(CustomerDashboard)
-        dashboard = repo.get(event.customer_id)
-        dashboard.total_invoiced += event.amount
-        repo.add(dashboard)
+--8<-- "patterns/connect-concepts-across-domains/005.py:dashboard"
 ```
 
 Projections are ideal for query scenarios that span multiple aggregates. They
 are read-optimized, denormalized, and eventually consistent, exactly what you
 need for cross-context views.
+
+The projector keeps the ids of the invoices it has counted, so an
+`InvoiceIssued` that arrives twice adds to the total once.
 
 ---
 
@@ -396,6 +284,7 @@ events to the right local entity.
 its identity. All other contexts store this identity as a reference:
 
 ```python
+# fragment
 # Sales (authority): customer_id is the primary identity
 class Customer:
     customer_id: Auto(identifier=True)
@@ -411,6 +300,7 @@ carry the correlation ID. Without it, the consuming context cannot route the eve
 to the right local entity:
 
 ```python
+# fragment
 class CustomerEmailUpdated:
     customer_id: Identifier(required=True)  # Always present
     new_email: String(required=True)
@@ -426,12 +316,7 @@ Complex workflows may involve concepts from several source contexts. A local mod
 can carry multiple correlation IDs:
 
 ```python
-@domain.aggregate
-class Shipment:
-    shipment_id: Auto(identifier=True)
-    order_id: Identifier(required=True)     # Correlates to Order context
-    customer_id: Identifier(required=True)  # Correlates to Sales context
-    warehouse_id: Identifier(required=True) # Correlates to Inventory context
+--8<-- "patterns/connect-concepts-across-domains/006.py:shipment"
 ```
 
 Each identifier traces back to a different authoritative context. Events from any
@@ -449,6 +334,7 @@ own local representation. The creation event must carry enough data for the
 consumer to initialize its model:
 
 ```python
+# fragment
 # Source raises:
 CustomerRegistered(
     customer_id="c-123",
@@ -471,6 +357,7 @@ contexts care about. Each consumer decides which events are relevant and how
 to react:
 
 ```python
+# fragment
 # Source raises: CustomerDeactivated
 # Billing reacts: Suspend the account
 # Shipping reacts: Cancel pending deliveries
@@ -488,13 +375,7 @@ read-only reference for display or validation. Use projections for these
 scenarios:
 
 ```python
-@domain.projection
-class CustomerReference:
-    """Read-only reference to a customer, built from Sales events."""
-    customer_id: Identifier(identifier=True)
-    name: String()
-    email: String()
-    is_active: Boolean(default=True)
+--8<-- "patterns/connect-concepts-across-domains/006.py:customer-reference"
 ```
 
 Projections are simpler than aggregates. They have no business logic, no
@@ -512,6 +393,7 @@ state. The source's state may have already changed between the query and the
 consumer's use of the data:
 
 ```python
+# fragment
 # Anti-pattern: querying Sales from Billing
 def create_billing_account(self, customer_id):
     # DON'T DO THIS
@@ -532,6 +414,7 @@ Two contexts should never import the same aggregate or entity class. Each contex
 has its own model, shaped by its own Ubiquitous Language:
 
 ```python
+# fragment
 # Anti-pattern: shared class
 from sales.domain import Customer  # DON'T import across contexts
 

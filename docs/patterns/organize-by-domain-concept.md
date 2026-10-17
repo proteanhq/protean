@@ -130,42 +130,30 @@ src/identity/
 ### Capability Files Colocate Commands with Their Handlers
 
 Each capability file contains both the command definitions and the handler
-for that capability. One concept, one file:
+for that capability. One concept, one file. Here the `addresses.py`
+capability file sits next to the `Customer` aggregate it changes:
+
+```
+src/identity/
+├── __init__.py        # The domain
+└── customer/
+    ├── customer.py    # The aggregate
+    └── addresses.py   # A capability
+```
+
+`customer/customer.py` holds the aggregate:
 
 ```python
-# customer/addresses.py
+# fragment
+--8<-- "patterns/organize-by-domain-concept/identity/customer/customer.py:customer"
+```
 
-@domain.command(part_of="Customer")
-class AddAddress:
-    customer_id = Identifier(required=True)
-    street = String(required=True)
-    city = String(required=True)
-    ...
+`customer/addresses.py` holds the commands and the handler for managing
+addresses:
 
-@domain.command(part_of="Customer")
-class RemoveAddress:
-    customer_id = Identifier(required=True)
-    address_id = Identifier(required=True)
-
-@domain.command(part_of="Customer")
-class SetDefaultAddress:
-    customer_id = Identifier(required=True)
-    address_id = Identifier(required=True)
-
-
-@domain.command_handler(part_of="Customer")
-class ManageAddressesHandler:
-    @handle(AddAddress)
-    def add_address(self, command):
-        ...
-
-    @handle(RemoveAddress)
-    def remove_address(self, command):
-        ...
-
-    @handle(SetDefaultAddress)
-    def set_default_address(self, command):
-        ...
+```python
+# fragment
+--8<-- "patterns/organize-by-domain-concept/identity/customer/addresses.py:addresses"
 ```
 
 This optimizes for the most common developer workflow: understanding or

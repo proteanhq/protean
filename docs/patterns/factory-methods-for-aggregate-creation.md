@@ -360,7 +360,7 @@ Factories and domain services do different jobs:
 | **Input** | Raw data or other aggregates | Live aggregate instances |
 | **Output** | A new aggregate instance | Side effects on existing aggregates |
 | **When** | Object comes into existence | Object already exists and needs cross-aggregate logic |
-| **Example** | `Order.from_cart(items, customer_id)` | `TransferService.validate_and_debit(source, policy, amount)` |
+| **Example** | `Order.from_cart(items, customer_id)` | `TransferService(source, policy).validate_and_debit(amount, ...)` |
 
 A factory answers "how do I bring this thing into existence?" A domain service
 answers "how do I apply a rule that spans several things which already exist?"

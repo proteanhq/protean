@@ -1,7 +1,8 @@
-"""Run the same-domain example on ``docs/patterns/connect-concepts-across-domains.md``."""
+"""Run the examples on ``docs/patterns/connect-concepts-across-domains.md``."""
 
 import pytest
 
+from protean.exceptions import ObjectNotFoundError, ValidationError
 from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -16,7 +17,9 @@ def _context(example):
 def _register(example, email="ada@example.com"):
     customer = example.Customer(name="Ada", email=email)
     customer.raise_(
-        example.CustomerRegistered(customer_id=customer.customer_id, email=email)
+        example.CustomerRegistered(
+            customer_id=customer.customer_id, name="Ada", email=email
+        )
     )
     example.domain.repository_for(example.Customer).add(customer)
     return customer
@@ -80,3 +83,261 @@ def test_the_hand_off_stays_with_the_customer():
             entry["code"] for entry in report["diagnostics"]
         }
         assert "EVENT_HANDLER_FOREIGN_EVENT" not in codes
+
+
+def test_the_sales_customer_defaults_to_the_standard_segment():
+    example = load_example("patterns/connect-concepts-across-domains/002.py")
+    example.sales.init(traverse=False)
+    with example.sales.domain_context():
+        customer = example.Customer(name="Ada", email="ada@example.com")
+        repo = example.sales.repository_for(example.Customer)
+        repo.add(customer)
+
+        stored = repo.get(customer.customer_id)
+        assert (stored.name, stored.email, stored.segment) == (
+            "Ada",
+            "ada@example.com",
+            "STANDARD",
+        )
+        assert (
+            example.Customer(
+                name="Ada", email="ada@example.com", segment="PREMIUM"
+            ).segment
+            == "PREMIUM"
+        )
+
+
+def test_the_sales_customer_rejects_an_unknown_segment():
+    example = load_example("patterns/connect-concepts-across-domains/002.py")
+    example.sales.init(traverse=False)
+    with example.sales.domain_context():
+        with pytest.raises(ValidationError) as exc:
+            example.Customer(name="Ada", email="ada@example.com", segment="GOLD")
+        assert "segment" in exc.value.messages
+        assert example.sales.repository_for(example.Customer).query.all().total == 0
+
+
+def test_every_sales_event_carries_the_customer_id():
+    example = load_example("patterns/connect-concepts-across-domains/002.py")
+    example.sales.init(traverse=False)
+    with example.sales.domain_context():
+        event = example.CustomerEmailUpdated(
+            customer_id="c-123", new_email="jane@example.com"
+        )
+        assert (event.customer_id, event.new_email) == ("c-123", "jane@example.com")
+
+        for event_cls, values in [
+            (example.CustomerRegistered, {"name": "Jane", "email": "j@example.com"}),
+            (example.CustomerEmailUpdated, {"new_email": "j@example.com"}),
+            (example.CustomerDeactivated, {"reason": "closed"}),
+        ]:
+            with pytest.raises(ValidationError) as exc:
+                event_cls(**values)
+            assert exc.value.messages == {"customer_id": ["is required"]}
+
+
+def test_fact_events_carry_the_whole_customer():
+    example = load_example("patterns/connect-concepts-across-domains/003.py")
+    sales = example.sales
+    sales.init(traverse=False)
+    with sales.domain_context():
+        customer = example.Customer(name="Jane Doe", email="jane@example.com")
+        sales.repository_for(example.Customer).add(customer)
+
+        stream = f"{example.Customer.meta_.stream_category}-fact-{customer.customer_id}"
+        [message] = sales.event_store.store.read(stream)
+        fact = message.to_domain_object()
+        assert type(fact).__name__ == "CustomerFactEvent"
+        assert (fact.customer_id, fact.name, fact.email, fact.segment) == (
+            customer.customer_id,
+            "Jane Doe",
+            "jane@example.com",
+            "STANDARD",
+        )
+
+
+def _sales_payloads():
+    """Return Sales' own events as the payloads the Shipping subscriber reads.
+
+    The payloads come from the Sales event classes, so a field Sales drops or
+    renames breaks the Shipping tests too.
+    """
+    sales = load_example("patterns/connect-concepts-across-domains/002.py")
+    sales.sales.init(traverse=False)
+    with sales.sales.domain_context():
+        registered = sales.CustomerRegistered(
+            customer_id="c-123", name="Jane Doe", email="jane@example.com"
+        )
+        moved = sales.CustomerAddressUpdated(
+            customer_id="c-123", street="9 Elm Rd", city="Shelbyville", zip_code="67890"
+        )
+        return (
+            {"type": "Sales.CustomerRegistered.v1", **registered.payload},
+            {"type": "Sales.CustomerAddressUpdated.v1", **moved.payload},
+        )
+
+
+REGISTERED, ADDRESS_UPDATED = _sales_payloads()
+
+
+def _recipients(example):
+    return example.shipping.repository_for(example.Recipient).query.all().items
+
+
+@pytest.fixture
+def shipping():
+    example = load_example("patterns/connect-concepts-across-domains/004.py")
+    example.shipping.init(traverse=False)
+    with example.shipping.domain_context():
+        yield example
+
+
+def test_the_subscriber_creates_a_recipient_from_a_registration(shipping):
+    shipping.CustomerEventSubscriber()(REGISTERED)
+
+    [recipient] = _recipients(shipping)
+    assert recipient.customer_id == "c-123"
+    assert recipient.name == "Jane Doe"
+    assert recipient.delivery_address is None
+
+
+def test_a_redelivered_registration_creates_no_second_recipient(shipping):
+    subscriber = shipping.CustomerEventSubscriber()
+    subscriber(REGISTERED)
+    subscriber(REGISTERED)
+    subscriber(ADDRESS_UPDATED)
+
+    [recipient] = _recipients(shipping)
+    assert recipient.delivery_address == shipping.Address(
+        street="9 Elm Rd", city="Shelbyville", zip_code="67890"
+    )
+
+
+def test_the_subscriber_updates_the_address_of_the_correlated_recipient(shipping):
+    subscriber = shipping.CustomerEventSubscriber()
+    subscriber(REGISTERED)
+    subscriber(ADDRESS_UPDATED)
+
+    [recipient] = _recipients(shipping)
+    assert recipient.customer_id == "c-123"
+    assert recipient.name == "Jane Doe"
+    assert recipient.delivery_address == shipping.Address(
+        street="9 Elm Rd", city="Shelbyville", zip_code="67890"
+    )
+
+
+def test_the_subscriber_ignores_events_shipping_does_not_care_about(shipping):
+    shipping.CustomerEventSubscriber()(
+        {"type": "Sales.CustomerEmailUpdated.v1", "customer_id": "c-123"}
+    )
+
+    assert _recipients(shipping) == []
+    assert shipping.CustomerEventSubscriber.meta_.stream == "sales_customer_events"
+
+
+def test_an_address_update_for_an_unknown_customer_fails(shipping):
+    with pytest.raises(ObjectNotFoundError):
+        shipping.CustomerEventSubscriber()(ADDRESS_UPDATED)
+
+    assert _recipients(shipping) == []
+
+
+def test_the_projector_builds_the_dashboard_and_adds_invoice_totals():
+    example = load_example("patterns/connect-concepts-across-domains/005.py")
+    domain = example.domain
+    domain.config["event_processing"] = "sync"
+    domain.init(traverse=False)
+    with domain.domain_context():
+        customer = example.Customer(name="Jane Doe", email="jane@example.com")
+        customer.raise_(
+            example.CustomerRegistered(
+                customer_id=customer.customer_id,
+                name="Jane Doe",
+                email="jane@example.com",
+            )
+        )
+        domain.repository_for(example.Customer).add(customer)
+
+        account = example.BillingAccount(customer_id=customer.customer_id)
+        for invoice_id, amount in (("inv-1", 100.0), ("inv-2", 25.5)):
+            account.raise_(
+                example.InvoiceIssued(
+                    invoice_id=invoice_id,
+                    customer_id=customer.customer_id,
+                    amount=amount,
+                )
+            )
+        domain.repository_for(example.BillingAccount).add(account)
+
+        dashboard = domain.repository_for(example.CustomerDashboard).get(
+            customer.customer_id
+        )
+        assert (dashboard.name, dashboard.email, dashboard.total_invoiced) == (
+            "Jane Doe",
+            "jane@example.com",
+            125.5,
+        )
+
+
+def test_the_projector_skips_a_repeated_event():
+    example = load_example("patterns/connect-concepts-across-domains/005.py")
+    domain = example.domain
+    domain.init(traverse=False)
+    with domain.domain_context():
+        projector = example.CustomerDashboardProjector()
+        registered = example.CustomerRegistered(
+            customer_id="c-1", name="Jane Doe", email="jane@example.com"
+        )
+        invoiced = example.InvoiceIssued(
+            invoice_id="inv-1", customer_id="c-1", amount=10.0
+        )
+
+        for _ in range(2):
+            projector.on_customer_registered(registered)
+            projector.on_invoice_issued(invoiced)
+
+        [dashboard] = domain.repository_for(example.CustomerDashboard).query.all().items
+        assert (dashboard.name, dashboard.total_invoiced) == ("Jane Doe", 10.0)
+        assert dashboard.invoice_ids == ["inv-1"]
+
+
+def test_the_projector_reads_both_streams():
+    example = load_example("patterns/connect-concepts-across-domains/005.py")
+    example.domain.init(traverse=False)
+    assert example.CustomerDashboardProjector.meta_.stream_categories == [
+        "customerviews::customer",
+        "customerviews::billing_account",
+    ]
+
+
+def test_the_shipment_needs_every_correlation_id():
+    example = load_example("patterns/connect-concepts-across-domains/006.py")
+    example.domain.init(traverse=False)
+    with example.domain.domain_context():
+        shipment = example.Shipment(
+            order_id="o-1", customer_id="c-1", warehouse_id="w-1"
+        )
+        assert (shipment.order_id, shipment.customer_id, shipment.warehouse_id) == (
+            "o-1",
+            "c-1",
+            "w-1",
+        )
+
+        with pytest.raises(ValidationError) as exc:
+            example.Shipment(order_id="o-1", customer_id="c-1")
+        assert exc.value.messages == {"warehouse_id": ["is required"]}
+
+
+def test_the_customer_reference_starts_active():
+    example = load_example("patterns/connect-concepts-across-domains/006.py")
+    example.domain.init(traverse=False)
+    with example.domain.domain_context():
+        repo = example.domain.repository_for(example.CustomerReference)
+        repo.add(
+            example.CustomerReference(
+                customer_id="c-1", name="Jane Doe", email="jane@example.com"
+            )
+        )
+
+        reference = repo.get("c-1")
+        assert (reference.name, reference.is_active) == ("Jane Doe", True)

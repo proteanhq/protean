@@ -82,12 +82,10 @@ LABELS = [path.relative_to(DOCS).as_posix() for path in PAGES]
 # delete its entry.
 ALLOWLIST: frozenset[str] = frozenset(
     {
-        "patterns/application-service-vs-command-handler.md",
         "patterns/calling-external-systems-from-handlers.md",
         "patterns/classify-async-processing-errors.md",
         "patterns/cloudevents-interoperability.md",
         "patterns/command-idempotency.md",
-        "patterns/connect-concepts-across-domains.md",
         "patterns/consuming-events-from-other-domains.md",
         "patterns/coordinating-long-running-processes.md",
         "patterns/design-events-for-consumers.md",
@@ -96,12 +94,8 @@ ALLOWLIST: frozenset[str] = frozenset(
         "patterns/fact-events-as-integration-contracts.md",
         "patterns/idempotent-event-handlers.md",
         "patterns/message-enrichment.md",
-        "patterns/organize-by-domain-concept.md",
         "patterns/publishing-events-to-external-brokers.md",
-        "patterns/setting-up-and-tearing-down-database-for-tests.md",
         "patterns/sharing-event-classes-across-domains.md",
-        "patterns/testing-domain-logic-in-isolation.md",
-        "patterns/thin-handlers-rich-domain.md",
     }
 )
 
