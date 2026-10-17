@@ -6,40 +6,7 @@ A Customer domain publishes granular domain events whenever a customer's
 profile changes:
 
 ```python
-customers = Domain(__file__, "Customers")
-
-
-@customers.event(part_of=Customer)
-class CustomerAddressChanged(BaseEvent):
-    customer_id: Identifier(required=True)
-    new_street: String(required=True)
-    new_city: String(required=True)
-    new_zip: String(required=True)
-
-
-@customers.event(part_of=Customer)
-class CustomerPhoneUpdated(BaseEvent):
-    customer_id: Identifier(required=True)
-    new_phone: String(required=True)
-
-
-@customers.event(part_of=Customer)
-class CustomerNameCorrected(BaseEvent):
-    customer_id: Identifier(required=True)
-    new_first_name: String(required=True)
-    new_last_name: String(required=True)
-
-
-@customers.event(part_of=Customer)
-class CustomerEmailVerified(BaseEvent):
-    customer_id: Identifier(required=True)
-    verified_email: String(required=True)
-
-
-@customers.event(part_of=Customer)
-class CustomerTierUpgraded(BaseEvent):
-    customer_id: Identifier(required=True)
-    new_tier: String(required=True)
+--8<-- "patterns/fact-events-as-integration-contracts/001.py:granular_events"
 ```
 
 The Fulfillment domain needs customer data to ship orders. It subscribes to
@@ -47,6 +14,7 @@ the Customer domain's broker stream and tries to build a local representation
 of each customer:
 
 ```python
+# fragment
 fulfillment = Domain(__file__, "Fulfillment")
 
 
@@ -54,33 +22,34 @@ fulfillment = Domain(__file__, "Fulfillment")
 class CustomerEventSubscriber(BaseSubscriber):
 
     def __call__(self, payload: dict) -> None:
-        event_type = payload.get("type", "")
+        event_type = payload["metadata"]["headers"]["type"]
+        data = payload["data"]
 
         if "CustomerAddressChanged" in event_type:
-            self._update_address(payload)
+            self._update_address(data)
         elif "CustomerPhoneUpdated" in event_type:
-            self._update_phone(payload)
+            self._update_phone(data)
         elif "CustomerNameCorrected" in event_type:
-            self._update_name(payload)
+            self._update_name(data)
         elif "CustomerEmailVerified" in event_type:
-            self._update_email(payload)
+            self._update_email(data)
         elif "CustomerTierUpgraded" in event_type:
-            self._update_tier(payload)
+            self._update_tier(data)
 
-    def _update_address(self, payload: dict) -> None:
+    def _update_address(self, data: dict) -> None:
         repo = fulfillment.repository_for(ShippingProfile)
-        profile = repo.find_by(customer_id=payload["customer_id"])
+        profile = repo.find_by(customer_id=data["customer_id"])
         profile.update_address(
-            street=payload["new_street"],
-            city=payload["new_city"],
-            zip_code=payload["new_zip"],
+            street=data["new_street"],
+            city=data["new_city"],
+            zip_code=data["new_zip"],
         )
         repo.add(profile)
 
-    def _update_phone(self, payload: dict) -> None:
+    def _update_phone(self, data: dict) -> None:
         repo = fulfillment.repository_for(ShippingProfile)
-        profile = repo.find_by(customer_id=payload["customer_id"])
-        profile.phone = payload["new_phone"]
+        profile = repo.find_by(customer_id=data["customer_id"])
+        profile.phone = data["new_phone"]
         repo.add(profile)
 
     # ... and so on for every event type
@@ -157,7 +126,9 @@ from a history of deltas.
 The consuming domain receives a single event type (`CustomerFactEvent`) that
 always contains the complete customer state. It replaces its local
 representation wholesale, regardless of what specific change triggered the
-event. No taxonomy coupling. No delta reconstruction. No ordering sensitivity.
+event. No taxonomy coupling. No delta reconstruction. A duplicate snapshot does
+no harm, and a missed one is repaired by the next. Snapshots that arrive out of
+order still need a version check, or an older snapshot overwrites a newer one.
 
 ---
 
@@ -169,54 +140,7 @@ In the Customer domain, add `fact_events=True` to the aggregate that external
 contexts consume:
 
 ```python
-from protean import Domain
-from protean.fields import Auto, String, ValueObject
-
-customers = Domain(__file__, "Customers")
-
-
-@customers.value_object
-class Address:
-    street: String(max_length=200)
-    city: String(max_length=100)
-    zip_code: String(max_length=20)
-    country: String(max_length=50)
-
-
-@customers.aggregate(fact_events=True)
-class Customer:
-    customer_id: Auto(identifier=True)
-    first_name: String(required=True, max_length=50)
-    last_name: String(required=True, max_length=50)
-    email: String(required=True)
-    phone: String()
-    tier: String(default="STANDARD")
-    shipping_address = ValueObject(Address)
-
-    def correct_name(self, first_name: str, last_name: str):
-        self.first_name = first_name
-        self.last_name = last_name
-        self.raise_(CustomerNameCorrected(
-            customer_id=self.customer_id,
-            new_first_name=first_name,
-            new_last_name=last_name,
-        ))
-
-    def update_address(self, address: Address):
-        self.shipping_address = address
-        self.raise_(CustomerAddressChanged(
-            customer_id=self.customer_id,
-            new_street=address.street,
-            new_city=address.city,
-            new_zip=address.zip_code,
-        ))
-
-    def upgrade_tier(self, new_tier: str):
-        self.tier = new_tier
-        self.raise_(CustomerTierUpgraded(
-            customer_id=self.customer_id,
-            new_tier=new_tier,
-        ))
+--8<-- "patterns/fact-events-as-integration-contracts/002.py:customer"
 ```
 
 With `fact_events=True`, Protean auto-generates a `CustomerFactEvent` class
@@ -234,46 +158,7 @@ Within the Customer domain, event handlers and projectors subscribe to
 granular delta events. They react to **specific changes** with targeted logic:
 
 ```python
-@customers.event(part_of=Customer)
-class CustomerNameCorrected(BaseEvent):
-    customer_id: Identifier(required=True)
-    new_first_name: String(required=True)
-    new_last_name: String(required=True)
-
-
-@customers.event(part_of=Customer)
-class CustomerAddressChanged(BaseEvent):
-    customer_id: Identifier(required=True)
-    new_street: String(required=True)
-    new_city: String(required=True)
-    new_zip: String(required=True)
-
-
-@customers.event(part_of=Customer)
-class CustomerTierUpgraded(BaseEvent):
-    customer_id: Identifier(required=True)
-    new_tier: String(required=True)
-
-
-@customers.event_handler(part_of=Customer)
-class CustomerNotificationHandler(BaseEventHandler):
-
-    @handle(CustomerAddressChanged)
-    def on_address_changed(self, event: CustomerAddressChanged):
-        # Send address verification email -- only triggers on address changes
-        send_address_verification(
-            customer_id=event.customer_id,
-            new_city=event.new_city,
-            new_zip=event.new_zip,
-        )
-
-    @handle(CustomerTierUpgraded)
-    def on_tier_upgraded(self, event: CustomerTierUpgraded):
-        # Send congratulations -- only triggers on tier changes
-        send_tier_upgrade_notification(
-            customer_id=event.customer_id,
-            new_tier=event.new_tier,
-        )
+--8<-- "patterns/fact-events-as-integration-contracts/002.py:delta_events"
 ```
 
 These handlers need to know **what** changed, not the full state. Delta events
@@ -286,46 +171,7 @@ It receives a complete snapshot on every change, regardless of what specific
 field was modified:
 
 ```python
-fulfillment = Domain(__file__, "Fulfillment")
-
-
-@fulfillment.aggregate
-class ShippingProfile:
-    """Fulfillment domain's local model of a customer."""
-    profile_id: Auto(identifier=True)
-    customer_id: Identifier(required=True)
-    full_name: String(required=True)
-    email: String(required=True)
-    phone: String()
-    street: String()
-    city: String()
-    zip_code: String()
-    tier: String(default="STANDARD")
-
-
-@fulfillment.subscriber(stream="customer_fact_events")
-class CustomerFactEventSubscriber(BaseSubscriber):
-
-    def __call__(self, payload: dict) -> None:
-        repo = fulfillment.repository_for(ShippingProfile)
-
-        try:
-            profile = repo.find_by(customer_id=payload["customer_id"])
-        except ObjectNotFoundError:
-            profile = ShippingProfile(customer_id=payload["customer_id"])
-
-        # Overwrite everything from the latest snapshot
-        profile.full_name = (
-            f"{payload['first_name']} {payload['last_name']}"
-        )
-        profile.email = payload["email"]
-        profile.phone = payload.get("phone", "")
-        profile.street = payload.get("shipping_address", {}).get("street", "")
-        profile.city = payload.get("shipping_address", {}).get("city", "")
-        profile.zip_code = payload.get("shipping_address", {}).get("zip_code", "")
-        profile.tier = payload.get("tier", "STANDARD")
-
-        repo.add(profile)
+--8<-- "patterns/fact-events-as-integration-contracts/003.py:subscriber"
 ```
 
 The subscriber handles **one event type** (the fact event) and always
@@ -344,36 +190,7 @@ The fact event stream can serve any number of consuming domains. Each extracts
 only the fields it needs:
 
 ```python
-# ── Fulfillment Domain ──────────────────────────────────────────
-
-@fulfillment.subscriber(stream="customer_fact_events")
-class CustomerFactEventSubscriber(BaseSubscriber):
-
-    def __call__(self, payload: dict) -> None:
-        # Extracts name, address, tier for shipping decisions
-        ...
-
-
-# ── Analytics Domain ────────────────────────────────────────────
-
-@analytics.subscriber(stream="customer_fact_events")
-class CustomerAnalyticsSubscriber(BaseSubscriber):
-
-    def __call__(self, payload: dict) -> None:
-        repo = analytics.repository_for(CustomerMetrics)
-
-        try:
-            metrics = repo.find_by(customer_id=payload["customer_id"])
-        except ObjectNotFoundError:
-            metrics = CustomerMetrics(customer_id=payload["customer_id"])
-
-        # Extracts only the fields Analytics cares about
-        metrics.tier = payload.get("tier", "STANDARD")
-        metrics.has_verified_email = bool(payload.get("email"))
-        metrics.has_phone = bool(payload.get("phone"))
-        metrics.has_address = bool(payload.get("shipping_address"))
-
-        repo.add(metrics)
+--8<-- "patterns/fact-events-as-integration-contracts/004.py:consumers"
 ```
 
 Each domain consumes the same fact event stream independently. The Customer
@@ -388,26 +205,28 @@ snapshots, each mapping the payload to its own local model.
 ### Using granular events for cross-context integration
 
 ```python
+# fragment
 # Anti-pattern: external domain handles every internal event type
 @fulfillment.subscriber(stream="customer_events")
 class CustomerEventSubscriber(BaseSubscriber):
 
     def __call__(self, payload: dict) -> None:
-        event_type = payload.get("type", "")
+        event_type = payload["metadata"]["headers"]["type"]
+        data = payload["data"]
 
         # Fulfillment must track every event type the Customer domain invents
         if "CustomerRegistered" in event_type:
-            self._create_profile(payload)
+            self._create_profile(data)
         elif "CustomerAddressChanged" in event_type:
-            self._update_address(payload)
+            self._update_address(data)
         elif "CustomerPhoneUpdated" in event_type:
-            self._update_phone(payload)
+            self._update_phone(data)
         elif "CustomerNameCorrected" in event_type:
-            self._update_name(payload)
+            self._update_name(data)
         elif "CustomerEmailVerified" in event_type:
-            self._update_email(payload)
+            self._update_email(data)
         elif "CustomerTierUpgraded" in event_type:
-            self._update_tier(payload)
+            self._update_tier(data)
         # Forgot CustomerPreferredLanguageSet -- local state drifts silently
 ```
 
@@ -421,6 +240,7 @@ handler, full state on every change.
 ### Using fact events for internal reactions
 
 ```python
+# fragment
 # Anti-pattern: internal handler reacting to fact events
 @customers.event_handler(part_of=Customer)
 class CustomerInternalHandler(BaseEventHandler):
@@ -434,8 +254,8 @@ class CustomerInternalHandler(BaseEventHandler):
         #
         # We have to diff against previous state to figure out
         # what action to take.
-        previous = load_previous_state(message.payload["customer_id"])
-        current = message.payload
+        previous = load_previous_state(message.data["customer_id"])
+        current = message.data
 
         if previous["tier"] != current["tier"]:
             recalculate_loyalty_benefits(current["customer_id"])
@@ -455,6 +275,7 @@ external state transfer.
 ### Publishing only fact events with no delta events
 
 ```python
+# fragment
 # Anti-pattern: fact_events=True but no delta events raised
 @customers.aggregate(fact_events=True)
 class Customer:
@@ -492,7 +313,7 @@ The two mechanisms serve different audiences.
 | Semantic meaning | High (named operation) | Low (generic "state changed") |
 | Best audience | Internal handlers, projectors | External subscribers, other bounded contexts |
 | Consumer complexity | Must handle each event type | One handler, replace entire local state |
-| Ordering sensitivity | Must process in order | Idempotent, latest snapshot wins |
+| Ordering sensitivity | Must process in order | Duplicates are harmless; out-of-order snapshots need a version check |
 | New field in producer | May require new event type | Automatically included in snapshot |
 | Taxonomy coupling | High (consumer tracks every event type) | None (one event type) |
 | Initialization | Must handle creation event + all deltas | First fact event bootstraps full state |

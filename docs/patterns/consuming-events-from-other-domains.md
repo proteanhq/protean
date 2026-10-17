@@ -77,26 +77,7 @@ Protean's `@domain.subscriber` listens to a broker stream and receives
 raw `dict` payloads from external domains:
 
 ```python
-@domain.subscriber(stream="orders")
-class OrderEventsSubscriber:
-
-    def __call__(self, payload: dict) -> None:
-        event_type = payload.get("type")
-
-        if event_type == "OrderPlaced":
-            # Translate external payload into internal command
-            current_domain.process(
-                CreateShipment(
-                    order_id=payload["order_id"],
-                    customer_id=payload["customer_id"],
-                    items=[
-                        {"product_id": item["product_id"],
-                         "quantity": item["quantity"]}
-                        for item in payload["items"]
-                    ],
-                    shipping_priority="standard",
-                )
-            )
+--8<-- "patterns/consuming-events-from-other-domains/001.py:subscriber"
 ```
 
 The subscriber:
@@ -106,6 +87,16 @@ The subscriber:
 3. Extracts the data it needs
 4. Constructs an internal `CreateShipment` command in the Fulfillment domain's language
 5. Dispatches the command for processing by the domain's own handlers
+
+!!!note "Payload shape"
+    The examples on this page read flat JSON payloads, like the ones under
+    [Handling External Schema Changes](#handling-external-schema-changes).
+    That is the shape a producer outside Protean usually sends. When the
+    producer is a Protean domain publishing through its outbox, the event
+    fields sit under `payload["data"]` and the event type under
+    `payload["metadata"]["headers"]["type"]`.
+    [Publishing Events to External Brokers](publishing-events-to-external-brokers.md#step-4-consume-on-the-other-side)
+    shows a subscriber that reads that shape.
 
 !!!note
     Subscribers deliberately receive raw `dict` payloads rather than typed
@@ -124,22 +115,7 @@ This funnels external stimuli through your domain's normal command processing
 pipeline:
 
 ```python
-@domain.subscriber(stream="payments")
-class PaymentEventsSubscriber:
-
-    def __call__(self, payload: dict) -> None:
-        event_type = payload.get("type")
-
-        if event_type == "PaymentConfirmed":
-            current_domain.process(
-                MarkOrderPaid(
-                    order_id=payload["reference_id"],     # External field name
-                    payment_id=payload["transaction_id"],  # Different naming
-                    amount=payload["amount"],
-                    currency=payload["currency_code"],     # Different naming
-                    paid_at=payload["confirmed_at"],       # Different naming
-                )
-            )
+--8<-- "patterns/consuming-events-from-other-domains/002.py:subscriber"
 ```
 
 Notice the translation: the external domain uses `reference_id`, your domain
@@ -152,21 +128,7 @@ When the external event should trigger reactive processing across your domain
 (not a specific command), translate it into an internal domain event:
 
 ```python
-@domain.subscriber(stream="inventory-external")
-class ExternalInventorySubscriber:
-
-    def __call__(self, payload: dict) -> None:
-        event_type = payload.get("type")
-
-        if event_type == "StockDepleted":
-            repo = current_domain.repository_for(Product)
-            product = repo.get(payload["sku"])
-
-            product.raise_(ProductBecameUnavailable(
-                product_id=product.product_id,
-                reason="external_stock_depleted",
-            ))
-            repo.add(product)
+--8<-- "patterns/consuming-events-from-other-domains/003.py:subscriber"
 ```
 
 The internal `ProductBecameUnavailable` event triggers your domain's own
@@ -177,29 +139,7 @@ event handlers and projectors, all speaking your domain's language.
 Not every external event is relevant to your domain. The subscriber filters:
 
 ```python
-@domain.subscriber(stream="orders")
-class OrderEventsSubscriber:
-
-    def __call__(self, payload: dict) -> None:
-        if payload.get("type") != "OrderPlaced":
-            return  # Ignore event types we don't care about
-
-        # Only create shipments for physical items
-        physical_items = [
-            item for item in payload["items"]
-            if item.get("type") != "digital"
-        ]
-
-        if not physical_items:
-            return  # Nothing for Fulfillment to do
-
-        current_domain.process(
-            CreateShipment(
-                order_id=payload["order_id"],
-                customer_id=payload["customer_id"],
-                items=physical_items,
-            )
-        )
+--8<-- "patterns/consuming-events-from-other-domains/004.py:subscriber"
 ```
 
 ### Enriching External Data
@@ -208,26 +148,7 @@ Sometimes your domain needs more context than the external event provides.
 The subscriber can enrich the data from your own domain's state:
 
 ```python
-@domain.subscriber(stream="orders")
-class OrderEventsSubscriber:
-
-    def __call__(self, payload: dict) -> None:
-        if payload.get("type") != "OrderPlaced":
-            return
-
-        # Enrich with data from our domain
-        customer_repo = current_domain.repository_for(CustomerProfile)
-        customer = customer_repo.get(payload["customer_id"])
-
-        current_domain.process(
-            CreateShipment(
-                order_id=payload["order_id"],
-                customer_id=payload["customer_id"],
-                shipping_address=customer.default_shipping_address,
-                shipping_priority=customer.shipping_tier,
-                items=payload["items"],
-            )
-        )
+--8<-- "patterns/consuming-events-from-other-domains/005.py:subscriber"
 ```
 
 ---
@@ -264,16 +185,7 @@ to update:
 Only the subscriber changes:
 
 ```python
-def __call__(self, payload: dict) -> None:
-    # Handle both v1 and v2 field names
-    items = payload.get("line_items") or payload.get("items", [])
-
-    current_domain.process(
-        CreateShipment(
-            order_id=payload["order_id"],
-            items=items,
-        )
-    )
+--8<-- "patterns/consuming-events-from-other-domains/006.py:both_versions"
 ```
 
 Your domain's `CreateShipment` command, `Shipment` aggregate, and all handlers
@@ -287,36 +199,7 @@ External events may be malformed, carry unexpected data, or reference entities
 that don't exist in your domain:
 
 ```python
-@domain.subscriber(stream="orders")
-class OrderEventsSubscriber:
-
-    def __call__(self, payload: dict) -> None:
-        # Validate the external data before trusting it
-        if not payload.get("order_id"):
-            logger.warning("Received OrderPlaced without order_id, skipping")
-            return
-
-        if not payload.get("items"):
-            logger.warning(
-                f"Received OrderPlaced with no items for {payload['order_id']}"
-            )
-            return
-
-        try:
-            current_domain.process(
-                CreateShipment(
-                    order_id=payload["order_id"],
-                    customer_id=payload["customer_id"],
-                    items=payload["items"],
-                )
-            )
-        except ValidationError as e:
-            logger.error(
-                f"Failed to process OrderPlaced {payload['order_id']}: {e}"
-            )
-            # Don't re-raise -- the external event was received,
-            # the error is in our translation or domain rules.
-            # Log for investigation rather than blocking the subscription.
+--8<-- "patterns/consuming-events-from-other-domains/007.py:subscriber"
 ```
 
 **Key principle:** Never trust external data. Validate it at the subscriber
@@ -337,6 +220,7 @@ boundary before passing it into your domain.
 ### Importing Event Classes from the External Domain
 
 ```python
+# fragment
 # Anti-pattern: importing from another domain's package
 from order_domain.events import OrderPlaced
 
@@ -382,6 +266,7 @@ Use a subscriber to translate first.
 ### Calling Back to the External Domain
 
 ```python
+# fragment
 # Anti-pattern: calling external API from subscriber
 def __call__(self, payload: dict) -> None:
     # DON'T call back to the Order domain's API

@@ -65,6 +65,7 @@ Every `Message` has a `to_cloudevent()` method that derives all CloudEvents
 attributes from existing Protean metadata:
 
 ```python
+# fragment
 from protean.utils.eventing import Message
 
 message = Message.from_domain_object(event)
@@ -84,6 +85,7 @@ attributes.
 Parse incoming CloudEvents into Protean messages:
 
 ```python
+# fragment
 message = Message.from_cloudevent(cloud_event_dict)
 
 # For external events: access data directly
@@ -124,18 +126,7 @@ intended:
 ### Publishing to an external Kafka topic
 
 ```python
-@domain.event_handler(part_of=Order)
-class OrderEventPublisher:
-
-    @handle(OrderPlaced)
-    def on_order_placed(self, event: OrderPlaced) -> None:
-        message = Message.from_domain_object(event)
-        cloud_event = message.to_cloudevent()
-
-        kafka_producer.send(
-            topic="order-events",
-            value=json.dumps(cloud_event).encode(),
-        )
+--8<-- "patterns/cloudevents-interoperability/001.py:publisher"
 ```
 
 The external fulfillment system receives a standard CloudEvents JSON object.
@@ -145,19 +136,7 @@ mechanics.
 ### Receiving from an external webhook
 
 ```python
-@domain.subscriber(stream="payment-webhooks")
-class PaymentWebhookSubscriber:
-
-    def __call__(self, payload: dict) -> None:
-        message = Message.from_cloudevent(payload)
-
-        if message.metadata.headers.type == "com.stripe.payment.succeeded":
-            current_domain.process(
-                ConfirmPayment(
-                    payment_id=message.data["payment_intent_id"],
-                    amount=message.data["amount"],
-                )
-            )
+--8<-- "patterns/cloudevents-interoperability/002.py:webhook"
 ```
 
 ### Multi-domain Protean system
@@ -165,14 +144,7 @@ class PaymentWebhookSubscriber:
 Two Protean services communicate via CloudEvents over a message broker:
 
 ```python
-# Service A: publish
-message = Message.from_domain_object(event)
-broker.publish("shared-topic", message.to_cloudevent())
-
-# Service B: consume and reconstruct
-cloud_event = broker.receive("shared-topic")
-message = Message.from_cloudevent(cloud_event)
-event = message.to_domain_object()  # Works if type is registered
+--8<-- "patterns/cloudevents-interoperability/003.py:round_trip"
 ```
 
 The correlation ID, causation ID, and checksum survive the round-trip via
