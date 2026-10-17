@@ -437,6 +437,18 @@ A block whose first line is `# fragment` does not run. Use it only for:
 
 A `>>>` REPL session uses a `pycon` fence, and an IPython session uses `ipython`. Neither runs.
 
+Give each page its own folder under `docs_src`, at the page's path, and number the files in the order the page shows them. The examples for `docs/guides/change-state/unit-of-work.md` are `docs_src/guides/change-state/unit-of-work/001.py` and `002.py`.
+
+A block that includes a section of a file a test already runs, such as a test module or a `conftest.py`, is marked `# fragment`. The page runner would otherwise run that code again in the page's namespace. Put `# fragment` on the line above the include.
+
+Each page you move to `docs_src` gets behaviour tests in `tests/docs`, in one file per page at the page's path. Folder names use underscores, and the file name starts with `test_`: the tests for `docs/guides/change-state/unit-of-work.md` are in `tests/docs/guides/change_state/test_unit_of_work.py`. A test loads an example with `load_example(path)` from `tests/docs/support.py`, where `path` is relative to `docs_src`, and then checks what the example does. Pass the path as a string literal.
+
+`tests/docs/test_docs_src_is_tested.py` fails on a `docs_src` file that no test loads. It finds the loaded files by reading the test source for `load_example` and `run_example_tests` calls with a literal path, and for imports of `docs_src` packages. A file no test loads yet goes into its `ALLOWLIST`. That list is strict too: a listed file that a test now loads fails the check until you remove its entry.
+
+Once a page takes all its code from `docs_src`, add it to `PAGES` in `tests/docs/test_pages_take_code_from_docs_src.py`, in sorted order. On a page in `PAGES`, every Python block is either marked `# fragment` or holds only named-section includes, so the page cannot go back to inline code.
+
+`ruff format` formats the files in `docs_src` and skips Markdown. On a Markdown page, ruff would read an include line such as `--8<-- "guides/x/001.py:full"` as a Python expression and rewrite it, and the include would stop working. The code left inline on a page is signatures, partial code and wrong examples, which keep the layout the page gives them.
+
 If a page's code fails, fix it. If you cannot fix it in the same change, add the page to `ALLOWLIST` in `tests/docs/test_doc_pages_run.py`. Do not mark a block `# fragment` to hide an error. The allowlist is strict: once a listed page passes, the test fails until you remove its entry.
 
 Two checks have no allowlist. Every block that is not a fragment must parse, and every `--8<--` include must point at a file and a section that exist.

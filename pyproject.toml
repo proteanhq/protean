@@ -356,8 +356,9 @@ ignore = [
 known-first-party = ["protean"]
 
 [tool.ruff.format]
-# ruff 0.16 formats Python code blocks in Markdown. #1671 moves the runnable blocks
-# out of docs/ and decides whether to format the fragments that stay inline.
+# ruff would rewrite a `--8<--` include line in Markdown into a Python expression,
+# which breaks the include. Runnable doc code lives in docs_src, and ruff formats it
+# there. The fragments left inline keep the layout their page gives them.
 exclude = ["*.md"]
 
 [tool.pytest.ini_options]
