@@ -250,8 +250,10 @@ class BaseCommand(BaseMessageType):
         if incoming and hasattr(incoming, "extensions") and incoming.extensions:
             metadata_kwargs["extensions"] = incoming.extensions
         # Keep the store positions of a message read back from the store, so
-        # a handler can see where it sits in its stream and in the store.
-        if incoming and getattr(incoming, "event_store", None) is not None:
+        # a handler can see where it sits in its stream and in the store. A
+        # new message built from another's metadata was never stored, so it
+        # takes no positions.
+        if rebuild and incoming and getattr(incoming, "event_store", None) is not None:
             metadata_kwargs["event_store"] = incoming.event_store
         self._metadata = Metadata(**metadata_kwargs)
 

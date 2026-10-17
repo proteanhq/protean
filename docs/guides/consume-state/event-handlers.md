@@ -296,14 +296,15 @@ messages are consumed when running the [Protean server](../../concepts/async-pro
 When using Redis Streams (`subscription_type="stream"`), Protean supports
 automatic retries and dead-letter queuing for failed messages:
 
-- **`max_retries`** (default: `3`): The number of times a failed message is
-  re-delivered to the consumer before it is moved to the dead letter queue.
-  Each retry re-delivers the message from the pending entries list (PEL).
+- **`max_retries`** (default: `3`): The number of attempts in total,
+  counting the first, before a failed message is moved to the dead letter
+  queue. With the default, a message is tried 3 times. Each retry
+  re-delivers the message from the pending entries list (PEL).
 
-- **`enable_dlq`** (default: `False`): When enabled, messages that exhaust
-  their retry budget are moved to a separate dead-letter stream
-  (`<stream>:dlq`) instead of being silently dropped. You can inspect and
-  reprocess DLQ messages manually or with a scheduled job.
+- **`enable_dlq`** (default: `True`): Messages that exhaust their retry
+  budget are moved to a separate dead-letter stream (`<stream>:dlq`). You
+  can inspect and reprocess DLQ messages manually or with a scheduled job.
+  Set it to `False` to drop them instead.
 
 ```python
 --8<-- "guides/consume-state/event-handlers/002.py:dlq"

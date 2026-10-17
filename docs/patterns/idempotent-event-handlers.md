@@ -86,13 +86,16 @@ Event handlers have different characteristics:
 | Semantics | Intent to change | Fact that occurred |
 | Can be rejected? | Yes | No (it already happened) |
 | Idempotency key | Caller-provided | Not applicable |
-| Framework dedup | Redis-backed cache (Layers 1-2) | Subscription position only |
+| Framework dedup | Redis-backed cache (Layers 1-2) | Subscription position; projectors can opt into `idempotent=True` |
 | Handler responsibility | Defense-in-depth | Primary defense |
 
 Because events don't carry caller-provided idempotency keys, the handler itself
 is the primary defense against duplicate processing. The subscription's position
 tracking provides some protection, but it's not sufficient (position updates
-are periodic, not per-message).
+are periodic, not per-message). A projector can opt into
+[`idempotent=True`](../guides/consume-state/projectors.md), which records a
+marker per event and skips a redelivered one. Event handlers have no such
+option.
 
 ---
 

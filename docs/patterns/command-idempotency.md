@@ -514,10 +514,16 @@ subscription picks it up, but the handler fails.
 
 - The subscription advances its position past the failed message (to avoid
   blocking subsequent messages).
-- The subscription's retry mechanism (configurable retries with backoff) will
-  re-attempt the message.
+- The subscription retries the message, up to `max_retries`, with a fixed
+  `retry_delay_seconds` between attempts. An event store subscription
+  retries on its recovery passes. See
+  [Classify async processing errors](classify-async-processing-errors.md#transient-errors-let-the-framework-retry)
+  for how each subscription type counts and spaces its retries.
 - If the handler eventually succeeds, the idempotency key is cached in Redis.
-- If all retries are exhausted, the message is logged for manual intervention.
+- If all retries are exhausted, a stream subscription moves the message to
+  its dead-letter stream (`enable_dlq`, on by default), and an event store
+  subscription marks the position exhausted in the event store's dead-letter
+  queue.
 
 If the caller retries with the same idempotency key before the subscription
 succeeds:

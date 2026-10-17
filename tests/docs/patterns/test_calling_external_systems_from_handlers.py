@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from protean.exceptions import TransactionError
+from protean.utils.globals import current_uow
 from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -110,9 +111,18 @@ class _Partner:
         self.fail = fail
         self.payloads = []
         self.orders_seen = []
+        self.order_already_tracked = []
 
     def __call__(self, payload):
         self.payloads.append(payload)
+        # Inside the confirming handler's unit of work, ``repo.get`` returns
+        # the uncommitted copy, so the order's state alone cannot show the
+        # commit has happened. That unit of work already tracks the order;
+        # the notifier's own fresh one does not.
+        self.order_already_tracked.append(
+            current_uow._tracked_instance(self.example.Order, payload["order_id"])
+            is not None
+        )
         repo = self.example.domain.repository_for(self.example.Order)
         self.orders_seen.append(repo.get(payload["order_id"]).to_dict())
         if self.fail:
@@ -165,6 +175,7 @@ def test_the_partner_call_sees_a_committed_confirmed_order(monkeypatch):
         assert partner.payloads == [
             {"order_id": "o1", "confirmed_at": order.confirmed_at.isoformat()}
         ]
+        assert partner.order_already_tracked == [False]
         assert len(partner.orders_seen) == 1
         seen = partner.orders_seen[0]
         assert seen["status"] == "CONFIRMED"

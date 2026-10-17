@@ -8,6 +8,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import String
 from protean.fields.basic import Identifier
+from protean.testing import drain
 from protean.utils import Processing
 from protean.utils.eventing import Message
 
@@ -103,6 +104,31 @@ def test_a_handler_sees_the_stored_positions(test_domain):
     ]
 
 
+def test_the_engine_hands_a_handler_the_stored_positions(test_domain):
+    first_id, second_id = _register_users(test_domain, 2)
+    first = _stored_message(test_domain, first_id)
+    second = _stored_message(test_domain, second_id)
+
+    drain(test_domain, until=lambda: len(seen_positions) == 2)
+
+    assert seen_positions == [
+        (0, first.metadata.event_store.global_position),
+        (0, second.metadata.event_store.global_position),
+    ]
+
+
+def test_a_new_event_built_from_a_rebuilt_ones_metadata_has_no_positions(
+    test_domain,
+):
+    (user_id,) = _register_users(test_domain, 1)
+    rebuilt = _stored_message(test_domain, user_id).to_domain_object()
+    assert rebuilt._metadata.event_store is not None
+
+    copy = Registered(rebuilt.payload, _metadata=rebuilt._metadata)
+
+    assert copy._metadata.event_store is None
+
+
 def test_writing_a_rebuilt_event_again_stores_the_new_positions(test_domain):
     (user_id,) = _register_users(test_domain, 1)
     stream = f"test::user-{user_id}"
@@ -111,7 +137,10 @@ def test_writing_a_rebuilt_event_again_stores_the_new_positions(test_domain):
     assert rebuilt._metadata.event_store is not None
     # The stream already holds the original at version 0.
     second_write = Registered(
-        rebuilt.payload, _metadata=rebuilt._metadata, _expected_version=0
+        rebuilt.payload,
+        _metadata=rebuilt._metadata,
+        _expected_version=0,
+        _rebuild=True,
     )
     assert second_write._metadata.event_store == original.metadata.event_store
 

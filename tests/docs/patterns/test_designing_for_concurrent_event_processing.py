@@ -3,15 +3,16 @@
 import pytest
 
 from protean.exceptions import ObjectNotFoundError, ValidationError
+from protean.utils.eventing import Message
 from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
 
 
 def _deliver(handler, events):
-    """Hand each event to ``handler`` the way the server does, in order."""
+    """Hand each event to ``handler`` as a ``Message``, the way the server does."""
     for event in events:
-        handler._handle(event)
+        handler._handle(Message.from_domain_object(event))
 
 
 def _created(example):
@@ -63,6 +64,18 @@ def test_the_single_handler_needs_the_creation_event_first():
 @pytest.mark.parametrize("order", ["written", "reversed"])
 def test_the_process_manager_ends_in_the_same_state_in_either_order(order):
     assert _run_process_manager(order) == ("Acme", ["c1", "c2"])
+
+
+def test_a_repeated_creation_event_creates_one_client():
+    example = load_example("patterns/designing-for-concurrent-event-processing/002.py")
+    example.domain.init(traverse=False)
+    with example.domain.domain_context():
+        _deliver(
+            example.HubspotClientOnboarding,
+            [_created(example), _association(example), _created(example)],
+        )
+
+        assert _client_state(example) == ("Acme", ["c1", "c2"])
 
 
 def test_the_process_manager_buffers_contacts_until_the_client_exists():

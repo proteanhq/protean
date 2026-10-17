@@ -400,3 +400,18 @@ class TestStorePositions:
         command = stored.to_domain_object()
 
         assert command._metadata.event_store == stored.metadata.event_store
+
+    def test_a_new_command_built_from_a_rebuilt_ones_metadata_has_no_positions(
+        self, test_domain
+    ):
+        identifier = str(uuid4())
+        test_domain.process(Login(user_id=identifier), asynchronous=True)
+        stored = test_domain.event_store.store.read_last_message(
+            f"test::user:command-{identifier}"
+        )
+        rebuilt = stored.to_domain_object()
+        assert rebuilt._metadata.event_store is not None
+
+        copy = Login(user_id=identifier, _metadata=rebuilt._metadata)
+
+        assert copy._metadata.event_store is None

@@ -76,6 +76,10 @@ class HubspotClientOnboarding:
 
     @handle(HubspotClientCreated, start=True, correlate="hubspot_id")
     def on_created(self, event: HubspotClientCreated):
+        if self.client_created:
+            # A repeated delivery of the creation event
+            return
+
         self.client_created = True
         self.hubspot_id = event.hubspot_id
         current_domain.process(

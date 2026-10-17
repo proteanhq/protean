@@ -1,13 +1,14 @@
 """Run the examples on ``docs/patterns/coordinating-long-running-processes.md``.
 
-Events are handed to the process manager with ``_handle()``, the way the engine
-delivers them. The tests read the transitions the process manager wrote to its
+Events are handed to the process manager with ``_handle()`` as ``Message``
+objects, the way the engine delivers them. The tests read the transitions the process manager wrote to its
 own stream, and the commands it wrote to the command streams. Command
 processing stays asynchronous, so an issued command is stored and not run.
 """
 
 import pytest
 
+from protean.utils.eventing import Message
 from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -42,7 +43,7 @@ def issued_commands(module, order_id):
 
 def deliver(module, *events):
     for event in events:
-        module.OrderFulfillmentPM._handle(event)
+        module.OrderFulfillmentPM._handle(Message.from_domain_object(event))
 
 
 def start_and_reserve(ex, order_id):

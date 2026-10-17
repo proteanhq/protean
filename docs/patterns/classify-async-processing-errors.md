@@ -148,12 +148,17 @@ places:
   retries run out. See
   [Transient-failure retries](../guides/consume-state/event-handlers.md#transient-failure-retries).
 - **In the subscription.** The subscription that delivered the message
-  tries it again after a failure, waiting `retry_delay_seconds` (1 second by
-  default) between attempts. `max_retries` (3 by default) sets when it gives
-  up, and the two subscription types count it differently. A stream
-  subscription stops after `max_retries` attempts in total, so 3 attempts by
-  default. An event store subscription retries `max_retries` times after the
-  first failure, so 4 attempts by default.
+  tries it again after a failure. `max_retries` (3 by default) sets when it
+  gives up, and the two subscription types retry differently:
+    - A stream subscription retries straight away, waiting
+      `retry_delay_seconds` (1 second by default) between attempts. It stops
+      after `max_retries` attempts in total, so 3 attempts by default.
+    - An event store subscription moves past the failed message and retries
+      it on a later recovery pass. A pass runs every
+      `recovery_interval_seconds` (30 seconds by default) and waits
+      `retry_delay_seconds` before each retry. It retries `max_retries` times
+      after the first failure, so 4 attempts by default. With
+      `enable_recovery` set to `False`, it does not retry at all.
 
 The subscription retries every failure, whatever `handle_error` decides.
 `handle_error` cannot stop a retry, and the engine calls it again after each
@@ -236,7 +241,7 @@ Subscribers that consume messages from external brokers also have
 ```
 
 A subscriber's `handle_error` receives the raw broker payload, a `dict`, as
-its `message`, not a `Message`. The mixin's default hooks do not read the
+its `message`. The mixin's default hooks do not read the
 message, so they work for both. An override on a subscriber that reads
 `message.metadata` would fail, so read the payload's keys there instead.
 
