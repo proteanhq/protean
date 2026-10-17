@@ -1,3 +1,5 @@
+import httpx
+
 from protean import Domain, handle
 from protean.fields import Auto, Identifier, Integer, List, String
 from protean.utils.globals import current_domain
@@ -14,6 +16,11 @@ FLAGS_FOR_TIER = {
 }
 
 
+@domain.event(part_of="Subscriber")
+class SubscriberSyncRequested:
+    subscriber_id: Identifier(required=True)
+
+
 @domain.event(part_of="ProfileSnapshot")
 class ProfileSnapshotStored:
     snapshot_id: Identifier(required=True)
@@ -28,6 +35,16 @@ class ProfileSnapshot:
     name: String(required=True)
     tier: String(required=True)
     seats: Integer(required=True)
+
+    @classmethod
+    def from_payload(cls, subscriber_id, payload):
+        return cls(
+            subscriber_id=subscriber_id,
+            email=payload["email"],
+            name=payload["name"],
+            tier=payload["plan"]["tier"],
+            seats=payload["plan"]["seats"],
+        )
 
     def store(self):
         self.raise_(
@@ -47,6 +64,9 @@ class Subscriber:
     flags: List(content_type=String)
     applied_snapshot_ids: List(content_type=String)
 
+    def request_sync(self):
+        self.raise_(SubscriberSyncRequested(subscriber_id=self.subscriber_id))
+
     def update_contact(self, email, name):
         self.email = email
         self.name = name
@@ -63,6 +83,26 @@ class Subscriber:
 
 
 # --8<-- [end:aggregates]
+
+
+# --8<-- [start:fetch]
+BILLING_URL = "https://billing.example.com"
+
+
+@domain.event_handler(part_of=Subscriber)
+class ProfileFetch:
+    @handle(SubscriberSyncRequested)
+    def fetch_snapshot(self, event):
+        # The fetch comes before any repository access, so no transaction is open.
+        payload = httpx.get(f"{BILLING_URL}/subscribers/{event.subscriber_id}").json()
+
+        repo = current_domain.repository_for(ProfileSnapshot)
+        snapshot = ProfileSnapshot.from_payload(event.subscriber_id, payload)
+        snapshot.store()  # raises ProfileSnapshotStored
+        repo.add(snapshot)
+
+
+# --8<-- [end:fetch]
 
 
 # --8<-- [start:sync]

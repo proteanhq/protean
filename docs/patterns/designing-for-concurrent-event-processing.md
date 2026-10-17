@@ -8,6 +8,7 @@ Association Changes (CCA). When a user creates a client in HubSpot, both
 webhooks fire in rapid succession:
 
 ```python
+# fragment
 @domain.event_handler(part_of=Client)
 class ClientCreationHandler(BaseEventHandler):
     @handle(HubspotClientCreated)
@@ -166,7 +167,9 @@ See [Command Idempotency](command-idempotency.md).
 ## Applying the Pattern
 
 The HubSpot bug can be fixed in three ways. Choose based on the
-complexity of your integration.
+complexity of your integration. Solutions A and B use the `Client`
+aggregate, its repository and the two webhook events shown with
+Solution A.
 
 ### Solution A: Combine into a single handler
 
@@ -175,28 +178,16 @@ handler serializes processing naturally, within one handler's subscription,
 events are processed sequentially.
 
 ```python
-@domain.event_handler(part_of=Client)
-class HubspotClientHandler(BaseEventHandler):
-
-    @handle(HubspotClientCreated)
-    def on_created(self, event: HubspotClientCreated):
-        repo = current_domain.repository_for(Client)
-        client = Client(hubspot_id=event.hubspot_id, name=event.name)
-        repo.add(client)
-
-    @handle(HubspotAssociationChanged)
-    def on_association_changed(self, event: HubspotAssociationChanged):
-        repo = current_domain.repository_for(Client)
-        client = repo.get_by_hubspot_id(event.hubspot_id)
-        # No "find or create" -- the Client was created by on_created,
-        # which ran first because events are ordered within a handler
-        client.update_contacts(event.contacts)
-        repo.add(client)
+--8<-- "patterns/designing-for-concurrent-event-processing/001.py:model"
+--8<-- "patterns/designing-for-concurrent-event-processing/001.py:single_handler"
 ```
 
 This works because a single handler subscription processes events from
-the same stream sequentially. The `HubspotClientCreated` event is always
-processed before the `HubspotAssociationChanged` event.
+the same stream sequentially, in the order they were written. When
+`HubspotClientCreated` is written first, it is always processed before
+`HubspotAssociationChanged`. If the association event is written first,
+`get_by_hubspot_id` raises `ObjectNotFoundError`. When the source can
+deliver the two events in either order, use a Process Manager (Solution B).
 
 **When to use:** Both events target the same aggregate. The handling
 logic is simple. No cross-aggregate coordination needed.
@@ -207,53 +198,15 @@ When the integration involves multiple aggregates or complex state
 tracking, a Process Manager provides explicit coordination:
 
 ```python
-@domain.process_manager(part_of=Client)
-class HubspotClientOnboarding(BaseProcessManager):
-    hubspot_id = String(identifier=True)
-    client_created = Boolean(default=False)
-    pending_contacts = List(content_type=String, default=list)
-
-    class Meta:
-        stream_category = "hubspot"
-
-    @handle(HubspotClientCreated, start=True)
-    def on_created(self, event: HubspotClientCreated):
-        self.client_created = True
-        self.hubspot_id = event.hubspot_id
-        current_domain.process(
-            CreateClient(hubspot_id=event.hubspot_id, name=event.name)
-        )
-
-        # Process any contacts that arrived before the client was created
-        if self.pending_contacts:
-            current_domain.process(
-                UpdateClientContacts(
-                    hubspot_id=self.hubspot_id,
-                    contacts=self.pending_contacts,
-                )
-            )
-            self.pending_contacts = []
-
-    @handle(HubspotAssociationChanged)
-    def on_association_changed(self, event: HubspotAssociationChanged):
-        if not self.client_created:
-            # Buffer -- the client hasn't been created yet
-            self.pending_contacts = event.contacts
-            return
-
-        current_domain.process(
-            UpdateClientContacts(
-                hubspot_id=event.hubspot_id,
-                contacts=event.contacts,
-            )
-        )
-
-    correlate = {"HubspotClientCreated": "hubspot_id"}
+--8<-- "patterns/designing-for-concurrent-event-processing/002.py:commands"
+--8<-- "patterns/designing-for-concurrent-event-processing/002.py:process_manager"
 ```
 
-The PM handles out-of-order delivery gracefully. If the association event
-arrives before the creation event, the contacts are buffered and applied
-once the client exists.
+The PM handles out-of-order delivery. If the association event arrives
+before the creation event, the contacts are buffered and applied once the
+client exists. Both handlers are marked `start=True` for this reason: a
+process manager skips an event when no instance exists for its correlation
+value and the handler is not a start handler.
 
 **When to use:** Events have causal dependencies. Multiple aggregates
 are involved. You need explicit state tracking of the integration flow.
@@ -261,43 +214,24 @@ are involved. You need explicit state tracking of the integration flow.
 ### Solution C: Idempotent retry with unique constraints
 
 If the aggregate has a unique business key, the database prevents
-duplicates and the handler retries naturally:
+duplicates, and the handler skips work that an earlier delivery already
+did:
 
 ```python
-@domain.aggregate
-class Client(BaseAggregate):
-    hubspot_id = String(unique=True)
-    name = String(max_length=200)
-    contacts = List(content_type=String, default=list)
-
-    def update_contacts(self, contacts: list[str]) -> None:
-        self.contacts = contacts  # Set-based, naturally idempotent
-
-
-@domain.event_handler(part_of=Client)
-class HubspotClientHandler(BaseEventHandler):
-
-    @handle(HubspotClientCreated)
-    def on_created(self, event: HubspotClientCreated):
-        repo = current_domain.repository_for(Client)
-        client = Client(hubspot_id=event.hubspot_id, name=event.name)
-        repo.add(client)
-        # If another handler already created the Client,
-        # the unique constraint raises an error and the
-        # @handle decorator retries with fresh state
-
-    @handle(HubspotAssociationChanged)
-    def on_association_changed(self, event: HubspotAssociationChanged):
-        repo = current_domain.repository_for(Client)
-        client = repo.get_by_hubspot_id(event.hubspot_id)
-        client.update_contacts(event.contacts)
-        repo.add(client)
+--8<-- "patterns/designing-for-concurrent-event-processing/003.py:aggregate"
+--8<-- "patterns/designing-for-concurrent-event-processing/003.py:handler"
 ```
 
 The unique constraint on `hubspot_id` prevents duplicates at the
-database level. The `@handle` retry mechanism catches the
-`ExpectedVersionError` and retries, by which time the Client created by
-the other handler is visible.
+database level. A second `Client` with the same `hubspot_id` fails with a
+`ValidationError`, and its transaction rolls back. This is not an
+`ExpectedVersionError`, so the `@handle` version retry does not re-run the
+handler. The retry comes from the subscription instead: it delivers a
+failed message again, up to its `max_retries` setting. On the
+next delivery, `exists_for` finds the Client and `on_created` returns
+without writing. The same redelivery covers an association event that
+arrives before the Client exists, where `get_by_hubspot_id` raises
+`ObjectNotFoundError` on the first try.
 
 **When to use:** The aggregate has a natural unique business key. Both
 handlers are idempotent. The flow is simple enough that explicit
@@ -341,6 +275,7 @@ flowchart TD
 ### "Find or create" without coordination
 
 ```python
+# fragment
 # UNSAFE: Race condition between find and create
 client = repo.find_by_hubspot_id(hubspot_id)
 if not client:
@@ -358,6 +293,7 @@ found", both create the entity, and you get duplicates.
 ### Suppressing `ExpectedVersionError`
 
 ```python
+# fragment
 # WRONG: Silencing the version conflict
 try:
     repo.add(aggregate)
@@ -374,6 +310,7 @@ for how to classify these conflicts correctly.
 ### Assuming single-worker deployment
 
 ```python
+# fragment
 # "This can't race because we only run one worker"
 ```
 

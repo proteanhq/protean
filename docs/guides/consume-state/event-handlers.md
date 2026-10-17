@@ -310,9 +310,11 @@ automatic retries and dead-letter queuing for failed messages:
 ```
 
 !!! note "Event store subscriptions"
-    Retry and DLQ are only available with `subscription_type="stream"` (Redis
-    Streams). Event store subscriptions track position and re-read on restart
-    but do not have per-message retry semantics.
+    The settings above apply to `subscription_type="stream"` (Redis
+    Streams). An event store subscription has no DLQ. It records each failed
+    position and retries it on a later recovery pass, up to `max_retries`
+    (default 3), set under `[server.event_store_subscription]`. A position
+    that still fails is marked exhausted and skipped.
 
 See [Server → Configuration](../../reference/server/configuration.md) for detailed
 configuration options and the priority hierarchy.

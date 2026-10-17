@@ -14,6 +14,7 @@ places an order, the system must:
 The naive approach uses an event handler that hard-codes the entire workflow:
 
 ```python
+# fragment
 @domain.event_handler(part_of=Order)
 class OrderWorkflow:
     @handle(OrderPlaced)
@@ -72,7 +73,7 @@ delegates the *how* to the appropriate aggregate via commands.
 This is a well-established pattern in DDD and event-driven architectures,
 documented by Vaughn Vernon, Greg Young, and the NServiceBus / MassTransit
 communities. The key insight is that a multi-step process needs its own
-its own identity and state, separate from the aggregates it coordinates.
+identity and state, separate from the aggregates it coordinates.
 
 ---
 
@@ -101,94 +102,8 @@ publishes events that the PM reacts to, and each accepts commands that the PM
 issues:
 
 ```python
-from protean.fields import Auto, Float, Identifier, String
-
-# --- Events the PM reacts to ---
-
-@domain.event(part_of=Order)
-class OrderPlaced:
-    order_id = Identifier(required=True)
-    customer_id = Identifier(required=True)
-    total = Float()
-
-@domain.event(part_of=Payment)
-class PaymentConfirmed:
-    payment_id = Identifier(required=True)
-    order_id = Identifier(required=True)
-    amount = Float()
-
-@domain.event(part_of=Payment)
-class PaymentFailed:
-    payment_id = Identifier(required=True)
-    order_id = Identifier(required=True)
-    reason = String()
-
-@domain.event(part_of=Inventory)
-class InventoryReserved:
-    order_id = Identifier(required=True)
-    product_id = Identifier(required=True)
-
-@domain.event(part_of=Inventory)
-class InventoryReservationFailed:
-    order_id = Identifier(required=True)
-    reason = String()
-
-@domain.event(part_of=Shipping)
-class ShipmentCreated:
-    shipment_id = Identifier(required=True)
-    order_id = Identifier(required=True)
-
-@domain.event(part_of=Shipping)
-class ShipmentDelivered:
-    shipment_id = Identifier(required=True)
-    order_id = Identifier(required=True)
-
-@domain.event(part_of=Shipping)
-class ShipmentRejected:
-    shipment_id = Identifier(required=True)
-    order_id = Identifier(required=True)
-    reason = String()
-
-# --- Timeout event (published by an external scheduled job) ---
-
-@domain.event(part_of=Order)
-class OrderFulfillmentTimedOut:
-    order_id = Identifier(required=True)
-    stalled_status = String()
-
-# --- Commands the PM issues ---
-
-@domain.command(part_of=Inventory)
-class ReserveInventory:
-    order_id = Identifier(required=True)
-
-@domain.command(part_of=Inventory)
-class ReleaseInventory:
-    order_id = Identifier(required=True)
-
-@domain.command(part_of=Payment)
-class RequestPayment:
-    order_id = Identifier(required=True)
-    amount = Float()
-
-@domain.command(part_of=Payment)
-class RefundPayment:
-    order_id = Identifier(required=True)
-    payment_id = Identifier(required=True)
-
-@domain.command(part_of=Shipping)
-class CreateShipment:
-    order_id = Identifier(required=True)
-
-@domain.command(part_of=Shipping)
-class CancelShipment:
-    order_id = Identifier(required=True)
-    shipment_id = Identifier(required=True)
-
-@domain.command(part_of=Order)
-class CancelOrder:
-    order_id = Identifier(required=True)
-    reason = String()
+--8<-- "patterns/coordinating-long-running-processes/001.py:aggregates"
+--8<-- "patterns/coordinating-long-running-processes/001.py:messages"
 ```
 
 ### The Process Manager
@@ -198,184 +113,7 @@ machine, make every handler idempotent, handle out-of-order events, design
 compensation explicitly, and handle timeouts.
 
 ```python
-from protean import handle
-from protean.fields import Identifier, String
-from protean import current_domain
-
-
-@domain.process_manager(
-    stream_categories=[
-        "ecommerce::order",
-        "ecommerce::payment",
-        "ecommerce::inventory",
-        "ecommerce::shipping",
-    ]
-)
-class OrderFulfillmentPM:
-    order_id = Identifier()
-    payment_id = Identifier()
-    shipment_id = Identifier()
-    status = String(default="new")
-
-    # -----------------------------------------------------------
-    # Step 1: Order placed -- start the process
-    # -----------------------------------------------------------
-    @handle(OrderPlaced, start=True, correlate="order_id")
-    def on_order_placed(self, event: OrderPlaced) -> None:
-        if self.status != "new":
-            return  # Idempotent: already started
-
-        self.order_id = event.order_id
-        self.status = "awaiting_inventory"
-        current_domain.process(
-            ReserveInventory(order_id=event.order_id)
-        )
-
-    # -----------------------------------------------------------
-    # Step 2a: Inventory reserved -- request payment
-    # -----------------------------------------------------------
-    @handle(InventoryReserved, correlate="order_id")
-    def on_inventory_reserved(self, event: InventoryReserved) -> None:
-        if self.status != "awaiting_inventory":
-            return  # Idempotent or out-of-order
-
-        self.status = "awaiting_payment"
-        current_domain.process(
-            RequestPayment(
-                order_id=self.order_id,
-                amount=0.0,  # Amount resolved by Payment aggregate
-            )
-        )
-
-    # -----------------------------------------------------------
-    # Step 2b: Inventory reservation failed -- cancel order
-    # -----------------------------------------------------------
-    @handle(InventoryReservationFailed, correlate="order_id", end=True)
-    def on_inventory_failed(self, event: InventoryReservationFailed) -> None:
-        if self.status not in ("awaiting_inventory", "new"):
-            return
-
-        self.status = "cancelled"
-        current_domain.process(
-            CancelOrder(
-                order_id=self.order_id,
-                reason=f"Inventory unavailable: {event.reason}",
-            )
-        )
-
-    # -----------------------------------------------------------
-    # Step 3a: Payment confirmed -- create shipment
-    # -----------------------------------------------------------
-    @handle(PaymentConfirmed, correlate="order_id")
-    def on_payment_confirmed(self, event: PaymentConfirmed) -> None:
-        if self.status != "awaiting_payment":
-            return  # Idempotent: already past payment step
-
-        self.payment_id = event.payment_id
-        self.status = "awaiting_shipment"
-        current_domain.process(
-            CreateShipment(order_id=self.order_id)
-        )
-
-    # -----------------------------------------------------------
-    # Step 3b: Payment failed -- release inventory, cancel order
-    # -----------------------------------------------------------
-    @handle(PaymentFailed, correlate="order_id", end=True)
-    def on_payment_failed(self, event: PaymentFailed) -> None:
-        if self.status != "awaiting_payment":
-            return
-
-        self.status = "cancelled"
-        current_domain.process(
-            ReleaseInventory(order_id=self.order_id)
-        )
-        current_domain.process(
-            CancelOrder(
-                order_id=self.order_id,
-                reason=f"Payment failed: {event.reason}",
-            )
-        )
-
-    # -----------------------------------------------------------
-    # Step 4a: Shipment created -- record shipment ID
-    # -----------------------------------------------------------
-    @handle(ShipmentCreated, correlate="order_id")
-    def on_shipment_created(self, event: ShipmentCreated) -> None:
-        if self.status != "awaiting_shipment":
-            return
-
-        self.shipment_id = event.shipment_id
-        self.status = "awaiting_delivery"
-
-    # -----------------------------------------------------------
-    # Step 4b: Shipment rejected -- refund payment, release
-    #          inventory, cancel order
-    # -----------------------------------------------------------
-    @handle(ShipmentRejected, correlate="order_id", end=True)
-    def on_shipment_rejected(self, event: ShipmentRejected) -> None:
-        if self.status not in ("awaiting_shipment", "awaiting_delivery"):
-            return
-
-        self.status = "cancelled"
-
-        # Compensate: refund the payment
-        current_domain.process(
-            RefundPayment(
-                order_id=self.order_id,
-                payment_id=self.payment_id,
-            )
-        )
-        # Compensate: release inventory
-        current_domain.process(
-            ReleaseInventory(order_id=self.order_id)
-        )
-        # Compensate: cancel the order
-        current_domain.process(
-            CancelOrder(
-                order_id=self.order_id,
-                reason=f"Shipment rejected: {event.reason}",
-            )
-        )
-
-    # -----------------------------------------------------------
-    # Step 5: Shipment delivered -- process complete
-    # -----------------------------------------------------------
-    @handle(ShipmentDelivered, correlate="order_id")
-    def on_shipment_delivered(self, event: ShipmentDelivered) -> None:
-        if self.status != "awaiting_delivery":
-            return
-
-        self.status = "completed"
-        self.mark_as_complete()
-
-    # -----------------------------------------------------------
-    # Timeout: external timer detected a stalled process
-    # -----------------------------------------------------------
-    @handle(OrderFulfillmentTimedOut, correlate="order_id")
-    def on_timeout(self, event: OrderFulfillmentTimedOut) -> None:
-        if self.status in ("completed", "cancelled"):
-            return  # Already terminal
-
-        # Compensate based on how far the process progressed
-        if self.shipment_id:
-            current_domain.process(
-                CancelShipment(order_id=self.order_id, shipment_id=self.shipment_id)
-            )
-        if self.payment_id:
-            current_domain.process(
-                RefundPayment(order_id=self.order_id, payment_id=self.payment_id)
-            )
-        if self.status != "new":
-            current_domain.process(ReleaseInventory(order_id=self.order_id))
-
-        self.status = "cancelled"
-        self.mark_as_complete()
-        current_domain.process(
-            CancelOrder(
-                order_id=self.order_id,
-                reason=f"Timed out in '{event.stalled_status}' status",
-            )
-        )
+--8<-- "patterns/coordinating-long-running-processes/001.py:process_manager"
 ```
 
 ---
@@ -415,7 +153,14 @@ If `PaymentFailed` arrives instead of `PaymentConfirmed`:
 1. The PM finds `status == "awaiting_payment"`, the guard passes.
 2. The PM issues `ReleaseInventory` (compensating the earlier reservation)
    and `CancelOrder`.
-3. `end=True` auto-completes the PM. The shipping step never happens.
+3. `mark_as_complete()` ends the PM. The shipping step never happens.
+
+The failure handlers call `mark_as_complete()` instead of using `end=True`.
+`end=True` completes the PM after every normal return from the handler,
+including a guard's early `return`. A `PaymentFailed` that arrives while the
+PM is in `awaiting_shipment` would then end the PM with no compensation. A
+handler that should end the PM only on some paths calls `mark_as_complete()`
+on those paths.
 
 ### Why Each Design Principle Matters
 
@@ -429,9 +174,13 @@ and inventory was reserved. The PM issues `RefundPayment`,
 `ReleaseInventory`, and `CancelOrder`, unwinding every forward step.
 
 **Out-of-order events.** `PaymentConfirmed` arrives before the PM exists.
-Protean cannot load a PM instance for that `order_id` and skips the event.
-When `OrderPlaced` creates the PM, the subscription redelivers
-`PaymentConfirmed` and the PM processes it normally.
+Protean cannot load a PM instance for that `order_id`, so it skips the
+event. The skip counts as handled: the subscription moves past the event and
+does not deliver it again. When `OrderPlaced` later creates the PM, the PM
+has no record of the payment. In this PM the case does not come up, because
+`PaymentConfirmed` only follows the `RequestPayment` command the PM issues
+itself. Where an event can arrive first, use the second strategy under
+[Handle out-of-order events](#2-handle-out-of-order-events).
 
 **Timeouts.** An external cron job publishes `OrderFulfillmentTimedOut`
 for PMs stalled longer than a threshold. The timeout handler compensates
@@ -467,17 +216,18 @@ the event was delivered twice), the handler is a no-op.
 Events from different aggregate streams have no guaranteed ordering.
 `PaymentConfirmed` can arrive before `OrderPlaced`. Two strategies:
 
-- **Ignore and rely on redelivery**: If the PM does not exist when
+- **Make the early arrival impossible**: If the PM does not exist when
   `PaymentConfirmed` arrives (because `OrderPlaced` has not created it
-  yet), the event is skipped. Protean's subscription will redeliver
-  unacknowledged events. Design the PM so that when `OrderPlaced` finally
-  creates the instance, subsequent events are reprocessed correctly.
+  yet), Protean skips the event and does not deliver it again. This is safe
+  when the event can only follow a command the PM issued, as
+  `PaymentConfirmed` follows `RequestPayment` here.
 
 - **Design correlation to make ordering irrelevant**: Structure each
   handler to set state based on what it knows, not on what it assumes
-  happened before. If `PaymentConfirmed` arrives first, record the payment
-  details. When `OrderPlaced` arrives, check whether payment is already
-  recorded and skip the `RequestPayment` step.
+  happened before. Mark the handler `start=True` too, so an early
+  `PaymentConfirmed` creates the PM instead of being skipped, and record
+  the payment details. When `OrderPlaced` arrives, check whether payment is
+  already recorded and skip the `RequestPayment` step.
 
 ### 3. Design compensation explicitly
 
@@ -526,6 +276,7 @@ its own repository.
 ### Non-idempotent handlers
 
 ```python
+# fragment
 # Anti-pattern: no status check, command issued unconditionally
 @handle(PaymentConfirmed, correlate="order_id")
 def on_payment_confirmed(self, event: PaymentConfirmed) -> None:
@@ -540,6 +291,7 @@ no-op.
 ### Business logic in the process manager
 
 ```python
+# fragment
 # Anti-pattern: PM validates payment amount
 @handle(PaymentConfirmed, correlate="order_id")
 def on_payment_confirmed(self, event: PaymentConfirmed) -> None:
@@ -556,6 +308,7 @@ whether the payment was valid.
 ### Storing full business data
 
 ```python
+# fragment
 # Anti-pattern: PM caches order details it never needs for routing
 class OrderFulfillmentPM:
     order_id = Identifier()
@@ -573,6 +326,7 @@ data from its own repository.
 ### Ignoring terminal states
 
 ```python
+# fragment
 # Anti-pattern: no end=True, no mark_as_complete()
 @handle(ShipmentDelivered, correlate="order_id")
 def on_shipment_delivered(self, event: ShipmentDelivered) -> None:
@@ -587,6 +341,7 @@ behavior. **Fix:** always call `self.mark_as_complete()` or use `end=True`.
 ### Missing failure handlers
 
 ```python
+# fragment
 # Anti-pattern: only happy path handled -- no handler for PaymentFailed
 @handle(PaymentConfirmed, correlate="order_id")
 def on_payment_confirmed(self, event): ...
