@@ -614,7 +614,7 @@ NODES = ["tests/a/test_b.py::test_flaky", "tests/a/test_b.py::test_broken"]
 
 
 class TestRandomStage:
-    def _shuffled(self, seed_line: str, code: int = 1):
+    def _shuffled(self, seed_line: str, code: int = 1, rerun_code: int = 1):
         def on_run(cmd, log):
             if "randomly" in cmd and log is not None:
                 log.write_text(f"Using {seed_line}\n", encoding="utf-8")
@@ -625,7 +625,7 @@ class TestRandomStage:
                 )
                 return code
             # A re-run alone: only the flaky test passes.
-            return 0 if cmd[-1] == NODES[0] else 1
+            return 0 if cmd[-1] == NODES[0] else rerun_code
 
         return _Runner(on_run)
 
@@ -669,6 +669,12 @@ class TestRandomStage:
         runner = self._shuffled("--randomly-seed=7", code=4)
 
         with pytest.raises(audit.StageError, match="exited 4"):
+            audit.random_stage(7, NODES, out_dir=tmp_path, runner=runner)
+
+    def test_a_rerun_that_could_not_start_stops_the_stage(self, tmp_path):
+        runner = self._shuffled("--randomly-seed=7", rerun_code=4)
+
+        with pytest.raises(audit.StageError, match="alone exited 4"):
             audit.random_stage(7, NODES, out_dir=tmp_path, runner=runner)
 
 

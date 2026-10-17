@@ -825,12 +825,16 @@ def random_stage(
     if f"--randomly-seed={seed}" not in log.read_text(encoding="utf-8"):
         raise StageError("pytest-randomly did not run, so the order was not shuffled")
 
+    def passes_alone(nodeid: str) -> bool:
+        code = runner(_pytest("-p", "no:randomly", nodeid), None)
+        if code not in RAN:
+            raise StageError(f"re-running {nodeid} alone exited {code}")
+        return code == 0
+
     outcomes = read_junit(junit, nodeids)
     failed = [outcome.nodeid for outcome in outcomes if outcome.failed]
     order_dependent, plain = classify_failures(
-        failed,
-        lambda nodeid: runner(_pytest("-p", "no:randomly", nodeid), None) == 0,
-        failed_in_default_order,
+        failed, passes_alone, failed_in_default_order
     )
     return slowest(o for o in outcomes if not o.skipped), order_dependent, plain
 
