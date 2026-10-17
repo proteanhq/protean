@@ -1,34 +1,17 @@
-# --8<-- [start:functions]
-# enrichers.py -- reusable enrichers for multiple domains
-
-from protean.utils.globals import g
-
-
-def tenant_enricher(event, aggregate):
-    return {"tenant_id": getattr(g, "tenant_id", None)}
-
-
-def audit_enricher(event, aggregate):
-    return {
-        "user_id": getattr(g, "user_id", None),
-        "request_id": getattr(g, "request_id", None),
-    }
-
-
-def tenant_command_enricher(command):
-    return {"tenant_id": getattr(g, "tenant_id", None)}
-
-
-# --8<-- [end:functions]
-
 from protean import handle
 from protean.fields import Auto, Identifier
+from protean.utils.globals import g
 
 # isort: split
 
 # --8<-- [start:registration]
 # domain.py -- register the enrichers from enrichers.py
 from protean import Domain
+from saasapp.enrichers import (
+    audit_enricher,
+    tenant_command_enricher,
+    tenant_enricher,
+)
 
 domain = Domain(name="SaasApp")
 domain.register_event_enricher(tenant_enricher)

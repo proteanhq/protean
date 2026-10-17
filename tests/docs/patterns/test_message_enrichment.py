@@ -1,6 +1,13 @@
-"""Run the examples on ``docs/patterns/message-enrichment.md``."""
+"""Run the examples on ``docs/patterns/message-enrichment.md``.
+
+The functional-registration section splits its code into ``enrichers.py`` and
+``domain.py``, so that example is the ``saasapp`` package. Its folder goes on
+``sys.path`` so ``domain.py`` imports the enrichers by the package name, as it
+would in the reader's project.
+"""
 
 import asyncio
+import sys
 from uuid import UUID
 
 import pytest
@@ -8,7 +15,14 @@ import pytest
 from protean.server import Engine
 from protean.utils.eventing import TraceParent
 from protean.utils.globals import g
-from tests.docs.support import load_example
+from tests.docs.support import DOCS_SRC, load_example
+
+_PACKAGE_DIR = str(DOCS_SRC / "patterns" / "message-enrichment")
+if _PACKAGE_DIR not in sys.path:
+    sys.path.insert(0, _PACKAGE_DIR)
+
+import saasapp.domain
+import saasapp.enrichers
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -212,8 +226,18 @@ def test_the_tracing_enricher_writes_none_without_a_traceparent():
     }
 
 
+def test_the_domain_registers_the_enrichers_imported_from_enrichers_py():
+    domain = saasapp.domain.domain
+
+    assert domain._event_enrichers == [
+        saasapp.enrichers.tenant_enricher,
+        saasapp.enrichers.audit_enricher,
+    ]
+    assert domain._command_enrichers == [saasapp.enrichers.tenant_command_enricher]
+
+
 def test_functionally_registered_enrichers_reach_events_and_commands():
-    example, context = _context(load_example("patterns/message-enrichment/005.py"))
+    example, context = _context(saasapp.domain)
     with context:
         g.tenant_id = "acme"
         g.user_id = "user-42"

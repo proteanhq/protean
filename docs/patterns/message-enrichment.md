@@ -195,11 +195,11 @@ defined alongside the domain. For enrichers defined in separate modules or
 registered conditionally, use the functional form:
 
 ```python
---8<-- "patterns/message-enrichment/005.py:functions"
+--8<-- "patterns/message-enrichment/saasapp/enrichers.py:functions"
 ```
 
 ```python
---8<-- "patterns/message-enrichment/005.py:registration"
+--8<-- "patterns/message-enrichment/saasapp/domain.py:registration"
 ```
 
 ### Stamping Fields on the Aggregate
