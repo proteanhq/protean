@@ -112,9 +112,10 @@ With its own class, it defines only the fields it cares about:
 --8<-- "patterns/sharing-event-classes-across-domains/001.py:subset"
 ```
 
-The Fulfillment domain ignores `customer_email`, `tax`, `discount_code`,
-`ip_address`, and `user_agent`. It doesn't need them and shouldn't depend on
-them.
+The Fulfillment domain keeps `order_id`, `customer_id`, and `items`. It
+ignores `customer_email`, `subtotal`, `tax`, `total`, `currency`,
+`discount_code`, `placed_at`, `ip_address`, and `user_agent`. It doesn't need
+them and shouldn't depend on them.
 
 ---
 

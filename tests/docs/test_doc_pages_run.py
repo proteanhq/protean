@@ -80,10 +80,7 @@ LABELS = [path.relative_to(DOCS).as_posix() for path in PAGES]
 
 # Pages with a block that fails today, relative to docs/. Fix the page, then
 # delete its entry.
-ALLOWLIST: frozenset[str] = frozenset(
-    {
-    }
-)
+ALLOWLIST: frozenset[str] = frozenset({})
 
 
 @pytest.fixture(scope="module")
