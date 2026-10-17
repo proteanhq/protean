@@ -44,7 +44,7 @@ class Fulfillment:
     currency: String()
 
 
-@domain.event_handler(part_of=Fulfillment)
+@domain.event_handler(part_of=Fulfillment, stream_category=Order.meta_.stream_category)
 class FulfillmentEventHandler:
     @handle(OrderPlaced)
     def on_order_placed_v1(self, event: OrderPlaced):

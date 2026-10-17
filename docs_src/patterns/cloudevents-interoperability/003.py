@@ -48,9 +48,11 @@ def publish(broker, event):
 
 def consume(broker):
     """Service B: consume the CloudEvent and rebuild the event."""
-    _, cloud_event = broker.get_next("shared-topic", "fulfillment")
+    identifier, cloud_event = broker.get_next("shared-topic", "fulfillment")
     message = Message.from_cloudevent(cloud_event)
-    return message.to_domain_object()  # Works if the type is registered
+    event = message.to_domain_object()  # Works if the type is registered
+    broker.ack("shared-topic", identifier, "fulfillment")
+    return event
 
 
 # --8<-- [end:round_trip]

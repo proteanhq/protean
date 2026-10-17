@@ -93,7 +93,11 @@ def test_correlation_causation_and_checksum_survive_the_shared_topic_round_trip(
         example.domain.process(command, correlation_id="corr-1")
         [stored] = example.domain.event_store.store.read("orders::order")
 
-        event = example.consume(example.domain.brokers["default"])
+        broker = example.domain.brokers["default"]
+        event = example.consume(broker)
+        group = broker.info()["consumer_groups"]["fulfillment"]
+
+    assert group["in_flight_messages"]["shared-topic"] == 0
 
     assert isinstance(event, example.OrderPlaced)
     assert event.total == 12.5

@@ -29,7 +29,7 @@ class Analytics:
     currency: String()
 
 
-@domain.event_handler(part_of=Analytics)
+@domain.event_handler(part_of=Analytics, stream_category=Order.meta_.stream_category)
 class AnalyticsEventHandler:
     @handle(OrderPlaced)
     def track_order(self, event: OrderPlaced):

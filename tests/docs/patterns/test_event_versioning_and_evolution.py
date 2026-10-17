@@ -112,6 +112,22 @@ def new_type():
         yield example
 
 
+def test_the_fulfillment_handler_subscribes_to_both_order_events(new_type):
+    v1 = new_type.OrderPlaced(order_id="o1", customer_id="c1", items=[], total=1.0)
+    v2 = new_type.OrderPlacedV2(
+        order_id="o1",
+        customer_id="c1",
+        line_items=[],
+        subtotal=1.0,
+        tax=0.0,
+        total=1.0,
+        currency="USD",
+    )
+
+    assert new_type.FulfillmentEventHandler in new_type.domain.handlers_for(v1)
+    assert new_type.FulfillmentEventHandler in new_type.domain.handlers_for(v2)
+
+
 def test_a_v1_event_creates_a_fulfillment_in_usd(new_type):
     event = new_type.OrderPlaced(
         order_id="o1", customer_id="c1", items=["sku-1"], total=40.0
@@ -231,6 +247,7 @@ def test_the_tolerant_reader_fills_defaults_for_what_the_event_lacks(
         event = example.OrderPlaced(
             order_id="o1", customer_id="c1", items=[], total=12.0, **discount
         )
+        assert example.AnalyticsEventHandler in example.domain.handlers_for(event)
         example.AnalyticsEventHandler._handle(event)
         record = example.domain.repository_for(example.Analytics)._dao.find_by(
             order_id="o1"
