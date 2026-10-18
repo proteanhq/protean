@@ -66,7 +66,7 @@ def test_deprecated_plumbing_warns_and_delegates(name, impl):
     # Returns the live implementation, identity-equal to the underscore spelling.
     assert obj is impl
     # The warning message is fully pinned: the qualified name, the "no public
-    # replacement" clause, and the 1.0 removal version. Asserting only
+    # replacement" clause, and the removal version. Asserting only
     # `name in message` would be trivially satisfied since the message is built
     # from `name`.
     assert str(record[0].message) == (

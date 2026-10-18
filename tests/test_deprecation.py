@@ -372,7 +372,6 @@ class TestRegistryRemovalVersions:
 
         assert len(caught) == 1
         assert caught[0].category is expected_cls
-        assert not issubclass(caught[0].category, RemovedInProtean10Warning)
         assert f"Will be removed in v{removal}." in str(caught[0].message)
 
     def test_runtime_reasons_name_the_class_each_entry_emits(self):

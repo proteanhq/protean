@@ -6,7 +6,7 @@ single place that machinery lives, so the policy cannot drift site by site:
 
 - A base :class:`ProteanDeprecationWarning` plus one subclass per removal
   version (mirroring Django's ``RemovedInDjangoXXWarning`` classes). The
-  per-version class makes filtering trivial — a downstream project can promote a
+  per-version class makes filtering trivial: a downstream project can promote a
   specific window to an error with the pytest ``filterwarnings`` entry
   ``error::protean._deprecation.RemovedInProtean019Warning``. (Python's ``-W``
   flag cannot do this: it resolves the category before ``protean`` is importable.)

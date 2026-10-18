@@ -839,7 +839,7 @@ __all__ = [
 
 
 # Plumbing helpers that were historically importable from ``protean.utils`` but
-# are not part of the 1.0 public surface. Their live
+# are not part of the public surface. Their live
 # implementations are the underscore-prefixed definitions above; framework code
 # imports those directly and never self-warns. The old public spellings remain
 # importable for one deprecation window through the module ``__getattr__`` below,

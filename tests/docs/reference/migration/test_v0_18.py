@@ -7,12 +7,13 @@ builds that code and checks the error or the warning.
 """
 
 import logging
+import pathlib
 import re
 
 import pytest
 
 from protean import Domain, Index, apply
-from protean._deprecation import RemovedInProtean020Warning
+from protean._deprecation import DEPRECATIONS, RemovedInProtean020Warning
 from protean.exceptions import ConfigurationError, IncorrectUsageError, ValidationError
 from protean.fields import Identifier, String
 from protean.server.supervisor import Supervisor
@@ -541,3 +542,56 @@ class TestDatabaseModelOptionRemoved:
             model = module.domain.repository_for(module.User)._database_model
 
             assert issubclass(model, module.UserModel)
+
+
+PAGE = pathlib.Path(__file__).parents[4] / "docs/reference/migration/v0-18.md"
+
+# The deprecations whose removal moved off 1.0.0 in 0.18, by registry slug.
+MOVED_OFF_1_0 = (
+    "is_event_sourced_alias",
+    "command_published_option",
+    "email_element",
+    "email_providers_config",
+    "get_email_provider",
+    "send_email",
+    "method_field",
+    "nested_field",
+    "list_pickled",
+    "utils_plumbing",
+    "dao_update",
+    "queryset_update",
+)
+
+
+def _removal_tables():
+    """Map each bold removal version in the section to its table's first cells."""
+    text = PAGE.read_text(encoding="utf-8")
+    start = text.index("## Deprecations that named 1.0.0 now name 0.19.0 or 0.20.0")
+    section = text[start : text.index("### How to find the code", start)]
+
+    tables: dict[str, list[str]] = {}
+    current = None
+    for line in section.splitlines():
+        headline = re.search(r"removed in \*\*(\d+\.\d+\.\d+)\*\*", line)
+        if headline:
+            current = tables.setdefault(headline.group(1), [])
+        elif current is not None and line.startswith("| ") and "---" not in line:
+            cell = line.split("|")[1].strip()
+            if cell != "Deprecated":
+                current.append(cell)
+    return tables
+
+
+class TestRemovalScheduleTables:
+    def test_each_table_lists_exactly_the_entries_due_at_its_version(self):
+        tables = _removal_tables()
+        assert tables
+
+        expected: dict[str, list[str]] = {}
+        for slug in MOVED_OFF_1_0:
+            entry = DEPRECATIONS[slug]
+            expected.setdefault(entry.removal, []).append(entry.name)
+
+        assert {v: sorted(names) for v, names in tables.items()} == {
+            v: sorted(names) for v, names in expected.items()
+        }
