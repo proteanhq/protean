@@ -7,8 +7,9 @@ single place that machinery lives, so the policy cannot drift site by site:
 - A base :class:`ProteanDeprecationWarning` plus one subclass per removal
   version (mirroring Django's ``RemovedInDjangoXXWarning`` classes). The
   per-version class makes filtering trivial — a downstream project can promote a
-  specific window to an error with
-  ``-W error::protean._deprecation.RemovedInProtean019Warning``.
+  specific window to an error with the pytest ``filterwarnings`` entry
+  ``error::protean._deprecation.RemovedInProtean019Warning``. (Python's ``-W``
+  flag cannot do this: it resolves the category before ``protean`` is importable.)
 - :func:`warn_deprecated` — emit a consistently formatted warning from inside a
   deprecated code path (e.g. a conditional branch).
 - :func:`deprecated` — a decorator for a whole function/method that is going
@@ -18,7 +19,7 @@ single place that machinery lives, so the policy cannot drift site by site:
   variable number of framework frames (e.g. element registration).
 
 This module is internal (underscore-prefixed): the warning *classes* are a
-stable reference point for ``-W`` filters, but the helpers are for framework
+stable reference point for warning filters, but the helpers are for framework
 code, not application code.
 """
 
@@ -58,7 +59,7 @@ class RemovedInProtean10Warning(ProteanDeprecationWarning):
 
 # Canonical ``X.Y.Z`` removal version → its warning class. A deprecation must
 # cite a version that has a dedicated class; adding a new removal window means
-# adding a subclass here so ``-W`` filtering keeps working per-window.
+# adding a subclass here so warning filtering keeps working per-window.
 _REMOVAL_WARNINGS: dict[str, type[ProteanDeprecationWarning]] = {
     "0.17.0": RemovedInProtean017Warning,
     "0.19.0": RemovedInProtean019Warning,
@@ -72,7 +73,7 @@ def _warning_for_removal(removal: str) -> type[ProteanDeprecationWarning]:
 
     Raises ``ValueError`` for an unknown version so a typo or a missing subclass
     fails loudly at authoring time rather than silently degrading to the base
-    class (which would break per-version ``-W`` filtering).
+    class (which would break per-version warning filtering).
     """
     try:
         return _REMOVAL_WARNINGS[removal]
