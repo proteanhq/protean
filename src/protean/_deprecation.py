@@ -8,7 +8,7 @@ single place that machinery lives, so the policy cannot drift site by site:
   version (mirroring Django's ``RemovedInDjangoXXWarning`` classes). The
   per-version class makes filtering trivial — a downstream project can promote a
   specific window to an error with
-  ``-W error::protean._deprecation.RemovedInProtean10Warning``.
+  ``-W error::protean._deprecation.RemovedInProtean019Warning``.
 - :func:`warn_deprecated` — emit a consistently formatted warning from inside a
   deprecated code path (e.g. a conditional branch).
 - :func:`deprecated` — a decorator for a whole function/method that is going
@@ -44,6 +44,10 @@ class RemovedInProtean017Warning(ProteanDeprecationWarning):
     """Marks API scheduled for removal in v0.17.0."""
 
 
+class RemovedInProtean019Warning(ProteanDeprecationWarning):
+    """Marks API scheduled for removal in v0.19.0."""
+
+
 class RemovedInProtean020Warning(ProteanDeprecationWarning):
     """Marks API scheduled for removal in v0.20.0."""
 
@@ -57,6 +61,7 @@ class RemovedInProtean10Warning(ProteanDeprecationWarning):
 # adding a subclass here so ``-W`` filtering keeps working per-window.
 _REMOVAL_WARNINGS: dict[str, type[ProteanDeprecationWarning]] = {
     "0.17.0": RemovedInProtean017Warning,
+    "0.19.0": RemovedInProtean019Warning,
     "0.20.0": RemovedInProtean020Warning,
     "1.0.0": RemovedInProtean10Warning,
 }
@@ -187,7 +192,7 @@ def deprecated(
 
     Example::
 
-        @deprecated(removal="1.0.0", alternative="Use new_helper() instead.")
+        @deprecated(removal="0.19.0", alternative="Use new_helper() instead.")
         def old_helper(value): ...
     """
     _warning_for_removal(removal)  # fail fast on an unknown version
@@ -316,7 +321,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             slug="is_event_sourced_alias",
             name="`is_event_sourced=` option alias",
             since="0.13.0",
-            removal="1.0.0",
+            removal="0.19.0",
             detection="check",
             alternative="Use `event_sourced` instead.",
             detection_hint="is_event_sourced",
@@ -326,7 +331,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             slug="command_published_option",
             name="`published` option on a command",
             since="0.13.0",
-            removal="1.0.0",
+            removal="0.19.0",
             detection="check",
             alternative=(
                 "Commands are internal to the bounded context; only events "
@@ -339,7 +344,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             slug="email_element",
             name="`@domain.email` element",
             since="0.12.0",
-            removal="1.0.0",
+            removal="0.19.0",
             detection="check",
             alternative=_EMAIL_ALTERNATIVE,
             detection_hint="email subsystem",
@@ -349,7 +354,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             slug="method_field",
             name="`Method` field type",
             since="0.12.0",
-            removal="1.0.0",
+            removal="0.19.0",
             detection="check",
             alternative="Serializer fields are no longer supported.",
             detection_hint="Method",
@@ -359,7 +364,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             slug="nested_field",
             name="`Nested` field type",
             since="0.12.0",
-            removal="1.0.0",
+            removal="0.19.0",
             detection="check",
             alternative="Serializer fields are no longer supported.",
             detection_hint="Nested",
@@ -369,7 +374,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             slug="list_pickled",
             name="`pickled=` argument on `List`",
             since="0.12.0",
-            removal="1.0.0",
+            removal="0.19.0",
             detection="check",
             alternative="It has no effect.",
             detection_hint="pickled",
@@ -379,7 +384,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             slug="email_providers_config",
             name="`email_providers` config block",
             since="0.12.0",
-            removal="1.0.0",
+            removal="0.19.0",
             detection="check",
             alternative=_EMAIL_ALTERNATIVE,
             detection_hint="email_providers",
@@ -389,7 +394,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             slug="utils_plumbing",
             name="`protean.utils.*` import shims",
             since="0.12.0",
-            removal="1.0.0",
+            removal="0.19.0",
             detection="check",
             alternative="It is internal plumbing with no public replacement.",
             detection_hint="protean.utils",
@@ -399,33 +404,33 @@ DEPRECATIONS: dict[str, Deprecation] = {
             slug="get_email_provider",
             name="`Domain.get_email_provider()`",
             since="0.12.0",
-            removal="1.0.0",
+            removal="0.19.0",
             detection="runtime",
             alternative=_EMAIL_ALTERNATIVE,
             reason=(
                 "An imperative method call has no static declaration site for a "
                 "rule to read off a built domain; the per-call "
-                "RemovedInProtean10Warning is the only detector."
+                "RemovedInProtean019Warning is the only detector."
             ),
         ),
         Deprecation(
             slug="send_email",
             name="`Domain.send_email()`",
             since="0.12.0",
-            removal="1.0.0",
+            removal="0.19.0",
             detection="runtime",
             alternative=_EMAIL_ALTERNATIVE,
             reason=(
                 "An imperative method call has no static declaration site for a "
                 "rule to read off a built domain; the per-call "
-                "RemovedInProtean10Warning is the only detector."
+                "RemovedInProtean019Warning is the only detector."
             ),
         ),
         Deprecation(
             slug="dao_update",
             name="`DAO.update()`",
             since="0.18.0",
-            removal="1.0.0",
+            removal="0.20.0",
             detection="runtime",
             alternative=(
                 "Load the aggregate, invoke a behaviour method that applies the "
@@ -434,14 +439,14 @@ DEPRECATIONS: dict[str, Deprecation] = {
             reason=(
                 "An imperative method call has no static declaration site for a "
                 "rule to read off a built domain; the per-call "
-                "RemovedInProtean10Warning is the only detector."
+                "RemovedInProtean020Warning is the only detector."
             ),
         ),
         Deprecation(
             slug="queryset_update",
             name="`QuerySet.update()`",
             since="0.18.0",
-            removal="1.0.0",
+            removal="0.20.0",
             detection="runtime",
             alternative=(
                 "Load the matched aggregates, invoke a behaviour method on each, "
@@ -450,7 +455,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             reason=(
                 "An imperative method call has no static declaration site for a "
                 "rule to read off a built domain; the per-call "
-                "RemovedInProtean10Warning is the only detector."
+                "RemovedInProtean020Warning is the only detector."
             ),
         ),
         Deprecation(

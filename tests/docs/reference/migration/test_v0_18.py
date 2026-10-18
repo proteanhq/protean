@@ -12,7 +12,7 @@ import re
 import pytest
 
 from protean import Domain, Index, apply
-from protean._deprecation import RemovedInProtean020Warning, RemovedInProtean10Warning
+from protean._deprecation import RemovedInProtean020Warning
 from protean.exceptions import ConfigurationError, IncorrectUsageError, ValidationError
 from protean.fields import Identifier, String
 from protean.server.supervisor import Supervisor
@@ -167,7 +167,7 @@ class TestDaoUpdateDeprecation:
         repo.add(order)
         dao = repo._dao
 
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean020Warning):
             dao.update(dao.get(order.id), status="shipped")
 
         assert repo.get(order.id).status == "shipped"
@@ -178,7 +178,7 @@ class TestDaoUpdateDeprecation:
         order = module.Order()
         repo.add(order)
 
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean020Warning):
             repo._dao.query.filter(status="pending").update(status="cancelled")
 
         assert repo.get(order.id).status == "cancelled"

@@ -11,7 +11,7 @@ shows.
 import pytest
 
 from protean import Index
-from protean._deprecation import RemovedInProtean10Warning
+from protean._deprecation import RemovedInProtean020Warning
 from protean.exceptions import (
     NotSupportedError,
     ObjectNotFoundError,
@@ -40,7 +40,7 @@ def names(people):
 def queries():
     # Loading the example runs every query on the page, including the
     # deprecated bulk `update`.
-    with pytest.warns(RemovedInProtean10Warning):
+    with pytest.warns(RemovedInProtean020Warning):
         module = load_example("guides/change-state/retrieve-aggregates/001.py")
     return module
 

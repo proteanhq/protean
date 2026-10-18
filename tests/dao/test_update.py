@@ -2,7 +2,7 @@ import warnings
 
 import pytest
 
-from protean._deprecation import RemovedInProtean10Warning
+from protean._deprecation import RemovedInProtean020Warning
 from protean.exceptions import ObjectNotFoundError
 from protean.utils.query import Q
 
@@ -22,7 +22,7 @@ class TestDAOUpdateFunctionality:
         # path, which is deprecated (see TestUpdateDeprecationWarning). Silence
         # the warning here so the behaviour assertions stay the focus.
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RemovedInProtean10Warning)
+            warnings.simplefilter("ignore", RemovedInProtean020Warning)
             yield
 
     def test_update_an_existing_entity_in_the_repository(self, test_domain):
@@ -196,7 +196,7 @@ class TestDAOUpdateFunctionality:
 
 class TestUpdateDeprecationWarning:
     """`DAO.update()` and `QuerySet.update()` are the patch-and-persist path,
-    deprecated in 0.18.0 and removed in 1.0.0. Each must warn, name the
+    deprecated in 0.18.0 and removed in 0.20.0. Each must warn, name the
     replacement and the removal version, and a bulk `QuerySet.update()` must
     warn exactly once for the whole call, not once per matched row."""
 
@@ -209,7 +209,7 @@ class TestUpdateDeprecationWarning:
         dao = test_domain.repository_for(Person)._dao
         person = dao.create(id=1, first_name="John", last_name="Doe", age=22)
 
-        with pytest.warns(RemovedInProtean10Warning, match=r"v1\.0\.0") as record:
+        with pytest.warns(RemovedInProtean020Warning, match=r"v0\.20\.0") as record:
             dao.update(person, age=10)
 
         assert len(record) == 1
@@ -222,7 +222,7 @@ class TestUpdateDeprecationWarning:
         dao = test_domain.repository_for(Person)._dao
         dao.create(id=1, first_name="John", last_name="Doe", age=22)
 
-        with pytest.warns(RemovedInProtean10Warning, match=r"v1\.0\.0") as record:
+        with pytest.warns(RemovedInProtean020Warning, match=r"v0\.20\.0") as record:
             dao.query.filter(id=1).update(age=10)
 
         messages = [str(w.message) for w in record]
@@ -245,7 +245,7 @@ class TestUpdateDeprecationWarning:
 
         assert updated_count == 3
         queryset_warnings = [
-            w for w in caught if issubclass(w.category, RemovedInProtean10Warning)
+            w for w in caught if issubclass(w.category, RemovedInProtean020Warning)
         ]
         assert len(queryset_warnings) == 1, (
             f"expected exactly one deprecation warning for a bulk update, "

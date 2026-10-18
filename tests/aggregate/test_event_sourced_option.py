@@ -4,7 +4,7 @@
 ``event_sourced`` is the canonical, user-facing spelling. ``is_event_sourced``
 is retained as a deprecated alias that maps to the same internal
 ``meta_.is_event_sourced`` storage key. The alias emits a
-``RemovedInProtean10Warning`` and surfaces a ``DEPRECATED_OPTION`` diagnostic
+``RemovedInProtean019Warning`` and surfaces a ``DEPRECATED_OPTION`` diagnostic
 from ``domain.check()``.
 """
 
@@ -15,7 +15,7 @@ import pytest
 
 from protean._deprecation import (
     ProteanDeprecationWarning,
-    RemovedInProtean10Warning,
+    RemovedInProtean019Warning,
 )
 from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
@@ -74,8 +74,8 @@ class TestEventSourcedCanonicalOption:
 class TestIsEventSourcedAlias:
     def test_alias_still_sets_internal_flag(self, test_domain):
         with pytest.warns(
-            RemovedInProtean10Warning,
-            match=r"Use `event_sourced` instead\. Will be removed in v1\.0\.0",
+            RemovedInProtean019Warning,
+            match=r"Use `event_sourced` instead\. Will be removed in v0\.19\.0",
         ):
 
             @test_domain.aggregate(is_event_sourced=True)
@@ -88,7 +88,7 @@ class TestIsEventSourcedAlias:
         class Person(BaseAggregate):
             name: String()
 
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
             test_domain.register(Person, is_event_sourced=True)
 
         assert Person.meta_.is_event_sourced is True
@@ -96,7 +96,7 @@ class TestIsEventSourcedAlias:
     def test_canonical_wins_when_both_supplied(self, test_domain):
         # Alias still warns, but the canonical `event_sourced` value takes
         # precedence over the alias.
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
 
             @test_domain.aggregate(event_sourced=True, is_event_sourced=False)
             class Person(BaseAggregate):
@@ -108,7 +108,7 @@ class TestIsEventSourcedAlias:
         # The reverse precedence: canonical `event_sourced=False` must win over
         # `is_event_sourced=True`, guarding against a "canonical only overrides
         # when truthy" bug that would let the alias win here.
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
 
             @test_domain.aggregate(event_sourced=False, is_event_sourced=True)
             class Person(BaseAggregate):
@@ -127,7 +127,7 @@ class TestIsEventSourcedAlias:
 
 
 def _only_removal_warning(caught):
-    matching = [w for w in caught if issubclass(w.category, RemovedInProtean10Warning)]
+    matching = [w for w in caught if issubclass(w.category, RemovedInProtean019Warning)]
     assert len(matching) == 1
     return matching[0]
 
@@ -178,7 +178,7 @@ class TestAliasWarningNamesTheUserLine:
 
 class TestDeprecatedOptionDiagnostic:
     def test_alias_yields_deprecated_option_diagnostic(self, test_domain):
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
             test_domain.register(_alias_aggregate(), is_event_sourced=True)
 
         report = test_domain.check(traverse=False)
@@ -209,7 +209,7 @@ class TestDeprecatedOptionDiagnostic:
         widget = _alias_aggregate()
 
         domain_a = Domain(name="AliasDomain", root_path=__file__)
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
             domain_a.register(widget, is_event_sourced=True)
         domain_a.check(traverse=False)
 

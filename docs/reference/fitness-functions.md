@@ -660,7 +660,7 @@ Emitted at `warning` level for a deprecated option alias (for example the
 | **Category** | `deprecation` |
 | **Level** | `info` |
 
-**Why.** The email subsystem is deprecated and scheduled for removal in v1.0.0.
+**Why.** The email subsystem is deprecated and scheduled for removal in v0.19.0.
 
 **Fix.** Notify from an event handler or subscriber that calls an
 application-level notification service instead.
@@ -673,7 +673,7 @@ application-level notification service instead.
 | **Level** | `info` |
 
 **Why.** A non-default `email_providers` config block uses the deprecated email
-subsystem, scheduled for removal in v1.0.0. The default block stays silent.
+subsystem, scheduled for removal in v0.19.0. The default block stays silent.
 
 **Fix.** Notify from an event handler or subscriber that calls an
 application-level notification service instead.
@@ -688,7 +688,7 @@ application-level notification service instead.
 Detected by an on-disk scan of each registered element's source module: a
 `Method` / `Nested` serializer-field call site, or a deprecated `protean.utils.*`
 plumbing name (imported by name or reached through a `protean.utils` attribute
-access). All are scheduled for removal in v1.0.0. The diagnostic is attributed to
+access). All are scheduled for removal in v0.19.0. The diagnostic is attributed to
 the module and emitted once per deprecated symbol, not once per element in it.
 
 **Scope.** The scan only reads modules that host a registered element (the same

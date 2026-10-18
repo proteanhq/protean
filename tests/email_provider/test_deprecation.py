@@ -1,6 +1,6 @@
-"""Deprecation warnings for the email subsystem (removed at v1.0.0).
+"""Deprecation warnings for the email subsystem (removed at v0.19.0).
 
-Every email entry point emits ``RemovedInProtean10Warning``:
+Every email entry point emits ``RemovedInProtean019Warning``:
 
 - registration (both ``@domain.email`` and ``domain.register(...)``),
 - ``domain.send_email`` and ``domain.get_email_provider``,
@@ -20,7 +20,7 @@ import pytest
 from protean import Domain
 from protean._deprecation import (
     ProteanDeprecationWarning,
-    RemovedInProtean10Warning,
+    RemovedInProtean019Warning,
 )
 from protean.adapters.email.dummy import DummyEmailProvider
 from protean.core.email import BaseEmail
@@ -29,12 +29,12 @@ from protean.utils import fully_qualified_name
 
 # Message the register/send/get/config warnings share must name the *email*
 # subject and the removal version — pinning ``email`` keeps these tests from
-# passing on some unrelated future v1.0.0 deprecation. Every email subject
+# passing on some unrelated v0.19.0 deprecation. Every email subject
 # (``@domain.email``, ``send_email()``, ``get_email_provider()``,
 # ``email_providers``) contains the ``email`` token.
-_MATCH = r"email.*deprecated.*v1\.0\.0"
+_MATCH = r"email.*deprecated.*v0\.19\.0"
 # The config warning additionally names the ``email_providers`` block.
-_CONFIG_MATCH = r"email_providers.*deprecated.*v1\.0\.0"
+_CONFIG_MATCH = r"email_providers.*deprecated.*v0\.19\.0"
 
 
 class WelcomeEmail(BaseEmail):
@@ -53,7 +53,7 @@ class TestEmailRegistrationDeprecated:
     """The registration funnel warns for both decorator and register() paths."""
 
     def test_decorator_registration_warns(self, test_domain):
-        with pytest.warns(RemovedInProtean10Warning, match=_MATCH):
+        with pytest.warns(RemovedInProtean019Warning, match=_MATCH):
 
             @test_domain.email
             class AnnotatedEmail:
@@ -65,7 +65,7 @@ class TestEmailRegistrationDeprecated:
     def test_register_call_warns(self, test_domain):
         """Proves the ``_register_element`` funnel covers the non-decorator
         ``domain.register(...)`` path too."""
-        with pytest.warns(RemovedInProtean10Warning, match=_MATCH):
+        with pytest.warns(RemovedInProtean019Warning, match=_MATCH):
             test_domain.register(WelcomeEmail)
 
         assert fully_qualified_name(WelcomeEmail) in test_domain.registry.emails
@@ -76,7 +76,7 @@ class TestEmailRegistrationWarningNamesTheUserLine:
 
     def _only_removal_warning(self, caught):
         matching = [
-            w for w in caught if issubclass(w.category, RemovedInProtean10Warning)
+            w for w in caught if issubclass(w.category, RemovedInProtean019Warning)
         ]
         assert len(matching) == 1
         return matching[0]
@@ -115,7 +115,7 @@ class TestEmailOperationsDeprecated:
             test_domain.init(traverse=False)
 
         email = WelcomeEmail(to=["john@example.com"], data={"NAME": "John"})
-        with pytest.warns(RemovedInProtean10Warning, match=_MATCH):
+        with pytest.warns(RemovedInProtean019Warning, match=_MATCH):
             # DummyEmailProvider returns without raising; a clean send proves
             # the deprecated path still delegates to the real implementation.
             test_domain.send_email(email)
@@ -126,7 +126,7 @@ class TestEmailOperationsDeprecated:
             test_domain.register(WelcomeEmail)
             test_domain.init(traverse=False)
 
-        with pytest.warns(RemovedInProtean10Warning, match=_MATCH):
+        with pytest.warns(RemovedInProtean019Warning, match=_MATCH):
             provider = test_domain.get_email_provider("default")
 
         # The deprecated façade still resolves the real provider, not just
@@ -139,7 +139,7 @@ class TestEmailConfigDeprecated:
     """A non-default ``email_providers`` block warns; the default stays silent."""
 
     def test_non_default_email_config_warns(self):
-        with pytest.warns(RemovedInProtean10Warning, match=_CONFIG_MATCH):
+        with pytest.warns(RemovedInProtean019Warning, match=_CONFIG_MATCH):
             domain = Domain(
                 name="CustomEmail",
                 config={

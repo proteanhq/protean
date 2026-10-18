@@ -68,9 +68,9 @@ Boolean element options are bare predicates (`event_sourced`, `fact_events`,
 
 !!! warning "Deprecated: `is_event_sourced`"
     `is_event_sourced` is a deprecated alias for `event_sourced`. It still works
-    but emits a `RemovedInProtean10Warning` and is reported as a
+    but emits a `RemovedInProtean019Warning` and is reported as a
     `DEPRECATED_OPTION` diagnostic by `protean check`; it will be removed in
-    v1.0.0. If both are supplied, `event_sourced` wins.
+    v0.19.0. If both are supplied, `event_sourced` wins.
 
 Guide: [Aggregates](../../guides/domain-definition/aggregates.md) ·
 [Declaring Indexes](../../guides/domain-definition/indexes.md)

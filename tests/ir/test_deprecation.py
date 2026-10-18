@@ -1425,7 +1425,8 @@ class TestIRDiagnosticsEmailDeprecated:
         assert len(email_diags) == 1
         assert email_diags[0]["level"] == "info"
         assert "WelcomeMail" in email_diags[0]["message"]
-        assert "v1.0.0" in email_diags[0]["message"]
+        assert "v0.19.0" in email_diags[0]["message"]
+        assert "v1.0.0" not in email_diags[0]["message"]
 
     def test_multiple_registered_emails_yield_one_diagnostic_each(self) -> None:
         """One diagnostic *per* email element — guards against a regression that

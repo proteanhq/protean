@@ -426,7 +426,7 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         level="info",
         meaning="A configuration block uses a deprecated subsystem.",
         rationale=(
-            "The email subsystem is deprecated and scheduled for removal in v1.0.0."
+            "The email subsystem is deprecated and scheduled for removal in v0.19.0."
         ),
         fix=(
             "Migrate off the deprecated configuration block before the "
@@ -450,7 +450,7 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         level="info",
         meaning="An element uses the deprecated email subsystem.",
         rationale=(
-            "The email subsystem is deprecated and scheduled for removal in v1.0.0."
+            "The email subsystem is deprecated and scheduled for removal in v0.19.0."
         ),
         fix=(
             "Notify from an event handler or subscriber that calls an "

@@ -1004,7 +1004,7 @@ class Domain:
             for constant, value in config_obj["custom"].items():
                 setattr(self, constant, value)
 
-        # The email subsystem is deprecated, removed at v1.0.0.
+        # The email subsystem is deprecated, removed at v0.19.0.
         # ``load_config`` runs in ``__init__``, so this fires uniformly through
         # every bootstrap path (programmatic ``Domain()``, ``protean server``,
         # ``protean shell``, ``protean test``, FastAPI). The default
@@ -1122,7 +1122,7 @@ class Domain:
         **opts: Any,
     ) -> type[_T]:
         """Register class into the domain"""
-        # The email subsystem is deprecated, removed at v1.0.0.
+        # The email subsystem is deprecated, removed at v0.19.0.
         # This is the single funnel for both ``@domain.email`` (via
         # ``_domain_element``) and ``domain.register(SomeEmail)``, so one guard
         # here covers every registration path. Framework code registers no

@@ -843,7 +843,7 @@ __all__ = [
 # implementations are the underscore-prefixed definitions above; framework code
 # imports those directly and never self-warns. The old public spellings remain
 # importable for one deprecation window through the module ``__getattr__`` below,
-# each emitting ``RemovedInProtean10Warning`` on access.
+# each emitting ``RemovedInProtean019Warning`` on access.
 _DEPRECATED_PLUMBING: dict[str, Any] = {
     "derive_element_class": _derive_element_class,
     "generate_identity": _generate_identity,
