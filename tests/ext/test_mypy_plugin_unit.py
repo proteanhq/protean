@@ -673,6 +673,53 @@ class Order:
         assert _is_rejected_field_annotation(object()) is False
 
 
+class TestIsClassVar:
+    """Which unanalyzed annotations count as ``ClassVar``."""
+
+    def _check(self, annotation: object, node_fullname: str | None = "", found=True):
+        from protean.ext.mypy_plugin import _is_class_var
+
+        ctx = MagicMock()
+        if not found:
+            ctx.api.lookup_qualified.return_value = None
+        elif node_fullname is None:
+            ctx.api.lookup_qualified.return_value.node = None
+        else:
+            ctx.api.lookup_qualified.return_value.node.fullname = node_fullname
+        return _is_class_var(ctx, annotation)
+
+    def test_aliased_typing_class_var_counts(self):
+        from mypy.types import UnboundType
+
+        assert self._check(UnboundType("CV"), "typing.ClassVar") is True
+
+    def test_typing_extensions_class_var_counts(self):
+        from mypy.types import UnboundType
+
+        assert self._check(UnboundType("ClassVar"), "typing_extensions.ClassVar")
+
+    def test_other_name_does_not_count(self):
+        from mypy.types import UnboundType
+
+        assert self._check(UnboundType("str"), "builtins.str") is False
+
+    def test_unresolved_name_does_not_count(self):
+        from mypy.types import UnboundType
+
+        assert self._check(UnboundType("Missing"), found=False) is False
+
+    def test_name_without_a_node_does_not_count(self):
+        from mypy.types import UnboundType
+
+        assert self._check(UnboundType("Pending"), node_fullname=None) is False
+
+    def test_union_annotation_does_not_count(self):
+        from mypy.types import UnboundType, UnionType
+
+        union = UnionType([UnboundType("str"), UnboundType("None")])
+        assert self._check(union, "typing.ClassVar") is False
+
+
 class TestParentInit:
     """Which parent ``__init__`` a class inherits, and what its keywords are."""
 
@@ -753,6 +800,50 @@ class TestParentInit:
             self._init([ARG_POS, ARG_NAMED_OPT], ["self", "internal"]),
         )
         assert self._nearest(base) is None
+
+    def test_no_parent_init_below_an_unmarked_mro(self):
+        assert self._nearest(self._entry("app.Mixin")) is None
+
+    def _generated(self, *entries: MagicMock) -> list[str]:
+        from protean.ext.mypy_plugin import _generated_init_keywords
+
+        info = MagicMock()
+        info.mro = [MagicMock(), *entries]
+        return [name for name, _ in _generated_init_keywords(info)]
+
+    def test_generated_keywords_come_from_every_generated_parent(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS, MDEF, SymbolTableNode
+
+        left = self._entry(
+            "app.Left",
+            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "left"]),
+            synthesized=True,
+        )
+        right = self._entry("app.Right")
+        right.names = {
+            "__init__": SymbolTableNode(
+                MDEF,
+                self._init(
+                    [ARG_POS, ARG_NAMED_OPT, ARG_NAMED_OPT], ["self", "right", "left"]
+                ),
+                plugin_generated=True,
+            )
+        }
+        assert self._generated(left, right) == ["left", "right"]
+
+    def test_generated_keywords_skip_hand_written_and_missing_inits(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS
+
+        mixin = self._entry("app.Mixin")
+        handmade = self._entry(
+            "app.Handmade", self._init([ARG_POS, ARG_NAMED_OPT], ["self", "left"])
+        )
+        base = self._entry(
+            "protean.core.aggregate.BaseAggregate",
+            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "internal"]),
+            synthesized=True,
+        )
+        assert self._generated(mixin, handmade, base) == []
 
     def test_keywords_follow_the_signature(self):
         from mypy.nodes import ARG_NAMED_OPT, ARG_POS

@@ -102,9 +102,11 @@ Score(valu=1)  # E: call-arg
 @domain.command(part_of=Thing)
 class Rename:
     name: str
+    reason: str | None
 
 
 reveal_type(Rename(name="new").name)  # R: str
+Rename(name="new", reason="typo")
 Rename(nam="new")  # E: call-arg
 
 
