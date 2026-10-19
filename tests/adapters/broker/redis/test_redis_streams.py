@@ -1,7 +1,10 @@
+import logging
+
 import pytest
 import redis
 
 from protean.adapters.broker.redis import RedisBroker
+from tests.shared import REDIS_URI
 
 
 @pytest.fixture
@@ -1151,17 +1154,39 @@ def test_ensure_connection_lets_other_errors_through(redis_broker, monkeypatch):
 
 
 @pytest.mark.redis
-def test_data_reset_with_exception(redis_broker, monkeypatch):
+def test_data_reset_with_exception(redis_broker, monkeypatch, caplog):
     """Test _data_reset with Redis exception"""
 
-    def mock_flushall():
+    def mock_flushdb():
         raise Exception("Flush operation failed")
 
-    monkeypatch.setattr(redis_broker.redis_instance, "flushall", mock_flushall)
+    monkeypatch.setattr(redis_broker.redis_instance, "flushdb", mock_flushdb)
+    redis_broker._created_groups_set.add("stream:group")
 
     # Should handle the exception gracefully without raising
-    redis_broker._data_reset()
+    with caplog.at_level(logging.ERROR):
+        redis_broker._data_reset()
 
-    # Internal state should still be cleared even if Redis operation fails
-    assert len(redis_broker._created_groups) == 0
-    assert len(redis_broker._group_creation_times) == 0
+    # The groups are cleared inside the try block after the flush, so a
+    # failed flush leaves them in place and logs the error.
+    assert redis_broker._created_groups_set == {"stream:group"}
+    assert any(r.levelname == "ERROR" for r in caplog.records)
+
+
+@pytest.mark.redis
+def test_data_reset_leaves_other_databases_alone(redis_broker):
+    # No other suite uses this database, so nothing else flushes it while
+    # this test runs under xdist.
+    other_db = redis.Redis.from_url(f"{REDIS_URI}/12")
+    other_key = "protean-test:redis-broker-reset-survivor"
+    try:
+        other_db.set(other_key, "kept")
+        redis_broker.publish("reset_stream", {"data": "test"})
+
+        redis_broker._data_reset()
+
+        assert redis_broker.redis_instance.exists("reset_stream") == 0
+        assert other_db.get(other_key) == b"kept"
+    finally:
+        other_db.delete(other_key)
+        other_db.close()

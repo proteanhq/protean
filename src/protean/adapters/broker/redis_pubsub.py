@@ -266,9 +266,9 @@ class RedisPubSubBroker(BaseBroker):
         return False
 
     def _data_reset(self) -> None:
-        """Flush all data in Redis instance for testing"""
+        """Clear the broker's configured Redis database for testing"""
         try:
-            self.redis_instance.flushall()
+            self.redis_instance.flushdb()
             self._consumer_groups.clear()
         except Exception:  # a failed test reset is logged, not raised
             logger.exception("broker.redis_pubsub.data_reset_failed")

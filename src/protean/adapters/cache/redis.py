@@ -176,7 +176,12 @@ class RedisCache(BaseCache):
             self._client.delete(*batch)
 
     def flush_all(self) -> None:
-        self._client.flushall()
+        """Remove every key in the configured Redis database with `FLUSHDB`.
+
+        Cache keys carry no prefix, so this also removes any other data stored
+        in the same database. Other databases on the server are left alone.
+        """
+        self._client.flushdb()
 
     def set_ttl(self, key: str, ttl: TTLValue) -> None:
         self._client.pexpire(key, int(self._ttl_for(ttl) * 1000))
