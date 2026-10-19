@@ -22,3 +22,15 @@ class UpcastThingV2ToV3(BaseUpcaster):
 
 reveal_type(UpcastThingV1ToV2())  # R: UpcastThingV1ToV2
 reveal_type(UpcastThingV2ToV3().upcast({}))  # R: dict[str, Any]
+
+
+class UpcastThingV3ToV4(BaseUpcaster):
+    def upcast(self, data: dict[str, Any]) -> dict[str, Any]:
+        return data
+
+
+# Registering a class directly, with options, keeps its type too.
+registered = domain.upcaster(
+    UpcastThingV3ToV4, event_type="ThingCreated", from_version=3, to_version=4
+)
+reveal_type(registered())  # R: UpcastThingV3ToV4

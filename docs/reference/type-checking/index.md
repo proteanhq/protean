@@ -143,8 +143,9 @@ asks for the base: `domain.cache_for(Leaderboard)`,
 `isinstance(aggregate, Auditable)` all type-check, and `super().__init__(...)`
 in a decorated domain service reaches `BaseDomainService.__init__`.
 Aggregates, entities, value objects, commands, events, projections and queries
-also get a keyword `__init__` built from their Protean field declarations.
-A plain annotation such as `note: str`, with no field call, is not included.
+also get a keyword `__init__` built from their Protean field declarations
+and their plain annotations. A plain annotation such as `note: str` is a
+pydantic field at runtime, and it is accepted as a keyword typed `Any`.
 
 Supported decorators: `aggregate`, `entity`, `value_object`, `command`,
 `event`, `domain_service`, `command_handler`, `event_handler`,

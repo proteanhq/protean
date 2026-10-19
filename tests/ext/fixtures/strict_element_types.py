@@ -2,6 +2,7 @@
 
 from protean.core.aggregate import apply
 from protean.core.event import BaseEvent
+from protean.core.view import ReadView
 from protean.domain import Domain
 from protean.fields import Identifier, String
 
@@ -59,3 +60,8 @@ TransferPoints(Account(account_id="a"), Account(account_id="b"))
 
 # An event is a BaseEvent, so it can go where the framework asks for one.
 event: BaseEvent = OrderCreated(order_id="o1")
+
+
+# A bare ``ReadView`` annotation stays valid under --strict.
+def first_card(cards: ReadView) -> object:
+    return cards.get("p1")

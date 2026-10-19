@@ -6,7 +6,9 @@
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, cast
+
+from typing_extensions import TypeVar
 
 from protean.core.queryset import ReadOnlyQuerySet
 from protean.exceptions import NotSupportedError, ObjectNotFoundError
@@ -21,7 +23,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_ProjectionT = TypeVar("_ProjectionT", bound="BaseProjection")
+# Defaults to ``Any`` (PEP 696) so a bare ``ReadView`` annotation stays valid
+# under ``disallow_any_generics``. ``TypeVar`` comes from ``typing_extensions``
+# because parameter defaults only reached ``typing.TypeVar`` in Python 3.13.
+_ProjectionT = TypeVar("_ProjectionT", bound="BaseProjection", default=Any)
 
 
 class ReadView(Generic[_ProjectionT]):

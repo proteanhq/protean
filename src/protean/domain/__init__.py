@@ -1479,7 +1479,9 @@ class Domain:
     ######################
 
     @overload
-    def aggregate(self, _cls: type[_T]) -> type[_T]: ...
+    def aggregate(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def aggregate(
         self, _cls: None = ..., **kwargs: Any
@@ -1514,7 +1516,9 @@ class Domain:
         )
 
     @overload
-    def application_service(self, _cls: type[_T]) -> type[_T]: ...
+    def application_service(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def application_service(
         self, _cls: None = ..., **kwargs: Any
@@ -1549,7 +1553,9 @@ class Domain:
         )
 
     @overload
-    def command(self, _cls: type[_T]) -> type[_T]: ...
+    def command(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def command(
         self, _cls: None = ..., **kwargs: Any
@@ -1584,7 +1590,9 @@ class Domain:
         )
 
     @overload
-    def command_handler(self, _cls: type[_T]) -> type[_T]: ...
+    def command_handler(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def command_handler(
         self, _cls: None = ..., **kwargs: Any
@@ -1615,7 +1623,7 @@ class Domain:
         return self._domain_element(DomainObjects.COMMAND_HANDLER, _cls=_cls, **kwargs)
 
     @overload
-    def event(self, _cls: type[_T]) -> type[_T]: ...
+    def event(self, _cls: type[_T], **kwargs: Any) -> type[_T]: ...  # pragma: no cover
     @overload
     def event(
         self, _cls: None = ..., **kwargs: Any
@@ -1650,7 +1658,9 @@ class Domain:
         )
 
     @overload
-    def event_handler(self, _cls: type[_T]) -> type[_T]: ...
+    def event_handler(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def event_handler(
         self, _cls: None = ..., **kwargs: Any
@@ -1685,7 +1695,9 @@ class Domain:
         )
 
     @overload
-    def domain_service(self, _cls: type[_T]) -> type[_T]: ...
+    def domain_service(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def domain_service(
         self, _cls: None = ..., **kwargs: Any
@@ -1720,7 +1732,7 @@ class Domain:
         )
 
     @overload
-    def entity(self, _cls: type[_T]) -> type[_T]: ...
+    def entity(self, _cls: type[_T], **kwargs: Any) -> type[_T]: ...  # pragma: no cover
     @overload
     def entity(
         self, _cls: None = ..., **kwargs: Any
@@ -1751,7 +1763,7 @@ class Domain:
         return self._domain_element(DomainObjects.ENTITY, _cls=_cls, **kwargs)
 
     @overload
-    def email(self, _cls: type[_T]) -> type[_T]: ...
+    def email(self, _cls: type[_T], **kwargs: Any) -> type[_T]: ...  # pragma: no cover
     @overload
     def email(
         self, _cls: None = ..., **kwargs: Any
@@ -1782,7 +1794,9 @@ class Domain:
         return self._domain_element(DomainObjects.EMAIL, _cls=_cls, **kwargs)
 
     @overload
-    def database_model(self, _cls: type[_T]) -> type[_T]: ...
+    def database_model(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def database_model(
         self, _cls: None = ..., **kwargs: Any
@@ -1813,7 +1827,9 @@ class Domain:
         return self._domain_element(DomainObjects.DATABASE_MODEL, _cls=_cls, **kwargs)
 
     @overload
-    def repository(self, _cls: type[_T]) -> type[_T]: ...
+    def repository(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def repository(
         self, _cls: None = ..., **kwargs: Any
@@ -1844,7 +1860,9 @@ class Domain:
         return self._domain_element(DomainObjects.REPOSITORY, _cls=_cls, **kwargs)
 
     @overload
-    def subscriber(self, _cls: type[_T]) -> type[_T]: ...
+    def subscriber(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def subscriber(
         self, _cls: None = ..., **kwargs: Any
@@ -1879,7 +1897,9 @@ class Domain:
         )
 
     @overload
-    def value_object(self, _cls: type[_T]) -> type[_T]: ...
+    def value_object(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def value_object(
         self, _cls: None = ..., **kwargs: Any
@@ -1914,7 +1934,9 @@ class Domain:
         )
 
     @overload
-    def projection(self, _cls: type[_T]) -> type[_T]: ...
+    def projection(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def projection(
         self, _cls: None = ..., **kwargs: Any
@@ -1949,7 +1971,9 @@ class Domain:
         )
 
     @overload
-    def projector(self, _cls: type[_T]) -> type[_T]: ...
+    def projector(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def projector(
         self, _cls: None = ..., **kwargs: Any
@@ -1984,7 +2008,7 @@ class Domain:
         )
 
     @overload
-    def query(self, _cls: type[_T]) -> type[_T]: ...
+    def query(self, _cls: type[_T], **kwargs: Any) -> type[_T]: ...  # pragma: no cover
     @overload
     def query(
         self, _cls: None = ..., **kwargs: Any
@@ -2019,7 +2043,9 @@ class Domain:
         )
 
     @overload
-    def query_handler(self, _cls: type[_T]) -> type[_T]: ...
+    def query_handler(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def query_handler(
         self, _cls: None = ..., **kwargs: Any
@@ -2054,7 +2080,9 @@ class Domain:
         )
 
     @overload
-    def process_manager(self, _cls: type[_T]) -> type[_T]: ...
+    def process_manager(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def process_manager(
         self, _cls: None = ..., **kwargs: Any
@@ -2092,7 +2120,9 @@ class Domain:
     # Upcasters  #
     ##############
     @overload
-    def upcaster(self, _cls: type[_T]) -> type[_T]: ...  # pragma: no cover
+    def upcaster(
+        self, _cls: type[_T], **kwargs: Any
+    ) -> type[_T]: ...  # pragma: no cover
     @overload
     def upcaster(
         self, _cls: None = ..., **kwargs: Any

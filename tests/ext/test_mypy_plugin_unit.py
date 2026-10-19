@@ -703,12 +703,13 @@ class TestInheritedInitFields:
             )
         return func
 
-    def _fields(self, *entries: MagicMock) -> list[str]:
+    def _fields(self, *entries: MagicMock) -> list[str] | None:
         from protean.ext.mypy_plugin import _inherited_init_fields
 
         info = MagicMock()
         info.mro = [MagicMock(), *entries]
-        return [name for name, _ in _inherited_init_fields(info)]
+        fields = _inherited_init_fields(info)
+        return None if fields is None else [name for name, _ in fields]
 
     def test_synthesized_parent_init_contributes_its_keywords(self):
         from mypy.nodes import ARG_NAMED_OPT, ARG_POS
@@ -733,7 +734,7 @@ class TestInheritedInitFields:
         from mypy.nodes import ARG_POS
 
         parent = self._entry("app.Legacy", self._init([ARG_POS], ["self"], typed=False))
-        assert self._fields(parent) == []
+        assert self._fields(parent) is None
 
     def test_hand_written_positional_init_is_skipped(self):
         from mypy.nodes import ARG_POS
@@ -741,7 +742,7 @@ class TestInheritedInitFields:
         parent = self._entry(
             "app.Custom", self._init([ARG_POS, ARG_POS], ["self", "source"])
         )
-        assert self._fields(parent) == []
+        assert self._fields(parent) is None
 
     def test_nearest_parent_wins_for_a_repeated_field(self):
         from mypy.nodes import ARG_NAMED_OPT, ARG_POS
@@ -766,4 +767,10 @@ class TestInheritedInitFields:
             "protean.core.aggregate.BaseAggregate",
             self._init([ARG_POS, ARG_NAMED_OPT], ["self", "internal"]),
         )
-        assert self._fields(base) == []
+        assert self._fields(base) is None
+
+    def test_fieldless_parent_init_counts(self):
+        from mypy.nodes import ARG_POS
+
+        parent = self._entry("app.Marker", self._init([ARG_POS], ["self"]))
+        assert self._fields(parent) == []

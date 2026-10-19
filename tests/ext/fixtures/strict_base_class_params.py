@@ -6,7 +6,7 @@ framework's signatures name the base class, ``isinstance`` narrows to it, and
 the base's properties bind to it.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel
 
@@ -79,6 +79,57 @@ def mark(aggregate: BaseAggregate, anything: Any) -> None:
         reveal_type(aggregate.state_.is_persisted)  # R: bool
     if isinstance(anything, Auditable):
         reveal_type(anything.state_.is_persisted)  # R: bool
+
+
+# A decorated element extending a decorated element with no fields still
+# checks its own keywords.
+@domain.value_object
+class Marker:
+    pass
+
+
+@domain.value_object
+class Score(Marker):
+    value: int = Integer(required=True)
+
+
+Score(value=1)
+Score(valu=1)  # E: call-arg
+
+
+# A plain annotation is a pydantic field at runtime, so it is a keyword too.
+@domain.command(part_of=Thing)
+class Rename:
+    name: str
+
+
+reveal_type(Rename(name="new").name)  # R: str
+Rename(nam="new")  # E: call-arg
+
+
+# A hand-written ``__init__`` is kept.
+@domain.value_object
+class Pair:
+    left: int = Integer(required=True)
+
+    def __init__(self, left: int) -> None:
+        super().__init__(left=left)
+
+
+Pair(1)
+
+
+# Private names and class variables are not constructor keywords.
+@domain.command(part_of=Thing)
+class Tag:
+    label: str
+    _cache: str
+    KIND: ClassVar[str]
+
+
+Tag(label="x")
+Tag(_cache="x")  # E: call-arg
+Tag(KIND="x")  # E: call-arg
 
 
 # The decorator rebuilds the class on its Protean base alone, so the class's

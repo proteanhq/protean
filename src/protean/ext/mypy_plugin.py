@@ -79,6 +79,7 @@ from mypy.types import (
     Type,
     TypeOfAny,
     TypeType,
+    UnboundType,
     UnionType,
 )
 from mypy.types import Type as MypyType
@@ -512,7 +513,7 @@ def _inject_base_class(
         # A class that extends a decorated element (``class Account(Auditable)``
         # with ``Auditable`` abstract) inherits the parent's synthesized
         # ``__init__``, which lacks this class's own fields.
-        if _inherited_init_fields(info):
+        if _inherited_init_fields(info) is not None:
             _synthesize_init(ctx, decorator_name)
         _synthesize_has_many_methods(ctx)
         _strip_rejected_field_annotations(ctx)
@@ -764,7 +765,13 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
 
     info: TypeInfo = ctx.cls.info
 
-    # Don't override an explicitly declared __init__
+    # Don't override an explicitly declared __init__. The class body is not
+    # analyzed yet when this hook runs, so check its statements too.
+    if any(
+        isinstance(stmt, FuncDef) and stmt.name == "__init__"
+        for stmt in ctx.cls.defs.body
+    ):
+        return
     if "__init__" in info.names:
         existing = info.names["__init__"]
         # Only skip if it's defined in this class, not inherited
@@ -840,11 +847,30 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
                 file=sys.stderr,
             )
 
+    # Plain annotations (``note: str``) are pydantic fields at runtime. Their
+    # types are not analyzed yet when this hook runs, so they are typed Any.
+    for stmt in ctx.cls.defs.body:
+        if (
+            not isinstance(stmt, AssignmentStmt)
+            or len(stmt.lvalues) != 1
+            or not isinstance(stmt.lvalues[0], NameExpr)
+            or stmt.type is None
+            or isinstance(stmt.type, RawExpressionType)
+            or not (isinstance(stmt.rvalue, TempNode) and stmt.rvalue.no_rhs)
+        ):
+            continue
+        field_name = stmt.lvalues[0].name
+        if field_name.startswith("_") or any(f[0] == field_name for f in fields):
+            continue
+        if isinstance(stmt.type, UnboundType) and stmt.type.name.endswith("ClassVar"):
+            continue
+        fields.append((field_name, AnyType(TypeOfAny.special_form)))
+
     # Fields declared on decorated parent elements, unless redeclared here
     own_names = {name for name, _ in fields}
     fields = [
         (name, field_type)
-        for name, field_type in _inherited_init_fields(info)
+        for name, field_type in _inherited_init_fields(info) or []
         if name not in own_names
     ] + fields
 
@@ -857,10 +883,8 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
                 str_type = ctx.api.named_type("builtins.str", [])
                 fields.insert(0, ("id", str_type))
 
-    if not fields:
-        return
-
-    # Build the __init__ method
+    # Build the __init__ method, even with no fields, so that an unknown
+    # keyword is an error and a subclass can find the parent's fields.
     self_type = ctx.api.named_type(info.fullname, [])
 
     args: list[Argument] = [Argument(Var("self", self_type), self_type, None, ARG_POS)]
@@ -903,7 +927,7 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
         )
 
 
-def _inherited_init_fields(info: TypeInfo) -> list[tuple[str, Type]]:
+def _inherited_init_fields(info: TypeInfo) -> list[tuple[str, Type]] | None:
     """Return the keyword fields of ``__init__`` methods synthesized on parents.
 
     Walks the MRO from the nearest parent up to the first framework class. A
@@ -911,8 +935,11 @@ def _inherited_init_fields(info: TypeInfo) -> list[tuple[str, Type]]:
     keyword-only and optional, the shape ``_synthesize_init`` builds. The
     signature is read from the parent's symbol table, so this works for a
     parent loaded from mypy's cache as well.
+
+    Returns ``None`` when no parent has such an ``__init__``, and an empty
+    list when one does but declares no fields.
     """
-    fields: list[tuple[str, Type]] = []
+    fields: list[tuple[str, Type]] | None = None
     seen: set[str] = set()
     for entry in info.mro[1:]:
         if entry.fullname.startswith(("protean.", "pydantic.", "builtins.")):
@@ -925,6 +952,8 @@ def _inherited_init_fields(info: TypeInfo) -> list[tuple[str, Type]]:
             continue
         if any(kind != ARG_NAMED_OPT for kind in signature.arg_kinds[1:]):
             continue
+        if fields is None:
+            fields = []
         for name, arg_type in zip(
             signature.arg_names[1:], signature.arg_types[1:], strict=True
         ):

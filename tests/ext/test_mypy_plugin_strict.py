@@ -67,10 +67,14 @@ def _run_mypy() -> dict[str, tuple[Findings, Findings]]:
             *(str(FIXTURES_DIR / name) for name in _STRICT_FIXTURES),
         ]
     )
+    stdout, stderr, status = result
+    # 0 is a clean run and 1 means mypy reported errors. Anything else is a
+    # crash or a bad invocation, which would otherwise read as no findings.
+    assert status in (0, 1), f"mypy exited with {status}:\n{stderr}{stdout}"
     findings: dict[str, tuple[Findings, Findings]] = {
         name: ({}, {}) for name in _STRICT_FIXTURES
     }
-    for raw in result[0].splitlines():
+    for raw in stdout.splitlines():
         match = _OUTPUT_LINE.match(raw)
         if match is None:
             continue
