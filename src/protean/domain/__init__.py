@@ -2092,11 +2092,11 @@ class Domain:
     # Upcasters  #
     ##############
     @overload
-    def upcaster(self, _cls: type[_T]) -> type[_T]: ...
+    def upcaster(self, _cls: type[_T]) -> type[_T]: ...  # pragma: no cover
     @overload
     def upcaster(
         self, _cls: None = ..., **kwargs: Any
-    ) -> Callable[[type[_T]], type[_T]]: ...
+    ) -> Callable[[type[_T]], type[_T]]: ...  # pragma: no cover
     def upcaster(
         self,
         _cls: type[_T] | None = None,

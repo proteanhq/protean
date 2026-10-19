@@ -66,6 +66,14 @@ class GetOrderSummary:
     order_id: Identifier(required=True)
 
 
+# A private name is not a constructor keyword, and an annotation-only field
+# with a value keeps it.
+@domain.aggregate
+class Profile:
+    _cache: String()
+    nickname: String(max_length=20) = None
+
+
 # A class that inherits a Protean base explicitly gets the same salvage.
 class Book(BaseAggregate):
     title: String(required=True)
@@ -97,6 +105,9 @@ def make_label() -> str:
 class Misdeclared:
     label: make_label()  # E: valid-type
 
+
+Profile(nickname="ada")
+Profile(_cache="x")  # E: call-arg
 
 # An unknown keyword is still an error.
 Order(customr="Ada")  # E: call-arg

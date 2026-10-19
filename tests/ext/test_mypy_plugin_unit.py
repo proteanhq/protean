@@ -743,6 +743,22 @@ class TestInheritedInitFields:
         )
         assert self._fields(parent) == []
 
+    def test_nearest_parent_wins_for_a_repeated_field(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS
+
+        child_parent = self._entry(
+            "app.Audited",
+            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "changed_by"]),
+        )
+        grandparent = self._entry(
+            "app.Tracked",
+            self._init(
+                [ARG_POS, ARG_NAMED_OPT, ARG_NAMED_OPT],
+                ["self", "changed_by", "changed_at"],
+            ),
+        )
+        assert self._fields(child_parent, grandparent) == ["changed_by", "changed_at"]
+
     def test_walk_stops_at_framework_classes(self):
         from mypy.nodes import ARG_NAMED_OPT, ARG_POS
 

@@ -6,6 +6,8 @@ field keeps its concrete type. Lines marked ``# R:`` carry the expected
 revealed type, and lines marked ``# E:`` the expected error code.
 """
 
+from typing import Any
+
 from protean.domain import Domain
 from protean.fields import (
     Float,
@@ -135,6 +137,12 @@ class Counter:
 
 
 reveal_type(Counter(id=1).id)  # R: int
+
+
+# A target mypy cannot resolve leaves the field object's own type.
+def embed(target: Any) -> None:
+    reveal_type(ValueObject(target))  # R: ValueObject
+
 
 # An unknown keyword is still an error on every kind.
 Order(customr="Ada")  # E: call-arg
