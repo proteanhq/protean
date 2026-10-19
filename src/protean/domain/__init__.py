@@ -2431,7 +2431,15 @@ class Domain:
     # ReadView Functionality #
     ###########################
 
-    def view_for(self, projection_cls: type[_ProjectionT]) -> ReadView[_ProjectionT]:
+    @overload
+    def view_for(
+        self, projection_cls: type[_ProjectionT]
+    ) -> ReadView[_ProjectionT]: ...  # pragma: no cover
+    # A checker without the Protean plugin sees a decorated projection as a
+    # plain class, which the bound above rejects.
+    @overload
+    def view_for(self, projection_cls: type) -> ReadView[Any]: ...  # pragma: no cover
+    def view_for(self, projection_cls: type) -> ReadView[Any]:
         """Return a read-only `ReadView` for querying a projection.
 
         The returned ``ReadView`` exposes ``get()``, ``query``
@@ -2463,7 +2471,7 @@ class Domain:
             )
 
         # ``element_type`` is a class var injected onto element classes at
-        # registration; it is not visible on the bare ``type`` annotation.
+        # registration; a plain ``type`` does not declare it.
         projection: Any = projection_cls
         if projection.element_type != DomainObjects.PROJECTION:
             raise IncorrectUsageError(

@@ -121,6 +121,21 @@ optional_ref = Reference(Order)
 reveal_type(required_ref)  # R: Order
 reveal_type(optional_ref)  # R: Order | None
 
+# ``default=None`` leaves the value None, so the field stays optional.
+none_default_vo = ValueObject(Money, default=None)
+none_default_str = String(default=None)
+reveal_type(none_default_vo)  # R: Money | None
+reveal_type(none_default_str)  # R: str | None
+
+
+# An aggregate may declare its own identity type.
+@domain.aggregate
+class Counter:
+    id: int = Integer(identifier=True)
+
+
+reveal_type(Counter(id=1).id)  # R: int
+
 # An unknown keyword is still an error on every kind.
 Order(customr="Ada")  # E: call-arg
 GetOrderSummary(order="o1")  # E: call-arg

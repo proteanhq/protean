@@ -81,11 +81,22 @@ def mark(aggregate: BaseAggregate, anything: Any) -> None:
         reveal_type(anything.state_.is_persisted)  # R: bool
 
 
-# A decorated class whose own bases leave no consistent order with the
-# Protean base still sees the base's methods.
+# The decorator rebuilds the class on its Protean base alone, so the class's
+# own bases are dropped at runtime and for mypy.
+class Greeter:
+    def hello(self) -> str:
+        return "hello"
+
+
+@domain.aggregate
+class Greeted(Greeter):
+    name: str | None = String()
+
+
 @domain.value_object
 class Legacy(BaseModel):
     code: str = String(required=True)
 
 
+Greeted().hello()  # E: attr-defined
 reveal_type(Legacy(code="x").to_dict())  # R: dict[str, Any]

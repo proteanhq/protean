@@ -82,8 +82,21 @@ OrderPlaced(order_id="o1")
 OrderSummary(order_id="o1", customer="Ada")
 GetOrderSummary(order_id="o1")
 Book(title="Dune")
+Book()
 
 reveal_type(order.customer)  # R: Any
+
+
+# A call without keyword arguments is a field only when it names a Protean
+# field factory.
+def make_label() -> str:
+    return "label"
+
+
+@domain.aggregate
+class Misdeclared:
+    label: make_label()  # E: valid-type
+
 
 # An unknown keyword is still an error.
 Order(customr="Ada")  # E: call-arg

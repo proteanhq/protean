@@ -23,8 +23,6 @@ family of strict-mode errors in downstream code:
   `x: BaseValueObject = Money(...)`.
 - A property copied from the base kept the base as its `self` type, so
   `order.state_` failed with "Invalid self argument".
-- `isinstance(aggregate, Auditable)` on a `BaseAggregate` produced an
-  unreachable branch.
 - `super().__init__(...)` in a decorated domain service resolved to
   `object.__init__`.
 - The copied names were in scope in the class body, so pydantic's
@@ -36,16 +34,16 @@ signature at a time.
 
 ## Decision
 
-The plugin adds the Protean base to the decorated class's bases in the
-`get_customize_class_mro_hook`, recomputes the MRO, and recomputes the
-metaclass. Setting the metaclass to pydantic's `ModelMetaclass`, the
-metaclass of the new base, removes the conflict that led to copying.
+In the `get_customize_class_mro_hook`, the plugin makes the Protean base the
+decorated class's only base and recomputes the MRO. The decorator does the
+same at runtime: it rebuilds the class as `type(name, (base_cls,), namespace)`,
+so the class's own bases are dropped there too. mypy then gives the class
+pydantic's `ModelMetaclass`, the metaclass of its new base, so there is no
+metaclass conflict and no need to copy symbols.
 
-When the class's own bases cannot be ordered with the Protean base (a
-decorated class that already inherits `BaseModel` directly, for example), the
-plugin falls back to copying the base's symbols. Copied methods are marked
-implicit, so a bare name in the class body does not resolve to them, which
-matches Python's scoping.
+A decorated class that already inherits the base, such as a concrete
+aggregate extending a decorated abstract one, keeps its bases, as it does at
+runtime. Its synthesized `__init__` includes the fields of decorated parents.
 
 With the base in the MRO, mypy also applies the `dataclass_transform` that
 `BaseEntity` declares. That transform now sets `kw_only_default=True`, which
@@ -56,9 +54,15 @@ ordering rules to Protean fields.
 
 - A decorated element is a subtype of its base for mypy, as it is at runtime.
   Signatures that name a base class accept it with no change to them.
+- A mixin listed as a base of a decorated class is dropped for mypy, as it is
+  at runtime, so its methods are reported as missing.
 - mypy checks a decorated class against its base. A field that reuses the
   name of a base attribute with a different type, such as a field named
-  `json` or `copy`, is an override error.
+  `json` or `copy`, is an `assignment` override error. It was a `no-redef`
+  error before, so an ignore comment for that code no longer applies.
+- The framework bases declare `id` as `Any`, since the runtime identity can
+  be `str`, `int` or `UUID`. An element without its own `id` field still sees
+  `id: str`, and one that declares `id: int` keeps it.
 - The plugin still synthesizes a keyword `__init__` from the field
   declarations. It takes precedence over the base's `__init__(**data)`, so an
   unknown keyword is still an error.

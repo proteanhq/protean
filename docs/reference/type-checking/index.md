@@ -62,7 +62,7 @@ Field factories resolve to their Python types:
 | `HasMany(LineItem)` | `list[LineItem]` |
 
 Fields are `Optional` (union with `None`) unless they are `required=True`,
-have a `default`, or are `identifier=True`. Container fields (`List`, `Dict`)
+have a `default` other than `None`, or are `identifier=True`. Container fields (`List`, `Dict`)
 always have an implicit default and are never `Optional`. `HasOne` is always
 `Optional`, because an association cannot be required at runtime. A target
 named by string, such as `Reference("Order")`, resolves to `Any`, so the
@@ -90,12 +90,18 @@ same way. See
 for why the typed-annotation form is the canonical one.
 
 The annotation-only form (`customer: String(required=True)`) also passes
-`mypy --strict`. mypy rejects a call in an annotation and keeps no type for
-it, so the plugin drops the annotation and accepts the field as a keyword
-argument. The field is typed `Any`. Construction by keyword and use of the
-field are clean, but mypy does not check the field's type, and returning it
-from a function declared to return `str` reports `no-any-return`. Move a
-field to the typed-annotation form to get its real type.
+`mypy --strict`, in a decorated element and in a class that inherits a
+Protean base. mypy rejects a call in an annotation and keeps no type for it,
+so the plugin replaces the annotation with `Any` and accepts the field as an
+optional keyword argument. Construction by keyword and use of the field are
+clean, but mypy does not check the field's type, and returning it from a
+function declared to return `str` reports `no-any-return`. Move a field to
+the typed-annotation form to get its real type.
+
+mypy's note for a call with keyword arguments does not name the function, so
+the plugin accepts any such call in an annotation as a field. A call without
+keyword arguments counts only when it names a Protean field factory:
+`label: str()` still reports `valid-type`.
 
 ## Decorator Base Class Injection
 
@@ -115,26 +121,30 @@ asks for the base: `domain.cache_for(Leaderboard)`,
 `isinstance(aggregate, Auditable)` all type-check, and `super().__init__(...)`
 in a decorated domain service reaches `BaseDomainService.__init__`.
 Aggregates, entities, value objects, commands, events, projections and queries
-also get a keyword `__init__` built from their fields.
+also get a keyword `__init__` built from their Protean field declarations.
+A plain annotation such as `note: str`, with no field call, is not included.
 
 Supported decorators: `aggregate`, `entity`, `value_object`, `command`,
 `event`, `domain_service`, `command_handler`, `event_handler`,
 `application_service`, `subscriber`, `projection`, `projector`, `query`,
-`query_handler`, `process_manager`, `repository`, `database_model`, `email`.
+`query_handler`, `process_manager`, `repository`, `database_model`, `email`,
+`upcaster`.
 
 Both `@domain.aggregate` (bare) and `@domain.aggregate()` (called) forms
-are detected. If the class's own bases cannot be ordered with the Protean
-base (for example `@domain.value_object class Legacy(BaseModel)`), the
-plugin copies the base's methods onto the class instead, so they stay
-visible, but the class is not a subtype of the base.
-See
+are detected. The decorator rebuilds the class on its Protean base alone, so
+a mixin listed as a base is dropped at runtime, and the plugin drops it too.
+A class that extends a decorated element, such as an aggregate extending a
+decorated abstract aggregate, keeps its parent, and its `__init__` takes the
+parent's fields. See
 [ADR-0047](../../adr/0047-mypy-plugin-subclasses-decorated-elements.md)
 for how the base is added.
 
 ## Typed framework entry points
 
 - `domain.view_for(Projection)` returns `ReadView[Projection]`, so `.get()`
-  and `.find_by()` return the projection class. `.query` returns a
+  and `.find_by()` return the projection class. Without the plugin, a
+  decorated projection is not a `BaseProjection` subclass to a checker, and
+  `view_for` returns `ReadView[Any]`. `.query` returns a
   `ReadOnlyQuerySet`, and its results are not typed by projection.
 - `QuerySet` chain methods (`filter`, `exclude`, `order_by`, `limit`,
   `offset`, `only`) return the queryset's own type, so a `ReadOnlyQuerySet`
@@ -143,7 +153,9 @@ for how the base is added.
   aggregate return that aggregate's class.
 - `@handle` takes an event or command class, an event type string such as
   `"Customers.CustomerFact.v1"`, or the `"$any"` wildcard, and the decorated
-  method keeps its signature.
+  method keeps its signature. The framework calls a handler positionally
+  with the message, and a redelivery that consume-side idempotency skips
+  returns `None`.
 - `@domain.upcaster(event_type=..., from_version=..., to_version=...)` keeps
   the decorated class's type.
 

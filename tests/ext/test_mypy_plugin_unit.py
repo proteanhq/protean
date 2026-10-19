@@ -15,7 +15,7 @@ Covers:
 
 from unittest.mock import MagicMock
 
-from mypy.nodes import MDEF, Block, FuncDef, SymbolTable, SymbolTableNode, Var
+from mypy.nodes import SymbolTable
 
 from protean.ext.mypy_plugin import (
     _REEXPORT_MAP,
@@ -27,7 +27,7 @@ from protean.ext.mypy_plugin import (
     _extract_decorator_name_from_expr,
     _field_factory_hook,
     _get_kwarg_bool,
-    _has_kwarg,
+    _has_default,
     _resolve_custom_fullname,
 )
 
@@ -183,16 +183,27 @@ class TestGetKwargBool:
         assert result is True
 
 
-class TestHasKwarg:
-    def test_present_kwarg(self):
+class TestHasDefault:
+    def _ctx(self, name: str, expr: object) -> MagicMock:
         ctx = MagicMock()
-        ctx.arg_names = [["default"]]
-        assert _has_kwarg(ctx, "default") is True
+        ctx.arg_names = [[name]]
+        ctx.args = [[expr]]
+        return ctx
 
-    def test_missing_kwarg(self):
-        ctx = MagicMock()
-        ctx.arg_names = [["required"]]
-        assert _has_kwarg(ctx, "default") is False
+    def test_present_default(self):
+        from mypy.nodes import StrExpr
+
+        assert _has_default(self._ctx("default", StrExpr("x"))) is True
+
+    def test_default_none_is_not_a_default(self):
+        from mypy.nodes import NameExpr
+
+        assert _has_default(self._ctx("default", NameExpr("None"))) is False
+
+    def test_missing_default(self):
+        from mypy.nodes import NameExpr
+
+        assert _has_default(self._ctx("required", NameExpr("True"))) is False
 
 
 class TestExtractDecoratorName:
@@ -273,8 +284,8 @@ class TestExtractDecoratorNameFromExpr:
 class TestDecoratorBaseClassMap:
     """Tests for DECORATOR_BASE_CLASS_MAP completeness and correctness."""
 
-    def test_has_18_entries(self):
-        assert len(DECORATOR_BASE_CLASS_MAP) == 18
+    def test_has_19_entries(self):
+        assert len(DECORATOR_BASE_CLASS_MAP) == 19
 
     def test_all_expected_decorators_present(self):
         expected = {
@@ -292,6 +303,7 @@ class TestDecoratorBaseClassMap:
             "projector",
             "query",
             "query_handler",
+            "upcaster",
             "process_manager",
             "repository",
             "database_model",
@@ -387,120 +399,6 @@ class TestIsSubclass:
         base_info.fullname = "protean.core.aggregate.BaseAggregate"
         info.mro = []
         assert _is_subclass(info, base_info) is False
-
-
-class TestHasAttribute:
-    """Tests for _has_attribute helper."""
-
-    def test_has_attribute_present(self):
-        from protean.ext.mypy_plugin import _has_attribute
-
-        info = MagicMock()
-        mro_entry = MagicMock()
-        mro_entry.names = {"id": MagicMock(), "name": MagicMock()}
-        info.mro = [mro_entry]
-        assert _has_attribute(info, "id") is True
-
-    def test_has_attribute_absent(self):
-        from protean.ext.mypy_plugin import _has_attribute
-
-        info = MagicMock()
-        mro_entry = MagicMock()
-        mro_entry.names = {"name": MagicMock()}
-        info.mro = [mro_entry]
-        assert _has_attribute(info, "id") is False
-
-    def test_has_attribute_in_base_mro(self):
-        from protean.ext.mypy_plugin import _has_attribute
-
-        info = MagicMock()
-        entry1 = MagicMock()
-        entry1.names = {"name": MagicMock()}
-        entry2 = MagicMock()
-        entry2.names = {"id": MagicMock()}
-        info.mro = [entry1, entry2]
-        assert _has_attribute(info, "id") is True
-
-
-def _method_symbol(name: str) -> SymbolTableNode:
-    return SymbolTableNode(MDEF, FuncDef(name, [], Block([])))
-
-
-def _var_symbol(name: str) -> SymbolTableNode:
-    return SymbolTableNode(MDEF, Var(name))
-
-
-class TestCopyBaseSymbols:
-    """Tests for _copy_base_symbols helper."""
-
-    def test_copies_non_dunder_symbols(self):
-        from protean.ext.mypy_plugin import _copy_base_symbols
-
-        info = MagicMock()
-        info.names = {}
-        base_info = MagicMock()
-        mro_entry = MagicMock()
-        mro_entry.names = {
-            "to_dict": _method_symbol("to_dict"),
-            "raise_": _method_symbol("raise_"),
-            "__init__": _method_symbol("__init__"),
-        }
-        base_info.mro = [mro_entry]
-
-        _copy_base_symbols(info, base_info)
-        assert "to_dict" in info.names
-        assert "raise_" in info.names
-        assert "__init__" not in info.names
-
-    def test_does_not_overwrite_existing_symbols(self):
-        from protean.ext.mypy_plugin import _copy_base_symbols
-
-        existing_sym = _method_symbol("to_dict")
-        info = MagicMock()
-        info.names = {"to_dict": existing_sym}
-        base_info = MagicMock()
-        mro_entry = MagicMock()
-        mro_entry.names = {
-            "to_dict": _method_symbol("to_dict"),
-            "raise_": _method_symbol("raise_"),
-        }
-        base_info.mro = [mro_entry]
-
-        _copy_base_symbols(info, base_info)
-        assert info.names["to_dict"] is existing_sym
-        assert "raise_" in info.names
-
-    def test_copied_methods_are_hidden_from_class_body_names(self):
-        """A copied ``dict`` method must not shadow the builtin in the class body."""
-        from protean.ext.mypy_plugin import _copy_base_symbols
-
-        info = MagicMock()
-        info.names = {}
-        base_info = MagicMock()
-        mro_entry = MagicMock()
-        method = _method_symbol("dict")
-        mro_entry.names = {"dict": method}
-        base_info.mro = [mro_entry]
-
-        _copy_base_symbols(info, base_info)
-        assert info.names["dict"].implicit is True
-        assert info.names["dict"].node is method.node
-
-    def test_copied_variables_keep_their_symbol(self):
-        """Class access to an implicit ``Var`` is an error, so variables are not marked."""
-        from protean.ext.mypy_plugin import _copy_base_symbols
-
-        info = MagicMock()
-        info.names = {}
-        base_info = MagicMock()
-        mro_entry = MagicMock()
-        var = _var_symbol("meta_")
-        mro_entry.names = {"meta_": var}
-        base_info.mro = [mro_entry]
-
-        _copy_base_symbols(info, base_info)
-        assert info.names["meta_"] is var
-        assert var.implicit is False
 
 
 class TestMakeSymbolTableNode:
@@ -729,6 +627,7 @@ class Order:
     bare_field_name: String
     typed_annotation: str = String(required=True)
     arithmetic: 1 + 2
+    builtin_call: str()
     first, second = 1, 2
 """
 
@@ -761,6 +660,9 @@ class Order:
 
     def test_invalid_expression_without_a_call_is_left_alone(self):
         assert self._check("arithmetic") is False
+
+    def test_call_to_a_non_field_without_keywords_is_left_alone(self):
+        assert self._check("builtin_call") is False
 
     def test_tuple_target_is_left_alone(self):
         assert self._check("tuple") is False

@@ -571,8 +571,10 @@ class handle:
         setattr(wrapper, "_start", self._start)
         setattr(wrapper, "_correlate", self._correlate)
         setattr(wrapper, "_end", self._end)
-        # The wrapper takes the same (instance, message) arguments as ``fn``
-        # and returns its result.
+        # Typed as ``fn`` so a checker keeps the handler's message and result
+        # types. The framework calls it positionally as (instance, message),
+        # and it returns ``None`` when consume-side idempotency skips a
+        # redelivered message.
         return cast(_HandlerFn, wrapper)
 
 
