@@ -466,6 +466,7 @@ nav:
       - "0044 · Custom-field extension contract": adr/0044-custom-field-extension-contract.md
       - "0045 · Handle only the errors you expect": adr/0045-handle-only-the-errors-you-expect.md
       - "0046 · One aggregate instance per Unit of Work": adr/0046-one-aggregate-instance-per-unit-of-work.md
+      - "0047 · Decorated elements subclass their base under mypy": adr/0047-mypy-plugin-subclasses-decorated-elements.md
     - Troubleshooting:
       - reference/troubleshooting.md
 

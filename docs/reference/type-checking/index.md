@@ -11,10 +11,11 @@ The plugin handles two patterns:
    `FieldSpec` at the class level but resolve to `str`, `int`, etc. at
    runtime. The plugin maps each factory to its Python type.
 2. **Decorator-based registration**: `@domain.aggregate`,
-   `@domain.entity`, and the other element decorators dynamically inject
-   base classes at runtime. The plugin injects the same base classes
-   during type analysis so methods like `raise_()`, `to_dict()`, and
-   injected attributes like `id` are visible to mypy.
+   `@domain.entity`, and the other element decorators make the class a
+   subclass of its Protean base at runtime. The plugin adds the same base
+   during type analysis, so methods like `raise_()` and `to_dict()`, the
+   injected `id`, and a keyword `__init__` are visible to mypy, and the
+   decorated class is accepted wherever a signature names its base class.
 
 For the background on why this is needed, see
 [Field System Internals](../../concepts/internals/field-system.md).
@@ -53,30 +54,98 @@ Field factories resolve to their Python types:
 | `Dict()` | `dict` |
 | `Identifier(identifier=True)` | `str` |
 | `Auto(identifier=True)` | `str` |
+| `ValueObject(Money)` | <code>Money &#124; None</code> |
+| `ValueObject(Money, required=True)` | `Money` |
+| `Reference(Order)` | <code>Order &#124; None</code> |
+| `Reference(Order, required=True)` | `Order` |
+| `HasOne(Shipment)` | <code>Shipment &#124; None</code> |
+| `HasMany(LineItem)` | `list[LineItem]` |
 
 Fields are `Optional` (union with `None`) unless they are `required=True`,
 have a `default`, or are `identifier=True`. Container fields (`List`, `Dict`)
-always have an implicit default and are never `Optional`.
+always have an implicit default and are never `Optional`. `HasOne` is always
+`Optional`, because an association cannot be required at runtime. A target
+named by string, such as `Reference("Order")`, resolves to `Any`, so the
+annotation on the field states the type.
+
+## Declaring fields for `mypy --strict`
+
+The typed-annotation form gives every field its real type. The annotation
+and the field call check each other, so a mismatch is a mypy error:
+
+```python
+@domain.aggregate
+class Order:
+    customer: str = String(required=True, max_length=50)
+    note: str | None = String()
+    total: Money = ValueObject(Money, required=True)
+    items: list[LineItem] = HasMany(LineItem)
+    count: int = String(required=True)  # error: str is not int
+    name: str = String()                # error: the field is optional
+```
+
+The assignment form (`customer = String(required=True)`) type-checks the
+same way. See
+[ADR-0038](../../adr/0038-canonical-field-style-for-mypy-strict.md)
+for why the typed-annotation form is the canonical one.
+
+The annotation-only form (`customer: String(required=True)`) also passes
+`mypy --strict`. mypy rejects a call in an annotation and keeps no type for
+it, so the plugin drops the annotation and accepts the field as a keyword
+argument. The field is typed `Any`. Construction by keyword and use of the
+field are clean, but mypy does not check the field's type, and returning it
+from a function declared to return `str` reports `no-any-return`. Move a
+field to the typed-annotation form to get its real type.
 
 ## Decorator Base Class Injection
 
-After `@domain.aggregate`-decorated (or equivalently decorated) classes are
-analyzed, mypy sees them as if they inherit from the corresponding base
-class. For aggregates, this exposes:
+A class decorated with `@domain.aggregate` (or another element decorator)
+is a subclass of the matching base class for mypy, as it is at runtime. For
+aggregates, this exposes:
 
 - `.id`: Auto-injected `str`
 - `.raise_(event)`
 - `.to_dict()`
-- `._events`
+- `.state_` and the other properties
 - All other `BaseAggregate` methods and attributes
+
+Because the class is a real subtype, it can be passed wherever the framework
+asks for the base: `domain.cache_for(Leaderboard)`,
+`cache.add(Leaderboard(...))`, `x: BaseValueObject = Money(...)`, and
+`isinstance(aggregate, Auditable)` all type-check, and `super().__init__(...)`
+in a decorated domain service reaches `BaseDomainService.__init__`.
+Aggregates, entities, value objects, commands, events, projections and queries
+also get a keyword `__init__` built from their fields.
 
 Supported decorators: `aggregate`, `entity`, `value_object`, `command`,
 `event`, `domain_service`, `command_handler`, `event_handler`,
-`application_service`, `subscriber`, `projection`, `projector`,
-`repository`, `database_model`, `email`.
+`application_service`, `subscriber`, `projection`, `projector`, `query`,
+`query_handler`, `process_manager`, `repository`, `database_model`, `email`.
 
 Both `@domain.aggregate` (bare) and `@domain.aggregate()` (called) forms
-are detected.
+are detected. If the class's own bases cannot be ordered with the Protean
+base (for example `@domain.value_object class Legacy(BaseModel)`), the
+plugin copies the base's methods onto the class instead, so they stay
+visible, but the class is not a subtype of the base.
+See
+[ADR-0047](../../adr/0047-mypy-plugin-subclasses-decorated-elements.md)
+for how the base is added.
+
+## Typed framework entry points
+
+- `domain.view_for(Projection)` returns `ReadView[Projection]`, so `.get()`
+  and `.find_by()` return the projection class. `.query` returns a
+  `ReadOnlyQuerySet`, and its results are not typed by projection.
+- `QuerySet` chain methods (`filter`, `exclude`, `order_by`, `limit`,
+  `offset`, `only`) return the queryset's own type, so a `ReadOnlyQuerySet`
+  stays read-only through a chain.
+- `cls._create_new()` and `cls.from_events(...)` on an event-sourced
+  aggregate return that aggregate's class.
+- `@handle` takes an event or command class, an event type string such as
+  `"Customers.CustomerFact.v1"`, or the `"$any"` wildcard, and the decorated
+  method keeps its signature.
+- `@domain.upcaster(event_type=..., from_version=..., to_version=...)` keeps
+  the decorated class's type.
 
 ## VS Code
 
@@ -101,9 +170,9 @@ Protean's own repository ships this configuration in its
   arguments. If you pass `auto_add_id_field=False` to `@domain.aggregate`,
   the plugin still injects `id`. Use `# type: ignore[attr-defined]` if needed.
 
-- **Autocomplete for injected methods**: While mypy correctly type-checks
-  injected base class methods, some IDE autocomplete engines may not show them
-  in suggestions because the base class is not in the explicit MRO.
+- **Autocomplete for injected methods**: The base class is added for mypy
+  only. IDE engines that do not run the plugin, such as Pylance, may not
+  show the base's methods in suggestions.
 
 - **Explicit inheritance**: If you already inherit from a base class
   (e.g. `class Order(BaseAggregate):`), the plugin detects this and skips
