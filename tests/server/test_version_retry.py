@@ -785,6 +785,212 @@ class TestCommitFailureRetry:
         assert test_domain.repository_for(User).get(identifier).name == "Jane"
 
 
+class TestSyncEventHandlerConflict:
+    """A version conflict raised by a sync event handler does not rerun the command.
+
+    Under sync processing the event handlers run inside the command's commit,
+    after its writes are saved. Rerunning the command would save them again.
+    """
+
+    @staticmethod
+    def _registering_handler(runs: list[str]) -> type[BaseCommandHandler]:
+        class RegisteringHandler(BaseCommandHandler):
+            @handle(RenameUser)
+            def rename(self, command: RenameUser) -> None:
+                runs.append(command.user_id)
+                user = User.register(
+                    user_id=command.user_id, name=command.name, email="j@example.com"
+                )
+                current_domain.repository_for(User).add(user)
+
+        return RegisteringHandler
+
+    @staticmethod
+    def _stored_types(test_domain, user_id: str) -> list[str]:
+        messages = test_domain.event_store.store.read(f"test::user-{user_id}")
+        return [m.metadata.headers.type for m in messages]
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_conflict_from_sync_event_handler_is_not_retried(
+        self, mock_sleep, test_domain
+    ):
+        runs: list[str] = []
+        handler_runs = 0
+        RegisteringHandler = self._registering_handler(runs)
+
+        class ConflictingReaction(BaseEventHandler):
+            @handle(UserRegistered)
+            def on_registered(self, event: UserRegistered) -> None:
+                nonlocal handler_runs
+                handler_runs += 1
+                raise ExpectedVersionError("reaction conflicted")
+
+        test_domain.register(RegisteringHandler, part_of=User)
+        test_domain.register(ConflictingReaction, part_of=User)
+        test_domain.init(traverse=False)
+        assert test_domain.config["event_processing"] == "sync"
+
+        user_id = str(uuid4())
+        enriched = test_domain._enrich_command(
+            RenameUser(user_id=user_id, name="Jane"), True
+        )
+        with pytest.raises(TransactionError) as exc_info:
+            RegisteringHandler._handle(enriched)
+
+        cause = exc_info.value.__cause__
+        assert isinstance(cause, ExpectedVersionError)
+        assert str(cause) == "reaction conflicted"
+        assert exc_info.value.extra_info["original_exception"] == (
+            "ExpectedVersionError"
+        )
+        assert runs == [user_id]
+        # The reaction's own @handle wrapper retried it, the command did not.
+        assert handler_runs == 1 + _VERSION_RETRY_DEFAULTS["max_retries"]
+        assert self._stored_types(test_domain, user_id) == ["Test.UserRegistered.v1"]
+        assert test_domain.repository_for(User).get(user_id).name == "Jane"
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_conflict_from_sync_event_handler_through_process(
+        self, mock_sleep, test_domain
+    ):
+        runs: list[str] = []
+        RegisteringHandler = self._registering_handler(runs)
+
+        class ConflictingReaction(BaseEventHandler):
+            @handle(UserRegistered)
+            def on_registered(self, event: UserRegistered) -> None:
+                raise ExpectedVersionError("reaction conflicted")
+
+        test_domain.register(RegisteringHandler, part_of=User)
+        test_domain.register(ConflictingReaction, part_of=User)
+        test_domain.init(traverse=False)
+
+        user_id = str(uuid4())
+        with pytest.raises(TransactionError) as exc_info:
+            test_domain.process(
+                RenameUser(user_id=user_id, name="Jane"), asynchronous=False
+            )
+
+        assert isinstance(exc_info.value.__cause__, ExpectedVersionError)
+        assert runs == [user_id]
+        assert self._stored_types(test_domain, user_id) == ["Test.UserRegistered.v1"]
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_other_handler_classes_run_after_a_conflict(self, mock_sleep, test_domain):
+        runs: list[str] = []
+        ran: list[str] = []
+        RegisteringHandler = self._registering_handler(runs)
+
+        class ConflictingReaction(BaseEventHandler):
+            @handle(UserRegistered)
+            def on_registered(self, event: UserRegistered) -> None:
+                raise ExpectedVersionError("reaction conflicted")
+
+        class RecordingReaction(BaseEventHandler):
+            @handle(UserRegistered)
+            def on_registered(self, event: UserRegistered) -> None:
+                ran.append(event.user_id)
+
+        test_domain.register(RegisteringHandler, part_of=User)
+        test_domain.register(ConflictingReaction, part_of=User)
+        test_domain.register(RecordingReaction, part_of=User)
+        test_domain.init(traverse=False)
+
+        user_id = str(uuid4())
+        enriched = test_domain._enrich_command(
+            RenameUser(user_id=user_id, name="Jane"), True
+        )
+        with pytest.raises(TransactionError) as exc_info:
+            RegisteringHandler._handle(enriched)
+
+        assert isinstance(exc_info.value.__cause__, ExpectedVersionError)
+        assert ran == [user_id]
+        assert runs == [user_id]
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_conflict_and_another_failure_are_grouped(self, mock_sleep, test_domain):
+        runs: list[str] = []
+        RegisteringHandler = self._registering_handler(runs)
+
+        class ConflictingReaction(BaseEventHandler):
+            @handle(UserRegistered)
+            def on_registered(self, event: UserRegistered) -> None:
+                raise ExpectedVersionError("reaction conflicted")
+
+        class FailingReaction(BaseEventHandler):
+            @handle(UserRegistered)
+            def on_registered(self, event: UserRegistered) -> None:
+                raise ValueError("reaction failed")
+
+        test_domain.register(RegisteringHandler, part_of=User)
+        test_domain.register(ConflictingReaction, part_of=User)
+        test_domain.register(FailingReaction, part_of=User)
+        test_domain.init(traverse=False)
+
+        user_id = str(uuid4())
+        enriched = test_domain._enrich_command(
+            RenameUser(user_id=user_id, name="Jane"), True
+        )
+        with pytest.raises(TransactionError) as exc_info:
+            RegisteringHandler._handle(enriched)
+
+        cause = exc_info.value.__cause__
+        assert isinstance(cause, ExceptionGroup)
+        assert sorted(type(e).__name__ for e in cause.exceptions) == [
+            "ExpectedVersionError",
+            "ValueError",
+        ]
+        assert runs == [user_id]
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_handler_own_write_conflict_is_retried_by_the_handler(
+        self, mock_sleep, test_domain
+    ):
+        runs: list[str] = []
+        attempts = 0
+        stale = None
+        RegisteringHandler = self._registering_handler(runs)
+
+        class RenamingReaction(BaseEventHandler):
+            @handle(UserRegistered)
+            def on_registered(self, event: UserRegistered) -> None:
+                nonlocal attempts
+                if stale is None or event.user_id == stale.user_id:
+                    return  # setup registers the other user; ignore it
+                attempts += 1
+                repo = current_domain.repository_for(User)
+                # The first attempt writes a copy loaded before another write
+                # committed, so its own commit hits a real version conflict.
+                if attempts == 1:
+                    other = stale
+                else:
+                    other = repo.get(stale.user_id)
+                other.change_name("Reacted")
+                repo.add(other)
+
+        test_domain.register(RegisteringHandler, part_of=User)
+        test_domain.register(RenamingReaction, part_of=User)
+        test_domain.init(traverse=False)
+
+        other_id = _create_user(test_domain)
+        stale = test_domain.repository_for(User).get(other_id)
+        with UnitOfWork():
+            winner = test_domain.repository_for(User).get(other_id)
+            winner.change_name("Winner")
+            test_domain.repository_for(User).add(winner)
+
+        user_id = str(uuid4())
+        enriched = test_domain._enrich_command(
+            RenameUser(user_id=user_id, name="Jane"), True
+        )
+        RegisteringHandler._handle(enriched)
+
+        assert runs == [user_id]
+        assert attempts == 2
+        assert test_domain.repository_for(User).get(other_id).name == "Reacted"
+        assert self._stored_types(test_domain, user_id) == ["Test.UserRegistered.v1"]
+
+
 # ---------------------------------------------------------------------------
 # Logging tests
 # ---------------------------------------------------------------------------

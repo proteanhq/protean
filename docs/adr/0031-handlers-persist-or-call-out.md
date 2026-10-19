@@ -2,6 +2,9 @@
 
 **Status:** Accepted
 
+> Amended October 2026, see "Siblings are independent in failure" under
+> Decision.
+
 **Date:** August 2026
 
 ## Context
@@ -72,17 +75,24 @@ Around it:
 
 - **Siblings are independent in failure**: Fact 3 above is a defect against the
   model this ADR states, and it gets fixed. Two failures are excluded from that,
-  for reasons that come from the machinery rather than the principle. An
-  `ExpectedVersionError` propagates at once. Under synchronous processing the
-  enclosing Unit of Work's commit classifies by exception type, and a group is
-  not an `ExpectedVersionError`, so the conflict would surface as a
-  `TransactionError` and the enclosing handler's version retry would never fire.
-  (The conflicting method's own retry sits inside `@handle` and has already
-  exhausted by this point.) A `BaseException` that is not an `Exception` also
-  stops dispatch. On both paths the failures already collected are attached to
-  the raised exception as a note and logged, since a version conflict is matched
-  by type and the engine catches only `Exception`, so nothing downstream would
-  otherwise report them.
+  for reasons that come from the machinery rather than the principle. Among one
+  handler class's methods, an `ExpectedVersionError` propagates at once: the
+  conflict dooms the message, which is redelivered, and every sibling runs
+  again. (The conflicting method's own retry sits inside `@handle` and has
+  already exhausted by this point.) A `BaseException` that is not an `Exception`
+  also stops dispatch. On both paths the failures already collected are attached
+  to the raised exception as a note and logged, since a version conflict is
+  matched by type and the engine catches only `Exception`, so nothing
+  downstream would otherwise report them.
+
+  *Amended (October 2026): across handler classes under synchronous
+  processing, an `ExpectedVersionError` is collected like any other failure,
+  and the command's commit reports it as a `TransactionError` with the conflict
+  as its `__cause__`. The first version of this decision let the conflict stop
+  the drain and reach the commit unchanged. That made the command's version
+  retry run the command again after its writes were already saved, so it saved
+  them twice. The handler's own retry inside `@handle` is the one that resolves
+  its conflict. The `BaseException` exclusion is unchanged.*
 
 - **Process managers are out of scope**: `BaseProcessManager` overrides
   `_handle` and runs its own loop, so it keeps the old skip-on-first-failure

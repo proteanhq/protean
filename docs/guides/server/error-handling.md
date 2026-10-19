@@ -217,6 +217,14 @@ When a handler raises `ExpectedVersionError`, the framework:
 This is transparent, the subscription never sees transient version conflicts.
 Only persistent conflicts (extremely rare) surface as failures.
 
+Under `event_processing = "sync"`, event handlers run inside the command's
+commit, after the command's writes are saved. Each event handler still retries
+its own conflicts. When its retries run out, the caller of `domain.process()`
+gets a `TransactionError` whose `__cause__` is the `ExpectedVersionError`. The
+command is not run again, since its writes are already saved. A conflict on
+the command's own writes still raises `ExpectedVersionError`, and the command
+handler retries it.
+
 ### Why this works
 
 Each retry creates a new `UnitOfWork`. The handler re-reads the aggregate
