@@ -6,6 +6,8 @@ from unittest.mock import patch
 import pytest
 import redis
 
+from tests.shared import REDIS_URI
+
 
 @pytest.mark.redis
 class TestRedisConnectionHandling:
@@ -274,14 +276,33 @@ class TestRedisDataReset:
         # Verify streams are cleared
         assert broker.redis_instance.llen("test_stream") == 0
 
+    def test_data_reset_leaves_other_databases_alone(self, broker):
+        # Redis database 12 is outside every domain and adapter config in the
+        # suite, so no reset or teardown flushes it while this test runs under
+        # xdist. The tests that share it each use their own key.
+        other_db = redis.Redis.from_url(f"{REDIS_URI}/12")
+        other_key = "protean-test:redis-pubsub-reset-survivor"
+        try:
+            other_db.set(other_key, "kept")
+            broker.publish("reset_stream", {"message": "test"})
+            assert broker.redis_instance.llen("reset_stream") == 1
+
+            broker._data_reset()
+
+            assert broker.redis_instance.llen("reset_stream") == 0
+            assert other_db.get(other_key) == b"kept"
+        finally:
+            other_db.delete(other_key)
+            other_db.close()
+
     def test_data_reset_exception_handling(self, broker, caplog):
         """Test that _data_reset method handles exceptions properly"""
         # Create some consumer groups to verify they get cleared even with exceptions
         broker.get_next("test_stream", "test_group")
 
-        # Mock Redis instance to raise exception when calling flushall()
-        with patch.object(broker.redis_instance, "flushall") as mock_flushall:
-            mock_flushall.side_effect = redis.ConnectionError("Connection failed")
+        # Mock Redis instance to raise exception when calling flushdb()
+        with patch.object(broker.redis_instance, "flushdb") as mock_flushdb:
+            mock_flushdb.side_effect = redis.ConnectionError("Connection failed")
 
             # Clear any existing logs
             caplog.clear()
@@ -291,8 +312,8 @@ class TestRedisDataReset:
                 # Call _data_reset which should handle the exception
                 broker._data_reset()
 
-                # Consumer groups should NOT be cleared if Redis flushall fails
-                # because clear() is called in the try block after flushall()
+                # Consumer groups should NOT be cleared if Redis flushdb fails
+                # because clear() is called in the try block after flushdb()
                 assert len(broker._consumer_groups) == 1
 
                 # Should log error message

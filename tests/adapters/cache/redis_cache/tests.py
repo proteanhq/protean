@@ -161,10 +161,7 @@ class TestCachePersistenceFlows:
         monkeypatch.setattr(RedisCache, "_DELETE_BATCH_SIZE", 2)
 
         cache = test_domain.cache_for(Token)
-        # Clear only this suite's DB. `flush_all` runs FLUSHALL, which wipes
-        # every DB on the server, including other Redis suites running
-        # alongside this one.
-        cache.get_connection().flushdb()
+        cache.flush_all()
         for i in range(5):
             cache.add(Token(key=f"batch-{i}", user_id="foo", email="bar@baz.com"))
         assert cache.count("token:::batch-*") == 5
@@ -231,6 +228,26 @@ class TestCachePersistenceFlows:
 
         total = cache.count("token:::qu*")
         assert total == 0
+
+    def test_flushing_cache_leaves_other_databases_alone(self, test_domain):
+        cache = test_domain.cache_for(Token)
+        # Redis database 12 is outside every domain and adapter config in the
+        # suite, so no reset or teardown flushes it while this test runs under
+        # xdist. The tests that share it each use their own key.
+        other_db = Redis.from_url(f"{REDIS_URI}/12")
+        other_key = "protean-test:cache-flush-all-survivor"
+        try:
+            other_db.set(other_key, "kept")
+            cache.add(Token(key="flushed", user_id="foo", email="bar@baz.com"))
+            assert cache.get("token:::flushed") is not None
+
+            cache.flush_all()
+
+            assert cache.get("token:::flushed") is None
+            assert other_db.get(other_key) == b"kept"
+        finally:
+            other_db.delete(other_key)
+            other_db.close()
 
 
 @pytest.mark.redis

@@ -66,13 +66,18 @@ Omitting the TTL (or passing an empty string) uses the cache's configured `TTL`.
 redis://[[username]:[password]@]host[:port][/database]
 
 # Examples:
-redis://localhost:6379/2           # Local Redis, database 2
-redis://:password@redis.prod:6379  # With password
+redis://localhost:6379/2             # Local Redis, database 2
+redis://:password@redis.prod:6379/2  # With password, database 2
 ```
 
-!!!tip
-    Use a different Redis database number (the `/2` suffix) for the cache than
-    for the broker to keep concerns separated.
+!!!note
+    Give the cache a Redis database of its own (the `/2` suffix).
+    `flush_all()` runs `FLUSHDB` on the configured database, and `RedisCache`
+    adds no cache-specific namespace to its keys, so it removes every key in
+    that database. If the
+    cache shares a database with a broker, `flush_all()` also empties the
+    broker's streams and consumer groups. Other databases on the server are
+    not touched.
 
 ## Usage
 
