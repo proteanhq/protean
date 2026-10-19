@@ -504,6 +504,11 @@ def _inject_base_class(
     if _is_subclass(info, base_info):
         # Already a subclass — just ensure auto-id and HasMany methods
         _maybe_inject_auto_id(ctx, info, decorator_name)
+        # A class that extends a decorated element (``class Account(Auditable)``
+        # with ``Auditable`` abstract) inherits the parent's synthesized
+        # ``__init__``, which lacks this class's own fields.
+        if _inherited_init_fields(info):
+            _synthesize_init(ctx, decorator_name)
         _synthesize_has_many_methods(ctx)
         _strip_rejected_field_annotations(ctx)
         return
@@ -851,6 +856,14 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
                 file=sys.stderr,
             )
 
+    # Fields declared on decorated parent elements, unless redeclared here
+    own_names = {name for name, _ in fields}
+    fields = [
+        (name, field_type)
+        for name, field_type in _inherited_init_fields(info)
+        if name not in own_names
+    ] + fields
+
     # Add 'id' field if this is an aggregate/entity
     if decorator_name in _AUTO_ID_DECORATORS:
         # id is already injected as a Var — add it as a kwarg too
@@ -904,6 +917,37 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
             f"{info.fullname}: ({field_desc})",
             file=sys.stderr,
         )
+
+
+def _inherited_init_fields(info: TypeInfo) -> list[tuple[str, Type]]:
+    """Return the keyword fields of ``__init__`` methods synthesized on parents.
+
+    Walks the MRO from the nearest parent up to the first framework class. A
+    parent's ``__init__`` counts when every argument after ``self`` is
+    keyword-only and optional, the shape ``_synthesize_init`` builds. The
+    signature is read from the parent's symbol table, so this works for a
+    parent loaded from mypy's cache as well.
+    """
+    fields: list[tuple[str, Type]] = []
+    seen: set[str] = set()
+    for entry in info.mro[1:]:
+        if entry.fullname.startswith(("protean.", "pydantic.", "builtins.")):
+            break
+        sym = entry.names.get("__init__")
+        if sym is None or not isinstance(sym.node, FuncDef):
+            continue
+        signature = sym.node.type
+        if not isinstance(signature, CallableType):
+            continue
+        if any(kind != ARG_NAMED_OPT for kind in signature.arg_kinds[1:]):
+            continue
+        for name, arg_type in zip(
+            signature.arg_names[1:], signature.arg_types[1:], strict=True
+        ):
+            if name is not None and name not in seen:
+                seen.add(name)
+                fields.append((name, arg_type))
+    return fields
 
 
 def _resolve_field_type_for_init(

@@ -34,6 +34,13 @@ class Thing:
     plain: Plain | None = ValueObject(Plain)
 
 
+# A decorated aggregate that extends a decorated abstract aggregate takes the
+# fields of both by keyword.
+@domain.aggregate
+class Account(Auditable):
+    customer_id: str = String(required=True)
+
+
 @domain.projection
 class Leaderboard:
     account_id: str = Identifier(identifier=True)
@@ -59,6 +66,9 @@ repository.add(Thing(name="x"))
 view = domain.view_for(Leaderboard)
 
 thing = Thing(name="x")
+account = Account(customer_id="c1", changed_by="admin")
+reveal_type(account.changed_by)  # R: str | None
+Account(customer="c1")  # E: call-arg
 reveal_type(thing.state_.is_persisted)  # R: bool
 
 
