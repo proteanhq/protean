@@ -197,6 +197,10 @@ sequenceDiagram
 
 6. **Dispatch sync handlers**: If `event_processing` is set to `"sync"`,
    the UoW dispatches each event to its registered event handlers immediately.
+   The commit's writes are already saved by then, so a handler's failure,
+   `ExpectedVersionError` included, is raised as a `TransactionError` with the
+   handler's exception as its `__cause__`. See
+   [the 0.18 migration note](../../reference/migration/v0-18.md#a-synchronous-event-handlers-version-conflict-no-longer-reruns-the-command).
 
 7. **Clear events**: Events are cleared from the aggregates in the identity
    map so they are not re-processed.
@@ -326,8 +330,11 @@ for the three conflict categories and how to respond to each.
 
 ## Errors during commit
 
-If the database commit fails for reasons other than version conflicts, the UoW
-raises a `TransactionError` with diagnostic information:
+If the database commit fails for reasons other than version conflicts on the
+commit's own writes, the UoW raises a `TransactionError` with diagnostic
+information. A version conflict raised by a synchronous event handler also
+arrives as a `TransactionError`, with the `ExpectedVersionError` as its
+`__cause__`:
 
 ```python
 --8<-- "guides/change-state/unit-of-work/002.py:commit_errors"

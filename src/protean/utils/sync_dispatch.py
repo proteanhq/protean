@@ -24,12 +24,13 @@ Each ``(event, handler_cls)`` pair is an independent reaction to a fact: under
 async each handler class has its own subscription, so one class failing never
 touches another. The drain gives sync the same guarantee (ADR-0031). Every pair
 runs, failures are collected, and one (or a group) surfaces once the drain
-finishes. An ``ExpectedVersionError`` is collected like any other failure: the
-drain runs after the enclosing commit has saved its writes, so rerunning the
-command would not resolve a handler's conflict, and each handler's own
-``@handle`` wrapper already retries it. One failure is excluded and ends the
-drain where it is raised: a ``BaseException`` that is not an ``Exception`` (an
-interrupt) must not be swallowed.
+finishes. An ``ExpectedVersionError`` is collected like any other failure.
+When a commit calls the drain, the commit has already saved its writes, so
+rerunning the command would not resolve a handler's conflict. An event
+handler's or projector's own ``@handle`` wrapper retries the conflict when
+version retry is enabled. One failure is excluded and ends the drain where it
+is raised: a ``BaseException`` that is not an ``Exception`` (an interrupt) must
+not be swallowed.
 """
 
 from __future__ import annotations

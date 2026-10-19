@@ -18,7 +18,11 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.unit_of_work import UnitOfWork
-from protean.exceptions import ExpectedVersionError, TransactionError
+from protean.exceptions import (
+    ConfigurationError,
+    ExpectedVersionError,
+    TransactionError,
+)
 from protean.fields import Identifier, String
 from protean.utils import mixins
 from protean.utils.globals import current_domain
@@ -812,7 +816,7 @@ class TestSyncEventHandlerConflict:
 
     @patch("protean.utils.mixins.time.sleep")
     def test_conflict_from_sync_event_handler_is_not_retried(
-        self, mock_sleep, test_domain
+        self, mock_sleep, test_domain, caplog
     ):
         runs: list[str] = []
         handler_runs = 0
@@ -834,12 +838,19 @@ class TestSyncEventHandlerConflict:
         enriched = test_domain._enrich_command(
             RenameUser(user_id=user_id, name="Jane"), True
         )
-        with pytest.raises(TransactionError) as exc_info:
+        with (
+            caplog.at_level(logging.ERROR, logger="protean.core.unit_of_work"),
+            pytest.raises(TransactionError) as exc_info,
+        ):
             RegisteringHandler._handle(enriched)
 
         cause = exc_info.value.__cause__
         assert isinstance(cause, ExpectedVersionError)
         assert str(cause) == "reaction conflicted"
+        failed = [r for r in caplog.records if r.getMessage() == "uow.commit_failed"]
+        assert len(failed) == 1
+        assert failed[0].exc_info is not None
+        assert failed[0].exc_info[0] is ExpectedVersionError
         assert exc_info.value.extra_info["original_exception"] == (
             "ExpectedVersionError"
         )
@@ -940,6 +951,75 @@ class TestSyncEventHandlerConflict:
             "ExpectedVersionError",
             "ValueError",
         ]
+        assert runs == [user_id]
+
+    @pytest.mark.parametrize(
+        "make_error",
+        [
+            # Named like SQLAlchemy's, which the commit translates to a
+            # version conflict when the commit's own write raises it.
+            lambda: type("StaleDataError", (Exception,), {})("stale in reaction"),
+            lambda: ConfigurationError("reaction misconfigured"),
+        ],
+        ids=["stale-data-error", "configuration-error"],
+    )
+    def test_any_reaction_failure_is_wrapped_and_not_retried(
+        self, test_domain, make_error
+    ):
+        runs: list[str] = []
+        RegisteringHandler = self._registering_handler(runs)
+        error = make_error()
+
+        class FailingReaction(BaseEventHandler):
+            @handle(UserRegistered)
+            def on_registered(self, event: UserRegistered) -> None:
+                raise error
+
+        test_domain.register(RegisteringHandler, part_of=User)
+        test_domain.register(FailingReaction, part_of=User)
+        test_domain.init(traverse=False)
+
+        user_id = str(uuid4())
+        enriched = test_domain._enrich_command(
+            RenameUser(user_id=user_id, name="Jane"), True
+        )
+        with pytest.raises(TransactionError) as exc_info:
+            RegisteringHandler._handle(enriched)
+
+        assert exc_info.value.__cause__ is error
+        assert exc_info.value.extra_info["original_exception"] == (type(error).__name__)
+        assert runs == [user_id]
+        assert self._stored_types(test_domain, user_id) == ["Test.UserRegistered.v1"]
+
+    def test_a_reaction_failure_with_a_broken_str_keeps_its_cause(self, test_domain):
+        runs: list[str] = []
+        RegisteringHandler = self._registering_handler(runs)
+
+        class Unprintable(Exception):
+            def __str__(self) -> str:
+                raise RuntimeError("str is broken")
+
+        error = Unprintable()
+
+        class FailingReaction(BaseEventHandler):
+            @handle(UserRegistered)
+            def on_registered(self, event: UserRegistered) -> None:
+                raise error
+
+        test_domain.register(RegisteringHandler, part_of=User)
+        test_domain.register(FailingReaction, part_of=User)
+        test_domain.init(traverse=False)
+
+        user_id = str(uuid4())
+        enriched = test_domain._enrich_command(
+            RenameUser(user_id=user_id, name="Jane"), True
+        )
+        with pytest.raises(TransactionError) as exc_info:
+            RegisteringHandler._handle(enriched)
+
+        assert exc_info.value.__cause__ is error
+        assert exc_info.value.extra_info["original_exception"] == "Unprintable"
+        assert exc_info.value.extra_info["original_message"] == "<unprintable>"
         assert runs == [user_id]
 
     @patch("protean.utils.mixins.time.sleep")

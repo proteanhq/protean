@@ -717,12 +717,16 @@ class HandlerMixin:
         ``ExceptionGroup``.
 
         Two things are not collected, and both end dispatch where they are
-        raised. An ``ExpectedVersionError`` propagates at once, because the
-        conflict dooms the message: it is redelivered and every sibling runs
-        again, so there is nothing to gain by carrying on. A ``BaseException``
-        that is not an ``Exception``, such as ``KeyboardInterrupt``, propagates
-        for the obvious reason. On either path, failures gathered before it are attached to it
-        as a note and logged, since nothing downstream would otherwise see them.
+        raised. An ``ExpectedVersionError`` propagates at once. Under async
+        processing the conflict dooms the message: it is redelivered and every
+        sibling runs again, so there is nothing to gain by carrying on. Under
+        sync processing nothing redelivers, so the methods after the conflict
+        do not run for this event, and the caller gets a ``TransactionError``
+        from the enclosing commit. A ``BaseException`` that is not an
+        ``Exception``, such as ``KeyboardInterrupt``, propagates for the
+        obvious reason. On either path, failures gathered before it are
+        attached to it as a note and logged, since nothing downstream would
+        otherwise see them.
         """
         # Map element_type to access log kind
         _KIND_MAP = {
@@ -746,9 +750,10 @@ class HandlerMixin:
                 with access_log_handler(kind, item, cls, handler_method.__name__):
                     handler_method(cls(), item)
             except ExpectedVersionError as exc:
-                # Not collected. A version conflict dooms the whole message: it
-                # is redelivered and every sibling runs again, so there is
-                # nothing to gain by carrying on.
+                # Not collected. Under async a version conflict dooms the whole
+                # message: it is redelivered and every sibling runs again, so
+                # there is nothing to gain by carrying on. Under sync the
+                # remaining methods are skipped for this event.
                 _carry_discarded_failures(cls, item, failures, exc)
                 raise
             # `Exception` and not `BaseException`, so an interrupt or a

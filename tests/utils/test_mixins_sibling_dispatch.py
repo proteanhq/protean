@@ -257,13 +257,11 @@ class TestHowFailuresSurface:
 
 
 class TestVersionConflictsAreNotCollected:
-    """A version conflict has to keep its own type all the way out.
+    """A version conflict ends dispatch of one handler class's methods.
 
-    ``UnitOfWork.commit`` classifies by exception type, and the version-retry
-    loop in ``@handle`` matches on ``ExpectedVersionError``. Neither matches an
-    ``ExceptionGroup``, so collecting a conflict alongside another failure would
-    surface it as a ``TransactionError`` and the retry that resolves it would
-    stop firing.
+    Under async processing the conflict dooms the message: it is redelivered
+    and every sibling method runs again, so the conflict propagates as itself
+    instead of being collected.
     """
 
     def test_a_conflict_is_not_grouped_with_another_conflict(self):

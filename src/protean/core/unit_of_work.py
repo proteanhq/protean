@@ -634,19 +634,23 @@ class UnitOfWork:
         self, exc: Exception, all_events: defaultdict[str, list[Any]]
     ) -> TransactionError:
         """Wrap a failed commit's exception in a ``TransactionError``."""
+        # `str()` of a group is its own message and a count, so flatten that
+        # one. For anything else `str()` is the message, and prefixing the type
+        # would duplicate `original_exception`.
+        if isinstance(exc, BaseExceptionGroup):
+            original_message = describe_exception(exc)
+        else:
+            # A handler's exception reaches here too, and a user ``__str__``
+            # that raises would otherwise replace the failure being reported.
+            try:
+                original_message = str(exc)
+            except Exception:  # noqa: BLE001 - a __str__ is user code
+                original_message = "<unprintable>"
         return TransactionError(
             f"Unit of Work commit failed: {describe_exception(exc)}",
             extra_info={
                 "original_exception": exc.__class__.__name__,
-                # `str()` of a group is its own message and a count, so
-                # flatten that one. For anything else `str()` is the
-                # message, and prefixing the type would duplicate
-                # `original_exception` right above.
-                "original_message": (
-                    describe_exception(exc)
-                    if isinstance(exc, BaseExceptionGroup)
-                    else str(exc)
-                ),
+                "original_message": original_message,
                 "sessions": list(self._sessions.keys()),
                 "events_count": sum(len(events) for events in all_events.values()),
                 "messages_count": len(self._messages_to_dispatch),

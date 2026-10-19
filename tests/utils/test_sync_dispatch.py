@@ -316,7 +316,7 @@ def test_a_lone_expected_version_error_keeps_its_own_type(test_domain):
         assert getattr(exc_info.value, "__notes__", []) == []
 
 
-def test_base_exception_ends_the_drain_at_once(test_domain):
+def test_base_exception_ends_the_drain_at_once(test_domain, caplog):
     """A BaseException that is not an Exception — an interrupt — is never
     collected: it stops the drain immediately and carries the discarded
     failures, so nothing swallows the interrupt."""
@@ -343,10 +343,20 @@ def test_base_exception_ends_the_drain_at_once(test_domain):
         enqueue_sync_dispatch("e", A)
         enqueue_sync_dispatch("e", Interrupt)
         enqueue_sync_dispatch("e", Never)
-        with pytest.raises(KeyboardInterrupt) as exc_info:
+        with (
+            caplog.at_level(logging.ERROR, logger="protean.utils.sync_dispatch"),
+            pytest.raises(KeyboardInterrupt) as exc_info,
+        ):
             drain_sync_dispatch()
 
         assert ran == ["A", "Interrupt"]
+        discarded = [
+            r
+            for r in caplog.records
+            if r.getMessage().startswith("sync_dispatch.sibling_failures_discarded")
+        ]
+        assert len(discarded) == 1
+        assert discarded[0].levelno == logging.ERROR
         notes = getattr(exc_info.value, "__notes__", [])
         assert any("RuntimeError" in note for note in notes)
         assert getattr(g, "_sync_dispatch_queue", None) is None
