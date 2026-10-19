@@ -149,12 +149,20 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         # (not vars(cls)).  Pydantic and __pydantic_init_subclass__ scan vars(cls)
         # for descriptors, so they must live there.  We also explicitly trigger
         # __set_name__ because setattr does NOT invoke it.
+        #
+        # In the typed-annotation style (``total: Money | None =
+        # ValueObject(Money)``) the descriptor is already in vars(cls), but the
+        # type annotation stays behind. Pydantic would then build a plain model
+        # field from it that shadows the descriptor, so drop it here too.
         own_annots = inspect.get_annotations(cls)
+        namespace = vars(cls)
         to_remove: list[str] = []
         for name, value in list(own_annots.items()):
             if isinstance(value, ValueObject):
                 setattr(cls, name, value)
                 value.__set_name__(cls, name)
+                to_remove.append(name)
+            elif isinstance(namespace.get(name), ValueObject):
                 to_remove.append(name)
         if to_remove:
             annots = dict(own_annots)
