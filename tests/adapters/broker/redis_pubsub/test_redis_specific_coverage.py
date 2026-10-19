@@ -277,8 +277,9 @@ class TestRedisDataReset:
         assert broker.redis_instance.llen("test_stream") == 0
 
     def test_data_reset_leaves_other_databases_alone(self, broker):
-        # No other suite uses this database, so nothing else flushes it
-        # while this test runs under xdist.
+        # Redis database 12 is outside every domain and adapter config in the
+        # suite, so no reset or teardown flushes it while this test runs under
+        # xdist. The tests that share it each use their own key.
         other_db = redis.Redis.from_url(f"{REDIS_URI}/12")
         other_key = "protean-test:redis-pubsub-reset-survivor"
         try:

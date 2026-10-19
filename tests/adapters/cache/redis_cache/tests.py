@@ -231,8 +231,9 @@ class TestCachePersistenceFlows:
 
     def test_flushing_cache_leaves_other_databases_alone(self, test_domain):
         cache = test_domain.cache_for(Token)
-        # No other suite uses this database, so nothing else flushes it
-        # while this test runs under xdist.
+        # Redis database 12 is outside every domain and adapter config in the
+        # suite, so no reset or teardown flushes it while this test runs under
+        # xdist. The tests that share it each use their own key.
         other_db = Redis.from_url(f"{REDIS_URI}/12")
         other_key = "protean-test:cache-flush-all-survivor"
         try:
