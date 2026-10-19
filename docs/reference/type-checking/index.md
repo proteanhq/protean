@@ -74,14 +74,36 @@ The typed-annotation form gives every field its real type. The annotation
 and the field call check each other, so a mismatch is a mypy error:
 
 ```python
+from protean import Domain
+from protean.fields import Float, HasMany, String, ValueObject
+
+domain = Domain(name="Shop")
+
+
+@domain.value_object
+class Money:
+    amount: float = Float(required=True)
+
+
+@domain.entity(part_of="Order")
+class LineItem:
+    sku: str = String(required=True)
+
+
 @domain.aggregate
 class Order:
     customer: str = String(required=True, max_length=50)
     note: str | None = String()
     total: Money = ValueObject(Money, required=True)
     items: list[LineItem] = HasMany(LineItem)
-    count: int = String(required=True)  # error: str is not int
-    name: str = String()                # error: the field is optional
+```
+
+Both of these lines are mypy errors:
+
+```python
+# fragment
+count: int = String(required=True)  # error: str is not int
+name: str = String()                # error: the field is optional
 ```
 
 The assignment form (`customer = String(required=True)`) type-checks the

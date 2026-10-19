@@ -671,3 +671,83 @@ class Order:
         from protean.ext.mypy_plugin import _is_rejected_field_annotation
 
         assert _is_rejected_field_annotation(object()) is False
+
+
+class TestInheritedInitFields:
+    """Which parent ``__init__`` signatures contribute keyword fields."""
+
+    def _entry(self, fullname: str, init: object = None) -> MagicMock:
+        from mypy.nodes import MDEF, SymbolTableNode
+
+        entry = MagicMock()
+        entry.fullname = fullname
+        entry.names = {} if init is None else {"__init__": SymbolTableNode(MDEF, init)}
+        return entry
+
+    def _init(self, kinds: list, names: list[str], typed: bool = True) -> object:
+        from mypy.nodes import Block, ClassDef, FuncDef, SymbolTable, TypeInfo
+        from mypy.types import AnyType, CallableType, Instance, TypeOfAny
+
+        func = FuncDef("__init__", [], Block([]))
+        if typed:
+            any_type = AnyType(TypeOfAny.special_form)
+            function_info = TypeInfo(
+                SymbolTable(), ClassDef("function", Block([])), "builtins"
+            )
+            func.type = CallableType(
+                [any_type] * len(kinds),
+                kinds,
+                names,
+                any_type,
+                Instance(function_info, []),
+            )
+        return func
+
+    def _fields(self, *entries: MagicMock) -> list[str]:
+        from protean.ext.mypy_plugin import _inherited_init_fields
+
+        info = MagicMock()
+        info.mro = [MagicMock(), *entries]
+        return [name for name, _ in _inherited_init_fields(info)]
+
+    def test_synthesized_parent_init_contributes_its_keywords(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS
+
+        parent = self._entry(
+            "app.Auditable",
+            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "changed_by"]),
+        )
+        assert self._fields(parent) == ["changed_by"]
+
+    def test_parent_without_its_own_init_is_skipped(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS
+
+        mixin = self._entry("app.Mixin")
+        parent = self._entry(
+            "app.Auditable",
+            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "changed_by"]),
+        )
+        assert self._fields(mixin, parent) == ["changed_by"]
+
+    def test_untyped_parent_init_is_skipped(self):
+        from mypy.nodes import ARG_POS
+
+        parent = self._entry("app.Legacy", self._init([ARG_POS], ["self"], typed=False))
+        assert self._fields(parent) == []
+
+    def test_hand_written_positional_init_is_skipped(self):
+        from mypy.nodes import ARG_POS
+
+        parent = self._entry(
+            "app.Custom", self._init([ARG_POS, ARG_POS], ["self", "source"])
+        )
+        assert self._fields(parent) == []
+
+    def test_walk_stops_at_framework_classes(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS
+
+        base = self._entry(
+            "protean.core.aggregate.BaseAggregate",
+            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "internal"]),
+        )
+        assert self._fields(base) == []
