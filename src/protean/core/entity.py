@@ -415,13 +415,22 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         # scan ``vars(cls)`` for descriptors, so they must live there.
         # We also explicitly trigger ``__set_name__`` because ``setattr``
         # does NOT invoke it (only class-body execution does).
+        #
+        # In the typed-annotation style (``entries: list[Entry] =
+        # HasMany(Entry)``) the descriptor is already in ``vars(cls)``, but
+        # the type annotation stays behind. Pydantic would then build a model
+        # field from that annotation, which shadows the descriptor and makes
+        # the field required, so the annotation is dropped here too.
         own_annots: dict[str, Any] = inspect.get_annotations(cls)
+        namespace = vars(cls)
         to_remove: list[str] = []
         for name, value in list(own_annots.items()):
             if isinstance(value, _DESCRIPTOR_TYPES):
                 setattr(cls, name, value)
                 if hasattr(value, "__set_name__"):
                     value.__set_name__(cls, name)
+                to_remove.append(name)
+            elif isinstance(namespace.get(name), _DESCRIPTOR_TYPES):
                 to_remove.append(name)
         if to_remove:
             annots = dict(own_annots)
