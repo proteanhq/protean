@@ -43,8 +43,11 @@ class ThingCommands:
         return command.thing_id
 
 
-# The decorated method keeps its signature.
-reveal_type(AuditHandler.on_created)  # R: def (self: AuditHandler, event: ThingCreated)
+# The decorated method keeps its message and result types.
+reveal_type(AuditHandler.on_created)  # R: def (AuditHandler, ThingCreated)
 reveal_type(ThingCommands().create(CreateThing(thing_id="t1")))  # R: str
+
+# The framework calls a handler positionally, so a keyword call is an error.
+ThingCommands().create(command=CreateThing(thing_id="t1"))  # E: call-arg
 
 handle(42)  # E: arg-type

@@ -7,6 +7,7 @@ the base's properties bind to it.
 """
 
 from typing import Any, ClassVar
+from typing import ClassVar as CV
 
 from pydantic import BaseModel
 
@@ -173,6 +174,17 @@ class Tag:
 Tag(label="x")
 Tag(_cache="x")  # E: call-arg
 Tag(KIND="x")  # E: call-arg
+
+
+# A class variable imported under another name is still not a keyword.
+@domain.command(part_of=Thing)
+class Badge:
+    label: str
+    KIND: CV[str] = "badge"
+
+
+Badge(label="x")
+Badge(KIND="x")  # E: call-arg
 
 
 # The decorator rebuilds the class on its Protean base alone, so the class's

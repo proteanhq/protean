@@ -181,9 +181,10 @@ for how the base is added.
   aggregate return that aggregate's class.
 - `@handle` takes an event or command class, an event type string such as
   `"Customers.CustomerFact.v1"`, or the `"$any"` wildcard, and the decorated
-  method keeps its signature. The framework calls a handler positionally
-  with the message, and a redelivery that consume-side idempotency skips
-  returns `None`.
+  method keeps its message and result types. The framework calls a handler
+  positionally with the message, so passing the message by keyword is a
+  `call-arg` error. A redelivery that consume-side idempotency skips returns
+  `None`.
 - `@domain.upcaster(event_type=..., from_version=..., to_version=...)` keeps
   the decorated class's type.
 

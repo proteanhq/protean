@@ -409,7 +409,9 @@ def _carry_discarded_failures(
         )
 
 
-_HandlerFn = TypeVar("_HandlerFn", bound=Callable[..., Any])
+_Owner = TypeVar("_Owner")
+_Message = TypeVar("_Message")
+_Result = TypeVar("_Result")
 
 
 class handle:
@@ -444,7 +446,9 @@ class handle:
         self._correlate = correlate
         self._end = end
 
-    def __call__(self, fn: _HandlerFn) -> _HandlerFn:
+    def __call__(
+        self, fn: Callable[[_Owner, _Message], _Result]
+    ) -> Callable[[_Owner, _Message], _Result]:
         """Marks the method with special attributes to construct a handler map later.
 
         Args:
@@ -571,11 +575,11 @@ class handle:
         setattr(wrapper, "_start", self._start)
         setattr(wrapper, "_correlate", self._correlate)
         setattr(wrapper, "_end", self._end)
-        # Typed as ``fn`` so a checker keeps the handler's message and result
-        # types. The framework calls it positionally as (instance, message),
-        # and it returns ``None`` when consume-side idempotency skips a
-        # redelivered message.
-        return cast(_HandlerFn, wrapper)
+        # Typed with the handler's message and result types. The wrapper takes
+        # (instance, message) positionally only, so the parameter names are
+        # dropped and a keyword call is an error. It returns ``None`` when
+        # consume-side idempotency skips a redelivered message.
+        return cast(Callable[[_Owner, _Message], _Result], wrapper)
 
 
 class read:

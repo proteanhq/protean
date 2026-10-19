@@ -869,8 +869,7 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
         field_name = stmt.lvalues[0].name
         if field_name.startswith("_") or any(f[0] == field_name for f in fields):
             continue
-        annotation = stmt.unanalyzed_type
-        if isinstance(annotation, UnboundType) and annotation.name.endswith("ClassVar"):
+        if _is_class_var(ctx, stmt.unanalyzed_type):
             continue
         fields.append((field_name, AnyType(TypeOfAny.special_form)))
 
@@ -945,6 +944,20 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
             f"{info.fullname}: ({field_desc})",
             file=sys.stderr,
         )
+
+
+def _is_class_var(ctx: ClassDefContext, annotation: Type) -> bool:
+    """Tell whether an unanalyzed annotation is ``ClassVar``, under any name.
+
+    Resolves the written name the way mypy's semantic analyzer does, so an
+    alias such as ``from typing import ClassVar as CV`` counts.
+    """
+    if not isinstance(annotation, UnboundType):
+        return False
+    sym = ctx.api.lookup_qualified(annotation.name, annotation, suppress_errors=True)
+    if sym is None or sym.node is None:
+        return False
+    return sym.node.fullname in ("typing.ClassVar", "typing_extensions.ClassVar")
 
 
 def _nearest_parent_init(info: TypeInfo) -> tuple[TypeInfo, SymbolTableNode] | None:
