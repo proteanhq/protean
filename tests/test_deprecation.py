@@ -15,10 +15,13 @@ import pytest
 import protean._deprecation
 import protean.exceptions
 from protean._deprecation import (
+    DEPRECATIONS,
     ProteanDeprecationWarning,
     RemovedInProtean017Warning,
+    RemovedInProtean019Warning,
     RemovedInProtean020Warning,
     RemovedInProtean10Warning,
+    _warning_for_removal,
     deprecated,
     external_stacklevel,
     warn_deprecated,
@@ -64,6 +67,7 @@ class TestWarningHierarchy:
         "cls",
         [
             RemovedInProtean017Warning,
+            RemovedInProtean019Warning,
             RemovedInProtean020Warning,
             RemovedInProtean10Warning,
         ],
@@ -91,6 +95,7 @@ class TestWarnDeprecated:
         "removal, expected_cls",
         [
             ("0.17.0", RemovedInProtean017Warning),
+            ("0.19.0", RemovedInProtean019Warning),
             ("0.20.0", RemovedInProtean020Warning),
             ("1.0.0", RemovedInProtean10Warning),
         ],
@@ -130,7 +135,7 @@ class TestWarnDeprecated:
         assert len(caught) == 1
         assert caught[0].filename == __file__
 
-    @pytest.mark.parametrize("removal", ["0.19.0", "0.17", "1.0", "garbage"])
+    @pytest.mark.parametrize("removal", ["0.21.0", "0.17", "1.0", "garbage"])
     def test_unknown_removal_version_falls_back_to_base_without_raising(self, removal):
         """Emitting must never crash the live deprecated path: an unregistered
         version degrades to the base class instead of raising."""
@@ -228,7 +233,7 @@ class TestDeprecatedDecorator:
             def _f():  # pragma: no cover - never defined; decoration raises
                 return None
 
-        for known in ("0.17.0", "0.20.0", "1.0.0"):
+        for known in ("0.17.0", "0.19.0", "0.20.0", "1.0.0"):
             assert known in str(exc.value)
         assert "0.18.0" not in str(exc.value)
 
@@ -322,6 +327,55 @@ class TestExternalStacklevel:
             entry(warn_site)
 
         assert len(caught) == 1
-        assert caught[0].category is RemovedInProtean10Warning
+        assert caught[0].category is RemovedInProtean019Warning
         assert caught[0].filename == __file__
         assert caught[0].lineno == expected_line
+
+
+_TO_0_19 = (
+    "is_event_sourced_alias",
+    "command_published_option",
+    "email_element",
+    "email_providers_config",
+    "get_email_provider",
+    "send_email",
+    "method_field",
+    "nested_field",
+    "list_pickled",
+    "utils_plumbing",
+)
+_TO_0_20 = ("dao_update", "queryset_update")
+
+
+class TestRegistryRemovalVersions:
+    """Every registered deprecation names a release that is actually planned,
+    so no entry may still point at 1.0.0."""
+
+    def test_no_entry_is_scheduled_for_1_0_0(self):
+        assert DEPRECATIONS
+        assert [s for s, e in DEPRECATIONS.items() if e.removal == "1.0.0"] == []
+
+    def test_the_1_0_class_is_kept_for_existing_filters(self):
+        assert _warning_for_removal("1.0.0") is RemovedInProtean10Warning
+
+    @pytest.mark.parametrize(
+        "slug, removal, expected_cls",
+        [(s, "0.19.0", RemovedInProtean019Warning) for s in _TO_0_19]
+        + [(s, "0.20.0", RemovedInProtean020Warning) for s in _TO_0_20],
+    )
+    def test_entry_warns_with_its_own_version_class(self, slug, removal, expected_cls):
+        assert DEPRECATIONS[slug].removal == removal
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            warn_from_registry(slug, "thing")
+
+        assert len(caught) == 1
+        assert caught[0].category is expected_cls
+        assert f"Will be removed in v{removal}." in str(caught[0].message)
+
+    def test_runtime_reasons_name_the_class_each_entry_emits(self):
+        for slug in ("get_email_provider", "send_email"):
+            assert "RemovedInProtean019Warning" in (DEPRECATIONS[slug].reason or "")
+        for slug in _TO_0_20:
+            assert "RemovedInProtean020Warning" in (DEPRECATIONS[slug].reason or "")

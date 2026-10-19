@@ -308,7 +308,7 @@ class TestCheckArm:
             # entry's ``check_code``), not any deprecation message. Otherwise a
             # broken rule can ride on another rule's message: the email element
             # and the ``email_providers`` config both say "email subsystem", and
-            # every message carries "v1.0.0", so a message-substring match alone
+            # every message carries the same removal version, so a message-substring match alone
             # would report the email element covered from the config diagnostic.
             hits = [
                 d

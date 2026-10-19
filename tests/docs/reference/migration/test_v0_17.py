@@ -8,7 +8,7 @@ used to work now raises, a test builds that code and checks the error.
 import pytest
 
 from protean import Domain
-from protean._deprecation import RemovedInProtean10Warning
+from protean._deprecation import RemovedInProtean019Warning
 from protean.exceptions import (
     ConfigurationError,
     ObjectNotFoundError,
@@ -83,7 +83,7 @@ def test_event_sourced_marks_the_aggregate_event_sourced():
 def test_is_event_sourced_still_works_behind_a_deprecation_warning():
     domain = Domain(name="Banking")
 
-    with pytest.warns(RemovedInProtean10Warning, match="is_event_sourced"):
+    with pytest.warns(RemovedInProtean019Warning, match="is_event_sourced"):
 
         @domain.aggregate(is_event_sourced=True)
         class Account: ...
@@ -94,7 +94,7 @@ def test_is_event_sourced_still_works_behind_a_deprecation_warning():
 def test_event_sourced_wins_when_both_spellings_are_given():
     domain = Domain(name="Banking")
 
-    with pytest.warns(RemovedInProtean10Warning, match="is_event_sourced"):
+    with pytest.warns(RemovedInProtean019Warning, match="is_event_sourced"):
 
         @domain.aggregate(event_sourced=False, is_event_sourced=True)
         class Account: ...

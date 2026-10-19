@@ -201,7 +201,7 @@ A decorator used on methods within event-sourced aggregates to mutate aggregate 
 
 ### `event_sourced` Option
 
-An aggregate decorator option (`@domain.aggregate(event_sourced=True)`) that switches the aggregate's persistence model from current-state storage to event sourcing. When enabled, the aggregate's state is derived entirely from replaying its event stream rather than loading a snapshot from a database table. (The old `is_event_sourced` spelling is a deprecated alias, removed in v1.0.0.)
+An aggregate decorator option (`@domain.aggregate(event_sourced=True)`) that switches the aggregate's persistence model from current-state storage to event sourcing. When enabled, the aggregate's state is derived entirely from replaying its event stream rather than loading a snapshot from a database table. (The old `is_event_sourced` spelling is a deprecated alias, removed in v0.19.0.)
 
 [Learn more →](guides/pathways/event-sourcing.md) | **See also**: [Event Sourcing](#event-sourcing), [`@apply` Decorator](#apply-decorator)
 

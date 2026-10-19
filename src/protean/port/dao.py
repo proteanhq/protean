@@ -967,7 +967,7 @@ class BaseDAO(metaclass=ABCMeta):
         """Apply a field patch to an existing entity and persist it.
 
         .. deprecated:: 0.18.0
-            The patch-and-persist path is deprecated and is removed in v1.0.0.
+            The patch-and-persist path is deprecated and is removed in v0.20.0.
             Load the aggregate, invoke a behaviour method that applies the
             change, and persist it with ``repository.add()`` instead.
 

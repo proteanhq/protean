@@ -4,7 +4,10 @@ from uuid import uuid4
 
 import pytest
 
-from protean._deprecation import RemovedInProtean10Warning
+from protean._deprecation import (
+    ProteanDeprecationWarning,
+    RemovedInProtean019Warning,
+)
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
@@ -101,32 +104,32 @@ def test_aggregate_cluster_of_event(test_domain):
 
 class TestDeprecatedCommandOptions:
     """`published` is an event-only option that commands silently absorbed with
-    no effect. It is deprecated (warn in 0.17, removed at 1.0) and dropped so it
+    no effect. It is deprecated (warn in 0.17, removed in 0.19.0) and dropped so it
     no longer appears on a command's ``meta_``."""
 
     @staticmethod
     def _deprecation_messages(record):
-        """Messages of the ``RemovedInProtean10Warning`` warnings only — an
+        """Messages of the ``RemovedInProtean019Warning`` warnings only, so an
         unrelated warning firing first must not shift which one we inspect."""
         return [
             str(w.message)
             for w in record
-            if issubclass(w.category, RemovedInProtean10Warning)
+            if issubclass(w.category, RemovedInProtean019Warning)
         ]
 
     def test_published_option_warns_on_decorator_path(self, test_domain):
-        with pytest.warns(RemovedInProtean10Warning) as record:
+        with pytest.warns(RemovedInProtean019Warning) as record:
 
             @test_domain.command(part_of=User, published=True)
             class Approve(BaseCommand):
                 user_id: Identifier(identifier=True)
 
         messages = self._deprecation_messages(record)
-        assert any("published" in m and "v1.0.0" in m for m in messages)
+        assert any("published" in m and "v0.19.0" in m for m in messages)
 
     def _only_deprecation_warning(self, caught):
         matching = [
-            w for w in caught if issubclass(w.category, RemovedInProtean10Warning)
+            w for w in caught if issubclass(w.category, RemovedInProtean019Warning)
         ]
         assert len(matching) == 1
         return matching[0]
@@ -174,7 +177,7 @@ class TestDeprecatedCommandOptions:
         class Suspend(BaseCommand):
             user_id: Identifier(identifier=True)
 
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
             test_domain.register(Suspend, part_of=User, published=True)
 
     def test_falsy_deprecated_option_still_warns(self, test_domain):
@@ -184,7 +187,7 @@ class TestDeprecatedCommandOptions:
         class Archive(BaseCommand):
             user_id: Identifier(identifier=True)
 
-        with pytest.warns(RemovedInProtean10Warning) as record:
+        with pytest.warns(RemovedInProtean019Warning) as record:
             test_domain.register(Archive, part_of=User, published=False)
 
         messages = self._deprecation_messages(record)
@@ -195,7 +198,7 @@ class TestDeprecatedCommandOptions:
         class Rename(BaseCommand):
             user_id: Identifier(identifier=True)
 
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
             test_domain.register(Rename, part_of=User, published=True)
 
         # The option is dropped entirely — it does not linger on the command's
@@ -216,7 +219,7 @@ class TestDeprecatedCommandOptions:
             user_id: Identifier(identifier=True)
 
         test_domain.register(User, event_sourced=True)
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
             test_domain.register(Cancel, part_of=User, published=True)
         test_domain.init(traverse=False)
 
@@ -239,7 +242,7 @@ class TestDeprecatedCommandOptions:
             user_id: Identifier(identifier=True)
 
         test_domain.register(User, event_sourced=True)
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
             test_domain.register(Freeze, part_of=User, published=True)
         test_domain.init(traverse=False)
 
@@ -251,11 +254,13 @@ class TestDeprecatedCommandOptions:
         assert len(option_diags) == 1
         assert option_diags[0]["level"] == "warning"
         assert "published" in option_diags[0]["message"]
-        assert "v1.0.0" in option_diags[0]["message"]
+        assert "v0.19.0" in option_diags[0]["message"]
+        assert "v1.0.0" not in option_diags[0]["message"]
+        assert "v0.19.0" in option_diags[0]["rule"]["rationale"]
 
     def test_clean_command_emits_no_deprecation_warning(self, test_domain):
         with warnings.catch_warnings():
-            warnings.simplefilter("error", RemovedInProtean10Warning)
+            warnings.simplefilter("error", ProteanDeprecationWarning)
 
             class Activate(BaseCommand):
                 user_id: Identifier(identifier=True)
@@ -289,20 +294,20 @@ class TestDeprecatedCommandOptions:
             user_id: Identifier(identifier=True)
 
         test_domain.register(User, event_sourced=True)
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
             test_domain.register(Suspend, part_of=User, published=True)
 
         assert Suspend._deprecated_options == ("published",)
 
         with warnings.catch_warnings():
-            warnings.simplefilter("error", RemovedInProtean10Warning)
+            warnings.simplefilter("error", ProteanDeprecationWarning)
             test_domain.register(Suspend, part_of=User)
 
         assert Suspend._deprecated_options == ()
 
     def test_events_are_unaffected_by_command_deprecation(self, test_domain):
         """The deprecation is command-only: events keep ``published`` live, and
-        registering an event with it emits no ``RemovedInProtean10Warning``."""
+        registering an event with it emits no Protean deprecation warning."""
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
 
@@ -311,6 +316,6 @@ class TestDeprecatedCommandOptions:
 
             test_domain.register(OrderPlaced, part_of=User, published=True)
 
-        assert not any(isinstance(w.message, RemovedInProtean10Warning) for w in caught)
+        assert not any(isinstance(w.message, ProteanDeprecationWarning) for w in caught)
         # Events still honour the ``published`` option.
         assert OrderPlaced.meta_.published is True

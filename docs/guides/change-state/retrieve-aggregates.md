@@ -581,10 +581,10 @@ QuerySets provide methods for updating and deleting multiple records at once.
 
 ### `update`
 
-!!! warning "Deprecated in 0.18.0, removed in 1.0.0"
+!!! warning "Deprecated in 0.18.0, removed in 0.20.0"
     `update()` patches fields straight onto the store, so the change never goes
     through a behaviour method on the aggregate and the events that change
-    should raise never fire. Calling it emits a `RemovedInProtean10Warning`.
+    should raise never fire. Calling it emits a `RemovedInProtean020Warning`.
     Load each match, invoke a behaviour method on it, and persist it with
     `repository.add()`. See the
     [migration note](../../reference/migration/v0-18.md#daoupdate-and-querysetupdate-are-deprecated).

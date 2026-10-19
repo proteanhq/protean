@@ -404,7 +404,7 @@ class QuerySet:
         """Updates all objects with details given if they match a set of conditions supplied.
 
         .. deprecated:: 0.18.0
-            The patch-and-persist path is deprecated and is removed in v1.0.0.
+            The patch-and-persist path is deprecated and is removed in v0.20.0.
             Load the matched aggregates, invoke a behaviour method on each, and
             persist each one with ``repository.add()`` instead.
 

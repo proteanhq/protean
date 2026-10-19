@@ -4,7 +4,7 @@
 the injectable clock seam (``Clock`` / ``SystemClock``).
 Six plumbing helpers that were historically importable stay reachable through a
 module ``__getattr__`` for one deprecation window, each emitting
-``RemovedInProtean10Warning`` on access and delegating to its underscore-prefixed
+``RemovedInProtean019Warning`` on access and delegating to its underscore-prefixed
 implementation. Framework code imports the underscore names directly and never
 self-warns.
 """
@@ -14,7 +14,7 @@ import warnings
 import pytest
 
 from protean import utils
-from protean._deprecation import RemovedInProtean10Warning
+from protean._deprecation import RemovedInProtean019Warning
 
 KEPT = {
     "Cache",
@@ -60,19 +60,19 @@ def test_star_import_matches_all():
 
 @pytest.mark.parametrize("name, impl", sorted(DEPRECATED.items()))
 def test_deprecated_plumbing_warns_and_delegates(name, impl):
-    with pytest.warns(RemovedInProtean10Warning) as record:
+    with pytest.warns(RemovedInProtean019Warning) as record:
         obj = getattr(utils, name)
 
     # Returns the live implementation, identity-equal to the underscore spelling.
     assert obj is impl
     # The warning message is fully pinned: the qualified name, the "no public
-    # replacement" clause, and the 1.0 removal version. Asserting only
+    # replacement" clause, and the removal version. Asserting only
     # `name in message` would be trivially satisfied since the message is built
     # from `name`.
     assert str(record[0].message) == (
         f"`protean.utils.{name}` is deprecated. "
         f"It is internal plumbing with no public replacement. "
-        f"Will be removed in v1.0.0."
+        f"Will be removed in v0.19.0."
     )
     # The warning is attributed to the caller's frame (this test file), not to
     # `utils/__init__.py` or `_deprecation.py`. A wrong stacklevel on a
@@ -84,7 +84,7 @@ def test_deprecated_plumbing_warns_and_delegates(name, impl):
 def test_from_import_of_deprecated_name_warns(name, impl):
     # `from protean.utils import <name>` routes through __getattr__ too.
     namespace: dict[str, object] = {}
-    with pytest.warns(RemovedInProtean10Warning):
+    with pytest.warns(RemovedInProtean019Warning):
         exec(f"from protean.utils import {name}", namespace)
     assert namespace[name] is impl
 

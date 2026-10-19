@@ -8,7 +8,7 @@ code and checks the error.
 import pytest
 
 from protean import Domain, apply
-from protean._deprecation import RemovedInProtean10Warning
+from protean._deprecation import RemovedInProtean019Warning
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import Float
 from tests.docs.support import load_example
@@ -84,7 +84,7 @@ def test_domain_publish_is_gone():
 def load_account_example():
     # The 0.15 page spells the option `is_event_sourced`, which later releases
     # deprecate in favour of `event_sourced`.
-    with pytest.warns(RemovedInProtean10Warning, match="is_event_sourced"):
+    with pytest.warns(RemovedInProtean019Warning, match="is_event_sourced"):
         return load_example("reference/migration/v0-15/004.py")
 
 

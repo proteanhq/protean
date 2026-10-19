@@ -26,9 +26,9 @@ from protean.utils.globals import _domain_now, g
 
 # The ``published`` option a command silently inherited from ``BaseMessageType``
 # but never acted on: commands are internal and take no part in the published
-# language. Deprecated in 0.17 (warn + ``protean check`` diagnostic), removed at
-# 1.0 where ``command_factory`` will raise ``IncorrectUsageError`` naming the
-# option instead of dropping it. (``is_fact_event`` is framework-internal and
+# language. Deprecated in 0.17 (warn + ``protean check`` diagnostic). At its
+# removal version ``command_factory`` will raise ``IncorrectUsageError`` naming
+# the option instead of dropping it. (``is_fact_event`` is framework-internal and
 # rejected outright by ``_derive_element_class``; it is not deprecated here.)
 _DEPRECATED_COMMAND_OPTIONS: tuple[str, ...] = ("published",)
 

@@ -3817,19 +3817,20 @@ class IRBuilder:
         # Option-level deprecation (currently only commands passed the event-only
         # ``published`` option). Warning-level: unlike a still-functional
         # deprecated element, the option is inert today and becomes a hard
-        # ``IncorrectUsageError`` at v1.0.0.
+        # ``IncorrectUsageError`` at its removal version.
+        published_removal = DEPRECATIONS["command_published_option"].removal
         for opt in element.get("deprecated_options", []):
             self._diagnostics.append(
                 build_diagnostic(
                     DiagnosticCode.DEPRECATED_OPTION,
                     element=fqn_val,
                     message=f"The `{opt}` option on `{name}` is deprecated and "
-                    f"scheduled for removal in v1.0.0; commands are internal "
+                    f"scheduled for removal in v{published_removal}; commands are internal "
                     f"to the bounded context and carry no published-language "
                     f"or fact-event semantics, so it has no effect.",
                     level="warning",
                     rationale="The option is inert today and becomes a hard "
-                    "IncorrectUsageError at v1.0.0.",
+                    f"IncorrectUsageError at v{published_removal}.",
                     fix=f"Remove the `{opt}` option from `{name}`; it has no effect.",
                 )
             )
@@ -3861,7 +3862,7 @@ class IRBuilder:
     def _diagnose_email_deprecated(self, ir: dict[str, Any]) -> None:
         """DEPRECATED_EMAIL: registered ``@domain.email`` elements.
 
-        The email subsystem is deprecated, removed at v1.0.0.
+        The email subsystem is deprecated and scheduled for removal.
         Email elements are not projected into the IR (they appear in no
         cluster/projection/flow), so ``_diagnose_deprecated_elements`` cannot
         see them. Read the registry directly, mirroring
@@ -3870,6 +3871,7 @@ class IRBuilder:
         deprecation, matching the ``DEPRECATED_ELEMENT`` convention).
         """
         registry = self._domain._domain_registry
+        removal = DEPRECATIONS["email_element"].removal
         for record in registry._elements.get("EMAIL", {}).values():
             if record.internal or record.auto_generated:
                 continue
@@ -3880,7 +3882,7 @@ class IRBuilder:
                     element=fqn(email_cls),
                     message=f"Email element `{email_cls.__name__}` uses the "
                     f"deprecated email subsystem, scheduled for removal in "
-                    f"v1.0.0. Notify from an event handler or subscriber "
+                    f"v{removal}. Notify from an event handler or subscriber "
                     f"that calls an application-level notification service "
                     f"instead.",
                 )
@@ -3889,7 +3891,7 @@ class IRBuilder:
     def _diagnose_email_config_deprecated(self, ir: dict[str, Any]) -> None:
         """DEPRECATED_CONFIG: a non-default ``email_providers`` config block.
 
-        The email subsystem is deprecated, removed at v1.0.0. ``load_config``
+        The email subsystem is deprecated and scheduled for removal. ``load_config``
         warns once at bootstrap, but that warning is transient; ``check`` reads
         the live ``email_providers`` config off the domain and re-surfaces it as
         an INFO-level diagnostic. The equality guard mirrors ``load_config``'s:
@@ -3921,7 +3923,7 @@ class IRBuilder:
         """DEPRECATED_IMPORT: a registered element's source module uses a
         deprecated import surface that leaves no IR trace.
 
-        Two surfaces, both removed at v1.0.0 and invisible to the IR field walk
+        Two surfaces, both scheduled for removal and invisible to the IR field walk
         (serializer field types are not projected into the IR; the
         ``protean.utils`` shims live only in source):
 
@@ -3947,7 +3949,7 @@ class IRBuilder:
         once per element sharing it — to avoid N copies for a module with N
         registered classes.
         """
-        removal = DEPRECATIONS["method_field"].removal  # all three share 1.0.0
+        removal = DEPRECATIONS["method_field"].removal  # all three share one version
 
         # Collect the distinct source modules that host a non-internal registered
         # element. A module-level import is one fact regardless of how many

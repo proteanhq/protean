@@ -8,7 +8,7 @@ import pytest
 
 from protean._deprecation import (
     ProteanDeprecationWarning,
-    RemovedInProtean10Warning,
+    RemovedInProtean019Warning,
 )
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ValidationError
@@ -382,13 +382,13 @@ class TestFieldSpecValidateDefault:
 # Tests: deprecated ``pickled`` argument on List()
 #
 # ``pickled`` is a dead legacy kwarg — accepted but never forwarded to the
-# FieldSpec. Passing it (with any value) is deprecated and removed at v1.0.0.
+# FieldSpec. Passing it (with any value) is deprecated and removed at v0.19.0.
 # ---------------------------------------------------------------------------
 class TestListPickledDeprecation:
     def test_pickled_true_is_deprecated(self):
         with pytest.warns(
-            RemovedInProtean10Warning,
-            match=r"`pickled` argument on `List` is deprecated.*v1\.0\.0",
+            RemovedInProtean019Warning,
+            match=r"`pickled` argument on `List` is deprecated.*v0\.19\.0",
         ):
             spec = List(pickled=True)
 
@@ -411,7 +411,7 @@ class TestListPickledDeprecation:
 
     def test_pickled_false_is_deprecated(self):
         """Even an explicit ``pickled=False`` warns — the arg is going away."""
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
             List(pickled=False)
 
     @pytest.mark.parametrize("value", [None, 0, "", False, True])
@@ -419,13 +419,13 @@ class TestListPickledDeprecation:
         """The sentinel design means *any* explicit value warns, including
         falsy ones — a future ``if pickled:`` regression would silently stop
         warning on ``None``/``0``/``""``/``False`` and go uncaught otherwise."""
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
             List(pickled=value)
 
     def test_pickled_warns_when_passed_positionally(self):
         """``pickled`` is the second positional parameter; a positional pass
         must warn just as a keyword pass does."""
-        with pytest.warns(RemovedInProtean10Warning):
+        with pytest.warns(RemovedInProtean019Warning):
             List(String(), True)
 
     def test_list_without_pickled_does_not_warn(self):

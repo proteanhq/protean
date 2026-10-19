@@ -30,7 +30,7 @@ def List(  # pyright: ignore[reportRedeclaration]
 
     The ``pickled`` flag is a dead legacy parameter: it is accepted but has no
     effect on the resulting ``FieldSpec``. It is deprecated and will be removed
-    in v1.0.0. When passed, a ``_pickled_deprecated`` marker is left on the
+    in v0.19.0. When passed, a ``_pickled_deprecated`` marker is left on the
     returned spec so ``protean check`` can surface the usage statically (the
     runtime warning below only fires once, at declaration time, and leaves no
     trace the IR builder could read at check time).

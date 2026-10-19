@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from protean._deprecation import RemovedInProtean10Warning
+from protean._deprecation import RemovedInProtean019Warning
 from protean.fields import Method
 
 
@@ -11,11 +11,11 @@ def utc_now():
 
 
 def test_method_is_deprecated():
-    """Instantiating a Method field warns it is removed at v1.0.0."""
+    """Instantiating a Method field warns it is removed at v0.19.0."""
     # Match the concrete subject text so a copy-paste of the ``Nested`` message
     # into ``Method.__init__`` would fail this test.
     with pytest.warns(
-        RemovedInProtean10Warning, match=r"`Method` field is deprecated.*v1\.0\.0"
+        RemovedInProtean019Warning, match=r"`Method` field is deprecated.*v0\.19\.0"
     ) as record:
         field = Method("fake_method")
 
