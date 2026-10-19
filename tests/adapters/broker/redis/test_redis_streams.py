@@ -1170,7 +1170,10 @@ def test_data_reset_with_exception(redis_broker, monkeypatch, caplog):
     # The groups are cleared inside the try block after the flush, so a
     # failed flush leaves them in place and logs the error.
     assert redis_broker._created_groups_set == {"stream:group"}
-    assert any(r.levelname == "ERROR" for r in caplog.records)
+    assert any(
+        r.levelname == "ERROR" and "broker.redis.data_reset_failed" in r.message
+        for r in caplog.records
+    )
 
 
 @pytest.mark.redis
@@ -1182,6 +1185,7 @@ def test_data_reset_leaves_other_databases_alone(redis_broker):
     try:
         other_db.set(other_key, "kept")
         redis_broker.publish("reset_stream", {"data": "test"})
+        assert redis_broker.redis_instance.exists("reset_stream") == 1
 
         redis_broker._data_reset()
 

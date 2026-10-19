@@ -15,9 +15,7 @@ from tests.shared import REDIS_URI
 
 def _broker(test_domain) -> RedisBroker:
     broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
-    broker._client.flushdb()  # clean slate — flush only DB 0, not all Redis databases
-    broker._created_groups_set.clear()
-    broker._group_creation_times.clear()
+    broker._data_reset()
     return broker
 
 

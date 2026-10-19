@@ -43,7 +43,7 @@ with domain.domain_context():
     cache.set_ttl("order_summary:::ord-123", ttl=600)  # 10 minutes
     remaining = cache.get_ttl("order_summary:::ord-123")
 
-    # Remove all entries
+    # Remove every key in the cache's configured database
     cache.flush_all()
 # --8<-- [end:usage]
 # --8<-- [end:full]

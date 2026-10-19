@@ -178,8 +178,8 @@ class RedisCache(BaseCache):
     def flush_all(self) -> None:
         """Remove every key in the configured Redis database with `FLUSHDB`.
 
-        Cache keys carry no prefix, so this also removes any other data stored
-        in the same database. Other databases on the server are left alone.
+        Cache keys carry no cache-specific namespace, so this also removes any
+        other data stored in the same database. Other databases on the server are left alone.
         """
         self._client.flushdb()
 

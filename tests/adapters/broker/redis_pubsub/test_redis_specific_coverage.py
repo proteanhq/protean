@@ -284,6 +284,7 @@ class TestRedisDataReset:
         try:
             other_db.set(other_key, "kept")
             broker.publish("reset_stream", {"message": "test"})
+            assert broker.redis_instance.llen("reset_stream") == 1
 
             broker._data_reset()
 

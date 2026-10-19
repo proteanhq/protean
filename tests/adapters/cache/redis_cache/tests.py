@@ -238,6 +238,7 @@ class TestCachePersistenceFlows:
         try:
             other_db.set(other_key, "kept")
             cache.add(Token(key="flushed", user_id="foo", email="bar@baz.com"))
+            assert cache.get("token:::flushed") is not None
 
             cache.flush_all()
 
