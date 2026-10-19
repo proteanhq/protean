@@ -119,6 +119,34 @@ class Pair:
 Pair(1)
 
 
+# A subclass of a hand-written ``__init__`` inherits it at runtime, so its own
+# fields are not keywords.
+@domain.aggregate
+class Handmade:
+    def __init__(self, *, left: int = 0) -> None:
+        super().__init__()
+
+
+@domain.aggregate
+class HandmadeChild(Handmade):
+    right: int | None = Integer()
+
+
+HandmadeChild(left=1)
+HandmadeChild(right=1)  # E: call-arg
+
+
+# An annotation with a default is a keyword like one without.
+@domain.value_object
+class Label:
+    label: str = "unset"
+    size: int = 0
+
+
+Label(label="x", size=2)
+Label(lable="x")  # E: call-arg
+
+
 # Private names and class variables are not constructor keywords.
 @domain.command(part_of=Thing)
 class Tag:

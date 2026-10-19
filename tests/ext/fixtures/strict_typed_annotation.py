@@ -129,6 +129,10 @@ none_default_str = String(default=None)
 reveal_type(none_default_vo)  # R: Money | None
 reveal_type(none_default_str)  # R: str | None
 
+# A value object or reference left out reads as None even with a default.
+defaulted_vo = ValueObject(Money, default=Money(amount=0))
+reveal_type(defaulted_vo)  # R: Money | None
+
 
 # An aggregate may declare its own identity type.
 @domain.aggregate
@@ -137,6 +141,14 @@ class Counter:
 
 
 reveal_type(Counter(id=1).id)  # R: int
+
+
+@domain.aggregate
+class Wallet:
+    balance: Money | None = ValueObject(Money, default=Money(amount=0))
+
+
+reveal_type(Wallet().balance)  # R: Money | None
 
 
 # A target mypy cannot resolve leaves the field object's own type.

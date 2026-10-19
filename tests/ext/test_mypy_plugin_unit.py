@@ -673,15 +673,18 @@ class Order:
         assert _is_rejected_field_annotation(object()) is False
 
 
-class TestInheritedInitFields:
-    """Which parent ``__init__`` signatures contribute keyword fields."""
+class TestParentInit:
+    """Which parent ``__init__`` a class inherits, and what its keywords are."""
 
-    def _entry(self, fullname: str, init: object = None) -> MagicMock:
+    def _entry(
+        self, fullname: str, init: object = None, synthesized: bool = False
+    ) -> MagicMock:
         from mypy.nodes import MDEF, SymbolTableNode
 
         entry = MagicMock()
         entry.fullname = fullname
         entry.names = {} if init is None else {"__init__": SymbolTableNode(MDEF, init)}
+        entry.metadata = {"protean": {"synthesized_init": True}} if synthesized else {}
         return entry
 
     def _init(self, kinds: list, names: list[str], typed: bool = True) -> object:
@@ -703,22 +706,20 @@ class TestInheritedInitFields:
             )
         return func
 
-    def _fields(self, *entries: MagicMock) -> list[str] | None:
-        from protean.ext.mypy_plugin import _inherited_init_fields
+    def _nearest(self, *entries: MagicMock) -> MagicMock | None:
+        from protean.ext.mypy_plugin import _nearest_parent_init
 
         info = MagicMock()
         info.mro = [MagicMock(), *entries]
-        fields = _inherited_init_fields(info)
-        return None if fields is None else [name for name, _ in fields]
+        found = _nearest_parent_init(info)
+        return None if found is None else found[0]
 
-    def test_synthesized_parent_init_contributes_its_keywords(self):
-        from mypy.nodes import ARG_NAMED_OPT, ARG_POS
+    def _keywords(self, init: object) -> list[str]:
+        from mypy.nodes import MDEF, SymbolTableNode
 
-        parent = self._entry(
-            "app.Auditable",
-            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "changed_by"]),
-        )
-        assert self._fields(parent) == ["changed_by"]
+        from protean.ext.mypy_plugin import _init_keywords
+
+        return [name for name, _ in _init_keywords(SymbolTableNode(MDEF, init))]
 
     def test_parent_without_its_own_init_is_skipped(self):
         from mypy.nodes import ARG_NAMED_OPT, ARG_POS
@@ -727,38 +728,22 @@ class TestInheritedInitFields:
         parent = self._entry(
             "app.Auditable",
             self._init([ARG_POS, ARG_NAMED_OPT], ["self", "changed_by"]),
+            synthesized=True,
         )
-        assert self._fields(mixin, parent) == ["changed_by"]
+        assert self._nearest(mixin, parent) is parent
 
-    def test_untyped_parent_init_is_skipped(self):
-        from mypy.nodes import ARG_POS
-
-        parent = self._entry("app.Legacy", self._init([ARG_POS], ["self"], typed=False))
-        assert self._fields(parent) is None
-
-    def test_hand_written_positional_init_is_skipped(self):
-        from mypy.nodes import ARG_POS
-
-        parent = self._entry(
-            "app.Custom", self._init([ARG_POS, ARG_POS], ["self", "source"])
-        )
-        assert self._fields(parent) is None
-
-    def test_nearest_parent_wins_for_a_repeated_field(self):
+    def test_nearest_parent_wins(self):
         from mypy.nodes import ARG_NAMED_OPT, ARG_POS
 
-        child_parent = self._entry(
-            "app.Audited",
-            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "changed_by"]),
+        handmade = self._entry(
+            "app.Handmade", self._init([ARG_POS, ARG_NAMED_OPT], ["self", "left"])
         )
         grandparent = self._entry(
             "app.Tracked",
-            self._init(
-                [ARG_POS, ARG_NAMED_OPT, ARG_NAMED_OPT],
-                ["self", "changed_by", "changed_at"],
-            ),
+            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "changed_at"]),
+            synthesized=True,
         )
-        assert self._fields(child_parent, grandparent) == ["changed_by", "changed_at"]
+        assert self._nearest(handmade, grandparent) is handmade
 
     def test_walk_stops_at_framework_classes(self):
         from mypy.nodes import ARG_NAMED_OPT, ARG_POS
@@ -767,10 +752,23 @@ class TestInheritedInitFields:
             "protean.core.aggregate.BaseAggregate",
             self._init([ARG_POS, ARG_NAMED_OPT], ["self", "internal"]),
         )
-        assert self._fields(base) is None
+        assert self._nearest(base) is None
 
-    def test_fieldless_parent_init_counts(self):
+    def test_keywords_follow_the_signature(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS
+
+        init = self._init(
+            [ARG_POS, ARG_NAMED_OPT, ARG_NAMED_OPT],
+            ["self", "changed_by", "changed_at"],
+        )
+        assert self._keywords(init) == ["changed_by", "changed_at"]
+
+    def test_fieldless_init_has_no_keywords(self):
         from mypy.nodes import ARG_POS
 
-        parent = self._entry("app.Marker", self._init([ARG_POS], ["self"]))
-        assert self._fields(parent) == []
+        assert self._keywords(self._init([ARG_POS], ["self"])) == []
+
+    def test_untyped_init_has_no_keywords(self):
+        from mypy.nodes import ARG_POS
+
+        assert self._keywords(self._init([ARG_POS], ["self"], typed=False)) == []

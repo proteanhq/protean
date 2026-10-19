@@ -63,7 +63,9 @@ Field factories resolve to their Python types:
 
 Fields are `Optional` (union with `None`) unless they are `required=True`,
 have a `default` other than `None`, or are `identifier=True`. Container fields (`List`, `Dict`)
-always have an implicit default and are never `Optional`. `HasOne` is always
+always have an implicit default and are never `Optional`. A `default` does not
+make `ValueObject` or `Reference` non-optional: a value object or reference
+left out at construction reads as `None`. `HasOne` is always
 `Optional`, because an association cannot be required at runtime. A target
 named by string, such as `Reference("Order")`, resolves to `Any`, so the
 annotation on the field states the type.
@@ -144,8 +146,11 @@ asks for the base: `domain.cache_for(Leaderboard)`,
 in a decorated domain service reaches `BaseDomainService.__init__`.
 Aggregates, entities, value objects, commands, events, projections and queries
 also get a keyword `__init__` built from their Protean field declarations
-and their plain annotations. A plain annotation such as `note: str` is a
-pydantic field at runtime, and it is accepted as a keyword typed `Any`.
+and their plain annotations. A plain annotation such as `note: str` or
+`note: str = ""` is a pydantic field at runtime, and it is accepted as a
+keyword typed `Any`. A class that defines its own `__init__` keeps it, and so
+does a decorated class that extends it, since that `__init__` is the one that
+runs.
 
 Supported decorators: `aggregate`, `entity`, `value_object`, `command`,
 `event`, `domain_service`, `command_handler`, `event_handler`,

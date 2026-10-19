@@ -126,10 +126,11 @@ _ASSOCIATION_FIELD_NAMES: dict[str, str] = {
     "protean.fields.embedded.ValueObject": "value_object",
 }
 
-# Association kinds that are data fields at runtime, so ``required``,
-# ``default`` and ``identifier`` decide their nullability the way they do for
-# a scalar field. ``HasOne`` is absent: the ``Association`` base forces
-# ``required = False``, so a has-one target can always be missing.
+# Association kinds that are data fields at runtime, so ``required`` and
+# ``identifier`` decide their nullability the way they do for a scalar field.
+# A ``default`` does not: these are descriptors, and an omitted one reads as
+# ``None`` whatever its default. ``HasOne`` is absent: the ``Association``
+# base forces ``required = False``, so a has-one target can always be missing.
 _NULLABILITY_FROM_KWARGS_KINDS: set[str] = {"value_object", "reference"}
 
 # The custom-field factory. Like the association fields, its type comes from the
@@ -511,9 +512,10 @@ def _inject_base_class(
         # Already a subclass — just ensure auto-id and HasMany methods
         _maybe_inject_auto_id(ctx, info, decorator_name)
         # A class that extends a decorated element (``class Account(Auditable)``
-        # with ``Auditable`` abstract) inherits the parent's synthesized
-        # ``__init__``, which lacks this class's own fields.
-        if _inherited_init_fields(info) is not None:
+        # with ``Auditable`` abstract) inherits the parent's ``__init__``. A
+        # synthesized one lacks this class's own fields, and a hand-written one
+        # must win over the dataclass transform's.
+        if _nearest_parent_init(info) is not None:
             _synthesize_init(ctx, decorator_name)
         _synthesize_has_many_methods(ctx)
         _strip_rejected_field_annotations(ctx)
@@ -644,6 +646,10 @@ _INIT_SYNTHESIS_DECORATORS: set[str] = {
     "projection",
     "query",
 }
+
+# ``TypeInfo.metadata`` key and flag that mark an ``__init__`` this plugin built.
+_METADATA_KEY = "protean"
+_SYNTHESIZED_INIT = "synthesized_init"
 
 # Mapping from short field factory names to canonical fully-qualified names.
 # At MRO calculation time, NameExpr.fullname is not yet resolved, so we
@@ -847,31 +853,42 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
                 file=sys.stderr,
             )
 
-    # Plain annotations (``note: str``) are pydantic fields at runtime. Their
-    # types are not analyzed yet when this hook runs, so they are typed Any.
+    # Plain annotations (``note: str`` or ``note: str = "x"``) are pydantic
+    # fields at runtime. Their types are not analyzed yet when this hook runs,
+    # so they are typed Any. ``unanalyzed_type`` is the annotation as written:
+    # semantic analysis can fill ``type`` in for an unannotated literal.
     for stmt in ctx.cls.defs.body:
         if (
             not isinstance(stmt, AssignmentStmt)
             or len(stmt.lvalues) != 1
             or not isinstance(stmt.lvalues[0], NameExpr)
-            or stmt.type is None
-            or isinstance(stmt.type, RawExpressionType)
-            or not (isinstance(stmt.rvalue, TempNode) and stmt.rvalue.no_rhs)
+            or stmt.unanalyzed_type is None
+            or isinstance(stmt.unanalyzed_type, RawExpressionType)
         ):
             continue
         field_name = stmt.lvalues[0].name
         if field_name.startswith("_") or any(f[0] == field_name for f in fields):
             continue
-        if isinstance(stmt.type, UnboundType) and stmt.type.name.endswith("ClassVar"):
+        annotation = stmt.unanalyzed_type
+        if isinstance(annotation, UnboundType) and annotation.name.endswith("ClassVar"):
             continue
         fields.append((field_name, AnyType(TypeOfAny.special_form)))
 
-    # Fields declared on decorated parent elements, unless redeclared here
+    # Fields declared on decorated parent elements, unless redeclared here.
+    inherited: list[tuple[str, Type]] = []
+    parent_init = _nearest_parent_init(info)
+    if parent_init is not None:
+        parent, init_sym = parent_init
+        if not parent.metadata.get(_METADATA_KEY, {}).get(_SYNTHESIZED_INIT):
+            # A hand-written parent __init__ is the one that runs. Without an
+            # __init__ of its own, the class would get one from mypy's
+            # dataclass transform on its base, built from its fields alone.
+            info.names["__init__"] = SymbolTableNode(MDEF, init_sym.node)
+            return
+        inherited = _init_keywords(init_sym)
     own_names = {name for name, _ in fields}
     fields = [
-        (name, field_type)
-        for name, field_type in _inherited_init_fields(info) or []
-        if name not in own_names
+        (name, field_type) for name, field_type in inherited if name not in own_names
     ] + fields
 
     # Add 'id' field if this is an aggregate/entity
@@ -917,6 +934,9 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
     func.is_static = False
 
     info.names["__init__"] = SymbolTableNode(MDEF, func)
+    # Saved in mypy's cache with the class, so a subclass checked in a later
+    # run can still tell this __init__ from a hand-written one.
+    info.metadata.setdefault(_METADATA_KEY, {})[_SYNTHESIZED_INIT] = True
 
     if _DEBUG:
         field_desc = ", ".join(f"{n}: {t}" for n, t in fields)
@@ -927,40 +947,38 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
         )
 
 
-def _inherited_init_fields(info: TypeInfo) -> list[tuple[str, Type]] | None:
-    """Return the keyword fields of ``__init__`` methods synthesized on parents.
+def _nearest_parent_init(info: TypeInfo) -> tuple[TypeInfo, SymbolTableNode] | None:
+    """Return the nearest parent below the framework classes defining ``__init__``.
 
-    Walks the MRO from the nearest parent up to the first framework class. A
-    parent's ``__init__`` counts when every argument after ``self`` is
-    keyword-only and optional, the shape ``_synthesize_init`` builds. The
-    signature is read from the parent's symbol table, so this works for a
-    parent loaded from mypy's cache as well.
-
-    Returns ``None`` when no parent has such an ``__init__``, and an empty
-    list when one does but declares no fields.
+    The plugin's own ``__init__`` carries a flag in the parent's metadata,
+    which mypy keeps in its cache, so a parent loaded from the cache can still
+    be told apart from one with a hand-written ``__init__``.
     """
-    fields: list[tuple[str, Type]] | None = None
-    seen: set[str] = set()
     for entry in info.mro[1:]:
         if entry.fullname.startswith(("protean.", "pydantic.", "builtins.")):
             break
         sym = entry.names.get("__init__")
-        if sym is None or not isinstance(sym.node, FuncDef):
-            continue
-        signature = sym.node.type
-        if not isinstance(signature, CallableType):
-            continue
-        if any(kind != ARG_NAMED_OPT for kind in signature.arg_kinds[1:]):
-            continue
-        if fields is None:
-            fields = []
+        if sym is not None:
+            return entry, sym
+    return None
+
+
+def _init_keywords(init_sym: SymbolTableNode) -> list[tuple[str, Type]]:
+    """Return the keywords of a synthesized ``__init__``.
+
+    A synthesized ``__init__`` already takes its class's inherited fields, so
+    the nearest one is the whole list.
+    """
+    signature = init_sym.node.type if isinstance(init_sym.node, FuncDef) else None
+    if not isinstance(signature, CallableType):
+        return []
+    return [
+        (name, arg_type)
         for name, arg_type in zip(
             signature.arg_names[1:], signature.arg_types[1:], strict=True
-        ):
-            if name is not None and name not in seen:
-                seen.add(name)
-                fields.append((name, arg_type))
-    return fields
+        )
+        if name is not None
+    ]
 
 
 def _resolve_field_type_for_init(
@@ -1250,7 +1268,7 @@ def _association_field_hook(ctx: FunctionContext, kind: str) -> Type:
     - ``HasOne(X)``       → ``X | None``
     - ``HasMany(X)``      → ``list[X]``
     - ``ValueObject(X)`` and ``Reference(X)`` → ``X | None``, or ``X`` when
-      the call passes ``required=True``, ``identifier=True`` or a ``default``
+      the call passes ``required=True`` or ``identifier=True``
 
     When the target class cannot be resolved (e.g. a forward-reference
     string), falls back to the default return type.
@@ -1270,7 +1288,6 @@ def _association_field_hook(ctx: FunctionContext, kind: str) -> Type:
     if kind in _NULLABILITY_FROM_KWARGS_KINDS and (
         _get_kwarg_bool(ctx, "required", default=False)
         or _get_kwarg_bool(ctx, "identifier", default=False)
-        or _has_default(ctx)
     ):
         return target_type
 
