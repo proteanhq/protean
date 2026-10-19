@@ -9,7 +9,9 @@ canonical typed-annotation style that must type-check with no errors at all.
 All fixtures go through one mypy run, cached for the module.
 """
 
+import importlib.util
 import re
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -121,3 +123,32 @@ def test_expectation_markers_are_found() -> None:
     reveals, errors = _expectations("strict_typed_annotation.py")
     assert len(reveals) > 0
     assert len(errors) > 0
+
+
+@pytest.mark.no_test_domain
+def test_sample_domain_runs() -> None:
+    """The sample is a working domain, so its types describe real behaviour."""
+    spec = importlib.util.spec_from_file_location(
+        "strict_sample", FIXTURES_DIR / "strict_sample.py"
+    )
+    assert spec is not None and spec.loader is not None
+    sample = importlib.util.module_from_spec(spec)
+    sys.modules["strict_sample"] = sample
+    try:
+        spec.loader.exec_module(sample)
+        sample.shop.init(traverse=False)
+        with sample.shop.domain_context():
+            order_id = sample.place("Ada")
+            order = sample.shop.repository_for(sample.Order).get(order_id)
+            assert order.status == "PLACED"
+            assert [item.sku for item in order.items] == ["A1"]
+
+            summary = sample.summary_for(order_id)
+            assert summary.customer == "Ada"
+            assert summary.total == 10.0
+
+            wallet = sample.Wallet.open("Ada")
+            assert wallet.owner == "Ada"
+            assert sample.Checkout(order, wallet)() is False
+    finally:
+        sys.modules.pop("strict_sample", None)

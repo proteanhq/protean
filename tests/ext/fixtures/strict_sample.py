@@ -124,7 +124,7 @@ class WalletOpened:
     owner: str = String(required=True)
 
 
-@shop.aggregate(is_event_sourced=True)
+@shop.aggregate(event_sourced=True)
 class Wallet:
     owner: str | None = String()
     balance: float = Float(default=0.0)
@@ -138,6 +138,7 @@ class Wallet:
     @apply
     def opened(self, event: WalletOpened) -> None:
         self.owner = event.owner
+        self.balance = 0.0
 
 
 @shop.upcaster(event_type=WalletOpened, from_version=1, to_version=2)

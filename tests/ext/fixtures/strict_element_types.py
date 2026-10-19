@@ -13,7 +13,7 @@ class OrderCreated:
     order_id: str = Identifier(required=True)
 
 
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order:
     order_id: str = Identifier(identifier=True)
     status: str | None = String()
