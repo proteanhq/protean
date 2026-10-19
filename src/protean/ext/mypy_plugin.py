@@ -647,6 +647,9 @@ _INIT_SYNTHESIS_DECORATORS: set[str] = {
     "query",
 }
 
+# Where a walk up a class's MRO for user-declared parents stops.
+_FRAMEWORK_PREFIXES = ("protean.", "pydantic.", "builtins.")
+
 # ``TypeInfo.metadata`` key and flag that mark an ``__init__`` this plugin built.
 _METADATA_KEY = "protean"
 _SYNTHESIZED_INIT = "synthesized_init"
@@ -884,7 +887,7 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
             # dataclass transform on its base, built from its fields alone.
             info.names["__init__"] = SymbolTableNode(MDEF, init_sym.node)
             return
-        inherited = _init_keywords(init_sym)
+        inherited = _generated_init_keywords(info)
     own_names = {name for name, _ in fields}
     fields = [
         (name, field_type) for name, field_type in inherited if name not in own_names
@@ -963,7 +966,7 @@ def _is_class_var(ctx: ClassDefContext, annotation: Type) -> bool:
 def _nearest_parent_init(info: TypeInfo) -> tuple[TypeInfo, SymbolTableNode] | None:
     """Return the nearest parent below the framework classes defining ``__init__``."""
     for entry in info.mro[1:]:
-        if entry.fullname.startswith(("protean.", "pydantic.", "builtins.")):
+        if entry.fullname.startswith(_FRAMEWORK_PREFIXES):
             break
         sym = entry.names.get("__init__")
         if sym is not None:
@@ -985,12 +988,27 @@ def _is_generated_init(parent: TypeInfo, init_sym: SymbolTableNode) -> bool:
     )
 
 
-def _init_keywords(init_sym: SymbolTableNode) -> list[tuple[str, Type]]:
-    """Return the keywords of an ``__init__`` built from fields.
+def _generated_init_keywords(info: TypeInfo) -> list[tuple[str, Type]]:
+    """Return the keywords of every parent ``__init__`` built from fields.
 
-    Such an ``__init__`` already takes its class's inherited fields, so the
-    nearest one is the whole list.
+    Walks the MRO below the framework classes, so a class with two parents
+    takes the fields of both. A name keeps its type from the nearest parent
+    that declares it.
     """
+    keywords: dict[str, Type] = {}
+    for entry in info.mro[1:]:
+        if entry.fullname.startswith(_FRAMEWORK_PREFIXES):
+            break
+        init_sym = entry.names.get("__init__")
+        if init_sym is None or not _is_generated_init(entry, init_sym):
+            continue
+        for name, arg_type in _init_keywords(init_sym):
+            keywords.setdefault(name, arg_type)
+    return list(keywords.items())
+
+
+def _init_keywords(init_sym: SymbolTableNode) -> list[tuple[str, Type]]:
+    """Return the keywords of an ``__init__`` built from fields."""
     signature = init_sym.node.type if isinstance(init_sym.node, FuncDef) else None
     if not isinstance(signature, CallableType):
         return []

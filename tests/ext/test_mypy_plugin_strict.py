@@ -179,12 +179,16 @@ class Synthesized:
 
 class Transformed(BaseAggregate):
     left: int | None = Integer()
+
+
+class Other(BaseAggregate):
+    other: int | None = Integer()
 """
 
 _CHILDREN_MODULE = """
 from protean.fields import Integer
 
-from pkg.parents import Handmade, Synthesized, Transformed, domain
+from pkg.parents import Handmade, Other, Synthesized, Transformed, domain
 
 
 @domain.aggregate
@@ -208,6 +212,15 @@ FromSynthesized(left=1, right=2)
 FromSynthesized(lft=1)
 FromTransformed(left=1, right=2)
 FromTransformed(lft=1)
+
+
+@domain.aggregate
+class FromBoth(Transformed, Other):
+    right: int | None = Integer()
+
+
+FromBoth(left=1, other=2, right=3)
+FromBoth(othr=2)
 """
 
 
@@ -253,6 +266,10 @@ def test_parent_constructors_survive_the_cache(tmp_path: Path) -> None:
         (
             'Unexpected keyword argument "lft" for "FromTransformed"; '
             'did you mean "left"?  [call-arg]'
+        ),
+        (
+            'Unexpected keyword argument "othr" for "FromBoth"; '
+            'did you mean "other"?  [call-arg]'
         ),
     ]
     assert errors() == expected

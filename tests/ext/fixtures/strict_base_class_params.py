@@ -152,6 +152,20 @@ TransformedChild(left=1, right=2)
 TransformedChild(rght=2)  # E: call-arg
 
 
+# A class with two such parents takes the fields of both.
+class Other(BaseAggregate):
+    other: int | None = Integer()
+
+
+@domain.aggregate
+class Both(Transformed, Other):
+    own: int | None = Integer()
+
+
+Both(left=1, other=2, own=3)
+Both(othr=2)  # E: call-arg
+
+
 # An annotation with a default is a keyword like one without.
 @domain.value_object
 class Label:
