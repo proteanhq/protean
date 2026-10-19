@@ -156,3 +156,105 @@ def test_sample_domain_runs() -> None:
             assert sample.Checkout(order, wallet)() is False
     finally:
         sys.modules.pop("strict_sample", None)
+
+
+_PARENTS_MODULE = """
+from protean.core.aggregate import BaseAggregate
+from protean.domain import Domain
+from protean.fields import Integer
+
+domain = Domain(name="Strict")
+
+
+@domain.aggregate
+class Handmade:
+    def __init__(self, *, left: int = 0) -> None:
+        super().__init__()
+
+
+@domain.aggregate(abstract=True)
+class Synthesized:
+    left: int | None = Integer()
+
+
+class Transformed(BaseAggregate):
+    left: int | None = Integer()
+"""
+
+_CHILDREN_MODULE = """
+from protean.fields import Integer
+
+from pkg.parents import Handmade, Synthesized, Transformed, domain
+
+
+@domain.aggregate
+class FromHandmade(Handmade):
+    right: int | None = Integer()
+
+
+@domain.aggregate
+class FromSynthesized(Synthesized):
+    right: int | None = Integer()
+
+
+@domain.aggregate
+class FromTransformed(Transformed):
+    right: int | None = Integer()
+
+
+FromHandmade(left=1)
+FromHandmade(right=1)
+FromSynthesized(left=1, right=2)
+FromSynthesized(lft=1)
+FromTransformed(left=1, right=2)
+FromTransformed(lft=1)
+"""
+
+
+def test_parent_constructors_survive_the_cache(tmp_path: Path) -> None:
+    """A parent from another module keeps its constructor kind when cached.
+
+    The second run reads ``pkg.parents`` from mypy's cache, so the flags that
+    tell a hand-written ``__init__`` from a generated one must be in it.
+    """
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "parents.py").write_text(_PARENTS_MODULE, encoding="utf-8")
+    children = package / "children.py"
+    children.write_text(_CHILDREN_MODULE, encoding="utf-8")
+
+    def errors() -> list[str]:
+        stdout, stderr, status = mypy_api.run(
+            [
+                "--config-file",
+                str(_STRICT_CONFIG),
+                "--cache-dir",
+                str(tmp_path / ".mypy_cache"),
+                "--show-error-codes",
+                "--no-error-summary",
+                "--hide-error-context",
+                str(children),
+            ]
+        )
+        assert status in (0, 1), f"mypy exited with {status}:\n{stderr}{stdout}"
+        return [
+            match["message"]
+            for raw in stdout.splitlines()
+            if (match := _OUTPUT_LINE.match(raw)) and match["kind"] == "error"
+        ]
+
+    expected = [
+        'Unexpected keyword argument "right" for "FromHandmade"  [call-arg]',
+        (
+            'Unexpected keyword argument "lft" for "FromSynthesized"; '
+            'did you mean "left"?  [call-arg]'
+        ),
+        (
+            'Unexpected keyword argument "lft" for "FromTransformed"; '
+            'did you mean "left"?  [call-arg]'
+        ),
+    ]
+    assert errors() == expected
+    children.write_text(_CHILDREN_MODULE + "\n", encoding="utf-8")
+    assert errors() == expected

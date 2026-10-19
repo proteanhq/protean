@@ -879,7 +879,7 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
     parent_init = _nearest_parent_init(info)
     if parent_init is not None:
         parent, init_sym = parent_init
-        if not parent.metadata.get(_METADATA_KEY, {}).get(_SYNTHESIZED_INIT):
+        if not _is_generated_init(parent, init_sym):
             # A hand-written parent __init__ is the one that runs. Without an
             # __init__ of its own, the class would get one from mypy's
             # dataclass transform on its base, built from its fields alone.
@@ -948,12 +948,7 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
 
 
 def _nearest_parent_init(info: TypeInfo) -> tuple[TypeInfo, SymbolTableNode] | None:
-    """Return the nearest parent below the framework classes defining ``__init__``.
-
-    The plugin's own ``__init__`` carries a flag in the parent's metadata,
-    which mypy keeps in its cache, so a parent loaded from the cache can still
-    be told apart from one with a hand-written ``__init__``.
-    """
+    """Return the nearest parent below the framework classes defining ``__init__``."""
     for entry in info.mro[1:]:
         if entry.fullname.startswith(("protean.", "pydantic.", "builtins.")):
             break
@@ -963,11 +958,25 @@ def _nearest_parent_init(info: TypeInfo) -> tuple[TypeInfo, SymbolTableNode] | N
     return None
 
 
-def _init_keywords(init_sym: SymbolTableNode) -> list[tuple[str, Type]]:
-    """Return the keywords of a synthesized ``__init__``.
+def _is_generated_init(parent: TypeInfo, init_sym: SymbolTableNode) -> bool:
+    """Tell whether a parent's ``__init__`` was built from its fields.
 
-    A synthesized ``__init__`` already takes its class's inherited fields, so
-    the nearest one is the whole list.
+    This plugin flags its own ``__init__`` in the parent's metadata. mypy's
+    dataclass transform builds one for a class that subclasses a Protean base
+    without a decorator, and marks the symbol ``plugin_generated``. mypy keeps
+    both in its cache, so a parent loaded from the cache is told apart from
+    one with a hand-written ``__init__`` too.
+    """
+    return init_sym.plugin_generated or bool(
+        parent.metadata.get(_METADATA_KEY, {}).get(_SYNTHESIZED_INIT)
+    )
+
+
+def _init_keywords(init_sym: SymbolTableNode) -> list[tuple[str, Type]]:
+    """Return the keywords of an ``__init__`` built from fields.
+
+    Such an ``__init__`` already takes its class's inherited fields, so the
+    nearest one is the whole list.
     """
     signature = init_sym.node.type if isinstance(init_sym.node, FuncDef) else None
     if not isinstance(signature, CallableType):

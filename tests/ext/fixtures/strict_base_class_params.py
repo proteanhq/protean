@@ -136,6 +136,21 @@ HandmadeChild(left=1)
 HandmadeChild(right=1)  # E: call-arg
 
 
+# A parent that subclasses its base without a decorator gets an ``__init__``
+# from the dataclass transform, and a decorated child adds its own fields.
+class Transformed(BaseAggregate):
+    left: int | None = Integer()
+
+
+@domain.aggregate
+class TransformedChild(Transformed):
+    right: int | None = Integer()
+
+
+TransformedChild(left=1, right=2)
+TransformedChild(rght=2)  # E: call-arg
+
+
 # An annotation with a default is a keyword like one without.
 @domain.value_object
 class Label:
