@@ -15,7 +15,7 @@ Covers:
 
 from unittest.mock import MagicMock
 
-from mypy.nodes import SymbolTable
+from mypy.nodes import MDEF, Block, FuncDef, SymbolTable, SymbolTableNode, Var
 
 from protean.ext.mypy_plugin import (
     _REEXPORT_MAP,
@@ -421,6 +421,14 @@ class TestHasAttribute:
         assert _has_attribute(info, "id") is True
 
 
+def _method_symbol(name: str) -> SymbolTableNode:
+    return SymbolTableNode(MDEF, FuncDef(name, [], Block([])))
+
+
+def _var_symbol(name: str) -> SymbolTableNode:
+    return SymbolTableNode(MDEF, Var(name))
+
+
 class TestCopyBaseSymbols:
     """Tests for _copy_base_symbols helper."""
 
@@ -430,10 +438,12 @@ class TestCopyBaseSymbols:
         info = MagicMock()
         info.names = {}
         base_info = MagicMock()
-        sym1 = MagicMock()
-        sym2 = MagicMock()
         mro_entry = MagicMock()
-        mro_entry.names = {"to_dict": sym1, "raise_": sym2, "__init__": MagicMock()}
+        mro_entry.names = {
+            "to_dict": _method_symbol("to_dict"),
+            "raise_": _method_symbol("raise_"),
+            "__init__": _method_symbol("__init__"),
+        }
         base_info.mro = [mro_entry]
 
         _copy_base_symbols(info, base_info)
@@ -444,17 +454,52 @@ class TestCopyBaseSymbols:
     def test_does_not_overwrite_existing_symbols(self):
         from protean.ext.mypy_plugin import _copy_base_symbols
 
-        existing_sym = MagicMock()
+        existing_sym = _method_symbol("to_dict")
         info = MagicMock()
         info.names = {"to_dict": existing_sym}
         base_info = MagicMock()
         mro_entry = MagicMock()
-        mro_entry.names = {"to_dict": MagicMock(), "raise_": MagicMock()}
+        mro_entry.names = {
+            "to_dict": _method_symbol("to_dict"),
+            "raise_": _method_symbol("raise_"),
+        }
         base_info.mro = [mro_entry]
 
         _copy_base_symbols(info, base_info)
         assert info.names["to_dict"] is existing_sym
         assert "raise_" in info.names
+
+    def test_copied_methods_are_hidden_from_class_body_names(self):
+        """A copied ``dict`` method must not shadow the builtin in the class body."""
+        from protean.ext.mypy_plugin import _copy_base_symbols
+
+        info = MagicMock()
+        info.names = {}
+        base_info = MagicMock()
+        mro_entry = MagicMock()
+        method = _method_symbol("dict")
+        mro_entry.names = {"dict": method}
+        base_info.mro = [mro_entry]
+
+        _copy_base_symbols(info, base_info)
+        assert info.names["dict"].implicit is True
+        assert info.names["dict"].node is method.node
+
+    def test_copied_variables_keep_their_symbol(self):
+        """Class access to an implicit ``Var`` is an error, so variables are not marked."""
+        from protean.ext.mypy_plugin import _copy_base_symbols
+
+        info = MagicMock()
+        info.names = {}
+        base_info = MagicMock()
+        mro_entry = MagicMock()
+        var = _var_symbol("meta_")
+        mro_entry.names = {"meta_": var}
+        base_info.mro = [mro_entry]
+
+        _copy_base_symbols(info, base_info)
+        assert info.names["meta_"] is var
+        assert var.implicit is False
 
 
 class TestMakeSymbolTableNode:
@@ -648,3 +693,78 @@ class TestCustomFieldHook:
         assert isinstance(result, UnionType)
         assert color in result.items
         assert any(isinstance(item, NoneType) for item in result.items)
+
+
+def _class_body_statements(source: str) -> dict[str, object]:
+    """Parse ``source`` with mypy's parser and key the class body by first name."""
+    from mypy.errors import Errors
+    from mypy.nodes import AssignmentStmt, ClassDef, NameExpr
+    from mypy.options import Options
+    from mypy.parse import parse
+
+    options = Options()
+    tree = parse(source, "fixture.py", "fixture", Errors(options), options, eager=True)
+    class_def = tree.defs[0]
+    assert isinstance(class_def, ClassDef)
+    statements: dict[str, object] = {}
+    for stmt in class_def.defs.body:
+        assert isinstance(stmt, AssignmentStmt)
+        first = stmt.lvalues[0]
+        key = first.name if isinstance(first, NameExpr) else "tuple"
+        statements[key] = stmt
+    return statements
+
+
+class TestIsRejectedFieldAnnotation:
+    """Which class-body annotations count as annotation-only field declarations."""
+
+    _SOURCE = """
+class Order:
+    with_kwargs: String(required=True, max_length=50)
+    no_kwargs: String()
+    association: HasMany(LineItem)
+    plain_type: int
+    string_annotation: "int"
+    bare_field_name: String
+    typed_annotation: str = String(required=True)
+    arithmetic: 1 + 2
+    first, second = 1, 2
+"""
+
+    def _check(self, name: str) -> bool:
+        from protean.ext.mypy_plugin import _is_rejected_field_annotation
+
+        return _is_rejected_field_annotation(_class_body_statements(self._SOURCE)[name])
+
+    def test_field_call_with_keywords_is_rejected_field(self):
+        assert self._check("with_kwargs") is True
+
+    def test_field_call_without_keywords_is_rejected_field(self):
+        assert self._check("no_kwargs") is True
+
+    def test_association_call_is_rejected_field(self):
+        assert self._check("association") is True
+
+    def test_plain_type_annotation_is_left_alone(self):
+        assert self._check("plain_type") is False
+
+    def test_string_annotation_is_left_alone(self):
+        assert self._check("string_annotation") is False
+
+    def test_bare_field_name_is_left_alone(self):
+        """``name: String`` is handled by the type-analyze hook instead."""
+        assert self._check("bare_field_name") is False
+
+    def test_typed_annotation_is_left_alone(self):
+        assert self._check("typed_annotation") is False
+
+    def test_invalid_expression_without_a_call_is_left_alone(self):
+        assert self._check("arithmetic") is False
+
+    def test_tuple_target_is_left_alone(self):
+        assert self._check("tuple") is False
+
+    def test_non_assignment_is_not_a_field(self):
+        from protean.ext.mypy_plugin import _is_rejected_field_annotation
+
+        assert _is_rejected_field_annotation(object()) is False

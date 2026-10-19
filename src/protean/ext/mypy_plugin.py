@@ -47,6 +47,7 @@ import re
 import sys
 from collections.abc import Callable
 
+from mypy.mro import MroError, calculate_mro
 from mypy.nodes import (
     ARG_NAMED_OPT,
     ARG_POS,
@@ -61,6 +62,7 @@ from mypy.nodes import (
     NameExpr,
     PassStmt,
     RefExpr,
+    StrExpr,
     SymbolTableNode,
     TypeInfo,
     Var,
@@ -110,15 +112,22 @@ FIELD_TYPE_MAP: dict[str, str] = {
 # Association / embedded field factories whose return type depends on
 # their first positional argument (the target class).
 #
-# HasOne(OrderItem)   → OrderItem | None
-# HasMany(OrderItem)  → list[OrderItem]
-# ValueObject(Address) → Address | None
+# HasOne(OrderItem)                   → OrderItem | None
+# HasMany(OrderItem)                  → list[OrderItem]
+# ValueObject(Address)                → Address | None
+# ValueObject(Address, required=True) → Address
 _ASSOCIATION_FIELD_NAMES: dict[str, str] = {
     "protean.fields.association.HasOne": "has_one",
     "protean.fields.association.HasMany": "has_many",
-    "protean.fields.association.Reference": "has_one",  # Reference resolves like HasOne
+    "protean.fields.association.Reference": "reference",
     "protean.fields.embedded.ValueObject": "value_object",
 }
+
+# Association kinds that are data fields at runtime, so ``required``,
+# ``default`` and ``identifier`` decide their nullability the way they do for
+# a scalar field. ``HasOne`` is absent: the ``Association`` base forces
+# ``required = False``, so a has-one target can always be missing.
+_NULLABILITY_FROM_KWARGS_KINDS: set[str] = {"value_object", "reference"}
 
 # The custom-field factory. Like the association fields, its type comes from the
 # first positional argument (the custom Python type), so it cannot live in
@@ -455,6 +464,7 @@ def _customize_class_mro_callback(ctx: ClassDefContext) -> None:
     if decorator_name is not None:
         _maybe_inject_auto_id(ctx, info, decorator_name)
         _synthesize_has_many_methods(ctx)
+        _strip_rejected_field_annotations(ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -494,17 +504,15 @@ def _inject_base_class(
         # Already a subclass — just ensure auto-id and HasMany methods
         _maybe_inject_auto_id(ctx, info, decorator_name)
         _synthesize_has_many_methods(ctx)
+        _strip_rejected_field_annotations(ctx)
         return
 
-    # We cannot add BaseAggregate/BaseEntity/etc. to info.bases because
-    # they inherit from pydantic's BaseModel (with ModelMetaclass), which
-    # conflicts with the implicit metaclass from @dataclass_transform().
-    #
-    # Instead, we copy symbols (methods, attributes) from the base class
-    # hierarchy directly into the class's namespace. We must create fresh
-    # Var/node copies to avoid "value is not in list" errors when mypy
-    # tries to find the defining class in the MRO.
-    _copy_base_symbols(info, base_info)
+    # Make the decorated class a real subclass of the base, as the decorator
+    # does at runtime, so it is accepted wherever the base class is expected.
+    # If its own bases leave no consistent MRO, fall back to copying the
+    # base's symbols, which keeps the methods visible but not the subtype.
+    if not _add_base_to_mro(info, base_info):
+        _copy_base_symbols(info, base_info)
 
     # Inject auto-id for aggregate/entity decorators
     _maybe_inject_auto_id(ctx, info, decorator_name)
@@ -514,6 +522,38 @@ def _inject_base_class(
 
     # Synthesize add_*/remove_* for HasMany fields
     _synthesize_has_many_methods(ctx)
+
+    # Last, because the steps above read the rejected annotations' notes.
+    _strip_rejected_field_annotations(ctx)
+
+
+def _add_base_to_mro(info: TypeInfo, base_info: TypeInfo) -> bool:
+    """Append ``base_info`` to the class's bases and recompute its MRO.
+
+    The Protean bases derive from pydantic's ``BaseModel``, so the metaclass
+    is recomputed too. Without that, mypy reports a metaclass conflict
+    between the class (still on ``type``) and its new base.
+
+    Returns ``False``, leaving the class unchanged, when no consistent MRO
+    exists with the new base.
+    """
+    original_bases = info.bases
+    original_mro = info.mro
+    any_type = AnyType(TypeOfAny.special_form)
+    base = Instance(base_info, [any_type] * len(base_info.defn.type_vars))
+    info.bases = [b for b in original_bases if b.type.fullname != "builtins.object"] + [
+        base
+    ]
+    # calculate_mro returns a cached MRO when one is already set.
+    info.mro = []
+    try:
+        calculate_mro(info)
+    except MroError:
+        info.bases = original_bases
+        info.mro = original_mro
+        return False
+    info.metaclass_type = info.calculate_metaclass_type()
+    return True
 
 
 def _detect_protean_base_class(info: TypeInfo) -> str | None:
@@ -554,7 +594,23 @@ def _copy_base_symbols(info: TypeInfo, base_info: TypeInfo) -> None:
                 # underlying node. This is safe for FuncDef nodes
                 # (methods) because mypy resolves them via the node's
                 # own type, not via MRO lookup of info.
-                info.names[name] = sym
+                #
+                # A copied method is marked implicit so that a bare name in
+                # the class body skips it, as Python does for a base-class
+                # attribute. Otherwise pydantic's ``BaseModel.dict`` would
+                # shadow the builtin in ``changes: dict[str, Any] = Dict()``.
+                # Member access on the class or an instance ignores the flag
+                # for anything but a ``Var``, so variables are copied as is.
+                if isinstance(sym.node, Var):
+                    info.names[name] = sym
+                else:
+                    info.names[name] = SymbolTableNode(
+                        sym.kind,
+                        sym.node,
+                        module_public=sym.module_public,
+                        implicit=True,
+                        module_hidden=sym.module_hidden,
+                    )
 
 
 def _maybe_inject_auto_id(
@@ -604,6 +660,7 @@ _INIT_SYNTHESIS_DECORATORS: set[str] = {
     "command",
     "event",
     "projection",
+    "query",
 }
 
 # Mapping from short field factory names to canonical fully-qualified names.
@@ -630,6 +687,48 @@ _build_short_name_map()
 # Regex to extract the field factory name from a RawExpressionType note.
 # The note has the form: "Suggestion: use Float[...] instead of Float(...)"
 _NOTE_FIELD_RE = re.compile(r"Suggestion: use (\w+)\[")
+
+# The notes mypy's parser attaches to a call written in an annotation. A call
+# with keyword arguments gets the second, which does not name the callee.
+_CALL_ANNOTATION_NOTE_PREFIXES: tuple[str, ...] = (
+    "Suggestion: use ",
+    "Cannot use a function call in a type annotation",
+)
+
+
+def _is_rejected_field_annotation(stmt: object) -> bool:
+    """Tell whether ``stmt`` is an annotation-only field such as ``name: String()``.
+
+    mypy's parser turns a call in an annotation into a ``RawExpressionType``
+    with no literal value and one of the call notes above. A legitimate
+    annotation (``x: int``) or a string-literal annotation does not match.
+    """
+    if not isinstance(stmt, AssignmentStmt) or len(stmt.lvalues) != 1:
+        return False
+    if not isinstance(stmt.lvalues[0], NameExpr):
+        return False
+    raw_type = stmt.type
+    return (
+        isinstance(raw_type, RawExpressionType)
+        and raw_type.literal_value is None
+        and raw_type.note is not None
+        and raw_type.note.startswith(_CALL_ANNOTATION_NOTE_PREFIXES)
+    )
+
+
+def _strip_rejected_field_annotations(ctx: ClassDefContext) -> None:
+    """Drop the annotation of every annotation-only field in the class body.
+
+    Without it, mypy reports ``valid-type`` on each one when it analyzes the
+    class body, which happens after this MRO hook. The statement still defines
+    the name, so the field stays an attribute, typed by inference from the
+    missing right-hand side.
+    """
+    for stmt in ctx.cls.defs.body:
+        if _is_rejected_field_annotation(stmt):
+            assert isinstance(stmt, AssignmentStmt)
+            stmt.type = AnyType(TypeOfAny.special_form)
+            stmt.unanalyzed_type = stmt.type
 
 
 def _extract_field_factory_from_annotation(stmt: object) -> str | None:
@@ -731,56 +830,23 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
         if field_type is not None:
             fields.append((field_name, field_type))
 
-    # Also check for annotation-style fields: name: String(required=True)
-    # These produce a RawExpressionType with the field factory name in the note.
+    # Annotation-only fields (``name: String(required=True)``). mypy rejected
+    # the call in the annotation at parse time and kept no Python type, so the
+    # keyword is typed ``Any``.
     for stmt in ctx.cls.defs.body:
-        if not isinstance(stmt, AssignmentStmt):
+        if not _is_rejected_field_annotation(stmt):
             continue
-        if len(stmt.lvalues) != 1:
-            continue
+        assert isinstance(stmt, AssignmentStmt)
         lvalue = stmt.lvalues[0]
-        if not isinstance(lvalue, NameExpr) or lvalue.name.startswith("_"):
-            continue
-
+        assert isinstance(lvalue, NameExpr)
         field_name = lvalue.name
-        # Already captured via assignment-style — skip
-        if any(f[0] == field_name for f in fields):
+        if field_name.startswith("_") or any(f[0] == field_name for f in fields):
             continue
-
-        # Try to extract field factory from annotation
-        callee_fullname = _extract_field_factory_from_annotation(stmt)
-        if callee_fullname is None:
-            continue
-
-        # Resolve the Python type. Since we can't extract kwargs (required, default)
-        # from the RawExpressionType, we treat all annotation-style fields as optional.
-        type_fqn = FIELD_TYPE_MAP.get(callee_fullname)
-        if type_fqn is None:
-            canonical = _REEXPORT_MAP.get(callee_fullname)
-            if canonical is not None:
-                type_fqn = FIELD_TYPE_MAP.get(canonical)
-
-        if type_fqn is not None:
-            with contextlib.suppress(KeyError, AssertionError):
-                base_type = ctx.api.named_type(type_fqn, [])
-                # Make it optional since we can't determine required/default
-                fields.append((field_name, UnionType([base_type, NoneType()])))
-            continue
-
-        # Check if it's an association field (HasMany, HasOne, ValueObject, Reference)
-        # or a custom field. Both name their type in the first argument, which
-        # the RawExpressionType of an annotation-style declaration does not carry.
-        resolved = _resolve_association_fullname(callee_fullname)
-        if (
-            resolved is not None
-            or _resolve_custom_fullname(callee_fullname) is not None
-        ):
-            fields.append((field_name, AnyType(TypeOfAny.special_form)))
+        fields.append((field_name, AnyType(TypeOfAny.special_form)))
 
         if _DEBUG:
             print(
-                f"[protean-mypy-debug]   {field_name}: annotation-style, "
-                f"callee={callee_fullname}",
+                f"[protean-mypy-debug]   {field_name}: annotation-only",
                 file=sys.stderr,
             )
 
@@ -1082,6 +1148,11 @@ def _extract_first_arg_type(ctx: FunctionContext) -> MypyType | None:
     return target_type
 
 
+def _first_arg_is_str(ctx: FunctionContext) -> bool:
+    """Tell whether the factory's first positional argument is a string literal."""
+    return bool(ctx.args and ctx.args[0]) and isinstance(ctx.args[0][0], StrExpr)
+
+
 def _custom_field_hook(ctx: FunctionContext) -> Type:
     """Override the return type of the ``Custom`` field factory.
 
@@ -1109,22 +1180,32 @@ def _association_field_hook(ctx: FunctionContext, kind: str) -> Type:
     Extracts the first positional argument (the target class) and returns:
     - ``HasOne(X)``       → ``X | None``
     - ``HasMany(X)``      → ``list[X]``
-    - ``ValueObject(X)``  → ``X | None``
+    - ``ValueObject(X)`` and ``Reference(X)`` → ``X | None``, or ``X`` when
+      the call passes ``required=True``, ``identifier=True`` or a ``default``
 
     When the target class cannot be resolved (e.g. a forward-reference
     string), falls back to the default return type.
     """
     target_type = _extract_first_arg_type(ctx)
     if target_type is None:
-        # Forward reference string or unresolvable — fall back
+        if _first_arg_is_str(ctx):
+            # A target named by string (``Reference("Order")``) is resolved
+            # by the domain at runtime. Any lets an annotation such as
+            # ``order: Order | None = Reference("Order")`` state the type.
+            return AnyType(TypeOfAny.special_form)
         return ctx.default_return_type
 
     if kind == "has_many":
-        # HasMany(X) → list[X]
         return ctx.api.named_generic_type("builtins.list", [target_type])
-    else:
-        # HasOne(X) / ValueObject(X) → X | None
-        return UnionType([target_type, NoneType()])
+
+    if kind in _NULLABILITY_FROM_KWARGS_KINDS and (
+        _get_kwarg_bool(ctx, "required", default=False)
+        or _get_kwarg_bool(ctx, "identifier", default=False)
+        or _has_kwarg(ctx, "default")
+    ):
+        return target_type
+
+    return UnionType([target_type, NoneType()])
 
 
 # ---------------------------------------------------------------------------

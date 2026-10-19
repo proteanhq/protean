@@ -460,7 +460,7 @@ class BaseAggregate(BaseEntity):
             return super().__getattr__(name)
 
     @classmethod
-    def _create_for_reconstitution(cls) -> "BaseAggregate":
+    def _create_for_reconstitution(cls) -> typing.Self:
         """Create a blank aggregate for event replay, bypassing field validation.
 
         Uses ``__new__`` to skip ``__init__`` entirely (no Pydantic validation,
@@ -556,7 +556,7 @@ class BaseAggregate(BaseEntity):
         return aggregate
 
     @classmethod
-    def _create_new(cls, **identity_kwargs: Any) -> "BaseAggregate":
+    def _create_new(cls, **identity_kwargs: Any) -> typing.Self:
         """Create a new ES aggregate with auto-generated identity.
 
         Used by factory methods.  All state beyond identity will be
@@ -582,7 +582,7 @@ class BaseAggregate(BaseEntity):
         return aggregate
 
     @classmethod
-    def from_events(cls, events: list[Any]) -> "BaseAggregate":
+    def from_events(cls, events: list[Any]) -> typing.Self:
         """Event-Sourcing: reconstruct an aggregate from a list of events.
 
         Creates a blank aggregate via ``_create_for_reconstitution()`` and

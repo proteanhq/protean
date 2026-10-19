@@ -78,23 +78,23 @@ class ValueObject(Field):
 
     def __init__(
         self,
-        value_object_cls: "type[BaseValueObject] | str",
+        value_object_cls: "str | type",
         *args: Any,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
 
-        if not isinstance(value_object_cls, str):
-            # Validate the class being passed is a subclass of BaseValueObject
-            self._validate_value_object_cls(value_object_cls)
-
-        self._value_object_cls: type[BaseValueObject] | str = value_object_cls
+        self._value_object_cls: type[BaseValueObject] | str = (
+            value_object_cls
+            if isinstance(value_object_cls, str)
+            else self._validate_value_object_cls(value_object_cls)
+        )
 
         self._embedded_fields: dict[str, _ShadowField] = {}
 
     def _validate_value_object_cls(
-        self, value_object_cls: "type[BaseValueObject]"
-    ) -> None:
+        self, value_object_cls: type
+    ) -> "type[BaseValueObject]":
         """Validate that the value object class is a subclass of BaseValueObject"""
         from protean.core.value_object import BaseValueObject  # noqa: PLC0415
 
@@ -103,6 +103,7 @@ class ValueObject(Field):
                 f"`{value_object_cls.__name__}` is not a valid Value Object "
                 "and cannot be embedded in a Value Object field"
             )
+        return value_object_cls
 
     @property
     def value_object_cls(self) -> "type[BaseValueObject] | str":

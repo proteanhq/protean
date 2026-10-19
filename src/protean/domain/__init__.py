@@ -207,6 +207,9 @@ _T = TypeVar("_T")
 # site (see the ``dispatch`` overloads and ``BaseQuery``'s ``TResult``).
 _QueryResult = TypeVar("_QueryResult")
 
+# Binds the projection class passed to ``view_for`` so its reads return it.
+_ProjectionT = TypeVar("_ProjectionT", bound=BaseProjection)
+
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
 
@@ -2088,6 +2091,12 @@ class Domain:
     ##############
     # Upcasters  #
     ##############
+    @overload
+    def upcaster(self, _cls: type[_T]) -> type[_T]: ...
+    @overload
+    def upcaster(
+        self, _cls: None = ..., **kwargs: Any
+    ) -> Callable[[type[_T]], type[_T]]: ...
     def upcaster(
         self,
         _cls: type[_T] | None = None,
@@ -2422,7 +2431,7 @@ class Domain:
     # ReadView Functionality #
     ###########################
 
-    def view_for(self, projection_cls: type) -> "ReadView":
+    def view_for(self, projection_cls: type[_ProjectionT]) -> ReadView[_ProjectionT]:
         """Return a read-only `ReadView` for querying a projection.
 
         The returned ``ReadView`` exposes ``get()``, ``query``
