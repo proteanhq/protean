@@ -739,7 +739,7 @@ class TestRedisBrokerReconnectAfterClose:
         with patch("redis.Redis.from_url", return_value=mock_client):
             broker._data_reset()
 
-        mock_client.flushall.assert_called_once()
+        mock_client.flushdb.assert_called_once()
         assert broker.redis_instance is mock_client
         assert broker._created_groups_set == set()
         assert broker._group_creation_times == {}

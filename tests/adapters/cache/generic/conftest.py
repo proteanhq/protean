@@ -69,13 +69,5 @@ def cache(request):
     with domain.domain_context():
         provider = domain.cache_for(CacheEntry)
         yield provider
-        if request.param["provider"] == "redis":
-            # `flush_all` calls Redis `FLUSHALL`, which clears every database
-            # on the server, not just this suite's `REDIS_DB`. Other suites'
-            # Redis-backed fixtures live on other DB numbers and may be
-            # running concurrently under xdist, so use `FLUSHDB` here to only
-            # clear the one this suite owns.
-            provider.get_connection().flushdb()
-        else:
-            provider.flush_all()
+        provider.flush_all()
         provider.close()

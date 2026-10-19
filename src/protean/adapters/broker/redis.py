@@ -1694,9 +1694,9 @@ class RedisBroker(BaseBroker):
         return messages
 
     def _data_reset(self) -> None:
-        """Flush all data in Redis instance for testing"""
+        """Clear the broker's configured Redis database for testing"""
         try:
-            self._client.flushall()
+            self._client.flushdb()
             self._created_groups_set.clear()
             self._group_creation_times.clear()
         except Exception:  # a failed test reset must not break teardown; logged

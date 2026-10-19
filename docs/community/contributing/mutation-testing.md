@@ -117,11 +117,11 @@ A few things about this environment shape the results for these targets:
   Observatory tests import FastAPI, and their test domain configures the Redis
   broker, which needs the `redis` client package. A running Redis server is not
   needed. If one is listening on `127.0.0.1:56379` (the port `docker-compose.yml`
-  maps), the teardown of every test that uses the shared test domain sends it
-  `FLUSHALL`, so a mutation run wipes that Redis over and over for as long as
-  it runs. Do not run it while another test run or worktree is using that
-  Redis. The `observatory-timeline` tests are marked `no_test_domain`, so that
-  target never flushes it.
+  maps), the teardown of every test that uses the shared test domain sends
+  `FLUSHDB` to the test broker's database, so a mutation run wipes that
+  database over and over for as long as it runs. Do not run it while another
+  test run or worktree is using that Redis. The `observatory-timeline` tests
+  are marked `no_test_domain`, so that target never flushes it.
 - **The environment does not install the `telemetry` extra.** Without the
   OpenTelemetry SDK, `metrics.py` serves its hand-written Prometheus text.
 - **The OpenTelemetry gauge code is not exercised.**
