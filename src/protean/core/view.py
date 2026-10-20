@@ -6,7 +6,9 @@
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Generic, cast
+
+from typing_extensions import TypeVar
 
 from protean.core.queryset import ReadOnlyQuerySet
 from protean.exceptions import NotSupportedError, ObjectNotFoundError
@@ -21,8 +23,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Defaults to ``Any`` (PEP 696) so a bare ``ReadView`` annotation stays valid
+# under ``disallow_any_generics``. ``TypeVar`` comes from ``typing_extensions``
+# because parameter defaults only reached ``typing.TypeVar`` in Python 3.13.
+_ProjectionT = TypeVar("_ProjectionT", bound="BaseProjection", default=Any)
 
-class ReadView:
+
+class ReadView(Generic[_ProjectionT]):
     """Read-only facade for querying projections.
 
     Exposes ``get()``, ``query`` (``ReadOnlyQuerySet``), ``find_by()``,
@@ -39,7 +46,7 @@ class ReadView:
     def __init__(
         self,
         domain: "Domain",
-        projection_cls: type["BaseProjection"],
+        projection_cls: type[_ProjectionT],
     ) -> None:
         self._domain = domain
         self._projection_cls = projection_cls
@@ -86,7 +93,7 @@ class ReadView:
             cast("type[BaseEntity]", self._projection_cls),
         )
 
-    def get(self, identifier: Any) -> "BaseProjection":
+    def get(self, identifier: Any) -> _ProjectionT:
         """Retrieve a single projection record by its identifier.
 
         Raises ``ObjectNotFoundError`` if the record does not exist.
@@ -100,13 +107,13 @@ class ReadView:
                     f"`{self._projection_cls.__name__}` object with identifier "
                     f"{identifier} does not exist."
                 )
-            return result
+            return cast(_ProjectionT, result)
         else:
             # ``BaseDAO.get`` is typed to return ``BaseEntity``; for a
             # projection-backed repository it returns the projection instance.
-            return cast("BaseProjection", self._repo()._dao.get(identifier))
+            return cast(_ProjectionT, self._repo()._dao.get(identifier))
 
-    def find_by(self, **kwargs: Any) -> "BaseProjection":
+    def find_by(self, **kwargs: Any) -> _ProjectionT:
         """Find a single projection record matching the given criteria.
 
         Returns exactly one record.  Raises ``ObjectNotFoundError`` if
@@ -122,7 +129,7 @@ class ReadView:
             )
         # ``BaseDAO.find_by`` is typed to return ``BaseEntity``; for a
         # projection-backed repository it returns the projection instance.
-        return cast("BaseProjection", self._repo()._dao.find_by(**kwargs))
+        return cast(_ProjectionT, self._repo()._dao.find_by(**kwargs))
 
     def count(self) -> int:
         """Return the total number of projection records."""

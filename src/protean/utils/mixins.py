@@ -6,7 +6,7 @@ import time
 from collections import defaultdict
 from collections.abc import Callable, Collection
 from datetime import timedelta
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar, cast
 
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
@@ -409,6 +409,11 @@ def _carry_discarded_failures(
         )
 
 
+_Owner = TypeVar("_Owner")
+_Message = TypeVar("_Message")
+_Result = TypeVar("_Result")
+
+
 class handle:
     """Class decorator to mark handler methods in EventHandler, CommandHandler,
     and ProcessManager classes.
@@ -423,11 +428,15 @@ class handle:
 
         @handle(OrderPlaced, start=True, correlate="order_id")
         def on_order_placed(self, event): ...
+
+    ``target_cls`` can also be a string: an event type such as
+    ``"Customers.CustomerFact.v1"`` for an event with no local class, or
+    ``"$any"`` for a wildcard handler that receives every event in the stream.
     """
 
     def __init__(
         self,
-        target_cls: type,
+        target_cls: type | str,
         start: bool = False,
         correlate: str | dict[str, str] | None = None,
         end: bool = False,
@@ -437,7 +446,9 @@ class handle:
         self._correlate = correlate
         self._end = end
 
-    def __call__(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+    def __call__(
+        self, fn: Callable[[_Owner, _Message], _Result]
+    ) -> Callable[[_Owner, _Message], _Result]:
         """Marks the method with special attributes to construct a handler map later.
 
         Args:
@@ -564,7 +575,11 @@ class handle:
         setattr(wrapper, "_start", self._start)
         setattr(wrapper, "_correlate", self._correlate)
         setattr(wrapper, "_end", self._end)
-        return wrapper
+        # Typed with the handler's message and result types. The wrapper takes
+        # (instance, message) positionally only, so the parameter names are
+        # dropped and a keyword call is an error. It returns ``None`` when
+        # consume-side idempotency skips a redelivered message.
+        return cast(Callable[[_Owner, _Message], _Result], wrapper)
 
 
 class read:

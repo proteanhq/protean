@@ -4,7 +4,7 @@ import copy
 import logging
 import math
 from collections.abc import Callable, Iterator, KeysView
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 from protean._deprecation import warn_from_registry
 from protean.exceptions import NotSupportedError
@@ -90,7 +90,7 @@ class QuerySet:
         else:
             self._order_by = []
 
-    def _clone(self) -> "QuerySet":
+    def _clone(self) -> Self:
         """
         Return a copy of the current QuerySet.
         """
@@ -114,21 +114,21 @@ class QuerySet:
         """Add a Q-object to the current filter."""
         self._criteria = self._criteria._combine(q_object, q_object.connector)
 
-    def filter(self, *args: Any, **kwargs: Any) -> "QuerySet":
+    def filter(self, *args: Any, **kwargs: Any) -> Self:
         """
         Return a new QuerySet instance with the args ANDed to the existing
         set.
         """
         return self._filter_or_exclude(False, *args, **kwargs)
 
-    def exclude(self, *args: Any, **kwargs: Any) -> "QuerySet":
+    def exclude(self, *args: Any, **kwargs: Any) -> Self:
         """
         Return a new QuerySet instance with NOT (args) ANDed to the existing
         set.
         """
         return self._filter_or_exclude(True, *args, **kwargs)
 
-    def _filter_or_exclude(self, negate: bool, *args: Any, **kwargs: Any) -> "QuerySet":
+    def _filter_or_exclude(self, negate: bool, *args: Any, **kwargs: Any) -> Self:
         clone = self._clone()
 
         # Parse kwarg keys and replace field names with referenced_as if present
@@ -166,7 +166,7 @@ class QuerySet:
             clone._add_q(Q(*args, **new_kwargs))
         return clone
 
-    def limit(self, limit: int | None) -> "QuerySet":
+    def limit(self, limit: int | None) -> Self:
         """Limit number of records"""
         clone = self._clone()
 
@@ -176,7 +176,7 @@ class QuerySet:
 
         return clone
 
-    def offset(self, offset: int) -> "QuerySet":
+    def offset(self, offset: int) -> Self:
         """Fetch results after `offset` value"""
         clone = self._clone()
 
@@ -185,7 +185,7 @@ class QuerySet:
 
         return clone
 
-    def order_by(self, order_by: list[str] | str) -> "QuerySet":
+    def order_by(self, order_by: list[str] | str) -> Self:
         """Update order_by setting for filter set"""
         clone = self._clone()
 
@@ -221,7 +221,7 @@ class QuerySet:
 
         return clone
 
-    def only(self, *field_names: str) -> "QuerySet":
+    def only(self, *field_names: str) -> Self:
         """Restrict the query to a subset of persisted fields.
 
         Returns a new ``QuerySet`` that, when evaluated, fetches only the

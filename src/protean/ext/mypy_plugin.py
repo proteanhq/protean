@@ -47,6 +47,7 @@ import re
 import sys
 from collections.abc import Callable
 
+from mypy.mro import calculate_mro
 from mypy.nodes import (
     ARG_NAMED_OPT,
     ARG_POS,
@@ -56,12 +57,15 @@ from mypy.nodes import (
     AssignmentStmt,
     Block,
     CallExpr,
+    EllipsisExpr,
     FuncDef,
     MemberExpr,
     NameExpr,
     PassStmt,
     RefExpr,
+    StrExpr,
     SymbolTableNode,
+    TempNode,
     TypeInfo,
     Var,
 )
@@ -75,6 +79,7 @@ from mypy.types import (
     Type,
     TypeOfAny,
     TypeType,
+    UnboundType,
     UnionType,
 )
 from mypy.types import Type as MypyType
@@ -110,15 +115,23 @@ FIELD_TYPE_MAP: dict[str, str] = {
 # Association / embedded field factories whose return type depends on
 # their first positional argument (the target class).
 #
-# HasOne(OrderItem)   → OrderItem | None
-# HasMany(OrderItem)  → list[OrderItem]
-# ValueObject(Address) → Address | None
+# HasOne(OrderItem)                   → OrderItem | None
+# HasMany(OrderItem)                  → list[OrderItem]
+# ValueObject(Address)                → Address | None
+# ValueObject(Address, required=True) → Address
 _ASSOCIATION_FIELD_NAMES: dict[str, str] = {
     "protean.fields.association.HasOne": "has_one",
     "protean.fields.association.HasMany": "has_many",
-    "protean.fields.association.Reference": "has_one",  # Reference resolves like HasOne
+    "protean.fields.association.Reference": "reference",
     "protean.fields.embedded.ValueObject": "value_object",
 }
+
+# Association kinds that are data fields at runtime, so ``required`` and
+# ``identifier`` decide their nullability the way they do for a scalar field.
+# A ``default`` does not: these are descriptors, and an omitted one reads as
+# ``None`` whatever its default. ``HasOne`` is absent: the ``Association``
+# base forces ``required = False``, so a has-one target can always be missing.
+_NULLABILITY_FROM_KWARGS_KINDS: set[str] = {"value_object", "reference"}
 
 # The custom-field factory. Like the association fields, its type comes from the
 # first positional argument (the custom Python type), so it cannot live in
@@ -224,11 +237,15 @@ DECORATOR_BASE_CLASS_MAP: dict[str, str] = {
     "projection": "protean.core.projection.BaseProjection",
     "projector": "protean.core.projector.BaseProjector",
     "query": "protean.core.query.BaseQuery",
+    "query_handler": "protean.core.query_handler.BaseQueryHandler",
+    "upcaster": "protean.core.upcaster.BaseUpcaster",
     "process_manager": "protean.core.process_manager.BaseProcessManager",
     "repository": "protean.core.repository.BaseRepository",
     "database_model": "protean.core.database_model.BaseDatabaseModel",
     "email": "protean.core.email.BaseEmail",
 }
+
+_BASE_CLASS_FQNS: frozenset[str] = frozenset(DECORATOR_BASE_CLASS_MAP.values())
 
 # Decorators that auto-inject an ``id`` field at runtime.
 _AUTO_ID_DECORATORS: set[str] = {"aggregate", "entity"}
@@ -455,6 +472,7 @@ def _customize_class_mro_callback(ctx: ClassDefContext) -> None:
     if decorator_name is not None:
         _maybe_inject_auto_id(ctx, info, decorator_name)
         _synthesize_has_many_methods(ctx)
+        _strip_rejected_field_annotations(ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -493,18 +511,17 @@ def _inject_base_class(
     if _is_subclass(info, base_info):
         # Already a subclass — just ensure auto-id and HasMany methods
         _maybe_inject_auto_id(ctx, info, decorator_name)
+        # A class that extends a decorated element (``class Account(Auditable)``
+        # with ``Auditable`` abstract) inherits the parent's ``__init__``. A
+        # synthesized one lacks this class's own fields, and a hand-written one
+        # must win over the dataclass transform's.
+        if _nearest_parent_init(info) is not None:
+            _synthesize_init(ctx, decorator_name)
         _synthesize_has_many_methods(ctx)
+        _strip_rejected_field_annotations(ctx)
         return
 
-    # We cannot add BaseAggregate/BaseEntity/etc. to info.bases because
-    # they inherit from pydantic's BaseModel (with ModelMetaclass), which
-    # conflicts with the implicit metaclass from @dataclass_transform().
-    #
-    # Instead, we copy symbols (methods, attributes) from the base class
-    # hierarchy directly into the class's namespace. We must create fresh
-    # Var/node copies to avoid "value is not in list" errors when mypy
-    # tries to find the defining class in the MRO.
-    _copy_base_symbols(info, base_info)
+    _replace_bases(info, base_info)
 
     # Inject auto-id for aggregate/entity decorators
     _maybe_inject_auto_id(ctx, info, decorator_name)
@@ -514,6 +531,28 @@ def _inject_base_class(
 
     # Synthesize add_*/remove_* for HasMany fields
     _synthesize_has_many_methods(ctx)
+
+    # Last, because the steps above read the rejected annotations' notes.
+    _strip_rejected_field_annotations(ctx)
+
+
+def _replace_bases(info: TypeInfo, base_info: TypeInfo) -> None:
+    """Make ``base_info`` the class's only base and recompute its MRO.
+
+    The decorator rebuilds the class at runtime as
+    ``type(name, (base_cls,), namespace)``, so the class's own bases are
+    dropped there too. Mirroring that makes the decorated class a real
+    subtype of its base, accepted wherever the base is expected.
+
+    The metaclass is set as well, for the ``get_class_decorator_hook`` path.
+    On the MRO-hook path mypy recalculates it right after this hook.
+    """
+    any_type = AnyType(TypeOfAny.special_form)
+    info.bases = [Instance(base_info, [any_type] * len(base_info.defn.type_vars))]
+    # calculate_mro returns the cached MRO when one is already set.
+    info.mro = []
+    calculate_mro(info)
+    info.metaclass_type = info.calculate_metaclass_type()
 
 
 def _detect_protean_base_class(info: TypeInfo) -> str | None:
@@ -536,27 +575,6 @@ def _is_subclass(info: TypeInfo, base_info: TypeInfo) -> bool:
     return any(base.fullname == base_info.fullname for base in info.mro)
 
 
-def _copy_base_symbols(info: TypeInfo, base_info: TypeInfo) -> None:
-    """Copy symbols from base class into the class's namespace.
-
-    Only copies symbols that aren't already defined in the class itself.
-    This walks the entire MRO of the base to include inherited symbols.
-
-    We create proxy SymbolTableNode entries that reference the original
-    nodes. For Var nodes, we create a fresh copy with `info` pointing
-    to the target class to avoid ``ValueError`` in ``type_object_type``
-    when mypy tries to find the defining class in the MRO.
-    """
-    for mro_entry in base_info.mro:
-        for name, sym in mro_entry.names.items():
-            if name not in info.names and not name.startswith("__"):
-                # Create a new SymbolTableNode referencing the same
-                # underlying node. This is safe for FuncDef nodes
-                # (methods) because mypy resolves them via the node's
-                # own type, not via MRO lookup of info.
-                info.names[name] = sym
-
-
 def _maybe_inject_auto_id(
     ctx: ClassDefContext, info: TypeInfo, decorator_name: str
 ) -> None:
@@ -569,22 +587,44 @@ def _maybe_inject_auto_id(
     if decorator_name not in _AUTO_ID_DECORATORS:
         return
 
-    # Check if id is already declared in the class or any base
-    if _has_attribute(info, "id"):
+    # Check if id is already declared in the class or a user base. The class
+    # body is not analyzed yet when this hook runs, so read its statements.
+    if (
+        "id" in info.names
+        or _body_declares(ctx, "id")
+        or any(
+            "id" in entry.names
+            for entry in info.mro[1:]
+            if entry.fullname not in _BASE_CLASS_FQNS
+        )
+    ):
         return
 
-    # Add id as a Var of type str
-    str_type = ctx.api.named_type("builtins.str", [])
-    id_var = Var("id", str_type)
+    # The framework bases get ``Any``: the runtime identity is ``str``,
+    # ``int`` or ``UUID``, and a subclass may declare ``id: int``. An element
+    # gets ``str``, the common case.
+    id_type: Type
+    if info.fullname in _BASE_CLASS_FQNS:
+        id_type = AnyType(TypeOfAny.special_form)
+    else:
+        id_type = ctx.api.named_type("builtins.str", [])
+    id_var = Var("id", id_type)
     id_var.info = info
     id_var._fullname = f"{info.fullname}.id"
     id_var.is_initialized_in_class = True
     info.names["id"] = _make_symbol_table_node(id_var)
 
 
-def _has_attribute(info: TypeInfo, name: str) -> bool:
-    """Check if an attribute is declared in the class or any of its bases."""
-    return any(name in mro_entry.names for mro_entry in info.mro)
+def _body_declares(ctx: ClassDefContext, name: str) -> bool:
+    """Check whether the class body assigns or annotates ``name`` at top level."""
+    return any(
+        isinstance(stmt, AssignmentStmt)
+        and any(
+            isinstance(lvalue, NameExpr) and lvalue.name == name
+            for lvalue in stmt.lvalues
+        )
+        for stmt in ctx.cls.defs.body
+    )
 
 
 def _make_symbol_table_node(var: Var) -> SymbolTableNode:
@@ -604,7 +644,15 @@ _INIT_SYNTHESIS_DECORATORS: set[str] = {
     "command",
     "event",
     "projection",
+    "query",
 }
+
+# Where a walk up a class's MRO for user-declared parents stops.
+_FRAMEWORK_PREFIXES = ("protean.", "pydantic.", "builtins.")
+
+# ``TypeInfo.metadata`` key and flag that mark an ``__init__`` this plugin built.
+_METADATA_KEY = "protean"
+_SYNTHESIZED_INIT = "synthesized_init"
 
 # Mapping from short field factory names to canonical fully-qualified names.
 # At MRO calculation time, NameExpr.fullname is not yet resolved, so we
@@ -630,6 +678,57 @@ _build_short_name_map()
 # Regex to extract the field factory name from a RawExpressionType note.
 # The note has the form: "Suggestion: use Float[...] instead of Float(...)"
 _NOTE_FIELD_RE = re.compile(r"Suggestion: use (\w+)\[")
+
+# The note mypy's parser attaches to a call with keyword arguments written in
+# an annotation. It does not name the callee. A call without keyword arguments
+# gets a "Suggestion: use X[...]" note instead, which does.
+_KEYWORD_CALL_ANNOTATION_NOTE = "Cannot use a function call in a type annotation"
+
+
+def _is_rejected_field_annotation(stmt: object) -> bool:
+    """Tell whether ``stmt`` is an annotation-only field such as ``name: String()``.
+
+    mypy's parser turns a call in an annotation into a ``RawExpressionType``
+    with no literal value and a note. A call without keyword arguments is
+    accepted only when the note names a Protean field factory, so
+    ``x: str()`` keeps its ``valid-type`` error. A call with keyword
+    arguments gets a note that names no callee, so any such call counts:
+    in a Protean element a field call is the expected use of that syntax.
+    A legitimate annotation (``x: int``) or a string-literal annotation does
+    not match.
+    """
+    if not isinstance(stmt, AssignmentStmt) or len(stmt.lvalues) != 1:
+        return False
+    if not isinstance(stmt.lvalues[0], NameExpr):
+        return False
+    raw_type = stmt.type
+    if not isinstance(raw_type, RawExpressionType) or (
+        raw_type.literal_value is not None
+    ):
+        return False
+    if raw_type.note == _KEYWORD_CALL_ANNOTATION_NOTE:
+        return True
+    return _extract_field_factory_from_annotation(stmt) is not None
+
+
+def _strip_rejected_field_annotations(ctx: ClassDefContext) -> None:
+    """Drop the annotation of every annotation-only field in the class body.
+
+    Without it, mypy reports ``valid-type`` on each one when it analyzes the
+    class body, which happens after this MRO hook. The annotation becomes
+    ``Any``. ``unanalyzed_type`` keeps the original, so a re-analysis in
+    mypy's fine-grained mode sees the raw form and repeats this step.
+    """
+    for stmt in ctx.cls.defs.body:
+        if _is_rejected_field_annotation(stmt):
+            assert isinstance(stmt, AssignmentStmt)
+            stmt.type = AnyType(TypeOfAny.special_form)
+            # A Protean field is optional unless declared required, and the
+            # value is unknown here. With no right-hand side, the
+            # dataclass_transform on an explicit Protean base would make the
+            # field a required ``__init__`` argument.
+            if isinstance(stmt.rvalue, TempNode) and stmt.rvalue.no_rhs:
+                stmt.rvalue = EllipsisExpr()
 
 
 def _extract_field_factory_from_annotation(stmt: object) -> str | None:
@@ -675,7 +774,13 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
 
     info: TypeInfo = ctx.cls.info
 
-    # Don't override an explicitly declared __init__
+    # Don't override an explicitly declared __init__. The class body is not
+    # analyzed yet when this hook runs, so check its statements too.
+    if any(
+        isinstance(stmt, FuncDef) and stmt.name == "__init__"
+        for stmt in ctx.cls.defs.body
+    ):
+        return
     if "__init__" in info.names:
         existing = info.names["__init__"]
         # Only skip if it's defined in this class, not inherited
@@ -731,58 +836,62 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
         if field_type is not None:
             fields.append((field_name, field_type))
 
-    # Also check for annotation-style fields: name: String(required=True)
-    # These produce a RawExpressionType with the field factory name in the note.
+    # Annotation-only fields (``name: String(required=True)``). mypy rejected
+    # the call in the annotation at parse time and kept no Python type, so the
+    # keyword is typed ``Any``.
     for stmt in ctx.cls.defs.body:
-        if not isinstance(stmt, AssignmentStmt):
+        if not _is_rejected_field_annotation(stmt):
             continue
-        if len(stmt.lvalues) != 1:
-            continue
+        assert isinstance(stmt, AssignmentStmt)
         lvalue = stmt.lvalues[0]
-        if not isinstance(lvalue, NameExpr) or lvalue.name.startswith("_"):
-            continue
-
+        assert isinstance(lvalue, NameExpr)
         field_name = lvalue.name
-        # Already captured via assignment-style — skip
-        if any(f[0] == field_name for f in fields):
+        if field_name.startswith("_") or any(f[0] == field_name for f in fields):
             continue
-
-        # Try to extract field factory from annotation
-        callee_fullname = _extract_field_factory_from_annotation(stmt)
-        if callee_fullname is None:
-            continue
-
-        # Resolve the Python type. Since we can't extract kwargs (required, default)
-        # from the RawExpressionType, we treat all annotation-style fields as optional.
-        type_fqn = FIELD_TYPE_MAP.get(callee_fullname)
-        if type_fqn is None:
-            canonical = _REEXPORT_MAP.get(callee_fullname)
-            if canonical is not None:
-                type_fqn = FIELD_TYPE_MAP.get(canonical)
-
-        if type_fqn is not None:
-            with contextlib.suppress(KeyError, AssertionError):
-                base_type = ctx.api.named_type(type_fqn, [])
-                # Make it optional since we can't determine required/default
-                fields.append((field_name, UnionType([base_type, NoneType()])))
-            continue
-
-        # Check if it's an association field (HasMany, HasOne, ValueObject, Reference)
-        # or a custom field. Both name their type in the first argument, which
-        # the RawExpressionType of an annotation-style declaration does not carry.
-        resolved = _resolve_association_fullname(callee_fullname)
-        if (
-            resolved is not None
-            or _resolve_custom_fullname(callee_fullname) is not None
-        ):
-            fields.append((field_name, AnyType(TypeOfAny.special_form)))
+        fields.append((field_name, AnyType(TypeOfAny.special_form)))
 
         if _DEBUG:
             print(
-                f"[protean-mypy-debug]   {field_name}: annotation-style, "
-                f"callee={callee_fullname}",
+                f"[protean-mypy-debug]   {field_name}: annotation-only",
                 file=sys.stderr,
             )
+
+    # Plain annotations (``note: str`` or ``note: str = "x"``) are pydantic
+    # fields at runtime. Their types are not analyzed yet when this hook runs,
+    # so they are typed Any. ``unanalyzed_type`` is the annotation as written:
+    # semantic analysis can fill ``type`` in for an unannotated literal.
+    for stmt in ctx.cls.defs.body:
+        if (
+            not isinstance(stmt, AssignmentStmt)
+            or len(stmt.lvalues) != 1
+            or not isinstance(stmt.lvalues[0], NameExpr)
+            or stmt.unanalyzed_type is None
+            or isinstance(stmt.unanalyzed_type, RawExpressionType)
+        ):
+            continue
+        field_name = stmt.lvalues[0].name
+        if field_name.startswith("_") or any(f[0] == field_name for f in fields):
+            continue
+        if _is_class_var(ctx, stmt.unanalyzed_type):
+            continue
+        fields.append((field_name, AnyType(TypeOfAny.special_form)))
+
+    # Fields declared on decorated parent elements, unless redeclared here.
+    inherited: list[tuple[str, Type]] = []
+    parent_init = _nearest_parent_init(info)
+    if parent_init is not None:
+        parent, init_sym = parent_init
+        if not _is_generated_init(parent, init_sym):
+            # A hand-written parent __init__ is the one that runs. Without an
+            # __init__ of its own, the class would get one from mypy's
+            # dataclass transform on its base, built from its fields alone.
+            info.names["__init__"] = SymbolTableNode(MDEF, init_sym.node)
+            return
+        inherited = _generated_init_keywords(info)
+    own_names = {name for name, _ in fields}
+    fields = [
+        (name, field_type) for name, field_type in inherited if name not in own_names
+    ] + fields
 
     # Add 'id' field if this is an aggregate/entity
     if decorator_name in _AUTO_ID_DECORATORS:
@@ -793,10 +902,8 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
                 str_type = ctx.api.named_type("builtins.str", [])
                 fields.insert(0, ("id", str_type))
 
-    if not fields:
-        return
-
-    # Build the __init__ method
+    # Build the __init__ method, even with no fields, so that an unknown
+    # keyword is an error and a subclass can find the parent's fields.
     self_type = ctx.api.named_type(info.fullname, [])
 
     args: list[Argument] = [Argument(Var("self", self_type), self_type, None, ARG_POS)]
@@ -829,6 +936,9 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
     func.is_static = False
 
     info.names["__init__"] = SymbolTableNode(MDEF, func)
+    # Saved in mypy's cache with the class, so a subclass checked in a later
+    # run can still tell this __init__ from a hand-written one.
+    info.metadata.setdefault(_METADATA_KEY, {})[_SYNTHESIZED_INIT] = True
 
     if _DEBUG:
         field_desc = ", ".join(f"{n}: {t}" for n, t in fields)
@@ -837,6 +947,78 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
             f"{info.fullname}: ({field_desc})",
             file=sys.stderr,
         )
+
+
+def _is_class_var(ctx: ClassDefContext, annotation: Type) -> bool:
+    """Tell whether an unanalyzed annotation is ``ClassVar``, under any name.
+
+    Resolves the written name the way mypy's semantic analyzer does, so an
+    alias such as ``from typing import ClassVar as CV`` counts.
+    """
+    if not isinstance(annotation, UnboundType):
+        return False
+    sym = ctx.api.lookup_qualified(annotation.name, annotation, suppress_errors=True)
+    if sym is None or sym.node is None:
+        return False
+    return sym.node.fullname in ("typing.ClassVar", "typing_extensions.ClassVar")
+
+
+def _nearest_parent_init(info: TypeInfo) -> tuple[TypeInfo, SymbolTableNode] | None:
+    """Return the nearest parent below the framework classes defining ``__init__``."""
+    for entry in info.mro[1:]:
+        if entry.fullname.startswith(_FRAMEWORK_PREFIXES):
+            break
+        sym = entry.names.get("__init__")
+        if sym is not None:
+            return entry, sym
+    return None
+
+
+def _is_generated_init(parent: TypeInfo, init_sym: SymbolTableNode) -> bool:
+    """Tell whether a parent's ``__init__`` was built from its fields.
+
+    This plugin flags its own ``__init__`` in the parent's metadata. mypy's
+    dataclass transform builds one for a class that subclasses a Protean base
+    without a decorator, and marks the symbol ``plugin_generated``. mypy keeps
+    both in its cache, so a parent loaded from the cache is told apart from
+    one with a hand-written ``__init__`` too.
+    """
+    return init_sym.plugin_generated or bool(
+        parent.metadata.get(_METADATA_KEY, {}).get(_SYNTHESIZED_INIT)
+    )
+
+
+def _generated_init_keywords(info: TypeInfo) -> list[tuple[str, Type]]:
+    """Return the keywords of every parent ``__init__`` built from fields.
+
+    Walks the MRO below the framework classes, so a class with two parents
+    takes the fields of both. A name keeps its type from the nearest parent
+    that declares it.
+    """
+    keywords: dict[str, Type] = {}
+    for entry in info.mro[1:]:
+        if entry.fullname.startswith(_FRAMEWORK_PREFIXES):
+            break
+        init_sym = entry.names.get("__init__")
+        if init_sym is None or not _is_generated_init(entry, init_sym):
+            continue
+        for name, arg_type in _init_keywords(init_sym):
+            keywords.setdefault(name, arg_type)
+    return list(keywords.items())
+
+
+def _init_keywords(init_sym: SymbolTableNode) -> list[tuple[str, Type]]:
+    """Return the keywords of an ``__init__`` built from fields."""
+    signature = init_sym.node.type if isinstance(init_sym.node, FuncDef) else None
+    if not isinstance(signature, CallableType):
+        return []
+    return [
+        (name, arg_type)
+        for name, arg_type in zip(
+            signature.arg_names[1:], signature.arg_types[1:], strict=True
+        )
+        if name is not None
+    ]
 
 
 def _resolve_field_type_for_init(
@@ -878,7 +1060,7 @@ def _resolve_field_type_for_init(
         # Check if the field is required/identifier/has default
         is_required = _get_call_kwarg_bool(rvalue, "required", default=False)
         is_identifier = _get_call_kwarg_bool(rvalue, "identifier", default=False)
-        has_default = _has_call_kwarg(rvalue, "default")
+        has_default = _has_call_default(rvalue)
         has_implicit_default = callee_fullname in _FIELDS_WITH_IMPLICIT_DEFAULT or (
             _REEXPORT_MAP.get(callee_fullname, "") in _FIELDS_WITH_IMPLICIT_DEFAULT
         )
@@ -918,9 +1100,20 @@ def _get_call_kwarg_bool(call: CallExpr, name: str, *, default: bool) -> bool:
     return default
 
 
-def _has_call_kwarg(call: CallExpr, name: str) -> bool:
-    """Check whether a keyword argument is present in a CallExpr AST node."""
-    return name in call.arg_names
+def _is_none_expr(expr: object) -> bool:
+    return isinstance(expr, NameExpr) and expr.name == "None"
+
+
+def _has_call_default(call: CallExpr) -> bool:
+    """Check whether a CallExpr passes a ``default`` other than ``None``.
+
+    ``default=None`` leaves the field's value ``None``, so it is not a default
+    that makes the field non-optional.
+    """
+    return any(
+        name == "default" and not _is_none_expr(arg)
+        for name, arg in zip(call.arg_names, call.args, strict=True)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1082,6 +1275,11 @@ def _extract_first_arg_type(ctx: FunctionContext) -> MypyType | None:
     return target_type
 
 
+def _first_arg_is_str(ctx: FunctionContext) -> bool:
+    """Tell whether the factory's first positional argument is a string literal."""
+    return bool(ctx.args and ctx.args[0]) and isinstance(ctx.args[0][0], StrExpr)
+
+
 def _custom_field_hook(ctx: FunctionContext) -> Type:
     """Override the return type of the ``Custom`` field factory.
 
@@ -1096,7 +1294,7 @@ def _custom_field_hook(ctx: FunctionContext) -> Type:
 
     is_required = _get_kwarg_bool(ctx, "required", default=False)
     is_identifier = _get_kwarg_bool(ctx, "identifier", default=False)
-    has_default = _has_kwarg(ctx, "default")
+    has_default = _has_default(ctx)
 
     if not is_required and not has_default and not is_identifier:
         return UnionType([target_type, NoneType()])
@@ -1109,22 +1307,31 @@ def _association_field_hook(ctx: FunctionContext, kind: str) -> Type:
     Extracts the first positional argument (the target class) and returns:
     - ``HasOne(X)``       → ``X | None``
     - ``HasMany(X)``      → ``list[X]``
-    - ``ValueObject(X)``  → ``X | None``
+    - ``ValueObject(X)`` and ``Reference(X)`` → ``X | None``, or ``X`` when
+      the call passes ``required=True`` or ``identifier=True``
 
     When the target class cannot be resolved (e.g. a forward-reference
     string), falls back to the default return type.
     """
     target_type = _extract_first_arg_type(ctx)
     if target_type is None:
-        # Forward reference string or unresolvable — fall back
+        if _first_arg_is_str(ctx):
+            # A target named by string (``Reference("Order")``) is resolved
+            # by the domain at runtime. Any lets an annotation such as
+            # ``order: Order | None = Reference("Order")`` state the type.
+            return AnyType(TypeOfAny.special_form)
         return ctx.default_return_type
 
     if kind == "has_many":
-        # HasMany(X) → list[X]
         return ctx.api.named_generic_type("builtins.list", [target_type])
-    else:
-        # HasOne(X) / ValueObject(X) → X | None
-        return UnionType([target_type, NoneType()])
+
+    if kind in _NULLABILITY_FROM_KWARGS_KINDS and (
+        _get_kwarg_bool(ctx, "required", default=False)
+        or _get_kwarg_bool(ctx, "identifier", default=False)
+    ):
+        return target_type
+
+    return UnionType([target_type, NoneType()])
 
 
 # ---------------------------------------------------------------------------
@@ -1187,7 +1394,7 @@ def _field_factory_hook(
     # Container fields (List, Dict) always provide implicit defaults.
     is_required = _get_kwarg_bool(ctx, "required", default=False)
     is_identifier = _get_kwarg_bool(ctx, "identifier", default=False)
-    has_default = has_implicit_default or _has_kwarg(ctx, "default")
+    has_default = has_implicit_default or _has_default(ctx)
 
     if not is_required and not has_default and not is_identifier:
         return UnionType([base_type, NoneType()])
@@ -1219,11 +1426,11 @@ def _get_kwarg_bool(ctx: FunctionContext, name: str, *, default: bool) -> bool:
     return default
 
 
-def _has_kwarg(ctx: FunctionContext, name: str) -> bool:
-    """Check whether a keyword argument is present in the call."""
-    for formal_names in ctx.arg_names:
-        for arg_name in formal_names:
-            if arg_name == name:
+def _has_default(ctx: FunctionContext) -> bool:
+    """Check whether the call passes a ``default`` other than ``None``."""
+    for i, formal_names in enumerate(ctx.arg_names):
+        for j, arg_name in enumerate(formal_names):
+            if arg_name == "default" and not _is_none_expr(ctx.args[i][j]):
                 return True
     return False
 

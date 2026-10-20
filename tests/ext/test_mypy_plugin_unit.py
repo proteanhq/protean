@@ -27,7 +27,7 @@ from protean.ext.mypy_plugin import (
     _extract_decorator_name_from_expr,
     _field_factory_hook,
     _get_kwarg_bool,
-    _has_kwarg,
+    _has_default,
     _resolve_custom_fullname,
 )
 
@@ -183,16 +183,27 @@ class TestGetKwargBool:
         assert result is True
 
 
-class TestHasKwarg:
-    def test_present_kwarg(self):
+class TestHasDefault:
+    def _ctx(self, name: str, expr: object) -> MagicMock:
         ctx = MagicMock()
-        ctx.arg_names = [["default"]]
-        assert _has_kwarg(ctx, "default") is True
+        ctx.arg_names = [[name]]
+        ctx.args = [[expr]]
+        return ctx
 
-    def test_missing_kwarg(self):
-        ctx = MagicMock()
-        ctx.arg_names = [["required"]]
-        assert _has_kwarg(ctx, "default") is False
+    def test_present_default(self):
+        from mypy.nodes import StrExpr
+
+        assert _has_default(self._ctx("default", StrExpr("x"))) is True
+
+    def test_default_none_is_not_a_default(self):
+        from mypy.nodes import NameExpr
+
+        assert _has_default(self._ctx("default", NameExpr("None"))) is False
+
+    def test_missing_default(self):
+        from mypy.nodes import NameExpr
+
+        assert _has_default(self._ctx("required", NameExpr("True"))) is False
 
 
 class TestExtractDecoratorName:
@@ -273,8 +284,8 @@ class TestExtractDecoratorNameFromExpr:
 class TestDecoratorBaseClassMap:
     """Tests for DECORATOR_BASE_CLASS_MAP completeness and correctness."""
 
-    def test_has_17_entries(self):
-        assert len(DECORATOR_BASE_CLASS_MAP) == 17
+    def test_has_19_entries(self):
+        assert len(DECORATOR_BASE_CLASS_MAP) == 19
 
     def test_all_expected_decorators_present(self):
         expected = {
@@ -291,6 +302,8 @@ class TestDecoratorBaseClassMap:
             "projection",
             "projector",
             "query",
+            "query_handler",
+            "upcaster",
             "process_manager",
             "repository",
             "database_model",
@@ -386,75 +399,6 @@ class TestIsSubclass:
         base_info.fullname = "protean.core.aggregate.BaseAggregate"
         info.mro = []
         assert _is_subclass(info, base_info) is False
-
-
-class TestHasAttribute:
-    """Tests for _has_attribute helper."""
-
-    def test_has_attribute_present(self):
-        from protean.ext.mypy_plugin import _has_attribute
-
-        info = MagicMock()
-        mro_entry = MagicMock()
-        mro_entry.names = {"id": MagicMock(), "name": MagicMock()}
-        info.mro = [mro_entry]
-        assert _has_attribute(info, "id") is True
-
-    def test_has_attribute_absent(self):
-        from protean.ext.mypy_plugin import _has_attribute
-
-        info = MagicMock()
-        mro_entry = MagicMock()
-        mro_entry.names = {"name": MagicMock()}
-        info.mro = [mro_entry]
-        assert _has_attribute(info, "id") is False
-
-    def test_has_attribute_in_base_mro(self):
-        from protean.ext.mypy_plugin import _has_attribute
-
-        info = MagicMock()
-        entry1 = MagicMock()
-        entry1.names = {"name": MagicMock()}
-        entry2 = MagicMock()
-        entry2.names = {"id": MagicMock()}
-        info.mro = [entry1, entry2]
-        assert _has_attribute(info, "id") is True
-
-
-class TestCopyBaseSymbols:
-    """Tests for _copy_base_symbols helper."""
-
-    def test_copies_non_dunder_symbols(self):
-        from protean.ext.mypy_plugin import _copy_base_symbols
-
-        info = MagicMock()
-        info.names = {}
-        base_info = MagicMock()
-        sym1 = MagicMock()
-        sym2 = MagicMock()
-        mro_entry = MagicMock()
-        mro_entry.names = {"to_dict": sym1, "raise_": sym2, "__init__": MagicMock()}
-        base_info.mro = [mro_entry]
-
-        _copy_base_symbols(info, base_info)
-        assert "to_dict" in info.names
-        assert "raise_" in info.names
-        assert "__init__" not in info.names
-
-    def test_does_not_overwrite_existing_symbols(self):
-        from protean.ext.mypy_plugin import _copy_base_symbols
-
-        existing_sym = MagicMock()
-        info = MagicMock()
-        info.names = {"to_dict": existing_sym}
-        base_info = MagicMock()
-        mro_entry = MagicMock()
-        mro_entry.names = {"to_dict": MagicMock(), "raise_": MagicMock()}
-        base_info.mro = [mro_entry]
-
-        _copy_base_symbols(info, base_info)
-        assert info.names["to_dict"] is existing_sym
-        assert "raise_" in info.names
 
 
 class TestMakeSymbolTableNode:
@@ -648,3 +592,274 @@ class TestCustomFieldHook:
         assert isinstance(result, UnionType)
         assert color in result.items
         assert any(isinstance(item, NoneType) for item in result.items)
+
+
+def _class_body_statements(source: str) -> dict[str, object]:
+    """Parse ``source`` with mypy's parser and key the class body by first name."""
+    from mypy.errors import Errors
+    from mypy.nodes import AssignmentStmt, ClassDef, NameExpr
+    from mypy.options import Options
+    from mypy.parse import parse
+
+    options = Options()
+    tree = parse(source, "fixture.py", "fixture", Errors(options), options, eager=True)
+    class_def = tree.defs[0]
+    assert isinstance(class_def, ClassDef)
+    statements: dict[str, object] = {}
+    for stmt in class_def.defs.body:
+        assert isinstance(stmt, AssignmentStmt)
+        first = stmt.lvalues[0]
+        key = first.name if isinstance(first, NameExpr) else "tuple"
+        statements[key] = stmt
+    return statements
+
+
+class TestIsRejectedFieldAnnotation:
+    """Which class-body annotations count as annotation-only field declarations."""
+
+    _SOURCE = """
+class Order:
+    with_kwargs: String(required=True, max_length=50)
+    no_kwargs: String()
+    association: HasMany(LineItem)
+    plain_type: int
+    string_annotation: "int"
+    bare_field_name: String
+    typed_annotation: str = String(required=True)
+    arithmetic: 1 + 2
+    builtin_call: str()
+    first, second = 1, 2
+"""
+
+    def _check(self, name: str) -> bool:
+        from protean.ext.mypy_plugin import _is_rejected_field_annotation
+
+        return _is_rejected_field_annotation(_class_body_statements(self._SOURCE)[name])
+
+    def test_field_call_with_keywords_is_rejected_field(self):
+        assert self._check("with_kwargs") is True
+
+    def test_field_call_without_keywords_is_rejected_field(self):
+        assert self._check("no_kwargs") is True
+
+    def test_association_call_is_rejected_field(self):
+        assert self._check("association") is True
+
+    def test_plain_type_annotation_is_left_alone(self):
+        assert self._check("plain_type") is False
+
+    def test_string_annotation_is_left_alone(self):
+        assert self._check("string_annotation") is False
+
+    def test_bare_field_name_is_left_alone(self):
+        """``name: String`` is handled by the type-analyze hook instead."""
+        assert self._check("bare_field_name") is False
+
+    def test_typed_annotation_is_left_alone(self):
+        assert self._check("typed_annotation") is False
+
+    def test_invalid_expression_without_a_call_is_left_alone(self):
+        assert self._check("arithmetic") is False
+
+    def test_call_to_a_non_field_without_keywords_is_left_alone(self):
+        assert self._check("builtin_call") is False
+
+    def test_tuple_target_is_left_alone(self):
+        assert self._check("tuple") is False
+
+    def test_non_assignment_is_not_a_field(self):
+        from protean.ext.mypy_plugin import _is_rejected_field_annotation
+
+        assert _is_rejected_field_annotation(object()) is False
+
+
+class TestIsClassVar:
+    """Which unanalyzed annotations count as ``ClassVar``."""
+
+    def _check(self, annotation: object, node_fullname: str | None = "", found=True):
+        from protean.ext.mypy_plugin import _is_class_var
+
+        ctx = MagicMock()
+        if not found:
+            ctx.api.lookup_qualified.return_value = None
+        elif node_fullname is None:
+            ctx.api.lookup_qualified.return_value.node = None
+        else:
+            ctx.api.lookup_qualified.return_value.node.fullname = node_fullname
+        return _is_class_var(ctx, annotation)
+
+    def test_aliased_typing_class_var_counts(self):
+        from mypy.types import UnboundType
+
+        assert self._check(UnboundType("CV"), "typing.ClassVar") is True
+
+    def test_typing_extensions_class_var_counts(self):
+        from mypy.types import UnboundType
+
+        assert self._check(UnboundType("ClassVar"), "typing_extensions.ClassVar")
+
+    def test_other_name_does_not_count(self):
+        from mypy.types import UnboundType
+
+        assert self._check(UnboundType("str"), "builtins.str") is False
+
+    def test_unresolved_name_does_not_count(self):
+        from mypy.types import UnboundType
+
+        assert self._check(UnboundType("Missing"), found=False) is False
+
+    def test_name_without_a_node_does_not_count(self):
+        from mypy.types import UnboundType
+
+        assert self._check(UnboundType("Pending"), node_fullname=None) is False
+
+    def test_union_annotation_does_not_count(self):
+        from mypy.types import UnboundType, UnionType
+
+        union = UnionType([UnboundType("str"), UnboundType("None")])
+        assert self._check(union, "typing.ClassVar") is False
+
+
+class TestParentInit:
+    """Which parent ``__init__`` a class inherits, and what its keywords are."""
+
+    def _entry(
+        self, fullname: str, init: object = None, synthesized: bool = False
+    ) -> MagicMock:
+        from mypy.nodes import MDEF, SymbolTableNode
+
+        entry = MagicMock()
+        entry.fullname = fullname
+        entry.names = {} if init is None else {"__init__": SymbolTableNode(MDEF, init)}
+        entry.metadata = {"protean": {"synthesized_init": True}} if synthesized else {}
+        return entry
+
+    def _init(self, kinds: list, names: list[str], typed: bool = True) -> object:
+        from mypy.nodes import Block, ClassDef, FuncDef, SymbolTable, TypeInfo
+        from mypy.types import AnyType, CallableType, Instance, TypeOfAny
+
+        func = FuncDef("__init__", [], Block([]))
+        if typed:
+            any_type = AnyType(TypeOfAny.special_form)
+            function_info = TypeInfo(
+                SymbolTable(), ClassDef("function", Block([])), "builtins"
+            )
+            func.type = CallableType(
+                [any_type] * len(kinds),
+                kinds,
+                names,
+                any_type,
+                Instance(function_info, []),
+            )
+        return func
+
+    def _nearest(self, *entries: MagicMock) -> MagicMock | None:
+        from protean.ext.mypy_plugin import _nearest_parent_init
+
+        info = MagicMock()
+        info.mro = [MagicMock(), *entries]
+        found = _nearest_parent_init(info)
+        return None if found is None else found[0]
+
+    def _keywords(self, init: object) -> list[str]:
+        from mypy.nodes import MDEF, SymbolTableNode
+
+        from protean.ext.mypy_plugin import _init_keywords
+
+        return [name for name, _ in _init_keywords(SymbolTableNode(MDEF, init))]
+
+    def test_parent_without_its_own_init_is_skipped(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS
+
+        mixin = self._entry("app.Mixin")
+        parent = self._entry(
+            "app.Auditable",
+            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "changed_by"]),
+            synthesized=True,
+        )
+        assert self._nearest(mixin, parent) is parent
+
+    def test_nearest_parent_wins(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS
+
+        handmade = self._entry(
+            "app.Handmade", self._init([ARG_POS, ARG_NAMED_OPT], ["self", "left"])
+        )
+        grandparent = self._entry(
+            "app.Tracked",
+            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "changed_at"]),
+            synthesized=True,
+        )
+        assert self._nearest(handmade, grandparent) is handmade
+
+    def test_walk_stops_at_framework_classes(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS
+
+        base = self._entry(
+            "protean.core.aggregate.BaseAggregate",
+            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "internal"]),
+        )
+        assert self._nearest(base) is None
+
+    def test_no_parent_init_below_an_unmarked_mro(self):
+        assert self._nearest(self._entry("app.Mixin")) is None
+
+    def _generated(self, *entries: MagicMock) -> list[str]:
+        from protean.ext.mypy_plugin import _generated_init_keywords
+
+        info = MagicMock()
+        info.mro = [MagicMock(), *entries]
+        return [name for name, _ in _generated_init_keywords(info)]
+
+    def test_generated_keywords_come_from_every_generated_parent(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS, MDEF, SymbolTableNode
+
+        left = self._entry(
+            "app.Left",
+            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "left"]),
+            synthesized=True,
+        )
+        right = self._entry("app.Right")
+        right.names = {
+            "__init__": SymbolTableNode(
+                MDEF,
+                self._init(
+                    [ARG_POS, ARG_NAMED_OPT, ARG_NAMED_OPT], ["self", "right", "left"]
+                ),
+                plugin_generated=True,
+            )
+        }
+        assert self._generated(left, right) == ["left", "right"]
+
+    def test_generated_keywords_skip_hand_written_and_missing_inits(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS
+
+        mixin = self._entry("app.Mixin")
+        handmade = self._entry(
+            "app.Handmade", self._init([ARG_POS, ARG_NAMED_OPT], ["self", "left"])
+        )
+        base = self._entry(
+            "protean.core.aggregate.BaseAggregate",
+            self._init([ARG_POS, ARG_NAMED_OPT], ["self", "internal"]),
+            synthesized=True,
+        )
+        assert self._generated(mixin, handmade, base) == []
+
+    def test_keywords_follow_the_signature(self):
+        from mypy.nodes import ARG_NAMED_OPT, ARG_POS
+
+        init = self._init(
+            [ARG_POS, ARG_NAMED_OPT, ARG_NAMED_OPT],
+            ["self", "changed_by", "changed_at"],
+        )
+        assert self._keywords(init) == ["changed_by", "changed_at"]
+
+    def test_fieldless_init_has_no_keywords(self):
+        from mypy.nodes import ARG_POS
+
+        assert self._keywords(self._init([ARG_POS], ["self"])) == []
+
+    def test_untyped_init_has_no_keywords(self):
+        from mypy.nodes import ARG_POS
+
+        assert self._keywords(self._init([ARG_POS], ["self"], typed=False)) == []

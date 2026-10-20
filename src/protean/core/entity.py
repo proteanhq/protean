@@ -287,8 +287,11 @@ class _EntityState:
 # ---------------------------------------------------------------------------
 # BaseEntity
 # ---------------------------------------------------------------------------
+# Entities are constructed by keyword only (pydantic's ``__init__`` takes
+# ``**data``), so field order does not matter to a type checker.
 @dataclass_transform(
-    field_specifiers=(FieldSpec, HasMany, HasOne, Reference, ValueObject)
+    kw_only_default=True,
+    field_specifiers=(FieldSpec, HasMany, HasOne, Reference, ValueObject),
 )
 class BaseEntity(Element, BaseModel, OptionsMixin):
     """Base class for entities -- domain objects with unique identity that live
