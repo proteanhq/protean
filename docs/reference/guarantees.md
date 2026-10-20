@@ -298,7 +298,7 @@ broker. This decouples the domain commit from broker availability.
 | **Delivery** | At-least-once to the broker: a crash after `broker.publish` but before the row is marked published re-delivers. |
 | **Terminal state** | After `max_retries` (default 3) with exponential backoff, a message is marked **`abandoned`** (`OutboxStatus.ABANDONED`): permanently *not* delivered, retained for observability, cleaned up after a retention period. |
 | **Dedup** | Write-side idempotency on `(message_id, target_broker)`; a published event is written once per configured external broker. |
-| **Ordering** | Claimed **by priority** first, so a higher-priority later message can overtake a lower-priority earlier one. Within one priority, rows are claimed in commit order (`created_at`, then the event's position in its commit). A retried row or a second worker can still publish events out of that order. Do not assume end-to-end FIFO through the outbox. |
+| **Ordering** | Claimed **by priority** first, so a higher-priority later message can overtake a lower-priority earlier one. Within one priority, rows are claimed by `created_at` (when the Unit of Work built the row, just before the commit), then by the event's position in its commit, so one aggregate's events go out in commit order. A retried row, a second worker, host clocks that disagree or step back, and SQL Server's `DATETIME` rounding (about 3 ms) can still publish events out of that order. Do not assume end-to-end FIFO through the outbox. |
 | **Crash recovery** | A startup sweep rebuilds outbox rows from the event store (ADR-0015) for recent events whose internal row is missing, including one row per configured external broker for a `published` event. External rows lost on their own are not rebuilt, and events older than the outbox cleanup retention are skipped. |
 
 ---
@@ -321,7 +321,7 @@ Ordering is a *contract* only where the adapter advertises `MESSAGE_ORDERING`
 not advertise it, so cross-adapter code must not depend on it.
 
 End-to-end order for `published` domain events is set by the **outbox**: by
-priority first, then commit order within a priority (see
+priority first, then write order within a priority (see
 [Outbox → Ordering](#outbox-transactional-delivery-to-brokers)). A broker's
 per-stream FIFO only preserves the order the outbox published in.
 

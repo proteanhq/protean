@@ -967,6 +967,27 @@ class TestReconcileExternalBrokers:
                 "ext-b",
             ]
 
+    def test_rebuilt_external_rows_share_their_events_number(self, tmp_path):
+        domain = self._domain(tmp_path, "ext-a")
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            message_ids = [self._credit(domain) for _ in range(2)]
+
+            outbox_repo._dao._delete_all()
+            assert reconcile_outbox(domain) == 4
+
+            numbers = {
+                message_id: {
+                    row.target_broker: row.sequence_number
+                    for row in outbox_repo.find_all_by_message_id(message_id)
+                }
+                for message_id in message_ids
+            }
+            assert numbers == {
+                message_ids[0]: {"default": 0, "ext-a": 0},
+                message_ids[1]: {"default": 1, "ext-a": 1},
+            }
+
     def test_rebuilt_rows_match_what_the_unit_of_work_wrote_at_default_priority(
         self, tmp_path
     ):

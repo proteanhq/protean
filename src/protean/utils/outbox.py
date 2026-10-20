@@ -1351,8 +1351,8 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
 
     created = 0
     with UnitOfWork():
-        # The rebuilt rows form one commit, so number them in stream order the
-        # way the Unit of Work numbers the events of a commit.
+        # The rebuilt rows form one commit, so number them in event store
+        # order the way the Unit of Work numbers the events of a commit.
         for sequence_number, message in enumerate(missing):
             message_id = message.metadata.headers.id
             domain_meta = message.metadata.domain

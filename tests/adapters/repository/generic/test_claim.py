@@ -23,7 +23,7 @@ from protean.utils.query import Q
 class ClaimJob(BaseAggregate):
     status: String(max_length=20, default="ready")
     priority: Integer(default=0)
-    seq: Integer(default=0)
+    seq: Integer()
     locked_by: String(max_length=50)
 
 
@@ -145,6 +145,31 @@ class TestClaimConformance:
         ]
         left = dao.query.filter(status="ready").all().items
         assert sorted((j.priority, j.seq) for j in left) == [(0, 1), (0, 2)]
+
+    def test_null_on_a_descending_key_sorts_as_the_database_lists_it(self, test_domain):
+        # Where a NULL sorts differs by database, so the claim is held to the
+        # order the same database's query returns.
+        repo = test_domain.repository_for(ClaimJob)
+        for priority, seq in [(0, 1), (1, None), (0, None), (1, 2), (0, 2)]:
+            repo.add(ClaimJob(priority=priority, seq=seq))
+        dao = repo._dao
+        listed = [
+            (j.priority, j.seq)
+            for j in dao.query.filter(status="ready")
+            .order_by(["-seq", "priority"])
+            .all()
+            .items
+        ]
+        assert len(listed) == 5
+
+        claimed = dao._claim(
+            Q(status="ready"),
+            {"status": "claimed"},
+            limit=10,
+            order_by=["-seq", "priority"],
+        )
+
+        assert [(j.priority, j.seq) for j in claimed] == listed
 
     def test_non_positive_limit_claims_nothing(self, test_domain):
         _seed(test_domain, 3)

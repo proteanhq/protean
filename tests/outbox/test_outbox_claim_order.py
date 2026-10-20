@@ -121,6 +121,23 @@ class TestClaimInCommitOrder:
 
         assert _labels(claimed) == ["seq-0", "seq-1", "seq-2", "seq-3", "seq-4"]
 
+    def test_commit_time_comes_before_sequence_number(self, outbox_repo):
+        # Commit A raised two events, commit B one. Numbering restarts at 0 in
+        # each commit, so sorting by ``sequence_number`` before ``created_at``
+        # would put B's first event between A's two.
+        _insert(
+            outbox_repo,
+            [
+                _row("b-0", BASE_TIME + timedelta(seconds=2), 0),
+                _row("a-1", BASE_TIME + timedelta(seconds=1), 1),
+                _row("a-0", BASE_TIME, 0),
+            ],
+        )
+
+        claimed = outbox_repo.claim_batch("worker-1", limit=10)
+
+        assert _labels(claimed) == ["a-0", "a-1", "b-0"]
+
     def test_priority_comes_before_commit_order(self, outbox_repo):
         # The low-priority rows were committed first, yet the high-priority
         # rows are claimed ahead of them.
@@ -220,3 +237,27 @@ class TestSequenceNumberPerCommit:
         assert len(rows) == 5
         by_count = {row.data["count"]: row.sequence_number for row in rows}
         assert by_count == {1: 0, 2: 1, 3: 0, 4: 1, 5: 2}
+
+    def test_one_counter_spans_every_aggregate_in_a_commit(
+        self, test_domain, outbox_repo
+    ):
+        first = Counter(name="first")
+        second = Counter(name="second")
+        repo = test_domain.repository_for(Counter)
+        with UnitOfWork():
+            first.bump(times=2)
+            second.bump(times=3)
+            repo.add(first)
+            repo.add(second)
+
+        rows = outbox_repo._dao.query.all().items
+        assert len(rows) == 5
+        assert sorted(row.sequence_number for row in rows) == [0, 1, 2, 3, 4]
+        for counter in (first, second):
+            numbers = [
+                row.sequence_number
+                for row in sorted(rows, key=lambda r: r.data["count"])
+                if row.data["counter_id"] == counter.id
+            ]
+            assert numbers
+            assert numbers == sorted(numbers)
