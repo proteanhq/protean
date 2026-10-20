@@ -70,3 +70,5 @@ def test_entity_name_fails_init(test_domain):
 
     message = str(exc.value)
     assert "`TierPrice` references `Line` via part_of" in message
+    # `Order.lines` resolved to the `Line` entity, so it is not reported
+    assert "via HasMany" not in message

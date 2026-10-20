@@ -28,6 +28,7 @@ def test_unembedded_value_object_is_in_part_of_cluster(test_domain):
     ir = IRBuilder(test_domain).build()
 
     _assert_in_cluster(ir, TierPrice, Product)
+    assert TierPrice.meta_.part_of is Product
 
 
 def test_value_object_inside_dict_is_in_part_of_cluster(test_domain):
@@ -42,6 +43,7 @@ def test_value_object_inside_dict_is_in_part_of_cluster(test_domain):
     ir = IRBuilder(test_domain).build()
 
     _assert_in_cluster(ir, TierPrice, Product)
+    assert TierPrice.meta_.part_of is Product
 
 
 def test_embedded_value_object_with_string_part_of_keeps_building(test_domain):
@@ -56,3 +58,4 @@ def test_embedded_value_object_with_string_part_of_keeps_building(test_domain):
     ir = IRBuilder(test_domain).build()
 
     _assert_in_cluster(ir, TierPrice, Product)
+    assert TierPrice.meta_.part_of is Product

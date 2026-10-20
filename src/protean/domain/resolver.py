@@ -39,12 +39,15 @@ class ElementResolver:
 
         References that cannot be resolved (target not registered) are left
         in ``_pending_class_resolutions`` so that ``DomainValidator`` can
-        report them with contextual error messages.
+        report them with contextual error messages. Only the failed entries
+        stay: one name can be the target of several references, and those
+        that resolved must not be reported.
         """
         pending = self._domain._pending_class_resolutions
         for name in list(pending.keys()):
-            resolved = True
-            for resolution_type, params in pending[name]:
+            unresolved: list[Any] = []
+            for entry in pending[name]:
+                resolution_type, params = entry
                 try:
                     match resolution_type:
                         case "Association":
@@ -100,9 +103,11 @@ class ElementResolver:
                 except ConfigurationError:
                     # Target not found in registry — leave in pending list
                     # so DomainValidator can report it with context.
-                    resolved = False
+                    unresolved.append(entry)
 
-            if resolved:
+            if unresolved:
+                pending[name] = unresolved
+            else:
                 del pending[name]
 
     def _finalize_aggregate_link(self, cls: Any, aggregate_cls: Any) -> None:
