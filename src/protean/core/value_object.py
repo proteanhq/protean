@@ -38,6 +38,7 @@ from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.ir.diagnostics import DiagnosticCode
 from protean.utils import (
     DomainObjects,
+    _check_part_of_kind,
     _derive_element_class,
     _ensure_template_dict,
 )
@@ -373,6 +374,8 @@ def value_object_factory(element_cls: type[_T], domain: Any, **opts: Any) -> typ
     # ``_derive_element_class`` returns a ``BaseValueObject`` subclass; narrow so the
     # ``_invariants`` registry is visible to static checkers.
     vo_cls = cast(type[BaseValueObject], element_cls)
+
+    _check_part_of_kind(vo_cls)
 
     # Discover invariant methods using MRO scan (avoids inspect.getmembers deprecation warnings)
     for klass in vo_cls.__mro__:

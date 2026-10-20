@@ -247,6 +247,7 @@ For comprehensive relationship documentation, see [Expressing Relationships](./r
 | Exception | When it occurs |
 |---|---|
 | `IncorrectUsageError` | Entity defined without `part_of`; every entity must be associated with an aggregate. |
+| `IncorrectUsageError` | Entity's `part_of` names a class that is neither an aggregate nor an entity. |
 | `ValidationError` | Field validation fails during construction (e.g. missing `required` field). Contains a `messages` dict. |
 | `ValidationError` | An `@invariant.post` check on the entity raises a validation error. |
 | `ConfigurationError` | An unknown option is passed to `@domain.entity`, such as `abstract`. |

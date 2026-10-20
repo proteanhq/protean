@@ -34,7 +34,7 @@ from pydantic.fields import FieldInfo
 from pydantic_core import TzInfo
 
 from protean._deprecation import warn_from_registry
-from protean.exceptions import ConfigurationError
+from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.utils.container import Options, OptionsMixin
 from protean.utils.globals import current_domain
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
@@ -244,6 +244,77 @@ class DomainObjects(StrEnum):
     SUBSCRIBER = "SUBSCRIBER"
     UPCASTER = "UPCASTER"
     VALUE_OBJECT = "VALUE_OBJECT"
+
+
+# The kinds of element each element type may name in ``part_of``. Factories
+# check a class target at registration and the resolver resolves a string
+# target against the same kinds, so the two forms accept the same owners.
+PART_OF_KINDS: dict[DomainObjects, tuple[DomainObjects, ...]] = {
+    DomainObjects.APPLICATION_SERVICE: (DomainObjects.AGGREGATE,),
+    DomainObjects.COMMAND: (DomainObjects.AGGREGATE, DomainObjects.PROCESS_MANAGER),
+    DomainObjects.COMMAND_HANDLER: (DomainObjects.AGGREGATE,),
+    DomainObjects.DATABASE_MODEL: (
+        DomainObjects.AGGREGATE,
+        DomainObjects.ENTITY,
+        DomainObjects.PROJECTION,
+    ),
+    DomainObjects.ENTITY: (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
+    DomainObjects.EVENT: (DomainObjects.AGGREGATE, DomainObjects.PROCESS_MANAGER),
+    DomainObjects.EVENT_HANDLER: (DomainObjects.AGGREGATE,),
+    DomainObjects.EVENT_SOURCED_REPOSITORY: (DomainObjects.AGGREGATE,),
+    DomainObjects.QUERY: (DomainObjects.PROJECTION,),
+    DomainObjects.QUERY_HANDLER: (DomainObjects.PROJECTION,),
+    DomainObjects.REPOSITORY: (DomainObjects.AGGREGATE,),
+    DomainObjects.VALUE_OBJECT: (DomainObjects.AGGREGATE,),
+}
+
+
+def _kind_label(kind: DomainObjects) -> str:
+    return kind.value.replace("_", " ").title()
+
+
+def _with_article(label: str) -> str:
+    return f"{'an' if label[0] in 'AEIOU' else 'a'} {label}"
+
+
+def _check_part_of_kind(element_cls: type[OptionsMixin]) -> None:
+    """Raise ``IncorrectUsageError`` when a class ``part_of`` names the wrong kind.
+
+    A missing ``part_of`` is left to the factory's own check, and a string
+    ``part_of`` is checked when it resolves during ``Domain.init()``.
+    """
+    part_of = element_cls.meta_.part_of
+    if not part_of or isinstance(part_of, str):
+        return
+
+    element_type = DomainObjects(getattr(element_cls, "element_type"))
+    allowed = PART_OF_KINDS[element_type]
+    target_kind = (
+        getattr(part_of, "element_type", None) if isinstance(part_of, type) else None
+    )
+    if target_kind in allowed:
+        return
+
+    allowed_labels = [_with_article(_kind_label(kind)) for kind in allowed]
+    allowed_text = (
+        allowed_labels[0]
+        if len(allowed_labels) == 1
+        else f"{', '.join(allowed_labels[:-1])} or {allowed_labels[-1]}"
+    )
+    if isinstance(part_of, type):
+        target_name = part_of.__name__
+        if target_kind in set(DomainObjects):
+            target_text = f"is {_with_article(_kind_label(DomainObjects(target_kind)))}"
+        else:
+            target_text = "is not a domain element"
+    else:
+        target_name = repr(part_of)
+        target_text = "is not a class"
+
+    raise IncorrectUsageError(
+        f"{_kind_label(element_type)} `{element_cls.__name__}` can only be "
+        f"associated with {allowed_text}; `{target_name}` {target_text}"
+    )
 
 
 def _rebuild_function_with_new_class_cell(

@@ -15,7 +15,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.command_handler import derive_command_stream_category
 from protean.core.process_manager import BaseProcessManager
 from protean.exceptions import ConfigurationError, NotSupportedError
-from protean.utils import DomainObjects
+from protean.utils import PART_OF_KINDS, DomainObjects
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -71,7 +71,7 @@ class ElementResolver:
                             cls = params
                             to_cls = self._domain.fetch_element_cls_from_registry(
                                 cls.meta_.part_of,
-                                (DomainObjects.AGGREGATE,),
+                                PART_OF_KINDS[cls.element_type],
                             )
                             cls.meta_.part_of = to_cls
                             self._finalize_aggregate_link(cls, to_cls)
