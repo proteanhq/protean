@@ -563,11 +563,22 @@ class UnitOfWork:
             # commit (a handler that raises further events) enqueues onto the
             # same chain-scoped queue; only the outermost drain runs it. See
             # ADR-0016.
+            #
+            # Every write of this commit is durable by now, so a handler's
+            # failure is reported as a TransactionError, whatever its type. A
+            # handler's ExpectedVersionError passed through unchanged would
+            # make the enclosing command's version retry run the command
+            # again and save its write a second time.
             if current_domain.config["event_processing"] == Processing.SYNC.value:
-                dispatch_events_sync(
-                    (event for events in all_events.values() for event in events),
-                    current_domain.handlers_for,
-                )
+                try:
+                    dispatch_events_sync(
+                        (event for events in all_events.values() for event in events),
+                        current_domain.handlers_for,
+                    )
+                except Exception as exc:
+                    logger.exception("uow.commit_failed")
+                    set_span_error(span, exc)
+                    raise self._transaction_error(exc, all_events) from exc
 
             # Clear events from items in identity map
             self._clear_events_from_items()
@@ -582,15 +593,20 @@ class UnitOfWork:
                 g._access_log_uow_outcome = "committed"
 
             logger.debug("uow.commit_successful")
+        except TransactionError:
+            # Raised for a failed sync dispatch above, already logged and
+            # wrapped. The generic handler below would wrap it a second time.
+            raise
         except ExpectedVersionError as exc:
-            # An adapter may detect an optimistic-concurrency conflict directly
-            # at commit time and raise ExpectedVersionError itself. The
+            # An adapter may detect an optimistic-concurrency conflict on this
+            # commit's own write and raise ExpectedVersionError itself. The
             # in-memory provider does this in its compare-and-set commit, and
             # the memory and Message DB event stores on a wrong expected
-            # version. That is a concurrency conflict, not a generic transaction failure, so
-            # propagate it unchanged for the version-retry machinery (mirrors
-            # the StaleDataError translation below). Without this, the generic
-            # handler would wrap it in TransactionError.
+            # version. That is a concurrency conflict, not a generic
+            # transaction failure, so propagate it unchanged for the
+            # version-retry machinery (mirrors the StaleDataError translation
+            # below). Without this, the generic handler would wrap it in
+            # TransactionError.
             logger.exception("uow.commit_failed")
             set_span_error(span, exc)
             raise
@@ -618,19 +634,23 @@ class UnitOfWork:
         self, exc: Exception, all_events: defaultdict[str, list[Any]]
     ) -> TransactionError:
         """Wrap a failed commit's exception in a ``TransactionError``."""
+        # `str()` of a group is its own message and a count, so flatten that
+        # one. For anything else `str()` is the message, and prefixing the type
+        # would duplicate `original_exception`.
+        if isinstance(exc, BaseExceptionGroup):
+            original_message = describe_exception(exc)
+        else:
+            # A handler's exception reaches here too, and a user ``__str__``
+            # that raises would otherwise replace the failure being reported.
+            try:
+                original_message = str(exc)
+            except Exception:  # noqa: BLE001 - a __str__ is user code
+                original_message = "<unprintable>"
         return TransactionError(
             f"Unit of Work commit failed: {describe_exception(exc)}",
             extra_info={
                 "original_exception": exc.__class__.__name__,
-                # `str()` of a group is its own message and a count, so
-                # flatten that one. For anything else `str()` is the
-                # message, and prefixing the type would duplicate
-                # `original_exception` right above.
-                "original_message": (
-                    describe_exception(exc)
-                    if isinstance(exc, BaseExceptionGroup)
-                    else str(exc)
-                ),
+                "original_message": original_message,
                 "sessions": list(self._sessions.keys()),
                 "events_count": sum(len(events) for events in all_events.values()),
                 "messages_count": len(self._messages_to_dispatch),

@@ -24,11 +24,13 @@ Each ``(event, handler_cls)`` pair is an independent reaction to a fact: under
 async each handler class has its own subscription, so one class failing never
 touches another. The drain gives sync the same guarantee (ADR-0031). Every pair
 runs, failures are collected, and one (or a group) surfaces once the drain
-finishes. Two failures are excluded and end the drain where they are raised, for
-the same reasons they are in :func:`~protean.utils.mixins.HandlerMixin._dispatch_handlers`:
-an ``ExpectedVersionError`` must reach the enclosing Unit of Work's commit as
-itself so version retry still fires, and a ``BaseException`` that is not an
-``Exception`` (an interrupt) must not be swallowed.
+finishes. An ``ExpectedVersionError`` is collected like any other failure.
+When a commit calls the drain, the commit has already saved its writes, so
+rerunning the command would not resolve a handler's conflict. An event
+handler's or projector's own ``@handle`` wrapper retries the conflict when
+version retry is enabled. One failure is excluded and ends the drain where it
+is raised: a ``BaseException`` that is not an ``Exception`` (an interrupt) must
+not be swallowed.
 """
 
 from __future__ import annotations
@@ -40,7 +42,6 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any
 
-from protean.exceptions import ExpectedVersionError
 from protean.utils.globals import g
 from protean.utils.telemetry import describe_exception
 
@@ -100,11 +101,12 @@ def drain_sync_dispatch() -> None:
     A failing handler class no longer aborts the drain. Each ``(event,
     handler_cls)`` pair is an independent reaction, so every one runs and
     failures are collected: a single failure surfaces unchanged, and several are
-    raised together as an ``ExceptionGroup``. An ``ExpectedVersionError`` and a
-    non-``Exception`` ``BaseException`` are the two exclusions — they end the
-    drain where they are raised and propagate at once (see the module docstring
-    and ADR-0031). Failures gathered before either one are attached to it as a
-    note and logged, since nothing downstream would otherwise report them.
+    raised together as an ``ExceptionGroup``. An ``ExpectedVersionError`` is
+    collected like the rest. A non-``Exception`` ``BaseException`` is the one
+    exclusion: it ends the drain where it is raised and propagates at once (see
+    the module docstring and ADR-0031). Failures gathered before it are attached
+    to it as a note and logged, since nothing downstream would otherwise report
+    them.
     """
     if getattr(g, _DRAINING_KEY, False):
         return
@@ -118,13 +120,6 @@ def drain_sync_dispatch() -> None:
             with _message_in_context(message_context):
                 try:
                     handler_cls._handle(event)
-                except ExpectedVersionError as exc:
-                    # Not collected. Grouping it would hide it from the enclosing
-                    # Unit of Work's commit, which classifies by exception type,
-                    # so the conflict would surface as a TransactionError and the
-                    # version retry that resolves it would never fire.
-                    _carry_discarded_failures(failures, exc)
-                    raise
                 # `Exception` and not `BaseException`, so an interrupt or a
                 # cancellation still stops the drain where it is raised. Keeping
                 # `failures` to `Exception` also matters below: the
@@ -138,8 +133,8 @@ def drain_sync_dispatch() -> None:
         if failures:
             if len(failures) == 1:
                 # A lone failure propagates as itself rather than wrapped in a
-                # one-member group, keeping its original exception type for the
-                # enclosing commit to classify.
+                # one-member group, keeping its original exception type for
+                # the caller.
                 raise failures[0]
             raise ExceptionGroup(
                 f"Synchronous dispatch: {len(failures)} handler classes failed",
@@ -155,11 +150,10 @@ def _carry_discarded_failures(
 ) -> None:
     """Attach failures collected before *exc* ended the drain early.
 
-    Each exclusion path re-raises only *exc* itself — a version conflict kept as
-    ``ExpectedVersionError`` for the commit's classification, or a non-``Exception``
-    ``BaseException`` interrupt — so the failures gathered from earlier handler
-    classes are dropped and nothing on the synchronous path reports them. Without
-    this they would vanish with no log and no chain.
+    The exclusion path re-raises only *exc* itself, a non-``Exception``
+    ``BaseException`` such as an interrupt, so the failures gathered from earlier
+    handler classes are dropped and nothing on the synchronous path reports them.
+    Without this they would vanish with no log and no chain.
     """
     if not failures:
         return
@@ -167,7 +161,7 @@ def _carry_discarded_failures(
     # Everything here is best-effort. A user exception with a broken ``__str__``,
     # or one whose ``__notes__`` is not a list, would otherwise raise from this
     # helper and *replace* the exception it was annotating, swallowing an
-    # interrupt or destroying the ExpectedVersionError exclusion above.
+    # interrupt.
     try:
         # Described as one group rather than joined member by member, so the note
         # inherits ``describe_exception``'s length bound.

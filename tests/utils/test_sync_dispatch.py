@@ -248,11 +248,10 @@ def test_a_single_class_failure_keeps_its_own_type(test_domain):
         assert ran == ["solo", "fine"]
 
 
-def test_expected_version_error_ends_the_drain_at_once(test_domain, caplog):
-    """An ExpectedVersionError is not collected: it stops the drain where it is
-    raised and propagates as itself, so the enclosing Unit of Work's commit still
-    classifies it by type and version retry fires. Failures gathered before it
-    are attached as a note and logged, since nothing downstream reports them."""
+def test_expected_version_error_is_collected_like_any_failure(test_domain, caplog):
+    """An ExpectedVersionError does not end the drain. The drain runs after the
+    enclosing commit has saved its writes, so the conflict is collected with the
+    other failures and every class behind it still runs."""
     with test_domain.domain_context():
         ran = []
 
@@ -268,47 +267,56 @@ def test_expected_version_error_ends_the_drain_at_once(test_domain, caplog):
                 ran.append("Conflict")
                 raise ExpectedVersionError("stale")
 
-        class Never:
+        class After:
             @classmethod
             def _handle(cls, event):
-                ran.append("Never")
+                ran.append("After")
 
         enqueue_sync_dispatch("e", A)
         enqueue_sync_dispatch("e", Conflict)
-        enqueue_sync_dispatch("e", Never)
+        enqueue_sync_dispatch("e", After)
         with caplog.at_level(logging.ERROR):
-            with pytest.raises(ExpectedVersionError, match="stale") as exc_info:
+            with pytest.raises(ExceptionGroup) as exc_info:
                 drain_sync_dispatch()
 
-        # Propagated the moment the conflict was raised — `Never` never ran.
-        assert ran == ["A", "Conflict"]
-        # The discarded RuntimeError is carried on the propagating exception...
-        notes = getattr(exc_info.value, "__notes__", [])
-        assert any("RuntimeError" in note for note in notes)
-        # ...and logged so an operator can see it.
-        assert "sync_dispatch.sibling_failures_discarded" in caplog.text
+        assert ran == ["A", "Conflict", "After"]
+        members = exc_info.value.exceptions
+        assert [type(e) for e in members] == [RuntimeError, ExpectedVersionError]
+        assert str(members[1]) == "stale"
+        # Nothing was discarded, so there is no note and no discarded-failures log.
+        assert getattr(members[1], "__notes__", []) == []
+        assert "sync_dispatch.sibling_failures_discarded" not in caplog.text
         assert getattr(g, "_sync_dispatch_queue", None) is None
         assert getattr(g, "_sync_dispatch_draining", False) is False
 
 
-def test_expected_version_error_first_carries_no_note(test_domain):
-    """When the conflict is the first thing to fail there is nothing discarded,
-    so no note is attached — the exception propagates exactly as raised."""
+def test_a_lone_expected_version_error_keeps_its_own_type(test_domain):
+    """A conflict that is the only failure propagates as itself, like any other
+    lone failure, and the class behind it still runs."""
     with test_domain.domain_context():
+        ran = []
 
         class Conflict:
             @classmethod
             def _handle(cls, event):
+                ran.append("Conflict")
                 raise ExpectedVersionError("stale")
 
+        class After:
+            @classmethod
+            def _handle(cls, event):
+                ran.append("After")
+
         enqueue_sync_dispatch("e", Conflict)
+        enqueue_sync_dispatch("e", After)
         with pytest.raises(ExpectedVersionError, match="stale") as exc_info:
             drain_sync_dispatch()
 
+        assert ran == ["Conflict", "After"]
         assert getattr(exc_info.value, "__notes__", []) == []
 
 
-def test_base_exception_ends_the_drain_at_once(test_domain):
+def test_base_exception_ends_the_drain_at_once(test_domain, caplog):
     """A BaseException that is not an Exception — an interrupt — is never
     collected: it stops the drain immediately and carries the discarded
     failures, so nothing swallows the interrupt."""
@@ -335,21 +343,35 @@ def test_base_exception_ends_the_drain_at_once(test_domain):
         enqueue_sync_dispatch("e", A)
         enqueue_sync_dispatch("e", Interrupt)
         enqueue_sync_dispatch("e", Never)
-        with pytest.raises(KeyboardInterrupt) as exc_info:
+        with (
+            caplog.at_level(logging.ERROR, logger="protean.utils.sync_dispatch"),
+            pytest.raises(KeyboardInterrupt) as exc_info,
+        ):
             drain_sync_dispatch()
 
         assert ran == ["A", "Interrupt"]
+        discarded = [
+            r
+            for r in caplog.records
+            if r.getMessage().startswith("sync_dispatch.sibling_failures_discarded")
+        ]
+        assert len(discarded) == 1
+        assert discarded[0].levelno == logging.ERROR
         notes = getattr(exc_info.value, "__notes__", [])
         assert any("RuntimeError" in note for note in notes)
         assert getattr(g, "_sync_dispatch_queue", None) is None
         assert getattr(g, "_sync_dispatch_draining", False) is False
 
 
+class _Interrupt(KeyboardInterrupt):
+    pass
+
+
 def test_a_discarded_failure_with_a_broken_str_does_not_break_the_drain(test_domain):
     """End-to-end robustness: a collected failure whose ``__str__`` raises does not
-    stop the ExpectedVersionError from propagating as itself. (``describe_exception``
-    renders the broken member as ``<unprintable>``, so this exercises the note path
-    without tripping the guard around ``add_note``, which is covered separately below.)"""
+    stop an interrupt from propagating as itself. (``describe_exception`` renders
+    the broken member as ``<unprintable>``, so this exercises the note path without
+    tripping the guard around ``add_note``, which is covered separately below.)"""
     with test_domain.domain_context():
 
         class Nasty(Exception):
@@ -361,25 +383,28 @@ def test_a_discarded_failure_with_a_broken_str_does_not_break_the_drain(test_dom
             def _handle(cls, event):
                 raise Nasty()
 
-        class Conflict:
+        class Stop:
             @classmethod
             def _handle(cls, event):
-                raise ExpectedVersionError("stale")
+                raise _Interrupt("stop")
 
         enqueue_sync_dispatch("e", A)
-        enqueue_sync_dispatch("e", Conflict)
-        # The ExpectedVersionError still propagates as itself, unharmed by the
-        # broken __str__ on the discarded failure.
-        with pytest.raises(ExpectedVersionError, match="stale"):
+        enqueue_sync_dispatch("e", Stop)
+        # The interrupt still propagates as itself, unharmed by the broken
+        # __str__ on the discarded failure.
+        with pytest.raises(_Interrupt, match="stop") as exc_info:
             drain_sync_dispatch()
+
+        notes = getattr(exc_info.value, "__notes__", [])
+        assert any("<unprintable>" in note for note in notes)
 
 
 def test_a_failing_add_note_does_not_replace_the_propagating_exception(test_domain):
     """The note-attach is best-effort: if ``add_note`` on the propagating exception
-    raises — here because its ``__notes__`` is not a list — the guard logs that at
-    debug level, and the original ExpectedVersionError (whose type the commit needs) still
-    leaves the drain. Without the guard, ``add_note``'s ``TypeError`` would replace
-    it and defeat the version-retry carve-out."""
+    raises (here because its ``__notes__`` is not a list) the guard logs that at
+    debug level, and the original interrupt still leaves the drain. Without the
+    guard, ``add_note``'s ``TypeError`` would replace it and swallow the
+    interrupt."""
     with test_domain.domain_context():
 
         class A:
@@ -387,17 +412,17 @@ def test_a_failing_add_note_does_not_replace_the_propagating_exception(test_doma
             def _handle(cls, event):
                 raise RuntimeError("A boom")
 
-        class Conflict:
+        class Stop:
             @classmethod
             def _handle(cls, event):
-                exc = ExpectedVersionError("stale")
+                exc = _Interrupt("stop")
                 # A non-list __notes__ makes exc.add_note(...) raise TypeError.
                 exc.__notes__ = "not a list"
                 raise exc
 
         enqueue_sync_dispatch("e", A)
-        enqueue_sync_dispatch("e", Conflict)
-        with pytest.raises(ExpectedVersionError, match="stale"):
+        enqueue_sync_dispatch("e", Stop)
+        with pytest.raises(_Interrupt, match="stop"):
             drain_sync_dispatch()
 
 
