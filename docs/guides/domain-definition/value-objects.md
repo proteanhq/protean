@@ -72,6 +72,11 @@ Associates the value object with a specific aggregate. While optional,
 setting `part_of` registers the value object within the aggregate's cluster
 and ensures it participates in the aggregate's validation lifecycle.
 
+`part_of` takes the aggregate class or its name as a string. A string is
+resolved to the class at `domain.init()`, and it must name an aggregate: a name
+that matches no aggregate, such as a typo or an entity's name, makes
+`domain.init()` raise `ConfigurationError`.
+
 ## Embedding Value Objects
 
 Value Objects can be embedded into Aggregates and Entities with the
