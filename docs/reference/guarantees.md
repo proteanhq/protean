@@ -320,10 +320,10 @@ Ordering is a *contract* only where the adapter advertises `MESSAGE_ORDERING`
 (Redis Streams). The Inline and PubSub brokers preserve order in practice but do
 not advertise it, so cross-adapter code must not depend on it.
 
-End-to-end order for `published` domain events is set by the **outbox** (by
-priority; see [Outbox → Ordering](#outbox-transactional-delivery-to-brokers)),
-not by commit order; a broker's per-stream FIFO only preserves the order the
-outbox published in.
+End-to-end order for `published` domain events is set by the **outbox**: by
+priority first, then commit order within a priority (see
+[Outbox → Ordering](#outbox-transactional-delivery-to-brokers)). A broker's
+per-stream FIFO only preserves the order the outbox published in.
 
 **DLQ differs by adapter.** The Inline broker *populates* a DLQ automatically (on
 exhausted retries and on in-flight timeout). The Redis Streams broker provides DLQ

@@ -327,7 +327,7 @@ consumers need in the event `data` and `extensions`.
 |-----------|--------|
 | **Storage** | One additional outbox row per external broker per published event. For N external brokers and M published events per transaction, this adds N×M rows. |
 | **Latency** | External dispatch runs on the outbox tick interval (default 1 second), same as internal. No additional latency. |
-| **Ordering** | Events are published in outbox insertion order per broker. Cross-broker ordering is not guaranteed. |
+| **Ordering** | Each broker's rows are claimed by priority first, then in commit order within a priority. A retried row or a second worker can still publish events out of that order. Cross-broker ordering is not guaranteed. |
 | **Exactly-once** | The outbox provides at-least-once delivery. External consumers should be idempotent (use `headers.id` for deduplication). |
 | **Schema evolution** | Published events are contracts. Use [event versioning](event-versioning-and-evolution.md) to evolve them without breaking consumers. |
 

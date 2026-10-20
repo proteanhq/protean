@@ -265,8 +265,9 @@ current backfill batch completes.
 Within the outbox table itself, messages are fetched in descending priority
 order. This means `CRITICAL` (100) messages are published to the broker before
 `HIGH` (50) messages, which are published before `NORMAL` (0) messages. Within
-one priority, messages are fetched in commit order: oldest commit first, and
-events of one commit in the order they were raised. This ordering applies
+one priority, messages are fetched in commit order: oldest commit first. Within
+one commit, each aggregate's events come in the order that aggregate raised
+them, one aggregate after another. This ordering applies
 within a single outbox polling cycle.
 
 ### What this means in practice

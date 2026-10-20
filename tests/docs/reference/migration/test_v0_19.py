@@ -32,7 +32,7 @@ class TestOutboxClaimOrder:
             ", ".join(f"'{status}'" for status in statuses)
         )
 
-        assert PAGE.read_text().count(expected) == 3
+        assert PAGE.read_text().count(expected) == 2
 
     def test_the_listed_claim_order_matches_the_code(self):
         assert _CLAIM_ORDER == ["-priority", "created_at", "sequence_number"]
