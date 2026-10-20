@@ -410,12 +410,6 @@ class UnitOfWork:
             # defeat message_id idempotency. Published events additionally get
             # one row per external broker below.
 
-            # Per-commit position of each event, written to ``sequence_number``
-            # so rows of equal priority and equal ``created_at`` still claim in
-            # event order. One counter spans every provider, so each provider's
-            # rows stay increasing; an event's external rows share its number.
-            sequence_number = 0
-
             for provider_name, events in all_events.items():
                 if not events:
                     continue
@@ -428,7 +422,12 @@ class UnitOfWork:
 
                 outbox_repo = self.domain._get_outbox_repo(provider_name)
 
-                for event in events:
+                # Each event's position within this provider's part of the
+                # commit, written to ``sequence_number`` so rows of equal
+                # priority and equal ``created_at`` still claim in event order.
+                # Each provider has its own outbox table, so the count starts
+                # at 0 per provider; an event's external rows share its number.
+                for sequence_number, event in enumerate(events):
                     # Extract trace context for outbox denormalized fields
                     correlation_id = None
                     causation_id = None
@@ -484,8 +483,6 @@ class UnitOfWork:
                             )
                             outbox_repo._dao._apply_pre_persist_hooks(ext_outbox)
                             outbox_rows.append((outbox_repo, ext_outbox))
-
-                    sequence_number += 1
 
         # Record final session count after all lazy sessions have been initialised
         span.set_attribute("protean.uow.session_count", len(self._sessions))

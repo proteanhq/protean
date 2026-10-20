@@ -511,8 +511,10 @@ OUTBOX_INDEXES = [
 
 # The order rows are claimed in: higher priority first, then commit order
 # (``created_at``, with ``sequence_number`` breaking ties within one commit).
-# Shared by ``find_unprocessed`` and ``claim_batch`` so the two cannot drift.
-_CLAIM_ORDER = ["-priority", "created_at", "sequence_number"]
+# ``id`` says nothing about commit order; it only keeps the order the same on
+# every run when the other keys tie. Shared by ``find_unprocessed`` and
+# ``claim_batch`` so the two cannot drift.
+_CLAIM_ORDER = ["-priority", "created_at", "sequence_number", "id"]
 
 
 class OutboxRepository(BaseRepository):

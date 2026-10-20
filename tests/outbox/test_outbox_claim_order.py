@@ -1,7 +1,7 @@
 """Outbox rows of equal priority are claimed in commit order.
 
-The claim order is ``-priority``, ``created_at``, ``sequence_number``, where the
-Unit of Work writes each event's position within its commit to
+The claim order is ``-priority``, ``created_at``, ``sequence_number``, ``id``,
+where the Unit of Work writes each event's position within its commit to
 ``sequence_number``. Each ordering test inserts rows in an order that differs
 from commit order, so a claim that only sorted by priority would return them in
 insertion (physical) order and fail.
@@ -185,10 +185,9 @@ class TestClaimInCommitOrder:
         assert listed == ["c", "d", "a", "b"]
         assert claimed == listed
 
-    def test_null_sequence_number_rows_are_claimed_without_error(self, outbox_repo):
+    def test_null_sequence_number_rows_are_claimed_last(self, outbox_repo):
         # Rows written before the Unit of Work set ``sequence_number`` carry
-        # NULL. Where a NULL sorts depends on the database, so this checks that
-        # the claim and the listing agree and that commit time still leads.
+        # NULL. They sort after the numbered rows of the same ``created_at``.
         _insert(
             outbox_repo,
             [
@@ -202,10 +201,23 @@ class TestClaimInCommitOrder:
         listed = _labels(outbox_repo.find_unprocessed())
         claimed = _labels(outbox_repo.claim_batch("worker-1", limit=10))
 
+        assert listed == ["numbered-0", "numbered-1", "legacy", "late"]
         assert claimed == listed
-        assert claimed[-1] == "late"
-        numbered = [label for label in claimed if label.startswith("numbered")]
-        assert numbered == ["numbered-0", "numbered-1"]
+
+    def test_id_breaks_a_tie_on_every_other_key(self, outbox_repo):
+        ids = [f"00000000-0000-0000-0000-00000000000{n}" for n in range(1, 5)]
+        rows = []
+        for n in (3, 1, 4, 2):
+            values = _row(f"tie-{n}", BASE_TIME, 0).to_dict()
+            values["id"] = ids[n - 1]
+            rows.append(Outbox(**values))
+        _insert(outbox_repo, rows)
+
+        listed = _labels(outbox_repo.find_unprocessed())
+        claimed = _labels(outbox_repo.claim_batch("worker-1", limit=10))
+
+        assert listed == ["tie-1", "tie-2", "tie-3", "tie-4"]
+        assert claimed == listed
 
 
 @pytest.mark.transactional
@@ -238,7 +250,7 @@ class TestSequenceNumberPerCommit:
         by_count = {row.data["count"]: row.sequence_number for row in rows}
         assert by_count == {1: 0, 2: 1, 3: 0, 4: 1, 5: 2}
 
-    def test_one_counter_spans_every_aggregate_in_a_commit(
+    def test_one_counter_spans_every_aggregate_of_a_provider(
         self, test_domain, outbox_repo
     ):
         first = Counter(name="first")
@@ -261,3 +273,41 @@ class TestSequenceNumberPerCommit:
             ]
             assert numbers
             assert numbers == sorted(numbers)
+
+
+class Tally(BaseAggregate):
+    name: String(max_length=50, required=True)
+    count: Integer(default=0)
+
+    def bump(self, times: int = 1) -> None:
+        for _ in range(times):
+            self.count += 1
+            self.raise_(Tallied(tally_id=self.id, count=self.count))
+
+
+class Tallied(BaseEvent):
+    tally_id: String(required=True)
+    count: Integer(required=True)
+
+
+@pytest.mark.transactional
+def test_numbering_restarts_for_each_provider(test_domain):
+    test_domain.config["databases"]["secondary"] = {"provider": "memory"}
+    test_domain.register(Tally, provider="secondary")
+    test_domain.register(Tallied, part_of=Tally)
+    test_domain.init(traverse=False)
+
+    counter = Counter(name="c")
+    tally = Tally(name="t")
+    with UnitOfWork():
+        counter.bump(times=2)
+        tally.bump(times=3)
+        test_domain.repository_for(Counter).add(counter)
+        test_domain.repository_for(Tally).add(tally)
+
+    for provider, expected in (("default", [0, 1]), ("secondary", [0, 1, 2])):
+        rows = test_domain._get_outbox_repo(provider)._dao.query.all().items
+        numbers = [
+            r.sequence_number for r in sorted(rows, key=lambda r: r.data["count"])
+        ]
+        assert numbers == expected

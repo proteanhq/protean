@@ -83,8 +83,9 @@ class TestOutboxClaimOrder:
         assert PAGE.read_text().count(expected) == 2
 
     def test_the_listed_claim_order_matches_the_code(self):
-        assert _CLAIM_ORDER == ["-priority", "created_at", "sequence_number"]
+        assert _CLAIM_ORDER == ["-priority", "created_at", "sequence_number", "id"]
         text = PAGE.read_text()
         assert "1. `priority`, highest first." in text
         assert "2. `created_at`, oldest first." in text
         assert "3. `sequence_number`, lowest first." in text
+        assert "4. `id`, lowest first." in text

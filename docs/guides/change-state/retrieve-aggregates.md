@@ -410,6 +410,10 @@ You can sort by multiple fields by passing a list:
 --8<-- "guides/change-state/retrieve-aggregates/001.py:order_by_fields"
 ```
 
+An empty field (`None`) sorts after every value in ascending order, and before
+every value in descending order. The in-memory adapter and every SQL database
+sort it this way. Elasticsearch puts empty fields last in both directions.
+
 ## Pagination
 
 ### Controlling result size

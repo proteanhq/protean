@@ -24,6 +24,7 @@ from sqlalchemy import (
     MetaData,
     Table,
     and_,
+    case,
     create_engine,
     delete,
     event,
@@ -1749,10 +1750,9 @@ class SADAO(BaseDAO):
         order_cols = []
         for order_col in order_by:
             col = getattr(self.database_model_cls, order_col.lstrip("-"))
-            if order_col.startswith("-"):
-                order_cols.append(col.desc())
-            else:
-                order_cols.append(col)
+            order_cols.extend(
+                self._order_clauses(col.expression, order_col.startswith("-"))
+            )
 
         # It is better to have explicitly order results, instead of relying on default
         #   db behavior. Postgresql and SQLite do not force ordering, but their result
@@ -1977,6 +1977,28 @@ class SADAO(BaseDAO):
 
         return updated_count
 
+    # Dialects that already sort NULL as the largest value (last ascending,
+    # first descending), the order the memory adapter uses.
+    _NULLS_LARGEST_DIALECTS = frozenset({"postgresql"})
+
+    def _order_clauses(self, col: typing.Any, descending: bool) -> list[typing.Any]:
+        """``ORDER BY`` clauses for one key that place NULLs the same way on
+        every dialect: last ascending, first descending.
+
+        SQLite, MySQL and SQL Server sort NULL as the smallest value, and MySQL
+        and SQL Server have no ``NULLS LAST``, so a ``CASE`` on ``IS NULL``
+        goes first for nullable columns there.
+        """
+        clauses = []
+        if (
+            col.nullable
+            and self.provider._engine.dialect.name not in self._NULLS_LARGEST_DIALECTS
+        ):
+            is_null = case((col.is_(None), 1), else_=0)
+            clauses.append(is_null.desc() if descending else is_null)
+        clauses.append(col.desc() if descending else col)
+        return clauses
+
     # Dialects that support the single-statement claim below. It relies on
     # ``UPDATE … RETURNING`` with a ``FOR UPDATE SKIP LOCKED`` sub-select, which
     # only PostgreSQL provides together. MySQL and MariaDB have ``SKIP LOCKED``
@@ -2008,8 +2030,9 @@ class SADAO(BaseDAO):
 
         order_cols = []
         for key in _order_keys(order_by):
-            col = table.c[key.lstrip("-")]
-            order_cols.append(col.desc() if key.startswith("-") else col)
+            order_cols.extend(
+                self._order_clauses(table.c[key.lstrip("-")], key.startswith("-"))
+            )
         if not order_cols:
             # A deterministic order keeps the bounded set stable.
             order_cols.append(id_col.asc())
