@@ -1223,6 +1223,7 @@ class Domain:
             DomainObjects.COMMAND_HANDLER,
             DomainObjects.REPOSITORY,
             DomainObjects.EVENT_SOURCED_REPOSITORY,
+            DomainObjects.VALUE_OBJECT,
         ] and isinstance(new_cls.meta_.part_of, str):
             self._pending_class_resolutions[new_cls.meta_.part_of].append(
                 ("AggregateCls", (new_cls))
