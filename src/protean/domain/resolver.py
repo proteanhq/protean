@@ -119,16 +119,23 @@ class ElementResolver:
         Each kind is tried on its own, aggregate first. A name shared by an
         aggregate and an entity or process manager then still resolves to the
         aggregate, and the search never fails as ambiguous across two kinds.
+        The search moves to the next kind only when no element of the current
+        kind carries the name. A name that is ambiguous within one kind fails
+        instead of quietly binding to an element of a later kind.
         """
+        name = cls.meta_.part_of
         *preferred, last = PART_OF_KINDS[cls.element_type]
         for kind in preferred:
-            try:
-                return self._domain.fetch_element_cls_from_registry(
-                    cls.meta_.part_of, (kind,)
-                )
-            except ConfigurationError:
-                continue
-        return self._domain.fetch_element_cls_from_registry(cls.meta_.part_of, (last,))
+            if self._has_element_named(name, kind):
+                return self._domain.fetch_element_cls_from_registry(name, (kind,))
+        return self._domain.fetch_element_cls_from_registry(name, (last,))
+
+    def _has_element_named(self, name: str, kind: DomainObjects) -> bool:
+        registry = self._domain._domain_registry
+        return name in registry._elements[kind.value] or any(
+            record.class_type == kind.value
+            for record in registry._elements_by_name.get(name, [])
+        )
 
     def _finalize_aggregate_link(self, cls: Any, aggregate_cls: Any) -> None:
         """Complete element wiring deferred when ``part_of`` was a string.

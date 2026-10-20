@@ -534,6 +534,35 @@ class TestStringTargets:
 
         assert element_cls.meta_.part_of is order
 
+    def test_a_name_ambiguous_among_aggregates_does_not_fall_through_to_a_process_manager(
+        self, test_domain
+    ):
+        order = register_target(test_domain, AGGREGATE)
+        shipped = test_domain.register(elements.order_shipped_event(), part_of=order)
+
+        class Order(BaseAggregate):
+            name: String()
+
+        test_domain.register(Order)
+
+        def order_manager():
+            class Order(BaseProcessManager):
+                order_id: Identifier()
+
+                @handle(shipped, start=True, correlate="order_id")
+                def on_shipped(self, event):
+                    pass
+
+            return Order
+
+        test_domain.register(order_manager(), stream_categories=["test::order"])
+        event_cls = test_domain.register(elements.event(), part_of="Order")
+
+        with pytest.raises(ConfigurationError):
+            test_domain.init(traverse=False)
+
+        assert event_cls.meta_.part_of == "Order"
+
 
 class TestPartOfCycles:
     def test_entity_naming_itself_fails_init(self, test_domain):
