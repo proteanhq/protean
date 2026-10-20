@@ -9,6 +9,8 @@ from protean.adapters.repository.sqlalchemy import render_index_ddl
 from protean.domain import Domain
 from protean.utils.outbox import _CLAIM_ORDER, OUTBOX_INDEXES
 
+pytestmark = pytest.mark.no_test_domain
+
 PAGE = (
     pathlib.Path(__file__).parents[4] / "docs" / "reference" / "migration" / "v0-19.md"
 )

@@ -101,9 +101,13 @@ class TestClaimInCommitOrder:
         assert len(rows) == 10
 
         # Re-insert the same rows newest first, so insertion order is the
-        # reverse of commit order. The rows keep their ``created_at``.
+        # reverse of commit order. Each row gets a ``created_at`` a second
+        # apart in commit order: SQL Server's ``DATETIME`` rounds to about
+        # 3 ms, so two fast commits could otherwise share a timestamp and
+        # leave the tie to the random ids.
         outbox_repo._dao._delete_all()
         for row in sorted(rows, key=lambda r: r.data["count"], reverse=True):
+            row.created_at = BASE_TIME + timedelta(seconds=row.data["count"])
             row.state_.mark_new()
             outbox_repo.add(row)
 
