@@ -247,8 +247,9 @@ class DomainObjects(StrEnum):
 
 
 # The kinds of element each element type may name in ``part_of``. Factories
-# check a class target at registration and the resolver resolves a string
-# target against the same kinds, so the two forms accept the same owners.
+# check a class target at registration. For the element types that accept a
+# string target, the resolver resolves it against the same kinds. A database
+# model takes only a class target.
 PART_OF_KINDS: dict[DomainObjects, tuple[DomainObjects, ...]] = {
     DomainObjects.APPLICATION_SERVICE: (DomainObjects.AGGREGATE,),
     DomainObjects.COMMAND: (DomainObjects.AGGREGATE, DomainObjects.PROCESS_MANAGER),
@@ -280,8 +281,9 @@ def _with_article(label: str) -> str:
 def _check_part_of_kind(element_cls: type[OptionsMixin]) -> None:
     """Raise ``IncorrectUsageError`` when a class ``part_of`` names the wrong kind.
 
-    A missing ``part_of`` is left to the factory's own check, and a string
-    ``part_of`` is checked when it resolves during ``Domain.init()``.
+    A missing ``part_of`` is left to the factory's own check. A string
+    ``part_of`` is skipped here: elements that accept one check it when it
+    resolves during ``Domain.init()``.
     """
     part_of = element_cls.meta_.part_of
     if not part_of or isinstance(part_of, str):

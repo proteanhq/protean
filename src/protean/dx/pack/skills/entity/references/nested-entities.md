@@ -153,7 +153,7 @@ class LineItemCustomization:
 
 Second-level entities:
 - Are `part_of` their immediate parent entity (`LineItem`), not the aggregate root
-- Pass the parent as a class (`part_of=LineItem`). A string `part_of` resolves only to an aggregate, so define the parent entity first.
+- Name the parent as a class (`part_of=LineItem`) or a string (`part_of="LineItem"`)
 - Get a `Reference` back to the parent entity automatically. Do not declare it yourself.
 - Still belong to the `Order` aggregate and are persisted with it
 
