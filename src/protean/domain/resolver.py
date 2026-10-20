@@ -13,9 +13,10 @@ from typing import TYPE_CHECKING, Any
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command_handler import derive_command_stream_category
+from protean.core.event_sourced_repository import check_event_sourced_part_of
 from protean.core.process_manager import BaseProcessManager
 from protean.exceptions import ConfigurationError, NotSupportedError
-from protean.utils import PART_OF_KINDS, DomainObjects
+from protean.utils import PART_OF_KINDS, DomainObjects, _check_part_of_kind
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -46,7 +47,11 @@ class ElementResolver:
         pending = self._domain._pending_class_resolutions
         for name in list(pending.keys()):
             unresolved: list[Any] = []
-            for entry in pending[name]:
+            # An entity's ``part_of`` is resolved and checked before its
+            # reference field, which cannot point at an owner without an
+            # identity field.
+            entries = sorted(pending[name], key=lambda e: e[0] != "AggregateCls")
+            for entry in entries:
                 resolution_type, params = entry
                 try:
                     match resolution_type:
@@ -69,11 +74,9 @@ class ElementResolver:
                             field_obj._resolve_to_cls(self._domain, to_cls, owner_cls)
                         case "AggregateCls":
                             cls = params
-                            to_cls = self._domain.fetch_element_cls_from_registry(
-                                cls.meta_.part_of,
-                                PART_OF_KINDS[cls.element_type],
-                            )
+                            to_cls = self._resolve_part_of(cls)
                             cls.meta_.part_of = to_cls
+                            _check_part_of_kind(cls)
                             self._finalize_aggregate_link(cls, to_cls)
                         case "ProjectionCls":
                             cls = params
@@ -110,15 +113,33 @@ class ElementResolver:
             else:
                 del pending[name]
 
+    def _resolve_part_of(self, cls: Any) -> Any:
+        """Resolve a string ``part_of`` against the kinds the element allows.
+
+        Each kind is tried on its own, aggregate first. A name shared by an
+        aggregate and an entity or process manager then still resolves to the
+        aggregate, and the search never fails as ambiguous across two kinds.
+        """
+        *preferred, last = PART_OF_KINDS[cls.element_type]
+        for kind in preferred:
+            try:
+                return self._domain.fetch_element_cls_from_registry(
+                    cls.meta_.part_of, (kind,)
+                )
+            except ConfigurationError:
+                continue
+        return self._domain.fetch_element_cls_from_registry(cls.meta_.part_of, (last,))
+
     def _finalize_aggregate_link(self, cls: Any, aggregate_cls: Any) -> None:
         """Complete element wiring deferred when ``part_of`` was a string.
 
         Command and event handler factories derive their ``stream_category``
-        from the associated aggregate. When ``part_of`` is given as a string
-        reference, that derivation is skipped at registration (the aggregate
-        is not yet resolved) and completed here, once the reference points at
-        a real aggregate class. Class-reference ``part_of`` is finalized
-        eagerly in the factory and never reaches this path.
+        from the associated aggregate, and the event-sourced repository factory
+        checks that the aggregate is event sourced. When ``part_of`` is given
+        as a string reference, that work is skipped at registration (the
+        aggregate is not yet resolved) and completed here, once the reference
+        points at a real aggregate class. Class-reference ``part_of`` is
+        finalized eagerly in the factory and never reaches this path.
         """
         element_type = cls.element_type
         if element_type == DomainObjects.COMMAND_HANDLER:
@@ -130,6 +151,8 @@ class ElementResolver:
             and cls.meta_.stream_category is None
         ):
             cls.meta_.stream_category = aggregate_cls.meta_.stream_category
+        elif element_type == DomainObjects.EVENT_SOURCED_REPOSITORY:
+            check_event_sourced_part_of(cls)
 
     def assign_aggregate_clusters(self) -> None:
         """Assign aggregate clusters to all relevant elements."""
@@ -150,9 +173,24 @@ class ElementResolver:
                 part_of = element.cls.meta_.part_of
                 if part_of:
                     # Traverse up the graph tree to find the root aggregate
+                    chain = [element.cls]
                     while not issubclass(part_of, BaseAggregate) and not issubclass(
                         part_of, BaseProcessManager
                     ):
+                        if part_of in chain:
+                            names = " -> ".join(
+                                f"`{c.__name__}`" for c in [*chain, part_of]
+                            )
+                            raise ConfigurationError(
+                                {
+                                    "element": (
+                                        f"The `part_of` chain {names} loops back "
+                                        "on itself; an entity chain must end at "
+                                        "an aggregate"
+                                    )
+                                }
+                            )
+                        chain.append(part_of)
                         part_of = part_of.meta_.part_of
 
                 element.cls.meta_.aggregate_cluster = part_of

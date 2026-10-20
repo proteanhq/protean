@@ -275,9 +275,15 @@ def event_sourced_repository_factory(
 
     _check_part_of_kind(repository_cls)
 
-    if not repository_cls.meta_.part_of.meta_.is_event_sourced:
-        raise IncorrectUsageError(
-            f"Repository `{element_cls.__name__}` can only be associated with an Event Sourced Aggregate"
-        )
+    # A string ``part_of`` is checked once the resolver resolves it.
+    if not isinstance(repository_cls.meta_.part_of, str):
+        check_event_sourced_part_of(repository_cls)
 
     return element_cls
+
+
+def check_event_sourced_part_of(repository_cls: Any) -> None:
+    if not repository_cls.meta_.part_of.meta_.is_event_sourced:
+        raise IncorrectUsageError(
+            f"Repository `{repository_cls.__name__}` can only be associated with an Event Sourced Aggregate"
+        )

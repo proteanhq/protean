@@ -37,7 +37,7 @@ class OrderPlaced:
 
 ## Key rules
 
-1. **Events must be associated with aggregates** - Always specify `part_of` parameter with the aggregate name
+1. **Events must be associated with aggregates** - Always specify `part_of` parameter with the aggregate name. A process manager's own events name the process manager. Never name an entity: an entity raises its events through the aggregate
 2. **Events are named in past-tense** - Use past-tense verbs: `OrderPlaced`, not `PlaceOrder`
 3. **Events are immutable** - Once created, events cannot be modified (they are facts)
 4. **Events are DTOs** - Can contain simple fields and value objects, but NOT entities or aggregates

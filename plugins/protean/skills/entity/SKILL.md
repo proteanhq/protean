@@ -69,7 +69,7 @@ class Comment:
 
 ### Entity with part_of
 
-**Use a string reference to the aggregate** for `part_of` to avoid circular dependencies (a nested entity is the exception, see [Nested entities](references/nested-entities.md)):
+**Use a string reference to the aggregate** for `part_of` to avoid circular dependencies. A nested entity names its parent entity instead (see [Nested entities](references/nested-entities.md)):
 
 ```python
 @domain.entity(part_of="Order")

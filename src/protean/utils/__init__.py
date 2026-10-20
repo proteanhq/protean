@@ -247,9 +247,10 @@ class DomainObjects(StrEnum):
 
 
 # The kinds of element each element type may name in ``part_of``. Factories
-# check a class target at registration. For the element types that accept a
-# string target, the resolver resolves it against the same kinds. A database
-# model takes only a class target.
+# check a class target at registration, except the repository factory, which
+# keeps its own check. For the element types that accept a string target, the
+# resolver resolves it against the same kinds. A database model takes only a
+# class target.
 PART_OF_KINDS: dict[DomainObjects, tuple[DomainObjects, ...]] = {
     DomainObjects.APPLICATION_SERVICE: (DomainObjects.AGGREGATE,),
     DomainObjects.COMMAND: (DomainObjects.AGGREGATE, DomainObjects.PROCESS_MANAGER),
@@ -269,6 +270,8 @@ PART_OF_KINDS: dict[DomainObjects, tuple[DomainObjects, ...]] = {
     DomainObjects.VALUE_OBJECT: (DomainObjects.AGGREGATE,),
 }
 
+_ELEMENT_KINDS = frozenset(kind.value for kind in DomainObjects)
+
 
 def _kind_label(kind: DomainObjects) -> str:
     return kind.value.replace("_", " ").title()
@@ -278,24 +281,42 @@ def _with_article(label: str) -> str:
     return f"{'an' if label[0] in 'AEIOU' else 'a'} {label}"
 
 
+def _describe_part_of_target(part_of: Any) -> str:
+    if not isinstance(part_of, type):
+        return "is not a class"
+    target_kind = getattr(part_of, "element_type", None)
+    if isinstance(target_kind, str) and target_kind in _ELEMENT_KINDS:
+        return f"is {_with_article(_kind_label(DomainObjects(target_kind)))}"
+    return "is not a domain element"
+
+
+def _is_abstract_owner(part_of: type) -> bool:
+    return bool(getattr(getattr(part_of, "meta_", None), "abstract", False)) or (
+        not hasattr(part_of, _ID_FIELD_NAME)
+    )
+
+
 def _check_part_of_kind(element_cls: type[OptionsMixin]) -> None:
     """Raise ``IncorrectUsageError`` when a class ``part_of`` names the wrong kind.
 
     A missing ``part_of`` is left to the factory's own check. A string
     ``part_of`` is skipped here: elements that accept one check it when it
-    resolves during ``Domain.init()``.
+    resolves during ``Domain.init()``. An entity also cannot belong to an
+    abstract owner or a base class such as ``BaseAggregate``: its reference
+    field needs the owner's identity field.
     """
     part_of = element_cls.meta_.part_of
-    if not part_of or isinstance(part_of, str):
+    if part_of is None or isinstance(part_of, str):
         return
 
     element_type = DomainObjects(getattr(element_cls, "element_type"))
     allowed = PART_OF_KINDS[element_type]
-    target_kind = (
-        getattr(part_of, "element_type", None) if isinstance(part_of, type) else None
-    )
-    if target_kind in allowed:
-        return
+    if isinstance(part_of, type) and getattr(part_of, "element_type", None) in allowed:
+        if element_type != DomainObjects.ENTITY or not _is_abstract_owner(part_of):
+            return
+        target_text = "is abstract"
+    else:
+        target_text = _describe_part_of_target(part_of)
 
     allowed_labels = [_with_article(_kind_label(kind)) for kind in allowed]
     allowed_text = (
@@ -303,15 +324,7 @@ def _check_part_of_kind(element_cls: type[OptionsMixin]) -> None:
         if len(allowed_labels) == 1
         else f"{', '.join(allowed_labels[:-1])} or {allowed_labels[-1]}"
     )
-    if isinstance(part_of, type):
-        target_name = part_of.__name__
-        if target_kind in set(DomainObjects):
-            target_text = f"is {_with_article(_kind_label(DomainObjects(target_kind)))}"
-        else:
-            target_text = "is not a domain element"
-    else:
-        target_name = repr(part_of)
-        target_text = "is not a class"
+    target_name = part_of.__name__ if isinstance(part_of, type) else repr(part_of)
 
     raise IncorrectUsageError(
         f"{_kind_label(element_type)} `{element_cls.__name__}` can only be "
