@@ -171,7 +171,9 @@ class Outbox(BaseAggregate):
     # Worker/process identifier
     locked_by: Annotated[str | None, Field(max_length=128)] = None
 
-    # For maintaining message order within a stream
+    # The event's position within its Unit of Work commit (0, 1, 2, ...),
+    # written by the Unit of Work. Breaks ties on ``created_at`` so rows of one
+    # commit claim in event order. ``None`` on rows written before it was set.
     sequence_number: int | None = None
 
     # For distributed tracing (see note above: identity-shaped / caller-supplied)
@@ -233,7 +235,8 @@ class Outbox(BaseAggregate):
             correlation_id: Correlation identifier for tracing
             causation_id: Causation identifier (parent message's headers.id)
             max_retries: Maximum retry attempts
-            sequence_number: Sequence number for ordering
+            sequence_number: Position of the event within its commit, used
+                to order rows that share ``priority`` and ``created_at``
             partition_key: Per-key sequential-routing key (ADR-0028), or
                 ``None`` for a non-partitioned category. Already validated by
                 the caller (the Unit of Work) before it reaches here.
@@ -480,6 +483,8 @@ class Outbox(BaseAggregate):
 #
 # - The active-set partial index keeps the polling index tiny: only pending and
 #   failed rows are indexed, not the published archive (which dominates volume).
+#   Its columns follow the claim order (``_CLAIM_ORDER``): priority descending,
+#   then commit order.
 # - ``(message_id, target_broker)`` is unique for idempotency / find-by-message-id.
 #   A single event is dual-written to the outbox once per target broker (the
 #   internal broker plus every external broker), all rows sharing one
@@ -494,6 +499,8 @@ OUTBOX_INDEXES = [
     Index(
         "status",
         "priority",
+        "created_at",
+        "sequence_number",
         desc=("priority",),
         where=Q(status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value]),
         name="ix_outbox_active",
@@ -501,6 +508,11 @@ OUTBOX_INDEXES = [
     Index("message_id", "target_broker", unique=True),
     Index("correlation_id"),
 ]
+
+# The order rows are claimed in: higher priority first, then commit order
+# (``created_at``, with ``sequence_number`` breaking ties within one commit).
+# Shared by ``find_unprocessed`` and ``claim_batch`` so the two cannot drift.
+_CLAIM_ORDER = ["-priority", "created_at", "sequence_number"]
 
 
 class OutboxRepository(BaseRepository):
@@ -604,8 +616,8 @@ class OutboxRepository(BaseRepository):
         now = self._dao.domain.clock.now()
         query = self._dao.query.filter(self._eligibility_criteria(now, target_broker))
 
-        # Order by priority (higher first)
-        query = query.order_by("-priority")
+        # Same order as ``claim_batch``: priority (higher first), then commit order
+        query = query.order_by(_CLAIM_ORDER)
 
         return self._apply_limit_and_execute(query, limit)
 
@@ -640,7 +652,8 @@ class OutboxRepository(BaseRepository):
 
         Returns:
             The claimed messages, already in ``PROCESSING`` state, ordered by
-            priority (higher first).
+            priority (higher first), then by commit order within a priority
+            (``created_at``, then ``sequence_number``).
         """
         if limit <= 0:
             return []
@@ -658,7 +671,7 @@ class OutboxRepository(BaseRepository):
                     "last_processed_at": now,
                 },
                 limit=limit,
-                order_by="-priority",
+                order_by=_CLAIM_ORDER,
             ),
         )
 
@@ -1338,7 +1351,9 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
 
     created = 0
     with UnitOfWork():
-        for message in missing:
+        # The rebuilt rows form one commit, so number them in stream order the
+        # way the Unit of Work numbers the events of a commit.
+        for sequence_number, message in enumerate(missing):
             message_id = message.metadata.headers.id
             domain_meta = message.metadata.domain
             abandon_reason = None
@@ -1380,6 +1395,7 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                     metadata=message.metadata,
                     correlation_id=getattr(domain_meta, "correlation_id", None),
                     causation_id=getattr(domain_meta, "causation_id", None),
+                    sequence_number=sequence_number,
                     target_broker=target_broker,
                     partition_key=partition_key,
                 )

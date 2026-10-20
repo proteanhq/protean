@@ -453,7 +453,7 @@ class BaseDAO(metaclass=ABCMeta):
         criteria: Q,
         claim_fields: dict[str, Any],
         limit: int,
-        order_by: str | None = None,
+        order_by: str | list[str] | None = None,
     ) -> list[BaseEntity]:
         """Atomically select up to ``limit`` rows matching ``criteria``, apply
         ``claim_fields`` as an update, and return the claimed rows.
@@ -505,7 +505,9 @@ class BaseDAO(metaclass=ABCMeta):
         :param criteria: A ``Q`` object selecting eligible (claimable) rows.
         :param claim_fields: Attribute values to write on each claimed row.
         :param limit: Maximum number of rows to claim. ``<= 0`` claims none.
-        :param order_by: Optional single ordering key (e.g. ``"-priority"``).
+        :param order_by: Optional ordering key, or list of keys applied in
+            turn (e.g. ``["-priority", "created_at"]``). A ``-`` prefix sorts
+            that key descending.
         :return: List of claimed entity instances reflecting ``claim_fields``.
         """
         if limit <= 0:

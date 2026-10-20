@@ -95,6 +95,25 @@ class TestOutboxReconciliation:
         assert len(rows) == 1
         assert rows[0].target_broker == "default"
 
+    def test_rebuilt_rows_are_numbered_in_store_order(self, domain_and_repo):
+        domain, outbox_repo = domain_and_repo
+        for _ in range(3):
+            _deposit(domain)
+        store_order = [
+            m.metadata.headers.id
+            for m in domain.event_store.store.read("$all")
+            if m.metadata.headers.type == Deposited.__type__
+        ]
+        assert len(store_order) == 3
+
+        outbox_repo._dao._delete_all()
+        assert reconcile_outbox(domain) == 3
+
+        rows = outbox_repo._dao.query.all().items
+        assert len(rows) == 3
+        by_message = {row.message_id: row.sequence_number for row in rows}
+        assert [by_message[mid] for mid in store_order] == [0, 1, 2]
+
     def test_reconcile_scans_from_tail_minus_limit_plus_one(
         self, domain_and_repo, monkeypatch
     ):

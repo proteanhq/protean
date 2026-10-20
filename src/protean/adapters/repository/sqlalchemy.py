@@ -2,6 +2,7 @@
 
 import copy
 import decimal
+import functools
 import importlib
 import json
 import logging
@@ -118,6 +119,20 @@ query_logger = logging.getLogger(__name__ + ".query")
 # ``after_cursor_execute`` events. Cursors run sequentially on a DBAPI
 # connection, so a scalar is sufficient — no stack required.
 _QUERY_START_KEY = "protean_query_start_time"
+
+
+def _order_keys(order_by: str | list[str] | None) -> list[str]:
+    """Normalize a DAO ``order_by`` argument to a list of keys."""
+    if not order_by:
+        return []
+    return [order_by] if isinstance(order_by, str) else list(order_by)
+
+
+def _null_aware_sort_key(attr: str, entity: typing.Any) -> tuple[bool, typing.Any]:
+    """Sort key that never compares ``None`` with a value: NULLs sort as the
+    largest value, so last ascending and first descending, like PostgreSQL."""
+    value = getattr(entity, attr)
+    return (value is None, value)
 
 
 def _truncate_statement(statement: str, max_chars: int) -> str:
@@ -1971,14 +1986,15 @@ class SADAO(BaseDAO):
     _SKIP_LOCKED_DIALECTS = frozenset({"postgresql"})
 
     def _bounded_id_select(
-        self, criteria: Q, limit: int, order_by: str | None
+        self, criteria: Q, limit: int, order_by: str | list[str] | None
     ) -> tuple[typing.Any, typing.Any, typing.Any]:
         """Build ``(table, id_col, select-of-ids)`` for bounded id-subquery
         operations (:meth:`_claim`, :meth:`_delete_top`).
 
         The returned ``select`` yields up to ``limit`` identifiers matching
-        ``criteria`` in ``order_by`` order (identifier-ascending when
-        unspecified, keeping the bounded set deterministic). Callers wrap it:
+        ``criteria`` in ``order_by`` order, one key or a list of keys
+        (identifier-ascending when unspecified, keeping the bounded set
+        deterministic). Callers wrap it:
         ``_claim`` adds ``FOR UPDATE SKIP LOCKED`` under an ``UPDATE …
         RETURNING``; ``_delete_top`` wraps it in ``DELETE … WHERE id IN (…)``.
         """
@@ -1990,17 +2006,18 @@ class SADAO(BaseDAO):
         table = self.database_model_cls.__table__
         id_col = table.c[id_attr]
 
-        if order_by:
-            col = table.c[order_by.lstrip("-")]
-            order_col = col.desc() if order_by.startswith("-") else col
-        else:
+        order_cols = []
+        for key in _order_keys(order_by):
+            col = table.c[key.lstrip("-")]
+            order_cols.append(col.desc() if key.startswith("-") else col)
+        if not order_cols:
             # A deterministic order keeps the bounded set stable.
-            order_col = id_col.asc()
+            order_cols.append(id_col.asc())
 
         inner = select(id_col)
         if criteria.children:
             inner = inner.where(self._build_filters(criteria))
-        inner = inner.order_by(order_col).limit(limit)
+        inner = inner.order_by(*order_cols).limit(limit)
         return table, id_col, inner
 
     def _claim(
@@ -2008,7 +2025,7 @@ class SADAO(BaseDAO):
         criteria: Q,
         claim_fields: dict[str, typing.Any],
         limit: int,
-        order_by: str | None = None,
+        order_by: str | list[str] | None = None,
     ) -> "list[BaseEntity]":
         """Atomic find-and-claim in a single ``UPDATE … RETURNING`` statement.
 
@@ -2065,10 +2082,12 @@ class SADAO(BaseDAO):
 
             # ``RETURNING`` does not preserve the inner ``ORDER BY`` used to
             # select the top-N rows, so restore the requested order here.
-            if order_by and claimed:
+            # Stable sorts from the last key to the first apply each key in its
+            # own direction.
+            for key in reversed(_order_keys(order_by)):
                 claimed.sort(
-                    key=lambda e: getattr(e, order_by.lstrip("-")),
-                    reverse=order_by.startswith("-"),
+                    key=functools.partial(_null_aware_sort_key, key.lstrip("-")),
+                    reverse=key.startswith("-"),
                 )
         except DatabaseError:
             logger.exception("repository.sqlalchemy.claim_atomically_failed")

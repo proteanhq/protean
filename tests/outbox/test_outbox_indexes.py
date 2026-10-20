@@ -7,7 +7,13 @@ from sqlalchemy import inspect
 
 from protean.core.index import Index
 from protean.domain import Domain
-from protean.utils.outbox import DEFAULT_TARGET_BROKER, OUTBOX_INDEXES, Outbox
+from protean.utils.outbox import (
+    DEFAULT_TARGET_BROKER,
+    OUTBOX_INDEXES,
+    Outbox,
+    OutboxStatus,
+)
+from protean.utils.query import Q
 from protean.utils.reflection import declared_fields
 
 
@@ -28,11 +34,13 @@ class TestOutboxIndexDeclarations:
         )
         assert any(ix.fields == ("correlation_id",) for ix in OUTBOX_INDEXES)
 
-    def test_active_index_is_partial_on_status_and_priority(self):
+    def test_active_index_is_partial_and_follows_the_claim_order(self):
         active = next(ix for ix in OUTBOX_INDEXES if ix.name == "ix_outbox_active")
-        assert active.fields == ("status", "priority")
+        assert active.fields == ("status", "priority", "created_at", "sequence_number")
         assert active.desc == ("priority",)
-        assert active.where is not None
+        assert active.where == Q(
+            status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value]
+        )
 
     def test_all_entries_are_index_instances(self):
         assert all(isinstance(ix, Index) for ix in OUTBOX_INDEXES)
@@ -58,12 +66,18 @@ class TestOutboxIndexCreation:
             provider._metadata.create_all(provider._engine)
 
             insp = inspect(provider._engine)
-            names = {i["name"] for i in insp.get_indexes("outbox")}
+            indexes = {i["name"]: i for i in insp.get_indexes("outbox")}
             assert {
                 "ix_outbox_active",
                 "ix_outbox_correlation_id",
                 "uq_outbox_message_id_target_broker",
-            } <= names
+            } <= set(indexes)
+            assert indexes["ix_outbox_active"]["column_names"] == [
+                "status",
+                "priority",
+                "created_at",
+                "sequence_number",
+            ]
 
 
 @pytest.mark.sqlite

@@ -182,6 +182,23 @@ class TestExternalOutboxRows:
         assert len(placed) == 2  # internal + external
         assert len(cancelled) == 1  # internal only
 
+    def test_external_rows_share_their_events_sequence_number(self, test_domain):
+        order = Order.place(customer_id="C5", total=10.0)
+        order.cancel()
+        outbox_repo = test_domain._get_outbox_repo("default")
+
+        with UnitOfWork():
+            test_domain.repository_for(Order).add(order)
+
+        rows = outbox_repo.find_unprocessed()
+        assert len(rows) == 3
+        numbers = {(r.type, r.target_broker): r.sequence_number for r in rows}
+        assert numbers == {
+            (OrderPlaced.__type__, "default"): 0,
+            (OrderPlaced.__type__, "external"): 0,
+            (OrderCancelled.__type__, "default"): 1,
+        }
+
     def test_non_published_aggregate_no_external_rows(self, test_domain):
         inv = Inventory(sku="WIDGET", qty=10)
         inv.adjust(5)
