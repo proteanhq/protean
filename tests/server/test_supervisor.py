@@ -23,6 +23,7 @@ from protean.server.supervisor import (
     _DRAIN_MARGIN_SECONDS,
     _SHUTDOWN_TIMEOUT_SECONDS,
     Supervisor,
+    _config_search_root,
     _termination_budget,
     _worker_entry,
 )
@@ -298,6 +299,22 @@ class TestSupervisorTerminationBudget:
             supervisor._shutdown_workers()
 
         assert worker.join.call_args_list[0].kwargs["timeout"] == 65.0
+
+
+class TestConfigSearchRoot:
+    """Where the parent process looks for the ``domain.toml`` its workers read."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_env(self, monkeypatch):
+        monkeypatch.delenv("DOMAIN_ROOT_PATH", raising=False)
+        monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+
+    def test_directory_domain_path_is_used_as_is(self, tmp_path):
+        assert _config_search_root(str(tmp_path)) == os.path.realpath(str(tmp_path))
+
+    def test_protean_domain_env_overrides_the_argument(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PROTEAN_DOMAIN", str(tmp_path))
+        assert _config_search_root("my.domain") == os.path.realpath(str(tmp_path))
 
 
 class TestSupervisorMonitor:

@@ -303,9 +303,9 @@ class TestConfigurableDrainWindow:
         """nan and inf survive float() but are not usable windows.
 
         Every comparison against nan is False, so a nan window slips past the
-        positive/kill-timeout checks and reaches asyncio.wait, which then returns
-        on the next loop step and force-cancels in-flight handlers with no grace.
-        An inf window outlives the supervisor's kill timeout.
+        positive check and reaches asyncio.wait, which then returns on the next
+        loop step and force-cancels in-flight handlers with no grace. An inf
+        window never ends, so shutdown would never finish.
         """
         engine = self._engine(drain_timeout=value)
         assert engine.drain_timeout == 10.0

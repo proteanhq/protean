@@ -46,7 +46,6 @@ from protean._deprecation import warn_from_registry
 from protean.server.supervisor import (
     _check_log_arguments,
     _config_search_root,
-    _configured_drain_window,
     _termination_budget,
     _worker_entry,
 )
@@ -198,13 +197,6 @@ class Reloader:
         See :func:`protean.server.supervisor._config_search_root`.
         """
         return _config_search_root(self.domain_path)
-
-    def _configured_drain_window(self) -> float:
-        """The worker Engine's ``[server].drain_timeout``, or 0 if unreadable.
-
-        See :func:`protean.server.supervisor._configured_drain_window`.
-        """
-        return _configured_drain_window(self.domain_path)
 
     def _termination_timeout(self) -> float:
         """How long to wait for a worker to exit before killing it.

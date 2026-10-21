@@ -275,7 +275,7 @@ class Engine:
                 raise TypeError("drain_timeout must be a number, not a boolean")
             drain_timeout = float(drain_timeout_raw)
             if not math.isfinite(drain_timeout):
-                # nan and inf survive float() and slip past the range checks
+                # nan and inf survive float() and slip past the range check
                 # below, since every comparison against nan is False. A nan
                 # window makes asyncio.wait return on the next loop step and
                 # force-cancel in-flight handlers with no grace; an inf window
