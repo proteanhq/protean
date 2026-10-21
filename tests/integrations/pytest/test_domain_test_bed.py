@@ -507,6 +507,10 @@ class TestDisplayUri:
                 "redis://host/2?password=secret&db=3",
                 "redis://host/2?password=***&db=3",
             ),
+            (
+                "rediss://host:6379/0?ssl_password=secret&ssl_cert_reqs=none",
+                "rediss://host:6379/0?ssl_password=***&ssl_cert_reqs=none",
+            ),
             ("redis://host:6379/2#secret", "redis://host:6379/2"),
         ],
     )

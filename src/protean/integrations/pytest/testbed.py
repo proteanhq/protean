@@ -135,6 +135,9 @@ def _describe_broker(name: str, broker: BaseBroker) -> str:
     return f"Broker '{name}' ({broker.conn_info.get('provider')} provider)"
 
 
+_SECRET_QUERY_KEYS = frozenset({"password", "ssl_password"})
+
+
 def _display_uri(uri: object) -> str | None:
     """Return ``uri`` with any password replaced by ``***``.
 
@@ -166,10 +169,11 @@ def _display_uri(uri: object) -> str | None:
     else:
         netloc = hostport
 
-    # redis-py also accepts the password as a query argument.
+    # redis-py also accepts the password, and the passphrase for an encrypted
+    # TLS client key, as query arguments.
     query = urlencode(
         [
-            (key, "***" if key.lower() == "password" else value)
+            (key, "***" if key.lower() in _SECRET_QUERY_KEYS else value)
             for key, value in parse_qsl(parts.query, keep_blank_values=True)
         ],
         safe="*",
