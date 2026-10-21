@@ -16,13 +16,12 @@ import pytest
 
 from protean._deprecation import RemovedInProtean020Warning
 from protean.server.reloader import (
-    _DRAIN_MARGIN_SECONDS,
     _EXTRA_IGNORE_DIRS,
     _SHUTDOWN_TIMEOUT_SECONDS,
     Reloader,
     _display_path,
 )
-from protean.server.supervisor import _worker_entry
+from protean.server.supervisor import _DRAIN_MARGIN_SECONDS, _worker_entry
 
 
 class TestReloaderInit:

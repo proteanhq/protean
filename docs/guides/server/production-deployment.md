@@ -37,7 +37,8 @@ WantedBy=multi-user.target
 `TimeoutStopSec=30` gives the engine up to 30 seconds to stop
 subscriptions, drain in-flight handlers (bounded at 10s), and close
 providers, brokers, caches, and the event store before systemd escalates
-to `SIGKILL`. See [Shut down gracefully](./hardening.md#shut-down-gracefully).
+to `SIGKILL`. If you raise `server.drain_timeout`, raise `TimeoutStopSec`
+above it too. See [Shut down gracefully](./hardening.md#shut-down-gracefully).
 
 ## Docker
 

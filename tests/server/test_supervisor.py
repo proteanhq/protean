@@ -19,7 +19,13 @@ from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.integrations.logging import ProteanRedactionFilter
 from protean.server.reloader import Reloader
-from protean.server.supervisor import Supervisor, _worker_entry
+from protean.server.supervisor import (
+    _DRAIN_MARGIN_SECONDS,
+    _SHUTDOWN_TIMEOUT_SECONDS,
+    Supervisor,
+    _termination_budget,
+    _worker_entry,
+)
 from tests.shared import change_working_directory_to
 
 
@@ -166,6 +172,132 @@ class TestSupervisorShutdownWorkers:
         with patch("os.kill") as mock_kill:
             supervisor._shutdown_workers()
             mock_kill.assert_not_called()
+
+
+def _config_with_window(window):
+    """Patch the config read so it reports *window* as drain_timeout."""
+    return patch(
+        "protean.domain.config.Config2.load_from_path",
+        return_value={"server": {"drain_timeout": window}},
+    )
+
+
+def _stuck_worker():
+    """A worker that stays alive through the graceful join."""
+    worker = MagicMock()
+    worker.is_alive.return_value = True
+    worker.pid = 12345
+    worker.name = "worker-0"
+    worker.join.return_value = None
+    return worker
+
+
+class TestSupervisorTerminationBudget:
+    """The shutdown budget follows the workers' configured drain window.
+
+    Each worker's Engine waits ``[server].drain_timeout`` for in-flight
+    handlers, so a flat 30-second budget would kill a worker mid-drain
+    whenever that window is longer.
+    """
+
+    def test_budget_covers_a_longer_drain_window(self):
+        with _config_with_window(45):
+            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 50.0
+
+    @pytest.mark.parametrize("window, budget", [(10, 30.0), (25, 30.0), (26, 31.0)])
+    def test_budget_never_shrinks_below_thirty_seconds(self, window, budget):
+        with _config_with_window(window):
+            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == budget
+
+    def test_missing_drain_timeout_falls_back_to_thirty_seconds(self):
+        with patch(
+            "protean.domain.config.Config2.load_from_path", return_value={"server": {}}
+        ):
+            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 30.0
+
+    @pytest.mark.parametrize(
+        "window", ["not-a-number", True, 0, -5, float("nan"), float("inf")]
+    )
+    def test_invalid_window_falls_back_to_thirty_seconds(self, window):
+        with _config_with_window(window):
+            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 30.0
+
+    def test_unreadable_config_falls_back_to_thirty_seconds(self):
+        with patch(
+            "protean.domain.config.Config2.load_from_path",
+            side_effect=ValueError("bad TOML"),
+        ):
+            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 30.0
+
+    def test_waits_the_drain_window_plus_margin_before_sigkill(self, caplog):
+        """With drain_timeout = 45 the worker gets 45 + margin seconds to exit
+        before it is killed, and the warning names that budget."""
+        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        worker = _stuck_worker()
+        supervisor.workers = [worker]
+
+        with (
+            _config_with_window(45),
+            patch("os.kill"),
+            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
+            caplog.at_level(logging.WARNING, logger="protean.server.supervisor"),
+        ):
+            supervisor._shutdown_workers()
+
+        first_join = worker.join.call_args_list[0]
+        assert first_join.kwargs["timeout"] == 45 + _DRAIN_MARGIN_SECONDS
+        worker.kill.assert_called_once()
+        messages = [r.getMessage() for r in caplog.records]
+        assert "Worker worker-0 did not stop within 50s timeout, killing" in messages
+
+    def test_run_binds_the_budget_before_spawning(self):
+        """run() binds the budget from the config the workers will read."""
+        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        mock_ctx = MagicMock()
+        mock_ctx.Process.return_value = MagicMock(pid=12345)
+
+        with (
+            _config_with_window(45),
+            patch("multiprocessing.get_context", return_value=mock_ctx),
+        ):
+            supervisor._monitor = MagicMock()
+            supervisor._install_signal_handlers = MagicMock()
+            supervisor.run()
+
+        assert supervisor._shutdown_timeout == 50.0
+
+    def test_bound_budget_ignores_a_later_config_change(self):
+        """A config edit after the workers spawned does not shorten the join
+        for workers still draining on the window they read at startup."""
+        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        supervisor._shutdown_timeout = 50.0
+        worker = _stuck_worker()
+        supervisor.workers = [worker]
+
+        with (
+            _config_with_window(2),
+            patch("os.kill"),
+            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
+        ):
+            supervisor._shutdown_workers()
+
+        assert worker.join.call_args_list[0].kwargs["timeout"] == 50.0
+
+    def test_unbound_budget_is_read_fresh(self):
+        """Shutting down before run() bound a budget reads the config then."""
+        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        assert supervisor._shutdown_timeout is None
+        worker = _stuck_worker()
+        supervisor.workers = [worker]
+
+        with (
+            _config_with_window(60),
+            patch("os.kill"),
+            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
+        ):
+            supervisor._shutdown_workers()
+
+        assert worker.join.call_args_list[0].kwargs["timeout"] == 65.0
 
 
 class TestSupervisorMonitor:

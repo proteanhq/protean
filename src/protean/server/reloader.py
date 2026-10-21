@@ -31,13 +31,10 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import math
 import multiprocessing
 import os
-import re
 import signal
 import threading
-import warnings
 from collections.abc import Sequence
 from multiprocessing.process import BaseProcess
 from pathlib import Path
@@ -46,16 +43,17 @@ from typing import Any
 from watchfiles import PythonFilter, watch
 
 from protean._deprecation import warn_from_registry
-from protean.server.supervisor import _check_log_arguments, _worker_entry
+from protean.server.supervisor import (
+    _check_log_arguments,
+    _config_search_root,
+    _configured_drain_window,
+    _termination_budget,
+    _worker_entry,
+)
 
 logger = logging.getLogger(__name__)
 
 _SHUTDOWN_TIMEOUT_SECONDS = 10
-
-# Slack added on top of the Engine's drain window when sizing the join budget:
-# the worker still has to cancel stragglers, close brokers and providers, and
-# exit after the window elapses.
-_DRAIN_MARGIN_SECONDS = 5
 
 # Directories ignored in addition to the ``watchfiles`` defaults.
 # ``.protean/`` holds generated IR caches that should never trigger a reload.
@@ -195,81 +193,24 @@ class Reloader:
         logger.info("Started Engine worker (PID %s)", process.pid)
 
     def _config_search_root(self) -> str:
-        """Where to search for the project config, matching the worker's
-        ``Domain.root_path`` resolution as closely as possible without
-        importing the domain.
+        """Where to search for the project config the worker will read.
 
-        The worker's Domain honours ``DOMAIN_ROOT_PATH`` and otherwise uses the
-        directory of the domain module file (``_guess_caller_path``). Mirror
-        that so the parent reads the same ``domain.toml`` the worker will, even
-        when ``--reload`` is launched from a different working directory. A
-        dotted module name cannot be resolved to a file without importing it, so
-        fall back to the working directory, where ``domain.toml`` conventionally
-        lives.
+        See :func:`protean.server.supervisor._config_search_root`.
         """
-        env_root = os.environ.get("DOMAIN_ROOT_PATH")
-        if env_root:
-            return env_root
-
-        domain_path = os.environ.get("PROTEAN_DOMAIN") or self.domain_path
-        # Drop a ":factory" suffix; the left side is the module or file path.
-        # Do not split a Windows drive letter or a URL scheme.
-        path_part = re.split(r":(?![\\/])", domain_path, maxsplit=1)[0]
-        candidate = os.path.realpath(path_part)
-        if not os.path.splitext(candidate)[1] and os.path.isfile(candidate + ".py"):
-            candidate += ".py"
-        if os.path.isfile(candidate):
-            return os.path.dirname(candidate)
-        if os.path.isdir(candidate):
-            return candidate
-        return os.getcwd()
+        return _config_search_root(self.domain_path)
 
     def _configured_drain_window(self) -> float:
         """The worker Engine's ``[server].drain_timeout``, or 0 if unreadable.
 
-        Read from the project config file so the join budget below matches the
-        window the worker will wait, without importing or instantiating the
-        domain here in the parent. Deriving the domain would re-run a
-        factory-style ``domain_path`` (the worker already invokes it in the
-        child), doubling resource initialisation in a process that only watches
-        files; reading the config file has no such side effect. The search
-        starts from the same place the worker resolves its config (see
-        ``_config_search_root``), not blindly from the working directory.
-
-        The config read can fail (no file, bad TOML); the worker surfaces the
-        real error when it starts, so fall back to 0 and let the default budget
-        apply. Anything that is not a finite positive number is treated the same
-        way: the Engine rejects those values too and uses its own default.
+        See :func:`protean.server.supervisor._configured_drain_window`.
         """
-        from protean.domain.config import Config2  # noqa: PLC0415
-
-        try:
-            with warnings.catch_warnings():
-                # load_from_path warns when no config file is found; the worker
-                # reports that, so keep the parent quiet and use the default.
-                warnings.simplefilter("ignore")
-                config = Config2.load_from_path(self._config_search_root())
-            value = config.get("server", {}).get("drain_timeout", 0)
-            if isinstance(value, bool):
-                return 0.0
-            window = float(value)
-        except Exception:  # a bad config falls back to the default budget; logged
-            logger.debug(
-                "Could not read server.drain_timeout from the project config; "
-                "using the default termination budget",
-                exc_info=True,
-            )
-            return 0.0
-
-        return window if math.isfinite(window) and window > 0 else 0.0
+        return _configured_drain_window(self.domain_path)
 
     def _termination_timeout(self) -> float:
         """How long to wait for a worker to exit before killing it.
 
-        The worker's Engine waits ``[server].drain_timeout`` for in-flight
-        handlers before force-cancelling them, so a flat 10 seconds here would
-        kill a worker mid-drain whenever that window is longer. Take the
-        configured window plus a margin, never less than the 10-second default.
+        The configured drain window plus a margin, never less than the
+        10-second default.
 
         Read fresh each time so a ``domain.toml`` edit that lands mid-run is
         picked up: ``_start_process`` calls this to bind the budget to the
@@ -277,10 +218,7 @@ class Reloader:
         at its own startup. A cached budget would join the next worker with a
         stale window and could kill it before its drain elapses.
         """
-        return max(
-            float(_SHUTDOWN_TIMEOUT_SECONDS),
-            self._configured_drain_window() + _DRAIN_MARGIN_SECONDS,
-        )
+        return _termination_budget(self.domain_path, _SHUTDOWN_TIMEOUT_SECONDS)
 
     def _stop_process(self) -> None:
         """Terminate and join the current inner Engine process, if any."""
