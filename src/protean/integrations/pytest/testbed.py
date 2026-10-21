@@ -1,10 +1,13 @@
 """DomainFixture — test lifecycle manager for Protean domains."""
 
+import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from protean.domain import Domain
 from protean.domain.context import DomainContext, _domain_ctx_stack
+from protean.port.broker import BaseBroker
 
 
 class DomainFixture:
@@ -36,13 +39,34 @@ class DomainFixture:
         self.domain = domain
 
     def setup(self) -> None:
-        """Initialize the domain and create database schema.
+        """Initialize the domain, create database schema, and check brokers.
 
         Calls ``domain.init()`` to register all domain elements, then
-        creates database tables for every configured provider.
+        pings every configured broker once and emits a ``UserWarning`` for
+        each one that does not answer. The warning names the broker and its
+        URI, with any password replaced by ``***``. When the broker has no
+        URI, or its URI cannot be shown without risking part of the password,
+        the warning names the broker's provider instead. Finally creates
+        database tables for every configured provider.
+
+        ``setup()`` still returns normally after a warning, so tests that
+        never touch the broker keep running.
+        Run pytest with ``-W error::UserWarning`` to make the warning fatal.
         """
         self.domain.init()
         with self.domain.domain_context():
+            # Ping before creating the schema: under ``-W error`` the warning
+            # raises, and a raise here must leave no tables for teardown().
+            for name, broker in self.domain.brokers.items():
+                if not broker.ping():
+                    warnings.warn(
+                        f"{_describe_broker(name, broker)} did not answer a "
+                        "ping. Tests that publish to it will fail, and the "
+                        "per-test reset cannot clear it.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+
             self.domain.setup_database()
 
     def teardown(self) -> None:
@@ -99,3 +123,61 @@ def _pop_through(ctx: DomainContext) -> None:
 
     for other in reversed(popped):
         _domain_ctx_stack.push(other)
+
+
+def _describe_broker(name: str, broker: BaseBroker) -> str:
+    """Name a broker for a warning, showing its URI without the password."""
+    uri = broker.conn_info.get("URI")
+    display = _display_uri(uri) if uri is not None else None
+    if display is not None:
+        return f"Broker '{name}' at {display}"
+
+    return f"Broker '{name}' ({broker.conn_info.get('provider')} provider)"
+
+
+_SECRET_QUERY_KEYS = frozenset({"password", "ssl_password"})
+
+
+def _display_uri(uri: object) -> str | None:
+    """Return ``uri`` with any password replaced by ``***``.
+
+    Returns ``None`` when ``uri`` is not a string or cannot be parsed, so the
+    caller never falls back to showing the raw value.
+    """
+    if not isinstance(uri, str):
+        return None
+
+    try:
+        parts = urlsplit(uri)
+        # ``port`` is parsed lazily; reading it rejects a malformed netloc.
+        _ = parts.port
+    except ValueError:
+        return None
+
+    if not parts.hostname:
+        return None
+
+    # An ``@`` past the netloc means an unencoded ``/``, ``?`` or ``#`` in the
+    # password split the userinfo early, so part of the password would show.
+    if "@" in parts.path or "@" in parts.query or "@" in parts.fragment:
+        return None
+
+    userinfo, at, hostport = parts.netloc.rpartition("@")
+    if at:
+        username, colon, _ = userinfo.partition(":")
+        netloc = f"{username}{':***' if colon else ''}@{hostport}"
+    else:
+        netloc = hostport
+
+    # redis-py also accepts the password, and the passphrase for an encrypted
+    # TLS client key, as query arguments.
+    query = urlencode(
+        [
+            (key, "***" if key.lower() in _SECRET_QUERY_KEYS else value)
+            for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        ],
+        safe="*",
+    )
+
+    # The fragment is dropped: an unencoded ``#`` in a password lands there.
+    return urlunsplit((parts.scheme, netloc, parts.path, query, ""))
