@@ -38,22 +38,25 @@ Import it from `protean.integrations.pytest`:
 | `teardown()` | Drops database schema via `domain.drop_database()` |
 | `domain_context()` | Context manager that activates the domain context, yields the domain, and on exit resets all data in providers, brokers, and the event store |
 
-#### An unreachable broker raises a warning at setup
+#### `setup()` warns about a broker that does not answer
 
 `setup()` pings every configured broker once. For each broker that does not
 answer, it emits a `UserWarning` that names the broker and its URI, with any
 password shown as `***`:
 
 ```text
-UserWarning: Broker 'default' at redis://127.0.0.1:6379/15 is unreachable.
-Tests that publish to it will fail, and the per-test reset cannot clear it.
+UserWarning: Broker 'default' at redis://127.0.0.1:6379/15 did not answer a
+ping. Tests that publish to it will fail, and the per-test reset cannot clear it.
 ```
 
 `setup()` still returns, so tests that never touch the broker keep running.
-The warning appears once, in pytest's warnings summary. Without it, the only
-sign of a down broker is a connection error in the first test that publishes.
-The per-test reset in `domain_context()` logs its own failure to clear the
-broker and carries on, so it does not fail a test.
+The warning appears once, in pytest's warnings summary. Without it, a suite
+whose tests never publish passes with no visible sign of a down broker. The
+per-test reset in `domain_context()` logs its failure to clear the broker and
+carries on, and pytest shows that log line only for failing tests.
+
+A wrong password or a denied command also makes the ping fail, so check the
+broker's credentials as well as its host and port.
 
 To fail the run instead, turn the warning into an error, either on the command
 line with `pytest -W error::UserWarning` or in your pytest configuration. Either

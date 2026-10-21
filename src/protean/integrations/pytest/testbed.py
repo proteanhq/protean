@@ -42,28 +42,30 @@ class DomainFixture:
         """Initialize the domain, create database schema, and check brokers.
 
         Calls ``domain.init()`` to register all domain elements, then
-        creates database tables for every configured provider.
+        pings every configured broker once and emits a ``UserWarning`` for
+        each one that does not answer. The warning names the broker and its
+        URI, with any password replaced by ``***``. Finally creates database
+        tables for every configured provider.
 
-        Finally pings every configured broker once and emits a
-        ``UserWarning`` for each one that does not answer. The warning names
-        the broker and its URI, with any password replaced by ``***``.
-        ``setup()`` still returns normally, so tests that never touch the
-        broker keep running.
+        ``setup()`` still returns normally after a warning, so tests that
+        never touch the broker keep running.
         Run pytest with ``-W error::UserWarning`` to make the warning fatal.
         """
         self.domain.init()
         with self.domain.domain_context():
-            self.domain.setup_database()
-
+            # Ping before creating the schema: under ``-W error`` the warning
+            # raises, and a raise here must leave no tables for teardown().
             for name, broker in self.domain.brokers.items():
                 if not broker.ping():
                     warnings.warn(
-                        f"{_describe_broker(name, broker)} is unreachable. "
-                        "Tests that publish to it will fail, and the per-test "
-                        "reset cannot clear it.",
+                        f"{_describe_broker(name, broker)} did not answer a "
+                        "ping. Tests that publish to it will fail, and the "
+                        "per-test reset cannot clear it.",
                         UserWarning,
                         stacklevel=2,
                     )
+
+            self.domain.setup_database()
 
     def teardown(self) -> None:
         """Drop database schema for every configured provider."""
@@ -148,6 +150,11 @@ def _display_uri(uri: object) -> str | None:
         return None
 
     if not parts.hostname:
+        return None
+
+    # An ``@`` past the netloc means an unencoded ``/``, ``?`` or ``#`` in the
+    # password split the userinfo early, so part of the password would show.
+    if "@" in parts.path or "@" in parts.query or "@" in parts.fragment:
         return None
 
     userinfo, at, hostport = parts.netloc.rpartition("@")

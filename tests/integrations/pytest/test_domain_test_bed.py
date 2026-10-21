@@ -370,7 +370,7 @@ class TestSetupBrokerReachability:
         message = str(record[0].message)
         assert "Broker 'external'" in message
         assert "redis://127.0.0.1:1/0" in message
-        assert "unreachable" in message
+        assert "did not answer a ping" in message
         assert record[0].filename == __file__
 
     def test_unreachable_redis_pubsub_broker_warns(self, domain):
@@ -421,6 +421,26 @@ class TestSetupBrokerReachability:
 
     def test_reachable_inline_broker_does_not_warn(self, domain):
         assert _setup_and_record(domain) == []
+
+    def test_fatal_warning_raises_before_schema_is_created(self, domain):
+        pytest.importorskip("redis")
+        domain.config["brokers"]["external"] = {
+            "provider": "redis",
+            "URI": CLOSED_PORT_URI,
+        }
+        bed = DomainFixture(domain)
+        top_before = _domain_ctx_stack.top
+
+        with (
+            mock.patch.object(domain, "setup_database") as mock_setup,
+            warnings.catch_warnings(),
+        ):
+            warnings.simplefilter("error", UserWarning)
+            with pytest.raises(UserWarning, match="Broker 'external'"):
+                bed.setup()
+
+        mock_setup.assert_not_called()
+        assert _domain_ctx_stack.top is top_before
 
     @pytest.mark.redis
     def test_reachable_redis_broker_does_not_warn(self, domain):
@@ -500,6 +520,9 @@ class TestDisplayUri:
             "redis://[::1",
             "redis://:se#cret@host/0",
             "redis:///0",
+            "redis://u:12/ss@host/0",
+            "redis://u:12?ss@host/0",
+            "redis://u:12#ss@host/0",
             42,
         ],
     )
