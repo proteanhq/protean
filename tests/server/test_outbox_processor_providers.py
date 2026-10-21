@@ -8,6 +8,7 @@ both skip such providers, and they must agree on the set.
 
 import logging
 from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -251,3 +252,25 @@ class TestLeftoverRowsOnASkippedProvider:
         assert not [
             r for r in caplog.records if r.msg == "engine.outbox_rows_without_processor"
         ]
+
+    def test_failed_probe_logs_and_engine_still_starts(self, caplog):
+        domain = self._domain_with_secondary()
+        with domain.domain_context():
+            domain.setup_database()
+            broken_repo = MagicMock()
+            broken_repo._dao.query.filter.return_value.count.side_effect = RuntimeError(
+                "database unavailable"
+            )
+
+            with (
+                patch.dict(domain._outbox_repos, {"secondary": broken_repo}),
+                caplog.at_level(logging.WARNING, logger="protean.server.engine"),
+            ):
+                engine = Engine(domain, test_mode=True)
+
+        assert set(engine._outbox_processors) == {"outbox-processor-default-to-default"}
+        failures = [
+            r for r in caplog.records if r.msg == "engine.outbox_leftover_probe_failed"
+        ]
+        assert len(failures) == 1
+        assert failures[0].provider == "secondary"

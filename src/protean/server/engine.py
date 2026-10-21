@@ -464,25 +464,33 @@ class Engine:
             for provider_name, outbox_repo in self.domain._outbox_repos.items():
                 try:
                     outbox_repo._dao  # noqa: B018
-                    unpublished = (
-                        0
-                        if provider_name in outbox_providers
-                        else outbox_repo._dao.query.filter(
-                            status__in=[
-                                OutboxStatus.PENDING.value,
-                                OutboxStatus.PROCESSING.value,
-                                OutboxStatus.FAILED.value,
-                            ]
-                        ).count()
-                    )
                 # Any DAO error is reported as a missing outbox table.
                 except Exception as e:
                     raise ConfigurationError(
                         f"Outbox table not found for provider '{provider_name}'. "
                         "Run 'protean db setup' or 'protean db setup-outbox' to create it."
                     ) from e
+                if provider_name in outbox_providers:
+                    continue
                 # Rows left by an earlier deploy, before the last aggregate on
                 # this provider moved away. No processor runs here any more.
+                try:
+                    unpublished = outbox_repo._dao.query.filter(
+                        status__in=[
+                            OutboxStatus.PENDING.value,
+                            OutboxStatus.PROCESSING.value,
+                            OutboxStatus.FAILED.value,
+                        ]
+                    ).count()
+                # The probe is diagnostic only: a provider no aggregate uses
+                # must not stop the engine from starting; logged.
+                except Exception:
+                    logger.warning(
+                        "engine.outbox_leftover_probe_failed",
+                        extra={"provider": provider_name},
+                        exc_info=True,
+                    )
+                    continue
                 if unpublished:
                     logger.warning(
                         "engine.outbox_rows_without_processor",
