@@ -1,5 +1,6 @@
 """Tests for DomainFixture."""
 
+import warnings
 from unittest import mock
 
 import pytest
@@ -9,6 +10,11 @@ from protean.domain import Domain
 from protean.domain.context import _domain_ctx_stack
 from protean.fields import String
 from protean.integrations.pytest import DomainFixture
+from protean.integrations.pytest.testbed import _describe_broker, _display_uri
+from tests.shared import REDIS_URI
+
+# Nothing listens on port 1, so a connection there is refused at once.
+CLOSED_PORT_URI = "redis://127.0.0.1:1/0"
 
 
 @pytest.fixture
@@ -337,3 +343,165 @@ class TestSetupDelegatesToPublicAPI:
 
             bed.teardown()
             mock_drop.assert_called_once()
+
+
+def _setup_and_record(domain: Domain) -> list[warnings.WarningMessage]:
+    bed = DomainFixture(domain)
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        bed.setup()
+
+    return [w for w in record if issubclass(w.category, UserWarning)]
+
+
+class TestSetupBrokerReachability:
+    """setup() warns once for each configured broker that does not answer."""
+
+    def test_unreachable_redis_broker_warns(self, domain):
+        pytest.importorskip("redis")
+        domain.config["brokers"]["external"] = {
+            "provider": "redis",
+            "URI": CLOSED_PORT_URI,
+        }
+
+        record = _setup_and_record(domain)
+
+        assert len(record) == 1
+        message = str(record[0].message)
+        assert "Broker 'external'" in message
+        assert "redis://127.0.0.1:1/0" in message
+        assert "unreachable" in message
+        assert record[0].filename == __file__
+
+    def test_unreachable_redis_pubsub_broker_warns(self, domain):
+        pytest.importorskip("redis")
+        domain.config["brokers"]["notifications"] = {
+            "provider": "redis_pubsub",
+            "URI": CLOSED_PORT_URI,
+        }
+
+        record = _setup_and_record(domain)
+
+        assert len(record) == 1
+        message = str(record[0].message)
+        assert "Broker 'notifications'" in message
+        assert "redis://127.0.0.1:1/0" in message
+
+    def test_password_is_redacted_in_warning(self, domain):
+        pytest.importorskip("redis")
+        domain.config["brokers"]["external"] = {
+            "provider": "redis",
+            "URI": "redis://:secret@127.0.0.1:1/0",
+        }
+
+        record = _setup_and_record(domain)
+
+        assert len(record) == 1
+        message = str(record[0].message)
+        assert "secret" not in message
+        assert "redis://:***@127.0.0.1:1/0" in message
+
+    def test_each_unreachable_broker_warns(self, domain):
+        pytest.importorskip("redis")
+        domain.config["brokers"]["first"] = {
+            "provider": "redis",
+            "URI": CLOSED_PORT_URI,
+        }
+        domain.config["brokers"]["second"] = {
+            "provider": "redis_pubsub",
+            "URI": "redis://127.0.0.1:1/1",
+        }
+
+        record = _setup_and_record(domain)
+
+        messages = sorted(str(w.message) for w in record)
+        assert len(messages) == 2
+        assert "Broker 'first'" in messages[0]
+        assert "Broker 'second'" in messages[1]
+
+    def test_reachable_inline_broker_does_not_warn(self, domain):
+        assert _setup_and_record(domain) == []
+
+    @pytest.mark.redis
+    def test_reachable_redis_broker_does_not_warn(self, domain):
+        domain.config["brokers"]["external"] = {
+            "provider": "redis",
+            "URI": f"{REDIS_URI}/0",
+        }
+
+        assert _setup_and_record(domain) == []
+
+
+class TestDescribeBroker:
+    """_describe_broker() names a broker without exposing its password."""
+
+    def test_names_broker_and_redacted_uri(self, domain):
+        pytest.importorskip("redis")
+        domain.config["brokers"]["external"] = {
+            "provider": "redis",
+            "URI": "redis://:secret@127.0.0.1:1/0",
+        }
+        domain.init()
+
+        assert (
+            _describe_broker("external", domain.brokers["external"])
+            == "Broker 'external' at redis://:***@127.0.0.1:1/0"
+        )
+
+    def test_names_provider_when_broker_has_no_uri(self, domain):
+        domain.init()
+
+        assert (
+            _describe_broker("default", domain.brokers["default"])
+            == "Broker 'default' (inline provider)"
+        )
+
+    def test_names_provider_when_uri_does_not_parse(self, domain):
+        pytest.importorskip("redis")
+        domain.config["brokers"]["external"] = {
+            "provider": "redis",
+            "URI": CLOSED_PORT_URI,
+        }
+        domain.init()
+        broker = domain.brokers["external"]
+        # Redis rejects such a URI when the broker is built, so set it after.
+        broker.conn_info = {**broker.conn_info, "URI": "redis://:se#cret@host/0"}
+
+        assert (
+            _describe_broker("external", broker) == "Broker 'external' (redis provider)"
+        )
+
+
+class TestDisplayUri:
+    """_display_uri() shows a broker URI with its password replaced."""
+
+    @pytest.mark.parametrize(
+        "uri, expected",
+        [
+            ("redis://user:secret@host:6379/2", "redis://user:***@host:6379/2"),
+            ("redis://:secret@host:6379/2", "redis://:***@host:6379/2"),
+            ("redis://user@host:6379/2", "redis://user@host:6379/2"),
+            ("redis://host:6379/2", "redis://host:6379/2"),
+            ("redis://host/2", "redis://host/2"),
+            (
+                "redis://host/2?password=secret&db=3",
+                "redis://host/2?password=***&db=3",
+            ),
+            ("redis://host:6379/2#secret", "redis://host:6379/2"),
+        ],
+    )
+    def test_redacts_password(self, uri, expected):
+        assert _display_uri(uri) == expected
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "redis://:secret@host:99999999/0",
+            "redis://[::1",
+            "redis://:se#cret@host/0",
+            "redis:///0",
+            42,
+        ],
+    )
+    def test_returns_none_for_unparsable_value(self, uri):
+        assert _display_uri(uri) is None
