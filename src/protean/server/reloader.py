@@ -46,6 +46,7 @@ from protean._deprecation import warn_from_registry
 from protean.server.supervisor import (
     _check_log_arguments,
     _config_search_root,
+    _join_within,
     _termination_budget,
     _worker_entry,
 )
@@ -228,7 +229,7 @@ class Reloader:
         timeout = self._stop_timeout
         if timeout is None:
             timeout = self._termination_timeout()
-        process.join(timeout=timeout)
+        _join_within(process, timeout)
         if process.is_alive():
             logger.warning(
                 "Engine worker did not stop within %gs timeout, killing",

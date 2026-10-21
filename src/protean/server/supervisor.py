@@ -26,6 +26,7 @@ Usage:
 """
 
 import contextlib
+import importlib.machinery
 import logging
 import logging.handlers
 import math
@@ -58,10 +59,10 @@ _SHUTDOWN_TIMEOUT_SECONDS = 30
 # providers, and exit after the window elapses.
 _DRAIN_MARGIN_SECONDS = 5
 
-# Upper bound on a shutdown budget. ``Process.join`` waits through a poll call
-# that takes milliseconds as a C int, so a timeout above about 2,147,483
-# seconds raises OverflowError instead of waiting.
-_MAX_TERMINATION_BUDGET_SECONDS = 2_000_000
+# Longest single ``Process.join`` wait. The join polls with a timeout in
+# milliseconds held in a C int, so a timeout above about 2,147,483 seconds
+# raises OverflowError. Longer budgets are waited out in pieces of this size.
+_MAX_JOIN_SECONDS = 1_000_000
 
 # The values the CLI's ``--log-level`` and ``--log-format`` flags accept.
 _LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
@@ -100,10 +101,10 @@ def _config_search_root(domain_path: str) -> str:
     directory of the domain module file (``_guess_caller_path``). Mirror
     that so the parent reads the same ``domain.toml`` the worker will, even
     when the server is launched from a different working directory. A
-    dotted module name (``src.shop.domain``) is looked up as a file or
-    package under the working directory, the place ``derive_domain`` imports
-    it from. If nothing matches, fall back to the working directory, where
-    ``domain.toml`` conventionally lives.
+    dotted module name (``src.shop.domain``) is looked up on the worker's
+    import search path (see ``_module_directory``). If nothing matches, fall
+    back to the working directory, where ``domain.toml`` conventionally
+    lives.
     """
     env_root = os.environ.get("DOMAIN_ROOT_PATH")
     if env_root:
@@ -121,12 +122,62 @@ def _config_search_root(domain_path: str) -> str:
     if os.path.isdir(candidate):
         return candidate
 
-    module_path = os.path.join(os.getcwd(), *path_part.split("."))
-    if os.path.isfile(module_path + ".py"):
-        return os.path.dirname(module_path)
-    if os.path.isfile(os.path.join(module_path, "__init__.py")):
-        return module_path
-    return os.getcwd()
+    module_dir = _module_directory(path_part)
+    return module_dir if module_dir is not None else os.getcwd()
+
+
+def _module_directory(module_name: str) -> str | None:
+    """The directory holding ``module_name``'s file, found the way the worker
+    would import it, or None if it cannot be found.
+
+    ``derive_domain`` puts the working directory first on ``sys.path`` and
+    then imports the name, so search the working directory and then
+    ``sys.path`` (which a spawned worker inherits, ``PYTHONPATH`` included).
+    ``PathFinder`` locates each part without importing anything, so no
+    package ``__init__`` runs here in the parent.
+    """
+    search_path: list[str] | None = [os.getcwd(), *sys.path]
+    spec = None
+    for part in module_name.split("."):
+        if search_path is None:
+            return None  # the previous part is a plain module, not a package
+        # Look up the bare name: a dotted name makes a namespace spec resolve
+        # its parent through ``sys.modules``, which this never populates.
+        spec = importlib.machinery.PathFinder.find_spec(part, search_path)
+        if spec is None:
+            return None
+        if spec.submodule_search_locations is None:
+            search_path = None
+        elif spec.origin is not None:
+            search_path = list(spec.submodule_search_locations)
+        else:
+            # A namespace package: its portions are the matching directories
+            # on the path it was found on.
+            search_path = [
+                os.path.join(entry, part)
+                for entry in search_path
+                if os.path.isdir(os.path.join(entry, part))
+            ]
+
+    if spec is None or not spec.origin or not os.path.isfile(spec.origin):
+        return None
+    return os.path.dirname(os.path.realpath(spec.origin))
+
+
+def _join_within(process: BaseProcess, timeout: float) -> None:
+    """Wait up to ``timeout`` seconds for ``process`` to exit.
+
+    Splits the wait into joins of at most ``_MAX_JOIN_SECONDS`` each, so a
+    long drain window is waited in full instead of overflowing the join.
+    """
+    deadline = time.monotonic() + timeout
+    remaining = timeout
+    while remaining > _MAX_JOIN_SECONDS:
+        process.join(timeout=_MAX_JOIN_SECONDS)
+        if not process.is_alive():
+            return
+        remaining = max(0.0, deadline - time.monotonic())
+    process.join(timeout=remaining)
 
 
 def _configured_drain_window(domain_path: str) -> float:
@@ -177,13 +228,11 @@ def _termination_budget(domain_path: str, floor: float) -> float:
     The worker's Engine waits ``[server].drain_timeout`` for in-flight
     handlers before force-cancelling them, so a flat budget would kill a
     worker mid-drain whenever that window is longer. Take the configured
-    window plus a margin, never less than ``floor`` and never more than
-    ``_MAX_TERMINATION_BUDGET_SECONDS``.
+    window plus a margin, never less than ``floor``.
     """
-    budget = max(
+    return max(
         float(floor), _configured_drain_window(domain_path) + _DRAIN_MARGIN_SECONDS
     )
-    return min(budget, float(_MAX_TERMINATION_BUDGET_SECONDS))
 
 
 class Supervisor:
@@ -496,8 +545,7 @@ class Supervisor:
         # Workers drain in parallel, so they share one deadline.
         deadline = time.monotonic() + timeout
         for worker in list(self.workers):
-            remaining = max(0, deadline - time.monotonic())
-            worker.join(timeout=remaining)
+            _join_within(worker, max(0.0, deadline - time.monotonic()))
             if worker.is_alive():
                 logger.warning(
                     "Worker %s did not stop within %gs timeout, killing",

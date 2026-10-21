@@ -21,10 +21,11 @@ from protean.integrations.logging import ProteanRedactionFilter
 from protean.server.reloader import Reloader
 from protean.server.supervisor import (
     _DRAIN_MARGIN_SECONDS,
-    _MAX_TERMINATION_BUDGET_SECONDS,
+    _MAX_JOIN_SECONDS,
     _SHUTDOWN_TIMEOUT_SECONDS,
     Supervisor,
     _config_search_root,
+    _join_within,
     _termination_budget,
     _worker_entry,
 )
@@ -224,13 +225,11 @@ class TestSupervisorTerminationBudget:
         with _config_with_window(window):
             assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 30.0
 
-    def test_budget_is_capped_below_the_join_timeout_limit(self):
-        """``Process.join`` raises OverflowError above about 2,147,483 seconds,
-        which would crash the signal handler before any worker is killed."""
+    def test_long_window_is_not_capped(self):
         with _config_with_window(2_200_000):
             assert (
                 _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS)
-                == _MAX_TERMINATION_BUDGET_SECONDS
+                == 2_200_000 + _DRAIN_MARGIN_SECONDS
             )
 
     def test_unreadable_config_falls_back_to_thirty_seconds(self):
@@ -380,6 +379,53 @@ class TestSupervisorReadsTheWorkersConfigFile:
 
         assert worker.join.call_args_list[0].kwargs["timeout"] == 50.0
 
+    def test_dotted_module_on_the_import_path_finds_its_domain_toml(
+        self, project, monkeypatch
+    ):
+        """With ``src`` on ``PYTHONPATH``, ``shop.domain`` imports
+        ``src/shop/domain.py``. The budget comes from ``src/shop/domain.toml``,
+        not the root ``pyproject.toml``."""
+        monkeypatch.syspath_prepend(str(project.parent))
+        supervisor = Supervisor(domain_path="shop.domain:domain", num_workers=1)
+        worker = _stuck_worker()
+        supervisor.workers = [worker]
+
+        with (
+            patch("os.kill"),
+            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
+        ):
+            supervisor._shutdown_workers()
+
+        assert worker.join.call_args_list[0].kwargs["timeout"] == 50.0
+
+
+class TestJoinWithin:
+    """``Process.join`` overflows above about 2,147,483 seconds, so a longer
+    budget is waited out in bounded joins that add up to the whole window."""
+
+    def test_short_timeout_is_one_join(self):
+        process = _stuck_worker()
+        _join_within(process, 35.0)
+        process.join.assert_called_once_with(timeout=35.0)
+
+    def test_long_timeout_waits_the_full_window_in_bounded_joins(self):
+        process = _stuck_worker()
+        clock = iter([0.0, _MAX_JOIN_SECONDS, 2 * _MAX_JOIN_SECONDS])
+        with patch(
+            "protean.server.supervisor.time.monotonic", side_effect=lambda: next(clock)
+        ):
+            _join_within(process, 2_200_000.0)
+
+        timeouts = [c.kwargs["timeout"] for c in process.join.call_args_list]
+        assert timeouts == [_MAX_JOIN_SECONDS, _MAX_JOIN_SECONDS, 200_000.0]
+
+    def test_stops_joining_once_the_process_exits(self):
+        process = _stuck_worker()
+        process.is_alive.return_value = False
+        with patch("protean.server.supervisor.time.monotonic", return_value=0.0):
+            _join_within(process, 2_200_000.0)
+        process.join.assert_called_once_with(timeout=_MAX_JOIN_SECONDS)
+
 
 class TestSupervisorSignalDuringSpawn:
     def test_signal_during_spawn_stops_spawning_and_stops_started_workers(self):
@@ -432,6 +478,39 @@ class TestConfigSearchRoot:
     def test_protean_domain_env_overrides_the_argument(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PROTEAN_DOMAIN", str(tmp_path))
         assert _config_search_root("my.domain") == os.path.realpath(str(tmp_path))
+
+    def test_working_directory_wins_over_the_import_path(self, tmp_path, monkeypatch):
+        """``derive_domain`` puts the working directory first on ``sys.path``,
+        so a ``shop`` package there shadows one elsewhere on the path."""
+        for root in ("cwd", "lib"):
+            package = tmp_path / root / "shop"
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text("")
+            (package / "domain.py").write_text("domain = object()\n")
+        monkeypatch.chdir(tmp_path / "cwd")
+        monkeypatch.syspath_prepend(str(tmp_path / "lib"))
+        assert _config_search_root("shop.domain") == os.path.realpath(
+            tmp_path / "cwd" / "shop"
+        )
+
+    def test_submodule_of_a_plain_module_falls_back_to_cwd(self, tmp_path, monkeypatch):
+        (tmp_path / "shop.py").write_text("")
+        monkeypatch.chdir(tmp_path)
+        assert _config_search_root("shop.domain") == os.getcwd()
+
+    def test_namespace_package_falls_back_to_cwd(self, tmp_path, monkeypatch):
+        """A namespace package has no file to anchor the worker's root."""
+        (tmp_path / "src" / "shop").mkdir(parents=True)
+        monkeypatch.chdir(tmp_path)
+        assert _config_search_root("src.shop") == os.getcwd()
+
+    def test_package_init_is_not_executed(self, tmp_path, monkeypatch):
+        package = tmp_path / "shop"
+        package.mkdir()
+        (package / "__init__.py").write_text("raise RuntimeError('imported')\n")
+        (package / "domain.py").write_text("domain = object()\n")
+        monkeypatch.chdir(tmp_path)
+        assert _config_search_root("shop.domain") == os.path.realpath(package)
 
 
 class TestSupervisorMonitor:
