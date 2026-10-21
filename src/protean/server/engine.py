@@ -48,7 +48,6 @@ from .subscription.factory import (
     SubscriptionFactory,
     broker_supports_partitioning,
 )
-from .supervisor import _SHUTDOWN_TIMEOUT_SECONDS
 from .tracing import TraceEmitter
 
 if TYPE_CHECKING:
@@ -276,11 +275,11 @@ class Engine:
                 raise TypeError("drain_timeout must be a number, not a boolean")
             drain_timeout = float(drain_timeout_raw)
             if not math.isfinite(drain_timeout):
-                # nan and inf survive float() and slip past the range checks
+                # nan and inf survive float() and slip past the range check
                 # below, since every comparison against nan is False. A nan
                 # window makes asyncio.wait return on the next loop step and
                 # force-cancel in-flight handlers with no grace; an inf window
-                # outlives the supervisor's kill timeout. Both are invalid.
+                # never ends. Both are invalid.
                 raise ValueError("drain_timeout must be a finite number")
             self.drain_timeout = drain_timeout
         except (AttributeError, TypeError, ValueError, OverflowError):
@@ -300,20 +299,6 @@ class Engine:
                 extra={"drain_timeout": self.drain_timeout, "default": 10},
             )
             self.drain_timeout = 10.0
-
-        # Warn if the drain window is at or above the multi-worker Supervisor
-        # kill timeout: a worker whose drain window reaches the kill timeout can
-        # be SIGKILLed before it finishes draining. Single-worker runs have no
-        # supervisor, so an over-long window there is legitimate — hence a
-        # warning, not an error.
-        if self.drain_timeout >= _SHUTDOWN_TIMEOUT_SECONDS:
-            logger.warning(
-                "engine.drain_timeout_at_or_above_supervisor_kill_timeout",
-                extra={
-                    "drain_timeout": self.drain_timeout,
-                    "supervisor_kill_timeout": _SHUTDOWN_TIMEOUT_SECONDS,
-                },
-            )
 
         # Keep a strong reference to the shutdown task so it isn't garbage
         # collected mid-flight (see RUF006).

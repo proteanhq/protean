@@ -16,13 +16,12 @@ import pytest
 
 from protean._deprecation import RemovedInProtean020Warning
 from protean.server.reloader import (
-    _DRAIN_MARGIN_SECONDS,
     _EXTRA_IGNORE_DIRS,
     _SHUTDOWN_TIMEOUT_SECONDS,
     Reloader,
     _display_path,
 )
-from protean.server.supervisor import _worker_entry
+from protean.server.supervisor import _DRAIN_MARGIN_SECONDS, _worker_entry
 
 
 class TestReloaderInit:
@@ -346,10 +345,21 @@ class TestReloaderConfigSearchRoot:
         reloader = Reloader(domain_path="some/other/domain.py")
         assert reloader._config_search_root() == str(tmp_path)
 
-    def test_dotted_module_falls_back_to_cwd(self):
-        """A dotted module cannot be resolved to a file without importing it, so
-        the working directory (where ``domain.toml`` conventionally lives) is
-        used."""
+    def test_dotted_module_resolves_under_cwd(self, tmp_path, monkeypatch):
+        """``src.shop.domain`` is the scaffolded Dockerfile's ``--domain``. It
+        resolves to ``src/shop`` under the working directory, where the
+        scaffold puts ``domain.toml``."""
+        package = tmp_path / "src" / "shop"
+        package.mkdir(parents=True)
+        (package / "domain.py").write_text("domain = object()\n")
+        monkeypatch.chdir(tmp_path)
+        reloader = Reloader(domain_path="src.shop.domain:domain")
+        assert reloader._config_search_root() == os.path.realpath(package)
+
+    def test_unresolvable_dotted_module_falls_back_to_cwd(self):
+        """A dotted module with no matching file under the working directory
+        uses the working directory, where ``domain.toml`` conventionally
+        lives."""
         reloader = Reloader(domain_path="my.package.domain")
         assert reloader._config_search_root() == os.getcwd()
 

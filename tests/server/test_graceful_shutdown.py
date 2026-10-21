@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from protean import Domain
-from protean.server.engine import _SHUTDOWN_TIMEOUT_SECONDS, Engine
+from protean.server.engine import Engine
 
 
 @pytest.mark.no_test_domain
@@ -303,9 +303,9 @@ class TestConfigurableDrainWindow:
         """nan and inf survive float() but are not usable windows.
 
         Every comparison against nan is False, so a nan window slips past the
-        positive/kill-timeout checks and reaches asyncio.wait, which then returns
-        on the next loop step and force-cancels in-flight handlers with no grace.
-        An inf window outlives the supervisor's kill timeout.
+        positive check and reaches asyncio.wait, which then returns on the next
+        loop step and force-cancels in-flight handlers with no grace. An inf
+        window never ends, so shutdown would never finish.
         """
         engine = self._engine(drain_timeout=value)
         assert engine.drain_timeout == 10.0
@@ -347,28 +347,14 @@ class TestConfigurableDrainWindow:
             for r in caplog.records
         )
 
-    def test_warns_when_window_at_or_above_supervisor_kill_timeout(self, caplog):
-        """A drain window >= the Supervisor kill timeout logs a warning so an
-        operator is told a worker may be SIGKILLed before it drains."""
+    def test_long_window_is_kept_without_a_kill_timeout_warning(self, caplog):
+        """A window longer than 30 seconds is kept as configured and logs no
+        warning: the Supervisor sizes its kill budget from it."""
         with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
-            engine = self._engine(drain_timeout=_SHUTDOWN_TIMEOUT_SECONDS)
+            engine = self._engine(drain_timeout=45)
 
-        assert engine.drain_timeout == float(_SHUTDOWN_TIMEOUT_SECONDS)
-        assert any(
-            "drain_timeout_at_or_above_supervisor_kill_timeout" in r.message
-            for r in caplog.records
-        )
-
-    def test_no_warning_for_default_window(self, caplog):
-        """Negative: the default window (below the kill timeout) warns nothing."""
-        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
-            engine = self._engine()
-
-        assert engine.drain_timeout == 10.0
-        assert not any(
-            "drain_timeout_at_or_above_supervisor_kill_timeout" in r.message
-            for r in caplog.records
-        )
+        assert engine.drain_timeout == 45.0
+        assert [r.message for r in caplog.records if r.levelno >= logging.WARNING] == []
 
 
 @pytest.mark.no_test_domain

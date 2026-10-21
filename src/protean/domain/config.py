@@ -114,10 +114,9 @@ def _default_config() -> dict[str, Any]:
             # Graceful drain window, in seconds. On shutdown the engine stops
             # taking new work and waits this long for in-flight message handlers
             # to finish before force-cancelling them. Default 10 preserves the
-            # previous hardcoded behaviour. Keep this below the multi-worker
-            # Supervisor kill timeout (``_SHUTDOWN_TIMEOUT_SECONDS`` in
-            # protean.server.supervisor) so a worker is not SIGKILLed before its
-            # drain window elapses.
+            # previous hardcoded behaviour. The multi-worker Supervisor and the
+            # --reload watcher read this too, and wait this window plus a margin
+            # before they SIGKILL a worker.
             "drain_timeout": 10,
             # Event store subscription settings
             # Used when subscription_type is "event_store"

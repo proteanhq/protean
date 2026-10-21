@@ -553,22 +553,32 @@ tooling that create and tear down domains on demand.
 --8<-- "reference/server/hardening/drain_timeout.toml"
 ```
 
-The default of `10` preserves the previous fixed behaviour. Keep the drain
-window comfortably below the multi-worker Supervisor kill timeout
-(`_SHUTDOWN_TIMEOUT_SECONDS`, 30 seconds). The worker's shutdown also spends
-time closing the domain and cleaning up signal handlers inside that same 30
-second budget, so a window close to 30 (say 29) can still push total shutdown
-past the deadline and get the worker `SIGKILL`ed mid position-persist. The
-engine logs a warning at startup when `drain_timeout` reaches the kill timeout,
-but leave headroom well under 30 to be safe. A zero or negative value is
-rejected and falls back to `10`, since it would give in-flight work no grace at
-all. So is anything that is not a finite number: a non-numeric string, a
-boolean, `nan`, or `inf`. Single-worker runs have no supervisor, so a longer
-window there is fine.
+The default of `10` preserves the previous fixed behaviour. A zero or negative
+value is rejected and falls back to `10`, since it would give in-flight work no
+grace at all. So is anything that is not a finite number: a non-numeric string,
+a boolean, `nan`, or `inf`.
+
+The multi-worker Supervisor reads the same key from the project config. On
+shutdown it waits for the drain window plus 5 seconds before it sends `SIGKILL`
+to a worker, and never less than 30 seconds. The extra seconds cover the domain
+close and signal-handler cleanup that follow the drain. Single-worker runs have
+no supervisor.
+
+The Supervisor reads the config file without importing the domain. It looks in
+`DOMAIN_ROOT_PATH` if that is set, then in the directory of the `--domain` file
+or package, then in the working directory. A window set only in code, such as
+`Domain(config=...)`, does not reach it, so the Supervisor waits 30 seconds.
 
 `protean server --reload` reads the same key. The reloader waits for the drain
-window plus a few seconds (never less than 10) before killing the worker it is
+window plus 5 seconds (never less than 10) before killing the worker it is
 restarting, so a longer window is honoured on that path too.
+
+A process manager or orchestrator has its own stop deadline, such as systemd's
+`TimeoutStopSec` or Kubernetes' `terminationGracePeriodSeconds`. Set it above
+the server's own wait, or it kills the server before the drain ends. For one
+worker, that is the drain window plus a few seconds for the steps around it.
+For several workers, it is the Supervisor's wait: the larger of 30 and the
+drain window plus 5.
 
 ## Optimistic locking
 

@@ -19,7 +19,16 @@ from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.integrations.logging import ProteanRedactionFilter
 from protean.server.reloader import Reloader
-from protean.server.supervisor import Supervisor, _worker_entry
+from protean.server.supervisor import (
+    _DRAIN_MARGIN_SECONDS,
+    _MAX_JOIN_SECONDS,
+    _SHUTDOWN_TIMEOUT_SECONDS,
+    Supervisor,
+    _config_search_root,
+    _join_within,
+    _termination_budget,
+    _worker_entry,
+)
 from tests.shared import change_working_directory_to
 
 
@@ -166,6 +175,342 @@ class TestSupervisorShutdownWorkers:
         with patch("os.kill") as mock_kill:
             supervisor._shutdown_workers()
             mock_kill.assert_not_called()
+
+
+def _config_with_window(window):
+    """Patch the config read so it reports *window* as drain_timeout."""
+    return patch(
+        "protean.domain.config.Config2.load_from_path",
+        return_value={"server": {"drain_timeout": window}},
+    )
+
+
+def _stuck_worker():
+    """A worker that stays alive through the graceful join."""
+    worker = MagicMock()
+    worker.is_alive.return_value = True
+    worker.pid = 12345
+    worker.name = "worker-0"
+    worker.join.return_value = None
+    return worker
+
+
+class TestSupervisorTerminationBudget:
+    """The shutdown budget follows the workers' configured drain window.
+
+    Each worker's Engine waits ``[server].drain_timeout`` for in-flight
+    handlers, so a flat 30-second budget would kill a worker mid-drain
+    whenever that window is longer.
+    """
+
+    def test_budget_covers_a_longer_drain_window(self):
+        with _config_with_window(45):
+            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 50.0
+
+    @pytest.mark.parametrize("window, budget", [(10, 30.0), (25, 30.0), (26, 31.0)])
+    def test_budget_never_shrinks_below_thirty_seconds(self, window, budget):
+        with _config_with_window(window):
+            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == budget
+
+    def test_missing_drain_timeout_falls_back_to_thirty_seconds(self):
+        with patch(
+            "protean.domain.config.Config2.load_from_path", return_value={"server": {}}
+        ):
+            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 30.0
+
+    @pytest.mark.parametrize(
+        "window", ["not-a-number", True, 0, -5, float("nan"), float("inf")]
+    )
+    def test_invalid_window_falls_back_to_thirty_seconds(self, window):
+        with _config_with_window(window):
+            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 30.0
+
+    def test_long_window_is_not_capped(self):
+        with _config_with_window(2_200_000):
+            assert (
+                _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS)
+                == 2_200_000 + _DRAIN_MARGIN_SECONDS
+            )
+
+    def test_unreadable_config_falls_back_to_thirty_seconds(self):
+        with patch(
+            "protean.domain.config.Config2.load_from_path",
+            side_effect=ValueError("bad TOML"),
+        ):
+            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 30.0
+
+    def test_waits_the_drain_window_plus_margin_before_sigkill(self, caplog):
+        """With drain_timeout = 45 the worker gets 45 + margin seconds to exit
+        before it is killed, and the warning names that budget."""
+        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        worker = _stuck_worker()
+        supervisor.workers = [worker]
+
+        with (
+            _config_with_window(45),
+            patch("os.kill"),
+            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
+            caplog.at_level(logging.WARNING, logger="protean.server.supervisor"),
+        ):
+            supervisor._shutdown_workers()
+
+        first_join = worker.join.call_args_list[0]
+        assert first_join.kwargs["timeout"] == 45 + _DRAIN_MARGIN_SECONDS
+        worker.kill.assert_called_once()
+        messages = [r.getMessage() for r in caplog.records]
+        assert "Worker worker-0 did not stop within 50s timeout, killing" in messages
+
+    @pytest.mark.parametrize("window", [10, "not-a-number"])
+    @pytest.mark.parametrize("bound", [True, False])
+    def test_default_or_invalid_window_still_waits_thirty_seconds(self, window, bound):
+        """The default window of 10, or an invalid one, keeps the 30-second
+        wait, whether the budget was bound in run() or is read at shutdown."""
+        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        worker = _stuck_worker()
+
+        with (
+            _config_with_window(window),
+            patch("multiprocessing.get_context", return_value=MagicMock()),
+            patch("os.kill"),
+            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
+        ):
+            if bound:
+                supervisor._monitor = MagicMock()
+                supervisor._install_signal_handlers = MagicMock()
+                supervisor.run()
+            supervisor.workers = [worker]
+            supervisor._shutdown_workers()
+
+        assert worker.join.call_args_list[0].kwargs["timeout"] == 30.0
+        worker.kill.assert_called_once()
+
+    def test_run_binds_the_budget_before_spawning(self):
+        """run() binds the budget from the config the workers will read, before
+        the first worker starts."""
+        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        budgets_at_spawn = []
+
+        def spawn(*args, **kwargs):
+            budgets_at_spawn.append(supervisor._shutdown_timeout)
+            return MagicMock(pid=12345)
+
+        mock_ctx = MagicMock()
+        mock_ctx.Process.side_effect = spawn
+
+        with (
+            _config_with_window(45),
+            patch("multiprocessing.get_context", return_value=mock_ctx),
+        ):
+            supervisor._monitor = MagicMock()
+            supervisor._install_signal_handlers = MagicMock()
+            supervisor.run()
+
+        assert budgets_at_spawn == [50.0]
+
+    def test_bound_budget_ignores_a_later_config_change(self):
+        """A config edit after the workers spawned does not shorten the join
+        for workers still draining on the window they read at startup."""
+        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        supervisor._shutdown_timeout = 50.0
+        worker = _stuck_worker()
+        supervisor.workers = [worker]
+
+        with (
+            _config_with_window(2),
+            patch("os.kill"),
+            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
+        ):
+            supervisor._shutdown_workers()
+
+        assert worker.join.call_args_list[0].kwargs["timeout"] == 50.0
+
+    def test_unbound_budget_is_read_fresh(self):
+        """Shutting down before run() bound a budget reads the config then."""
+        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        assert supervisor._shutdown_timeout is None
+        worker = _stuck_worker()
+        supervisor.workers = [worker]
+
+        with (
+            _config_with_window(60),
+            patch("os.kill"),
+            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
+        ):
+            supervisor._shutdown_workers()
+
+        assert worker.join.call_args_list[0].kwargs["timeout"] == 65.0
+
+
+class TestSupervisorReadsTheWorkersConfigFile:
+    """The budget comes from the ``domain.toml`` the worker reads, found from
+    the domain path the Supervisor was given."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_env(self, monkeypatch):
+        monkeypatch.delenv("DOMAIN_ROOT_PATH", raising=False)
+        monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+
+    @pytest.fixture
+    def project(self, tmp_path, monkeypatch):
+        """A scaffold-shaped project: ``src/shop/domain.py`` next to a
+        ``domain.toml`` with a 45-second drain window, run from the project
+        root, whose ``pyproject.toml`` has no Protean settings."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "shop"\n')
+        package = tmp_path / "src" / "shop"
+        package.mkdir(parents=True)
+        (package / "domain.py").write_text("domain = object()\n")
+        (package / "domain.toml").write_text("[server]\ndrain_timeout = 45\n")
+        monkeypatch.chdir(tmp_path)
+        return package
+
+    @pytest.mark.parametrize(
+        "domain_path", ["src/shop/domain.py", "src.shop.domain:domain"]
+    )
+    def test_join_waits_the_window_from_the_domain_toml(self, project, domain_path):
+        supervisor = Supervisor(domain_path=domain_path, num_workers=1)
+        worker = _stuck_worker()
+        supervisor.workers = [worker]
+
+        with (
+            patch("os.kill"),
+            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
+        ):
+            supervisor._shutdown_workers()
+
+        assert worker.join.call_args_list[0].kwargs["timeout"] == 50.0
+
+    def test_dotted_module_on_the_import_path_finds_its_domain_toml(
+        self, project, monkeypatch
+    ):
+        """With ``src`` on ``PYTHONPATH``, ``shop.domain`` imports
+        ``src/shop/domain.py``. The budget comes from ``src/shop/domain.toml``,
+        not the root ``pyproject.toml``."""
+        monkeypatch.syspath_prepend(str(project.parent))
+        supervisor = Supervisor(domain_path="shop.domain:domain", num_workers=1)
+        worker = _stuck_worker()
+        supervisor.workers = [worker]
+
+        with (
+            patch("os.kill"),
+            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
+        ):
+            supervisor._shutdown_workers()
+
+        assert worker.join.call_args_list[0].kwargs["timeout"] == 50.0
+
+
+class TestJoinWithin:
+    """``Process.join`` overflows above about 2,147,483 seconds, so a longer
+    budget is waited out in bounded joins that add up to the whole window."""
+
+    def test_short_timeout_is_one_join(self):
+        process = _stuck_worker()
+        _join_within(process, 35.0)
+        process.join.assert_called_once_with(timeout=35.0)
+
+    def test_long_timeout_waits_the_full_window_in_bounded_joins(self):
+        process = _stuck_worker()
+        clock = iter([0.0, _MAX_JOIN_SECONDS, 2 * _MAX_JOIN_SECONDS])
+        with patch(
+            "protean.server.supervisor.time.monotonic", side_effect=lambda: next(clock)
+        ):
+            _join_within(process, 2_200_000.0)
+
+        timeouts = [c.kwargs["timeout"] for c in process.join.call_args_list]
+        assert timeouts == [_MAX_JOIN_SECONDS, _MAX_JOIN_SECONDS, 200_000.0]
+
+    def test_stops_joining_once_the_process_exits(self):
+        process = _stuck_worker()
+        process.is_alive.return_value = False
+        with patch("protean.server.supervisor.time.monotonic", return_value=0.0):
+            _join_within(process, 2_200_000.0)
+        process.join.assert_called_once_with(timeout=_MAX_JOIN_SECONDS)
+
+
+class TestSupervisorSignalDuringSpawn:
+    def test_signal_during_spawn_stops_spawning_and_stops_started_workers(self):
+        """A signal that lands while workers are spawning stops the loop, and
+        the worker started before it is sent SIGTERM rather than left running."""
+        supervisor = Supervisor(domain_path="my.domain", num_workers=3)
+        started = []
+
+        def spawn(*args, **kwargs):
+            process = _stuck_worker()
+            process.pid = 4000 + len(started)
+            started.append(process)
+            # The handler runs as the first worker starts, before it is
+            # recorded in ``supervisor.workers``.
+            supervisor._handle_signal(signal.SIGTERM, None)
+            return process
+
+        mock_ctx = MagicMock()
+        mock_ctx.Process.side_effect = spawn
+
+        with (
+            _config_with_window(10),
+            patch("multiprocessing.get_context", return_value=mock_ctx),
+            patch("os.kill") as mock_kill,
+            patch(
+                "protean.server.supervisor._build_queue_listener",
+                return_value=MagicMock(),
+            ),
+        ):
+            supervisor._monitor = MagicMock()
+            supervisor._install_signal_handlers = MagicMock()
+            supervisor._guard_event_store_single_writer = MagicMock()
+            supervisor.run()
+
+        assert len(started) == 1
+        mock_kill.assert_called_once_with(4000, signal.SIGTERM)
+
+
+class TestConfigSearchRoot:
+    """Where the parent process looks for the ``domain.toml`` its workers read."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_env(self, monkeypatch):
+        monkeypatch.delenv("DOMAIN_ROOT_PATH", raising=False)
+        monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+
+    def test_directory_domain_path_is_used_as_is(self, tmp_path):
+        assert _config_search_root(str(tmp_path)) == os.path.realpath(str(tmp_path))
+
+    def test_protean_domain_env_overrides_the_argument(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PROTEAN_DOMAIN", str(tmp_path))
+        assert _config_search_root("my.domain") == os.path.realpath(str(tmp_path))
+
+    def test_working_directory_wins_over_the_import_path(self, tmp_path, monkeypatch):
+        """``derive_domain`` puts the working directory first on ``sys.path``,
+        so a ``shop`` package there shadows one elsewhere on the path."""
+        for root in ("cwd", "lib"):
+            package = tmp_path / root / "shop"
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text("")
+            (package / "domain.py").write_text("domain = object()\n")
+        monkeypatch.chdir(tmp_path / "cwd")
+        monkeypatch.syspath_prepend(str(tmp_path / "lib"))
+        assert _config_search_root("shop.domain") == os.path.realpath(
+            tmp_path / "cwd" / "shop"
+        )
+
+    def test_submodule_of_a_plain_module_falls_back_to_cwd(self, tmp_path, monkeypatch):
+        (tmp_path / "shop.py").write_text("")
+        monkeypatch.chdir(tmp_path)
+        assert _config_search_root("shop.domain") == os.getcwd()
+
+    def test_namespace_package_falls_back_to_cwd(self, tmp_path, monkeypatch):
+        """A namespace package has no file to anchor the worker's root."""
+        (tmp_path / "src" / "shop").mkdir(parents=True)
+        monkeypatch.chdir(tmp_path)
+        assert _config_search_root("src.shop") == os.getcwd()
+
+    def test_package_init_is_not_executed(self, tmp_path, monkeypatch):
+        package = tmp_path / "shop"
+        package.mkdir()
+        (package / "__init__.py").write_text("raise RuntimeError('imported')\n")
+        (package / "domain.py").write_text("domain = object()\n")
+        monkeypatch.chdir(tmp_path)
+        assert _config_search_root("shop.domain") == os.path.realpath(package)
 
 
 class TestSupervisorMonitor:

@@ -26,13 +26,17 @@ Usage:
 """
 
 import contextlib
+import importlib.machinery
 import logging
 import logging.handlers
+import math
 import multiprocessing
 import os
+import re
 import signal
 import sys
 import time
+import warnings
 from multiprocessing.process import BaseProcess
 from types import FrameType
 from typing import Any, Optional
@@ -49,6 +53,16 @@ from protean.utils.logging import (
 logger = logging.getLogger(__name__)
 
 _SHUTDOWN_TIMEOUT_SECONDS = 30
+
+# Slack added on top of the Engine's drain window when sizing a shutdown
+# budget: the worker still has to cancel stragglers, close brokers and
+# providers, and exit after the window elapses.
+_DRAIN_MARGIN_SECONDS = 5
+
+# Longest single ``Process.join`` wait. The join polls with a timeout in
+# milliseconds held in a C int, so a timeout above about 2,147,483 seconds
+# raises OverflowError. Longer budgets are waited out in pieces of this size.
+_MAX_JOIN_SECONDS = 1_000_000
 
 # The values the CLI's ``--log-level`` and ``--log-format`` flags accept.
 _LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
@@ -76,6 +90,149 @@ def _check_log_arguments(
             f"Invalid log_format {log_format!r}. Choose from: {', '.join(_LOG_FORMATS)}"
         )
     return level, fmt
+
+
+def _config_search_root(domain_path: str) -> str:
+    """Where to search for the project config, matching the worker's
+    ``Domain.root_path`` resolution as closely as possible without
+    importing the domain.
+
+    The worker's Domain honours ``DOMAIN_ROOT_PATH`` and otherwise uses the
+    directory of the domain module file (``_guess_caller_path``). Mirror
+    that so the parent reads the same ``domain.toml`` the worker will, even
+    when the server is launched from a different working directory. A
+    dotted module name (``src.shop.domain``) is looked up on the worker's
+    import search path (see ``_module_directory``). If nothing matches, fall
+    back to the working directory, where ``domain.toml`` conventionally
+    lives.
+    """
+    env_root = os.environ.get("DOMAIN_ROOT_PATH")
+    if env_root:
+        return env_root
+
+    domain_path = os.environ.get("PROTEAN_DOMAIN") or domain_path
+    # Drop a ":factory" suffix; the left side is the module or file path.
+    # Do not split a Windows drive letter or a URL scheme.
+    path_part = re.split(r":(?![\\/])", domain_path, maxsplit=1)[0]
+    candidate = os.path.realpath(path_part)
+    if not os.path.splitext(candidate)[1] and os.path.isfile(candidate + ".py"):
+        candidate += ".py"
+    if os.path.isfile(candidate):
+        return os.path.dirname(candidate)
+    if os.path.isdir(candidate):
+        return candidate
+
+    module_dir = _module_directory(path_part)
+    return module_dir if module_dir is not None else os.getcwd()
+
+
+def _module_directory(module_name: str) -> str | None:
+    """The directory holding ``module_name``'s file, found the way the worker
+    would import it, or None if it cannot be found.
+
+    ``derive_domain`` puts the working directory first on ``sys.path`` and
+    then imports the name, so search the working directory and then
+    ``sys.path`` (which a spawned worker inherits, ``PYTHONPATH`` included).
+    ``PathFinder`` locates each part without importing anything, so no
+    package ``__init__`` runs here in the parent.
+    """
+    search_path: list[str] | None = [os.getcwd(), *sys.path]
+    spec = None
+    for part in module_name.split("."):
+        if search_path is None:
+            return None  # the previous part is a plain module, not a package
+        # Look up the bare name: a dotted name makes a namespace spec resolve
+        # its parent through ``sys.modules``, which this never populates.
+        spec = importlib.machinery.PathFinder.find_spec(part, search_path)
+        if spec is None:
+            return None
+        if spec.submodule_search_locations is None:
+            search_path = None
+        elif spec.origin is not None:
+            search_path = list(spec.submodule_search_locations)
+        else:
+            # A namespace package: its portions are the matching directories
+            # on the path it was found on.
+            search_path = [
+                os.path.join(entry, part)
+                for entry in search_path
+                if os.path.isdir(os.path.join(entry, part))
+            ]
+
+    if spec is None or not spec.origin or not os.path.isfile(spec.origin):
+        return None
+    return os.path.dirname(os.path.realpath(spec.origin))
+
+
+def _join_within(process: BaseProcess, timeout: float) -> None:
+    """Wait up to ``timeout`` seconds for ``process`` to exit.
+
+    Splits the wait into joins of at most ``_MAX_JOIN_SECONDS`` each, so a
+    long drain window is waited in full instead of overflowing the join.
+    """
+    deadline = time.monotonic() + timeout
+    remaining = timeout
+    while remaining > _MAX_JOIN_SECONDS:
+        process.join(timeout=_MAX_JOIN_SECONDS)
+        if not process.is_alive():
+            return
+        remaining = max(0.0, deadline - time.monotonic())
+    process.join(timeout=remaining)
+
+
+def _configured_drain_window(domain_path: str) -> float:
+    """The worker Engine's ``[server].drain_timeout``, or 0 if it is invalid.
+
+    Read from the project config file so a shutdown budget matches the
+    window the worker will wait, without importing or instantiating the
+    domain here in the parent. Deriving the domain would re-run a
+    factory-style ``domain_path`` (the worker already invokes it in the
+    child), doubling resource initialisation in a process that only manages
+    workers; reading the config file has no such side effect. The search
+    starts from the same place the worker resolves its config (see
+    ``_config_search_root``), not blindly from the working directory.
+
+    With no config file, the loader returns the defaults, so the window is
+    the default 10. The read can also fail (bad TOML, a ``server`` value that
+    is not a table); the worker surfaces the real error when it starts, so
+    fall back to 0 and let the floor apply. Anything that is not a finite
+    positive number is treated the same way: the Engine rejects those values
+    too and uses its own default.
+    """
+    from protean.domain.config import Config2  # noqa: PLC0415
+
+    try:
+        with warnings.catch_warnings():
+            # load_from_path warns when no config file is found; the worker
+            # reports that, so keep the parent quiet and use the default.
+            warnings.simplefilter("ignore")
+            config = Config2.load_from_path(_config_search_root(domain_path))
+        value = config.get("server", {}).get("drain_timeout", 0)
+        if isinstance(value, bool):
+            return 0.0
+        window = float(value)
+    except Exception:  # a bad config falls back to the default budget; logged
+        logger.debug(
+            "Could not read server.drain_timeout from the project config; "
+            "using the default termination budget",
+            exc_info=True,
+        )
+        return 0.0
+
+    return window if math.isfinite(window) and window > 0 else 0.0
+
+
+def _termination_budget(domain_path: str, floor: float) -> float:
+    """How long to wait for a worker to exit before killing it.
+
+    The worker's Engine waits ``[server].drain_timeout`` for in-flight
+    handlers before force-cancelling them, so a flat budget would kill a
+    worker mid-drain whenever that window is longer. Take the configured
+    window plus a margin, never less than ``floor``.
+    """
+    return max(
+        float(floor), _configured_drain_window(domain_path) + _DRAIN_MARGIN_SECONDS
+    )
 
 
 class Supervisor:
@@ -149,6 +306,8 @@ class Supervisor:
         self.workers: list[BaseProcess] = []
         self.exit_code: int = 0
         self._shutting_down: bool = False
+        # Bound in ``run()`` just before workers spawn; ``None`` until then.
+        self._shutdown_timeout: float | None = None
 
         # Log queue plumbing — only populated in multi-worker mode. The queue
         # is created from the spawn context so it is safe to share with child
@@ -195,8 +354,17 @@ class Supervisor:
             self._queue_listener = _build_queue_listener(self._log_queue)
             self._queue_listener.start()
 
-        # Spawn all workers
+        # Bind the shutdown budget to the config as it stands now. The workers
+        # read the same config at their own startup, so the two match.
+        self._shutdown_timeout = _termination_budget(
+            self.domain_path, _SHUTDOWN_TIMEOUT_SECONDS
+        )
+
+        # Spawn all workers. A signal can arrive once the handlers are
+        # installed; stop spawning then, since the handler has already run.
         for worker_id in range(self.num_workers):
+            if self._shutting_down:
+                break
             process = ctx.Process(
                 target=_worker_entry,
                 args=(
@@ -215,6 +383,11 @@ class Supervisor:
             process.start()
             self.workers.append(process)
             logger.info(f"Started worker {worker_id} (PID {process.pid})")
+
+        # The handler only stops the workers that existed when it ran. Stop
+        # any worker spawned after that.
+        if self._shutting_down:
+            self._shutdown_workers()
 
         # Block in the monitor loop until all workers exit
         try:
@@ -352,22 +525,32 @@ class Supervisor:
     # ------------------------------------------------------------------
 
     def _shutdown_workers(self) -> None:
-        """Send SIGTERM to all workers, wait with timeout, then SIGKILL."""
+        """Send SIGTERM to all workers, wait with timeout, then SIGKILL.
+
+        The timeout is the workers' ``[server].drain_timeout`` plus a margin,
+        never less than ``_SHUTDOWN_TIMEOUT_SECONDS``.
+        """
         # Send SIGTERM to each living worker
         for worker in self.workers:
             if worker.is_alive() and worker.pid:
                 with contextlib.suppress(ProcessLookupError, OSError):
                     os.kill(worker.pid, signal.SIGTERM)
 
-        # Wait for workers to exit gracefully
-        deadline = time.monotonic() + _SHUTDOWN_TIMEOUT_SECONDS
+        # Use the budget bound when the workers spawned. Fall back to a fresh
+        # read if we shut down before spawning.
+        timeout = self._shutdown_timeout
+        if timeout is None:
+            timeout = _termination_budget(self.domain_path, _SHUTDOWN_TIMEOUT_SECONDS)
+
+        # Workers drain in parallel, so they share one deadline.
+        deadline = time.monotonic() + timeout
         for worker in list(self.workers):
-            remaining = max(0, deadline - time.monotonic())
-            worker.join(timeout=remaining)
+            _join_within(worker, max(0.0, deadline - time.monotonic()))
             if worker.is_alive():
                 logger.warning(
-                    f"Worker {worker.name} did not stop within "
-                    f"{_SHUTDOWN_TIMEOUT_SECONDS}s timeout, killing"
+                    "Worker %s did not stop within %gs timeout, killing",
+                    worker.name,
+                    timeout,
                 )
                 worker.kill()
                 worker.join(timeout=5)
