@@ -28,6 +28,7 @@ from protean.utils.eventing import (
     new_correlation_id,
 )
 from protean.utils.globals import g
+from protean.utils.outbox import _outbox_provider_names
 from protean.utils.processing import processing_priority
 from protean.utils.telemetry import (
     create_observation,
@@ -418,10 +419,9 @@ class Engine:
                 },
             )
 
-            # Create an outbox processor for each managed database provider
-            for database_provider_name, provider in self.domain.providers.items():
-                if not provider.managed:
-                    continue
+            # Create an outbox processor for each provider an aggregate is stored in
+            outbox_providers = _outbox_provider_names(self.domain)
+            for database_provider_name in outbox_providers:
                 processor_name = f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
                 logger.debug(
                     "engine.creating_outbox_processor",
@@ -445,9 +445,7 @@ class Engine:
                         f"outbox.external_brokers but not found in domain "
                         f"broker configuration"
                     )
-                for database_provider_name, provider in self.domain.providers.items():
-                    if not provider.managed:
-                        continue
+                for database_provider_name in outbox_providers:
                     processor_name = f"outbox-processor-{database_provider_name}-to-{ext_broker_name}-external"
                     logger.debug(
                         "engine.creating_external_outbox_processor",

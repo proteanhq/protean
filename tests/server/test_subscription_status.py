@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -497,6 +498,15 @@ class TestCollectStreamStatus:
 # ---------------------------------------------------------------------------
 
 
+def _aggregates_on_default() -> dict:
+    """Registry records for one aggregate stored in the ``default`` provider."""
+    return {
+        "Order": SimpleNamespace(
+            cls=SimpleNamespace(meta_=SimpleNamespace(provider="default"))
+        )
+    }
+
+
 class TestCollectOutboxStatuses:
     def test_returns_empty_when_no_outbox(self):
         mock_domain = MagicMock()
@@ -510,6 +520,7 @@ class TestCollectOutboxStatuses:
         mock_domain.has_outbox = True
         mock_domain.config = {"outbox": {"broker": "default"}}
         mock_domain.providers = {"default": MagicMock(managed=True)}
+        mock_domain.registry.aggregates = _aggregates_on_default()
 
         mock_outbox = MagicMock()
         mock_outbox.count_by_status.return_value = {
@@ -536,6 +547,7 @@ class TestCollectOutboxStatuses:
         mock_domain.has_outbox = True
         mock_domain.config = {"outbox": {"broker": "default"}}
         mock_domain.providers = {"default": MagicMock(managed=True)}
+        mock_domain.registry.aggregates = _aggregates_on_default()
 
         mock_outbox = MagicMock()
         mock_outbox.count_by_status.return_value = {
@@ -556,6 +568,7 @@ class TestCollectOutboxStatuses:
         mock_domain.has_outbox = True
         mock_domain.config = {"outbox": {"broker": "default"}}
         mock_domain.providers = {"default": MagicMock(managed=True)}
+        mock_domain.registry.aggregates = _aggregates_on_default()
         mock_domain.domain_context.return_value.__enter__ = MagicMock(
             side_effect=RuntimeError("db down")
         )

@@ -91,7 +91,8 @@ the correct processor.
 protean server --domain=my_domain
 ```
 
-The Engine creates one `OutboxProcessor` per broker per database provider.
+The Engine creates one `OutboxProcessor` per broker per database provider
+that an aggregate is stored in.
 With one database and two brokers (internal + one external), you'll see:
 
 ```

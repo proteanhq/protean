@@ -4,8 +4,24 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from protean import Engine
+from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.exceptions import ConfigurationError
+from protean.fields import String
+
+
+def _register_aggregate(domain, provider="default"):
+    """Store one aggregate in *provider*.
+
+    The engine runs outbox processors only for providers an aggregate is
+    stored in, so a domain needs one before it has any processor to inspect.
+    """
+
+    # Distinct names per provider, because the registry keys elements by name
+    record_cls = type(
+        f"{provider.capitalize()}Record", (BaseAggregate,), {"name": String()}
+    )
+    domain.register(record_cls, provider=provider)
 
 
 def test_that_engine_can_be_initialized_from_a_domain_object(test_domain):
@@ -110,6 +126,7 @@ class TestEngineOutboxValidation:
         """Engine should start when outbox is enabled and repos are initialised."""
         domain = Domain(name="Test")
         domain.config["server"]["default_subscription_type"] = "stream"
+        _register_aggregate(domain)
         domain.init(traverse=False)
 
         with domain.domain_context():
@@ -155,6 +172,8 @@ class TestEngineOutboxSkipsUnmanagedProviders:
             "provider": "memory",
             "managed": False,
         }
+        _register_aggregate(domain)
+        _register_aggregate(domain, provider="unmanaged")
         domain.init(traverse=False)
 
         with domain.domain_context():
@@ -175,6 +194,8 @@ class TestEngineOutboxSkipsUnmanagedProviders:
             "provider": "memory",
             "managed": True,
         }
+        _register_aggregate(domain)
+        _register_aggregate(domain, provider="secondary")
         domain.init(traverse=False)
 
         with domain.domain_context():
@@ -201,6 +222,8 @@ class TestEngineOutboxSkipsUnmanagedProviders:
         domain.config["outbox"] = {
             "external_brokers": ["external_broker"],
         }
+        _register_aggregate(domain)
+        _register_aggregate(domain, provider="unmanaged")
         domain.init(traverse=False)
 
         with domain.domain_context():

@@ -74,8 +74,8 @@ instances that connect to the configured message broker:
 ### Outbox Processors
 
 When the outbox is enabled (via `default_subscription_type = "stream"`), the
-Engine creates an `OutboxProcessor` for each database provider to publish
-messages to the configured broker:
+Engine creates an `OutboxProcessor` for each database provider that an
+aggregate is stored in, to publish messages to the configured broker:
 
 ```toml
 # Configuration in domain.toml
@@ -91,7 +91,8 @@ tick_interval = 1
 ### External Outbox Processors
 
 When `external_brokers` is configured, the Engine creates additional
-`OutboxProcessor` instances, one per external broker per database provider. These processors
+`OutboxProcessor` instances, one per external broker per database provider that
+an aggregate is stored in. These processors
 only pick up outbox rows tagged with their target broker and publish using a
 stripped metadata envelope suitable for external consumers:
 

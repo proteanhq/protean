@@ -63,7 +63,8 @@ $ protean db setup-outbox --domain=my_domain
 ```
 
 Multiple database providers produce one outbox per provider. Each provider owns
-its own outbox table and its own `OutboxProcessor`.
+its own outbox table. The Engine runs an `OutboxProcessor` only for a provider
+that an aggregate is stored in, since no other provider receives outbox rows.
 
 The outbox table ships with the indexes the processor needs, created
 automatically by the commands above: a partial index on the active set

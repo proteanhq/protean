@@ -76,10 +76,13 @@ the aggregate save. Steps 2 and 3 are eventually consistent but never
 lossy, a row that's written in the outbox is published exactly once (with
 at-least-once semantics from the consumer's perspective).
 
-One outbox processor runs per database provider. A domain with one
-database has one processor; a domain with a `default` database and an
-`analytics` database has two, each publishing its own outbox to the
-configured broker.
+One outbox processor runs per database provider that an aggregate is
+stored in. A domain with one database has one processor; a domain with
+aggregates in a `default` database and an `analytics` database has two,
+each publishing its own outbox to the configured broker. A provider that
+no aggregate uses, such as the built-in `memory` provider in a domain
+that stores everything in `default`, gets no processor, because nothing
+writes to its outbox.
 
 See the [Outbox Guide](../../guides/server/outbox.md) for enabling the
 outbox, creating the table, configuring retries and cleanup, and
