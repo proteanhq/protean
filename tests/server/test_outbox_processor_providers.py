@@ -223,7 +223,13 @@ class TestLeftoverRowsOnASkippedProvider:
         domain._get_outbox_repo("secondary").add(row)
 
     @pytest.mark.parametrize(
-        "status", [OutboxStatus.PENDING, OutboxStatus.PROCESSING, OutboxStatus.FAILED]
+        "status",
+        [
+            OutboxStatus.PENDING,
+            OutboxStatus.PROCESSING,
+            OutboxStatus.FAILED,
+            OutboxStatus.ABANDONED,
+        ],
     )
     def test_unpublished_rows_log_a_warning(self, status, caplog):
         domain = self._domain_with_secondary()

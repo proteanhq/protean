@@ -480,6 +480,7 @@ class Engine:
                             OutboxStatus.PENDING.value,
                             OutboxStatus.PROCESSING.value,
                             OutboxStatus.FAILED.value,
+                            OutboxStatus.ABANDONED.value,
                         ]
                     ).count()
                 # The probe is diagnostic only: a provider no aggregate uses
