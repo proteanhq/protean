@@ -726,7 +726,7 @@ def _outbox_processor_names(
 ) -> list[tuple[str, str, str, str | None]]:
     """The Engine's outbox processors, as ``(name, provider, label, broker)``.
 
-    Mirrors ``Engine._initialize_outbox_processors``: one processor per provider
+    Mirrors ``Engine._wire_components``: one processor per provider
     from ``_outbox_provider_names`` for the primary broker, plus one per such
     provider for each broker in ``outbox.external_brokers``, whose name carries
     an ``-external`` suffix. Both details matter: an unmanaged provider, or one

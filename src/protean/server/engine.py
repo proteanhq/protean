@@ -28,7 +28,7 @@ from protean.utils.eventing import (
     new_correlation_id,
 )
 from protean.utils.globals import g
-from protean.utils.outbox import _outbox_provider_names
+from protean.utils.outbox import OutboxStatus, _outbox_provider_names
 from protean.utils.processing import processing_priority
 from protean.utils.telemetry import (
     create_observation,
@@ -391,10 +391,9 @@ class Engine:
                 subscriber_cls,
             )
 
-        # Gather outbox processors - one per database-broker provider combination
+        # Gather outbox processors - one per broker for each provider an aggregate is stored in
         self._outbox_processors: dict[str, OutboxProcessor] = {}
 
-        # Create an outbox processor for each database provider to each broker provider
         # Only if outbox is enabled in the domain
         if self.domain.has_outbox:
             logger.debug("engine.outbox_initializing")
@@ -465,12 +464,33 @@ class Engine:
             for provider_name, outbox_repo in self.domain._outbox_repos.items():
                 try:
                     outbox_repo._dao  # noqa: B018
+                    unpublished = (
+                        0
+                        if provider_name in outbox_providers
+                        else outbox_repo._dao.query.filter(
+                            status__in=[
+                                OutboxStatus.PENDING.value,
+                                OutboxStatus.PROCESSING.value,
+                                OutboxStatus.FAILED.value,
+                            ]
+                        ).count()
+                    )
                 # Any DAO error is reported as a missing outbox table.
                 except Exception as e:
                     raise ConfigurationError(
                         f"Outbox table not found for provider '{provider_name}'. "
                         "Run 'protean db setup' or 'protean db setup-outbox' to create it."
                     ) from e
+                # Rows left by an earlier deploy, before the last aggregate on
+                # this provider moved away. No processor runs here any more.
+                if unpublished:
+                    logger.warning(
+                        "engine.outbox_rows_without_processor",
+                        extra={
+                            "provider": provider_name,
+                            "unpublished": unpublished,
+                        },
+                    )
         else:
             logger.debug("engine.outbox_disabled")
 

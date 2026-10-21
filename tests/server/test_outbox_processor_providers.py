@@ -6,6 +6,9 @@ no aggregate names never receives a row. The engine and the status collector
 both skip such providers, and they must agree on the set.
 """
 
+import logging
+from datetime import UTC, datetime
+
 import pytest
 
 from protean import Engine
@@ -17,7 +20,8 @@ from protean.server.subscription_status import (
     _collect_outbox_statuses,
     _outbox_processor_names,
 )
-from protean.utils.outbox import _outbox_provider_names
+from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
+from protean.utils.outbox import Outbox, OutboxStatus, _outbox_provider_names
 
 
 def _domain(**config_overrides) -> Domain:
@@ -131,6 +135,23 @@ class TestEngineProcessorsFollowAggregateProviders:
 
         assert names == {"outbox-processor-default-to-default"}
         assert [p for _, p, _, _ in _outbox_processor_names(domain)] == ["default"]
+        assert [status.name for status in _collect_outbox_statuses(domain)] == [
+            "outbox-processor-default-to-default"
+        ]
+
+    def test_an_abstract_aggregate_does_not_count(self):
+        domain = _domain()
+        domain.config["databases"]["archive"] = {"provider": "memory"}
+        base = _aggregate(domain, "Base", abstract=True, provider="archive")
+        order = type("Order", (base,), {})
+        domain.register(order)
+
+        assert order.meta_.provider == "default"
+        assert _engine_processor_names(domain) == {
+            "outbox-processor-default-to-default"
+        }
+        assert _outbox_processor_names(domain)[0][1] == "default"
+        assert len(_outbox_processor_names(domain)) == 1
 
     def test_no_aggregates_means_no_processors_and_no_status_rows(self):
         domain = _with_global_broker(_domain())
@@ -168,3 +189,65 @@ class TestOutboxProviderNames:
         domain.init(traverse=False)
 
         assert _outbox_provider_names(domain) == ["default"]
+
+
+@pytest.mark.no_test_domain
+class TestLeftoverRowsOnASkippedProvider:
+    """A provider's outbox can hold rows from before its last aggregate moved away."""
+
+    def _domain_with_secondary(self) -> Domain:
+        domain = _domain()
+        domain.config["databases"]["secondary"] = {"provider": "memory"}
+        _aggregate(domain, "Order")
+        domain.init(traverse=False)
+        return domain
+
+    def _save_row(self, domain: Domain, status: OutboxStatus) -> None:
+        row = Outbox.create_message(
+            message_id="msg-1",
+            stream_name="test::order-1",
+            message_type="Test.OrderPlaced.v1",
+            data={},
+            metadata=Metadata(
+                headers=MessageHeaders(
+                    id="msg-1",
+                    type="Test.OrderPlaced.v1",
+                    time=datetime.now(UTC),
+                    stream="test::order-1",
+                ),
+                domain=DomainMeta(fqn="test.OrderPlaced", kind="event"),
+            ),
+        )
+        row.status = status.value
+        domain._get_outbox_repo("secondary").add(row)
+
+    @pytest.mark.parametrize(
+        "status", [OutboxStatus.PENDING, OutboxStatus.PROCESSING, OutboxStatus.FAILED]
+    )
+    def test_unpublished_rows_log_a_warning(self, status, caplog):
+        domain = self._domain_with_secondary()
+        with domain.domain_context():
+            domain.setup_database()
+            self._save_row(domain, status)
+            with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+                engine = Engine(domain, test_mode=True)
+
+        assert set(engine._outbox_processors) == {"outbox-processor-default-to-default"}
+        warnings = [
+            r for r in caplog.records if r.msg == "engine.outbox_rows_without_processor"
+        ]
+        assert len(warnings) == 1
+        assert warnings[0].provider == "secondary"
+        assert warnings[0].unpublished == 1
+
+    def test_published_rows_log_no_warning(self, caplog):
+        domain = self._domain_with_secondary()
+        with domain.domain_context():
+            domain.setup_database()
+            self._save_row(domain, OutboxStatus.PUBLISHED)
+            with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+                Engine(domain, test_mode=True)
+
+        assert not [
+            r for r in caplog.records if r.msg == "engine.outbox_rows_without_processor"
+        ]

@@ -181,9 +181,9 @@ class TestEngineOutboxSkipsUnmanagedProviders:
             engine = Engine(domain, test_mode=True)
 
             # Only the default (managed) provider should have outbox processors
-            processor_names = list(engine._outbox_processors.keys())
-            assert any("default" in name for name in processor_names)
-            assert not any("unmanaged" in name for name in processor_names)
+            assert set(engine._outbox_processors) == {
+                "outbox-processor-default-to-default"
+            }
 
     @pytest.mark.no_test_domain
     def test_outbox_processor_created_for_managed_provider(self):
@@ -202,9 +202,10 @@ class TestEngineOutboxSkipsUnmanagedProviders:
             domain.setup_database()
             engine = Engine(domain, test_mode=True)
 
-            processor_names = list(engine._outbox_processors.keys())
-            assert any("default" in name for name in processor_names)
-            assert any("secondary" in name for name in processor_names)
+            assert set(engine._outbox_processors) == {
+                "outbox-processor-default-to-default",
+                "outbox-processor-secondary-to-default",
+            }
 
     @pytest.mark.no_test_domain
     def test_external_outbox_processor_skips_unmanaged(self):
@@ -230,15 +231,11 @@ class TestEngineOutboxSkipsUnmanagedProviders:
             domain.setup_database()
             engine = Engine(domain, test_mode=True)
 
-            processor_names = list(engine._outbox_processors.keys())
-            # No external processor for the unmanaged provider
-            assert not any(
-                "unmanaged" in name and "external" in name for name in processor_names
-            )
-            # But external processor exists for the default (managed) provider
-            assert any(
-                "default" in name and "external" in name for name in processor_names
-            )
+            # Only the default (managed) provider gets primary and external processors
+            assert set(engine._outbox_processors) == {
+                "outbox-processor-default-to-default",
+                "outbox-processor-default-to-external_broker-external",
+            }
 
 
 class TestEngineInitializationFailure:

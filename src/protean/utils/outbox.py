@@ -1055,23 +1055,25 @@ def backfill_suffix_from_config(config: Any) -> str:
 def _outbox_provider_names(domain: Any) -> list[str]:
     """The database providers that get outbox processors, in ``domain.providers`` order.
 
-    A provider qualifies when it is managed and at least one non-internal
-    aggregate (event-sourced ones included) names it in its ``provider`` option.
-    The unit of work writes outbox rows only to the providers of the aggregates
-    it persists, so a provider no aggregate names never receives a row and a
-    processor for it would poll an empty table. Internal elements do not count:
-    the memory event store registers ``MemoryMessage`` on ``memory``, and it
-    never raises events.
+    A provider qualifies when it is managed and at least one concrete,
+    non-internal aggregate (event-sourced ones included) names it in its
+    ``provider`` option. The unit of work writes outbox rows only to the
+    providers of the aggregates it persists, so a provider no aggregate names
+    never receives a row and a processor for it would poll an empty table.
+    Internal elements do not count: the memory event store registers
+    ``MemoryMessage`` on ``memory``, and it never raises events. Abstract
+    aggregates do not count either, because nothing is stored for them and a
+    concrete subclass does not inherit their ``provider``.
 
-    ``protean outbox reconcile --provider <name>`` can still write rows to a
-    provider this function skips. No processor publishes those rows until an
-    aggregate is stored in that provider.
-
-    ``Engine._initialize_outbox_processors`` and the status collector both use
-    this list, so ``/readyz`` and ``protean subscriptions status`` report exactly
-    the processors the engine runs.
+    ``Engine._wire_components`` and the status collector both use this list, so
+    ``/readyz`` and ``protean subscriptions status`` report exactly the
+    processors the engine runs.
     """
-    used = {record.cls.meta_.provider for record in domain.registry.aggregates.values()}
+    used = {
+        record.cls.meta_.provider
+        for record in domain.registry.aggregates.values()
+        if not getattr(record.cls.meta_, "abstract", False)
+    }
     return [
         name
         for name, provider in domain.providers.items()
