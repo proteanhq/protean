@@ -113,7 +113,7 @@ available). When a signal is received:
 2. Workers receive the signal and begin their own graceful shutdown (completing
    current message processing, persisting subscription positions).
 3. The Supervisor waits for workers to exit. The wait is the workers'
-   [`server.drain_timeout`](hardening.md#serverdrain_timeout) plus a few
+   [`server.drain_timeout`](hardening.md#serverdrain_timeout) plus 5
    seconds, and never less than 30 seconds.
 4. Workers that do not stop within the timeout are forcefully killed with
    `SIGKILL`.

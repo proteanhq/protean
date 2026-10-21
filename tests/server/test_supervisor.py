@@ -21,6 +21,7 @@ from protean.integrations.logging import ProteanRedactionFilter
 from protean.server.reloader import Reloader
 from protean.server.supervisor import (
     _DRAIN_MARGIN_SECONDS,
+    _MAX_TERMINATION_BUDGET_SECONDS,
     _SHUTDOWN_TIMEOUT_SECONDS,
     Supervisor,
     _config_search_root,
@@ -223,6 +224,15 @@ class TestSupervisorTerminationBudget:
         with _config_with_window(window):
             assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 30.0
 
+    def test_budget_is_capped_below_the_join_timeout_limit(self):
+        """``Process.join`` raises OverflowError above about 2,147,483 seconds,
+        which would crash the signal handler before any worker is killed."""
+        with _config_with_window(2_200_000):
+            assert (
+                _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS)
+                == _MAX_TERMINATION_BUDGET_SECONDS
+            )
+
     def test_unreadable_config_falls_back_to_thirty_seconds(self):
         with patch(
             "protean.domain.config.Config2.load_from_path",
@@ -251,11 +261,42 @@ class TestSupervisorTerminationBudget:
         messages = [r.getMessage() for r in caplog.records]
         assert "Worker worker-0 did not stop within 50s timeout, killing" in messages
 
-    def test_run_binds_the_budget_before_spawning(self):
-        """run() binds the budget from the config the workers will read."""
+    @pytest.mark.parametrize("window", [10, "not-a-number"])
+    @pytest.mark.parametrize("bound", [True, False])
+    def test_default_or_invalid_window_still_waits_thirty_seconds(self, window, bound):
+        """The default window of 10, or an invalid one, keeps the 30-second
+        wait, whether the budget was bound in run() or is read at shutdown."""
         supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        worker = _stuck_worker()
+
+        with (
+            _config_with_window(window),
+            patch("multiprocessing.get_context", return_value=MagicMock()),
+            patch("os.kill"),
+            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
+        ):
+            if bound:
+                supervisor._monitor = MagicMock()
+                supervisor._install_signal_handlers = MagicMock()
+                supervisor.run()
+            supervisor.workers = [worker]
+            supervisor._shutdown_workers()
+
+        assert worker.join.call_args_list[0].kwargs["timeout"] == 30.0
+        worker.kill.assert_called_once()
+
+    def test_run_binds_the_budget_before_spawning(self):
+        """run() binds the budget from the config the workers will read, before
+        the first worker starts."""
+        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        budgets_at_spawn = []
+
+        def spawn(*args, **kwargs):
+            budgets_at_spawn.append(supervisor._shutdown_timeout)
+            return MagicMock(pid=12345)
+
         mock_ctx = MagicMock()
-        mock_ctx.Process.return_value = MagicMock(pid=12345)
+        mock_ctx.Process.side_effect = spawn
 
         with (
             _config_with_window(45),
@@ -265,7 +306,7 @@ class TestSupervisorTerminationBudget:
             supervisor._install_signal_handlers = MagicMock()
             supervisor.run()
 
-        assert supervisor._shutdown_timeout == 50.0
+        assert budgets_at_spawn == [50.0]
 
     def test_bound_budget_ignores_a_later_config_change(self):
         """A config edit after the workers spawned does not shorten the join
@@ -299,6 +340,82 @@ class TestSupervisorTerminationBudget:
             supervisor._shutdown_workers()
 
         assert worker.join.call_args_list[0].kwargs["timeout"] == 65.0
+
+
+class TestSupervisorReadsTheWorkersConfigFile:
+    """The budget comes from the ``domain.toml`` the worker reads, found from
+    the domain path the Supervisor was given."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_env(self, monkeypatch):
+        monkeypatch.delenv("DOMAIN_ROOT_PATH", raising=False)
+        monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+
+    @pytest.fixture
+    def project(self, tmp_path, monkeypatch):
+        """A scaffold-shaped project: ``src/shop/domain.py`` next to a
+        ``domain.toml`` with a 45-second drain window, run from the project
+        root, whose ``pyproject.toml`` has no Protean settings."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "shop"\n')
+        package = tmp_path / "src" / "shop"
+        package.mkdir(parents=True)
+        (package / "domain.py").write_text("domain = object()\n")
+        (package / "domain.toml").write_text("[server]\ndrain_timeout = 45\n")
+        monkeypatch.chdir(tmp_path)
+        return package
+
+    @pytest.mark.parametrize(
+        "domain_path", ["src/shop/domain.py", "src.shop.domain:domain"]
+    )
+    def test_join_waits_the_window_from_the_domain_toml(self, project, domain_path):
+        supervisor = Supervisor(domain_path=domain_path, num_workers=1)
+        worker = _stuck_worker()
+        supervisor.workers = [worker]
+
+        with (
+            patch("os.kill"),
+            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
+        ):
+            supervisor._shutdown_workers()
+
+        assert worker.join.call_args_list[0].kwargs["timeout"] == 50.0
+
+
+class TestSupervisorSignalDuringSpawn:
+    def test_signal_during_spawn_stops_spawning_and_stops_started_workers(self):
+        """A signal that lands while workers are spawning stops the loop, and
+        the worker started before it is sent SIGTERM rather than left running."""
+        supervisor = Supervisor(domain_path="my.domain", num_workers=3)
+        started = []
+
+        def spawn(*args, **kwargs):
+            process = _stuck_worker()
+            process.pid = 4000 + len(started)
+            started.append(process)
+            # The handler runs as the first worker starts, before it is
+            # recorded in ``supervisor.workers``.
+            supervisor._handle_signal(signal.SIGTERM, None)
+            return process
+
+        mock_ctx = MagicMock()
+        mock_ctx.Process.side_effect = spawn
+
+        with (
+            _config_with_window(10),
+            patch("multiprocessing.get_context", return_value=mock_ctx),
+            patch("os.kill") as mock_kill,
+            patch(
+                "protean.server.supervisor._build_queue_listener",
+                return_value=MagicMock(),
+            ),
+        ):
+            supervisor._monitor = MagicMock()
+            supervisor._install_signal_handlers = MagicMock()
+            supervisor._guard_event_store_single_writer = MagicMock()
+            supervisor.run()
+
+        assert len(started) == 1
+        mock_kill.assert_called_once_with(4000, signal.SIGTERM)
 
 
 class TestConfigSearchRoot:

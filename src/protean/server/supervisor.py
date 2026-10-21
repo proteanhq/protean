@@ -58,6 +58,11 @@ _SHUTDOWN_TIMEOUT_SECONDS = 30
 # providers, and exit after the window elapses.
 _DRAIN_MARGIN_SECONDS = 5
 
+# Upper bound on a shutdown budget. ``Process.join`` waits through a poll call
+# that takes milliseconds as a C int, so a timeout above about 2,147,483
+# seconds raises OverflowError instead of waiting.
+_MAX_TERMINATION_BUDGET_SECONDS = 2_000_000
+
 # The values the CLI's ``--log-level`` and ``--log-format`` flags accept.
 _LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 _LOG_FORMATS = ("auto", "console", "json")
@@ -95,9 +100,10 @@ def _config_search_root(domain_path: str) -> str:
     directory of the domain module file (``_guess_caller_path``). Mirror
     that so the parent reads the same ``domain.toml`` the worker will, even
     when the server is launched from a different working directory. A
-    dotted module name cannot be resolved to a file without importing it, so
-    fall back to the working directory, where ``domain.toml`` conventionally
-    lives.
+    dotted module name (``src.shop.domain``) is looked up as a file or
+    package under the working directory, the place ``derive_domain`` imports
+    it from. If nothing matches, fall back to the working directory, where
+    ``domain.toml`` conventionally lives.
     """
     env_root = os.environ.get("DOMAIN_ROOT_PATH")
     if env_root:
@@ -114,11 +120,17 @@ def _config_search_root(domain_path: str) -> str:
         return os.path.dirname(candidate)
     if os.path.isdir(candidate):
         return candidate
+
+    module_path = os.path.join(os.getcwd(), *path_part.split("."))
+    if os.path.isfile(module_path + ".py"):
+        return os.path.dirname(module_path)
+    if os.path.isfile(os.path.join(module_path, "__init__.py")):
+        return module_path
     return os.getcwd()
 
 
 def _configured_drain_window(domain_path: str) -> float:
-    """The worker Engine's ``[server].drain_timeout``, or 0 if unreadable.
+    """The worker Engine's ``[server].drain_timeout``, or 0 if it is invalid.
 
     Read from the project config file so a shutdown budget matches the
     window the worker will wait, without importing or instantiating the
@@ -129,10 +141,12 @@ def _configured_drain_window(domain_path: str) -> float:
     starts from the same place the worker resolves its config (see
     ``_config_search_root``), not blindly from the working directory.
 
-    The config read can fail (no file, bad TOML); the worker surfaces the
-    real error when it starts, so fall back to 0 and let the default budget
-    apply. Anything that is not a finite positive number is treated the same
-    way: the Engine rejects those values too and uses its own default.
+    With no config file, the loader returns the defaults, so the window is
+    the default 10. The read can also fail (bad TOML, a ``server`` value that
+    is not a table); the worker surfaces the real error when it starts, so
+    fall back to 0 and let the floor apply. Anything that is not a finite
+    positive number is treated the same way: the Engine rejects those values
+    too and uses its own default.
     """
     from protean.domain.config import Config2  # noqa: PLC0415
 
@@ -163,11 +177,13 @@ def _termination_budget(domain_path: str, floor: float) -> float:
     The worker's Engine waits ``[server].drain_timeout`` for in-flight
     handlers before force-cancelling them, so a flat budget would kill a
     worker mid-drain whenever that window is longer. Take the configured
-    window plus a margin, never less than ``floor``.
+    window plus a margin, never less than ``floor`` and never more than
+    ``_MAX_TERMINATION_BUDGET_SECONDS``.
     """
-    return max(
+    budget = max(
         float(floor), _configured_drain_window(domain_path) + _DRAIN_MARGIN_SECONDS
     )
+    return min(budget, float(_MAX_TERMINATION_BUDGET_SECONDS))
 
 
 class Supervisor:
@@ -295,8 +311,11 @@ class Supervisor:
             self.domain_path, _SHUTDOWN_TIMEOUT_SECONDS
         )
 
-        # Spawn all workers
+        # Spawn all workers. A signal can arrive once the handlers are
+        # installed; stop spawning then, since the handler has already run.
         for worker_id in range(self.num_workers):
+            if self._shutting_down:
+                break
             process = ctx.Process(
                 target=_worker_entry,
                 args=(
@@ -315,6 +334,11 @@ class Supervisor:
             process.start()
             self.workers.append(process)
             logger.info(f"Started worker {worker_id} (PID {process.pid})")
+
+        # The handler only stops the workers that existed when it ran. Stop
+        # any worker spawned after that.
+        if self._shutting_down:
+            self._shutdown_workers()
 
         # Block in the monitor loop until all workers exit
         try:

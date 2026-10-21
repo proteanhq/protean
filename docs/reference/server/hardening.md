@@ -559,18 +559,26 @@ grace at all. So is anything that is not a finite number: a non-numeric string,
 a boolean, `nan`, or `inf`.
 
 The multi-worker Supervisor reads the same key from the project config. On
-shutdown it waits for the drain window plus a few seconds before it sends
-`SIGKILL` to a worker, and never less than 30 seconds. The extra seconds cover
-the domain close and signal-handler cleanup that follow the drain. Single-worker
-runs have no supervisor.
+shutdown it waits for the drain window plus 5 seconds before it sends `SIGKILL`
+to a worker, and never less than 30 seconds. The extra seconds cover the domain
+close and signal-handler cleanup that follow the drain. Single-worker runs have
+no supervisor.
+
+The Supervisor reads the config file without importing the domain. It looks in
+`DOMAIN_ROOT_PATH` if that is set, then in the directory of the `--domain` file
+or package, then in the working directory. A window set only in code, such as
+`Domain(config=...)`, does not reach it, so the Supervisor waits 30 seconds.
 
 `protean server --reload` reads the same key. The reloader waits for the drain
-window plus a few seconds (never less than 10) before killing the worker it is
+window plus 5 seconds (never less than 10) before killing the worker it is
 restarting, so a longer window is honoured on that path too.
 
 A process manager or orchestrator has its own stop deadline, such as systemd's
 `TimeoutStopSec` or Kubernetes' `terminationGracePeriodSeconds`. Set it above
-the drain window too, or it kills the server before the drain ends.
+the server's own wait, or it kills the server before the drain ends. For one
+worker, that is the drain window plus a few seconds for the steps around it.
+For several workers, it is the Supervisor's wait: the larger of 30 and the
+drain window plus 5.
 
 ## Optimistic locking
 
