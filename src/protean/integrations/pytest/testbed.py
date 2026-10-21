@@ -44,8 +44,10 @@ class DomainFixture:
         Calls ``domain.init()`` to register all domain elements, then
         pings every configured broker once and emits a ``UserWarning`` for
         each one that does not answer. The warning names the broker and its
-        URI, with any password replaced by ``***``. Finally creates database
-        tables for every configured provider.
+        URI, with any password replaced by ``***``. When the broker has no
+        URI, or its URI cannot be shown without risking part of the password,
+        the warning names the broker's provider instead. Finally creates
+        database tables for every configured provider.
 
         ``setup()`` still returns normally after a warning, so tests that
         never touch the broker keep running.

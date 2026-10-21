@@ -49,6 +49,10 @@ UserWarning: Broker 'default' at redis://127.0.0.1:6379/15 did not answer a
 ping. Tests that publish to it will fail, and the per-test reset cannot clear it.
 ```
 
+When the broker has no URI, or its URI cannot be shown without risking part of
+the password, the warning
+names the broker's provider instead, as in `Broker 'default' (redis provider)`.
+
 `setup()` still returns, so tests that never touch the broker keep running.
 The warning appears once, in pytest's warnings summary. Without it, a suite
 whose tests never publish passes with no visible sign of a down broker. The
