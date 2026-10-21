@@ -9,6 +9,7 @@ one that says "unknown", because an operator acts on it.
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,10 +26,22 @@ from protean.server.subscription_status import (
 from protean.utils import fqn
 
 
+def _aggregates_on(provider_names) -> dict:
+    """Registry records for one aggregate stored in each named provider."""
+    return {
+        f"Agg{i}": SimpleNamespace(
+            cls=SimpleNamespace(meta_=SimpleNamespace(provider=name))
+        )
+        for i, name in enumerate(provider_names)
+    }
+
+
 def _domain(providers: dict, outbox_config: dict | None = None):
+    """A domain with one aggregate stored in every provider it configures."""
     domain = MagicMock()
     domain.providers = providers
     domain.config = {"outbox": outbox_config or {}}
+    domain.registry.aggregates = _aggregates_on(providers)
     return domain
 
 
@@ -622,6 +635,7 @@ class TestEachOutboxRowCountsItsOwnBroker:
         domain.has_outbox = True
         domain.providers = {"default": _provider()}
         domain.config = {"outbox": {"external_brokers": ["partner"]}}
+        domain.registry.aggregates = _aggregates_on(["default"])
         repo = domain._get_outbox_repo.return_value
         repo.count_by_status.return_value = {"pending": 1}
 

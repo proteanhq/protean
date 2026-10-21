@@ -449,7 +449,12 @@ def test_outbox_values(load_toml):
     assert outbox["cleanup"]["abandoned_retention_hours"] == 720
     assert outbox["cleanup"]["batch_size"] == 5000
 
-    # The engine builds its outbox processors from these values
+    # The engine builds its outbox processors from these values, one per
+    # provider an aggregate is stored in
+    class _Order(BaseAggregate):
+        name = String()
+
+    domain.register(_Order)
     domain.init(traverse=False)
     processors = Engine(domain, test_mode=True)._outbox_processors
     assert processors

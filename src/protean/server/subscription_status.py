@@ -35,6 +35,7 @@ from protean.server.subscription.profiles import SubscriptionType
 from protean.utils import ensure_utc_aware, fqn
 from protean.utils.dlq import failed_positions_stream, recovery_checkpoint_stream
 from protean.utils.eventing import MessageType
+from protean.utils.outbox import _outbox_provider_names
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -725,13 +726,14 @@ def _outbox_processor_names(
 ) -> list[tuple[str, str, str, str | None]]:
     """The Engine's outbox processors, as ``(name, provider, label, broker)``.
 
-    Mirrors ``Engine._initialize_outbox_processors``: one processor per *managed*
-    database provider for the primary broker, plus one per managed provider for
-    each broker in ``outbox.external_brokers``, whose name carries an
-    ``-external`` suffix. Both details matter: an unmanaged provider runs no
-    processor, so reporting one would invent a subscription that does not exist,
-    and an external processor that is not named here is invisible even though it
-    is the lane most likely to back up.
+    Mirrors ``Engine._wire_components``: one processor per provider
+    from ``_outbox_provider_names`` for the primary broker, plus one per such
+    provider for each broker in ``outbox.external_brokers``, whose name carries
+    an ``-external`` suffix. Both details matter: an unmanaged provider, or one
+    no aggregate is stored in, runs no processor because the unit of work never
+    writes an outbox row there, so reporting one would invent a subscription
+    that does not exist. An external processor that is not named here is
+    invisible even though it is the lane most likely to back up.
 
     The fourth element is the broker whose rows that processor claims, or
     ``None`` when it claims every row. It mirrors ``OutboxProcessor``'s own
@@ -749,11 +751,7 @@ def _outbox_processor_names(
     primary_broker = outbox_config.get("broker", "default")
     external_brokers: list[str] = outbox_config.get("external_brokers", []) or []
 
-    managed = [
-        name
-        for name, provider in domain.providers.items()
-        if getattr(provider, "managed", True)
-    ]
+    providers = _outbox_provider_names(domain)
 
     filter_by_broker = bool(external_brokers)
 
@@ -764,7 +762,7 @@ def _outbox_processor_names(
             f"{provider_name} \u2192 {primary_broker}",
             primary_broker if filter_by_broker else None,
         )
-        for provider_name in managed
+        for provider_name in providers
     ]
     names.extend(
         (
@@ -774,7 +772,7 @@ def _outbox_processor_names(
             broker_name,
         )
         for broker_name in external_brokers
-        for provider_name in managed
+        for provider_name in providers
     )
     return names
 

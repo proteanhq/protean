@@ -44,6 +44,16 @@ class DummyAggregate(BaseAggregate):
         self.raise_(DummyEvent(aggregate_id=self.id, name=self.name, count=self.count))
 
 
+def _register_an_aggregate(domain):
+    """Store one aggregate in ``default``; the engine runs outbox processors
+    only for providers an aggregate is stored in."""
+
+    class Ledger(BaseAggregate):
+        name: String(max_length=50)
+
+    domain.register(Ledger)
+
+
 class DummyEvent(BaseEvent):
     """Test event for outbox testing"""
 
@@ -994,6 +1004,7 @@ class TestOutboxConfiguration:
         }
 
         domain = Domain(name="TestEngineCustomConfig", config=custom_config)
+        _register_an_aggregate(domain)
         domain.init(traverse=False)
 
         with domain.domain_context():
@@ -1146,20 +1157,17 @@ class TestEngineIntegration:
     """Test OutboxProcessor integration with Engine"""
 
     def test_engine_initializes_outbox_processors(self, outbox_test_domain):
-        """Test that Engine initializes outbox processors for all database-broker provider combinations"""
+        """Engine initializes one outbox processor per provider an aggregate uses"""
         engine = Engine(outbox_test_domain, test_mode=True)
 
-        # Engine should create outbox processors for each database-broker provider combination
         assert hasattr(engine, "_outbox_processors")
 
-        # Calculate expected processors: one for each database provider to the configured outbox broker
-        database_providers = list(outbox_test_domain.providers.keys())
+        # One processor per provider an aggregate is stored in: DummyAggregate
+        # lives in `default`, and the built-in `memory` provider holds none
         outbox_broker = outbox_test_domain.config.get("outbox", {}).get(
             "broker", "default"
         )
-        expected_combinations = [
-            f"outbox-processor-{db}-to-{outbox_broker}" for db in database_providers
-        ]
+        expected_combinations = [f"outbox-processor-default-to-{outbox_broker}"]
 
         # Assert the number of outbox processors matches the expected combinations
         assert len(engine._outbox_processors) == len(expected_combinations)
@@ -1962,6 +1970,7 @@ class TestOutboxAdaptiveBackoffConfig:
             "brokers": {"default": {"provider": "inline"}},
         }
         domain = Domain(name="TestAdaptiveBackoffConfig", config=custom_config)
+        _register_an_aggregate(domain)
         domain.init(traverse=False)
 
         with domain.domain_context():
@@ -1983,6 +1992,7 @@ class TestOutboxAdaptiveBackoffConfig:
             "brokers": {"default": {"provider": "inline"}},
         }
         domain = Domain(name="TestNoBackoffConfig", config=custom_config)
+        _register_an_aggregate(domain)
         domain.init(traverse=False)
 
         with domain.domain_context():

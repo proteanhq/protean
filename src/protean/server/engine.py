@@ -28,6 +28,7 @@ from protean.utils.eventing import (
     new_correlation_id,
 )
 from protean.utils.globals import g
+from protean.utils.outbox import OutboxStatus, _outbox_provider_names
 from protean.utils.processing import processing_priority
 from protean.utils.telemetry import (
     create_observation,
@@ -390,10 +391,9 @@ class Engine:
                 subscriber_cls,
             )
 
-        # Gather outbox processors - one per database-broker provider combination
+        # Gather outbox processors - one per broker for each provider an aggregate is stored in
         self._outbox_processors: dict[str, OutboxProcessor] = {}
 
-        # Create an outbox processor for each database provider to each broker provider
         # Only if outbox is enabled in the domain
         if self.domain.has_outbox:
             logger.debug("engine.outbox_initializing")
@@ -418,10 +418,9 @@ class Engine:
                 },
             )
 
-            # Create an outbox processor for each managed database provider
-            for database_provider_name, provider in self.domain.providers.items():
-                if not provider.managed:
-                    continue
+            # Create an outbox processor for each provider an aggregate is stored in
+            outbox_providers = _outbox_provider_names(self.domain)
+            for database_provider_name in outbox_providers:
                 processor_name = f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
                 logger.debug(
                     "engine.creating_outbox_processor",
@@ -445,9 +444,7 @@ class Engine:
                         f"outbox.external_brokers but not found in domain "
                         f"broker configuration"
                     )
-                for database_provider_name, provider in self.domain.providers.items():
-                    if not provider.managed:
-                        continue
+                for database_provider_name in outbox_providers:
                     processor_name = f"outbox-processor-{database_provider_name}-to-{ext_broker_name}-external"
                     logger.debug(
                         "engine.creating_external_outbox_processor",
@@ -473,6 +470,36 @@ class Engine:
                         f"Outbox table not found for provider '{provider_name}'. "
                         "Run 'protean db setup' or 'protean db setup-outbox' to create it."
                     ) from e
+                if provider_name in outbox_providers:
+                    continue
+                # Rows left by an earlier deploy, before the last aggregate on
+                # this provider moved away. No processor runs here any more.
+                try:
+                    unpublished = outbox_repo._dao.query.filter(
+                        status__in=[
+                            OutboxStatus.PENDING.value,
+                            OutboxStatus.PROCESSING.value,
+                            OutboxStatus.FAILED.value,
+                            OutboxStatus.ABANDONED.value,
+                        ]
+                    ).count()
+                # The probe is diagnostic only: a provider no aggregate uses
+                # must not stop the engine from starting; logged.
+                except Exception:
+                    logger.warning(
+                        "engine.outbox_leftover_probe_failed",
+                        extra={"provider": provider_name},
+                        exc_info=True,
+                    )
+                    continue
+                if unpublished:
+                    logger.warning(
+                        "engine.outbox_rows_without_processor",
+                        extra={
+                            "provider": provider_name,
+                            "unpublished": unpublished,
+                        },
+                    )
         else:
             logger.debug("engine.outbox_disabled")
 

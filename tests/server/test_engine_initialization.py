@@ -4,8 +4,24 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from protean import Engine
+from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.exceptions import ConfigurationError
+from protean.fields import String
+
+
+def _register_aggregate(domain, provider="default"):
+    """Store one aggregate in *provider*.
+
+    The engine runs outbox processors only for providers an aggregate is
+    stored in, so a domain needs one before it has any processor to inspect.
+    """
+
+    # Distinct names per provider, because the registry keys elements by name
+    record_cls = type(
+        f"{provider.capitalize()}Record", (BaseAggregate,), {"name": String()}
+    )
+    domain.register(record_cls, provider=provider)
 
 
 def test_that_engine_can_be_initialized_from_a_domain_object(test_domain):
@@ -110,6 +126,7 @@ class TestEngineOutboxValidation:
         """Engine should start when outbox is enabled and repos are initialised."""
         domain = Domain(name="Test")
         domain.config["server"]["default_subscription_type"] = "stream"
+        _register_aggregate(domain)
         domain.init(traverse=False)
 
         with domain.domain_context():
@@ -155,6 +172,8 @@ class TestEngineOutboxSkipsUnmanagedProviders:
             "provider": "memory",
             "managed": False,
         }
+        _register_aggregate(domain)
+        _register_aggregate(domain, provider="unmanaged")
         domain.init(traverse=False)
 
         with domain.domain_context():
@@ -162,9 +181,9 @@ class TestEngineOutboxSkipsUnmanagedProviders:
             engine = Engine(domain, test_mode=True)
 
             # Only the default (managed) provider should have outbox processors
-            processor_names = list(engine._outbox_processors.keys())
-            assert any("default" in name for name in processor_names)
-            assert not any("unmanaged" in name for name in processor_names)
+            assert set(engine._outbox_processors) == {
+                "outbox-processor-default-to-default"
+            }
 
     @pytest.mark.no_test_domain
     def test_outbox_processor_created_for_managed_provider(self):
@@ -175,15 +194,18 @@ class TestEngineOutboxSkipsUnmanagedProviders:
             "provider": "memory",
             "managed": True,
         }
+        _register_aggregate(domain)
+        _register_aggregate(domain, provider="secondary")
         domain.init(traverse=False)
 
         with domain.domain_context():
             domain.setup_database()
             engine = Engine(domain, test_mode=True)
 
-            processor_names = list(engine._outbox_processors.keys())
-            assert any("default" in name for name in processor_names)
-            assert any("secondary" in name for name in processor_names)
+            assert set(engine._outbox_processors) == {
+                "outbox-processor-default-to-default",
+                "outbox-processor-secondary-to-default",
+            }
 
     @pytest.mark.no_test_domain
     def test_external_outbox_processor_skips_unmanaged(self):
@@ -201,21 +223,19 @@ class TestEngineOutboxSkipsUnmanagedProviders:
         domain.config["outbox"] = {
             "external_brokers": ["external_broker"],
         }
+        _register_aggregate(domain)
+        _register_aggregate(domain, provider="unmanaged")
         domain.init(traverse=False)
 
         with domain.domain_context():
             domain.setup_database()
             engine = Engine(domain, test_mode=True)
 
-            processor_names = list(engine._outbox_processors.keys())
-            # No external processor for the unmanaged provider
-            assert not any(
-                "unmanaged" in name and "external" in name for name in processor_names
-            )
-            # But external processor exists for the default (managed) provider
-            assert any(
-                "default" in name and "external" in name for name in processor_names
-            )
+            # Only the default (managed) provider gets primary and external processors
+            assert set(engine._outbox_processors) == {
+                "outbox-processor-default-to-default",
+                "outbox-processor-default-to-external_broker-external",
+            }
 
 
 class TestEngineInitializationFailure:
