@@ -114,7 +114,8 @@ key order, the same on every adapter. It is private (the leading underscore) and
 deliberately unpaginated. A cache is for point reads by key; enumerating a match
 set is not what it is for. On Redis it scans the whole keyspace, so it is a
 convenience for tests and small, bounded stores, not a production read path.
-`count` has the same full-scan cost.
+`count` has the same full-scan cost. On Redis it deduplicates its scan, so a
+key that `SCAN` returns more than once is counted once.
 
 It returns at most 1000 entries (`GET_ALL_MAX`). Past that it truncates to the
 first 1000 in key order and logs a warning naming the pattern and the match

@@ -180,6 +180,17 @@ position resolved without running anything. A handler-level idempotency
 declaration that would let replay refuse a non-idempotent target does not exist
 yet.
 
+### The replay return contract
+
+`EventStoreSubscription.replay_exhausted` is the method `replay` calls. It
+returns a `ReplayOutcome`:
+
+| Outcome | Meaning |
+|---------|---------|
+| `RESOLVED` | The handler ran and succeeded. A resolution is recorded and the position stops being listed as exhausted. |
+| `REOPENED` | The handler failed again. The position is reopened, and a running server retries it after its next restart. |
+| `EXPIRED` | The target was a command whose deadline had passed. Nothing is dispatched and no record is written, so the position stays exhausted and can be purged. |
+
 Both `replay` and `purge` re-read the position's latest status right before they
 act. If another operator's `replay` or `purge` cleared it while the prompt was
 open, the command refuses and does nothing.

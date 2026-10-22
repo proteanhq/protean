@@ -132,3 +132,73 @@ files it wrote and removes the directories it created, then exits `1`. Removal i
 best-effort: if it cannot remove something (a permission error, say), the error
 names what is left on disk. So after a successful `add`, `protean verify` is
 green; a failed one rolls back what it wrote, and tells you if anything remained.
+
+## What the slice generator refuses
+
+`add` builds the slice through a slice generator that renders a slice-shaped IR
+fragment (ADR-0041) into the vertical slice: the aggregate, its command, event,
+command handler, projection and projector. When you leave the read side out, the
+generator derives the default projection and projector from the event, so the
+slice still passes `protean verify`.
+
+The generator refuses a fragment it cannot render correctly, and `add` reports
+each of these as a usage error (exit `2`). It refuses:
+
+**Names it cannot use.**
+
+- An element name, field name, derived slug, package or domain variable that is
+  not a string, or is a string that is not a usable Python name.
+- Two of the slice's classes sharing a name, counting the read side the
+  generator derives.
+- A name that collides, in a module that carries it, with a symbol that module
+  imports, or with a local the generated methods read back.
+- A field name the framework or the generated code already uses.
+- A project whose composition root binds the domain to a name the generated code
+  uses.
+
+**Fields it cannot render.**
+
+- An unsupported field type.
+- A field whose `kind` and `type` do not pair the way ADR-0041 pairs them.
+- A `max_length` that is not a positive integer, or that sits on a type that
+  takes no bound.
+- A field whose required flag is not the one ADR-0041 gives it. Every authored
+  field is required; the projection's key is not.
+
+**An identity that does not line up.**
+
+- An event whose `<slug>_id` cannot hold the aggregate's id, or that bounds it
+  while the aggregate declares its own `id`. In that case the id comes from the
+  caller, and one longer than the bound is rejected when the event is raised.
+- An aggregate that declares the `<slug>_id` the event takes from its id.
+- An aggregate that declares `id` in a shape that cannot reach the event's
+  surfaced reference, which holds a string.
+- An integer identity key marked outside a projection.
+
+**A write and read side that do not agree.**
+
+- A command whose fields are not the aggregate's.
+- An event that carries a non-id field the aggregate does not declare.
+- A field the aggregate shares with the command or the event, declared in a
+  different shape on each. The generated code reads each of those off the other
+  and copies the value across unchanged, so the shapes have to match.
+- An explicit projection that is not keyed on the event's reference field, or
+  that carries a field the event does not.
+
+### Promoting a parsed model through the same generator
+
+`SliceFragment.from_mapping` reads the nested mapping the `protean new
+--from-model` parser returns, so a parsed text event model promotes through this
+same generator. It refuses a key it cannot read at every level of that mapping,
+down to the keys of a field entry, rather than dropping it or reading it as a
+name it is not.
+
+`SliceFragment` takes an optional `slug`, so a caller that has already
+normalized the aggregate name passes the slug it computed.
+
+The parser derives the aggregate's slug from the normalized class name the
+fragment carries, which is the slug the generator derives from it too. It
+rejects the few aggregate names where that slug differs from the one `add`
+derives from the name as authored: `aB` gives the class `AB`, whose slug is
+`ab`, where `add aB` gives `a_b`. The same name therefore writes the same slice
+whichever surface authored it.

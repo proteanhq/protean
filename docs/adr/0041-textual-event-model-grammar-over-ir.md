@@ -258,6 +258,38 @@ Field order is not part of the contract. The IR keys fields by name in a map, an
 Generation field order is therefore non-normative: the generator emits fields in a
 deterministic name order, and the round trip matches fields by name.
 
+### The API
+
+The grammar is implemented in `protean.scaffold.model_parser`, which carries the
+two halves of the round trip described above.
+
+`parse_model` reads a one-slice text model into a slice-shaped IR fragment: the
+aggregate, its command, its event, and an optional projection and projector. The
+fragment reuses the IR's own field model, so there is one field vocabulary
+across the grammar, the IR and the generator. The parse is deterministic and
+infers nothing. Every violation is reported with its line number, through
+`ModelParseError`.
+
+`emit_model` reads a full IR and a cluster FQN and writes grammar text back for
+the covered subset. On a cluster the grammar cannot express, it raises
+`ModelEmitError` rather than emitting a partial model, so nothing is dropped in
+silence and then lost on the way back. It refuses:
+
+- a field type or constraint outside the eight types and two constraints the
+  grammar carries;
+- a shape the grammar has no room for;
+- behaviour the grammar carries no syntax for: a non-default element option, a
+  declared invariant, a published event, or a domain identity other than the
+  default.
+
+A build-time conformance test round-trips a real `to_ir()` slice through
+`emit_model` and `parse_model` and matches it against the worked example below,
+so the grammar stays aligned with the renderer's vocabulary with no live sync.
+
+`parse_model` is the parser half of `protean new --from-model` (#1347). The
+generator that promotes a fragment into a project is #1472, documented in the
+[`protean add` reference](../reference/cli/project/add.md).
+
 ### Normative worked example
 
 This is the reference the downstream issues test against. The model text is the Order

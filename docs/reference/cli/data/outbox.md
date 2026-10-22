@@ -87,6 +87,11 @@ event again. An event lost in a crash and left unrepaired for longer than that
 retention is not repaired. An event with no stored time is also skipped,
 because its age is unknown.
 
+A row the reconciler abandons records `last_processed_at`, so
+`cleanup_old_abandoned()` removes it once `abandoned_retention_hours` has
+passed. A row abandoned because its partition key is invalid carries
+`last_error["reason"]` of "Invalid partition key".
+
 ## Automatic startup sweep
 
 The same reconciliation runs once automatically when the server boots, so a
