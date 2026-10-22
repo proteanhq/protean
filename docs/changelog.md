@@ -18,10 +18,10 @@ Run `protean --version` to check your installed version.
 
 <p class="pt-changelog-group">Upgrade Notes</p>
 
-Read the [0.18 migration guide](https://docs.proteanhq.com/reference/migration/v0-18/) before you upgrade. These changes can need action, in the order the guide covers them:
+Read the [0.18 migration guide](https://docs.proteanhq.com/reference/migration/v0-18/) before you upgrade. These changes can need action:
 
 <details markdown="1">
-<summary>48 breaking changes, in the order the guide covers them</summary>
+<summary>48 breaking changes</summary>
 
 - [Right-size the runtime dependency surface](https://docs.proteanhq.com/reference/migration/v0-18/#what-moved-behind-extras) (#1000)
 - [cffi and greenlet left the core install](https://docs.proteanhq.com/reference/migration/v0-18/#cffi-and-greenlet-left-the-core-install) (#1376)
@@ -150,7 +150,7 @@ To find deprecated calls before the release that removes them, run `protean chec
 <p class="pt-changelog-group">Changed</p>
 
 <details class="pt-changelog-fold" markdown="1">
-<summary>51 changes</summary>
+<summary>54 changes</summary>
 
 - [Docs] Every runnable example in the docs now lives in `docs_src`, with a test that runs it and checks what the page says it does. (#1671)
 - [Docs] Rewrote the quickstart around the canonical `Post` domain, pulling every snippet from `examples/reference_app/blog.py` with `--8<--` so the page shows the code the tests run, and closing the write-then-read arc with the projection. (#1485)
@@ -159,20 +159,14 @@ To find deprecated calls before the release that removes them, run `protean chec
 - [Scaffold] `protean new` now scaffolds a minimal walking skeleton instead of a broad demo: one slice from command to projector, plus a smoke test and two passing tests, so `pytest` runs green on a fresh project. (#1321)
 - [Scaffold] The generated `tests/conftest.py` initialises the domain through a session-scoped autouse fixture instead of `pytest_sessionstart`, so a plain `pytest` sets up the domain context. (#1321)
 - [CLI] **Breaking (machine output and exit codes).** `protean check --format json` and `protean verify --json` now emit one shared, versioned result envelope (`{version, status, data, diagnostics}`) with a pinned JSON Schema, and both adopt one exit-code convention. (#1329)
-  **Migration:** [`check` and `verify` machine output changed shape and exit codes](https://docs.proteanhq.com/reference/migration/v0-18/#check-and-verify-machine-output-changed-shape-and-exit-codes)
 - [CLI] **Breaking (machine output).** `protean events catalog --json`, `protean subscriptions status --json` and `protean projection status --json` now emit the shared result envelope instead of a bare JSON array, with the list under `data`. (#1394)
-  **Migration:** [`events catalog`, `subscriptions status`, and `projection status` JSON moved onto the envelope](https://docs.proteanhq.com/reference/migration/v0-18/#events-catalog-subscriptions-status-and-projection-status-json-moved-onto-the-envelope)
 - [CLI] Each Markdown slice of `protean docs generate --type=event-model` now leads with a structural Given-When-Then derived from the IR; the `--format=mermaid` output is unchanged. (#1336)
 - [IR] **Breaking.** The IR schema moved from `0.1.0` to `0.2.0` to carry the new `method_edges` key, so a committed `.protean/ir.json` baseline reports a version mismatch until you regenerate it. (#1433)
-  **Migration:** [The IR schema is now v0.2.0](https://docs.proteanhq.com/reference/migration/v0-18/#the-ir-schema-is-now-v020)
 - [IR] `--format` is now validated on `protean ir diff`, `ir show` and `ir check`; an invalid value fails with the valid formats listed, where it used to fall through to the default silently. (#1435)
-  **Migration:** [`protean ir` rejects an unknown format value](https://docs.proteanhq.com/reference/migration/v0-18/#protean-ir-rejects-an-unknown-format-value)
 - [CLI] `protean add` now splits the aggregate it plans across a generation-gap seam, a generated base and a hand-owned subclass, with each planned file marked `generated` or `hand_owned`. (#1341)
 - [CLI] `protean add <element> <name>` now writes the slice to disk by default, create-only and rolling back a partial write; pass `--dry-run` for the old preview-only behavior. (#1342)
 - [CLI] **Breaking.** `protean new`'s dry-run flag is `--dry-run`. `--pretend` and its `-p` short form are gone, and passing either is a usage error. (#1473)
-  **Migration:** [`protean new --pretend` is now `--dry-run`, and it writes nothing](https://docs.proteanhq.com/reference/migration/v0-18/#protean-new-pretend-is-now-dry-run-and-it-writes-nothing)
 - [CLI] **Breaking.** `protean new`'s dry run no longer touches the target directory: it renders into a temp directory and prints the project-relative paths it would create. (#1466)
-  **Migration:** [`protean new --pretend` is now `--dry-run`, and it writes nothing](https://docs.proteanhq.com/reference/migration/v0-18/#protean-new-pretend-is-now-dry-run-and-it-writes-nothing)
 - [DX] `protean new` now ships a dx-managed project, writing the same managed-block `AGENTS.md` and `CLAUDE.md` bridge that `protean dx install` writes and recording them in `.protean/dx-state.json`. (#1515)
 - [DX] `protean dx check` now verifies a required baseline (`AGENTS.md` and the `CLAUDE.md` bridge) plus whatever optional target is present on disk or recorded in `.protean/dx-state.json`, so an editor file you never chose is no longer counted as drift. (#1515)
 - [DX] `protean dx refresh` now writes only what a project already has, sharing one scope with `check`, where it used to write all six targets the way `install` does. (#1515)
@@ -180,63 +174,38 @@ To find deprecated calls before the release that removes them, run `protean chec
 - [DX] Hardened the event-driven and CQRS teaching skills, fixing drift against the current API (`event_sourced=True`, value objects allowed in projections, `BaseEventSourcedRepository`) and declaring the codes each one teaches. (#1553)
 - [DX] Hardened the DX-pack workflow, refactor and analysis skills: six declare the `check` codes they teach the fix for, a test fails a skill that declares a code it never mentions, and a drifted upcaster example is corrected. (#1554)
 - [Event store] Removing a field from an event-sourced aggregate can now be earned safe by naming it in `reserved`: during replay an assignment to a reserved name is dropped instead of raising, and `protean ir diff` downgrades the removal to safe. (#1584)
-  **Migration:** [Removing a field from an event-sourced aggregate needs `reserved`](https://docs.proteanhq.com/reference/migration/v0-18/#removing-a-field-from-an-event-sourced-aggregate-needs-reserved)
 - [Types] Under the mypy plugin, a class decorated with an element decorator is now a subclass of its Protean base class, as it is at runtime, so it is accepted wherever a signature names the base. (#1874)
-  **Migration:** [mypy sees decorated elements as subclasses of their base](https://docs.proteanhq.com/reference/migration/v0-18/#mypy-sees-decorated-elements-as-subclasses-of-their-base)
 - [Packaging] **Breaking.** Right-sized the runtime dependency surface: `fastapi`, `uvicorn`, `jinja2`, `ipython` and `copier` moved out of the core install into feature extras (`protean[server]`, `protean[shell]`, `protean[scaffold]`), with `protean[cli]` and `protean[all]` bundles. (#1000)
-  **Migration:** [Right-size the runtime dependency surface](https://docs.proteanhq.com/reference/migration/v0-18/#what-moved-behind-extras)
 - [Packaging] **Breaking.** Replaced Werkzeug's `LocalProxy`/`LocalStack` with stdlib `contextvars` for `current_domain`, `current_uow` and `g`, so the active context follows asyncio tasks and `werkzeug` is no longer a core dependency. (#1375)
-  **Migration:** [werkzeug left the core install](https://docs.proteanhq.com/reference/migration/v0-18/#werkzeug-left-the-core-install)
 - [Packaging] **Breaking.** `cffi` and `greenlet` are no longer core dependencies; nothing in Protean imports either, and their floors moved to the extras that pull them. (#1376)
-  **Migration:** [cffi and greenlet left the core install](https://docs.proteanhq.com/reference/migration/v0-18/#cffi-and-greenlet-left-the-core-install)
 - [Cache] `get_ttl(key)` now answers the same three cases on every adapter: `None` when there is no such key, `math.inf` when the key never expires, and the seconds remaining otherwise. (#1392)
-  **Breaking (both cache adapters).** `BaseCache.get_ttl`'s signature changes from `-> float` to `-> float | None`. `BaseCache` is a Provisional API, so this lands in a minor release with no deprecation period.
-  **Migration:** [`get_ttl` returns None or math.inf instead of a raw sentinel](https://docs.proteanhq.com/reference/migration/v0-18/#get_ttl-returns-none-or-mathinf-instead-of-a-raw-sentinel).
+- [Cache] **Breaking (both cache adapters).** `BaseCache.get_ttl` now returns `float | None` where it returned `float`; `BaseCache` is a Provisional API, so the change lands in a minor release with no deprecation period. (#1392)
 - [Cache] The `key_pattern` argument to `_get_all`, `count` and `remove_by_key_pattern` is now a glob on every adapter; the memory cache used to compile it as a Python regular expression while Redis read it as a glob. (#1393)
-  **Breaking (memory cache).** A pattern that leaned on regex behaviour selects differently now: `.` was "any character" and is now a literal dot, and anchors and character-class escapes are gone. Rewrite regex patterns as globs.
-  **Migration:** [Cache key patterns are a glob on every adapter](https://docs.proteanhq.com/reference/migration/v0-18/#cache-key-patterns-are-a-glob-on-every-adapter).
+- [Cache] **Breaking (memory cache).** A `key_pattern` that leaned on regular-expression behaviour selects differently now: `.` is a literal dot, and anchors and character-class escapes are gone. Rewrite such patterns as globs. (#1393)
 - [Cache] `Cache.get_all` is now the private, unpaginated `Cache._get_all`: it returns matching entries in key order up to a fixed cap of 1000 and no longer takes `last_position` or `size`. (#1401)
-  **Migration:** [Cache `get_all` is now the private, unpaginated `_get_all`](https://docs.proteanhq.com/reference/migration/v0-18/#cache-get_all-is-now-the-private-unpaginated-_get_all)
 - [Fields] **Breaking.** String and Text fields no longer sanitize by default: pass `sanitize=True` on a field rendered as HTML without output encoding, or set `[field_defaults] sanitize` for a whole domain. (#1455)
-  **Migration:** [String and Text no longer sanitize by default](https://docs.proteanhq.com/reference/migration/v0-18/#string-and-text-no-longer-sanitize-by-default)
 - [Docs] The schema-evolution guides now point at the snapshot caveat: upcasters run on replayed events, not on snapshots. (#1526)
 - [CLI] `protean schema render --indexes` now rejects an unknown `--dialects` value instead of quietly rendering it with the SQLite dialect. The accepted values are `postgresql`, `sqlite`, `mssql`, `mysql` and `mariadb`. (#1580)
-  **Migration:** [`protean schema render --indexes` rejects an unknown dialect](https://docs.proteanhq.com/reference/migration/v0-18/#protean-schema-render-indexes-rejects-an-unknown-dialect)
 - [Event store] The `reserved` option now also covers the generated `add_<name>` and `remove_<name>` helpers of a removed association: during replay the call does nothing instead of raising `AttributeError`. (#1592)
 - [Database] The MySQL and MSSQL providers now check for their driver at `domain.init()`, raising a `ConfigurationError` that names the database, the driver and the extra to install. (#1593)
 - [Testing] **Breaking (test mode only).** `Engine(test_mode=True).run()` and `protean server --test-mode` now stop as soon as every subscription has run out of work, instead of always running eleven 0.1-second cycles. (#1617)
-  **Migration:** [The test-mode engine stops as soon as it is idle](https://docs.proteanhq.com/reference/migration/v0-18/#the-test-mode-engine-stops-as-soon-as-it-is-idle)
 - [Scaffold] Projects generated by `protean new` now set up their test domain with `DomainFixture`, so each test runs in its own domain context and every database, broker and event store is reset after each test. (#1633)
 - [Handlers] **Breaking.** `domain.init()` now rejects a `sequential_by` value that is not a non-empty field name on an event handler, command handler or projector; the boolean form is for process managers. (#1649)
-  **Migration:** [`sequential_by` on a handler or projector must be a field name](https://docs.proteanhq.com/reference/migration/v0-18/#sequential_by-on-a-handler-or-projector-must-be-a-field-name)
 - [IR] **Breaking.** Domain traversal now loads modules in a fixed order, the root directory's files first then each subdirectory by name, where it used the order `os.listdir` returned. (#1664)
-  **Migration:** [Domain traversal loads modules in name order](https://docs.proteanhq.com/reference/migration/v0-18/#domain-traversal-loads-modules-in-name-order)
 - [Check] `protean check --domain=<file>` no longer crashes with a `FileNotFoundError` on a file that declares `Domain(__name__)`, and a module that raises during traversal now ends the command with a one-line error instead of a traceback. (#1685)
-  **Breaking.** A failure to build the IR is now an error in the `Domain.check()` result (status `fail`, `protean check` exits 1) in place of a logged traceback beside a `pass`.
-  **Migration:** [A failed IR build now fails `check`](https://docs.proteanhq.com/reference/migration/v0-18/#a-failed-ir-build-now-fails-check)
+- [Check] **Breaking.** A failure to build the IR is now an error in the `Domain.check()` result, with status `fail` and `protean check` exiting 1, in place of a logged traceback beside a `pass`. (#1685)
 - [Server] With priority lanes on and the Redis broker, an idle stream subscription now waits on the primary and the backfill stream in one read, through a new broker `read_blocking_streams` method. (#1687)
 - [Database] **Breaking (driver).** The PostgreSQL provider defaults to psycopg 3: `protean[postgresql]` installs `psycopg[binary]`, and the new `protean[postgresql-psycopg2]` extra installs `psycopg2-binary`. (#1689)
-  **Migration:** [PostgreSQL defaults to psycopg 3](https://docs.proteanhq.com/reference/migration/v0-18/#postgresql-defaults-to-psycopg-3)
 - [Database] The memory provider's `raw()` raises `DatabaseError` for a malformed query, where it raised a bare `Exception`, and some error logs no longer repeat the exception text the traceback already shows. (#1714)
-  **Migration:** [The memory provider's `raw()` raises `DatabaseError`, and some error logs drop the exception text](https://docs.proteanhq.com/reference/migration/v0-18/#the-memory-providers-raw-raises-databaseerror-and-some-error-logs-drop-the-exception-text)
 - [Internals] **Breaking.** Internal paths that caught every exception now catch only the errors they expect, so any other error reaches the caller or the next handler up. Ruff's `BLE001` now checks `src/` and `specs/` without per-file exceptions. (#1715)
-  **Migration:** [Some internal fallbacks let unexpected errors through](https://docs.proteanhq.com/reference/migration/v0-18/#some-internal-fallbacks-let-unexpected-errors-through)
 - [Internals] **Breaking.** Paths that expect one kind of failure now handle only that failure, including no active domain context, a `[logging]` value that is not a table, and a closed health-check socket. (#1716)
-  **Migration:** [Some internal fallbacks let unexpected errors through](https://docs.proteanhq.com/reference/migration/v0-18/#some-internal-fallbacks-let-unexpected-errors-through)
 - [Internals] **Breaking.** An element given a non-dict positional argument now raises `TypeError` instead of `AssertionError`, and a field's `renamed_from` given a value that is not a string, list or tuple raises `TypeError` instead of `ValueError`. (#1717)
-  **Migration:** [A non-dict positional argument raises `TypeError`](https://docs.proteanhq.com/reference/migration/v0-18/#a-non-dict-positional-argument-raises-typeerror)
 - [IR] **Breaking.** The IR now records a `Decimal` field as `"type": "Decimal"` with its `precision` and `scale`, where it recorded `String` and dropped both. The schema moved to `0.3.0`, so a committed baseline reports a version mismatch until you regenerate it. (#1723)
-  **Migration:** [The IR schema is now v0.3.0](https://docs.proteanhq.com/reference/migration/v0-18/#the-ir-schema-is-now-v030)
 - [Broker] **Breaking.** The Redis broker's `dlq_inspect()`, `dlq_replay()`, `dlq_replay_all()`, `dlq_purge()` and `dlq_depth()` no longer treat every Redis `ResponseError` as an empty DLQ; anything other than a missing stream or a malformed `dlq_id` reaches the caller. (#1730)
-  **Migration:** [Some internal fallbacks let unexpected errors through](https://docs.proteanhq.com/reference/migration/v0-18/#some-internal-fallbacks-let-unexpected-errors-through)
 - [Observability] **Breaking.** A domain with no environment variable set (`PROTEAN_ENV`, `ENV` and `ENVIRONMENT` all unset) now logs at INFO with colored console output instead of DEBUG; only an explicit `development` value selects DEBUG. (#1747)
-  **Migration:** [A domain with no environment set logs at INFO](https://docs.proteanhq.com/reference/migration/v0-18/#a-domain-with-no-environment-set-logs-at-info)
 - [IR] **Breaking.** `diff_ir()` now applies the compatibility report's field rules to published events, so a field that changes type, or a required field added without a default, is listed as a contract break. (#1781)
-  **Migration:** [`diff_ir()` checks every field of a published event](https://docs.proteanhq.com/reference/migration/v0-18/#diff_ir-checks-every-field-of-a-published-event)
 - [CLI] Runtime messages no longer contain em-dashes, across `protean check` diagnostics, `protean dx`, `protean ir`, git-hook output, CLI table titles and some exception and log messages. A script matching the exact text of one of these needs the new wording. (#1863)
-  **Migration:** [Diagnostic and CLI messages no longer contain em-dashes](https://docs.proteanhq.com/reference/migration/v0-18/#diagnostic-and-cli-messages-no-longer-contain-em-dashes)
-- [Event store] **Behavioural break, synchronous processing only.** Under `event_processing = "sync"`, an `ExpectedVersionError` from an event handler now reaches the caller as a `TransactionError` with it as `__cause__`, instead of triggering the command handler's version retry and saving the command's writes a second time. (#1883)
-  **Migration:** [A synchronous event handler's version conflict no longer reruns the command](https://docs.proteanhq.com/reference/migration/v0-18/#a-synchronous-event-handlers-version-conflict-no-longer-reruns-the-command)
+- [Event store] **Breaking (synchronous processing).** Under `event_processing = "sync"`, an `ExpectedVersionError` from an event handler now reaches the caller as a `TransactionError`, instead of triggering the command handler's version retry and saving its writes twice. (#1883)
 
 </details>
 
@@ -245,27 +214,23 @@ To find deprecated calls before the release that removes them, run `protean chec
 - [Database] Deprecated the patch-and-persist API: `DAO.update()` and `QuerySet.update()` now emit a `RemovedInProtean020Warning` and are removed in 0.20.0. Load the aggregate, call a behaviour method, and persist with `repository.add()`. (#1260)
 - [Server] Deprecated the `debug` argument on `Supervisor` and `Reloader`, removed in 0.20.0; pass `log_level="DEBUG"` instead. Both classes also take `log_format` and `log_config`. (#1639)
 - [Handlers] Deprecated a `sequential_by` value on a process manager that is not a boolean: `domain.init()` now emits a `RemovedInProtean020Warning` and stores it as a boolean, and the value raises in 0.20.0. (#1787)
-  **Migration:** [A non-boolean `sequential_by` on a process manager is deprecated](https://docs.proteanhq.com/reference/migration/v0-18/#a-non-boolean-sequential_by-on-a-process-manager-is-deprecated)
 - [Internals] Twelve deprecations that said they would be removed in 1.0.0 now name a planned release, with new `RemovedInProtean019Warning` and `RemovedInProtean020Warning` classes, and `protean check` reports the new versions. (#1868)
 
 <p class="pt-changelog-group">Removed</p>
 
 - [Scaffold] Removed the `logging.toml` that `protean new` generated at the project root. Nothing in the framework read it; `[logging]` in `domain.toml` is the one config Protean loads. (#1320)
 - [Database] **Breaking.** Removed the `database_model` option from `@domain.aggregate`, `@domain.entity` and `@domain.projection`, and from `domain.register()`; it never had any effect. Register a custom model with `@domain.database_model(part_of=<Element>)` instead. (#1607)
-  **Migration:** [The `database_model` element option is removed](https://docs.proteanhq.com/reference/migration/v0-18/#the-database_model-element-option-is-removed)
 - [Testing] **Breaking.** Removed `protean.testing.assert_valid` and `assert_invalid`, deprecated since 0.16.1, along with the `RemovedInProtean018Warning` class. Use `pytest.raises(ValidationError, match=...)` in place of `assert_invalid`. (#1622)
-  **Migration:** [`assert_valid` and `assert_invalid` are removed](https://docs.proteanhq.com/reference/migration/v0-18/#assert_valid-and-assert_invalid-are-removed)
 
 <p class="pt-changelog-group">Fixed</p>
 
 <details class="pt-changelog-fold" markdown="1">
-<summary>107 changes</summary>
+<summary>118 changes</summary>
 
 - [Scaffold] Fixed the generated example project failing `domain.init()` and `protean check`: the scaffold shipped package re-exports that broke traversal, a missing-module import, an aggregate referenced by name instead of class, and no identifier field. (#1316)
 - [Scaffold] Fixed the scaffold's `.env.example`, `README.md` and `docker-compose*.yml` setting the unread `LOG_LEVEL`/`LOG_FORMAT` instead of `PROTEAN_LOG_LEVEL`, so the documented env override never took effect. (#1320)
 - [CLI] Fixed the `protean` CLI failing to start on a core-only install with `ModuleNotFoundError: No module named 'click'`; the `observatory` command's import is now lazy. (#1465)
 - [CLI] **Breaking.** `protean new .` and `protean new ..` now raise `ValueError`. Both passed validation before and produced a project that could not be installed. (#1466)
-  **Migration:** [`protean new .` and `protean new ..` are rejected](https://docs.proteanhq.com/reference/migration/v0-18/#protean-new-and-protean-new-are-rejected)
 - [Database] Fixed a standalone SQLAlchemy update that lost the version race raising a raw `StaleDataError`; it now surfaces as `ExpectedVersionError`, the error the UnitOfWork path already raises. (#1382)
 - [Event store] Fixed loading an event-sourced aggregate failing when its snapshot predates the current schema; the snapshot is discarded, the aggregate is rebuilt from its event stream, and a warning is logged on `protean.snapshot`. (#1362)
 - [Event store] Fixed `read("$all")` and `read_all("$all")` raising `TypeError` when the store holds snapshots; both readers now skip snapshot rows and yield events and commands only. (#1437)
@@ -304,7 +269,7 @@ To find deprecated calls before the release that removes them, run `protean chec
 - [Docs] Fixed the remaining pages showing an event handler that changes its own aggregate from another aggregate's events. (#1743)
 - [DX] Fixed the `domain-service` and `query-handler` skills' frontmatter not parsing, so Claude Code ignored them; their descriptions held an unquoted `: `. New tests parse every skill's frontmatter and run its fenced `python` blocks. (#1673)
 - [DX] Fixed errors repeated across the teaching skills and the docs: every invariant example now raises `ValidationError({"<field>": ["<message>"]})`, imports come from `protean` instead of `protean.globals`, and queries go through `repo.find_by()` instead of the private `_dao`. (#1674)
-- [DX] Fixed the aggregate, entity, value-object and add-field skills and the entities and value objects guides, so every example meant to run now runs: decorator options only, keyword association helpers, an `Identifier` field instead of a `Reference`, and `add()` instead of the non-existent `save()`. (#1675)
+- [DX] Fixed the aggregate, entity, value-object and add-field skills and their guides so every example meant to run now runs: decorator options only, keyword association helpers, `Identifier` in place of `Reference`, and `add()` in place of `save()`. (#1675)
 - [DX] Fixed the event, command, add-event, add-command, add-use-case, event-sourced-aggregate and upcaster skills: commands catch `ValidationError`, events are raised from a factory classmethod, upcasters register with `@domain.upcaster`, and fact events go through `fact_events=True`. (#1676)
 - [DX] Fixed the command-handler, event-handler, application-service, domain-service, add-domain-service-flow, repository and message-enrichment skills, so every non-fragment example runs and `check` finds no unexpected warning on their assets. (#1677)
 - [DX] Fixed the skills, the pack rules and the event handlers guide teaching more than one way for one aggregate to react to another's event; the handler that listens on another cluster's stream now appears only as a mistake to avoid. (#1678)
@@ -314,20 +279,16 @@ To find deprecated calls before the release that removes them, run `protean chec
 - [DX] Fixed the add-saga-flow, add-subscriber-flow, custom-validator and query skills, so every example now runs without error. (#1764)
 - [DX] Fixed the extract-bounded-context, refactor-introduce-events, refactor-move-logic-to-aggregate and split-aggregate skills, so every non-fragment example now runs, each page defining the names its "after" code uses. (#1765)
 - [IR] **Breaking.** `protean ir diff` now reports the changes that stop an event-sourced aggregate being rebuilt from its events: turning event sourcing on or off, moving its `stream_category`, pointing its identity at another field, and dropping an `@apply` handler while its event survives. (#841)
-  **Migration:** [Replay hazards on an event-sourced aggregate are now breaking](https://docs.proteanhq.com/reference/migration/v0-18/#replay-hazards-on-an-event-sourced-aggregate-are-now-breaking)
 - [Broker] **Breaking.** Reconciled the subscription and InlineBroker retry and DLQ layers so a subscription owns retry and dead-lettering end to end; the subscription's `{stream}:dlq` is now the single dead-letter destination for the streams it consumes. (#1265)
-  **Migration:** [The InlineBroker no longer dead-letters a message its subscription owns](https://docs.proteanhq.com/reference/migration/v0-18/#the-inlinebroker-no-longer-dead-letters-a-message-its-subscription-owns)
 - [Cache] Fixed the memory cache's `remove`, `remove_by_key` and `set_ttl` raising `KeyError` on an absent key, where the Redis cache has always been silent, so the same call meant different things on each adapter. (#1391)
-  **Breaking (memory cache only).** Code that used the `KeyError` as a presence check no longer takes its `except` branch, and the call succeeds quietly. Nothing inside Protean relied on it.
-  **Migration:** [The memory cache no longer raises on an absent key](https://docs.proteanhq.com/reference/migration/v0-18/#the-memory-cache-no-longer-raises-on-an-absent-key)
+- [Cache] **Breaking (memory cache only).** Code that used the memory cache's `KeyError` as a presence check no longer takes its `except` branch, and the call succeeds quietly; nothing inside Protean relied on it. (#1391)
 - [Cache] Fixed Redis' `remove_by_key_pattern` raising when a pattern matches no keys; it now skips the delete, matching the in-memory adapter's silent no-op. (#1399)
 - [IR] Fixed `protean ir diff` downgrading an event's breaking changes to safe on upcaster coverage it has not earned; a bump is covered only when every version still in the event store reaches the new one. (#1572)
 - [Database] Fixed `@domain.repository(database="mssql")` and `database="mysql"` being rejected, because the validating `Database` enum listed only elasticsearch, memory, postgresql and sqlite. (#1580)
 - [Database] **Breaking.** A `RawIndex` that names a dialect the framework renders no index DDL for now raises `IncorrectUsageError` at `Domain.init()`, where it was accepted and then silently dropped at every call site. (#1585)
-  The same name check now guards the rendering path. `protean schema render --indexes --dialects=<name>` rejects a name outside the set, where `--dialects=oracle` used to write a file of SQLite DDL.
-  **Migration:** [A RawIndex with an unknown dialect now raises](https://docs.proteanhq.com/reference/migration/v0-18/#a-rawindex-with-an-unknown-dialect-now-raises)
-- [Database] **Breaking.** An element with `identity_type = "integer"` now builds its model on the SQLAlchemy providers, where it raised `TypeError: Integer() takes no arguments`; an integer identity under the `uuid` strategy is refused at `Domain.init()`, since no SQL integer column holds a 128-bit number. (#1586)
-  **Migration:** [An integer identity under the `uuid` strategy is refused on SQL](https://docs.proteanhq.com/reference/migration/v0-18/#an-integer-identity-under-the-uuid-strategy-is-refused-on-sql)
+- [Database] `protean schema render --indexes --dialects=<name>` now rejects a dialect outside the set the framework renders, where `--dialects=oracle` used to write a file of SQLite DDL. (#1585)
+- [Database] An element with `identity_type = "integer"` now builds its model on the SQLAlchemy providers, where it raised `TypeError: Integer() takes no arguments`. (#1586)
+- [Database] **Breaking.** An integer identity under the `uuid` strategy is now refused at `Domain.init()`, since no SQL integer column holds a 128-bit number. (#1586)
 - [Docs] Fixed four pages naming `NotImplementedError` as the exception an event-sourced aggregate raises when an event has no `@apply` handler; it is `IncorrectUsageError`. (#1589)
 - [DX] Fixed three pack examples declaring a value object and never using it; the event-sourced order, the add-field customer and the test-scaffold order now embed `Money` and `ContactInfo`. (#1591)
 - [DX] Fixed the projector skill catching the wrong exceptions for a missing projection record, the bare `Exception` in one snippet and a non-existent `NotFoundError` in the other; both now catch `ObjectNotFoundError`. (#1602)
@@ -341,12 +302,10 @@ To find deprecated calls before the release that removes them, run `protean chec
 - [Testing] Fixed `Engine(test_mode=True).run()` and `protean server --test-mode` stopping while a subscription was backing off after an error. (#1620)
 - [Event store] Fixed a stale write on an event-sourced aggregate with the outbox on failing with an outbox `ValidationError` or `IntegrityError` instead of `ExpectedVersionError`; the unit of work now appends to the event store before it saves the outbox rows. (#1628)
 - [Check] Fixed top-level `[lint]` and `[observatory]` tables being silently dropped from `domain.toml`, from `[tool.protean]` in `pyproject.toml` and from a `Domain(config=...)` dict, because the config loader kept only the sections listed in its defaults. (#1629)
-  **Breaking.** `[lint]` settings now apply, so `protean check` can start failing on a project that used to pass, and a malformed `[lint]` value now fails `check` and `verify` instead of being ignored. `[observatory] trace_retention_days` applies too.
-  **Migration:** [The lint and observatory tables now load](https://docs.proteanhq.com/reference/migration/v0-18/#lint-and-observatory-tables-now-load)
+- [Check] **Breaking.** `[lint]` settings now apply, so `protean check` can start failing on a project that used to pass, and a malformed `[lint]` value fails `check` and `verify` instead of being ignored. (#1629)
 - [Internals] Fixed the deprecation warnings for `is_event_sourced=`, the `published` command option and email element registration pointing at Protean's own registration code instead of the line in your code. (#1630)
 - [Testing] Fixed `DomainFixture.domain_context()` resetting whichever domain was current at exit rather than its own, so a test that left another domain's context pushed wiped that other domain. (#1634)
 - [Observability] **Breaking.** Single-worker `protean server` and `protean observatory` now apply the `[logging]` section of `domain.toml`; they used to set up console logging before the domain loaded, which made `Domain.init()` skip its own setup. (#1635)
-  **Migration:** [`protean server` and `protean observatory` apply the logging section](https://docs.proteanhq.com/reference/migration/v0-18/#protean-server-and-protean-observatory-apply-logging)
 - [Observability] Fixed log records from child loggers reaching the root logger's handlers without `correlation_id` and `causation_id`, and without `[logging].redact` masking; Protean's filters now attach to the root handlers too. (#1636)
 - [Observability] Fixed `--log-level`, `--log-format` and `--log-config` not reaching the worker processes of `protean server --workers N` and `--reload`. (#1639)
 - [Event store] Fixed `protean outbox reconcile` and the server's startup reconcile creating outbox rows for messages the domain never outboxes, then publishing them; it now repairs only events raised by this domain's aggregates on the reconciled provider. (#1648)
@@ -354,44 +313,37 @@ To find deprecated calls before the release that removes them, run `protean chec
 - [Event store] Fixed outbox reconciliation restoring only the internal-broker row of a `published` event, so the event never reached the brokers in `[outbox].external_brokers`. (#1653)
 - [Observability] Fixed multi-worker and `--reload` workers logging at INFO until their domain loaded, so `PROTEAN_LOG_LEVEL=DEBUG` lost the DEBUG lines written during the load. (#1658)
 - [Broker] Fixed an idle subscription with priority lanes on and the Redis Streams broker logging `broker.redis.read_blocking_failed` every 5 seconds and holding up its backfill lane; its non-blocking check sent `BLOCK 0`, which means wait forever. (#1660)
-  **Breaking.** On the Redis broker, `read_blocking(timeout_ms=0)` used to wait until a message arrived and now returns at once. The `blocking_timeout_ms` subscription setting must be positive, and `0` raises `ConfigurationError` at startup.
-  **Migration:** [A zero read timeout on Redis no longer waits](https://docs.proteanhq.com/reference/migration/v0-18/#a-zero-read-timeout-on-redis-no-longer-waits)
+- [Broker] **Breaking.** On the Redis broker, `read_blocking(timeout_ms=0)` now returns at once where it waited until a message arrived, and `blocking_timeout_ms` must be positive, with `0` raising `ConfigurationError` at startup. (#1660)
 - [CLI] Fixed `protean verify` taking its test counts from the first `<N> passed` or `<N> failed` text anywhere in pytest's output, so a message such as `port 15432 failed` could replace the real counts. (#1661)
 - [Fields] Fixed an aggregate whose `@invariant.pre` rejects its current state failing to save when it has an `auto_now` field or a registered enricher; those save-time writes no longer run the pre-invariants. (#1663)
 - [Observability] Fixed the stdlib redaction filter running before Protean's correlation and trace-context filters, so listing `correlation_id` or `trace_id` in `[logging].redact` left those record attributes unmasked for other formatters. (#1666)
 - [Internals] **Breaking.** A `ValueError` raised while a unit of work commits is no longer reported as a version conflict; it raises `TransactionError` with the `ValueError` as its `__cause__`, so a handler's version retry no longer runs the handler again for it. (#1682)
-  **Migration:** [A `ValueError` at commit is no longer reported as a version conflict](https://docs.proteanhq.com/reference/migration/v0-18/#a-valueerror-at-commit-is-no-longer-reported-as-a-version-conflict)
 - [Check] Fixed `AGGREGATE_TOO_LARGE` saying it counts fields when it counts the entities in a cluster, and `COMMAND_NOT_IMPERATIVE` reporting ordinary commands such as `CloseTicket` and `MakeDeposit`. (#1683)
 - [Fields] Fixed building an element from only some of a value object's flattened arguments: Protean filled every missing argument with `None`, so `Customer(billing_address_street="1 Main St")` failed when `Address` had a field that does not accept it. (#1686)
-  **Breaking.** A value object field that accepts `None` but defaults to something else, such as `city: str | None = "Unknown"`, now gets its default when you leave out its flattened argument. Pass `None` explicitly to keep the old value.
-  **Migration:** [An omitted value object argument gets the value object's default](https://docs.proteanhq.com/reference/migration/v0-18/#an-omitted-value-object-argument-gets-the-value-objects-default)
+- [Fields] **Breaking.** A value object field that accepts `None` but defaults to something else, such as `city: str | None = "Unknown"`, now gets its default when its flattened argument is left out. Pass `None` to keep the old value. (#1686)
 - [Observability] Fixed the observatory failing a trace endpoint or stopping the live trace stream on a malformed trace entry; it now skips the entry and keeps reading, and a `duration_ms` that is infinite or NaN is left out of the latency figures instead of answering 500. (#1715)
 - [Internals] Fixed some server, observatory, subscription and retry paths dropping errors without a trace; they now log them, at debug level for a skipped scrape and at warning for a failed cleanup, an invalid `server.version_retry` or an IR build that fails inside `Domain.check()`. (#1716)
 - [DX] Fixed the persistence and handler rules telling agents to use `self.repository`, which handlers do not have; their examples now get a repository with `current_domain.repository_for(...)`. (#1736)
 - [DX] Fixed the add-validation skill storing money as `Float`, so an order with subtotals of 0.1 and 0.2 and a total of 0.3 failed its own invariant; money fields are now `Decimal(precision=19, scale=4)`. (#1737)
-- [Event store] **Breaking.** Saving the same aggregate instance again in a later transaction, without reloading it, now writes a new version. Before, the second save wrote the version the instance already had, so handlers that deduplicate by event id dropped the second event. (#1744)
-  After a commit, `_version` and `_next_version` on each saved instance match what a reload returns; after a rollback, each instance gets back the version it had before the transaction.
-  Inside a `UnitOfWork`, a `get()` or query of an aggregate the transaction has already loaded or saved returns that same instance with any changes made since, where each read used to build a new copy and lose events raised on an earlier one.
-  Event-sourced aggregates track their versions from their events, so the version changes above do not apply to them.
-  A fact event no longer moves the position of the aggregate's own event stream, so saving an instance of an aggregate with `fact_events=True` a second time no longer raises `ExpectedVersionError`.
-  **Migration:** [Saving the same aggregate instance again writes a new version](https://docs.proteanhq.com/reference/migration/v0-18/#saving-the-same-aggregate-instance-again-writes-a-new-version)
-- [Fields] Fixed a failed post-invariant leaving the change that broke it in place; the field keeps its previous value and the entity's changed flag goes back, across every field kind and `add_`/`remove_` call, and a failed check at the end of an `atomic_change` block undoes every change made in it. (#1746)
+- [Event store] **Breaking.** Saving the same aggregate instance again in a later transaction, without reloading it, now writes a new version. Before, the second save reused the version the instance already had, so handlers that deduplicate by event id dropped the second event. (#1744)
+- [Event store] After a commit, `_version` and `_next_version` on each saved instance match what a reload returns, and after a rollback each instance gets back the version it had before the transaction. (#1744)
+- [Internals] Inside a `UnitOfWork`, reading an aggregate the transaction has already loaded or saved returns that same instance with its later changes, where each read used to build a new copy and lose events raised on an earlier one. (#1744)
+- [Event store] Event-sourced aggregates track their versions from their own events, so the version changes in this release do not apply to them. (#1744)
+- [Event store] A fact event no longer moves the position of the aggregate's own event stream, so saving an aggregate with `fact_events=True` a second time no longer raises `ExpectedVersionError`. (#1744)
+- [Fields] Fixed a failed post-invariant leaving the change that broke it in place; the field keeps its previous value and the entity's changed flag goes back, across every field kind and `add_` or `remove_` call. (#1746)
+- [Fields] A failed check at the end of an `atomic_change` block now undoes every change made inside the block. (#1746)
 - [Docs] Fixed the FastAPI lifespan recipes not calling `domain.close()` in a `finally` block, so provider, broker, cache and event store connections leaked when the app exited through an exception. (#1777)
 - [IR] Fixed `domain.to_ir()` failing with a `TypeError` when a field declares a `decimal.Decimal` `min_value` or `max_value`; a decimal bound on a `Decimal` field now goes into the IR as a decimal string. (#1780)
 - [IR] Fixed the v0.3.0 schema leaving `sequential_by` undeclared, so a validator that refuses undeclared keys rejected any IR that set it. (#1787)
 - [Event store] Fixed an event or command rebuilt from a stored message taking the handled message's `correlation_id` or `causation_id` when its own stored value was empty. (#1789)
 - [Database] **Breaking.** A field declared with `choices` now gets the column type its choice values share, so an `Integer` with `choices` loads back as an `int` and a `String` with string choices keeps its `max_length` instead of becoming `TEXT` on MySQL. (#1791)
-  **Migration:** [`choices` fields map to their declared column type](https://docs.proteanhq.com/reference/migration/v0-18/#choices-fields-map-to-their-declared-column-type)
 - [Observability] Fixed each worker's queue handler under `--workers N` masking only the first redaction filter on the root logger, so keys from a second `configure_logging()` call left the worker unmasked. (#1803)
 - [Internals] Fixed a possible segmentation fault at shutdown on Python 3.11 for a process that held stored messages until exit; datetimes Protean parses now carry a `datetime.timezone` instead of pydantic-core's own `TzInfo`. (#1806)
 - [Event store] Fixed an event or command rebuilt from a stored message losing its stored `origin_stream` and taking the handled message's instead. (#1812)
 - [Database] Fixed a QuerySet evaluated in one `UnitOfWork` handing out cached copies when read in a different transaction; it now runs its query again, so events raised on a copy are no longer lost. (#1842)
 - [Cache] Fixed `RedisCache.flush_all()` sending `FLUSHALL`, which emptied every database on the server; it now sends `FLUSHDB`. (#1880)
-  **Migration:** [`flush_all()` on a Redis cache clears only its database](https://docs.proteanhq.com/reference/migration/v0-18/#flush_all-on-a-redis-cache-clears-only-its-database)
 - [Server] Fixed the multi-worker Supervisor killing a worker mid-drain; its shutdown budget is now the drain window plus 5 seconds, never less than 30. It also finds the project config for a dotted `--domain`. (#1896)
-  **Migration:** [The multi-worker Supervisor waits for the drain window](https://docs.proteanhq.com/reference/migration/v0-18/#the-multi-worker-supervisor-waits-for-the-drain-window)
 - [Fields] **Breaking.** A value object's string `part_of` now resolves to the aggregate class at `domain.init()`, so `IRBuilder(domain).build()` no longer raises `AttributeError` for one that no `ValueObject` field embeds, and a `part_of` naming no aggregate is rejected. (#1897)
-  **Migration:** [A value object's string `part_of` must name an aggregate](https://docs.proteanhq.com/reference/migration/v0-18/#a-value-objects-string-part_of-must-name-an-aggregate)
 - [Server] Fixed the engine running outbox processors for every managed provider, including `memory` and providers that hold only projections, whose outboxes nothing writes to. (#1923)
 
 </details>
@@ -399,7 +351,6 @@ To find deprecated calls before the release that removes them, run `protean chec
 <p class="pt-changelog-group">Security</p>
 
 - [Scaffold] **Breaking, symlinked targets only.** `protean new` refuses a target directory that resolves outside the output directory. A symlinked `<output-dir>/<name>` used to be followed, so `--force` cleared files at the link target and the render wrote them there. (#1466)
-  **Migration:** [`protean new` refuses a target symlinked out of the output directory](https://docs.proteanhq.com/reference/migration/v0-18/#protean-new-refuses-a-target-symlinked-out-of-the-output-directory)
 
 </div>
 </div>
@@ -439,10 +390,10 @@ Read the [0.17 migration guide](https://docs.proteanhq.com/reference/migration/v
 
 <p class="pt-changelog-group">Upgrade Notes</p>
 
-Read the [0.17 migration guide](https://docs.proteanhq.com/reference/migration/v0-17/) before you upgrade. These changes can need action, in the order the guide covers them:
+Read the [0.17 migration guide](https://docs.proteanhq.com/reference/migration/v0-17/) before you upgrade. These changes can need action:
 
 <details markdown="1">
-<summary>14 breaking changes, in the order the guide covers them</summary>
+<summary>14 breaking changes</summary>
 
 - [The Unit of Work is a real transaction](https://docs.proteanhq.com/reference/migration/v0-17/#the-unit-of-work-is-a-real-transaction) (#1256)
 - [`event_sourced` replaces `is_event_sourced`](https://docs.proteanhq.com/reference/migration/v0-17/#event_sourced-replaces-is_event_sourced) (#1107)
@@ -616,13 +567,14 @@ Read the [0.17 migration guide](https://docs.proteanhq.com/reference/migration/v
 
 <p class="pt-changelog-group">Changed</p>
 
-- Add Redis broker DLQ management tests (`dlq_list`, `dlq_inspect`, `dlq_replay`, `dlq_replay_all`, `dlq_purge`, `dlq_trim`, `dlq_depth`) against real Redis, backfilling coverage for the `_client` accessor refactor in #1086. (#1090)
+- [Testing] Added Redis broker DLQ tests (`dlq_list`, `dlq_inspect`, `dlq_replay`, `dlq_replay_all`, `dlq_purge`, `dlq_trim`, `dlq_depth`) against a real Redis, backfilling coverage for the `_client` accessor refactor. (#1090)
 
 <p class="pt-changelog-group">Fixed</p>
 
-- Fix foreign-key violations when persisting an aggregate with `HasMany`/`HasOne` children in one `repository.add` inside a `UnitOfWork`. The parent row is now flushed into the transaction before its FK-referencing children are written, so databases that enforce foreign keys immediately (MSSQL, MySQL/InnoDB, SQLite with `PRAGMA foreign_keys=ON`) accept the child inserts. Child-bearing aggregate saves now emit their buffered SQL at flush time rather than only at commit, so any constraint violation on such a save may surface at `add()` time instead of `commit()` time. (#1043)
-- The Redis Streams broker now transparently reconnects if its connection was closed (e.g. `redis_instance` set to `None` by engine shutdown) before a later operation runs, instead of raising `AttributeError: 'NoneType' object has no attribute ...` and killing a subscription's poll loop. This makes `Engine(test_mode=True).run()` against a Redis broker reliable in CI. (#1055)
-- Fix re-running `domain.init()` in a live process closing the running brokers out from under the Engine, which permanently halted message consumption (with the Redis broker, an unrecoverable flood of `AttributeError: 'NoneType' object has no attribute 'xreadgroup'`). This surfaced in a process that both runs the Engine and re-initializes the domain — e.g. an APScheduler cron job calling `domain.init()` on every tick. `Brokers._initialize()` is now non-destructive: a broker whose configuration is unchanged is reused in place rather than closed and recreated, so the instance the Engine holds stays alive. Only brokers whose configuration changed, or that are no longer configured, are closed. Regression from #885 (0.16.0), whose broker cleanup turned a previously-silent connection leak on re-init into a hard, consumption-halting crash. (#1213)
+- [Database] Fixed foreign-key violations when saving an aggregate with `HasMany` or `HasOne` children in one `repository.add` inside a `UnitOfWork`; the parent row is now flushed into the transaction before its children are written. (#1043)
+- [Database] A child-bearing aggregate save now emits its SQL at flush time rather than only at commit, so a constraint violation on such a save can surface at `add()` instead of `commit()`. (#1043)
+- [Broker] The Redis Streams broker now reconnects when its connection was closed before a later operation runs, instead of raising `AttributeError` and killing a subscription's poll loop. (#1055)
+- [Broker] Fixed a second `domain.init()` in a live process closing the running brokers out from under the Engine, which halted message consumption; a broker whose configuration is unchanged is now reused in place. (#1213)
 
 </div>
 </div>
@@ -634,27 +586,31 @@ Read the [0.17 migration guide](https://docs.proteanhq.com/reference/migration/v
 </div>
 <div class="pt-changelog-body" markdown="1">
 
+<p class="pt-changelog-group">Upgrade Notes</p>
+
+Read the [0.16 migration guide](https://docs.proteanhq.com/reference/migration/v0-16/) before you upgrade. This change can need action:
+
+- [Outbox `target_broker` becomes NOT NULL](https://docs.proteanhq.com/reference/migration/v0-16/#outbox-target_broker-becomes-not-null) (#1041)
+
 <p class="pt-changelog-group">Fixed</p>
 
 <details class="pt-changelog-fold" markdown="1">
-<summary>10 changes</summary>
+<summary>12 changes</summary>
 
-- Fix `datetime` values in serialized payloads being encoded with `str()` (a space-separated form) instead of ISO-8601. Datetime fields now serialize with `.isoformat()`, matching the message-metadata timestamp format. The naive/aware distinction and the UTC offset are preserved, so the instant round-trips unchanged (a named timezone is serialized as its fixed offset). This only affected real JSON-backed stores (event store, Elasticsearch, outbox); the in-memory adapter was unaffected. Records written before the fix remain readable (`datetime.fromisoformat()` and Pydantic parse both forms). (#1039)
-- Fix a `Date` (`datetime.date`) field on a command or event raising `TypeError: Object of type date is not JSON serializable` when the message is processed. `ResolvedField.as_dict` now serializes plain `date` values to ISO-8601 strings; previously only `datetime` had a branch, so a raw `date` reached the checksum's `json.dumps` and failed. (#1046)
-- Fix `repository.add()` leaving an `Auto(increment=True)` identity as `None` for stores that assign the value during create (e.g. the in-memory provider). The generated value is now reflected back onto the aggregate instance after `add()`, restoring parity with `dao.create()`. (#1056)
-- Fix a DB-assigned `Auto(increment=True)` identifier not being reflected back onto the aggregate when persisting through a relational adapter (SQLAlchemy → Postgres/SQLite/MSSQL). After `repository.add()` (or `dao.create()`) the generated primary key now populates the original instance, including when the persist runs inside an outer `UnitOfWork`, instead of staying `None` until commit. Because reflecting the value forces the insert to flush early, a constraint violation on such an insert may now surface at `add()`/`create()` time rather than only at commit. (#1059)
-- Fix an embedded `ValueObject` whose fields hold default/falsy values (e.g. all zeros) being reconstructed as `None` after persist + reload. Presence was gated on truthiness — and such a VO is falsy — so it was reset to `None` on assignment and dropped from serialization. Presence is now decided by identity (`is not None`), so an explicitly-assigned VO round-trips to an equal VO across the in-memory, relational, and Message-DB adapters (and on event-sourced aggregates); an unset VO still reads back as `None`. Note: `bool(vo)` still reports an all-default VO as falsy (check presence with `agg.vo_field is not None`), and a VO whose every field is `None` still reads back as `None` from flattened storage. (#1078)
-- Enforce `Index(unique=True)` declarations in the in-memory repository. A save or update that violates a single-column or composite unique index now raises `ValidationError` (the same error already raised for field-level `unique=True`), so memory-mode tests catch duplicate-key regressions instead of silently accepting them. NULLs are treated as distinct, matching PostgreSQL/SQLite semantics. (#1071)
-- Make `Outbox.target_broker` NOT NULL so a NULL row can no longer bypass the `(message_id, target_broker)` unique index — the dual-write idempotency guard (NULLs compare as distinct in a unique index, silently reopening the duplicate-publish window). It now defaults to the internal broker name; the framework always sets it on write, and legacy rows with a NULL `target_broker` are coerced to the default broker name on read. (#1041)
-- `protean upgrade-check` now diffs a live outbox table for the intra-0.16 structural migrations it previously missed: a nullable `target_broker` (emitting the backfill + `SET NOT NULL`) and a legacy `message_id`-only unique index (emitting the composite-index swap), alongside the existing VARCHAR-bounds check. The [v0.16 migration guide](reference/migration/v0-16.md) gains the matching `target_broker` NOT NULL recipes. (#1093)
-- Fix projectors rejecting the `retries`, `backoff`, and `retry_exceptions` options with `Unknown option(s)`. Projectors now accept them for per-projector transient-failure retry, mirroring event and command handlers. (#1076)
-- Fix `protean check` raising a `PROJECTION_WITHOUT_PROJECTOR` false positive for projections populated by a subscriber or event handler (the anti-corruption-layer / cross-domain pattern) rather than a co-located `@projector`. Declare such projections with `@domain.projection(externally_populated=True)` to record that they are populated externally and suppress the warning. (#1013)
+- [Database] Fixed `datetime` values in serialized payloads being encoded with `str()` instead of ISO-8601 on the JSON-backed stores (event store, Elasticsearch, outbox); records written before the fix stay readable. (#1039)
+- [Fields] Fixed a `Date` field on a command or event raising `TypeError: Object of type date is not JSON serializable` when the message is processed; a plain `date` now serializes to ISO-8601. (#1046)
+- [Database] Fixed `repository.add()` leaving an `Auto(increment=True)` identity as `None` on a store that assigns the value during create, such as the in-memory provider. (#1056)
+- [Database] Fixed a database-assigned `Auto(increment=True)` identifier not reaching the aggregate through a relational adapter; the generated primary key now populates the instance after `add()`, including inside an outer `UnitOfWork`. (#1059)
+- [Database] Reflecting a database-assigned identifier forces the insert to flush early, so a constraint violation on such an insert can surface at `add()` or `create()` rather than only at commit. (#1059)
+- [Fields] Fixed an embedded `ValueObject` whose fields all hold falsy values being reconstructed as `None` after a save and reload; presence is now decided by identity rather than truthiness. (#1078)
+- [Fields] `bool(vo)` still reports an all-default value object as falsy, so test presence with `agg.vo_field is not None`; a value object whose every field is `None` still reads back as `None`. (#1078)
+- [Database] `Index(unique=True)` is now enforced in the in-memory repository: a save that violates a single-column or composite unique index raises `ValidationError`, with NULLs treated as distinct. (#1071)
+- [Database] **Breaking.** `Outbox.target_broker` is now NOT NULL, closing the hole where a NULL row bypassed the `(message_id, target_broker)` unique index and reopened the duplicate-publish window. (#1041)
+- [CLI] `protean upgrade-check` now diffs a live outbox table for a nullable `target_broker` and a legacy `message_id`-only unique index, alongside the VARCHAR-bounds check it already ran. (#1093)
+- [Projections] Fixed projectors rejecting the `retries`, `backoff` and `retry_exceptions` options with `Unknown option(s)`; projectors now accept them, as event and command handlers do. (#1076)
+- [Check] Fixed `protean check` raising a `PROJECTION_WITHOUT_PROJECTOR` false positive for a projection populated by a subscriber or event handler; declare it with `@domain.projection(externally_populated=True)`. (#1013)
 
 </details>
-
-<p class="pt-changelog-group">Upgrade Notes</p>
-
-- **Outbox `target_broker` NOT NULL (#1041).** New deployments get a `NOT NULL target_broker` column automatically. Existing deployments keep their current (nullable) column — Protean does not auto-alter tables — and continue to read any legacy NULL rows safely. To enforce the constraint on an existing database, backfill and add it manually, e.g. `UPDATE outbox SET target_broker = 'default' WHERE target_broker IS NULL;` followed by an `ALTER TABLE ... ALTER COLUMN target_broker SET NOT NULL`.
 
 </div>
 </div>
@@ -666,32 +622,30 @@ Read the [0.17 migration guide](https://docs.proteanhq.com/reference/migration/v
 </div>
 <div class="pt-changelog-body" markdown="1">
 
+<p class="pt-changelog-group">Upgrade Notes</p>
+
+Read the [0.16 migration guide](https://docs.proteanhq.com/reference/migration/v0-16/) before you upgrade. This change can need action:
+
+- [Outbox unique index becomes composite](https://docs.proteanhq.com/reference/migration/v0-16/#outbox-unique-index-becomes-composite) (#1009)
+
 <p class="pt-changelog-group">Added</p>
 
-- `OutboxRepository.find_all_by_message_id(message_id)` returns every outbox row sharing a `message_id`, and `OutboxRepository.find_by_message_id` gained an optional `target_broker` argument. A published event is dual-written once per target broker, so a single `message_id` can map to several rows; the new method returns them all, and the new argument selects a specific broker's row. (#1009)
+- [Event store] Added `OutboxRepository.find_all_by_message_id(message_id)`, which returns every outbox row sharing a `message_id`, and an optional `target_broker` argument on `find_by_message_id`. (#1009)
 
 <p class="pt-changelog-group">Deprecated</p>
 
-- Restored `assert_valid` and `assert_invalid` in `protean.testing` as deprecated shims. They were removed in 0.16.0 without a deprecation cycle, breaking downstream test suites at import time; they now emit a `DeprecationWarning` and will be removed in v0.18.0. Prefer `pytest.raises(ValidationError, match=...)` for invariant tests. (#1011)
+- [Testing] Restored `assert_valid` and `assert_invalid` in `protean.testing` as deprecated shims; 0.16.0 removed them with no deprecation cycle, breaking downstream suites at import time. They go in v0.18.0. (#1011)
 
 <p class="pt-changelog-group">Fixed</p>
 
-<details class="pt-changelog-fold" markdown="1">
-<summary>7 changes</summary>
-
-- CLI commands no longer corrupt their machine-readable stdout output with log lines: the console log handler now writes to stderr, so the JSON from `protean ir show` and `protean schema show --raw` is clean and safe to pipe. (#1010)
-- The recommended unique index on the `Outbox` table is now composite over (`message_id`, `target_broker`) instead of `message_id` alone, and the framework now always writes a non-NULL `target_broker` (the internal broker name) so the composite uniqueness is effective on every dialect. A single published event is dual-written to the outbox once per target broker (the internal broker plus every external broker), so a unique index on `message_id` alone rejected the framework's own multi-broker dual-write with a `UniqueViolation`; leaving `target_broker` NULL would have defeated `message_id` idempotency on PostgreSQL and SQLite, which treat NULLs as distinct in a UNIQUE index. (#1009)
-- Fixed `protean ir check` falsely reporting a domain as stale after a framework upgrade that only changes the IR schema version. The staleness checksum now covers domain content only (excluding `$schema`, `ir_version`, `generated_at`, and `elements`), matching what `ir diff` compares, so the two commands agree. Baselines materialized before this fix report stale once; regenerate them with `protean ir show` to refresh. (#1012)
-- Fixed `@handle("$any")` event handlers not firing under `event_processing="sync"`. Wildcard handlers now run during synchronous dispatch, matching their behaviour under the async engine. (#1023)
-- Fixed per-field `validators=[...]` running against `None` on optional fields. An optional field with a format validator (e.g. `String(validators=[RegexValidator(...)])`) raised a spurious error when simply left unset, because the validator ran on `None`. Empty values now short-circuit per-field validators, matching the legacy field system and the documented execution order (empty → choices → cast → validators). (#1025)
-- Fixed `domain.create_snapshots(Aggregate)` failing for event-sourced aggregates declared with `fact_events=True`. The bulk snapshot API mistook the aggregate's `{category}-fact-{id}` fact-event streams for real instances and raised `IncorrectUsageError` (fact events have no `@apply` handler). `create_snapshots` now skips those fact-event streams for fact-event-enabled aggregates. (#1028)
-- Fixed database setup failing for domains that mix a SQLAlchemy provider with a cache-backed projection. `_create_database_artifacts` tried to build a SQL table for cache-backed projections (whose provider is `None`), raising `ConfigurationError: No provider configured with name 'None'` and aborting setup for the whole domain. Cache-backed projections are now skipped, since they persist to a cache rather than a database table. (#1034)
-
-</details>
-
-<p class="pt-changelog-group">Upgrade Notes</p>
-
-- **Outbox unique index (#1009).** If you run the outbox on a SQL store (PostgreSQL, SQLite, MySQL, or SQL Server), migrate the unique index from `message_id` to the composite `(message_id, target_broker)`: drop `uq_outbox_message_id`, backfill any rows where `target_broker IS NULL` to your internal broker name (default `"default"`), then create the composite unique index. Per-dialect SQL is in the [v0.16 migration guide](reference/migration/v0-16.md). In-memory and Redis brokers are unaffected.
+- [CLI] CLI commands no longer mix log lines into their machine-readable stdout: the console log handler writes to stderr, so the JSON from `protean ir show` and `protean schema show --raw` is safe to pipe. (#1010)
+- [Event store] **Breaking.** The recommended unique index on the `Outbox` table is now composite over `(message_id, target_broker)`: an event is dual-written once per target broker, so an index on `message_id` alone rejected the framework's own write. (#1009)
+- [IR] Fixed `protean ir check` reporting a domain as stale after an upgrade that only changes the IR schema version; the staleness checksum now covers domain content alone, matching what `ir diff` compares. (#1012)
+- [IR] A baseline materialized before the staleness fix reports stale once; regenerate it with `protean ir show`. (#1012)
+- [Handlers] Fixed `@handle("$any")` event handlers not firing under `event_processing="sync"`; wildcard handlers now run in synchronous dispatch, as they do under the async engine. (#1023)
+- [Fields] Fixed per-field `validators=[...]` running against `None` on an optional field, so an unset field with a format validator raised a spurious error; empty values now short-circuit them. (#1025)
+- [Event store] Fixed `domain.create_snapshots(Aggregate)` failing for an event-sourced aggregate declared with `fact_events=True`; it now skips the `{category}-fact-{id}` streams it mistook for real instances. (#1028)
+- [Database] Fixed database setup failing for a domain that mixes a SQLAlchemy provider with a cache-backed projection; those projections are now skipped, since they persist to a cache rather than a table. (#1034)
 
 </div>
 </div>
@@ -703,109 +657,117 @@ Read the [0.17 migration guide](https://docs.proteanhq.com/reference/migration/v
 </div>
 <div class="pt-changelog-body" markdown="1">
 
+<p class="pt-changelog-group">Upgrade Notes</p>
+
+Read the [0.16 migration guide](https://docs.proteanhq.com/reference/migration/v0-16/) before you upgrade. These changes can need action:
+
+- [Outbox column bounds](https://docs.proteanhq.com/reference/migration/v0-16/#outbox-column-bounds)
+- [Elasticsearch 8.x client](https://docs.proteanhq.com/reference/migration/v0-16/#elasticsearch-8x-client)
+- [Connection pool defaults](https://docs.proteanhq.com/reference/migration/v0-16/#connection-pool-defaults)
+- [Health-check port](https://docs.proteanhq.com/reference/migration/v0-16/#health-check-port)
+- [Observatory binds localhost](https://docs.proteanhq.com/reference/migration/v0-16/#observatory-binds-localhost)
+- [Deprecations](https://docs.proteanhq.com/reference/migration/v0-16/#deprecations)
+
 <p class="pt-changelog-group">Added</p>
 
 <details class="pt-changelog-fold" markdown="1">
-<summary>49 changes</summary>
+<summary>55 changes</summary>
 
-- Observatory `/domain` page (the Domain Visualizer, #874): sidebar navigation and a `GET /api/domain/ir` endpoint that transforms the domain IR into a D3-ready graph structure (nodes, cross-aggregate links, clusters, flows, projections, stats).
-- Observatory D3 force-directed aggregate topology graph on the `/domain` Topology tab. Interactive visualization with aggregate nodes showing name, stream category, ES/CQRS badge, and element counts; directed edges for cross-aggregate event handlers and process managers; zoom/pan, drag-to-reposition, hover highlighting of connected nodes, click-to-detail panel, mini-map overview, and legend.
-- Observatory `/domain` aggregate detail panel — slide-in panel with collapsible sections for fields, entities, value objects, commands, events, handlers, invariants, and repository/models.
-- Observatory `/domain` Event Flows tab — an interactive D3 directed graph showing command-to-event-to-handler chains with cluster grouping, path highlighting, and element type filters.
-- Observatory `/domain` Process Managers tab — a process manager state machine view, plus an enhanced domain stats summary.
-- Observatory D3-based interactive causation graph for visualizing complex correlation chains. Adds a "Graph View" toggle alongside the existing CSS tree in the correlation view, with horizontal tree layout, zoom/pan, collapse/expand subtrees (Shift+click), hover path highlighting, cross-aggregate dashed links with latency labels, and click-to-detail. Auto-selects graph view for chains with depth > 2 or event count > 5.
-- Observatory causation graph swimlane layout and fan-out polish: swimlane backgrounds grouped by stream category with colored headers and node accent bars, fan-out indicators showing branching multiplicity, timeline axis with elapsed time from root, color-coded legend (commands vs events, same vs cross-aggregate links, duration badges), progressive disclosure auto-collapsing deep branches for 50+ node chains, and a mini-map overview for navigating large graphs.
-- Observatory live causation graph updates via SSE: when viewing a correlation chain, new messages with matching `correlation_id` animate into the D3 graph in real time. New nodes fade in with a highlight pulse, links animate smoothly, and all overlays (swimlanes, timeline axis, mini-map) refresh automatically. A "Live" badge appears when the chain has recent activity (< 30s). SSE events are debounced to 300ms to coalesce bursts.
-- Observatory correlation view enhanced with handler attribution badges, processing duration badges, inter-step latency labels, and cross-aggregate boundary markers in the causation tree. New "End-to-End Duration" and "Streams Touched" summary stat cards added to the correlation view. Reuses `Observatory.fmt.duration()` for consistent formatting.
-- Observatory "Traces" tab on the Timeline page with search inputs (aggregate ID, event type, command type, stream category), a recent traces list table, and deep-link support (`?view=traces&aggregate_id=...`). Each trace row navigates to the correlation chain view.
-- Observatory trace search and recent traces API endpoints: `GET /timeline/traces/recent` returns the most recent correlation chains with summary statistics (correlation_id, root_type, event_count, started_at, streams), and `GET /timeline/traces/search` allows querying chains by aggregate_id, event_type, command_type, or stream_category. Both return `{traces: [...], count: int}`.
-- Enrich `CausationNode` with `handler`, `duration_ms`, and `delta_ms` fields for waterfall/swimlane rendering in the Observatory. The correlation chain response now includes `total_duration_ms`. Handler and timing data are populated from Redis trace stream entries when available; all new fields gracefully fall back to `None` when trace data is unavailable. The CLI `protean events trace` command now displays handler names, processing durations, and inter-message latencies.
-- `value_object_from_entity()` utility function that auto-generates a `BaseValueObject` subclass mirroring an entity's fields, eliminating manual field duplication for command/event payloads. Supports custom naming, field exclusion, and recursive conversion of `HasOne`/`HasMany` associations. Exported from `protean` top-level package.
-- `ValueObjectFromEntity` field descriptor in `protean.fields` for inline use in commands and events, e.g. `List(content_type=ValueObjectFromEntity(OrderItem))`.
-- `BaseEntity.from_value_object()` classmethod for converting value object payloads back into entity instances, completing the round-trip.
-- Generic `replace(**kwargs)` method on `BaseValueObject` for creating copies with selected fields changed, similar to `dataclasses.replace()`. Rejects unknown field names and re-validates invariants on the new instance.
-- `domain.correlation_trace(correlation_id)` method that returns a flat, causally-ordered list of `CausationNode` objects for a correlation chain. Thin wrapper over `build_causation_tree()` surfaced at the domain level for downstream test assertions.
-- `assert_chain()` test helper in `protean.testing` for validating message type sequences in correlation chains. Accepts both string type names and domain element classes.
-- Structured error payload enrichment with `correlation_id` in JSON body for all Protean exception handlers (`ValidationError`, `InvalidDataError`, `ValueError`, `ObjectNotFoundError`, `InvalidStateError`, `InvalidOperationError`). When a domain context is active via `DomainContextMiddleware`, error responses automatically include `correlation_id` matching the `X-Correlation-ID` response header. Routes outside domain context are unaffected.
-- Graceful resource cleanup on Engine shutdown: `Domain.close()` shuts down all infrastructure adapters (event store, brokers, caches, providers) in reverse initialization order. `Engine.shutdown()` now waits for in-flight message handlers to complete (10s bounded timeout) before closing infrastructure. New `close()` methods on `BaseBroker`, `BaseCache`, `EventStore`, and `Providers` port/registry classes with Redis adapter implementations. Shutdown sequence and invariants captured in [ADR-0011](adr/0011-engine-shutdown-and-resource-lifecycle-contract.md).
-- Kubernetes-compatible health check endpoints for Engine and FastAPI applications. The Engine embeds a lightweight HTTP server with `/healthz` (liveness), `/livez` (alias), and `/readyz` (readiness) endpoints. For FastAPI apps, `create_health_router(domain)` provides equivalent endpoints as a reusable router. Readiness checks cover database providers, brokers, event store, caches, and subscription count. Configure via `[server.health]` in `domain.toml` (enabled by default on port 8080). Design captured in [ADR-0012](adr/0012-health-check-architecture.md). **Default behaviour change — Tier 2 (operational-defaults exception per [ADR-0004](adr/0004-release-workflow-and-breaking-change-policy.md#exception-operational-defaults))**: `protean server` now binds port 8080 on startup. The engine logs a warning and continues without probes if the port is already in use, so the change is non-fatal. Disable with `[server.health] enabled = false` or move with `[server.health] port = ...`.
-- Development hot-reload mode for `protean server`. Pass `--reload` to watch the working directory for Python source changes and automatically restart the inner Engine process on every edit. Built on `watchfiles` (installed via the new `protean[dev]` extra); `.pyc`, `__pycache__`, `.venv`, `.git`, `node_modules`, and `.protean/` caches are ignored. `--reload` cannot be combined with `--workers > 1`.
-- Per-subscription OTEL metrics for message processing. New counters: `protean.subscription.messages_processed` (with `status` ok/error), `protean.subscription.retries`, and `protean.subscription.dlq_routed` — all with `{subscription, handler, stream}` attributes. New histogram: `protean.subscription.processing_duration` for per-message latency. New engine observable gauges: `protean.engine.up`, `protean.engine.uptime_seconds`, and `protean.engine.active_subscriptions`. All metrics are no-op when OpenTelemetry is not installed.
-- Connection pool and backpressure OTEL metrics: `BaseProvider.pool_stats()` with SQLAlchemy implementation, DB pool gauges (`protean.db.pool_size`, `protean.db.pool_checked_out`, `protean.db.pool_overflow`, `protean.db.pool_checked_in`), Redis broker pool gauge (`protean.broker.pool_active_connections`), and renamed backpressure metrics (`protean.outbox.pending_count`, `protean.subscription.consumer_lag`, `protean.subscription.pending_messages`). Metric collection is now shared between Observatory and the OTEL gauges.
-- DLQ retention and alerting policies with configurable trimming, depth thresholds, per-subscription overrides, and OTEL counters (`protean.dlq.trimmed`, `protean.dlq.alerts`). Global defaults in `[server.dlq]` (`retention_hours`, `alert_threshold`, `alert_callback`, `check_interval_seconds`); per-subscription overrides via `dlq_retention_hours` and `dlq_alert_threshold` on `SubscriptionConfig`.
-- Consolidated server hardening documentation: new how-to guide at [docs/guides/server/hardening.md](guides/server/hardening.md) covering connection pool tuning, Kubernetes health probes, DLQ maintenance, subscription profiles, OTEL metrics, and graceful shutdown, plus a new reference page at [docs/reference/server/hardening.md](reference/server/hardening.md) cataloguing every option, default, metric, and profile shipped by epic 5.1.
-- `[logging]` configuration section in `domain.toml` and auto-configure logging during `Domain.init()`. Escape hatch via `PROTEAN_NO_AUTO_LOGGING=1` for applications that manage their own logging stack.
-- Global `--log-level`, `--log-format`, and `--log-config` CLI options that apply to every `protean` subcommand (`server`, `test`, `shell`, `projection`, `snapshot`, `observatory`, `check`, `dlq`, `events`). All CLI commands are wrapped in a structured exception handler that logs failures before exiting.
-- Wide event access log (`protean.access`) that emits one structured log entry per handled message with full domain context (aggregate, events raised, repo operations, UoW outcome, correlation/causation IDs). Slow-handler detection via the `protean.perf` logger. New `bind_event_context()` / `unbind_event_context()` public API lets application code enrich wide events with business-specific fields (user tier, order total, feature flags).
-- OpenTelemetry `trace_id`, `span_id`, and `trace_flags` are injected into every log record when `telemetry.enabled=True`, enabling log↔trace correlation in Grafana Tempo, Honeycomb, Datadog APM, and other APM tools. New `OTelTraceContextFilter` (stdlib) and `protean_otel_processor` (structlog) are wired automatically by `Domain.configure_logging()`. Correlation extraction falls back to `g.correlation_id` / `g.causation_id` when no `g.message_in_context` is in scope — closing the "HTTP route logging before `process()`" and "CLI logging with `add_context`" gaps.
-- `protean.adapters.repository.sqlalchemy.slow_query` WARNING events when a SQLAlchemy query exceeds the configured threshold, and `protean.adapters.repository.sqlalchemy.query` DEBUG events for every query (opt-in via level configuration). Events carry `statement`, `parameters`, `duration_ms`, and `threshold_ms`, and are truncated via `[logging].slow_query_truncate_chars` (default 500). Threshold comes from `[logging].slow_query_threshold_ms` (default 100ms).
-- Opt-in tail sampling for wide events via `[logging.sampling]` in `domain.toml`. New `TailSamplingProcessor` (structlog) and `TailSamplingFilter` (stdlib) make keep/drop decisions on `protean.access` events by outcome — errors (`status="failed"` or level ≥ ERROR), slow requests (`status="slow"`), and message types matching `critical_streams` glob patterns are always kept; everything else is sampled at `default_rate` (5% by default). Kept events carry `sampling_decision`, `sampling_rule`, and `sampling_rate` so log aggregators can compute accurate throughput from sampled data. Non-access loggers are never affected.
-- `protean.access.http` wide event — one per HTTP request — emitted by `DomainContextMiddleware` for FastAPI apps. Carries the request envelope (method, path, status, duration), route name/pattern, commands dispatched during the request, client IP, user agent, and both `request_id` (from `X-Request-ID` or auto-generated) and `correlation_id`. Level ladder: INFO for 2xx/3xx, WARNING for 4xx, ERROR for 5xx. Responses always echo `X-Request-ID` so operators can paste it into log aggregators to find the matching event. New `[logging.http]` config section (`enabled`, `exclude_paths`, `log_request_headers`, `log_response_headers`) tunes HTTP wide events declaratively. `bind_event_context()` bindings flow through the async task boundary and land on both the HTTP and domain layers with the shared `correlation_id`.
-- ADR-0010 (`docs/adr/0010-logging-overhaul-and-wide-event-architecture.md`) capturing the full architectural story of the Logging Overhaul — the structlog pipeline bridge, wide event access log, `bind_event_context()` API, two-layer HTTP + domain wide events, opt-in tail sampling, auto-configuration on `Domain.init()`, log↔trace correlation, pipeline-level redaction, multi-worker log queue, and the `protean.security` channel — alongside alternatives considered and explicitly rejected.
-- Projection staleness detection: the new `protean projection status` command reports, per projection, how far behind it is in time (staleness) and in events (lag), when it last advanced, and its current row count. A `protean.projection.staleness_seconds` gauge (Prometheus `protean_projection_staleness_seconds`) is exposed for monitoring and Observatory dashboards.
-- Handlers can now auto-retry on transient infrastructure failures: configure `@domain.command_handler(retries=3, backoff="exponential")` (also on `@domain.event_handler`) or enable it domain-wide via `server.transient_retry`. Transient exceptions (`ConnectionError`, `TimeoutError`, `SendError` by default; overridable via `retry_exceptions`) are retried with a configurable backoff strategy (`exponential` | `linear` | `fixed`) before the error reaches the subscription retry/DLQ pipeline. This is distinct from the existing version (OCC) retry, which is specific to `ExpectedVersionError`; the two compose with independent attempt budgets. Each attempt runs in a fresh `UnitOfWork`, so a failed attempt rolls back cleanly before the retry. Retries respect the command deadline: when a command carries a timeout/deadline, the loop stops instead of sleeping into an attempt that would start past it, so a retrying handler never executes after its deadline. Opt-in and disabled by default — existing behavior is unchanged. Retries increment the `protean.handler.retried` metric.
-- Commands now support deadlines: pass `deadline=<datetime>` or `timeout=<timedelta>` to `domain.process()`. The deadline is stored in command metadata, propagated to downstream commands in the same causal chain, and checked before a handler runs — expired commands are rejected with `CommandExpiredError` (sync) or skipped without retry (async), preventing stale commands from executing after long queue delays. A default validity window can be configured per command handler (`@domain.command_handler(timeout=...)`) or domain-wide (`command_default_timeout` in config); both default to disabled. Expiries increment the `protean.command.expired` metric.
-- `Q(field__isnull=True/False)` lookup for IS NULL / IS NOT NULL predicates, supported by SQLAlchemy, Memory, and Elasticsearch adapters. `isnull` is part of the required lookup set (`BaseProvider.REQUIRED_LOOKUPS`), so custom adapters must register it; a missing `isnull` lookup produces the standard missing-lookup warning at domain init.
-- `QuerySet.count()` issues a flat `SELECT COUNT(*)` (or adapter equivalent) without projecting columns or materializing entities.
-- `QuerySet.all(with_total=False)` skips the adapter's total-count round-trip (a separate wrapped `COUNT` query on SQLAlchemy) when only `ResultSet.items` is needed. The outbox finder/poll path uses it so each poll issues a single `SELECT`.
-- `outbox.max_tick_interval` config option enables adaptive polling backoff in `OutboxProcessor`: empty polls double the wait up to the cap, non-empty batches reset to the base `tick_interval`. Defaults to `None` (constant-rate polling).
-- `BaseDAO._claim()` — an atomic find-and-claim primitive for queue-style consumers (the outbox, and future high-throughput consumers). Adapters may override it with a faster dialect-specific path; the SQLAlchemy adapter does so for PostgreSQL (single `UPDATE … FOR UPDATE SKIP LOCKED … RETURNING`), and the in-memory adapter serializes claims under its provider lock. All other backends use a correct portable default.
-- Portable `Index` declarations on aggregates and entities via the `indexes=` decorator option. Supports composite, descending, unique, partial (`where=Q(...)`), and covering (`include=`) indexes, with an `Index.from_sql(dialect, ddl)` escape hatch for dialect-specific DDL. SQLAlchemy providers emit the indexes at table build; unsupported opt-ins fall back to a full index with a warning. The `Outbox` aggregate now ships recommended indexes (active-set partial, unique `message_id`, `correlation_id`). New `protean schema render --indexes` command renders per-dialect `CREATE INDEX` DDL to `.protean/schemas/`. See ADR-0014.
-- Added `F()` expressions for column-to-column comparisons inside `Q` lookups (e.g. `filter(retry_count__lt=F("max_retries"))`). Resolved natively by the in-memory and SQLAlchemy adapters; the Elasticsearch adapter raises `NotImplementedError` for `F()`-bearing predicates. The outbox poll and claim now push the `retry_count < max_retries` check into the database.
-- `QuerySet.only(*fields)` projects a query to a subset of persisted columns (the identifier is always included), returning read-only `Record` objects instead of fully materialized entities. This avoids loading large columns — JSON blobs in particular — on read-optimized paths like counts, cleanups, and statistics. A `Record` is inert: it is not a domain entity, runs no invariants, and cannot be persisted, so projections never produce a partially-valid aggregate. Honored natively by every adapter (SQLAlchemy `load_only`, Elasticsearch `_source`, in-memory).
-- `BaseDAO._delete_top(criteria, limit, order_by=None)` deletes up to `limit` matching rows and returns the count, so high-volume cleanups run in bounded batches instead of one unbounded `DELETE` that holds locks and bloats the transaction log. SQLAlchemy issues a single `DELETE … WHERE id IN (SELECT … LIMIT n)` on PostgreSQL/SQLite/MSSQL (portable select-then-delete-by-id elsewhere); Elasticsearch uses `delete_by_query` with `max_docs`; the in-memory store removes under its lock. `OutboxRepository.cleanup_old_published` / `cleanup_old_abandoned` now delete in batches sized by `[outbox.cleanup].batch_size` (default 5000, configurable), committing each batch before the next so a large backlog clears without one long-held lock.
-- Brought the `any` and `overlap` array lookups to the Elasticsearch adapter (rendered as `terms` queries) and added `overlap` to the in-memory adapter, so array-membership filters behave consistently across backends. Documented the per-adapter lookup support matrix.
-- Added query-shape test primitives `assert_query_count`, `assert_no_subquery_wrap`, and `assert_no_overfetch` to `protean.integrations.pytest`. These context managers observe the SQL a block issues and fail on query-cost regressions (extra round trips, subquery-wrapped counts, over-fetching). They are no-ops on the in-memory adapter and assert against a real SQLAlchemy backend.
-- `protean upgrade-check` — a read-only CLI diagnostic that inspects a domain (and its live database schema) and reports the changes needing attention when upgrading to 0.16: raised SQLAlchemy pool defaults, the health-check port binding, the Elasticsearch v8-client/server requirement, and unbounded outbox columns. For the outbox it generates the exact backend `ALTER` SQL to review and run; nothing is applied automatically.
+- [Observatory] Added the `/domain` page, the Domain Visualizer, with sidebar navigation and a `GET /api/domain/ir` endpoint that turns the domain IR into a graph of nodes, links, clusters, flows and projections.
+- [Observatory] Added a force-directed aggregate topology graph on the `/domain` Topology tab, with cross-aggregate edges, zoom and pan, hover highlighting, a click-to-detail panel, a mini-map and a legend.
+- [Observatory] Added the `/domain` aggregate detail panel, a slide-in panel with collapsible sections for fields, entities, value objects, commands, events, handlers, invariants and repository models.
+- [Observatory] Added the `/domain` Event Flows tab, a directed graph of command-to-event-to-handler chains with cluster grouping, path highlighting and element type filters.
+- [Observatory] Added the `/domain` Process Managers tab, a process manager state machine view, alongside a fuller domain stats summary.
+- [Observatory] Added an interactive causation graph for a correlation chain, as a Graph View toggle beside the existing tree, chosen automatically for a chain deeper than two levels or longer than five events.
+- [Observatory] The causation graph now groups nodes into swimlanes by stream category, with fan-out indicators, a timeline axis, a colour-coded legend, auto-collapsed deep branches past 50 nodes and a mini-map.
+- [Observatory] A correlation chain now updates live over SSE: a message with a matching `correlation_id` animates into the graph, a Live badge marks recent activity, and bursts are debounced to 300ms.
+- [Observatory] The correlation view now shows handler attribution, processing duration, inter-step latency and cross-aggregate boundary markers, plus End-to-End Duration and Streams Touched stat cards.
+- [Observatory] Added a Traces tab on the Timeline page, with search by aggregate id, event type, command type and stream category, a recent traces table, and a deep link into each correlation chain.
+- [Observatory] Added `GET /timeline/traces/recent` and `GET /timeline/traces/search`, which return the most recent correlation chains and query them by aggregate id, event type, command type or stream category.
+- [Events] `CausationNode` now carries `handler`, `duration_ms` and `delta_ms`, the correlation chain response carries `total_duration_ms`, and `protean events trace` shows handler names, durations and latencies.
+- [Types] Added `value_object_from_entity()`, which generates a `BaseValueObject` subclass mirroring an entity's fields, with custom naming, field exclusion and recursive conversion of `HasOne` and `HasMany`.
+- [Fields] Added the `ValueObjectFromEntity` field descriptor for inline use in commands and events, as in `List(content_type=ValueObjectFromEntity(OrderItem))`.
+- [Types] Added `BaseEntity.from_value_object()`, which converts a value object payload back into an entity instance and completes the round trip.
+- [Types] Added `replace(**kwargs)` on `BaseValueObject`, which copies a value object with selected fields changed; it rejects an unknown field name and re-runs invariants on the new instance.
+- [Events] Added `domain.correlation_trace(correlation_id)`, which returns a flat, causally ordered list of `CausationNode` objects for a correlation chain.
+- [Testing] Added `assert_chain()` in `protean.testing`, which checks the sequence of message types in a correlation chain and accepts either type names or domain element classes.
+- [Server] Every Protean exception handler now carries `correlation_id` in its JSON error body when a domain context is active, matching the `X-Correlation-ID` response header.
+- [Server] Added graceful cleanup on shutdown: `Domain.close()` closes event store, brokers, caches and providers in reverse order, and `Engine.shutdown()` waits up to 10 seconds for in-flight handlers.
+- [Server] Added Kubernetes-compatible health endpoints, `/healthz`, `/livez` and `/readyz` on the Engine and `create_health_router(domain)` for FastAPI, covering providers, brokers, event store, caches and subscriptions.
+- [Server] **Breaking.** `protean server` now binds port 8080 for its health endpoints; it logs a warning and continues when the port is taken, and `[server.health]` turns the endpoints off or moves the port.
+- [Server] Added a hot-reload mode for `protean server`: `--reload` watches the working directory and restarts the inner Engine on every edit, built on `watchfiles` from the new `protean[dev]` extra.
+- [Observability] Added per-subscription OTel metrics: counters for messages processed, retries and DLQ routing, a processing-duration histogram, and engine gauges for up, uptime and active subscriptions.
+- [Observability] Added connection pool and backpressure metrics: `BaseProvider.pool_stats()`, database pool gauges, a Redis broker pool gauge, and renamed outbox and subscription backpressure metrics.
+- [Server] Added DLQ retention and alerting under `[server.dlq]`: configurable trimming, a depth threshold, per-subscription overrides, and the `protean.dlq.trimmed` and `protean.dlq.alerts` counters.
+- [Docs] Added a server hardening guide and a reference page covering pool tuning, health probes, DLQ maintenance, subscription profiles, OTel metrics and graceful shutdown.
+- [Server] Added a `[logging]` section in `domain.toml`, applied during `Domain.init()`, with `PROTEAN_NO_AUTO_LOGGING=1` as the escape hatch for an application that configures its own logging.
+- [CLI] Added global `--log-level`, `--log-format` and `--log-config` options on every `protean` subcommand, and each command now logs its failure through a structured exception handler before exiting.
+- [Observability] Added the `protean.access` wide event, one structured entry per handled message carrying the aggregate, events raised, repository operations, Unit of Work outcome and correlation ids.
+- [Observability] Added `bind_event_context()` and `unbind_event_context()`, which let application code add business fields such as user tier or order total to a wide event.
+- [Observability] OpenTelemetry `trace_id`, `span_id` and `trace_flags` are now injected into every log record when `telemetry.enabled=True`, so logs and traces line up in an APM tool.
+- [Database] Added `slow_query` warnings and `query` debug events on the SQLAlchemy adapter, carrying the statement, parameters and duration, with the threshold and truncation set under `[logging]`.
+- [Observability] Added opt-in tail sampling for wide events under `[logging.sampling]`: errors, slow requests and `critical_streams` matches are always kept, and the rest are sampled at `default_rate`, 5% by default.
+- [Observability] Added the `protean.access.http` wide event, one per HTTP request, carrying method, path, status, duration, route, the commands dispatched, client IP, `request_id` and `correlation_id`.
+- [Observability] Added the `[logging.http]` section, which tunes HTTP wide events through `enabled`, `exclude_paths`, `log_request_headers` and `log_response_headers`.
+- [Docs] Added ADR-0010, which records the logging overhaul: the structlog bridge, wide events, the two-layer HTTP and domain split, tail sampling, redaction and the `protean.security` channel.
+- [Projections] Added `protean projection status`, which reports per projection how far behind it is in time and in events, when it last advanced and its row count, with a staleness gauge for monitoring.
+- [Handlers] A handler can now retry on a transient infrastructure failure: set `retries` and `backoff` on a command or event handler, or `server.transient_retry` domain-wide. Each attempt runs in a fresh `UnitOfWork`.
+- [Handlers] Transient retries respect a command's deadline, so a retrying handler never runs past it, and each retry increments `protean.handler.retried`. The behaviour is opt-in and off by default.
+- [Handlers] Commands now take a deadline: pass `deadline=` or `timeout=` to `domain.process()`. The deadline travels down the causal chain, and an expired command is rejected with `CommandExpiredError`.
+- [Database] Added the `Q(field__isnull=True/False)` lookup on the SQLAlchemy, memory and Elasticsearch adapters; `isnull` is a required lookup, so a custom adapter that lacks it warns at domain init.
+- [Database] `QuerySet.count()` now issues a flat `SELECT COUNT(*)`, or the adapter's equivalent, without projecting columns or building entities.
+- [Database] Added `QuerySet.all(with_total=False)`, which skips the adapter's total-count round trip; the outbox poll uses it, so each poll issues a single `SELECT`.
+- [Server] Added `outbox.max_tick_interval`, which doubles the outbox poll wait on an empty poll up to the cap and resets to `tick_interval` on a non-empty batch. It defaults to constant-rate polling.
+- [Database] Added `BaseDAO._claim()`, an atomic find-and-claim primitive for queue-style consumers; PostgreSQL uses one `UPDATE … FOR UPDATE SKIP LOCKED … RETURNING`, and other backends a portable default.
+- [Database] Added portable `Index` declarations through the `indexes=` option, covering composite, descending, unique, partial and covering indexes, with `Index.from_sql(dialect, ddl)` as the escape hatch.
+- [Database] The `Outbox` aggregate now ships recommended indexes, and `protean schema render --indexes` writes per-dialect `CREATE INDEX` DDL to `.protean/schemas/`.
+- [Database] Added `F()` expressions for column-to-column comparisons inside `Q` lookups; the in-memory and SQLAlchemy adapters resolve them natively, and the Elasticsearch adapter raises `NotImplementedError`.
+- [Database] Added `QuerySet.only(*fields)`, which projects a query to a subset of columns and returns read-only `Record` objects: inert, running no invariants and unable to persist, so a read never yields a half-valid aggregate.
+- [Database] Added `BaseDAO._delete_top(criteria, limit, order_by=None)`, which deletes up to `limit` rows and returns the count, so a large cleanup runs in bounded batches instead of one long-locking `DELETE`.
+- [Database] The outbox cleanups now delete in batches sized by `[outbox.cleanup].batch_size`, 5000 by default, committing each batch before the next so a large backlog clears without one long-held lock.
+- [Database] Brought the `any` and `overlap` array lookups to the Elasticsearch adapter and `overlap` to the in-memory adapter, so array-membership filters behave the same on every backend.
+- [Testing] Added `assert_query_count`, `assert_no_subquery_wrap` and `assert_no_overfetch` to `protean.integrations.pytest`, context managers that fail on a query-cost regression against a real SQLAlchemy backend.
+- [CLI] Added `protean upgrade-check`, a read-only diagnostic that reports what needs attention when upgrading to 0.16 and prints the outbox `ALTER` SQL to review. It applies nothing.
 
 </details>
 
 <p class="pt-changelog-group">Changed</p>
 
-<details class="pt-changelog-fold" markdown="1">
-<summary>9 changes</summary>
-
-- Surface connection pool configuration in `domain.toml` with production-sensible defaults. SQLAlchemy pool defaults raised to `pool_size=5` and `max_overflow=10` for PostgreSQL and MSSQL (previously `pool_size=2`, `max_overflow=5`). Redis broker, Redis cache, and MessageDB event store now forward pool parameters (`max_connections`, `socket_timeout`, etc.) from `conn_info`. A `LOW_POOL_SIZE` warning is emitted during domain validation when `pool_size` is set below 5. **Breaking change — Tier 2 (operational-defaults exception per [ADR-0004](adr/0004-release-workflow-and-breaking-change-policy.md#exception-operational-defaults))**: a deployment that previously relied on the default SQLAlchemy pool settings will now open up to `workers × 15` connections per domain (was `workers × 7`). Before upgrading, verify that the database's `max_connections` setting has headroom; on PostgreSQL the default is 100. To retain the previous behaviour, set `pool_size = 2` and `max_overflow = 5` explicitly on each `[databases.<name>]` block. Silence the warning by setting `PROTEAN_ENV=development` or `testing`. See [Harden the Server → Size the pool against your database's ceiling](guides/server/hardening.md#size-the-pool-against-your-databases-ceiling) for sizing guidance.
-- Structured logging baseline: stdlib loggers now flow through the structlog pipeline via `ProcessorFormatter`, so framework internals and user code share one renderer and emit uniformly structured JSON in production. Stack-trace-lost sites (`logger.error(str(exc))`) converted to `logger.exception(...)`. Around fifty hot-path log calls converted to keyword-argument structured events. Operationally critical events (engine lifecycle, subscription start/stop, outbox batch completion) upgraded from DEBUG to INFO so operators running at the default level can see throughput without raising verbosity.
-- Logging documentation split along Diataxis lines: `docs/guides/server/logging.md` is now a focused task-oriented guide (quick start, `[logging]` config, CLI overrides, `bind_event_context()`, tail sampling, security events, disable auto-configuration). New `docs/reference/logging.md` enumerates every `[logging]` key, CLI flag, environment variable, public API, and framework logger — including event names, levels, and field schemas for `protean.access`, `protean.access.http`, `protean.perf`, `protean.security`, `protean.server.*`, `protean.core.unit_of_work`, and the broker/repository adapters. New `docs/concepts/observability/logging.md` explains the wide event pattern, query-oriented field design, high-cardinality backend selection, the two-layer HTTP + domain split, tail sampling, and redaction as a pipeline stage. New `docs/guides/fastapi/http-wide-events.md` guide covers wiring, `[logging.http]` configuration, and enrichment.
-- `OutboxRepository.find_unprocessed` now pushes status, lock-window, and retry-window predicates into the database query, removing the 3× over-fetch factor.
-- `OutboxRepository.count_by_status` issues flat `SELECT COUNT(*)` queries instead of subquery-wrapped projections.
-- `OutboxRepository.cleanup_old_published` and `cleanup_old_abandoned` issue a single `DELETE` and return rowcount instead of fetching rows before deletion.
-- **Tier-3 (Structural)**: `Outbox` string fields now declare `max_length`, so SQL providers emit `VARCHAR(N)` instead of `TEXT` / `VARCHAR(MAX)`. This unblocks index creation on the outbox table. New deployments get the bounded columns automatically; existing deployments run a one-time `ALTER TABLE` per the [v0.16 migration guide](https://docs.proteanhq.com/reference/migration/v0-16/).
-- Support the Elasticsearch 8.x client (`elasticsearch` / `elasticsearch-dsl` 8.x), which fresh installs now resolve to by default. The provider normalizes bare host entries to `scheme://host:port` URLs (using `USE_SSL` to choose the scheme) and no longer passes the v7-only `use_ssl` flag, so existing host configuration keeps working. This also allows `urllib3` 2.x, resolving the related security advisory. **The 8.x client requires an Elasticsearch 8.x server.** Deployments still running an Elasticsearch 7.x server should pin `elasticsearch<8` to keep the 7.17 client, which connects to both 7.x and 8.x servers. See the [v0.16 migration guide](https://docs.proteanhq.com/reference/migration/v0-16/) for details.
-- **Behavioral change (secure by default):** `protean observatory` now binds to loopback (`127.0.0.1`) by default instead of `0.0.0.0`. The Observatory is unauthenticated and exposes domain internals and Dead Letter Queue management (retry/delete) endpoints, so it should not be reachable beyond the local machine without deliberate, restricted exposure. To reach it from another host, pass `--host 0.0.0.0` (or another address) explicitly; binding a non-loopback address now logs a warning. Expose it only on a trusted network behind an authenticating reverse proxy. **Upgrade impact:** if you relied on the default being reachable remotely (e.g. a Docker port mapping), add `--host 0.0.0.0` to your `protean observatory` invocation.
-
-</details>
+- [Database] **Breaking.** SQLAlchemy pool defaults are now `pool_size=5` and `max_overflow=10` on PostgreSQL and MSSQL, so a deployment on the defaults opens up to `workers × 15` connections per domain where it opened `workers × 7`.
+- [Database] The Redis broker, Redis cache and MessageDB event store now forward pool parameters from `conn_info`, and a `pool_size` below 5 raises a `LOW_POOL_SIZE` warning during domain validation.
+- [Observability] Stdlib loggers now flow through the structlog pipeline, so framework and application code share one renderer; hot-path calls carry structured keywords, and lifecycle events moved from DEBUG to INFO.
+- [Docs] Split the logging documentation into a task guide, a reference page listing every key, flag and framework logger, a concepts page on the wide event pattern, and a FastAPI HTTP wide events guide.
+- [Database] `OutboxRepository.find_unprocessed` now pushes its status, lock-window and retry-window predicates into the query, removing a three-times over-fetch.
+- [Database] `OutboxRepository.count_by_status` now issues flat `SELECT COUNT(*)` queries instead of subquery-wrapped projections.
+- [Database] `OutboxRepository.cleanup_old_published` and `cleanup_old_abandoned` now issue a single `DELETE` and return the row count, instead of fetching the rows before deleting them.
+- [Database] **Breaking.** `Outbox` string fields now declare `max_length`, so SQL providers emit `VARCHAR(N)` in place of `TEXT`, which unblocks indexes on the table; an existing deployment runs a one-time `ALTER TABLE`.
+- [Database] **Breaking.** The Elasticsearch adapter now supports the 8.x client, which a fresh install resolves to, and that client needs an 8.x server; pin `elasticsearch<8` to stay on the 7.17 client.
+- [Observatory] **Breaking.** `protean observatory` now binds loopback instead of `0.0.0.0`, since it is unauthenticated and exposes DLQ management; pass `--host 0.0.0.0` to reach it from another host.
 
 <p class="pt-changelog-group">Deprecated</p>
 
-- `--debug` flag on `protean server` and `protean observatory` is deprecated in favor of `--log-level DEBUG`. The flag still works but emits a `DeprecationWarning` and will be removed in v0.17.0.
+- [CLI] `--debug` on `protean server` and `protean observatory` is deprecated in favour of `--log-level DEBUG`; it still works, emits a `DeprecationWarning`, and goes in v0.17.0.
 
 <p class="pt-changelog-group">Removed</p>
 
-- `assert_valid` and `assert_invalid` were removed from `protean.testing`. They duplicated `pytest.raises(ValidationError)` behind lambda ceremony. **Migration:** replace `assert_invalid(lambda: op(), message="X")` with `with pytest.raises(ValidationError, match="X"): op()`; `assert_valid(lambda: op())` becomes a plain `op()` call.
+- [Testing] **Breaking.** Removed `assert_valid` and `assert_invalid` from `protean.testing`: replace `assert_invalid(lambda: op(), message="X")` with `pytest.raises(ValidationError, match="X")`, and `assert_valid(lambda: op())` with a plain call.
 
 <p class="pt-changelog-group">Fixed</p>
 
-<details class="pt-changelog-fold" markdown="1">
-<summary>8 changes</summary>
-
-- Fix Observatory graph rendering with black overlays caused by DaisyUI 4→5 CSS variable mismatch. Update all `oklch(var(--b1))` references to DaisyUI 5 equivalents (`var(--color-base-100)`, `color-mix()`).
-- Fix causation graph swimlane grouping treating command and event streams for the same aggregate as separate categories. Strip `:command` suffix in stream category extraction so both share one swimlane.
-- Fix subscriber `causation_id` set to Redis Stream delivery ID instead of source event's `message_id`. Commands dispatched from subscribers now carry the correct causation link for cross-domain causation trees in the Observatory.
-- Fix Observatory assigning the first domain's name to all events when multiple domains share a single MessageDB. Domain attribution is now derived from the stream name prefix (`<domain>::<aggregate>-<id>`).
-- Fix check-then-act race window in optimistic locking — version checks are now atomic with writes across all repository adapters (SQLAlchemy, Memory, Elasticsearch) and the memory event store. Previously, concurrent writers could both pass a pre-write version check and overwrite each other.
-- Detect cross-handler command collisions at `Domain.init()` instead of at dispatch time — two command handler classes claiming the same command now raise `IncorrectUsageError` during validation, and are also reported by `protean check`.
-- Fixed a race in the outbox where two workers could claim and publish the same message. Claiming is now atomic: the `OutboxProcessor` claims a batch of messages in a single round trip via `OutboxRepository.claim_batch()`, which uses one `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED) RETURNING *` statement on PostgreSQL and a correct portable fallback on every other backend. Closes the TOCTOU window between selecting a message and marking it `PROCESSING`. See ADR-0013.
-- `command_handler`, `event_handler`, and `repository` now accept a string `part_of` reference (e.g. `part_of="Order"`) and resolve it like every other element, instead of raising at registration. This removes the import-ordering and circular-import friction that previously forced class references for exactly these three elements.
-
-</details>
+- [Observatory] Fixed graph rendering showing black overlays after the DaisyUI 4 to 5 upgrade, by moving every `oklch(var(--b1))` reference to its DaisyUI 5 equivalent.
+- [Observatory] Fixed the causation graph treating an aggregate's command and event streams as separate swimlanes; the `:command` suffix is now stripped, so both share one.
+- [Events] Fixed a subscriber setting `causation_id` to the Redis Stream delivery id instead of the source event's `message_id`, so a command dispatched from a subscriber now carries the right causation link.
+- [Observatory] Fixed the Observatory labelling every event with the first domain's name when several domains share one MessageDB; attribution now comes from the stream name prefix.
+- [Database] Fixed a check-then-act race in optimistic locking: the version check is now atomic with the write across the SQLAlchemy, memory and Elasticsearch repositories and the memory event store.
+- [Check] Two command handler classes claiming the same command now raise `IncorrectUsageError` at `Domain.init()` and are reported by `protean check`, instead of colliding at dispatch time.
+- [Database] Fixed a race where two workers could claim and publish the same outbox message; a batch is now claimed in one round trip through `OutboxRepository.claim_batch()`.
+- [Internals] `command_handler`, `event_handler` and `repository` now accept a string `part_of` reference and resolve it like every other element, instead of raising at registration.
 
 <p class="pt-changelog-group">Security</p>
 
-- Sensitive fields are masked in log output via a new `ProteanRedactionFilter` and `make_redaction_processor()` that wire into `Domain.configure_logging()`. Configurable via `[logging].redact` — defaults are unioned with operator-supplied keys so core protections cannot be disabled. Default mask list: `password`, `token`, `secret`, `api_key`, `authorization`, `cookie`, `session`, `csrf`. `log_method_call` automatically inherits redaction.
-- `protean server --workers N` (N > 1) now installs a `QueueHandler` / `QueueListener` pattern so JSON log lines never interleave across worker processes.
-- New dedicated `protean.security` logger for domain-boundary failures: `InvalidOperationError`, `InvalidStateError`, aggregate invariant violations, and boundary-crossing command validation errors emit WARNING events suitable for SIEM / alerting integration.
+- [Server] Sensitive fields are now masked in log output by `ProteanRedactionFilter` and `make_redaction_processor()`, configured under `[logging].redact`; operator keys union with the defaults, which cannot be turned off.
+- [Server] `protean server --workers N` with more than one worker now installs a `QueueHandler` and `QueueListener`, so JSON log lines never interleave across worker processes.
+- [Server] Added the `protean.security` logger for domain-boundary failures: invalid operation and state errors, invariant violations and boundary command validation errors emit WARNING events for SIEM use.
 
 </div>
 </div>
@@ -817,89 +779,83 @@ Read the [0.17 migration guide](https://docs.proteanhq.com/reference/migration/v
 </div>
 <div class="pt-changelog-body" markdown="1">
 
-<p class="pt-changelog-group">Fixed</p>
+<p class="pt-changelog-group">Upgrade Notes</p>
 
-<details class="pt-changelog-fold" markdown="1">
-<summary>8 changes</summary>
+Read the [0.15 migration guide](https://docs.proteanhq.com/reference/migration/v0-15/) before you upgrade. These changes can need action:
 
-- Fix persistence ordering in `BaseRepository`: aggregate root is now saved before child entities, and children before grandchildren (top-down). Previously the bottom-up ordering violated foreign-key constraints on databases that enforce them immediately (MSSQL, MySQL/InnoDB, SQLite with `PRAGMA foreign_keys`).
-- Pre-commit hook documentation now recommends `repo: local` with `language: system` instead of `repo: https://github.com/proteanhq/protean`, since hooks call `derive_domain()` which imports user code that is unavailable in pre-commit's isolated virtualenv
-
-
-- Fix unreadable handler wiring and event flow diagrams by splitting into per-concern diagrams in Markdown output (#821)
-- Fix Mermaid parse errors in cluster diagrams when invariant names contain commas or are unquoted
-- Fix `TypeError: can't compare offset-naive and offset-aware datetimes` in outbox retry logic. Database adapters may return timezone-naive datetimes for `next_retry_at` and `locked_until`, causing comparisons with `datetime.now(timezone.utc)` to crash and block all outbox processing. Added shared `ensure_utc_aware()` utility to normalize naive datetimes before comparison.
-- Fix flaky `test_mixed_error_scenarios` in `test_server_robustness.py`: increase Engine test_mode processing cycles from 3 to 10 so all subscription types (events, commands, broker messages) have enough time to be scheduled and process their messages under CI load
-- Bridge `correlation_id` from external broker messages to subscriber-triggered commands: `Engine.handle_broker_message()` now extracts `correlation_id` from the incoming message's `metadata.domain.correlation_id` (Protean external format) and sets it on the stub message context. When no correlation ID is present, a fresh UUID is auto-generated. This ensures the cross-service correlation chain is preserved through subscriber processing.
-- Preserve outer message context across nested `domain.process()` calls: `CommandProcessor.process()` now saves and restores the previous `g.message_in_context` instead of unconditionally clearing it. This fixes correlation ID loss when a subscriber dispatches multiple commands within a single handler invocation.
-
-</details>
+- [Install Pydantic v2](https://docs.proteanhq.com/reference/migration/v0-15/#1-install-pydantic-v2)
+- [Wrap value object lists in a `ValueObject` descriptor](https://docs.proteanhq.com/reference/migration/v0-15/#2-wrap-vo-lists-in-a-valueobject-descriptor)
+- [Remove extra keyword arguments from value object constructors](https://docs.proteanhq.com/reference/migration/v0-15/#3-remove-extra-kwargs-from-value-object-constructors)
+- [Replace `domain.publish` with broker access](https://docs.proteanhq.com/reference/migration/v0-15/#4-replace-domainpublish-with-broker-access)
+- [Update `Message` imports and method names](https://docs.proteanhq.com/reference/migration/v0-15/#5-update-message-class-imports-and-method-names)
+- [Update message metadata access](https://docs.proteanhq.com/reference/migration/v0-15/#6-update-message-metadata-access)
+- [Add `@apply` handlers for every event-sourced event](https://docs.proteanhq.com/reference/migration/v0-15/#7-add-apply-handlers-for-every-event-sourced-event)
+- [Handle `from __future__ import annotations`](https://docs.proteanhq.com/reference/migration/v0-15/#8-handle-from-__future__-import-annotations)
+- [`to_dict()` replaces `model_dump()`](https://docs.proteanhq.com/reference/migration/v0-15/#to_dict-vs-model_dump)
+- [Invariants skip when field validation fails](https://docs.proteanhq.com/reference/migration/v0-15/#invariants-skip-when-field-validation-fails)
+- [`HasMany` `add_` and `remove_` trigger pre-invariants](https://docs.proteanhq.com/reference/migration/v0-15/#hasmany-add_remove_-trigger-pre-invariants)
+- [Elasticsearch needs explicit field mappings and a re-index](https://docs.proteanhq.com/reference/migration/v0-15/#elasticsearch-explicit-field-mappings-and-re-indexing)
 
 <p class="pt-changelog-group">Added</p>
 
 <details class="pt-changelog-fold" markdown="1">
-<summary>39 changes</summary>
+<summary>37 changes</summary>
 
-- Auto-fix mode (`--fix`) for `protean-check-staleness` pre-commit hook: automatically regenerates stale IR and stages the updated file with `git add`, allowing the commit to proceed without manual intervention
-- Multi-domain support for both pre-commit hooks (`protean-check-staleness`, `protean-check-compat`): new `[domains]` section in `.protean/config.toml` maps logical domain names to module paths, enabling a single hook entry to check all bounded contexts in a project. Each domain's IR is stored under `.protean/<name>/ir.json`. The `--domain` argument is now optional when `[domains]` is configured
-- Structured logging integration for automatic correlation context injection: new `protean.integrations.logging` module with `ProteanCorrelationFilter` (stdlib `logging.Filter`) and `protean_correlation_processor` (structlog processor) that read `g.message_in_context` and inject `correlation_id` and `causation_id` into every log record. New `domain.configure_logging()` convenience method wires up both the filter and processor in one call. Safe no-op when no domain context is active.
-- Add `correlation_id` and `causation_id` fields to `MessageTrace` dataclass and `TraceEmitter.emit()` in the Observatory tracing subsystem. All `handler.started`, `handler.completed`, `handler.failed`, `pm.transition`, `outbox.published`, `outbox.failed`, `message.acked`, `message.dlq` trace events now carry correlation and causation IDs from the processed message metadata. This enables the Observatory dashboard to group, filter, and link trace events by correlation chain. Backward compatible — callers that omit the new params get `None`.
-- Add `protean.correlation_id` and `protean.causation_id` span attributes to `protean.handler.execute`, `protean.uow.commit`, `protean.outbox.process`, and `protean.outbox.publish` OTEL spans. Batch-level outbox spans only set these attributes when all messages in the batch share the same ID. This enables filtering all spans in a request chain by correlation ID in Jaeger, Datadog, or Tempo.
-- X-Correlation-ID header support in `DomainContextMiddleware`: automatically extracts `X-Correlation-ID` (falling back to `X-Request-ID`) from incoming HTTP request headers and propagates the value as the default correlation ID during command processing. The response always includes an `X-Correlation-ID` header reflecting the ID that was used (from header, explicit `domain.process()` param, or auto-generated).
-- End-to-end integration tests for correlation and causation ID propagation across command → event → handler → command → event → projection chains, external correlation ID flow, broker context propagation, event handler causation chain correctness, and OTEL span attribute verification (`tests/tracing/test_e2e_correlation_chain.py`).
-- Deprecation support for domain elements and fields: new `deprecated` decorator option for all domain element types (`@domain.aggregate(deprecated={"since": "0.15", "removal": "0.18"})`) and `deprecated` parameter for fields (`String(deprecated="0.15")`), with normalized two-field metadata (`since` required, `removal` optional), sparse IR representation, `DEPRECATED_ELEMENT` and `DEPRECATED_FIELD` info-level diagnostics in `protean check`, and deprecation-aware contract diffing that classifies removals as "expected" (safe), "premature" (breaking), or "unexpected" (breaking) based on version comparison
-- `.protean/config.toml` configuration support for IR compatibility checking: `CompatConfig` dataclass and `load_config()` loader in `protean.ir.config`. Supports `compatibility.strictness` (`strict`/`warn`/`off`), `compatibility.exclude` (FQN patterns), `compatibility.deprecation.min_versions_before_removal`, and `staleness.enabled`. Integrated with `protean ir diff`, `protean ir check`, and both pre-commit hooks (`protean-check-staleness`, `protean-check-compat`). `CompatConfig` and `load_config` are exported from `protean.ir`.
-- Compatibility checking documentation guide covering `.protean/` directory structure, `config.toml` reference, breaking change rules, CLI commands, pre-commit hook setup, CI integration patterns, and deprecation lifecycle.
-- Comprehensive documentation guide for correlation and causation IDs (`docs/guides/observability/correlation-and-causation.md`) covering the OOTB guarantee, external caller integration, full propagation flow with sequence diagram, causation chain semantics, cross-service boundary handling, OTEL relationship and span attribute reference, Observatory viewing, and structured logging setup. Cross-references added to FastAPI integration, subscribers, logging, OpenTelemetry, Observatory, message enrichment, and message tracing guides.
-
-
-- Pre-commit framework hooks: ship `.pre-commit-hooks.yaml` so downstream projects can add `protean-check-staleness` (blocks commit if `.protean/ir.json` is stale) and `protean-check-compat` (blocks commit if breaking IR changes detected against a git baseline) as pre-commit hooks. Console script entry points `protean-check-staleness` and `protean-check-compat` registered in `pyproject.toml`.
-- Enhanced `protean ir diff` with auto-baseline and git support: when `--domain` is provided without `--left`/`--right`, automatically loads `.protean/ir.json` as the baseline and diffs against the live domain. New `--base <commit>` flag loads `.protean/ir.json` from any git commit via `git show`, enabling comparisons against `HEAD`, `main`, or any tag. CI-friendly exit codes: 0 (no changes), 1 (breaking changes), 2 (non-breaking changes only). New `load_ir_from_commit()` and `GitError` in `protean.ir.git` provide the git integration layer, exported from `protean.ir`.
-- IR staleness detection: `check_staleness(domain_module, protean_dir) -> StalenessResult` in `protean.ir.staleness` compares the live domain's IR checksum against the materialized `.protean/ir.json`. Returns a `StalenessResult` with `status` (`fresh`, `stale`, or `no_ir`) and both checksums. The `protean ir check` CLI command exposes this with `--domain`, `--dir`, `--format json|text`, and exit codes 0 (fresh), 1 (stale), 2 (no IR found). `StalenessResult`, `StalenessStatus`, and `check_staleness` are exported from `protean.ir`.
-- `classify_changes(diff_result, left_ir, right_ir) -> CompatibilityReport` in `protean.ir.diff` — walks all persisted/serialized IR sections (aggregates, entities, value objects, commands, events, database models, projections) and applies a comprehensive breaking-change ruleset: required field added without default → breaking, optional/defaulted field added → safe, field removed → breaking, field type changed → breaking, element removed → breaking, element added → safe, visibility public→internal → breaking, visibility internal→public → safe, `__type__` string changed → breaking. `CompatibilityChange` and `CompatibilityReport` dataclasses are exported from `protean.ir`.
-- Real-time SSE updates for Observatory Timeline: live event prepending via `handler.completed`/`outbox.published` trace events with position-based deduplication, new-event row highlight animation, "N new events — click to scroll to top" toast notification when scrolled down, and immediate stat card refresh on each trace event
-- Correlation chain and aggregate history sub-views for the Observatory Timeline page: vertical causation tree visualization for correlation chains, chronological aggregate event history with version labels, clickable correlation ID and stream name links in event detail panel, URL deep-linking (`/timeline?correlation={id}`, `/timeline?stream={category}&aggregate={id}`), and back-to-list navigation with browser history support
-- Observatory Timeline page: chronological event browser with filter bar (stream category, event type, aggregate ID, kind), cursor-based pagination with infinite scroll, event detail panel with full payload/metadata and correlation chain links, summary stat cards, deep-linking support, and `g→t` keyboard shortcut
-- OpenTelemetry integration documentation: comprehensive guide covering configuration, span catalog, metrics catalog, TraceParent propagation, FastAPI auto-instrumentation, APM setup guides (Jaeger, Grafana Tempo, Datadog), Observatory vs OTel positioning, and `/metrics` convergence
-- End-to-end integration tests for unified OTel span hierarchy and Observatory trace emission: validates complete span tree from command → handler → UoW → repository → event store, verifies parent-child relationships across all layers, confirms complementary (non-redundant) attributes at each span level, and ensures Observatory traces fire correctly alongside OTel spans both with telemetry enabled and disabled
-- OpenTelemetry SDK foundation with optional `telemetry` extra (`pip install protean[telemetry]`), `[telemetry]` configuration section, `telemetry.py` module for provider initialization, and `Domain.tracer`/`Domain.meter` lazy properties — graceful no-op when packages are not installed or telemetry is disabled
-- OpenTelemetry spans for command processing and handler dispatch: `protean.command.process` (with command type, id, stream, correlation_id attributes), `protean.command.enrich` (child span), `protean.handler.execute` (with handler name and type, covers command handlers, event handlers, projectors, and process managers), and `protean.query.dispatch` — with exception recording and ERROR status on handler failures
-- OpenTelemetry spans for infrastructure operations: `protean.uow.commit` (with event_count and session_count attributes), `protean.repository.add` and `protean.repository.get` (with aggregate type and provider attributes, covers both standard and event-sourced repositories), and `protean.event_store.append` (with stream, message_type, and position attributes) — all spans participate in the same trace as the originating command/query
-- OpenTelemetry spans for server subscriptions and outbox processor: `protean.engine.handle_message` (with handler name, message type/id, stream category, worker_id, and subscription_type attributes), `protean.outbox.process` (per batch with batch_size, processor_id, is_external, successful_count), and `protean.outbox.publish` (per message with message_id, stream_category, message_type) — with exception recording and ERROR status on failures, and parent-child span relationships between process and publish spans
-- Bridge W3C TraceParent headers with OpenTelemetry context propagation: `extract_context_from_traceparent()` and `inject_traceparent_from_context()` helpers in `telemetry.py`, context extraction in `Engine.handle_message()` and `CommandProcessor.process()` so processing spans parent under incoming traces, context injection in `CommandProcessor.enrich()` and `BaseAggregate.raise_()` so commands and events carry the active span's traceparent forward to downstream handlers
-- Auto-instrument FastAPI endpoints with OpenTelemetry via `instrument_app(app, domain)` in `protean.integrations.fastapi` — wraps `opentelemetry-instrumentation-fastapi` with domain-scoped tracer/meter providers so HTTP request spans automatically parent command processing spans through OTEL context propagation, with graceful no-op when telemetry is disabled or packages are not installed
-- OpenTelemetry metrics for domain operations: counters (`protean.command.processed`, `protean.handler.invocations`, `protean.uow.commits`, `protean.outbox.published`, `protean.outbox.failed`) and histograms (`protean.command.duration`, `protean.handler.duration`, `protean.uow.events_per_commit`, `protean.outbox.latency`) — instruments are cached per domain via `DomainMetrics` and use no-op fallbacks when OTel is not installed
-- Hybrid `/metrics` endpoint convergence: when `opentelemetry-exporter-prometheus` is installed and telemetry is enabled, the Observatory `/metrics` endpoint serves OTel-generated Prometheus text (via `PrometheusMetricReader`) with infrastructure metrics exposed as `ObservableGauge` callbacks; falls back to the original hand-rolled implementation when OTel is not available
-- Correlation chain and aggregate history API endpoints for the Observatory: `GET /api/timeline/correlation/{correlation_id}` (all events in a correlation chain with causation tree) and `GET /api/timeline/aggregate/{stream_category}/{aggregate_id}` (full event history for one aggregate instance with version info)
-- Event store timeline query API endpoints for the Observatory: `GET /api/timeline/events` (paginated, filterable event list from `$all` stream), `GET /api/timeline/events/{message_id}` (single event detail with full payload and metadata), and `GET /api/timeline/stats` (summary statistics including total events, active streams, and throughput)
-- JSON Schema generator (`protean.ir.generators.schema`) — pure functions that
-  convert IR element dicts into standard JSON Schema (Draft 2020-12) with
-  `x-protean-*` extension metadata for all data-carrying domain elements
-- Schema file writer (`protean.ir.generators.schema_writer`) — materializes
-  generated JSON Schemas to a `.protean/schemas/` directory tree with
-  cluster-aware grouping by aggregate, versioned filenames, and deterministic
-  output
-- `protean schema generate` CLI command — generates JSON Schema files for all
-  data-carrying elements from a live domain (`--domain`) or IR file (`--ir`),
-  writing to `.protean/schemas/` by default with configurable `--output`
-- `protean schema show` CLI command — displays the JSON Schema for a specific
-  element by name or FQN, with syntax-highlighted output (default) or raw JSON
-  (`--raw`) for piping
-- Meta-schema validation tests — all generated schemas validated against JSON
-  Schema Draft 2020-12 meta-schema
-- End-to-end payload validation tests — sample payloads validated against
-  generated schemas
-- ADR-0005: IR-first schema generation rationale
-- ADR-0006: Standard JSON Schema with `x-protean-*` extensions rationale
-- Schema generation user guide (`docs/guides/compose-a-domain/schema-generation.md`)
+- [CLI] Added `--fix` on the `protean-check-staleness` pre-commit hook, which regenerates stale IR and stages it with `git add`, so the commit goes through without a manual step.
+- [CLI] Both pre-commit hooks now read a `[domains]` section in `.protean/config.toml` that maps domain names to module paths, so one hook entry checks every bounded context, each with its own IR file.
+- [Observability] Added `protean.integrations.logging`, whose correlation filter and structlog processor inject `correlation_id` and `causation_id` into every log record, both wired by `domain.configure_logging()`.
+- [Observatory] `MessageTrace` and `TraceEmitter.emit()` now carry `correlation_id` and `causation_id`, so handler, process manager, outbox and ack trace events can be grouped and linked by correlation chain.
+- [Observability] Added `protean.correlation_id` and `protean.causation_id` attributes on the handler, Unit of Work commit and outbox spans, so a whole chain can be filtered by correlation id in an APM tool.
+- [Server] `DomainContextMiddleware` now reads `X-Correlation-ID`, falling back to `X-Request-ID`, as the default correlation id for command processing, and echoes the id it used on every response.
+- [Testing] Added end-to-end tests for correlation and causation propagation across a command, event, handler and projection chain, covering external ids, broker propagation and OTel span attributes.
+- [IR] Added deprecation support for elements and fields: a `deprecated` option on every element type and a `deprecated` parameter on fields, with `DEPRECATED_ELEMENT` and `DEPRECATED_FIELD` diagnostics in `protean check`.
+- [IR] Contract diffing is now deprecation-aware: it reads the declared removal version and classifies a removal as expected, premature or unexpected.
+- [IR] Added `.protean/config.toml` support for compatibility checking through `CompatConfig` and `load_config()`, covering strictness, excluded FQN patterns, minimum versions before removal and staleness.
+- [Docs] Added a compatibility checking guide covering the `.protean/` layout, the `config.toml` reference, the breaking-change rules, the CLI commands, pre-commit setup, CI patterns and the deprecation lifecycle.
+- [Docs] Added a guide to correlation and causation ids covering the out-of-the-box guarantee, external callers, the propagation flow, cross-service boundaries, the OTel relationship and structured logging.
+- [CLI] Added `.pre-commit-hooks.yaml` and the `protean-check-staleness` and `protean-check-compat` console scripts, so a downstream project can add either one as a pre-commit hook.
+- [IR] `protean ir diff` now loads `.protean/ir.json` as the baseline when only `--domain` is given, reads that baseline from any commit with `--base`, and exits 0, 1 or 2 for no, breaking or non-breaking changes.
+- [IR] Added `check_staleness()`, which compares the live domain's IR checksum against the materialized `.protean/ir.json`, exposed as `protean ir check` with fresh, stale and missing exit codes.
+- [IR] Added `classify_changes()`, which walks every persisted IR section and applies the breaking-change rules: a removal, a type change or a required field with no default breaks, an addition or a defaulted field is safe.
+- [Observatory] The Timeline page now updates live over SSE: a new event prepends with a highlight, a toast offers to scroll to the top when you are further down, and the stat cards refresh on each trace event.
+- [Observatory] Added correlation chain and aggregate history sub-views on the Timeline page, with a causation tree, a version-labelled aggregate history, clickable ids, deep links and back navigation.
+- [Observatory] Added the Timeline page, a chronological event browser with filters, cursor-based pagination, an event detail panel, summary stat cards, deep links and a `g→t` keyboard shortcut.
+- [Docs] Added an OpenTelemetry guide covering configuration, the span and metric catalogs, TraceParent propagation, FastAPI auto-instrumentation, APM setup, and how the Observatory and OTel relate.
+- [Testing] Added end-to-end tests for the span hierarchy from command to handler to Unit of Work to repository to event store, checking the parent-child links and that Observatory traces fire alongside.
+- [Observability] Added the OpenTelemetry foundation: an optional `telemetry` extra, a `[telemetry]` config section, and lazy `Domain.tracer` and `Domain.meter`, all no-ops when the packages are absent.
+- [Observability] Added spans for command processing and handler dispatch, covering command handlers, event handlers, projectors and process managers, with the exception recorded and an ERROR status on failure.
+- [Observability] Added spans for infrastructure work: Unit of Work commits, repository `add` and `get` on both standard and event-sourced repositories, and event store appends, all in the originating trace.
+- [Observability] Added spans for subscriptions and the outbox processor, per message and per batch, with exceptions recorded and a parent-child link between a batch and the messages it publishes.
+- [Observability] W3C TraceParent headers now bridge to OpenTelemetry context: an incoming trace parents the processing span, and outgoing commands and events carry the active span's traceparent forward.
+- [Observability] Added `instrument_app(app, domain)` in `protean.integrations.fastapi`, which instruments FastAPI with domain-scoped providers so an HTTP request span parents the command processing span.
+- [Observability] Added OpenTelemetry metrics for domain operations: counters for commands, handler invocations, commits and outbox publishes, and histograms for command, handler and outbox latency.
+- [Observatory] The `/metrics` endpoint now serves OTel-generated Prometheus text when the Prometheus exporter is installed and telemetry is on, and falls back to the hand-rolled implementation otherwise.
+- [Observatory] Added correlation chain and aggregate history API endpoints, returning every event in a chain with its causation tree, and the full event history of one aggregate instance with versions.
+- [Observatory] Added event store timeline API endpoints: a paginated, filterable list from the `$all` stream, one event's full detail, and summary statistics for events, active streams and throughput.
+- [IR] Added a JSON Schema generator that converts IR element dicts into Draft 2020-12 schemas, with `x-protean-*` extension metadata, for every data-carrying element.
+- [IR] Added a schema file writer that materializes the generated schemas into `.protean/schemas/`, grouped by aggregate cluster, with versioned filenames and deterministic output.
+- [CLI] Added `protean schema generate`, which writes JSON Schema files for every data-carrying element from a live domain or an IR file, to `.protean/schemas/` by default.
+- [CLI] Added `protean schema show`, which prints one element's JSON Schema by name or FQN, syntax-highlighted by default and raw with `--raw` for piping.
+- [Testing] Added meta-schema validation of every generated schema against JSON Schema Draft 2020-12, and payload validation tests that check sample payloads against the generated schemas.
+- [Docs] Added ADR-0005 on IR-first schema generation and ADR-0006 on standard JSON Schema with `x-protean-*` extensions, alongside a schema generation guide.
 
 </details>
 
 <p class="pt-changelog-group">Changed</p>
 
-- Documentation now positions `to_dict()` as the only recommended serialization method for domain elements and warns against using Pydantic's `model_dump()` directly, which does not handle Reference fields, shadow fields, or datetime conversion correctly. Pydantic methods are hidden from generated API docs.
+- [Docs] The documentation now names `to_dict()` as the only recommended way to serialize a domain element and warns against Pydantic's `model_dump()`, which mishandles Reference fields, shadow fields and datetimes.
+- [Fields] **Breaking.** A status field's self-transition is now checked against the transition map: assigning a status its current value is rejected unless the state lists itself as a target, and a terminal state rejects it too.
 
-- Status field self-transitions are now validated against the transition map instead of being silently allowed. Assigning a status to its current value is rejected unless the state lists itself as a target (e.g., `CANCELLED: [CANCELLED]`). This catches re-entry bugs at the framework level and makes idempotent operations explicit in the transition declaration. Terminal states also reject self-assignment.
+<p class="pt-changelog-group">Fixed</p>
+
+- [Database] Fixed persistence ordering in `BaseRepository`: the aggregate root is saved before its children and children before grandchildren, so a database that enforces foreign keys immediately accepts the writes.
+- [Docs] The pre-commit documentation now recommends `repo: local` with `language: system`, since the hooks call `derive_domain()`, which imports user code that pre-commit's isolated virtualenv does not have.
+- [CLI] Fixed unreadable handler wiring and event flow diagrams by splitting them into one diagram per concern in the Markdown output. (#821)
+- [CLI] Fixed Mermaid parse errors in cluster diagrams when an invariant name contains a comma or is left unquoted.
+- [Database] Fixed `TypeError: can't compare offset-naive and offset-aware datetimes` in outbox retry, which blocked all outbox processing; a naive datetime from an adapter is now normalized before comparison.
+- [Testing] Fixed the flaky `test_mixed_error_scenarios` by raising the test-mode processing cycles from 3 to 10, so every subscription type has time to process its messages under CI load.
+- [Events] An external broker message's `correlation_id` now reaches the commands a subscriber dispatches, and a fresh id is generated when the message carries none, so the cross-service chain survives.
+- [Internals] `CommandProcessor.process()` now saves and restores the outer `g.message_in_context` instead of clearing it, so a subscriber dispatching several commands in one handler no longer loses the correlation id.
 
 </div>
 </div>
