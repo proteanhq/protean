@@ -734,8 +734,14 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
 }
 .pt-changelog-release:first-child { border-top: 0; padding-top: 0.5rem; }
 
-/* The version stays in view while a long release scrolls past it. */
-.pt-changelog-meta { position: sticky; top: 4rem; align-self: start; }
+/* The version stays in view while a long release scrolls past it. The offset
+   follows Material's own sticky sidebars: the header alone is 2.4rem, and the
+   sticky tabs row lifts it to 4.8rem on a wide screen. 1.2rem of air on top of
+   that keeps the pill off the bar. */
+.pt-changelog-meta { position: sticky; top: 3.6rem; align-self: start; }
+@media screen and (min-width: 76.25em) {
+  .md-header--lifted ~ .md-container .pt-changelog-meta { top: 6rem; }
+}
 
 /* The version heading is the pill; it is also the only h2 on the page, so the
    right-rail table of contents reads as a version picker. */
