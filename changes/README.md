@@ -22,7 +22,13 @@ One or two lines, written from the user's perspective:
 Add deprecation lifecycle (`deprecated={"since": "0.15", "removal": "0.18"}`) for domain elements and fields
 ```
 
-See `CHANGELOG.md` for style examples.
+A fragment is a draft. `/changelog` rewrites it to the shipped style when it
+assembles the release: one sentence of 75 to 300 characters, a scope tag such as
+`[CLI]` or `[Event store]` at the front, the issue number at the end, exact
+command and flag names kept, and the mechanism cut. Writing the fragment that
+way already saves the rewrite. The style is set out in full in
+`.claude/skills/changelog/SKILL.md`, and 0.18.0 in `CHANGELOG.md` is the worked
+example.
 
 ## Breaking changes
 
