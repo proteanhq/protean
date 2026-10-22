@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-21
+
 ### Upgrade Notes
 
 Read the [0.18 migration guide](https://docs.proteanhq.com/reference/migration/v0-18/) before you upgrade. These changes can need action, in the order the guide covers them:
@@ -1252,7 +1254,8 @@ Every runnable example in the docs now lives in `docs_src`, and a test runs it a
 - Derive SQLAlchemy field types correctly for embedded value object fields
 - Elasticsearch adapter bugfixes and model enhancements
 
-[Unreleased]: https://github.com/proteanhq/protean/compare/v0.17.1...HEAD
+[Unreleased]: https://github.com/proteanhq/protean/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/proteanhq/protean/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/proteanhq/protean/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/proteanhq/protean/compare/v0.16.3...v0.17.0
 [0.16.3]: https://github.com/proteanhq/protean/compare/v0.16.2...v0.16.3
