@@ -146,6 +146,7 @@ nav:
 
   - Getting Started:
     - guides/getting-started/installation.md
+    - Changelog: changelog.md
     - "Hello, Protean!": guides/getting-started/hello.md
     - guides/getting-started/quickstart.md
     - Tutorial:

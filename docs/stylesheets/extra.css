@@ -715,3 +715,93 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
   margin-left: 0.25rem;
 }
 .doc-contents { max-width: 100%; }
+
+/* --------------------------------------------------------------------------
+   Changelog page
+   -------------------------------------------------------------------------- */
+
+/* The page needs more room than the 46rem reading column, because each release
+   puts its version beside its changes. Scoped by :has() so no other page
+   widens. */
+.md-content:has(.pt-changelog) { max-width: 60rem; }
+
+.pt-changelog-release {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 0 2rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--pt-hairline);
+}
+.pt-changelog-release:first-child { border-top: 0; padding-top: 0.5rem; }
+
+/* The version stays in view while a long release scrolls past it. */
+.pt-changelog-meta { position: sticky; top: 4rem; align-self: start; }
+
+/* The version heading is the pill; it is also the only h2 on the page, so the
+   right-rail table of contents reads as a version picker. */
+.md-typeset .pt-changelog-meta h2 {
+  display: inline-block;
+  margin: 0;
+  padding: 0.15em 0.6em;
+  font-family: var(--pt-mono);
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.6;
+  border: 1px solid var(--pt-hairline);
+  border-radius: 999px;
+  background-color: var(--md-default-bg-color--light);
+}
+.md-typeset .pt-changelog-date {
+  margin: 0.45rem 0 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--pt-label);
+}
+
+/* Group names are paragraphs, not headings, to keep the table of contents to
+   versions alone. */
+.md-typeset .pt-changelog-group {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color);
+}
+.md-typeset .pt-changelog-body > .pt-changelog-group:first-child { margin-top: 0; }
+.md-typeset .pt-changelog-body > ul { margin-top: 0; }
+.md-typeset .pt-changelog-body > ul > li { margin-bottom: 0.35rem; }
+
+/* A long group collapses behind its count. The summary reads as part of the
+   list it opens, not as another admonition. */
+.md-typeset .pt-changelog-fold {
+  margin: 0 0 0.4rem;
+  border: 0;
+  border-left: 2px solid var(--md-default-fg-color--lightest);
+  border-radius: 0;
+  box-shadow: none;
+  font-size: inherit;
+}
+.md-typeset .pt-changelog-fold > summary {
+  padding: 0.1rem 0 0.1rem 0.7rem;
+  background: none;
+  border-radius: 0;
+  font-size: 0.75rem;
+  color: var(--md-default-fg-color--light);
+}
+.md-typeset .pt-changelog-fold > summary::before { display: none; }
+.md-typeset .pt-changelog-fold > summary::after {
+  top: 0.25rem;
+  left: auto;
+  right: auto;
+  width: 0.9rem;
+  height: 0.9rem;
+}
+.md-typeset .pt-changelog-fold[open] > summary { margin-bottom: 0.4rem; }
+.md-typeset .pt-changelog-fold > ul { margin-left: 0.7rem; }
+
+@media screen and (max-width: 76.1875em) {
+  .pt-changelog-release { grid-template-columns: 1fr; gap: 0.75rem; }
+  .pt-changelog-meta { position: static; }
+}
