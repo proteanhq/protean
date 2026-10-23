@@ -10,14 +10,14 @@ practices and metrics behind the framework.
 
 | Metric | Value |
 |---|---|
-| **Tests** | 16,607 |
+| **Tests** | 20,712 |
 | **Test-to-Code Ratio** | 2.7:1 |
 | **Linting Violations** | 0 (Ruff) |
 | **Avg Cyclomatic Complexity** | 3.38 (A grade) |
 | **Maintainability Index** | A rank (95% of files) |
 | **Python Versions** | 3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease |
-| **CI Backing Services** | PostgreSQL, Redis, Elasticsearch, MessageDB, MSSQL |
-| **Releases** | 46 |
+| **CI Backing Services** | PostgreSQL, Redis, Elasticsearch, MessageDB, MSSQL, MySQL, MariaDB, SQLite |
+| **Releases** | 55 |
 | **Project Age** | Since July 2018 |
 | **License** | Apache 2.0 |
 
@@ -44,11 +44,11 @@ not pinned; what is pinned is that there is only **one place to change**.
 
 | Metric | Count |
 |---|---|
-| Total Tests | 16,607 |
-| Test Functions | 18,026 |
-| Test Classes | 3,315 |
-| Pytest Fixtures | 1,446 |
-| Parametrized Tests | 511 |
+| Total Tests | 20,712 |
+| Test Functions | 18,246 |
+| Test Classes | 3,338 |
+| Pytest Fixtures | 1,461 |
+| Parametrized Tests | 543 |
 
 ### Core vs. Integration
 
@@ -63,7 +63,7 @@ real databases and message brokers.
 
 ### Infrastructure Coverage
 
-Every commit is tested against real backing services:
+Every merge to `main` is tested against real backing services:
 
 | Technology | Marked Tests |
 |---|---|

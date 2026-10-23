@@ -117,12 +117,13 @@ built for, and the shapes of systems it is not.
 
 <div class="grid cards" markdown>
 
-- __:material-test-tube: 16,000+ tests__
+- __:material-test-tube: 20,000+ tests__
 
     ---
 
-    About three lines of test per line of code. Every commit runs against
-    PostgreSQL, Redis, Elasticsearch, MessageDB, and SQL Server.
+    About three lines of test per line of code. Every pull request runs
+    PostgreSQL, Redis and each adapter it touches; every merge to `main` runs
+    all eight databases and brokers.
 
 - __:material-check-decagram: Zero lint violations__
 

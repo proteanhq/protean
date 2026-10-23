@@ -68,7 +68,7 @@ the root's `_version`.
 | Adapter | Ordering (no `order_by`) | Write atomicity / visibility | OCC & consistency | Isolation / concurrency model |
 |---|---|---|---|---|
 | **Memory** | Insertion order (not a promise) | Copy-on-write session; visible at commit; `rollback()` discards the session's pending changes | Real OCC: commit is a compare-and-set that re-checks the version against the live store under the provider lock and merges per record; a stale write raises `ExpectedVersionError` (see below) | Single process; per-provider lock (no MVCC) |
-| **SQLAlchemy** (PostgreSQL / MSSQL) | No guaranteed order | One real transaction per UoW (read-committed engine, `autoflush=True`, [ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)); all writes commit or roll back atomically, and an in-UoW read sees the UoW's own pending writes | OCC via `version_id_col` → `UPDATE … WHERE _version = :expected`; a zero-row match raises `ExpectedVersionError` | **READ COMMITTED or stronger** (see below) |
+| **SQLAlchemy** (PostgreSQL / MSSQL / MySQL / MariaDB) | No guaranteed order | One real transaction per UoW (read-committed engine, `autoflush=True`, [ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)); all writes commit or roll back atomically, and an in-UoW read sees the UoW's own pending writes | OCC via `version_id_col` → `UPDATE … WHERE _version = :expected`; a zero-row match raises `ExpectedVersionError` | **READ COMMITTED or stronger** (see below) |
 | **SQLAlchemy** (SQLite) | No guaranteed order | Session autoflushes; write visible in-session | Same `version_id_col` OCC | Writers serialized; a contended write raises `SQLITE_BUSY` (no READ COMMITTED level) |
 | **Elasticsearch** | No guaranteed order | No multi-document transaction; each write forced `refresh=True` | OCC via `if_seq_no` / `if_primary_term`; a 409 conflict raises `ExpectedVersionError` | None (no transactions) |
 
@@ -77,7 +77,7 @@ given provider* shares one session, and a read sees the UoW's own uncommitted
 writes.
 
 - **Memory / SQLite**: All reads see the UoW's own uncommitted writes.
-- **PostgreSQL / MSSQL**: The UoW is a real transaction with `autoflush=True`
+- **PostgreSQL / MSSQL / MySQL / MariaDB**: The UoW is a real transaction with `autoflush=True`
   ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)), so all reads
   (`filter` / `count` / `exists` / `get`) inside the UoW see the UoW's own pending
   writes, and in-UoW uniqueness validation sees them too. On a rollback none of it
@@ -89,7 +89,7 @@ writes.
 
 Across UoW boundaries, relational adapters see only committed state.
 
-!!! note "UoW atomicity on PostgreSQL/MSSQL"
+!!! note "UoW atomicity on PostgreSQL, MSSQL, MySQL and MariaDB"
     Each UoW is one real database transaction
     ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)), so its
     relational writes commit or roll back as a unit: a childless aggregate, a
@@ -129,12 +129,13 @@ database, so aggregate-level concurrency tests can run against it.
 Some adapters are incidentally stable (SQLAlchemy appends `ORDER BY <pk> ASC`,
 Memory preserves insertion order); do not rely on it. Pass `order_by`.
 
-**Isolation (the OCC floor).** On PostgreSQL / MSSQL the lost-update fix
+**Isolation (the OCC floor).** On PostgreSQL, MSSQL, MySQL and MariaDB the lost-update fix
 ([ADR-0013](../adr/0013-optimistic-concurrency-and-claim-contract.md)) relies on
 the write being a single conditional `UPDATE` whose `WHERE _version = :expected`
 predicate is re-evaluated under the row lock against committed state. That is
-atomic at **READ COMMITTED**, the default on both; Protean runs the engine at
-read-committed ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)) and
+atomic at **READ COMMITTED**, the default on PostgreSQL and MSSQL. MySQL and
+MariaDB default to REPEATABLE READ, so their provider opens the engine at READ
+COMMITTED. Protean runs every engine at read-committed ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)) and
 requires nothing stronger. Running below READ COMMITTED is unsupported. SQLite has no READ COMMITTED level: it serializes writers and a
 contended write raises `SQLITE_BUSY` rather than losing one.
 

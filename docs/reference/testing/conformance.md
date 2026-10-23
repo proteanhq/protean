@@ -232,10 +232,15 @@ to pass them.
 
 Follow these steps to validate your custom adapter:
 
-### 1. Install Protean
+### 1. Install Protean from source
+
+The conformance suites are tests in the Protean repository, so the wheel that
+`pip install protean` fetches does not include them. Install from a source
+checkout:
 
 ```bash
-pip install protean
+git clone https://github.com/proteanhq/protean.git
+pip install -e ./protean
 ```
 
 ### 2. Create `conftest.py`
