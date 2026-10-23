@@ -169,9 +169,11 @@ process manager.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch08.py:full"
-```
+??? example "ch08.py, 315 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch08.py:full"
+    ```
 
 ## Next
 

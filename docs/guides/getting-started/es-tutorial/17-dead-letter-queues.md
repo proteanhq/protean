@@ -146,9 +146,11 @@ fill the DLQ.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch17.py:full"
-```
+??? example "ch17.py, 162 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch17.py:full"
+    ```
 
 ## Next
 

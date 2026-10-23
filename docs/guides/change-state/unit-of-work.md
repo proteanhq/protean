@@ -342,7 +342,7 @@ arrives as a `TransactionError`, with the `ExpectedVersionError` as its
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Related guides:**
 
     - [Persist Aggregates](./persist-aggregates.md): Save and update aggregates through repositories.

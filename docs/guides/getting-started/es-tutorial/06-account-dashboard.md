@@ -90,9 +90,11 @@ but trigger external actions.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch06.py:full"
-```
+??? example "ch06.py, 284 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch06.py:full"
+    ```
 
 ## Next
 

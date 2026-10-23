@@ -120,7 +120,7 @@ with the same arguments.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Related guides:**
 
     - [Event Upcasting](../consume-state/event-upcasting.md): Transform historical event schemas during replay.

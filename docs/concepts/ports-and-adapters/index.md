@@ -201,7 +201,7 @@ initialization procedure immediately halts and exits with an error message:
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     - [Adapter Configuration Reference](../../reference/adapters/index.md): Available adapters and their configuration options.
     - [Configuration Reference](../../reference/configuration/index.md): How to configure adapters in `domain.toml`.
     - [Building Custom Database Adapters](../../reference/adapters/database/custom-databases.md): Step-by-step guide for third-party database adapters.

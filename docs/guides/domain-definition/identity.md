@@ -222,7 +222,7 @@ defer identity generation to the database.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Identity](../../concepts/foundations/identity.md): Why identity is fundamental to DDD and what makes an identity stable.
 
     **Pattern:** [Creating Identities Early](../../patterns/creating-identities-early.md): Why Protean generates identities at construction time.

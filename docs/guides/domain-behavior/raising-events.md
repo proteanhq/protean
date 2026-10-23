@@ -185,7 +185,7 @@ name.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Events](../../concepts/building-blocks/events.md): Domain events and their role in system communication.
 
     **Related guides:**

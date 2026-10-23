@@ -83,7 +83,7 @@ through command handlers to HTTP responses.
 
 [Learn more about error handling →](error-handling.md)
 
-!!! tip "See also"
+!!! seealso "See also"
     For design guidance and trade-offs, see the
     [Patterns & Recipes](../../patterns/index.md) section, particularly
     [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md),

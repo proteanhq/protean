@@ -93,7 +93,7 @@ type, so `Customer` above uses `CustomerSearchModel` on Elasticsearch and
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     - [Adapters Reference](../../reference/adapters/index.md): Provider-specific
       configuration and field types.
     - [Custom Databases](../../reference/adapters/database/custom-databases.md):

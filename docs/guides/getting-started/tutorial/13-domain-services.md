@@ -174,9 +174,11 @@ using a subscriber.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch13.py:full"
-```
+??? example "ch13.py, 253 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch13.py:full"
+    ```
 
 ## Next
 

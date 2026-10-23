@@ -125,9 +125,11 @@ handler bug that fills the dead-letter queue.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch16.py:full"
-```
+??? example "ch16.py, 266 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch16.py:full"
+    ```
 
 ## Next
 

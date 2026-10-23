@@ -184,7 +184,7 @@ its transitions independently:
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Reference:** [Status field](../../reference/fields/simple-fields.md#status): Field options and argument details.
 
     **Related guides:**

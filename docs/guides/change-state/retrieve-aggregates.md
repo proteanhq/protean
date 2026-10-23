@@ -698,7 +698,7 @@ for choosing what to index.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Repositories](../../concepts/building-blocks/repositories.md): The role of repositories in DDD and how Protean implements the pattern.
 
     **Related guides:**

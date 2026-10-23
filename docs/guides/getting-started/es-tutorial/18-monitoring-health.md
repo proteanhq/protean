@@ -125,9 +125,11 @@ without disrupting production.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch18.py:full"
-```
+??? example "ch18.py, 215 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch18.py:full"
+    ```
 
 ## Next
 

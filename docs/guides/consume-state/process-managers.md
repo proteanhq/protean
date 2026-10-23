@@ -339,7 +339,7 @@ PM's state when loading.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Process Managers](../../concepts/building-blocks/process-managers.md): Why process managers exist, when to use them vs. event handlers, and how the event chain works.
 
     **Patterns:**

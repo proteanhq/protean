@@ -169,9 +169,11 @@ building a rich storefront.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch20.py:full"
-```
+??? example "ch20.py, 352 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch20.py:full"
+    ```
 
 ## Next
 

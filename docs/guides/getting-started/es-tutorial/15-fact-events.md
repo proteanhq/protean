@@ -83,9 +83,11 @@ events triggered by a suspicious deposit.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch15.py:full"
-```
+??? example "ch15.py, 275 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch15.py:full"
+    ```
 
 ## Next
 

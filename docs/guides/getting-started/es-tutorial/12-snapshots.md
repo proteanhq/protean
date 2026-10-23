@@ -121,9 +121,11 @@ point.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch12.py:full"
-```
+??? example "ch12.py, 257 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch12.py:full"
+    ```
 
 ## Next
 

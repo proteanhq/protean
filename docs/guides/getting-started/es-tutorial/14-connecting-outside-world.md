@@ -115,9 +115,11 @@ system.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch14.py:full"
-```
+??? example "ch14.py, 340 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch14.py:full"
+    ```
 
 ## Next
 

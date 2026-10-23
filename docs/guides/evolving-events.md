@@ -305,7 +305,7 @@ The throughline: **declare** your evolution (`renamed_from`, `__version__`,
 `events catalog`, `schema generate`, and `ir diff` show you (and your registry,
 and your CI) exactly what changed and whether it is safe.
 
-!!! tip "See also"
+!!! seealso "See also"
     - [Event Upcasting](consume-state/event-upcasting.md): The upcaster mechanism in depth.
     - [Compatibility Checking](compatibility-checking.md): Pre-commit hooks, CI gating, strictness.
     - [Schema Generation](compose-a-domain/schema-generation.md): JSON / Avro / Protobuf output.

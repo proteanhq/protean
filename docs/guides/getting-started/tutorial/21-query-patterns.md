@@ -121,9 +121,11 @@ architecture.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch21.py:full"
-```
+??? example "ch21.py, 223 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch21.py:full"
+    ```
 
 ## Next
 

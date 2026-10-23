@@ -148,7 +148,7 @@ details on the `raise_()` + `@apply` integration.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md): Aggregate consistency, invariants, and state management.
 
     **Related guides:**

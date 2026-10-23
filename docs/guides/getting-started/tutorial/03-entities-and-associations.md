@@ -100,9 +100,11 @@ valid state.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch03.py:full"
-```
+??? example "ch03.py, 148 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch03.py:full"
+    ```
 
 ## Next
 

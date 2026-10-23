@@ -182,7 +182,7 @@ are enriched automatically.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Related guides:**
 
     - [Message Tracing](message-tracing.md): Correlation and causation IDs for distributed tracing, plus the programmatic causation chain API

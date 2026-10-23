@@ -293,7 +293,7 @@ from different external systems, a payment gateway and a shipping provider:
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Subscribers](../../concepts/building-blocks/subscribers.md): Anti-corruption layer for external message consumption.
 
     **Patterns:**

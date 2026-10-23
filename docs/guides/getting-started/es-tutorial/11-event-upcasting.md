@@ -105,9 +105,11 @@ no data rewriting, no migration scripts.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch11.py:full"
-```
+??? example "ch11.py, 288 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch11.py:full"
+    ```
 
 ## Next
 

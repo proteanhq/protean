@@ -100,9 +100,11 @@ query.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch13.py:full"
-```
+??? example "ch13.py, 286 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch13.py:full"
+    ```
 
 ## Next
 

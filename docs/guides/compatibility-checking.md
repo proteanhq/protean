@@ -302,7 +302,7 @@ For the full CLI reference, see [`protean ir`](../reference/cli/ir.md).
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     - [Compatibility Reference](../reference/compatibility/index.md):
       Breaking change rules, three-tier taxonomy, deprecation lifecycle,
       and config key reference.

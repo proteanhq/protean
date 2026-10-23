@@ -133,9 +133,11 @@ testing DSL.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch04.py:full"
-```
+??? example "ch04.py, 246 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch04.py:full"
+    ```
 
 ## Next
 

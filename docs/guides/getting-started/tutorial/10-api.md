@@ -110,9 +110,11 @@ far, domain logic, command flows, and API endpoints.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/bookshelf/api.py:full"
-```
+??? example "api.py, 116 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/bookshelf/api.py:full"
+    ```
 
 ## Next
 

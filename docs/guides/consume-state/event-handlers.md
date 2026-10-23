@@ -384,7 +384,7 @@ def handle_error(cls, exc: Exception, message):
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Event Handlers](../../concepts/building-blocks/event-handlers.md): How event handlers consume and react to domain events.
 
     **Related guides:**

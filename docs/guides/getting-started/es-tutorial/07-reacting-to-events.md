@@ -106,9 +106,11 @@ switch to asynchronous processing with Redis and the Protean server.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch07.py:full"
-```
+??? example "ch07.py, 270 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch07.py:full"
+    ```
 
 ## Next
 

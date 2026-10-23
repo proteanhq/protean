@@ -125,9 +125,11 @@ protect the aggregate from invalid state transitions.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch03.py:full"
-```
+??? example "ch03.py, 194 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch03.py:full"
+    ```
 
 ## Next
 

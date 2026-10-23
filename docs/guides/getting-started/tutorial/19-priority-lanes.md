@@ -104,9 +104,11 @@ starting with process managers.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch19.py:full"
-```
+??? example "ch19.py, 88 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch19.py:full"
+    ```
 
 ## Next
 

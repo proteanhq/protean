@@ -63,6 +63,6 @@ When event schemas evolve, upcasters transform old event versions to match the c
 
 [Learn more about event upcasting →](./event-upcasting.md)
 
-!!! tip "See also"
+!!! seealso "See also"
     [Stream Categories](../../concepts/async-processing/stream-categories.md):
     how messages are organized and routed through named streams.

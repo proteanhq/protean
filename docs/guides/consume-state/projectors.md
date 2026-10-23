@@ -311,7 +311,7 @@ Test the complete flow by raising events from aggregates:
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overviews:**
 
     - [Projections](../../concepts/building-blocks/projections.md): Read-optimized views in CQRS.

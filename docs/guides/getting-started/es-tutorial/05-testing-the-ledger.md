@@ -151,9 +151,11 @@ coordination.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch05.py:full"
-```
+??? example "ch05.py, 295 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch05.py:full"
+    ```
 
 ## Next
 
