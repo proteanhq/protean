@@ -12,6 +12,7 @@ from protean.exceptions import (
 from protean.fields.resolved import convert_pydantic_errors
 from protean.utils import (
     DomainObjects,
+    _check_part_of_kind,
     _derive_element_class,
     _ensure_template_dict,
     fqn,
@@ -52,7 +53,7 @@ class BaseCommand(BaseMessageType):
 
     | Option | Type | Description |
     |--------|------|-------------|
-    | ``part_of`` | ``type`` | The aggregate class this command targets. Required. |
+    | ``part_of`` | ``type`` | The aggregate or process manager this command targets. Required. |
     | ``version`` | ``int`` | Message version number (alternative to ``__version__`` class attribute). Default ``1``. |
     """
 
@@ -305,5 +306,7 @@ def command_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]
         raise IncorrectUsageError(
             f"Command `{command_cls.__name__}` needs to be associated with an aggregate or a stream"
         )
+
+    _check_part_of_kind(command_cls)
 
     return element_cls

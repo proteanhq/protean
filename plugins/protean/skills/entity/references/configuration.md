@@ -17,7 +17,7 @@ Entity configuration controls:
 
 Associates the entity with an aggregate. This is the only required configuration option.
 
-**Use a string reference to the aggregate** to avoid circular dependencies. A nested entity is the exception: its `part_of` is the parent entity, passed as a class, because a string resolves only to an aggregate (see [Nested Entities](nested-entities.md)).
+**Use a string reference to the aggregate** to avoid circular dependencies. A nested entity's `part_of` is its parent entity, as a class or a string (see [Nested Entities](nested-entities.md)).
 
 ```python
 from decimal import Decimal as D  # stdlib Decimal, aliased so it does not clash with the field

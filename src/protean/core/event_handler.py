@@ -61,7 +61,7 @@ import logging
 from typing import Any, ClassVar, Self, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.utils import DomainObjects, _derive_element_class
+from protean.utils import DomainObjects, _check_part_of_kind, _derive_element_class
 from protean.utils.container import DerivedDefault, Element, OptionsMixin
 from protean.utils.mixins import HandlerMixin
 
@@ -124,14 +124,17 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
         # stream_category cannot be derived here; the ElementResolver fills it
         # in once the reference is resolved. This default is only consulted when
         # ``stream_category`` is unset, by which point ``part_of`` has already
-        # been resolved onto ``meta_``.
+        # been resolved onto ``meta_``. A class that is not an aggregate is
+        # skipped here so that the factory can reject it with a clear message.
         (
             "stream_category",
             DerivedDefault(
                 lambda cls: (
                     cls.meta_.part_of.meta_.stream_category
-                    if getattr(cls.meta_, "part_of", None)
-                    and not isinstance(cls.meta_.part_of, str)
+                    if getattr(
+                        getattr(cls.meta_, "part_of", None), "element_type", None
+                    )
+                    == DomainObjects.AGGREGATE
                     else None
                 )
             ),
@@ -170,5 +173,7 @@ def event_handler_factory(element_cls: type[_T], domain: Any, **opts: Any) -> ty
         raise IncorrectUsageError(
             f"Event Handler `{element_cls.__name__}` needs to be associated with an aggregate or a stream"
         )
+
+    _check_part_of_kind(element_cls)
 
     return element_cls

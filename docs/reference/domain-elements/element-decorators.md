@@ -82,7 +82,7 @@ accessed through their parent aggregate and cannot exist independently.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| **`part_of`** | — | **Required.** Parent aggregate class |
+| **`part_of`** | — | **Required.** Parent aggregate class, or the parent entity for a nested entity |
 | `auto_add_id_field` | `True` | Auto-adds an `id` identity field |
 | `indexes` | `()` | List of [`Index`](indexes.md) declarations for the persistence layer |
 | `provider` | `"default"` | Database provider name |
@@ -100,7 +100,7 @@ Two instances with the same attributes are equal.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `abstract` | `False` | Cannot be instantiated when `True` |
-| `part_of` | `None` | Owning aggregate or entity (optional) |
+| `part_of` | `None` | Owning aggregate (optional) |
 
 Guide: [Value Objects](../../guides/domain-definition/value-objects.md)
 
@@ -127,7 +127,7 @@ with imperative verbs (`PlaceOrder`, `RegisterUser`).
 | Option | Default | Description |
 |--------|---------|-------------|
 | `abstract` | `False` | Cannot be instantiated when `True` |
-| **`part_of`** | — | **Required.** Target aggregate class |
+| **`part_of`** | — | **Required.** Target aggregate or process manager class |
 | `version` | `1` | Schema version (positive integer). Also settable via a `__version__` class attribute, see [Events](#domainevent) |
 | `lenient` | `None` | Overrides the domain's `lenient_deserialization` for this class. `True` drops unknown fields when reading an old message instead of raising; `None` follows the domain setting |
 
@@ -146,7 +146,7 @@ past tense (`OrderPlaced`, `CustomerRegistered`).
 | Option | Default | Description |
 |--------|---------|-------------|
 | `abstract` | `False` | Cannot be instantiated when `True` |
-| **`part_of`** | — | **Required.** Aggregate that raises this event |
+| **`part_of`** | — | **Required.** Aggregate or process manager that raises this event |
 | `version` | `1` | Schema version (positive integer). Feeds the `vN` suffix of the event's type string |
 | `deprecated` | `None` | Marks the event deprecated. A dict `{"since": ..., "removal": ...}` recording the deprecation and planned removal versions |
 | `superseded_by` | `None` | Names the replacement event (an Event class or a string). Raising a deprecated event emits a `DeprecationWarning` naming it |
