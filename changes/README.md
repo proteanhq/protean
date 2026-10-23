@@ -22,7 +22,14 @@ One or two lines, written from the user's perspective:
 Add deprecation lifecycle (`deprecated={"since": "0.15", "removal": "0.18"}`) for domain elements and fields
 ```
 
-See `CHANGELOG.md` for style examples.
+A fragment is a draft. `/changelog` rewrites it to the shipped style when it
+assembles the release: one sentence of 75 to 300 characters, a scope tag such as
+`[CLI]` or `[Event store]` at the front, the issue number at the end, exact
+command and flag names kept, and the mechanism cut. Writing the fragment that
+way already saves the rewrite. The style, the scope tags and the release-time
+rules are set out in
+[Writing the Changelog](https://docs.proteanhq.com/community/contributing/changelog/),
+and 0.18.0 in `CHANGELOG.md` is the worked example.
 
 ## Breaking changes
 
@@ -38,6 +45,10 @@ instead of an integer. Anything parsing it as a number needs updating.
 
 `tests/test_changelog_fragments.py` enforces both halves: a declared break needs
 the `**Migration:**` line, and the anchor it names has to exist in that guide.
+
+The `**Migration:**` line belongs to the fragment, not to the shipped entry. At
+assembly it becomes a link in the release's `### Upgrade Notes` block, and the
+entry keeps only its `**Breaking.**` marker.
 
 **Keep the category honest.** A behaviour change that is genuinely a bug fix
 stays under `fixed`; the `**Breaking.**` marker is what stops an upgrader

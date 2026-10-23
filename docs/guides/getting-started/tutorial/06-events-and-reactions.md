@@ -154,9 +154,11 @@ book catalog. The read side of CQRS.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch06.py:full"
-```
+??? example "ch06.py, 301 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch06.py:full"
+    ```
 
 ## Next
 

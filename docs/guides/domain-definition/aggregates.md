@@ -333,7 +333,7 @@ The `Reference` field (`comment.post`) provides access to the full parent object
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md): What aggregates are, their core properties, and why they matter.
 
     **Decision guidance:** [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md): When to use an aggregate vs. an entity vs. a value object.

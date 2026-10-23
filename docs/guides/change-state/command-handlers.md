@@ -295,7 +295,7 @@ Key points:
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Command Handlers](../../concepts/building-blocks/command-handlers.md): The role of command handlers in processing commands and persisting state.
 
     **Related guides:**

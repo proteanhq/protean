@@ -153,9 +153,11 @@ aggregate.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch01.py:full"
-```
+??? example "ch01.py, 81 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch01.py:full"
+    ```
 
 ## Next
 

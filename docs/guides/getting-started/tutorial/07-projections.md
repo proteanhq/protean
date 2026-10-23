@@ -101,9 +101,11 @@ PostgreSQL database.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch07.py:full"
-```
+??? example "ch07.py, 164 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch07.py:full"
+    ```
 
 ## Next
 

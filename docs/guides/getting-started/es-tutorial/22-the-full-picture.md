@@ -200,6 +200,8 @@ This configuration uses:
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch22.py:full"
-```
+??? example "ch22.py, 666 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch22.py:full"
+    ```

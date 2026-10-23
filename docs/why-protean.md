@@ -170,13 +170,13 @@ moving one aggregate from PostgreSQL to Elasticsearch is a configuration change.
 
 The engineering behind these capabilities:
 
-- A large test suite (**16,000+ tests**, about three lines of test per line of
+- A large test suite (**20,000+ tests**, about three lines of test per line of
   code). See [Quality](community/quality.md) for the current breakdown.
 - Every pull request runs the in-memory core suite on **Python 3.11 through
   3.14**, plus PostgreSQL, Redis and any adapter the change touches. Every merge
   to `main` also runs the full adapter suite (PostgreSQL, Redis, Elasticsearch,
-  MessageDB, MSSQL, MySQL, SQLite) on Python 3.14. The nightly run covers every
-  version, including the 3.15 prerelease.
+  MessageDB, MSSQL, MySQL, MariaDB, SQLite) on Python 3.14. The nightly run
+  covers every version, including the 3.15 prerelease.
 - Zero lint violations, A-grade maintainability, and an average cyclomatic
   complexity of 3.38.
 - [CloudEvents v1.0](https://cloudevents.io/) compliant event serialization, for

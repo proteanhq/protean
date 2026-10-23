@@ -393,7 +393,7 @@ need logs tagged before any domain message exists.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Pattern:** [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md): Design considerations, format decisions, and multi-service strategies.
 
     **Guide:** [Message Tracing](../domain-behavior/message-tracing.md): How-to guide for setting up tracing, accessing trace IDs, and using the test DSL.

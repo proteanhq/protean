@@ -82,9 +82,11 @@ system can react automatically when things happen.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch05.py:full"
-```
+??? example "ch05.py, 104 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch05.py:full"
+    ```
 
 ## Next
 

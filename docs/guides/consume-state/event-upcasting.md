@@ -356,7 +356,7 @@ ever stored).
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Patterns:** [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md): Strategies for evolving event schemas over time.
 
     **Related guides:**

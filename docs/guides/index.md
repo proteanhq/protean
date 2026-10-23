@@ -83,7 +83,7 @@ Want to see a complete application instead of isolated snippets?
 - [Reference application](https://github.com/proteanhq/protean/tree/main/examples/reference_app):
   the blog domain from the [Quickstart](./getting-started/quickstart.md), running
   behind a FastAPI app.
-- [Shopstream](https://github.com/proteanhq/shopstream): a larger, multi-context
+- [ShopStream](https://github.com/proteanhq/shopstream): a larger, multi-context
   example built with Protean.
 
 ## How Do I...?

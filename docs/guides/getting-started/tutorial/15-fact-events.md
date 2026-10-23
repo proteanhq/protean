@@ -85,9 +85,11 @@ production operations, starting with message tracing.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch15.py:full"
-```
+??? example "ch15.py, 159 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch15.py:full"
+    ```
 
 ## Next
 

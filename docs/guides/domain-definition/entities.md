@@ -254,7 +254,7 @@ For comprehensive relationship documentation, see [Expressing Relationships](./r
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Entities](../../concepts/building-blocks/entities.md): What entities are and how they relate to aggregates.
 
     **Decision guidance:** [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md): When to use an entity vs. an aggregate vs. a value object.

@@ -239,7 +239,7 @@ For deployment patterns, see
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     - [Configuration Reference](../../reference/configuration/index.md):
       Full list of all configuration parameters.
     - [Adapters Reference](../../reference/adapters/index.md):

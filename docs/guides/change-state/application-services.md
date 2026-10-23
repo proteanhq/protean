@@ -204,7 +204,7 @@ configuration is needed. You call the method and assert on the result.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Application Services](../../concepts/building-blocks/application-services.md): Orchestrating use cases between external callers and the domain model.
 
     **Related guides:**

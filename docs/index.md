@@ -10,7 +10,7 @@
 [![Release](https://img.shields.io/pypi/v/protean?label=Release)](https://pypi.org/project/protean/)
 [![Build Status](https://github.com/proteanhq/protean/actions/workflows/ci.yml/badge.svg)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/proteanhq/protean/graph/badge.svg?token=0sFuFdLBOx)](https://codecov.io/gh/proteanhq/protean)
-[![Tests](https://img.shields.io/badge/tests-12%2C000%2B-brightgreen)](community/quality.md)
+[![Tests](https://img.shields.io/badge/tests-20%2C000%2B-brightgreen)](community/quality.md)
 [![Maintainability](https://img.shields.io/badge/maintainability-A-brightgreen)](https://docs.proteanhq.com/community/quality/)
 
 Protean is a Python framework for domain-driven systems. You sketch aggregates,
@@ -117,12 +117,13 @@ built for, and the shapes of systems it is not.
 
 <div class="grid cards" markdown>
 
-- __:material-test-tube: 16,000+ tests__
+- __:material-test-tube: 20,000+ tests__
 
     ---
 
-    About three lines of test per line of code. Every commit runs against
-    PostgreSQL, Redis, Elasticsearch, MessageDB, and SQL Server.
+    About three lines of test per line of code. Every pull request runs
+    PostgreSQL, Redis and each adapter it touches; every merge to `main` runs
+    all eight databases and brokers.
 
 - __:material-check-decagram: Zero lint violations__
 

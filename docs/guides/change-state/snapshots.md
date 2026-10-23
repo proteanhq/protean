@@ -123,7 +123,7 @@ cron job:
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     - [Snapshot CLI Reference](../../reference/cli/data/snapshot.md):
       Full CLI command documentation.
     - [Event Store Setup](./event-store-setup.md):

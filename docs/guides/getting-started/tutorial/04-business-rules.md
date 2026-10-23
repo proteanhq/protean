@@ -117,9 +117,11 @@ and business rules.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch04.py:full"
-```
+??? example "ch04.py, 151 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch04.py:full"
+    ```
 
 ## Next
 

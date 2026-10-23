@@ -149,9 +149,11 @@ we will add richer fields and create value objects for price and address.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch01.py:full"
-```
+??? example "ch01.py, 57 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch01.py:full"
+    ```
 
 ## Next
 

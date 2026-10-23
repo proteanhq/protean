@@ -183,7 +183,7 @@ level, not just at persistence time.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Background:** [The Always-Valid Domain](../../concepts/philosophy/always-valid.md): The complete story of how Protean's four validation layers work together to guarantee your domain objects are never invalid.
 
     **Concept overview:** [Invariants](../../concepts/foundations/invariants.md): The foundational concept of keeping domain objects always valid.

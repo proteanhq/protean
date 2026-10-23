@@ -126,9 +126,11 @@ In Part V, we achieve mastery over the complete system.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch19.py:full"
-```
+??? example "ch19.py, 278 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch19.py:full"
+    ```
 
 ## Next
 

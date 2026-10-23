@@ -75,9 +75,11 @@ integrations.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch10.py:full"
-```
+??? example "ch10.py, 332 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch10.py:full"
+    ```
 
 ## Next
 

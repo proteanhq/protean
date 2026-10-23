@@ -142,9 +142,11 @@ analysis tool.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch21.py:full"
-```
+??? example "ch21.py, 160 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch21.py:full"
+    ```
 
 ## Next
 

@@ -479,7 +479,7 @@ of those entities.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Value Objects](../../concepts/building-blocks/value-objects.md): Immutable objects defined by their attributes, not identity.
 
     **Decision guidance:** [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md): When to use a value object vs. an entity.

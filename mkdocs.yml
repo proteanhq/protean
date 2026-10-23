@@ -51,6 +51,7 @@ theme:
     - navigation.instant.prefetch
     - navigation.instant.progress
     - navigation.path
+    - navigation.prune
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.top
@@ -62,9 +63,8 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
-extra_javascript:
-  - https://unpkg.com/mermaid@10/dist/mermaid.min.js
-  - javascripts/mermaid-init.js
+hooks:
+  - hooks/diagrams.py
 
 exclude_docs: |
   adr/TEMPLATE.md
@@ -146,6 +146,7 @@ nav:
 
   - Getting Started:
     - guides/getting-started/installation.md
+    - Changelog: changelog.md
     - "Hello, Protean!": guides/getting-started/hello.md
     - guides/getting-started/quickstart.md
     - Tutorial:
@@ -624,5 +625,6 @@ nav:
     - Developer setup:
       - community/contributing/setup.md
       - community/contributing/testing.md
+      - community/contributing/changelog.md
       - community/contributing/mutation-testing.md
     - Quality Report: community/quality.md

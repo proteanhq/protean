@@ -109,9 +109,11 @@ locks.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch09.py:full"
-```
+??? example "ch09.py, 383 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch09.py:full"
+    ```
 
 ## Next
 

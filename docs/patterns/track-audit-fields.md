@@ -124,7 +124,7 @@ your application layer.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     - [Simple Fields, Auto-populated
       timestamps](../reference/fields/simple-fields.md#auto-populated-timestamps):
       The `auto_now`/`auto_now_add` reference

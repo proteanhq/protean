@@ -380,7 +380,7 @@ This flexibility allows you to implement various architectural patterns like CQR
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Commands](../../concepts/building-blocks/commands.md): The role of commands as immutable DTOs expressing intent.
 
     **Related guides:**

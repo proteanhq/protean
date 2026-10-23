@@ -272,7 +272,7 @@ You do **not** need a custom repository for:
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Repositories](../../concepts/building-blocks/repositories.md): The role of repositories in DDD and how Protean implements the pattern.
 
     **Related guides:**

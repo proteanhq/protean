@@ -111,9 +111,11 @@ with our domain through typed contracts.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch02.py:full"
-```
+??? example "ch02.py, 140 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch02.py:full"
+    ```
 
 ## Next
 

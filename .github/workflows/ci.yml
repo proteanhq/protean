@@ -308,6 +308,12 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check
 
+      # Also covered by tests/test_changelog_page_is_current.py, but that runs
+      # in the 30-minute matrix. A stale page is a one-command fix, so it is
+      # worth failing in seconds.
+      - name: Changelog page is current
+        run: uv run python scripts/build_changelog_page.py --check
+
   dx-pack:
     runs-on: ubuntu-latest
     timeout-minutes: 10

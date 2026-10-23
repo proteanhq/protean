@@ -100,9 +100,11 @@ time.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/es-tutorial/ch20.py:full"
-```
+??? example "ch20.py, 285 lines"
+
+    ```python
+    --8<-- "guides/getting-started/es-tutorial/ch20.py:full"
+    ```
 
 ## Next
 

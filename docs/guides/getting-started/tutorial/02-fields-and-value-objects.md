@@ -146,9 +146,11 @@ next chapter, we will build the `Order` aggregate with child entities.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch02.py:full"
-```
+??? example "ch02.py, 157 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch02.py:full"
+    ```
 
 ## Next
 

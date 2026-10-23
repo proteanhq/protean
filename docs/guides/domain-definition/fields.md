@@ -248,7 +248,7 @@ key columns that `HasMany` and `Reference` create behind the scenes.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Reference:**
 
     - [Fields Overview](../../reference/fields/index.md): All field types and options.

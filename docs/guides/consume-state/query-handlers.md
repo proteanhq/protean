@@ -188,7 +188,7 @@ UnitOfWork. Use `@read` for every query-handler method.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Query Handlers](../../concepts/building-blocks/query-handlers.md): How query handlers process read intents in CQRS.
 
     **Related guides:**

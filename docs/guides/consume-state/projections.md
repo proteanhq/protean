@@ -179,7 +179,7 @@ the cache client.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Projections](../../concepts/building-blocks/projections.md): Read-optimized views in CQRS.
 
     **Related guides:**

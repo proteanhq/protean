@@ -221,7 +221,7 @@ stock again before it reserves.
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Domain Services](../../concepts/building-blocks/domain-services.md): When and why to use domain services for cross-aggregate business logic.
 
     **Related guides:**

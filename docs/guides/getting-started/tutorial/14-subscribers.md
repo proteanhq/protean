@@ -89,9 +89,11 @@ can get complete state snapshots for their analytics dashboard.
 
 ## Full Source
 
-```python
---8<-- "guides/getting-started/tutorial/ch14.py:full"
-```
+??? example "ch14.py, 129 lines"
+
+    ```python
+    --8<-- "guides/getting-started/tutorial/ch14.py:full"
+    ```
 
 ## Next
 

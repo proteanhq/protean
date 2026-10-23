@@ -142,7 +142,7 @@ storing periodic state checkpoints. See [Snapshots](./snapshots.md).
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     - [Event Store Reference](../../reference/adapters/eventstore/index.md):
       Provider configuration details.
     - [Message DB Reference](../../reference/adapters/eventstore/message-db.md):

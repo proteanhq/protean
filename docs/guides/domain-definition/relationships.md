@@ -221,7 +221,7 @@ loaded from a database:
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md): How aggregates define consistency boundaries that contain entities and value objects.
 
     **Related guides:**

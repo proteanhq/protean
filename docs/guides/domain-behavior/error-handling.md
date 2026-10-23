@@ -149,7 +149,7 @@ Use `pytest.raises`:
 
 ---
 
-!!! tip "See also"
+!!! seealso "See also"
     - [Invariants](./invariants.md): How to define business rules.
     - [Classify Async Processing Errors](../../patterns/classify-async-processing-errors.md):
       Error handling in event handlers and projectors.
