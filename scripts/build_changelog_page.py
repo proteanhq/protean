@@ -155,12 +155,30 @@ def rewrite_links(line: str) -> str:
     return line.replace("](docs/", "](")
 
 
+_AREA = re.compile(r"^(- )\[([A-Za-z][A-Za-z0-9 /&+.\-]*)\](?!\()\s+")
+
+
+def mark_area(line: str) -> str:
+    """Set the area prefix as a label.
+
+    Most entries open with the part of the framework they touch, `[Database]`
+    or `[Event store]`. That prefix is how a reader scans a long release, so on
+    the page it becomes a label in its own ink. The brackets go with it: a word
+    in a different ink needs no fence around it, and `CHANGELOG.md` keeps them
+    for GitHub, which has no stylesheet.
+    """
+    return _AREA.sub(
+        lambda m: f'{m.group(1)}<span class="pt-changelog-area">{m.group(2)}</span> ',
+        line,
+    )
+
+
 def count_entries(body: list[str]) -> int:
     return sum(1 for line in body if _ENTRY.match(line))
 
 
 def render_group(name: str, body: list[str]) -> str:
-    content = "\n".join(rewrite_links(line) for line in body).strip("\n")
+    content = "\n".join(mark_area(rewrite_links(line)) for line in body).strip("\n")
     if not content:
         return ""
 
