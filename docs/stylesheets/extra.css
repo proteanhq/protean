@@ -20,7 +20,7 @@
 
    Signature: Vermilion (A) · Space Grotesk / Hanken Grotesk / JetBrains Mono
    Two accents, two jobs:
-     - Vermilion   = brand    (CTAs, active state, admonition label, logo core)
+     - Vermilion   = brand    (CTAs, active state, logo core)
      - Signal blue = function (links, code syntax) — never crosses into brand
    ========================================================================== */
 
@@ -64,7 +64,14 @@
   --md-accent-fg-color:               var(--pt-brand);
   --md-accent-fg-color--transparent:  #EE43261A;
 
-  --md-default-fg-color:              #26201C;
+  /* Two inks, from tokens.json: text for headings and chrome, textBody for
+     prose. One ink for both is what made the headings grow to separate. */
+  --pt-text:                          #1A1512;
+  --pt-text-body:                     #4A4239;
+  --pt-text-3:                        #6F675E;
+  --pt-callout-bg:                    #F5F2EB;
+
+  --md-default-fg-color:              var(--pt-text-body);
   --md-default-fg-color--light:       #6A625A;
   --md-default-fg-color--lighter:     #A99F92;
   --md-default-fg-color--lightest:    var(--pt-hairline);
@@ -101,9 +108,14 @@
   --md-accent-fg-color:               var(--pt-brand-hover);
   --md-accent-fg-color--transparent:  #FF6B521A;
 
-  --md-default-fg-color:              #F3F1EE;
+  --pt-text:                          #F3F1EE;
+  --pt-text-body:                     #B8BEC4;
+  --pt-text-3:                        #9BA3AB;
+  --pt-callout-bg:                    #11161A;
+
+  --md-default-fg-color:              var(--pt-text-body);
   --md-default-fg-color--light:       #C7CDD3;
-  --md-default-fg-color--lighter:     #9BA3AB;
+  --md-default-fg-color--lighter:     var(--pt-text-3);
   --md-default-fg-color--lightest:    var(--pt-hairline-dk);
 
   --md-default-bg-color:              var(--pt-ink-900);
@@ -142,19 +154,47 @@
   --md-code-hl-operator-color:  #C7CDD3;
   --md-code-hl-punctuation-color: #C7CDD3;
   --md-code-hl-comment-color:   #6F7883;
-  --md-code-hl-color:           #FF513622;   /* line highlight tint */
+  --md-code-hl-color:           #2E5BFF26;   /* line highlight, signal at 15% */
 }
 
 /* --------------------------------------------------------------------------
-   Header + tabs — ink surface
+   Header + tabs — ink bar in dark, the page ground in light
    -------------------------------------------------------------------------- */
 .md-header {
   background-color: var(--pt-ink-900);
   box-shadow: none;
 }
-[data-md-color-scheme="default"] .md-header { color: #F3F1EE; }
 
 .md-tabs { background-color: var(--pt-ink-900); }
+
+/* The dark bar is one step off the page, on the same surface the dark code
+   blocks use. Material computes its own slate header from --md-hue and wins on
+   specificity, which happened to land on this value; naming it here stops that
+   arithmetic from deciding the colour. */
+[data-md-color-scheme="slate"] .md-header,
+[data-md-color-scheme="slate"] .md-tabs {
+  background-color: var(--pt-surface-dark);
+}
+
+/* In light mode the bar recedes to docsHeaderBg, which is paper, with a line
+   hairline under it. A near-black bar across a cream page is the strongest
+   edge on the screen and carries the least information. */
+[data-md-color-scheme="default"] .md-header,
+[data-md-color-scheme="default"] .md-tabs {
+  background-color: var(--pt-paper);
+  color: var(--pt-text);
+  border-bottom: 1px solid var(--pt-hairline);
+}
+[data-md-color-scheme="default"] .md-tabs { border-bottom-width: 1px; }
+[data-md-color-scheme="default"] .md-header + .md-tabs { border-top: 0; }
+/* The mark is swapped per scheme in partials/logo.html, because an <img>
+   cannot take its ink from the page. */
+[data-md-color-scheme="default"] .md-logo img.pt-logo--dark  { display: none; }
+[data-md-color-scheme="slate"]   .md-logo img.pt-logo--light { display: none; }
+/* The mobile drawer's title keeps the ink ground in both schemes, so there it
+   is always the dark-ground mark. */
+[data-md-color-scheme="default"] .md-nav__title .md-logo img.pt-logo--dark  { display: block; }
+[data-md-color-scheme="default"] .md-nav__title .md-logo img.pt-logo--light { display: none; }
 .md-tabs__link {
   font-size: 0.7rem;
   font-weight: 500;
@@ -194,7 +234,12 @@ body, .md-typeset { font-family: var(--pt-font); }
 
 .md-typeset {
   font-size: 0.82rem;
-  line-height: 1.72;
+  /* 1.72 at this size and measure left the page sparse: 28.2px between lines
+     against the 22px the Claude platform docs run at a similar size. 1.62 is
+     inside the comfortable band for 16px prose and recovers about 1.6px a
+     line. A short measure needs less leading than a long one, and this column
+     is 80 characters. */
+  line-height: 1.62;
   letter-spacing: -0.006em;
 }
 
@@ -205,27 +250,37 @@ body, .md-typeset { font-family: var(--pt-font); }
   font-weight: 600;
 }
 
+/* Sizes are the Docs type group in tokens.json: docs-h1 40px, docs-h2 24px,
+   docs-h3 20px, all at weight 600, against a 16.4px body. The margins are the
+   rhythm-* tokens: a section break at about twice the paragraph gap. */
+/* 1.7rem is 34px, 2.07 times the body. 2rem put it at 2.44, the ceiling the
+   ship check names, where the page the docs were measured against runs 1.8. */
 .md-typeset h1 {
-  color: var(--md-primary-fg-color);
-  font-size: 2.1rem;
-  font-weight: 700;
+  color: var(--pt-text);
+  font-size: 1.7rem;
   line-height: 1.1;
-  margin: 0.75rem 0 1rem;
+  letter-spacing: -0.03em;
+  margin: 0.25rem 0 0.9rem;
 }
+/* A section heading straight under the title has no paragraph to separate
+   from, so it takes a shorter gap than a section break in running text. */
+.md-typeset h1 + h2 { margin-top: 1.1rem; }
 .md-typeset h2 {
-  color: var(--md-primary-fg-color);
-  font-size: 1.5rem;
+  color: var(--pt-text);
+  font-size: 1.2rem;
   line-height: 1.2;
-  margin: 2.4em 0 0.75rem;
+  margin: 1.7rem 0 0.8rem;
 }
 .md-typeset h3 {
-  color: var(--md-primary-fg-color);
-  font-size: 1.18rem;
+  color: var(--pt-text);
+  font-size: 1rem;
   line-height: 1.3;
-  margin: 2rem 0 0.4rem;
+  letter-spacing: -0.015em;
+  margin: 1.4rem 0 0.6rem;
 }
+.md-typeset p { margin: 0.85rem 0; }
 .md-typeset h4 {
-  color: var(--md-primary-fg-color);
+  color: var(--pt-text);
   font-family: var(--pt-mono);
   font-size: 0.72rem;
   font-weight: 600;
@@ -234,22 +289,57 @@ body, .md-typeset { font-family: var(--pt-font); }
   margin: 1.4rem 0 0.35rem;
 }
 
-[data-md-color-scheme="slate"] .md-typeset h1,
-[data-md-color-scheme="slate"] .md-typeset h2,
-[data-md-color-scheme="slate"] .md-typeset h3,
-[data-md-color-scheme="slate"] .md-typeset h4 { color: #F3F1EE; }
+/* Item 4: a heading that contains a link keeps the heading ink. Five section
+   headings in signal blue at display size is the function accent carrying page
+   structure, against the two-accents rule. */
+.md-typeset :is(h1, h2, h3, h4) a { color: inherit; text-decoration: none; }
+.md-typeset :is(h1, h2, h3, h4) a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
 
 /* --------------------------------------------------------------------------
    Content measure — a comfortable reading column
    -------------------------------------------------------------------------- */
-.md-content { max-width: 46rem; margin: 0 auto; }
-.md-content__inner { padding-top: 1.25rem; padding-bottom: 1.5rem; }
+/* Material centres the whole page inside a 61rem grid, so a wide screen gets
+   three columns huddled in the middle with a third of the window empty on each
+   side. 76rem moves the two rails out toward the edges. The reading column
+   below stays capped, so this gives the rails the room, never the prose. */
+.md-grid { max-width: 76rem; }
 
+/* 36.8rem gives a 688px to 704px column at every width from 860px up. Without
+   the cap the column swells to 920px between 960px and 1220px, where Material
+   drops the left rail, and the code blocks that fill the column then run far
+   past the narrower prose. */
+.md-content { max-width: 36.8rem; margin: 0 auto; }
+/* The band above the title was 58px of nothing: Material's own top padding,
+   its spacer rule and the h1's margin stacked on each other, under a
+   breadcrumb that already carries its own space. */
+.md-content__inner { padding-top: 0.4rem; padding-bottom: 1.5rem; }
+.md-content__inner::before { display: none; }
+.md-path { padding-top: 0.5rem; padding-bottom: 0; }
+
+/* Prose holds proseMeasure (590px, about 80 characters); code blocks, tables
+   and grid cards keep the full contentMeasure. A column narrow enough for the
+   prose would put a scrollbar under the 676 code lines in these docs that run
+   past the 74 characters 590px fits at the mono size. Only margin-right is
+   automatic: centring the prose instead gives the page two left edges, one for
+   paragraphs and one for everything wider. */
+.md-typeset > :is(p, ul:not([class]), ol:not([class]), dl, blockquote, hr,
+                  h1, h2, h3, h4, h5, h6, .admonition, details) {
+  max-width: 29.5rem;
+  margin-right: auto;
+}
+
+/* A rule and the heading under it are two marks for one break. 2.25rem each
+   side put about 100px between the paragraph above and the heading below, so
+   the rule carries 1.4rem and the heading adds nothing on top of it. */
 .md-typeset hr {
   border: none;
   border-top: 1px solid var(--md-default-fg-color--lightest);
-  margin: 2.25rem 0;
+  margin: 1.4rem 0;
 }
+.md-typeset hr + :is(h2, h3) { margin-top: 0; }
 
 /* --------------------------------------------------------------------------
    Code — mono everywhere, dark rounded bordered blocks, signal inline code
@@ -257,6 +347,16 @@ body, .md-typeset { font-family: var(--pt-font); }
 code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
 
 .md-typeset pre > code { border-radius: 10px; }
+/* The copy and select buttons sit on the fixed-dark code ground in both
+   themes. They inherited the dark hairline, which reads 1.28:1 there, under
+   the 3:1 a control needs. codeChrome-dim clears it at 4.29:1. */
+.md-typeset .highlight :is(.md-clipboard, .md-code__button) {
+  color: #6F7883;   /* codeChrome-dim */
+}
+.md-typeset .highlight :is(.md-clipboard, .md-code__button):hover,
+.md-typeset .highlight :is(.md-clipboard, .md-code__button):focus {
+  color: #E7E4E0;
+}
 .md-typeset .highlight {
   border: 1px solid var(--pt-hairline-dk);
   border-radius: 11px;
@@ -264,6 +364,14 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
 }
 .md-typeset .highlight > pre { margin: 0; }
 .md-typeset .highlight > pre > code { border: none; }
+
+/* docs-code's leading, which matches the prose. Code shipped at 1.40 against
+   prose at 1.72, giving the densest content on the page the least air. The
+   card stays fixed dark in both themes; that call was re-affirmed, because a
+   light code surface needs a second syntax palette. */
+.md-typeset .highlight pre,
+.md-typeset .highlight pre > code { line-height: 1.65; }
+.md-typeset .highlight pre > code { padding: 0.7rem 0.8rem; }
 
 /* Consecutive code blocks read as one stacked sequence, not disjoint cards. */
 .md-typeset .highlight + .highlight,
@@ -279,9 +387,11 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
 .md-typeset .highlight .bp { color: #7FB4FF; }                 /* builtins / field types */
 .md-typeset .highlight .kc { color: #C98BFF; }                 /* True False None */
 
+/* 0.4em of side padding on a 13.1px chip adds about 10px to every inline
+   code span, and a sentence carrying four of them reads as gappy. */
 .md-typeset code {
-  border-radius: 5px;
-  padding: 0.12em 0.4em;
+  border-radius: 4px;
+  padding: 0.1em 0.26em;
   font-size: 0.8em;
 }
 [data-md-color-scheme="default"] .md-typeset :not(pre) > code {
@@ -313,19 +423,30 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
 }
 
 /* --------------------------------------------------------------------------
-   Admonitions — quiet hairline card, mono uppercase brand label
+   Admonitions — quiet hairline card, ink label, the type in the icon
    -------------------------------------------------------------------------- */
 .md-typeset .admonition, .md-typeset details {
   border: 1px solid var(--pt-hairline);
   border-left-width: 1px;
   border-radius: 11px;
   box-shadow: none;
-  font-size: 0.78rem;
+  font-size: inherit;
+  background: var(--pt-callout-bg);
 }
-[data-md-color-scheme="slate"] .md-typeset .admonition,
-[data-md-color-scheme="slate"] .md-typeset details {
+/* Material gives each type its own border colour from its own palette, so a
+   note arrives edged in #448AFF, which belongs to no Protean token. The
+   [class] attribute lifts these to the specificity Material's type rules
+   carry, which is the only way to take the colour back. */
+.md-typeset .admonition[class], .md-typeset details[class] {
+  border-color: var(--pt-hairline);
+}
+[data-md-color-scheme="slate"] .md-typeset .admonition[class],
+[data-md-color-scheme="slate"] .md-typeset details[class] {
   border-color: var(--pt-hairline-dk);
 }
+/* The label is ink in every callout. Vermilion read 3.44:1 on the callout
+   fill at this size, under the 4.5:1 floor, and it put the brand colour on
+   280 asides. The word itself says which type it is. */
 .md-typeset .admonition-title, .md-typeset summary {
   font-family: var(--pt-mono);
   font-size: 0.66rem;
@@ -333,27 +454,82 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
   text-transform: uppercase;
   font-weight: 500;
   background: transparent !important;
+  color: var(--pt-text);
 }
-.md-typeset .admonition-title::before, .md-typeset summary::before {
-  background-color: var(--pt-brand);
+/* A summary is a control a reader clicks, and its text is a sentence, often
+   with a file name in it. Uppercase mono turns "The root conftest.py these
+   tests run under" into shouting and misspells the file along the way, so a
+   summary keeps its case and the body face. An admonition title is a static
+   tag and stays the label. */
+.md-typeset summary {
+  font-family: var(--pt-font);
+  font-size: 0.74rem;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 600;
 }
-.md-typeset .note > .admonition-title,
-.md-typeset .note > summary { color: var(--pt-brand); }
+/* The icon carries the type. 234 of the 280 callouts in these docs are asides,
+   so those take the faint ink, and only a warning or a failure takes a colour.
+   Each value clears 3:1 against the callout fill it sits on. */
+.md-typeset .admonition[class] > :is(.admonition-title, summary)::before,
+.md-typeset details[class] > :is(.admonition-title, summary)::before {
+  background-color: var(--pt-text-3);
+}
+/* [class] is there to outrank Material's per-type rules, and a <details> with
+   no class at all slips past it and keeps Material's blue note icon. Nothing
+   of Material's targets a classless one, so a plain selector catches it. */
+.md-typeset details:not([class]) > summary::before {
+  background-color: var(--pt-text-3);
+}
+.md-typeset .admonition[class]:is(.warning, .caution, .attention) > :is(.admonition-title, summary)::before,
+.md-typeset details[class]:is(.warning, .caution, .attention) > :is(.admonition-title, summary)::before {
+  background-color: #A8750A;
+}
+.md-typeset .admonition[class]:is(.danger, .error, .failure, .bug) > :is(.admonition-title, summary)::before,
+.md-typeset details[class]:is(.danger, .error, .failure, .bug) > :is(.admonition-title, summary)::before {
+  background-color: #B3261E;
+}
+[data-md-color-scheme="slate"] .md-typeset .admonition[class]:is(.warning, .caution, .attention) > :is(.admonition-title, summary)::before,
+[data-md-color-scheme="slate"] .md-typeset details[class]:is(.warning, .caution, .attention) > :is(.admonition-title, summary)::before {
+  background-color: #E8A317;
+}
+[data-md-color-scheme="slate"] .md-typeset .admonition[class]:is(.danger, .error, .failure, .bug) > :is(.admonition-title, summary)::before,
+[data-md-color-scheme="slate"] .md-typeset details[class]:is(.danger, .error, .failure, .bug) > :is(.admonition-title, summary)::before {
+  background-color: #E5484D;
+}
 
-.md-typeset .warning > .admonition-title::before,
-.md-typeset .warning > summary::before,
-.md-typeset .caution > .admonition-title::before,
-.md-typeset .caution > summary::before { background-color: #E8A317; }
-.md-typeset .danger > .admonition-title::before,
-.md-typeset .danger > summary::before,
-.md-typeset .failure > .admonition-title::before,
-.md-typeset .failure > summary::before,
-.md-typeset .error > .admonition-title::before,
-.md-typeset .error > summary::before { background-color: #E5484D; }
+/* ---- seealso, a callout type of our own ----
+   A cross-reference list is not a hint, and writing it as a tip put the hint
+   icon on 42 boxes while 60 real tips carried the same mark. It takes the
+   signal ink, which the system reserves for links and code, because a list of
+   links is exactly what it holds: 4.63:1 on the callout fill in light and
+   8.75:1 in dark. */
+:root {
+  --md-admonition-icon--seealso: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10.59 13.41c.41.39.41 1.03 0 1.42-.39.39-1.03.39-1.42 0a5.003 5.003 0 0 1 0-7.07l3.54-3.54a5.003 5.003 0 0 1 7.07 0 5.003 5.003 0 0 1 0 7.07l-1.49 1.49c.01-.82-.12-1.64-.4-2.42l.47-.48a2.98 2.98 0 0 0 0-4.24 2.98 2.98 0 0 0-4.24 0l-3.53 3.53a2.98 2.98 0 0 0 0 4.24m2.82-4.24c.39-.39 1.03-.39 1.42 0a5.003 5.003 0 0 1 0 7.07l-3.54 3.54a5.003 5.003 0 0 1-7.07 0 5.003 5.003 0 0 1 0-7.07l1.49-1.49c-.01.82.12 1.64.4 2.43l-.47.47a2.98 2.98 0 0 0 0 4.24 2.98 2.98 0 0 0 4.24 0l3.53-3.53a2.98 2.98 0 0 0 0-4.24.973.973 0 0 1 0-1.42"/></svg>');
+}
+.md-typeset .admonition[class].seealso > :is(.admonition-title, summary)::before,
+.md-typeset details[class].seealso > :is(.admonition-title, summary)::before {
+  background-color: var(--pt-signal);
+  -webkit-mask-image: var(--md-admonition-icon--seealso);
+          mask-image: var(--md-admonition-icon--seealso);
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+          mask-size: contain;
+}
+[data-md-color-scheme="slate"] .md-typeset .admonition[class].seealso > :is(.admonition-title, summary)::before,
+[data-md-color-scheme="slate"] .md-typeset details[class].seealso > :is(.admonition-title, summary)::before {
+  background-color: var(--pt-signal-dark);
+}
 
 /* --------------------------------------------------------------------------
    Navigation — quieter, brand active state
    -------------------------------------------------------------------------- */
+/* The rows are what a reader clicks, so they take the heading ink, and the
+   group label recedes into a muted uppercase eyebrow above them. Flattening
+   the two to one size and one case, which this first tried, inverted that:
+   the labels went dark and the rows went grey, so the column read as one list
+   with the clickable part the faintest thing in it. */
 .md-nav { font-size: 0.68rem; line-height: 1.4; }
 .md-nav__item .md-nav__link { padding-top: 0.13em; padding-bottom: 0.13em; }
 .md-nav__link { transition: color 0.15s ease; }
@@ -367,10 +543,10 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
   color: var(--pt-brand-dark) !important;
 }
 
-/* ---- Section delimiters in the left nav (D5) ----
-   Was: spaced, low-contrast uppercase mono (.6rem/.1em) → loose and faint.
-   Now: Space Grotesk 600, tighter tracking, solid muted ink, hairline
-   divider above each group so the structure reads at a glance. */
+/* ---- Group labels in the left nav ----
+   Display face, uppercase, tracked and in the third ink: four marks that say
+   at a glance this is a category and not an item. --pt-text-3 replaces the old
+   fixed --pt-label so the dark scheme gets its own value. */
 .md-nav__title,
 .md-sidebar--primary .md-nav__item--section > .md-nav__link,
 .md-nav--primary .md-nav__item--section > label.md-nav__link,
@@ -381,29 +557,107 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
   font-size: 0.66rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--pt-label);
+  color: var(--pt-text-3);
   opacity: 1;
   margin-top: 0.5rem;
 }
-/* group spacing + divider (skip the very first group) */
+/* A rule and the space above it carry the group break. */
 .md-sidebar--primary .md-nav__item--section {
   margin-top: 1.25em;
   padding-top: 0.9em;
   border-top: 1px solid var(--pt-hairline);
 }
+[data-md-color-scheme="slate"] .md-sidebar--primary .md-nav__item--section {
+  border-top-color: var(--pt-hairline-dk);
+}
 .md-sidebar--primary .md-nav__list > .md-nav__item--section:first-child {
-  margin-top: 0.35em; padding-top: 0; border-top: 0;
+  margin-top: 0.35em;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* A row is a destination, so it holds the heading ink, and the row you are on
+   sits on a quiet fill. The fill needs side and vertical padding to look like
+   anything, so the padding goes on every row and Material's own gap between
+   rows comes off, which keeps the step where it was. The negative side margin
+   lets the fill reach past the text without moving the column's left edge. */
+.md-sidebar--primary .md-nav__item:not(.md-nav__item--section) > .md-nav__link {
+  color: var(--pt-text);
+  padding: 0.2rem 0.45rem;
+  margin: 0.15rem -0.45rem;
+  border-radius: 7px;
+}
+/* In dark, text puts the rail rows at 17:1, the same ink as the headings they
+   sit beside, and twenty bright rows of chrome outshine prose at 10.3:1.
+   Near-black rows do not do that on paper, so this is a dark-only step down to
+   text2, which still clears the prose at 12:1. */
+[data-md-color-scheme="slate"] .md-sidebar--primary .md-nav__item:not(.md-nav__item--section) > .md-nav__link,
+[data-md-color-scheme="slate"] .md-sidebar--secondary .md-nav__link {
+  color: #C7CDD3;   /* text2 */
+}
+/* Neutral, so the vermilion on the row's text stays the thing that says which
+   page this is. */
+[data-md-color-scheme="default"] .md-sidebar--primary .md-nav__item:not(.md-nav__item--section) > .md-nav__link:hover {
+  background: rgba(20, 16, 15, 0.035);
+}
+[data-md-color-scheme="slate"] .md-sidebar--primary .md-nav__item:not(.md-nav__item--section) > .md-nav__link:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+[data-md-color-scheme="default"] .md-sidebar--primary .md-nav__link--active {
+  background: rgba(20, 16, 15, 0.055);
+}
+[data-md-color-scheme="slate"] .md-sidebar--primary .md-nav__link--active {
+  background: rgba(255, 255, 255, 0.07);
 }
 .md-nav--secondary .md-nav__title { border: 0; margin-top: 0; }
 
+/* ---- The drawer, below the rail's breakpoint ----
+   The row treatment above is written for a 242px column standing beside the
+   page: a small pad with an equal negative side margin, so the fill reaches
+   past the text without moving the column's left edge. In the drawer that
+   cancels Material's own padding and leaves the text against the screen edge,
+   so the drawer sets its own. */
+@media screen and (max-width: 76.1875em) {
+  .md-sidebar--primary .md-nav__item:not(.md-nav__item--section) > .md-nav__link,
+  .md-sidebar--primary .md-nav__item--section > .md-nav__link {
+    padding: 0.5rem 0.6rem;
+    margin: 0.1rem 0.4rem;
+    border-radius: 8px;
+  }
+  /* A rule under every row turns the drawer into a table. The space between
+     rows already separates them. */
+  .md-nav--primary .md-nav__item { border-top: 0; }
+  .md-nav--primary .md-nav__list { padding-bottom: 0.5rem; }
+  /* Uppercase at 0.12em runs out of room in a 242px drawer and the title clips
+     to an ellipsis, so every level's title reads in sentence case. Material's
+     own band under it is the hairline colour, which on paper reads as a smear;
+     it takes the page ground and a hairline, the same as the header. */
+  .md-sidebar--primary .md-nav__title {
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--pt-text);
+    background: var(--pt-paper);
+    box-shadow: none;
+    border-bottom: 1px solid var(--pt-hairline);
+  }
+  [data-md-color-scheme="slate"] .md-sidebar--primary .md-nav__title {
+    background: var(--pt-ink-900);
+    border-bottom-color: var(--pt-hairline-dk);
+  }
+}
+
+
+/* The contents list's heading is the same kind of label, one size smaller. */
 .md-nav__title {
   font-size: 0.62rem;
   letter-spacing: 0.12em;
-  text-transform: uppercase;
   opacity: 1;
 }
 
-/* Left sidebar tab title (active section root) */
+/* The tab root names the section the whole rail belongs to, so it sits a size
+   above the rows and carries the display face. */
 .md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link.md-nav__container > a.md-nav__link,
 .md-nav--lifted > .md-nav__list > .md-nav__item--active > label.md-nav__link {
   font-family: var(--pt-display) !important;
@@ -411,30 +665,30 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
   font-size: 0.74rem !important;
   letter-spacing: -0.01em !important;
   text-transform: none !important;
-  color: var(--md-primary-fg-color) !important;
-}
-[data-md-color-scheme="slate"] .md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link.md-nav__container > a.md-nav__link,
-[data-md-color-scheme="slate"] .md-nav--lifted > .md-nav__list > .md-nav__item--active > label.md-nav__link {
-  color: #F3F1EE !important;
+  color: var(--pt-text) !important;
 }
 
-/* Right sidebar (ToC) — denser, with hierarchy instead of one flat ladder */
-.md-sidebar--secondary .md-nav__list { line-height: 1.3; }
+/* Right sidebar (ToC) — docs-toc, at reading size in text. It is one of the
+   two ways a reader moves inside a page, so it is not decoration. It was
+   13.6px in a muted ink with 22px between items. */
+.md-sidebar--secondary .md-nav__list { line-height: 1.4; }
 .md-sidebar--secondary .md-nav__link {
-  font-size: 0.68rem;
-  margin: 0.1rem 0;
-  color: var(--md-default-fg-color--light);
+  font-size: 0.7rem;
+  margin: 0.22rem -0.45rem;
+  padding: 0.14rem 0.45rem;
+  border-radius: 7px;
+  color: var(--pt-text);
 }
-/* top-level entries: a little space above + slightly stronger ink */
-.md-sidebar--secondary > .md-nav > .md-nav__list > .md-nav__item > .md-nav__link {
-  margin-top: 0.5rem;
-  font-weight: 500;
-  color: var(--md-default-fg-color);
+[data-md-color-scheme="default"] .md-sidebar--secondary .md-nav__link--active {
+  background: rgba(20, 16, 15, 0.055);
 }
-/* nested entries: smaller + quieter so depth reads at a glance */
+[data-md-color-scheme="slate"] .md-sidebar--secondary .md-nav__link--active {
+  background: rgba(255, 255, 255, 0.07);
+}
+/* nested entries drop to text3, so depth reads on ink rather than on size */
 .md-sidebar--secondary .md-nav__item .md-nav__item > .md-nav__link {
-  font-size: 0.64rem;
-  color: var(--md-default-fg-color--lighter);
+  font-size: 0.66rem;
+  color: var(--pt-text-3);
 }
 .md-sidebar--secondary .md-nav__link--active {
   color: var(--pt-brand) !important;
@@ -465,8 +719,84 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
    Search
    -------------------------------------------------------------------------- */
 .md-search__form { border-radius: 8px; }
-[data-md-color-scheme="default"] .md-search__input { background: rgba(0, 0, 0, 0.05); }
-.md-search__input:focus, .md-search__input:hover { background: rgba(255, 255, 255, 0.1); }
+[data-md-color-scheme="slate"] .md-search__input:focus,
+[data-md-color-scheme="slate"] .md-search__input:hover { background: rgba(255, 255, 255, 0.1); }
+/* On a paper header a white wash is invisible, so the light field darkens
+   instead, and its text and placeholder take the page inks. */
+[data-md-color-scheme="default"] .md-search__input {
+  background: rgba(20, 16, 15, 0.05);
+  color: var(--pt-text);
+}
+[data-md-color-scheme="default"] .md-search__input::placeholder { color: var(--pt-text-3); }
+[data-md-color-scheme="default"] .md-search__input:focus,
+[data-md-color-scheme="default"] .md-search__input:hover { background: rgba(20, 16, 15, 0.08); }
+
+/* ---- Results ----
+   Material marks every match in the accent colour and underlines it, so a
+   teaser with eight hits reads as a field of red underlines. A match is a
+   place to look, not a thing to read, so it takes a quiet wash and keeps the
+   ink it already had. */
+.md-search-result__title mark,
+.md-search-result__teaser mark {
+  background: rgba(238, 67, 38, 0.14);
+  color: inherit;
+  text-decoration: none;
+  border-radius: 3px;
+  padding: 0 0.12em;
+}
+[data-md-color-scheme="slate"] .md-search-result__title mark,
+[data-md-color-scheme="slate"] .md-search-result__teaser mark {
+  background: rgba(255, 81, 54, 0.2);
+}
+
+/* A teaser is prose, so it reads at a prose size in the prose ink. Material
+   sets it at 12.8px in a muted ink across the full width of the panel. */
+.md-search-result__teaser {
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--pt-text-body);
+  -webkit-line-clamp: 3;
+}
+.md-search-result__title { color: var(--pt-text); }
+
+/* The count is a label above the list, so it sits on the callout fill rather
+   than the hairline, which is a rule colour doing a surface's job. */
+.md-search-result__meta {
+  background: var(--pt-callout-bg);
+  color: var(--pt-text-3);
+  font-size: 0.66rem;
+}
+[data-md-color-scheme="default"] .md-search-result > .md-search-result__item:hover,
+[data-md-color-scheme="default"] .md-search-result__more > summary:hover {
+  background: rgba(20, 16, 15, 0.035);
+}
+
+/* ---- The landing page after a search ----
+   search.highlight marks every occurrence of the term on the page it sends a
+   reader to. Nothing styled those marks, so they fell back to the browser's
+   own highlighter yellow, a colour from no palette, on a page that otherwise
+   carries two hues. They take the same wash the results panel uses. */
+.md-typeset mark {
+  background: rgba(238, 67, 38, 0.14);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 0.12em;
+  box-shadow: none;
+}
+[data-md-color-scheme="slate"] .md-typeset mark {
+  background: rgba(255, 81, 54, 0.2);
+}
+/* A heading is already the loudest thing on the page, and a block of colour
+   behind 34px type reads as a highlighter pen. A heading takes a rule under
+   the matched words instead. */
+.md-typeset :is(h1, h2, h3, h4, h5, h6) mark {
+  background: none;
+  padding: 0;
+  box-shadow: inset 0 -0.16em 0 rgba(238, 67, 38, 0.3);
+}
+[data-md-color-scheme="slate"] .md-typeset :is(h1, h2, h3, h4, h5, h6) mark {
+  box-shadow: inset 0 -0.16em 0 rgba(255, 81, 54, 0.35);
+}
 
 /* --------------------------------------------------------------------------
    Buttons — primary is brand, in the display face
@@ -507,6 +837,10 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
   font-size: 0.92em;
 }
 .md-typeset table:not([class]) th { font-weight: 600; }
+/* Material pads a cell 0.94em by 1.25em, which makes a one-line row 59px tall
+   on a page whose paragraphs sit 17px apart. A reference table is read by
+   scanning down a column, and the scan is shorter when the rows are. */
+.md-typeset table:not([class]) :is(th, td) { padding: 0.62em 0.95em; }
 
 .md-typeset .grid.cards > ul > li,
 .md-typeset .grid.cards > ol > li {
@@ -585,59 +919,43 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
 .md-typeset img[src*="codecov.io"] { margin-right: 0.25rem; }
 
 /* --------------------------------------------------------------------------
-   Mermaid — legible in both schemes (sequence + flowchart)
-   Mermaid inlines styles, so these need !important. Colors come from the
-   Material tokens, so one set covers light and dark.
+   Diagrams — a rendered pair, one per theme
+   Mermaid bakes its colours into the SVG, so the diagrams are drawn at build
+   time by tools/diagrams.py and the matching file is shown here. A diagram
+   keeps the size it was drawn at and scrolls sideways past the column, the
+   same bargain the code blocks make: scaling it to fit shrinks the labels.
    -------------------------------------------------------------------------- */
-.md-typeset .mermaid text { font-family: var(--pt-font); }
-
-/* Sequence: participant boxes = neutral panel, ink label (not faint on coral) */
-.mermaid .actor {
-  fill: var(--md-default-bg-color) !important;
-  stroke: var(--md-default-fg-color--lightest) !important;
+/* A diagram wider than the column is cut off mid-word, with nothing to say it
+   continues. These two gradients scroll with the content and these two do not,
+   so a shadow shows at an edge exactly when there is more past it. */
+.md-typeset .pt-diagram {
+  overflow-x: auto;
+  margin: 1.2rem 0;
+  background:
+    linear-gradient(to right, var(--md-default-bg-color) 30%, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, rgba(0, 0, 0, 0), var(--md-default-bg-color) 70%) 100% 0,
+    radial-gradient(farthest-side at 0 50%, rgba(20, 16, 15, 0.14), rgba(0, 0, 0, 0)),
+    radial-gradient(farthest-side at 100% 50%, rgba(20, 16, 15, 0.14), rgba(0, 0, 0, 0)) 100% 0;
+  background-repeat: no-repeat;
+  background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
 }
-.mermaid text.actor,
-.mermaid text.actor > tspan {
-  fill: var(--md-default-fg-color) !important;
-  stroke: none !important;
-  font-weight: 600 !important;
+[data-md-color-scheme="slate"] .md-typeset .pt-diagram {
+  background:
+    linear-gradient(to right, var(--md-default-bg-color) 30%, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, rgba(0, 0, 0, 0), var(--md-default-bg-color) 70%) 100% 0,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0)),
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0)) 100% 0;
+  background-repeat: no-repeat;
+  background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
 }
-.mermaid .actor-line { stroke: var(--md-default-fg-color--lighter) !important; }
-.mermaid .messageLine0,
-.mermaid .messageLine1 { stroke: var(--md-default-fg-color--light) !important; }
-.mermaid .messageText,
-.mermaid .loopText, .mermaid .loopText > tspan,
-.mermaid .noteText, .mermaid .noteText > tspan {
-  fill: var(--md-default-fg-color--light) !important;
-  font-weight: 500 !important;
-  font-size: 13px !important;
+.md-typeset .pt-diagram__art {
+  display: block;
+  max-width: none;
 }
-.mermaid .labelBox { stroke: var(--md-default-fg-color--lightest) !important; fill: var(--md-default-bg-color) !important; }
-.mermaid .note { fill: var(--md-code-bg-color) !important; stroke: var(--pt-hairline-dk) !important; }
-/* sequence-number bullets keep the brand accent */
-.mermaid .sequenceNumber { fill: #fff !important; }
-[data-md-color-scheme="default"] .mermaid line.loopLine { stroke: var(--md-default-fg-color--lighter) !important; }
-
-/* Flowchart: neutral nodes with a brand edge, legible labels + edges */
-.mermaid .node rect, .mermaid .node polygon,
-.mermaid .node circle, .mermaid .node path {
-  fill: var(--md-default-bg-color) !important;
-  stroke: var(--pt-brand) !important;
-}
-.mermaid .nodeLabel, .mermaid .node .label {
-  color: var(--md-default-fg-color) !important;
-  fill: var(--md-default-fg-color) !important;
-}
-.mermaid .edgePath .path, .mermaid .flowchart-link {
-  stroke: var(--md-default-fg-color--light) !important;
-}
-.mermaid .edgeLabel, .mermaid .edgeLabel rect {
-  background: var(--md-default-bg-color) !important;
-  fill: var(--md-default-bg-color) !important;
-  color: var(--md-default-fg-color) !important;
-}
-.mermaid .edgeLabel .edgeLabel { color: var(--md-default-fg-color) !important; }
-.mermaid marker { fill: var(--md-default-fg-color--light) !important; stroke: var(--md-default-fg-color--light) !important; }
+[data-md-color-scheme="default"] .pt-diagram__art--dark,
+[data-md-color-scheme="slate"] .pt-diagram__art--light { display: none; }
 
 /* --------------------------------------------------------------------------
    Pathway tags — semantic category badges
@@ -653,13 +971,20 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
   margin-left: 0.5em;
   white-space: nowrap;
 }
-.pathway-tag-ddd  { background-color: #0D948818; color: #0D9488; border: 1px solid #0D948830; }
-.pathway-tag-cqrs { background-color: #6366F118; color: #6366F1; border: 1px solid #6366F130; }
-.pathway-tag-es   { background-color: #8B5CF618; color: #8B5CF6; border: 1px solid #8B5CF630; }
-
-[data-md-color-scheme="slate"] .pathway-tag-ddd  { background-color: #2DD4BF15; color: #2DD4BF; border-color: #2DD4BF30; }
-[data-md-color-scheme="slate"] .pathway-tag-cqrs { background-color: #818CF815; color: #818CF8; border-color: #818CF830; }
-[data-md-color-scheme="slate"] .pathway-tag-es   { background-color: #A78BFA15; color: #A78BFA; border-color: #A78BFA30; }
+/* One neutral treatment for every category: the words DDD, CQRS and ES carry
+   the category on their own. The teal, indigo and violet made six hues on a
+   guides page where the system specifies two. */
+.pathway-tag,
+.doc-label {
+  background-color: rgba(20, 16, 15, 0.05);
+  color: var(--pt-text-3);
+  border: 1px solid var(--pt-hairline);
+}
+[data-md-color-scheme="slate"] .pathway-tag,
+[data-md-color-scheme="slate"] .doc-label {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: var(--pt-hairline-dk);
+}
 
 /* --------------------------------------------------------------------------
    mkdocstrings — API reference
@@ -686,15 +1011,6 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
   vertical-align: middle;
   margin-left: 0.5em;
 }
-.doc-label-class            { background-color: #2E5BFF20; color: #2E5BFF; }
-.doc-label-method,
-.doc-label-function         { background-color: #8B5CF620; color: #8B5CF6; }
-.doc-label-attribute        { background-color: #E8A31720; color: #B8770A; }
-
-[data-md-color-scheme="slate"] .doc-label-class      { background-color: #7FB4FF20; color: #7FB4FF; }
-[data-md-color-scheme="slate"] .doc-label-method,
-[data-md-color-scheme="slate"] .doc-label-function   { background-color: #A78BFA20; color: #A78BFA; }
-[data-md-color-scheme="slate"] .doc-label-attribute  { background-color: #F0A86820; color: #F0A868; }
 
 .doc-signature {
   font-size: 0.8em;
@@ -720,16 +1036,22 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
    Changelog page
    -------------------------------------------------------------------------- */
 
-/* The page needs more room than the 46rem reading column, because each release
-   puts its version beside its changes. Scoped by :has() so no other page
-   widens. */
-.md-content:has(.pt-changelog) { max-width: 60rem; }
+/* The page needs more room than the reading column, because each release puts
+   its version beside its changes: 9rem of version, 2rem of gap and the prose
+   measure. Scoped by :has() so no other page widens. It held 60rem until
+   2026-10-23, which let the entries run about 115 characters a line while
+   every other page held 80. */
+.md-content:has(.pt-changelog) { max-width: 44rem; }
+
+/* The entries are nested inside the release grid, so the rule that holds prose
+   to proseMeasure never reached them. */
+.md-typeset .pt-changelog-body { max-width: 29.5rem; }
 
 .pt-changelog-release {
   display: grid;
-  grid-template-columns: 9rem 1fr;
+  grid-template-columns: 7rem 1fr;
   gap: 0 2rem;
-  padding-top: 2.5rem;
+  padding-top: 1.8rem;
   border-top: 1px solid var(--pt-hairline);
 }
 .pt-changelog-release:first-child { border-top: 0; padding-top: 0.5rem; }
@@ -768,7 +1090,7 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
 /* Group names are paragraphs, not headings, to keep the table of contents to
    versions alone. */
 .md-typeset .pt-changelog-group {
-  margin: 1.5rem 0 0.5rem;
+  margin: 1.1rem 0 0.4rem;
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -779,9 +1101,22 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
 .md-typeset .pt-changelog-body > ul { margin-top: 0; }
 .md-typeset .pt-changelog-body > ul > li { margin-bottom: 0.35rem; }
 
+/* The area a change touches, [Database] or [Event store] in the source. It is
+   how a reader scans a release, so it reads as a label in the third ink and
+   the mono face. 595 entries carry one, so it stays quiet: a fill on each
+   would turn the page into a field of chips. */
+.md-typeset .pt-changelog-area {
+  font-family: var(--pt-mono);
+  font-size: 0.72em;
+  letter-spacing: 0.04em;
+  color: var(--pt-text-3);
+  margin-right: 0.15em;
+  white-space: nowrap;
+}
+
 /* A long group collapses behind its count. The summary reads as part of the
    list it opens, not as another admonition. */
-.md-typeset .pt-changelog-fold {
+.md-typeset :is(.pt-changelog-fold, .pt-changelog-body > details) {
   margin: 0 0 0.4rem;
   border: 0;
   border-left: 2px solid var(--md-default-fg-color--lightest);
@@ -789,14 +1124,14 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
   box-shadow: none;
   font-size: inherit;
 }
-.md-typeset .pt-changelog-fold > summary {
+.md-typeset :is(.pt-changelog-fold, .pt-changelog-body > details) > summary {
   padding: 0.1rem 0 0.1rem 0.7rem;
   background: none;
   border-radius: 0;
   font-size: 0.75rem;
   color: var(--md-default-fg-color--light);
 }
-.md-typeset .pt-changelog-fold > summary::before { display: none; }
+.md-typeset :is(.pt-changelog-fold, .pt-changelog-body > details) > summary::before { display: none; }
 .md-typeset .pt-changelog-fold > summary::after {
   top: 0.25rem;
   left: auto;
@@ -804,8 +1139,8 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
   width: 0.9rem;
   height: 0.9rem;
 }
-.md-typeset .pt-changelog-fold[open] > summary { margin-bottom: 0.4rem; }
-.md-typeset .pt-changelog-fold > ul { margin-left: 0.7rem; }
+.md-typeset :is(.pt-changelog-fold, .pt-changelog-body > details)[open] > summary { margin-bottom: 0.4rem; }
+.md-typeset :is(.pt-changelog-fold, .pt-changelog-body > details) > ul { margin-left: 0.7rem; }
 
 @media screen and (max-width: 76.1875em) {
   .pt-changelog-release { grid-template-columns: 1fr; gap: 0.75rem; }

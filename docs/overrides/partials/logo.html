@@ -1,0 +1,9 @@
+{#-
+  Overrides material/templates/partials/logo.html.
+
+  The mark cannot take its ink from the page, because it is loaded through an
+  <img> tag rather than inlined. In light mode the header sits on paper, so
+  both marks are emitted and extra.css hides the one that would be invisible.
+-#}
+<img src="{{ 'assets/protean-mark-light.svg' | url }}" alt="logo" class="pt-logo pt-logo--light">
+<img src="{{ 'assets/protean-mark-dark.svg' | url }}" alt="logo" class="pt-logo pt-logo--dark">
