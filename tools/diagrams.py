@@ -171,6 +171,13 @@ def render(source: str, theme: str, target: Path, work: Path) -> None:
         timeout=600,
     )
 
+    # mermaid-cli ends the file at the closing tag. The repo's end-of-file-fixer
+    # hook then appends a newline, so without this every rendered file comes
+    # back modified on the next run.
+    art = target.read_bytes()
+    if not art.endswith(b"\n"):
+        target.write_bytes(art + b"\n")
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
