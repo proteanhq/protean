@@ -414,6 +414,7 @@ nav:
       - reference/compatibility/index.md
     - Migration:
       - reference/migration/index.md
+      - reference/migration/v0-19.md
       - reference/migration/v0-18.md
       - reference/migration/v0-17.md
       - reference/migration/v0-16.md
