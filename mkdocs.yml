@@ -51,6 +51,7 @@ theme:
     - navigation.instant.prefetch
     - navigation.instant.progress
     - navigation.path
+    - navigation.prune
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.top
@@ -62,9 +63,8 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
-extra_javascript:
-  - https://unpkg.com/mermaid@10/dist/mermaid.min.js
-  - javascripts/mermaid-init.js
+hooks:
+  - hooks/diagrams.py
 
 exclude_docs: |
   adr/TEMPLATE.md
