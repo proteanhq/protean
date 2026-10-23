@@ -18,6 +18,7 @@ import contextlib
 import io
 import os
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -64,8 +65,16 @@ def _collect() -> _Tally:
     tally = _Tally()
     os.chdir(REPO)
     # Collection prints every test id; only the tally is wanted.
-    with contextlib.redirect_stdout(io.StringIO()):
-        pytest.main(["--collect-only", "-q", "--ignore=tests/support"], plugins=[tally])
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        status = pytest.main(
+            ["--collect-only", "-q", "--ignore=tests/support"], plugins=[tally]
+        )
+    # A module that fails to import still leaves the other items collected, so
+    # the tally would look plausible while missing whole files.
+    if status != pytest.ExitCode.OK:
+        sys.stderr.write(output.getvalue())
+        sys.exit(f"Test collection failed ({status!r}); no metrics printed.")
     return tally
 
 
@@ -119,7 +128,7 @@ def main() -> None:
         print(f"    {BACKING_MARKERS[marker]:<20}{count:,}")
     if tally.deselected:
         print(
-            f"\n  ({tally.deselected} deselected by marker; `tests/support` excluded — "
+            f"\n  ({tally.deselected} deselected by marker; `tests/support` excluded as "
             f"fixtures, not tests)"
         )
     print(
