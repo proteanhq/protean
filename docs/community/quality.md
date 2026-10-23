@@ -54,12 +54,14 @@ not pinned; what is pinned is that there is only **one place to change**.
 
 | Category | Tests | Share |
 |---|---|---|
-| Core tests (in-memory, no infrastructure) | 11,611 | 93% |
-| Adapter/integration tests | 834 | 7% |
+| Core tests (in-memory, no infrastructure) | 18,788 | 91% |
+| Adapter/integration tests | 1,924 | 9% |
 
 Core tests run entirely in-memory with no external dependencies, making
 them fast and reliable for local development. Integration tests exercise
-real databases and message brokers.
+real databases and message brokers. A test counts as an integration test
+when it carries one of the backing-service markers listed in
+`scripts/metrics.py`, the same markers as the table below.
 
 ### Infrastructure Coverage
 
@@ -67,12 +69,17 @@ Every merge to `main` is tested against real backing services:
 
 | Technology | Marked Tests |
 |---|---|
-| Database (generic) | 416 |
-| Redis | 339 |
-| Event Store | 280 |
-| Elasticsearch | 168 |
-| PostgreSQL | 85 |
-| SQLite | 77 |
+| Redis | 574 |
+| Database (generic) | 452 |
+| Event Store | 316 |
+| Elasticsearch | 177 |
+| PostgreSQL | 145 |
+| SQLite | 132 |
+| MySQL | 65 |
+| MessageDB | 60 |
+| MSSQL | 34 |
+
+A test with more than one marker counts once in each row.
 
 Branch coverage is enabled, and results are reported to
 [Codecov](https://codecov.io/gh/proteanhq/protean) on every CI run.
@@ -259,4 +266,4 @@ pip install protean[elasticsearch] # Adds the elasticsearch client
 
 ---
 
-*The test total, the Test Breakdown table and the test-to-code ratio were last updated in October 2026. The Core vs. Integration and Infrastructure Coverage tables, Code Quality and Codebase Structure are from March 2026.*
+*The Test Suite figures (the total, the Test Breakdown, the test-to-code ratio, and the Core vs. Integration and Infrastructure Coverage tables) were last updated in October 2026, all from `scripts/metrics.py`. Code Quality and Codebase Structure are from March 2026.*
