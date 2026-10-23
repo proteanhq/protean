@@ -10,7 +10,7 @@
 [![Release](https://img.shields.io/pypi/v/protean?label=Release)](https://pypi.org/project/protean/)
 [![Build Status](https://github.com/proteanhq/protean/actions/workflows/ci.yml/badge.svg)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/proteanhq/protean/graph/badge.svg?token=0sFuFdLBOx)](https://codecov.io/gh/proteanhq/protean)
-[![Tests](https://img.shields.io/badge/tests-12%2C000%2B-brightgreen)](community/quality.md)
+[![Tests](https://img.shields.io/badge/tests-20%2C000%2B-brightgreen)](community/quality.md)
 [![Maintainability](https://img.shields.io/badge/maintainability-A-brightgreen)](https://docs.proteanhq.com/community/quality/)
 
 Protean is a Python framework for domain-driven systems. You sketch aggregates,
