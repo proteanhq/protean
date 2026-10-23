@@ -48,7 +48,7 @@ typecheck:
 # target module and checking whether its fast unit-test subset notices. Uses
 # mutmut 3.x in a dedicated Python 3.12 env (.venv-mutation) — 3.14 is unreliable
 # for this; the project .venv is left untouched. Override the module with
-# TARGET=... (the targets are listed in scripts/mutation.sh) and optionally focus the survivor
+# TARGET=... (the targets are the `case` block in scripts/mutation.sh) and optionally focus the survivor
 # report with MUT_FILTER="<grep on mutant names>" (e.g. a method name). See
 # docs/community/contributing/mutation-testing.md.
 TARGET ?= outbox
@@ -61,5 +61,9 @@ mutation:
 verify-specs:
 	./specs/check.sh
 
-cov: up
-	uv run pytest --slow --sqlite --postgresql --mysql --elasticsearch --redis --message_db --cov=protean --cov-config .coveragerc tests
+# Rank duplicate, private-state, slow and order-dependent tests. The suite
+# runs are the core lane; the static scan reads all of tests/ except
+# tests/support/. Writes only under .test-audit/ and changes no test. See
+# docs/community/contributing/testing.md.
+test-audit:
+	uv run python scripts/test_audit.py
