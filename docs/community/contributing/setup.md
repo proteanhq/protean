@@ -114,7 +114,8 @@ $ protean test -c FULL
     via `DOCKER_HOST`.
 
 Running a full test will also generate a coverage report as part of test
-output. Writing tests for lines that do not have coverage is a great way to
-start contributing.
+output. An uncovered line is a good place to start contributing: find the
+behaviour that runs it and test that behaviour (see
+[Do not write a test only to reach a line](testing.md#do-not-write-a-test-only-to-reach-a-line)).
 
 For more detailed information about testing, please refer to the [Testing Guide](testing.md).

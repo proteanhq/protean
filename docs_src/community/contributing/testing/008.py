@@ -18,11 +18,13 @@ class Retry:
 
 
 # --8<-- [start:recorded_time]
-def test_scheduling_records_the_next_attempt_one_delay_later():
+def test_scheduling_records_the_next_attempt_one_delay_after_now():
     retry = Retry(delay=timedelta(minutes=5))
+    before = datetime.now(UTC)
 
     retry.schedule()
 
+    assert before <= retry.scheduled_at <= datetime.now(UTC)
     assert retry.next_attempt_at - retry.scheduled_at == timedelta(minutes=5)
 
 
@@ -38,7 +40,8 @@ def test_a_retry_is_due_once_its_next_attempt_has_passed():
     retry = Retry(delay=timedelta(minutes=5))
     retry.schedule()
 
-    retry.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
+    retry.scheduled_at -= timedelta(minutes=6)
+    retry.next_attempt_at -= timedelta(minutes=6)
 
     assert retry.is_due() is True
 

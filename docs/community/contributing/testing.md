@@ -345,9 +345,9 @@ full CLI reference and usage examples.
 
 ## Writing tests that last
 
-A test lasts when it fails only because the behaviour it checks has changed. A refactor that keeps the behaviour must leave it green, and a bug in that behaviour must turn it red. The ten rules below follow from that. A reviewer can point at a rule by its heading.
+A test lasts when it fails only because the behaviour it checks has changed. A refactor that keeps the behaviour must leave it green, and a bug in that behaviour must turn it red. The rules below follow from that.
 
-The good examples on this page are test modules under `docs_src/community/contributing/testing/`, and `tests/docs/community/contributing/test_testing.py` runs each one under pytest. The bad examples are marked `# fragment` and do not run.
+The good examples on this page are test modules under `docs_src/community/contributing/testing/`, and `tests/docs/community/contributing/test_testing.py` runs each one under pytest. Every example block carries the `# fragment` marker. A bad example has it so that it does not run, and a good example has it because `test_testing.py` already runs that file (see [Code on documentation pages](#code-on-documentation-pages)).
 
 ### Test behaviour through the public API
 
@@ -402,7 +402,7 @@ Compare against the value you expect: `assert result == 3`. A bare `assert resul
 def test_order_total():
     order = Order()
     order.add_line(price=10.0, quantity=2)
-    order.add_line(price=5.0, quantity=2)
+    order.add_line(price=5.0, quantity=3)
     assert order.total
 ```
 
@@ -439,14 +439,18 @@ A mock replaces real code with code the test wrote, so the test stops checking t
 - the clock, when the code reads the current time
 - a failure you cannot produce for real, such as a full disk or a dropped connection
 
-For everything else, use the real object. For persistence, use the in-memory adapters: `protean test` configures the `memory` database provider, the `inline` broker and the `memory` cache (see the `tests/domain.toml` sample under [Configuration](#configuration)). A `MagicMock` that stands in for a repository passes whatever the code does with it:
+For everything else, use the real object. For persistence, use the in-memory adapters. The test configuration in `tests/domain.toml` sets the `memory` database provider, the `inline` broker and the `memory` cache (see [Configuration](#configuration)). In the test below, a `MagicMock` replaces the repository. The test still passes if `pay_invoice` stores the wrong status, because the mock records the `add` call and stores nothing:
 
 ```python
 # fragment
 def test_paying_an_invoice():
     repo = MagicMock()
     repo.get.return_value = Invoice(amount=30.0)
-    pay_invoice("inv-1")
+    with (
+        patch.object(current_domain, "repository_for", return_value=repo),
+        patch.object(gateway, "charge", return_value="pay-1"),
+    ):
+        pay_invoice("inv-1")
     repo.add.assert_called_once()
 ```
 
@@ -459,7 +463,7 @@ This test stores the invoice in the in-memory database, patches only the call to
 
 ### Read the recorded time instead of racing a sleep
 
-A test that sleeps and then asserts depends on how busy the machine is. It is slow when the sleep is long and flaky when it is short. When code schedules something, it records when: a delay, or a time such as `next_attempt_at`. Assert the value the code recorded. To test the other side, move that value into the past and check again.
+A test that sleeps and then asserts depends on how busy the machine is. It is slow when the sleep is long and flaky when it is short. When code schedules something, it records when: a delay, or a time such as `next_attempt_at`. Assert the value the code recorded. To test the other side, move the recorded times into the past by more than the delay and check again.
 
 ```python
 # fragment
@@ -482,6 +486,7 @@ Before you add a test file, look for the tests that already cover the code you c
 | Source | Tests |
 |--------|-------|
 | `src/protean/core/aggregate.py` | `tests/aggregate/` |
+| `src/protean/core/entity.py` | `tests/entity/` |
 | `src/protean/core/value_object.py` | `tests/value_object/` |
 | `src/protean/adapters/repository/` | `tests/adapters/repository/` |
 | `src/protean/server/` | `tests/server/` |
@@ -489,14 +494,14 @@ Before you add a test file, look for the tests that already cover the code you c
 Search there for the name of the function or class you changed:
 
 ```shell
-grep -rln "add_lines" tests/aggregate/ tests/entity/
+grep -rln "add_comments" tests/aggregate/ tests/entity/
 ```
 
 If a test already sets up the case, add the new behaviour as a test next to it, or as one more `parametrize` input. A new file for a small change spreads one behaviour over several places.
 
 ### Do not write a test only to reach a line
 
-The `codecov/patch` check needs 96% of the changed lines to be covered. A test that runs a line without checking what the line does meets that number and protects nothing. The usual shape is a test that builds an object with `__new__`, sets a private attribute by hand to force a guard, and asserts on private state. No user of the framework can reach that state, so the test checks nothing a user depends on.
+The `codecov/patch` check needs 96% of the changed lines to be covered. A test can run a line without checking what the line does. It counts toward the 96%, and it still passes when the line is wrong. The usual shape is a test that builds an object with `__new__`, sets a private attribute by hand to force a guard, and asserts on private state. No user of the framework can reach that state, so the test checks nothing a user depends on.
 
 When a changed line is not covered, do one of these:
 
@@ -515,26 +520,27 @@ A `pragma` with no reason leaves the next reader to work out why the line is exc
 
 A test may be deleted or merged into another when the behaviour it covered no longer exists in the code. Otherwise, both of these checks must pass:
 
-- **Coverage.** For every module the change touches, `coverage json` gives the same `missing_lines` and `missing_branches` before and after the change. A matching percentage is not enough, because one line can be lost while another is gained. Run the "before" measurement twice. A line that differs between those two runs is listed in the pull request and left out of the comparison.
-- **Mutation.** For a module with a [mutation testing](mutation-testing.md) target, the run after the change has no surviving mutant and no not-covered mutant that the run before did not have. A mutant is a small change mutmut makes to the source, and it survives when no test fails. Compare the survivor names and the not-covered count, not the score. The score divides by the mutants some test reached, so deleting the only test that reaches a mutant moves it to not-covered, and the score can stay the same or rise.
+- **Coverage.** For every source module the deleted or merged tests covered, `coverage json` gives the same `missing_lines` and `missing_branches` before and after the change. Compare the line lists, because one line can be lost while another is gained and the percentage stays the same. Run the "before" measurement twice. A line that differs between those two runs is listed in the pull request and left out of the comparison.
+- **Mutation.** For a module with a [mutation testing](mutation-testing.md) target, the run after the change has no survivor that the run before did not have, and its not-covered count is no higher. A mutant is a small change mutmut makes to the source. It survives when the tests that reach it run and pass, and it is not covered when no test reaches it. `make mutation` prints the survivor names and the not-covered count. Compare those two, not the score. The score divides by the mutants some test reached, so deleting the only test that reaches a mutant moves it to not-covered, and the score can stay the same or rise.
 
 "Before" is the merge-base of your branch with `main`. `main` itself moves as other pull requests merge. Measure it in a second worktree, with the same commands you use on your branch:
 
 ```shell
 git worktree add ../before $(git merge-base origin/main HEAD)
 cd ../before
-protean test -c PR --no-adapters
-coverage json -o coverage-before.json
+uv sync --all-extras --all-groups
+uv run protean test -c PR --no-adapters
+uv run coverage json -o coverage-before.json
 make mutation TARGET=entity
 ```
 
-Run the same commands on your branch for the "after" numbers. `protean test -c PR --no-adapters` measures the core tests. A test with a service marker never runs in the core lane, so measure it with the adapter leg that runs it, for example `protean test -c PR -a redis --no-core`. The pull request lists each deleted or merged test, the test that now covers its behaviour, the before and after numbers, and the commands that produced them.
+`uv sync` gives the worktree its own virtual environment, so the tests import the code at the merge-base and not your branch. Run the same commands on your branch for the "after" numbers. `protean test -c PR --no-adapters` measures the core tests. A test with a service marker never runs in the core lane, so measure it with the adapter leg that runs it, for example `uv run protean test -c PR -a redis --no-core`. The pull request lists each deleted or merged test, the test that now covers its behaviour, the before and after numbers, and the commands that produced them.
 
-`make test-audit` lists candidates for deletion (see [Auditing the suite](#auditing-the-suite)). A candidate still needs this evidence before it goes.
+`make test-audit` lists duplicate and private-state tests to review (see [Auditing the suite](#auditing-the-suite)). A test from that list still needs this evidence before you delete it.
 
 ### Prefer one property test to a long list of examples
 
-When the rule is a property, one that holds for every input, a list of examples checks only the inputs someone thought of. A property test with [Hypothesis](https://hypothesis.readthedocs.io/) generates the inputs, and when one fails it reports the smallest input that fails. Hypothesis is in the `test` dependency group.
+When the rule is a property, one that holds for every input, a list of examples checks only the inputs someone thought of. A property test with [Hypothesis](https://hypothesis.readthedocs.io/) generates the inputs, and when one fails it shrinks it to a simpler input that still fails. Hypothesis is in the `test` dependency group.
 
 ```python
 # fragment
@@ -543,14 +549,16 @@ When the rule is a property, one that holds for every input, a list of examples 
     [(0.0, "USD"), (1.5, "USD"), (99.99, "EUR"), (1000.0, "INR"), (0.01, "EUR")],
 )
 def test_money_round_trip(amount, currency):
-    money = Money(amount=amount, currency=currency)
-    assert Money(**money.to_dict()) == money
+    rebuilt = Money(**Money(amount=amount, currency=currency).to_dict())
+    assert (rebuilt.amount, rebuilt.currency) == (amount, currency)
 ```
 
 ```python
 # fragment
 --8<-- "community/contributing/testing/009.py:property"
 ```
+
+The test compares the rebuilt fields with the generated inputs. Comparing two `Money` objects would go through `to_dict()` again, because value objects compare by their `to_dict()` output, so a `to_dict()` that rounds the amount would still pass. `deadline=None` turns off Hypothesis's time limit for each input, which building a domain object can exceed on a busy CI machine.
 
 `tests/serialization/test_roundtrip_value_object.py` checks the same round trip for every field type, with strategies shared from `tests/serialization/strategies.py`. Keep examples for the cases a property does not describe, such as one known boundary or a bug that was fixed.
 
@@ -676,21 +684,21 @@ When running the full test suite with `protean test -c FULL` (or the pull reques
 
 You can also view coverage diffs and look for lines missing coverage with the `protean test -c COVERAGE`. The command generates an HTML report that visually represents the coverage data, making it easy to identify untested code paths.
 
-It compares the current branch's coverage against the main branch to highlight changes in coverage, which is especially useful for pull request reviews. Unless tests completely cover all changes, CodeCov will fail the PR.
+It compares the current branch's coverage against the main branch to highlight changes in coverage, which is especially useful for pull request reviews. Codecov checks the lines each pull request changes, as described under Constraints.
 
 ### Constraints
 
 Protean enforces coverage constraints to ensure code quality:
 
-- Pull requests cannot reduce overall code coverage
 - Coverage is checked as part of the CI pipeline
+- Overall project coverage is reported on each pull request but does not fail it
 
 If tests cover fewer than 96% of the lines a pull request changes, the `codecov/patch` check fails and the coverage report lists the uncovered lines. Meet the gate in one of two ways:
 
 - Write a test for a behaviour that runs the line, and assert what that behaviour does.
 - If no public path reaches the line, remove it, or mark it `# pragma: no cover` with the reason on the same line.
 
-A test that only runs the line is not enough. See [Do not write a test only to reach a line](#do-not-write-a-test-only-to-reach-a-line).
+For why a test that only runs the line does not count, see [Do not write a test only to reach a line](#do-not-write-a-test-only-to-reach-a-line).
 
 ### Auditing the suite
 

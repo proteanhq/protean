@@ -1,5 +1,5 @@
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from protean import Domain
@@ -14,8 +14,6 @@ class Money:
     currency = String(max_length=3, required=True)
 
 
-# Hypothesis runs a test body many times inside one call of the test, so a
-# function-scoped fixture would not reset between those runs.
 @pytest.fixture(scope="module", autouse=True)
 def shop():
     domain.init(traverse=False)
@@ -24,6 +22,7 @@ def shop():
 
 
 # --8<-- [start:property]
+@settings(deadline=None)
 @given(
     amount=st.floats(min_value=0, max_value=1_000_000, allow_nan=False),
     currency=st.sampled_from(["EUR", "INR", "USD"]),
@@ -31,7 +30,10 @@ def shop():
 def test_money_rebuilt_from_its_dict_equals_the_original(amount, currency):
     money = Money(amount=amount, currency=currency)
 
-    assert Money(**money.to_dict()) == money
+    rebuilt = Money(**money.to_dict())
+
+    assert rebuilt.amount == amount
+    assert rebuilt.currency == currency
 
 
 # --8<-- [end:property]

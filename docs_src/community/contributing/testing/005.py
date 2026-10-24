@@ -35,9 +35,9 @@ def ordering():
 def test_the_total_adds_price_times_quantity_for_each_line():
     order = Order()
     order.add_line(price=10.0, quantity=2)
-    order.add_line(price=5.0, quantity=2)
+    order.add_line(price=5.0, quantity=3)
 
-    assert order.total == 30.0
+    assert order.total == 35.0
 
 
 # --8<-- [end:exact_value]
