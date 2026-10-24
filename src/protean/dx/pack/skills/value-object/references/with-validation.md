@@ -1,24 +1,10 @@
 # Value Objects with Validation
 
-Value objects are excellent containers for encapsulating validation logic. When a domain concept has specific rules about what constitutes valid values, implementing it as a value object ensures those rules are enforced consistently throughout your application.
-
-## Overview
-
-Use value objects with validation when:
-- A concept has specific format requirements (email, phone, URL)
-- Business rules define what constitutes valid values
-- You want to prevent invalid data from entering your domain
-- Validation logic is complex and should be reusable
+A field validator checks one field's value when the value object is built, and raises `ValidationError` when the value is wrong. A rule that needs two fields goes in an `@invariant.post` instead.
 
 ## Code
 
-The complete implementation is in [assets/value_object_with_validation.py](../assets/value_object_with_validation.py).
-
-Key points:
-- Custom validators encapsulate complex validation logic
-- Validators are attached to fields using the `validators` parameter
-- ValidationError is raised when rules are violated
-- Validation happens at initialization time
+The complete implementation is in [assets/value_object_with_validation.py](../assets/value_object_with_validation.py). Its `EmailValidator` runs more checks than the shorter one below. Among them, an address must have exactly one `@`, a local part of at most 64 characters, domain labels of at most 63 characters that start and end with a letter or digit, and no spaces or unprintable characters.
 
 ## Walkthrough
 
@@ -43,11 +29,7 @@ class EmailValidator:
             raise ValidationError(self.error)
 ```
 
-The validator is a callable class that:
-- Is instantiated with any configuration (like error messages)
-- Implements `__call__` to perform the validation
-- Raises `ValidationError` if validation fails
-- Can contain complex, multi-step validation logic
+The validator is a callable class. The constructor takes its configuration, such as the error message, and `__call__` raises `ValidationError` when the value fails.
 
 ### The Value Object
 
@@ -61,26 +43,7 @@ class Email:
     )
 ```
 
-The value object:
-- Defines the data structure (single `address` field)
-- Attaches the validator via `validators` parameter
-- Can have multiple validators in the list
-- Ensures all email instances are valid
-
-### Using in Aggregates
-
-```python
-@domain.aggregate
-class User:
-    email = ValueObject(Email, required=True)
-    name: String(max_length=100, required=True)
-```
-
-Benefits:
-- Email validation is automatic - no need to validate in User
-- Validation logic is reusable across all email fields
-- Cannot create a User with invalid email
-- Domain model stays clean and focused
+An aggregate that holds `email = ValueObject(Email)` gets the check with no validation code of its own.
 
 ## Validation Patterns
 
@@ -144,15 +107,6 @@ class Temperature:
 
 ## Common Validation Scenarios
 
-### Email Addresses
-
-See the complete example in assets. Key validations:
-- Must contain exactly one @ symbol
-- Local part max 64 characters
-- Domain labels max 63 characters each
-- No spaces or unprintable characters
-- Must start/end with alphanumeric
-
 ### URLs
 
 ```python
@@ -197,7 +151,7 @@ A field validator sees one value. The postal code format depends on the country,
 
 ## Testing Validation
 
-Always test both valid and invalid cases:
+Test a valid value and each way a value can be invalid:
 
 ```python
 import pytest
@@ -217,15 +171,6 @@ def test_invalid_email_too_long_local_part():
         Email(address="a" * 65 + "@example.com")
     assert "Invalid email address" in str(exc.value)
 ```
-
-## Best Practices
-
-1. **Keep validators focused**: One validator, one concern
-2. **Make error messages clear**: Users need to know what's wrong
-3. **Test edge cases**: Validation is where bugs hide
-4. **Reuse validators**: Extract common validation to reusable validators
-5. **Document validation rules**: Future developers need to understand why
-6. **Fail fast**: Validate at construction time, not later
 
 ## Related
 

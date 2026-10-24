@@ -1,24 +1,10 @@
 # Value Objects with Methods
 
-Value objects are not just data containers - they can and should encapsulate behavior related to their values. Methods in value objects implement business logic, provide computed properties, and maintain immutability through operations that return new instances.
-
-## Overview
-
-Add methods to value objects when:
-- The concept has natural operations (add, subtract, multiply)
-- You need computed properties derived from attributes
-- Business logic operates on the value object's data
-- You want to prevent invalid operations (like adding different currencies)
+A value object carries the operations on its values: arithmetic, computed properties and comparisons. Every operation returns a new instance and leaves the original unchanged.
 
 ## Code
 
 The complete implementation is in [assets/value_object_with_methods.py](../assets/value_object_with_methods.py).
-
-Key highlights:
-- Operations return new instances (maintaining immutability)
-- Methods enforce business rules (e.g., same currency)
-- Computed properties provide derived values
-- Rich domain model with expressive operations
 
 ## Walkthrough
 
@@ -102,23 +88,13 @@ class Money:
 
 The `amount` field is the Protean `Decimal` field, which stores a standard-library `decimal.Decimal`. The standard-library class is imported as `D` so the two names do not clash. Use `D("8.75")` for money literals, never floats.
 
-The sections below walk through the parts of this class.
-
 ### Arithmetic Operations
 
-`add`, `subtract`, `multiply` and `divide` each return a NEW Money instance (immutability):
-- `add` and `subtract` check that both values use the same currency, with a clear error message
-- `divide` refuses a zero divisor
-- `multiply` and `divide` round the result to the four decimal places the field allows. Without rounding, `D("100") / 3` has too many digits and the field rejects it.
-- Type hints guide usage
+`add`, `subtract`, `multiply` and `divide` each return a new `Money` instance. `add` and `subtract` refuse two different currencies, and `divide` refuses a zero divisor. `multiply` and `divide` round the result to the four decimal places the field allows. Without rounding, `D("100") / 3` has too many digits and the field rejects it.
 
 ### Computed Properties
 
-`is_positive`, `is_zero` and `is_negative` are properties. They:
-- Don't modify state
-- Return derived information
-- Make code more readable
-- Can be used in conditionals
+`is_positive`, `is_zero` and `is_negative` are read-only properties derived from `amount`.
 
 ### Comparison Methods
 
@@ -127,8 +103,6 @@ The sections below walk through the parts of this class.
 ## Common Patterns
 
 ### Money Operations
-
-The classic example - Money value object with mathematical operations:
 
 ```python
 price = Money(currency="USD", amount=D("100.00"))
@@ -269,8 +243,6 @@ class Order:
 
 ## Testing Value Object Methods
 
-Test all operations and edge cases:
-
 ```python
 import pytest
 
@@ -303,25 +275,7 @@ def test_money_is_positive():
     assert m3.is_positive is False
 ```
 
-## Best Practices
-
-1. **Return new instances**: Never modify self, always return new value object
-2. **Validate operations**: Check preconditions (same currency, non-zero divisor)
-3. **Use type hints**: Make operations self-documenting
-4. **Keep methods focused**: One operation per method
-5. **Name methods clearly**: `add`, `subtract`, `multiply` not `calc` or `process`
-6. **Provide properties**: For derived/computed values
-7. **Test thoroughly**: Operations are where bugs appear
-
 ## Common Mistakes
-
-**Modifying self** ❌
-```python
-# fragment
-def add(self, other: "Money") -> "Money":
-    self.amount += other.amount  # Wrong! Violates immutability
-    return self
-```
 
 **Not validating operations** ❌
 ```python

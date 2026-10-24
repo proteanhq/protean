@@ -1,25 +1,10 @@
 # Value Objects in Aggregates
 
-Value objects are primarily used within aggregates and entities to represent complex attributes. This reference shows how to effectively embed and use value objects in aggregates, including patterns, best practices, and real-world scenarios.
-
-## Overview
-
-Value objects in aggregates:
-- Represent descriptive attributes of the aggregate
-- Encapsulate validation and business logic
-- Make the domain model more expressive
-- Ensure data integrity through immutability
-- Simplify persistence and retrieval
+An aggregate holds a value object through a `ValueObject` field, builds new value objects in its methods, and replaces a value object whole to change it.
 
 ## Code
 
 The complete implementation is in [assets/value_object_in_aggregate.py](../assets/value_object_in_aggregate.py).
-
-Key highlights:
-- Multiple value objects in single aggregate
-- Value objects in aggregate methods
-- Business logic using value objects
-- Complete real-world order scenario
 
 ## Walkthrough
 
@@ -58,15 +43,11 @@ class Order:
     status: String(default="pending")
 ```
 
-The aggregate:
-- Uses `ValueObject` field to embed Money
-- Money handles its own validation and arithmetic
-- Total amount is always valid currency + amount combination
-- `amount` is a `Decimal` field, so it holds exact decimal values. The standard-library `Decimal` is imported as `D` to keep it apart from the field type of the same name.
-
 The rest of this page reuses this `Money` class.
 
 ### Multiple Value Objects
+
+An aggregate can hold several value objects, and the same value object type more than once, such as an `Order` with both `shipping_address = ValueObject(Address)` and `billing_address = ValueObject(Address)`. The rest of this page reuses this `Address`:
 
 ```python
 @domain.value_object
@@ -76,27 +57,7 @@ class Address:
     state: String(required=True, max_length=50)
     postal_code: String(required=True, max_length=20)
     country: String(required=True, max_length=50)
-
-
-@domain.aggregate
-class Order:
-    """Order with multiple value objects."""
-    order_number: String(required=True, identifier=True)
-
-    # Multiple different value object types
-    shipping_address = ValueObject(Address, required=True)
-    billing_address = ValueObject(Address)
-    total_amount = ValueObject(Money, required=True)
-    discount = ValueObject(Money)
-
-    status: String(default="pending")
 ```
-
-Benefits:
-- Each value object encapsulates its own logic
-- Aggregate remains clean and focused
-- Type safety for complex attributes
-- Consistent validation across all instances
 
 ### Value Objects in Aggregate Methods
 
@@ -144,12 +105,6 @@ class Order:
         self.status = "confirmed"
 ```
 
-Patterns:
-- Methods return value objects
-- Value object methods (like `add`) used in aggregate logic
-- Aggregate orchestrates value object operations
-- Business rules implemented clearly
-
 ### Replacing Value Objects (Immutability)
 
 ```python
@@ -172,11 +127,7 @@ class Order:
         self.shipping_address = new_address
 ```
 
-Key points:
-- Value objects cannot be modified
-- Always replace with new instance
-- Business rules protect when replacement is allowed
-- Clean, explicit state changes
+The aggregate method decides when a replacement is allowed.
 
 ## Common Patterns
 
@@ -184,20 +135,9 @@ The examples below reuse the `Money` and `Address` value objects defined above.
 
 ### Order with Line Items and Money
 
-Complete e-commerce order scenario:
+The `Order` that the rest of this page builds and tests, with the `OrderLine` entity from above:
 
 ```python
-@domain.entity(part_of="Order")
-class OrderLine:
-    product_id: String(required=True)
-    quantity: Integer(required=True, min_value=1)
-    unit_price = ValueObject(Money, required=True)
-
-    @property
-    def line_total(self) -> Money:
-        return self.unit_price.multiply(self.quantity)
-
-
 @domain.aggregate
 class Order:
     order_number: String(required=True, identifier=True)
@@ -367,22 +307,6 @@ with domain.domain_context():
 
 Both approaches produce identical aggregates. Flattened attributes work one level deep: `shipping_address_city` sets `city` on the `shipping_address` value object. If a value object holds another value object, pass the inner one as an object.
 
-## Accessing Value Object Attributes
-
-```python
-# Access value object
-print(order.total_amount.currency)
-print(order.total_amount.amount)
-
-# Access value object fields
-print(order.shipping_address.street)
-print(order.shipping_address.city)
-
-# Use in business decisions
-if order.total_amount.amount > D("1000"):
-    print("Eligible for bulk discount")
-```
-
 ## Testing Aggregates with Value Objects
 
 ```python
@@ -437,60 +361,7 @@ def test_cannot_modify_value_object():
 
 These tests run inside a domain context, which the test setup provides.
 
-## Best Practices
-
-1. **Use value objects for complex attributes**: Don't flatten to primitives
-2. **Keep aggregates focused**: VOs handle attribute validation
-3. **Return value objects from methods**: Makes return types explicit
-4. **Use VO methods in aggregate logic**: Leverage VO behavior
-5. **Replace, don't modify**: Honor immutability
-6. **Validate with business rules**: Control when VOs can be replaced
-7. **Initialize clearly**: Choose object or attribute initialization consistently
-
 ## Common Mistakes
-
-**Flattening value objects** ❌
-```python
-# fragment
-@domain.aggregate
-class Order:
-    # Bad: Flattening Money to primitives
-    amount: Decimal(precision=19, scale=4)
-    currency: String()
-
-    # Good: Using Money value object
-    total = ValueObject(Money)
-```
-
-**Trying to modify value objects** ❌
-```python
-# fragment
-# Won't work - value objects are immutable
-order.total_amount.amount = D("200.00")
-
-# Correct - replace entire value object
-order.total_amount = Money(currency="USD", amount=D("200.00"))
-```
-
-**Not leveraging VO behavior** ❌
-```python
-# fragment
-# Bad: Reimplementing VO logic in aggregate
-def calculate_total(self):
-    total_amount = 0
-    for item in self.line_items:
-        total_amount += item.unit_price.amount * item.quantity
-    return total_amount
-```
-
-```python
-# Good: Using VO methods
-def calculate_total(self):
-    total = self.line_items[0].line_total
-    for item in self.line_items[1:]:
-        total = total.add(item.line_total)
-    return total
-```
 
 **Missing required value objects** ❌
 ```python
