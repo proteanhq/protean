@@ -76,15 +76,6 @@ Read all domain files and build a structured inventory per aggregate:
 }
 ```
 
-**Detection patterns:**
-- **Factory methods**: `@classmethod` that calls `cls(...)` and optionally `raise_()`
-- **State-change methods**: Instance methods that assign `self.status = ...` or `self.field = ...`
-- **Events raised**: Lines containing `self.raise_(SomeEvent(...))`
-- **Invariants**: Methods decorated with `@invariant.pre` or `@invariant.post`
-- **Business rules**: `if` conditions followed by `raise ValueError` or `raise ValidationError`
-- **VO operations**: Non-dunder instance methods on `@domain.value_object` classes
-- **Entity management**: Methods calling `self.add_<collection>()` or `self.remove_<collection>()`
-
 ### Step 2: Inventory existing tests
 
 Read all test files and map what is already tested:
@@ -177,11 +168,7 @@ Do not report missing tests for framework-guaranteed behavior:
 
 ## Common mistakes
 
-1. **Flagging framework guarantees as gaps**: don't report missing tests for VO immutability, field validation, or registry presence
-2. **Missing negative tests**: every business rule (`if ... raise`) needs both a happy path test AND a rejection test
-3. **Checking only isinstance for events**: event data verification (field values) is a separate coverage point from event type checking
-4. **Forgetting cross-aggregate handlers**: event handlers that issue a command to another aggregate are often the most undertested
-5. **Not tracing raise_() to event classes**: each `raise_()` call means there should be a test verifying that specific event
+- **Forgetting cross-aggregate handlers**: Event handlers that issue a command to another aggregate are often the most undertested
 
 ## Complete examples
 

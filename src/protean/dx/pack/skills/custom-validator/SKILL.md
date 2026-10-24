@@ -47,7 +47,7 @@ class Phone:
 
 1. **Validators are callable classes**: Implement `__init__` and `__call__`. The `__call__` method receives the field value as its single argument.
 2. **Raise `ValidationError` on failure**: Import from `protean.exceptions`. The error message string gets wrapped into `{field_name: [message]}` automatically. If the validator has an `error` attribute, that string is the message instead.
-3. **Return nothing on success**: If the value is valid, simply return (no return value needed).
+3. **Return nothing on success**: If the value is valid, return nothing.
 4. **Validators run AFTER type casting**: The value passed to `__call__` has already been cast to the field's native type (e.g., `str` for `String`, `int` for `Integer`).
 5. **Multiple validators are chained**: Use `validators=[V1(), V2()]`. They run in list order, and validation stops at the first failing validator. The user sees one error for the field at a time.
    The exception is a `ValueObject` or `ValueObjectList` field. There, every validator in the list runs, and the field reports one error for each validator that failed.
@@ -63,8 +63,6 @@ When a field value is set, Protean validates in this order:
 3. **Type casting**: `_cast_to_type()` converts to native type
 4. **Built-in constraints**: `max_length`, `min_length`, `min_value`, `max_value`, and sanitization. A value that fails one of these never reaches the custom validators.
 5. **Validators**: Validators in the `validators=[]` list run in order. Validation stops at the first failure. Empty values (`None`, `""`, `[]`, `()`, `{}`) skip the validators.
-
-Custom validators execute at step 5, after the value is already type-cast, choice-validated, and within the built-in constraints.
 
 ## Built-in validators
 
@@ -163,9 +161,6 @@ class Username:
 ## Common mistakes
 
 - **Raising `ValueError` instead of `ValidationError`**: Always use `from protean.exceptions import ValidationError`. `ValueError` will not be caught by Protean's validation pipeline correctly.
-- **Using validators for cross-field rules**: Validators only see one field's value. For rules involving multiple fields (e.g., "end_date > start_date"), use `@invariant.post` instead.
-- **Duplicating built-in constraints**: Don't write a validator for `min_length` or `max_value`. Use the field's built-in parameters.
-- **Not making validators reusable**: Pass configuration through `__init__`, not hardcoded values.
 
 ## Complete examples
 

@@ -18,14 +18,7 @@ Domain services are **stateless orchestrators** for complex business logic that 
 - **Stateless**: Holds no state between calls. The caller passes the aggregates in for each operation
 - **Cross-aggregate**: Must be associated with at least two aggregates via `part_of`
 - **Pure domain logic**: Focus on domain rules only; no persistence, messaging, or technical concerns
-- **Reads many, changes one**: Validate against every aggregate passed in, then change only the primary aggregate, the one the command belongs to. The calling layer (a command handler or application service) persists it. The other aggregates change later, through the primary aggregate's event
-
-### Typical workflow
-
-1. Application layer loads aggregates via repositories
-2. Application layer invokes the domain service, passing aggregates
-3. Domain service validates across all the aggregates and changes the primary one, which raises an event
-4. Application layer persists the primary aggregate. An event handler reacts to its event and issues a command to each other aggregate (see rule 9)
+- **Reads many, changes one**: Validate against every aggregate passed in, then change only the primary aggregate (see Key rule 9)
 
 ## Basic structure
 
@@ -85,30 +78,7 @@ class Inventory:
 
 `Inventory.reserve_stock()` and `release_stock()` are called by the inventory's own command handler, never by the domain service. An event handler in the order's cluster reacts to `OrderConfirmed` or `OrderCancelled` and issues a command to the inventory. The `add-domain-service-flow` skill builds that whole flow, and the `event-handler` skill's cross-aggregate reference shows the event handler.
 
-A domain service is registered with the aggregate classes it works on:
-
-```python
-@domain.domain_service(part_of=[Order, Inventory])
-class OrderPlacementService:
-    def __init__(self, order, inventories):
-        super().__init__(order, inventories)
-        self.order = order
-        self.inventories = inventories
-
-    @invariant.pre
-    def inventory_should_have_sufficient_stock(self):
-        stock = {i.product_id: i.quantity for i in self.inventories}
-        # Lines for the same product draw on the same stock, so add them up.
-        ordered: dict[str, int] = {}
-        for item in self.order.items:
-            ordered[item.product_id] = ordered.get(item.product_id, 0) + item.quantity
-        for product_id, quantity in ordered.items():
-            if stock.get(product_id, 0) < quantity:
-                raise ValidationError({"_service": ["Product is out of stock"]})
-
-    def place_order(self):
-        self.order.confirm()
-```
+A domain service is registered with the aggregate classes it works on, `@domain.domain_service(part_of=[Order, Inventory])`. The three flavors below differ in how you call it.
 
 ## Three flavors
 
@@ -208,9 +178,8 @@ class StockReservationService:
 5. **Don't persist**: Domain services change the primary aggregate but never call repositories. The calling layer handles persistence.
 6. **Invariants span aggregates**: Use `@invariant.pre` and `@invariant.post` for validations that involve multiple aggregates.
 7. **Prefix helper methods with `_`**: Protean wraps every public instance method and `__call__` with the invariant checks. A public helper called from another public method runs the pre and post invariants again, against the state the outer method has reached so far. If that half-finished state breaks an invariant, the helper raises `ValidationError` before the outer method completes. An invariant that calls a public helper fails: the helper's wrapper runs the invariant again, which calls the helper again, until Python's recursion limit stops the call. A method whose name starts with `_` is not wrapped.
-8. **Choose flavor based on needs**: Callable class for a single operation, instance methods for multiple operations, class methods for a service with no invariants. Protean does not run a service's invariants around its class methods. It runs the first argument's invariants instead, so pass an aggregate first and call the method on the class.
+8. **Choose flavor based on needs**: Callable class for a single operation, instance methods for multiple operations, class methods for a service with no invariants (see flavor 3 for how Protean wraps a class method).
 9. **Change only the primary aggregate**: A domain service reads several aggregates but changes one, the aggregate the command belongs to. The command handler persists only that aggregate. The other aggregate changes through an event handler in the cluster that owns the event, which issues a command to the other aggregate. See the `event-handler` skill's cross-aggregate reference and the `add-domain-service-flow` skill.
-10. **Review regularly**: As the domain model matures, revisit whether logic in a domain service should be moved to an aggregate or vice versa.
 
 ## Domain service options
 
@@ -311,16 +280,6 @@ class OrderService:
     ...
 ```
 
-```python
-# Correct - needs 2+ aggregates
-@domain.domain_service(part_of=[Order, Inventory])
-class OrderInventoryService:
-    @classmethod
-    def can_fulfil(cls, order, inventories):
-        stock = {i.product_id: i.quantity for i in inventories}
-        return all(stock.get(item.product_id, 0) >= item.quantity for item in order.items)
-```
-
 If your logic only involves one aggregate, it belongs **in the aggregate itself**.
 
 ### Persisting inside the domain service
@@ -331,14 +290,6 @@ If your logic only involves one aggregate, it belongs **in the aggregate itself*
 def place_order(self):
     self.order.confirm()
     domain.repository_for(Order).add(self.order)  # Don't do this!
-```
-
-```python
-# fragment
-# Correct - change the primary aggregate, let the caller persist it
-def place_order(self):
-    self.order.confirm()
-    # The calling command handler persists the order
 ```
 
 ### Calling a public helper from an invariant
@@ -368,8 +319,6 @@ def total_should_be_positive(self):
 def _calculate_total(self):
     return sum(item.quantity * item.price for item in self.order.items)
 ```
-
-A public helper called from another public method runs every invariant again around the helper call. Prefix it with `_` too.
 
 ## Detailed references
 
