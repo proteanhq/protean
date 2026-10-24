@@ -127,26 +127,9 @@ class PlaceOrder:
     items = List(content_type=Dict)
 ```
 
-For each group of logic, create an aggregate method on `Order`. Step 3 shows the
-whole class, with these methods and its invariants:
-
-```python
-# fragment
-    def place(self, items: list[dict]) -> None:
-        """Place the order with the given items."""
-        for item_data in items:
-            self.add_items(LineItem(**item_data))
-        self.total = self._calculate_total()
-        self.status = "PLACED"
-        self.raise_(OrderPlaced(order_id=self.id, total=self.total.amount))
-
-    def _calculate_total(self) -> Money:
-        """Sum all line item totals."""
-        total = 0.0
-        for item in self.items:
-            total += item.unit_price.amount * item.quantity
-        return Money(amount=total)
-```
+For each group of logic, create an aggregate method on `Order`: here `place()` and
+`_calculate_total()`. Step 3 shows the whole class, with these methods and its
+invariants.
 
 ### Step 3: Add invariants
 
@@ -253,73 +236,6 @@ def test_order_must_have_items_when_placed():
 
 4. **Over-guarding**: Not every `if` is an invariant. Simple null checks in handlers
    (`if not command.customer_id`) are often handled by field `required=True`.
-
-5. **Forgetting to update tests**: After moving logic, tests should assert aggregate
-   behavior directly, not go through `domain.process()` for unit tests.
-
-## Quick example
-
-```python
-# fragment
-# BEFORE: fat handler, anemic aggregate
-@handle(CloseTicket)
-def close_ticket(self, command):
-    ticket = domain.repository_for(Ticket).get(command.ticket_id)
-    if ticket.status == "CLOSED":
-        raise ValidationError("Already closed")
-    if ticket.status == "OPEN":
-        raise ValidationError("Must be assigned first")
-    ticket.status = "CLOSED"
-    ticket.closed_at = datetime.now(UTC)
-    ticket.resolution = command.resolution
-    domain.repository_for(Ticket).add(ticket)
-```
-
-After the refactor, `Ticket.close()` holds the guards and the state change, and the
-handler loads, calls and persists:
-
-```python
-# AFTER: thin handler, rich aggregate
-from datetime import UTC, datetime
-
-
-@domain.event(part_of="Ticket")
-class TicketClosed:
-    ticket_id = Identifier(required=True)
-    resolution = String(required=True)
-
-
-@domain.aggregate
-class Ticket:
-    status = String(default="OPEN")
-    resolution = String(max_length=500)
-    closed_at = DateTime()
-
-    def close(self, resolution: str) -> None:
-        if self.status == "CLOSED":
-            raise ValidationError({"status": ["Already closed"]})
-        if self.status == "OPEN":
-            raise ValidationError({"status": ["Must be assigned first"]})
-        self.status = "CLOSED"
-        self.resolution = resolution
-        self.closed_at = datetime.now(UTC)
-        self.raise_(TicketClosed(ticket_id=self.id, resolution=resolution))
-
-
-@domain.command(part_of=Ticket)
-class CloseTicket:
-    ticket_id = Identifier(required=True)
-    resolution = String(required=True, max_length=500)
-
-
-@domain.command_handler(part_of=Ticket)
-class TicketCommandHandler:
-    @handle(CloseTicket)
-    def close_ticket(self, command: CloseTicket) -> None:
-        ticket = domain.repository_for(Ticket).get(command.ticket_id)
-        ticket.close(resolution=command.resolution)
-        domain.repository_for(Ticket).add(ticket)
-```
 
 ## Examples
 

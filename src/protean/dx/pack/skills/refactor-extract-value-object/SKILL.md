@@ -194,36 +194,6 @@ For events, flattening is often preferred since events are read by many consumer
    or, if the items form a concept with its own identity, model them as an entity the aggregate
    references.
 
-## Quick example
-
-```python
-# Before: primitive obsession
-@domain.aggregate
-class Invoice:
-    subtotal_amount = Float(default=0.0)
-    subtotal_currency = String(default="USD")
-    tax_amount = Float(default=0.0)
-    tax_currency = String(default="USD")
-
-# After: value objects
-@domain.value_object
-class Money:
-    amount = Float(required=True)
-    currency = String(max_length=3, default="USD")
-
-    def add(self, other: "Money") -> "Money":
-        return Money(amount=self.amount + other.amount, currency=self.currency)
-
-@domain.aggregate
-class Invoice:
-    subtotal = ValueObject(Money)
-    tax = ValueObject(Money)
-
-    @property
-    def total(self) -> Money:
-        return self.subtotal.add(self.tax) if self.subtotal and self.tax else None
-```
-
 ## Examples
 
 - Address: [before](assets/extract_vo_address_before.py) and [after](assets/extract_vo_address_after.py)
