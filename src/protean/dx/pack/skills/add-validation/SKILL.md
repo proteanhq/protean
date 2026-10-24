@@ -13,7 +13,7 @@ metadata:
 
 # Add Validation
 
-Protean organizes validation into 4 distinct layers. Each layer has a specific purpose and mechanism. Choosing the right layer ensures validations run at the correct time, provide clear error messages, and don't duplicate logic.
+Protean organizes validation into 4 layers. Put each rule in the one layer that fits it, and only there.
 
 ## The 4 validation layers
 
@@ -115,8 +115,6 @@ class Money:
 - Domain concept validation (valid ISO currency, valid coordinate ranges)
 - Rules that are inherent to the concept itself, not specific to any aggregate
 
-**Validation timing**: After all fields are set during VO initialization.
-
 **When a VO invariant fails**: The value object validates its invariants at construction and is immutable afterward, so a broken invariant raises `ValidationError` right there. The default code on that raise is `VALUE_OBJECT_INVARIANT_FAILED`, unless you set a custom `code=` on the invariant. The values you built the VO from are what broke the rule. To fix it, build the value object from values that satisfy the invariant, or catch the `ValidationError` where you build it; its messages name the field and rule that failed. Set `@invariant.post(code=...)` to raise a more specific catalog code in place of the default.
 
 ## Layer 3: Aggregate invariants
@@ -186,8 +184,6 @@ class Order:
 - Collection constraints (minimum items, totals must match)
 - Rules that depend on the aggregate's current state
 
-**Validation timing**: Pre-invariants before attribute changes; post-invariants after initialization and attribute changes.
-
 **An aggregate with no invariants at all**: `check` reports `AGGREGATE_NO_INVARIANTS` for an
 aggregate that declares neither `@invariant.pre` nor `@invariant.post`. An aggregate is a
 consistency boundary, so one that enforces no rule is usually an anemic data holder. Add the
@@ -244,8 +240,6 @@ class OrderCommandHandler:
 - Rate limiting, quota checks
 - Any rule that needs data not available inside the aggregate
 
-**Validation timing**: During handler execution, before aggregate operations.
-
 ## Atomic changes
 
 When multiple attributes need to change together, use `atomic_change` to defer validation until all changes are made. This example uses the `Order` and `LineItem` from Layer 3. Creating an aggregate needs an initialized domain and an active domain context, so `domain.init()` runs after every element is defined:
@@ -273,29 +267,6 @@ with domain.domain_context():
     # Post-invariants checked here: the total matches the items again
 ```
 
-## Decision guide: Choosing the right layer
-
-```
-Is it a single-field data constraint?
-├── Yes → Layer 1 (field parameters)
-│   Examples: required, max_length, min_value, choices, validators=[]
-│
-└── No → Does it involve multiple fields?
-    ├── Within a value object → Layer 2 (VO @invariant.post)
-    │   Examples: end > start, amount >= 0 for currency
-    │
-    ├── Within an aggregate/entity → Layer 3 (aggregate invariants)
-    │   │
-    │   ├── Before change guard? → @invariant.pre
-    │   │   Examples: cannot modify shipped, check balance before debit
-    │   │
-    │   └── After change consistency? → @invariant.post
-    │       Examples: total = sum(items), must have items when placed
-    │
-    └── Needs external data or context? → Layer 4 (handler guard)
-        Examples: authorization, existence checks, cross-aggregate rules
-```
-
 ## Key rules
 
 1. **Start at Layer 1**: Use field parameters whenever possible. They're the simplest, fastest, and auto-documented.
@@ -309,8 +280,6 @@ Is it a single-field data constraint?
 ## Common mistakes
 
 - **Putting business rules in handlers**: Business rules belong in aggregates (Layer 3), not handlers. Handlers are for authorization and orchestration.
-- **Duplicating field constraints as invariants**: If `Integer(min_value=1)` enforces "quantity >= 1", don't also write an invariant for it.
-- **Using `@invariant.pre` on value objects**: Value objects are immutable; only `@invariant.post` applies.
 - **Not using `atomic_change` for multi-field updates**: When changing related fields together, wrap in `atomic_change` to avoid intermediate invalid states.
 - **Putting all validation in `__init__`**: Use Protean's validation framework (fields + invariants), not manual `__init__` checks.
 

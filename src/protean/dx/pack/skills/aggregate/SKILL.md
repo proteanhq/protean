@@ -17,6 +17,8 @@ metadata:
 
 # Aggregate
 
+An aggregate is the unit a repository loads and saves, and the place a domain's business rules are enforced. This skill defines one: its fields, associations, invariants and options.
+
 ## Basic structure
 
 An aggregate is defined using the `@domain.aggregate` decorator:
@@ -39,7 +41,7 @@ class Post:
 ## Key rules
 
 1. **Aggregates are the root of an object graph**: They manage entities and value objects within their boundary
-2. **Aggregates enforce business invariants**: Use `@invariant.pre` and `@invariant.post` decorators. **All business validations should be codified as granular invariants** - one rule per invariant
+2. **Aggregates enforce business invariants**: Codify every business rule as an `@invariant.pre` or `@invariant.post` method, one rule per invariant
 3. **Aggregates are transaction boundaries**: All changes within an aggregate are saved together
 4. **Aggregates have automatic identity**: An `id` field is auto-generated unless `auto_add_id_field=False`
 5. **Aggregates are versioned**: Every aggregate has a `_version` field for optimistic concurrency control
@@ -139,7 +141,7 @@ class LineItem:
 
 Both lookup helpers take keyword arguments. A positional argument raises `TypeError`.
 
-**Important**: Do NOT manually create these methods - they are automatically available. Only create custom methods if you need behavior different from the defaults (e.g., custom validation when adding items).
+**Important**: Do NOT manually create these methods: they are automatically available. Only create custom methods if you need behavior different from the defaults (e.g., custom validation when adding items).
 
 ### ValueObject Field
 
@@ -186,8 +188,6 @@ with domain.domain_context():
     )
 ```
 
-The `id` field is automatically generated on creation.
-
 ## State mutations
 
 Define methods on the aggregate to change state:
@@ -231,7 +231,7 @@ class LineItem:
 
 ## Invariants (business rules)
 
-**Important principle**: All business validations should be codified as invariants, as granularly as possible. Each invariant should check a single business rule. Protean checks post-invariants at the end of `__init__`. Every field assignment runs the pre-invariants before the new value is set and the post-invariants after it. Adding, removing or changing a child entity checks the root's invariants too. To change several fields that are only valid together, wrap the changes in `with atomic_change(order):` (`from protean import atomic_change`), which runs the pre-invariants once at the start and the post-invariants once at the end of the block. `repository.add()` does not check invariants again.
+Protean checks post-invariants at the end of `__init__`. Every field assignment runs the pre-invariants before the new value is set and the post-invariants after it. Adding, removing or changing a child entity checks the root's invariants too. To change several fields that are only valid together, wrap the changes in `with atomic_change(order):` (`from protean import atomic_change`), which runs the pre-invariants once at the start and the post-invariants once at the end of the block. `repository.add()` does not check invariants again.
 
 Use `@invariant.pre` (checked before changes) and `@invariant.post` (checked after changes):
 
@@ -285,11 +285,9 @@ class Account:
 ```
 
 **Best practices**:
-1. **One rule per invariant**: Keep invariants granular and focused
-2. **Use descriptive names**: Name should clearly describe the rule being enforced
-3. **Prefer `@invariant.post`**: Use for most validations that check final state
-4. **Use `@invariant.pre` sparingly**: Only for preconditions that must prevent state changes
-5. **Document the rule**: Add docstrings explaining the business constraint
+1. **Use descriptive names**: Name should clearly describe the rule being enforced
+2. **Prefer `@invariant.post`**: Use for most validations that check final state
+3. **Use `@invariant.pre` sparingly**: Only for preconditions that must prevent state changes
 
 ## Inheritance
 
@@ -431,26 +429,6 @@ class Order:
 ```
 
 ✅ **Instead**: Encapsulate behavior in aggregate methods.
-
-### ❌ Missing invariants (using method-level validations instead)
-
-```python
-def withdraw(self, amount):
-    if self.balance - amount < 0:  # Bad: duplicated across methods
-        raise ValueError("Insufficient funds")
-```
-
-✅ **Instead**: Codify ALL business rules as granular `@invariant.post` methods. Protean enforces them everywhere.
-
-### ❌ Not using field-level validations
-
-```python
-price: Decimal(precision=19, scale=4, required=True)  # No min_value!
-def set_price(self, p):
-    if p <= 0: raise ValueError(...)  # Manual validation
-```
-
-✅ **Instead**: `price: Decimal(precision=19, scale=4, required=True, min_value=0.01)`. The field handles it.
 
 See [Anti-patterns](references/anti-patterns.md) for additional mistakes: oversized aggregates, direct entity access, transaction boundary violations, manually recreating auto-generated helpers.
 
