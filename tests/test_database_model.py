@@ -30,7 +30,8 @@ class TestDatabaseModelInitialization:
             test_domain.register(PersonModel)
         assert (
             str(exception.value)
-            == "Database Model `PersonModel` should be associated with an Entity or Aggregate"
+            == "Database Model `PersonModel` should be associated with an "
+            "Aggregate, an Entity or a Projection"
         )
 
     def test_database_model_can_be_registered_with_domain(self, test_domain):

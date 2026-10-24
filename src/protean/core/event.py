@@ -12,6 +12,7 @@ from protean.exceptions import (
 from protean.fields.resolved import convert_pydantic_errors
 from protean.utils import (
     DomainObjects,
+    _check_part_of_kind,
     _derive_element_class,
     _ensure_template_dict,
     fqn,
@@ -47,7 +48,7 @@ class BaseEvent(BaseMessageType):
 
     | Option | Type | Description |
     |--------|------|-------------|
-    | ``part_of`` | ``type`` | The aggregate class that raises this event. Required. |
+    | ``part_of`` | ``type`` | The aggregate or process manager that raises this event. Required. |
     | ``published`` | ``bool`` | Whether this event is part of the bounded context's published language. Default ``False``. |
     | ``version`` | ``int`` | Message version number (alternative to ``__version__`` class attribute). Default ``1``. |
     """
@@ -263,6 +264,8 @@ def domain_event_factory(element_cls: type[_T], domain: Any, **opts: Any) -> typ
         raise IncorrectUsageError(
             f"Event `{event_cls.__name__}` needs to be associated with an aggregate or a stream"
         )
+
+    _check_part_of_kind(event_cls)
 
     if not isinstance(event_cls.meta_.published, bool):
         raise IncorrectUsageError(

@@ -26,6 +26,7 @@ from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import (
     DomainObjects,
+    _check_part_of_kind,
     _derive_element_class,
     _ensure_template_dict,
 )
@@ -290,5 +291,7 @@ def query_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
         raise IncorrectUsageError(
             f"Query `{query_cls.__name__}` needs to be associated with a projection"
         )
+
+    _check_part_of_kind(query_cls)
 
     return element_cls

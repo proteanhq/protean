@@ -37,7 +37,7 @@ class LineItem:
 
 ## Key rules
 
-1. **Entities must be part of an aggregate** - Use `part_of` parameter to associate with parent aggregate. **Use a string reference** (`part_of="Order"`) to avoid circular dependencies when aggregate and entity are in the same file. A nested entity passes its parent entity as a class (`part_of=LineItem`), because a string resolves only to an aggregate
+1. **Entities must be part of an aggregate** - Use `part_of` parameter to associate with parent aggregate. **Use a string reference** (`part_of="Order"`) to avoid circular dependencies when aggregate and entity are in the same file. A nested entity names its parent entity (`part_of=LineItem` or `part_of="LineItem"`)
 2. **Entities have automatic identity** - An `id` field is auto-generated unless `auto_add_id_field=False`
 3. **Entities get automatic reference fields** - A reference field back to parent aggregate is created automatically
 4. **Entities are accessed through aggregates** - Never query or update entities directly
@@ -69,7 +69,7 @@ class Comment:
 
 ### Entity with part_of
 
-**Use a string reference to the aggregate** for `part_of` to avoid circular dependencies (a nested entity is the exception, see [Nested entities](references/nested-entities.md)):
+**Use a string reference to the aggregate** for `part_of` to avoid circular dependencies. A nested entity names its parent entity instead (see [Nested entities](references/nested-entities.md)):
 
 ```python
 @domain.entity(part_of="Order")
@@ -424,7 +424,7 @@ class LineItemNote:
     content: String(max_length=500)
 ```
 
-A nested entity is `part_of` its parent entity, not the aggregate. Pass the parent entity as a class: a string `part_of` resolves only to an aggregate.
+A nested entity is `part_of` its parent entity, not the aggregate. Pass the parent entity as a class or as a string.
 
 ---
 

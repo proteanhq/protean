@@ -47,7 +47,7 @@ Example:
 from typing import Any, ClassVar, Self, TypeVar
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.utils import DomainObjects, _derive_element_class
+from protean.utils import DomainObjects, _check_part_of_kind, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.mixins import HandlerMixin
 
@@ -161,6 +161,8 @@ def command_handler_factory(
         raise IncorrectUsageError(
             f"Command Handler `{element_cls.__name__}` needs to be associated with an Aggregate"
         )
+
+    _check_part_of_kind(element_cls)
 
     # Always derive stream_category from the aggregate - cannot be overridden.
     # When ``part_of`` is a string reference, the aggregate is not yet

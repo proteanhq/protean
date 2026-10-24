@@ -55,6 +55,7 @@ from protean.integrations.logging import (
 from protean.ir.diagnostics import DiagnosticCode
 from protean.utils import (
     DomainObjects,
+    _check_part_of_kind,
     _coerce_uuid_to_str,
     _derive_element_class,
     _ensure_template_dict,
@@ -314,7 +315,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
 
     | Option | Type | Description |
     |--------|------|-------------|
-    | ``part_of`` | ``type`` | The aggregate class this entity belongs to. Required. |
+    | ``part_of`` | ``type`` | The aggregate this entity belongs to, or the parent entity for a nested entity. Required. |
     | ``provider`` | ``str`` | The persistence provider name (default: ``"default"``). |
     | ``schema_name`` | ``str`` | The storage table/collection name. |
     | ``auto_add_id_field`` | ``bool`` | Whether to auto-inject an ``id`` field (default: ``True``). |
@@ -1470,6 +1471,8 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
         raise IncorrectUsageError(
             f"Entity `{entity_cls.__name__}` needs to be associated with an Aggregate"
         )
+
+    _check_part_of_kind(entity_cls)
 
     # Set up reference fields for entities with part_of
     if not entity_cls.meta_.abstract:
