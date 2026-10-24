@@ -209,7 +209,7 @@ with domain.domain_context():
     shipped = view.query.filter(status="shipped").all()
 ```
 
-`check` reports `USAGE_NOT_A_PROJECTION` when `view_for` or `connection_for` is given a non-projection.
+Giving `view_for` or `connection_for` a non-projection raises `IncorrectUsageError` with the code `USAGE_NOT_A_PROJECTION` when the call runs. `check` does not report it.
 
 ## Related
 
