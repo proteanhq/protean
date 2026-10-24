@@ -2,28 +2,6 @@
 
 An event handler that belongs to and processes events from the same aggregate. Use this pattern when the side effect targets the aggregate that raised the event.
 
-## Overview
-
-The same-aggregate event flow is the simplest event pattern:
-1. An aggregate method changes state and raises an event
-2. An event handler on the same aggregate reacts and performs a follow-up action
-3. Both the aggregate and handler operate on the same stream
-
-Common use cases:
-- Generating derived data (confirmation numbers, tracking codes)
-- Updating computed fields after state changes
-- Triggering internal lifecycle transitions
-
-## Code
-
-The complete implementation is in [assets/add_event_same_aggregate.py](../assets/add_event_same_aggregate.py).
-
-Key highlights:
-- Event is defined with `part_of="Order"` (string reference to aggregate)
-- Aggregate method `place()` guards against invalid transitions, then raises the event
-- Event handler uses `part_of=Order` (class reference) with no `stream_category`, so it defaults to its own stream
-- Handler loads the aggregate from repository, mutates, and persists
-
 ## Walkthrough
 
 ### The Event
@@ -35,10 +13,6 @@ class OrderPlaced:
     customer_id: String(required=True)
     total_amount: Float(required=True)
 ```
-
-- Named in past-tense (`OrderPlaced`, not `PlaceOrder`)
-- `part_of` uses a **string** (not class reference)
-- Carries only the data the handler needs
 
 ### The Aggregate Method
 
@@ -62,10 +36,6 @@ class Order:
         ))
 ```
 
-- Business logic (guards) execute first
-- State change happens before `self.raise_()`
-- Event is raised at the end, after all validations pass
-
 ### The Event Handler
 
 ```python
@@ -79,17 +49,11 @@ class OrderEventHandler:
         repo.add(order)
 ```
 
-- `part_of=Order` (class reference): Handler belongs to Order aggregate
-- No `stream_category` specified, so it defaults to Order's own stream
-- Does NOT return a value (fire-and-forget)
-- Runs within an implicit UnitOfWork
+With no `stream_category` specified, the handler defaults to Order's own stream.
 
 ## When to use same-aggregate handlers
 
-Use this pattern when:
-- The side effect modifies the same aggregate that raised the event
-- You need to generate derived data from the event
-- The reaction is internal to the aggregate's lifecycle
+Use this pattern for derived data (confirmation numbers, tracking codes), computed fields, and internal lifecycle transitions on the aggregate that raised the event.
 
 **Not suitable when:**
 - The side effect targets a different aggregate (use [cross-aggregate flow](./cross-aggregate-flow.md))
