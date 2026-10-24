@@ -77,7 +77,7 @@ def handle_error(cls, exc: Exception, message) -> None:
 ```
 
 - `cls`: The event handler class
-- `exc`: The exception that was raised during event handling
+- `exc`: The exception that was raised during event handling. When several `@handle` methods on the same handler fail for one event, it is an `ExceptionGroup` with one entry per failure, so code that matches on the exception type has to look inside `exc.exceptions`
 - `message`: The original event message (a `Message` object) being processed
 
 ## Synchronous vs. Asynchronous
