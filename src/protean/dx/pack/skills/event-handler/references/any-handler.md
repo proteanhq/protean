@@ -4,22 +4,11 @@ The `@handle("$any")` decorator creates a catch-all handler that processes any e
 
 ## Overview
 
-The `$any` handler is a fallback mechanism. It is invoked for events that do not have a specific `@handle(EventClass)` method. If a specific handler exists for an event type, that handler takes precedence.
-
-Common use cases:
-- **Audit logging**: Record every event for compliance
-- **Metrics collection**: Count or measure all events
-- **Event forwarding**: Relay events to external systems
-- **Debugging**: Log all events during development
+The `$any` handler is a fallback. It runs for an event that has no specific `@handle(EventClass)` method on the same handler class. When a specific method exists for the event's type, only that method runs. When neither exists, the handler does nothing with the event. Typical uses are audit logging, metrics, and forwarding events to an external system.
 
 ## Code
 
 The complete implementation is in [assets/event_handler_any_event.py](../assets/event_handler_any_event.py).
-
-Key highlights:
-- `@handle("$any")` catches all events on the stream
-- Only ONE `$any` handler method per event handler class (if multiple are defined, the last one wins)
-- Specific `@handle(EventClass)` methods take precedence over `$any`
 
 ## How It Works
 
@@ -59,16 +48,6 @@ class TaskAuditor:
         domain.repository_for(AuditLog).add(audit_entry)
 ```
 
-The `$any` handler is registered in the `_handlers` dict under the key `"$any"` instead of an event type string.
-
-### Fallback Behavior
-
-When `_handle()` is called on the handler:
-
-1. It looks for specific handlers matching the event's type
-2. If none found, it falls back to the `$any` handler
-3. If no `$any` handler exists either, no processing occurs
-
 ### Only One $any Per Handler
 
 If you define multiple `@handle("$any")` methods, only the last one is used:
@@ -86,7 +65,7 @@ class MyHandler:
 
 ## Combining $any with Specific Handlers
 
-You can mix `$any` with specific handlers. Specific handlers take precedence. A handler that names a specific event belongs to the cluster that owns that event, here Task (a handler in another cluster that names `TaskCreated` is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`):
+A handler that names a specific event belongs to the cluster that owns that event, here Task (a handler in another cluster that names `TaskCreated` is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`):
 
 ```python
 @domain.event_handler(part_of=Task)
