@@ -1,15 +1,6 @@
 # Entity Configuration
 
-Entities are configured through options passed to the `@domain.entity` decorator. An inner `class Meta:` on an entity is ignored, so put every option in the decorator.
-
-## Overview
-
-Entity configuration controls:
-- Identity field generation
-- Persistence naming
-- Base classes for sharing fields
-- Custom database models
-- Schema customization
+Entities are configured through options passed to the `@domain.entity` decorator.
 
 ## Configuration Options
 
@@ -37,8 +28,6 @@ class Order:
 class LineItem:
     product_id: Identifier(required=True)
 ```
-
-**Why string references?** Aggregates, entities, and value objects are often defined in the same file. The aggregate references entities via `HasMany("LineItem")` (forward reference), and entities reference back via `part_of`. Using string references on both sides breaks this circular dependency and allows elements to be defined in any order.
 
 ### Sharing fields through a base class
 
@@ -71,10 +60,6 @@ class ServiceLineItem(BaseLineItem):
 
 `ProductLineItem` and `ServiceLineItem` each get `quantity`, `unit_price`, and `subtotal` from the base class, plus their own `id` field.
 
-**Use cases:**
-- Sharing common fields and behavior across entity types
-- Implementing entity type hierarchies
-
 **Important notes:**
 - Do not decorate the base class. A decorated base becomes a real entity with its own table.
 - The base class must subclass `BaseEntity`. A plain mixin class does not contribute fields.
@@ -98,13 +83,10 @@ class LineItem:
     product_id: String(required=True)
 ```
 
-**When to disable:**
-- You want to use a custom identifier field
-- The entity uses a natural key (e.g., line_number)
-
 **Important:**
 - If disabled, you MUST provide a field with `identifier=True`
-- Only one field can be marked as the identifier
+- Only one field can be marked as the identifier. Protean does not support composite keys.
+- Use the auto-generated `id` unless you have a strong business reason for a natural key such as `line_number`.
 
 ### `schema_name`
 
@@ -123,11 +105,6 @@ class LineItem:
     # Stored as 'order_items' in database
     pass
 ```
-
-**Use cases:**
-- Matching existing database schema
-- Following specific naming conventions
-- Avoiding naming conflicts
 
 ### Custom database models
 
@@ -154,18 +131,12 @@ class LineItemModel(BaseDatabaseModel):
     product_id = sa.Column(sa.Text)
 ```
 
-**Use cases:**
-- Special database-specific configurations
-- Mapping to legacy database schemas
-
 **Important:**
 - Register the model with `@domain.database_model(part_of=<Entity>)`.
 - Every column must match a field declared on the entity. A column for anything
   else is rejected at registration with `IncorrectUsageError`.
 - Custom models are provider-specific (a SQLAlchemy model won't work with
   Elasticsearch).
-
-**Note:** In most cases, Protean's auto-generated model is sufficient.
 
 ## Configure through the decorator
 
@@ -182,155 +153,6 @@ class LineItem:
 ```
 
 Write it as `@domain.entity(part_of="Order", schema_name="order_items")` instead.
-
-## Complete Configuration Example
-
-```python
-@domain.entity(
-    part_of="Order",
-    auto_add_id_field=True,
-    schema_name="order_line_items"
-)
-class LineItem:
-    """
-    A line item in an order.
-
-    Configuration:
-    - part_of: "Order" (belongs to Order aggregate)
-    - auto_add_id_field: True (gets automatic 'id' field)
-    - schema_name: 'order_line_items' (database table name)
-    """
-    product_id: Identifier(required=True)
-    product_name: String(required=True, max_length=200)
-    quantity: Integer(required=True, min_value=1)
-    unit_price: Decimal(precision=19, scale=4, required=True, min_value=0)
-
-    @property
-    def subtotal(self) -> D:
-        return self.quantity * self.unit_price
-```
-
-## Custom Identifier Fields
-
-### Using Natural Keys
-
-```python
-@domain.entity(part_of="Order", auto_add_id_field=False)
-class LineItem:
-    # Use line number as identifier
-    line_number: Integer(required=True, identifier=True)
-    product_id: Identifier(required=True)
-    quantity: Integer(required=True)
-```
-
-### Composite Keys (Not Recommended)
-
-Protean does not support composite keys. If you need one, reconsider the entity design or use the auto-generated ID.
-
-**Recommendation:** Use auto-generated IDs unless you have a strong business reason for natural keys.
-
-## Inheritance Hierarchies
-
-### Base Entity Pattern
-
-```python
-class BaseItem(BaseEntity):
-    """Undecorated base for all item types."""
-    quantity: Integer(required=True, min_value=1)
-    unit_price: Decimal(precision=19, scale=4, required=True, min_value=0)
-
-    @property
-    def subtotal(self) -> D:
-        return self.quantity * self.unit_price
-
-
-@domain.entity(part_of="Order")
-class ProductItem(BaseItem):
-    """Item representing a physical product."""
-    product_id: Identifier(required=True)
-    product_name: String(required=True)
-
-
-@domain.entity(part_of="Order")
-class ServiceItem(BaseItem):
-    """Item representing a service."""
-    service_id: Identifier(required=True)
-    service_description: Text(required=True)
-    billable_hours: Float(required=True)
-```
-
-## Field-Level Configuration
-
-While entity-level configuration is defined in the decorator, field-level configuration is defined on individual fields:
-
-```python
-@domain.entity(part_of="Order")
-class LineItem:
-    # Field with constraints
-    product_id: String(
-        required=True,
-        max_length=50,
-        identifier=False
-    )
-
-    # Field with validation
-    quantity: Integer(
-        required=True,
-        min_value=1,
-        max_value=9999
-    )
-
-    # Field with default
-    discount_percent: Float(
-        default=0.0,
-        min_value=0.0,
-        max_value=100.0
-    )
-
-    # Optional field
-    notes: Text(required=False)
-```
-
-## Common Configuration Patterns
-
-### Standard Entity (Most Common)
-
-```python
-@domain.entity(part_of="Order")
-class LineItem:
-    # Uses all defaults:
-    # - auto_add_id_field=True
-    # - schema_name="line_item"
-    product_id: Identifier(required=True)
-    quantity: Integer(required=True)
-```
-
-### Shared Base Class
-
-```python
-class BaseItem(BaseEntity):
-    # Common fields and behavior; leave this class undecorated
-    quantity: Integer(required=True)
-    unit_price: Decimal(precision=19, scale=4, required=True)
-```
-
-### Entity with Custom Schema Name
-
-```python
-@domain.entity(part_of="Order", schema_name="order_items")
-class LineItem:
-    # Stored as 'order_items' instead of 'line_item'
-    product_id: Identifier(required=True)
-```
-
-### Entity with Natural Key
-
-```python
-@domain.entity(part_of="Order", auto_add_id_field=False)
-class LineItem:
-    line_number: Integer(required=True, identifier=True)
-    product_id: Identifier(required=True)
-```
 
 ## Testing Configuration
 
@@ -360,14 +182,6 @@ def test_entity_configuration():
 
 test_entity_configuration()
 ```
-
-## Best Practices
-
-1. **Use defaults when possible**: Only customize when necessary
-2. **Leave shared base classes undecorated**: Decorate only the concrete entities
-3. **Document custom configurations**: Explain why you deviated from defaults
-4. **Prefer auto IDs**: Use natural keys only when there's a strong business reason
-5. **Keep schema names simple**: Use standard snake_case conventions
 
 ## Related
 
