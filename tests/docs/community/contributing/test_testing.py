@@ -7,8 +7,9 @@ here with the real fixture. ``002.py`` holds the ``place_order`` section the
 page uses to show how a page includes code from ``docs_src``.
 
 ``003.py`` to ``009.py`` are the good examples in "Writing tests that last",
-one file per rule that shows a runnable test. Each is a pytest module with its
-own domain, so it runs in a child pytest process with ``run_example_tests``.
+one file per rule that shows a runnable test. Each is a pytest module, and
+all but ``008.py`` build their own domain, so each runs in a child pytest
+process with ``run_example_tests``.
 The exact ``passed`` count catches an example whose tests stop being collected.
 """
 
