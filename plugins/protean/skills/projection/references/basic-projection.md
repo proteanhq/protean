@@ -1,19 +1,6 @@
 # Basic Projection
 
-## Overview
-
-A projection (a.k.a. read model) is a denormalized, query-optimized data structure that lives on the read side of CQRS. Unlike aggregates, which enforce business rules and maintain consistency boundaries, projections are designed purely for efficient querying. They are closer to the database than domain logic and represent flattened, tailored views of data.
-
-## When to use
-
-- Defining a read-optimized schema for a specific UI view or API response
-- Creating a flattened representation of data that spans aggregate boundaries
-- Building query models that avoid complex joins
-- Separating the read model from the write model for scalability
-
 ## Defining a projection
-
-Use the `@domain.projection` decorator:
 
 ```python
 from protean import Domain
@@ -29,12 +16,6 @@ class ProductInventory:
     stock_quantity: Integer(default=0)
     last_updated: DateTime()
 ```
-
-### Key requirements
-
-1. **Identifier field**: Every non-abstract projection must have at least one field with `identifier=True`
-2. **Basic field types plus ValueObjects**: String, Integer, Float, Identifier, DateTime, Date, Text, Boolean, Auto, and `ValueObject` (stored as flattened shadow fields)
-3. **No References or Associations**: `Reference` and Associations (`HasOne`, `HasMany`) are not allowed
 
 ## Identifier field
 
@@ -55,13 +36,9 @@ The identifier field serves as the primary key for the projection. It can be:
   ssn: String(max_length=36, identifier=True)
   ```
 
-Important properties:
-- Identifier values are **immutable** once set (raises `InvalidOperationError` on change)
-- Identifier values **auto-generate** when omitted only for `Identifier` and `Auto` identifier fields (a UUID by default), the same as aggregates. `Auto(identifier=True, increment=True)` is the exception: it generates no UUID and stays `None` until the DAO assigns its integer sequence on persistence. A `String` identifier used as an explicit business key (such as the `ssn` field above) has no default and must be supplied, or validation fails with "is required"
+Changing an identifier once set raises `InvalidOperationError`. A `String` identifier used as a business key (such as `ssn` above) gets no generated value, so omitting it fails validation with "is required". SKILL.md rule 10 covers which identifier types generate a value.
 
 ## Projection properties
-
-Projections support several useful properties:
 
 ```python
 inventory = ProductInventory(
@@ -85,15 +62,6 @@ inventory1 == inventory2  # True if same identifier value
 hash(inventory)  # Based on identifier field value
 ```
 
-## Projection state
-
-Projections track their persistence state:
-
-```python
-inventory = ProductInventory(product_id="123", name="Laptop", price=999.99)
-inventory.state_.is_new  # True - not yet persisted
-```
-
 ## Complete example
 
 See [projection_simple.py](../assets/projection_simple.py) for a complete, runnable example.
@@ -101,6 +69,6 @@ See [projection_simple.py](../assets/projection_simple.py) for a complete, runna
 ## Related
 
 - [Configuration Options](configuration-options.md): Provider, cache, and other options
-- [Persistence & Querying](persistence-querying.md): How to persist and query projections
+- [Persistence & Querying](persistence-querying.md): How to persist and query projections, and the `state_` flags
 - [Field Type Restrictions](field-type-restrictions.md): Why only basic types
 - `projector`: Projectors populate projections from domain events

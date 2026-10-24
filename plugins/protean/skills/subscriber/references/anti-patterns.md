@@ -1,29 +1,6 @@
 # Subscriber Anti-patterns
 
-Common mistakes when implementing subscribers in Protean and how to avoid them.
-
-## 1. Missing stream Parameter
-
-**Wrong:**
-```python
-# fragment
-@domain.subscriber  # Missing stream!
-class MySubscriber:
-    def __call__(self, payload: dict) -> None:
-        pass
-```
-
-**Correct:**
-```python
-@domain.subscriber(stream="my_external_stream")
-class MySubscriber:
-    def __call__(self, payload: dict) -> None:
-        pass
-```
-
-Protean raises `IncorrectUsageError` at class definition time, with the message "Subscriber `MySubscriber` needs to be associated with a stream", so a streamless subscriber never reaches the registry. A subscriber must name the stream it consumes.
-
-## 2. Using @handle Decorator Instead of __call__
+## 1. Using @handle Decorator Instead of __call__
 
 **Wrong:**
 ```python
@@ -45,9 +22,7 @@ class PaymentSubscriber:
         pass
 ```
 
-Subscribers use a single `__call__` method to receive all messages on their stream. They do NOT use `@handle` decorators (that is for event handlers).
-
-## 3. Expecting Typed Event Objects
+## 2. Expecting Typed Event Objects
 
 **Wrong:**
 ```python
@@ -66,9 +41,7 @@ class PaymentSubscriber:
         order_id = payload["order_id"]  # Access as dict
 ```
 
-Subscribers receive raw `dict` payloads from external brokers, not typed domain event objects. The payload structure depends on the external system.
-
-## 4. Using event_processing Instead of message_processing
+## 3. Using event_processing Instead of message_processing
 
 **Wrong:**
 ```python
@@ -80,9 +53,7 @@ domain.config["event_processing"] = "sync"  # Wrong config key!
 domain.config["message_processing"] = "sync"  # Correct for subscribers
 ```
 
-Event handlers use `event_processing`. Subscribers use `message_processing`. These are separate configuration keys.
-
-## 5. Confusing Subscribers with Event Handlers
+## 4. Confusing Subscribers with Event Handlers
 
 **Wrong approach:** Using a subscriber to consume internal domain events.
 
@@ -96,14 +67,9 @@ class OrderSubscriber:
         pass
 ```
 
-**Correct approach:** Use event handlers for internal events, subscribers for external broker messages.
+**Correct approach:** Use an event handler, `@domain.event_handler(part_of=Order)`, for internal events, and a subscriber for external broker messages.
 
-| Use Case | Element |
-|----------|---------|
-| React to internal domain events | `@domain.event_handler(part_of=Order)` |
-| Consume external broker messages | `@domain.subscriber(stream="external_stream")` |
-
-## 6. Business Logic in the Subscriber
+## 5. Business Logic in the Subscriber
 
 The examples in this section use this aggregate:
 
@@ -147,7 +113,7 @@ class PaymentSubscriber:
         domain.repository_for(Order).add(order)
 ```
 
-## 7. Letting External Schemas Leak into the Domain
+## 6. Letting External Schemas Leak into the Domain
 
 The examples in this section use this aggregate and command:
 
@@ -187,8 +153,6 @@ class ERPSubscriber:
         command = RegisterCustomer(name=name, email=email)
         domain.process(command)
 ```
-
-The subscriber is the anti-corruption layer. It should be the ONLY place that understands the external format.
 
 ## Related
 

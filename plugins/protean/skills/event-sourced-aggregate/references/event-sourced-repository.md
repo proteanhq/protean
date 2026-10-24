@@ -1,7 +1,5 @@
 # Event-Sourced Repository
 
-Event-sourced aggregates use a specialized repository that persists events to an event store instead of saving current state to a database.
-
 ## Setup
 
 The examples on this page use a standard `Product` aggregate and an event-sourced `Account` aggregate:
@@ -67,7 +65,7 @@ class Account:
 
 ## Automatic Selection
 
-When an aggregate has `event_sourced=True`, `domain.repository_for()` automatically returns an event-sourced repository. Initialize the domain first, then ask for repositories inside a domain context:
+Initialize the domain first, then ask for repositories inside a domain context:
 
 ```python
 from protean import current_domain
@@ -82,24 +80,11 @@ with domain.domain_context():
     repo = current_domain.repository_for(Account)
 ```
 
-No explicit repository definition is needed. The domain handles this automatically.
-
 ## Custom ES Repository
 
-For custom query methods, define an explicit event-sourced repository by subclassing `BaseEventSourcedRepository` and registering it:
-
-```python
-from protean.core.event_sourced_repository import BaseEventSourcedRepository
-
-class AccountRepository(BaseEventSourcedRepository):
-    pass  # Default behavior handles add/get
-
-domain.register(AccountRepository, part_of=Account)
-```
-
-**Validation**: The repository factory checks that:
-- `part_of` is specified (must be associated with an aggregate)
-- The aggregate has `event_sourced=True` (raises `IncorrectUsageError` otherwise)
+The skill's "Event-sourced repository" section shows the `BaseEventSourcedRepository` subclass. Registering it raises `IncorrectUsageError` in two cases:
+- `part_of` is missing: "Repository `AccountRepository` should be associated with an Aggregate".
+- The `part_of` aggregate does not have `event_sourced=True`: "Repository `AccountRepository` can only be associated with an Event Sourced Aggregate".
 
 ## How `add()` Works
 
@@ -148,12 +133,7 @@ If no events exist for the identifier, raises `ObjectNotFoundError`.
 
 ## UnitOfWork Integration
 
-Event-sourced repositories integrate with Protean's Unit of Work pattern:
-
-- **Command handlers** run within an implicit UnitOfWork
-- Events are accumulated during the handler execution
-- All events are persisted atomically on UoW commit
-- If the handler raises an exception, no events are persisted
+A command handler runs inside an implicit UnitOfWork. Events from every aggregate added during the handler are written together when it commits, and none are written if the handler raises.
 
 ```python
 @domain.command(part_of=Account)
@@ -200,19 +180,15 @@ When persisting, the event store checks the expected version against the stream'
 # Process B deposits and saves → ExpectedVersionError (expected 2, actual 3)
 ```
 
-This prevents lost updates without pessimistic locking.
-
 ## Stream Naming
 
-Events are stored in streams named by the aggregate's stream category and identifier:
+Events are stored in a stream named by the aggregate's stream category and identifier:
 
 ```
-{domain_name}::{stream_category}-{aggregate_id}
+{stream_category}-{aggregate_id}
 ```
 
-Example: `banking::account-ACC-001`
-
-The stream category defaults to the snake_case aggregate name but can be overridden:
+The stream category is `{domain_name}::{snake_case aggregate name}`, so for a domain named `banking` the stream is `banking::account-ACC-001`. Override the name part with `stream_category`; this example gives `banking::bank_account`:
 
 ```python
 @domain.aggregate(event_sourced=True, stream_category="bank_account")

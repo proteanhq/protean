@@ -4,19 +4,7 @@ A vertical slice cuts through all layers of the architecture for a single use ca
 
 ## The Protean command flow as a vertical slice
 
-```
-Command (input data)
-  ↓
-Command Handler (orchestration)
-  ↓
-Aggregate Method (business logic + state change)
-  ↓
-Event (record of what happened)
-  ↓
-Event Handler (side effects)
-```
-
-Each layer has a clear responsibility:
+The SKILL.md shows the flow. Each layer has one responsibility:
 
 | Layer | Responsibility | Example |
 |-------|---------------|---------|
@@ -24,17 +12,7 @@ Each layer has a clear responsibility:
 | Command Handler | Load aggregate, validate context, delegate | Load order, check authorization |
 | Aggregate Method | Enforce business rules, mutate state, raise event | Calculate total, set status, raise `OrderPlaced` |
 | Event | Immutable record of state change | `OrderPlaced(order_id, total)` |
-| Event Handler | React with side effects | Send confirmation, update inventory |
-
-## Creating a new use case
-
-When adding a new feature, create these components in order:
-
-1. **Command**: Define the input contract
-2. **Event**: Define what will be recorded
-3. **Aggregate method**: Implement the business logic
-4. **Command handler**: Wire the command to the aggregate
-5. **Event handler**: Add side effects (if needed)
+| Event Handler | React with side effects | Send confirmation, issue a command to Inventory |
 
 ## File organization (Screaming Architecture)
 
@@ -60,11 +38,3 @@ src/
   events/
     order_placed.py
 ```
-
-## Complete examples
-
-See the asset files for complete runnable vertical slices:
-
-- [use_case_basic.py](../assets/use_case_basic.py): Simple create pattern
-- [use_case_with_update.py](../assets/use_case_with_update.py): Create + update + event handler
-- [use_case_with_guards.py](../assets/use_case_with_guards.py): Authorization and existence checks

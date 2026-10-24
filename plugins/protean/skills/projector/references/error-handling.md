@@ -1,12 +1,10 @@
 # Error Handling in Projectors
 
-## Overview
-
-Projectors may encounter errors while processing events - network failures, data inconsistencies, missing records. Protean provides the `handle_error` classmethod for custom error recovery, similar to event handlers. Proper error handling ensures that projection failures don't crash the system.
+A projector method can fail on a network error, inconsistent data or a missing record. Override the `handle_error` classmethod to add your own recovery, as on an event handler.
 
 ## The handle_error classmethod
 
-Override the `handle_error` classmethod on a projector class to define custom error recovery. The example uses this aggregate, event, and projection:
+The example uses this aggregate, event, and projection:
 
 ```python
 import logging
@@ -62,27 +60,22 @@ def handle_error(cls, exc: Exception, message) -> None:
 - `cls`: The projector class itself
 - `exc`: The exception that was raised
 - `message`: The event message that caused the error
-- Returns `None` - error handlers don't return values
+- Returns `None`
 
 ## Synchronous vs asynchronous processing
 
 ### Synchronous processing (`event_processing = "sync"`)
 - Errors propagate immediately to the caller
 - `handle_error` is NOT called in sync mode
-- Useful for testing and development
 
 ### Asynchronous processing (production)
-- The Protean engine catches exceptions from projector methods
-- Calls `handle_error` if defined on the projector class
-- The engine never shuts down due to projector errors
-- Errors are logged and processing continues
+- The Protean engine catches the exception, logs it, and calls `handle_error` if the projector defines it
+- Processing continues with the next message; the engine does not shut down
 
 ## Best practices
 
-1. **Log errors with context**: Include the event data and projection state in error logs
-2. **Don't re-raise in handle_error**: The engine handles the error lifecycle
-3. **Consider idempotency**: Design projector methods to handle duplicate events
-4. **Handle missing projections**: Catch `ObjectNotFoundError` for a lookup that may miss; let other exceptions propagate so the engine can retry or record the failure
+1. **Don't re-raise in handle_error**: The engine catches and logs an exception raised there, and moves on
+2. **Handle missing projections**: Catch `ObjectNotFoundError` for a lookup that may miss; let other exceptions propagate so the engine can retry or record the failure
 
 ```python
 # fragment

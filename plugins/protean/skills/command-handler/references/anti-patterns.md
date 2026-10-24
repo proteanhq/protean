@@ -1,7 +1,5 @@
 # Command Handler Anti-patterns
 
-Common mistakes when implementing command handlers in Protean and how to avoid them.
-
 The examples on this page use these elements:
 
 ```python
@@ -115,23 +113,7 @@ Protean raises `NotSupportedError: Command PlaceOrder cannot be handled by multi
 
 **Correct:** Each command has exactly one handler.
 
-## 4. Manually Wrapping in UnitOfWork
-
-**Wrong:**
-```python
-# fragment
-from protean import UnitOfWork
-
-@handle(PlaceOrder)
-def handle_place_order(self, command):
-    with UnitOfWork():  # Redundant!
-        order = Order(order_id=command.order_id)
-        domain.repository_for(Order).add(order)
-```
-
-**Correct:** The `@handle` decorator already wraps every call in a Unit of Work. A `with UnitOfWork():` inside the handler joins that outer one: it adds no savepoint and does not commit on its own exit, so it only adds noise. The handler in section 1 is the right shape.
-
-## 5. Persisting Multiple Aggregate Roots
+## 4. Persisting Multiple Aggregate Roots
 
 **Wrong:**
 ```python
@@ -148,7 +130,7 @@ def handle_place_order(self, command):
     domain.repository_for(Inventory).add(inventory)
 ```
 
-This code runs, and both writes commit together, because a Unit of Work can hold changes to several aggregates. Keeping to one aggregate per transaction is a design rule you follow yourself. Breaking it ties the two aggregates' writes to one handler, outside each aggregate's own boundary.
+This code runs, and both writes commit together. Nothing in the framework stops it (SKILL.md rule 7).
 
 **Correct:** Persist only one aggregate root. The handler in section 1 places the order, and `Order.place()` raises `OrderPlaced`. An event handler in Order's cluster reacts to `OrderPlaced` and issues a command that belongs to Inventory. Inventory's command handler does the write in a transaction separate from the order's, and skips an order it has already applied, so a redelivered event does not reserve stock twice:
 
@@ -198,7 +180,7 @@ class InventoryCommandHandler:
 
 The `event-handler` skill covers this pattern in its cross-aggregate reference.
 
-## 6. Using @handle with Non-Command Classes
+## 5. Using @handle with Non-Command Classes
 
 **Wrong:**
 ```python
@@ -214,7 +196,7 @@ Protean raises `IncorrectUsageError: Method 'handle' in Command Handler 'OrderCo
 
 **Correct:** Give `@handle` in a command handler a command class. To react to `OrderPlaced`, write an event handler with `@handle(OrderPlaced)`.
 
-## 7. Command Without part_of
+## 6. Command Without part_of
 
 **Wrong:**
 ```python
@@ -234,7 +216,7 @@ Protean raises `IncorrectUsageError: Command 'PlaceOrder' in Command Handler 'Or
 
 **Correct:** Commands must always have `part_of`.
 
-## 8. Business Logic in the Handler Instead of the Aggregate
+## 7. Business Logic in the Handler Instead of the Aggregate
 
 **Wrong:**
 ```python

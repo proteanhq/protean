@@ -4,7 +4,7 @@
 
 The `UpcasterChain` manages registration, validation, and application of upcasters for all event types. It is built once during `domain.init()` and provides O(1) runtime lookup for applying transformations.
 
-**Source**: `protean/src/protean/utils/upcasting.py`
+**Source**: `protean/utils/upcasting.py`
 
 ## How Chain Building Works
 
@@ -53,19 +53,11 @@ while v in adjacency:
     v = to_v
 ```
 
-Upcasters are instantiated once during chain building and reused for every subsequent upcast call. Since `upcast()` must be stateless, this is safe.
+Upcasters are instantiated once during chain building and reused for every subsequent upcast call, so `upcast()` must not keep state on the instance.
 
 ### 5. Storage
 
-Pre-computed chains are stored for O(1) lookup:
-
-```python
-# fragment
-_chains[(event_base_type, from_version)] = [upcaster_instance, ...]
-_version_map["Domain.Event.v1"] = CurrentEventClass
-```
-
-After building, the raw edges are cleared.
+Pre-computed chains are stored for O(1) lookup in `_chains` and `_version_map`, shown under Internal Data Structures. After building, the raw edges are cleared.
 
 ## Internal Data Structures
 
@@ -116,14 +108,14 @@ All validation runs at startup during `domain.init()`. The following errors are 
 
 ### Duplicate upcaster
 
-Two upcasters registered for the same `(event_type, from_version)`:
+Two upcasters registered for the same `(event_type, from_version)`, whether they target the same version or different ones:
 
 ```python
 # fragment
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcasterA(BaseUpcaster): ...
 
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=3)
 class UpcasterB(BaseUpcaster): ...
 # → ConfigurationError: Duplicate upcaster for `MyDomain.OrderPlaced` from version `1`
 ```
@@ -140,20 +132,6 @@ class Forward(BaseUpcaster): ...
 @domain.upcaster(event_type=OrderPlaced, from_version=2, to_version=1)
 class Backward(BaseUpcaster): ...
 # → ConfigurationError: Upcaster chain does not converge
-```
-
-### Duplicate from_version
-
-Two upcasters with the same `from_version` but different targets:
-
-```python
-# fragment
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class BranchA(BaseUpcaster): ...
-
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=3)
-class BranchB(BaseUpcaster): ...
-# → ConfigurationError: Duplicate upcaster for `MyDomain.OrderPlaced` from version `1`
 ```
 
 ### Missing event class

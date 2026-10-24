@@ -1,15 +1,6 @@
 # Aggregate Test Patterns
 
-Patterns for testing user-written business logic in aggregates, entities, and value objects.
-
-## Overview
-
-Domain unit tests are the base of the testing pyramid. They test aggregate methods, invariants, and event raising directly, with no handlers, repositories, or infrastructure.
-
-## Code
-
-Complete examples are in:
-- [assets/scaffold_aggregate_unit.py](../assets/scaffold_aggregate_unit.py): Order with entities, value objects, invariants
+Patterns for testing user-written business logic in aggregates, entities, and value objects. These are domain unit tests: they call aggregate methods directly, with no handlers, repositories, or infrastructure. [assets/scaffold_aggregate_unit.py](../assets/scaffold_aggregate_unit.py) is the complete example: an Order with entities, value objects, and invariants.
 
 ## Testing factory methods
 
@@ -54,36 +45,17 @@ def test_place_raises_order_placed(self):
     assert isinstance(order._events[0], OrderPlaced)
 ```
 
-## Testing user-defined invariants
-
-Invariants defined with `@invariant.pre` and `@invariant.post` are user business rules. Test that they fire correctly:
-
-```python
-def test_invariant_rejects_invalid_state(self):
-    """Placed orders must have items (post-invariant)."""
-    order = Order.create(customer_id="cust-1")
-    with pytest.raises(ValidationError):
-        order.place()  # No items: invariant fires
-```
-
 ## Testing business rules in methods
 
-`pytest.raises` names the exception the tested method raises. Read the method to find it. In the Order example, `place()` raises `ValueError` for an order that is not a draft, and the post-invariant raises `ValidationError`. Add `match=` so the test fails when a different check raises the same type:
+In the Order example, `place()` raises `ValueError` for an order that is not a draft, and the post-invariant raises `ValidationError` for an order with no items. Test that a rejected call leaves the state unchanged:
 
 ```python
-def test_cannot_place_already_placed_order(self):
-    order = Order.create(customer_id="cust-1")
-    order.add_item(product_id="p-1", quantity=1, unit_price=5.0)
-    order.place()
-    with pytest.raises(ValueError, match="Cannot place order in 'placed' status"):
-        order.place()  # Already placed
-
 def test_state_unchanged_on_failure(self):
     order = Order.create(customer_id="cust-1")
     order.add_item(product_id="p-1", quantity=1, unit_price=5.0)
     order.place()
     original_status = order.status
-    with pytest.raises(ValueError, match="Cannot place order"):
+    with pytest.raises(ValueError, match="Cannot place order in 'placed' status"):
         order.place()
     assert order.status == original_status  # Unchanged
 ```
@@ -114,7 +86,7 @@ def test_computed_properties(self):
 
 ## Testing value object custom operations
 
-Only test **user-defined methods** on VOs, not construction/equality/immutability (which Protean guarantees):
+Test only the **user-defined methods** on a VO:
 
 ```python
 def test_money_add_same_currency(self):
@@ -131,15 +103,3 @@ def test_money_add_different_currency_fails(self):
     with pytest.raises(ValueError, match="Cannot add USD and EUR"):
         m1.add(m2)
 ```
-
-## Avoid mocks: use real domain elements
-
-Always construct real aggregates, entities, and value objects directly in tests. Protean's in-memory infrastructure means there is no need to mock repositories or domain elements. Mocks hide bugs and make tests brittle. Only mock truly external dependencies (third-party HTTP APIs) that have no in-memory substitute.
-
-## What NOT to test
-
-- VO construction with valid data (framework guarantee)
-- VO equality (`money1 == money2`) (framework guarantee)
-- VO immutability (`money.amount = 5` raises error) (framework guarantee)
-- Field validation (`required=True`, `max_length`) (Protean Layer 1)
-- Element registration in domain registry (framework guarantee)

@@ -1,10 +1,8 @@
 # Common Value Objects
 
-Catalog of frequently extracted value objects with implementation patterns.
+Implementations of the value objects named in the SKILL.md detection tables.
 
 ## Money
-
-The most common VO extraction. Whenever you see `amount` + `currency` (or just `price`/`cost` as a bare number field), extract to Money.
 
 ```python
 from decimal import Decimal as D
@@ -37,8 +35,6 @@ class Money:
 
 ## Address
 
-Extract from `street` + `city` + `state` + `zip_code` + `country` groups.
-
 ```python
 @domain.value_object
 class Address:
@@ -54,7 +50,7 @@ class Address:
 
 ## Email
 
-Extract from `String` fields with email validation or `_email` suffix.
+Also look for `String` fields with an `_email` suffix or hand-written email checks.
 
 ```python
 @domain.value_object
@@ -69,8 +65,6 @@ class Email:
 ```
 
 ## DateRange
-
-Extract from `start_date` + `end_date` pairs.
 
 ```python
 @domain.value_object
@@ -91,8 +85,6 @@ class DateRange:
 
 ## Coordinates
 
-Extract from `latitude` + `longitude` pairs.
-
 ```python
 @domain.value_object
 class Coordinates:
@@ -110,8 +102,6 @@ class Coordinates:
 ```
 
 ## Percentage
-
-Extract from bare `Float` fields representing percentages.
 
 ```python
 @domain.value_object

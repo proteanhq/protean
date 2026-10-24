@@ -1,7 +1,5 @@
 # Application Service Anti-patterns
 
-Common mistakes when implementing application services and how to avoid them.
-
 The examples on this page use these aggregates and services. Each "Correct" method below is one of these methods:
 
 ```python
@@ -106,7 +104,7 @@ def place_order(self, items, customer_id):
 
 ## 2. Persisting Multiple Aggregates
 
-A use case method should persist only one aggregate root, and two instances of the same type count as two. The Unit of Work does not stop you: it can hold changes to several aggregates and commits them in one transaction. One aggregate per transaction is a design rule. Use domain events for cross-aggregate coordination.
+A use case method should persist only one aggregate root, and two instances of the same type count as two. The Unit of Work does not stop you: it commits both in one transaction. Use domain events for cross-aggregate coordination.
 
 ```python
 # fragment
@@ -133,51 +131,7 @@ def transfer_funds(self, from_id, to_id, amount):
 
 An event handler in Account's cluster reacts to `FundsDebited` and issues a command (for example `CreditFunds`). That command's handler credits the other account and skips a transfer it has already applied, because an event can be delivered more than once. The `event-handler` skill's cross-aggregate reference shows the full pattern.
 
-## 3. Manual UnitOfWork Wrapping
-
-The `@use_case` decorator already wraps the method in a UnitOfWork. A Unit of Work opened inside it joins the outer one, so the inner one adds nothing.
-
-```python
-# fragment
-# Wrong - redundant UoW
-@use_case
-def register_user(self, email, name):
-    with UnitOfWork():
-        user = User(email=email, name=name)
-        current_domain.repository_for(User).add(user)
-        return user.id
-```
-
-```python
-# fragment
-# Correct - UoW is implicit
-@use_case
-def register_user(self, email, name):
-    user = User(email=email, name=name)
-    current_domain.repository_for(User).add(user)
-    return user.id
-```
-
-## 4. Using domain.process() for Invocation
-
-Application services are called directly, not dispatched through the domain's command processing pipeline.
-
-```python
-# fragment
-# Wrong - this is the command handler pattern
-result = domain.process(some_command, asynchronous=False)
-```
-
-```python
-# Correct - direct invocation, inside a domain context
-domain.init(traverse=False)
-
-with domain.domain_context():
-    svc = UserServices()
-    user_id = svc.register_user(email="user@example.com", name="User")
-```
-
-## 5. Missing part_of Association
+## 3. Missing part_of Association
 
 Every application service must declare which aggregate it operates on.
 
@@ -189,6 +143,8 @@ class ProfileServices:
     ...
 ```
 
+Registration raises ``IncorrectUsageError: Application Service `ProfileServices` needs to be associated with an aggregate``.
+
 ```python
 # Correct
 @domain.application_service(part_of=User)
@@ -196,7 +152,7 @@ class ProfileServices:
     pass
 ```
 
-## 6. Multiple Use Cases in One Method
+## 4. Multiple Use Cases in One Method
 
 Each method should represent a single, cohesive business operation.
 
@@ -227,7 +183,7 @@ def activate_user(self, user_id):
     current_domain.repository_for(User).add(user)
 ```
 
-## 7. Catching and Swallowing Exceptions
+## 5. Catching and Swallowing Exceptions
 
 Let exceptions propagate. The UoW handles rollback, and the caller handles the error.
 

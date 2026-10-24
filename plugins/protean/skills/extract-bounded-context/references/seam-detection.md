@@ -1,7 +1,7 @@
 # Finding the seam
 
-The boundary is usually already there in the code, drawn but not made explicit.
-The first step is to find it. These signals point at it:
+The boundary between the two contexts is usually already in the code, though
+nothing names it. These signals show where it is.
 
 ## The signals
 

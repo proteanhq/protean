@@ -24,52 +24,12 @@ class PersonName:
         return f"{self.first} {self.last}"
 ```
 
-## Anemic value objects
-
-VOs with only fields and no behavior. These are struct wrappers:
-
-```python
-# Questionable: no behavior
-@domain.value_object
-class Money:
-    amount = Decimal(precision=19, scale=4, required=True)
-    currency = String(default="USD")
-    # No methods: is this better than two fields?
-
-# Better: with behavior
-@domain.value_object
-class Money:
-    amount = Decimal(precision=19, scale=4, required=True)
-    currency = String(default="USD")
-
-    def add(self, other): ...
-    def multiply(self, factor): ...
-    def is_zero(self): ...
-```
-
-## Breaking event contracts
-
-Changing event field structure without versioning:
-
-```python
-# Dangerous: existing consumers expect flat fields
-@domain.event(part_of="Order")
-class OrderPlaced:
-    # Was: total_amount = Decimal(...), total_currency = String()
-    total = ValueObject(Money)  # Breaks all existing consumers!
-
-# Safe: version bump + upcaster
-@domain.event(part_of="Order")
-class OrderPlaced:
-    __version__ = 2
-    total = ValueObject(Money)
-```
-
 ## Inconsistent extraction
 
 Extracting in one place but not another:
 
 ```python
+# fragment
 # Inconsistent: Money on aggregate but not on entity
 @domain.aggregate
 class Order:
@@ -81,7 +41,7 @@ class LineItem:
     unit_price_currency = String()
 ```
 
-Always extract consistently across all usages.
+Extract the concept on every aggregate and entity that carries it.
 
 ## Related
 

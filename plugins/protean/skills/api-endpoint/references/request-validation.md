@@ -1,22 +1,5 @@
 # Request Validation
 
-How incoming request bodies are checked before and after they become domain
-commands.
-
-## Overview
-
-A request is checked in two places, and each gives its own status code:
-
-1. **Pydantic, at the HTTP boundary**: Is the body well formed? Are the
-   required keys there, with the right types? FastAPI checks this before the
-   endpoint runs and returns **422** when it fails.
-2. **Protean, in the domain**: Do the values satisfy the command's field
-   rules (length, range, required) and the aggregate's rules? A failed field
-   rule raises `ValidationError`, which `register_exception_handlers` turns
-   into **400**.
-
-## Code
-
 The complete implementation is in
 [assets/api_endpoint_with_pydantic.py](../assets/api_endpoint_with_pydantic.py).
 
@@ -128,9 +111,6 @@ and the client gets 400 with the messages for each failing field:
 }
 ```
 
-Neither case needs error handling code in the endpoint. Let `ValidationError`
-propagate to the registered handler.
-
 ## When to use Pydantic vs a raw dict
 
 | Approach | Use when |
@@ -142,8 +122,7 @@ With `payload: dict`, FastAPI checks only that the body is a JSON object. A
 body that is not, such as a JSON array or malformed JSON, still gets FastAPI's
 422. Every value inside the object goes to the command, which rejects what its
 fields reject, with a 400. A field also converts what it can. An `Identifier`
-field stores `5` or `true` as a string, so those ids get through. Pydantic
-models are recommended for public-facing APIs.
+field stores `5` or `true` as a string, so those ids get through.
 
 ## Related
 

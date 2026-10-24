@@ -1,20 +1,15 @@
 # Cross-Aggregate Read Model
 
-A cross-aggregate read model combines data from two or more aggregates into a single queryable projection. This is essential when the UI needs to display data that spans aggregate boundaries.
+A cross-aggregate read model combines data from two or more aggregates into a single queryable projection, for a UI that displays data spanning aggregate boundaries.
 
 ## When to use
 
 - A dashboard or report needs data from multiple aggregates
-- The query combines information that lives in different bounded contexts
-- You need a denormalized view that joins aggregate data at query time
+- You need a denormalized view that joins aggregate data before the query runs, so the query reads one record
 
 ## How it works
 
-1. Multiple aggregates raise events independently
-2. A single projector listens to events from all contributing aggregates
-3. The projector builds and updates one projection from all event sources
-
-Start with the two aggregates, their events and the projection:
+Each aggregate raises its own events, and one projector listens to all of them. Start with the two aggregates, their events and the projection:
 
 ```python
 @domain.aggregate
@@ -94,11 +89,11 @@ class CustomerOrderSummaryProjector:
 Events from different aggregates may arrive in any order. Design your projector to handle:
 
 - **Initialize first, update later**: The initialization event (e.g., `CustomerRegistered`) should create the projection record. Subsequent events update it.
-- **Missing records**: If an update event arrives before the initialization event, you may need to handle the missing record gracefully.
+- **Missing records**: If an update event arrives before the initialization event, `repo.get` in `on_order_placed` raises `ObjectNotFoundError`. Create the record there when it is missing.
 
 ### Redelivered events
 
-An event can be delivered more than once. As written, this projector counts the order again when `OrderPlaced` is redelivered, and a redelivered `CustomerRegistered` fails because the record already exists. Writing `on_customer_registered` as an upsert (get the record, create it only if missing) fixes the second case. An upsert does not fix the first: adding to a count or a total is not safe to repeat, so set `idempotent=True` on the projector to have the framework skip an event it has already handled. That option is exactly-once only on a transactional database provider and does nothing for a cache-backed projection (see the `idempotent` option in [projector](../../projector/SKILL.md)).
+Redelivery breaks this projector the way it breaks the cross-aggregate projector in SKILL.md: a redelivered `OrderPlaced` counts the order again, and a redelivered `CustomerRegistered` fails because the record already exists. The fix and its limits (an upsert for the create handler, `idempotent=True` for the running totals) are under "Redelivered events" in SKILL.md.
 
 ### Identifier mapping
 
@@ -121,17 +116,7 @@ Cross-aggregate projections are eventually consistent. The projection may briefl
 
 ## Projector configuration
 
-Use the `aggregates` parameter to list all aggregate classes:
-
-```python
-# fragment
-@domain.projector(
-    projector_for=MyProjection,
-    aggregates=[AggregateA, AggregateB, AggregateC],
-)
-```
-
-Alternatively, use `stream_categories` for explicit stream names. Derive each name from its aggregate. The real category is qualified by the domain name (`<domain>::customer`), so a bare `"customer"` matches no stream.
+The `aggregates` parameter lists every contributing aggregate class, as above. Alternatively, use `stream_categories` for explicit stream names. Derive each name from its aggregate. The real category is qualified by the domain name (`<domain>::customer`), so a bare `"customer"` matches no stream.
 
 ```python
 # fragment
@@ -143,7 +128,7 @@ Alternatively, use `stream_categories` for explicit stream names. Derive each na
 
 ## Reading the model back
 
-Answer reads with a query and a query handler. The handler reads through `domain.view_for`, which is read-only.
+A query handler reads through `domain.view_for`, as in SKILL.md Step 6:
 
 ```python
 from protean import current_domain, read
@@ -175,8 +160,6 @@ with domain.domain_context():
         120.0,
     )
 ```
-
-`view_for(...).get()` raises `ObjectNotFoundError` when no record has that id. With asynchronous event processing, that includes a read made right after the write, before the projector has run.
 
 ## Complete example
 

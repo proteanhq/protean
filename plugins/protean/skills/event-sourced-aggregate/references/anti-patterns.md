@@ -1,7 +1,5 @@
 # Anti-patterns for Event-Sourced Aggregates
 
-Common mistakes when building event-sourced aggregates in Protean and how to avoid them.
-
 The examples on this page use these events and aggregates:
 
 ```python
@@ -14,15 +12,6 @@ class AccountOpened:
     account_id: Identifier(required=True)
     owner_name: String(required=True)
     balance: Float(required=True)
-
-@domain.event(part_of="Account")
-class AccountClosed:
-    account_id: Identifier(required=True)
-
-@domain.event(part_of="Account")
-class MoneyWithdrawn:
-    account_id: Identifier(required=True)
-    amount: Float(required=True)
 
 @domain.event(part_of="Account")
 class NameUpdated:
@@ -50,42 +39,11 @@ class Order:
     customer_name: String()
 ```
 
-## 1. Mutating State Directly in Business Methods
+## 1. Missing @apply Handler for an Event
 
 ### The Problem
 
-When business methods mutate state directly AND `raise_()` invokes the `@apply` handler, state gets mutated twice: once in the business method and once in `@apply`.
-
-```python
-# fragment
-# WRONG: state mutated twice (business method + @apply)
-def close(self):
-    self.status = "CLOSED"  # First mutation
-    self.raise_(AccountClosed(account_id=self.account_id))
-    # @apply also sets self.status = "CLOSED": double mutation!
-```
-
-### The Fix
-
-Business methods should only validate preconditions and call `raise_()`. Let `@apply` be the single source of truth for state mutations:
-
-```python
-# CORRECT: validate then raise, @apply handles state
-def close(self):
-    if self.status != "ACTIVE":
-        raise ValueError("Account is not active")
-    self.raise_(AccountClosed(account_id=self.account_id))
-
-@apply
-def closed(self, event: AccountClosed):
-    self.status = "CLOSED"  # Single source of truth
-```
-
-## 2. Missing @apply Handler for an Event
-
-### The Problem
-
-If an event type is raised but no `@apply` method is registered for it, Protean raises `IncorrectUsageError` at runtime, both when `raise_()` is called (live path) and when replaying events via `from_events()` or `repo.get()`.
+The `IncorrectUsageError` for a missing `@apply` method is raised on both paths: when `raise_()` is called, and when events are replayed through `from_events()` or `repo.get()`.
 
 ```python
 @domain.event(part_of="Order")
@@ -98,19 +56,15 @@ class OrderArchived:
 
 ### The Fix
 
-Every event type raised by the aggregate must have a corresponding `@apply` method:
-
 ```python
 @apply
 def archived(self, event: OrderArchived):
     self.status = "ARCHIVED"
 ```
 
-## 3. Forgetting Initial Event in Factory
+## 2. Forgetting Initial Event in Factory
 
 ### The Problem
-
-Creating an aggregate without raising a creation event means the first state change is not recorded.
 
 ```python
 # fragment
@@ -124,8 +78,6 @@ With no events raised, the event-sourced repository's `add()` persists nothing (
 
 ### The Fix
 
-Always raise an event in the factory classmethod:
-
 ```python
 @classmethod
 def open(cls, account_id, owner_name):
@@ -134,7 +86,7 @@ def open(cls, account_id, owner_name):
     return account
 ```
 
-## 4. First Event's @apply Not Setting All Required Fields
+## 3. First Event's @apply Not Setting All Required Fields
 
 ### The Problem
 
@@ -151,23 +103,13 @@ def account_opened(self, event: AccountOpened):
 
 ### The Fix
 
-Ensure the first event's `@apply` handler establishes ALL aggregate state:
+Set every field in the first event's handler, as `account_opened` does in the `Account` class at the top of this page.
 
-```python
-# CORRECT: first event's @apply sets all fields
-@apply
-def account_opened(self, event: AccountOpened):
-    self.account_id = event.account_id
-    self.owner_name = event.owner_name
-    self.balance = event.balance
-    self.status = "ACTIVE"
-```
-
-## 5. Using Standard Repository with ES Aggregate
+## 4. Using Standard Repository with ES Aggregate
 
 ### The Problem
 
-Defining a standard `@domain.repository` for an event-sourced aggregate won't work correctly. ES aggregates require event-sourced repositories.
+A standard `@domain.repository` registered for an event-sourced aggregate raises no error. `repository_for(Account)` still returns an event-sourced repository that the domain builds on its own, so the methods defined on the standard class are missing from the object you get back.
 
 ```python
 # fragment
@@ -179,31 +121,13 @@ class AccountRepository:
 
 ### The Fix
 
-Either use the auto-selected repository:
+Use the repository `repository_for()` returns, or subclass `BaseEventSourcedRepository` and register it with `domain.register(AccountRepository, part_of=Account)`, as the skill's "Event-sourced repository" section shows.
 
-```python
-domain.init(traverse=False)
-
-with domain.domain_context():
-    repo = current_domain.repository_for(Account)  # Auto-selects ES repo
-```
-
-Or define an explicit ES repository by subclassing `BaseEventSourcedRepository`:
-
-```python
-from protean.core.event_sourced_repository import BaseEventSourcedRepository
-
-class AccountRepository(BaseEventSourcedRepository):
-    pass
-
-domain.register(AccountRepository, part_of=Account)
-```
-
-## 6. Overly Large Events
+## 5. Overly Large Events
 
 ### The Problem
 
-Including too much data in events makes them expensive to store and process:
+An event that carries data unrelated to the change is expensive to store and process:
 
 ```python
 # fragment
@@ -219,8 +143,6 @@ class ItemAdded:
 
 ### The Fix
 
-Events should carry only the data relevant to the change:
-
 ```python
 # CORRECT: event carries only what changed
 @domain.event(part_of="Order")
@@ -232,11 +154,11 @@ class ItemAdded:
     unit_price: Float(required=True)
 ```
 
-## 7. Forgetting to Raise Events in Business Methods
+## 6. Forgetting to Raise Events in Business Methods
 
 ### The Problem
 
-Mutating state directly without raising events means changes won't be persisted to the event store and won't survive replay:
+A direct assignment changes the aggregate in memory only. With no event raised, `repo.add()` writes nothing, and the change is gone on the next load:
 
 ```python
 # fragment
@@ -248,8 +170,6 @@ class Account:
 ```
 
 ### The Fix
-
-ALL state changes must go through `raise_()` and `@apply`:
 
 ```python
 @domain.aggregate(event_sourced=True)
@@ -265,37 +185,11 @@ class Account:
         self.name = event.name
 ```
 
-## 8. Not Validating Before Raising Events
+## 7. Querying External State in @apply Methods
 
 ### The Problem
 
-Raising events without validation means invalid state changes get recorded:
-
-```python
-# fragment
-# WRONG: no validation before raising
-def withdraw(self, amount):
-    self.raise_(MoneyWithdrawn(account_id=self.account_id, amount=amount))
-```
-
-### The Fix
-
-Validate business rules in the business method, before calling `raise_()`:
-
-```python
-def withdraw(self, amount):
-    if amount <= 0:
-        raise ValueError("Amount must be positive")
-    if amount > self.balance:
-        raise ValueError("Insufficient funds")
-    self.raise_(MoneyWithdrawn(account_id=self.account_id, amount=amount))
-```
-
-## 9. Querying External State in @apply Methods
-
-### The Problem
-
-`@apply` methods must be pure state mutations. They should not query databases, call APIs, or access other aggregates:
+An `@apply` method runs again on every replay, so it must only set state from the event. A query to a database, an API or another aggregate can return a different answer on replay:
 
 ```python
 # fragment
@@ -309,7 +203,7 @@ def order_placed(self, event: OrderPlaced):
 
 ### The Fix
 
-Include all needed data in the event itself:
+Put the data the handler needs in the event:
 
 ```python
 @domain.event(part_of="Order")

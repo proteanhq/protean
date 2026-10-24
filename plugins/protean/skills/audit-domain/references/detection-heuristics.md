@@ -54,7 +54,7 @@ A single conditional for command routing (`if command.type == "express":`) is a 
 | `price = Float(...)` without currency | `ValueObject(Money)` |
 | `url = String(...)` with URL validator | `ValueObject(Url)` |
 
-**Cross-aggregate repetition**: If the same field group appears in 2+ aggregates, it's almost certainly a VO candidate.
+**Cross-aggregate repetition**: A field group that appears in two or more aggregates is a strong VO candidate.
 
 ## 3. Transaction Boundary Violation Detection
 
@@ -95,19 +95,13 @@ other_repo.add(inventory)  # Different aggregate type
 
 ## 5-11. Remaining Categories
 
-**Manual UoW (5)**: Grep for `UnitOfWork` in handler files. Any match is a finding.
-
-**Direct handler calls (6)**: Grep for `Handler()` instantiation or handler method calls outside of `domain.process()`.
+Categories 5 (manual UoW), 6 (direct handler calls), 10 (missing versioning) and 11 (missing events) need nothing beyond the signals in SKILL.md.
 
 **Scattered validation (7)**: Grep for `ValidationError` or `ValueError` in handler and endpoint files. Check if the same validation exists as an `@invariant`. An aggregate with no invariant at all is a separate finding: `check` reports it as `AGGREGATE_NO_INVARIANTS`.
 
 **Circular import risk (8)**: Grep for `part_of=` (without quotes around the value) in command, event, entity, and value object files.
 
 **Mock overuse (9)**: Grep for `Mock`, `MagicMock`, `@patch` in test files. Count the ratio of mocked vs. real domain tests.
-
-**Missing versioning (10)**: Find all `@domain.event` classes and check for `__version__` attribute.
-
-**Missing events (11)**: In handlers, look for loading a second aggregate type and mutating it. In aggregate methods, look for calls to external repositories.
 
 ## Severity Calibration
 

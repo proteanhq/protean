@@ -122,11 +122,13 @@ The cross-aggregate example below needs a target aggregate. Here `Inventory` tra
 class Inventory:
     product_id: Identifier(required=True)
     in_stock: Integer(required=True)
+    applied_order_ids: List(content_type=String)
 
-    def reduce_stock(self, quantity: int):
+    def reduce_stock(self, order_id: str, quantity: int):
         if quantity > self.in_stock:
             raise ValueError(f"Insufficient stock: have {self.in_stock}, need {quantity}")
         self.in_stock -= quantity
+        self.applied_order_ids = [*self.applied_order_ids, order_id]
 ```
 
 ```python

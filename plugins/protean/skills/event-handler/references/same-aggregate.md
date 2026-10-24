@@ -15,11 +15,6 @@ Common use cases:
 
 The complete implementation is in [assets/event_handler_same_aggregate.py](../assets/event_handler_same_aggregate.py).
 
-Key highlights:
-- `@domain.event_handler(part_of=Order)` -- handler belongs to Order, listens to Order stream
-- No `stream_category` needed -- defaults to the aggregate's own stream
-- Handler loads the aggregate from the repository, mutates it, and persists
-
 ## Walkthrough
 
 ### The Event
@@ -31,8 +26,6 @@ class OrderPlaced:
     customer_id: String(required=True)
     total_amount: Float(required=True)
 ```
-
-The event is a simple DTO containing the data needed by downstream handlers.
 
 ### The Aggregate
 
@@ -66,12 +59,6 @@ class OrderEventHandler:
 ```
 
 The handler loads the aggregate from the repository (it gets a fresh copy, not the same instance that raised the event), applies side effects, and persists.
-
-## When to Use Same-Aggregate Handlers
-
-- Side effects that belong conceptually to the same aggregate
-- Updating derived or computed state after a domain action
-- When no cross-aggregate coordination is needed
 
 ## When NOT to Use
 

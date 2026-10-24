@@ -1,53 +1,16 @@
 # Parameterized Validators
 
-Create configurable, reusable validators with constructor parameters.
-
-## Overview
-
-Parameterized validators accept configuration in their `__init__` method, making them reusable across different fields and domain elements with different requirements. This is the preferred approach for validators that need to be applied with varying rules.
+A parameterized validator takes its configuration in `__init__`, so one class serves several fields with different rules.
 
 ## Code
 
 The complete implementation is in [assets/custom_validator_parameterized.py](../assets/custom_validator_parameterized.py).
 
-Key highlights:
-- `AllowedDomainValidator(domains)`: Configurable email domain whitelist
-- `LuhnValidator(expected_length)`: Credit card validation with configurable card length
-- `StringLengthRangeValidator(min, max, label)`: Reusable length check with custom labels
-- Same validator class instantiated with different configs for different fields
-
-## Pattern
-
-```python
-class ConfigurableValidator:
-    def __init__(self, param1, param2="default"):
-        self.param1 = param1
-        self.param2 = param2
-        # Build error message from params
-        self.error = f"Validation failed: expected {param1}"
-
-    def __call__(self, value):
-        if not meets_criteria(value, self.param1, self.param2):
-            raise ValidationError(self.error)
-
-# Reuse with different configurations
-strict_validator = ConfigurableValidator(param1="strict", param2="high")
-lenient_validator = ConfigurableValidator(param1="lenient", param2="low")
-
-@domain.aggregate
-class StrictEntity:
-    field: String(validators=[strict_validator])
-
-@domain.aggregate
-class LenientEntity:
-    field: String(validators=[lenient_validator])
-```
-
 ## Walkthrough
 
 ### AllowedDomainValidator
 
-Shows how to parameterize a whitelist:
+Unlike the SKILL.md version, this one lowercases the allowed list in `__init__`, so an entry written `"Company.com"` still matches:
 
 ```python
 class AllowedDomainValidator:

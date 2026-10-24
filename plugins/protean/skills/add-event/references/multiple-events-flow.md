@@ -1,30 +1,6 @@
 # Multiple Events Flow
 
-An aggregate that raises different events from different lifecycle methods, with multiple handlers reacting to different events. This is the common real-world pattern where an aggregate's lifecycle generates several distinct events.
-
-## Overview
-
-Most aggregates raise multiple events throughout their lifecycle:
-1. Each state transition raises a different event
-2. Same-aggregate handlers process some events (internal side effects)
-3. Other handlers in the same cluster hand off to other aggregates with commands (external side effects)
-4. The same event can be handled by multiple independent handlers
-
-Common use cases:
-- Shipment lifecycle (dispatched → delivered) with tracking updates and notifications
-- Order lifecycle (placed → paid → shipped → completed) with various side effects
-- Account lifecycle (registered → activated → suspended) with emails and audit trails
-
-## Code
-
-The complete implementation is in [assets/add_event_multiple_events.py](../assets/add_event_multiple_events.py).
-
-Key highlights:
-- Shipment aggregate with `dispatch()` and `deliver()` methods, each raising a distinct event
-- Same-aggregate `ShipmentEventHandler` with multiple `@handle` methods for tracking
-- A second handler, `ShipmentNotifier`, also `part_of=Shipment`, that issues a `SendNotification` command for each shipment event
-- `Notification`'s command handler creates the alert, and skips one that already exists
-- Both handlers independently process the same events
+An aggregate that raises different events from different lifecycle methods, with multiple handlers reacting to different events. Examples: a shipment (dispatched, delivered), an order (placed, paid, shipped), an account (registered, activated, suspended).
 
 ## Walkthrough
 
@@ -43,9 +19,6 @@ class ShipmentDelivered:
     order_id: Identifier(required=True)
     delivered_at: DateTime(required=True)
 ```
-
-- Each event carries data specific to that transition
-- All events share `part_of="Shipment"`
 
 The `Shipment` aggregate raises these events from its lifecycle methods:
 
@@ -97,10 +70,6 @@ class ShipmentEventHandler:
         ...
 ```
 
-- One handler class, multiple `@handle` methods
-- Each method processes a different event type
-- All belong to the same aggregate stream
-
 ### Multiple Handlers for the Same Event
 
 The notification handler belongs to a separate `Notification` aggregate:
@@ -135,46 +104,10 @@ class ShipmentNotifier:
         )
 ```
 
-- Unlike commands (which have exactly one handler), events support multiple handlers
 - Both `ShipmentEventHandler` and `ShipmentNotifier` process `ShipmentDispatched`
 - Each handler runs independently in its own UnitOfWork
 - `ShipmentNotifier` sits in Shipment's cluster because it reacts to Shipment's events. `SendNotification` is `part_of="Notification"`, and Notification's command handler does the write
 - Events are delivered at least once, so `notification_id` is built from the shipment id and the event type. Notification's command handler adds the alert only when `repository.get` raises `ObjectNotFoundError`
-
-## Adding a New Event to an Existing Flow
-
-When adding a new event to an aggregate that already has events and handlers:
-
-1. **Define the new event** with `part_of` pointing to the aggregate
-2. **Add the aggregate method** that raises the event
-3. **Add a `@handle` method** to the existing handler class (don't create a new handler class for the same aggregate)
-4. **Optionally hand off to another aggregate** for the new event: a handler in this cluster issues a command, and the other aggregate's command handler does the write (see [cross-aggregate flow](./cross-aggregate-flow.md))
-
-```python
-# New event
-@domain.event(part_of="Shipment")
-class ShipmentReturned:
-    shipment_id: Identifier(required=True)
-    return_reason: String(required=True)
-
-# Add method to existing aggregate
-class Shipment:
-    def initiate_return(self, reason):
-        self.status = "returned"
-        self.raise_(ShipmentReturned(
-            shipment_id=self.shipment_id,
-            return_reason=reason,
-        ))
-
-# Add @handle to existing handler
-class ShipmentEventHandler:
-    # ... existing handlers ...
-
-    @handle(ShipmentReturned)
-    def on_returned(self, event):
-        # Handle the return
-        ...
-```
 
 ## File organization
 

@@ -1,10 +1,6 @@
 # Layer 1: Field Constraints
 
-The simplest and most common validation layer. Field constraints validate individual field values automatically on assignment.
-
-## Code
-
-The complete implementation is in [assets/validation_layer1_field_constraints.py](../assets/validation_layer1_field_constraints.py).
+Field constraints validate each field's value when it is assigned, in `__init__` and in `__setattr__`. A failure raises `ValidationError` with a dict of field name to messages.
 
 ## Available Constraints
 
@@ -38,28 +34,6 @@ The complete implementation is in [assets/validation_layer1_field_constraints.py
 |-----------|------|-------------|
 | `identifier` | bool | Marks field as entity's unique ID (auto sets `required=True`, `unique=True`) |
 | `unique` | bool | Value must be unique across all instances |
-
-## When to Use Layer 1
-
-- Type safety: "this must be a number" → `Integer()`
-- Presence: "this is required" → `required=True`
-- Bounds: "age must be 18-120" → `Integer(min_value=18, max_value=120)`
-- Format: "must be a valid email" → `validators=[EmailValidator()]`
-- Enum: "status must be draft/active/closed" → `choices=StatusEnum`
-
-## When NOT to Use Layer 1
-
-- Cross-field rules ("end > start") → Use Layer 2 or 3 invariants
-- Context-dependent rules ("only admins can...") → Use Layer 4 guards
-- Rules that depend on aggregate state → Use Layer 3 invariants
-
-## Validation Timing
-
-Field constraints validate immediately when a value is assigned:
-1. During `__init__` (object creation)
-2. During `__setattr__` (attribute assignment)
-
-Errors are raised as `ValidationError` with field-to-messages dict.
 
 ## Related
 

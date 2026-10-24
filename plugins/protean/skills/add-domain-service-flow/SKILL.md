@@ -303,7 +303,7 @@ The call to `stock_for()` runs the pre-invariants again, which call `stock_for()
 
 ## Detailed references
 
-- [Domain Service Patterns](references/domain-service-patterns.md): Callable, instance method, and class method patterns
+- [Domain Service Patterns](references/domain-service-patterns.md): The callable pattern, wiring a service into a command handler, and changing a second aggregate through an event
 - [When to Use](references/when-to-use.md): Decision guide for choosing domain services vs other patterns
 
 ## Related skills

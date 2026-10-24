@@ -1,26 +1,8 @@
 # Event Versioning
 
-Event versioning enables schema evolution while maintaining backward compatibility. As your domain evolves, events may need new fields, renamed attributes, or changed structures. Proper versioning ensures existing consumers continue to work.
-
-## Overview
-
-Events are long-lived contracts between producers and consumers. Unlike aggregates that can be refactored internally, events published to external systems must maintain compatibility. Event versioning provides a strategy for evolving event schemas safely.
-
-**Why versioning matters:**
-- Events are stored in event stores (permanent records)
-- Consumers may process old and new versions
-- Schema changes should not break existing consumers
-- Domain models evolve over time
-
-## Code
+Event versioning lets an event's schema change while existing consumers keep working. Events stay in the event store for good, so a consumer can meet an old version and a new one side by side.
 
 The complete implementation is in [assets/event_versioning.py](../assets/event_versioning.py).
-
-Key highlights:
-- Use `__version__` class attribute to track schema versions
-- Start at `1` and increment for breaking changes
-- Maintain backward compatibility when possible
-- Document version changes in event docstrings
 
 ## Basic Versioning
 
@@ -54,7 +36,7 @@ class User:
     email: String()
 ```
 
-Every event should have a `__version__` attribute from the start:
+`__version__` defaults to `1`. Declare it from the start, so the version is visible in the class when the schema changes:
 
 ```python
 @domain.event(part_of="Order")
@@ -232,23 +214,7 @@ class OrderPlaced:
 
 ## Versioning Best Practices
 
-### 1. Always Version from the Start
-
-```python
-# Good
-@domain.event(part_of="Order")
-class OrderPlaced:
-    __version__ = 1  # Explicit from day one
-    order_id: String(required=True, identifier=True)
-
-# Bad
-@domain.event(part_of="Order")
-class OrderPlaced:
-    # Missing __version__ - assumes default
-    order_id: String(required=True, identifier=True)
-```
-
-### 2. Document Version Changes
+### 1. Document Version Changes
 
 ```python
 @domain.event(part_of="Order")
@@ -268,30 +234,7 @@ class OrderPlaced:
     items: List()
 ```
 
-### 3. Plan for Backward Compatibility
-
-```python
-# Good: Add optional fields
-@domain.event(part_of="Product")
-class ProductCreated:
-    __version__ = 1
-
-    product_id: String(required=True, identifier=True)
-    name: String(required=True)
-    description: String()  # Optional - backward compatible
-    tags: List()  # Optional - backward compatible
-
-# Bad: Add required fields to existing version
-@domain.event(part_of="Product")
-class ProductCreated:
-    __version__ = 1  # Still v1 but added required field!
-
-    product_id: String(required=True, identifier=True)
-    name: String(required=True)
-    category: String(required=True)  # Breaking change without version bump!
-```
-
-### 4. Test Multiple Versions
+### 2. Test Multiple Versions
 
 The version is not a payload field. It comes from the class attribute, and the event carries it in its metadata. Passing `__version__` as a keyword raises `ValidationError: {'__version__': ['Extra inputs are not permitted']}`.
 
@@ -340,27 +283,7 @@ with domain.domain_context():
 
 ## Common Versioning Scenarios
 
-### Scenario 1: Adding Optional Enrichment Data
-
-```python
-# v1
-@domain.event(part_of="Order")
-class OrderPlaced:
-    __version__ = 1
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
-
-# v1 with new optional fields (backward compatible)
-@domain.event(part_of="Order")
-class OrderPlaced:
-    __version__ = 1  # Same version
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
-    user_agent: String()  # Optional enrichment
-    ip_address: String()  # Optional enrichment
-```
-
-### Scenario 2: Splitting into Multiple Events
+### Scenario 1: Splitting into Multiple Events
 
 ```python
 # v1 - monolithic event
@@ -383,25 +306,6 @@ class OrderAddressChanged:
     __version__ = 1
     order_id: String(required=True, identifier=True)
     new_address = ValueObject(Address, required=True)
-```
-
-### Scenario 3: Evolving from Primitives to Value Objects
-
-```python
-# v1 - primitive types
-@domain.event(part_of="Order")
-class OrderPlaced:
-    __version__ = 1
-    order_id: String(required=True, identifier=True)
-    total_amount: Float(required=True)
-    currency: String(default="USD")
-
-# v2 - value object
-@domain.event(part_of="Order")
-class OrderPlaced:
-    __version__ = 2
-    order_id: String(required=True, identifier=True)
-    total = ValueObject(Money, required=True)
 ```
 
 ## Related

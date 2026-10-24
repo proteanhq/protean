@@ -34,16 +34,6 @@ class ReserveStock:
     quantity = Integer(required=True, min_value=1)
 ```
 
-## Circular event flows
-
-```
-Order ──OrderPlaced──> Inventory
-Inventory ──StockReserved──> Order  # Creates infinite loop!
-```
-
-Fix: Use a process manager if you need bidirectional coordination, or reconsider
-whether the second event is actually needed.
-
 ## Events as commands (imperative naming)
 
 ```python
@@ -102,22 +92,8 @@ class InventoryReservation:
 
 `ReserveStock` is `part_of=Inventory`, and `Inventory`'s command handler does the
 write. Events are delivered at least once, so that command handler returns without
-changes when the order id is already in `Inventory.reserved_order_ids`:
-
-```python
-@domain.command_handler(part_of=Inventory)
-class InventoryCommandHandler:
-    @handle(ReserveStock)
-    def reserve_stock(self, command):
-        repo = current_domain.repository_for(Inventory)
-        inventory = repo.get(command.product_id)
-        if command.order_id in inventory.reserved_order_ids:
-            return  # already reserved for this order
-        inventory.reserve(command.order_id, command.quantity)
-        repo.add(inventory)
-```
-
-For a flow with several causally dependent steps, use a
+changes when the order id is already in `Inventory.reserved_order_ids` (SKILL.md
+Step 4 shows the handler). For a flow with several causally dependent steps, use a
 [process manager](../../process-manager/SKILL.md).
 
 ## Synchronous expectations with async processing
@@ -139,4 +115,4 @@ In production (async mode), event handlers run later. Design for eventual consis
 
 ## Related
 
-- [event-design-guide.md](event-design-guide.md): How to design good events
+- [event-design-guide.md](event-design-guide.md): How to design good events, and why event flows must not be circular

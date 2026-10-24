@@ -4,12 +4,7 @@ The Anti-Corruption Layer (ACL) is a DDD pattern that prevents external system f
 
 ## The problem
 
-External systems use their own data formats, naming conventions, and schemas:
-- ERP systems with camelCase and nested objects
-- Payment gateways with status codes
-- REST webhooks with envelope patterns
-
-Without an ACL, external formats leak into your domain: `order.paymentGatewayStatus`, `customer.erpUserId`.
+External systems use their own data formats, naming conventions, and schemas. Without an ACL, external formats leak into your domain: `order.paymentGatewayStatus`, `customer.erpUserId`.
 
 ## The solution
 
@@ -19,7 +14,7 @@ The subscriber is the **single point of translation**. It knows the external for
 External System  →  [Broker Stream]  →  Subscriber (ACL)  →  Domain
                                          ↑
                                     Translation happens here
-                                    Only class that imports nothing from external
+                                    Only class that knows the external format
 ```
 
 ## Translation strategies
@@ -59,16 +54,6 @@ STATUS_MAP = {"COMPLETED": "confirm", "FAILED": "fail"}
 user_id = data["data"]["user"]["id"]
 ```
 
-## When to use each pattern
+## One subscriber per external system
 
-| Pattern | Use when |
-|---------|---------|
-| **Command dispatch** | Complex domain logic, multiple steps, need handler guards |
-| **Direct update** | Simple status change, one aggregate, no guards needed |
-
-## Key principles
-
-1. **Only the subscriber knows the external format**: Never expose external field names to domain code
-2. **Domain stays clean**: Commands and aggregates use domain language
-3. **Single responsibility**: One subscriber per external system/stream
-4. **Testable**: Test the subscriber translation separately from domain logic
+Give each external system or stream its own subscriber.

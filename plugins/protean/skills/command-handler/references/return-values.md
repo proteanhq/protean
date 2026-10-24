@@ -1,10 +1,6 @@
 # Return Values from Command Handlers
 
-Command handler methods can return values to the caller when commands are processed synchronously.
-
 ## Overview
-
-The behavior depends on the processing mode:
 
 | Mode | How to invoke | Return value |
 |------|--------------|--------------|
@@ -69,17 +65,6 @@ with domain.domain_context():
 ```
 
 ## Common Return Patterns
-
-### Return a created identifier
-
-```python
-# fragment
-@handle(CreateOrder)
-def handle_create(self, command):
-    order = Order(order_id=command.order_id, ...)
-    domain.repository_for(Order).add(order)
-    return order.order_id
-```
 
 ### Return nothing (void)
 

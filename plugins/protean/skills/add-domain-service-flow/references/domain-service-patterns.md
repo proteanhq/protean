@@ -51,8 +51,6 @@ class Account:
 
 ## Callable pattern (recommended)
 
-The most common pattern. Instantiate with aggregates, call to execute.
-
 ```python
 @domain.domain_service(part_of=[Account, Account])
 class FundsTransferService:
@@ -92,29 +90,7 @@ with domain.domain_context():
     assert target.balance == 0.0  # credited later, through the event
 ```
 
-## You do not need the base class __init__
-
-A plain `__init__` that stores the aggregates is enough. The pre and post invariants are wired when the service is registered with `@domain.domain_service`, so leaving out `super().__init__()` does not switch them off.
-
-Calling `super().__init__(source, target)` still works. It stores the aggregates on `self._aggregates`, which is useful only if your code reads them from there.
-
-## Pre and post invariants
-
-Domain services support the same `@invariant.pre` and `@invariant.post` decorators as aggregates.
-
-- **Pre invariants**: Run before the method: validate preconditions
-- **Post invariants**: Run after the method: validate postconditions
-
-They run around every public method of the service, and `__call__` counts as public. If one public method calls another, the invariants run again for the inner call.
-
-Helper methods start with `_`, which keeps them unwrapped. An invariant must never call a public method: the method's wrapper runs the invariant again, which calls the method again, until Python's recursion limit stops the call.
-
 ## Wiring into command handlers
-
-The command handler is responsible for:
-1. Loading the aggregates from repositories
-2. Instantiating and calling the domain service
-3. Persisting the one aggregate the service changed
 
 Both accounts are `Account` aggregates, but they are still two aggregates, so the handler persists only the source:
 
@@ -161,8 +137,4 @@ class CreditTransferTarget:
         )
 ```
 
-The service checks both accounts in one step, before the source changes. The credit is eventually consistent: it runs in its own transaction after the source commits, so for a short time the money has left the source and not yet reached the destination. If the credit fails, the debit stays committed. Nothing undoes it on its own. Undoing it takes a compensating command, for example one sent by a process manager.
-
 The caller supplies `transfer_id` in the command. The source records it with the debit, and the event carries it to `CreditAccount`. A repeated command or a redelivered event then carries the same id, and the handler can tell it is a repeat. A `TransferFunds` that reuses the id with a different amount moves no money either. Each account checks only its own list, so the caller must give every transfer its own id. Never generate a fresh `uuid4()` in the event handler, because a redelivered event would then look like a new transfer.
-
-`applied_transfer_ids` grows with every transfer and loads with the account each time.

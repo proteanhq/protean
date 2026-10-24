@@ -2,41 +2,9 @@
 
 Aggregates can contain entities to form object graphs representing complex domain concepts. Entities within aggregates are accessible and modifiable only through the aggregate root.
 
-## Overview
-
-Use this pattern when:
-- Your aggregate needs to manage a collection of related objects with identity
-- You need one-to-one or one-to-many relationships
-- Child objects don't make sense outside the parent aggregate's context
-- You want to enforce transaction boundaries around the entire object graph
-
-## Key Concepts
-
-### HasOne Relationships
-
-`HasOne` establishes a one-to-one relationship between the aggregate and an entity. The aggregate contains exactly one instance of the entity.
-
-**When to use:**
-- When each aggregate instance has exactly one associated entity
-- Examples: Order has one ShippingInfo, User has one Profile
-
-### HasMany Relationships
-
-`HasMany` establishes a one-to-many relationship. The aggregate can contain multiple instances of the entity.
-
-**When to use:**
-- When each aggregate can have multiple related entities
-- Examples: Order has many LineItems, Post has many Comments
-
 ## Code
 
 The complete implementation is in [assets/aggregate_with_entity.py](../assets/aggregate_with_entity.py).
-
-Key highlights:
-- Entity declared with `@domain.entity(part_of="Order")` to associate it with the aggregate
-- Automatic bidirectional references (child can access parent via `order_id` and `order`)
-- Helper methods generated: `add_line_items()`, `remove_line_items()`
-- Entities loaded eagerly with the aggregate
 
 ## Walkthrough
 
@@ -52,7 +20,7 @@ class Order:
     shipping_info = HasOne("ShippingInfo")
 ```
 
-The aggregate declares associations using `HasMany` and `HasOne` fields. Note that you can use string references to entities that are defined later in the file.
+The aggregate declares associations using `HasMany` and `HasOne` fields. A string reference can name an entity defined later in the file.
 
 ### Defining Entities
 
@@ -79,9 +47,9 @@ class ShippingInfo:
     city: String(required=True, max_length=100)
 ```
 
-Entities must specify which aggregate they belong to using the `part_of` parameter. This creates the relationship and ensures entities are managed correctly.
+Entities name the aggregate they belong to with the `part_of` parameter.
 
-The `Reference` field creates a bidirectional relationship. While optional to declare explicitly, it documents the relationship and enables navigation from child to parent. Use `Reference` only for an entity pointing at its parent: the aggregate root, or the parent entity when the entity is nested. To point at another aggregate, hold its id in an `Identifier()` field.
+The `Reference` field creates a bidirectional relationship. Declaring it is optional: the child gets `order_id` and `order` either way. Use `Reference` only for an entity pointing at its parent: the aggregate root, or the parent entity when the entity is nested. To point at another aggregate, hold its id in an `Identifier()` field.
 
 Creating instances needs an initialized domain and an active domain context:
 
@@ -100,7 +68,7 @@ with domain.domain_context():
     order.add_line_items(item)
 ```
 
-Protean automatically generates `add_{field_name}()` methods for `HasMany` relationships. You can add single items or lists.
+Protean generates `add_{field_name}()` methods for `HasMany` relationships. You can add single items or lists.
 
 **Removing entities:**
 
@@ -155,11 +123,7 @@ with domain.domain_context():
 
 ## Entity Limits
 
-Protean loads the entire aggregate object graph eagerly. To keep aggregates small, `check` flags one declaring more entity types than the configured `[lint] aggregate_size_limit` (default 5) as `AGGREGATE_TOO_LARGE`. It counts the entity classes in the cluster, so an aggregate with one `HasMany` of a thousand rows is never flagged for size. When flagged, consider:
-
-- Splitting into multiple aggregates
-- Making the entity an aggregate itself
-- Redesigning aggregate boundaries
+Protean loads the entire aggregate object graph eagerly. `check` flags an aggregate declaring more entity types than the configured `[lint] aggregate_size_limit` (default 5) as `AGGREGATE_TOO_LARGE`. It counts the entity classes in the cluster, so an aggregate with one `HasMany` of a thousand rows is never flagged for size. When an entity has a lifecycle of its own, make it an aggregate.
 
 ## Transaction Boundaries
 
@@ -178,26 +142,7 @@ with domain.domain_context():
 
 Invariants run when the aggregate or one of its entities changes, not when `add()` persists it. A broken rule raises at the change, before the aggregate reaches the repository.
 
-## Best Practices
-
-1. **Entities belong to exactly one aggregate**: Use `part_of` to make this explicit
-2. **Access entities only through the aggregate**: Don't reference entities directly from other aggregates
-3. **Keep aggregate graphs small**: Avoid deeply nested structures (max 2 levels recommended)
-4. **Use HasOne sparingly**: Often a value object is more appropriate
-5. **Consider separate aggregates**: If entities have independent lifecycles, make them aggregates
-
 ## Common Patterns
-
-### One-to-Many with Calculated Properties
-
-Add a property to the `Order` aggregate that sums its entities:
-
-```python
-# fragment
-@property
-def total_amount(self) -> D:
-    return sum((item.subtotal for item in self.line_items), D("0"))
-```
 
 ### Adding Multiple Entities at Once
 
@@ -208,14 +153,6 @@ with domain.domain_context():
         LineItem(product_id="P2", quantity=1, unit_price="75.00"),
     ]
     order.add_line_items(items)
-```
-
-### Conditional Entity Access
-
-```python
-with domain.domain_context():
-    if order.shipping_info:  # HasOne might be None
-        print(order.shipping_info.address)
 ```
 
 ## Related

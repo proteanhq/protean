@@ -160,7 +160,7 @@ class Username:
 
 ## Common mistakes
 
-- **Raising `ValueError` instead of `ValidationError`**: Always use `from protean.exceptions import ValidationError`. `ValueError` will not be caught by Protean's validation pipeline correctly.
+- **Raising `ValueError` instead of `ValidationError`**: Always raise `ValidationError` from `protean.exceptions`. A `ValueError` is reported under the field name on a basic field such as `String`, but under `_entity` on a `ValueObject` field, and any other exception type, such as `TypeError`, propagates unhandled. See [anti-patterns](references/anti-patterns.md).
 
 ## Complete examples
 

@@ -30,15 +30,13 @@ class GetOrderById:
     order_id: Identifier(required=True)
 ```
 
-```python
-# RIGHT: querying a read model
-@domain.query(part_of="OrderSummary")
-class GetOrderById:
-    order_id: Identifier(required=True)
-```
+`domain.init()` rejects it. A query's `part_of` resolves only against
+projections, so the aggregate name is left unresolved and init raises
+`ConfigurationError`: ``Unresolved references in domain ...: `GetOrderById`
+references `Order` via part_of``.
 
-If no projection exists for the read you need, define one (see the `projection`
-and `projector` skills) rather than querying the aggregate directly.
+If no projection exists for the read you need, define one with the
+`projection` and `projector` skills.
 
 ## Putting logic in the query
 
@@ -58,27 +56,12 @@ class GetOrderById:
 
 Keep the query a pure DTO; dispatch it to a handler with `domain.dispatch()`.
 
-## Mutating a query
-
-Queries are immutable. Reusing one instance and "tweaking" it raises
-`IncorrectUsageError`.
-
-```python
-# fragment
-# WRONG
-q = SearchOrders(status="placed")
-q.status = "shipped"  # IncorrectUsageError
-```
-
-```python
-# RIGHT: build a new query
-q = SearchOrders(status="shipped")
-```
-
 ## Associations and rich types
 
-Queries take basic fields and value objects only. Associations
-(`HasOne`/`HasMany`/`Reference`) are not allowed. They belong to aggregates.
+Queries take basic fields and value objects only. An association
+(`HasOne`/`HasMany`/`Reference`) raises `IncorrectUsageError` when the class is
+decorated: `Queries can only contain basic field types. Remove lines (HasMany)
+from class SearchOrders`.
 
 ```python
 # fragment
@@ -86,30 +69,4 @@ Queries take basic fields and value objects only. Associations
 @domain.query(part_of="OrderSummary")
 class SearchOrders:
     lines = HasMany("OrderLine")
-```
-
-```python
-# RIGHT: flat criteria
-@domain.query(part_of="OrderSummary")
-class SearchOrders:
-    status: String()
-    min_total: Integer(default=0)
-```
-
-## Imperative / vague names
-
-Commands are imperative (`PlaceOrder`); queries are named for what they return.
-
-```python
-# fragment
-# WRONG
-class FetchStuff: ...
-class DoOrderLookup: ...
-```
-
-```python
-# RIGHT
-class GetOrderById: ...
-class SearchOrders: ...
-class ListActiveCustomers: ...
 ```

@@ -1,35 +1,10 @@
 # Aggregates with Value Objects
 
-Aggregates use value objects to represent complex, immutable data types that don't have identity. Value objects are defined by their attributes rather than by an identifier.
-
-## Overview
-
-Use value objects when:
-- You need to model a concept that is defined by its attributes, not identity
-- The object should be immutable
-- You want to encapsulate behavior with the data
-- Examples: Money, Address, DateRange, Coordinates
-
-## Key Differences: Value Objects vs Entities
-
-| Aspect | Value Object | Entity |
-|--------|-------------|--------|
-| Identity | No identity, defined by attributes | Has unique identifier |
-| Mutability | Immutable | Mutable |
-| Equality | Based on all attributes | Based on identifier |
-| Lifecycle | No independent lifecycle | Can have independent lifecycle |
-| Examples | Money, Address, Phone | LineItem, Comment, Person |
+Aggregates use value objects to represent complex, immutable data types that don't have identity. Two value objects with the same attributes are equal.
 
 ## Code
 
 The complete implementation is in [assets/aggregate_with_value_object.py](../assets/aggregate_with_value_object.py).
-
-Key highlights:
-- Value objects defined with `@domain.value_object`
-- Used in aggregates via `ValueObject(ClassName)` field
-- Value objects can have behavior (methods)
-- Value objects can be used in both aggregates and entities
-- Value objects are immutable by default
 
 ## Walkthrough
 
@@ -64,12 +39,6 @@ class Address:
         return f"{self.street}, {self.city} {self.postal_code}, {self.country}"
 ```
 
-Value objects:
-- Encapsulate related data
-- Can include business logic (methods)
-- Return new instances rather than mutating (immutability)
-- Can validate business rules (same currency for addition)
-
 ### Using Value Objects in Aggregates
 
 ```python
@@ -83,7 +52,7 @@ class Order:
     billing_address = ValueObject(Address)
 ```
 
-The `ValueObject` field type accepts the value object class. The aggregate now has complex, structured data with behavior.
+The `ValueObject` field type accepts the value object class.
 
 ### Using Value Objects in Entities
 
@@ -98,8 +67,6 @@ class OrderLine:
     def line_total(self) -> Money:
         return self.unit_price.multiply(self.quantity)
 ```
-
-Entities can also contain value objects, combining identity (entity) with rich data types (value objects).
 
 Creating instances needs an initialized domain and an active domain context:
 
@@ -174,40 +141,6 @@ with domain.domain_context():
     order.shipping_address_city  # "San Francisco"
 ```
 
-## Value Objects with Behavior
-
-Value objects shine when they encapsulate both data and behavior:
-
-```python
-@domain.value_object
-class Money:
-    amount: Decimal(precision=19, scale=4, required=True)
-    currency: String(required=True, max_length=3)
-
-    def add(self, other: "Money") -> "Money":
-        """Add two monetary amounts."""
-        if self.currency != other.currency:
-            raise ValueError("Currency mismatch")
-        return Money(amount=self.amount + other.amount, currency=self.currency)
-
-    def multiply(self, factor: int) -> "Money":
-        """Multiply amount by a factor."""
-        return Money(amount=self.amount * factor, currency=self.currency)
-
-    def is_positive(self) -> bool:
-        """Check if amount is positive."""
-        return self.amount > 0
-
-    def __str__(self) -> str:
-        return f"{self.amount:.2f} {self.currency}"
-```
-
-This encapsulation:
-- Keeps money logic with money data
-- Makes code more expressive: `total.add(tax)` vs `total + tax`
-- Prevents invalid operations (adding different currencies)
-- Enables reuse across aggregates
-
 ## Common Patterns
 
 ### Calculated Properties Using Value Objects
@@ -236,7 +169,8 @@ class Phone:
 class Contact:
     name: String(required=True)
     primary_phone = ValueObject(Phone)
-    # For multiple phones, use an entity instead
+    # For several phones, use List(content_type=ValueObject(Phone)),
+    # or an entity when each phone needs an identity
 ```
 
 ### Nested Value Objects
@@ -268,24 +202,6 @@ with domain.domain_context():
         location=Coordinates(latitude=37.7749, longitude=-122.4194),
     )
 ```
-
-## Best Practices
-
-1. **Prefer value objects over entities when possible**: If it doesn't need identity, use a value object
-2. **Make value objects immutable**: Always return new instances from methods
-3. **Add behavior to value objects**: Don't treat them as simple data holders
-4. **Validate in value object constructors**: Ensure value objects are always valid
-5. **Use value objects for domain concepts**: Money, Address, DateRange are better than primitives
-6. **Keep value objects focused**: Each should represent one cohesive concept
-
-## When NOT to Use Value Objects
-
-Use entities instead when:
-- The object needs a unique identifier
-- The object has an independent lifecycle
-- You need to track the object over time
-- The object is mutable by design
-- Example: LineItem in an order (has identity, can be modified)
 
 ## Related
 

@@ -77,34 +77,22 @@ def handle_error(cls, exc: Exception, message) -> None:
 ```
 
 - `cls`: The event handler class
-- `exc`: The exception that was raised during event handling
+- `exc`: The exception that was raised during event handling. When several `@handle` methods on the same handler fail for one event, it is an `ExceptionGroup` with one entry per failure, so code that matches on the exception type has to look inside `exc.exceptions`
 - `message`: The original event message (a `Message` object) being processed
 
 ## Synchronous vs. Asynchronous
 
-- **Asynchronous processing**: `handle_error` is called by the Protean Engine. The engine catches the exception, logs it, calls `handle_error`, and continues.
-- **Synchronous processing** (`event_processing = "sync"`): Exceptions propagate directly. `handle_error` is NOT called -- the caller is responsible for catching exceptions.
+With `event_processing = "sync"`, exceptions propagate to the caller and `handle_error` is NOT called. The caller catches them.
 
 ## Error Handler Safety
 
-If `handle_error` itself raises an exception, the Protean Engine catches that too and logs it. The engine never shuts down due to handler errors:
-
-```python
-# fragment
-@classmethod
-def handle_error(cls, exc: Exception, message) -> None:
-    # Even if this raises, the engine continues
-    external_api.notify(str(exc))  # Might fail, but engine is safe
-```
+If `handle_error` itself raises an exception, the Protean Engine catches that too and logs it.
 
 ## Best Practices
 
-1. Keep `handle_error` simple and robust -- avoid complex logic that might fail
-2. Use it for logging, monitoring, and alerting
-3. Do not attempt to re-process the event within `handle_error`
-4. Consider recording failed events for later retry or manual intervention
+Use `handle_error` for logging, monitoring and alerting. Do not re-process the event inside it.
 
 ## Related
 
-- [Anti-patterns](./anti-patterns.md): Common error handling mistakes
+- [Anti-patterns](./anti-patterns.md): Common mistakes
 - `command-handler`: Command handlers have the same handle_error pattern

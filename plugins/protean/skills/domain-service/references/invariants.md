@@ -2,12 +2,6 @@
 
 Domain service invariants enforce cross-aggregate business rules that span multiple aggregates. Unlike aggregate invariants (which validate a single aggregate's state), domain service invariants validate the combined state of all aggregates involved in the operation.
 
-## Overview
-
-Invariants in domain services serve two purposes:
-1. **Pre invariants** (`@invariant.pre`): Validate preconditions before the operation runs
-2. **Post invariants** (`@invariant.post`): Validate postconditions after the operation completes
-
 ## Code
 
 The complete implementation is in [assets/domain_service_with_invariants.py](../assets/domain_service_with_invariants.py).
@@ -87,23 +81,7 @@ class OrderPlacementService:
 
 ### Pre invariants
 
-Pre invariants run **before** the service method executes. If any pre invariant fails, the service method is **not executed**:
-
-```python
-# fragment
-@invariant.pre
-def inventory_should_have_sufficient_stock(self):
-    # Lines for the same product draw on the same stock, so add them up.
-    ordered: dict[str, int] = {}
-    for item in self.order.items:
-        ordered[item.product_id] = ordered.get(item.product_id, 0) + item.quantity
-    for product_id, quantity in ordered.items():
-        inventory = next(
-            (i for i in self.inventories if i.product_id == product_id), None
-        )
-        if inventory is None or inventory.quantity < quantity:
-            raise ValidationError({"_service": ["Product is out of stock"]})
-```
+Pre invariants run **before** the service method executes. If any pre invariant fails, the service method is **not executed**. Both invariants in the service above are pre invariants.
 
 ### Post invariants
 
@@ -160,28 +138,16 @@ Registration does this, not `__init__`, so a service whose `__init__` does not c
 
 ### Important: Private methods
 
-Methods prefixed with `_` are **not** wrapped. Use this for helper methods:
-
-```python
-# fragment
-class OrderPlacementService:
-    def place_order(self):
-        total = self._calculate_total()  # Not wrapped with invariants
-        ...
-
-    def _calculate_total(self):  # Private - no invariant checks
-        return sum(item.quantity * item.price for item in self.order.items)
-```
+Methods prefixed with `_` are **not** wrapped. Use this for helper methods, such as a `_calculate_total()` that `place_order()` calls.
 
 If you forget the underscore, `calculate_total` is wrapped like any public method. Calling it from a public method runs every invariant again around the helper, against the state the outer method has reached so far. If that half-finished state breaks an invariant, the helper raises `ValidationError` before the outer method completes. Calling it from an invariant fails: the helper's wrapper runs the invariant, which calls the helper again, until Python's recursion limit stops the call.
 
 ## Best practices
 
 1. **Name invariants descriptively**: Use full sentences like `inventory_should_have_sufficient_stock`
-2. **Raise `ValidationError`**: Always raise `ValidationError` with a dict mapping field names to error message lists
+2. **Raise `ValidationError`**: Pass a dict mapping field names to lists of error messages
 3. **Use `_service` key**: Convention for domain service errors: `{"_service": ["error message"]}`
-4. **Keep invariants focused**: Each invariant should check one logical condition
-5. **Review placement**: If an invariant doesn't use multiple aggregates, it likely belongs in an aggregate, not the service
+4. **Review placement**: An invariant that reads only one aggregate belongs in that aggregate
 
 ## Related
 - [Callable class pattern](./callable-class.md): Callable class with invariants

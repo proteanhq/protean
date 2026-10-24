@@ -1,16 +1,14 @@
 # Snapshots and Fact Events
 
-Two mechanisms for optimizing event-sourced aggregate performance and enabling state-based subscriptions.
-
 ## Snapshots
 
 ### Problem
 
-Replaying hundreds of events to reconstruct an aggregate is slow. Snapshots periodically save the current state to shortcut this process.
+Replaying hundreds of events to rebuild an aggregate is slow. A snapshot saves the aggregate's state so a load replays only the events after it.
 
 ### Configuration
 
-Set the snapshot threshold in domain configuration:
+The threshold defaults to 10. Set it in domain configuration:
 
 ```python
 domain.config["snapshot_threshold"] = 10  # Snapshot after every 10 events
@@ -29,34 +27,23 @@ snapshot_threshold = 10
 3. Only events **after** the snapshot are replayed
 4. If no snapshot exists, all events are replayed (normal behavior)
 
-After loading, if the number of events since the last snapshot exceeds the threshold, a new snapshot is automatically written.
+Snapshots are written only on load. After a load, if the events replayed since the last snapshot reach the threshold, the event store writes a new snapshot.
+
+A snapshot that no longer constructs the aggregate (a field was renamed, removed or made required) is discarded with a WARNING log, and the load falls back to a full replay.
 
 ### Snapshot Stream Naming
-
-Snapshots are stored in a special stream:
 
 ```
 {stream_category}:snapshot-{aggregate_id}
 ```
 
-`stream_category` already carries the domain name prefix (`{domain_name}::{aggregate_name}`, set at registration), so
-for a domain named `test` the snapshot stream for `Account` is `test::account:snapshot-ACC-001`.
-
-Note the `:` separator (not `-`) which distinguishes snapshot streams from event streams.
-
-### Performance Impact
-
-| Scenario | Without Snapshots | With Snapshots (threshold=10) |
-|----------|------------------|-------------------------------|
-| 5 events | Replay 5 events | Replay 5 events (no snapshot yet) |
-| 15 events | Replay 15 events | Load snapshot + replay 5 events |
-| 100 events | Replay 100 events | Load snapshot + replay ≤10 events |
+`stream_category` already carries the domain name prefix (`{domain_name}::{aggregate_name}`, set at registration), so for a domain named `test` the snapshot stream for `Account` is `test::account:snapshot-ACC-001`. The `:` before `snapshot` separates snapshot streams from event streams, which use `-`.
 
 ## Fact Events
 
 ### What Are Fact Events?
 
-Fact events are auto-generated events that capture the **complete current state** of an aggregate after each persist. They complement delta events (which capture individual changes).
+A fact event carries the complete current state of an aggregate after each persist. Delta events carry individual changes.
 
 ### Enabling Fact Events
 
@@ -86,8 +73,6 @@ Fact events use a distinct stream:
 
 `stream_category` already carries the domain name prefix, so for a domain named `test` the fact stream for `Product` is `test::product-fact-PROD-001`.
 
-This separation allows subscribers to independently consume delta events or fact events.
-
 ### Delta Events vs Fact Events
 
 | Aspect | Delta Events | Fact Events |
@@ -101,10 +86,7 @@ This separation allows subscribers to independently consume delta events or fact
 
 ### When to Use Fact Events
 
-- **External system integration**: External systems need complete state without replaying history
-- **Migration path**: Transitioning from traditional to event-sourced architecture
-- **Simple projections**: Building read models that just need current state
-- **Cross-boundary communication**: Other bounded contexts need full entity snapshots
+The skill lists the main cases. One more: other bounded contexts need full entity snapshots.
 
 ### When NOT to Use Fact Events
 
@@ -125,7 +107,4 @@ class Order:
 domain.config["snapshot_threshold"] = 10
 ```
 
-- **Snapshots** optimize internal aggregate loading (read performance)
-- **Fact events** provide state snapshots for external consumers (integration)
-
-They serve different purposes and don't interfere with each other.
+Snapshots speed up loading the aggregate. Fact events give external consumers the full state. The two do not interfere with each other.

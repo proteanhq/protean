@@ -1,79 +1,18 @@
 # Raising Events from Aggregates
 
-Events are raised from within aggregate methods to indicate that a state change has occurred. This document explains how to properly raise events, when to raise them, and best practices for event emission.
+An aggregate raises an event from one of its methods with `self.raise_()`, right after the state change the event records. The event is queued on the aggregate and stored when the repository saves it.
 
-## Overview
-
-Events should be raised immediately after a state change occurs in the aggregate. The `self.raise_()` method is used to emit events, which are then automatically associated with the aggregate instance and its stream.
-
-**Key principles:**
-- Events are raised AFTER the state change
-- Events describe what happened (past-tense)
-- One state change can trigger multiple events
-- Events are automatically queued and persisted with the aggregate
-
-## Code
+That order is for an aggregate that stores its state. An event-sourced aggregate works the other way: the method raises the event, and its `@apply` handler changes the state. See the `event-sourced-aggregate` skill.
 
 The complete implementation is in [assets/raising_events.py](../assets/raising_events.py).
 
-Key highlights:
-- Events are raised using `self.raise_(event_instance)`
-- Events are automatically associated with the aggregate
-- Multiple events can be raised in a single method
-- Events are persisted when the aggregate is saved
+## Raising Single Events
 
-## Basic Pattern
-
-The standard pattern for raising events:
+The examples on this page use a `Money` value object:
 
 ```python
 from datetime import datetime, timezone
 
-@domain.aggregate
-class Order:
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
-    status: String(default="draft")
-
-    def place(self):
-        # 1. Validate preconditions
-        if self.status != "draft":
-            raise ValueError("Order already placed")
-
-        # 2. Change state
-        self.status = "placed"
-        placed_at = datetime.now(timezone.utc)
-
-        # 3. Raise event (AFTER state change)
-        self.raise_(OrderPlaced(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            placed_at=placed_at
-        ))
-```
-
-## When to Raise Events
-
-### Raise Events When:
-
-1. **State transitions occur**: Aggregate moves to a new state
-2. **Important domain events happen**: Business-significant changes
-3. **Other parts of the system need to know**: Cross-aggregate coordination
-4. **Building an audit trail**: Recording what happened
-5. **Event sourcing**: Events are the source of truth
-
-### Don't Raise Events When:
-
-1. **Validation fails**: Only raise events after successful changes
-2. **Internal calculations**: Not every computation needs an event
-3. **Query methods**: Events indicate changes, not reads
-4. **Derived data changes**: If computed from other data
-
-## Raising Single Events
-
-The examples from here on use a `Money` value object:
-
-```python
 @domain.value_object
 class Money:
     amount: Float(required=True)
@@ -155,52 +94,6 @@ class Order:
             customer_id=self.customer_id,
             points=points,
             earned_at=now
-        ))
-```
-
-## Events with Value Objects
-
-Pass value objects from aggregate to event:
-
-```python
-@domain.value_object
-class Money:
-    amount: Float(required=True)
-    currency: String(max_length=3, default="USD")
-
-@domain.value_object
-class Address:
-    street: String(required=True, max_length=200)
-    city: String(required=True, max_length=100)
-    postal_code: String(required=True, max_length=20)
-    country: String(required=True, max_length=50)
-
-@domain.event(part_of="Order")
-class OrderPlaced:
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
-    total = ValueObject(Money, required=True)
-    shipping_address = ValueObject(Address, required=True)
-    placed_at: DateTime(required=True)
-
-@domain.aggregate
-class Order:
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
-    status: String(default="draft")
-    total = ValueObject(Money)
-    shipping_address = ValueObject(Address)
-
-    def place(self):
-        self.status = "placed"
-
-        # Pass value objects from aggregate to event
-        self.raise_(OrderPlaced(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            total=self.total,  # Value object
-            shipping_address=self.shipping_address,  # Value object
-            placed_at=datetime.now(timezone.utc)
         ))
 ```
 
@@ -376,75 +269,6 @@ class Order:
             cancelled_at=datetime.now(timezone.utc),
             reason=reason
         ))
-```
-
-## Best Practices
-
-### 1. Raise Events After State Changes
-
-```python
-# Good: State change first, then event
-def place(self):
-    self.status = "placed"  # State change
-    self.raise_(OrderPlaced(...))  # Event
-
-# Bad: Event before state change
-def place(self):
-    self.raise_(OrderPlaced(...))  # Event first - wrong!
-    self.status = "placed"  # State change after
-```
-
-This rule is for an aggregate that stores its state. An event-sourced aggregate works the other way: the method raises the event, and its `@apply` handler changes the state. See the `event-sourced-aggregate` skill.
-
-### 2. Use Descriptive Event Names
-
-```python
-# fragment
-# Good: Clear what happened
-self.raise_(OrderPlaced(...))
-self.raise_(PaymentConfirmed(...))
-self.raise_(ShipmentDelivered(...))
-
-# Bad: Vague names
-self.raise_(OrderUpdated(...))
-self.raise_(StateChanged(...))
-```
-
-### 3. Include Sufficient Context
-
-```python
-# fragment
-# Good: Event has all necessary info
-self.raise_(OrderPlaced(
-    order_id=self.order_id,
-    customer_id=self.customer_id,
-    total=self.total,
-    placed_at=datetime.now(timezone.utc)
-))
-
-# Bad: Missing important context
-self.raise_(OrderPlaced(
-    order_id=self.order_id
-    # Missing customer_id, total, timestamp
-))
-```
-
-### 4. Don't Raise Events on Validation Failures
-
-```python
-# Good: Only raise event if operation succeeds
-def place(self):
-    if self.status != "draft":
-        raise ValueError("Order already placed")  # No event raised
-
-    self.status = "placed"
-    self.raise_(OrderPlaced(...))  # Event only on success
-
-# Bad: Raising events for failures
-def place(self):
-    if self.status != "draft":
-        self.raise_(OrderPlacementFailed(...))  # Don't do this
-        raise ValueError("Order already placed")
 ```
 
 ## Event Persistence

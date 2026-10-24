@@ -1,23 +1,10 @@
 # Callable Class Pattern
 
-A callable domain service implements `__call__` for a single business operation. This is the most concise pattern when a domain service has exactly one responsibility.
-
-## Overview
-
-Use this pattern when:
-- The domain service performs a single business operation
-- You want concise, elegant invocation syntax: `service(order, inventories)()`
-- You have `pre` invariants that should apply to the operation
+A callable domain service implements `__call__` for a single business operation, with `pre` and `post` invariants around it. By convention the class name is lowercase, like a function: `place_order`.
 
 ## Code
 
 The complete implementation is in [assets/domain_service_callable.py](../assets/domain_service_callable.py).
-
-Key highlights:
-- The class name is lowercase (convention for callable services, e.g., `place_order`)
-- `__init__` stores the aggregates and calls `super().__init__()`
-- `__call__` contains the business logic
-- `@invariant.pre` validates preconditions before `__call__` runs
 
 A condensed version, with the aggregates it works on. The service reads the inventory to check stock and changes only the order. `Order.confirm()` raises `OrderConfirmed` with the items, and the inventory reserves stock later, when an event handler issues it a command:
 
@@ -81,35 +68,7 @@ class place_order:
         self.order.confirm()
 ```
 
-## Walkthrough
-
-### The `__init__` method
-
-The constructor accepts the aggregates this service will operate on and stores them on the instance:
-
-```python
-# fragment
-def __init__(self, order, inventories):
-    super().__init__(order, inventories)
-    self.order = order
-    self.inventories = inventories
-```
-
-`BaseDomainService.__init__` saves the aggregates it receives on `self._aggregates` and does nothing else. The call is needed only when your code reads `self._aggregates`. Protean wires the invariants when it registers the service, so they run whether or not `__init__` makes this call.
-
-### The `__call__` method
-
-This is where the business logic lives. By the time it runs, the pre invariant has checked the stock, so it only changes the order:
-
-```python
-# fragment
-def __call__(self):
-    self.order.confirm()
-```
-
-The command handler that calls the service persists only the order. The `add-domain-service-flow` skill shows the event handler and the inventory command that reserve the stock.
-
-### Invocation
+## Invocation
 
 ```python
 domain.init(traverse=False)
@@ -131,20 +90,15 @@ with domain.domain_context():
     assert inventory1.quantity == 10  # read by the service, not changed
 ```
 
-This is equivalent to:
+The one-line call is equivalent to:
+
 ```python
 with domain.domain_context():
     service = place_order(order, [inventory1, inventory2])
     service()  # triggers pre invariants, runs __call__, triggers post invariants
 ```
 
-## When to choose this over other patterns
-
-| Factor | Callable | Instance Methods | Class Methods |
-|--------|----------|------------------|---------------|
-| Number of operations | One | Multiple | Any |
-| Invariant support | Yes | Yes | No |
-| Invocation style | `svc()` | `svc.method()` | `Cls.method(aggs)` |
+The command handler that calls the service persists only the order. The `add-domain-service-flow` skill shows the event handler and the inventory command that reserve the stock.
 
 ## Related
 - [Instance methods pattern](./instance-methods.md): For multiple operations
