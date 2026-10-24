@@ -275,7 +275,7 @@ during tests.
 2. **Event too fat**: Including the entire aggregate state in every event wastes space
    and couples consumers to the full schema. Include only what changed and context needed.
 
-3. **Putting the event handler in the target's cluster.** A handler with
+3. **Putting the event handler in the target's cluster**: A handler with
    `part_of=Inventory` that handles `OrderPlaced` is what `check` reports as
    `EVENT_HANDLER_FOREIGN_EVENT`. Keep the handler in `Order`'s cluster and hand
    off to `Inventory` with a command.

@@ -45,23 +45,16 @@ class UserServices:
 
 ## Key rules
 
-1. **part_of is required**: Every application service must be associated with exactly one aggregate: `@domain.application_service(part_of=User)`. If the service is defined in the same file as the aggregate, use a string reference (`part_of="User"`) to avoid circular dependencies
+1. **part_of is required**: Every application service must be associated with exactly one aggregate: `@domain.application_service(part_of=User)`. A string reference (`part_of="User"`) also works and resolves at `init`
 2. **Use @use_case decorator**: Mark each use case method with `@use_case` to get automatic UnitOfWork wrapping. Import from `protean`: `from protean import use_case`
 3. **Implicit UnitOfWork**: Each `@use_case` method runs within a UnitOfWork automatically. On a provider with transactions (the SQL databases), a Unit of Work is one real database transaction: on success, changes are committed; on exception, everything is rolled back. On the in-memory provider, a rollback discards the changes the Unit of Work has not committed. On Elasticsearch, commit and rollback are not atomic, and a rollback does not undo writes already sent
 4. **Direct invocation inside a domain context**: Instantiate and call directly, after `domain.init()` and inside `with domain.domain_context():`. A use case called with no active domain context raises `ConfigurationError`. NOT dispatched via `domain.process()`
 5. **Synchronous return values**: Application services always execute synchronously and return values to the caller immediately
 6. **Thin orchestration only**: Load aggregate, call domain method, persist result. No business logic in the service; push decisions into aggregates or domain services
-7. **One use case per method**: Each method represents a single, cohesive business operation
-8. **Persist one aggregate**: A use case method should persist only one aggregate, and that includes two instances of the same type. The Unit of Work does not enforce this: it can hold changes to several aggregates. It is a design rule. Change other aggregates through events (see "Persisting multiple aggregates" below)
-9. **Use case naming**: Name methods after business operations: `register_user`, `place_order`, `cancel_subscription`
-10. **No handle_error hook**: Unlike command/event handlers, exceptions propagate directly to the caller. The UnitOfWork rolls back, then the exception re-raises
-11. **No retry**: `@use_case` runs the method once. A version conflict (`ExpectedVersionError`) reaches the caller like any other exception. Command and event handlers retry it; use cases do not
-
-## Application service options
-
-| Option | Purpose | Required | Default |
-|--------|---------|----------|---------|
-| `part_of` | Associate service with an aggregate class | Yes | None |
+7. **Persist one aggregate**: A use case method should persist only one aggregate, and that includes two instances of the same type. The Unit of Work does not enforce this: it can hold changes to several aggregates. It is a design rule. Change other aggregates through events (see "Persisting multiple aggregates" below)
+8. **Use case naming**: Name methods after business operations: `register_user`, `place_order`, `cancel_subscription`
+9. **No handle_error hook**: Unlike command/event handlers, exceptions propagate directly to the caller. The UnitOfWork rolls back, then the exception re-raises
+10. **No retry**: `@use_case` runs the method once. A version conflict (`ExpectedVersionError`) reaches the caller like any other exception. Command and event handlers retry it; use cases do not
 
 ## Quick example: Multiple use cases
 
@@ -100,8 +93,6 @@ class AccountServices:
 
 ## Invocation pattern
 
-A use case opens a Unit of Work, so it needs an initialized domain and an active domain context. Without the context, the call raises `ConfigurationError`.
-
 ```python
 domain.init(traverse=False)
 
@@ -116,11 +107,7 @@ In tests, the `test_domain` fixture activates a domain context for you.
 
 ## The @use_case decorator
 
-The `@use_case` decorator does the following:
-
-1. **UnitOfWork wrapping**: The method body executes inside a `UnitOfWork` context. Commits on success, rolls back on exception.
-2. **Execution logging**: Logs invocation at INFO level for traceability.
-3. **Domain context check**: Raises `ConfigurationError` when no domain context is active.
+Besides the Unit of Work and the domain context check (Key rules 2 to 4), `@use_case` logs each call at INFO level.
 
 Only `@use_case`-decorated methods get UoW treatment. Regular helper methods do not:
 
@@ -188,23 +175,6 @@ When evolving to CQRS, application services are replaced by commands + command h
 
 ## Common mistakes
 
-### Missing part_of
-
-```python
-# fragment
-@domain.application_service  # Wrong! Missing part_of
-class ProfileServices:
-    pass
-```
-
-Instead: Always specify part_of with the aggregate class
-
-```python
-@domain.application_service(part_of=User)  # Correct!
-class ProfileServices:
-    pass
-```
-
 ### Putting business logic in the service
 
 ```python
@@ -212,22 +182,13 @@ class ProfileServices:
 @use_case
 def place_order(self, items: list) -> Identifier:
     if len(items) == 0:
-        raise ValidationError("Order must have items")  # Wrong!
+        raise ValidationError({"items": ["Order must have items"]})  # Wrong!
     total = sum(i.price * i.quantity for i in items)  # Wrong!
     order = Order(items=items, total=total)
     ...
 ```
 
-Instead: Push business logic into the aggregate
-
-```python
-# fragment
-@use_case
-def place_order(self, items: list) -> Identifier:
-    order = Order.place(items=items)  # Aggregate enforces rules
-    current_domain.repository_for(Order).add(order)
-    return order.id
-```
+Instead: Push business logic into the aggregate, as `Order.place()` does in the `@use_case` example above.
 
 ### Using domain.process() instead of direct invocation
 
@@ -237,13 +198,7 @@ def place_order(self, items: list) -> Identifier:
 domain.process(some_service_call)
 ```
 
-Instead: Instantiate and call directly, inside a domain context
-
-```python
-with domain.domain_context():
-    svc = OrderServices()
-    order_id = svc.place_order(items=["book", "pen"])
-```
+Instead: Instantiate and call directly, inside a domain context, as the Invocation pattern shows.
 
 ### Wrapping in UnitOfWork manually
 

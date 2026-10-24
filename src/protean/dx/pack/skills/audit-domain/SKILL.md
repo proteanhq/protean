@@ -213,7 +213,7 @@ logic without raising events.
 
 ### Step 1: Run `protean check`
 
-Run `protean check --domain=<module>` (or `--domain=<module>:<name>` when the module defines more than one domain), or the MCP `check` tool, as described in [Start with `protean check`](#start-with-protean-check). Keep its output. Each code it reports is a finding, and the codes tell you which categories are already covered.
+Run it as [Start with `protean check`](#start-with-protean-check) describes, and keep its output. Each code it reports is a finding, and the codes tell you which categories are already covered.
 
 ### Step 2: Discover domain files
 
@@ -279,10 +279,9 @@ Prioritize fixes by:
 
 ## Common mistakes
 
-1. **Reporting framework internals as issues**: Don't flag Protean's own patterns (like `_version`, `_events`, `meta_` attributes)
-2. **Over-reporting field counts**: An aggregate with 12 fields isn't automatically a god aggregate if the fields are cohesive
-3. **Ignoring context**: A handler with 8 lines might be fine if it's orchestrating a complex but legitimate single-aggregate flow
-4. **Missing the forest for the trees**: A codebase with 0 events and 20 handlers is a bigger concern than a single long handler
+1. **Reporting framework internals as issues**: Protean's own attributes (`_version`, `_events`, `meta_`) are not findings
+2. **Dropping a finding because it looks harmless**: Report every signal you find, with its severity and what you saw. An aggregate with 12 cohesive fields, or an 8-line handler that orchestrates one aggregate, is a LOW finding with that context in its description. The reader decides what to fix
+3. **Reporting only file-level findings**: A codebase with 0 events and 20 handlers is a finding in its own right, and a bigger one than a single long handler
 
 ## Quick example
 
