@@ -485,6 +485,18 @@ def _isolate_message_db(request):
 
 
 @pytest.fixture(autouse=True)
+def _child_pytest_keeps_default_order(monkeypatch):
+    # A child pytest started inside a test, such as the one ``protean verify``
+    # runs in a temporary project, inherits this environment but not the
+    # repo's ``addopts``, so pytest-randomly would shuffle and reseed it. The
+    # variable is set per test and not for the session: xdist workers read
+    # ``PYTEST_ADDOPTS`` when they start, and a session-wide value would turn
+    # off the shuffle in a run that asks for one.
+    existing = os.environ.get("PYTEST_ADDOPTS", "")
+    monkeypatch.setenv("PYTEST_ADDOPTS", f"{existing} -p no:randomly".strip())
+
+
+@pytest.fixture(autouse=True)
 def auto_set_and_close_loop(monkeypatch):
     # Track and close every event loop created during a test.
     #
