@@ -97,9 +97,7 @@ class OrderPlacedV1Upcaster(BaseUpcaster):
 
 ## When NOT to extract
 
-- **Independent timestamps**: `created_at` + `updated_at` are not a DateRange
 - **Unrelated fields that happen to be the same type**: Two `String` fields don't automatically form a VO
-- **Fields used only for storage/display**: If there's no behavior to encapsulate, a VO adds complexity without value
 - **When it breaks your API contract**: If external consumers depend on flat field names, consider the migration cost
 
 ## Related
