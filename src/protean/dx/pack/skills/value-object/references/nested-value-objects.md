@@ -18,7 +18,7 @@ Key highlights:
 - Value objects can contain ValueObject fields
 - Nesting can be multiple levels deep
 - Immutability cascades through nested structures
-- A nested value object is passed in as an object
+- A nested value object is passed in as an object, or as a dict of its fields
 
 ## Walkthrough
 
@@ -130,6 +130,8 @@ except ValidationError as exc:
 ```
 
 An aggregate or entity accepts one level of flattening for a value object field it holds directly (`Customer(shipping_address_city="Boston", ...)`). Nothing deeper works, so build nested value objects as objects at every level.
+
+A `ValueObject` field also takes a plain dict of the inner value object's fields, at any depth: `coordinates={"latitude": 40.7128, "longitude": -74.0060}`. Protean builds the value object from the dict and validates it the same way, so a dict with a wrong or missing key raises `ValidationError`.
 
 ### Deep Nesting
 

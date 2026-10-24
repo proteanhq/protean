@@ -14,7 +14,7 @@ metadata:
 
 # Value Object
 
-Value objects are immutable domain elements that represent descriptive concepts without identity. They are defined entirely by their attribute values - two value objects with the same attributes are considered equal, regardless of instance.
+Value objects are immutable domain elements that represent descriptive concepts without identity. They are defined entirely by their attribute values: two value objects with the same attributes are considered equal, regardless of instance.
 
 ## Important context: Value vs Entity decision
 
@@ -68,8 +68,6 @@ Use the `Decimal` field for money, never `Float`. A float cannot hold most cents
 ## Defining value objects
 
 ### Simple value object
-
-**Important**: Always use field-level validation parameters for data type constraints.
 
 ```python
 @domain.value_object
@@ -141,8 +139,6 @@ class Money:
 
 ### Value object with invariants
 
-**Important principle**: All business validations involving cross-field logic should be codified as invariants, as granularly as possible. Each invariant should check a single business rule.
-
 Value objects only support `@invariant.post` (since they're immutable and created atomically). Invariants run automatically after initialization.
 
 ```python
@@ -155,10 +151,7 @@ class DateRange:
 
     @invariant.post
     def end_must_be_after_start(self):
-        """Granular business rule: date ordering.
-
-        Each invariant validates ONE constraint clearly.
-        """
+        """End date must not come before start date."""
         if self.end_date < self.start_date:
             raise ValidationError(
                 {"date_range": ["End date must be after start date"]}
@@ -173,11 +166,7 @@ class Price:
 
     @invariant.post
     def currency_must_be_valid_ISO_code(self):
-        """Granular business rule: currency validation.
-
-        Use invariants for business logic beyond simple data type constraints.
-        Keep invariants focused - one rule per constraint.
-        """
+        """Currency must be one of the supported ISO codes."""
         valid_currencies = ["USD", "EUR", "GBP", "JPY"]
         if self.currency not in valid_currencies:
             raise ValidationError(
@@ -186,13 +175,8 @@ class Price:
 ```
 
 **Best practices for value object invariants**:
-1. **One rule per invariant**: Keep them granular and focused
-2. **Use descriptive names**: Clearly describe the business constraint
-3. **Only `@invariant.post`**: Pre invariants don't apply to immutable objects
-4. **Prefer field validations first**: Use field parameters (`min_value`, `max_value`, etc.) for data type constraints
-5. **Use invariants for business logic**: Cross-field validations, domain-specific rules, complex validations
-6. **Example**: `amount > 0` → Use `Decimal(precision=19, scale=4, min_value=D("0.01"))` (field validation), not invariant
-7. **Example**: `end_date > start_date` → Use `@invariant.post` (cross-field business rule)
+1. **Use descriptive names**: Clearly describe the business constraint
+2. **Field parameter or invariant**: `amount > 0` → Use `Decimal(precision=19, scale=4, min_value=D("0.01"))` (field validation), not an invariant. `end_date > start_date` → Use `@invariant.post` (cross-field business rule)
 
 ## Embedding in aggregates and entities
 
@@ -289,7 +273,7 @@ class Address:
     coordinates = ValueObject(Coordinates)  # Nested VO
 
 
-# Pass the nested value object as an object
+# Pass the nested value object as an object (or as a dict, see below)
 address = Address(
     street="123 Broadway",
     city="New York",
@@ -301,6 +285,8 @@ address = Address(
 ```
 
 A value object's constructor takes only its own fields. `Address(coordinates_latitude=40.7128)` fails with "Extra inputs are not permitted". Build the inner value object first and pass it in.
+
+A `ValueObject` field also takes a plain dict of the inner value object's fields, at any depth: `coordinates={"latitude": 40.7128, "longitude": -74.0060}`. Protean builds the value object from the dict and validates it the same way, so a dict with a wrong or missing key raises `ValidationError`.
 
 ## Immutability
 
@@ -366,8 +352,6 @@ This is fundamentally different from entities, where identity matters:
 - **Trying to modify value objects**: VOs are immutable. Replace the entire VO instead: `account.balance = Balance(currency="USD", amount=D("200.00"))`
 - **Adding identity fields**: VOs cannot have fields marked `identifier=True` or `unique=True`; registering one raises `IncorrectUsageError`. A plain `Auto()` field is accepted, but it generates a new value per instance and breaks equality. Use Entity if you need identity.
 - **Using primitives instead of VOs**: Use `total = ValueObject(Money)` instead of separate `total_amount`/`total_currency` fields.
-- **Methods that modify self**: Always return NEW instances: `return Money(amount=self.amount + other.amount)`
-- **Not using invariants for cross-field validations**: Use `@invariant.post` instead of `__init__` validation.
 
 See [Anti-patterns](references/anti-patterns.md) for detailed examples of each mistake.
 
@@ -380,63 +364,6 @@ See [Anti-patterns](references/anti-patterns.md) for detailed examples of each m
 A second diagnostic surfaces at runtime. It depends on the values a value object is built from, so `check` cannot report it statically:
 
 - `VALUE_OBJECT_INVARIANT_FAILED`: an `@invariant.post` on the value object did not hold when it was built, so construction raised a `ValidationError` carrying this code. It is the default code for a failed post-invariant; an invariant declared with `@invariant.post(code=...)` carries that code instead. Build the value object from values that satisfy its invariants, or catch the `ValidationError`. The messages on the error are the ones the invariant itself raised, keyed by field.
-
-## Quick example
-
-Complete example with aggregate, entity, and value objects:
-
-```python
-from decimal import Decimal as D
-
-from protean import Domain
-from protean.fields import Decimal, HasMany, Integer, String, ValueObject
-
-domain = Domain()
-
-
-@domain.value_object
-class Money:
-    """Money with currency and amount."""
-    currency: String(max_length=3, default="USD")
-    amount: Decimal(precision=19, scale=4, default=0)
-
-    def multiply(self, factor: int | D) -> "Money":
-        return Money(currency=self.currency, amount=self.amount * factor)
-
-    def add(self, other: "Money") -> "Money":
-        if self.currency != other.currency:
-            raise ValueError("Currency mismatch")
-        return Money(currency=self.currency, amount=self.amount + other.amount)
-
-
-@domain.entity(part_of="Order")
-class OrderLine:
-    """Order line item with money value object."""
-    product_id: String(required=True, max_length=50)
-    quantity: Integer(required=True, min_value=1)
-    unit_price = ValueObject(Money, required=True)
-
-    @property
-    def line_total(self) -> Money:
-        return self.unit_price.multiply(self.quantity)
-
-
-@domain.aggregate
-class Order:
-    """Order aggregate using value objects."""
-    order_number: String(required=True, max_length=20, identifier=True)
-    line_items = HasMany(OrderLine)
-
-    def calculate_total(self) -> Money:
-        if not self.line_items:
-            return Money(currency="USD", amount=D("0"))
-
-        total = self.line_items[0].line_total
-        for item in self.line_items[1:]:
-            total = total.add(item.line_total)
-
-        return total
-```
 
 ## Examples
 
