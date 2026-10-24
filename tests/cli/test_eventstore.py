@@ -10,8 +10,9 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
-from protean.exceptions import NoDomainException
+from protean.exceptions import ConfigurationError, NoDomainException
 from protean.port.event_store import BaseEventStore, IntegrityReport, IntegrityViolation
+from tests.cli._envelope import assert_envelope
 from tests.shared import change_working_directory_to
 
 # A wide terminal so Rich never wraps a violation token mid-string, keeping the
@@ -216,6 +217,48 @@ class TestEventStoreVerify:
         assert result.exit_code == 2
         payload = json.loads(result.stdout)
         assert payload["status"] == "error"
+
+    def _invoke_with_verify_error(self, error: Exception, *extra_args: str):
+        change_working_directory_to("test7")
+        mock_domain = MagicMock()
+        mock_domain.event_store.store.verify.side_effect = error
+        mock_domain.domain_context.return_value.__enter__.return_value = None
+        mock_domain.domain_context.return_value.__exit__.return_value = False
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
+            return runner.invoke(
+                app,
+                ["eventstore", "verify", "--domain", "publishing7.py", *extra_args],
+            )
+
+    def test_unreachable_store_json_emits_error_envelope_exit_two(self):
+        result = self._invoke_with_verify_error(
+            ConfigurationError("Unable to connect to Event Store - connection refused"),
+            "--json",
+        )
+
+        assert result.exit_code == 2
+        payload = assert_envelope(result.stdout)
+        assert payload["status"] == "error"
+        assert (
+            payload["data"]["error"]
+            == "Unable to connect to Event Store - connection refused"
+        )
+
+    def test_unreachable_store_human_mode_exits_two_with_one_line_error(self):
+        result = self._invoke_with_verify_error(
+            ConfigurationError("Unable to connect to Event Store - connection refused")
+        )
+
+        assert result.exit_code == 2
+        stderr = result.stderr.replace("\n", "")
+        assert "Unable to connect to Event Store - connection refused" in stderr
+        assert "cli.command_failed" not in result.output + result.stderr
+        assert "Traceback" not in result.output + result.stderr
+
+    def test_other_verify_errors_still_exit_one(self):
+        result = self._invoke_with_verify_error(RuntimeError("boom"), "--json")
+
+        assert result.exit_code == 1
 
 
 @pytest.mark.no_test_domain

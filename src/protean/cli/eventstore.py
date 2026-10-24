@@ -56,6 +56,7 @@ from protean.cli.result import (
     emit_usage_error,
     route_logs_to_stderr,
 )
+from protean.exceptions import ConfigurationError
 from protean.utils.dlq import collect_failed_streams
 
 if TYPE_CHECKING:
@@ -91,7 +92,8 @@ def verify(
 
     Verifies per-stream position gaplessness, store-wide global_position
     monotonicity, message-id uniqueness, and that no snapshot runs ahead of its
-    aggregate stream. Exits 0 when clean, 1 when any violation is found.
+    aggregate stream. Exits 0 when clean, 1 when any violation is found, and 2
+    when the event store cannot be reached.
 
     ``verify`` checks *internal* consistency only. Physical backup and restore
     stay with the database and its own tooling.
@@ -107,7 +109,12 @@ def verify(
     with derived_domain.domain_context():
         store = derived_domain.event_store.store
         assert store is not None  # guaranteed by load_domain -> init()
-        report = store.verify()
+        try:
+            report = store.verify()
+        except ConfigurationError as exc:
+            # The store connects lazily, so an unreachable database surfaces
+            # here rather than in load_domain.
+            emit_usage_error(as_json=as_json, message=str(exc))
 
     if as_json:
         envelope = build_envelope(
