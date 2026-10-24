@@ -84,12 +84,12 @@ def activated(self, event: UserActivated, actor: str, reason: str):  # Incorrect
 def activated(self, event: UserActivated, extra):
     ...
 
-# WRONG — missing type annotation
+# WRONG: missing type annotation
 @apply
 def activated(self, event):  # IncorrectUsageError
     ...
 
-# WRONG — annotated with a Command, not an Event
+# WRONG: annotated with a Command, not an Event
 @apply
 def activated(self, command: ActivateUser):  # IncorrectUsageError
     ...
@@ -116,7 +116,7 @@ User._events_cls_map[fqn(UserActivated)]  # → UserActivated
 
 ### When raising events (live path)
 
-`raise_()` automatically invokes the matching `@apply` handler. Business methods should validate and call `raise_()` — never mutate state directly:
+`raise_()` automatically invokes the matching `@apply` handler. Business methods should validate and call `raise_()`, and never mutate state directly:
 
 ```
 # In business method:
@@ -176,7 +176,7 @@ This ensures every event type has explicit handling logic.
 | `OrderPlaced` | `placed` or `order_placed` |
 | `MoneyDeposited` | `money_deposited` |
 
-The method name is purely for readability — the decorator uses the type annotation to determine which event it handles.
+The method name is for readability. The decorator uses the type annotation to determine which event it handles.
 
 ## Using `_` for Unused Event Parameter
 

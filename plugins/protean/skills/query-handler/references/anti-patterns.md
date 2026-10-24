@@ -11,7 +11,7 @@ signals a stateless read with no Unit of Work.
 @read(GetOrderById)  # correct decorator...
 def get_by_id(self, query): ...
 
-@handle(GetOrderById)  # WRONG — @handle wraps a UoW and expects side effects
+@handle(GetOrderById)  # WRONG: @handle wraps a UoW and expects side effects
 def get_by_id(self, query): ...
 ```
 
@@ -52,7 +52,7 @@ Reads must be free of mutation and persistence. Never write from a query handler
 
 ```python
 # fragment
-# WRONG — mutating during a read
+# WRONG: mutating during a read
 @read(GetOrderById)
 def get_by_id(self, query):
     order = current_domain.view_for(OrderSummary).get(query.order_id)
@@ -62,7 +62,7 @@ def get_by_id(self, query):
 ```
 
 If a read needs to record that it happened, raise that as a command/event from
-the appropriate write-side flow — not inside the query handler.
+the appropriate write-side flow, outside the query handler.
 
 ## Reading the aggregate instead of the projection
 
@@ -71,7 +71,7 @@ read path to the consistency boundary and the aggregate's shape.
 
 ```python
 # fragment
-# WRONG — reading the write model
+# WRONG: reading the write model
 @read(GetOrderById)
 def get_by_id(self, query):
     return current_domain.repository_for(Order).get(query.order_id)
@@ -79,7 +79,7 @@ def get_by_id(self, query):
 
 ```python
 # fragment
-# RIGHT — read the projection
+# RIGHT: read the projection
 @read(GetOrderById)
 def get_by_id(self, query):
     return current_domain.view_for(OrderSummary).get(query.order_id)
@@ -88,4 +88,4 @@ def get_by_id(self, query):
 ## Two handlers for one query
 
 Each query is answered by exactly one `@read` method. Registering a second is an
-error — split the read into distinct queries instead.
+error. Split the read into distinct queries instead.

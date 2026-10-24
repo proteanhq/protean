@@ -6,8 +6,8 @@ Command handlers are responsible for loading (hydrating) aggregates from the rep
 
 There are two scenarios in a command handler:
 
-1. **Creating a new aggregate** - Construct a new instance directly from command data
-2. **Loading an existing aggregate** - Retrieve from the repository using an identifier
+1. **Creating a new aggregate**: Construct a new instance directly from command data
+2. **Loading an existing aggregate**: Retrieve from the repository using an identifier
 
 The choice depends on the nature of the command (e.g., "create" vs. "update").
 
@@ -142,6 +142,6 @@ The repository automatically handles both inserts (new aggregates) and updates (
 
 ## Related
 
-- [Unit of Work](./unit-of-work.md) - Transactional behavior for persistence
-- [Anti-patterns](./anti-patterns.md) - Common mistakes when loading aggregates
-- `aggregate` - Aggregate structure and behavior
+- [Unit of Work](./unit-of-work.md): Transactional behavior for persistence
+- [Anti-patterns](./anti-patterns.md): Common mistakes when loading aggregates
+- `aggregate`: Aggregate structure and behavior

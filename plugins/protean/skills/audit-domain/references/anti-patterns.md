@@ -8,7 +8,7 @@ These appear in nearly every codebase that hasn't been through a design review.
 
 ### The "Controller Handler"
 
-Handler does everything — validates, calculates, constructs, persists, and coordinates:
+Handler does everything: validates, calculates, constructs, persists, and coordinates:
 
 ```python
 # fragment
@@ -84,7 +84,7 @@ Aggregate is just a data container with no behavior:
 
 ```python
 # fragment
-# Bad: anemic — no methods, no invariants
+# Bad: anemic: no methods, no invariants
 @domain.aggregate
 class Order:
     customer_id = String(required=True)
@@ -93,7 +93,7 @@ class Order:
 ```
 
 ```python
-# Good: rich — has behavior and rules
+# Good: rich: has behavior and rules
 @domain.aggregate
 class Order:
     customer_id = String(required=True)
@@ -339,5 +339,5 @@ def test_place_order():
 
 ## Related
 
-- [detection-heuristics.md](detection-heuristics.md) — How to find these programmatically
-- [report-template.md](report-template.md) — How to present findings
+- [detection-heuristics.md](detection-heuristics.md): How to find these programmatically
+- [report-template.md](report-template.md): How to present findings

@@ -9,7 +9,7 @@ This example demonstrates:
 
 Scenario:
     An Organization aggregate has different email requirements for different
-    contexts — corporate emails for employees, partner emails for vendors.
+    contexts: corporate emails for employees, partner emails for vendors.
     A Payment aggregate uses a configurable credit card validator.
 
 Usage:
@@ -31,7 +31,7 @@ domain = Domain(__name__)
 class AllowedDomainValidator:
     """Validates that an email belongs to one of the allowed domains.
 
-    Configurable via constructor — reuse with different domain lists.
+    Configurable via constructor: reuse with different domain lists.
     """
 
     def __init__(self, allowed_domains):

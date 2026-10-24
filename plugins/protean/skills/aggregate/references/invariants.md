@@ -309,13 +309,13 @@ with domain.domain_context():
 
 ## Best Practices
 
-1. **Name invariants descriptively** - Method name should explain the rule
-2. **Raise the dict form of `ValidationError`** - Key it by the field at fault, or `_entity` for a rule that compares fields
-3. **Provide clear error messages** - Include context about what failed and why
-4. **Keep invariants simple** - Each method should check one rule
-5. **Use pre-conditions for state validation** - Check if operations are allowed
-6. **Use post-conditions for result validation** - Check if changes are valid
-7. **Validate early** - Use field validation for simple constraints, invariants for business rules
+1. **Name invariants descriptively**: Method name should explain the rule
+2. **Raise the dict form of `ValidationError`**: Key it by the field at fault, or `_entity` for a rule that compares fields
+3. **Provide clear error messages**: Include context about what failed and why
+4. **Keep invariants simple**: Each method should check one rule
+5. **Use pre-conditions for state validation**: Check if operations are allowed
+6. **Use post-conditions for result validation**: Check if changes are valid
+7. **Validate early**: Use field validation for simple constraints, invariants for business rules
 
 ## Common Patterns
 
@@ -399,5 +399,5 @@ def test_account_overdraft_invariant():
 
 ## Related
 
-- [Anti-patterns](./anti-patterns.md) - Common invariant mistakes
-- [domain-service](../../domain-service/SKILL.md) - Cross-aggregate invariants
+- [Anti-patterns](./anti-patterns.md): Common invariant mistakes
+- [domain-service](../../domain-service/SKILL.md): Cross-aggregate invariants

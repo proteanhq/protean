@@ -271,12 +271,12 @@ with domain.domain_context():
 
 ## Best Practices
 
-1. **Prefer value objects over entities when possible** - If it doesn't need identity, use a value object
-2. **Make value objects immutable** - Always return new instances from methods
-3. **Add behavior to value objects** - Don't treat them as simple data holders
-4. **Validate in value object constructors** - Ensure value objects are always valid
-5. **Use value objects for domain concepts** - Money, Address, DateRange are better than primitives
-6. **Keep value objects focused** - Each should represent one cohesive concept
+1. **Prefer value objects over entities when possible**: If it doesn't need identity, use a value object
+2. **Make value objects immutable**: Always return new instances from methods
+3. **Add behavior to value objects**: Don't treat them as simple data holders
+4. **Validate in value object constructors**: Ensure value objects are always valid
+5. **Use value objects for domain concepts**: Money, Address, DateRange are better than primitives
+6. **Keep value objects focused**: Each should represent one cohesive concept
 
 ## When NOT to Use Value Objects
 
@@ -290,5 +290,5 @@ Use entities instead when:
 ## Related
 
 - [Aggregates with Entities](./with-entities.md)
-- [value-object](../../value-object/SKILL.md) - Detailed value object documentation
-- [Anti-patterns](./anti-patterns.md) - Common mistakes with value objects
+- [value-object](../../value-object/SKILL.md): Detailed value object documentation
+- [Anti-patterns](./anti-patterns.md): Common mistakes with value objects

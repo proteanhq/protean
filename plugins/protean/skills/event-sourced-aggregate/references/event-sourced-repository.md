@@ -82,7 +82,7 @@ with domain.domain_context():
     repo = current_domain.repository_for(Account)
 ```
 
-No explicit repository definition is needed — the domain handles this automatically.
+No explicit repository definition is needed. The domain handles this automatically.
 
 ## Custom ES Repository
 

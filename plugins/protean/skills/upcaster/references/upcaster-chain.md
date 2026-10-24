@@ -16,7 +16,7 @@ During `domain.init()`, each registered upcaster is recorded as a directed edge:
 (from_version) → (to_version)
 ```
 
-Edges are grouped by **event_base_type** — the type string prefix without the version (e.g., `"MyDomain.OrderPlaced"`).
+Edges are grouped by **event_base_type**: the type string prefix without the version (e.g., `"MyDomain.OrderPlaced"`).
 
 ### 2. Adjacency Map
 
@@ -31,7 +31,7 @@ Each `from_version` maps to exactly one target. Duplicates (two upcasters with t
 
 ### 3. Terminal Version Detection
 
-The terminal version is any version that appears as a `to_version` but never as a `from_version`. There must be exactly one terminal version — this is the current event version.
+The terminal version is any version that appears as a `to_version` but never as a `from_version`. There must be exactly one terminal version, and it is the current event version.
 
 ```python
 # fragment
@@ -65,7 +65,7 @@ _chains[(event_base_type, from_version)] = [upcaster_instance, ...]
 _version_map["Domain.Event.v1"] = CurrentEventClass
 ```
 
-After building, the raw edges are cleared — they are no longer needed.
+After building, the raw edges are cleared.
 
 ## Internal Data Structures
 

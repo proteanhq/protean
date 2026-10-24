@@ -54,15 +54,15 @@ class Order:
 
 ### The Problem
 
-When business methods mutate state directly AND `raise_()` invokes the `@apply` handler, state gets mutated twice — once in the business method and once in `@apply`.
+When business methods mutate state directly AND `raise_()` invokes the `@apply` handler, state gets mutated twice: once in the business method and once in `@apply`.
 
 ```python
 # fragment
-# WRONG — state mutated twice (business method + @apply)
+# WRONG: state mutated twice (business method + @apply)
 def close(self):
     self.status = "CLOSED"  # First mutation
     self.raise_(AccountClosed(account_id=self.account_id))
-    # @apply also sets self.status = "CLOSED" — double mutation!
+    # @apply also sets self.status = "CLOSED": double mutation!
 ```
 
 ### The Fix
@@ -70,7 +70,7 @@ def close(self):
 Business methods should only validate preconditions and call `raise_()`. Let `@apply` be the single source of truth for state mutations:
 
 ```python
-# CORRECT — validate then raise, @apply handles state
+# CORRECT: validate then raise, @apply handles state
 def close(self):
     if self.status != "ACTIVE":
         raise ValueError("Account is not active")
@@ -85,7 +85,7 @@ def closed(self, event: AccountClosed):
 
 ### The Problem
 
-If an event type is raised but no `@apply` method is registered for it, Protean raises `IncorrectUsageError` at runtime — both when `raise_()` is called (live path) and when replaying events via `from_events()` or `repo.get()`.
+If an event type is raised but no `@apply` method is registered for it, Protean raises `IncorrectUsageError` at runtime, both when `raise_()` is called (live path) and when replaying events via `from_events()` or `repo.get()`.
 
 ```python
 @domain.event(part_of="Order")
@@ -114,7 +114,7 @@ Creating an aggregate without raising a creation event means the first state cha
 
 ```python
 # fragment
-# WRONG — no creation event
+# WRONG: no creation event
 @classmethod
 def open(cls, account_id, owner_name):
     return cls(account_id=account_id, owner_name=owner_name)
@@ -142,7 +142,7 @@ def open(cls, account_id, owner_name):
 
 ```python
 # fragment
-# WRONG — @apply handler doesn't set all fields
+# WRONG: @apply handler doesn't set all fields
 @apply
 def account_opened(self, event: AccountOpened):
     self.account_id = event.account_id
@@ -154,7 +154,7 @@ def account_opened(self, event: AccountOpened):
 Ensure the first event's `@apply` handler establishes ALL aggregate state:
 
 ```python
-# CORRECT — first event's @apply sets all fields
+# CORRECT: first event's @apply sets all fields
 @apply
 def account_opened(self, event: AccountOpened):
     self.account_id = event.account_id
@@ -171,7 +171,7 @@ Defining a standard `@domain.repository` for an event-sourced aggregate won't wo
 
 ```python
 # fragment
-# WRONG — standard repository for ES aggregate
+# WRONG: standard repository for ES aggregate
 @domain.repository(part_of=Account)
 class AccountRepository:
     ...
@@ -207,7 +207,7 @@ Including too much data in events makes them expensive to store and process:
 
 ```python
 # fragment
-# WRONG — event carries entire aggregate state
+# WRONG: event carries entire aggregate state
 @domain.event(part_of="Order")
 class ItemAdded:
     order_id: Identifier(required=True)
@@ -222,7 +222,7 @@ class ItemAdded:
 Events should carry only the data relevant to the change:
 
 ```python
-# CORRECT — event carries only what changed
+# CORRECT: event carries only what changed
 @domain.event(part_of="Order")
 class ItemAdded:
     order_id: Identifier(required=True)
@@ -240,11 +240,11 @@ Mutating state directly without raising events means changes won't be persisted 
 
 ```python
 # fragment
-# WRONG — direct mutation without event
+# WRONG: direct mutation without event
 @domain.aggregate(event_sourced=True)
 class Account:
     def update_name(self, name):
-        self.name = name  # Won't persist — no event raised!
+        self.name = name  # Won't persist: no event raised!
 ```
 
 ### The Fix
@@ -273,7 +273,7 @@ Raising events without validation means invalid state changes get recorded:
 
 ```python
 # fragment
-# WRONG — no validation before raising
+# WRONG: no validation before raising
 def withdraw(self, amount):
     self.raise_(MoneyWithdrawn(account_id=self.account_id, amount=amount))
 ```
@@ -295,11 +295,11 @@ def withdraw(self, amount):
 
 ### The Problem
 
-`@apply` methods must be pure state mutations — they should not query databases, call APIs, or access other aggregates:
+`@apply` methods must be pure state mutations. They should not query databases, call APIs, or access other aggregates:
 
 ```python
 # fragment
-# WRONG — external query in @apply
+# WRONG: external query in @apply
 @apply
 def order_placed(self, event: OrderPlaced):
     self.status = "PLACED"

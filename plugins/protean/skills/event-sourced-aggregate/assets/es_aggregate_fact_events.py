@@ -37,7 +37,7 @@ domain.config["event_processing"] = "sync"
 
 @domain.aggregate
 class Category:
-    """Standard aggregate — stored as state, not events.
+    """Standard aggregate: stored as state, not events.
 
     Simple CRUD entity that doesn't need audit trails or
     temporal queries. Demonstrates mixing patterns in one domain.
@@ -167,7 +167,7 @@ if __name__ == "__main__":  # pragma: no cover
     domain.init(traverse=False)
 
     with domain.domain_context():
-        # Standard aggregate — simple CRUD
+        # Standard aggregate: simple CRUD
         category = Category(
             category_id="CAT-001",
             name="Electronics",

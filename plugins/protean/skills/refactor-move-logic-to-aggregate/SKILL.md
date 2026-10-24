@@ -2,8 +2,8 @@
 name: refactor-move-logic-to-aggregate
 description: >
   Move business logic from handlers, services, or endpoints into aggregate methods where it belongs.
-  Detects "logic leak" — validation, calculations, state transitions, and business rules scattered
-  outside the domain model — and refactors them into rich aggregate methods with proper invariants.
+  Detects "logic leak" (validation, calculations, state transitions, and business rules scattered
+  outside the domain model) and refactors them into rich aggregate methods with proper invariants.
   Use when the user says "move logic to aggregate", "handler is too fat", "fix logic leak",
   "enrich my aggregate", "make aggregate rich", "handler has too much logic", "anemic domain model",
   or when an audit identifies logic leaks or anemic aggregates.
@@ -58,7 +58,7 @@ def place_order(self, command):
 
 ### The "anemic aggregate"
 
-Aggregate is a data bag — no methods, no invariants:
+Aggregate is a data bag: no methods, no invariants:
 
 ```python
 # fragment
@@ -127,26 +127,9 @@ class PlaceOrder:
     items = List(content_type=Dict)
 ```
 
-For each group of logic, create an aggregate method on `Order`. Step 3 shows the
-whole class, with these methods and its invariants:
-
-```python
-# fragment
-    def place(self, items: list[dict]) -> None:
-        """Place the order with the given items."""
-        for item_data in items:
-            self.add_items(LineItem(**item_data))
-        self.total = self._calculate_total()
-        self.status = "PLACED"
-        self.raise_(OrderPlaced(order_id=self.id, total=self.total.amount))
-
-    def _calculate_total(self) -> Money:
-        """Sum all line item totals."""
-        total = 0.0
-        for item in self.items:
-            total += item.unit_price.amount * item.quantity
-        return Money(amount=total)
-```
+For each group of logic, create an aggregate method on `Order`: here `place()` and
+`_calculate_total()`. Step 3 shows the whole class, with these methods and its
+invariants.
 
 ### Step 3: Add invariants
 
@@ -242,84 +225,17 @@ def test_order_must_have_items_when_placed():
 
 ## Common mistakes
 
-1. **Moving persistence into the aggregate** — `repository.add()` stays in the handler.
+1. **Moving persistence into the aggregate**: `repository.add()` stays in the handler.
    Aggregates don't know about persistence.
 
-2. **Creating a method per field** — If the handler sets 3 fields, create ONE method
+2. **Creating a method per field**: If the handler sets 3 fields, create ONE method
    that captures the business operation, not 3 setter methods.
 
-3. **Leaving events in the handler** — `raise_()` belongs inside the aggregate method,
+3. **Leaving events in the handler**: `raise_()` belongs inside the aggregate method,
    not in the handler after calling the method.
 
-4. **Over-guarding** — Not every `if` is an invariant. Simple null checks in handlers
+4. **Over-guarding**: Not every `if` is an invariant. Simple null checks in handlers
    (`if not command.customer_id`) are often handled by field `required=True`.
-
-5. **Forgetting to update tests** — After moving logic, tests should assert aggregate
-   behavior directly, not go through `domain.process()` for unit tests.
-
-## Quick example
-
-```python
-# fragment
-# BEFORE: fat handler, anemic aggregate
-@handle(CloseTicket)
-def close_ticket(self, command):
-    ticket = domain.repository_for(Ticket).get(command.ticket_id)
-    if ticket.status == "CLOSED":
-        raise ValidationError("Already closed")
-    if ticket.status == "OPEN":
-        raise ValidationError("Must be assigned first")
-    ticket.status = "CLOSED"
-    ticket.closed_at = datetime.now(UTC)
-    ticket.resolution = command.resolution
-    domain.repository_for(Ticket).add(ticket)
-```
-
-After the refactor, `Ticket.close()` holds the guards and the state change, and the
-handler loads, calls and persists:
-
-```python
-# AFTER: thin handler, rich aggregate
-from datetime import UTC, datetime
-
-
-@domain.event(part_of="Ticket")
-class TicketClosed:
-    ticket_id = Identifier(required=True)
-    resolution = String(required=True)
-
-
-@domain.aggregate
-class Ticket:
-    status = String(default="OPEN")
-    resolution = String(max_length=500)
-    closed_at = DateTime()
-
-    def close(self, resolution: str) -> None:
-        if self.status == "CLOSED":
-            raise ValidationError({"status": ["Already closed"]})
-        if self.status == "OPEN":
-            raise ValidationError({"status": ["Must be assigned first"]})
-        self.status = "CLOSED"
-        self.resolution = resolution
-        self.closed_at = datetime.now(UTC)
-        self.raise_(TicketClosed(ticket_id=self.id, resolution=resolution))
-
-
-@domain.command(part_of=Ticket)
-class CloseTicket:
-    ticket_id = Identifier(required=True)
-    resolution = String(required=True, max_length=500)
-
-
-@domain.command_handler(part_of=Ticket)
-class TicketCommandHandler:
-    @handle(CloseTicket)
-    def close_ticket(self, command: CloseTicket) -> None:
-        ticket = domain.repository_for(Ticket).get(command.ticket_id)
-        ticket.close(resolution=command.resolution)
-        domain.repository_for(Ticket).add(ticket)
-```
 
 ## Examples
 
@@ -327,14 +243,14 @@ class TicketCommandHandler:
 
 ## Detailed references
 
-- [Identifying logic leaks](references/identifying-logic-leaks.md) — Heuristics and examples
-- [Anti-patterns](references/anti-patterns.md) — Common refactoring mistakes
+- [Identifying logic leaks](references/identifying-logic-leaks.md): Heuristics and examples
+- [Anti-patterns](references/anti-patterns.md): Common refactoring mistakes
 
 ## Related skills
 
-- [aggregate](../aggregate/SKILL.md) — Aggregate patterns
-- [command-handler](../command-handler/SKILL.md) — Handler patterns
-- [audit-domain](../audit-domain/SKILL.md) — Detects logic leaks
+- [aggregate](../aggregate/SKILL.md): Aggregate patterns
+- [command-handler](../command-handler/SKILL.md): Handler patterns
+- [audit-domain](../audit-domain/SKILL.md): Detects logic leaks
 
 ## Verify your work
 

@@ -4,13 +4,13 @@ Patterns for testing command handler and event handler orchestration logic.
 
 ## Overview
 
-Handler tests are integration tests — they verify that the handler wires command/event data to aggregate methods and persists results correctly. These sit in the middle of the testing pyramid.
+Handler tests are integration tests. They verify that the handler wires command/event data to aggregate methods and persists results correctly. These sit in the middle of the testing pyramid.
 
 ## Code
 
 Complete examples are in:
-- [assets/scaffold_command_flow.py](../assets/scaffold_command_flow.py) — User registration with handler and API
-- [assets/scaffold_event_driven_flow.py](../assets/scaffold_event_driven_flow.py) — Cross-aggregate event handling
+- [assets/scaffold_command_flow.py](../assets/scaffold_command_flow.py): User registration with handler and API
+- [assets/scaffold_event_driven_flow.py](../assets/scaffold_event_driven_flow.py): Cross-aggregate event handling
 
 ## Testing command handler orchestration
 
@@ -116,7 +116,7 @@ class TestAPIEndpoint:
         assert user.name == "Bob"
 ```
 
-## Avoid mocks — use real domain elements
+## Avoid mocks: use real domain elements
 
 Use `domain.process()` and `domain.repository_for()` with real commands, aggregates, and events. Protean's synchronous processing (`event_processing` and `command_processing` set to `"sync"` in the root `conftest.py`) and in-memory repositories eliminate the need for mocks. Do not mock handlers, repositories, or aggregate methods. Test the real orchestration. Only mock truly external dependencies (third-party HTTP APIs) that have no in-memory substitute.
 

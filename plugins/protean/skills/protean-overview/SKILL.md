@@ -13,11 +13,10 @@ metadata:
 
 # Protean overview
 
-<!-- dx-pack-seed: minimal seed skill; the full teaching corpus lands with the
-developer-experience epic. -->
-
 Protean is a domain-driven framework. A domain is a registry of elements you
-declare with decorators on a `Domain` object.
+declare with decorators on a `Domain` object. Each element below has its own
+skill of the same name (`aggregate`, `entity`, `value-object`, `event`,
+`command`, `command-handler`, `event-handler`) with its full rules and examples.
 
 ## Building blocks
 

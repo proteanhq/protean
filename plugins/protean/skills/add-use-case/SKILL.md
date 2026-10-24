@@ -1,6 +1,6 @@
 ---
 name: add-use-case
-description: Build a complete vertical slice in Protean - the full command flow from command definition through handler, aggregate mutation, event raising, and event handler reaction. This is the most common workflow for adding a new feature. Use when the user asks to "add a use case", "add a feature", "create a command flow", "implement a vertical slice", "add a new action", "build an end-to-end flow", "add command processing", or when they describe actions like "users should be able to place orders", "allow admins to approve requests", "implement the checkout flow".
+description: Build a complete vertical slice in Protean, the full command flow from command definition through handler, aggregate mutation, event raising, and event handler reaction. This is the most common workflow for adding a new feature. Use when the user asks to "add a use case", "add a feature", "create a command flow", "implement a vertical slice", "add a new action", "build an end-to-end flow", "add command processing", or when they describe actions like "users should be able to place orders", "allow admins to approve requests", "implement the checkout flow".
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -32,12 +32,12 @@ Command → Command Handler → Aggregate Method → Event → Event Handler
 
 Before building a use case, understand:
 
-- [ ] **What action does the user take?** — Name it as an imperative verb phrase (e.g., "Place Order", "Approve Request")
-- [ ] **What data is required?** — Command fields (input from user/API)
-- [ ] **Which aggregate does it modify?** — The aggregate that owns the business logic
-- [ ] **What state change occurs?** — The mutation in the aggregate method
-- [ ] **What happened after?** — The event to raise (past tense: "OrderPlaced", "RequestApproved")
-- [ ] **What side effects follow?** — Event handler reactions (notifications, syncing, downstream updates)
+- [ ] **What action does the user take?** Name it as an imperative verb phrase (e.g., "Place Order", "Approve Request")
+- [ ] **What data is required?** Command fields (input from user/API)
+- [ ] **Which aggregate does it modify?** The aggregate that owns the business logic
+- [ ] **What state change occurs?** The mutation in the aggregate method
+- [ ] **What happened after?** The event to raise (past tense: "OrderPlaced", "RequestApproved")
+- [ ] **What side effects follow?** Event handler reactions (notifications, syncing, downstream updates)
 
 ## Process
 
@@ -131,7 +131,7 @@ class OrderCommandHandler:
 - `part_of=AggregateClass` when the class is in scope. A string reference also works and resolves at `init`
 - Use `@handle(CommandClass)` decorator on each handler method
 - Each handler method has signature `(self, command: CommandClass)`
-- Implicit UnitOfWork — no manual transaction management needed
+- Implicit UnitOfWork: no manual transaction management needed
 - Load aggregate → call method → persist via `repository_for().add()`
 
 ### Step 5: Add the event handler (optional)
@@ -180,18 +180,6 @@ with domain.domain_context():
     )
 ```
 
-## The command flow
-
-```
-1. API/UI creates Command with input data
-2. domain.process(command) dispatches to Command Handler
-3. Command Handler loads/creates Aggregate
-4. Aggregate method mutates state and raises Event
-5. Handler persists Aggregate (with events) via repository
-6. Event is published to event store
-7. Event Handler(s) pick up the event and react
-```
-
 ## Use case patterns
 
 The update and guard patterns below handle two more commands on `Order`:
@@ -210,15 +198,7 @@ class CancelOrder:
     reason: String()
 ```
 
-### Create pattern (factory method)
-
-```python
-# Handler creates a new aggregate
-@handle(PlaceOrder)
-def handle_place_order(self, command):
-    order = Order.place(...)  # Factory method
-    domain.repository_for(Order).add(order)
-```
+Step 4 shows the create pattern: a factory method builds the aggregate and the handler adds it.
 
 ### Update pattern (load and mutate)
 
@@ -271,20 +251,7 @@ def handle_place_order(self, command):
     domain.repository_for(Order).add(order)
 ```
 
-Instead: keep the rule in an aggregate method/factory; the handler only orchestrates.
-
-```python
-@handle(PlaceOrder)
-def handle_place_order(self, command):
-    order = Order.place(
-        order_id=command.order_id,
-        customer_id=command.customer_id,
-        product_id=command.product_id,
-        quantity=command.quantity,
-        unit_price=10.0,
-    )
-    domain.repository_for(Order).add(order)
-```
+Instead: keep the rule in an aggregate method or factory, as in Step 4; the handler only orchestrates.
 
 ### Forgetting to raise the event
 
@@ -334,17 +301,17 @@ Instead: guard authorization in the handler (Layer 4); keep the aggregate focuse
 
 ## Detailed references
 
-- [Vertical Slice Architecture](references/vertical-slice.md) — How command flow implements vertical slices
-- [Command Flow Patterns](references/command-flow-patterns.md) — Create, update, and guard patterns
+- [Vertical Slice Architecture](references/vertical-slice.md): How command flow implements vertical slices
+- [Command Flow Patterns](references/command-flow-patterns.md): Create, update, and guard patterns
 
 ## Related skills
 
-- [command](../command/SKILL.md) — Command definition and field validation
-- [command-handler](../command-handler/SKILL.md) — Handler patterns
-- [aggregate](../aggregate/SKILL.md) — Aggregate methods and event raising
-- [event](../event/SKILL.md) — Event definition
-- [event-handler](../event-handler/SKILL.md) — Event handler patterns
-- [add-validation](../add-validation/SKILL.md) — Adding validation at each layer
+- [command](../command/SKILL.md): Command definition and field validation
+- [command-handler](../command-handler/SKILL.md): Handler patterns
+- [aggregate](../aggregate/SKILL.md): Aggregate methods and event raising
+- [event](../event/SKILL.md): Event definition
+- [event-handler](../event-handler/SKILL.md): Event handler patterns
+- [add-validation](../add-validation/SKILL.md): Adding validation at each layer
 
 ## Verify your work
 

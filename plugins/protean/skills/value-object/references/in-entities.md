@@ -439,13 +439,13 @@ These tests run inside a domain context, which the test setup provides.
 
 ## Best Practices
 
-1. **Use VOs for complex entity attributes** - Not just primitives
-2. **Entity methods return VOs** - Makes operations explicit
-3. **Access entities through aggregates** - Never directly
-4. **VOs work same in entities as aggregates** - Consistent patterns
-5. **Replace, don't modify** - Honor immutability
-6. **Test entity VO interactions** - Ensure behavior is correct
-7. **Document VO usage in entities** - Help future developers
+1. **Use VOs for complex entity attributes**: Not just primitives
+2. **Entity methods return VOs**: Makes operations explicit
+3. **Access entities through aggregates**: Never directly
+4. **VOs work same in entities as aggregates**: Consistent patterns
+5. **Replace, don't modify**: Honor immutability
+6. **Test entity VO interactions**: Ensure behavior is correct
+7. **Document VO usage in entities**: Help future developers
 
 ## Common Mistakes
 
@@ -505,7 +505,7 @@ with domain.domain_context():
 
 ## Related
 
-- [Value Objects in Aggregates](./in-aggregates.md) - Similar patterns in aggregates
-- [Value Objects with Methods](./with-methods.md) - VO behavior
-- [Nested Value Objects](./nested-value-objects.md) - Composition
-- [../entity/SKILL.md](../../entity/SKILL.md) - Entity skill
+- [Value Objects in Aggregates](./in-aggregates.md): Similar patterns in aggregates
+- [Value Objects with Methods](./with-methods.md): VO behavior
+- [Nested Value Objects](./nested-value-objects.md): Composition
+- [../entity/SKILL.md](../../entity/SKILL.md): Entity skill

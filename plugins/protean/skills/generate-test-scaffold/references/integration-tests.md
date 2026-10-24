@@ -4,13 +4,13 @@ Patterns for end-to-end flow testing and cross-aggregate event-driven coordinati
 
 ## Overview
 
-Integration tests verify that the full pipeline works: command → handler → aggregate → event → event handler → state. They sit in the middle of the testing pyramid — write fewer of these than domain unit tests, but enough to cover critical paths.
+Integration tests verify that the full pipeline works: command → handler → aggregate → event → event handler → state. They sit in the middle of the testing pyramid. Write fewer of these than domain unit tests, but enough to cover critical paths.
 
 ## Code
 
 Complete examples are in:
-- [assets/scaffold_command_flow.py](../assets/scaffold_command_flow.py) — Command processing flow
-- [assets/scaffold_event_driven_flow.py](../assets/scaffold_event_driven_flow.py) — Cross-aggregate event flow
+- [assets/scaffold_command_flow.py](../assets/scaffold_command_flow.py): Command processing flow
+- [assets/scaffold_event_driven_flow.py](../assets/scaffold_event_driven_flow.py): Cross-aggregate event flow
 
 These tests rely on the root `conftest.py` from [the scaffold assets](../assets/conftest.py). It sets `event_processing` and `command_processing` to `"sync"`, so `domain.process()` runs the handler at once and event handlers run when an aggregate is persisted.
 
@@ -100,9 +100,9 @@ class TestLifecycle:
 | Full user workflow | Integration | Verify multi-step sequence |
 | Value object operations | Unit | Test custom methods directly |
 
-## Avoid mocks — use real domain elements
+## Avoid mocks: use real domain elements
 
-Integration tests should exercise the real domain pipeline. Use actual aggregates, commands, events, repositories, and event handlers — Protean's in-memory infrastructure and synchronous event processing make this straightforward. Mocks at the integration level defeat the purpose of testing the full flow. Only mock truly external dependencies (third-party HTTP APIs) that have no in-memory substitute.
+Integration tests should exercise the real domain pipeline. Use actual aggregates, commands, events, repositories, and event handlers. Protean's in-memory infrastructure and synchronous event processing make this straightforward. Mocks at the integration level defeat the purpose of testing the full flow. Only mock truly external dependencies (third-party HTTP APIs) that have no in-memory substitute.
 
 ## What NOT to test at the integration level
 

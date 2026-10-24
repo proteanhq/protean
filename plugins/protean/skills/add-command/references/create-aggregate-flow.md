@@ -133,11 +133,11 @@ async def register_user(request: Request):
 ## Testing
 
 Test create flows at three levels:
-1. **Domain elements** - Verify command, handler, and aggregate registration
-2. **Command processing** - Submit command via `domain.process()` and verify aggregate creation
-3. **HTTP endpoint** - Use `TestClient` to verify the full HTTP flow
+1. **Domain elements**: Verify command, handler, and aggregate registration
+2. **Command processing**: Submit command via `domain.process()` and verify aggregate creation
+3. **HTTP endpoint**: Use `TestClient` to verify the full HTTP flow
 
 ## Related
 
-- [Update-aggregate flow](./update-aggregate-flow.md) - For modifying existing aggregates
-- [Multiple commands flow](./multiple-commands-flow.md) - Adding many commands to one aggregate
+- [Update-aggregate flow](./update-aggregate-flow.md): For modifying existing aggregates
+- [Multiple commands flow](./multiple-commands-flow.md): Adding many commands to one aggregate

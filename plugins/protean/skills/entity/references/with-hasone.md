@@ -243,6 +243,6 @@ test_hasone_relationship()
 
 ## Related
 
-- [HasMany relationships](./with-hasmany.md) - One-to-many entity relationships
-- [Nested entities](./nested-entities.md) - Entities containing other entities
-- [Value objects](../../value-object/SKILL.md) - When to use value objects instead
+- [HasMany relationships](./with-hasmany.md): One-to-many entity relationships
+- [Nested entities](./nested-entities.md): Entities containing other entities
+- [Value objects](../../value-object/SKILL.md): When to use value objects instead

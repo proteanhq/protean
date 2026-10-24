@@ -8,7 +8,7 @@ The complete implementation is in [assets/validation_layer3_aggregate_invariants
 
 ## Two Types of Invariants
 
-### `@invariant.post` — After-change consistency
+### `@invariant.post`: After-change consistency
 
 Checked after initialization AND after each attribute change. Use for rules about what the aggregate's state should look like.
 
@@ -22,7 +22,7 @@ def total_must_equal_sum_of_items(self):
             raise ValidationError({"_entity": ["Total mismatch"]})
 ```
 
-### `@invariant.pre` — Before-change guards
+### `@invariant.pre`: Before-change guards
 
 Checked BEFORE attribute changes (NOT during initialization). Use for rules about what state changes are allowed.
 
@@ -140,11 +140,11 @@ Without `atomic_change`, each assignment triggers validation, which may fail for
 
 ## Error Key Convention
 
-- **Field-level errors**: `{"field_name": ["message"]}` — for a specific field
-- **Entity-level errors**: `{"_entity": ["message"]}` — for aggregate-wide rules
+- **Field-level errors**: `{"field_name": ["message"]}` for a specific field
+- **Entity-level errors**: `{"_entity": ["message"]}` for aggregate-wide rules
 
 ## Related
 
-- [Layer 2](./layer2-value-object-invariants.md) - VO invariants (concept rules)
-- [Layer 4](./layer4-handler-guards.md) - Handler guards (context rules)
-- [Choosing the Right Layer](./choosing-the-right-layer.md) - Decision framework
+- [Layer 2](./layer2-value-object-invariants.md): VO invariants (concept rules)
+- [Layer 4](./layer4-handler-guards.md): Handler guards (context rules)
+- [Choosing the Right Layer](./choosing-the-right-layer.md): Decision framework

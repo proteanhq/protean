@@ -56,18 +56,18 @@ class Order:
 
 ### Raise Events When:
 
-1. **State transitions occur** - Aggregate moves to a new state
-2. **Important domain events happen** - Business-significant changes
-3. **Other parts of the system need to know** - Cross-aggregate coordination
-4. **Building an audit trail** - Recording what happened
-5. **Event sourcing** - Events are the source of truth
+1. **State transitions occur**: Aggregate moves to a new state
+2. **Important domain events happen**: Business-significant changes
+3. **Other parts of the system need to know**: Cross-aggregate coordination
+4. **Building an audit trail**: Recording what happened
+5. **Event sourcing**: Events are the source of truth
 
 ### Don't Raise Events When:
 
-1. **Validation fails** - Only raise events after successful changes
-2. **Internal calculations** - Not every computation needs an event
-3. **Query methods** - Events indicate changes, not reads
-4. **Derived data changes** - If computed from other data
+1. **Validation fails**: Only raise events after successful changes
+2. **Internal calculations**: Not every computation needs an event
+3. **Query methods**: Events indicate changes, not reads
+4. **Derived data changes**: If computed from other data
 
 ## Raising Single Events
 
@@ -470,7 +470,7 @@ with domain.domain_context():
 
 ## Related
 
-- [Delta Events](./delta-events.md) - Types of events to raise
-- [With Value Objects](./with-value-objects.md) - Including value objects in events
-- `aggregate` - Aggregate methods that raise events
-- `event-handler` - How events are consumed
+- [Delta Events](./delta-events.md): Types of events to raise
+- [With Value Objects](./with-value-objects.md): Including value objects in events
+- `aggregate`: Aggregate methods that raise events
+- `event-handler`: How events are consumed

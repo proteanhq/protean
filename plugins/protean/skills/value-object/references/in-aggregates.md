@@ -439,13 +439,13 @@ These tests run inside a domain context, which the test setup provides.
 
 ## Best Practices
 
-1. **Use value objects for complex attributes** - Don't flatten to primitives
-2. **Keep aggregates focused** - VOs handle attribute validation
-3. **Return value objects from methods** - Makes return types explicit
-4. **Use VO methods in aggregate logic** - Leverage VO behavior
-5. **Replace, don't modify** - Honor immutability
-6. **Validate with business rules** - Control when VOs can be replaced
-7. **Initialize clearly** - Choose object or attribute initialization consistently
+1. **Use value objects for complex attributes**: Don't flatten to primitives
+2. **Keep aggregates focused**: VOs handle attribute validation
+3. **Return value objects from methods**: Makes return types explicit
+4. **Use VO methods in aggregate logic**: Leverage VO behavior
+5. **Replace, don't modify**: Honor immutability
+6. **Validate with business rules**: Control when VOs can be replaced
+7. **Initialize clearly**: Choose object or attribute initialization consistently
 
 ## Common Mistakes
 
@@ -507,7 +507,7 @@ class Order:
 
 ## Related
 
-- [Value Objects in Entities](./in-entities.md) - Using VOs in entities
-- [Nested Value Objects](./nested-value-objects.md) - Composition patterns
-- [Value Objects with Methods](./with-methods.md) - VO behavior
-- [../aggregate/SKILL.md](../../aggregate/SKILL.md) - Aggregate skill
+- [Value Objects in Entities](./in-entities.md): Using VOs in entities
+- [Nested Value Objects](./nested-value-objects.md): Composition patterns
+- [Value Objects with Methods](./with-methods.md): VO behavior
+- [../aggregate/SKILL.md](../../aggregate/SKILL.md): Aggregate skill

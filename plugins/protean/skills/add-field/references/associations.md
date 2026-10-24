@@ -5,10 +5,10 @@ This guide explains how to use association fields to create relationships betwee
 ## Overview
 
 Protean provides four types of association fields:
-1. **HasOne** - One-to-one relationship with an entity
-2. **HasMany** - One-to-many relationship with entities
-3. **ValueObject** - Embed an immutable value object
-4. **Reference** - Link an entity back to its parent (the aggregate root, or the parent entity when nested)
+1. **HasOne**: One-to-one relationship with an entity
+2. **HasMany**: One-to-many relationship with entities
+3. **ValueObject**: Embed an immutable value object
+4. **Reference**: Link an entity back to its parent (the aggregate root, or the parent entity when nested)
 
 To link to a *different* aggregate, do not use an association field. Store the other
 aggregate's id in an `Identifier` field. See [Linking to Another Aggregate](#linking-to-another-aggregate).
@@ -121,10 +121,10 @@ class LineItem:
 When you define a `HasMany` field, Protean automatically creates helper methods. For `line_items = HasMany("LineItem")`:
 
 **Generated methods**:
-- `add_line_items(item)` - Add one or more items
-- `remove_line_items(item)` - Remove an item
-- `get_one_from_line_items(id=item_id)` - Get one item by keyword criteria
-- `filter_line_items(**criteria)` - Get the items whose fields equal the given values
+- `add_line_items(item)`: Add one or more items
+- `remove_line_items(item)`: Remove an item
+- `get_one_from_line_items(id=item_id)`: Get one item by keyword criteria
+- `filter_line_items(**criteria)`: Get the items whose fields equal the given values
 
 Both take keyword arguments only. `filter_line_items` matches equality only: it does not
 support operators such as `unit_price__gt`. `get_one_from_line_items` raises
@@ -807,7 +807,7 @@ class LineItem:
 
 ## See Also
 
-- [Field Types Guide](field-types.md) - All available field types
+- [Field Types Guide](field-types.md): All available field types
 - [Complete association example](../assets/add_association_fields.py)
 - [ValueObject example](../assets/add_value_object_field.py)
 - [aggregate](../../aggregate/SKILL.md)

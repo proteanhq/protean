@@ -100,7 +100,7 @@ See [projection_simple.py](../assets/projection_simple.py) for a complete, runna
 
 ## Related
 
-- [Configuration Options](configuration-options.md) - Provider, cache, and other options
-- [Persistence & Querying](persistence-querying.md) - How to persist and query projections
-- [Field Type Restrictions](field-type-restrictions.md) - Why only basic types
-- `projector` - Projectors populate projections from domain events
+- [Configuration Options](configuration-options.md): Provider, cache, and other options
+- [Persistence & Querying](persistence-querying.md): How to persist and query projections
+- [Field Type Restrictions](field-type-restrictions.md): Why only basic types
+- `projector`: Projectors populate projections from domain events

@@ -184,5 +184,5 @@ If you forget the underscore, `calculate_total` is wrapped like any public metho
 5. **Review placement**: If an invariant doesn't use multiple aggregates, it likely belongs in an aggregate, not the service
 
 ## Related
-- [Callable class pattern](./callable-class.md) - Callable class with invariants
-- [Instance methods pattern](./instance-methods.md) - Instance methods with invariants
+- [Callable class pattern](./callable-class.md): Callable class with invariants
+- [Instance methods pattern](./instance-methods.md): Instance methods with invariants

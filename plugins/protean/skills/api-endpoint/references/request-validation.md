@@ -7,10 +7,10 @@ commands.
 
 A request is checked in two places, and each gives its own status code:
 
-1. **Pydantic, at the HTTP boundary.** Is the body well formed? Are the
+1. **Pydantic, at the HTTP boundary**: Is the body well formed? Are the
    required keys there, with the right types? FastAPI checks this before the
    endpoint runs and returns **422** when it fails.
-2. **Protean, in the domain.** Do the values satisfy the command's field
+2. **Protean, in the domain**: Do the values satisfy the command's field
    rules (length, range, required) and the aggregate's rules? A failed field
    rule raises `ValidationError`, which `register_exception_handlers` turns
    into **400**.
@@ -147,6 +147,6 @@ models are recommended for public-facing APIs.
 
 ## Related
 
-- [Response Patterns](./response-patterns.md) - The full exception-to-status map
-- [Anti-patterns](./anti-patterns.md) - Common validation mistakes
-- [command skill](../../command/SKILL.md) - Domain command definitions
+- [Response Patterns](./response-patterns.md): The full exception-to-status map
+- [Anti-patterns](./anti-patterns.md): Common validation mistakes
+- [command skill](../../command/SKILL.md): Domain command definitions

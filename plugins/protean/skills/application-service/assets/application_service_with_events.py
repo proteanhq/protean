@@ -110,11 +110,11 @@ if __name__ == "__main__":
     with domain.domain_context():
         svc = UserApplicationServices()
 
-        # Register — raises UserRegistered event
+        # Register: raises UserRegistered event
         user_id = svc.register_user(email="john@example.com", name="John Doe")
         print(f"Registered user: {user_id}")
 
-        # Activate — raises UserActivated event
+        # Activate: raises UserActivated event
         svc.activate_user(user_id=user_id)
         user = current_domain.repository_for(User).get(user_id)
         print(f"User status: {user.status}")

@@ -288,7 +288,7 @@ For a flow with several causally dependent steps, use a process manager. See [pr
 
 ## Related
 
-- [Same-Aggregate](./same-aggregate.md) - Correct same-aggregate handler pattern
-- [Cross-Aggregate](./cross-aggregate.md) - Correct cross-aggregate handler pattern
-- [Error Handling](./error-handling.md) - Proper error handling patterns
-- `command-handler` - Compare with command handler anti-patterns
+- [Same-Aggregate](./same-aggregate.md): Correct same-aggregate handler pattern
+- [Cross-Aggregate](./cross-aggregate.md): Correct cross-aggregate handler pattern
+- [Error Handling](./error-handling.md): Proper error handling patterns
+- `command-handler`: Compare with command handler anti-patterns

@@ -174,14 +174,14 @@ class StockReleased:
 
 ## Best Practices
 
-1. **Keep events focused** - One event per state transition
-2. **Include timestamps** - Always include when the event occurred
-3. **Include identifiers** - Make events traceable (order_id, customer_id, etc.)
-4. **Version from the start** - Always include `__version__` for future evolution
-5. **Document the meaning** - Use clear names and docstrings
+1. **Keep events focused**: One event per state transition
+2. **Include timestamps**: Always include when the event occurred
+3. **Include identifiers**: Make events traceable (order_id, customer_id, etc.)
+4. **Version from the start**: Always include `__version__` for future evolution
+5. **Document the meaning**: Use clear names and docstrings
 
 ## Related
 
-- [Fact Events](./fact-events.md) - Complete state snapshots
-- [Event Versioning](./event-versioning.md) - Handling schema evolution
-- [Raising Events](./raising-events.md) - How to emit events from aggregates
+- [Fact Events](./fact-events.md): Complete state snapshots
+- [Event Versioning](./event-versioning.md): Handling schema evolution
+- [Raising Events](./raising-events.md): How to emit events from aggregates

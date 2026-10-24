@@ -6,9 +6,9 @@ Commands support inheritance through abstract base commands. This enables sharin
 
 Abstract commands define shared fields and behavior. Concrete commands extend them and add their own fields. This is useful for:
 
-- **Shared audit fields** - `performed_by`, `timestamp` across all commands
-- **Shared entity identifiers** - Common `entity_id` field
-- **Domain-specific base commands** - Group related commands under a common base
+- **Shared audit fields**: `performed_by`, `timestamp` across all commands
+- **Shared entity identifiers**: Common `entity_id` field
+- **Domain-specific base commands**: Group related commands under a common base
 
 ## Code
 
@@ -104,5 +104,5 @@ Avoid when:
 
 ## Related
 
-- [Command Validation](./command-validation.md) - Inherited fields are validated too
-- [Anti-patterns](./anti-patterns.md) - Over-engineering inheritance hierarchies
+- [Command Validation](./command-validation.md): Inherited fields are validated too
+- [Anti-patterns](./anti-patterns.md): Over-engineering inheritance hierarchies

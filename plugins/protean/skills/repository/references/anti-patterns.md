@@ -74,7 +74,7 @@ with domain.domain_context():
 # fragment
 @domain.repository(part_of=Order)
 class OrderRepository:
-    pass  # No custom methods — why does this exist?
+    pass  # No custom methods: why does this exist?
 ```
 
 **Why it's wrong**: Protean auto-generates a repository with `add()` and `get()`. An empty custom repository adds code without adding value.
@@ -201,6 +201,6 @@ def handle_place_order(self, command):
 **Instead**: Always use `domain.repository_for()`.
 
 ## Related
-- [Default Repository](./default-repository.md) - When no custom repo is needed
-- [Custom Queries](./custom-queries.md) - Writing proper query methods
-- [Unit of Work Integration](./unit-of-work.md) - Proper UoW usage
+- [Default Repository](./default-repository.md): When no custom repo is needed
+- [Custom Queries](./custom-queries.md): Writing proper query methods
+- [Unit of Work Integration](./unit-of-work.md): Proper UoW usage

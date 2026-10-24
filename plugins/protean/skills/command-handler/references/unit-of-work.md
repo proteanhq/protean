@@ -154,6 +154,6 @@ with domain.domain_context():
 
 ## Related
 
-- [Loading Aggregates](./loading-aggregates.md) - How to load aggregates in handlers
-- [Error Handling](./error-handling.md) - Custom error handling with handle_error
-- [Anti-patterns](./anti-patterns.md) - Common Unit of Work mistakes
+- [Loading Aggregates](./loading-aggregates.md): How to load aggregates in handlers
+- [Error Handling](./error-handling.md): Custom error handling with handle_error
+- [Anti-patterns](./anti-patterns.md): Common Unit of Work mistakes

@@ -147,5 +147,5 @@ with domain.domain_context():
 | Invocation style | `svc()` | `svc.method()` | `Cls.method(aggs)` |
 
 ## Related
-- [Instance methods pattern](./instance-methods.md) - For multiple operations
-- [Invariants](./invariants.md) - Pre/post validation details
+- [Instance methods pattern](./instance-methods.md): For multiple operations
+- [Invariants](./invariants.md): Pre/post validation details

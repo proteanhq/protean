@@ -104,6 +104,6 @@ class TaskActivityHandler:
 
 ## Related
 
-- [Same-Aggregate](./same-aggregate.md) - Basic event handler pattern
-- [Cross-Aggregate](./cross-aggregate.md) - Cross-aggregate coordination
-- [Anti-patterns](./anti-patterns.md) - Common mistakes
+- [Same-Aggregate](./same-aggregate.md): Basic event handler pattern
+- [Cross-Aggregate](./cross-aggregate.md): Cross-aggregate coordination
+- [Anti-patterns](./anti-patterns.md): Common mistakes

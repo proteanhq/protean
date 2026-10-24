@@ -165,6 +165,6 @@ See [projection_with_options.py](../assets/projection_with_options.py) for a com
 
 ## Related
 
-- [Basic Projection](basic-projection.md) - Defining projections
-- [Persistence & Querying](persistence-querying.md) - Persisting and querying
-- [Anti-patterns](anti-patterns.md) - Common mistakes
+- [Basic Projection](basic-projection.md): Defining projections
+- [Persistence & Querying](persistence-querying.md): Persisting and querying
+- [Anti-patterns](anti-patterns.md): Common mistakes

@@ -242,25 +242,6 @@ reach for a process manager. See [event](../event/SKILL.md) for raising the even
 and [domain-service](../domain-service/SKILL.md) for a step whose logic spans
 both aggregates.
 
-## Common mistakes
-
-1. **Cut on the consistency boundary, wherever it falls.** Two entities that must
-   stay correct together in one transaction stay in one aggregate, however large
-   the cluster grows.
-
-2. **Do not link the new aggregate back with a `Reference`.** A `Reference` to
-   the other root re-couples the clusters and brings back
-   `CROSS_AGGREGATE_REFERENCE`. Hold the other aggregate's id by value.
-
-3. **Keep the event handler in the cluster that owns the event.** A handler that
-   reacts to another cluster's event trips `EVENT_HANDLER_FOREIGN_EVENT`. Hand
-   off to the other aggregate with a command.
-
-4. **Make the cross-aggregate step safe to repeat.** Events are delivered at
-   least once. A step that creates the other aggregate will create it twice
-   unless the new aggregate has a deterministic id and the handler no-ops when
-   it already exists.
-
 ## Related skills
 
 - [aggregate](../aggregate/SKILL.md): the aggregate and its consistency boundary.
