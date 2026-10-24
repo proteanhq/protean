@@ -16,6 +16,8 @@ metadata:
 
 # Event
 
+An event records a change that has happened to one aggregate, so other parts of the system can react to it. This skill defines events: fields, versioning, and how aggregates raise them.
+
 ## Basic structure
 
 An event is defined using the `@domain.event(part_of="...")` decorator:
@@ -86,26 +88,6 @@ with domain.domain_context():
 ```
 
 ## Fields and versioning
-
-### Simple Fields
-
-```python
-from protean.fields import String, Integer, Float, DateTime, Boolean
-
-@domain.aggregate
-class Product:
-    name: String(required=True, max_length=200)
-    price: Float(required=True)
-
-@domain.event(part_of="Product")
-class ProductCreated:
-    __version__ = 1
-
-    product_id: String(required=True, identifier=True)
-    name: String(required=True, max_length=200)
-    price: Float(required=True)
-    created_at: DateTime(required=True)
-```
 
 ### With Value Objects
 
@@ -181,98 +163,7 @@ class Order:
 
 This aggregate stores its state, so the method changes the state first and then raises the event. An event-sourced aggregate works the other way. The business method raises the event, and an `@apply` method changes the state. See the `event-sourced-aggregate` skill.
 
-## Quick example
-
-```python
-from protean import Domain
-from protean.fields import String, Float, DateTime, ValueObject
-from datetime import datetime, timezone
-
-domain = Domain()
-
-@domain.value_object
-class Money:
-    amount: Float(required=True)
-    currency: String(max_length=3, default="USD")
-
-@domain.event(part_of="Order")
-class OrderPlaced:
-    __version__ = 1
-
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
-    total = ValueObject(Money, required=True)
-    placed_at: DateTime(required=True)
-
-@domain.aggregate
-class Order:
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
-    status: String(default="draft")
-    total = ValueObject(Money)
-
-    def place(self):
-        if not self.total or self.total.amount <= 0:
-            raise ValueError("Order must have a positive total")
-        if self.status != "draft":
-            raise ValueError("Order already placed")
-
-        self.status = "placed"
-
-        # Raise event
-        self.raise_(OrderPlaced(
-            order_id=self.order_id,
-            customer_id=self.customer_id,
-            total=self.total,
-            placed_at=datetime.now(timezone.utc)
-        ))
-
-# Usage
-domain.init(traverse=False)
-with domain.domain_context():
-    order = Order(
-        order_id="ORD-001",
-        customer_id="CUST-123",
-        total=Money(amount=99.99, currency="USD")
-    )
-    order.place()
-    print(f"Order {order.order_id} placed. Events: {len(order._events)}")
-```
-
 ## Common mistakes
-
-### ❌ Using imperative verbs instead of past-tense
-
-```python
-@domain.event(part_of="Order")
-class PlaceOrder:  # Wrong! This is a command name
-    pass
-```
-
-✅ **Instead: Use past-tense verbs**
-
-```python
-@domain.event(part_of="Order")
-class OrderPlaced:  # Correct! Past-tense
-    pass
-```
-
-### ❌ Not associating event with aggregate
-
-```python
-# fragment
-@domain.event  # Wrong! Missing part_of
-class OrderPlaced:
-    pass
-```
-
-✅ **Instead: Always specify part_of**
-
-```python
-@domain.event(part_of="Order")  # Correct!
-class OrderPlaced:
-    pass
-```
 
 ### ❌ Including entities in events
 
@@ -283,14 +174,7 @@ class OrderPlaced:
     order_entity = HasOne(OrderEntity)  # Wrong! Events can't contain entities
 ```
 
-✅ **Instead: Only fields and value objects**
-
-```python
-@domain.event(part_of="Order")
-class OrderPlaced:
-    order_id: String(required=True, identifier=True)
-    total = ValueObject(Money)  # OK - value objects are allowed
-```
+✅ **Instead: Only fields and value objects**, as in [With Value Objects](#with-value-objects).
 
 ### ❌ Including too much unnecessary data
 
