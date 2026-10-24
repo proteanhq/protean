@@ -15,6 +15,8 @@ metadata:
 
 # Projection
 
+A projection is a read model: a flat record shaped for one query and filled by a projector from domain events. This skill defines projections: fields, storage options and querying.
+
 ## How projections differ from aggregates
 
 | Aspect | Aggregate | Projection |
@@ -174,26 +176,6 @@ non-projection element (an aggregate, say) raises `USAGE_NOT_A_PROJECTION`.
 
 ## Common mistakes
 
-### Missing identifier field
-
-```python
-# fragment
-@domain.projection
-class UserView:
-    name: String()  # Wrong! No identifier field
-    email: String()
-```
-
-Instead: Add at least one identifier field
-
-```python
-@domain.projection
-class UserView:
-    user_id: Identifier(identifier=True)  # Correct!
-    name: String()
-    email: String()
-```
-
 ### Using Reference or Association fields
 
 ```python
@@ -205,9 +187,7 @@ class OrderView:
     items = HasMany(OrderItem)           # Wrong!
 ```
 
-`ValueObject` fields are allowed (they flatten to shadow fields); `Reference`
-and Associations (`HasOne`/`HasMany`) are not. Flatten related data into basic
-fields instead:
+Flatten related data into basic fields instead:
 
 ```python
 @domain.projection
@@ -236,23 +216,6 @@ A projection with no projector is never populated, so queries against it always 
 ### Field the projector never writes
 
 A projection field no projector handler ever writes renders as a dead column. `check` reports this as `UNSOURCED_PROJECTION_FIELD`. Write every field from the projector handler for the event that carries it, or drop the field.
-
-### Confusing projection with aggregate
-
-```python
-# fragment
-# Wrong! Projections are read models, not write models
-@domain.projection
-class Order:
-    order_id: Identifier(identifier=True)
-    items = HasMany(OrderItem)  # Fails! No associations
-
-    def place(self):
-        # Business logic doesn't belong in projections
-        ...
-```
-
-Instead: Use `@domain.aggregate` for write models with business logic
 
 ## Detailed references
 
