@@ -10,6 +10,7 @@ from protean.fields import String
 
 
 @pytest.mark.sqlite
+@pytest.mark.no_test_domain
 def test_an_aggregate_round_trips_through_a_string_part_of_model():
     domain = Domain(
         name="StringPartOfModel",

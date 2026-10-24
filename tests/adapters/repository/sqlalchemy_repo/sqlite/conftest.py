@@ -4,7 +4,11 @@ from tests.shared import initialize_domain
 
 
 @pytest.fixture(autouse=True)
-def test_domain():
+def test_domain(request):
+    if "no_test_domain" in request.keywords:
+        yield
+        return
+
     domain = initialize_domain(
         name="SQLAlchemy SQLite Repository Tests", root_path=__file__
     )
