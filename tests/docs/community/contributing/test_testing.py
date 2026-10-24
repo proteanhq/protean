@@ -5,6 +5,11 @@
 domain named ``Test`` with test configuration, so the example test is called
 here with the real fixture. ``002.py`` holds the ``place_order`` section the
 page uses to show how a page includes code from ``docs_src``.
+
+``003.py`` to ``009.py`` are the good examples in "Writing tests that last",
+one file per rule that shows a runnable test. Each is a pytest module with its
+own domain, so it runs in a child pytest process with ``run_example_tests``.
+The exact ``passed`` count catches an example whose tests stop being collected.
 """
 
 import pytest
@@ -12,7 +17,7 @@ import pytest
 from protean import Domain
 from protean.exceptions import ValidationError
 from protean.utils.reflection import declared_fields
-from tests.docs.support import load_example
+from tests.docs.support import load_example, outcome_counts, run_example_tests
 
 
 @pytest.fixture
@@ -63,3 +68,43 @@ def test_place_order_requires_an_order_id(place_order_example):
 @pytest.mark.no_test_domain
 def test_order_declares_a_status_field(place_order_example):
     assert set(declared_fields(place_order_example.Order)) == {"id", "status"}
+
+
+def _assert_passed(result, count):
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert outcome_counts(result) == {"passed": count}
+
+
+@pytest.mark.no_test_domain
+def test_public_api_example_passes():
+    _assert_passed(run_example_tests("community/contributing/testing/003.py"), 2)
+
+
+@pytest.mark.no_test_domain
+def test_one_behaviour_per_test_example_passes():
+    _assert_passed(run_example_tests("community/contributing/testing/004.py"), 3)
+
+
+@pytest.mark.no_test_domain
+def test_exact_value_example_passes():
+    _assert_passed(run_example_tests("community/contributing/testing/005.py"), 1)
+
+
+@pytest.mark.no_test_domain
+def test_parametrize_example_passes():
+    _assert_passed(run_example_tests("community/contributing/testing/006.py"), 4)
+
+
+@pytest.mark.no_test_domain
+def test_mock_example_passes():
+    _assert_passed(run_example_tests("community/contributing/testing/007.py"), 1)
+
+
+@pytest.mark.no_test_domain
+def test_recorded_time_example_passes():
+    _assert_passed(run_example_tests("community/contributing/testing/008.py"), 3)
+
+
+@pytest.mark.no_test_domain
+def test_property_example_passes():
+    _assert_passed(run_example_tests("community/contributing/testing/009.py"), 1)

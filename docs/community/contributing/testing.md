@@ -283,8 +283,8 @@ Pytest markers are used to categorize tests and control their execution. Protean
   `make test-flaky`. It does **not** exclude them from any run: `protean test`
   and the CI suite still execute them, so a marked test that starts failing
   still turns the build red. Treat the marker as a note to the next reader, not
-  a quarantine. Avoid fixed `sleep`-and-assert timing; prefer a controllable
-  clock or polling.
+  a quarantine. Rather than fix a timing test with a longer sleep, see
+  [Read the recorded time instead of racing a sleep](#read-the-recorded-time-instead-of-racing-a-sleep).
 
 **Capability markers** (used by the generic adapter test suite):
 
@@ -342,6 +342,217 @@ This runs the generic adapter conformance suite against the specified provider,
 automatically skipping tests for capabilities the provider does not declare.
 See [Adapter Conformance Testing](../../reference/testing/conformance.md) for
 full CLI reference and usage examples.
+
+## Writing tests that last
+
+A test lasts when it fails only because the behaviour it checks has changed. A refactor that keeps the behaviour must leave it green, and a bug in that behaviour must turn it red. The ten rules below follow from that. A reviewer can point at a rule by its heading.
+
+The good examples on this page are test modules under `docs_src/community/contributing/testing/`, and `tests/docs/community/contributing/test_testing.py` runs each one under pytest. The bad examples are marked `# fragment` and do not run.
+
+### Test behaviour through the public API
+
+Build objects the way a user of the framework builds them, and check what a user can see: a public attribute, a return value, a raised exception. Never build an object with `__new__`, set a private attribute, or assert on one. A test that reaches into private state breaks when the internals change, even if the behaviour did not, and it can pass for a state no user can reach.
+
+This test skips the constructor and checks a private attribute it set itself:
+
+```python
+# fragment
+def test_money_amount():
+    money = Money.__new__(Money)
+    money._amount = -5.0
+    assert money._amount == -5.0
+```
+
+These tests build `Money` normally and check its public attributes and the error it raises:
+
+```python
+# fragment
+--8<-- "community/contributing/testing/003.py:public_api"
+```
+
+### Test one behaviour per test and name it for that behaviour
+
+When a test checks one behaviour, its name says what broke when it fails. A test that places an order, cancels it and checks the error for a draft order stops at the first failing assert, and hides whether the later steps still work:
+
+```python
+# fragment
+def test_order():
+    order = Order()
+    order.place()
+    assert order.status == "PLACED"
+    order.cancel()
+    assert order.status == "CANCELLED"
+    with pytest.raises(ValidationError):
+        Order().cancel()
+```
+
+Split it into one test per behaviour. Each name reads as a statement of what the code does:
+
+```python
+# fragment
+--8<-- "community/contributing/testing/004.py:one_behaviour"
+```
+
+### Assert the exact value
+
+Compare against the value you expect: `assert result == 3`. A bare `assert result` passes for any truthy value, so it passes when the total is wrong too. The same goes for `is not None`, a length check, or `"amount" in str(exc.value)` when the full message is known.
+
+```python
+# fragment
+def test_order_total():
+    order = Order()
+    order.add_line(price=10.0, quantity=2)
+    order.add_line(price=5.0, quantity=2)
+    assert order.total
+```
+
+```python
+# fragment
+--8<-- "community/contributing/testing/005.py:exact_value"
+```
+
+### Keep `if` and `for` out of the test body
+
+A loop in a test stops at the first failing input and does not say which inputs ran. An `if` in a test means the test checks different things on different runs, and one of the branches may never run at all. Use `pytest.mark.parametrize` for several inputs. pytest then runs and reports each input as its own test.
+
+```python
+# fragment
+def test_email_addresses():
+    for address in ["ana@example.com", "ana.example.com"]:
+        if "@" in address:
+            assert Email(address=address).address == address
+        else:
+            with pytest.raises(ValidationError):
+                Email(address=address)
+```
+
+```python
+# fragment
+--8<-- "community/contributing/testing/006.py:parametrize"
+```
+
+### Mock only an external service, the clock, or a failure you cannot cause
+
+A mock replaces real code with code the test wrote, so the test stops checking the real code. A mock is acceptable in three cases:
+
+- an external service, such as a payment provider or an email API, that a test cannot call
+- the clock, when the code reads the current time
+- a failure you cannot produce for real, such as a full disk or a dropped connection
+
+For everything else, use the real object. For persistence, use the in-memory adapters: `protean test` configures the `memory` database provider, the `inline` broker and the `memory` cache (see the `tests/domain.toml` sample under [Configuration](#configuration)). A `MagicMock` that stands in for a repository passes whatever the code does with it:
+
+```python
+# fragment
+def test_paying_an_invoice():
+    repo = MagicMock()
+    repo.get.return_value = Invoice(amount=30.0)
+    pay_invoice("inv-1")
+    repo.add.assert_called_once()
+```
+
+This test stores the invoice in the in-memory database, patches only the call to the payment provider, and reads the invoice back:
+
+```python
+# fragment
+--8<-- "community/contributing/testing/007.py:mock_the_gateway"
+```
+
+### Read the recorded time instead of racing a sleep
+
+A test that sleeps and then asserts depends on how busy the machine is. It is slow when the sleep is long and flaky when it is short. When code schedules something, it records when: a delay, or a time such as `next_attempt_at`. Assert the value the code recorded. To test the other side, move that value into the past and check again.
+
+```python
+# fragment
+def test_retry_becomes_due():
+    retry = Retry(delay=timedelta(seconds=0.2))
+    retry.schedule()
+    time.sleep(0.2)
+    assert retry.is_due()
+```
+
+```python
+# fragment
+--8<-- "community/contributing/testing/008.py:recorded_time"
+```
+
+### Extend an existing test before writing a new one
+
+Before you add a test file, look for the tests that already cover the code you changed. The test folders follow the source packages (see [Distribution](#distribution)):
+
+| Source | Tests |
+|--------|-------|
+| `src/protean/core/aggregate.py` | `tests/aggregate/` |
+| `src/protean/core/value_object.py` | `tests/value_object/` |
+| `src/protean/adapters/repository/` | `tests/adapters/repository/` |
+| `src/protean/server/` | `tests/server/` |
+
+Search there for the name of the function or class you changed:
+
+```shell
+grep -rln "add_lines" tests/aggregate/ tests/entity/
+```
+
+If a test already sets up the case, add the new behaviour as a test next to it, or as one more `parametrize` input. A new file for a small change spreads one behaviour over several places.
+
+### Do not write a test only to reach a line
+
+The `codecov/patch` check needs 96% of the changed lines to be covered. A test that runs a line without checking what the line does meets that number and protects nothing. The usual shape is a test that builds an object with `__new__`, sets a private attribute by hand to force a guard, and asserts on private state. No user of the framework can reach that state, so the test checks nothing a user depends on.
+
+When a changed line is not covered, do one of these:
+
+- Reach the line through a behaviour. Find the public call that runs it, and write the test for what that call does.
+- If no public path reaches the line, the line is dead code or a guard that cannot fire. Remove it, or mark it `# pragma: no cover` with the reason on the same line:
+
+```python
+# fragment
+    if store is None:  # pragma: no cover - domain.init() always sets a store first
+        raise ConfigurationError("no event store configured")
+```
+
+A `pragma` with no reason leaves the next reader to work out why the line is excluded.
+
+### Delete a test when the evidence says it adds nothing
+
+A test may be deleted or merged into another when the behaviour it covered no longer exists in the code. Otherwise, both of these checks must pass:
+
+- **Coverage.** For every module the change touches, `coverage json` gives the same `missing_lines` and `missing_branches` before and after the change. A matching percentage is not enough, because one line can be lost while another is gained. Run the "before" measurement twice. A line that differs between those two runs is listed in the pull request and left out of the comparison.
+- **Mutation.** For a module with a [mutation testing](mutation-testing.md) target, the run after the change has no surviving mutant and no not-covered mutant that the run before did not have. A mutant is a small change mutmut makes to the source, and it survives when no test fails. Compare the survivor names and the not-covered count, not the score. The score divides by the mutants some test reached, so deleting the only test that reaches a mutant moves it to not-covered, and the score can stay the same or rise.
+
+"Before" is the merge-base of your branch with `main`. `main` itself moves as other pull requests merge. Measure it in a second worktree, with the same commands you use on your branch:
+
+```shell
+git worktree add ../before $(git merge-base origin/main HEAD)
+cd ../before
+protean test -c PR --no-adapters
+coverage json -o coverage-before.json
+make mutation TARGET=entity
+```
+
+Run the same commands on your branch for the "after" numbers. `protean test -c PR --no-adapters` measures the core tests. A test with a service marker never runs in the core lane, so measure it with the adapter leg that runs it, for example `protean test -c PR -a redis --no-core`. The pull request lists each deleted or merged test, the test that now covers its behaviour, the before and after numbers, and the commands that produced them.
+
+`make test-audit` lists candidates for deletion (see [Auditing the suite](#auditing-the-suite)). A candidate still needs this evidence before it goes.
+
+### Prefer one property test to a long list of examples
+
+When the rule is a property, one that holds for every input, a list of examples checks only the inputs someone thought of. A property test with [Hypothesis](https://hypothesis.readthedocs.io/) generates the inputs, and when one fails it reports the smallest input that fails. Hypothesis is in the `test` dependency group.
+
+```python
+# fragment
+@pytest.mark.parametrize(
+    "amount, currency",
+    [(0.0, "USD"), (1.5, "USD"), (99.99, "EUR"), (1000.0, "INR"), (0.01, "EUR")],
+)
+def test_money_round_trip(amount, currency):
+    money = Money(amount=amount, currency=currency)
+    assert Money(**money.to_dict()) == money
+```
+
+```python
+# fragment
+--8<-- "community/contributing/testing/009.py:property"
+```
+
+`tests/serialization/test_roundtrip_value_object.py` checks the same round trip for every field type, with strategies shared from `tests/serialization/strategies.py`. Keep examples for the cases a property does not describe, such as one known boundary or a bug that was fixed.
 
 ## Important Fixtures
 
@@ -472,20 +683,14 @@ It compares the current branch's coverage against the main branch to highlight c
 Protean enforces coverage constraints to ensure code quality:
 
 - Pull requests cannot reduce overall code coverage
-- New features must have adequate test coverage
 - Coverage is checked as part of the CI pipeline
 
-If a PR introduces code that lacks sufficient test coverage:
+If a pull request leaves changed lines uncovered, the CI pipeline fails and the coverage report lists those lines. Meet the gate in one of two ways:
 
-1. The CI pipeline will fail
-2. A coverage report will show which lines need tests
-3. The PR author should add tests to cover the new code
+- Write a test for a behaviour that runs the line, and assert what that behaviour does.
+- If no public path reaches the line, remove it, or mark it `# pragma: no cover` with the reason on the same line.
 
-To avoid coverage failures:
-
-- Write tests alongside new code
-- Test all code paths, including error cases
-- Use pytest parametrization to test multiple scenarios efficiently
+A test that only runs the line is not enough. See [Do not write a test only to reach a line](#do-not-write-a-test-only-to-reach-a-line).
 
 ### Auditing the suite
 
