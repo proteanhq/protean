@@ -1,6 +1,6 @@
 ---
 name: add-read-model
-description: Build a complete read model in Protean - a projection populated by a projector that reacts to domain events. Covers single-aggregate projections (flattened view of one aggregate), cross-aggregate projections (combining data from multiple aggregates), and choosing between database-backed and cache-backed storage. Use when the user asks to "add a read model", "create a projection with projector", "build a query view", "add a CQRS read side", "create a denormalized view", "build a reporting view", "add a dashboard query model", or when they need to combine data from multiple aggregates into one queryable structure.
+description: Build a complete read model in Protean, a projection populated by a projector that reacts to domain events. Covers single-aggregate projections (flattened view of one aggregate), cross-aggregate projections (combining data from multiple aggregates), and choosing between database-backed and cache-backed storage. Use when the user asks to "add a read model", "create a projection with projector", "build a query view", "add a CQRS read side", "create a denormalized view", "build a reporting view", "add a dashboard query model", or when they need to combine data from multiple aggregates into one queryable structure.
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:

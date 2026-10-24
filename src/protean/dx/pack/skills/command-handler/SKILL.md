@@ -1,6 +1,6 @@
 ---
 name: command-handler
-description: Define a Protean command handler - a class responsible for receiving domain commands and orchestrating state changes in aggregates. Command handlers extract data from commands, load or create aggregates, invoke aggregate methods, and persist state changes. They are always associated with one aggregate via part_of and use the @handle decorator to process specific command types. Use when you need to process a command, handle a domain action, write a command handler, implement the handler for a command, connect a command to aggregate logic, or implement the write side of CQRS. Each handler method runs within an implicit UnitOfWork for transactional safety.
+description: Define a Protean command handler, a class responsible for receiving domain commands and orchestrating state changes in aggregates. Command handlers extract data from commands, load or create aggregates, invoke aggregate methods, and persist state changes. They are always associated with one aggregate via part_of and use the @handle decorator to process specific command types. Use when you need to process a command, handle a domain action, write a command handler, implement the handler for a command, connect a command to aggregate logic, or implement the write side of CQRS. Each handler method runs within an implicit UnitOfWork for transactional safety.
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:

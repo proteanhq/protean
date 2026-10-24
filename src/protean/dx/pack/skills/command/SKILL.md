@@ -1,6 +1,6 @@
 ---
 name: command
-description: Define a Protean command - an immutable DTO representing an intent to change aggregate state. Commands encapsulate the data necessary to perform a specific action and are processed by command handlers. Commands are always associated with aggregates and are named with imperative verbs (PlaceOrder, RegisterUser, CancelReservation). Use when you need to define an action or operation that changes domain state, when the user asks to "create a command", "define a command", "add a command", when implementing CQRS patterns, or when they describe an action they want to perform (like "place an order", "register a user", "cancel a reservation"). Commands can be processed synchronously or asynchronously.
+description: Define a Protean command, an immutable DTO representing an intent to change aggregate state. Commands encapsulate the data necessary to perform a specific action and are processed by command handlers. Commands are always associated with aggregates and are named with imperative verbs (PlaceOrder, RegisterUser, CancelReservation). Use when you need to define an action or operation that changes domain state, when the user asks to "create a command", "define a command", "add a command", when implementing CQRS patterns, or when they describe an action they want to perform (like "place an order", "register a user", "cancel a reservation"). Commands can be processed synchronously or asynchronously.
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:

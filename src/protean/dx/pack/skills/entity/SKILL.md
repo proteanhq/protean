@@ -1,6 +1,6 @@
 ---
 name: entity
-description: Define a Protean entity - a domain object with unique identity that is part of an aggregate. Entities are similar to aggregates but don't manage their own persistence - they're always accessed through their parent aggregate. Use when adding objects with identity to an existing aggregate, when modeling concepts that have identity but are not standalone (like LineItem in Order, Comment in Post), when the user asks to "add an entity", "create a child object", or when they describe a concept that has identity but must be part of a larger aggregate. Entities cannot exist independently and are always persisted through their aggregate.
+description: Define a Protean entity, a domain object with unique identity that is part of an aggregate. Entities are similar to aggregates but don't manage their own persistence; they're always accessed through their parent aggregate. Use when adding objects with identity to an existing aggregate, when modeling concepts that have identity but are not standalone (like LineItem in Order, Comment in Post), when the user asks to "add an entity", "create a child object", or when they describe a concept that has identity but must be part of a larger aggregate. Entities cannot exist independently and are always persisted through their aggregate.
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:

@@ -1,6 +1,6 @@
 ---
 name: value-object
-description: Define a Protean value object - an immutable domain element without identity, defined by its attributes. Value objects represent descriptive concepts like Money, Email, Address, or Coordinates. Use when modeling concepts where identity doesn't matter, only the values do. Use when the user asks to "create a value object", "add a VO", "model money/email/address", or describes something that measures or describes (amounts, locations, contact info). Value objects are always embedded in aggregates or entities, never exist independently, and two instances with the same attributes are considered equal.
+description: Define a Protean value object, an immutable domain element without identity, defined by its attributes. Value objects represent descriptive concepts like Money, Email, Address, or Coordinates. Use when modeling concepts where identity doesn't matter, only the values do. Use when the user asks to "create a value object", "add a VO", "model money/email/address", or describes something that measures or describes (amounts, locations, contact info). Value objects are always embedded in aggregates or entities, never exist independently, and two instances with the same attributes are considered equal.
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:

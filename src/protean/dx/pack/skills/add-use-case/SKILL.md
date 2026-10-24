@@ -1,6 +1,6 @@
 ---
 name: add-use-case
-description: Build a complete vertical slice in Protean - the full command flow from command definition through handler, aggregate mutation, event raising, and event handler reaction. This is the most common workflow for adding a new feature. Use when the user asks to "add a use case", "add a feature", "create a command flow", "implement a vertical slice", "add a new action", "build an end-to-end flow", "add command processing", or when they describe actions like "users should be able to place orders", "allow admins to approve requests", "implement the checkout flow".
+description: Build a complete vertical slice in Protean, the full command flow from command definition through handler, aggregate mutation, event raising, and event handler reaction. This is the most common workflow for adding a new feature. Use when the user asks to "add a use case", "add a feature", "create a command flow", "implement a vertical slice", "add a new action", "build an end-to-end flow", "add command processing", or when they describe actions like "users should be able to place orders", "allow admins to approve requests", "implement the checkout flow".
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:

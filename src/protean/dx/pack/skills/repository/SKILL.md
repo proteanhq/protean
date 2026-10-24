@@ -1,6 +1,6 @@
 ---
 name: repository
-description: Define a Protean repository - the persistence abstraction for aggregates in Domain-Driven Design. Repositories provide a collection-oriented interface to load and persist aggregates, hiding database details behind a clean domain API. Protean provides a default repository automatically for every aggregate; custom repositories add domain-specific queries or database-specific optimizations. Use when you need to persist an aggregate, load an aggregate, write a custom repository, add a custom query, override the default repository, connect to a specific database, or implement the repository pattern. Repositories always belong to an aggregate and respect Unit of Work transactional semantics.
+description: Define a Protean repository, the persistence abstraction for aggregates in Domain-Driven Design. Repositories provide a collection-oriented interface to load and persist aggregates, hiding database details behind a clean domain API. Protean provides a default repository automatically for every aggregate; custom repositories add domain-specific queries or database-specific optimizations. Use when you need to persist an aggregate, load an aggregate, write a custom repository, add a custom query, override the default repository, connect to a specific database, or implement the repository pattern. Repositories always belong to an aggregate and respect Unit of Work transactional semantics.
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:

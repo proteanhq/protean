@@ -1,6 +1,6 @@
 ---
 name: query
-description: Define a Protean query - an immutable DTO representing a read intent against a projection (read model). Queries carry the parameters needed to fetch data on the read side of CQRS and are answered by query handlers via domain.dispatch(). Queries are associated with a projection (not an aggregate) and are named for what they fetch (GetOrderById, SearchOrders, ListActiveUsers). Use when you need to define a read request, model a query parameter object, build the read side of CQRS, or when the user asks to "create a query", "define a query", "add a read query", "fetch data by criteria", or "query a projection". Queries are immutable, validated at construction, and contain only basic field types.
+description: Define a Protean query, an immutable DTO representing a read intent against a projection (read model). Queries carry the parameters needed to fetch data on the read side of CQRS and are answered by query handlers via domain.dispatch(). Queries are associated with a projection (not an aggregate) and are named for what they fetch (GetOrderById, SearchOrders, ListActiveUsers). Use when you need to define a read request, model a query parameter object, build the read side of CQRS, or when the user asks to "create a query", "define a query", "add a read query", "fetch data by criteria", or "query a projection". Queries are immutable, validated at construction, and contain only basic field types.
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:

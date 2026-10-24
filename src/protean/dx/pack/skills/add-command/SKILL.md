@@ -1,6 +1,6 @@
 ---
 name: add-command
-description: Add a complete command flow to an existing aggregate - creates a command class, a FastAPI API endpoint, and a command handler with repository logic. This is the primary workflow for adding write operations to a Protean domain. Use when the user wants to "add a command", "add an action", "add an operation", "expose a write endpoint", "create a command flow", "wire up a POST endpoint", "add a new operation to an aggregate", or describes an action like "I want users to be able to [verb] a [thing]" (e.g., "place an order", "register a user", "cancel a reservation"). This workflow composes the command, command-handler, and api-endpoint element skills.
+description: Add a complete command flow to an existing aggregate. It creates a command class, a FastAPI API endpoint, and a command handler with repository logic. This is the primary workflow for adding write operations to a Protean domain. Use when the user wants to "add a command", "add an action", "add an operation", "expose a write endpoint", "create a command flow", "wire up a POST endpoint", "add a new operation to an aggregate", or describes an action like "I want users to be able to [verb] a [thing]" (e.g., "place an order", "register a user", "cancel a reservation"). This workflow composes the command, command-handler, and api-endpoint element skills.
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework, fastapi
 metadata:
