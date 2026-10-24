@@ -15,6 +15,8 @@ metadata:
 
 # Event Handler
 
+An event handler runs side effects when an aggregate raises an event: it updates its own aggregate, or hands a change to another aggregate with a command. This skill defines handlers, their options, and the cross-aggregate pattern.
+
 ## Basic structure
 
 ```python
@@ -75,29 +77,6 @@ class OrderEventHandler:
 | `subscription_profile` | `None` | `SubscriptionProfile` preset for the subscription (`PRODUCTION`, `FAST`, `BATCH`, `DEBUG`, `PROJECTION`). `None` uses the default |
 | `subscription_config` | `{}` | Custom subscription settings, such as `messages_per_tick`, that override the type and profile defaults |
 | `suppress_checks` | `()` | Diagnostic codes `protean check` should not report for this handler |
-
-## Quick example: Cross-aggregate handler
-
-The handler sits in `Order`'s cluster, because `OrderShipped` belongs to `Order`.
-It changes `Inventory` by issuing a `ReduceStock` command, which `Inventory`'s
-command handler processes. This is an excerpt: the event, both aggregates and
-the command are defined in
-[Building a cross-aggregate handler](#building-a-cross-aggregate-handler).
-
-```python
-# fragment
-@domain.event_handler(part_of=Order)
-class ManageInventory:
-    @handle(OrderShipped)
-    def reduce_stock_level(self, event: OrderShipped):
-        current_domain.process(
-            ReduceStock(
-                order_id=event.order_id,
-                product_id=event.product_id,
-                quantity=event.quantity,
-            )
-        )
-```
 
 ## Quick example: Multiple events
 
@@ -214,14 +193,7 @@ while maintaining the **one aggregate per transaction** rule.
 
 ### The principle
 
-Never modify two aggregates in the same handler. Instead:
-
-1. **Aggregate A** raises a domain event when its state changes
-2. An **event handler in A's cluster** (`part_of=A`) reacts to that event
-3. The handler issues a **command** that belongs to **Aggregate B**
-4. B's **command handler** loads B and updates it. With async command processing it runs in a
-   **separate transaction** (eventual consistency). With sync command processing, as in tests, it
-   runs inside the event handler's unit of work and commits with it
+Never modify two aggregates in the same handler. Hand the change to the other aggregate with a command (Key rule 9), and put enough data in the event that the handler does not need to load the source aggregate. With async command processing, the other aggregate's command handler runs in a **separate transaction** (eventual consistency). With sync command processing, as in tests, it runs inside the event handler's unit of work and commits with it.
 
 | Approach | Correct? | Why |
 |----------|----------|-----|
@@ -267,13 +239,6 @@ Keys like `f"{order_id}:{product_id}"` and message ids are strings, not UUIDs.
 A guard that stores them as B's identity needs the default
 `identity_type` (`"string"`). With `identity_type="uuid"`, the database
 rejects them.
-
-### Designing for eventual consistency
-
-- **Include enough data in events**: the handler should not need to load the source aggregate
-- **Make the receiving command handler safe to repeat**: see the section above
-- **Accept brief staleness**: the UI might show slightly outdated data
-- Use `domain.config["event_processing"] = "sync"` and `domain.config["command_processing"] = "sync"` for deterministic testing
 
 ### Common patterns
 
@@ -362,23 +327,6 @@ class InventorySyncHandler:
 
 ## Common mistakes
 
-### Missing part_of and stream_category
-
-```python
-# fragment
-@domain.event_handler  # Wrong! Missing both part_of and stream_category
-class OrderEventHandler:
-    pass
-```
-
-Instead: Always specify at least part_of or stream_category
-
-```python
-@domain.event_handler(part_of=Order)  # Correct!
-class OrderEventHandler:
-    pass
-```
-
 ### Handling another cluster's event (`EVENT_HANDLER_FOREIGN_EVENT`)
 
 ```python
@@ -397,17 +345,6 @@ The handler belongs to `Inventory` but reacts to `Order`'s event, so the two
 clusters are coupled directly. Instead: put the handler in `Order`'s cluster and
 issue a `ReduceStock` command, as in
 [Building a cross-aggregate handler](#building-a-cross-aggregate-handler).
-
-### Returning values from event handlers
-
-```python
-# fragment
-@handle(OrderPlaced)
-def handle(self, event):
-    return order  # Wrong! Return value is discarded
-```
-
-Instead: Update aggregates or emit new events to communicate results
 
 ### Manually wrapping in UnitOfWork
 
