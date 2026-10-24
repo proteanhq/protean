@@ -32,14 +32,14 @@ VOs with only fields and no behavior. These are struct wrappers:
 # Questionable: no behavior
 @domain.value_object
 class Money:
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
     currency = String(default="USD")
     # No methods: is this better than two fields?
 
 # Better: with behavior
 @domain.value_object
 class Money:
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
     currency = String(default="USD")
 
     def add(self, other): ...
@@ -55,7 +55,7 @@ Changing event field structure without versioning:
 # Dangerous: existing consumers expect flat fields
 @domain.event(part_of="Order")
 class OrderPlaced:
-    # Was: total_amount = Float(), total_currency = String()
+    # Was: total_amount = Decimal(...), total_currency = String()
     total = ValueObject(Money)  # Breaks all existing consumers!
 
 # Safe: version bump + upcaster
@@ -77,7 +77,7 @@ class Order:
 
 @domain.entity(part_of="Order")
 class LineItem:
-    unit_price_amount = Float()  # Still primitive!
+    unit_price_amount = Decimal(precision=19, scale=4)  # Still primitive!
     unit_price_currency = String()
 ```
 

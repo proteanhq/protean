@@ -9,9 +9,12 @@ How to safely migrate from primitive fields to value objects in a running system
 Create the VO in a shared location if used across aggregates, or alongside the aggregate if used only once.
 
 ```python
+from decimal import Decimal as D
+
+
 @domain.value_object
 class Money:
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
     currency = String(max_length=3, default="USD")
 ```
 
@@ -23,7 +26,7 @@ Don't remove the old fields yet. Add the new field in parallel:
 @domain.aggregate
 class Order:
     # Old fields (keep temporarily)
-    total_amount = Float(default=0.0)
+    total_amount = Decimal(precision=19, scale=4, default=D(0))
     total_currency = String(default="USD")
     # New field
     total = ValueObject(Money)
