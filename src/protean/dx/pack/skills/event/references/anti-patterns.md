@@ -1,11 +1,5 @@
 # Event Anti-Patterns
 
-Common mistakes when working with events and how to avoid them.
-
-## Overview
-
-Events are deceptively simple but have specific constraints that, when violated, lead to fragile designs. This guide covers the most common anti-patterns and their correct alternatives.
-
 The examples share this setup. It defines the aggregates the events belong to and the `Money` value object:
 
 ```python
@@ -83,7 +77,7 @@ class OrderPlaced:
     order_id: String(required=True, identifier=True)
 ```
 
-**Why it matters:** Events must be associated with aggregates. They are written to aggregate-specific streams and this association is required by Protean.
+**Why it matters:** Protean writes an event to its aggregate's stream. Decorating an event with neither `part_of` nor `stream_category` raises `IncorrectUsageError` at once: ``Event `OrderPlaced` needs to be associated with an aggregate or a stream``.
 
 ## 3. Including Entities in Events
 
@@ -112,77 +106,9 @@ class OrderPlaced:
     # Or use value objects instead of entities
 ```
 
-**Why it matters:** Events are DTOs (Data Transfer Objects). They can only contain simple fields and value objects, not entities or aggregates. Entities have identity and lifecycle - events are immutable facts.
+**Why it matters:** Events are DTOs (Data Transfer Objects). They can only contain simple fields and value objects, not entities or aggregates. Entities have identity and a lifecycle, and events are immutable facts.
 
-## 4. Including Too Much Data
-
-### ❌ Wrong
-
-```python
-@domain.event(part_of="Order")
-class OrderPlaced:
-    order_id: String(required=True)
-    # Including entire customer profile when only ID is needed
-    customer_name: String(required=True)
-    customer_email: String(required=True)
-    customer_phone: String()
-    customer_address: String()
-    customer_birth_date: Date()
-    customer_preferences: Dict()
-    # ... 20 more customer fields
-```
-
-### ✅ Correct
-
-```python
-@domain.event(part_of="Order")
-class OrderPlaced:
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)  # Just the ID
-    total = ValueObject(Money, required=True)
-    placed_at: DateTime(required=True)
-    # Only what's necessary to understand what happened
-```
-
-**Why it matters:** Events should be lightweight and focused. Include only data necessary to describe the change. Consumers can fetch additional details if needed.
-
-## 5. Making Events Mutable
-
-### ❌ Wrong
-
-```python
-# fragment
-event = OrderPlaced(order_id="123", customer_id="456")
-# Trying to modify event after creation
-event.order_id = "789"  # Wrong! Events are immutable
-```
-
-### ✅ Correct
-
-Assigning to a field raises `IncorrectUsageError`. If you need different data, create a new event:
-
-```python
-from protean.exceptions import IncorrectUsageError
-
-@domain.event(part_of="Order")
-class OrderPlaced:
-    order_id: String(required=True, identifier=True)
-    customer_id: String(required=True)
-
-domain.init(traverse=False)
-with domain.domain_context():
-    event = OrderPlaced(order_id="123", customer_id="456")
-    try:
-        event.order_id = "789"
-    except IncorrectUsageError as exc:
-        print(exc)  # Event/Command Objects are immutable and cannot be modified once created
-
-    corrected = OrderPlaced(order_id="789", customer_id="456")
-```
-
-**Why it matters:** Events are immutable facts representing what happened in the past. They cannot be changed. This immutability is enforced by Protean.
-
-## 6. Not Versioning Events
+## 4. Not Versioning Events
 
 ### ❌ Wrong
 
@@ -205,9 +131,9 @@ class OrderPlaced:
     customer_id: String(required=True)
 ```
 
-**Why it matters:** Events are long-lived and stored permanently. Versioning from day one enables schema evolution without breaking consumers.
+**Why it matters:** `__version__` defaults to `1`, so both classes produce the event type `OrderPlaced.v1`. Writing it out keeps the version visible in the class for the day you add v2 and its upcaster.
 
-## 7. Raising Events Before State Changes
+## 5. Raising Events Before State Changes
 
 ### ❌ Wrong
 
@@ -251,7 +177,7 @@ class Order:
 
 This rule is for aggregates that store their state. An event-sourced aggregate works the other way. The business method raises the event, and an `@apply` method changes the state. See the `event-sourced-aggregate` skill.
 
-## 8. Raising Events for Failed Operations
+## 6. Raising Events for Failed Operations
 
 ### ❌ Wrong
 
@@ -290,9 +216,9 @@ class Order:
         ))
 ```
 
-**Why it matters:** Events represent successful state changes. Validation failures and errors should not produce events - they prevent state changes from occurring.
+**Why it matters:** Events represent successful state changes. Validation failures and errors prevent the state change, so they produce no event.
 
-## 9. Using Events for Queries
+## 7. Using Events for Queries
 
 ### ❌ Wrong
 
@@ -317,7 +243,7 @@ class Order:
 
 **Why it matters:** Events indicate state changes. Query operations that only read data should not raise events.
 
-## 10. Forgetting Identifiers
+## 8. Forgetting Identifiers
 
 ### ❌ Wrong
 
@@ -344,7 +270,7 @@ class OrderPlaced:
 
 **Why it matters:** The primary identifier field should be marked with `identifier=True` to indicate which field uniquely identifies the aggregate instance this event relates to.
 
-## 11. Missing Timestamps
+## 9. Missing Timestamps
 
 ### ❌ Wrong
 
@@ -370,9 +296,9 @@ class OrderPlaced:
     placed_at: DateTime(required=True)  # When did this happen?
 ```
 
-**Why it matters:** Events represent things that happened at a specific point in time. Always include a timestamp indicating when the event occurred.
+**Why it matters:** Protean stamps every event with the time it was raised, in `_metadata.headers.time`. Add a field such as `placed_at` when consumers need the time of the business change in the payload.
 
-## 12. Generic Event Names
+## 10. Generic Event Names
 
 ### ❌ Wrong
 
@@ -409,7 +335,7 @@ class OrderCancelled:  # Specific state transition
 
 **Why it matters:** Event names should clearly communicate what happened. Specific names make the domain model explicit and events self-documenting.
 
-## 13. Forgetting Required Fields
+## 11. Forgetting Required Fields
 
 ### ❌ Wrong
 
@@ -435,24 +361,6 @@ class OrderPlaced:
 ```
 
 **Why it matters:** Critical event fields should be marked as required. Events should always have complete, valid data.
-
-## Summary Checklist
-
-When creating events, ensure:
-
-- [ ] Event name is past-tense (OrderPlaced, not PlaceOrder)
-- [ ] Event specifies `part_of` parameter
-- [ ] Event only contains simple fields and value objects (no entities)
-- [ ] Event includes only necessary data
-- [ ] Event is immutable (no modification after creation)
-- [ ] Event has `__version__` attribute
-- [ ] Events are raised AFTER state changes (an event-sourced aggregate raises first, and `@apply` changes the state)
-- [ ] Events are only raised on success (not for failures)
-- [ ] Query methods don't raise events
-- [ ] Primary identifier marked with `identifier=True`
-- [ ] Event includes timestamp of when it occurred
-- [ ] Event name is specific and descriptive
-- [ ] Required fields are marked as `required=True`
 
 ## Related
 

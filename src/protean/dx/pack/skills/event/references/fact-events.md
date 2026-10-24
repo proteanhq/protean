@@ -2,44 +2,7 @@
 
 Fact events contain the complete state of an aggregate at a specific point in time. They enable the Event-carried State Transfer pattern, where consumers receive all necessary information without needing to track history or query for additional data.
 
-## Overview
-
-Unlike delta events that capture incremental changes, fact events provide a complete snapshot of aggregate state. This simplifies consumption for external systems that don't need to maintain event history or reconstruct state from multiple events.
-
-**When to use fact events:**
-- Communicating with external bounded contexts or systems
-- When consumers shouldn't build state from multiple delta events
-- Providing read models to external APIs or services
-- Simplifying consumer logic (no need to track event history)
-
-## Code
-
 The complete implementation is in [assets/event_fact.py](../assets/event_fact.py).
-
-Key highlights:
-- Generated with `@domain.aggregate(fact_events=True)`, no event class to write
-- Contains complete aggregate state
-- Enables Event-carried State Transfer pattern
-- Simplifies consumer logic
-- Larger payload but simpler consumption
-
-## Event-carried State Transfer Pattern
-
-The Event-carried State Transfer pattern means that events carry enough information for consumers to maintain their own local copy of data without needing to query back to the source system.
-
-### Benefits
-
-1. **Reduced coupling**: Consumers don't need to call back to the producer
-2. **Improved performance**: All data is in the event, no additional queries needed
-3. **Simplified consumer logic**: No need to track and replay multiple events
-4. **Better availability**: Consumers work even if producer is down
-
-### Trade-offs
-
-1. **Larger events**: More data in each event
-2. **Data duplication**: Same data sent to multiple consumers
-3. **Eventual consistency**: Consumers may temporarily have stale data
-4. **Schema evolution**: Changes affect all consumers
 
 ## Characteristics
 
@@ -104,18 +67,7 @@ with domain.domain_context():
 
 ## When to Use Fact Events
 
-### Use Fact Events When:
-
-1. **External consumers**: Other bounded contexts or systems need current state
-2. **Simplified consumption**: Consumers shouldn't need to maintain event history
-3. **Integration events**: Publishing to external systems or APIs
-
-### Use Delta Events When:
-
-1. **Event sourcing**: Reconstructing state by replaying events
-2. **Internal projections**: Building custom read models from event stream
-3. **Audit trail**: Detailed change history required
-4. **Minimal data transfer**: Bandwidth or storage constraints
+The table in [Delta Events](./delta-events.md#when-to-use-delta-events-vs-fact-events) compares the two kinds.
 
 ### Hybrid Approach
 
@@ -231,11 +183,8 @@ with domain.domain_context():
 
 ## Best Practices
 
-1. **Let Protean generate the event**: Use `fact_events=True` instead of writing a snapshot event by hand
-2. **Version carefully**: The event's fields follow the aggregate's fields, so changing the aggregate changes what every consumer receives
-3. **Read the timestamp from metadata**: `fact._metadata.headers.time` records when the save happened
-4. **Don't over-use**: Fact events are heavier than delta events
-5. **Document consumer expectations**: What data consumers should use
+1. **Version carefully**: The event's fields follow the aggregate's fields, so changing the aggregate changes what every consumer receives
+2. **Read the timestamp from metadata**: `fact._metadata.headers.time` records when the save happened
 
 ## Related
 
