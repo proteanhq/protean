@@ -82,8 +82,11 @@ def test_snippet_discovery_is_not_vacuous():
             )
     assert files, "discovered no Markdown files with python blocks"
     assert blocks == independent
+    # The floors catch a discovery change that silently drops most files. They
+    # sit well under the real totals, which fall when a pass cuts repeated
+    # examples; ``blocks == independent`` is what catches a skipped fence.
     assert len(files) >= 150
-    assert blocks >= 1300
+    assert blocks >= 1000
 
 
 def test_every_skill_snippet_runs_or_is_allowlisted(tmp_path):
