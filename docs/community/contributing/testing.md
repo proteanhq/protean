@@ -685,7 +685,7 @@ Protean enforces coverage constraints to ensure code quality:
 - Pull requests cannot reduce overall code coverage
 - Coverage is checked as part of the CI pipeline
 
-If a pull request leaves changed lines uncovered, the CI pipeline fails and the coverage report lists those lines. Meet the gate in one of two ways:
+If tests cover fewer than 96% of the lines a pull request changes, the `codecov/patch` check fails and the coverage report lists the uncovered lines. Meet the gate in one of two ways:
 
 - Write a test for a behaviour that runs the line, and assert what that behaviour does.
 - If no public path reaches the line, remove it, or mark it `# pragma: no cover` with the reason on the same line.
