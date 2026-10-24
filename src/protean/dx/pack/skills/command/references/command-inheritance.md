@@ -1,24 +1,10 @@
 # Command Inheritance
 
-Commands support inheritance through abstract base commands. This enables sharing common fields across related commands while keeping each command focused.
-
-## Overview
-
-Abstract commands define shared fields and behavior. Concrete commands extend them and add their own fields. This is useful for:
-
-- **Shared audit fields**: `performed_by`, `timestamp` across all commands
-- **Shared entity identifiers**: Common `entity_id` field
-- **Domain-specific base commands**: Group related commands under a common base
+An abstract base command holds fields that several commands share, such as audit fields (`performed_by`) or a common `entity_id`. Concrete commands extend it and add their own fields.
 
 ## Code
 
 The complete implementation is in [assets/command_inheritance.py](../assets/command_inheritance.py).
-
-Key highlights:
-- Abstract commands use `@domain.command(abstract=True)`
-- Abstract commands do NOT require `part_of` (they are base classes, never submitted)
-- Concrete commands inherit all parent fields
-- Multi-level inheritance is supported
 
 ## Defining Abstract Commands
 
@@ -44,11 +30,6 @@ class AbstractEntityCommand:
     reason: String(max_length=500)
 ```
 
-Abstract commands:
-- Are base classes only. Protean lets you build an instance, but it has no aggregate, so `domain.process()` fails on it
-- Do not require `part_of` parameter
-- Define fields that all child commands inherit
-
 ## Extending Abstract Commands
 
 ```python
@@ -63,8 +44,6 @@ class CreateProduct(AbstractEntityCommand):
 The concrete `CreateProduct` command has fields: `entity_id`, `reason`, `name`, `price`, `category`.
 
 ## Multi-Level Inheritance
-
-Commands can form deeper hierarchies:
 
 ```python
 @domain.command(abstract=True)
@@ -84,14 +63,7 @@ class DeactivateCustomer(AbstractCustomerCommand):
 
 ## When to Use Inheritance
 
-Use command inheritance when:
-- Multiple commands share the same fields (e.g., audit info)
-- You want to enforce that all commands in a domain area have certain fields
-- You are building a consistent command vocabulary for a bounded context
-
-Avoid when:
-- Commands have no meaningful shared structure
-- Only one or two commands would share the base (just duplicate the fields)
+Use a base command when many commands share the same fields, such as audit info. When only one or two commands would share it, repeat the fields instead.
 
 ## Inheritance Rules
 
@@ -100,7 +72,7 @@ Avoid when:
 3. Concrete commands MUST specify `part_of`
 4. Fields are inherited from all ancestors
 5. Concrete commands can override inherited field definitions
-6. Abstract commands are never submitted; submit a concrete subclass
+6. Abstract commands are never submitted. Protean lets you build an instance, but it has no aggregate, so `domain.process()` fails on it. Submit a concrete subclass.
 
 ## Related
 
