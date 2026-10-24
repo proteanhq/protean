@@ -79,7 +79,7 @@ comment = Comment(content="Great post!", author="John")
 domain.repository_for(Comment).add(comment)  # Wrong!
 ```
 
-`domain.repository_for(Comment)` does return a repository, and `add()` saves the comment with no post.
+Protean does not stop this: `domain.repository_for(Comment)` returns a repository, and `add()` saves the comment with no post. The comment is then an orphan outside its aggregate, and the post's invariants never ran.
 
 ✅ **Correct: Persist through the aggregate**
 
