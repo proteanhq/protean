@@ -1,17 +1,5 @@
 # Aggregate Configuration Options
 
-Aggregates are configured through options passed to the `@domain.aggregate` decorator.
-
-## Overview
-
-Configuration options control:
-- Whether the aggregate is abstract
-- Identity field behavior
-- Database/provider selection
-- Persistence schema naming
-- Custom model mapping
-- Event sourcing stream categories
-
 ## Passing options
 
 Pass every option as a keyword argument to the decorator:
@@ -66,11 +54,6 @@ with domain.domain_context():
         print("Abstract aggregates cannot be instantiated")
 ```
 
-**Use cases:**
-- Base classes with common fields
-- Template aggregates for inheritance hierarchies
-- Mixins for cross-cutting concerns
-
 **Related:** See [assets/aggregate_inheritance.py](../assets/aggregate_inheritance.py) for examples.
 
 ---
@@ -97,12 +80,7 @@ class Product:
 # No auto id field
 ```
 
-**Use cases:**
-- When you have natural identifiers (SKU, email, account number)
-- When migrating from legacy systems with existing IDs
-- When using composite keys (though not recommended)
-
-**Important:** If set to `False`, you must provide your own field with `identifier=True`.
+Use it for a natural identifier such as a SKU, an email or an account number. If set to `False`, declare your own field with `identifier=True`. Without one the aggregate has no identity field at all, and nothing raises at registration.
 
 **Related:** See [assets/aggregate_inheritance.py](../assets/aggregate_inheritance.py) for abstract base without ID.
 
@@ -142,13 +120,7 @@ class OrderReport:
     ...
 ```
 
-**Use cases:**
-- Microservices with separate databases
-- CQRS with separate read/write databases
-- Multi-tenant systems
-- Polyglot persistence (SQL + NoSQL)
-
-**Important:** At least one provider named `"default"` must be configured.
+At least one provider named `"default"` must be configured.
 
 ---
 
@@ -175,12 +147,6 @@ class UserAccount:
 class Order:
     ...
 ```
-
-**Use cases:**
-- Matching existing database schemas
-- Following specific naming conventions
-- Avoiding conflicts with reserved words
-- Backwards compatibility with legacy systems
 
 ---
 
@@ -209,12 +175,6 @@ class CustomUserModel(BaseDatabaseModel):
     email = Column(Text, unique=True)
 ```
 
-**Use cases:**
-- Complex database mappings not handled by auto-generation
-- Legacy database schemas
-- Performance optimizations (indexes, partitioning)
-- Database-specific features
-
 **Important:**
 - Register the model with `@domain.database_model(part_of=<Aggregate>)`.
 - Every column must match a field declared on the aggregate. A column for
@@ -227,35 +187,23 @@ class CustomUserModel(BaseDatabaseModel):
 ### `stream_category`
 
 **Type:** `str`
-**Default:** Snake-case version of class name
+**Default:** Snake-case version of class name, prefixed with the domain name
 
-Defines the logical grouping for messages (events/commands) related to the aggregate.
+Names the stream the aggregate's events and commands are written to. The event store, the handlers and the subscriptions all find the aggregate's messages by it. Protean prefixes the value with the domain name at registration, so in a domain named `test` the aggregate below has the category `test::order`.
 
 ```python
-# Default: stream category is "order"
+# Default: stream category is "<domain>::order"
 @domain.aggregate
 class Order:
     ...
 
-# Custom: stream category is "customer_orders"
+# Custom: stream category is "<domain>::customer_orders"
 @domain.aggregate(stream_category="customer_orders")
 class Order:
     ...
 ```
 
-The stream category is used by:
-- **Event Store**: To organize events in event sourcing
-- **Handlers**: To subscribe to the right message streams
-- **Brokers**: To route messages correctly
-- **Subscriptions**: To poll for new messages
-
-**Use cases:**
-- Grouping related aggregates under one stream
-- Organizing messages by business domain
-- Multi-tenant systems (e.g., `tenant_1_orders`)
-- Customizing event sourcing stream structure
-
-**Important for Event Sourcing:**
+**Event sourcing:**
 
 ```python
 # Event-sourced aggregate
@@ -266,8 +214,7 @@ The stream category is used by:
 class Order:
     ...
 
-# An explicit stream_category is still prefixed with the domain name at
-# registration, so in a domain named `test`:
+# In a domain named `test`:
 # Events are stored in: test::order-{aggregate_id}
 # Commands are sent to: test::order:command-{aggregate_id}
 ```
@@ -275,41 +222,6 @@ class Order:
 **Related:** See [Stream Categories](https://docs.proteanhq.com/concepts/async-processing/stream-categories/) documentation.
 
 ---
-
-## Example: Full Configuration
-
-```python
-@domain.aggregate(
-    abstract=False,
-    auto_add_id_field=True,
-    provider="orders_db",
-    schema_name="customer_orders",
-    stream_category="order"
-)
-class Order:
-    """Fully configured order aggregate."""
-
-    customer_id: Identifier(required=True)
-    status: String(max_length=20, default="draft")
-    total_amount: Decimal(precision=19, scale=4, default=0)
-    created_at: DateTime(default=utc_now)
-```
-
-This aggregate:
-- Is not abstract (can be instantiated)
-- Has an auto-generated `id` field
-- Is persisted to the `orders_db` provider
-- Uses the table/collection name `customer_orders`
-- Groups messages under the `order` stream category
-
-## Best Practices
-
-1. **Use abstract=True for base classes**: Prevent accidental instantiation
-2. **Keep auto_add_id_field=True unless necessary**: Natural IDs are rare
-3. **Use provider for database separation**: Keep reads/writes separate in CQRS
-4. **Customize schema_name for legacy integration**: Match existing schemas
-5. **Use custom models sparingly**: Let Protean handle mappings when possible
-6. **Use meaningful stream_category names**: Reflects business domain, not technical structure
 
 ## Common Patterns
 
@@ -320,32 +232,6 @@ This aggregate:
 class AuditedEntity:
     created_at: DateTime(default=utc_now)
     created_by: String(max_length=100)
-```
-
-### Multi-Database Setup
-
-```python
-@domain.aggregate(provider="write_db")
-class Order:
-    # Write model - normalized
-    ...
-
-@domain.aggregate(provider="read_db")
-class OrderSummary:
-    # Read model - denormalized
-    ...
-```
-
-### Custom Table Names for Legacy DB
-
-```python
-@domain.aggregate(schema_name="tbl_users")
-class User:
-    ...
-
-@domain.aggregate(schema_name="tbl_orders")
-class Order:
-    ...
 ```
 
 ## Related
