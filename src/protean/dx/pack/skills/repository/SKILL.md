@@ -1,6 +1,6 @@
 ---
 name: repository
-description: Define a Protean repository - the persistence abstraction for aggregates in Domain-Driven Design. Repositories provide a collection-oriented interface to load and persist aggregates, hiding database details behind a clean domain API. Protean provides a default repository automatically for every aggregate; custom repositories add domain-specific queries or database-specific optimizations. Use when you need to persist an aggregate, load an aggregate, write a custom repository, add a custom query, override the default repository, connect to a specific database, or implement the repository pattern. Repositories always belong to an aggregate and respect Unit of Work transactional semantics.
+description: Define a Protean repository, the persistence abstraction for aggregates in Domain-Driven Design. Repositories provide a collection-oriented interface to load and persist aggregates, hiding database details behind a clean domain API. Protean provides a default repository automatically for every aggregate; custom repositories add domain-specific queries or database-specific optimizations. Use when you need to persist an aggregate, load an aggregate, write a custom repository, add a custom query, override the default repository, connect to a specific database, or implement the repository pattern. Repositories always belong to an aggregate and respect Unit of Work transactional semantics.
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 ## Key concepts
 
-Repositories are the **gateway between your domain model and the persistence layer**. In DDD, repositories represent a collection of aggregates — you `add` to the collection and `get` from it, without exposing database internals to the domain.
+Repositories are the **gateway between your domain model and the persistence layer**. In DDD, repositories represent a collection of aggregates: you `add` to the collection and `get` from it, without exposing database internals to the domain.
 
 **Protean provides a default repository for every aggregate automatically.** You only need a custom repository when you want to add custom query methods or database-specific optimizations.
 
@@ -83,23 +83,16 @@ class OrderRepository:
 
 ## Key rules
 
-1. **Repositories always belong to an aggregate** - Specify `part_of` with the aggregate class, `@domain.repository(part_of=Order)`, or with a string reference, `@domain.repository(part_of="Order")`. A string resolves at `init`, so the aggregate may be defined after the repository
-2. **Default repository is automatic** - Every aggregate gets `add()` and `get()` for free; only write a custom repository when you need custom queries
-3. **Persist at the aggregate level** - Repositories save the entire aggregate including enclosed entities and value objects; never persist entities separately
-4. **Use `add()` for both create and update** - The repository's `add()` method handles both new and modified aggregates (collection semantics)
-5. **Use `get()` to load by identifier** - Loads the aggregate with all its children from the persistence store
-6. **Use the query helpers for custom queries** - Inside a custom repository, use `self.query` for filtering, sorting, and paging. `self.find_by()` loads one aggregate by its field values, `self.find()` runs a composable `Q` expression and returns one `ResultSet` page of matches, capped at the aggregate's `limit` (100 by default), with `total` carrying the full count. `self.exists()` returns a bool. Below these helpers sits a private data access object, kept for infrastructure work such as hard deletion and test teardown. [Custom Queries](references/custom-queries.md) names it and says when to use it
-7. **Repositories respect Unit of Work** - When inside a UoW (e.g., command handlers), changes commit together at UoW commit, atomically on providers with transactions
-8. **Database option controls provider binding** - Use `database` option to lock a repository to a specific database type (default is `"ALL"`)
-9. **Children are synced automatically** - HasMany/HasOne child entities are persisted/removed automatically when the aggregate is added
-10. **Custom repos inherit base methods** - Custom repositories still have `add()` and `get()` from `BaseRepository`; only add new methods
-
-## Repository options
-
-| Option | Purpose | Required | Default |
-|--------|---------|----------|---------|
-| `part_of` | Associate repository with an aggregate class | Yes | None |
-| `database` | Lock repository to a specific database type | No | `"ALL"` |
+1. **Repositories always belong to an aggregate**: Specify `part_of` with the aggregate class, `@domain.repository(part_of=Order)`, or with a string reference, `@domain.repository(part_of="Order")`. A string resolves at `init`, so the aggregate may be defined after the repository
+2. **Default repository is automatic**: Every aggregate gets `add()` and `get()` for free; only write a custom repository when you need custom queries
+3. **Persist at the aggregate level**: Repositories save the entire aggregate including enclosed entities and value objects; never persist entities separately
+4. **Use `add()` for both create and update**: The repository's `add()` method handles both new and modified aggregates (collection semantics)
+5. **Use `get()` to load by identifier**: Loads the aggregate with all its children from the persistence store
+6. **Use the query helpers for custom queries**: Inside a custom repository, use `self.query` for filtering, sorting, and paging. `self.find_by()` loads one aggregate by its field values, `self.find()` runs a composable `Q` expression and returns one `ResultSet` page of matches, capped at the aggregate's `limit` (100 by default), with `total` carrying the full count. `self.exists()` returns a bool. Below these helpers sits a private data access object, kept for infrastructure work such as hard deletion and test teardown. [Custom Queries](references/custom-queries.md) names it and says when to use it
+7. **Repositories respect Unit of Work**: When inside a UoW (e.g., command handlers), changes commit together at UoW commit, atomically on providers with transactions
+8. **Database option controls provider binding**: Use `database` option to lock a repository to a specific database type (default is `"ALL"`)
+9. **Children are synced automatically**: HasMany/HasOne child entities are persisted/removed automatically when the aggregate is added
+10. **Custom repos inherit base methods**: Custom repositories still have `add()` and `get()` from `BaseRepository`; only add new methods
 
 ## Quick example: Custom repository with queries
 
@@ -133,7 +126,7 @@ class ProductRepository:
 
 ## Counting and null-aware queries
 
-When you only need *how many* rows match, use `count()` — it issues a flat
+When you only need *how many* rows match, use `count()`. It issues a flat
 `COUNT` without materializing entities, so it is cheaper than `len(query.all())`:
 
 ```python
@@ -161,39 +154,7 @@ When you need the page of items but not the total match count, pass
 items = self.query.filter(status="open").all(with_total=False).items
 ```
 
-## Using repositories in handlers
-
-```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(PlaceOrder)
-    def handle_place_order(self, command):
-        order = Order(order_id=command.order_id, customer_id=command.customer_id)
-        order.place()
-        # Persist via repository — UoW handles transactional commit
-        domain.repository_for(Order).add(order)
-
-    @handle(CancelOrder)
-    def handle_cancel(self, command):
-        # Load existing aggregate
-        order = domain.repository_for(Order).get(command.order_id)
-        order.cancel()
-        domain.repository_for(Order).add(order)
-```
-
 ## Common mistakes
-
-### Writing a repository when the default suffices
-
-```python
-# fragment
-# Unnecessary! Protean provides this automatically
-@domain.repository(part_of=Order)
-class OrderRepository:
-    pass  # No custom methods — just use the default
-```
-
-Instead: Only create a custom repository when you need custom query methods
 
 ### Persisting child entities separately
 
@@ -205,31 +166,7 @@ class LineItemRepository:
     pass
 ```
 
-Instead: Persist at the aggregate level; child entities are synced automatically
-
-```python
-with domain.domain_context():
-    order = domain.repository_for(Order).get("ORD-001")
-    order.add_items(LineItem(product_id="PROD-1", quantity=2))
-    domain.repository_for(Order).add(order)  # LineItem is saved with the order
-```
-
-### Forgetting part_of
-
-```python
-# fragment
-@domain.repository  # Wrong! Missing part_of
-class OrderRepository:
-    pass
-```
-
-Instead: Always specify part_of with the aggregate class
-
-```python
-@domain.repository(part_of=Order)
-class OrderRepository:
-    pass
-```
+Instead: Persist at the aggregate level; child entities are synced automatically (Key rule 9).
 
 ### Wrapping repository calls in manual UnitOfWork inside handlers
 
@@ -249,25 +186,25 @@ own: its commit and rollback defer to the handler's.
 ## Detailed references
 
 ### Core Concepts
-- [Default Repository](references/default-repository.md) - How Protean auto-generates repositories
-- [Custom Queries](references/custom-queries.md) - Writing domain-specific query methods
-- [Database-Specific Repositories](references/database-specific.md) - Binding repositories to specific databases
-- [Unit of Work Integration](references/unit-of-work.md) - Transactional semantics and UoW
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Default Repository](references/default-repository.md): How Protean auto-generates repositories
+- [Custom Queries](references/custom-queries.md): Writing domain-specific query methods
+- [Database-Specific Repositories](references/database-specific.md): Binding repositories to specific databases
+- [Unit of Work Integration](references/unit-of-work.md): Transactional semantics and UoW
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Default Repository](assets/repository_default.py) - Using the auto-generated repository
-- [Custom Repository](assets/repository_custom.py) - Custom repository with domain-specific queries
-- [Repository with Children](assets/repository_with_children.py) - Persisting aggregates with child entities
-- [Database-Specific Repository](assets/repository_with_database.py) - Per-database repository binding
-- [Repository with Unit of Work](assets/repository_with_uow.py) - Explicit UoW usage outside handlers
-- [Counting and Null-Aware Queries](assets/repository_counting_and_nulls.py) - `count()`, `all(with_total=False)`, and the `isnull` lookup
+- [Default Repository](assets/repository_default.py): Using the auto-generated repository
+- [Custom Repository](assets/repository_custom.py): Custom repository with domain-specific queries
+- [Repository with Children](assets/repository_with_children.py): Persisting aggregates with child entities
+- [Database-Specific Repository](assets/repository_with_database.py): Per-database repository binding
+- [Repository with Unit of Work](assets/repository_with_uow.py): Explicit UoW usage outside handlers
+- [Counting and Null-Aware Queries](assets/repository_counting_and_nulls.py): `count()`, `all(with_total=False)`, and the `isnull` lookup
 
 ### Related Skills
-- `aggregate` - Repositories persist aggregates
-- `command-handler` - Command handlers use repositories to load and persist aggregates
-- `event-handler` - Event handlers use repositories for cross-aggregate coordination
-- `entity` - Entities enclosed within aggregates are persisted automatically via repositories
+- `aggregate`: Repositories persist aggregates
+- `command-handler`: Command handlers use repositories to load and persist aggregates
+- `event-handler`: Event handlers load and persist their own aggregate through its repository
+- `entity`: Entities enclosed within aggregates are persisted automatically via repositories
 
 ## Verify your work
 

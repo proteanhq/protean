@@ -61,4 +61,4 @@ Read the handler aloud. If it tells a **story** ("check this, calculate that, se
 
 ## Related
 
-- [anti-patterns.md](anti-patterns.md) — Common refactoring mistakes
+- [anti-patterns.md](anti-patterns.md): Common refactoring mistakes

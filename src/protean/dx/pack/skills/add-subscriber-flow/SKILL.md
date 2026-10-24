@@ -28,11 +28,11 @@ A subscriber flow bridges external systems with your domain. It consumes raw mes
 
 Before building a subscriber flow, understand:
 
-- [ ] **What external system sends messages?** — Payment gateway, ERP, third-party API, etc.
-- [ ] **What stream name to listen to?** — The broker stream name (e.g., `"payment_gateway"`, `"erp_events"`)
-- [ ] **What does the external payload look like?** — JSON structure, field names, conventions (camelCase, nested, etc.)
-- [ ] **What domain action should result?** — Create aggregate, update state, dispatch command
-- [ ] **What translation is needed?** — Field mapping, naming conventions, data transformation
+- [ ] **What external system sends messages?** Payment gateway, ERP, third-party API, etc.
+- [ ] **What stream name to listen to?** The broker stream name (e.g., `"payment_gateway"`, `"erp_events"`)
+- [ ] **What does the external payload look like?** JSON structure, field names, conventions (camelCase, nested, etc.)
+- [ ] **What domain action should result?** Create aggregate, update state, dispatch command
+- [ ] **What translation is needed?** Field mapping, naming conventions, data transformation
 
 ## Process
 
@@ -55,10 +55,10 @@ class PaymentSubscriber:
 ```
 
 **Key rules for subscribers** (see [subscriber](../subscriber/SKILL.md)):
-- `stream` parameter is required — names the broker stream to listen to
-- `__call__(self, payload: dict)` — only method to implement
-- Payload is always a raw `dict` — no typed events, no Protean objects
-- Subscriber is the anti-corruption boundary — only place that knows external format
+- `stream` parameter is required: it names the broker stream to listen to
+- `__call__(self, payload: dict)`: Only method to implement
+- Payload is always a raw `dict`: no typed events, no Protean objects
+- Subscriber is the anti-corruption boundary, the only place that knows external format
 
 ### Step 2: Design the anti-corruption translation
 
@@ -153,22 +153,6 @@ with domain.domain_context():
     assert domain.repository_for(Order).get("ORD-002").status == "PENDING"
 ```
 
-## The anti-corruption layer (ACL)
-
-The ACL is a DDD pattern that protects your domain from external system changes:
-
-```
-External System → [Broker Stream] → Subscriber (ACL) → Domain Command/Aggregate
-                                     ↑
-                                     Only place that knows external format
-```
-
-**Why ACL matters:**
-- External formats change without notice — the ACL absorbs changes
-- Domain language stays clean — no camelCase, no external IDs leaking in
-- Single point of translation — when the external system changes, only the subscriber changes
-- Domain remains testable — test domain logic without external system dependencies
-
 ## Common external payload patterns
 
 | External System | Typical Format | Translation Needed |
@@ -213,7 +197,7 @@ def __call__(self, payload: PaymentConfirmed) -> None:
     ...
 ```
 
-Instead: `def __call__(self, payload: dict)` — it is always a raw dict from the broker.
+Instead: `def __call__(self, payload: dict)`. It is always a raw dict from the broker.
 
 ### Forgetting sync processing in tests
 
@@ -221,28 +205,28 @@ Instead: `def __call__(self, payload: dict)` — it is always a raw dict from th
 # fragment
 # Wrong! Nothing processes the published message
 domain.brokers["default"].publish("payment_gateway", {"order_id": "O-1"})
-assert order.is_paid  # fails — subscriber never ran
+assert order.is_paid  # fails: subscriber never ran
 ```
 
 Instead: set `domain.config["message_processing"] = "sync"` (and `command_processing` if you dispatch commands) in tests.
 
 ## Complete examples
 
-- [Subscriber with command dispatch](assets/subscriber_with_command.py) — Full ACL: external event → command → handler → aggregate
-- [Subscriber with direct update](assets/subscriber_direct_update.py) — Simple: external webhook → aggregate update
-- [Subscriber with event routing](assets/subscriber_event_routing.py) — Multiple external event types routed to different handlers
+- [Subscriber with command dispatch](assets/subscriber_with_command.py): Full ACL: external event → command → handler → aggregate
+- [Subscriber with direct update](assets/subscriber_direct_update.py): Simple: external webhook → aggregate update
+- [Subscriber with event routing](assets/subscriber_event_routing.py): Multiple external event types routed to different handlers
 
 ## Detailed references
 
-- [Anti-Corruption Layer Pattern](references/anti-corruption-layer.md) — ACL design principles and translation strategies
-- [External Integration Patterns](references/external-integration.md) — Command dispatch vs direct update patterns
+- [Anti-Corruption Layer Pattern](references/anti-corruption-layer.md): ACL design principles and translation strategies
+- [External Integration Patterns](references/external-integration.md): Command dispatch vs direct update patterns
 
 ## Related skills
 
-- [subscriber](../subscriber/SKILL.md) — Subscriber definition and stream configuration
-- [command](../command/SKILL.md) — Command definition for translated actions
-- [command-handler](../command-handler/SKILL.md) — Processing translated commands
-- [add-use-case](../add-use-case/SKILL.md) — Full command flow (complement to subscriber flow)
+- [subscriber](../subscriber/SKILL.md): Subscriber definition and stream configuration
+- [command](../command/SKILL.md): Command definition for translated actions
+- [command-handler](../command-handler/SKILL.md): Processing translated commands
+- [add-use-case](../add-use-case/SKILL.md): Full command flow (complement to subscriber flow)
 
 ## Verify your work
 

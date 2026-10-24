@@ -4,7 +4,7 @@ Protean supports binding repositories to specific database types, allowing you t
 
 ## Overview
 
-By default, a repository works with ALL databases (`database="ALL"`). When you need to optimize for a specific database — e.g., PostgreSQL-specific features like JSON operators, full-text search, or materialized views — you can create a database-specific repository.
+By default, a repository works with ALL databases (`database="ALL"`). When you need to optimize for a specific database (for example, PostgreSQL-specific features like JSON operators, full-text search, or materialized views), you can create a database-specific repository.
 
 Protean automatically selects the correct repository based on the active database provider.
 
@@ -63,13 +63,13 @@ You can have both a generic and a database-specific repository:
 ```python
 @domain.repository(part_of=Report)  # database="ALL" (default)
 class ReportRepository:
-    """Generic repository — used for SQLite, in-memory, etc."""
+    """Generic repository: used for SQLite, in-memory, etc."""
     def find_by_type(self, report_type):
         return self.query.filter(report_type=report_type).all()
 
 @domain.repository(part_of=Report, database="postgresql")
 class PostgresReportRepository:
-    """PostgreSQL-specific — used when connected to PostgreSQL."""
+    """PostgreSQL-specific: used when connected to PostgreSQL."""
     def find_by_type(self, report_type):
         return self.query.filter(report_type=report_type).all()
 
@@ -118,6 +118,6 @@ Stick with `database="ALL"` when:
 - The application is in early development and the database isn't finalized
 
 ## Related
-- [Default Repository](./default-repository.md) - Auto-generated generic repository
-- [Custom Queries](./custom-queries.md) - Writing query methods
-- [Anti-patterns](./anti-patterns.md) - Common mistakes
+- [Default Repository](./default-repository.md): Auto-generated generic repository
+- [Custom Queries](./custom-queries.md): Writing query methods
+- [Anti-patterns](./anti-patterns.md): Common mistakes

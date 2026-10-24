@@ -1,6 +1,6 @@
 # Layer 2: Value Object Invariants
 
-Value object invariants enforce rules inherent to a domain concept — rules that must always be true for any instance of that concept, regardless of which aggregate uses it.
+Value object invariants enforce rules inherent to a domain concept: rules that must always be true for any instance of that concept, regardless of which aggregate uses it.
 
 ## Code
 
@@ -26,11 +26,11 @@ class Money:
 
 ## Key Principles
 
-1. **Only `@invariant.post`** — Value objects are immutable, so pre-invariants don't apply
-2. **One rule per invariant** — Keep them granular and focused
-3. **Descriptive names** — Name as business rules: `end_must_be_after_start`
-4. **Raise with field context** — Use `{"field_name": ["message"]}` format
-5. **Field constraints first** — Use `Decimal(precision=19, scale=4, min_value=0)` before writing an invariant
+1. **Only `@invariant.post`**: Value objects are immutable, so pre-invariants don't apply
+2. **One rule per invariant**: Keep them granular and focused
+3. **Descriptive names**: Name as business rules: `end_must_be_after_start`
+4. **Raise with field context**: Use `{"field_name": ["message"]}` format
+5. **Field constraints first**: Use `Decimal(precision=19, scale=4, min_value=0)` before writing an invariant
 
 ## When to Use Layer 2
 
@@ -74,5 +74,5 @@ def latitude_must_be_valid(self):
 
 ## Related
 
-- [Layer 1](./layer1-field-constraints.md) - Field constraints (use first)
-- [Layer 3](./layer3-aggregate-invariants.md) - Aggregate invariants
+- [Layer 1](./layer1-field-constraints.md): Field constraints (use first)
+- [Layer 3](./layer3-aggregate-invariants.md): Aggregate invariants

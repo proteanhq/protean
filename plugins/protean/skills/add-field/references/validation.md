@@ -5,9 +5,9 @@ This guide explains when and how to validate field data in Protean.
 ## Overview
 
 Protean provides three levels of validation:
-1. **Field-level validation** - Built-in parameters and custom validators
-2. **Invariants** - Business rules enforced on aggregates/entities/value objects
-3. **Method-level validation** - Parameter validation in methods
+1. **Field-level validation**: Built-in parameters and custom validators
+2. **Invariants**: Business rules enforced on aggregates/entities/value objects
+3. **Method-level validation**: Parameter validation in methods
 
 ## Field-Level Validation
 
@@ -200,7 +200,7 @@ class Account:
 
 ### Best Practices for Invariants
 
-1. **One rule per invariant** - Keep them granular
+1. **One rule per invariant**: Keep them granular
 ```python
 # Good: One rule
 @invariant.post
@@ -223,7 +223,7 @@ def balance_rules(self):
         raise ValidationError({"_entity": ["Balance exceeds limit"]})
 ```
 
-2. **Use descriptive names** - Name should describe the rule
+2. **Use descriptive names**: Name should describe the rule
 ```python
 # Good
 @invariant.post
@@ -236,7 +236,7 @@ def validate_discount(self):
     ...
 ```
 
-3. **Prefer post over pre** - Use post for most validations
+3. **Prefer post over pre**: Use post for most validations
 ```python
 # Good: Post invariant for final state
 @invariant.post
@@ -567,6 +567,6 @@ def shipped_order_must_have_tracking(self):
 
 ## See Also
 
-- [Field Types Guide](field-types.md) - Available field types
+- [Field Types Guide](field-types.md): Available field types
 - [Complete validator example](../assets/add_field_with_custom_validator.py)
 - [Protean documentation on validators](https://docs.proteanhq.com/reference/fields/arguments/#validators)

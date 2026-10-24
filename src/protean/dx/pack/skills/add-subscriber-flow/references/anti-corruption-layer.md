@@ -68,7 +68,7 @@ user_id = data["data"]["user"]["id"]
 
 ## Key principles
 
-1. **Only the subscriber knows the external format** — never expose external field names to domain code
-2. **Domain stays clean** — commands and aggregates use domain language
-3. **Single responsibility** — one subscriber per external system/stream
-4. **Testable** — test the subscriber translation separately from domain logic
+1. **Only the subscriber knows the external format**: Never expose external field names to domain code
+2. **Domain stays clean**: Commands and aggregates use domain language
+3. **Single responsibility**: One subscriber per external system/stream
+4. **Testable**: Test the subscriber translation separately from domain logic

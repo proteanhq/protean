@@ -3,7 +3,7 @@ Customer aggregate with primitive address fields (before extraction).
 
 Demonstrates a common multi-field group that should be an Address value object.
 The same field group appears on both Customer (billing) and Order (shipping),
-showing cross-aggregate repetition — the strongest VO extraction signal.
+showing cross-aggregate repetition: the strongest VO extraction signal.
 """
 
 from protean import Domain

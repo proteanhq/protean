@@ -142,6 +142,6 @@ See [projection_persistence.py](../assets/projection_persistence.py) for a compl
 
 ## Related
 
-- [Basic Projection](basic-projection.md) - Defining projections
-- [Configuration Options](configuration-options.md) - Storage and query configuration
-- `projector` - Projectors that populate projections
+- [Basic Projection](basic-projection.md): Defining projections
+- [Configuration Options](configuration-options.md): Storage and query configuration
+- `projector`: Projectors that populate projections

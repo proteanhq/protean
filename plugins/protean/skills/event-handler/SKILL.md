@@ -1,6 +1,6 @@
 ---
 name: event-handler
-description: Define a Protean event handler - a class that consumes domain events raised by aggregates and runs side effects such as syncing state across aggregates, sending notifications, or triggering downstream processes. Event handlers are associated with an aggregate via part_of or with a stream via stream_category, and use the @handle decorator to process specific event types. They are fire-and-forget and return no values. Also covers cross-aggregate synchronization via events, keeping one aggregate per transaction. Use when you need to react to a domain event, handle an event, process events from another aggregate, sync state between aggregates, implement eventual consistency, add notifications or side effects for domain events, or when the user asks to "create an event handler", "handle an event", "react to an event", "sync aggregates", "add a listener for events", "update another aggregate when X happens", "add cross-aggregate coordination", "when order ships reduce inventory", or "add an event-driven sync".
+description: Define a Protean event handler, a class that consumes domain events raised by aggregates and runs side effects such as syncing state across aggregates, sending notifications, or triggering downstream processes. Event handlers are associated with an aggregate via part_of or with a stream via stream_category, and use the @handle decorator to process specific event types. They are fire-and-forget and return no values. Also covers cross-aggregate synchronization via events, keeping one aggregate per transaction. Use when you need to react to a domain event, handle an event, process events from another aggregate, sync state between aggregates, implement eventual consistency, add notifications or side effects for domain events, or when the user asks to "create an event handler", "handle an event", "react to an event", "sync aggregates", "add a listener for events", "update another aggregate when X happens", "add cross-aggregate coordination", "when order ships reduce inventory", or "add an event-driven sync".
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -14,6 +14,8 @@ metadata:
 ---
 
 # Event Handler
+
+An event handler runs side effects when an aggregate raises an event: it updates its own aggregate, or hands a change to another aggregate with a command. This skill defines handlers, their options, and the cross-aggregate pattern.
 
 ## Basic structure
 
@@ -50,15 +52,15 @@ class OrderEventHandler:
 
 ## Key rules
 
-1. **part_of or stream_category required** - Handler must be associated with an aggregate or stream: `@domain.event_handler(part_of=Order)`
-2. **Use @handle decorator** - Each handler method is decorated with `@handle(EventClass)` or `@handle("$any")`
-3. **Handler methods take self and event** - Signature: `def method_name(self, event: EventClass)`
-4. **No return values** - Event handlers do NOT return values (CQRS pattern, fire-and-forget)
-5. **Implicit UnitOfWork** - `@handle` wraps every handler invocation in its own Unit of Work, which is one real database transaction on a provider with transactions, such as the SQL databases. A handler method that reaches no repository opens no transaction. On a version conflict (`ExpectedVersionError`) the whole method runs again: with the default `max_retries=3` it runs up to 4 times in total, with waits that double between runs. Each run opens its own Unit of Work, or joins an outer one if the handler runs inside it. Configure it under `server.version_retry`
-6. **Multiple handlers per event** - Unlike commands, multiple event handlers can process the same event
-7. **Import handle from protean** - `from protean import handle` (not from protean.core)
-8. **part_of uses class reference** - Handler uses `part_of=AggregateClass` by convention. A string reference (`part_of="AggregateName"`) also works and resolves at `init`, so the aggregate may be defined after the handler
-9. **Hand off to another aggregate with a command** - To change aggregate B when aggregate A raises an event, put the handler in A's cluster (`part_of=A`, no `stream_category`) and have it call `current_domain.process(...)` with a command that belongs to B. B's command handler does the write. A handler in B's cluster that reacts to A's event is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`
+1. **part_of or stream_category required**: Handler must be associated with an aggregate or stream: `@domain.event_handler(part_of=Order)`
+2. **Use @handle decorator**: Each handler method is decorated with `@handle(EventClass)` or `@handle("$any")`
+3. **Handler methods take self and event**: Signature: `def method_name(self, event: EventClass)`
+4. **No return values**: Event handlers do NOT return values (CQRS pattern, fire-and-forget)
+5. **Implicit UnitOfWork**: `@handle` wraps every handler invocation in its own Unit of Work, which is one real database transaction on a provider with transactions, such as the SQL databases. A handler method that reaches no repository opens no transaction. On a version conflict (`ExpectedVersionError`) the whole method runs again: with the default `max_retries=3` it runs up to 4 times in total, with waits that double between runs. Each run opens its own Unit of Work, or joins an outer one if the handler runs inside it. Configure it under `server.version_retry`
+6. **Multiple handlers per event**: Unlike commands, multiple event handlers can process the same event
+7. **Import handle from protean**: `from protean import handle` (not from protean.core)
+8. **part_of uses class reference**: Handler uses `part_of=AggregateClass` by convention. A string reference (`part_of="AggregateName"`) also works and resolves at `init`, so the aggregate may be defined after the handler
+9. **Hand off to another aggregate with a command**: To change aggregate B when aggregate A raises an event, put the handler in A's cluster (`part_of=A`, no `stream_category`) and have it call `current_domain.process(...)` with a command that belongs to B. B's command handler does the write. A handler in B's cluster that reacts to A's event is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`
 
 ## Handler options
 
@@ -75,29 +77,6 @@ class OrderEventHandler:
 | `subscription_profile` | `None` | `SubscriptionProfile` preset for the subscription (`PRODUCTION`, `FAST`, `BATCH`, `DEBUG`, `PROJECTION`). `None` uses the default |
 | `subscription_config` | `{}` | Custom subscription settings, such as `messages_per_tick`, that override the type and profile defaults |
 | `suppress_checks` | `()` | Diagnostic codes `protean check` should not report for this handler |
-
-## Quick example: Cross-aggregate handler
-
-The handler sits in `Order`'s cluster, because `OrderShipped` belongs to `Order`.
-It changes `Inventory` by issuing a `ReduceStock` command, which `Inventory`'s
-command handler processes. This is an excerpt: the event, both aggregates and
-the command are defined in
-[Building a cross-aggregate handler](#building-a-cross-aggregate-handler).
-
-```python
-# fragment
-@domain.event_handler(part_of=Order)
-class ManageInventory:
-    @handle(OrderShipped)
-    def reduce_stock_level(self, event: OrderShipped):
-        current_domain.process(
-            ReduceStock(
-                order_id=event.order_id,
-                product_id=event.product_id,
-                quantity=event.quantity,
-            )
-        )
-```
 
 ## Quick example: Multiple events
 
@@ -214,14 +193,7 @@ while maintaining the **one aggregate per transaction** rule.
 
 ### The principle
 
-Never modify two aggregates in the same handler. Instead:
-
-1. **Aggregate A** raises a domain event when its state changes
-2. An **event handler in A's cluster** (`part_of=A`) reacts to that event
-3. The handler issues a **command** that belongs to **Aggregate B**
-4. B's **command handler** loads B and updates it. With async command processing it runs in a
-   **separate transaction** (eventual consistency). With sync command processing, as in tests, it
-   runs inside the event handler's unit of work and commits with it
+Never modify two aggregates in the same handler. Hand the change to the other aggregate with a command (Key rule 9), and put enough data in the event that the handler does not need to load the source aggregate. With async command processing, the other aggregate's command handler runs in a **separate transaction** (eventual consistency). With sync command processing, as in tests, it runs inside the event handler's unit of work and commits with it.
 
 | Approach | Correct? | Why |
 |----------|----------|-----|
@@ -267,13 +239,6 @@ Keys like `f"{order_id}:{product_id}"` and message ids are strings, not UUIDs.
 A guard that stores them as B's identity needs the default
 `identity_type` (`"string"`). With `identity_type="uuid"`, the database
 rejects them.
-
-### Designing for eventual consistency
-
-- **Include enough data in events**: the handler should not need to load the source aggregate
-- **Make the receiving command handler safe to repeat**: see the section above
-- **Accept brief staleness**: the UI might show slightly outdated data
-- Use `domain.config["event_processing"] = "sync"` and `domain.config["command_processing"] = "sync"` for deterministic testing
 
 ### Common patterns
 
@@ -362,23 +327,6 @@ class InventorySyncHandler:
 
 ## Common mistakes
 
-### Missing part_of and stream_category
-
-```python
-# fragment
-@domain.event_handler  # Wrong! Missing both part_of and stream_category
-class OrderEventHandler:
-    pass
-```
-
-Instead: Always specify at least part_of or stream_category
-
-```python
-@domain.event_handler(part_of=Order)  # Correct!
-class OrderEventHandler:
-    pass
-```
-
 ### Handling another cluster's event (`EVENT_HANDLER_FOREIGN_EVENT`)
 
 ```python
@@ -397,17 +345,6 @@ The handler belongs to `Inventory` but reacts to `Order`'s event, so the two
 clusters are coupled directly. Instead: put the handler in `Order`'s cluster and
 issue a `ReduceStock` command, as in
 [Building a cross-aggregate handler](#building-a-cross-aggregate-handler).
-
-### Returning values from event handlers
-
-```python
-# fragment
-@handle(OrderPlaced)
-def handle(self, event):
-    return order  # Wrong! Return value is discarded
-```
-
-Instead: Update aggregates or emit new events to communicate results
 
 ### Manually wrapping in UnitOfWork
 
@@ -448,30 +385,30 @@ Instead: Keep business logic in the aggregate (an `order.confirm()` method), han
 ## Detailed references
 
 ### Core Concepts
-- [Same-Aggregate Handling](references/same-aggregate.md) - Handler processes events from its own aggregate
-- [Cross-Aggregate Handling](references/cross-aggregate.md) - Handler in the event's own cluster changes another aggregate through a command
-- [Eventual Consistency](references/eventual-consistency.md) - Trade-offs and guarantees
-- [Cross-Aggregate Patterns](references/cross-aggregate-patterns.md) - Common sync scenarios
-- [Error Handling](references/error-handling.md) - Custom error recovery with handle_error
-- [Catch-All ($any) Handler](references/any-handler.md) - Processing any event on the stream
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Same-Aggregate Handling](references/same-aggregate.md): Handler processes events from its own aggregate
+- [Cross-Aggregate Handling](references/cross-aggregate.md): Handler in the event's own cluster changes another aggregate through a command
+- [Eventual Consistency](references/eventual-consistency.md): Trade-offs and guarantees
+- [Cross-Aggregate Patterns](references/cross-aggregate-patterns.md): Common sync scenarios
+- [Error Handling](references/error-handling.md): Custom error recovery with handle_error
+- [Catch-All ($any) Handler](references/any-handler.md): Processing any event on the stream
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Same-Aggregate Handler](assets/event_handler_same_aggregate.py) - Handler for its own aggregate's events
-- [Cross-Aggregate Handler](assets/event_handler_cross_aggregate.py) - Order's handler sends Inventory a command when an order ships
-- [Order-Inventory Sync](assets/cross_sync_order_inventory.py) - OrderShipped reduces Inventory stock
-- [Payment-Subscription Sync](assets/cross_sync_payment_subscription.py) - PaymentConfirmed activates Subscription
-- [Multi-Event Sync](assets/cross_sync_multi_event.py) - Multiple events from one source trigger different target updates
-- [Multiple Events](assets/event_handler_multiple_events.py) - Handler with multiple @handle methods
-- [Error Handling](assets/event_handler_error_handling.py) - Custom handle_error classmethod
-- [Catch-All Handler](assets/event_handler_any_event.py) - @handle("$any") for all events
+- [Same-Aggregate Handler](assets/event_handler_same_aggregate.py): Handler for its own aggregate's events
+- [Cross-Aggregate Handler](assets/event_handler_cross_aggregate.py): Order's handler sends Inventory a command when an order ships
+- [Order-Inventory Sync](assets/cross_sync_order_inventory.py): OrderShipped reduces Inventory stock
+- [Payment-Subscription Sync](assets/cross_sync_payment_subscription.py): PaymentConfirmed activates Subscription
+- [Multi-Event Sync](assets/cross_sync_multi_event.py): Multiple events from one source trigger different target updates
+- [Multiple Events](assets/event_handler_multiple_events.py): Handler with multiple @handle methods
+- [Error Handling](assets/event_handler_error_handling.py): Custom handle_error classmethod
+- [Catch-All Handler](assets/event_handler_any_event.py): @handle("$any") for all events
 
 ### Related Skills
-- [event](../event/SKILL.md) - Events are the input to event handlers
-- [aggregate](../aggregate/SKILL.md) - Event handlers are always connected to aggregates
-- [command-handler](../command-handler/SKILL.md) - Analogous pattern for commands, and the write path a cross-aggregate handler hands off to
-- [process-manager](../process-manager/SKILL.md) - Flows with several causally dependent steps across aggregates
-- [refactor-introduce-events](../refactor-introduce-events/SKILL.md) - Refactoring direct calls into event-driven flows
+- [event](../event/SKILL.md): Events are the input to event handlers
+- [aggregate](../aggregate/SKILL.md): Event handlers are always connected to aggregates
+- [command-handler](../command-handler/SKILL.md): Analogous pattern for commands, and the write path a cross-aggregate handler hands off to
+- [process-manager](../process-manager/SKILL.md): Flows with several causally dependent steps across aggregates
+- [refactor-introduce-events](../refactor-introduce-events/SKILL.md): Refactoring direct calls into event-driven flows
 
 ## Verify your work
 

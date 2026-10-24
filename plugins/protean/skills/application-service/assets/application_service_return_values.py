@@ -104,18 +104,18 @@ if __name__ == "__main__":
     with domain.domain_context():
         svc = ProductApplicationServices()
 
-        # Create — returns ID
+        # Create: returns ID
         product_id = svc.create_product(name="Widget", sku="WDG-001", price=29.99)
         print(f"Created product ID: {product_id}")
 
-        # Update price — returns None
+        # Update price: returns None
         result = svc.update_price(product_id=product_id, new_price=34.99)
         print(f"Update result: {result}")
 
-        # Activate — returns status string
+        # Activate: returns status string
         status = svc.activate_product(product_id=product_id)
         print(f"Product status: {status}")
 
-        # Get — returns aggregate
+        # Get: returns aggregate
         product = svc.get_product(product_id=product_id)
         print(f"Product: {product.name}, ${product.price}, {product.status}")

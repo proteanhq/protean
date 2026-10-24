@@ -406,6 +406,6 @@ class OrderPlaced:
 
 ## Related
 
-- [Delta Events](./delta-events.md) - Incremental state changes
-- [Fact Events](./fact-events.md) - Complete state snapshots
-- [Anti-patterns](./anti-patterns.md) - Common versioning mistakes
+- [Delta Events](./delta-events.md): Incremental state changes
+- [Fact Events](./fact-events.md): Complete state snapshots
+- [Anti-patterns](./anti-patterns.md): Common versioning mistakes

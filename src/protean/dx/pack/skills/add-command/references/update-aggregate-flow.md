@@ -142,5 +142,5 @@ When the aggregate's business method raises an error (e.g., "Cannot cancel after
 
 ## Related
 
-- [Create-aggregate flow](./create-aggregate-flow.md) - For creating new aggregates
-- [Multiple commands flow](./multiple-commands-flow.md) - Adding many commands to one aggregate
+- [Create-aggregate flow](./create-aggregate-flow.md): For creating new aggregates
+- [Multiple commands flow](./multiple-commands-flow.md): Adding many commands to one aggregate

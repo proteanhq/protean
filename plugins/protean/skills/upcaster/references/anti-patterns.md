@@ -27,7 +27,7 @@ class OrderPlaced:
 
 ```python
 # fragment
-# WRONG — if v2 events exist in the event store, they won't be upcast
+# WRONG: if v2 events exist in the event store, they won't be upcast
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=3)
 class SkipV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
@@ -62,7 +62,7 @@ class V2ToV3(BaseUpcaster):
 
 ```python
 # fragment
-# WRONG — runs on every deserialization, can be called thousands of times
+# WRONG: runs on every deserialization, can be called thousands of times
 class SlowUpcaster(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         customer = database.get_customer(data["customer_id"])
@@ -96,7 +96,7 @@ class V1ToV2(BaseUpcaster):
 
 ```python
 # fragment
-# WRONG — "total" changed from tax-inclusive to tax-exclusive
+# WRONG: "total" changed from tax-inclusive to tax-exclusive
 # Old events: total = 110.00 (includes $10 tax)
 # New events: total = 100.00 (excludes tax)
 class ChangeSemantics(BaseUpcaster):
@@ -135,7 +135,7 @@ class TaxedInvoiceIssued:
 
 ```python
 # fragment
-# WRONG — event_type must be the current class
+# WRONG: event_type must be the current class
 @domain.upcaster(event_type=OrderPlacedV1, from_version=1, to_version=2)
 ```
 
@@ -190,7 +190,7 @@ class UpcastOrderShippedV1ToV2(BaseUpcaster):
 
 ```python
 # fragment
-# WRONG — different results on different runs
+# WRONG: different results on different runs
 from datetime import datetime
 
 class NonDeterministic(BaseUpcaster):

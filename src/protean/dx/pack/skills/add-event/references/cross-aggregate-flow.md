@@ -193,7 +193,7 @@ When testing cross-aggregate event flows:
 5. Process the same command again and verify the target did not change a second time
 
 ## Related
-- [Same-aggregate event flow](./same-aggregate-flow.md) - Handler on the same aggregate
-- [Multiple events flow](./multiple-events-flow.md) - Multiple events from one aggregate
-- [event-handler skill](../../event-handler/SKILL.md) - Full handler reference
-- [command-handler skill](../../command-handler/SKILL.md) - The target's write path
+- [Same-aggregate event flow](./same-aggregate-flow.md): Handler on the same aggregate
+- [Multiple events flow](./multiple-events-flow.md): Multiple events from one aggregate
+- [event-handler skill](../../event-handler/SKILL.md): Full handler reference
+- [command-handler skill](../../command-handler/SKILL.md): The target's write path

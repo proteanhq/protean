@@ -305,13 +305,13 @@ def test_money_is_positive():
 
 ## Best Practices
 
-1. **Return new instances** - Never modify self, always return new value object
-2. **Validate operations** - Check preconditions (same currency, non-zero divisor)
-3. **Use type hints** - Make operations self-documenting
-4. **Keep methods focused** - One operation per method
-5. **Name methods clearly** - `add`, `subtract`, `multiply` not `calc` or `process`
-6. **Provide properties** - For derived/computed values
-7. **Test thoroughly** - Operations are where bugs appear
+1. **Return new instances**: Never modify self, always return new value object
+2. **Validate operations**: Check preconditions (same currency, non-zero divisor)
+3. **Use type hints**: Make operations self-documenting
+4. **Keep methods focused**: One operation per method
+5. **Name methods clearly**: `add`, `subtract`, `multiply` not `calc` or `process`
+6. **Provide properties**: For derived/computed values
+7. **Test thoroughly**: Operations are where bugs appear
 
 ## Common Mistakes
 
@@ -341,7 +341,7 @@ def add(self, other: "Money"):  # Missing return type
 
 ## Related
 
-- [Value Objects with Validation](./with-validation.md) - Field-level validation
-- [Value Objects with Invariants](./with-invariants.md) - Cross-field validation
-- [Equality and Immutability](./equality-and-immutability.md) - Core concepts
-- [Anti-patterns](./anti-patterns.md) - What not to do
+- [Value Objects with Validation](./with-validation.md): Field-level validation
+- [Value Objects with Invariants](./with-invariants.md): Cross-field validation
+- [Equality and Immutability](./equality-and-immutability.md): Core concepts
+- [Anti-patterns](./anti-patterns.md): What not to do

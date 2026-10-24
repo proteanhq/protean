@@ -150,13 +150,13 @@ The consecutive-characters validator never runs for this value.
 
 ## Best Practices
 
-1. **Order decides which error the user sees** — Put the most basic or cheapest check first, such as the format check before a business rule.
-2. **Keep each validator focused** — One rule per validator class
-3. **Name validators clearly** — `ReservedWordValidator` not `Validator2`
-4. **Pre-instantiate validators** — Create instances outside the class definition for clarity
+1. **Order decides which error the user sees**: Put the most basic or cheapest check first, such as the format check before a business rule.
+2. **Keep each validator focused**: One rule per validator class
+3. **Name validators clearly**: `ReservedWordValidator` not `Validator2`
+4. **Pre-instantiate validators**: Create instances outside the class definition for clarity
 
 ## Related
 
-- [Basic Validators](./basic-validators.md) - Building individual validators
-- [Regex Validators](./regex-validators.md) - Using RegexValidator in compositions
-- [Parameterized Validators](./parameterized-validators.md) - Configurable validators for composition
+- [Basic Validators](./basic-validators.md): Building individual validators
+- [Regex Validators](./regex-validators.md): Using RegexValidator in compositions
+- [Parameterized Validators](./parameterized-validators.md): Configurable validators for composition

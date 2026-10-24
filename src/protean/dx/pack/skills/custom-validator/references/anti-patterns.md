@@ -31,7 +31,7 @@ cannot express rules that span fields.
 
 ```python
 # fragment
-# WRONG — a validator can't reach end_date
+# WRONG: a validator can't reach end_date
 class AfterStartValidator:
     def __call__(self, value):  # only gets one value
         if value < self.start:  # self.start isn't the sibling field
@@ -62,7 +62,7 @@ class MaxLenValidator:
 ```
 
 ```python
-# RIGHT — use the field parameter
+# RIGHT: use the field parameter
 name: String(max_length=50)
 ```
 
@@ -75,7 +75,7 @@ A validator with baked-in constants only works in one place.
 
 ```python
 # fragment
-# WRONG — only ever validates these domains
+# WRONG: only ever validates these domains
 class EmailDomainValidator:
     def __call__(self, value):
         if value.split("@")[-1] not in ("acme.com",):
@@ -83,7 +83,7 @@ class EmailDomainValidator:
 ```
 
 ```python
-# RIGHT — configurable, reusable across fields
+# RIGHT: configurable, reusable across fields
 class AllowedDomainValidator:
     def __init__(self, allowed):
         self.allowed = allowed
@@ -99,7 +99,7 @@ write slow and couples the domain to infrastructure.
 
 ```python
 # fragment
-# WRONG — DB lookup on every set
+# WRONG: DB lookup on every set
 class UniqueEmailValidator:
     def __call__(self, value):
         if current_domain.repository_for(User).find_by(email=value):  # NO

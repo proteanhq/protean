@@ -143,6 +143,6 @@ Each run opens its own Unit of Work. When the handler runs inside an outer Unit 
 `@use_case` in an application service does not retry. It runs the method once.
 
 ## Related
-- [Default Repository](./default-repository.md) - Repository fundamentals
-- [Custom Queries](./custom-queries.md) - Query methods
-- [Anti-patterns](./anti-patterns.md) - Common UoW mistakes
+- [Default Repository](./default-repository.md): Repository fundamentals
+- [Custom Queries](./custom-queries.md): Query methods
+- [Anti-patterns](./anti-patterns.md): Common UoW mistakes

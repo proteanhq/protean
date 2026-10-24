@@ -2,7 +2,7 @@
 name: refactor-introduce-events
 description: >
   Introduce domain events to replace direct cross-aggregate calls, tight coupling, and synchronous
-  side effects. Detects transaction boundary violations — handlers that modify multiple aggregates —
+  side effects. Detects transaction boundary violations (handlers that modify multiple aggregates)
   and refactors them into event-driven flows with proper aggregate isolation. Use when the user
   says "introduce events", "add events", "decouple aggregates", "fix transaction boundary",
   "two aggregates in one handler", "make it event-driven", "break the coupling",
@@ -40,7 +40,7 @@ proper transaction boundaries and enabling eventual consistency.
 
 ### Transaction boundary violation
 
-The primary signal — a handler that modifies two or more aggregate types:
+The primary signal is a handler that modifies two or more aggregate types:
 
 ```python
 # fragment
@@ -94,13 +94,7 @@ class Order:
 
 ### Step 1: Identify the boundary violation
 
-Map which aggregates are modified in the handler:
-
-```
-place_order handler:
-  ├── Order (create + persist)     ← Source aggregate
-  └── Inventory (load + mutate + persist)  ← Should be event-driven
-```
+List the aggregates the handler modifies. The one the command belongs to is the source; each other one becomes event-driven.
 
 The steps below use the handler's `PlaceOrder` command, the `Inventory` aggregate
 it reaches into, and the `ReserveStock` command that `Inventory` will handle:
@@ -148,7 +142,7 @@ class OrderPlaced:
     total_amount = Float(required=True)
 ```
 
-**Event naming**: past tense of what happened — `OrderPlaced`, `PaymentProcessed`, `TicketEscalated`.
+**Event naming**: past tense of what happened: `OrderPlaced`, `PaymentProcessed`, `TicketEscalated`.
 
 **Event fields**: include everything the event handler needs. The handler shouldn't need to
 look up the source aggregate to get context.
@@ -239,7 +233,7 @@ dependent steps, use a [process manager](../process-manager/SKILL.md).
 
 ### Step 5: Slim down the command handler
 
-Remove the cross-aggregate logic — the event handler takes over:
+Remove the cross-aggregate logic. The event handler takes over:
 
 ```python
 @domain.command_handler(part_of=Order)
@@ -269,124 +263,14 @@ during tests.
 
 ## Common mistakes
 
-1. **Event too thin** — Including only the aggregate ID in the event forces the handler
-   to look up the source aggregate, defeating the purpose. Include all data the handler needs.
-
-2. **Event too fat** — Including the entire aggregate state in every event wastes space
+1. **Event too fat**: Including the entire aggregate state in every event wastes space
    and couples consumers to the full schema. Include only what changed and context needed.
 
-3. **Putting the event handler in the target's cluster.** A handler with
-   `part_of=Inventory` that handles `OrderPlaced` is what `check` reports as
-   `EVENT_HANDLER_FOREIGN_EVENT`. Keep the handler in `Order`'s cluster and hand
-   off to `Inventory` with a command.
-
-4. **Returning values from event handlers** — Event handlers are fire-and-forget. They
+2. **Returning values from event handlers**: Event handlers are fire-and-forget. They
    don't return values. If you need a return, use a command handler.
 
-5. **Circular events** — A handles B's events, B handles A's events. This creates
+3. **Circular events**: A handles B's events, B handles A's events. This creates
    infinite loops. Design event flows as DAGs (directed acyclic graphs).
-
-## Quick example
-
-Here a `Shipment` handler also writes to the customer's `Notification`:
-
-```python
-# fragment
-# BEFORE: direct coupling
-@handle(DispatchShipment)
-def dispatch_shipment(self, command):
-    shipment = domain.repository_for(Shipment).get(command.shipment_id)
-    shipment.dispatch(tracking_number=command.tracking_number)
-    domain.repository_for(Shipment).add(shipment)
-    # VIOLATION
-    notification = domain.repository_for(Notification).get(shipment.customer_id)
-    notification.add_message(f"Shipment {shipment.id} dispatched!")
-    domain.repository_for(Notification).add(notification)
-```
-
-After the refactor, `Shipment.dispatch()` raises `ShipmentDispatched`. An event
-handler in `Shipment`'s cluster turns it into a command, and `Notification`'s own
-command handler does the write:
-
-```python
-# AFTER: event-driven
-@domain.event(part_of="Shipment")
-class ShipmentDispatched:
-    shipment_id = Identifier(required=True)
-    customer_id = String(required=True)
-
-
-@domain.aggregate
-class Shipment:
-    customer_id = String(required=True)
-    status = String(default="PACKED")
-    tracking_number = String()
-
-    def dispatch(self, tracking_number: str) -> None:
-        self.status = "DISPATCHED"
-        self.tracking_number = tracking_number
-        self.raise_(
-            ShipmentDispatched(shipment_id=self.id, customer_id=self.customer_id)
-        )
-
-
-@domain.aggregate
-class Notification:
-    customer_id = String(required=True, identifier=True)
-    messages = List(content_type=String)
-    notified_shipment_ids = List(content_type=String)
-
-    def add_message(self, shipment_id: str, message: str) -> None:
-        self.messages = [*self.messages, message]
-        self.notified_shipment_ids = [*self.notified_shipment_ids, shipment_id]
-
-
-@domain.command(part_of=Shipment)
-class DispatchShipment:
-    shipment_id = Identifier(required=True)
-    tracking_number = String(required=True)
-
-
-@domain.command(part_of=Notification)
-class AddNotificationMessage:
-    shipment_id = Identifier(required=True)
-    customer_id = String(required=True)
-    message = String(required=True)
-
-
-@domain.command_handler(part_of=Shipment)
-class ShipmentCommandHandler:
-    @handle(DispatchShipment)
-    def dispatch_shipment(self, command: DispatchShipment) -> None:
-        shipment = domain.repository_for(Shipment).get(command.shipment_id)
-        shipment.dispatch(tracking_number=command.tracking_number)
-        domain.repository_for(Shipment).add(shipment)
-
-
-@domain.event_handler(part_of=Shipment)
-class CustomerNotifications:
-    @handle(ShipmentDispatched)
-    def notify_customer(self, event: ShipmentDispatched) -> None:
-        current_domain.process(
-            AddNotificationMessage(
-                shipment_id=event.shipment_id,
-                customer_id=event.customer_id,
-                message=f"Shipment {event.shipment_id} dispatched!",
-            )
-        )
-
-
-@domain.command_handler(part_of=Notification)
-class NotificationCommandHandler:
-    @handle(AddNotificationMessage)
-    def add_message(self, command: AddNotificationMessage) -> None:
-        repo = domain.repository_for(Notification)
-        notification = repo.get(command.customer_id)
-        if command.shipment_id in notification.notified_shipment_ids:
-            return  # already notified for this shipment
-        notification.add_message(command.shipment_id, command.message)
-        repo.add(notification)
-```
 
 ## Examples
 
@@ -394,14 +278,14 @@ class NotificationCommandHandler:
 
 ## Detailed references
 
-- [Event design guide](references/event-design-guide.md) — How to design good events
-- [Anti-patterns](references/anti-patterns.md) — Common mistakes when introducing events
+- [Event design guide](references/event-design-guide.md): How to design good events
+- [Anti-patterns](references/anti-patterns.md): Common mistakes when introducing events
 
 ## Related skills
 
-- [event](../event/SKILL.md) — Event definition patterns
-- [event-handler](../event-handler/SKILL.md) — Event handler patterns
-- [audit-domain](../audit-domain/SKILL.md) — Detects transaction boundary violations
+- [event](../event/SKILL.md): Event definition patterns
+- [event-handler](../event-handler/SKILL.md): Event handler patterns
+- [audit-domain](../audit-domain/SKILL.md): Detects transaction boundary violations
 
 ## Verify your work
 

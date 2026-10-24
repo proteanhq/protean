@@ -1,6 +1,6 @@
 ---
 name: add-read-model
-description: Build a complete read model in Protean - a projection populated by a projector that reacts to domain events. Covers single-aggregate projections (flattened view of one aggregate), cross-aggregate projections (combining data from multiple aggregates), and choosing between database-backed and cache-backed storage. Use when the user asks to "add a read model", "create a projection with projector", "build a query view", "add a CQRS read side", "create a denormalized view", "build a reporting view", "add a dashboard query model", or when they need to combine data from multiple aggregates into one queryable structure.
+description: Build a complete read model in Protean, a projection populated by a projector that reacts to domain events. Covers single-aggregate projections (flattened view of one aggregate), cross-aggregate projections (combining data from multiple aggregates), and choosing between database-backed and cache-backed storage. Use when the user asks to "add a read model", "create a projection with projector", "build a query view", "add a CQRS read side", "create a denormalized view", "build a reporting view", "add a dashboard query model", or when they need to combine data from multiple aggregates into one queryable structure.
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -16,8 +16,8 @@ metadata:
 A read model is the query side of CQRS. It consists of three parts working together:
 
 1. **Projection**: A denormalized, query-optimized data structure built from basic fields and value objects
-2. **Projector** — An event listener that populates and updates the projection
-3. **Domain events** — The bridge between write-side aggregates and read-side projections
+2. **Projector**: An event listener that populates and updates the projection
+3. **Domain events**: The bridge between write-side aggregates and read-side projections
 
 ## What this creates
 
@@ -32,17 +32,17 @@ A read model is the query side of CQRS. It consists of three parts working toget
 
 Before building a read model, understand:
 
-- [ ] **What query does this serve?** — What data does the UI/API need? (e.g., "product listing with stock levels")
-- [ ] **Which aggregates contribute data?** — Single aggregate or multiple? (determines projector configuration)
-- [ ] **What events trigger updates?** — Which state changes should update the read model?
+- [ ] **What query does this serve?** What data does the UI/API need? (e.g., "product listing with stock levels")
+- [ ] **Which aggregates contribute data?** Single aggregate or multiple? (determines projector configuration)
+- [ ] **What events trigger updates?** Which state changes should update the read model?
 - [ ] **What fields are needed?** Basic types (String, Integer, Float, Identifier, DateTime, Boolean, Text, Date) and `ValueObject`. No `Reference`, `HasOne` or `HasMany`
-- [ ] **What storage is appropriate?** — Database (durable, queryable) or cache (fast, ephemeral)?
+- [ ] **What storage is appropriate?** Database (durable, queryable) or cache (fast, ephemeral)?
 
 ## Process
 
 ### Step 1: Define the projection
 
-Create a flat data structure from basic fields. A `ValueObject` field is also allowed. Every projection needs at least one `identifier=True` field.
+Create a flat data structure that holds what the query returns.
 
 ```python
 from protean.fields import Float, Identifier, Integer, String
@@ -247,27 +247,6 @@ An event can be delivered more than once. As written, this projector adds the am
 | **Database (specific)** | `@domain.projection(provider="postgres")` | Explicit provider selection |
 | **Cache** | `@domain.projection(cache="redis")` | Fast reads, session data, ephemeral views |
 
-## Decision guide
-
-```
-Need a queryable view of domain data?
-├── Data from one aggregate only
-│   └── Single-aggregate projector
-│       aggregates=[TheAggregate]
-│
-├── Data from multiple aggregates
-│   └── Cross-aggregate projector
-│       aggregates=[AggregateA, AggregateB]
-│
-├── Need fast, ephemeral reads?
-│   └── Cache-backed projection
-│       @domain.projection(cache="redis")
-│
-└── Need durable, queryable data?
-    └── Database-backed projection (default)
-        @domain.projection  or  @domain.projection(provider="postgres")
-```
-
 ## Common mistakes
 
 ### Complex field types in a projection
@@ -301,7 +280,7 @@ Instead: projectors only map event data into projection rows; keep rules on the 
 
 ```python
 # fragment
-# Wrong! Only the create event is handled — the projection goes stale
+# Wrong! Only the create event is handled: the projection goes stale
 @on(ProductAdded)
 def on_added(self, event): ...
 # (no handler for ProductPriceChanged)
@@ -357,22 +336,22 @@ Instead: set `domain.config["event_processing"] = "sync"` in tests so projectors
 
 ## Complete examples
 
-- [Single-aggregate read model](assets/read_model_single_aggregate.py) — Product → ProductListing with create and update events
-- [Cross-aggregate read model](assets/read_model_cross_aggregate.py) — User + Order → CustomerOrderSummary combining data from two aggregates
-- [Read model with multiple events](assets/read_model_multiple_events.py) — Inventory tracking with stock adjustments, reservations, and releases
+- [Single-aggregate read model](assets/read_model_single_aggregate.py): Product → ProductListing with create and update events
+- [Cross-aggregate read model](assets/read_model_cross_aggregate.py): User + Order → CustomerOrderSummary combining data from two aggregates
+- [Read model with multiple events](assets/read_model_multiple_events.py): Inventory tracking with stock adjustments, reservations, and releases
 
 ## Detailed references
 
-- [Single-Aggregate Read Model](references/single-aggregate-read-model.md) — Step-by-step walkthrough
-- [Cross-Aggregate Read Model](references/cross-aggregate-read-model.md) — Combining data from multiple aggregates
-- [Choosing Storage](references/choosing-storage.md) — Database vs cache trade-offs
+- [Single-Aggregate Read Model](references/single-aggregate-read-model.md): Step-by-step walkthrough
+- [Cross-Aggregate Read Model](references/cross-aggregate-read-model.md): Combining data from multiple aggregates
+- [Choosing Storage](references/choosing-storage.md): Database vs cache trade-offs
 
 ## Related skills
 
-- [projection](../projection/SKILL.md) — Projection definition and field types
-- [projector](../projector/SKILL.md) — Projector patterns and configuration
-- [event](../event/SKILL.md) — Defining domain events
-- [aggregate](../aggregate/SKILL.md) — Aggregates that raise events
+- [projection](../projection/SKILL.md): Projection definition and field types
+- [projector](../projector/SKILL.md): Projector patterns and configuration
+- [event](../event/SKILL.md): Defining domain events
+- [aggregate](../aggregate/SKILL.md): Aggregates that raise events
 
 ## Verify your work
 

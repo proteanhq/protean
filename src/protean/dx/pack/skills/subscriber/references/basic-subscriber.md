@@ -91,6 +91,6 @@ with domain.domain_context():
 
 ## Related
 
-- [Anti-corruption Layer](./anti-corruption-layer.md) - Translating external schemas into domain commands
-- [Error Handling](./error-handling.md) - Custom error recovery
-- `event-handler` - Compare/contrast: internal event consumption
+- [Anti-corruption Layer](./anti-corruption-layer.md): Translating external schemas into domain commands
+- [Error Handling](./error-handling.md): Custom error recovery
+- `event-handler`: Compare/contrast: internal event consumption

@@ -126,4 +126,4 @@ class Task:
 
 ## Related
 
-- [identifying-logic-leaks.md](identifying-logic-leaks.md) — Detection heuristics
+- [identifying-logic-leaks.md](identifying-logic-leaks.md): Detection heuristics

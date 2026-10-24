@@ -124,5 +124,5 @@ class Percentage:
 
 ## Related
 
-- [value-object SKILL.md](../../value-object/SKILL.md) — Full VO patterns
-- [migration-guide.md](migration-guide.md) — How to migrate existing data
+- [value-object SKILL.md](../../value-object/SKILL.md): Full VO patterns
+- [migration-guide.md](migration-guide.md): How to migrate existing data

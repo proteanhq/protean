@@ -120,5 +120,5 @@ domain.config["command_processing"] = "sync"
 
 ## Related
 
-- [Error Handling](./error-handling.md) - What happens when handlers raise exceptions
-- `command` - Command processing reference
+- [Error Handling](./error-handling.md): What happens when handlers raise exceptions
+- `command`: Command processing reference

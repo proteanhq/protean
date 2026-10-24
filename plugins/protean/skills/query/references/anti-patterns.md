@@ -24,14 +24,14 @@ aggregate.
 
 ```python
 # fragment
-# WRONG — querying the write model
+# WRONG: querying the write model
 @domain.query(part_of="Order")
 class GetOrderById:
     order_id: Identifier(required=True)
 ```
 
 ```python
-# RIGHT — querying a read model
+# RIGHT: querying a read model
 @domain.query(part_of="OrderSummary")
 class GetOrderById:
     order_id: Identifier(required=True)
@@ -43,11 +43,11 @@ and `projector` skills) rather than querying the aggregate directly.
 ## Putting logic in the query
 
 A query is a parameter object, not a place for behavior. It should not reach into
-repositories, run filters, or compute results — that is the query handler's job.
+repositories, run filters, or compute results. That is the query handler's job.
 
 ```python
 # fragment
-# WRONG — query does the work
+# WRONG: query does the work
 @domain.query(part_of="OrderSummary")
 class GetOrderById:
     order_id: Identifier(required=True)
@@ -71,14 +71,14 @@ q.status = "shipped"  # IncorrectUsageError
 ```
 
 ```python
-# RIGHT — build a new query
+# RIGHT: build a new query
 q = SearchOrders(status="shipped")
 ```
 
 ## Associations and rich types
 
 Queries take basic fields and value objects only. Associations
-(`HasOne`/`HasMany`/`Reference`) are not allowed — they belong to aggregates.
+(`HasOne`/`HasMany`/`Reference`) are not allowed. They belong to aggregates.
 
 ```python
 # fragment
@@ -89,7 +89,7 @@ class SearchOrders:
 ```
 
 ```python
-# RIGHT — flat criteria
+# RIGHT: flat criteria
 @domain.query(part_of="OrderSummary")
 class SearchOrders:
     status: String()

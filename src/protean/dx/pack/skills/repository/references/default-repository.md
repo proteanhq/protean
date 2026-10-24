@@ -6,8 +6,8 @@ Protean automatically provides a repository for every aggregate. You don't need 
 
 When you register an aggregate with a domain, Protean dynamically constructs a repository class behind the scenes. This default repository provides two core methods:
 
-- **`add(aggregate)`** — Persist a new aggregate or update an existing one
-- **`get(identifier)`** — Load an aggregate by its identifier
+- **`add(aggregate)`**: Persist a new aggregate or update an existing one
+- **`get(identifier)`**: Load an aggregate by its identifier
 
 This follows the DDD "collection" metaphor: a repository behaves like an in-memory collection. You `add` objects to it and `get` objects from it, without worrying about SQL, table schemas, or connection management.
 
@@ -103,6 +103,6 @@ Switch to a custom repository when you need:
 See [Custom Queries](./custom-queries.md) for details.
 
 ## Related
-- [Custom Queries](./custom-queries.md) - When the default isn't enough
-- [Unit of Work Integration](./unit-of-work.md) - Transactional behavior
-- [Anti-patterns](./anti-patterns.md) - Common mistakes
+- [Custom Queries](./custom-queries.md): When the default isn't enough
+- [Unit of Work Integration](./unit-of-work.md): Transactional behavior
+- [Anti-patterns](./anti-patterns.md): Common mistakes

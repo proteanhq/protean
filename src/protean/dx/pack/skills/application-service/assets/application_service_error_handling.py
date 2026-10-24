@@ -107,7 +107,7 @@ if __name__ == "__main__":
         order_id = svc.place_order(customer_id="CUST-001", items=[10.00, 20.00, 15.00])
         print(f"Order placed: {order_id}")
 
-        # Attempting to place an order with no items — raises ValidationError
+        # Attempting to place an order with no items: raises ValidationError
         try:
             svc.place_order(customer_id="CUST-002", items=[])
         except ValidationError as exc:
@@ -117,7 +117,7 @@ if __name__ == "__main__":
         svc.cancel_order(order_id=order_id)
         print("Order cancelled")
 
-        # Attempting to cancel again — raises ValidationError
+        # Attempting to cancel again: raises ValidationError
         try:
             svc.cancel_order(order_id=order_id)
         except ValidationError as exc:

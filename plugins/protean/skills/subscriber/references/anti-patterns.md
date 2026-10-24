@@ -192,7 +192,7 @@ The subscriber is the anti-corruption layer. It should be the ONLY place that un
 
 ## Related
 
-- [Basic Subscriber](./basic-subscriber.md) - Correct basic pattern
-- [Anti-corruption Layer](./anti-corruption-layer.md) - Correct translation pattern
-- [Error Handling](./error-handling.md) - Proper error handling
-- `event-handler` - Internal event consumption (compare/contrast)
+- [Basic Subscriber](./basic-subscriber.md): Correct basic pattern
+- [Anti-corruption Layer](./anti-corruption-layer.md): Correct translation pattern
+- [Error Handling](./error-handling.md): Proper error handling
+- `event-handler`: Internal event consumption (compare/contrast)

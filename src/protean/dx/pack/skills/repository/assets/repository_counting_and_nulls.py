@@ -2,13 +2,13 @@
 Counting and null-aware queries with a custom repository.
 
 This example demonstrates the QuerySet features for efficient reads:
-- count() — a flat COUNT(*) that returns just the number of matching rows
+- count(): a flat COUNT(*) that returns just the number of matching rows
   without projecting columns or materializing entities. Prefer it over
   len(query.all()) when you only need the count.
-- all(with_total=False) — fetch only the page of items and skip the separate
+- all(with_total=False): fetch only the page of items and skip the separate
   total-count round-trip (a wrapped COUNT on SQL adapters) when
   ResultSet.total is not needed.
-- the isnull lookup — filter on whether a field is set:
+- the isnull lookup: filter on whether a field is set:
   filter(field__isnull=True)  -> field IS NULL
   filter(field__isnull=False) -> field IS NOT NULL
 - indexes on the fields the repository filters on (status, assignee), so
@@ -29,7 +29,7 @@ domain = Domain()
 
 @domain.aggregate(indexes=[Index("status"), Index("assignee")])
 class Ticket:
-    """A support ticket. `assignee` is optional — unset means unassigned."""
+    """A support ticket. `assignee` is optional: unset means unassigned."""
 
     ticket_id: Identifier(identifier=True)
     subject: String(required=True, max_length=200)
@@ -54,7 +54,7 @@ class TicketRepository:
     """
 
     def count_by_status(self, status: str) -> int:
-        """Number of tickets in a status — a flat COUNT, no rows loaded."""
+        """Number of tickets in a status: a flat COUNT, no rows loaded."""
         return self.query.filter(status=status).count()
 
     def open_count(self) -> int:
@@ -74,7 +74,7 @@ class TicketRepository:
         return self.query.filter(assignee__isnull=False).all(with_total=False).items
 
     def unassigned_count(self) -> int:
-        """How many tickets are unassigned — COUNT over the isnull filter."""
+        """How many tickets are unassigned: COUNT over the isnull filter."""
         return self.query.filter(assignee__isnull=True).count()
 
 

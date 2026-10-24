@@ -164,7 +164,7 @@ See [projector_cross_aggregate.py](../assets/projector_cross_aggregate.py) for a
 
 ## Related
 
-- [Single-Aggregate Projector](single-aggregate.md) - Simpler pattern with one aggregate
-- [Multiple Projectors](multiple-projectors.md) - Multiple projectors for different views
-- [Anti-patterns](anti-patterns.md) - Common mistakes to avoid
-- `event-handler` - Event handlers for cross-aggregate coordination (compare/contrast)
+- [Single-Aggregate Projector](single-aggregate.md): Simpler pattern with one aggregate
+- [Multiple Projectors](multiple-projectors.md): Multiple projectors for different views
+- [Anti-patterns](anti-patterns.md): Common mistakes to avoid
+- `event-handler`: Event handlers for cross-aggregate coordination (compare/contrast)

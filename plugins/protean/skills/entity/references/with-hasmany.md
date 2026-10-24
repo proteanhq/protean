@@ -354,6 +354,6 @@ test_hasmany_relationship()
 
 ## Related
 
-- [HasOne relationships](./with-hasone.md) - One-to-one entity relationships
-- [Nested entities](./nested-entities.md) - Entities containing other entities
-- [Aggregates](../../aggregate/SKILL.md) - Aggregate patterns with entities
+- [HasOne relationships](./with-hasone.md): One-to-one entity relationships
+- [Nested entities](./nested-entities.md): Entities containing other entities
+- [Aggregates](../../aggregate/SKILL.md): Aggregate patterns with entities

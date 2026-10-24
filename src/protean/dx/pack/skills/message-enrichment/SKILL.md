@@ -1,6 +1,6 @@
 ---
 name: message-enrichment
-description: Enrich Protean commands and events with cross-cutting metadata using command enrichers and event enrichers. Enrichers are domain-level functions that return a dict merged into a message's metadata.extensions - useful for tenant ids, request/correlation context, actor info, and audit data that should ride along with every command or event without polluting the payload. Use @domain.command_enricher for commands and @domain.event_enricher for events. A third kind, @domain.aggregate_enricher, stamps audit fields such as updated_by on an aggregate just before it is saved. Use when you need to attach context to messages, add metadata to commands or events, inject tenant/request/user info, enrich messages, build an audit trail, or when the user asks to "add a command enricher", "add an event enricher", "enrich commands/events", "attach metadata", or "inject context into messages".
+description: Enrich Protean commands and events with cross-cutting metadata using command enrichers and event enrichers. Enrichers are domain-level functions that return a dict merged into a message's metadata.extensions, useful for tenant ids, request/correlation context, actor info, and audit data that should ride along with every command or event without polluting the payload. Use @domain.command_enricher for commands and @domain.event_enricher for events. A third kind, @domain.aggregate_enricher, stamps audit fields such as updated_by on an aggregate just before it is saved. Use when you need to attach context to messages, add metadata to commands or events, inject tenant/request/user info, enrich messages, build an audit trail, or when the user asks to "add a command enricher", "add an event enricher", "enrich commands/events", "attach metadata", or "inject context into messages".
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -50,15 +50,15 @@ def stamp_updated_by(aggregate):
 
 ## Key rules
 
-1. **Each kind has its own signature** - Command enricher: `def fn(command) -> dict`. Event enricher: `def fn(event, aggregate) -> dict` (it also gets the aggregate, so it can read aggregate state). Aggregate enricher: `def fn(aggregate) -> None`
-2. **Register with the decorator** - `@domain.command_enricher` / `@domain.event_enricher` / `@domain.aggregate_enricher`. For reusable functions, use `domain.register_command_enricher(fn)` / `domain.register_event_enricher(fn)` / `domain.register_aggregate_enricher(fn)`
-3. **Message enrichers return a dict (or `None`)** - The returned dict is merged into `metadata.extensions`. Returning `None` or `{}` is a no-op. An aggregate enricher sets fields on the aggregate instead, and its return value is ignored
-4. **Enrichers are domain-level** - They are NOT `part_of` an aggregate; they run for every command (or every event) in the domain
-5. **Run order is FIFO; later wins** - Enrichers run in registration order; a later enricher can overwrite a key set by an earlier one
-6. **Keep them pure and fast** - A command or event enricher reads context (e.g. from `g`) and returns data. It must not change the message, load aggregates, or perform I/O. An aggregate enricher sets fields on the aggregate it receives, and it also must not load aggregates or perform I/O
-7. **Errors abort the message** - If an enricher raises, the command is not processed / the event is not appended. Use safe access like `getattr(g, "key", None)`
-8. **Timing** - Command enrichers run after command metadata is built, before handling; event enrichers run inside `aggregate.raise_()`, before the event is appended (and they also run for fact events); aggregate enrichers run whenever an aggregate is saved, on both create and update, including through `update()` and `QuerySet.update()`. They also run on the records the framework saves through repositories, such as outbox rows and the in-memory event store's message records, so an enricher skips any aggregate that does not declare the field it stamps
-9. **Aggregate enrichers are for audit fields only** - Stamp fields like `updated_at`, `updated_by` and `created_by`. Do not enforce rules or raise events in them; that belongs in the aggregate's methods. They do not run for event-sourced aggregates, or for a save that passes `apply_hooks=False`
+1. **Each kind has its own signature**: Command enricher: `def fn(command) -> dict`. Event enricher: `def fn(event, aggregate) -> dict` (it also gets the aggregate, so it can read aggregate state). Aggregate enricher: `def fn(aggregate) -> None`
+2. **Register with the decorator**: `@domain.command_enricher` / `@domain.event_enricher` / `@domain.aggregate_enricher`. For reusable functions, use `domain.register_command_enricher(fn)` / `domain.register_event_enricher(fn)` / `domain.register_aggregate_enricher(fn)`
+3. **Message enrichers return a dict (or `None`)**: The returned dict is merged into `metadata.extensions`. Returning `None` or `{}` is a no-op. An aggregate enricher sets fields on the aggregate instead, and its return value is ignored
+4. **Enrichers are domain-level**: They are NOT `part_of` an aggregate; they run for every command (or every event) in the domain
+5. **Run order is FIFO; later wins**: Enrichers run in registration order; a later enricher can overwrite a key set by an earlier one
+6. **Keep them pure and fast**: A command or event enricher reads context (e.g. from `g`) and returns data. It must not change the message, load aggregates, or perform I/O. An aggregate enricher sets fields on the aggregate it receives, and it also must not load aggregates or perform I/O
+7. **Errors abort the message**: If an enricher raises, the command is not processed / the event is not appended. Use safe access like `getattr(g, "key", None)`
+8. **Timing**: Command enrichers run after command metadata is built, before handling; event enrichers run inside `aggregate.raise_()`, before the event is appended (and they also run for fact events); aggregate enrichers run whenever an aggregate is saved, on both create and update, including through `update()` and `QuerySet.update()`. They also run on the records the framework saves through repositories, such as outbox rows and the in-memory event store's message records, so an enricher skips any aggregate that does not declare the field it stamps
+9. **Aggregate enrichers are for audit fields only**: Stamp fields like `updated_at`, `updated_by` and `created_by`. Do not enforce rules or raise events in them; that belongs in the aggregate's methods. They do not run for event-sourced aggregates, or for a save that passes `apply_hooks=False`
 
 ## Where the data lands
 
@@ -119,39 +119,6 @@ with domain.domain_context(current_user="alice"):
 
 ## Common mistakes
 
-### Wrong signature for an event enricher
-
-```python
-# fragment
-@domain.event_enricher
-def add_ctx(event):  # Wrong! Event enrichers receive (event, aggregate)
-    return {...}
-```
-
-Instead: `def add_ctx(event, aggregate): ...`
-
-### Mutating the message instead of returning a dict
-
-```python
-# fragment
-@domain.command_enricher
-def add_ctx(command):
-    command._metadata.extensions["x"] = 1  # Wrong! Don't mutate
-```
-
-Instead: return a dict; Protean merges it into extensions.
-
-### Unsafe context access
-
-```python
-# fragment
-@domain.command_enricher
-def add_ctx(command):
-    return {"request_id": g.request_id}  # Raises if unset -> aborts the command
-```
-
-Instead: `getattr(g, "request_id", None)`.
-
 ### Putting business data in extensions
 
 Extensions are for cross-cutting metadata (tenant, request, actor), not domain
@@ -164,24 +131,23 @@ payload. Domain data belongs in the command/event fields.
 domain.register_event_enricher(some_dict)  # Wrong! Not callable
 ```
 
-An enricher is invoked to augment a message or aggregate, so it must be
-callable. Registering anything else raises `IncorrectUsageError` with code
+Registering anything that is not callable raises `IncorrectUsageError` with code
 `USAGE_ENRICHER_NOT_CALLABLE`.
 
 ## Detailed references
 
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete examples
 
-- [Command Enricher](assets/command_enricher_basic.py) - Enrich commands with request context
-- [Event Enricher](assets/event_enricher_basic.py) - Enrich events with tenant + aggregate context
+- [Command Enricher](assets/command_enricher_basic.py): Enrich commands with request context
+- [Event Enricher](assets/event_enricher_basic.py): Enrich events with tenant + aggregate context
 
 ### Related skills
 
-- `command` / `command-handler` - Commands that enrichers annotate
-- `event` / `event-handler` - Events that enrichers annotate
-- `aggregate` - Event enrichers receive the aggregate raising the event
+- `command` / `command-handler`: Commands that enrichers annotate
+- `event` / `event-handler`: Events that enrichers annotate
+- `aggregate`: Event enrichers receive the aggregate raising the event
 
 ## Verify your work
 

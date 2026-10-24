@@ -6,7 +6,7 @@ Custom repositories extend the default repository with domain-specific query met
 
 While the default repository provides `add()` and `get()`, real applications need richer queries: finding orders by status, searching products by category, looking up users by email, etc. Custom repositories are the place for these domain-specific queries.
 
-In DDD, repositories serve as the boundary between the domain model and the persistence layer. All database-specific logic — SQL, NoSQL queries, index usage, performance optimizations — is encapsulated inside repository methods.
+In DDD, repositories serve as the boundary between the domain model and the persistence layer. All database-specific logic (SQL, NoSQL queries, index usage, performance optimizations) is encapsulated inside repository methods.
 
 ## Code
 
@@ -167,6 +167,6 @@ class ReportRepository:
 **Note**: Raw queries bypass the query interface. Use them sparingly and only when the standard query interface is insufficient.
 
 ## Related
-- [Default Repository](./default-repository.md) - The auto-generated repository
-- [Database-Specific Repositories](./database-specific.md) - Per-database query optimizations
-- [Anti-patterns](./anti-patterns.md) - Common mistakes with custom queries
+- [Default Repository](./default-repository.md): The auto-generated repository
+- [Database-Specific Repositories](./database-specific.md): Per-database query optimizations
+- [Anti-patterns](./anti-patterns.md): Common mistakes with custom queries

@@ -180,11 +180,11 @@ Invariants run when the aggregate or one of its entities changes, not when `add(
 
 ## Best Practices
 
-1. **Entities belong to exactly one aggregate** - Use `part_of` to make this explicit
-2. **Access entities only through the aggregate** - Don't reference entities directly from other aggregates
-3. **Keep aggregate graphs small** - Avoid deeply nested structures (max 2 levels recommended)
-4. **Use HasOne sparingly** - Often a value object is more appropriate
-5. **Consider separate aggregates** - If entities have independent lifecycles, make them aggregates
+1. **Entities belong to exactly one aggregate**: Use `part_of` to make this explicit
+2. **Access entities only through the aggregate**: Don't reference entities directly from other aggregates
+3. **Keep aggregate graphs small**: Avoid deeply nested structures (max 2 levels recommended)
+4. **Use HasOne sparingly**: Often a value object is more appropriate
+5. **Consider separate aggregates**: If entities have independent lifecycles, make them aggregates
 
 ## Common Patterns
 
@@ -222,5 +222,5 @@ with domain.domain_context():
 
 - [Aggregates with Value Objects](./with-value-objects.md)
 - [Configuration Options](./configuration.md)
-- [entity](../../entity/SKILL.md) - Detailed entity documentation
-- [value-object](../../value-object/SKILL.md) - When to use value objects instead
+- [entity](../../entity/SKILL.md): Detailed entity documentation
+- [value-object](../../value-object/SKILL.md): When to use value objects instead

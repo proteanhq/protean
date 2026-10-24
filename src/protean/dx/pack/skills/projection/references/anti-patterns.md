@@ -283,6 +283,6 @@ with domain.domain_context():
 
 ## Related
 
-- [Basic Projection](basic-projection.md) - Correct basic pattern
-- [Field Type Restrictions](field-type-restrictions.md) - Detailed field type rules
-- [Configuration Options](configuration-options.md) - Correct configuration
+- [Basic Projection](basic-projection.md): Correct basic pattern
+- [Field Type Restrictions](field-type-restrictions.md): Detailed field type rules
+- [Configuration Options](configuration-options.md): Correct configuration

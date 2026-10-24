@@ -76,15 +76,6 @@ Read all domain files and build a structured inventory per aggregate:
 }
 ```
 
-**Detection patterns:**
-- **Factory methods**: `@classmethod` that calls `cls(...)` and optionally `raise_()`
-- **State-change methods**: Instance methods that assign `self.status = ...` or `self.field = ...`
-- **Events raised**: Lines containing `self.raise_(SomeEvent(...))`
-- **Invariants**: Methods decorated with `@invariant.pre` or `@invariant.post`
-- **Business rules**: `if` conditions followed by `raise ValueError` or `raise ValidationError`
-- **VO operations**: Non-dunder instance methods on `@domain.value_object` classes
-- **Entity management**: Methods calling `self.add_<collection>()` or `self.remove_<collection>()`
-
 ### Step 2: Inventory existing tests
 
 Read all test files and map what is already tested:
@@ -153,13 +144,13 @@ Use `_events.clear()` to isolate event assertions when testing a method after a 
 ### Gaps (by severity)
 
 #### HIGH
-1. [description] — generated test class: `TestXxx`
+1. [description]: generated test class: `TestXxx`
 
 #### MEDIUM
-1. [description] — generated test class: `TestXxx`
+1. [description]: generated test class: `TestXxx`
 
 #### LOW
-1. [description] — generated test class: `TestXxx`
+1. [description]: generated test class: `TestXxx`
 
 ### Generated Tests
 [Complete test code for all gaps]
@@ -168,36 +159,32 @@ Use `_events.clear()` to isolate event assertions when testing a method after a 
 ## What NOT to flag as gaps
 
 Do not report missing tests for framework-guaranteed behavior:
-- VO construction, equality, immutability — guaranteed by `@domain.value_object`
-- Command/event immutability — guaranteed by decorators
-- Field-level validation (`required`, `max_length`, `min_value`, `choices`) — Protean Layer 1
-- Element registration in `domain.registry` — guaranteed if decorator is used
-- `meta_.part_of` associations, `meta_.stream_category` — framework wiring
-- Command `.payload` dict access — framework feature
+- VO construction, equality, immutability: guaranteed by `@domain.value_object`
+- Command/event immutability: guaranteed by decorators
+- Field-level validation (`required`, `max_length`, `min_value`, `choices`): Protean Layer 1
+- Element registration in `domain.registry`: guaranteed if decorator is used
+- `meta_.part_of` associations, `meta_.stream_category`: framework wiring
+- Command `.payload` dict access: framework feature
 
 ## Common mistakes
 
-1. **Flagging framework guarantees as gaps**: don't report missing tests for VO immutability, field validation, or registry presence
-2. **Missing negative tests**: every business rule (`if ... raise`) needs both a happy path test AND a rejection test
-3. **Checking only isinstance for events**: event data verification (field values) is a separate coverage point from event type checking
-4. **Forgetting cross-aggregate handlers**: event handlers that issue a command to another aggregate are often the most undertested
-5. **Not tracing raise_() to event classes**: each `raise_()` call means there should be a test verifying that specific event
+- **Forgetting cross-aggregate handlers**: Event handlers that issue a command to another aggregate are often the most undertested
 
 ## Complete examples
 
-- [Issue tracker domain](assets/coverage_domain_with_gaps.py) — Domain with all testable element categories
+- [Issue tracker domain](assets/coverage_domain_with_gaps.py): Domain with all testable element categories
 
 ## Detailed references
 
-- [Analysis checklist](references/analysis-checklist.md) — Step-by-step checklist for thorough analysis
+- [Analysis checklist](references/analysis-checklist.md): Step-by-step checklist for thorough analysis
 
 ## Related skills
 
-- [generate-test-scaffold](../generate-test-scaffold/SKILL.md) — Test generation patterns (used in Step 4)
-- [aggregate](../aggregate/SKILL.md) — Aggregate definition patterns
-- [command-handler](../command-handler/SKILL.md) — Command handler patterns
-- [event-handler](../event-handler/SKILL.md) — Event handler patterns
-- [value-object](../value-object/SKILL.md) — Value object patterns
+- [generate-test-scaffold](../generate-test-scaffold/SKILL.md): Test generation patterns (used in Step 4)
+- [aggregate](../aggregate/SKILL.md): Aggregate definition patterns
+- [command-handler](../command-handler/SKILL.md): Command handler patterns
+- [event-handler](../event-handler/SKILL.md): Event handler patterns
+- [value-object](../value-object/SKILL.md): Value object patterns
 
 ## Verify your work
 

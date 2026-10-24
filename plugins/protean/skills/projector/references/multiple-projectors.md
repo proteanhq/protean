@@ -98,7 +98,7 @@ See [projector_multiple_projectors.py](../assets/projector_multiple_projectors.p
 
 ## Related
 
-- [Single-Aggregate Projector](single-aggregate.md) - Basic single projector pattern
-- [Cross-Aggregate Projector](cross-aggregate.md) - Combining data from multiple aggregates
-- [Anti-patterns](anti-patterns.md) - Common mistakes to avoid
-- `projection` - Defining the projections that projectors maintain
+- [Single-Aggregate Projector](single-aggregate.md): Basic single projector pattern
+- [Cross-Aggregate Projector](cross-aggregate.md): Combining data from multiple aggregates
+- [Anti-patterns](anti-patterns.md): Common mistakes to avoid
+- `projection`: Defining the projections that projectors maintain

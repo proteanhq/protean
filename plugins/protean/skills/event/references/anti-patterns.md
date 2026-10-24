@@ -456,6 +456,6 @@ When creating events, ensure:
 
 ## Related
 
-- [Delta Events](./delta-events.md) - Proper event structure
-- [Raising Events](./raising-events.md) - Correct event emission patterns
-- [Event Versioning](./event-versioning.md) - Version management
+- [Delta Events](./delta-events.md): Proper event structure
+- [Raising Events](./raising-events.md): Correct event emission patterns
+- [Event Versioning](./event-versioning.md): Version management

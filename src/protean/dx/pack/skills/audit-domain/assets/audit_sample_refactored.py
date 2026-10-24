@@ -1,5 +1,5 @@
 """
-Refactored version of the sample codebase — all anti-patterns resolved.
+Refactored version of the sample codebase: all anti-patterns resolved.
 
 Changes from audit_sample_codebase.py:
 1. Extracted Money value object (fixes primitive obsession)

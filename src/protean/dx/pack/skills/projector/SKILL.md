@@ -1,6 +1,6 @@
 ---
 name: projector
-description: Define a Protean projector - a specialized event handler that maintains read-optimized projections (read models) by listening to domain events from one or more aggregates. Projectors are always associated with a projection via projector_for and use the @on decorator (alias for @handle) to process specific event types. Unlike generic event handlers, projectors explicitly target a projection and can listen to multiple stream categories or aggregates. Use when you need to build a read model, maintain a projection, create a denormalized view, sync query-side data from domain events, build cross-aggregate views, or when the user asks to "create a projector", "add a projection handler", "build a read model", "maintain a query view", "project events into a read model", "create a CQRS read side", or "populate a projection".
+description: Define a Protean projector, a specialized event handler that maintains read-optimized projections (read models) by listening to domain events from one or more aggregates. Projectors are always associated with a projection via projector_for and use the @on decorator (alias for @handle) to process specific event types. Unlike generic event handlers, projectors explicitly target a projection and can listen to multiple stream categories or aggregates. Use when you need to build a read model, maintain a projection, create a denormalized view, sync query-side data from domain events, build cross-aggregate views, or when the user asks to "create a projector", "add a projection handler", "build a read model", "maintain a query view", "project events into a read model", "create a CQRS read side", or "populate a projection".
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -12,6 +12,8 @@ metadata:
 ---
 
 # Projector
+
+A projector keeps one projection up to date: it listens to domain events and writes the projection's records. This skill defines projectors: event sources, options and redelivery.
 
 ## How projectors differ from event handlers
 
@@ -74,16 +76,15 @@ class ProductInventoryProjector:
 
 ## Key rules
 
-1. **projector_for required** - Projector must be associated with a projection: `@domain.projector(projector_for=MyProjection, ...)`
-2. **aggregates or stream_categories required** - Must specify event source: `aggregates=[Product]` or `stream_categories=[Product.meta_.stream_category]`. A stream category is domain-qualified (`<domain>::<aggregate>`, such as `inventory::product`), so a bare `"product"` never matches. Derive it from the aggregate
-3. **Use @on decorator** - Each handler method is decorated with `@on(EventClass)` (imported from `protean.core.projector`)
-4. **Handler methods take self and event** - Signature: `def method_name(self, event: EventClass)`
-5. **No return values** - Projector methods do NOT return values (CQRS pattern)
-6. **Implicit UnitOfWork** - Each handler method runs within a UnitOfWork context automatically
-7. **Multiple projectors per event** - Different projectors can process the same event into different projections
-8. **Import on from protean.core.projector** - `from protean.core.projector import on` (not from protean directly)
-9. **Projections reject References and Associations** - `Reference` and Associations (`HasOne`/`HasMany`) are not allowed; basic field types and `ValueObject` fields are allowed (a `ValueObject` is stored as flattened shadow fields)
-10. **Idempotency** - Design projector methods to handle duplicate events gracefully
+1. **projector_for required**: Projector must be associated with a projection: `@domain.projector(projector_for=MyProjection, ...)`
+2. **aggregates or stream_categories required**: Must specify event source: `aggregates=[Product]` or `stream_categories=[Product.meta_.stream_category]`. A stream category is domain-qualified (`<domain>::<aggregate>`, such as `inventory::product`), so a bare `"product"` never matches. Derive it from the aggregate
+3. **Use @on decorator**: Each handler method is decorated with `@on(EventClass)`, imported with `from protean.core.projector import on` (not from protean directly)
+4. **Handler methods take self and event**: Signature: `def method_name(self, event: EventClass)`
+5. **No return values**: Projector methods do NOT return values (CQRS pattern)
+6. **Implicit UnitOfWork**: Each handler method runs within a UnitOfWork context automatically
+7. **Multiple projectors per event**: Different projectors can process the same event into different projections
+8. **Projections reject References and Associations**: `Reference` and Associations (`HasOne`/`HasMany`) are not allowed; basic field types and `ValueObject` fields are allowed (a `ValueObject` is stored as flattened shadow fields)
+9. **Events can be redelivered**: Write each handler so a repeat is safe, or set `idempotent=True` (see Projector options)
 
 ## Projector options
 
@@ -226,34 +227,6 @@ Read the category from `meta_.stream_category` after the aggregate is registered
 
 ## Common mistakes
 
-### Missing projector_for
-
-```python
-# fragment
-@domain.projector(aggregates=[Product])  # Wrong! Missing projector_for
-class MyProjector:
-    pass
-```
-
-Instead: Always specify projector_for
-
-```python
-@domain.projector(projector_for=ProductInventory, aggregates=[Product])  # Correct!
-class MyProjector:
-    pass
-```
-
-### Missing aggregates and stream_categories
-
-```python
-# fragment
-@domain.projector(projector_for=ProductInventory)  # Wrong! No event source
-class MyProjector:
-    pass
-```
-
-Instead: Always specify at least aggregates or stream_categories
-
 ### Using @handle instead of @on
 
 ```python
@@ -266,17 +239,7 @@ class MyProjector:
         ...
 ```
 
-Instead: Use @on from protean.core.projector (it's an alias for @handle but reads better in projector context)
-
-```python
-from protean.core.projector import on  # Correct!
-
-@domain.projector(projector_for=ProductInventory, aggregates=[Product])
-class MyProjector:
-    @on(ProductAdded)  # Idiomatic for projectors
-    def on_product_added(self, event):
-        ...
-```
+Instead: Use `@on` from `protean.core.projector`. It is an alias for `@handle` and reads better in a projector.
 
 ### Handling an event the domain never registers
 
@@ -293,18 +256,6 @@ A projector `@on` handler wired to an event the domain does not register can
 never be dispatched, usually a stale reference after a rename or removal.
 `check` reports this as `PROJECTOR_HANDLES_ORPHANED_EVENT`. Register the
 event, or remove the handler for the orphaned type.
-
-### Using references or associations in projections
-
-```python
-# fragment
-@domain.projection
-class OrderView:
-    customer = Reference(Customer)  # Wrong! No references in projections
-    items = HasMany(OrderItem)      # Wrong! No associations
-```
-
-Instead: Flatten references and associations into basic field types (String, Integer, Float, Identifier, DateTime, etc.). ValueObject fields are allowed. They persist as flattened shadow fields.
 
 ### Projection not registered with domain
 
@@ -323,25 +274,25 @@ Instead: Register projection with `@domain.projection` decorator
 ## Detailed references
 
 ### Core Concepts
-- [Single-Aggregate Projector](references/single-aggregate.md) - Projector that listens to one aggregate's events
-- [Cross-Aggregate Projector](references/cross-aggregate.md) - Projector combining events from multiple aggregates
-- [Multiple Projectors](references/multiple-projectors.md) - Multiple projectors handling the same events
-- [Error Handling](references/error-handling.md) - Error handling patterns for projectors
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Single-Aggregate Projector](references/single-aggregate.md): Projector that listens to one aggregate's events
+- [Cross-Aggregate Projector](references/cross-aggregate.md): Projector combining events from multiple aggregates
+- [Multiple Projectors](references/multiple-projectors.md): Multiple projectors handling the same events
+- [Error Handling](references/error-handling.md): Error handling patterns for projectors
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Single-Aggregate Projector](assets/projector_single_aggregate.py) - Basic projector with one aggregate
-- [Multiple Events Projector](assets/projector_multiple_events.py) - Projector handling create and update events
-- [Cross-Aggregate Projector](assets/projector_cross_aggregate.py) - Projector combining data from multiple aggregates
-- [Multiple Projectors](assets/projector_multiple_projectors.py) - Two projectors maintaining different projections
-- [Error Handling](assets/projector_error_handling.py) - Error handling with handle_error classmethod
+- [Single-Aggregate Projector](assets/projector_single_aggregate.py): Basic projector with one aggregate
+- [Multiple Events Projector](assets/projector_multiple_events.py): Projector handling create and update events
+- [Cross-Aggregate Projector](assets/projector_cross_aggregate.py): Projector combining data from multiple aggregates
+- [Multiple Projectors](assets/projector_multiple_projectors.py): Two projectors maintaining different projections
+- [Error Handling](assets/projector_error_handling.py): Error handling with handle_error classmethod
 
 ### Related Skills
-- `event` - Events are the input to projectors
-- `aggregate` - Aggregates produce the events that projectors consume
-- `event-handler` - Generic event handlers (compare/contrast with projectors)
-- `projection` - Projections are the output that projectors maintain
-- [CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/) - Projectors implement the query side of CQRS
+- `event`: Events are the input to projectors
+- `aggregate`: Aggregates produce the events that projectors consume
+- `event-handler`: Generic event handlers (compare/contrast with projectors)
+- `projection`: Projections are the output that projectors maintain
+- [CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/): Projectors implement the query side of CQRS
 
 ## Verify your work
 

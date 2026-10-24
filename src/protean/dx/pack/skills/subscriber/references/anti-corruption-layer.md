@@ -125,7 +125,7 @@ class SimpleSubscriber:
 
 ## Related
 
-- [Basic Subscriber](./basic-subscriber.md) - Simpler pattern without command dispatch
-- [Error Handling](./error-handling.md) - Handling failures in translation
-- `command` - Commands are the domain language subscribers translate into
-- `command-handler` - Processes the commands dispatched by subscribers
+- [Basic Subscriber](./basic-subscriber.md): Simpler pattern without command dispatch
+- [Error Handling](./error-handling.md): Handling failures in translation
+- `command`: Commands are the domain language subscribers translate into
+- `command-handler`: Processes the commands dispatched by subscribers

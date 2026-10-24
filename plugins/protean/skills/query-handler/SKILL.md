@@ -1,6 +1,6 @@
 ---
 name: query-handler
-description: 'Define a Protean query handler - a class that answers queries by reading from projections and returning results. Query handlers are the read-side counterpart to command handlers: they use the @read decorator (not @handle), are dispatched via domain.dispatch(), and RETURN values. They run with no Unit of Work and no side effects. A handler is associated with a projection via part_of and reads through current_domain.view_for(Projection). Use when you need to answer a query, implement the read side of CQRS, return data from a projection, wire a query to a result, or when the user asks to "create a query handler", "handle a query", "answer a read request", or "return data for a query". Each handler method is decorated with @read(QueryClass).'
+description: 'Define a Protean query handler, a class that answers queries by reading from projections and returning results. Query handlers are the read-side counterpart to command handlers: they use the @read decorator (not @handle), are dispatched via domain.dispatch(), and RETURN values. They run with no Unit of Work and no side effects. A handler is associated with a projection via part_of and reads through current_domain.view_for(Projection). Use when you need to answer a query, implement the read side of CQRS, return data from a projection, wire a query to a result, or when the user asks to "create a query handler", "handle a query", "answer a read request", or "return data for a query". Each handler method is decorated with @read(QueryClass).'
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 # Query Handler
 
-A query handler answers queries: it receives a query DTO, reads from a projection, and **returns** the result. It is the read-side mirror of a command handler — but it uses `@read` instead of `@handle`, runs no Unit of Work, and always returns a value.
+A query handler answers queries: it receives a query DTO, reads from a projection, and **returns** the result. It is the read-side mirror of a command handler, but it uses `@read` instead of `@handle`, runs no Unit of Work, and always returns a value.
 
 ## Basic structure
 
@@ -41,20 +41,14 @@ class OrderQueryHandler:
 
 ## Key rules
 
-1. **part_of is the projection** - Associate the handler with the projection it reads: `@domain.query_handler(part_of="OrderSummary")` (the read model, not an aggregate)
-2. **Use the `@read` decorator** - Each method is decorated `@read(QueryClass)` (the read-side counterpart to `@handle`); import it: `from protean import read`
-3. **Handlers RETURN values** - A query handler always returns its result, unlike an event handler, which never returns a value to a caller; a command handler only returns one when processed synchronously. `domain.dispatch(query)` hands the query handler's result back to the caller
-4. **One method per query** - Each query type is answered by exactly one `@read` method
-5. **Method signature is `(self, query)`** - The dispatched query instance is passed in
-6. **No Unit of Work, no side effects** - Reads are stateless; never mutate state or persist from a query handler
-7. **Read through `view_for`** - Use `current_domain.view_for(Projection)` to get a read-only query interface: `.get(id)`, `.query.filter(...).all()`, `.count()`, `.exists(id)`
-8. **Dispatch with `domain.dispatch(query)`** - This routes the query to its handler and returns the result (synchronous)
-
-## Handler options
-
-| Option | Purpose | Required |
-|--------|---------|----------|
-| `part_of` | Associate the handler with a projection | Yes |
+1. **part_of is the projection**: Associate the handler with the projection it reads: `@domain.query_handler(part_of="OrderSummary")` (the read model, not an aggregate)
+2. **Use the `@read` decorator**: Each method is decorated `@read(QueryClass)` (the read-side counterpart to `@handle`); import it: `from protean import read`
+3. **Handlers RETURN values**: A query handler always returns its result, unlike an event handler, which never returns a value to a caller; a command handler only returns one when processed synchronously. `domain.dispatch(query)` hands the query handler's result back to the caller
+4. **One method per query**: Each query type is answered by exactly one `@read` method
+5. **Method signature is `(self, query)`**: The dispatched query instance is passed in
+6. **No Unit of Work, no side effects**: Reads are stateless; never mutate state or persist from a query handler
+7. **Read through `view_for`**: Use `current_domain.view_for(Projection)` to get a read-only query interface: `.get(id)`, `.query.filter(...).all()`, `.count()`, `.exists(id)`
+8. **Dispatch with `domain.dispatch(query)`**: This routes the query to its handler and returns the result (synchronous)
 
 ## Quick example: Multiple queries
 
@@ -119,72 +113,24 @@ with domain.domain_context():
 
 ## Common mistakes
 
-### Using @handle instead of @read
-
-```python
-# fragment
-@domain.query_handler(part_of="OrderSummary")
-class OrderQueryHandler:
-    @handle(GetOrderById)  # Wrong! Query handlers use @read
-    def get_by_id(self, query):
-        ...
-```
-
-Instead: use `@read(QueryClass)`.
-
-### Not returning a value
-
-```python
-# fragment
-@read(GetOrderById)
-def get_by_id(self, query):
-    current_domain.view_for(OrderSummary).get(query.order_id)  # Wrong! No return
-```
-
-Instead: `return` the result — the dispatcher hands it back to the caller.
-
-### Mutating state in a query handler
-
-```python
-# fragment
-@read(GetOrderById)
-def get_by_id(self, query):
-    order = current_domain.view_for(OrderSummary).get(query.order_id)
-    order.status = "viewed"  # Wrong! Reads must not mutate
-    return order
-```
-
-Instead: queries are side-effect free. Change state through commands.
-
-### Pointing part_of at an aggregate
-
-```python
-# fragment
-@domain.query_handler(part_of="Order")  # Wrong! Use the projection
-class OrderQueryHandler:
-    ...
-```
-
-Instead: `part_of` is the projection the handler reads from.
-
 ### Query handler with no query to serve
 
 A projection with a query handler but no `@domain.query(part_of=...)` registered for it has a read path nothing can invoke. `check` reports this as `QUERY_HANDLER_WITHOUT_QUERY`. Register a query for the handler to serve, or remove the query handler if the projection needs no read path.
 
 ## Detailed references
 
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete examples
 
-- [Simple Query Handler](assets/query_handler_simple.py) - Projection, queries, handler, dispatch
+- [Simple Query Handler](assets/query_handler_simple.py): Projection, queries, handler, dispatch
 
 ### Related skills
 
-- `query` - The read-intent DTO a handler answers
-- `projection` - The read model the handler reads from
-- `projector` - Populates the projection from domain events
-- `command-handler` - The write-side counterpart (uses `@handle`, runs a UoW)
+- `query`: The read-intent DTO a handler answers
+- `projection`: The read model the handler reads from
+- `projector`: Populates the projection from domain events
+- `command-handler`: The write-side counterpart (uses `@handle`, runs a UoW)
 
 ## Verify your work
 

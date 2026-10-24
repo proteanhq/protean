@@ -107,6 +107,6 @@ See [projector_error_handling.py](../assets/projector_error_handling.py) for a c
 
 ## Related
 
-- [Single-Aggregate Projector](single-aggregate.md) - Basic projector pattern
-- [Anti-patterns](anti-patterns.md) - Common mistakes to avoid
-- `event-handler` - Event handlers have a similar error handling pattern
+- [Single-Aggregate Projector](single-aggregate.md): Basic projector pattern
+- [Anti-patterns](anti-patterns.md): Common mistakes to avoid
+- `event-handler`: Event handlers have a similar error handling pattern

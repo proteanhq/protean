@@ -1,6 +1,6 @@
 ---
 name: command-handler
-description: Define a Protean command handler - a class responsible for receiving domain commands and orchestrating state changes in aggregates. Command handlers extract data from commands, load or create aggregates, invoke aggregate methods, and persist state changes. They are always associated with one aggregate via part_of and use the @handle decorator to process specific command types. Use when you need to process a command, handle a domain action, write a command handler, implement the handler for a command, connect a command to aggregate logic, or implement the write side of CQRS. Each handler method runs within an implicit UnitOfWork for transactional safety.
+description: Define a Protean command handler, a class responsible for receiving domain commands and orchestrating state changes in aggregates. Command handlers extract data from commands, load or create aggregates, invoke aggregate methods, and persist state changes. They are always associated with one aggregate via part_of and use the @handle decorator to process specific command types. Use when you need to process a command, handle a domain action, write a command handler, implement the handler for a command, connect a command to aggregate logic, or implement the write side of CQRS. Each handler method runs within an implicit UnitOfWork for transactional safety.
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -14,6 +14,8 @@ metadata:
 ---
 
 # Command Handler
+
+A command handler turns one aggregate's commands into changes to that aggregate: it loads or creates the aggregate, calls a method on it, and persists it. This skill defines handlers, their options, and how they fail.
 
 ## Basic structure
 
@@ -46,15 +48,15 @@ class OrderCommandHandler:
 
 ## Key rules
 
-1. **part_of is required** - Handler must be associated with an aggregate: `@domain.command_handler(part_of=Order)`
-2. **Commands must match the same aggregate** - Commands handled must have `part_of` pointing to the SAME aggregate as the handler
-3. **One handler per command** - A command can only be processed by ONE handler (Protean enforces this)
-4. **Use @handle decorator** - Each handler method is decorated with `@handle(CommandClass)`
-5. **Handler methods take self and command** - Signature: `def method_name(self, command: CommandClass)`
-6. **Implicit Unit of Work** - `@handle` wraps every handler call in its own Unit of Work, which is one real database transaction on a provider with transactions, such as the SQL databases ([ADR-0027](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/)). Do not wrap the body yourself. See [Unit of Work](references/unit-of-work.md)
-7. **Change one aggregate per transaction** - A handler should persist one aggregate root. This is a design rule: the Unit of Work can hold changes to several aggregates and does not stop you. To change another aggregate, raise an event; an event handler in the owning aggregate's cluster issues a command to the other aggregate
-8. **Import handle from protean** - `from protean import handle` (not from protean.core)
-9. **part_of on a handler takes the class or a string** - A handler usually passes the class, `part_of=AggregateClass`. A string, `part_of="AggregateName"`, also works on the handler and resolves at `init`, so the aggregate may be defined after the handler. Commands use the string form
+1. **part_of is required**: Handler must be associated with an aggregate: `@domain.command_handler(part_of=Order)`
+2. **Commands must match the same aggregate**: Commands handled must have `part_of` pointing to the SAME aggregate as the handler
+3. **One handler per command**: A command can only be processed by ONE handler (Protean enforces this)
+4. **Use @handle decorator**: Each handler method is decorated with `@handle(CommandClass)`
+5. **Handler methods take self and command**: Signature: `def method_name(self, command: CommandClass)`
+6. **Implicit Unit of Work**: `@handle` wraps every handler call in its own Unit of Work, which is one real database transaction on a provider with transactions, such as the SQL databases ([ADR-0027](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/)). Do not wrap the body yourself. See [Unit of Work](references/unit-of-work.md)
+7. **Change one aggregate per transaction**: A handler should persist one aggregate root. This is a design rule: the Unit of Work can hold changes to several aggregates and does not stop you. To change another aggregate, raise an event; an event handler in the owning aggregate's cluster issues a command to the other aggregate
+8. **Import handle from protean**: `from protean import handle` (not from protean.core)
+9. **part_of on a handler takes the class or a string**: A handler usually passes the class, `part_of=AggregateClass`. A string, `part_of="AggregateName"`, also works on the handler and resolves at `init`, so the aggregate may be defined after the handler. Commands use the string form
 
 ## Handler options
 
@@ -109,13 +111,6 @@ class AccountCommandHandler:
         account.activate()
         domain.repository_for(Account).add(account)
 ```
-
-## Handler workflow
-
-1. **Receive command** - Domain dispatches command to the matching handler method
-2. **Load or create aggregate** - Use `domain.repository_for(Aggregate).get(id)` to load, or construct a new instance
-3. **Extract data and invoke method** - Call aggregate methods with data from the command
-4. **Persist** - Use `domain.repository_for(Aggregate).add(aggregate)` to save
 
 ## Error handling
 
@@ -172,58 +167,6 @@ with domain.domain_context():
 
 ## Common mistakes
 
-### Missing part_of on handler
-
-```python
-# fragment
-@domain.command_handler  # Wrong! Missing part_of
-class OrderCommandHandler:
-    pass
-```
-
-Instead: Always specify part_of with the aggregate class
-
-```python
-# fragment
-@domain.command_handler(part_of=Order)  # Correct!
-class OrderCommandHandler:
-    pass
-```
-
-### Command associated with different aggregate
-
-```python
-# fragment
-@domain.command(part_of="Shipment")
-class ShipOrder:
-    order_id: Identifier(required=True)
-
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(ShipOrder)  # Wrong! ShipOrder is part_of Shipment, not Order
-    def handle_ship(self, command):
-        pass
-```
-
-Instead: Command and handler must share the same aggregate
-
-### Handling the same command in multiple handlers
-
-```python
-# fragment
-@domain.command_handler(part_of=Order)
-class OrderHandler1:
-    @handle(PlaceOrder)  # First handler
-    def handle(self, command):
-        pass
-
-@domain.command_handler(part_of=Order)
-class OrderHandler2:
-    @handle(PlaceOrder)  # Wrong! PlaceOrder already handled by OrderHandler1
-    def handle(self, command):
-        pass
-```
-
 ### Wrapping in UnitOfWork manually
 
 ```python
@@ -237,14 +180,6 @@ def handle_place_order(self, command):
 
 Instead: Let the implicit Unit of Work handle it. A `with UnitOfWork():` inside the handler joins the outer one and adds nothing.
 
-```python
-# fragment
-@handle(PlaceOrder)
-def handle_place_order(self, command):
-    order = Order(order_id=command.order_id)
-    domain.repository_for(Order).add(order)
-```
-
 ### What `check` reports
 
 `check` inspects your command handlers and reports these diagnostics:
@@ -256,24 +191,24 @@ def handle_place_order(self, command):
 ## Detailed references
 
 ### Core Concepts
-- [Loading Aggregates](references/loading-aggregates.md) - Hydrating aggregates from the repository
-- [Unit of Work](references/unit-of-work.md) - The transaction each handler call runs in
-- [Error Handling](references/error-handling.md) - Custom error recovery with handle_error
-- [Return Values](references/return-values.md) - Returning data from handlers
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Loading Aggregates](references/loading-aggregates.md): Hydrating aggregates from the repository
+- [Unit of Work](references/unit-of-work.md): The transaction each handler call runs in
+- [Error Handling](references/error-handling.md): Custom error recovery with handle_error
+- [Return Values](references/return-values.md): Returning data from handlers
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Simple Handler](assets/command_handler_simple.py) - Basic handler with one command
-- [Multiple Commands](assets/command_handler_multiple_commands.py) - Handler with multiple @handle methods
-- [Handler with Events](assets/command_handler_with_events.py) - Aggregate raises events during handling
-- [Error Handling](assets/command_handler_error_handling.py) - Custom handle_error classmethod
-- [Create Aggregate](assets/command_handler_create_aggregate.py) - Creating new aggregates vs. loading
+- [Simple Handler](assets/command_handler_simple.py): Basic handler with one command
+- [Multiple Commands](assets/command_handler_multiple_commands.py): Handler with multiple @handle methods
+- [Handler with Events](assets/command_handler_with_events.py): Aggregate raises events during handling
+- [Error Handling](assets/command_handler_error_handling.py): Custom handle_error classmethod
+- [Create Aggregate](assets/command_handler_create_aggregate.py): Creating new aggregates vs. loading
 
 ### Related Skills
-- `command` - Commands are the input to command handlers
-- `aggregate` - Command handlers operate on aggregates
-- `event` - Aggregates may raise events during handler processing
-- `event-handler` - Downstream processing of events raised during command handling
+- `command`: Commands are the input to command handlers
+- `aggregate`: Command handlers operate on aggregates
+- `event`: Aggregates may raise events during handler processing
+- `event-handler`: Downstream processing of events raised during command handling
 
 ## Verify your work
 

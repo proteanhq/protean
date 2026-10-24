@@ -1,0 +1,1 @@
+[DX pack] The teaching skills drop repeated rules and narration and use no em-dashes; `audit-domain` reports every finding at its severity, and `value-object` says a `ValueObject` field takes a plain dict.

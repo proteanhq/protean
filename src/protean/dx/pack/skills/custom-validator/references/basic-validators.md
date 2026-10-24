@@ -149,5 +149,5 @@ def test_phone_value_object():
 
 ## Related
 
-- [Regex Validators](./regex-validators.md) - Pattern-based alternative
-- [Parameterized Validators](./parameterized-validators.md) - Making validators configurable
+- [Regex Validators](./regex-validators.md): Pattern-based alternative
+- [Parameterized Validators](./parameterized-validators.md): Making validators configurable

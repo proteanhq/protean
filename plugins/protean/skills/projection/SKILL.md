@@ -1,6 +1,6 @@
 ---
 name: projection
-description: Define a Protean projection (read model) - a denormalized, query-optimized data structure used on the read side of CQRS. Projections are closer to the database than domain aggregates and can be stored in either a database (provider) or cache (e.g., Redis). They support basic field types (String, Integer, Float, Identifier, DateTime, etc.) and ValueObject fields (stored as flattened shadow fields) - but not References or Associations. Every projection must have at least one identifier field. Projections are populated by projectors in response to domain events. Use when you need to define a read model, create a query-optimized view, build a denormalized data structure, define a CQRS read side schema, or when the user asks to "create a projection", "define a read model", "add a query view", "build a denormalized view", "create a CQRS projection", or "define a read-optimized model".
+description: Define a Protean projection (read model), a denormalized, query-optimized data structure used on the read side of CQRS. Projections are closer to the database than domain aggregates and can be stored in either a database (provider) or cache (e.g., Redis). They support basic field types (String, Integer, Float, Identifier, DateTime, etc.) and ValueObject fields (stored as flattened shadow fields), but not References or Associations. Every projection must have at least one identifier field. Projections are populated by projectors in response to domain events. Use when you need to define a read model, create a query-optimized view, build a denormalized data structure, define a CQRS read side schema, or when the user asks to "create a projection", "define a read model", "add a query view", "build a denormalized view", "create a CQRS projection", or "define a read-optimized model".
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -14,6 +14,8 @@ metadata:
 ---
 
 # Projection
+
+A projection is a read model: a flat record shaped for one query and filled by a projector from domain events. This skill defines projections: fields, storage options and querying.
 
 ## How projections differ from aggregates
 
@@ -47,16 +49,16 @@ class ProductInventory:
 
 ## Key rules
 
-1. **At least one identifier field** - Every non-abstract projection must have a field with `identifier=True`; abstract projections are exempt from this check
-2. **No Reference or Association fields** - `Reference` and Associations (`HasOne`/`HasMany`) are rejected. Basic field types and `ValueObject` fields are allowed; a `ValueObject` is stored as flattened shadow fields (e.g. `address_street`, `address_city`)
-3. **Use @domain.projection decorator** - Register with domain: `@domain.projection` or `domain.register(MyProjection)`
-4. **Projections are denormalized** - Flatten nested/related data into basic fields
-5. **Default provider is "default"** - Uses the default database provider unless overridden
-6. **Cache overrides provider** - When both `cache` and `provider` are specified, `cache` takes precedence
-7. **Default query limit is 100** - Can be overridden; set to `None` or negative for unlimited
-8. **Schema name auto-derived** - Defaults to underscore-cased class name (e.g., `ProductInventory` -> `product_inventory`)
-9. **Identifier values are immutable** - Once set, the identifier field cannot be changed
-10. **Identifier values auto-generate when omitted, for `Identifier`/`Auto` fields** - An `identifier=True` field declared as `Identifier` or `Auto` generates a value on creation if you do not supply one (a UUID by default), the same as aggregates. `Auto(identifier=True, increment=True)` is the exception: it stays `None` at construction and the DAO assigns its integer sequence when the projection is persisted. An `identifier=True` field declared with another field type (e.g. `String`) gets no default and stays required
+1. **At least one identifier field**: Every non-abstract projection must have a field with `identifier=True`; abstract projections are exempt from this check
+2. **No Reference or Association fields**: `Reference` and Associations (`HasOne`/`HasMany`) are rejected. Basic field types and `ValueObject` fields are allowed; a `ValueObject` is stored as flattened shadow fields (e.g. `address_street`, `address_city`)
+3. **Use @domain.projection decorator**: Register with domain: `@domain.projection` or `domain.register(MyProjection)`
+4. **Projections are denormalized**: Flatten nested/related data into basic fields
+5. **Default provider is "default"**: Uses the default database provider unless overridden
+6. **Cache overrides provider**: When both `cache` and `provider` are specified, `cache` takes precedence
+7. **Default query limit is 100**: Can be overridden; set to `None` or negative for unlimited
+8. **Schema name auto-derived**: Defaults to underscore-cased class name (e.g., `ProductInventory` -> `product_inventory`)
+9. **Identifier values are immutable**: Once set, the identifier field cannot be changed
+10. **Identifier values auto-generate when omitted, for `Identifier`/`Auto` fields**: An `identifier=True` field declared as `Identifier` or `Auto` generates a value on creation if you do not supply one (a UUID by default), the same as aggregates. `Auto(identifier=True, increment=True)` is the exception: it stays `None` at construction and the DAO assigns its integer sequence when the projection is persisted. An `identifier=True` field declared with another field type (e.g. `String`) gets no default and stays required
 
 ## Projection options
 
@@ -159,7 +161,7 @@ repo = domain.repository_for(ProductInventory)
 # Flat COUNT without loading rows
 low_stock = repo.query.filter(stock_quantity__lt=10).count()
 
-# isnull lookup — records where a field is / isn't set
+# isnull lookup: records where a field is / isn't set
 never_updated = repo.query.filter(last_updated__isnull=True).all().items
 
 # Fetch items without the separate total-count round-trip
@@ -174,26 +176,6 @@ non-projection element (an aggregate, say) raises `USAGE_NOT_A_PROJECTION`.
 
 ## Common mistakes
 
-### Missing identifier field
-
-```python
-# fragment
-@domain.projection
-class UserView:
-    name: String()  # Wrong! No identifier field
-    email: String()
-```
-
-Instead: Add at least one identifier field
-
-```python
-@domain.projection
-class UserView:
-    user_id: Identifier(identifier=True)  # Correct!
-    name: String()
-    email: String()
-```
-
 ### Using Reference or Association fields
 
 ```python
@@ -205,9 +187,7 @@ class OrderView:
     items = HasMany(OrderItem)           # Wrong!
 ```
 
-`ValueObject` fields are allowed (they flatten to shadow fields); `Reference`
-and Associations (`HasOne`/`HasMany`) are not. Flatten related data into basic
-fields instead:
+Flatten related data into basic fields instead:
 
 ```python
 @domain.projection
@@ -237,44 +217,27 @@ A projection with no projector is never populated, so queries against it always 
 
 A projection field no projector handler ever writes renders as a dead column. `check` reports this as `UNSOURCED_PROJECTION_FIELD`. Write every field from the projector handler for the event that carries it, or drop the field.
 
-### Confusing projection with aggregate
-
-```python
-# fragment
-# Wrong! Projections are read models, not write models
-@domain.projection
-class Order:
-    order_id: Identifier(identifier=True)
-    items = HasMany(OrderItem)  # Fails! No associations
-
-    def place(self):
-        # Business logic doesn't belong in projections
-        ...
-```
-
-Instead: Use `@domain.aggregate` for write models with business logic
-
 ## Detailed references
 
 ### Core Concepts
-- [Basic Projection](references/basic-projection.md) - Defining a simple projection with field types
-- [Configuration Options](references/configuration-options.md) - Provider, cache, schema_name, limit, and order_by
-- [Persistence & Querying](references/persistence-querying.md) - Persisting and querying projection data
-- [Field Type Restrictions](references/field-type-restrictions.md) - Which field types are allowed, and why References and Associations are not
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Basic Projection](references/basic-projection.md): Defining a simple projection with field types
+- [Configuration Options](references/configuration-options.md): Provider, cache, schema_name, limit, and order_by
+- [Persistence & Querying](references/persistence-querying.md): Persisting and querying projection data
+- [Field Type Restrictions](references/field-type-restrictions.md): Which field types are allowed, and why References and Associations are not
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Simple Projection](assets/projection_simple.py) - Basic projection with identifier and fields
-- [Projection with Options](assets/projection_with_options.py) - Custom provider, schema, limit, ordering
-- [Projection with Defaults](assets/projection_with_defaults.py) - Projection using defaults() method
-- [Projection Persistence](assets/projection_persistence.py) - Persisting and querying projections
-- [Field Validation](assets/projection_field_validation.py) - Demonstrating field type restrictions
+- [Simple Projection](assets/projection_simple.py): Basic projection with identifier and fields
+- [Projection with Options](assets/projection_with_options.py): Custom provider, schema, limit, ordering
+- [Projection with Defaults](assets/projection_with_defaults.py): Projection using defaults() method
+- [Projection Persistence](assets/projection_persistence.py): Persisting and querying projections
+- [Field Validation](assets/projection_field_validation.py): Demonstrating field type restrictions
 
 ### Related Skills
-- `projector` - Projectors populate projections from domain events
-- `aggregate` - Aggregates are the write-side counterpart to projections
-- `event` - Events are the bridge between aggregates and projections
-- [CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/) - Projections implement the query side of CQRS
+- `projector`: Projectors populate projections from domain events
+- `aggregate`: Aggregates are the write-side counterpart to projections
+- `event`: Events are the bridge between aggregates and projections
+- [CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/): Projections implement the query side of CQRS
 
 ## Verify your work
 

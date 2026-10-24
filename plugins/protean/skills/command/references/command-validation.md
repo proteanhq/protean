@@ -178,13 +178,13 @@ with domain.domain_context():
 
 ## Validation Best Practices
 
-1. **Mark essential fields as required** - Commands should always carry complete intent
-2. **Set appropriate max_length** - Prevent unbounded string input
-3. **Use min_value/max_value for numerics** - Enforce business constraints at the boundary
-4. **Use defaults sparingly** - Only for truly optional fields with sensible defaults
-5. **Validate at command level, not handler** - Fail fast before processing begins
+1. **Mark essential fields as required**: Commands should always carry complete intent
+2. **Set appropriate max_length**: Prevent unbounded string input
+3. **Use min_value/max_value for numerics**: Enforce business constraints at the boundary
+4. **Use defaults sparingly**: Only for truly optional fields with sensible defaults
+5. **Validate at command level, not handler**: Fail fast before processing begins
 
 ## Related
 
-- [Commands with Value Objects](./with-value-objects.md) - Value object validation
-- [Anti-patterns](./anti-patterns.md) - Common validation mistakes
+- [Commands with Value Objects](./with-value-objects.md): Value object validation
+- [Anti-patterns](./anti-patterns.md): Common validation mistakes

@@ -2,7 +2,7 @@
 name: audit-domain
 description: >
   Run a comprehensive design-quality audit on a Protean domain codebase. Scans for anti-patterns,
-  modeling smells, and convention violations — then produces a prioritized report with links to
+  modeling smells, and convention violations, then produces a prioritized report with links to
   refactoring skills. Use when the user says "audit my domain", "check domain quality",
   "find anti-patterns", "review my code", "domain health check", "what should I refactor",
   "code review my domain", "find design issues", or when onboarding to an unfamiliar Protean codebase
@@ -67,7 +67,7 @@ Report each of these codes at the severity in the table. `check` prints other di
 
 `check` has no rule for most of these categories, and it does not look at endpoints or tests, so they need a reading of the code. Scan for them in order. Each has a detection heuristic and a linked fix. Where a finding is one `check` already reported, record it once, with its code.
 
-### 1. Logic leak — business logic outside aggregates
+### 1. Logic leak: business logic outside aggregates
 
 **Detect**: Handler methods (`@handle`) with more than ~5 lines of logic beyond load/persist.
 Look for conditionals, calculations, state checks, or validation in handlers, services, or endpoints.
@@ -81,7 +81,7 @@ Look for conditionals, calculations, state checks, or validation in handlers, se
 **Severity**: HIGH
 **Fix**: [refactor-move-logic-to-aggregate](../refactor-move-logic-to-aggregate/SKILL.md)
 
-### 2. Primitive obsession — missing value objects
+### 2. Primitive obsession: missing value objects
 
 **Detect**: Groups of fields that always appear together, or bare `String`/`Float`/`Integer`
 fields representing domain concepts that deserve their own type.
@@ -96,7 +96,7 @@ fields representing domain concepts that deserve their own type.
 **Severity**: MEDIUM
 **Fix**: [refactor-extract-value-object](../refactor-extract-value-object/SKILL.md)
 
-### 3. Transaction boundary violation — multiple aggregates per handler
+### 3. Transaction boundary violation: multiple aggregates per handler
 
 **Detect**: Handler methods that call `repository.add()` or `domain.repository_for()` for
 more than one aggregate class.
@@ -109,7 +109,7 @@ more than one aggregate class.
 **Severity**: CRITICAL
 **Fix**: [refactor-introduce-events](../refactor-introduce-events/SKILL.md)
 
-### 4. God aggregate — oversized aggregate root
+### 4. God aggregate: oversized aggregate root
 
 **Detect**: `check` reports `AGGREGATE_TOO_LARGE` when the aggregate's cluster holds more child entities than `[lint] aggregate_size_limit` (default 5). That is the only size rule the framework enforces.
 
@@ -132,7 +132,7 @@ more than one aggregate class.
 - `with UnitOfWork():` blocks inside `@handle` methods
 
 **Severity**: MEDIUM
-**Fix**: Remove the wrapping — handlers run in an implicit UoW automatically.
+**Fix**: Remove the wrapping. Handlers run in an implicit UoW automatically.
 
 ### 6. Direct handler invocation
 
@@ -148,7 +148,7 @@ more than one aggregate class.
 
 ### 7. Scattered validation
 
-**Detect**: Validation logic outside the domain layer — in handlers, endpoints, or services.
+**Detect**: Validation logic outside the domain layer: in handlers, endpoints, or services.
 
 **Signals**:
 - `raise ValidationError` in handler methods
@@ -159,7 +159,7 @@ more than one aggregate class.
 **Severity**: MEDIUM
 **Fix**: [add-validation](../add-validation/SKILL.md)
 
-### 8. Circular import risk — class references in DTOs
+### 8. Circular import risk: class references in DTOs
 
 **Detect**: Commands, events, entities, or value objects using class references for `part_of`
 instead of string references.
@@ -196,7 +196,7 @@ instead of string references.
 **Severity**: LOW (new projects), HIGH (production with event store)
 **Fix**: Add `__version__` to all events; create upcasters for schema changes.
 
-### 11. Missing events — synchronous cross-aggregate calls
+### 11. Missing events: synchronous cross-aggregate calls
 
 **Detect**: Aggregate methods or handlers that directly call into another aggregate's
 logic without raising events.
@@ -213,7 +213,7 @@ logic without raising events.
 
 ### Step 1: Run `protean check`
 
-Run `protean check --domain=<module>` (or `--domain=<module>:<name>` when the module defines more than one domain), or the MCP `check` tool, as described in [Start with `protean check`](#start-with-protean-check). Keep its output. Each code it reports is a finding, and the codes tell you which categories are already covered.
+Run it as [Start with `protean check`](#start-with-protean-check) describes, and keep its output. Each code it reports is a finding, and the codes tell you which categories are already covered.
 
 ### Step 2: Discover domain files
 
@@ -235,8 +235,8 @@ For every domain file, check all 11 detection categories. Skip a finding `check`
 - **File and line number**
 - **Category** (1-11 from above), and the `check` code if there is one
 - **Severity** (CRITICAL / HIGH / MEDIUM / LOW)
-- **Description** — what was found
-- **Suggestion** — one-sentence fix
+- **Description**: What was found
+- **Suggestion**: One-sentence fix
 
 ### Step 4: Produce the report
 
@@ -251,7 +251,7 @@ For every domain file, check all 11 detection categories. Skip a finding `check`
 - From `check`: N (list the codes)
 
 ### CRITICAL
-1. **[Category]: [description]** — `file.py:line`
+1. **[Category]: [description]**: `file.py:line`
    Fix: [one-sentence suggestion] → [link to skill]
 
 ### HIGH
@@ -272,17 +272,16 @@ For every domain file, check all 11 detection categories. Skip a finding `check`
 ### Step 5: Suggest refactoring order
 
 Prioritize fixes by:
-1. **CRITICAL first** — transaction boundary violations break data consistency
-2. **HIGH next** — logic leaks and god aggregates compound over time
-3. **MEDIUM** — primitive obsession and scattered validation are code smells
-4. **LOW** — import style and versioning are hygiene items
+1. **CRITICAL first**: Transaction boundary violations break data consistency
+2. **HIGH next**: Logic leaks and god aggregates compound over time
+3. **MEDIUM**: Primitive obsession and scattered validation are code smells
+4. **LOW**: Import style and versioning are hygiene items
 
 ## Common mistakes
 
-1. **Reporting framework internals as issues** — Don't flag Protean's own patterns (like `_version`, `_events`, `meta_` attributes)
-2. **Over-reporting field counts** — An aggregate with 12 fields isn't automatically a god aggregate if the fields are cohesive
-3. **Ignoring context** — A handler with 8 lines might be fine if it's orchestrating a complex but legitimate single-aggregate flow
-4. **Missing the forest for the trees** — A codebase with 0 events and 20 handlers is a bigger concern than a single long handler
+1. **Reporting framework internals as issues**: Protean's own attributes (`_version`, `_events`, `meta_`) are not findings
+2. **Dropping a finding because it looks harmless**: Report every signal you find, with its severity and what you saw. An aggregate with 12 cohesive fields, or an 8-line handler that orchestrates one aggregate, is a LOW finding with that context in its description. The reader decides what to fix
+3. **Reporting only file-level findings**: A codebase with 0 events and 20 handlers is a finding in its own right, and a bigger one than a single long handler
 
 ## Quick example
 
@@ -349,17 +348,17 @@ LOW: AGGREGATE_NO_INVARIANTS on Order and Inventory (from check)
 
 ## Detailed references
 
-- [Detection heuristics](references/detection-heuristics.md) — Detailed patterns for each category
-- [Report template](references/report-template.md) — Full report template with examples
-- [Anti-patterns catalog](references/anti-patterns.md) — Comprehensive catalog of Protean anti-patterns
+- [Detection heuristics](references/detection-heuristics.md): Detailed patterns for each category
+- [Report template](references/report-template.md): Full report template with examples
+- [Anti-patterns catalog](references/anti-patterns.md): Comprehensive catalog of Protean anti-patterns
 
 ## Related skills
 
-- [refactor-extract-value-object](../refactor-extract-value-object/SKILL.md) — Fix primitive obsession
-- [refactor-move-logic-to-aggregate](../refactor-move-logic-to-aggregate/SKILL.md) — Fix logic leaks
-- [refactor-introduce-events](../refactor-introduce-events/SKILL.md) — Fix transaction boundary violations
+- [refactor-extract-value-object](../refactor-extract-value-object/SKILL.md): Fix primitive obsession
+- [refactor-move-logic-to-aggregate](../refactor-move-logic-to-aggregate/SKILL.md): Fix logic leaks
+- [refactor-introduce-events](../refactor-introduce-events/SKILL.md): Fix transaction boundary violations
 - [extract-bounded-context](../extract-bounded-context/SKILL.md): split one domain into two when the cross-aggregate references run both ways
-- [coverage-analysis](../coverage-analysis/SKILL.md) — Complementary: find untested code paths
+- [coverage-analysis](../coverage-analysis/SKILL.md): Complementary: find untested code paths
 
 ## Verify your work
 

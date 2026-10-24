@@ -11,9 +11,9 @@ Parameterized validators accept configuration in their `__init__` method, making
 The complete implementation is in [assets/custom_validator_parameterized.py](../assets/custom_validator_parameterized.py).
 
 Key highlights:
-- `AllowedDomainValidator(domains)` - Configurable email domain whitelist
-- `LuhnValidator(expected_length)` - Credit card validation with configurable card length
-- `StringLengthRangeValidator(min, max, label)` - Reusable length check with custom labels
+- `AllowedDomainValidator(domains)`: Configurable email domain whitelist
+- `LuhnValidator(expected_length)`: Credit card validation with configurable card length
+- `StringLengthRangeValidator(min, max, label)`: Reusable length check with custom labels
 - Same validator class instantiated with different configs for different fields
 
 ## Pattern
@@ -61,7 +61,7 @@ class AllowedDomainValidator:
             raise ValidationError(self.error)
 ```
 
-Usage — same class, different configs:
+Usage, with the same class in different configs:
 ```python
 corporate = AllowedDomainValidator(["company.com", "corp.io"])
 partners = AllowedDomainValidator(["partner.org", "vendor.net"])
@@ -90,12 +90,12 @@ any_card = LuhnValidator()  # Any valid card number
 
 ## Best Practices
 
-1. **Normalize in `__init__`** — Lowercase domains, compile patterns, etc.
-2. **Build error messages from params** — Dynamic messages are more helpful than static ones
-3. **Use sensible defaults** — Optional params should have reasonable defaults
-4. **Keep `__call__` focused** — Do setup in `__init__`, validation logic in `__call__`
+1. **Normalize in `__init__`**: Lowercase domains, compile patterns, etc.
+2. **Build error messages from params**: Dynamic messages are more helpful than static ones
+3. **Use sensible defaults**: Optional params should have reasonable defaults
+4. **Keep `__call__` focused**: Do setup in `__init__`, validation logic in `__call__`
 
 ## Related
 
-- [Basic Validators](./basic-validators.md) - Simple validators without parameters
-- [Composing Validators](./composing-validators.md) - Combining parameterized validators
+- [Basic Validators](./basic-validators.md): Simple validators without parameters
+- [Composing Validators](./composing-validators.md): Combining parameterized validators

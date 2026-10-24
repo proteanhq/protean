@@ -384,6 +384,6 @@ test_nested_entities()
 
 ## Related
 
-- [HasOne relationships](./with-hasone.md) - One-to-one entity relationships
-- [HasMany relationships](./with-hasmany.md) - One-to-many entity relationships
-- [Aggregates](../../aggregate/SKILL.md) - Aggregate design patterns
+- [HasOne relationships](./with-hasone.md): One-to-one entity relationships
+- [HasMany relationships](./with-hasmany.md): One-to-many entity relationships
+- [Aggregates](../../aggregate/SKILL.md): Aggregate design patterns

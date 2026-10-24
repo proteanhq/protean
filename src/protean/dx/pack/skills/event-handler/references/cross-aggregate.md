@@ -170,11 +170,11 @@ Cross-aggregate event handling provides eventual consistency. The Order aggregat
 
 ## Related
 
-- [Same-Aggregate](./same-aggregate.md) - Handling events from the same aggregate
-- [Cross-Aggregate Patterns](./cross-aggregate-patterns.md) - Common sync scenarios
-- [Anti-patterns](./anti-patterns.md) - Common mistakes
-- `command-handler` - The write path the handler hands off to
-- `process-manager` - Flows with several causally dependent steps
-- `event` - Events are the input to event handlers
-- `aggregate` - Event handlers are always connected to aggregates
-- `event-sourced-aggregate` - Aggregates whose state is rebuilt from their events
+- [Same-Aggregate](./same-aggregate.md): Handling events from the same aggregate
+- [Cross-Aggregate Patterns](./cross-aggregate-patterns.md): Common sync scenarios
+- [Anti-patterns](./anti-patterns.md): Common mistakes
+- `command-handler`: The write path the handler hands off to
+- `process-manager`: Flows with several causally dependent steps
+- `event`: Events are the input to event handlers
+- `aggregate`: Event handlers are always connected to aggregates
+- `event-sourced-aggregate`: Aggregates whose state is rebuilt from their events

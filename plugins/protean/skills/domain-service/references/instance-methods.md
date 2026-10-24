@@ -166,6 +166,6 @@ class OrderPlacementService:
 Without the underscore prefix, `calculate_total` is wrapped like any public method. Calling it from `place_order` runs every invariant again around the helper, against the state `place_order` has reached so far. If that half-finished state breaks an invariant, the helper raises `ValidationError` and `place_order` stops there. An invariant that calls a public helper is different: the helper's wrapper runs the invariant again, which calls the helper again, until Python's recursion limit stops the calls.
 
 ## Related
-- [Callable class pattern](./callable-class.md) - Single-operation alternative
-- [Class methods pattern](./class-methods.md) - Stateless alternative
-- [Invariants](./invariants.md) - Pre/post validation details
+- [Callable class pattern](./callable-class.md): Single-operation alternative
+- [Class methods pattern](./class-methods.md): Stateless alternative
+- [Invariants](./invariants.md): Pre/post validation details

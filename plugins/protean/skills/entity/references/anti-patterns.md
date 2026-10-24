@@ -528,6 +528,6 @@ class Customer:
 
 ## Related
 
-- [Entity basics](../SKILL.md) - Core entity concepts
-- [Aggregate patterns](../../aggregate/references/anti-patterns.md) - Aggregate anti-patterns
-- [Value objects](../../value-object/SKILL.md) - When to use value objects
+- [Entity basics](../SKILL.md): Core entity concepts
+- [Aggregate patterns](../../aggregate/references/anti-patterns.md): Aggregate anti-patterns
+- [Value objects](../../value-object/SKILL.md): When to use value objects

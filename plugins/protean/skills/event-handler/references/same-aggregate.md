@@ -80,7 +80,7 @@ The handler loads the aggregate from the repository (it gets a fresh copy, not t
 
 ## Related
 
-- [Cross-Aggregate](./cross-aggregate.md) - Handling events from another aggregate
-- [Anti-patterns](./anti-patterns.md) - Common mistakes
-- `event` - Events are the input to event handlers
-- `aggregate` - Event handlers are always connected to aggregates
+- [Cross-Aggregate](./cross-aggregate.md): Handling events from another aggregate
+- [Anti-patterns](./anti-patterns.md): Common mistakes
+- `event`: Events are the input to event handlers
+- `aggregate`: Event handlers are always connected to aggregates

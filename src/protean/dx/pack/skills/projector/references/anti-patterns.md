@@ -238,6 +238,6 @@ class InventoryProjector:
 
 ## Related
 
-- [Single-Aggregate Projector](single-aggregate.md) - Correct basic pattern
-- [Cross-Aggregate Projector](cross-aggregate.md) - Correct cross-aggregate pattern
-- [Error Handling](error-handling.md) - Proper error handling patterns
+- [Single-Aggregate Projector](single-aggregate.md): Correct basic pattern
+- [Cross-Aggregate Projector](cross-aggregate.md): Correct cross-aggregate pattern
+- [Error Handling](error-handling.md): Proper error handling patterns

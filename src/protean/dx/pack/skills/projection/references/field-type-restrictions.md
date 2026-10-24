@@ -125,5 +125,5 @@ See [projection_field_validation.py](../assets/projection_field_validation.py) f
 
 ## Related
 
-- [Basic Projection](basic-projection.md) - Defining projections
-- [Anti-patterns](anti-patterns.md) - Common mistakes
+- [Basic Projection](basic-projection.md): Defining projections
+- [Anti-patterns](anti-patterns.md): Common mistakes

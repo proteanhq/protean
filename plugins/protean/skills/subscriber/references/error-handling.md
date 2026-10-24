@@ -94,6 +94,6 @@ def handle_error(cls, exc: Exception, message: dict) -> None:
 
 ## Related
 
-- [Basic Subscriber](./basic-subscriber.md) - Subscriber without error handling
-- [Anti-corruption Layer](./anti-corruption-layer.md) - Error handling during translation
-- [Anti-patterns](./anti-patterns.md) - Common error handling mistakes
+- [Basic Subscriber](./basic-subscriber.md): Subscriber without error handling
+- [Anti-corruption Layer](./anti-corruption-layer.md): Error handling during translation
+- [Anti-patterns](./anti-patterns.md): Common error handling mistakes

@@ -2,8 +2,8 @@
 name: refactor-extract-value-object
 description: >
   Extract value objects from primitive fields in Protean aggregates, entities, and commands.
-  Detects primitive obsession — raw String/Float/Integer fields representing domain concepts
-  that deserve their own type — and refactors them into proper value objects. Use when the user
+  Detects primitive obsession (raw String/Float/Integer fields representing domain concepts
+  that deserve their own type) and refactors them into proper value objects. Use when the user
   says "extract value object", "create a value object from these fields", "fix primitive obsession",
   "these fields should be a VO", "refactor money fields", "extract address", or when an audit
   identifies primitive obsession as a code smell.
@@ -68,7 +68,7 @@ A single field that carries domain meaning beyond its raw type:
 
 ### Cross-aggregate repetition
 
-The same field group appearing in 2+ aggregates is the strongest signal — extract once, use everywhere.
+The same field group appearing in 2+ aggregates is the strongest signal: extract once, use everywhere.
 
 ## Process
 
@@ -99,10 +99,10 @@ class Money:
 ```
 
 Key decisions:
-1. **Fields**: Move from the aggregate — keep the same types and constraints
+1. **Fields**: Move from the aggregate and keep the same types and constraints
 2. **Behavior**: Extract related calculations and comparisons from handlers/aggregates
 3. **Invariants**: Add `@invariant.post` for concept-level validation
-4. **Immutability**: VOs are automatically immutable — no setters needed
+4. **Immutability**: VOs are automatically immutable, so no setters are needed
 
 ### Step 3: Replace primitive fields
 
@@ -172,19 +172,19 @@ For events, flattening is often preferred since events are read by many consumer
 
 ## Common mistakes
 
-1. **Extracting without behavior** — A VO with only fields and no methods is often premature.
+1. **Extracting without behavior**: A VO with only fields and no methods is often premature.
    Ask: does this concept have operations (add, compare, format)?
 
-2. **Over-extracting** — Not every pair of fields is a VO. `created_at` + `updated_at` are
+2. **Over-extracting**: Not every pair of fields is a VO. `created_at` + `updated_at` are
    independent timestamps, not a "TimeRange".
 
-3. **Breaking event schemas** — If events are persisted (event store), changing field structure
+3. **Breaking event schemas**: If events are persisted (event store), changing field structure
    is a schema change. Add `__version__` bump and an upcaster.
 
-4. **Forgetting HasMany entities** — If the primitive fields are on entities inside a `HasMany`,
+4. **Forgetting HasMany entities**: If the primitive fields are on entities inside a `HasMany`,
    update those too.
 
-5. **Losing default values** — When moving `default=0.0` from the aggregate to the VO,
+5. **Losing default values**: When moving `default=0.0` from the aggregate to the VO,
    make sure the VO field or the aggregate `ValueObject()` field carries the default.
 
 6. **Putting a mutable collection on the VO**: a value object is compared by value and must
@@ -194,36 +194,6 @@ For events, flattening is often preferred since events are read by many consumer
    or, if the items form a concept with its own identity, model them as an entity the aggregate
    references.
 
-## Quick example
-
-```python
-# Before: primitive obsession
-@domain.aggregate
-class Invoice:
-    subtotal_amount = Float(default=0.0)
-    subtotal_currency = String(default="USD")
-    tax_amount = Float(default=0.0)
-    tax_currency = String(default="USD")
-
-# After: value objects
-@domain.value_object
-class Money:
-    amount = Float(required=True)
-    currency = String(max_length=3, default="USD")
-
-    def add(self, other: "Money") -> "Money":
-        return Money(amount=self.amount + other.amount, currency=self.currency)
-
-@domain.aggregate
-class Invoice:
-    subtotal = ValueObject(Money)
-    tax = ValueObject(Money)
-
-    @property
-    def total(self) -> Money:
-        return self.subtotal.add(self.tax) if self.subtotal and self.tax else None
-```
-
 ## Examples
 
 - Address: [before](assets/extract_vo_address_before.py) and [after](assets/extract_vo_address_after.py)
@@ -231,15 +201,15 @@ class Invoice:
 
 ## Detailed references
 
-- [Common value objects](references/common-value-objects.md) — Catalog of common VOs with implementations
-- [Migration guide](references/migration-guide.md) — Step-by-step for migrating existing data
-- [Anti-patterns](references/anti-patterns.md) — Extraction pitfalls
+- [Common value objects](references/common-value-objects.md): Catalog of common VOs with implementations
+- [Migration guide](references/migration-guide.md): Step-by-step for migrating existing data
+- [Anti-patterns](references/anti-patterns.md): Extraction pitfalls
 
 ## Related skills
 
-- [value-object](../value-object/SKILL.md) — Full VO patterns and rules
-- [audit-domain](../audit-domain/SKILL.md) — Detects primitive obsession
-- [aggregate](../aggregate/SKILL.md) — Aggregate patterns including VO usage
+- [value-object](../value-object/SKILL.md): Full VO patterns and rules
+- [audit-domain](../audit-domain/SKILL.md): Detects primitive obsession
+- [aggregate](../aggregate/SKILL.md): Aggregate patterns including VO usage
 
 ## Verify your work
 

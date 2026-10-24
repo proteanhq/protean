@@ -97,8 +97,8 @@ See [projector_single_aggregate.py](../assets/projector_single_aggregate.py) for
 
 ## Related
 
-- [Cross-Aggregate Projector](cross-aggregate.md) - Projector listening to multiple aggregates
-- [Multiple Projectors](multiple-projectors.md) - Multiple projectors for the same events
-- [Anti-patterns](anti-patterns.md) - Common mistakes to avoid
-- `projection` - Defining projections
-- `event` - Events that projectors consume
+- [Cross-Aggregate Projector](cross-aggregate.md): Projector listening to multiple aggregates
+- [Multiple Projectors](multiple-projectors.md): Multiple projectors for the same events
+- [Anti-patterns](anti-patterns.md): Common mistakes to avoid
+- `projection`: Defining projections
+- `event`: Events that projectors consume

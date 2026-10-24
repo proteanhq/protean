@@ -30,11 +30,11 @@ Each layer has a clear responsibility:
 
 When adding a new feature, create these components in order:
 
-1. **Command** — Define the input contract
-2. **Event** — Define what will be recorded
-3. **Aggregate method** — Implement the business logic
-4. **Command handler** — Wire the command to the aggregate
-5. **Event handler** — Add side effects (if needed)
+1. **Command**: Define the input contract
+2. **Event**: Define what will be recorded
+3. **Aggregate method**: Implement the business logic
+4. **Command handler**: Wire the command to the aggregate
+5. **Event handler**: Add side effects (if needed)
 
 ## File organization (Screaming Architecture)
 
@@ -65,6 +65,6 @@ src/
 
 See the asset files for complete runnable vertical slices:
 
-- [use_case_basic.py](../assets/use_case_basic.py) — Simple create pattern
-- [use_case_with_update.py](../assets/use_case_with_update.py) — Create + update + event handler
-- [use_case_with_guards.py](../assets/use_case_with_guards.py) — Authorization and existence checks
+- [use_case_basic.py](../assets/use_case_basic.py): Simple create pattern
+- [use_case_with_update.py](../assets/use_case_with_update.py): Create + update + event handler
+- [use_case_with_guards.py](../assets/use_case_with_guards.py): Authorization and existence checks

@@ -76,9 +76,9 @@ The handler sits in Shipment's cluster, which owns `ShipmentDispatched`, and wri
 def handle_error(cls, exc: Exception, message) -> None:
 ```
 
-- `cls` - The event handler class
-- `exc` - The exception that was raised during event handling
-- `message` - The original event message (a `Message` object) being processed
+- `cls`: The event handler class
+- `exc`: The exception that was raised during event handling
+- `message`: The original event message (a `Message` object) being processed
 
 ## Synchronous vs. Asynchronous
 
@@ -106,5 +106,5 @@ def handle_error(cls, exc: Exception, message) -> None:
 
 ## Related
 
-- [Anti-patterns](./anti-patterns.md) - Common error handling mistakes
-- `command-handler` - Command handlers have the same handle_error pattern
+- [Anti-patterns](./anti-patterns.md): Common error handling mistakes
+- `command-handler`: Command handlers have the same handle_error pattern

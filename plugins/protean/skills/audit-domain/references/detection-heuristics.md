@@ -26,10 +26,11 @@ aggregate.field = command.value  # Multiple of these = logic leak
 
 **Threshold**: A handler method with more than ~5 statements beyond `repo.get()`, `aggregate.method()`, `repo.add()` is suspect.
 
-**False positives to ignore**:
-- Simple mapping: `order = Order(customer_id=command.customer_id)` is fine
-- Single conditional for command routing: `if command.type == "express":` can be OK
+**Not a logic leak**:
+- Simple mapping: `order = Order(customer_id=command.customer_id)`
 - Logging statements
+
+A single conditional for command routing (`if command.type == "express":`) is a LOW finding. Report it, and say in the description that it only routes.
 
 ## 2. Primitive Obsession Detection
 

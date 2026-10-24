@@ -311,13 +311,13 @@ def test_date_range_invalid():
 
 ## Best Practices
 
-1. **Name methods descriptively** - Method name should explain the rule
-2. **One rule per method** - Keep invariants focused and testable
-3. **Provide clear error messages** - Explain what's wrong and why
-4. **Document business rationale** - Explain why the rule exists
-5. **Test all branches** - Cover valid and invalid cases
-6. **Run on every creation** - Invariants protect data integrity
-7. **Use appropriate exception** - Always raise `ValidationError`
+1. **Name methods descriptively**: Method name should explain the rule
+2. **One rule per method**: Keep invariants focused and testable
+3. **Provide clear error messages**: Explain what's wrong and why
+4. **Document business rationale**: Explain why the rule exists
+5. **Test all branches**: Cover valid and invalid cases
+6. **Run on every creation**: Invariants protect data integrity
+7. **Use appropriate exception**: Always raise `ValidationError`
 
 ## Common Mistakes
 
@@ -381,6 +381,6 @@ class Money:
 
 ## Related
 
-- [Value Objects with Validation](./with-validation.md) - Field-level validation
-- [Value Objects with Methods](./with-methods.md) - Adding behavior
-- [Anti-patterns](./anti-patterns.md) - Common mistakes
+- [Value Objects with Validation](./with-validation.md): Field-level validation
+- [Value Objects with Methods](./with-methods.md): Adding behavior
+- [Anti-patterns](./anti-patterns.md): Common mistakes

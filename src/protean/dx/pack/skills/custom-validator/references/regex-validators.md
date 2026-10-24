@@ -84,5 +84,5 @@ RegexValidator(
 
 ## Related
 
-- [Basic Validators](./basic-validators.md) - Custom callable classes
-- [Composing Validators](./composing-validators.md) - Combining regex with custom validators
+- [Basic Validators](./basic-validators.md): Custom callable classes
+- [Composing Validators](./composing-validators.md): Combining regex with custom validators

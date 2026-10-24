@@ -4,12 +4,12 @@ Patterns for testing user-written business logic in aggregates, entities, and va
 
 ## Overview
 
-Domain unit tests are the base of the testing pyramid. They test aggregate methods, invariants, and event raising directly — no handlers, repositories, or infrastructure.
+Domain unit tests are the base of the testing pyramid. They test aggregate methods, invariants, and event raising directly, with no handlers, repositories, or infrastructure.
 
 ## Code
 
 Complete examples are in:
-- [assets/scaffold_aggregate_unit.py](../assets/scaffold_aggregate_unit.py) — Order with entities, value objects, invariants
+- [assets/scaffold_aggregate_unit.py](../assets/scaffold_aggregate_unit.py): Order with entities, value objects, invariants
 
 ## Testing factory methods
 
@@ -63,7 +63,7 @@ def test_invariant_rejects_invalid_state(self):
     """Placed orders must have items (post-invariant)."""
     order = Order.create(customer_id="cust-1")
     with pytest.raises(ValidationError):
-        order.place()  # No items — invariant fires
+        order.place()  # No items: invariant fires
 ```
 
 ## Testing business rules in methods
@@ -132,7 +132,7 @@ def test_money_add_different_currency_fails(self):
         m1.add(m2)
 ```
 
-## Avoid mocks — use real domain elements
+## Avoid mocks: use real domain elements
 
 Always construct real aggregates, entities, and value objects directly in tests. Protean's in-memory infrastructure means there is no need to mock repositories or domain elements. Mocks hide bugs and make tests brittle. Only mock truly external dependencies (third-party HTTP APIs) that have no in-memory substitute.
 

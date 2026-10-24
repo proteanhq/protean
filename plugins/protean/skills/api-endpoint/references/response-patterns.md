@@ -149,6 +149,6 @@ exception handlers do not map that exception, so the client gets a 500.
 
 ## Related
 
-- [Request Validation](./request-validation.md) - Input validation patterns
-- [Testing Endpoints](./testing-endpoints.md) - Checking status codes in tests
-- [Anti-patterns](./anti-patterns.md) - Response anti-patterns
+- [Request Validation](./request-validation.md): Input validation patterns
+- [Testing Endpoints](./testing-endpoints.md): Checking status codes in tests
+- [Anti-patterns](./anti-patterns.md): Response anti-patterns

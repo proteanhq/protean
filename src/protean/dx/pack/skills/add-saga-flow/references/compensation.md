@@ -39,14 +39,14 @@ either behavior. Keep compensating commands idempotent so re-issuing one is safe
 
 ## Points to keep in mind
 
-- **A compensating command is a normal command.** The target aggregate's command
+- **A compensating command is a normal command**: The target aggregate's command
   handler decides how to undo the step. The saga only issues the command; it
   holds no business logic itself.
-- **Compensate the steps that ran.** Track progress in the saga's state so the
+- **Compensate the steps that ran**: Track progress in the saga's state so the
   failure handler undoes the steps the flow actually reached. The handler above
   releases the reservation by the `reservation_id` the saga stored when the
   stock was reserved.
-- **End every terminal path.** Mark the failure handler `end=True` so the saga
+- **End every terminal path**: Mark the failure handler `end=True` so the saga
   closes after compensating. `check` reports `PROCESS_MANAGER_UNCLOSED` only when
   no handler in the whole process manager is marked `end=True`, so a closed
   success path hides an unclosed failure path from the check. Ending only the

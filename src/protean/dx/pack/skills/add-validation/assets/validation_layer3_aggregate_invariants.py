@@ -87,7 +87,7 @@ class Order:
 
     @invariant.pre
     def cannot_modify_shipped_order(self):
-        """Shipped orders are immutable — no further changes allowed."""
+        """Shipped orders are immutable: no further changes allowed."""
         if self.status == "shipped":
             raise ValidationError({"_entity": ["Cannot modify a shipped order"]})
 

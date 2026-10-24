@@ -208,6 +208,6 @@ def test_cancel_existing_order_returns_200(client):
 
 ## Related
 
-- [Request Validation](./request-validation.md) - What to validate at the boundary
-- [Response Patterns](./response-patterns.md) - Expected response shapes
-- [command-handler skill](../../command-handler/SKILL.md) - Testing command handlers
+- [Request Validation](./request-validation.md): What to validate at the boundary
+- [Response Patterns](./response-patterns.md): Expected response shapes
+- [command-handler skill](../../command-handler/SKILL.md): Testing command handlers

@@ -132,5 +132,5 @@ with domain.domain_context():
 - When operations need shared state between steps
 
 ## Related
-- [Callable class pattern](./callable-class.md) - For single-operation with invariants
-- [Instance methods pattern](./instance-methods.md) - For multiple operations with invariants
+- [Callable class pattern](./callable-class.md): For single-operation with invariants
+- [Instance methods pattern](./instance-methods.md): For multiple operations with invariants

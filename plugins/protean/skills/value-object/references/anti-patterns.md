@@ -542,7 +542,7 @@ class Money:
 
 ## Related
 
-- [Equality and Immutability](./equality-and-immutability.md) - Core concepts
-- [Value Objects with Methods](./with-methods.md) - Adding behavior
-- [Value Objects with Validation](./with-validation.md) - Validation patterns
-- [Deciding Between Elements](https://docs.proteanhq.com/concepts/building-blocks/choosing-element-types/) - When to use VOs vs Entities
+- [Equality and Immutability](./equality-and-immutability.md): Core concepts
+- [Value Objects with Methods](./with-methods.md): Adding behavior
+- [Value Objects with Validation](./with-validation.md): Validation patterns
+- [Deciding Between Elements](https://docs.proteanhq.com/concepts/building-blocks/choosing-element-types/): When to use VOs vs Entities

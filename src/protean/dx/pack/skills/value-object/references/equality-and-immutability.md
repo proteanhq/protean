@@ -486,16 +486,16 @@ order.total = Money(currency="USD", amount=D("200.00"))
 
 ## Best Practices
 
-1. **Test equality** - Verify VOs with same values are equal
-2. **Test immutability** - Ensure modifications raise errors
-3. **Replace, not modify** - Always create new instances
-4. **Use in comparisons** - Leverage equality for business logic
-5. **Document why immutable** - Help team understand the pattern
-6. **No identity fields** - Never add IDs to value objects
-7. **Return new from methods** - Never modify self
+1. **Test equality**: Verify VOs with same values are equal
+2. **Test immutability**: Ensure modifications raise errors
+3. **Replace, not modify**: Always create new instances
+4. **Use in comparisons**: Leverage equality for business logic
+5. **Document why immutable**: Help team understand the pattern
+6. **No identity fields**: Never add IDs to value objects
+7. **Return new from methods**: Never modify self
 
 ## Related
 
-- [Value Objects with Methods](./with-methods.md) - Methods that return new instances
-- [Value Objects in Aggregates](./in-aggregates.md) - Replacing VOs in aggregates
-- [Anti-patterns](./anti-patterns.md) - Common equality/immutability mistakes
+- [Value Objects with Methods](./with-methods.md): Methods that return new instances
+- [Value Objects in Aggregates](./in-aggregates.md): Replacing VOs in aggregates
+- [Anti-patterns](./anti-patterns.md): Common equality/immutability mistakes

@@ -6,10 +6,10 @@ Events can contain value objects to represent complex immutable data structures.
 
 Value objects are immutable complex types that represent domain concepts with multiple attributes (Money, Address, Coordinates, etc.). Including value objects in events provides:
 
-- **Type safety** - Structured data with validation
-- **Immutability** - Value objects are immutable, perfect for events
-- **Domain modeling** - Express domain concepts clearly
-- **Reusability** - Same value objects used across events and aggregates
+- **Type safety**: Structured data with validation
+- **Immutability**: Value objects are immutable, perfect for events
+- **Domain modeling**: Express domain concepts clearly
+- **Reusability**: Same value objects used across events and aggregates
 
 ## Code
 
@@ -344,14 +344,14 @@ class VitalSignsRecorded:
 
 ## Best Practices
 
-1. **Reuse value objects** - Same value objects across events, aggregates, and commands
-2. **Keep value objects immutable** - Never add methods that modify state
-3. **Add behavior to value objects** - Validation, calculations, formatting
-4. **Use composition** - Value objects can contain other value objects
-5. **Document purpose** - Clear docstrings on value objects and their usage
+1. **Reuse value objects**: Same value objects across events, aggregates, and commands
+2. **Keep value objects immutable**: Never add methods that modify state
+3. **Add behavior to value objects**: Validation, calculations, formatting
+4. **Use composition**: Value objects can contain other value objects
+5. **Document purpose**: Clear docstrings on value objects and their usage
 
 ## Related
 
-- [Delta Events](./delta-events.md) - Incremental state changes
-- [Fact Events](./fact-events.md) - Complete state snapshots
-- `value-object` - Detailed value object patterns
+- [Delta Events](./delta-events.md): Incremental state changes
+- [Fact Events](./fact-events.md): Complete state snapshots
+- `value-object`: Detailed value object patterns

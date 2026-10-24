@@ -120,13 +120,13 @@ if __name__ == "__main__":
             zip_code="62704",
         )
 
-        # Persist aggregate — all children are saved automatically
+        # Persist aggregate: all children are saved automatically
         repo.add(order)
         print(
             f"Persisted order with {order.item_count} items, total=${order.total:.2f}"
         )
 
-        # Load aggregate — children are loaded too
+        # Load aggregate: children are loaded too
         loaded = repo.get("ORD-001")
         print(
             f"Loaded order: {loaded.item_count} items, address={loaded.shipping_address.city}"

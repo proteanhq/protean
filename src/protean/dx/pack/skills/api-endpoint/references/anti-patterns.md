@@ -200,6 +200,6 @@ changes the second.
 
 ## Related
 
-- [Request Validation](./request-validation.md) - Proper validation patterns
-- [Response Patterns](./response-patterns.md) - HTTP response guidelines
-- [command-handler anti-patterns](../../command-handler/references/anti-patterns.md) - Handler-level mistakes
+- [Request Validation](./request-validation.md): Proper validation patterns
+- [Response Patterns](./response-patterns.md): HTTP response guidelines
+- [command-handler anti-patterns](../../command-handler/references/anti-patterns.md): Handler-level mistakes

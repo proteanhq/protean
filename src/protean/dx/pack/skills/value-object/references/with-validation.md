@@ -220,15 +220,15 @@ def test_invalid_email_too_long_local_part():
 
 ## Best Practices
 
-1. **Keep validators focused** - One validator, one concern
-2. **Make error messages clear** - Users need to know what's wrong
-3. **Test edge cases** - Validation is where bugs hide
-4. **Reuse validators** - Extract common validation to reusable validators
-5. **Document validation rules** - Future developers need to understand why
-6. **Fail fast** - Validate at construction time, not later
+1. **Keep validators focused**: One validator, one concern
+2. **Make error messages clear**: Users need to know what's wrong
+3. **Test edge cases**: Validation is where bugs hide
+4. **Reuse validators**: Extract common validation to reusable validators
+5. **Document validation rules**: Future developers need to understand why
+6. **Fail fast**: Validate at construction time, not later
 
 ## Related
 
-- [Value Objects with Invariants](./with-invariants.md) - For cross-field validation
-- [Value Objects with Methods](./with-methods.md) - Adding behavior beyond validation
-- [Anti-patterns](./anti-patterns.md) - Common validation mistakes
+- [Value Objects with Invariants](./with-invariants.md): For cross-field validation
+- [Value Objects with Methods](./with-methods.md): Adding behavior beyond validation
+- [Anti-patterns](./anti-patterns.md): Common validation mistakes

@@ -66,9 +66,9 @@ class PaymentCommandHandler:
 def handle_error(cls, exc: Exception, message) -> None:
 ```
 
-- `cls` - The command handler class
-- `exc` - The exception that was raised during command handling
-- `message` - The original command message (a `Message` object) being processed
+- `cls`: The command handler class
+- `exc`: The exception that was raised during command handling
+- `message`: The original command message (a `Message` object) being processed
 
 ## Synchronous vs. Asynchronous
 
@@ -108,5 +108,5 @@ def handle_error(cls, exc: Exception, message) -> None:
 
 ## Related
 
-- [Unit of Work](./unit-of-work.md) - Transaction rollback on errors
-- [Anti-patterns](./anti-patterns.md) - Common error handling mistakes
+- [Unit of Work](./unit-of-work.md): Transaction rollback on errors
+- [Anti-patterns](./anti-patterns.md): Common error handling mistakes

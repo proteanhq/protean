@@ -679,7 +679,7 @@ Before adding a field, verify:
 
 ## See Also
 
-- [Field Types Guide](field-types.md) - Choosing the right field type
-- [Validation Strategies](validation.md) - Validation approaches
-- [Association Fields](associations.md) - Relationship patterns
+- [Field Types Guide](field-types.md): Choosing the right field type
+- [Validation Strategies](validation.md): Validation approaches
+- [Association Fields](associations.md): Relationship patterns
 - Complete examples in [assets/](../assets/)

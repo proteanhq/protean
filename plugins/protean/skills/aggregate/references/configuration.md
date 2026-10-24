@@ -304,12 +304,12 @@ This aggregate:
 
 ## Best Practices
 
-1. **Use abstract=True for base classes** - Prevent accidental instantiation
-2. **Keep auto_add_id_field=True unless necessary** - Natural IDs are rare
-3. **Use provider for database separation** - Keep reads/writes separate in CQRS
-4. **Customize schema_name for legacy integration** - Match existing schemas
-5. **Use custom models sparingly** - Let Protean handle mappings when possible
-6. **Use meaningful stream_category names** - Reflects business domain, not technical structure
+1. **Use abstract=True for base classes**: Prevent accidental instantiation
+2. **Keep auto_add_id_field=True unless necessary**: Natural IDs are rare
+3. **Use provider for database separation**: Keep reads/writes separate in CQRS
+4. **Customize schema_name for legacy integration**: Match existing schemas
+5. **Use custom models sparingly**: Let Protean handle mappings when possible
+6. **Use meaningful stream_category names**: Reflects business domain, not technical structure
 
 ## Common Patterns
 

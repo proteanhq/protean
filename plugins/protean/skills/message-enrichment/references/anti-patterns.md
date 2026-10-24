@@ -6,7 +6,7 @@ Command and event enrichers have different signatures. Mixing them up fails.
 
 ```python
 # fragment
-# WRONG — event enricher missing the aggregate parameter
+# WRONG: event enricher missing the aggregate parameter
 @domain.event_enricher
 def add_ctx(event):
     return {...}
@@ -51,14 +51,14 @@ being appended). Reading a missing attribute off `g` is the usual culprit.
 
 ```python
 # fragment
-# WRONG — raises AttributeError when request_id isn't set
+# WRONG: raises AttributeError when request_id isn't set
 @domain.command_enricher
 def add_ctx(command):
     return {"request_id": g.request_id}
 ```
 
 ```python
-# RIGHT — degrade gracefully
+# RIGHT: degrade gracefully
 @domain.command_enricher
 def add_ctx(command):
     return {"request_id": getattr(g, "request_id", None)}
@@ -67,11 +67,11 @@ def add_ctx(command):
 ## Doing work in an enricher
 
 Enrichers run on the hot path of every command/event. They should read context and
-return a dict — not load aggregates, hit the database, or call services.
+return a dict. It should not load aggregates, hit the database, or call services.
 
 ```python
 # fragment
-# WRONG — I/O in an enricher
+# WRONG: I/O in an enricher
 @domain.event_enricher
 def add_ctx(event, aggregate):
     user = current_domain.repository_for(User).get(aggregate.created_by)  # NO

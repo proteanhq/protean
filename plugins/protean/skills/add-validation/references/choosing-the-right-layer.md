@@ -111,7 +111,7 @@ def quantity_must_be_non_negative(self):  # Redundant!
 # BAD: Pre-invariants don't apply to immutable VOs
 @domain.value_object
 class Money:
-    @invariant.pre  # Will never run — VOs don't have mutable state
+    @invariant.pre  # Will never run: VOs don't have mutable state
     def check_before_change(self):
         ...
 ```

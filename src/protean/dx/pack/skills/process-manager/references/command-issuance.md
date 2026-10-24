@@ -1,6 +1,6 @@
 # Command Issuance
 
-Process managers drive other aggregates forward by issuing commands. This is the primary mechanism for coordinating multi-step business processes — the PM decides *what* should happen next, and the target aggregate's command handler decides *how*.
+Process managers drive other aggregates forward by issuing commands. This is the primary mechanism for coordinating multi-step business processes. The PM decides *what* should happen next, and the target aggregate's command handler decides *how*.
 
 ## Overview
 
@@ -35,7 +35,7 @@ Import `current_domain` from `protean` (the public API):
 from protean import current_domain
 ```
 
-Do NOT import from `protean.utils.globals` — that is an internal module.
+Do NOT import from `protean.utils.globals`. That is an internal module.
 
 ## Command persistence
 
@@ -50,7 +50,7 @@ If the handler raises after issuing a command, the Unit of Work rolls back the P
 
 Process managers should act purely as coordinators:
 
-**Right** — PM decides WHAT, aggregate decides HOW:
+**Right**: PM decides WHAT, aggregate decides HOW:
 ```python
 # fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
@@ -63,7 +63,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     )
 ```
 
-**Wrong** — PM contains business logic:
+**Wrong**: PM contains business logic:
 ```python
 # fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
@@ -93,7 +93,7 @@ Each `process()` call issues one command. [Command persistence](#command-persist
 
 ## Related
 
-- [Lifecycle Management](./lifecycle.md) - How completion interacts with commands
-- [Correlation](./correlation.md) - How events reach the PM to trigger commands
-- [Command skill](../../command/SKILL.md) - Defining command classes
-- [Command Handler skill](../../command-handler/SKILL.md) - Processing commands issued by PMs
+- [Lifecycle Management](./lifecycle.md): How completion interacts with commands
+- [Correlation](./correlation.md): How events reach the PM to trigger commands
+- [Command skill](../../command/SKILL.md): Defining command classes
+- [Command Handler skill](../../command-handler/SKILL.md): Processing commands issued by PMs
