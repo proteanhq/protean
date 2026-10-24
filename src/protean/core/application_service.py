@@ -11,7 +11,7 @@ from protean.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
 )
-from protean.utils import DomainObjects, _derive_element_class
+from protean.utils import DomainObjects, _check_part_of_kind, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,8 @@ def application_service_factory(
         raise IncorrectUsageError(
             f"Application Service `{element_cls.__name__}` needs to be associated with an aggregate"
         )
+
+    _check_part_of_kind(element_cls)
 
     return element_cls
 

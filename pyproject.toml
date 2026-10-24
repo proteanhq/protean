@@ -239,6 +239,9 @@ test = [
     # Property-based testing (the serialization round-trip suite under tests/serialization/).
     "hypothesis>=6.156.6,<7",
     "pytest-xdist>=3.8.0",
+    # Shuffles the suite for `make test-audit`. Off by default (`-p no:randomly`
+    # in addopts), so `protean test`, CI and `make mutation` keep the suite's order.
+    "pytest-randomly>=5.0.0",
     # Parses the teaching skills' SKILL.md frontmatter in tests/dx/.
     "pyyaml>=6.0.3",
     # The testing guides teach pytest-bdd step definitions; their docs_src examples run against it.
@@ -380,7 +383,7 @@ python_files = [
     "*_test.py",
     "tests.py"
 ]
-addopts = "-ra --strict-markers --doctest-modules --doctest-glob=*.rst --tb=short"
+addopts = "-p no:randomly -ra --strict-markers --doctest-modules --doctest-glob=*.rst --tb=short"
 markers = [
     "slow",
     "pending",

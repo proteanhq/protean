@@ -61,12 +61,11 @@ class TestPartOfValidation:
             def get_by_customer(self, query):
                 return []
 
-        # The factory doesn't validate the type of part_of,
-        # but _validate_domain will catch it
-        test_domain.register(WrongPartOfHandler, part_of=Order)
-
-        with pytest.raises(IncorrectUsageError):
-            test_domain.init(traverse=False)
+        with pytest.raises(
+            IncorrectUsageError,
+            match="can only be associated with a Projection; `Order` is an Aggregate",
+        ):
+            test_domain.register(WrongPartOfHandler, part_of=Order)
 
     def test_string_part_of_resolves_to_projection(self, test_domain):
         """String part_of should be resolved during init."""

@@ -591,7 +591,10 @@ def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
     if (
         not auto_constructed
         and not isinstance(repository_cls.meta_.part_of, str)
-        and not issubclass(repository_cls.meta_.part_of, BaseAggregate)
+        and not (
+            isinstance(repository_cls.meta_.part_of, type)
+            and issubclass(repository_cls.meta_.part_of, BaseAggregate)
+        )
     ):
         raise IncorrectUsageError(
             f"Repository `{repository_cls.__name__}` can only be associated with an Aggregate"

@@ -4,7 +4,12 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, cast
 from protean.core.queryset import Record
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields.resolved import serialize_custom_value
-from protean.utils import DomainObjects, _coerce_uuid_to_str, _derive_element_class
+from protean.utils import (
+    DomainObjects,
+    _check_part_of_kind,
+    _coerce_uuid_to_str,
+    _derive_element_class,
+)
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import attributes, declared_fields, id_field
 
@@ -32,7 +37,7 @@ class BaseDatabaseModel(Element, OptionsMixin):
 
     | Option | Type | Description |
     |--------|------|-------------|
-    | ``part_of`` | ``type`` | The aggregate or entity this model maps. Required. |
+    | ``part_of`` | ``type`` | The aggregate, entity or projection this model maps. Required. |
     | ``database`` | ``str`` | The database type this model applies to (e.g. ``"sqlite"``, ``"elasticsearch"``), not a provider name. Without it, the model is used for any database type that has no model of its own. |
     | ``schema_name`` | ``str`` | Override the storage table/collection name. |
     """
@@ -235,8 +240,11 @@ def database_model_factory(element_cls: type[_T], domain: Any, **opts: Any) -> t
 
     if not model_cls.meta_.part_of:
         raise IncorrectUsageError(
-            f"Database Model `{model_cls.__name__}` should be associated with an Entity or Aggregate"
+            f"Database Model `{model_cls.__name__}` should be associated with an "
+            "Aggregate, an Entity or a Projection"
         )
+
+    _check_part_of_kind(model_cls)
 
     # Validate that model fields exist in the associated aggregate/entity
     part_of_cls = model_cls.meta_.part_of

@@ -35,7 +35,7 @@ the same module.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `part_of` | class or string | *required* | The aggregate this command targets. |
+| `part_of` | class or string | *required* | The aggregate or process manager this command targets. |
 | `abstract` | bool | `False` | When `True`, the command serves as a base class and cannot be instantiated directly. |
 | `aggregate_cluster` | class | derived from `part_of` | Explicitly set the aggregate cluster for stream routing. Rarely needed. |
 

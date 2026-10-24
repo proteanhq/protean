@@ -88,10 +88,12 @@ def run_example_tests(
     folder and the folders above it. Protean's pytest plugin loads through its
     ``pytest11`` entry point. The cache plugin is off, so no ``.pytest_cache``
     folder is written next to the example, and ``PYTHONDONTWRITEBYTECODE`` is
-    set, so no ``__pycache__`` folder is written either. The ``PYTEST_*``
-    variables and ``PROTEAN_ENV`` in the parent's environment do not reach the
-    child unless ``env`` passes them, so a developer's shell settings do not
-    change the result.
+    set, so no ``__pycache__`` folder is written either. ``-p no:randomly``
+    turns pytest-randomly off, because the empty config does not carry the
+    repo's ``addopts``, so the example's tests run in file order. The
+    ``PYTEST_*`` variables and ``PROTEAN_ENV`` in the parent's environment do
+    not reach the child unless ``env`` passes them, so a developer's shell
+    settings do not change the result.
 
     A run that takes longer than ``EXAMPLE_TESTS_TIMEOUT`` seconds raises
     ``TimeoutError`` with the output the child wrote so far in its message.
@@ -133,6 +135,8 @@ def run_example_tests(
             str(config),
             "-p",
             "no:cacheprovider",
+            "-p",
+            "no:randomly",
             str(filepath),
             *args,
         ]

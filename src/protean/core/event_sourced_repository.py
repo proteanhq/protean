@@ -9,7 +9,7 @@ from protean.exceptions import (
     NotSupportedError,
     ObjectNotFoundError,
 )
-from protean.utils import DomainObjects, _derive_element_class
+from protean.utils import DomainObjects, _check_part_of_kind, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_uow
 from protean.utils.telemetry import set_span_error
@@ -273,9 +273,17 @@ def event_sourced_repository_factory(
             f"Repository `{element_cls.__name__}` should be associated with an Aggregate"
         )
 
-    if not repository_cls.meta_.part_of.meta_.is_event_sourced:
-        raise IncorrectUsageError(
-            f"Repository `{element_cls.__name__}` can only be associated with an Event Sourced Aggregate"
-        )
+    _check_part_of_kind(repository_cls)
+
+    # A string ``part_of`` is checked once the resolver resolves it.
+    if not isinstance(repository_cls.meta_.part_of, str):
+        check_event_sourced_part_of(repository_cls)
 
     return element_cls
+
+
+def check_event_sourced_part_of(repository_cls: Any) -> None:
+    if not repository_cls.meta_.part_of.meta_.is_event_sourced:
+        raise IncorrectUsageError(
+            f"Repository `{repository_cls.__name__}` can only be associated with an Event Sourced Aggregate"
+        )
