@@ -11,6 +11,8 @@ metadata:
 
 # Entity
 
+An entity is an object with its own identity that lives inside an aggregate and is loaded and saved with it. This skill defines entities: their fields, associations, options and invariants.
+
 ## Basic structure
 
 An entity is defined using the `@domain.entity` decorator and must specify which aggregate it belongs to:
@@ -37,7 +39,7 @@ class LineItem:
 
 ## Key rules
 
-1. **Entities must be part of an aggregate**: Use `part_of` parameter to associate with parent aggregate. **Use a string reference** (`part_of="Order"`) to avoid circular dependencies when aggregate and entity are in the same file. A nested entity passes its parent entity as a class (`part_of=LineItem`), because a string resolves only to an aggregate
+1. **Entities must be part of an aggregate**: Use `part_of` parameter to associate with parent aggregate. **Use a string reference** (`part_of="Order"`), as [Entity with part_of](#entity-with-part_of) explains. A nested entity passes its parent entity as a class (`part_of=LineItem`), because a string resolves only to an aggregate
 2. **Entities have automatic identity**: An `id` field is auto-generated unless `auto_add_id_field=False`
 3. **Entities get automatic reference fields**: A reference field back to parent aggregate is created automatically
 4. **Entities are accessed through aggregates**: Never query or update entities directly
@@ -124,7 +126,7 @@ class LineItem:
 - `get_one_from_line_items(id=item_id)`: Get the one item that matches the keyword arguments. It raises `ObjectNotFoundError` (from `protean.exceptions`) when no item matches, and `TooManyObjectsError` when more than one does.
 - `filter_line_items(**criteria)`: Return the items whose fields equal the given values, such as `filter_line_items(product_id="P1")`. It matches on equality only.
 
-**Important**: Do NOT manually create these methods - they are automatically available. Only create custom methods if you need behavior different from the defaults.
+**Important**: Do NOT manually create these methods: they are automatically available. Only create custom methods if you need behavior different from the defaults.
 
 ### Automatic reference fields
 
@@ -175,7 +177,7 @@ class LineItem:
 
 ## Working with entities
 
-Creating instances needs an initialized domain and an active domain context, so the examples call `domain.init(traverse=False)` once and wrap their code in `with domain.domain_context():`. They use auto-generated helper methods like `add_line_items()` and `remove_line_items()`. These are automatically created by Protean for `HasMany` relationships - you don't need to define them yourself. They work on this model:
+Creating instances needs an initialized domain and an active domain context, so the examples call `domain.init(traverse=False)` once and wrap their code in `with domain.domain_context():`. They use the auto-generated `add_line_items()` and `remove_line_items()` helpers, on this model:
 
 ```python
 @domain.aggregate
@@ -280,7 +282,7 @@ class LineItem:
 
 Entities support three levels of validation (use in this order):
 
-**1. Field-level constraints** - For data type validations and simple constraints:
+**1. Field-level constraints**: For data type validations and simple constraints.
 
 **Important**: Always define data type validations at the field level using built-in parameters. Never validate these manually in methods.
 
@@ -299,9 +301,7 @@ class LineItem:
 - **Integer/Float/Decimal**: `min_value`, `max_value`
 - **Decimal**: `precision`, `scale` (use `Decimal(precision=19, scale=4)` for money)
 
-**2. Business rules as invariants** - For cross-field validations and domain logic:
-
-**Important**: All business validations should be codified as invariants, as granularly as possible. Each invariant should check a single business rule.
+**2. Business rules as invariants**: For cross-field validations and domain logic, one business rule per invariant.
 
 ```python
 from protean import invariant
@@ -349,24 +349,6 @@ class LineItem:
 
 ## Common mistakes
 
-❌ **Defining entity without `part_of`**
-```python
-# fragment
-@domain.entity
-class Comment:  # Error: Entity needs to be associated with an Aggregate
-    content: String(max_length=500)
-```
-
-✅ **Always specify parent aggregate**:
-```python
-@domain.entity(part_of="Post")
-class Comment:
-    content: String(max_length=500)
-    author: String(max_length=100)
-```
-
----
-
 ❌ **Querying entities directly**
 ```python
 # fragment
@@ -374,27 +356,7 @@ class Comment:
 comments = domain.repository_for(Comment).filter(author="John")
 ```
 
-✅ **Access through aggregate**:
-```python
-@domain.aggregate
-class Post:
-    title: String(required=True, max_length=200)
-    comments = HasMany("Comment")
-
-@domain.entity(part_of="Post")
-class Comment:
-    content: String(max_length=500)
-    author: String(max_length=100)
-
-domain.init(traverse=False)
-
-with domain.domain_context():
-    post = Post(title="Hello", comments=[Comment(content="Nice", author="John")])
-    domain.repository_for(Post).add(post)
-
-    post = domain.repository_for(Post).get(post.id)
-    comments = post.filter_comments(author="John")
-```
+✅ **Access through aggregate**: Load the aggregate and use its helper, `post.filter_comments(author="John")`.
 
 ---
 
@@ -439,51 +401,7 @@ class LineItem:
 domain.repository_for(LineItem).add(item)  # Wrong!
 ```
 
-✅ **Persist through aggregate**:
-```python
-domain.init(traverse=False)
-
-with domain.domain_context():
-    order = Order(customer_id="C123")
-    order.add_line_items([LineItem(product_id="P1", quantity=2)])
-    domain.repository_for(Order).add(order)  # Correct!
-```
-
----
-
-❌ **Manually creating auto-generated helper methods**
-```python
-# fragment
-@domain.aggregate
-class Order:
-    line_items = HasMany("LineItem")
-
-    # Don't do this - method is already auto-generated!
-    def add_line_items(self, items):
-        """Manually defined helper."""
-        ...
-```
-
-✅ **Use auto-generated helpers directly**:
-```python
-@domain.aggregate
-class Order:
-    customer_id: Identifier(required=True)
-    line_items = HasMany("LineItem")
-    # add_line_items(), remove_line_items(), etc. are auto-generated!
-
-@domain.entity(part_of="Order")
-class LineItem:
-    product_id: Identifier(required=True)
-    quantity: Integer(required=True)
-
-domain.init(traverse=False)
-
-# Use the auto-generated helpers
-with domain.domain_context():
-    order = Order(customer_id="C123")
-    order.add_line_items([LineItem(product_id="P1", quantity=2)])  # Auto-generated
-```
+✅ **Persist through aggregate**: Add the entity to its aggregate, as in [Adding entities to aggregate](#adding-entities-to-aggregate), and persist the aggregate.
 
 ## Examples
 
