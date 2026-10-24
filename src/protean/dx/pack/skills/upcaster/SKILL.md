@@ -54,15 +54,7 @@ class UpcastV1ToV2(BaseUpcaster):
 
 ## Common transformations
 
-### Adding a new required field
-
-```python
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class UpcastV1ToV2(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["currency"] = "USD"  # All v1 orders were in USD
-        return data
-```
+Basic structure shows adding a required field with a default value.
 
 ### Renaming a field
 
@@ -200,24 +192,7 @@ class OrderRevenueHandler:
 class SkipV2(BaseUpcaster): ...
 ```
 
-```python
-# CORRECT: one step per version
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class UpcastV1ToV2(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["currency"] = "USD"
-        return data
-
-@domain.upcaster(event_type=OrderPlaced, from_version=2, to_version=3)
-class UpcastV2ToV3(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["total_amount"] = data.pop("amount")
-        return data
-```
-
-An event at its current version with no upcaster path covering a stored
-predecessor version fails to deserialize at read time. `check` reports this
-build-time signal as `UPCASTER_GAP`.
+Instead: register one upcaster per step, as in [Multi-step chains](#multi-step-chains). A stored version with no upcaster path is what `check` reports as `UPCASTER_GAP` (Key rule 9).
 
 ### Performing I/O in upcast()
 
@@ -231,14 +206,7 @@ class SlowUpcaster(BaseUpcaster):
         return data
 ```
 
-```python
-# CORRECT: pure dict transformation only
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class UpcastV1ToV2(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["currency"] = data.get("currency", "USD")
-        return data
-```
+Instead: transform the dict only, with defaults for values the old payload lacks.
 
 ### Pointing event_type at old class
 
@@ -248,11 +216,7 @@ class UpcastV1ToV2(BaseUpcaster):
 @domain.upcaster(event_type=OrderPlacedV1, from_version=1, to_version=2)
 ```
 
-```python
-# fragment
-# CORRECT: always point to the current class
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-```
+Instead: point `event_type` at the current class (Key rule 4).
 
 ### Forgetting to bump __version__
 
@@ -269,20 +233,7 @@ class OrderShipped:
 class UpcastOrderShippedV1ToV2(BaseUpcaster): ...
 ```
 
-```python
-# CORRECT: set __version__ to match the upcaster chain's terminal version
-@domain.event(part_of="Order")
-class OrderShipped:
-    __version__ = 2
-    order_id = Identifier(required=True)
-    carrier = String(required=True)
-
-@domain.upcaster(event_type=OrderShipped, from_version=1, to_version=2)
-class UpcastOrderShippedV1ToV2(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["carrier"] = "unknown"  # v1 did not record the carrier
-        return data
-```
+Instead: set `__version__` on the event to the chain's final version, here `__version__ = 2`.
 
 See [Anti-patterns](references/anti-patterns.md) for more.
 

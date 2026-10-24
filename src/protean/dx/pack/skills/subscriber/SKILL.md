@@ -13,6 +13,8 @@ metadata:
 
 # Subscriber
 
+A subscriber consumes messages that another system publishes on a broker stream, and translates each one into an action in this domain. This skill defines subscribers and their options.
+
 ## How subscribers differ from event handlers
 
 | Aspect | Event Handler | Subscriber |
@@ -164,14 +166,7 @@ class MySubscriber:
         pass
 ```
 
-Instead: Always specify stream
-
-```python
-@domain.subscriber(stream="my_external_stream")  # Correct!
-class MySubscriber:
-    def __call__(self, payload: dict) -> None:
-        pass
-```
+Instead: Always specify stream.
 
 A subscriber with no stream has nothing to consume, so it never registers:
 `@domain.subscriber` raises `IncorrectUsageError` at class definition time,
@@ -179,47 +174,6 @@ with the message "Subscriber `MySubscriber` needs to be associated with a
 stream". `check` reports the same problem as `SUBSCRIBER_NO_STREAMS`, which it
 can only see in materialized IR that was loaded or hand-edited after the
 stream was removed.
-
-### Using @handle decorator
-
-```python
-# fragment
-@domain.subscriber(stream="payment_gateway")
-class PaymentSubscriber:
-    @handle(PaymentReceived)  # Wrong! Subscribers don't use @handle
-    def on_payment(self, event):
-        pass
-```
-
-Instead: Use `__call__` with raw dict payload
-
-### Using event_processing config
-
-```python
-domain.config["event_processing"] = "sync"  # Wrong config for subscribers!
-```
-
-Instead: Use `message_processing`
-
-```python
-domain.config["message_processing"] = "sync"  # Correct!
-```
-
-### Expecting typed event objects
-
-```python
-# fragment
-def __call__(self, event: PaymentConfirmed) -> None:  # Wrong type!
-    order_id = event.order_id
-```
-
-Instead: Always expect `dict`
-
-```python
-# fragment
-def __call__(self, payload: dict) -> None:  # Correct!
-    order_id = payload["order_id"]
-```
 
 ## Detailed references
 
