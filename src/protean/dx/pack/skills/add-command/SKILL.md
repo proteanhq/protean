@@ -37,21 +37,6 @@ Before generating, ensure you know the following. **If any item is unknown, ask 
 - [ ] **Aggregate method**: What method on the aggregate performs the business logic?
 - [ ] **HTTP verb and route**: POST for creation, PUT for updates/actions
 
-### Questions to ask when context is missing
-
-If the user says "add a command to Order" without further detail, ask:
-
-1. **"What action should this command represent?"**: E.g., "place an order", "cancel an order", "update shipping address"
-2. **"What data does this action need?"**: E.g., order_id, customer_id, items list, reason
-3. **"Does this create a new aggregate instance or modify an existing one?"**: Determines create vs. update pattern, POST vs. PUT
-4. **"What should the API route look like?"**: E.g., POST /orders, PUT /orders/{id}/cancel
-
-If the user describes a full scenario like "I want users to be able to place an order with items and a total", you can infer:
-- Action: PlaceOrder
-- Create pattern (POST /orders, status 201)
-- Fields: order_id, customer_id, items, total_amount
-- Aggregate method: `place()` on Order
-
 ## Process
 
 ### Step 1: Define the Command
@@ -62,7 +47,7 @@ Key points for this workflow:
 - Name with imperative verb: `PlaceOrder`, `RegisterUser`, `CancelReservation`
 - Always specify `part_of="AggregateName"` (string, not class reference)
 - Include all fields the handler needs (IDs, data fields)
-- Commands are DTOs - only simple fields and value objects, no `HasOne`/`HasMany`
+- Commands are DTOs: only simple fields and value objects, no `HasOne`/`HasMany`
 
 ```python
 @domain.command(part_of="Order")
@@ -82,7 +67,7 @@ Key points for this workflow:
 - **Creating aggregates**: Construct from command data, call method, persist with `domain.repository_for(Aggregate).add()`
 - **Updating aggregates**: Load with `domain.repository_for(Aggregate).get(id)`, call method, persist
 - Return the aggregate's identifier for synchronous processing
-- Each handler runs within an implicit UnitOfWork - no manual wrapping
+- Each handler runs within an implicit UnitOfWork, so do not wrap it in one
 
 The handler works on an existing `Order` aggregate like this one:
 
@@ -123,7 +108,7 @@ class OrderCommandHandler:
 Follow the patterns in [api-endpoint](../api-endpoint/SKILL.md).
 
 Key points for this workflow:
-- Endpoint is a thin adapter - NO business logic
+- The endpoint is a thin adapter with no business logic
 - Call `domain.init()` at app startup (the `lifespan` hook), after every registration and before the first request
 - Always set up domain context middleware
 - Construct command from request payload (and path parameters)
@@ -171,25 +156,6 @@ async def create_order(request: Request):
     return JSONResponse(status_code=201, content={"order_id": result})
 ```
 
-### Step 4: Wire together
-
-All three components connect through the domain:
-1. API endpoint constructs command and calls `current_domain.process()`
-2. Domain dispatches command to the matching handler (based on `part_of` and `@handle`)
-3. Handler loads/creates aggregate, calls methods, persists via repository
-
-```
-HTTP Request → API Endpoint → Command → domain.process() → Command Handler
-                                                              ↓
-                                                         Load/Create Aggregate
-                                                              ↓
-                                                         Call Aggregate Method
-                                                              ↓
-                                                         repository.add(aggregate)
-                                                              ↓
-                                                         Return result
-```
-
 ## File organization (Screaming Architecture)
 
 Colocate command + handler in a single file named after the action. Place API endpoints in a separate `<aggregate>_api.py` file:
@@ -232,18 +198,9 @@ class OrderCommandHandler:
 2. **One handler per command**: Protean enforces this; multiple `@handle` methods in one handler is fine
 3. **Implicit UnitOfWork**: Do NOT wrap handler methods in manual UnitOfWork
 4. **Endpoints are thin**: Only construct commands and call `domain.process()`. No repository access, no business logic
-5. **Always use `current_domain.process()`** in endpoints - Never call handlers directly
+5. **Endpoints call `current_domain.process()`**: Never call a handler directly
 6. **Domain context middleware is required**: Without it, `current_domain` is not available
 7. **Return values**: Handler returns go back to the caller when using `asynchronous=False`
-
-## Common mistakes
-
-- **Business logic in the endpoint**: Move it to the aggregate
-- **Repository access in the endpoint**: Only handlers access repositories
-- **Manual UnitOfWork in handlers**: It's implicit, don't wrap
-- **Calling handlers directly**: Always use `domain.process()`
-- **Missing domain context middleware**: `current_domain` won't work without it
-- **Two handlers for the same command**: Protean raises an error
 
 ## Complete examples
 

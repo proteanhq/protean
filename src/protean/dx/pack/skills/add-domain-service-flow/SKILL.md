@@ -14,14 +14,9 @@ metadata:
 
 A domain service encapsulates business logic that spans multiple aggregates. It is stateless, operates on aggregates passed to it, and validates cross-aggregate invariants.
 
-## When domain services fit
+## What a domain service is not for
 
-Use a domain service when:
-- Business logic involves **two or more aggregates**
-- The logic **doesn't naturally belong** to either aggregate
-- You need **cross-aggregate validation** before executing
-
-Do NOT use for:
+Do NOT use one for:
 - Logic that belongs to a single aggregate → use an aggregate method
 - Orchestration and persistence → use a command handler
 - Authorization and context checks → use handler guards (Layer 4)

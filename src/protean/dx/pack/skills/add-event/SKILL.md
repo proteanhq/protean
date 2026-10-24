@@ -40,21 +40,6 @@ Before generating, ensure you know the following. **If any item is unknown, ask 
 - [ ] **Handler location**: Does the side effect target the same aggregate or a different one?
 - [ ] **Target aggregate**: If cross-aggregate, which aggregate does the change land on? (must already exist; it receives a command)
 
-### Questions to ask when context is missing
-
-If the user says "add an event to Order" without further detail, ask:
-
-1. **"What state change should trigger this event?"**: E.g., "when the order is placed", "when payment is confirmed"
-2. **"What data should the event carry?"**: E.g., order_id, customer_id, total_amount
-3. **"What should happen when this event occurs?"**: E.g., "reduce inventory", "send confirmation email", "update a dashboard"
-4. **"Does the side effect modify the same aggregate or a different one?"**: Determines same-aggregate vs. cross-aggregate handler pattern
-
-If the user describes a full scenario like "when an order is placed, reduce inventory stock", you can infer:
-- Source aggregate: Order
-- Event: OrderPlaced
-- Side effect: reduce stock in Inventory
-- Handler location: cross-aggregate (a handler in Order's cluster issues a `ReduceStock` command to Inventory)
-
 ## Process
 
 ### Step 1: Define the Event
@@ -65,7 +50,7 @@ Key points for this workflow:
 - Name with past-tense verb: `OrderPlaced`, `PaymentConfirmed`, `UserRegistered`
 - Always specify `part_of="AggregateName"` (string, not class reference)
 - Include only data necessary to describe what happened (IDs, relevant state)
-- Events are DTOs - only simple fields and value objects, no `HasOne`/`HasMany`
+- Events are DTOs: only simple fields and value objects, no `HasOne`/`HasMany`
 - Use `__version__ = 1` for schema evolution
 
 ```python
@@ -88,6 +73,7 @@ Key points for this workflow:
 - Place business logic (guards, validations) in the aggregate method, before raising
 - The event should be raised **after** the state change succeeds
 - If the method already exists, add the `self.raise_()` call to it
+- The event is dispatched when the repository persists the aggregate, not when `raise_()` is called
 
 ```python
 @domain.aggregate
@@ -126,7 +112,7 @@ Key points for this workflow:
 - **Cross-aggregate handler**: issues a command with `current_domain.process(...)`. The command is `part_of` the target aggregate, and the target's command handler does the write
 - Events are delivered at least once, so the command carries an id taken from the event, and the target's command handler returns without changes when that work is already done
 - Event handlers do NOT return values (fire-and-forget)
-- Each handler runs within an implicit UnitOfWork - no manual wrapping
+- Each handler runs within an implicit UnitOfWork, so do not wrap it in one
 - Multiple handlers can process the same event (unlike commands)
 
 The cross-aggregate example below needs a target aggregate. Here `Inventory` tracks stock per product:
@@ -195,31 +181,7 @@ class InventoryCommandHandler:
 
 `Inventory.reduce_stock` lowers the stock and appends the order id to `applied_order_ids: List(content_type=String)`. When the command creates an aggregate, give the new aggregate an id taken from the event and skip the add when `repository.get` finds it (see [split-aggregate](../split-aggregate/SKILL.md)). For a flow with several causally dependent steps, use a [process manager](../process-manager/SKILL.md).
 
-### Step 5: Wire together
-
-The components connect through the domain's event system:
-1. Aggregate method performs state change and calls `self.raise_(event)`
-2. When aggregate is persisted via repository, events are dispatched
-3. Domain matches events to handlers based on stream category and `@handle` decorators
-4. Handler performs the side effect. A same-aggregate handler loads, mutates and persists. A cross-aggregate handler issues a command, and the target's command handler loads, mutates and persists
-
-```
-Aggregate Method → self.raise_(Event) → repository.add(aggregate)
-                                              ↓
-                                    Domain dispatches event
-                                              ↓
-                                    Event Handler receives event
-                                              ↓
-                          (cross-aggregate) domain.process(Command)
-                                              ↓
-                          Target's command handler loads target aggregate
-                                              ↓
-                                    Perform side effect
-                                              ↓
-                                    Persist target aggregate
-```
-
-### Step 6: Configure event processing
+### Step 5: Configure event processing
 
 For synchronous processing (recommended for testing and simple flows):
 
@@ -295,14 +257,9 @@ class OrderEventHandler:
 
 ## Common mistakes
 
-- **Imperative event names**: Use `OrderPlaced` (past-tense), not `PlaceOrder` (that's a command)
 - **Raising events outside aggregates**: Events must be raised via `self.raise_()` within aggregate methods
-- **Business logic in event handlers**: Keep logic in aggregates; handlers only orchestrate
-- **Returning values from event handlers**: Event handlers are fire-and-forget
-- **Manual UnitOfWork in handlers**: It's implicit, don't wrap
 - **Putting the handler in the target's cluster**: A handler that is `part_of` the target aggregate and reacts to the source's event is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`. Keep the handler in the source's cluster and issue a command
 - **Generating a fresh id in the handler**: Events are delivered at least once, so a `uuid4()` per delivery writes the change twice. Take the id from the event
-- **Raising events before state change**: State should change first, then raise the event. This does not apply to an event-sourced aggregate, where the event is raised first and `@apply` changes the state
 
 ## Complete examples
 
