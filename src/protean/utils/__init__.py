@@ -249,8 +249,7 @@ class DomainObjects(StrEnum):
 # The kinds of element each element type may name in ``part_of``. Factories
 # check a class target at registration, except the repository factory, which
 # keeps its own check. For the element types that accept a string target, the
-# resolver resolves it against the same kinds. A database model takes only a
-# class target.
+# resolver resolves it against the same kinds at ``domain.init()``.
 PART_OF_KINDS: dict[DomainObjects, tuple[DomainObjects, ...]] = {
     DomainObjects.APPLICATION_SERVICE: (DomainObjects.AGGREGATE,),
     DomainObjects.COMMAND: (DomainObjects.AGGREGATE, DomainObjects.PROCESS_MANAGER),
