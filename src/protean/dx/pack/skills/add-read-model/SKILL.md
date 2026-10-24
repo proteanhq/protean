@@ -42,7 +42,7 @@ Before building a read model, understand:
 
 ### Step 1: Define the projection
 
-Create a flat data structure from basic fields. A `ValueObject` field is also allowed. Every projection needs at least one `identifier=True` field.
+Create a flat data structure that holds what the query returns.
 
 ```python
 from protean.fields import Float, Identifier, Integer, String
@@ -246,27 +246,6 @@ An event can be delivered more than once. As written, this projector adds the am
 | **Database** | `@domain.projection` (default) | Durable data, complex queries, reporting |
 | **Database (specific)** | `@domain.projection(provider="postgres")` | Explicit provider selection |
 | **Cache** | `@domain.projection(cache="redis")` | Fast reads, session data, ephemeral views |
-
-## Decision guide
-
-```
-Need a queryable view of domain data?
-├── Data from one aggregate only
-│   └── Single-aggregate projector
-│       aggregates=[TheAggregate]
-│
-├── Data from multiple aggregates
-│   └── Cross-aggregate projector
-│       aggregates=[AggregateA, AggregateB]
-│
-├── Need fast, ephemeral reads?
-│   └── Cache-backed projection
-│       @domain.projection(cache="redis")
-│
-└── Need durable, queryable data?
-    └── Database-backed projection (default)
-        @domain.projection  or  @domain.projection(provider="postgres")
-```
 
 ## Common mistakes
 

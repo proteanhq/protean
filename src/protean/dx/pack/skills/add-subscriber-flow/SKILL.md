@@ -153,22 +153,6 @@ with domain.domain_context():
     assert domain.repository_for(Order).get("ORD-002").status == "PENDING"
 ```
 
-## The anti-corruption layer (ACL)
-
-The ACL is a DDD pattern that protects your domain from external system changes:
-
-```
-External System → [Broker Stream] → Subscriber (ACL) → Domain Command/Aggregate
-                                     ↑
-                                     Only place that knows external format
-```
-
-**Why ACL matters:**
-- External formats change without notice, and the ACL absorbs changes
-- Domain language stays clean: no camelCase, no external IDs leaking in
-- Single point of translation: when the external system changes, only the subscriber changes
-- Domain remains testable: test domain logic without external system dependencies
-
 ## Common external payload patterns
 
 | External System | Typical Format | Translation Needed |

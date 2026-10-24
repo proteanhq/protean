@@ -180,18 +180,6 @@ with domain.domain_context():
     )
 ```
 
-## The command flow
-
-```
-1. API/UI creates Command with input data
-2. domain.process(command) dispatches to Command Handler
-3. Command Handler loads/creates Aggregate
-4. Aggregate method mutates state and raises Event
-5. Handler persists Aggregate (with events) via repository
-6. Event is published to event store
-7. Event Handler(s) pick up the event and react
-```
-
 ## Use case patterns
 
 The update and guard patterns below handle two more commands on `Order`:
@@ -210,15 +198,7 @@ class CancelOrder:
     reason: String()
 ```
 
-### Create pattern (factory method)
-
-```python
-# Handler creates a new aggregate
-@handle(PlaceOrder)
-def handle_place_order(self, command):
-    order = Order.place(...)  # Factory method
-    domain.repository_for(Order).add(order)
-```
+Step 4 shows the create pattern: a factory method builds the aggregate and the handler adds it.
 
 ### Update pattern (load and mutate)
 
@@ -271,20 +251,7 @@ def handle_place_order(self, command):
     domain.repository_for(Order).add(order)
 ```
 
-Instead: keep the rule in an aggregate method/factory; the handler only orchestrates.
-
-```python
-@handle(PlaceOrder)
-def handle_place_order(self, command):
-    order = Order.place(
-        order_id=command.order_id,
-        customer_id=command.customer_id,
-        product_id=command.product_id,
-        quantity=command.quantity,
-        unit_price=10.0,
-    )
-    domain.repository_for(Order).add(order)
-```
+Instead: keep the rule in an aggregate method or factory, as in Step 4; the handler only orchestrates.
 
 ### Forgetting to raise the event
 

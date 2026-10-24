@@ -181,11 +181,7 @@ When you add `items = HasMany("LineItem")`, these methods are automatically avai
 
 ## Common mistakes
 
-- **Primitives instead of value objects**: `total_amount` + `total_currency` should be `ValueObject(Money)`
-- **Wrong field type**: use `Integer` for counts, `Decimal` for money and `Float` for measurements, not `String`. Use `Date`/`DateTime` for dates.
-- **Forgetting `part_of` on entities**: Always specify `@domain.entity(part_of="Order")`
-- **Recreating HasMany helpers**: Don't define `add_items()` manually
-- **Field validation AND invariant**: Pick one layer, don't duplicate
+- **Wrong field type**: Use `Integer` for counts, `Decimal` for money and `Float` for measurements, not `String`. Use `Date`/`DateTime` for dates.
 
 See [references/common-mistakes.md](references/common-mistakes.md) for detailed examples.
 
