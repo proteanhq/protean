@@ -2,10 +2,6 @@
 
 Handler guards enforce context-dependent rules that cannot be expressed as field constraints or invariants, because they depend on who is performing the action, external data, or cross-aggregate state.
 
-## Code
-
-The complete implementation is in [assets/validation_layer4_handler_guards.py](../assets/validation_layer4_handler_guards.py).
-
 ## Pattern
 
 ```python
@@ -65,26 +61,7 @@ class AccountCommandHandler:
 
 ## Common Guard Patterns
 
-Each pattern below is a few lines from inside a handler method like `close_account` above. They use that method's `command` and `repo`, so they do not run on their own.
-
-### Authorization (role-based)
-```python
-# fragment
-ALLOWED_ROLES = {"admin", "manager"}
-
-if command.role not in ALLOWED_ROLES:
-    raise ValidationError({"authorization": ["Insufficient permissions"]})
-```
-
-### Existence check
-```python
-# fragment
-# get() raises ObjectNotFoundError on a miss. To report a missing
-# entity as a validation error, as the handler above does:
-entity = repo.get_or_none(command.entity_id)
-if entity is None:
-    raise ValidationError({"entity_id": ["Not found"]})
-```
+The handler above shows the authorization, existence and timing guards. Each pattern below is a few lines from inside a handler method like `close_account`. They use that method's `command` and `repo`, so they do not run on their own.
 
 ### Cross-aggregate consistency
 ```python
@@ -101,24 +78,6 @@ count = repo.count_by_user(command.user_id)
 if count >= MAX_ITEMS:
     raise ValidationError({"quota": [f"Maximum {MAX_ITEMS} items reached"]})
 ```
-
-## When to Use Layer 4
-
-- **Authorization**: Who can perform this action?
-- **Existence**: Does the referenced entity exist?
-- **Cross-aggregate**: What is the state of another aggregate?
-- **Temporal**: Is this the right time for this action?
-- **Quota/rate**: Has a limit been reached?
-
-## When NOT to Use Layer 4
-
-- Business rules intrinsic to the aggregate → Layer 3
-- Single-field format rules → Layer 1
-- Domain concept rules → Layer 2
-
-## Key Principle
-
-**Handlers are for orchestration and guards, not business rules.** Business rules belong in aggregates (Layer 3) where they are enforced regardless of how the aggregate is accessed.
 
 ## Related
 
