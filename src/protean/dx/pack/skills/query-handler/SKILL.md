@@ -50,12 +50,6 @@ class OrderQueryHandler:
 7. **Read through `view_for`**: Use `current_domain.view_for(Projection)` to get a read-only query interface: `.get(id)`, `.query.filter(...).all()`, `.count()`, `.exists(id)`
 8. **Dispatch with `domain.dispatch(query)`**: This routes the query to its handler and returns the result (synchronous)
 
-## Handler options
-
-| Option | Purpose | Required |
-|--------|---------|----------|
-| `part_of` | Associate the handler with a projection | Yes |
-
 ## Quick example: Multiple queries
 
 ```python
@@ -118,54 +112,6 @@ with domain.domain_context():
 ```
 
 ## Common mistakes
-
-### Using @handle instead of @read
-
-```python
-# fragment
-@domain.query_handler(part_of="OrderSummary")
-class OrderQueryHandler:
-    @handle(GetOrderById)  # Wrong! Query handlers use @read
-    def get_by_id(self, query):
-        ...
-```
-
-Instead: use `@read(QueryClass)`.
-
-### Not returning a value
-
-```python
-# fragment
-@read(GetOrderById)
-def get_by_id(self, query):
-    current_domain.view_for(OrderSummary).get(query.order_id)  # Wrong! No return
-```
-
-Instead: `return` the result. The dispatcher hands it back to the caller.
-
-### Mutating state in a query handler
-
-```python
-# fragment
-@read(GetOrderById)
-def get_by_id(self, query):
-    order = current_domain.view_for(OrderSummary).get(query.order_id)
-    order.status = "viewed"  # Wrong! Reads must not mutate
-    return order
-```
-
-Instead: queries are side-effect free. Change state through commands.
-
-### Pointing part_of at an aggregate
-
-```python
-# fragment
-@domain.query_handler(part_of="Order")  # Wrong! Use the projection
-class OrderQueryHandler:
-    ...
-```
-
-Instead: `part_of` is the projection the handler reads from.
 
 ### Query handler with no query to serve
 

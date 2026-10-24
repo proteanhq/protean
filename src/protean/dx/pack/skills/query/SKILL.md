@@ -61,8 +61,6 @@ from protean.fields import (
 )
 ```
 
-Queries cannot use `HasOne`, `HasMany`, or `Reference` fields.
-
 ## Quick example
 
 ```python
@@ -113,56 +111,6 @@ with domain.domain_context():
     page_two = domain.dispatch(SearchOrders(status="placed", page=2, page_size=1))
     assert [summary.order_id for summary in page_two] == ["ORD-003"]
 ```
-
-## Common mistakes
-
-### Targeting an aggregate instead of a projection
-
-```python
-# fragment
-@domain.query(part_of="Order")  # Wrong! Queries target a read model
-class GetOrderById:
-    order_id: Identifier(required=True)
-```
-
-Instead: point `part_of` at the projection that serves the read:
-
-```python
-@domain.query(part_of="OrderSummary")  # Correct! A projection
-class GetOrderById:
-    order_id: Identifier(required=True)
-```
-
-### Naming a query like a command
-
-```python
-@domain.query(part_of="OrderSummary")
-class FetchTheOrder:  # Vague/imperative
-    order_id: Identifier(required=True)
-```
-
-Instead: name it for what it returns: `GetOrderById`, `SearchOrders`.
-
-### Mutating a query after construction
-
-```python
-# fragment
-query = GetOrderById(order_id="ORD-001")
-query.order_id = "ORD-002"  # Raises IncorrectUsageError!
-```
-
-Instead: create a new query instance.
-
-### Putting associations in a query
-
-```python
-# fragment
-@domain.query(part_of="OrderSummary")
-class SearchOrders:
-    lines = HasMany("OrderLine")  # Wrong! No associations in queries
-```
-
-Instead: use basic fields (and value objects) only.
 
 ## Detailed references
 
