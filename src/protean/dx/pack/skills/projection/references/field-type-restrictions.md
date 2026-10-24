@@ -1,33 +1,12 @@
 # Projection Field Type Restrictions
 
-## Overview
-
-Projections accept basic field types and `ValueObject` fields. References and Associations (`HasOne`, `HasMany`) are not supported. This is a deliberate design decision rooted in the CQRS pattern and the purpose of projections as denormalized, flattened read models.
-
 ## Why no References or Associations?
 
-1. **Denormalization**: Projections are designed to avoid joins and complex queries. Flattened data is faster to read.
-2. **Independence**: Projections should not depend on other domain elements at query time.
-3. **Simplicity**: Read models are simple, flat data containers.
-4. **Storage flexibility**: Basic types map cleanly to database columns and cache entries. A `ValueObject` fits this model because it is stored as flattened shadow columns.
-5. **Rebuild capability**: Projections can be rebuilt from events without needing relational integrity.
+A projection is read without joins and must not depend on other domain elements at query time. It is rebuilt from events, so it needs no relational integrity. Basic types and value objects (stored as flattened shadow columns) map directly to database columns and cache entries.
 
 ## Allowed field types
 
-| Type | Example |
-|------|---------|
-| `Identifier` | `user_id: Identifier(identifier=True)` |
-| `Auto` | `id: Auto(identifier=True)` |
-| `String` | `name: String(max_length=100)` |
-| `Text` | `description: Text()` |
-| `Integer` | `count: Integer(default=0)` |
-| `Float` | `price: Float(required=True)` |
-| `Boolean` | `active: Boolean(default=True)` |
-| `DateTime` | `created_at: DateTime()` |
-| `Date` | `birth_date: Date()` |
-| `ValueObject` | `shipping_address = ValueObject(Address)` |
-
-A `ValueObject` field is stored as flattened shadow columns (`shipping_address_street`, `shipping_address_city`, ...), and each attribute is queryable on its own.
+SKILL.md's "Supported field types" section lists them.
 
 ## Disallowed field types
 
@@ -58,8 +37,6 @@ class UserView:
 Error: `"Projections can only contain basic field types and ValueObjects. Remove role (HasOne) from class UserView"`
 
 ## How to flatten complex data
-
-Instead of complex field types, flatten nested data into basic fields:
 
 ### Before (aggregate with complex types)
 ```python
@@ -117,7 +94,7 @@ class OrderShippingView:
 
 ## Validation timing
 
-Field type validation happens at **class definition time** (in `__init_subclass__`), not at registration time. This means the error is raised as soon as the class is defined, even before it's registered with the domain.
+Field types are checked at **class definition time**, in `__init_subclass__`. A `BaseProjection` subclass with a `Reference` raises as soon as the class body runs, before any registration with the domain.
 
 ## Complete example
 
