@@ -2,8 +2,12 @@
 
 ## Raising `ValueError` instead of `ValidationError`
 
-Protean's validation pipeline catches `ValidationError`. A plain `ValueError`
-propagates as an unhandled exception instead of a clean, field-scoped error.
+Protean's validation pipeline expects `ValidationError`, and it reports it under
+the field name on every field type. Other exceptions behave differently by
+field. On a basic field such as `String`, Pydantic catches a `ValueError` and
+reports it under the field name. On a `ValueObject` field, a `ValueError` is
+reported under `_entity`, away from the field. Any other exception type, such
+as `TypeError`, propagates unhandled.
 
 ```python
 # fragment
@@ -11,7 +15,7 @@ propagates as an unhandled exception instead of a clean, field-scoped error.
 class PhoneValidator:
     def __call__(self, value):
         if not value.startswith("+"):
-            raise ValueError("Invalid phone")  # leaks, not field-scoped
+            raise ValueError("Invalid phone")  # scoped differently by field type
 ```
 
 ```python
@@ -50,7 +54,7 @@ def end_after_start(self):
 ## Re-implementing built-in constraints
 
 Length and range checks already exist as field parameters. A validator that
-duplicates them is dead weight.
+duplicates them adds nothing.
 
 ```python
 # fragment
