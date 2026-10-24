@@ -1,7 +1,5 @@
 # Upcaster Anti-Patterns
 
-Common mistakes when working with event upcasters, and how to fix them.
-
 The examples use an `Order` aggregate whose `OrderPlaced` event is now at version 3:
 
 ```python
@@ -142,12 +140,6 @@ class TaxedInvoiceIssued:
 **Why it's wrong**: The `event_type` option tells the framework which current event class this upcaster targets. It's used to compute the event_base_type for chain building. Pointing to a non-current class breaks chain resolution.
 
 **Fix**: Always use the current event class.
-
-```python
-# fragment
-# CORRECT
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-```
 
 ## 6. Forgetting to bump __version__
 
