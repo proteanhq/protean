@@ -15,7 +15,7 @@ Use past tense. Events describe what already happened:
 
 ## What to Include in Events
 
-### The Goldilocks principle
+### How much to include
 
 - **Too thin**: Only the aggregate ID, which forces consumers to look up the source aggregate
 - **Too fat**: The entire aggregate state, which couples consumers to the full schema
