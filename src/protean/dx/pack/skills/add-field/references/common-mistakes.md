@@ -1,15 +1,5 @@
 # Common Mistakes When Adding Fields
 
-This guide documents common anti-patterns and mistakes when adding fields to Protean domain elements.
-
-## Overview
-
-This document covers:
-1. Field type selection mistakes
-2. Validation strategy mistakes
-3. Association field mistakes
-4. Placement and organization mistakes
-
 ## Field Type Selection Mistakes
 
 ### Mistake 1: Using String for Numeric Values
@@ -35,10 +25,6 @@ class Product:
     discount: Float(min_value=0.0, max_value=100.0, default=0.0)
 ```
 
-**Why it matters**: Type safety, automatic validation, database optimization, calculation support.
-
----
-
 ### Mistake 2: Using Text for Short Strings
 
 **Problem**: Text fields have no length limits and are less efficient for short values.
@@ -59,10 +45,6 @@ class User:
     username: String(required=True, max_length=50, min_length=3)
     status: String(max_length=20, choices=["active", "inactive", "banned"])
 ```
-
-**Why it matters**: Database efficiency, validation, prevents abuse.
-
----
 
 ### Mistake 3: Using Simple Fields Instead of Value Objects
 
@@ -102,10 +84,6 @@ class Order:
     shipping_address = ValueObject(Address)  # Cohesive
 ```
 
-**Why it matters**: Cohesion, reusability, encapsulation, maintainability.
-
----
-
 ### Mistake 4: Wrong Field for Collections
 
 **Problem**: Using HasMany for simple values or List for entities.
@@ -138,8 +116,6 @@ class Product:
 class Order:
     line_items = HasMany("LineItem")  # HasMany for entities
 ```
-
-**Why it matters**: Performance, simplicity, proper relationship modeling.
 
 ## Validation Strategy Mistakes
 
@@ -188,10 +164,6 @@ class Product:
         self.stock_count += delta  # Field validates automatically
 ```
 
-**Why it matters**: DRY principle, automatic enforcement, consistency, less code.
-
----
-
 ### Mistake 6: Using Invariants for Single-Field Constraints
 
 **Problem**: Invariants for simple field validations instead of field parameters.
@@ -238,97 +210,9 @@ class Product:
             )
 ```
 
-**Why it matters**: Right tool for the job, clearer intent, automatic enforcement.
-
----
-
-### Mistake 7: Missing Validation Entirely
-
-**Problem**: No validation on fields that need constraints.
-
-**Bad**:
-```python
-# fragment
-@domain.aggregate
-class User:
-    age: Integer()  # No min/max!
-    email: String()  # No format validation!
-    password: String()  # No length requirement!
-```
-
-**Good**:
-```python
-from protean.exceptions import ValidationError
-
-class EmailValidator:
-    def __call__(self, value: str):
-        if "@" not in value or value.startswith("@"):
-            raise ValidationError("Invalid email")
-
-@domain.aggregate
-class User:
-    age: Integer(required=True, min_value=13, max_value=150)
-    email: String(required=True, max_length=254, validators=[EmailValidator()])
-    password: String(required=True, min_length=8, max_length=100)
-```
-
-**Why it matters**: Data integrity, security, preventing invalid states.
-
 ## Association Field Mistakes
 
-### Mistake 8: Manually Creating Auto-Generated Methods
-
-**Problem**: Defining methods that Protean already generates for HasMany.
-
-**Bad**:
-```python
-# fragment
-@domain.aggregate
-class Order:
-    line_items = HasMany("LineItem")
-
-    # DON'T DO THIS! Already auto-generated
-    def add_line_items(self, items):
-        """Manual implementation."""
-        if not isinstance(items, list):
-            items = [items]
-        self._line_items.extend(items)
-
-    # DON'T DO THIS! Already auto-generated
-    def remove_line_items(self, item):
-        """Manual implementation."""
-        self._line_items.remove(item)
-```
-
-**Good**:
-```python
-@domain.aggregate
-class Order:
-    line_items = HasMany("LineItem")
-    # add_line_items(), remove_line_items() already exist!
-
-    # Only create custom methods when you need ADDITIONAL logic
-    def add_product(self, product_id: str, quantity: int, price: D):
-        """Custom method with validation."""
-        if quantity > 100:
-            raise ValueError("Max 100 per product")
-
-        # Use auto-generated helper
-        item = LineItem(product_id=product_id, quantity=quantity, unit_price=price)
-        self.add_line_items([item])
-
-@domain.entity(part_of="Order")
-class LineItem:
-    product_id: Identifier(required=True)
-    quantity: Integer(required=True, min_value=1)
-    unit_price: Decimal(required=True, precision=19, scale=4)
-```
-
-**Why it matters**: Don't fight the framework, less code to maintain, consistent API.
-
----
-
-### Mistake 9: Forgetting part_of for Entities
+### Mistake 7: Forgetting part_of for Entities
 
 **Problem**: Defining entity without associating with parent aggregate.
 
@@ -349,11 +233,7 @@ class LineItem:
     quantity: Integer(required=True)
 ```
 
-**Why it matters**: Entities must belong to aggregates, defines persistence boundary.
-
----
-
-### Mistake 10: Wrong Association Type
+### Mistake 8: Wrong Association Type
 
 **Problem**: Using Reference for same-aggregate relationships, or an association field
 (Reference, HasOne, HasMany) to point at another aggregate.
@@ -391,11 +271,9 @@ class LineItem:
 Use `Reference` only on an entity, to point back at its parent (the aggregate root, or the
 parent entity when nested). `HasMany` and `HasOne` add that field for you.
 
-**Why it matters**: Proper aggregate boundaries, correct relationship modeling.
-
 ## Placement and Organization Mistakes
 
-### Mistake 11: Adding Fields to Wrong Element
+### Mistake 9: Adding Fields to Wrong Element
 
 **Problem**: Putting fields in the wrong aggregate, entity, or value object.
 
@@ -436,89 +314,9 @@ class LineItem:  # Correctly an entity
     quantity: Integer(required=True)
 ```
 
-**Why it matters**: Proper boundaries, cohesion, transaction consistency.
-
----
-
-### Mistake 12: Not Using Value Objects for Complex Data
-
-**Problem**: Primitive fields for complex concepts that should be value objects.
-
-**Bad**:
-```python
-# fragment
-@domain.aggregate
-class Order:
-    # Email as primitive string
-    customer_email: String()  # No validation!
-
-    # Money as primitives
-    total_amount: Decimal(precision=19, scale=4)
-    total_currency: String()  # Scattered
-
-    # Address as primitives
-    street: String()
-    city: String()
-    state: String()
-    postal_code: String()  # Many related fields
-```
-
-**Good**:
-```python
-@domain.value_object
-class Email:
-    address: String(required=True, validators=[EmailValidator()])
-
-@domain.value_object
-class Money:
-    amount: Decimal(required=True, precision=19, scale=4)
-    currency: String(max_length=3, default="USD")
-
-@domain.value_object
-class Address:
-    street: String(required=True, max_length=100)
-    city: String(required=True, max_length=50)
-    state: String(required=True, max_length=50)
-    postal_code: String(required=True, max_length=20)
-
-@domain.aggregate
-class Order:
-    customer_email = ValueObject(Email, required=True)
-    total = ValueObject(Money, required=True)
-    shipping_address = ValueObject(Address, required=True)
-```
-
-**Why it matters**: Encapsulation, reusability, validation, clarity.
-
 ## Field Configuration Mistakes
 
-### Mistake 13: Not Setting required Explicitly
-
-**Problem**: Relying on defaults instead of explicitly stating required/optional.
-
-**Bad**:
-```python
-# fragment
-@domain.aggregate
-class User:
-    email: String()  # Is this required? Unclear
-    name: String()  # Is this required? Unclear
-```
-
-**Good**:
-```python
-@domain.aggregate
-class User:
-    email: String(required=True)  # Explicit
-    name: String(required=True)  # Explicit
-    bio: String()  # Explicitly optional (required=False is default)
-```
-
-**Why it matters**: Clarity, prevents bugs, self-documenting.
-
----
-
-### Mistake 14: Missing Default Values
+### Mistake 10: Missing Default Values
 
 **Problem**: Not providing defaults for optional fields that should have them.
 
@@ -542,140 +340,6 @@ class Post:
     status: String(default="draft")  # Clear default
     is_published: Boolean(default=False)  # Clear default
 ```
-
-**Why it matters**: Predictable behavior, fewer None checks, clearer intent.
-
----
-
-### Mistake 15: Not Using choices for Enums
-
-**Problem**: Free-form strings instead of constrained choices.
-
-**Bad**:
-```python
-# fragment
-@domain.aggregate
-class Order:
-    status: String()  # Any value allowed! Typos possible
-```
-
-**Good**:
-```python
-@domain.aggregate
-class Order:
-    status: String(
-        required=True,
-        default="draft",
-        choices=["draft", "placed", "shipped", "delivered", "cancelled"]
-    )
-```
-
-**Why it matters**: Type safety, prevents typos, self-documenting.
-
-## Testing and Debugging Mistakes
-
-### Mistake 16: Not Testing Field Validation
-
-**Problem**: Adding fields without verifying validation works.
-
-**Bad**:
-```python
-# fragment
-# Add field and assume it works
-price: Decimal(precision=19, scale=4, min_value=0.01)
-
-# No tests!
-```
-
-**Good**:
-```python
-import pytest
-from decimal import Decimal as D
-
-from protean.exceptions import ValidationError
-
-# Add field with validation
-@domain.aggregate
-class Product:
-    name: String(required=True, max_length=200)
-    price: Decimal(required=True, precision=19, scale=4, min_value=0.01, max_value=999999.99)
-
-# Write tests (run inside a domain context, usually set up by a fixture)
-def test_product_price_validation():
-    # Test valid price
-    product = Product(name="Widget", price=D("50.00"))
-    assert product.price == D("50.00")
-
-    # Test invalid price (too low)
-    with pytest.raises(ValidationError):
-        Product(name="Widget", price=D("0"))
-
-    # Test invalid price (too high)
-    with pytest.raises(ValidationError):
-        Product(name="Widget", price=D("1000000"))
-```
-
-**Why it matters**: Confidence, catches bugs early, documents behavior.
-
----
-
-### Mistake 17: Inconsistent Field Naming
-
-**Problem**: Inconsistent naming conventions across fields.
-
-**Bad**:
-```python
-# fragment
-@domain.aggregate
-class Order:
-    customerID: String()  # camelCase
-    order_number: String()  # snake_case
-    OrderTotal: Decimal(precision=19, scale=4)  # PascalCase
-    line_items = HasMany("LineItem")  # snake_case
-```
-
-**Good**:
-```python
-@domain.aggregate
-class Order:
-    customer_id: Identifier()  # Consistent snake_case
-    order_number: String()  # Consistent snake_case
-    total = ValueObject(Money)  # Consistent snake_case
-    line_items = HasMany("LineItem")  # Consistent snake_case
-```
-
-**Why it matters**: Readability, maintainability, Python conventions.
-
-## Summary Checklist
-
-Before adding a field, verify:
-
-**Field Type**:
-- [ ] Using correct type (String vs Text; Integer, Decimal or Float)
-- [ ] Not using String for numeric values
-- [ ] Using ValueObject for complex/related data
-
-**Validation**:
-- [ ] Using field-level validation for data type constraints
-- [ ] Using invariants only for cross-field rules
-- [ ] Custom validators for complex format validation
-
-**Associations**:
-- [ ] Using correct association type (HasOne, HasMany, ValueObject), and an `Identifier` for another aggregate
-- [ ] Not manually creating auto-generated methods
-- [ ] Entities have part_of specified
-
-**Configuration**:
-- [ ] Explicitly setting required=True/False
-- [ ] Providing sensible defaults
-- [ ] Using choices for enum-like fields
-- [ ] Setting min/max values for numbers
-- [ ] Setting length limits for strings
-
-**Organization**:
-- [ ] Field in correct element (aggregate, entity, value object)
-- [ ] Related fields grouped in value objects
-- [ ] Consistent naming conventions
 
 ## See Also
 
