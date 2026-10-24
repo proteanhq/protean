@@ -6,22 +6,6 @@ Subscribers serve as anti-corruption layers at the domain boundary, translating 
 
 The anti-corruption layer (ACL) is the canonical DDD use case for subscribers. External systems have their own naming conventions, data formats, and event schemas. The subscriber is the ONLY place in your domain that knows about these external formats. Everything downstream works with your domain's own commands and events.
 
-Use this pattern when:
-- Integrating with external systems that have different data models
-- External schemas use different naming conventions (camelCase, abbreviations)
-- You want to shield the domain from external schema changes
-- You need to translate external events into domain commands
-
-## Code
-
-The complete implementation is in [assets/subscriber_anti_corruption.py](../assets/subscriber_anti_corruption.py).
-
-Key highlights:
-- Subscriber translates camelCase external fields into domain snake_case
-- Combines external `firstName` + `lastName` into domain `name`
-- Dispatches a `RegisterCustomer` command -- the domain's own language
-- Domain elements (Customer, RegisterCustomer, CommandHandler) know nothing about the external format
-
 ## Walkthrough
 
 ### External Format (ERP System)
@@ -81,12 +65,6 @@ class ERPUserSubscriber:
         )
         domain.process(command)
 ```
-
-The subscriber:
-1. Routes by external event type
-2. Extracts data from the external format
-3. Translates to domain command language
-4. Dispatches the command via `domain.process()`
 
 ### Why This Matters
 
