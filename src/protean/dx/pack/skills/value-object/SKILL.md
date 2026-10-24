@@ -56,14 +56,14 @@ Use the `Decimal` field for money, never `Float`. A float cannot hold most cents
 
 ## Key rules
 
-1. **Value objects are immutable** - Cannot be changed once created
-2. **Value objects have no identity** - Cannot use `identifier=True` or `unique=True`
-3. **Equality is by attributes** - Two VOs with same values are equal
-4. **Value objects are embedded** - Always part of aggregates or entities
-5. **Value objects are self-contained** - Should not reference entities
-6. **Replace, don't modify** - Create new instance to "change" a value object
-7. **Can contain other value objects** - Nesting is allowed and encouraged
-8. **Should encapsulate validation** - **All business validations should be codified as granular invariants** using `@invariant.post` (one rule per invariant)
+1. **Value objects are immutable**: Cannot be changed once created
+2. **Value objects have no identity**: Cannot use `identifier=True` or `unique=True`
+3. **Equality is by attributes**: Two VOs with same values are equal
+4. **Value objects are embedded**: Always part of aggregates or entities
+5. **Value objects are self-contained**: Should not reference entities
+6. **Replace, don't modify**: Create new instance to "change" a value object
+7. **Can contain other value objects**: Nesting is allowed and encouraged
+8. **Should encapsulate validation**: **All business validations should be codified as granular invariants** using `@invariant.post` (one rule per invariant)
 
 ## Defining value objects
 
@@ -186,11 +186,11 @@ class Price:
 ```
 
 **Best practices for value object invariants**:
-1. **One rule per invariant** - Keep them granular and focused
-2. **Use descriptive names** - Clearly describe the business constraint
-3. **Only `@invariant.post`** - Pre invariants don't apply to immutable objects
-4. **Prefer field validations first** - Use field parameters (`min_value`, `max_value`, etc.) for data type constraints
-5. **Use invariants for business logic** - Cross-field validations, domain-specific rules, complex validations
+1. **One rule per invariant**: Keep them granular and focused
+2. **Use descriptive names**: Clearly describe the business constraint
+3. **Only `@invariant.post`**: Pre invariants don't apply to immutable objects
+4. **Prefer field validations first**: Use field parameters (`min_value`, `max_value`, etc.) for data type constraints
+5. **Use invariants for business logic**: Cross-field validations, domain-specific rules, complex validations
 6. **Example**: `amount > 0` → Use `Decimal(precision=19, scale=4, min_value=D("0.01"))` (field validation), not invariant
 7. **Example**: `end_date > start_date` → Use `@invariant.post` (cross-field business rule)
 
@@ -444,19 +444,19 @@ class Order:
 
 ## Detailed references
 
-- [Value Objects with Validation](references/with-validation.md) - Custom validators and validation patterns
-- [Value Objects with Methods](references/with-methods.md) - Adding business logic and operations
-- [Value Objects with Invariants](references/with-invariants.md) - Cross-field validation rules
-- [Nested Value Objects](references/nested-value-objects.md) - Composition and nesting patterns
-- [Value Objects in Aggregates](references/in-aggregates.md) - Using VOs in aggregates
-- [Value Objects in Entities](references/in-entities.md) - Using VOs in entities
-- [Equality and Immutability](references/equality-and-immutability.md) - Core concepts explained
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Value Objects with Validation](references/with-validation.md): Custom validators and validation patterns
+- [Value Objects with Methods](references/with-methods.md): Adding business logic and operations
+- [Value Objects with Invariants](references/with-invariants.md): Cross-field validation rules
+- [Nested Value Objects](references/nested-value-objects.md): Composition and nesting patterns
+- [Value Objects in Aggregates](references/in-aggregates.md): Using VOs in aggregates
+- [Value Objects in Entities](references/in-entities.md): Using VOs in entities
+- [Equality and Immutability](references/equality-and-immutability.md): Core concepts explained
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ## Related skills
 
-- [aggregate](../aggregate/SKILL.md) - Aggregates contain value objects
-- [entity](../entity/SKILL.md) - Entities contain value objects
+- [aggregate](../aggregate/SKILL.md): Aggregates contain value objects
+- [entity](../entity/SKILL.md): Entities contain value objects
 
 ## Verify your work
 

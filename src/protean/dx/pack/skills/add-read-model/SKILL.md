@@ -16,8 +16,8 @@ metadata:
 A read model is the query side of CQRS. It consists of three parts working together:
 
 1. **Projection**: A denormalized, query-optimized data structure built from basic fields and value objects
-2. **Projector** — An event listener that populates and updates the projection
-3. **Domain events** — The bridge between write-side aggregates and read-side projections
+2. **Projector**: An event listener that populates and updates the projection
+3. **Domain events**: The bridge between write-side aggregates and read-side projections
 
 ## What this creates
 
@@ -32,11 +32,11 @@ A read model is the query side of CQRS. It consists of three parts working toget
 
 Before building a read model, understand:
 
-- [ ] **What query does this serve?** — What data does the UI/API need? (e.g., "product listing with stock levels")
-- [ ] **Which aggregates contribute data?** — Single aggregate or multiple? (determines projector configuration)
-- [ ] **What events trigger updates?** — Which state changes should update the read model?
+- [ ] **What query does this serve?** What data does the UI/API need? (e.g., "product listing with stock levels")
+- [ ] **Which aggregates contribute data?** Single aggregate or multiple? (determines projector configuration)
+- [ ] **What events trigger updates?** Which state changes should update the read model?
 - [ ] **What fields are needed?** Basic types (String, Integer, Float, Identifier, DateTime, Boolean, Text, Date) and `ValueObject`. No `Reference`, `HasOne` or `HasMany`
-- [ ] **What storage is appropriate?** — Database (durable, queryable) or cache (fast, ephemeral)?
+- [ ] **What storage is appropriate?** Database (durable, queryable) or cache (fast, ephemeral)?
 
 ## Process
 
@@ -301,7 +301,7 @@ Instead: projectors only map event data into projection rows; keep rules on the 
 
 ```python
 # fragment
-# Wrong! Only the create event is handled — the projection goes stale
+# Wrong! Only the create event is handled: the projection goes stale
 @on(ProductAdded)
 def on_added(self, event): ...
 # (no handler for ProductPriceChanged)
@@ -357,22 +357,22 @@ Instead: set `domain.config["event_processing"] = "sync"` in tests so projectors
 
 ## Complete examples
 
-- [Single-aggregate read model](assets/read_model_single_aggregate.py) — Product → ProductListing with create and update events
-- [Cross-aggregate read model](assets/read_model_cross_aggregate.py) — User + Order → CustomerOrderSummary combining data from two aggregates
-- [Read model with multiple events](assets/read_model_multiple_events.py) — Inventory tracking with stock adjustments, reservations, and releases
+- [Single-aggregate read model](assets/read_model_single_aggregate.py): Product → ProductListing with create and update events
+- [Cross-aggregate read model](assets/read_model_cross_aggregate.py): User + Order → CustomerOrderSummary combining data from two aggregates
+- [Read model with multiple events](assets/read_model_multiple_events.py): Inventory tracking with stock adjustments, reservations, and releases
 
 ## Detailed references
 
-- [Single-Aggregate Read Model](references/single-aggregate-read-model.md) — Step-by-step walkthrough
-- [Cross-Aggregate Read Model](references/cross-aggregate-read-model.md) — Combining data from multiple aggregates
-- [Choosing Storage](references/choosing-storage.md) — Database vs cache trade-offs
+- [Single-Aggregate Read Model](references/single-aggregate-read-model.md): Step-by-step walkthrough
+- [Cross-Aggregate Read Model](references/cross-aggregate-read-model.md): Combining data from multiple aggregates
+- [Choosing Storage](references/choosing-storage.md): Database vs cache trade-offs
 
 ## Related skills
 
-- [projection](../projection/SKILL.md) — Projection definition and field types
-- [projector](../projector/SKILL.md) — Projector patterns and configuration
-- [event](../event/SKILL.md) — Defining domain events
-- [aggregate](../aggregate/SKILL.md) — Aggregates that raise events
+- [projection](../projection/SKILL.md): Projection definition and field types
+- [projector](../projector/SKILL.md): Projector patterns and configuration
+- [event](../event/SKILL.md): Defining domain events
+- [aggregate](../aggregate/SKILL.md): Aggregates that raise events
 
 ## Verify your work
 

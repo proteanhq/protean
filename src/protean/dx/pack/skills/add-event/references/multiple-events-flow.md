@@ -200,7 +200,7 @@ When testing multiple events:
 4. Verify both handlers fire: tracking info changes and one notification exists per event
 
 ## Related
-- [Same-aggregate event flow](./same-aggregate-flow.md) - Single event, same-aggregate handler
-- [Cross-aggregate event flow](./cross-aggregate-flow.md) - Event triggers side effect in another aggregate
-- [event skill](../../event/SKILL.md) - Event definition reference
-- [event-handler skill](../../event-handler/SKILL.md) - Handler reference
+- [Same-aggregate event flow](./same-aggregate-flow.md): Single event, same-aggregate handler
+- [Cross-aggregate event flow](./cross-aggregate-flow.md): Event triggers side effect in another aggregate
+- [event skill](../../event/SKILL.md): Event definition reference
+- [event-handler skill](../../event-handler/SKILL.md): Handler reference

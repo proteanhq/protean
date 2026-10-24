@@ -288,25 +288,25 @@ Instead: Change one account in the use case. The account raises an event (for ex
 ## Detailed references
 
 ### Core concepts
-- [The @use_case Decorator](references/use-case-decorator.md) - How UnitOfWork wrapping and logging work
-- [Unit of Work](references/unit-of-work.md) - Transaction semantics in application services
-- [Return Values](references/return-values.md) - Patterns for returning data from use cases
-- [Error Handling](references/error-handling.md) - Exception propagation and UoW rollback
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [The @use_case Decorator](references/use-case-decorator.md): How UnitOfWork wrapping and logging work
+- [Unit of Work](references/unit-of-work.md): Transaction semantics in application services
+- [Return Values](references/return-values.md): Patterns for returning data from use cases
+- [Error Handling](references/error-handling.md): Exception propagation and UoW rollback
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete examples
-- [Simple Service](assets/application_service_simple.py) - Basic service with one use case
-- [Multiple Use Cases](assets/application_service_multiple_use_cases.py) - Service with multiple @use_case methods
-- [With Events](assets/application_service_with_events.py) - Aggregate raises events during service operations
-- [Return Values](assets/application_service_return_values.py) - Patterns for synchronous return values
-- [Error Handling](assets/application_service_error_handling.py) - Exception propagation and rollback
+- [Simple Service](assets/application_service_simple.py): Basic service with one use case
+- [Multiple Use Cases](assets/application_service_multiple_use_cases.py): Service with multiple @use_case methods
+- [With Events](assets/application_service_with_events.py): Aggregate raises events during service operations
+- [Return Values](assets/application_service_return_values.py): Patterns for synchronous return values
+- [Error Handling](assets/application_service_error_handling.py): Exception propagation and rollback
 
 ### Related skills
-- `aggregate` - Application services orchestrate aggregates
-- `command-handler` - CQRS alternative; replaces application services when evolving to CQRS
-- `event` - Aggregates may raise events during application service operations
-- `repository` - Application services use repositories to load/persist aggregates
-- `domain-service` - Cross-aggregate logic invoked from application services
+- `aggregate`: Application services orchestrate aggregates
+- `command-handler`: CQRS alternative; replaces application services when evolving to CQRS
+- `event`: Aggregates may raise events during application service operations
+- `repository`: Application services use repositories to load/persist aggregates
+- `domain-service`: Cross-aggregate logic invoked from application services
 
 ## Verify your work
 

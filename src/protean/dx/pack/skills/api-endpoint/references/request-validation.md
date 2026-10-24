@@ -147,6 +147,6 @@ models are recommended for public-facing APIs.
 
 ## Related
 
-- [Response Patterns](./response-patterns.md) - The full exception-to-status map
-- [Anti-patterns](./anti-patterns.md) - Common validation mistakes
-- [command skill](../../command/SKILL.md) - Domain command definitions
+- [Response Patterns](./response-patterns.md): The full exception-to-status map
+- [Anti-patterns](./anti-patterns.md): Common validation mistakes
+- [command skill](../../command/SKILL.md): Domain command definitions

@@ -99,7 +99,7 @@ class Inventory:
     reserved_stock: Integer(default=0, min_value=0)
     price = ValueObject(Price, required=True)
 
-    # Layer 3: Post-invariant — consistency rule
+    # Layer 3: post-invariant (consistency rule)
     @invariant.post
     def reserved_cannot_exceed_current_stock(self):
         """Reserved stock must not exceed current stock."""
@@ -113,7 +113,7 @@ class Inventory:
                 }
             )
 
-    # Layer 3: Pre-invariant — state guard
+    # Layer 3: pre-invariant (state guard)
     @invariant.pre
     def cannot_modify_discontinued_product(self):
         """Discontinued products cannot be modified."""

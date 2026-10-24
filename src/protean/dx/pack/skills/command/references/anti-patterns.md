@@ -329,6 +329,6 @@ When creating commands, ensure:
 
 ## Related
 
-- [Command Validation](./command-validation.md) - Proper field validation
-- [Command Processing](./command-processing.md) - Correct processing patterns
-- [Command Inheritance](./command-inheritance.md) - Abstract command patterns
+- [Command Validation](./command-validation.md): Proper field validation
+- [Command Processing](./command-processing.md): Correct processing patterns
+- [Command Inheritance](./command-inheritance.md): Abstract command patterns

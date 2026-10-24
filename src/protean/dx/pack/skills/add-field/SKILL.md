@@ -25,8 +25,8 @@ Before adding a field:
 - [ ] **Data type**: Text, number, date, boolean, relationship?
 - [ ] **Required or optional?**
 - [ ] **Default value?**
-- [ ] **Validation rules?**: Length, range, format, cross-field?
-- [ ] **Relationship?**: Is this a reference to another domain element?
+- [ ] **Validation rules?** Length, range, format, cross-field?
+- [ ] **Relationship?** Is this a reference to another domain element?
 
 ## Process
 

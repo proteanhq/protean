@@ -14,9 +14,9 @@ metadata:
 
 This workflow adds a complete command flow to an existing aggregate. It creates three artifacts that work together:
 
-1. **Command** - An immutable DTO expressing intent (e.g., `PlaceOrder`)
-2. **API Endpoint** - A thin FastAPI adapter that accepts HTTP payloads and submits commands
-3. **Command Handler** - Orchestrates aggregate creation/loading, method invocation, and persistence
+1. **Command**: An immutable DTO expressing intent (e.g., `PlaceOrder`)
+2. **API Endpoint**: A thin FastAPI adapter that accepts HTTP payloads and submits commands
+3. **Command Handler**: Orchestrates aggregate creation/loading, method invocation, and persistence
 
 ## What this creates
 
@@ -33,18 +33,18 @@ Before generating, ensure you know the following. **If any item is unknown, ask 
 - [ ] **Which aggregate** the command targets (must already exist)
 - [ ] **Action name** (imperative verb + noun, e.g., PlaceOrder, CancelReservation)
 - [ ] **Command fields** (the data needed to perform the action)
-- [ ] **Create vs. Update** - Does this create a new aggregate or modify an existing one?
-- [ ] **Aggregate method** - What method on the aggregate performs the business logic?
-- [ ] **HTTP verb and route** - POST for creation, PUT for updates/actions
+- [ ] **Create vs. Update**: Does this create a new aggregate or modify an existing one?
+- [ ] **Aggregate method**: What method on the aggregate performs the business logic?
+- [ ] **HTTP verb and route**: POST for creation, PUT for updates/actions
 
 ### Questions to ask when context is missing
 
 If the user says "add a command to Order" without further detail, ask:
 
-1. **"What action should this command represent?"** - e.g., "place an order", "cancel an order", "update shipping address"
-2. **"What data does this action need?"** - e.g., order_id, customer_id, items list, reason
-3. **"Does this create a new aggregate instance or modify an existing one?"** - determines create vs. update pattern, POST vs. PUT
-4. **"What should the API route look like?"** - e.g., POST /orders, PUT /orders/{id}/cancel
+1. **"What action should this command represent?"**: E.g., "place an order", "cancel an order", "update shipping address"
+2. **"What data does this action need?"**: E.g., order_id, customer_id, items list, reason
+3. **"Does this create a new aggregate instance or modify an existing one?"**: Determines create vs. update pattern, POST vs. PUT
+4. **"What should the API route look like?"**: E.g., POST /orders, PUT /orders/{id}/cancel
 
 If the user describes a full scenario like "I want users to be able to place an order with items and a total", you can infer:
 - Action: PlaceOrder
@@ -228,39 +228,39 @@ class OrderCommandHandler:
 
 ## Key rules
 
-1. **Commands use `part_of="String"`** - Handlers usually pass the class, `part_of=ClassRef`, and a string works on a handler too
-2. **One handler per command** - Protean enforces this; multiple `@handle` methods in one handler is fine
-3. **Implicit UnitOfWork** - Do NOT wrap handler methods in manual UnitOfWork
-4. **Endpoints are thin** - Only construct commands and call `domain.process()`. No repository access, no business logic
+1. **Commands use `part_of="String"`**: Handlers usually pass the class, `part_of=ClassRef`, and a string works on a handler too
+2. **One handler per command**: Protean enforces this; multiple `@handle` methods in one handler is fine
+3. **Implicit UnitOfWork**: Do NOT wrap handler methods in manual UnitOfWork
+4. **Endpoints are thin**: Only construct commands and call `domain.process()`. No repository access, no business logic
 5. **Always use `current_domain.process()`** in endpoints - Never call handlers directly
-6. **Domain context middleware is required** - Without it, `current_domain` is not available
-7. **Return values** - Handler returns go back to the caller when using `asynchronous=False`
+6. **Domain context middleware is required**: Without it, `current_domain` is not available
+7. **Return values**: Handler returns go back to the caller when using `asynchronous=False`
 
 ## Common mistakes
 
-- **Business logic in the endpoint** - Move it to the aggregate
-- **Repository access in the endpoint** - Only handlers access repositories
-- **Manual UnitOfWork in handlers** - It's implicit, don't wrap
-- **Calling handlers directly** - Always use `domain.process()`
-- **Missing domain context middleware** - `current_domain` won't work without it
-- **Two handlers for the same command** - Protean raises an error
+- **Business logic in the endpoint**: Move it to the aggregate
+- **Repository access in the endpoint**: Only handlers access repositories
+- **Manual UnitOfWork in handlers**: It's implicit, don't wrap
+- **Calling handlers directly**: Always use `domain.process()`
+- **Missing domain context middleware**: `current_domain` won't work without it
+- **Two handlers for the same command**: Protean raises an error
 
 ## Complete examples
 
-- [Create-aggregate command flow](references/create-aggregate-flow.md) - Full flow for creating a new aggregate (POST)
-- [Update-aggregate command flow](references/update-aggregate-flow.md) - Full flow for modifying an existing aggregate (PUT)
-- [Multiple commands flow](references/multiple-commands-flow.md) - Adding multiple commands to one aggregate
+- [Create-aggregate command flow](references/create-aggregate-flow.md): Full flow for creating a new aggregate (POST)
+- [Update-aggregate command flow](references/update-aggregate-flow.md): Full flow for modifying an existing aggregate (PUT)
+- [Multiple commands flow](references/multiple-commands-flow.md): Adding multiple commands to one aggregate
 
 ### Asset files
-- [add_command_create_flow.py](assets/add_command_create_flow.py) - Complete create-aggregate flow with endpoint
-- [add_command_update_flow.py](assets/add_command_update_flow.py) - Complete update-aggregate flow with endpoint
-- [add_command_multiple_commands.py](assets/add_command_multiple_commands.py) - Multiple commands with shared handler and router
+- [add_command_create_flow.py](assets/add_command_create_flow.py): Complete create-aggregate flow with endpoint
+- [add_command_update_flow.py](assets/add_command_update_flow.py): Complete update-aggregate flow with endpoint
+- [add_command_multiple_commands.py](assets/add_command_multiple_commands.py): Multiple commands with shared handler and router
 
 ## Related skills
 
-- [command](../command/SKILL.md) — Command definition, fields, and naming
-- [command-handler](../command-handler/SKILL.md) — Handling commands and orchestrating aggregates
-- [api-endpoint](../api-endpoint/SKILL.md) — Exposing commands over HTTP
+- [command](../command/SKILL.md): Command definition, fields, and naming
+- [command-handler](../command-handler/SKILL.md): Handling commands and orchestrating aggregates
+- [api-endpoint](../api-endpoint/SKILL.md): Exposing commands over HTTP
 
 ## Verify your work
 

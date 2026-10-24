@@ -66,33 +66,33 @@ class Account:
 
 ## Key rules
 
-1. **Enable with `event_sourced=True`** — Pass to the `@domain.aggregate` decorator
-2. **`@apply` is the single source of truth for state mutations** — `raise_()` automatically invokes the matching `@apply` handler to mutate state. Business methods should validate preconditions and call `raise_()` — never mutate state directly
-3. **Every event must have a corresponding `@apply` handler** — When `raise_()` is called, it looks up and invokes the `@apply` handler for that event type. A missing handler raises `IncorrectUsageError`
-4. **`@apply` runs on both live and replay paths** — The same `@apply` handler runs when `raise_()` is called during normal operations AND when replaying events from the event store. This guarantees identical state regardless of path
-5. **Each `@apply` method handles exactly one event type** — Use a type annotation on the event parameter: `def opened(self, event: AccountOpened)`
-6. **Use factory classmethods for creation** — Create instance, raise initial event, return instance. This ensures the creation event is always the first event in the aggregate's stream
-7. **Import `apply` from `protean.core.aggregate`** — `from protean import apply` also works and is the same decorator; this skill uses the `protean.core.aggregate` path throughout
-8. **Events must be registered with `part_of`** — Associate each event with its aggregate: `@domain.event(part_of="Account")`
-9. **Version auto-increments with each event** — Each raised domain event increments `_version`, which drives optimistic concurrency control. Fact-event snapshots (rule 11) do not increment `_version`
-10. **ES repository is selected automatically** — `domain.repository_for(Account)` returns an event-sourced repository when the aggregate has `event_sourced=True`
-11. **Fact events auto-generate state snapshots** — Use `@domain.aggregate(event_sourced=True, fact_events=True)` to auto-publish complete state after each persist
-12. **First event's `@apply` must set ALL fields** — `from_events()` creates a blank aggregate and applies all events through `@apply`, so the first event's handler must establish all state including identity
+1. **Enable with `event_sourced=True`**: Pass to the `@domain.aggregate` decorator
+2. **`@apply` is the single source of truth for state mutations**: `raise_()` automatically invokes the matching `@apply` handler to mutate state. Business methods should validate preconditions and call `raise_()`. They never mutate state directly
+3. **Every event must have a corresponding `@apply` handler**: When `raise_()` is called, it looks up and invokes the `@apply` handler for that event type. A missing handler raises `IncorrectUsageError`
+4. **`@apply` runs on both live and replay paths**: The same `@apply` handler runs when `raise_()` is called during normal operations AND when replaying events from the event store. This guarantees identical state regardless of path
+5. **Each `@apply` method handles exactly one event type**: Use a type annotation on the event parameter: `def opened(self, event: AccountOpened)`
+6. **Use factory classmethods for creation**: Create instance, raise initial event, return instance. This ensures the creation event is always the first event in the aggregate's stream
+7. **Import `apply` from `protean.core.aggregate`**: `from protean import apply` also works and is the same decorator; this skill uses the `protean.core.aggregate` path throughout
+8. **Events must be registered with `part_of`**: Associate each event with its aggregate: `@domain.event(part_of="Account")`
+9. **Version auto-increments with each event**: Each raised domain event increments `_version`, which drives optimistic concurrency control. Fact-event snapshots (rule 11) do not increment `_version`
+10. **ES repository is selected automatically**: `domain.repository_for(Account)` returns an event-sourced repository when the aggregate has `event_sourced=True`
+11. **Fact events auto-generate state snapshots**: Use `@domain.aggregate(event_sourced=True, fact_events=True)` to auto-publish complete state after each persist
+12. **First event's `@apply` must set ALL fields**: `from_events()` creates a blank aggregate and applies all events through `@apply`, so the first event's handler must establish all state including identity
 13. **A failed handler writes no events**: Events added to the repository inside a command handler or a `with UnitOfWork():` block reach the event store only when the unit of work commits. If the handler raises after `repo.add(account)`, the unit of work rolls back and none of the new events reach the account's stream. A new account's stream stays empty; an existing account's stream keeps the events it already had. The `account` object in memory is not reset: it still holds the raised events in `_events` and the state its `@apply` handlers set. Do not reuse it.
 14. **`reserved=[...]` names removed fields**: `@domain.aggregate(event_sourced=True, reserved=["nickname"])` marks `nickname` as a field that once existed. Declaring a live field with a reserved name fails at registration with `IncorrectUsageError`, message "Field(s) ['nickname'] on aggregate \`Account\` reuse a reserved name; a reserved name can never be declared again as a field". During replay (`from_events()` or `repo.get()`), an `@apply` handler for an old event can still run `self.nickname = event.nickname`. The assignment is dropped without an error, and the rebuilt aggregate has no `nickname` attribute. The same assignment on the live `raise_()` path raises a Pydantic `pydantic_core.ValidationError`, not `protean.exceptions.ValidationError`.
 
 ## The @apply pattern
 
-Business methods validate preconditions and call `raise_()`. The `@apply` handler performs the actual state mutation — this is the single source of truth for state changes:
+Business methods validate preconditions and call `raise_()`. The `@apply` handler performs the actual state mutation. It is the single source of truth for state changes:
 
 ```python
-# 1. Business method — validates then raises (NO direct state mutation)
+# 1. Business method: validates then raises (NO direct state mutation)
 def close(self):
     if self.status != "ACTIVE":
         raise ValueError("Account is not active")
     self.raise_(AccountClosed(account_id=self.account_id))
 
-# 2. @apply method — mutates state (called automatically by raise_())
+# 2. @apply method: mutates state (called automatically by raise_())
 @apply
 def closed(self, event: AccountClosed):
     self.status = "CLOSED"
@@ -150,7 +150,7 @@ This ensures the creation event is always the first event in the aggregate's str
 
 ### Alternative: `_create_new()` for lean creation
 
-When not all required fields can be satisfied at construction time, use `_create_new()` — it creates a blank aggregate with only identity, and lets the creation event's `@apply` handler establish all state:
+When not all required fields can be satisfied at construction time, use `_create_new()`. It creates a blank aggregate with only identity, and lets the creation event's `@apply` handler establish all state:
 
 ```python
 @classmethod
@@ -255,10 +255,10 @@ Choose event sourcing when an aggregate meets **2 or more** of these criteria:
 
 You can mix patterns per-aggregate within the same domain:
 ```python
-@domain.aggregate                              # Standard — state stored directly
+@domain.aggregate                              # Standard: state stored directly
 class Product: ...
 
-@domain.aggregate(event_sourced=True)       # Event sourced — state from events
+@domain.aggregate(event_sourced=True)       # Event sourced: state from events
 class Order: ...
 ```
 
@@ -268,7 +268,7 @@ class Order: ...
 
 ```python
 # fragment
-# WRONG — state mutated in business method AND in @apply (double mutation)
+# WRONG: state mutated in business method AND in @apply (double mutation)
 def close(self):
     self.status = "CLOSED"  # Don't do this
     self.raise_(AccountClosed(account_id=self.account_id))
@@ -281,7 +281,7 @@ def closed(self, event: AccountClosed):
 Business methods should only validate and call `raise_()`. Let `@apply` handle all state mutations:
 
 ```python
-# CORRECT — validate then raise, @apply handles state
+# CORRECT: validate then raise, @apply handles state
 def close(self):
     if self.status != "ACTIVE":
         raise ValueError("Account is not active")
@@ -304,7 +304,7 @@ An `event_sourced=True` aggregate that raises no domain events has no state hist
 
 ```python
 # fragment
-# WRONG — no creation event recorded
+# WRONG: no creation event recorded
 @classmethod
 def open(cls, account_id, owner_name):
     return cls(account_id=account_id, owner_name=owner_name)
@@ -321,23 +321,23 @@ See [Anti-patterns](references/anti-patterns.md) for more.
 ## Detailed references
 
 ### Core Concepts
-- [The @apply Decorator](references/apply-decorator.md) - Mechanics, validation rules, projection maps
-- [Event-Sourced Repository](references/event-sourced-repository.md) - Persistence, loading, UnitOfWork integration
-- [Snapshots and Fact Events](references/snapshots-and-fact-events.md) - Performance optimization, state snapshots
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [The @apply Decorator](references/apply-decorator.md): Mechanics, validation rules, projection maps
+- [Event-Sourced Repository](references/event-sourced-repository.md): Persistence, loading, UnitOfWork integration
+- [Snapshots and Fact Events](references/snapshots-and-fact-events.md): Performance optimization, state snapshots
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Basic ES Aggregate](assets/es_aggregate_basic.py) - User lifecycle with registration, activation, deactivation
-- [ES Aggregate with Entities](assets/es_aggregate_with_entities.py) - Order with line items and value objects
-- [ES Aggregate Command Flow](assets/es_aggregate_command_flow.py) - Full command → handler → aggregate → event flow
-- [ES Aggregate with Fact Events](assets/es_aggregate_fact_events.py) - Auto-generated state snapshots and mixed patterns
+- [Basic ES Aggregate](assets/es_aggregate_basic.py): User lifecycle with registration, activation, deactivation
+- [ES Aggregate with Entities](assets/es_aggregate_with_entities.py): Order with line items and value objects
+- [ES Aggregate Command Flow](assets/es_aggregate_command_flow.py): Full command → handler → aggregate → event flow
+- [ES Aggregate with Fact Events](assets/es_aggregate_fact_events.py): Auto-generated state snapshots and mixed patterns
 
 ### Related Skills
-- `aggregate` - Base aggregate structure, fields, invariants, associations
-- `event` - Event definition, naming conventions, event fields
-- `event-handler` - Event handler structure, @handle decorator
-- `command-handler` - Command handler processing
-- `repository` - Standard repository (contrast with ES repository)
+- `aggregate`: Base aggregate structure, fields, invariants, associations
+- `event`: Event definition, naming conventions, event fields
+- `event-handler`: Event handler structure, @handle decorator
+- `command-handler`: Command handler processing
+- `repository`: Standard repository (contrast with ES repository)
 
 ## Verify your work
 

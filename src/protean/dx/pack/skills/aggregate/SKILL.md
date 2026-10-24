@@ -38,14 +38,14 @@ class Post:
 
 ## Key rules
 
-1. **Aggregates are the root of an object graph** - They manage entities and value objects within their boundary
-2. **Aggregates enforce business invariants** - Use `@invariant.pre` and `@invariant.post` decorators. **All business validations should be codified as granular invariants** - one rule per invariant
-3. **Aggregates are transaction boundaries** - All changes within an aggregate are saved together
-4. **Aggregates have automatic identity** - An `id` field is auto-generated unless `auto_add_id_field=False`
-5. **Aggregates are versioned** - Every aggregate has a `_version` field for optimistic concurrency control
-6. **Keep aggregates small** - `check` flags an aggregate with more entity types than the configured `aggregate_size_limit` (default 5) as `AGGREGATE_TOO_LARGE`. Split a growing aggregate, or raise the limit if the size is intentional
-7. **Entities accessed only through aggregates** - Never reference entities directly from outside
-8. **Each aggregate is independent** - Don't load other aggregates within aggregate methods
+1. **Aggregates are the root of an object graph**: They manage entities and value objects within their boundary
+2. **Aggregates enforce business invariants**: Use `@invariant.pre` and `@invariant.post` decorators. **All business validations should be codified as granular invariants** - one rule per invariant
+3. **Aggregates are transaction boundaries**: All changes within an aggregate are saved together
+4. **Aggregates have automatic identity**: An `id` field is auto-generated unless `auto_add_id_field=False`
+5. **Aggregates are versioned**: Every aggregate has a `_version` field for optimistic concurrency control
+6. **Keep aggregates small**: `check` flags an aggregate with more entity types than the configured `aggregate_size_limit` (default 5) as `AGGREGATE_TOO_LARGE`. Split a growing aggregate, or raise the limit if the size is intentional
+7. **Entities accessed only through aggregates**: Never reference entities directly from outside
+8. **Each aggregate is independent**: Don't load other aggregates within aggregate methods
 
 ## Fields and associations
 
@@ -132,10 +132,10 @@ class LineItem:
 
 **Auto-generated helper methods**: When you define a `HasMany` field, Protean automatically creates helper methods for managing the association. For the `line_items` field above, these methods are generated:
 
-- `add_line_items(item)` - Add one or more items to the collection
-- `remove_line_items(item)` - Remove an item from the collection
-- `get_one_from_line_items(id=item_id)` - Get the one item whose fields match the keyword arguments. Raises `ObjectNotFoundError` (from `protean.exceptions`) when nothing matches, and `TooManyObjectsError` when more than one item matches
-- `filter_line_items(**criteria)` - Return the items whose fields equal the given values, for example `order.filter_line_items(product_id="P1")`. It matches equality only; there are no `__gt`-style operators
+- `add_line_items(item)`: Add one or more items to the collection
+- `remove_line_items(item)`: Remove an item from the collection
+- `get_one_from_line_items(id=item_id)`: Get the one item whose fields match the keyword arguments. Raises `ObjectNotFoundError` (from `protean.exceptions`) when nothing matches, and `TooManyObjectsError` when more than one item matches
+- `filter_line_items(**criteria)`: Return the items whose fields equal the given values, for example `order.filter_line_items(product_id="P1")`. It matches equality only; there are no `__gt`-style operators
 
 Both lookup helpers take keyword arguments. A positional argument raises `TypeError`.
 
@@ -285,11 +285,11 @@ class Account:
 ```
 
 **Best practices**:
-1. **One rule per invariant** - Keep invariants granular and focused
-2. **Use descriptive names** - Name should clearly describe the rule being enforced
-3. **Prefer `@invariant.post`** - Use for most validations that check final state
-4. **Use `@invariant.pre` sparingly** - Only for preconditions that must prevent state changes
-5. **Document the rule** - Add docstrings explaining the business constraint
+1. **One rule per invariant**: Keep invariants granular and focused
+2. **Use descriptive names**: Name should clearly describe the rule being enforced
+3. **Prefer `@invariant.post`**: Use for most validations that check final state
+4. **Use `@invariant.pre` sparingly**: Only for preconditions that must prevent state changes
+5. **Document the rule**: Add docstrings explaining the business constraint
 
 ## Inheritance
 
@@ -467,26 +467,26 @@ See [Anti-patterns](references/anti-patterns.md) for additional mistakes: oversi
 ## Detailed references
 
 ### Core Concepts
-- [Aggregates with Entities](references/with-entities.md) - HasOne and HasMany relationships
-- [Aggregates with Value Objects](references/with-value-objects.md) - Using value objects for complex data
-- [Invariants](references/invariants.md) - Enforcing business rules with pre/post conditions
-- [Configuration Options](references/configuration.md) - Complete reference for all options
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Aggregates with Entities](references/with-entities.md): HasOne and HasMany relationships
+- [Aggregates with Value Objects](references/with-value-objects.md): Using value objects for complex data
+- [Invariants](references/invariants.md): Enforcing business rules with pre/post conditions
+- [Configuration Options](references/configuration.md): Complete reference for all options
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Simple Aggregate](assets/aggregate_simple.py) - Basic aggregate with fields
-- [Aggregate with Entities](assets/aggregate_with_entity.py) - HasOne and HasMany relationships
-- [Aggregate with Value Objects](assets/aggregate_with_value_object.py) - Money, Address examples
-- [Aggregate with Invariants](assets/aggregate_with_invariants.py) - Business rule enforcement
-- [Aggregate Inheritance](assets/aggregate_inheritance.py) - Abstract bases and inheritance
+- [Simple Aggregate](assets/aggregate_simple.py): Basic aggregate with fields
+- [Aggregate with Entities](assets/aggregate_with_entity.py): HasOne and HasMany relationships
+- [Aggregate with Value Objects](assets/aggregate_with_value_object.py): Money, Address examples
+- [Aggregate with Invariants](assets/aggregate_with_invariants.py): Business rule enforcement
+- [Aggregate Inheritance](assets/aggregate_inheritance.py): Abstract bases and inheritance
 
 ### Related Skills
-- `entity` - Entities within aggregates
-- `value-object` - Value objects for complex data
-- `command` - Commands that trigger aggregate state changes
-- `event` - Events raised by aggregates
-- `repository` - Persisting and retrieving aggregates
-- `event-sourced-aggregate` - Event-sourced aggregates with @apply, from_events(), fact events
+- `entity`: Entities within aggregates
+- `value-object`: Value objects for complex data
+- `command`: Commands that trigger aggregate state changes
+- `event`: Events raised by aggregates
+- `repository`: Persisting and retrieving aggregates
+- `event-sourced-aggregate`: Event-sourced aggregates with @apply, from_events(), fact events
 
 ## Verify your work
 

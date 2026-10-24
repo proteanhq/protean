@@ -50,15 +50,15 @@ class OrderEventHandler:
 
 ## Key rules
 
-1. **part_of or stream_category required** - Handler must be associated with an aggregate or stream: `@domain.event_handler(part_of=Order)`
-2. **Use @handle decorator** - Each handler method is decorated with `@handle(EventClass)` or `@handle("$any")`
-3. **Handler methods take self and event** - Signature: `def method_name(self, event: EventClass)`
-4. **No return values** - Event handlers do NOT return values (CQRS pattern, fire-and-forget)
-5. **Implicit UnitOfWork** - `@handle` wraps every handler invocation in its own Unit of Work, which is one real database transaction on a provider with transactions, such as the SQL databases. A handler method that reaches no repository opens no transaction. On a version conflict (`ExpectedVersionError`) the whole method runs again: with the default `max_retries=3` it runs up to 4 times in total, with waits that double between runs. Each run opens its own Unit of Work, or joins an outer one if the handler runs inside it. Configure it under `server.version_retry`
-6. **Multiple handlers per event** - Unlike commands, multiple event handlers can process the same event
-7. **Import handle from protean** - `from protean import handle` (not from protean.core)
-8. **part_of uses class reference** - Handler uses `part_of=AggregateClass` by convention. A string reference (`part_of="AggregateName"`) also works and resolves at `init`, so the aggregate may be defined after the handler
-9. **Hand off to another aggregate with a command** - To change aggregate B when aggregate A raises an event, put the handler in A's cluster (`part_of=A`, no `stream_category`) and have it call `current_domain.process(...)` with a command that belongs to B. B's command handler does the write. A handler in B's cluster that reacts to A's event is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`
+1. **part_of or stream_category required**: Handler must be associated with an aggregate or stream: `@domain.event_handler(part_of=Order)`
+2. **Use @handle decorator**: Each handler method is decorated with `@handle(EventClass)` or `@handle("$any")`
+3. **Handler methods take self and event**: Signature: `def method_name(self, event: EventClass)`
+4. **No return values**: Event handlers do NOT return values (CQRS pattern, fire-and-forget)
+5. **Implicit UnitOfWork**: `@handle` wraps every handler invocation in its own Unit of Work, which is one real database transaction on a provider with transactions, such as the SQL databases. A handler method that reaches no repository opens no transaction. On a version conflict (`ExpectedVersionError`) the whole method runs again: with the default `max_retries=3` it runs up to 4 times in total, with waits that double between runs. Each run opens its own Unit of Work, or joins an outer one if the handler runs inside it. Configure it under `server.version_retry`
+6. **Multiple handlers per event**: Unlike commands, multiple event handlers can process the same event
+7. **Import handle from protean**: `from protean import handle` (not from protean.core)
+8. **part_of uses class reference**: Handler uses `part_of=AggregateClass` by convention. A string reference (`part_of="AggregateName"`) also works and resolves at `init`, so the aggregate may be defined after the handler
+9. **Hand off to another aggregate with a command**: To change aggregate B when aggregate A raises an event, put the handler in A's cluster (`part_of=A`, no `stream_category`) and have it call `current_domain.process(...)` with a command that belongs to B. B's command handler does the write. A handler in B's cluster that reacts to A's event is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`
 
 ## Handler options
 
@@ -448,30 +448,30 @@ Instead: Keep business logic in the aggregate (an `order.confirm()` method), han
 ## Detailed references
 
 ### Core Concepts
-- [Same-Aggregate Handling](references/same-aggregate.md) - Handler processes events from its own aggregate
-- [Cross-Aggregate Handling](references/cross-aggregate.md) - Handler in the event's own cluster changes another aggregate through a command
-- [Eventual Consistency](references/eventual-consistency.md) - Trade-offs and guarantees
-- [Cross-Aggregate Patterns](references/cross-aggregate-patterns.md) - Common sync scenarios
-- [Error Handling](references/error-handling.md) - Custom error recovery with handle_error
-- [Catch-All ($any) Handler](references/any-handler.md) - Processing any event on the stream
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Same-Aggregate Handling](references/same-aggregate.md): Handler processes events from its own aggregate
+- [Cross-Aggregate Handling](references/cross-aggregate.md): Handler in the event's own cluster changes another aggregate through a command
+- [Eventual Consistency](references/eventual-consistency.md): Trade-offs and guarantees
+- [Cross-Aggregate Patterns](references/cross-aggregate-patterns.md): Common sync scenarios
+- [Error Handling](references/error-handling.md): Custom error recovery with handle_error
+- [Catch-All ($any) Handler](references/any-handler.md): Processing any event on the stream
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Same-Aggregate Handler](assets/event_handler_same_aggregate.py) - Handler for its own aggregate's events
-- [Cross-Aggregate Handler](assets/event_handler_cross_aggregate.py) - Order's handler sends Inventory a command when an order ships
-- [Order-Inventory Sync](assets/cross_sync_order_inventory.py) - OrderShipped reduces Inventory stock
-- [Payment-Subscription Sync](assets/cross_sync_payment_subscription.py) - PaymentConfirmed activates Subscription
-- [Multi-Event Sync](assets/cross_sync_multi_event.py) - Multiple events from one source trigger different target updates
-- [Multiple Events](assets/event_handler_multiple_events.py) - Handler with multiple @handle methods
-- [Error Handling](assets/event_handler_error_handling.py) - Custom handle_error classmethod
-- [Catch-All Handler](assets/event_handler_any_event.py) - @handle("$any") for all events
+- [Same-Aggregate Handler](assets/event_handler_same_aggregate.py): Handler for its own aggregate's events
+- [Cross-Aggregate Handler](assets/event_handler_cross_aggregate.py): Order's handler sends Inventory a command when an order ships
+- [Order-Inventory Sync](assets/cross_sync_order_inventory.py): OrderShipped reduces Inventory stock
+- [Payment-Subscription Sync](assets/cross_sync_payment_subscription.py): PaymentConfirmed activates Subscription
+- [Multi-Event Sync](assets/cross_sync_multi_event.py): Multiple events from one source trigger different target updates
+- [Multiple Events](assets/event_handler_multiple_events.py): Handler with multiple @handle methods
+- [Error Handling](assets/event_handler_error_handling.py): Custom handle_error classmethod
+- [Catch-All Handler](assets/event_handler_any_event.py): @handle("$any") for all events
 
 ### Related Skills
-- [event](../event/SKILL.md) - Events are the input to event handlers
-- [aggregate](../aggregate/SKILL.md) - Event handlers are always connected to aggregates
-- [command-handler](../command-handler/SKILL.md) - Analogous pattern for commands, and the write path a cross-aggregate handler hands off to
-- [process-manager](../process-manager/SKILL.md) - Flows with several causally dependent steps across aggregates
-- [refactor-introduce-events](../refactor-introduce-events/SKILL.md) - Refactoring direct calls into event-driven flows
+- [event](../event/SKILL.md): Events are the input to event handlers
+- [aggregate](../aggregate/SKILL.md): Event handlers are always connected to aggregates
+- [command-handler](../command-handler/SKILL.md): Analogous pattern for commands, and the write path a cross-aggregate handler hands off to
+- [process-manager](../process-manager/SKILL.md): Flows with several causally dependent steps across aggregates
+- [refactor-introduce-events](../refactor-introduce-events/SKILL.md): Refactoring direct calls into event-driven flows
 
 ## Verify your work
 

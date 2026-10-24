@@ -254,6 +254,6 @@ def handle_place_order(self, command):
 
 ## Related
 
-- [Loading Aggregates](./loading-aggregates.md) - Proper hydration patterns
-- [Unit of Work](./unit-of-work.md) - Understanding implicit transactions
-- [Error Handling](./error-handling.md) - Proper error handling patterns
+- [Loading Aggregates](./loading-aggregates.md): Proper hydration patterns
+- [Unit of Work](./unit-of-work.md): Understanding implicit transactions
+- [Error Handling](./error-handling.md): Proper error handling patterns

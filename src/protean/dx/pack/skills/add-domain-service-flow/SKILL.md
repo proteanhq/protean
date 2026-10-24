@@ -50,12 +50,12 @@ On the SQL providers, a Unit of Work is one real database transaction, and it ca
 
 Before building a domain service flow:
 
-- [ ] **What aggregates are involved?**: Which 2+ aggregates participate?
-- [ ] **Which aggregate is primary?**: The one the command belongs to and the service changes
-- [ ] **What is the cross-aggregate rule?**: Business logic that spans boundaries
-- [ ] **What preconditions must hold?**: Pre-invariants to check before executing
-- [ ] **Who calls the service?**: Command handler or application service
-- [ ] **How do the other aggregates change?**: Through an event and a command, applied once
+- [ ] **What aggregates are involved?** Which 2+ aggregates participate?
+- [ ] **Which aggregate is primary?** The one the command belongs to and the service changes
+- [ ] **What is the cross-aggregate rule?** Business logic that spans boundaries
+- [ ] **What preconditions must hold?** Pre-invariants to check before executing
+- [ ] **Who calls the service?** Command handler or application service
+- [ ] **How do the other aggregates change?** Through an event and a command, applied once
 
 ## Process
 

@@ -55,14 +55,14 @@ class PaymentConfirmationSubscriber:
 
 ## Key rules
 
-1. **stream is required** - Every subscriber must specify a stream: `@domain.subscriber(stream="payment_gateway")`
-2. **Implement __call__** - Subscribers receive messages via `__call__(self, payload: dict)`, not `@handle`
-3. **Payload is always a raw dict** - External broker messages arrive as plain Python dicts, not typed events
-4. **broker defaults to "default"** - Optionally specify broker: `@domain.subscriber(stream="...", broker="my_broker")`
-5. **Use message_processing for sync mode** - `domain.config["message_processing"] = "sync"` (NOT `event_processing`)
-6. **No return values** - Subscribers follow fire-and-forget, return values are discarded
-7. **One subscriber per stream** - Each subscriber class handles all messages on its stream
-8. **Anti-corruption layer** - Translate external schemas into domain language at the subscriber boundary
+1. **stream is required**: Every subscriber must specify a stream: `@domain.subscriber(stream="payment_gateway")`
+2. **Implement __call__**: Subscribers receive messages via `__call__(self, payload: dict)`, not `@handle`
+3. **Payload is always a raw dict**: External broker messages arrive as plain Python dicts, not typed events
+4. **broker defaults to "default"**: Optionally specify broker: `@domain.subscriber(stream="...", broker="my_broker")`
+5. **Use message_processing for sync mode**: `domain.config["message_processing"] = "sync"` (NOT `event_processing`)
+6. **No return values**: Subscribers follow fire-and-forget, return values are discarded
+7. **One subscriber per stream**: Each subscriber class handles all messages on its stream
+8. **Anti-corruption layer**: Translate external schemas into domain language at the subscriber boundary
 
 ## Subscriber options
 
@@ -224,23 +224,23 @@ def __call__(self, payload: dict) -> None:  # Correct!
 ## Detailed references
 
 ### Core Concepts
-- [Basic Subscriber](references/basic-subscriber.md) - Simple single-stream subscriber
-- [Anti-corruption Layer](references/anti-corruption-layer.md) - Translating external schemas into domain commands
-- [Error Handling](references/error-handling.md) - Custom error recovery with handle_error
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Basic Subscriber](references/basic-subscriber.md): Simple single-stream subscriber
+- [Anti-corruption Layer](references/anti-corruption-layer.md): Translating external schemas into domain commands
+- [Error Handling](references/error-handling.md): Custom error recovery with handle_error
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Simple Subscriber](assets/subscriber_simple.py) - Basic payment confirmation subscriber
-- [Domain Interaction](assets/subscriber_domain_interaction.py) - Subscriber updating aggregates through repositories
-- [Multiple Streams](assets/subscriber_multiple_streams.py) - Multiple subscribers on different streams
-- [Error Handling](assets/subscriber_error_handling.py) - Custom handle_error classmethod
-- [Anti-corruption Layer](assets/subscriber_anti_corruption.py) - Translating external events to domain commands
+- [Simple Subscriber](assets/subscriber_simple.py): Basic payment confirmation subscriber
+- [Domain Interaction](assets/subscriber_domain_interaction.py): Subscriber updating aggregates through repositories
+- [Multiple Streams](assets/subscriber_multiple_streams.py): Multiple subscribers on different streams
+- [Error Handling](assets/subscriber_error_handling.py): Custom handle_error classmethod
+- [Anti-corruption Layer](assets/subscriber_anti_corruption.py): Translating external events to domain commands
 
 ### Related Skills
-- `event-handler` - Compare/contrast: event handlers consume internal domain events, subscribers consume external broker messages
-- `aggregate` - Subscribers often load and update aggregates through repositories
-- `command` - Subscribers commonly translate external messages into domain commands
-- `command-handler` - Subscribers often dispatch commands for processing
+- `event-handler`: Compare/contrast: event handlers consume internal domain events, subscribers consume external broker messages
+- `aggregate`: Subscribers often load and update aggregates through repositories
+- `command`: Subscribers commonly translate external messages into domain commands
+- `command-handler`: Subscribers often dispatch commands for processing
 
 ## Verify your work
 

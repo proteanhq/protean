@@ -29,17 +29,17 @@ The Event-carried State Transfer pattern means that events carry enough informat
 
 ### Benefits
 
-1. **Reduced coupling** - Consumers don't need to call back to the producer
-2. **Improved performance** - All data is in the event, no additional queries needed
-3. **Simplified consumer logic** - No need to track and replay multiple events
-4. **Better availability** - Consumers work even if producer is down
+1. **Reduced coupling**: Consumers don't need to call back to the producer
+2. **Improved performance**: All data is in the event, no additional queries needed
+3. **Simplified consumer logic**: No need to track and replay multiple events
+4. **Better availability**: Consumers work even if producer is down
 
 ### Trade-offs
 
-1. **Larger events** - More data in each event
-2. **Data duplication** - Same data sent to multiple consumers
-3. **Eventual consistency** - Consumers may temporarily have stale data
-4. **Schema evolution** - Changes affect all consumers
+1. **Larger events**: More data in each event
+2. **Data duplication**: Same data sent to multiple consumers
+3. **Eventual consistency**: Consumers may temporarily have stale data
+4. **Schema evolution**: Changes affect all consumers
 
 ## Characteristics
 
@@ -106,16 +106,16 @@ with domain.domain_context():
 
 ### Use Fact Events When:
 
-1. **External consumers** - Other bounded contexts or systems need current state
-2. **Simplified consumption** - Consumers shouldn't need to maintain event history
-3. **Integration events** - Publishing to external systems or APIs
+1. **External consumers**: Other bounded contexts or systems need current state
+2. **Simplified consumption**: Consumers shouldn't need to maintain event history
+3. **Integration events**: Publishing to external systems or APIs
 
 ### Use Delta Events When:
 
-1. **Event sourcing** - Reconstructing state by replaying events
-2. **Internal projections** - Building custom read models from event stream
-3. **Audit trail** - Detailed change history required
-4. **Minimal data transfer** - Bandwidth or storage constraints
+1. **Event sourcing**: Reconstructing state by replaying events
+2. **Internal projections**: Building custom read models from event stream
+3. **Audit trail**: Detailed change history required
+4. **Minimal data transfer**: Bandwidth or storage constraints
 
 ### Hybrid Approach
 
@@ -231,14 +231,14 @@ with domain.domain_context():
 
 ## Best Practices
 
-1. **Let Protean generate the event** - Use `fact_events=True` instead of writing a snapshot event by hand
-2. **Version carefully** - The event's fields follow the aggregate's fields, so changing the aggregate changes what every consumer receives
-3. **Read the timestamp from metadata** - `fact._metadata.headers.time` records when the save happened
-4. **Don't over-use** - Fact events are heavier than delta events
-5. **Document consumer expectations** - What data consumers should use
+1. **Let Protean generate the event**: Use `fact_events=True` instead of writing a snapshot event by hand
+2. **Version carefully**: The event's fields follow the aggregate's fields, so changing the aggregate changes what every consumer receives
+3. **Read the timestamp from metadata**: `fact._metadata.headers.time` records when the save happened
+4. **Don't over-use**: Fact events are heavier than delta events
+5. **Document consumer expectations**: What data consumers should use
 
 ## Related
 
-- [Delta Events](./delta-events.md) - Incremental state changes
-- [With Value Objects](./with-value-objects.md) - Using value objects in events
-- [Raising Events](./raising-events.md) - How to emit events from aggregates
+- [Delta Events](./delta-events.md): Incremental state changes
+- [With Value Objects](./with-value-objects.md): Using value objects in events
+- [Raising Events](./raising-events.md): How to emit events from aggregates

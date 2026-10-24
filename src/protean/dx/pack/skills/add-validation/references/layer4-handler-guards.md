@@ -122,5 +122,5 @@ if count >= MAX_ITEMS:
 
 ## Related
 
-- [Layer 3](./layer3-aggregate-invariants.md) - Business rules in aggregates
-- [Choosing the Right Layer](./choosing-the-right-layer.md) - Decision framework
+- [Layer 3](./layer3-aggregate-invariants.md): Business rules in aggregates
+- [Choosing the Right Layer](./choosing-the-right-layer.md): Decision framework

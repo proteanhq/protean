@@ -587,7 +587,7 @@ class LoyaltyAccount:
 
 ## Related
 
-- [Invariants](./invariants.md) - How to enforce business rules correctly
-- [With Entities](./with-entities.md) - Proper entity usage
-- [With Value Objects](./with-value-objects.md) - When to use value objects
-- [domain-service](../../domain-service/SKILL.md) - Cross-aggregate logic
+- [Invariants](./invariants.md): How to enforce business rules correctly
+- [With Entities](./with-entities.md): Proper entity usage
+- [With Value Objects](./with-value-objects.md): When to use value objects
+- [domain-service](../../domain-service/SKILL.md): Cross-aggregate logic

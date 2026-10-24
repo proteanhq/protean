@@ -363,14 +363,14 @@ test_entity_configuration()
 
 ## Best Practices
 
-1. **Use defaults when possible** - Only customize when necessary
-2. **Leave shared base classes undecorated** - Decorate only the concrete entities
-3. **Document custom configurations** - Explain why you deviated from defaults
-4. **Prefer auto IDs** - Use natural keys only when there's a strong business reason
-5. **Keep schema names simple** - Use standard snake_case conventions
+1. **Use defaults when possible**: Only customize when necessary
+2. **Leave shared base classes undecorated**: Decorate only the concrete entities
+3. **Document custom configurations**: Explain why you deviated from defaults
+4. **Prefer auto IDs**: Use natural keys only when there's a strong business reason
+5. **Keep schema names simple**: Use standard snake_case conventions
 
 ## Related
 
-- [Aggregates](../../aggregate/SKILL.md) - Aggregate configuration options
-- [Value Objects](../../value-object/SKILL.md) - Value object configuration
-- [Anti-patterns](./anti-patterns.md) - Common configuration mistakes
+- [Aggregates](../../aggregate/SKILL.md): Aggregate configuration options
+- [Value Objects](../../value-object/SKILL.md): Value object configuration
+- [Anti-patterns](./anti-patterns.md): Common configuration mistakes

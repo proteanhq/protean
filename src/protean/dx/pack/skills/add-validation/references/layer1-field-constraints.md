@@ -63,5 +63,5 @@ Errors are raised as `ValidationError` with field-to-messages dict.
 
 ## Related
 
-- [custom-validator](../../custom-validator/SKILL.md) - Custom validators for `validators=[]`
-- [Layer 2](./layer2-value-object-invariants.md) - VO invariants for concept rules
+- [custom-validator](../../custom-validator/SKILL.md): Custom validators for `validators=[]`
+- [Layer 2](./layer2-value-object-invariants.md): VO invariants for concept rules

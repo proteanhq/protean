@@ -48,7 +48,7 @@ whether the second event is actually needed.
 
 ```python
 # fragment
-# Bad: imperative name — this is a command, not an event
+# Bad: imperative name: this is a command, not an event
 @domain.event(part_of="Order")
 class ReserveInventory:
     product_id = String()
@@ -56,7 +56,7 @@ class ReserveInventory:
 ```
 
 ```python
-# Good: past tense — describes what happened
+# Good: past tense: describes what happened
 @domain.event(part_of="Order")
 class OrderPlaced:
     order_id = Identifier(required=True)
@@ -130,7 +130,7 @@ def place_order(self, command):
     order = Order(...)
     order.place()
     domain.repository_for(Order).add(order)
-    # DON'T check inventory here — event hasn't been processed yet!
+    # DON'T check inventory here: event hasn't been processed yet!
     inventory = domain.repository_for(Inventory).get(command.product_id)
     assert inventory.available < 100  # May not be true yet in async mode
 ```
@@ -139,4 +139,4 @@ In production (async mode), event handlers run later. Design for eventual consis
 
 ## Related
 
-- [event-design-guide.md](event-design-guide.md) — How to design good events
+- [event-design-guide.md](event-design-guide.md): How to design good events

@@ -6,10 +6,10 @@ Commands can contain value objects to represent complex immutable data structure
 
 Value objects are immutable complex types that represent domain concepts with multiple attributes (Money, Address, Coordinates, etc.). Including value objects in commands provides:
 
-- **Type safety** - Structured data with validation
-- **Immutability** - Value objects are immutable, perfect for commands
-- **Domain modeling** - Express domain concepts clearly
-- **Reusability** - Same value objects used across commands, events, and aggregates
+- **Type safety**: Structured data with validation
+- **Immutability**: Value objects are immutable, perfect for commands
+- **Domain modeling**: Express domain concepts clearly
+- **Reusability**: Same value objects used across commands, events, and aggregates
 
 ## Code
 
@@ -124,14 +124,14 @@ class PlaceOrder:
 
 ## Best Practices
 
-1. **Reuse value objects** - Same value objects across commands, events, and aggregates
-2. **Keep value objects immutable** - Never add methods that modify state
-3. **Add behavior to value objects** - Validation, calculations, formatting
-4. **Use composition** - Value objects can contain other value objects
-5. **Document purpose** - Clear docstrings on value objects and their usage
+1. **Reuse value objects**: Same value objects across commands, events, and aggregates
+2. **Keep value objects immutable**: Never add methods that modify state
+3. **Add behavior to value objects**: Validation, calculations, formatting
+4. **Use composition**: Value objects can contain other value objects
+5. **Document purpose**: Clear docstrings on value objects and their usage
 
 ## Related
 
-- [Command Validation](./command-validation.md) - Validation on command fields
-- [Anti-patterns](./anti-patterns.md) - Common mistakes
-- `value-object` - Detailed value object patterns
+- [Command Validation](./command-validation.md): Validation on command fields
+- [Anti-patterns](./anti-patterns.md): Common mistakes
+- `value-object`: Detailed value object patterns

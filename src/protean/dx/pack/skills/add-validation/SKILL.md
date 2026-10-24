@@ -28,11 +28,11 @@ Protean organizes validation into 4 distinct layers. Each layer has a specific p
 
 Before adding a validation, understand:
 
-- [ ] **What is the rule?** — State it as a business constraint (e.g., "discount cannot exceed order total")
-- [ ] **How many fields does it involve?** — Single-field → Layer 1 or 2; Cross-field → Layer 3; Context-dependent → Layer 4
-- [ ] **Where does it belong?** — Which aggregate, entity, value object, or handler?
-- [ ] **When should it run?** — Always (Layer 1-3) or only during specific operations (Layer 4)?
-- [ ] **Is it a pre-condition or post-condition?** — Before change (`@invariant.pre`) or after change (`@invariant.post`)?
+- [ ] **What is the rule?** State it as a business constraint (e.g., "discount cannot exceed order total")
+- [ ] **How many fields does it involve?** Single-field → Layer 1 or 2; Cross-field → Layer 3; Context-dependent → Layer 4
+- [ ] **Where does it belong?** Which aggregate, entity, value object, or handler?
+- [ ] **When should it run?** Always (Layer 1-3) or only during specific operations (Layer 4)?
+- [ ] **Is it a pre-condition or post-condition?** Before change (`@invariant.pre`) or after change (`@invariant.post`)?
 
 ## Layer 1: Field constraints
 
@@ -66,17 +66,17 @@ class Order:
 ```
 
 **When to use Layer 1**:
-- `required=True` — Field must have a value
-- `min_value` / `max_value` — Numeric range
-- `min_length` / `max_length` — String length
-- `choices` — Value must be from enum/list
-- `validators=[...]` — Custom single-field format checks (see [custom-validator](../custom-validator/SKILL.md))
+- `required=True`: Field must have a value
+- `min_value` / `max_value`: Numeric range
+- `min_length` / `max_length`: String length
+- `choices`: Value must be from enum/list
+- `validators=[...]`: Custom single-field format checks (see [custom-validator](../custom-validator/SKILL.md))
 
 **Validation timing**: Immediately on field assignment (during `__init__` or `__setattr__`).
 
 ## Layer 2: Value object invariants
 
-Use for domain concept rules that span multiple fields of a value object. Value objects only support `@invariant.post` (they are immutable — no pre-conditions).
+Use for domain concept rules that span multiple fields of a value object. Value objects only support `@invariant.post` (they are immutable, so there are no pre-conditions).
 
 ```python
 from protean import invariant
@@ -177,8 +177,8 @@ class Order:
 ```
 
 **`@invariant.pre` vs `@invariant.post`**:
-- **`@invariant.pre`** — Checked BEFORE attribute changes (not on initialization). Use for state guards: "cannot modify shipped orders", "cannot withdraw below limit".
-- **`@invariant.post`** — Checked AFTER initialization AND after each attribute change. Use for consistency rules: "total must equal sum", "must have items when placed".
+- **`@invariant.pre`**: Checked BEFORE attribute changes (not on initialization). Use for state guards: "cannot modify shipped orders", "cannot withdraw below limit".
+- **`@invariant.post`**: Checked AFTER initialization AND after each attribute change. Use for consistency rules: "total must equal sum", "must have items when placed".
 
 **When to use Layer 3**:
 - Cross-field business rules within an aggregate
@@ -298,21 +298,21 @@ Is it a single-field data constraint?
 
 ## Key rules
 
-1. **Start at Layer 1** — Use field parameters whenever possible. They're the simplest, fastest, and auto-documented.
-2. **Prefer invariants over manual checks** — Use `@invariant.pre`/`@invariant.post` instead of `if` checks in methods. Invariants run automatically.
-3. **One rule per invariant** — Keep invariants granular. One business rule per decorated method.
-4. **Use descriptive invariant names** — Name invariants as business rules: `total_must_equal_sum_of_items`, not `validate_total`.
-5. **Raise `ValidationError` with field context** — Use `{"field_name": ["message"]}` format. Use `"_entity"` key for aggregate-level rules.
-6. **Don't duplicate across layers** — If `Decimal(precision=19, scale=4, min_value=0)` handles it, don't also add an invariant for the same check.
-7. **Pre-invariants don't run on initialization** — `@invariant.pre` only runs before attribute changes AFTER the object is created.
+1. **Start at Layer 1**: Use field parameters whenever possible. They're the simplest, fastest, and auto-documented.
+2. **Prefer invariants over manual checks**: Use `@invariant.pre`/`@invariant.post` instead of `if` checks in methods. Invariants run automatically.
+3. **One rule per invariant**: Keep invariants granular. One business rule per decorated method.
+4. **Use descriptive invariant names**: Name invariants as business rules: `total_must_equal_sum_of_items`, not `validate_total`.
+5. **Raise `ValidationError` with field context**: Use `{"field_name": ["message"]}` format. Use `"_entity"` key for aggregate-level rules.
+6. **Don't duplicate across layers**: If `Decimal(precision=19, scale=4, min_value=0)` handles it, don't also add an invariant for the same check.
+7. **Pre-invariants don't run on initialization**: `@invariant.pre` only runs before attribute changes AFTER the object is created.
 
 ## Common mistakes
 
-- **Putting business rules in handlers** — Business rules belong in aggregates (Layer 3), not handlers. Handlers are for authorization and orchestration.
-- **Duplicating field constraints as invariants** — If `Integer(min_value=1)` enforces "quantity >= 1", don't also write an invariant for it.
-- **Using `@invariant.pre` on value objects** — Value objects are immutable; only `@invariant.post` applies.
-- **Not using `atomic_change` for multi-field updates** — When changing related fields together, wrap in `atomic_change` to avoid intermediate invalid states.
-- **Putting all validation in `__init__`** — Use Protean's validation framework (fields + invariants), not manual `__init__` checks.
+- **Putting business rules in handlers**: Business rules belong in aggregates (Layer 3), not handlers. Handlers are for authorization and orchestration.
+- **Duplicating field constraints as invariants**: If `Integer(min_value=1)` enforces "quantity >= 1", don't also write an invariant for it.
+- **Using `@invariant.pre` on value objects**: Value objects are immutable; only `@invariant.post` applies.
+- **Not using `atomic_change` for multi-field updates**: When changing related fields together, wrap in `atomic_change` to avoid intermediate invalid states.
+- **Putting all validation in `__init__`**: Use Protean's validation framework (fields + invariants), not manual `__init__` checks.
 
 ## Complete examples
 
@@ -324,20 +324,20 @@ Is it a single-field data constraint?
 
 ## Detailed references
 
-- [Layer 1: Field Constraints](references/layer1-field-constraints.md) - All field validation parameters
-- [Layer 2: Value Object Invariants](references/layer2-value-object-invariants.md) - VO invariant patterns
-- [Layer 3: Aggregate Invariants](references/layer3-aggregate-invariants.md) - Pre/post invariants and atomic changes
-- [Layer 4: Handler Guards](references/layer4-handler-guards.md) - Authorization and context checks
-- [Choosing the Right Layer](references/choosing-the-right-layer.md) - Decision framework with examples
+- [Layer 1: Field Constraints](references/layer1-field-constraints.md): All field validation parameters
+- [Layer 2: Value Object Invariants](references/layer2-value-object-invariants.md): VO invariant patterns
+- [Layer 3: Aggregate Invariants](references/layer3-aggregate-invariants.md): Pre/post invariants and atomic changes
+- [Layer 4: Handler Guards](references/layer4-handler-guards.md): Authorization and context checks
+- [Choosing the Right Layer](references/choosing-the-right-layer.md): Decision framework with examples
 
 ## Related skills
 
-- [custom-validator](../custom-validator/SKILL.md) - Build custom field validators (Layer 1 extension)
-- [aggregate](../aggregate/SKILL.md) - Aggregates with invariants
-- [value-object](../value-object/SKILL.md) - Value objects with invariants
-- [entity](../entity/SKILL.md) - Entities within aggregates
-- [command-handler](../command-handler/SKILL.md) - Handler guards (Layer 4)
-- [add-field](../add-field/SKILL.md) - Adding fields with validation
+- [custom-validator](../custom-validator/SKILL.md): Build custom field validators (Layer 1 extension)
+- [aggregate](../aggregate/SKILL.md): Aggregates with invariants
+- [value-object](../value-object/SKILL.md): Value objects with invariants
+- [entity](../entity/SKILL.md): Entities within aggregates
+- [command-handler](../command-handler/SKILL.md): Handler guards (Layer 4)
+- [add-field](../add-field/SKILL.md): Adding fields with validation
 
 ## Verify your work
 

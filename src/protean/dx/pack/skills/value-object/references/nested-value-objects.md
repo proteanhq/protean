@@ -382,13 +382,13 @@ def test_nested_value_object_immutability():
 
 ## Best Practices
 
-1. **Reuse value objects** - Same VO can be nested in multiple contexts
-2. **Keep nesting reasonable** - Avoid more than 3-4 levels deep
-3. **Name fields clearly** - Field name should indicate what it contains
-4. **Document composition** - Explain why VOs are nested
-5. **Pass nested value objects as objects** - A value object's constructor takes no flattened attributes
-6. **Validate relationships** - Use invariants for cross-VO rules
-7. **Provide computed properties** - For derived values from nested data
+1. **Reuse value objects**: Same VO can be nested in multiple contexts
+2. **Keep nesting reasonable**: Avoid more than 3-4 levels deep
+3. **Name fields clearly**: Field name should indicate what it contains
+4. **Document composition**: Explain why VOs are nested
+5. **Pass nested value objects as objects**: A value object's constructor takes no flattened attributes
+6. **Validate relationships**: Use invariants for cross-VO rules
+7. **Provide computed properties**: For derived values from nested data
 
 ## Common Mistakes
 
@@ -416,7 +416,7 @@ customer.shipping_address.coordinates.latitude = 50.0  # Raises IncorrectUsageEr
 
 ## Related
 
-- [Value Objects in Aggregates](./in-aggregates.md) - Using nested VOs in aggregates
-- [Value Objects with Methods](./with-methods.md) - Adding behavior
-- [Equality and Immutability](./equality-and-immutability.md) - Core concepts
-- [Anti-patterns](./anti-patterns.md) - What to avoid
+- [Value Objects in Aggregates](./in-aggregates.md): Using nested VOs in aggregates
+- [Value Objects with Methods](./with-methods.md): Adding behavior
+- [Equality and Immutability](./equality-and-immutability.md): Core concepts
+- [Anti-patterns](./anti-patterns.md): What to avoid

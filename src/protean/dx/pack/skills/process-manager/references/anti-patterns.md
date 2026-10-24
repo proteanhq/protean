@@ -154,7 +154,7 @@ class OrderWorkflow:
         current_domain.process(CancelOrder(order_id=event.order_id))
 ```
 
-**Right** — Use a process manager for stateful, multi-step coordination.
+**Right**: Use a process manager for stateful, multi-step coordination.
 
 ## 7. Returning Values from PM Handlers
 
@@ -191,6 +191,6 @@ Let the framework manage the UnitOfWork automatically.
 
 ## Related
 
-- [Correlation](./correlation.md) - Correct correlation patterns
-- [Lifecycle Management](./lifecycle.md) - Terminal states and completion
-- [Command Issuance](./command-issuance.md) - Coordinator pattern
+- [Correlation](./correlation.md): Correct correlation patterns
+- [Lifecycle Management](./lifecycle.md): Terminal states and completion
+- [Command Issuance](./command-issuance.md): Coordinator pattern

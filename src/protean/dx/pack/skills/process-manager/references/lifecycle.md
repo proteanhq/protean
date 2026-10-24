@@ -65,9 +65,9 @@ Use `mark_as_complete()` when you need to decide whether to complete based on PM
 
 Once a PM is marked complete (either via `end=True` or `mark_as_complete()`):
 
-- **Subsequent events are silently skipped** — No handler runs, no transition is persisted
-- **The PM cannot be "reopened"** — There is no mechanism to uncomplete a PM
-- **The completion is recorded** — The final transition event has `is_complete=True`
+- **Subsequent events are silently skipped**: No handler runs, no transition is persisted
+- **The PM cannot be "reopened"**: There is no mechanism to uncomplete a PM
+- **The completion is recorded**: The final transition event has `is_complete=True`
 
 ## Code
 
@@ -95,7 +95,7 @@ When loading a PM instance, the framework:
 2. Replays them in order to rebuild the current field state
 3. Tracks `_version` (incremented with each transition) and `_is_complete` flag
 
-This makes process managers fully event-sourced — their state is derived from their transition event history.
+This makes process managers fully event-sourced: their state is derived from their transition event history.
 
 ### Example Transition Event
 
@@ -116,11 +116,11 @@ After `on_payment_confirmed` runs:
 ## Best Practices
 
 - **Always define at least one terminal state**: Mark at least one handler `end=True`. Without a terminal state, the PM accepts events indefinitely
-- **Handle compensation on failure paths** — When a step fails, issue compensating commands to undo earlier steps
-- **Design for idempotency** — Events may be delivered more than once; handlers should produce the same outcome
+- **Handle compensation on failure paths**: When a step fails, issue compensating commands to undo earlier steps
+- **Design for idempotency**: Events may be delivered more than once; handlers should produce the same outcome
 
 ## Related
 
-- [Correlation](./correlation.md) - How events are routed to PM instances
-- [Command Issuance](./command-issuance.md) - Issuing commands from PM handlers
-- [Anti-patterns](./anti-patterns.md) - Missing terminal states
+- [Correlation](./correlation.md): How events are routed to PM instances
+- [Command Issuance](./command-issuance.md): Issuing commands from PM handlers
+- [Anti-patterns](./anti-patterns.md): Missing terminal states

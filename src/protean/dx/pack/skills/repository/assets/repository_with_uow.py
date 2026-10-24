@@ -9,7 +9,7 @@ This example demonstrates:
 - UnitOfWork as context manager
 
 Usage:
-    # Inside command handlers, UoW is implicit — no manual wrapping needed
+    # Inside command handlers, UoW is implicit: no manual wrapping needed
     # Outside handlers, use explicit UoW:
     with UnitOfWork():
         repo = domain.repository_for(Account)

@@ -5,9 +5,9 @@ This guide helps you choose the right Protean field type for your data.
 ## Overview
 
 Protean provides field types in three categories:
-1. **Simple fields** - For basic data types (text, numbers, dates, booleans)
-2. **Association fields** - For relationships between domain elements
-3. **Special fields** - For identity, auto-generation, and collections
+1. **Simple fields**: For basic data types (text, numbers, dates, booleans)
+2. **Association fields**: For relationships between domain elements
+3. **Special fields**: For identity, auto-generation, and collections
 
 ## Simple Fields
 
@@ -22,9 +22,9 @@ Protean provides field types in three categories:
 - Identifiers (email, username)
 
 **Parameters**:
-- `max_length` (default: 255) - Maximum characters
-- `min_length` - Minimum characters
-- `sanitize` (default: off; set `True` per field, or domain-wide via `[field_defaults] sanitize`) - Clean unsafe HTML with `bleach.clean()`: it escapes disallowed tags and removes disallowed attributes and HTML comments
+- `max_length` (default: 255): Maximum characters
+- `min_length`: Minimum characters
+- `sanitize` (default: off; set `True` per field, or domain-wide via `[field_defaults] sanitize`): Clean unsafe HTML with `bleach.clean()`: it escapes disallowed tags and removes disallowed attributes and HTML comments
 
 **Examples**:
 ```python
@@ -57,7 +57,7 @@ order_id: String(required=True, identifier=True)
 - HTML/Markdown content
 
 **Parameters**:
-- `sanitize` (default: off; set `True` per field, or domain-wide via `[field_defaults] sanitize`) - Clean unsafe HTML with `bleach.clean()`: it escapes disallowed tags and removes disallowed attributes and HTML comments
+- `sanitize` (default: off; set `True` per field, or domain-wide via `[field_defaults] sanitize`): Clean unsafe HTML with `bleach.clean()`: it escapes disallowed tags and removes disallowed attributes and HTML comments
 
 **Examples**:
 ```python
@@ -87,8 +87,8 @@ notes: Text()
 - Version numbers
 
 **Parameters**:
-- `min_value` - Minimum allowed value
-- `max_value` - Maximum allowed value
+- `min_value`: Minimum allowed value
+- `max_value`: Maximum allowed value
 
 **Examples**:
 ```python
@@ -119,10 +119,10 @@ rating: Integer(required=True, min_value=1, max_value=5)
 - Any value where binary floating-point rounding is not acceptable
 
 **Parameters**:
-- `precision` - Total number of digits
-- `scale` - Digits after the decimal point
-- `min_value` - Minimum allowed value
-- `max_value` - Maximum allowed value
+- `precision`: Total number of digits
+- `scale`: Digits after the decimal point
+- `min_value`: Minimum allowed value
+- `max_value`: Maximum allowed value
 
 **Examples**:
 ```python
@@ -156,8 +156,8 @@ default does not compare equal to one built with `D("0")`.
 - Ratings (4.5 stars)
 
 **Parameters**:
-- `min_value` - Minimum allowed value
-- `max_value` - Maximum allowed value
+- `min_value`: Minimum allowed value
+- `max_value`: Maximum allowed value
 
 **Examples**:
 ```python
@@ -328,12 +328,12 @@ class LineItem:
 ```
 
 **Auto-generated methods**:
-- `add_line_items(item)` - Add items
-- `remove_line_items(item)` - Remove item
-- `get_one_from_line_items(id=item_id)` - Get one item by keyword criteria. Raises
+- `add_line_items(item)`: Add items
+- `remove_line_items(item)`: Remove item
+- `get_one_from_line_items(id=item_id)`: Get one item by keyword criteria. Raises
   `ObjectNotFoundError` (from `protean.exceptions`) when nothing matches, and
   `TooManyObjectsError` when more than one item matches.
-- `filter_line_items(**criteria)` - Get the items whose fields equal the given values
+- `filter_line_items(**criteria)`: Get the items whose fields equal the given values
   (equality only; no operators such as `quantity__gt`)
 
 **Access pattern**:
@@ -636,7 +636,7 @@ A: DateTime for proper date handling. String only for display formats.
 
 ## See Also
 
-- [Validation Strategies](validation.md) - Field validation options
-- [Association Fields](associations.md) - Detailed association patterns
-- [Common Mistakes](common-mistakes.md) - Anti-patterns to avoid
+- [Validation Strategies](validation.md): Field validation options
+- [Association Fields](associations.md): Detailed association patterns
+- [Common Mistakes](common-mistakes.md): Anti-patterns to avoid
 - Complete examples in [assets/](../assets/)

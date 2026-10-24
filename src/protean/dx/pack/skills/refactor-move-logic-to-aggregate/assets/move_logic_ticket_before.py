@@ -18,7 +18,7 @@ domain = Domain()
 
 @domain.aggregate
 class Ticket:
-    """Anemic aggregate — just a data container."""
+    """Anemic aggregate: just a data container."""
 
     title = String(required=True, max_length=200)
     description = String(max_length=2000)

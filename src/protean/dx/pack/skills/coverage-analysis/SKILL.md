@@ -153,13 +153,13 @@ Use `_events.clear()` to isolate event assertions when testing a method after a 
 ### Gaps (by severity)
 
 #### HIGH
-1. [description] — generated test class: `TestXxx`
+1. [description]: generated test class: `TestXxx`
 
 #### MEDIUM
-1. [description] — generated test class: `TestXxx`
+1. [description]: generated test class: `TestXxx`
 
 #### LOW
-1. [description] — generated test class: `TestXxx`
+1. [description]: generated test class: `TestXxx`
 
 ### Generated Tests
 [Complete test code for all gaps]
@@ -168,12 +168,12 @@ Use `_events.clear()` to isolate event assertions when testing a method after a 
 ## What NOT to flag as gaps
 
 Do not report missing tests for framework-guaranteed behavior:
-- VO construction, equality, immutability — guaranteed by `@domain.value_object`
-- Command/event immutability — guaranteed by decorators
-- Field-level validation (`required`, `max_length`, `min_value`, `choices`) — Protean Layer 1
-- Element registration in `domain.registry` — guaranteed if decorator is used
-- `meta_.part_of` associations, `meta_.stream_category` — framework wiring
-- Command `.payload` dict access — framework feature
+- VO construction, equality, immutability: guaranteed by `@domain.value_object`
+- Command/event immutability: guaranteed by decorators
+- Field-level validation (`required`, `max_length`, `min_value`, `choices`): Protean Layer 1
+- Element registration in `domain.registry`: guaranteed if decorator is used
+- `meta_.part_of` associations, `meta_.stream_category`: framework wiring
+- Command `.payload` dict access: framework feature
 
 ## Common mistakes
 
@@ -185,19 +185,19 @@ Do not report missing tests for framework-guaranteed behavior:
 
 ## Complete examples
 
-- [Issue tracker domain](assets/coverage_domain_with_gaps.py) — Domain with all testable element categories
+- [Issue tracker domain](assets/coverage_domain_with_gaps.py): Domain with all testable element categories
 
 ## Detailed references
 
-- [Analysis checklist](references/analysis-checklist.md) — Step-by-step checklist for thorough analysis
+- [Analysis checklist](references/analysis-checklist.md): Step-by-step checklist for thorough analysis
 
 ## Related skills
 
-- [generate-test-scaffold](../generate-test-scaffold/SKILL.md) — Test generation patterns (used in Step 4)
-- [aggregate](../aggregate/SKILL.md) — Aggregate definition patterns
-- [command-handler](../command-handler/SKILL.md) — Command handler patterns
-- [event-handler](../event-handler/SKILL.md) — Event handler patterns
-- [value-object](../value-object/SKILL.md) — Value object patterns
+- [generate-test-scaffold](../generate-test-scaffold/SKILL.md): Test generation patterns (used in Step 4)
+- [aggregate](../aggregate/SKILL.md): Aggregate definition patterns
+- [command-handler](../command-handler/SKILL.md): Command handler patterns
+- [event-handler](../event-handler/SKILL.md): Event handler patterns
+- [value-object](../value-object/SKILL.md): Value object patterns
 
 ## Verify your work
 

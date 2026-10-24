@@ -37,16 +37,16 @@ class PlaceOrder:
 
 ## Key rules
 
-1. **Commands must be associated with aggregates** - Always specify `part_of` parameter with the aggregate name
-2. **Commands are named with imperative verbs** - Use imperative mood: `PlaceOrder`, not `OrderPlaced`
-3. **Commands are immutable** - Once created, commands cannot be modified
-4. **Commands are DTOs** - Can contain simple fields and value objects, but NOT entities or aggregates (no HasOne, HasMany)
-5. **Commands are unique** - Each command is unique throughout the domain
-6. **One handler per command** - A command can only be processed by one command handler
-7. **Commands carry intent** - They describe what should happen, not what happened (that is events)
-8. **Commands have metadata** - Protean automatically adds timestamps, unique IDs, and versioning
-9. **Commands are submitted via `domain.process()`** - The domain dispatches to the appropriate handler
-10. **Commands support sync and async processing** - Controlled per-instance or via domain configuration
+1. **Commands must be associated with aggregates**: Always specify `part_of` parameter with the aggregate name
+2. **Commands are named with imperative verbs**: Use imperative mood: `PlaceOrder`, not `OrderPlaced`
+3. **Commands are immutable**: Once created, commands cannot be modified
+4. **Commands are DTOs**: Can contain simple fields and value objects, but NOT entities or aggregates (no HasOne, HasMany)
+5. **Commands are unique**: Each command is unique throughout the domain
+6. **One handler per command**: A command can only be processed by one command handler
+7. **Commands carry intent**: They describe what should happen, not what happened (that is events)
+8. **Commands have metadata**: Protean automatically adds timestamps, unique IDs, and versioning
+9. **Commands are submitted via `domain.process()`**: The domain dispatches to the appropriate handler
+10. **Commands support sync and async processing**: Controlled per-instance or via domain configuration
 
 ## Fields and options
 
@@ -225,25 +225,25 @@ with domain.domain_context():
 ## Detailed references
 
 ### Core Concepts
-- [Commands with Value Objects](references/with-value-objects.md) - Using value objects in commands
-- [Command Validation](references/command-validation.md) - Field validation and error handling
-- [Command Processing](references/command-processing.md) - Synchronous and asynchronous processing
-- [Command Inheritance](references/command-inheritance.md) - Abstract commands and inheritance
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Commands with Value Objects](references/with-value-objects.md): Using value objects in commands
+- [Command Validation](references/command-validation.md): Field validation and error handling
+- [Command Processing](references/command-processing.md): Synchronous and asynchronous processing
+- [Command Inheritance](references/command-inheritance.md): Abstract commands and inheritance
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Simple Command](assets/command_simple.py) - Basic commands with simple fields
-- [Command with Value Objects](assets/command_with_value_object.py) - Commands containing value objects
-- [Command Validation](assets/command_validation.py) - Field validation examples
-- [Command Inheritance](assets/command_inheritance.py) - Abstract base commands and inheritance
-- [Submitting Commands](assets/submitting_commands.py) - Command submission and processing
+- [Simple Command](assets/command_simple.py): Basic commands with simple fields
+- [Command with Value Objects](assets/command_with_value_object.py): Commands containing value objects
+- [Command Validation](assets/command_validation.py): Field validation examples
+- [Command Inheritance](assets/command_inheritance.py): Abstract base commands and inheritance
+- [Submitting Commands](assets/submitting_commands.py): Command submission and processing
 
 ### Related Skills
-- `aggregate` - Commands are always part of aggregates
-- `command-handler` - How commands are processed
-- `event` - Commands and events are complementary (commands = intent, events = result)
-- `value-object` - Commands can contain value objects
-- [CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/) - Commands are the "C" in CQRS
+- `aggregate`: Commands are always part of aggregates
+- `command-handler`: How commands are processed
+- `event`: Commands and events are complementary (commands = intent, events = result)
+- `value-object`: Commands can contain value objects
+- [CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/): Commands are the "C" in CQRS
 
 ## Verify your work
 

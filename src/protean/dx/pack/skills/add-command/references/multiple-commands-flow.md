@@ -93,9 +93,9 @@ class OrderCommandHandler:
 ```
 
 Key rules:
-- **One handler class per aggregate** - Multiple `@handle` methods are fine
-- **Each command has exactly one handler** - Protean enforces this
-- **All commands must share the same aggregate** - Command's `part_of` must match handler's `part_of`
+- **One handler class per aggregate**: Multiple `@handle` methods are fine
+- **Each command has exactly one handler**: Protean enforces this
+- **All commands must share the same aggregate**: Command's `part_of` must match handler's `part_of`
 
 ### Router Pattern
 
@@ -195,5 +195,5 @@ Each transition is triggered by a command and enforced by the aggregate's busine
 
 ## Related
 
-- [Create-aggregate flow](./create-aggregate-flow.md) - Deep dive into the create pattern
-- [Update-aggregate flow](./update-aggregate-flow.md) - Deep dive into the update pattern
+- [Create-aggregate flow](./create-aggregate-flow.md): Deep dive into the create pattern
+- [Update-aggregate flow](./update-aggregate-flow.md): Deep dive into the update pattern

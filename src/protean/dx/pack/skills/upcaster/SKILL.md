@@ -1,6 +1,6 @@
 ---
 name: upcaster
-description: "Define a Protean event upcaster — a class that transforms old event payloads to match the current schema version, enabling event schema evolution without breaking stored events. Upcasters extend BaseUpcaster, implement an upcast(data) method, and are registered with @domain.upcaster(event_type=EventClass, from_version=1, to_version=2). The framework automatically chains individual upcasters and applies them lazily during deserialization. Use when the user asks to 'create an upcaster', 'handle event schema migration', 'evolve an event schema', 'add a field to an existing event', 'rename a field in an event', 'migrate old events', 'transform stored events', 'handle event versioning', or when they need to change an event's schema while keeping old stored events compatible."
+description: "Define a Protean event upcaster: a class that transforms old event payloads to match the current schema version, enabling event schema evolution without breaking stored events. Upcasters extend BaseUpcaster, implement an upcast(data) method, and are registered with @domain.upcaster(event_type=EventClass, from_version=1, to_version=2). The framework automatically chains individual upcasters and applies them lazily during deserialization. Use when the user asks to 'create an upcaster', 'handle event schema migration', 'evolve an event schema', 'add a field to an existing event', 'rename a field in an event', 'migrate old events', 'transform stored events', 'handle event versioning', or when they need to change an event's schema while keeping old stored events compatible."
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
@@ -40,17 +40,17 @@ class UpcastV1ToV2(BaseUpcaster):
 
 ## Key rules
 
-1. **Extend `BaseUpcaster`** — Import from `protean.core.upcaster`
-2. **Register with `@domain.upcaster(event_type=..., from_version=..., to_version=...)`** — All three options are required
-3. **Implement `upcast(self, data: dict) -> dict`** — Receives the raw event payload dict, returns the transformed dict
-4. **`event_type` is always the CURRENT event class** — Not the old version. The upcaster knows which event it targets by its current definition
-5. **Bump `__version__` on the event class** — Set `__version__ = 2` on the event when you add an upcaster targeting v2. Default version is `1`
-6. **One upcaster per version step** — Write v1→v2 and v2→v3 separately. Never skip versions that existed in production
-7. **Keep upcasters pure** — No I/O, no database queries, no external API calls. Upcasting runs on the deserialization path for old-version events and must be fast
-8. **Chains build automatically** — Register individual steps; the framework chains them into v1→v2→v3 during `domain.init()`
-9. **Chain registration is validated at startup** — `domain.init()` detects duplicates, cycles, non-convergent chains, and missing event classes. It does not catch a missing step: a stored payload whose version has no upcaster path is passed through unchanged and fails to deserialize at read time. `check` reports that gap as `UPCASTER_GAP`
-10. **Works everywhere transparently** — Event-sourced aggregate reconstruction (`@apply`), event handlers (`@handle`), and projectors all receive upcast events
-11. **Lazy, zero-overhead for current events** — Current-version events take a fast path (direct type-string lookup). The upcaster chain is only consulted for old-version type strings
+1. **Extend `BaseUpcaster`**: Import from `protean.core.upcaster`
+2. **Register with `@domain.upcaster(event_type=..., from_version=..., to_version=...)`**: All three options are required
+3. **Implement `upcast(self, data: dict) -> dict`**: Receives the raw event payload dict, returns the transformed dict
+4. **`event_type` is always the CURRENT event class**: Not the old version. The upcaster knows which event it targets by its current definition
+5. **Bump `__version__` on the event class**: Set `__version__ = 2` on the event when you add an upcaster targeting v2. Default version is `1`
+6. **One upcaster per version step**: Write v1→v2 and v2→v3 separately. Never skip versions that existed in production
+7. **Keep upcasters pure**: No I/O, no database queries, no external API calls. Upcasting runs on the deserialization path for old-version events and must be fast
+8. **Chains build automatically**: Register individual steps; the framework chains them into v1→v2→v3 during `domain.init()`
+9. **Chain registration is validated at startup**: `domain.init()` detects duplicates, cycles, non-convergent chains, and missing event classes. It does not catch a missing step: a stored payload whose version has no upcaster path is passed through unchanged and fails to deserialize at read time. `check` reports that gap as `UPCASTER_GAP`
+10. **Works everywhere transparently**: Event-sourced aggregate reconstruction (`@apply`), event handlers (`@handle`), and projectors all receive upcast events
+11. **Lazy, zero-overhead for current events**: Current-version events take a fast path (direct type-string lookup). The upcaster chain is only consulted for old-version type strings
 
 ## Common transformations
 
@@ -165,7 +165,7 @@ class Order:
 
     @apply
     def on_placed(self, event: OrderPlaced):
-        # Always receives current v3 schema — upcasters handle old versions
+        # Always receives current v3 schema: upcasters handle old versions
         self.order_id = event.order_id
         self.total_amount = event.total_amount
         self.currency = event.currency
@@ -195,13 +195,13 @@ class OrderRevenueHandler:
 
 ```python
 # fragment
-# WRONG — if v2 existed in production, you need v1→v2 AND v2→v3
+# WRONG: if v2 existed in production, you need v1→v2 AND v2→v3
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=3)
 class SkipV2(BaseUpcaster): ...
 ```
 
 ```python
-# CORRECT — one step per version
+# CORRECT: one step per version
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcastV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
@@ -223,7 +223,7 @@ build-time signal as `UPCASTER_GAP`.
 
 ```python
 # fragment
-# WRONG — upcasting runs on the deserialization path and must stay fast
+# WRONG: upcasting runs on the deserialization path and must stay fast
 class SlowUpcaster(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         customer = db.query(Customer, data["customer_id"])  # NO! No I/O
@@ -232,7 +232,7 @@ class SlowUpcaster(BaseUpcaster):
 ```
 
 ```python
-# CORRECT — pure dict transformation only
+# CORRECT: pure dict transformation only
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 class UpcastV1ToV2(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
@@ -244,13 +244,13 @@ class UpcastV1ToV2(BaseUpcaster):
 
 ```python
 # fragment
-# WRONG — event_type must be the CURRENT event class
+# WRONG: event_type must be the CURRENT event class
 @domain.upcaster(event_type=OrderPlacedV1, from_version=1, to_version=2)
 ```
 
 ```python
 # fragment
-# CORRECT — always point to the current class
+# CORRECT: always point to the current class
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
 ```
 
@@ -258,10 +258,10 @@ class UpcastV1ToV2(BaseUpcaster):
 
 ```python
 # fragment
-# WRONG — event still at default v1, but upcaster targets v2
+# WRONG: event still at default v1, but upcaster targets v2
 @domain.event(part_of="Order")
 class OrderShipped:
-    # __version__ not set — defaults to `1`
+    # __version__ not set: defaults to `1`
     order_id = Identifier(required=True)
     carrier = String(required=True)
 
@@ -270,7 +270,7 @@ class UpcastOrderShippedV1ToV2(BaseUpcaster): ...
 ```
 
 ```python
-# CORRECT — set __version__ to match the upcaster chain's terminal version
+# CORRECT: set __version__ to match the upcaster chain's terminal version
 @domain.event(part_of="Order")
 class OrderShipped:
     __version__ = 2
@@ -289,21 +289,21 @@ See [Anti-patterns](references/anti-patterns.md) for more.
 ## Detailed references
 
 ### Core Concepts
-- [Upcaster Chain](references/upcaster-chain.md) — How chain building, validation, and runtime application work
-- [Anti-patterns](references/anti-patterns.md) — Common mistakes and how to avoid them
-- [When to Upcast](references/when-to-upcast.md) — Decision guide: upcasting vs. new event type vs. no action
+- [Upcaster Chain](references/upcaster-chain.md): How chain building, validation, and runtime application work
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
+- [When to Upcast](references/when-to-upcast.md): Decision guide: upcasting vs. new event type vs. no action
 
 ### Complete Examples
-- [Basic Upcasters](assets/upcaster_basic.py) — Add field, rename field, remove field, compute derived field
-- [Multi-Step Chain](assets/upcaster_multi_step_chain.py) — Event evolving through 4 versions with automatic chaining
-- [With ES Aggregate](assets/upcaster_with_es_aggregate.py) — Clean @apply handlers with transparent upcasting
-- [With Event Handler](assets/upcaster_with_event_handler.py) — Event handler and projector receiving upcast events
+- [Basic Upcasters](assets/upcaster_basic.py): Add field, rename field, remove field, compute derived field
+- [Multi-Step Chain](assets/upcaster_multi_step_chain.py): Event evolving through 4 versions with automatic chaining
+- [With ES Aggregate](assets/upcaster_with_es_aggregate.py): Clean @apply handlers with transparent upcasting
+- [With Event Handler](assets/upcaster_with_event_handler.py): Event handler and projector receiving upcast events
 
 ### Related Skills
-- `event` — Event definition, `__version__`, naming conventions
-- `event-sourced-aggregate` — `@apply` decorator, `from_events()`, ES repository
-- `event-handler` — `@handle` decorator, event handler structure
-- `projector` — `@handle`/`@on` decorator, projector structure
+- `event`: Event definition, `__version__`, naming conventions
+- `event-sourced-aggregate`: `@apply` decorator, `from_events()`, ES repository
+- `event-handler`: `@handle` decorator, event handler structure
+- `projector`: `@handle`/`@on` decorator, projector structure
 
 ## Verify your work
 

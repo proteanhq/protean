@@ -14,10 +14,10 @@ metadata:
 
 This workflow adds a complete event flow to an existing aggregate. It creates these artifacts, which work together:
 
-1. **Event** - An immutable fact representing a state change (e.g., `OrderPlaced`)
-2. **Aggregate method** - A method on the aggregate that performs the state change and raises the event via `self.raise_()`
-3. **Event Handler** - A class that consumes the event and orchestrates side effects
-4. **Command and command handler** (cross-aggregate only) - The command the event handler issues, and the target aggregate's handler that does the write
+1. **Event**: An immutable fact representing a state change (e.g., `OrderPlaced`)
+2. **Aggregate method**: A method on the aggregate that performs the state change and raises the event via `self.raise_()`
+3. **Event Handler**: A class that consumes the event and orchestrates side effects
+4. **Command and command handler** (cross-aggregate only): The command the event handler issues, and the target aggregate's handler that does the write
 
 ## What this creates
 
@@ -32,22 +32,22 @@ This workflow adds a complete event flow to an existing aggregate. It creates th
 
 Before generating, ensure you know the following. **If any item is unknown, ask the user before proceeding.**
 
-- [ ] **Source aggregate** - Which aggregate raises the event? (must already exist)
-- [ ] **Triggering action** - What state change triggers the event? (which aggregate method, new or existing?)
-- [ ] **Event name** - Past-tense verb + noun (e.g., `OrderPlaced`, `PaymentConfirmed`, `UserRegistered`)
-- [ ] **Event fields** - What data should the event carry? (IDs, relevant state at time of change)
-- [ ] **Side effect(s)** - What should happen when the event occurs? (update state, sync aggregates, send notification, etc.)
-- [ ] **Handler location** - Does the side effect target the same aggregate or a different one?
-- [ ] **Target aggregate** - If cross-aggregate, which aggregate does the change land on? (must already exist; it receives a command)
+- [ ] **Source aggregate**: Which aggregate raises the event? (must already exist)
+- [ ] **Triggering action**: What state change triggers the event? (which aggregate method, new or existing?)
+- [ ] **Event name**: Past-tense verb + noun (e.g., `OrderPlaced`, `PaymentConfirmed`, `UserRegistered`)
+- [ ] **Event fields**: What data should the event carry? (IDs, relevant state at time of change)
+- [ ] **Side effect(s)**: What should happen when the event occurs? (update state, sync aggregates, send notification, etc.)
+- [ ] **Handler location**: Does the side effect target the same aggregate or a different one?
+- [ ] **Target aggregate**: If cross-aggregate, which aggregate does the change land on? (must already exist; it receives a command)
 
 ### Questions to ask when context is missing
 
 If the user says "add an event to Order" without further detail, ask:
 
-1. **"What state change should trigger this event?"** - e.g., "when the order is placed", "when payment is confirmed"
-2. **"What data should the event carry?"** - e.g., order_id, customer_id, total_amount
-3. **"What should happen when this event occurs?"** - e.g., "reduce inventory", "send confirmation email", "update a dashboard"
-4. **"Does the side effect modify the same aggregate or a different one?"** - determines same-aggregate vs. cross-aggregate handler pattern
+1. **"What state change should trigger this event?"**: E.g., "when the order is placed", "when payment is confirmed"
+2. **"What data should the event carry?"**: E.g., order_id, customer_id, total_amount
+3. **"What should happen when this event occurs?"**: E.g., "reduce inventory", "send confirmation email", "update a dashboard"
+4. **"Does the side effect modify the same aggregate or a different one?"**: Determines same-aggregate vs. cross-aggregate handler pattern
 
 If the user describes a full scenario like "when an order is placed, reduce inventory stock", you can infer:
 - Source aggregate: Order
@@ -282,38 +282,38 @@ class OrderEventHandler:
 
 ## Key rules
 
-1. **Events use `part_of="String"`** - Handlers usually pass the class, `part_of=ClassRef`, and a string works on a handler too
+1. **Events use `part_of="String"`**: Handlers usually pass the class, `part_of=ClassRef`, and a string works on a handler too
 2. **Events are past-tense** (`OrderPlaced`), commands are imperative (`PlaceOrder`)
-3. **Multiple handlers per event** - Unlike commands, the same event can be handled by many handlers
-4. **Event handlers do NOT return values** - Fire-and-forget pattern
-5. **Implicit UnitOfWork** - Do NOT wrap handler methods in manual UnitOfWork
-6. **Business logic in aggregates** - Handlers only orchestrate (load, call method, persist)
-7. **Raise events after state change** - Call `self.raise_()` after the aggregate state is updated. An event-sourced aggregate is the exception: it raises the event first, and `@apply` changes the state (see the `event-sourced-aggregate` skill)
-8. **Cross-aggregate goes through a command** - The handler sits in the source's cluster and issues a command that the target's command handler processes. The command carries an id from the event, and the target's command handler returns without changes when that work is already done
-9. **Sync processing for dev/test** - Set `domain.config["event_processing"] = "sync"`
-10. **Events carry minimal data** - Only IDs and data needed by consumers, not entire aggregate state
+3. **Multiple handlers per event**: Unlike commands, the same event can be handled by many handlers
+4. **Event handlers do NOT return values**: Fire-and-forget pattern
+5. **Implicit UnitOfWork**: Do NOT wrap handler methods in manual UnitOfWork
+6. **Business logic in aggregates**: Handlers only orchestrate (load, call method, persist)
+7. **Raise events after state change**: Call `self.raise_()` after the aggregate state is updated. An event-sourced aggregate is the exception: it raises the event first, and `@apply` changes the state (see the `event-sourced-aggregate` skill)
+8. **Cross-aggregate goes through a command**: The handler sits in the source's cluster and issues a command that the target's command handler processes. The command carries an id from the event, and the target's command handler returns without changes when that work is already done
+9. **Sync processing for dev/test**: Set `domain.config["event_processing"] = "sync"`
+10. **Events carry minimal data**: Only IDs and data needed by consumers, not entire aggregate state
 
 ## Common mistakes
 
-- **Imperative event names** - Use `OrderPlaced` (past-tense), not `PlaceOrder` (that's a command)
-- **Raising events outside aggregates** - Events must be raised via `self.raise_()` within aggregate methods
-- **Business logic in event handlers** - Keep logic in aggregates; handlers only orchestrate
-- **Returning values from event handlers** - Event handlers are fire-and-forget
-- **Manual UnitOfWork in handlers** - It's implicit, don't wrap
-- **Putting the handler in the target's cluster** - A handler that is `part_of` the target aggregate and reacts to the source's event is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`. Keep the handler in the source's cluster and issue a command
-- **Generating a fresh id in the handler** - Events are delivered at least once, so a `uuid4()` per delivery writes the change twice. Take the id from the event
-- **Raising events before state change** - State should change first, then raise the event. This does not apply to an event-sourced aggregate, where the event is raised first and `@apply` changes the state
+- **Imperative event names**: Use `OrderPlaced` (past-tense), not `PlaceOrder` (that's a command)
+- **Raising events outside aggregates**: Events must be raised via `self.raise_()` within aggregate methods
+- **Business logic in event handlers**: Keep logic in aggregates; handlers only orchestrate
+- **Returning values from event handlers**: Event handlers are fire-and-forget
+- **Manual UnitOfWork in handlers**: It's implicit, don't wrap
+- **Putting the handler in the target's cluster**: A handler that is `part_of` the target aggregate and reacts to the source's event is what `check` reports as `EVENT_HANDLER_FOREIGN_EVENT`. Keep the handler in the source's cluster and issue a command
+- **Generating a fresh id in the handler**: Events are delivered at least once, so a `uuid4()` per delivery writes the change twice. Take the id from the event
+- **Raising events before state change**: State should change first, then raise the event. This does not apply to an event-sourced aggregate, where the event is raised first and `@apply` changes the state
 
 ## Complete examples
 
-- [Same-aggregate event flow](references/same-aggregate-flow.md) - Event + handler within one aggregate
-- [Cross-aggregate event flow](references/cross-aggregate-flow.md) - Event triggers a command to another aggregate
-- [Multiple events flow](references/multiple-events-flow.md) - Multiple events from one aggregate with multiple handlers
+- [Same-aggregate event flow](references/same-aggregate-flow.md): Event + handler within one aggregate
+- [Cross-aggregate event flow](references/cross-aggregate-flow.md): Event triggers a command to another aggregate
+- [Multiple events flow](references/multiple-events-flow.md): Multiple events from one aggregate with multiple handlers
 
 ### Asset files
-- [add_event_same_aggregate.py](assets/add_event_same_aggregate.py) - Complete same-aggregate flow
-- [add_event_cross_aggregate.py](assets/add_event_cross_aggregate.py) - Complete cross-aggregate flow
-- [add_event_multiple_events.py](assets/add_event_multiple_events.py) - Multiple events with multiple handlers
+- [add_event_same_aggregate.py](assets/add_event_same_aggregate.py): Complete same-aggregate flow
+- [add_event_cross_aggregate.py](assets/add_event_cross_aggregate.py): Complete cross-aggregate flow
+- [add_event_multiple_events.py](assets/add_event_multiple_events.py): Multiple events with multiple handlers
 
 ## Related skills
 

@@ -302,21 +302,21 @@ Instead: always use `current_domain.process(command, asynchronous=False)`.
 ## Detailed references
 
 ### Concepts
-- [Request Validation](references/request-validation.md) - Pydantic models, and the 422 and 400 cases
-- [Response Patterns](references/response-patterns.md) - Success responses and the exception-to-status map
-- [Testing Endpoints](references/testing-endpoints.md) - Testing your endpoints with `TestClient`
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Request Validation](references/request-validation.md): Pydantic models, and the 422 and 400 cases
+- [Response Patterns](references/response-patterns.md): Success responses and the exception-to-status map
+- [Testing Endpoints](references/testing-endpoints.md): Testing your endpoints with `TestClient`
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Complete app](assets/api_endpoint_complete_router.py) - The `create_app` factory and a full router for one aggregate
-- [Simple POST](assets/api_endpoint_simple.py) - A router with one POST endpoint
-- [Path Parameters](assets/api_endpoint_path_params.py) - A router with path parameters, 404 and 409
-- [Pydantic Validation](assets/api_endpoint_with_pydantic.py) - A router with Pydantic request models
+- [Complete app](assets/api_endpoint_complete_router.py): The `create_app` factory and a full router for one aggregate
+- [Simple POST](assets/api_endpoint_simple.py): A router with one POST endpoint
+- [Path Parameters](assets/api_endpoint_path_params.py): A router with path parameters, 404 and 409
+- [Pydantic Validation](assets/api_endpoint_with_pydantic.py): A router with Pydantic request models
 
 ### Related Skills
-- `command` - Commands are what endpoints construct
-- `command-handler` - Command handlers process the commands that endpoints submit
-- `aggregate` - The target of commands submitted through endpoints
+- `command`: Commands are what endpoints construct
+- `command-handler`: Command handlers process the commands that endpoints submit
+- `aggregate`: The target of commands submitted through endpoints
 
 ## Verify your work
 

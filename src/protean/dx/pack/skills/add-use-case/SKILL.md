@@ -32,12 +32,12 @@ Command → Command Handler → Aggregate Method → Event → Event Handler
 
 Before building a use case, understand:
 
-- [ ] **What action does the user take?** — Name it as an imperative verb phrase (e.g., "Place Order", "Approve Request")
-- [ ] **What data is required?** — Command fields (input from user/API)
-- [ ] **Which aggregate does it modify?** — The aggregate that owns the business logic
-- [ ] **What state change occurs?** — The mutation in the aggregate method
-- [ ] **What happened after?** — The event to raise (past tense: "OrderPlaced", "RequestApproved")
-- [ ] **What side effects follow?** — Event handler reactions (notifications, syncing, downstream updates)
+- [ ] **What action does the user take?** Name it as an imperative verb phrase (e.g., "Place Order", "Approve Request")
+- [ ] **What data is required?** Command fields (input from user/API)
+- [ ] **Which aggregate does it modify?** The aggregate that owns the business logic
+- [ ] **What state change occurs?** The mutation in the aggregate method
+- [ ] **What happened after?** The event to raise (past tense: "OrderPlaced", "RequestApproved")
+- [ ] **What side effects follow?** Event handler reactions (notifications, syncing, downstream updates)
 
 ## Process
 
@@ -131,7 +131,7 @@ class OrderCommandHandler:
 - `part_of=AggregateClass` when the class is in scope. A string reference also works and resolves at `init`
 - Use `@handle(CommandClass)` decorator on each handler method
 - Each handler method has signature `(self, command: CommandClass)`
-- Implicit UnitOfWork — no manual transaction management needed
+- Implicit UnitOfWork: no manual transaction management needed
 - Load aggregate → call method → persist via `repository_for().add()`
 
 ### Step 5: Add the event handler (optional)
@@ -334,17 +334,17 @@ Instead: guard authorization in the handler (Layer 4); keep the aggregate focuse
 
 ## Detailed references
 
-- [Vertical Slice Architecture](references/vertical-slice.md) — How command flow implements vertical slices
-- [Command Flow Patterns](references/command-flow-patterns.md) — Create, update, and guard patterns
+- [Vertical Slice Architecture](references/vertical-slice.md): How command flow implements vertical slices
+- [Command Flow Patterns](references/command-flow-patterns.md): Create, update, and guard patterns
 
 ## Related skills
 
-- [command](../command/SKILL.md) — Command definition and field validation
-- [command-handler](../command-handler/SKILL.md) — Handler patterns
-- [aggregate](../aggregate/SKILL.md) — Aggregate methods and event raising
-- [event](../event/SKILL.md) — Event definition
-- [event-handler](../event-handler/SKILL.md) — Event handler patterns
-- [add-validation](../add-validation/SKILL.md) — Adding validation at each layer
+- [command](../command/SKILL.md): Command definition and field validation
+- [command-handler](../command-handler/SKILL.md): Handler patterns
+- [aggregate](../aggregate/SKILL.md): Aggregate methods and event raising
+- [event](../event/SKILL.md): Event definition
+- [event-handler](../event-handler/SKILL.md): Event handler patterns
+- [add-validation](../add-validation/SKILL.md): Adding validation at each layer
 
 ## Verify your work
 

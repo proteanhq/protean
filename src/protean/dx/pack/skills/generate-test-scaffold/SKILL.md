@@ -27,7 +27,7 @@ Generate comprehensive pytest tests for existing Protean domain definitions, foc
          /____________________\
 ```
 
-Domain unit tests are the **majority** of your test suite — they test the most important code (business rules) with the least overhead (no infrastructure).
+Domain unit tests are the **majority** of your test suite. They test the most important code (business rules) with the least overhead (no infrastructure).
 
 ## What to test vs. what to skip
 
@@ -42,18 +42,18 @@ Domain unit tests are the **majority** of your test suite — they test the most
 7. **Entity management**: add/remove entities through aggregate methods
 8. **Handler orchestration**: `domain.process()` creates/updates the right aggregate state
 9. **Event handler side effects**: cross-aggregate state changes triggered by events
-10. **End-to-end flows** — full lifecycle from command to final state
+10. **End-to-end flows**: Full lifecycle from command to final state
 
 ### Skip (framework guarantees)
 
-- VO construction, equality, immutability — guaranteed by `@domain.value_object`
-- Command/event immutability — guaranteed by decorators
-- Field-level validation (`required`, `max_length`, `min_value`, `choices`) — Protean Layer 1
-- Element registration in `domain.registry` — guaranteed if decorator is used
-- `meta_.part_of` associations, `meta_.stream_category` — framework wiring
-- Command `.payload` dict access — framework feature
+- VO construction, equality, immutability: guaranteed by `@domain.value_object`
+- Command/event immutability: guaranteed by decorators
+- Field-level validation (`required`, `max_length`, `min_value`, `choices`): Protean Layer 1
+- Element registration in `domain.registry`: guaranteed if decorator is used
+- `meta_.part_of` associations, `meta_.stream_category`: framework wiring
+- Command `.payload` dict access: framework feature
 
-### Avoid mocks — use real domain elements
+### Avoid mocks: use real domain elements
 
 Protean's in-memory infrastructure (repositories, and event and command processing in `"sync"` mode) makes mocks unnecessary in almost all cases. Construct real aggregates, value objects, entities, commands, and events directly in tests. Use `domain.process()` and `domain.repository_for()` for integration tests. Mocks should only be used when testing interactions with truly external systems (e.g., third-party HTTP APIs) that cannot be replaced by Protean's built-in test infrastructure.
 
@@ -283,19 +283,19 @@ To use an asset in a project, copy only the part below `# --- Tests ---` into `t
 
 ## Detailed references
 
-- [Aggregate test patterns](references/aggregate-tests.md) — Factory methods, state transitions, invariants, entity management
-- [Handler test patterns](references/handler-tests.md) — Command/event handler orchestration, API endpoints
-- [Integration test patterns](references/integration-tests.md) — Cross-aggregate flows, lifecycle tests
+- [Aggregate test patterns](references/aggregate-tests.md): Factory methods, state transitions, invariants, entity management
+- [Handler test patterns](references/handler-tests.md): Command/event handler orchestration, API endpoints
+- [Integration test patterns](references/integration-tests.md): Cross-aggregate flows, lifecycle tests
 
 ## Related skills
 
-- [aggregate](../aggregate/SKILL.md) — Aggregate definition patterns
-- [command](../command/SKILL.md) — Command definition
-- [event](../event/SKILL.md) — Event definition
-- [command-handler](../command-handler/SKILL.md) — Handler patterns
-- [event-handler](../event-handler/SKILL.md) — Event handler patterns
-- [value-object](../value-object/SKILL.md) — Value object patterns
-- [add-use-case](../add-use-case/SKILL.md) — Vertical slice patterns
+- [aggregate](../aggregate/SKILL.md): Aggregate definition patterns
+- [command](../command/SKILL.md): Command definition
+- [event](../event/SKILL.md): Event definition
+- [command-handler](../command-handler/SKILL.md): Handler patterns
+- [event-handler](../event-handler/SKILL.md): Event handler patterns
+- [value-object](../value-object/SKILL.md): Value object patterns
+- [add-use-case](../add-use-case/SKILL.md): Vertical slice patterns
 
 ## Verify your work
 

@@ -21,7 +21,7 @@ The complete implementation is in [assets/add_event_same_aggregate.py](../assets
 Key highlights:
 - Event is defined with `part_of="Order"` (string reference to aggregate)
 - Aggregate method `place()` guards against invalid transitions, then raises the event
-- Event handler uses `part_of=Order` (class reference) with no `stream_category` — defaults to its own stream
+- Event handler uses `part_of=Order` (class reference) with no `stream_category`, so it defaults to its own stream
 - Handler loads the aggregate from repository, mutates, and persists
 
 ## Walkthrough
@@ -79,8 +79,8 @@ class OrderEventHandler:
         repo.add(order)
 ```
 
-- `part_of=Order` (class reference) — handler belongs to Order aggregate
-- No `stream_category` specified — defaults to Order's own stream
+- `part_of=Order` (class reference): Handler belongs to Order aggregate
+- No `stream_category` specified, so it defaults to Order's own stream
 - Does NOT return a value (fire-and-forget)
 - Runs within an implicit UnitOfWork
 
@@ -103,7 +103,7 @@ When testing same-aggregate event flows:
 3. Test with synchronous processing (`domain.config["event_processing"] = "sync"`)
 
 ## Related
-- [Cross-aggregate event flow](./cross-aggregate-flow.md) - Event triggers side effect in another aggregate
-- [Multiple events flow](./multiple-events-flow.md) - Multiple events from one aggregate
-- [event skill](../../event/SKILL.md) - Detailed event definition reference
-- [event-handler skill](../../event-handler/SKILL.md) - Detailed handler reference
+- [Cross-aggregate event flow](./cross-aggregate-flow.md): Event triggers side effect in another aggregate
+- [Multiple events flow](./multiple-events-flow.md): Multiple events from one aggregate
+- [event skill](../../event/SKILL.md): Detailed event definition reference
+- [event-handler skill](../../event-handler/SKILL.md): Detailed handler reference

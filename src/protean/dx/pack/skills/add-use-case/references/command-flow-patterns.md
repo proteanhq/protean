@@ -103,8 +103,8 @@ def handle_approve(self, command):
 
 ## Key principles
 
-1. **One command, one handler method** — Each command maps to exactly one handler method
-2. **Handler orchestrates, aggregate decides** — Business logic belongs in the aggregate, not the handler
-3. **Raise events in aggregate methods** — Events are raised inside `self.raise_()`, not in the handler
-4. **Persist via repository** — Always use `domain.repository_for(Aggregate).add(aggregate)` to persist
-5. **Implicit UnitOfWork** — Handler methods run in an implicit UnitOfWork, no manual transaction management
+1. **One command, one handler method**: Each command maps to exactly one handler method
+2. **Handler orchestrates, aggregate decides**: Business logic belongs in the aggregate, not the handler
+3. **Raise events in aggregate methods**: Events are raised inside `self.raise_()`, not in the handler
+4. **Persist via repository**: Always use `domain.repository_for(Aggregate).add(aggregate)` to persist
+5. **Implicit UnitOfWork**: Handler methods run in an implicit UnitOfWork, no manual transaction management

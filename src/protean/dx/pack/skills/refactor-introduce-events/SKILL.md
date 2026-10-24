@@ -2,7 +2,7 @@
 name: refactor-introduce-events
 description: >
   Introduce domain events to replace direct cross-aggregate calls, tight coupling, and synchronous
-  side effects. Detects transaction boundary violations — handlers that modify multiple aggregates —
+  side effects. Detects transaction boundary violations (handlers that modify multiple aggregates)
   and refactors them into event-driven flows with proper aggregate isolation. Use when the user
   says "introduce events", "add events", "decouple aggregates", "fix transaction boundary",
   "two aggregates in one handler", "make it event-driven", "break the coupling",
@@ -40,7 +40,7 @@ proper transaction boundaries and enabling eventual consistency.
 
 ### Transaction boundary violation
 
-The primary signal — a handler that modifies two or more aggregate types:
+The primary signal is a handler that modifies two or more aggregate types:
 
 ```python
 # fragment
@@ -148,7 +148,7 @@ class OrderPlaced:
     total_amount = Float(required=True)
 ```
 
-**Event naming**: past tense of what happened — `OrderPlaced`, `PaymentProcessed`, `TicketEscalated`.
+**Event naming**: past tense of what happened: `OrderPlaced`, `PaymentProcessed`, `TicketEscalated`.
 
 **Event fields**: include everything the event handler needs. The handler shouldn't need to
 look up the source aggregate to get context.
@@ -239,7 +239,7 @@ dependent steps, use a [process manager](../process-manager/SKILL.md).
 
 ### Step 5: Slim down the command handler
 
-Remove the cross-aggregate logic — the event handler takes over:
+Remove the cross-aggregate logic. The event handler takes over:
 
 ```python
 @domain.command_handler(part_of=Order)
@@ -269,10 +269,10 @@ during tests.
 
 ## Common mistakes
 
-1. **Event too thin** — Including only the aggregate ID in the event forces the handler
+1. **Event too thin**: Including only the aggregate ID in the event forces the handler
    to look up the source aggregate, defeating the purpose. Include all data the handler needs.
 
-2. **Event too fat** — Including the entire aggregate state in every event wastes space
+2. **Event too fat**: Including the entire aggregate state in every event wastes space
    and couples consumers to the full schema. Include only what changed and context needed.
 
 3. **Putting the event handler in the target's cluster.** A handler with
@@ -280,10 +280,10 @@ during tests.
    `EVENT_HANDLER_FOREIGN_EVENT`. Keep the handler in `Order`'s cluster and hand
    off to `Inventory` with a command.
 
-4. **Returning values from event handlers** — Event handlers are fire-and-forget. They
+4. **Returning values from event handlers**: Event handlers are fire-and-forget. They
    don't return values. If you need a return, use a command handler.
 
-5. **Circular events** — A handles B's events, B handles A's events. This creates
+5. **Circular events**: A handles B's events, B handles A's events. This creates
    infinite loops. Design event flows as DAGs (directed acyclic graphs).
 
 ## Quick example
@@ -394,14 +394,14 @@ class NotificationCommandHandler:
 
 ## Detailed references
 
-- [Event design guide](references/event-design-guide.md) — How to design good events
-- [Anti-patterns](references/anti-patterns.md) — Common mistakes when introducing events
+- [Event design guide](references/event-design-guide.md): How to design good events
+- [Anti-patterns](references/anti-patterns.md): Common mistakes when introducing events
 
 ## Related skills
 
-- [event](../event/SKILL.md) — Event definition patterns
-- [event-handler](../event-handler/SKILL.md) — Event handler patterns
-- [audit-domain](../audit-domain/SKILL.md) — Detects transaction boundary violations
+- [event](../event/SKILL.md): Event definition patterns
+- [event-handler](../event-handler/SKILL.md): Event handler patterns
+- [audit-domain](../audit-domain/SKILL.md): Detects transaction boundary violations
 
 ## Verify your work
 

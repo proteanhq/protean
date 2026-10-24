@@ -5,10 +5,10 @@ Commands in Protean can be processed either synchronously or asynchronously. Thi
 ## Overview
 
 The command processing workflow is:
-1. **Construct** - Create a command instance with required data
-2. **Submit** - Call `domain.process(command)` to submit
-3. **Dispatch** - Domain routes to the appropriate command handler
-4. **Handle** - Command handler processes the command
+1. **Construct**: Create a command instance with required data
+2. **Submit**: Call `domain.process(command)` to submit
+3. **Dispatch**: Domain routes to the appropriate command handler
+4. **Handle**: Command handler processes the command
 
 ## Code
 
@@ -154,22 +154,22 @@ Key rule: **One command, one handler**. A command can only be processed by a sin
 
 Commands automatically receive metadata:
 
-- **Timestamp** - When the command was created
-- **Unique ID** - Set in the headers when the command is processed
-- **Type** - Domain name, class name and version, such as `Shop.PlaceOrder.v1`
-- **Version** - Schema version from `__version__`
-- **Domain metadata** - Processing flags (synchronous/asynchronous)
+- **Timestamp**: When the command was created
+- **Unique ID**: Set in the headers when the command is processed
+- **Type**: Domain name, class name and version, such as `Shop.PlaceOrder.v1`
+- **Version**: Schema version from `__version__`
+- **Domain metadata**: Processing flags (synchronous/asynchronous)
 
 ## Best Practices
 
-1. **Use synchronous for critical paths** - Where immediate feedback is required
-2. **Use asynchronous for fire-and-forget** - When responsiveness matters more than confirmation
-3. **Keep handlers focused** - One handler method per command
-4. **Handle failures gracefully** - Command handlers should validate and raise clear errors
-5. **Use the Protean server for async** - Run `protean server --domain path/to/domain.py`
+1. **Use synchronous for critical paths**: Where immediate feedback is required
+2. **Use asynchronous for fire-and-forget**: When responsiveness matters more than confirmation
+3. **Keep handlers focused**: One handler method per command
+4. **Handle failures gracefully**: Command handlers should validate and raise clear errors
+5. **Use the Protean server for async**: Run `protean server --domain path/to/domain.py`
 
 ## Related
 
-- [Command Validation](./command-validation.md) - Validation happens before processing
-- [Command Inheritance](./command-inheritance.md) - Abstract commands
-- `command-handler` - Detailed handler patterns
+- [Command Validation](./command-validation.md): Validation happens before processing
+- [Command Inheritance](./command-inheritance.md): Abstract commands
+- `command-handler`: Detailed handler patterns

@@ -2,8 +2,8 @@
 name: refactor-move-logic-to-aggregate
 description: >
   Move business logic from handlers, services, or endpoints into aggregate methods where it belongs.
-  Detects "logic leak" — validation, calculations, state transitions, and business rules scattered
-  outside the domain model — and refactors them into rich aggregate methods with proper invariants.
+  Detects "logic leak" (validation, calculations, state transitions, and business rules scattered
+  outside the domain model) and refactors them into rich aggregate methods with proper invariants.
   Use when the user says "move logic to aggregate", "handler is too fat", "fix logic leak",
   "enrich my aggregate", "make aggregate rich", "handler has too much logic", "anemic domain model",
   or when an audit identifies logic leaks or anemic aggregates.
@@ -58,7 +58,7 @@ def place_order(self, command):
 
 ### The "anemic aggregate"
 
-Aggregate is a data bag — no methods, no invariants:
+Aggregate is a data bag: no methods, no invariants:
 
 ```python
 # fragment
@@ -242,19 +242,19 @@ def test_order_must_have_items_when_placed():
 
 ## Common mistakes
 
-1. **Moving persistence into the aggregate** — `repository.add()` stays in the handler.
+1. **Moving persistence into the aggregate**: `repository.add()` stays in the handler.
    Aggregates don't know about persistence.
 
-2. **Creating a method per field** — If the handler sets 3 fields, create ONE method
+2. **Creating a method per field**: If the handler sets 3 fields, create ONE method
    that captures the business operation, not 3 setter methods.
 
-3. **Leaving events in the handler** — `raise_()` belongs inside the aggregate method,
+3. **Leaving events in the handler**: `raise_()` belongs inside the aggregate method,
    not in the handler after calling the method.
 
-4. **Over-guarding** — Not every `if` is an invariant. Simple null checks in handlers
+4. **Over-guarding**: Not every `if` is an invariant. Simple null checks in handlers
    (`if not command.customer_id`) are often handled by field `required=True`.
 
-5. **Forgetting to update tests** — After moving logic, tests should assert aggregate
+5. **Forgetting to update tests**: After moving logic, tests should assert aggregate
    behavior directly, not go through `domain.process()` for unit tests.
 
 ## Quick example
@@ -327,14 +327,14 @@ class TicketCommandHandler:
 
 ## Detailed references
 
-- [Identifying logic leaks](references/identifying-logic-leaks.md) — Heuristics and examples
-- [Anti-patterns](references/anti-patterns.md) — Common refactoring mistakes
+- [Identifying logic leaks](references/identifying-logic-leaks.md): Heuristics and examples
+- [Anti-patterns](references/anti-patterns.md): Common refactoring mistakes
 
 ## Related skills
 
-- [aggregate](../aggregate/SKILL.md) — Aggregate patterns
-- [command-handler](../command-handler/SKILL.md) — Handler patterns
-- [audit-domain](../audit-domain/SKILL.md) — Detects logic leaks
+- [aggregate](../aggregate/SKILL.md): Aggregate patterns
+- [command-handler](../command-handler/SKILL.md): Handler patterns
+- [audit-domain](../audit-domain/SKILL.md): Detects logic leaks
 
 ## Verify your work
 

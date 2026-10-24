@@ -28,7 +28,7 @@ For each `@domain.aggregate` class, record:
 - Note status transitions (before/after values)
 
 ### Events raised
-- Each `self.raise_(EventClass(...))` — record the EventClass and fields passed
+- Each `self.raise_(EventClass(...))`: record the EventClass and fields passed
 
 ### Invariants
 - Methods decorated with `@invariant.pre` or `@invariant.post`
@@ -113,7 +113,7 @@ For each gap, use [generate-test-scaffold](../../generate-test-scaffold/SKILL.md
 
 ## Related
 
-- [generate-test-scaffold](../../generate-test-scaffold/SKILL.md) — Test generation patterns
+- [generate-test-scaffold](../../generate-test-scaffold/SKILL.md): Test generation patterns
 - [Aggregate test patterns](../../generate-test-scaffold/references/aggregate-tests.md)
 - [Handler test patterns](../../generate-test-scaffold/references/handler-tests.md)
 - [Integration test patterns](../../generate-test-scaffold/references/integration-tests.md)

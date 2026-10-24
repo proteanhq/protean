@@ -11,7 +11,7 @@ metadata:
 
 # Query
 
-A query is an immutable DTO that carries a **read intent** — the parameters needed to fetch data from a projection. Queries are the read-side counterpart to commands: a command asks to *change* state, a query asks to *read* it.
+A query is an immutable DTO that carries a **read intent**: the parameters needed to fetch data from a projection. Queries are the read-side counterpart to commands: a command asks to *change* state, a query asks to *read* it.
 
 ## Basic structure
 
@@ -35,14 +35,14 @@ class GetOrderById:
 
 ## Key rules
 
-1. **Queries are associated with a projection** - Specify `part_of` with the projection (read model) the query targets, not an aggregate: `@domain.query(part_of="OrderSummary")`
-2. **Queries carry read intent** - They describe what to fetch, named for the result: `GetOrderById`, `SearchOrders`, `ListActiveUsers` (not imperative like commands)
-3. **Queries are immutable** - Setting a field after construction raises `IncorrectUsageError`; create a new instance instead
-4. **Validated at construction** - Missing/invalid fields raise `ValidationError` immediately, before dispatch
-5. **Basic field types only** - Fields are simple types (String, Integer, Float, Boolean, Date, DateTime, Identifier) plus value objects; no `HasOne`, `HasMany`, or `Reference`
-6. **Queries are answered by query handlers** - Define a `query_handler` and dispatch with `domain.dispatch(query)` (see the `query-handler` skill)
-7. **Queries have no side effects** - Dispatch never mutates state or runs a Unit of Work; reads are stateless
-8. **Lightweight DTOs** - Unlike commands/events, queries carry no metadata, stream, or event-store concerns
+1. **Queries are associated with a projection**: Specify `part_of` with the projection (read model) the query targets, not an aggregate: `@domain.query(part_of="OrderSummary")`
+2. **Queries carry read intent**: They describe what to fetch, named for the result: `GetOrderById`, `SearchOrders`, `ListActiveUsers` (not imperative like commands)
+3. **Queries are immutable**: Setting a field after construction raises `IncorrectUsageError`; create a new instance instead
+4. **Validated at construction**: Missing/invalid fields raise `ValidationError` immediately, before dispatch
+5. **Basic field types only**: Fields are simple types (String, Integer, Float, Boolean, Date, DateTime, Identifier) plus value objects; no `HasOne`, `HasMany`, or `Reference`
+6. **Queries are answered by query handlers**: Define a `query_handler` and dispatch with `domain.dispatch(query)` (see the `query-handler` skill)
+7. **Queries have no side effects**: Dispatch never mutates state or runs a Unit of Work; reads are stateless
+8. **Lightweight DTOs**: Unlike commands/events, queries carry no metadata, stream, or event-store concerns
 
 ## Fields and options
 
@@ -141,7 +141,7 @@ class FetchTheOrder:  # Vague/imperative
     order_id: Identifier(required=True)
 ```
 
-Instead: name it for what it returns — `GetOrderById`, `SearchOrders`.
+Instead: name it for what it returns: `GetOrderById`, `SearchOrders`.
 
 ### Mutating a query after construction
 
@@ -166,19 +166,19 @@ Instead: use basic fields (and value objects) only.
 
 ## Detailed references
 
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete examples
 
-- [Simple Query](assets/query_simple.py) - Queries against a projection
-- [Query Validation](assets/query_validation.py) - Field validation and immutability
+- [Simple Query](assets/query_simple.py): Queries against a projection
+- [Query Validation](assets/query_validation.py): Field validation and immutability
 
 ### Related skills
 
-- `query-handler` - Answers queries via `@read` and `domain.dispatch()`
-- `projection` - The read model a query targets
-- `command` - The write-side counterpart (intent to change state)
-- `projector` - Populates the projection that queries read from
+- `query-handler`: Answers queries via `@read` and `domain.dispatch()`
+- `projection`: The read model a query targets
+- `command`: The write-side counterpart (intent to change state)
+- `projector`: Populates the projection that queries read from
 
 ## Verify your work
 

@@ -37,16 +37,16 @@ class OrderPlaced:
 
 ## Key rules
 
-1. **Events must be associated with aggregates** - Always specify `part_of` parameter with the aggregate name
-2. **Events are named in past-tense** - Use past-tense verbs: `OrderPlaced`, not `PlaceOrder`
-3. **Events are immutable** - Once created, events cannot be modified (they are facts)
-4. **Events are DTOs** - Can contain simple fields and value objects, but NOT entities or aggregates
-5. **Events should be lightweight** - Include only data necessary to describe what happened
-6. **Events are versioned** - Use `__version__` class attribute for schema evolution (defaults to `1`)
-7. **Events have metadata** - Protean automatically adds timestamps, unique IDs, and versioning
-8. **Events are raised from aggregates** - Use `self.raise_()` method within aggregate methods
-9. **Events are persisted to streams** - Events are written to aggregate-specific streams
-10. **Events enable decoupling** - Other components react to events via event handlers
+1. **Events must be associated with aggregates**: Always specify `part_of` parameter with the aggregate name
+2. **Events are named in past-tense**: Use past-tense verbs: `OrderPlaced`, not `PlaceOrder`
+3. **Events are immutable**: Once created, events cannot be modified (they are facts)
+4. **Events are DTOs**: Can contain simple fields and value objects, but NOT entities or aggregates
+5. **Events should be lightweight**: Include only data necessary to describe what happened
+6. **Events are versioned**: Use `__version__` class attribute for schema evolution (defaults to `1`)
+7. **Events have metadata**: Protean automatically adds timestamps, unique IDs, and versioning
+8. **Events are raised from aggregates**: Use `self.raise_()` method within aggregate methods
+9. **Events are persisted to streams**: Events are written to aggregate-specific streams
+10. **Events enable decoupling**: Other components react to events via event handlers
 
 ## Event types
 
@@ -353,26 +353,26 @@ with domain.domain_context():
 ## Detailed references
 
 ### Core Concepts
-- [Delta Events](references/delta-events.md) - Incremental state changes
-- [Fact Events](references/fact-events.md) - Complete state snapshots (Event-carried State Transfer)
-- [Events with Value Objects](references/with-value-objects.md) - Using value objects in events
-- [Event Versioning](references/event-versioning.md) - Schema evolution and version management
-- [Raising Events](references/raising-events.md) - How to raise events from aggregates
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Delta Events](references/delta-events.md): Incremental state changes
+- [Fact Events](references/fact-events.md): Complete state snapshots (Event-carried State Transfer)
+- [Events with Value Objects](references/with-value-objects.md): Using value objects in events
+- [Event Versioning](references/event-versioning.md): Schema evolution and version management
+- [Raising Events](references/raising-events.md): How to raise events from aggregates
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Simple Delta Event](assets/event_simple.py) - Basic event with minimal fields
-- [Event with Value Objects](assets/event_with_value_object.py) - Events containing value objects
-- [Fact Event](assets/event_fact.py) - Fact events generated with `fact_events=True`
-- [Event Versioning](assets/event_versioning.py) - Schema evolution examples
-- [Raising Events](assets/raising_events.py) - Complete example with aggregate raising events
+- [Simple Delta Event](assets/event_simple.py): Basic event with minimal fields
+- [Event with Value Objects](assets/event_with_value_object.py): Events containing value objects
+- [Fact Event](assets/event_fact.py): Fact events generated with `fact_events=True`
+- [Event Versioning](assets/event_versioning.py): Schema evolution examples
+- [Raising Events](assets/raising_events.py): Complete example with aggregate raising events
 
 ### Related Skills
-- `aggregate` - Events are always part of aggregates
-- `value-object` - Events can contain value objects
-- `event-handler` - How events are consumed and processed
-- `event-sourced-aggregate` - Using events as the source of truth
-- [CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/) - Using events for read model updates
+- `aggregate`: Events are always part of aggregates
+- `value-object`: Events can contain value objects
+- `event-handler`: How events are consumed and processed
+- `event-sourced-aggregate`: Using events as the source of truth
+- [CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/): Using events for read model updates
 
 ## Verify your work
 

@@ -4,7 +4,7 @@ How to design domain events when introducing event-driven coordination.
 
 ## Event Naming
 
-Use past tense — events describe what already happened:
+Use past tense. Events describe what already happened:
 
 | Action | Event name |
 |--------|-----------|
@@ -17,8 +17,8 @@ Use past tense — events describe what already happened:
 
 ### The Goldilocks principle
 
-- **Too thin**: Only the aggregate ID — forces consumers to look up the source aggregate
-- **Too fat**: The entire aggregate state — couples consumers to the full schema
+- **Too thin**: Only the aggregate ID, which forces consumers to look up the source aggregate
+- **Too fat**: The entire aggregate state, which couples consumers to the full schema
 - **Just right**: The changed data plus context needed by known consumers
 
 ### Include
@@ -104,7 +104,7 @@ class OrderUpdated:
 
 ## Event Flow Topology
 
-Design event flows as directed acyclic graphs (DAGs) — never circular:
+Design event flows as directed acyclic graphs (DAGs), never circular ones:
 
 ```
 Order ─── OrderPlaced ──┬──> Inventory (reserve stock)
@@ -119,4 +119,4 @@ circular dependency. Break it by introducing a process manager or rethinking bou
 
 ## Related
 
-- [anti-patterns.md](anti-patterns.md) — Event introduction mistakes
+- [anti-patterns.md](anti-patterns.md): Event introduction mistakes

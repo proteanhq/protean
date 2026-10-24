@@ -26,7 +26,7 @@ class PersonName:
 
 ## Anemic value objects
 
-VOs with only fields and no behavior — these are just struct wrappers:
+VOs with only fields and no behavior. These are struct wrappers:
 
 ```python
 # Questionable: no behavior
@@ -34,7 +34,7 @@ VOs with only fields and no behavior — these are just struct wrappers:
 class Money:
     amount = Float(required=True)
     currency = String(default="USD")
-    # No methods — is this better than two fields?
+    # No methods: is this better than two fields?
 
 # Better: with behavior
 @domain.value_object
@@ -85,5 +85,5 @@ Always extract consistently across all usages.
 
 ## Related
 
-- [migration-guide.md](migration-guide.md) — Safe migration steps
-- [common-value-objects.md](common-value-objects.md) — Reference implementations
+- [migration-guide.md](migration-guide.md): Safe migration steps
+- [common-value-objects.md](common-value-objects.md): Reference implementations

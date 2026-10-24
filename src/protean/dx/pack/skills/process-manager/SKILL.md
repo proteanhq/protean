@@ -60,17 +60,17 @@ class OrderFulfillmentPM:
 
 ## Key rules
 
-1. **Requires `stream_categories` or `aggregates`** — PM must subscribe to at least one event stream: `@domain.process_manager(stream_categories=["domain::order", "domain::payment"])`. Alternatively, pass `aggregates=[Order, Payment]` and Protean infers the stream categories
-2. **Use `@handle` with PM-specific parameters** — Each handler uses `@handle(EventClass, start=..., correlate=..., end=...)`. These three parameters control lifecycle and routing
-3. **Every handler must specify `correlate`** — Maps events to PM instances: `correlate="order_id"` (string) or `correlate={"order_id": "ext_order_ref"}` (dict when names differ)
-4. **At least one handler must have `start=True`** — The entry point that creates new PM instances. Protean enforces at least one; a PM with none fails at `domain.init()` with `IncorrectUsageError`. If a non-start event arrives with no existing PM, it is silently skipped
-5. **Handler methods take self and event** — Signature: `def method_name(self, event: EventType) -> None`
-6. **No return values** — Process managers follow fire-and-forget pattern. Return values are discarded
-7. **Import `handle` from `protean`** — `from protean import handle` (not from `protean.core` or `protean.utils`)
-8. **Issue commands via `current_domain.process()`** — Import from `protean`: `from protean import current_domain`. Call `current_domain.process(CommandClass(...))` to drive other aggregates
+1. **Requires `stream_categories` or `aggregates`**: PM must subscribe to at least one event stream: `@domain.process_manager(stream_categories=["domain::order", "domain::payment"])`. Alternatively, pass `aggregates=[Order, Payment]` and Protean infers the stream categories
+2. **Use `@handle` with PM-specific parameters**: Each handler uses `@handle(EventClass, start=..., correlate=..., end=...)`. These three parameters control lifecycle and routing
+3. **Every handler must specify `correlate`**: Maps events to PM instances: `correlate="order_id"` (string) or `correlate={"order_id": "ext_order_ref"}` (dict when names differ)
+4. **At least one handler must have `start=True`**: The entry point that creates new PM instances. Protean enforces at least one; a PM with none fails at `domain.init()` with `IncorrectUsageError`. If a non-start event arrives with no existing PM, it is silently skipped
+5. **Handler methods take self and event**: Signature: `def method_name(self, event: EventType) -> None`
+6. **No return values**: Process managers follow fire-and-forget pattern. Return values are discarded
+7. **Import `handle` from `protean`**: `from protean import handle` (not from `protean.core` or `protean.utils`)
+8. **Issue commands via `current_domain.process()`**: Import from `protean`: `from protean import current_domain`. Call `current_domain.process(CommandClass(...))` to drive other aggregates
 9. **Always define at least one terminal state**: Mark the terminating handler `end=True`. `check` reports `PROCESS_MANAGER_UNCLOSED` for a process manager with no `end=True` handler, even when a handler calls `self.mark_as_complete()`. Without a terminal state, the PM accepts events indefinitely
-10. **PM fields are persisted as transition events** — After each handler runs, the framework auto-generates a transition event capturing all field values and persists it to the PM's own stream
-11. **Completed PMs skip subsequent events** — Once a PM is marked complete, any further events for that correlation value are silently skipped
+10. **PM fields are persisted as transition events**: After each handler runs, the framework auto-generates a transition event capturing all field values and persists it to the PM's own stream
+11. **Completed PMs skip subsequent events**: Once a PM is marked complete, any further events for that correlation value are silently skipped
 
 ## Process manager options
 
@@ -215,7 +215,7 @@ class OnboardingPM:
 
 ```python
 # fragment
-# WRONG — correlate is required for all PM handlers
+# WRONG: correlate is required for all PM handlers
 @handle(OrderPlaced, start=True)
 def on_order_placed(self, event):
     pass
@@ -235,7 +235,7 @@ def on_order_placed(self, event):
 
 ```python
 # fragment
-# WRONG — PM has no entry point
+# WRONG: PM has no entry point
 @domain.process_manager(stream_categories=["ecommerce::order"])
 class BadPM:
     @handle(OrderPlaced, correlate="order_id")  # Missing start=True
@@ -249,7 +249,7 @@ Every PM must have at least one handler with `start=True`.
 
 ```python
 # fragment
-# WRONG — PM is doing business validation
+# WRONG: PM is doing business validation
 @handle(PaymentConfirmed, correlate="order_id")
 def on_payment_confirmed(self, event):
     if event.amount < self.total * 0.95:
@@ -270,28 +270,28 @@ Each handler's `correlate` is resolved independently, by `getattr(event, field_n
 
 ### Using event handler when process manager is needed
 
-If you find yourself tracking state in external stores from an event handler, or needing to correlate events across aggregates, you need a process manager — not an event handler with workarounds.
+If you find yourself tracking state in external stores from an event handler, or needing to correlate events across aggregates, you need a process manager.
 
 ## Detailed references
 
 ### Core Concepts
-- [Correlation](references/correlation.md) - String vs dictionary correlation, routing mechanics
-- [Lifecycle Management](references/lifecycle.md) - Start events, completion, transition events
-- [Command Issuance](references/command-issuance.md) - Issuing commands, coordinator pattern, command persistence
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [Correlation](references/correlation.md): String vs dictionary correlation, routing mechanics
+- [Lifecycle Management](references/lifecycle.md): Start events, completion, transition events
+- [Command Issuance](references/command-issuance.md): Issuing commands, coordinator pattern, command persistence
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ### Complete Examples
-- [Basic PM (Order Fulfillment)](assets/pm_basic.py) - Full lifecycle with string correlation
-- [Dictionary Correlation](assets/pm_dict_correlation.py) - Mapping different field names
-- [Command Issuance](assets/pm_command_issuance.py) - Issuing commands via current_domain.process()
-- [Error Handling](assets/pm_error_handling.py) - Custom handle_error classmethod
+- [Basic PM (Order Fulfillment)](assets/pm_basic.py): Full lifecycle with string correlation
+- [Dictionary Correlation](assets/pm_dict_correlation.py): Mapping different field names
+- [Command Issuance](assets/pm_command_issuance.py): Issuing commands via current_domain.process()
+- [Error Handling](assets/pm_error_handling.py): Custom handle_error classmethod
 
 ### Related Skills
-- `event-handler` - Stateless event handlers (contrast with stateful PM)
-- `event` - Events are the input to process managers
-- `aggregate` - Process managers coordinate aggregates
-- `command` - Process managers issue commands to drive aggregates
-- `command-handler` - Commands issued by PMs are processed by command handlers
+- `event-handler`: Stateless event handlers (contrast with stateful PM)
+- `event`: Events are the input to process managers
+- `aggregate`: Process managers coordinate aggregates
+- `command`: Process managers issue commands to drive aggregates
+- `command-handler`: Commands issued by PMs are processed by command handlers
 
 ## Verify your work
 

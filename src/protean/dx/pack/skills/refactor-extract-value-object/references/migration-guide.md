@@ -17,7 +17,7 @@ class Money:
 
 ### 2. Add the new VO field alongside old fields
 
-Don't remove the old fields yet — add the new field in parallel:
+Don't remove the old fields yet. Add the new field in parallel:
 
 ```python
 @domain.aggregate
@@ -101,5 +101,5 @@ class OrderPlacedV1Upcaster(BaseUpcaster):
 
 ## Related
 
-- [common-value-objects.md](common-value-objects.md) — Catalog of common VOs
-- [upcaster SKILL.md](../../upcaster/SKILL.md) — Event schema migration
+- [common-value-objects.md](common-value-objects.md): Catalog of common VOs
+- [upcaster SKILL.md](../../upcaster/SKILL.md): Event schema migration

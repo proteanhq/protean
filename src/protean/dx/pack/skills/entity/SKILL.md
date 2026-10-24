@@ -37,14 +37,14 @@ class LineItem:
 
 ## Key rules
 
-1. **Entities must be part of an aggregate** - Use `part_of` parameter to associate with parent aggregate. **Use a string reference** (`part_of="Order"`) to avoid circular dependencies when aggregate and entity are in the same file. A nested entity passes its parent entity as a class (`part_of=LineItem`), because a string resolves only to an aggregate
-2. **Entities have automatic identity** - An `id` field is auto-generated unless `auto_add_id_field=False`
-3. **Entities get automatic reference fields** - A reference field back to parent aggregate is created automatically
-4. **Entities are accessed through aggregates** - Never query or update entities directly
-5. **Entities are persisted with aggregates** - They use the same persistence store as their parent
-6. **Entities can contain other entities** - Via `HasOne` or `HasMany` relationships
-7. **Entities cannot be root elements** - They must always be part of an aggregate
-8. **Entities are mutable** - Their state can change while maintaining identity
+1. **Entities must be part of an aggregate**: Use `part_of` parameter to associate with parent aggregate. **Use a string reference** (`part_of="Order"`) to avoid circular dependencies when aggregate and entity are in the same file. A nested entity passes its parent entity as a class (`part_of=LineItem`), because a string resolves only to an aggregate
+2. **Entities have automatic identity**: An `id` field is auto-generated unless `auto_add_id_field=False`
+3. **Entities get automatic reference fields**: A reference field back to parent aggregate is created automatically
+4. **Entities are accessed through aggregates**: Never query or update entities directly
+5. **Entities are persisted with aggregates**: They use the same persistence store as their parent
+6. **Entities can contain other entities**: Via `HasOne` or `HasMany` relationships
+7. **Entities cannot be root elements**: They must always be part of an aggregate
+8. **Entities are mutable**: Their state can change while maintaining identity
 
 ## Defining entities
 
@@ -119,10 +119,10 @@ class LineItem:
 
 **Auto-generated helper methods**: When you define a `HasMany` field on an aggregate or entity, Protean automatically creates helper methods for managing the association. For the `line_items` field above, these methods are generated:
 
-- `add_line_items(item)` - Add one or more items to the collection
-- `remove_line_items(item)` - Remove an item from the collection
-- `get_one_from_line_items(id=item_id)` - Get the one item that matches the keyword arguments. It raises `ObjectNotFoundError` (from `protean.exceptions`) when no item matches, and `TooManyObjectsError` when more than one does.
-- `filter_line_items(**criteria)` - Return the items whose fields equal the given values, such as `filter_line_items(product_id="P1")`. It matches on equality only.
+- `add_line_items(item)`: Add one or more items to the collection
+- `remove_line_items(item)`: Remove an item from the collection
+- `get_one_from_line_items(id=item_id)`: Get the one item that matches the keyword arguments. It raises `ObjectNotFoundError` (from `protean.exceptions`) when no item matches, and `TooManyObjectsError` when more than one does.
+- `filter_line_items(**criteria)`: Return the items whose fields equal the given values, such as `filter_line_items(product_id="P1")`. It matches on equality only.
 
 **Important**: Do NOT manually create these methods - they are automatically available. Only create custom methods if you need behavior different from the defaults.
 
@@ -491,16 +491,16 @@ with domain.domain_context():
 
 ## Detailed references
 
-- [HasOne relationships](references/with-hasone.md) - One-to-one entity relationships
-- [HasMany relationships](references/with-hasmany.md) - One-to-many entity relationships
-- [Nested entities](references/nested-entities.md) - Entities containing other entities
-- [Configuration options](references/configuration.md) - Entity configuration and customization
-- [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
+- [HasOne relationships](references/with-hasone.md): One-to-one entity relationships
+- [HasMany relationships](references/with-hasmany.md): One-to-many entity relationships
+- [Nested entities](references/nested-entities.md): Entities containing other entities
+- [Configuration options](references/configuration.md): Entity configuration and customization
+- [Anti-patterns](references/anti-patterns.md): Common mistakes and how to avoid them
 
 ## Related skills
 
-- [aggregate](../aggregate/SKILL.md) - Learn about aggregates that contain entities
-- [value-object](../value-object/SKILL.md) - When to use value objects instead of entities
+- [aggregate](../aggregate/SKILL.md): Learn about aggregates that contain entities
+- [value-object](../value-object/SKILL.md): When to use value objects instead of entities
 
 ## Verify your work
 

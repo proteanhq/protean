@@ -374,24 +374,24 @@ A public helper called from another public method runs every invariant again aro
 ## Detailed references
 
 ### Core concepts
-- [Callable class pattern](references/callable-class.md) - Single-operation domain service
-- [Instance methods pattern](references/instance-methods.md) - Multi-operation domain service
-- [Class methods pattern](references/class-methods.md) - Stateless functional domain service
-- [Invariants](references/invariants.md) - Pre/post validation across aggregates
+- [Callable class pattern](references/callable-class.md): Single-operation domain service
+- [Instance methods pattern](references/instance-methods.md): Multi-operation domain service
+- [Class methods pattern](references/class-methods.md): Stateless functional domain service
+- [Invariants](references/invariants.md): Pre/post validation across aggregates
 
 ### Complete examples
-- [Callable class example](assets/domain_service_callable.py) - Order placement as callable
-- [Instance methods example](assets/domain_service_instance_methods.py) - Order placement with named methods
-- [Class methods example](assets/domain_service_class_methods.py) - Order placement with class methods
-- [With invariants example](assets/domain_service_with_invariants.py) - Full pre/post invariant validation
+- [Callable class example](assets/domain_service_callable.py): Order placement as callable
+- [Instance methods example](assets/domain_service_instance_methods.py): Order placement with named methods
+- [Class methods example](assets/domain_service_class_methods.py): Order placement with class methods
+- [With invariants example](assets/domain_service_with_invariants.py): Full pre/post invariant validation
 
 ### Related skills
-- `aggregate` - Domain aggregates that domain services orchestrate
-- `command-handler` - Where domain services are typically invoked from
-- `add-domain-service-flow` - The whole flow: the service, the command handler that persists the primary aggregate, and the event handler and command that change the other aggregate
-- `event-handler` - Its cross-aggregate reference shows the event handler that issues a command to the other aggregate
-- `event` - Events raised by aggregates during domain service operations
-- `value-object` - Value objects used within aggregates passed to domain services
+- `aggregate`: Domain aggregates that domain services orchestrate
+- `command-handler`: Where domain services are typically invoked from
+- `add-domain-service-flow`: The whole flow: the service, the command handler that persists the primary aggregate, and the event handler and command that change the other aggregate
+- `event-handler`: Its cross-aggregate reference shows the event handler that issues a command to the other aggregate
+- `event`: Events raised by aggregates during domain service operations
+- `value-object`: Value objects used within aggregates passed to domain services
 
 ## Verify your work
 
