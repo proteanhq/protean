@@ -4,7 +4,7 @@ Use case methods always execute within a `UnitOfWork` context. On a provider wit
 
 ## Automatic Wrapping
 
-The `@use_case` decorator wraps every method invocation in a UnitOfWork. You do NOT need to specify it explicitly:
+The `@use_case` decorator wraps every call in a UnitOfWork:
 
 ```python
 from protean.fields import Identifier, String
@@ -35,7 +35,7 @@ class UserServicesByHand:
             return user.id
 ```
 
-`@use_case` also logs the call, and checks for an active domain context first. Do NOT wrap manually inside a `@use_case` method: it is redundant.
+`@use_case` also logs the call, and checks for an active domain context first.
 
 A Unit of Work needs a domain to open against, so call use cases after `domain.init()` and inside a domain context. Without one, the call raises `ConfigurationError`:
 
@@ -70,23 +70,7 @@ Command and event handlers behave differently. On a version conflict, `@handle` 
 
 ## Scope
 
-A Unit of Work can hold changes to several aggregates. The method below runs, and the Unit of Work commits both accounts in one transaction:
-
-```python
-# fragment
-@use_case
-def transfer_funds(self, from_id, to_id, amount):
-    from_acct = current_domain.repository_for(Account).get(from_id)
-    to_acct = current_domain.repository_for(Account).get(to_id)
-    from_acct.debit(amount)
-    to_acct.credit(amount)
-    current_domain.repository_for(Account).add(from_acct)
-    current_domain.repository_for(Account).add(to_acct)  # Second aggregate
-```
-
-It is still the wrong design. "One aggregate per transaction" is a design rule, and the Unit of Work does not enforce it. Two instances of the same aggregate type count as two aggregates.
-
-Instead, change one account in the use case and let it raise an event (for example `FundsDebited`). An event handler in Account's cluster reacts to the event and issues a command (for example `CreditFunds`). That command's handler credits the other account and skips a transfer it has already applied, because an event can be delivered more than once. The `event-handler` skill's cross-aggregate reference shows the full pattern.
+A Unit of Work can hold changes to several aggregates and commits them all in one transaction. "One aggregate per transaction" is a design rule, and the Unit of Work does not enforce it. Two instances of the same aggregate type count as two aggregates. [Anti-patterns](anti-patterns.md), section 2, shows the `transfer_funds` use case that breaks the rule and the version that raises an event instead.
 
 ## Nested Units of Work
 
@@ -98,12 +82,5 @@ A Unit of Work started while another is active joins the outer one. There are no
 ## Calling External Services
 
 Keep calls to outside systems (email, payment APIs, HTTP) out of a use case that also writes. The call runs before the commit. If it comes after a write, the transaction stays open while it waits. Either way, a rollback cannot take the call back. [ADR-0031 (A handler method persists or calls out, never both)](https://docs.proteanhq.com/adr/0031-handlers-persist-or-call-out/) sets this rule for handlers, and the same reasoning applies to use cases. Persist in the use case, raise an event, and make the call from an event handler.
-
-## Best Practices
-
-1. **One aggregate per UoW**: Persist only one aggregate root per use case method
-2. **Don't nest UoWs**: The `@use_case` decorator already provides one, and a nested one joins it
-3. **Let exceptions propagate**: The UoW handles rollback automatically
-4. **Use events for cross-aggregate consistency**: Raise events from the aggregate, handle them in event handlers
 
 See [With Events](../assets/application_service_with_events.py) for a complete example showing events within UoW.
