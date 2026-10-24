@@ -148,18 +148,13 @@ ROWS = {
     ),
 }
 
-# A database model takes only a class target.
-STRING_ROWS = [row for row in ROWS if row != "database model"]
-
 STRING_ALLOWED_CASES = [
-    pytest.param(row, kind, id=f"{row}-{kind}")
-    for row in STRING_ROWS
-    for kind in ROWS[row][2]
+    pytest.param(row, kind, id=f"{row}-{kind}") for row in ROWS for kind in ROWS[row][2]
 ]
 
 STRING_DISALLOWED_CASES = [
     pytest.param(row, kind, id=f"{row}-{kind}")
-    for row in STRING_ROWS
+    for row in ROWS
     for kind in KINDS
     if kind not in ROWS[row][2]
     # An event sourced repository naming a plain aggregate resolves, then
