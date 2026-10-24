@@ -15,6 +15,8 @@ metadata:
 
 # Command Handler
 
+A command handler turns one aggregate's commands into changes to that aggregate: it loads or creates the aggregate, calls a method on it, and persists it. This skill defines handlers, their options, and how they fail.
+
 ## Basic structure
 
 ```python
@@ -110,13 +112,6 @@ class AccountCommandHandler:
         domain.repository_for(Account).add(account)
 ```
 
-## Handler workflow
-
-1. **Receive command**: Domain dispatches command to the matching handler method
-2. **Load or create aggregate**: Use `domain.repository_for(Aggregate).get(id)` to load, or construct a new instance
-3. **Extract data and invoke method**: Call aggregate methods with data from the command
-4. **Persist**: Use `domain.repository_for(Aggregate).add(aggregate)` to save
-
 ## Error handling
 
 Override `handle_error` classmethod for custom error recovery during async processing:
@@ -172,58 +167,6 @@ with domain.domain_context():
 
 ## Common mistakes
 
-### Missing part_of on handler
-
-```python
-# fragment
-@domain.command_handler  # Wrong! Missing part_of
-class OrderCommandHandler:
-    pass
-```
-
-Instead: Always specify part_of with the aggregate class
-
-```python
-# fragment
-@domain.command_handler(part_of=Order)  # Correct!
-class OrderCommandHandler:
-    pass
-```
-
-### Command associated with different aggregate
-
-```python
-# fragment
-@domain.command(part_of="Shipment")
-class ShipOrder:
-    order_id: Identifier(required=True)
-
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(ShipOrder)  # Wrong! ShipOrder is part_of Shipment, not Order
-    def handle_ship(self, command):
-        pass
-```
-
-Instead: Command and handler must share the same aggregate
-
-### Handling the same command in multiple handlers
-
-```python
-# fragment
-@domain.command_handler(part_of=Order)
-class OrderHandler1:
-    @handle(PlaceOrder)  # First handler
-    def handle(self, command):
-        pass
-
-@domain.command_handler(part_of=Order)
-class OrderHandler2:
-    @handle(PlaceOrder)  # Wrong! PlaceOrder already handled by OrderHandler1
-    def handle(self, command):
-        pass
-```
-
 ### Wrapping in UnitOfWork manually
 
 ```python
@@ -236,14 +179,6 @@ def handle_place_order(self, command):
 ```
 
 Instead: Let the implicit Unit of Work handle it. A `with UnitOfWork():` inside the handler joins the outer one and adds nothing.
-
-```python
-# fragment
-@handle(PlaceOrder)
-def handle_place_order(self, command):
-    order = Order(order_id=command.order_id)
-    domain.repository_for(Order).add(order)
-```
 
 ### What `check` reports
 

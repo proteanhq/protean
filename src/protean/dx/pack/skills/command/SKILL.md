@@ -14,6 +14,8 @@ metadata:
 
 # Command
 
+A command carries one request to change one aggregate, and exactly one command handler processes it. This skill defines commands: fields, naming, and how to submit them.
+
 ## Basic structure
 
 A command is defined using the `@domain.command(part_of="...")` decorator:
@@ -140,39 +142,6 @@ domain.config["command_processing"] = "sync"
 
 ## Common mistakes
 
-### Using past-tense verbs instead of imperative
-
-```python
-@domain.command(part_of="Order")
-class OrderPlaced:  # Wrong! This is an event name
-    pass
-```
-
-Instead: Use imperative verbs
-
-```python
-@domain.command(part_of="Order")
-class PlaceOrder:  # Correct! Imperative verb
-    pass
-```
-
-### Not associating command with aggregate
-
-```python
-# fragment
-@domain.command  # Wrong! Missing part_of
-class PlaceOrder:
-    pass
-```
-
-Instead: Always specify part_of
-
-```python
-@domain.command(part_of="Order")  # Correct!
-class PlaceOrder:
-    pass
-```
-
 ### Including entities in commands
 
 ```python
@@ -206,14 +175,7 @@ command = PlaceOrder(order_id="ORD-001", customer_id="CUST-123")
 command.customer_id = "CUST-456"  # Raises IncorrectUsageError!
 ```
 
-Instead: Create a new command instance
-
-```python
-domain.init(traverse=False)
-
-with domain.domain_context():
-    command = PlaceOrder(order_id="ORD-001", customer_id="CUST-456")
-```
+Instead: Create a new command instance with the values you need.
 
 ### What `check` reports
 
