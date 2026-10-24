@@ -83,20 +83,7 @@ class Account:
 
 ## The @apply pattern
 
-Business methods validate preconditions and call `raise_()`. The `@apply` handler performs the actual state mutation. It is the single source of truth for state changes:
-
-```python
-# 1. Business method: validates then raises (NO direct state mutation)
-def close(self):
-    if self.status != "ACTIVE":
-        raise ValueError("Account is not active")
-    self.raise_(AccountClosed(account_id=self.account_id))
-
-# 2. @apply method: mutates state (called automatically by raise_())
-@apply
-def closed(self, event: AccountClosed):
-    self.status = "CLOSED"
-```
+Using `Account.close()` from Basic structure:
 
 When `close()` is called:
 1. The business method validates preconditions
@@ -108,8 +95,6 @@ When the aggregate is loaded later (via `from_events()` or `repo.get()`):
 1. All events are read from the event store
 2. Each event is replayed through its `@apply` method
 3. The aggregate arrives at its current state
-
-Because `@apply` runs in both paths, live and replay always produce identical state.
 
 ## Factory classmethod pattern
 
@@ -145,8 +130,6 @@ domain.init(traverse=False)
 with domain.domain_context():
     user = User.register(user_id="U-001", name="Alice", email="alice@example.com")
 ```
-
-This ensures the creation event is always the first event in the aggregate's stream.
 
 ### Alternative: `_create_new()` for lean creation
 
@@ -190,25 +173,7 @@ with domain.domain_context():
 
 ## Event-sourced repository
 
-ES aggregates use a specialized repository that persists events instead of state:
-
-```python
-from protean.utils.globals import current_domain
-
-with domain.domain_context():
-    account = Account.open(account_id="A-001", owner_name="Alice")
-
-    # The domain auto-selects the right repository type
-    repo = current_domain.repository_for(Account)
-
-    # Persist: writes events to event store
-    repo.add(account)
-
-    # Load: reconstructs from event stream
-    account = repo.get(account.account_id)
-```
-
-For custom queries, define an explicit ES repository by subclassing `BaseEventSourcedRepository` and registering it against the aggregate:
+`repository_for()` returns an event-sourced repository, which persists events instead of state ([State reconstruction](#state-reconstruction) shows `add()` and `get()`). For custom queries, define an explicit ES repository by subclassing `BaseEventSourcedRepository` and registering it against the aggregate:
 ```python
 from protean.core.event_sourced_repository import BaseEventSourcedRepository
 
@@ -278,19 +243,7 @@ def closed(self, event: AccountClosed):
     self.status = "CLOSED"  # This also runs via raise_()!
 ```
 
-Business methods should only validate and call `raise_()`. Let `@apply` handle all state mutations:
-
-```python
-# CORRECT: validate then raise, @apply handles state
-def close(self):
-    if self.status != "ACTIVE":
-        raise ValueError("Account is not active")
-    self.raise_(AccountClosed(account_id=self.account_id))
-
-@apply
-def closed(self, event: AccountClosed):
-    self.status = "CLOSED"  # Single source of truth
-```
+Business methods only validate and call `raise_()`, as `Account.close()` does in Basic structure.
 
 ### Missing @apply handler for an event
 
