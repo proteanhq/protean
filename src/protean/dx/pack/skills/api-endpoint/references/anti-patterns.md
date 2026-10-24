@@ -1,8 +1,7 @@
 # API Endpoint Anti-patterns
 
-Common mistakes when implementing API endpoints in Protean and how to avoid
-them. Each **Wrong** block is shown on purpose and does not run. The
-**Correct** blocks build on this domain:
+Each **Wrong** block is shown on purpose and does not run. The **Correct**
+block builds on this domain:
 
 ```python
 from fastapi import APIRouter
@@ -79,21 +78,7 @@ def place_order(body: PlaceOrderRequest):
 The aggregate's `total_amount` field enforces the range. A value outside it
 raises `ValidationError`, and the client gets a 400.
 
-## 2. Direct Repository Access
-
-**Wrong:**
-```python
-# fragment
-@router.post("")
-def place_order(body: PlaceOrderRequest):
-    order = Order(order_id=body.order_id, customer_id=body.customer_id)
-    current_domain.repository_for(Order).add(order)  # Direct repo access!
-```
-
-**Correct:** Always go through `current_domain.process()`. The endpoint builds
-a command and lets the handler do the persistence.
-
-## 3. Hand-rolled Middleware or Exception Handlers
+## 2. Hand-rolled Middleware or Exception Handlers
 
 **Wrong:**
 ```python
@@ -120,40 +105,7 @@ shape from the rest of the app.
 `register_exception_handlers(app)` in the app factory, as in
 [assets/api_endpoint_complete_router.py](../assets/api_endpoint_complete_router.py).
 
-## 4. An `async def` Endpoint That Calls `process()`
-
-**Wrong:**
-```python
-# fragment
-@router.post("", status_code=201)
-async def place_order(body: PlaceOrderRequest):
-    command = PlaceOrder(**body.model_dump())
-    order_id = current_domain.process(command, asynchronous=False)  # Blocks the loop!
-    return {"order_id": order_id}
-```
-
-`process(..., asynchronous=False)` runs the handler and its database calls
-synchronously. Inside an `async def` endpoint that runs on the event loop, so
-every other request waits until it finishes.
-
-**Correct:** Write the endpoint as plain `def`, as in pattern 1. FastAPI runs a
-`def` endpoint in its thread pool, and the middleware's domain context reaches
-it there.
-
-## 5. Calling Handlers Directly
-
-**Wrong:**
-```python
-# fragment
-@router.post("")
-def place_order(body: PlaceOrderRequest):
-    OrderCommandHandler().place(command)  # Bypasses domain.process!
-```
-
-**Correct:** Always use `current_domain.process(command, asynchronous=False)`. Calling the handler
-directly skips command enrichment and event store persistence.
-
-## 6. Importing the Domain Instead of Using `current_domain`
+## 3. Importing the Domain Instead of Using `current_domain`
 
 **Wrong:**
 ```python
@@ -170,7 +122,7 @@ def place_order(body: PlaceOrderRequest):
 sets it for each request, so the same router works for whichever domain the
 request is routed to, and in tests that build their own domain.
 
-## 7. Domain Rules in the Pydantic Model
+## 4. Domain Rules in the Pydantic Model
 
 **Wrong:**
 ```python
@@ -183,7 +135,7 @@ class PlaceOrderRequest(BaseModel):
 Business rules such as amount limits and status changes belong on the command
 and the aggregate. The request model at the top of this page checks types only.
 
-## 8. Fat Endpoints with Multiple Operations
+## 5. Fat Endpoints with Multiple Operations
 
 **Wrong:**
 ```python
