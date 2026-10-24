@@ -94,13 +94,6 @@ class OrderRepository:
 9. **Children are synced automatically**: HasMany/HasOne child entities are persisted/removed automatically when the aggregate is added
 10. **Custom repos inherit base methods**: Custom repositories still have `add()` and `get()` from `BaseRepository`; only add new methods
 
-## Repository options
-
-| Option | Purpose | Required | Default |
-|--------|---------|----------|---------|
-| `part_of` | Associate repository with an aggregate class | Yes | None |
-| `database` | Lock repository to a specific database type | No | `"ALL"` |
-
 ## Quick example: Custom repository with queries
 
 Every field a query method filters on needs an index. The identifier field and
@@ -161,39 +154,7 @@ When you need the page of items but not the total match count, pass
 items = self.query.filter(status="open").all(with_total=False).items
 ```
 
-## Using repositories in handlers
-
-```python
-@domain.command_handler(part_of=Order)
-class OrderCommandHandler:
-    @handle(PlaceOrder)
-    def handle_place_order(self, command):
-        order = Order(order_id=command.order_id, customer_id=command.customer_id)
-        order.place()
-        # Persist via repository: UoW handles transactional commit
-        domain.repository_for(Order).add(order)
-
-    @handle(CancelOrder)
-    def handle_cancel(self, command):
-        # Load existing aggregate
-        order = domain.repository_for(Order).get(command.order_id)
-        order.cancel()
-        domain.repository_for(Order).add(order)
-```
-
 ## Common mistakes
-
-### Writing a repository when the default suffices
-
-```python
-# fragment
-# Unnecessary! Protean provides this automatically
-@domain.repository(part_of=Order)
-class OrderRepository:
-    pass  # No custom methods: just use the default
-```
-
-Instead: Only create a custom repository when you need custom query methods
 
 ### Persisting child entities separately
 
@@ -205,31 +166,7 @@ class LineItemRepository:
     pass
 ```
 
-Instead: Persist at the aggregate level; child entities are synced automatically
-
-```python
-with domain.domain_context():
-    order = domain.repository_for(Order).get("ORD-001")
-    order.add_items(LineItem(product_id="PROD-1", quantity=2))
-    domain.repository_for(Order).add(order)  # LineItem is saved with the order
-```
-
-### Forgetting part_of
-
-```python
-# fragment
-@domain.repository  # Wrong! Missing part_of
-class OrderRepository:
-    pass
-```
-
-Instead: Always specify part_of with the aggregate class
-
-```python
-@domain.repository(part_of=Order)
-class OrderRepository:
-    pass
-```
+Instead: Persist at the aggregate level; child entities are synced automatically (Key rule 9).
 
 ### Wrapping repository calls in manual UnitOfWork inside handlers
 
@@ -266,7 +203,7 @@ own: its commit and rollback defer to the handler's.
 ### Related Skills
 - `aggregate`: Repositories persist aggregates
 - `command-handler`: Command handlers use repositories to load and persist aggregates
-- `event-handler`: Event handlers use repositories for cross-aggregate coordination
+- `event-handler`: Event handlers load and persist their own aggregate through its repository
 - `entity`: Entities enclosed within aggregates are persisted automatically via repositories
 
 ## Verify your work
