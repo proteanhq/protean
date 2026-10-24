@@ -119,39 +119,6 @@ with domain.domain_context(current_user="alice"):
 
 ## Common mistakes
 
-### Wrong signature for an event enricher
-
-```python
-# fragment
-@domain.event_enricher
-def add_ctx(event):  # Wrong! Event enrichers receive (event, aggregate)
-    return {...}
-```
-
-Instead: `def add_ctx(event, aggregate): ...`
-
-### Mutating the message instead of returning a dict
-
-```python
-# fragment
-@domain.command_enricher
-def add_ctx(command):
-    command._metadata.extensions["x"] = 1  # Wrong! Don't mutate
-```
-
-Instead: return a dict; Protean merges it into extensions.
-
-### Unsafe context access
-
-```python
-# fragment
-@domain.command_enricher
-def add_ctx(command):
-    return {"request_id": g.request_id}  # Raises if unset -> aborts the command
-```
-
-Instead: `getattr(g, "request_id", None)`.
-
 ### Putting business data in extensions
 
 Extensions are for cross-cutting metadata (tenant, request, actor), not domain
@@ -164,8 +131,7 @@ payload. Domain data belongs in the command/event fields.
 domain.register_event_enricher(some_dict)  # Wrong! Not callable
 ```
 
-An enricher is invoked to augment a message or aggregate, so it must be
-callable. Registering anything else raises `IncorrectUsageError` with code
+Registering anything that is not callable raises `IncorrectUsageError` with code
 `USAGE_ENRICHER_NOT_CALLABLE`.
 
 ## Detailed references
@@ -179,8 +145,8 @@ callable. Registering anything else raises `IncorrectUsageError` with code
 
 ### Related skills
 
-- `command` / `command-handler` - Commands that enrichers annotate
-- `event` / `event-handler` - Events that enrichers annotate
+- `command` / `command-handler`: Commands that enrichers annotate
+- `event` / `event-handler`: Events that enrichers annotate
 - `aggregate`: Event enrichers receive the aggregate raising the event
 
 ## Verify your work

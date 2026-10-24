@@ -13,6 +13,8 @@ metadata:
 
 # Process Manager
 
+A process manager coordinates a business process that spans several aggregates. It reacts to their events, keeps its own state between them, and issues commands to move the process forward. This skill defines process managers: correlation, lifecycle and command issuance.
+
 ## Basic structure
 
 ```python
@@ -84,15 +86,6 @@ class OrderFulfillmentPM:
 | `subscription_config` | Custom config dict (messages_per_tick, max_retries, etc.) | No |
 | `sequential_by` | `True` opts into per-instance sequential processing, partitioned by the field the subscribed category's `correlate` spec maps to | No |
 | `suppress_checks` | Diagnostic codes to suppress for this process manager | No |
-
-## @handle parameters for process managers
-
-| Parameter | Purpose | Required |
-|-----------|---------|----------|
-| First arg (event class) | The event class this handler processes | Yes |
-| `start` | `True` creates new PM instance (at least one per PM) | At least one handler must have `True` |
-| `correlate` | String or dict mapping event field to PM identity | Yes (all PM handlers) |
-| `end` | `True` auto-marks PM as complete after handler runs | No |
 
 ## Quick example: Dictionary correlation
 
@@ -211,40 +204,6 @@ class OnboardingPM:
 
 ## Common mistakes
 
-### Missing `correlate` on handlers
-
-```python
-# fragment
-# WRONG: correlate is required for all PM handlers
-@handle(OrderPlaced, start=True)
-def on_order_placed(self, event):
-    pass
-```
-
-Instead: Always specify `correlate` on every PM handler
-
-```python
-# fragment
-# CORRECT
-@handle(OrderPlaced, start=True, correlate="order_id")
-def on_order_placed(self, event):
-    self.order_id = event.order_id
-```
-
-### No `start=True` handler
-
-```python
-# fragment
-# WRONG: PM has no entry point
-@domain.process_manager(stream_categories=["ecommerce::order"])
-class BadPM:
-    @handle(OrderPlaced, correlate="order_id")  # Missing start=True
-    def on_order_placed(self, event):
-        pass
-```
-
-Every PM must have at least one handler with `start=True`.
-
 ### Business logic in the process manager
 
 ```python
@@ -260,17 +219,11 @@ Instead: Keep business logic in aggregates. PM only coordinates.
 
 ### Missing terminal state
 
-A PM without `end=True` or `mark_as_complete()` on any handler will never finish. Its stream will grow indefinitely and it will continue accepting events. `check` reports a PM with no `end=True` handler as `PROCESS_MANAGER_UNCLOSED`.
-
-The diagnostic reads the decorator flag only. It never inspects `mark_as_complete()` calls, so a PM that completes that way alone is still reported. Mark the terminating handler `end=True` to clear it, or pass `suppress_checks=("PROCESS_MANAGER_UNCLOSED",)` to `@domain.process_manager` when completion is genuinely decided at runtime.
+A PM without `end=True` or `mark_as_complete()` on any handler never finishes, and its stream keeps growing (Key rule 9). The `PROCESS_MANAGER_UNCLOSED` diagnostic reads the decorator flag only. It never inspects `mark_as_complete()` calls, so a PM that completes that way alone is still reported. Mark the terminating handler `end=True` to clear it, or pass `suppress_checks=("PROCESS_MANAGER_UNCLOSED",)` to `@domain.process_manager` when completion is genuinely decided at runtime.
 
 ### Correlation matches by value
 
 Each handler's `correlate` is resolved independently, by `getattr(event, field_name)`, and the PM instance is looked up purely by that value. `OrderPlaced` using `order_id` and `PaymentConfirmed` using `payment_order_id` route to the same instance correctly as long as both hold the same value. Dictionary correlate, `correlate={"order_id": "payment_order_id"}`, resolves the same way; use it to document the mapping for readers.
-
-### Using event handler when process manager is needed
-
-If you find yourself tracking state in external stores from an event handler, or needing to correlate events across aggregates, you need a process manager.
 
 ## Detailed references
 

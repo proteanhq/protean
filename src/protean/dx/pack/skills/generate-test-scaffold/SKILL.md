@@ -16,17 +16,6 @@ Generate comprehensive pytest tests for existing Protean domain definitions, foc
 
 ## The testing pyramid
 
-```
-                /\
-               /  \
-              / E2E \        Few: Full flows with persistence
-             /--------\
-            /Integration\    Some: Handler + repo + domain
-           /--------------\
-          /  Domain Unit    \ Many: Aggregates, VOs, services
-         /____________________\
-```
-
 Domain unit tests are the **majority** of your test suite. They test the most important code (business rules) with the least overhead (no infrastructure).
 
 ## What to test vs. what to skip
@@ -75,12 +64,7 @@ Before generating tests, identify:
 
 ### Step 1: Analyze domain definitions
 
-Read the user's domain code and catalog:
-- Every aggregate class + its methods
-- Every event class + which methods raise it
-- Every command + handler pair
-- Every event handler + what side effects it produces
-- Every invariant + what condition it guards
+Read the domain code and fill in the checklist above.
 
 ### Step 2: Generate aggregate unit tests
 
@@ -224,51 +208,9 @@ from myapp.ordering import Order, OrderPlaced
 | `TestCrossAggregateFlow` | Event handler side effects across aggregates |
 | `TestLifecycle` | Full end-to-end sequences |
 
-## Key assertion patterns
-
-```python
-# fragment
-# State after method call
-assert order.status == "placed"
-
-# Events raised
-assert len(order._events) == 1
-assert isinstance(order._events[0], OrderPlaced)
-
-# Event data
-event = order._events[0]
-assert event.order_id == order.id
-
-# Clear events to isolate subsequent method
-order._events.clear()
-
-# Business rule rejection: name the exception the method raises
-with pytest.raises(ValueError, match="Cannot cancel order"):
-    order.cancel("reason")
-
-# Invariant rejection
-with pytest.raises(ValidationError):
-    order.place()
-
-# Handler persistence (command_processing is "sync" in tests)
-result = domain.process(cmd)
-entity = domain.repository_for(Aggregate).get(result)
-
-# Cross-aggregate side effect
-domain.repository_for(Source).add(source)
-target = domain.repository_for(Target).get(target_id)
-assert target.field == expected
-```
-
 ## Common mistakes
 
-1. **Testing framework guarantees**: don't test VO immutability, command required fields, or registry presence. Protean handles these.
-2. **Forgetting `_events.clear()`**: after a factory that raises events, clear `_events` before testing the next method's events.
-3. **Leaving processing asynchronous**: a bare `Domain()` processes events and commands asynchronously. Set `event_processing` and `command_processing` to `"sync"` in the root `conftest.py` (or in `domain.toml`). Then `domain.process()` needs no `asynchronous=False`, and event handlers run when an aggregate is persisted.
-4. **Building the test domain by hand**: use `DomainFixture` in the root `conftest.py`. It initializes the domain, creates the schema, and resets data after each test.
-5. **Catching the wrong exception**: `pytest.raises(ValueError)` passes only if the method raises `ValueError` or a subclass of it. Read the method and name what it raises, with `match=` for the message.
-6. **Not creating prerequisite state**: for event handler tests, ensure the target aggregate exists in the repository before the source event fires.
-7. **Using mocks instead of real domain elements**: Protean provides in-memory repositories and synchronous event processing for tests. Construct real aggregates, VOs, commands, and events instead of mocking them. Mocks hide bugs and make tests brittle. Reserve mocks only for truly external dependencies (third-party APIs) that have no in-memory substitute.
+- **Not creating prerequisite state**: For event handler tests, create the target aggregate in the repository before the source event fires.
 
 ## Complete examples
 
