@@ -364,6 +364,22 @@ class TestClaimHoldBack:
 
         assert _claim_keyed(test_domain, limit=2) == ["k2-0", "k2-1"]
 
+    def test_keys_that_differ_only_in_case_never_hold_each_other(self, test_domain):
+        _keyed(
+            test_domain,
+            ("upper-a", 0, "ACME", "failed"),
+            ("lower-a", 1, "acme", "ready"),
+        )
+
+        assert _claim_keyed(test_domain) == ["lower-a"]
+
+    def test_a_page_larger_than_the_default_query_limit_is_all_held(self, test_domain):
+        # 101 is past the aggregate's default query limit of 100.
+        _keyed(test_domain, ("k1-0", 0, "k1", "failed"))
+        _keyed(test_domain, *[(f"k1-{n}", n, "k1", "ready") for n in range(1, 102)])
+
+        assert _claim_keyed(test_domain, limit=101) == []
+
     def test_rows_in_different_lanes_never_hold_each_other(self, test_domain):
         hold_back = HoldBack(
             group_by=HOLD_BY_KEY.group_by,

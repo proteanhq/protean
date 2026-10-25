@@ -2084,10 +2084,13 @@ class SADAO(BaseDAO):
         """SQL expression that is true when ``row`` and ``other`` share a
         hold-back group: both match ``applies``, the ``group_by`` columns are
         equal, and both match the same lane."""
-        clauses = [
-            getattr(other, column) == getattr(row, column)
-            for column in hold_back.group_by
-        ]
+        # Through the provider's exact lookup, so the comparison is as
+        # case-sensitive as a ``Q`` filter (MSSQL's default collation is not).
+        clauses = []
+        for column in hold_back.group_by:
+            name, lookup_class = self.provider._extract_lookup(column)
+            lookup = lookup_class(name, getattr(row, column), database_model_cls=other)
+            clauses.append(lookup.as_expression())
         clauses.append(self._build_filters(hold_back.applies, row))
         clauses.append(self._build_filters(hold_back.applies, other))
         if hold_back.lanes:

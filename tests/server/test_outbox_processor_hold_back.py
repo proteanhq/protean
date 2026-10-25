@@ -14,9 +14,9 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import Integer, String
 from protean.port.broker import BrokerCapabilities
-from protean.server.outbox_processor import OutboxProcessor
+from protean.server.outbox_processor import OutboxProcessor, _in_group_commit_order
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
-from protean.utils.outbox import Outbox, OutboxStatus
+from protean.utils.outbox import Outbox, OutboxLanes, OutboxStatus
 
 BASE_TIME = datetime(2026, 1, 1, tzinfo=UTC)
 CATEGORY = "test::counter"
@@ -232,6 +232,22 @@ class TestProcessBatchHoldsBackAfterAFailure:
         ]
         assert record.released == 1
         assert _stored(outbox_repo, "c").status == OutboxStatus.PENDING.value
+
+
+class TestGroupCommitOrder:
+    def test_rows_that_tie_on_commit_order_keep_the_claim_order(self, test_domain):
+        # Integer identities: the store sorts 2 before 10, a string sort would
+        # put "10" first.
+        batch = []
+        for identifier in ("2", "10"):
+            row = _row(f"row-{identifier}", 0)
+            batch.append(Outbox(**{**row.to_dict(), "id": identifier}))
+
+        ordered = _in_group_commit_order(
+            batch, OutboxLanes.from_config(test_domain.config)
+        )
+
+        assert [row.id for row in ordered] == ["2", "10"]
 
 
 @pytest.mark.database

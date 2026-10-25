@@ -655,12 +655,16 @@ class OutboxLanes:
 
 def commit_order_key(row: "Outbox") -> tuple[Any, ...]:
     """Python sort key for commit order, with NULL ``sequence_number`` last,
-    the same as the claim order."""
+    the same as the claim order.
+
+    ``id`` is left out: the store compares it by its column type (a number
+    under ``identity_type="integer"``), which ``str`` would not match. A
+    stable sort keeps the claim's own order when the other keys tie.
+    """
     return (
         ensure_utc_aware(row.created_at),
         row.sequence_number is None,
         row.sequence_number or 0,
-        str(row.id),
     )
 
 

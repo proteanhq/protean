@@ -654,6 +654,7 @@ class BaseDAO(metaclass=ABCMeta):
                         _lookup(f"{id_name}__in", page_ids) & hold_back.applies & lane
                     )
                     .only(id_name)
+                    .limit(len(page_ids))
                     .all(with_total=False)
                     .items
                 )
