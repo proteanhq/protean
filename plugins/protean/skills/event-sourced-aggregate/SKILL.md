@@ -193,7 +193,7 @@ Enable fact events to auto-generate state snapshots after each persist:
 @domain.aggregate(event_sourced=True, fact_events=True)
 class Product:
     name: String(required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     ...
 ```
 

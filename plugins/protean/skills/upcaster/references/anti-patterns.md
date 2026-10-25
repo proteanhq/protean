@@ -15,7 +15,7 @@ class Order:
 class OrderPlaced:
     __version__ = 3
     order_id = Identifier(required=True)
-    total_amount = Float(required=True)
+    total_amount = Decimal(precision=19, scale=4, required=True)
     currency = String(required=True)
 ```
 
@@ -111,20 +111,20 @@ class ChangeSemantics(BaseUpcaster):
 ```python
 @domain.aggregate
 class Invoice:
-    total = Float()
+    total = Decimal(precision=19, scale=4)
 
 
 # Old event type (kept for historical events)
 @domain.event(part_of="Invoice")
 class InvoiceIssued:
-    total = Float()  # Includes tax
+    total = Decimal(precision=19, scale=4)  # Includes tax
 
 # New event type (used going forward)
 @domain.event(part_of="Invoice")
 class TaxedInvoiceIssued:
-    subtotal = Float()  # Excludes tax
-    tax = Float()
-    total = Float()     # Includes tax
+    subtotal = Decimal(precision=19, scale=4)  # Excludes tax
+    tax = Decimal(precision=19, scale=4)
+    total = Decimal(precision=19, scale=4)     # Includes tax
 ```
 
 ## 5. Pointing event_type at old version

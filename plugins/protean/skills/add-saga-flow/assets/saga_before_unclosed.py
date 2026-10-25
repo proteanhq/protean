@@ -39,8 +39,10 @@ Usage:
         )
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, current_domain, handle
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain(__file__, "ecommerce")
@@ -70,7 +72,7 @@ class PlaceOrder:
 
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
-    total: Float(required=True)
+    total: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command(part_of="Inventory")
@@ -85,7 +87,7 @@ class RequestPayment:
     """Request payment once stock is reserved."""
 
     order_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command(part_of="Shipping")
@@ -118,7 +120,7 @@ class OrderPlaced:
 
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
-    total: Float(required=True)
+    total: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Inventory")
@@ -161,11 +163,11 @@ class Order:
     """Order aggregate representing a customer's purchase."""
 
     customer_id: Identifier(required=True)
-    total: Float(required=True)
+    total: Decimal(precision=19, scale=4, required=True)
     status: String(default="new")
 
     @classmethod
-    def place(cls, order_id: str, customer_id: str, total: float) -> "Order":
+    def place(cls, order_id: str, customer_id: str, total: D) -> "Order":
         """Place an order. OrderPlaced starts the saga."""
         order = cls(id=order_id, customer_id=customer_id, total=total, status="placed")
         order.raise_(
@@ -204,11 +206,11 @@ class Payment:
     """Payment aggregate representing a financial transaction."""
 
     order_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     status: String(default="pending")
 
     @classmethod
-    def charge(cls, order_id: str, amount: float) -> "Payment":
+    def charge(cls, order_id: str, amount: D) -> "Payment":
         """Charge the order, and report the outcome as an event.
 
         This is the saga's branch point: the confirmed path goes on to shipping,
@@ -326,7 +328,7 @@ class OrderFulfillmentPM:
 
     order_id: Identifier()
     reservation_id: Identifier()
-    total: Float()
+    total: Decimal(precision=19, scale=4)
     status: String(default="new")
 
     @handle(OrderPlaced, start=True, correlate="order_id")

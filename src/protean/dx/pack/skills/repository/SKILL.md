@@ -109,7 +109,7 @@ class Product:
     product_id: Identifier(identifier=True)
     name: String(required=True, max_length=200)
     category: String(max_length=50)
-    price: Float()
+    price: Decimal(precision=19, scale=4)
     is_active: Boolean(default=True)
 
 @domain.repository(part_of=Product)

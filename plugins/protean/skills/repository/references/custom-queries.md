@@ -34,7 +34,7 @@ class Product:
     product_id: Identifier(identifier=True)
     name: String(required=True, max_length=200)
     category: String(required=True, max_length=50)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     is_active: Boolean(default=True)
 
 
@@ -48,7 +48,7 @@ class User:
 class Report:
     report_id: Identifier(identifier=True)
     report_type: String(max_length=50)
-    total_value: Float(default=0.0)
+    total_value: Decimal(precision=19, scale=4, default=0)
 ```
 
 A custom repository filters through `self.query`:

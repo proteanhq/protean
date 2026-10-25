@@ -7,17 +7,17 @@ globs: "**/*.py"
 
 ## No Association Fields
 
-Projections take basic field types (`String`, `Integer`, `Float`, `Identifier`,
-`DateTime`, `Boolean`, `Text`, `Date`, `Auto`) and `ValueObject` fields. A
-`ValueObject` field is stored as flattened shadow fields. `Reference`, `HasOne`
-and `HasMany` are rejected:
+Projections take basic field types (`String`, `Integer`, `Float`, `Decimal`,
+`Identifier`, `DateTime`, `Boolean`, `Text`, `Date`, `Auto`) and `ValueObject`
+fields. A `ValueObject` field is stored as flattened shadow fields.
+`Reference`, `HasOne` and `HasMany` are rejected:
 
 ```python
 @domain.projection
 class OrderSummary:
     order_id = Identifier(identifier=True)
     customer_name = String()
-    total_amount = Float()
+    total_amount = Decimal(precision=19, scale=4)
     item_count = Integer()
     placed_at = DateTime()
 ```

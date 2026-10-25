@@ -16,7 +16,7 @@ class Order:
     order_id: Identifier(identifier=True)
     customer_id: Identifier(required=True)
     status: String(max_length=20, default="draft")
-    total_amount: Float(default=0.0)
+    total_amount: Decimal(precision=19, scale=4, default=0)
 
     def place(self, total_amount):
         self.total_amount = total_amount
@@ -40,13 +40,15 @@ Protean resolves this by:
 ### The `add()` Method
 
 ```python
+from decimal import Decimal as D
+
 with domain.domain_context():
     repo = domain.repository_for(Order)
 
     order = Order(order_id="ORD-001", customer_id="CUST-123")
     repo.add(order)  # Creates the record
 
-    order.place(total_amount=99.99)
+    order.place(total_amount=D("99.99"))
     repo.add(order)  # Updates the record (same method)
 ```
 

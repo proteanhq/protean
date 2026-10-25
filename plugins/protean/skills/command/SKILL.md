@@ -74,7 +74,7 @@ Commands cannot use `HasOne`, `HasMany`, or `Reference` fields.
 
 ```python
 from protean import Domain, handle
-from protean.fields import String, Float, DateTime, Identifier
+from protean.fields import DateTime, Decimal, Identifier, String
 
 domain = Domain()
 
@@ -82,13 +82,13 @@ domain = Domain()
 class Order:
     order_id: Identifier(identifier=True)
     customer_id: String(required=True)
-    total_amount: Float()
+    total_amount: Decimal(precision=19, scale=4)
 
 @domain.command(part_of="Order")
 class PlaceOrder:
     order_id: Identifier(required=True)
     customer_id: String(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 
 # Register the handler before init(); one registered after is not wired
 @domain.command_handler(part_of="Order")
@@ -156,7 +156,7 @@ Instead: Only fields and value objects
 ```python
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, default="USD")
 
 @domain.command(part_of="Order")

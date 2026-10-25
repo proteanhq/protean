@@ -26,7 +26,7 @@ Usage:
 from protean import Domain, handle, invariant
 from protean.core.aggregate import apply
 from protean.exceptions import ValidationError
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 from protean.utils.globals import current_domain
 
 # Domain setup
@@ -44,7 +44,7 @@ class AccountOpened:
 
     account_id: Identifier(required=True)
     owner_name: String(required=True)
-    balance: Float(required=True)
+    balance: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Account")
@@ -52,7 +52,7 @@ class MoneyDeposited:
     """Raised when money is deposited into an account."""
 
     account_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Account")
@@ -60,7 +60,7 @@ class MoneyWithdrawn:
     """Raised when money is withdrawn from an account."""
 
     account_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 # --- Commands ---
@@ -72,7 +72,7 @@ class OpenAccount:
 
     account_id: Identifier(required=True)
     owner_name: String(required=True, max_length=100)
-    initial_deposit: Float(required=True)
+    initial_deposit: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command(part_of="Account")
@@ -80,7 +80,7 @@ class DepositMoney:
     """Command to deposit money into an account."""
 
     account_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command(part_of="Account")
@@ -88,7 +88,7 @@ class WithdrawMoney:
     """Command to withdraw money from an account."""
 
     account_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 # --- Aggregate ---
@@ -104,7 +104,7 @@ class Account:
 
     account_id: Identifier(identifier=True)
     owner_name: String(required=True, max_length=100)
-    balance: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
     status: String(max_length=20, default="ACTIVE")
 
     # --- Invariant ---

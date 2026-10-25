@@ -20,7 +20,7 @@ Usage:
 """
 
 from protean import Domain, current_domain, handle
-from protean.fields import Identifier, Integer, List, String
+from protean.fields import Decimal, Identifier, Integer, List, String
 
 # Domain setup
 domain = Domain()
@@ -55,7 +55,7 @@ class OrderShipped:
     order_id: Identifier(required=True)
     book_id: Identifier(required=True)
     quantity: Integer(required=True)
-    total_amount: Integer(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.aggregate
@@ -64,7 +64,7 @@ class Order:
 
     book_id: Identifier(required=True)
     quantity: Integer(required=True)
-    total_amount: Integer(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
     status: String(choices=["PENDING", "SHIPPED", "DELIVERED"], default="PENDING")
 
     def ship_order(self):

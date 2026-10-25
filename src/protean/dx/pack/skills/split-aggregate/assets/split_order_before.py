@@ -17,9 +17,19 @@ Usage:
     # `check` reports AGGREGATE_TOO_LARGE for Order: too many child entities.
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, handle, invariant
 from protean.exceptions import ValidationError
-from protean.fields import DateTime, Float, HasMany, Identifier, Integer, String
+from protean.fields import (
+    DateTime,
+    Decimal,
+    Float,
+    HasMany,
+    Identifier,
+    Integer,
+    String,
+)
 
 domain = Domain(__file__, "ecommerce")
 
@@ -30,7 +40,7 @@ class PlaceOrder:
 
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
-    total: Float(required=True)
+    total: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.aggregate
@@ -42,7 +52,7 @@ class Order:
     """
 
     customer_id: Identifier(required=True)
-    total: Float(default=0.0)
+    total: Decimal(precision=19, scale=4, default=0)
     status: String(default="draft")
 
     # Order concern.
@@ -56,7 +66,7 @@ class Order:
     delivery_attempts = HasMany("DeliveryAttempt")
 
     @classmethod
-    def place(cls, order_id: str, customer_id: str, total: float) -> "Order":
+    def place(cls, order_id: str, customer_id: str, total: D) -> "Order":
         """Place an order."""
         return cls(id=order_id, customer_id=customer_id, total=total, status="placed")
 
@@ -76,7 +86,7 @@ class OrderItem:
 
     product_id: Identifier(required=True)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True, min_value=0.0)
+    unit_price: Decimal(precision=19, scale=4, required=True, min_value=0)
 
 
 @domain.entity(part_of="Order")
@@ -84,7 +94,7 @@ class Discount:
     """A discount applied to the order."""
 
     code: String(required=True, max_length=50)
-    amount: Float(required=True, min_value=0.0)
+    amount: Decimal(precision=19, scale=4, required=True, min_value=0)
 
 
 @domain.entity(part_of="Order")

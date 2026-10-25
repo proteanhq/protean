@@ -8,14 +8,14 @@ class TransferFunds:
     transfer_id: Identifier(required=True)
     source_id: Identifier(required=True)
     target_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command(part_of="Account")
 class CreditAccount:
     transfer_id: Identifier(required=True)
     account_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Account")
@@ -23,13 +23,13 @@ class FundsDebited:
     transfer_id: Identifier(required=True)
     source_id: Identifier(required=True)
     target_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.aggregate
 class Account:
     account_id: Identifier(identifier=True)
-    balance: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
     applied_transfer_ids: List(content_type=String)
 
     def debit_for_transfer(self, transfer_id, target_id, amount):
@@ -79,15 +79,17 @@ class FundsTransferService:
 
 Usage:
 ```python
+from decimal import Decimal as D
+
 domain.init(traverse=False)
 
 with domain.domain_context():
-    source = Account(account_id="A-1", balance=100.0)
-    target = Account(account_id="B-1", balance=0.0)
+    source = Account(account_id="A-1", balance=D("100.00"))
+    target = Account(account_id="B-1", balance=D("0.00"))
 
-    FundsTransferService(source, target, "T-1", 40.0)()
-    assert source.balance == 60.0
-    assert target.balance == 0.0  # credited later, through the event
+    FundsTransferService(source, target, "T-1", D("40.00"))()
+    assert source.balance == D("60.00")
+    assert target.balance == D("0.00")  # credited later, through the event
 ```
 
 ## Wiring into command handlers

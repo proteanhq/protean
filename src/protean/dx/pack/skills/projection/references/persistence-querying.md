@@ -9,7 +9,7 @@ The examples below use this projection:
 class ProductInventory:
     product_id: Identifier(identifier=True, required=True)
     name: String(max_length=100, required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer(default=0)
 
 domain.init(traverse=False)
@@ -104,7 +104,7 @@ from protean.core.projector import on
 @domain.aggregate
 class Product:
     name: String(max_length=100, required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer(default=0)
 
 
@@ -112,7 +112,7 @@ class Product:
 class ProductAdded:
     product_id: Identifier(required=True)
     name: String(required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer()
 
 

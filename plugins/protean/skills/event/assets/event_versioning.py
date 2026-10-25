@@ -28,7 +28,7 @@ from datetime import UTC, datetime
 
 from protean import Domain
 from protean.core.upcaster import BaseUpcaster
-from protean.fields import DateTime, Float, List, String, ValueObject
+from protean.fields import DateTime, Decimal, List, String, ValueObject
 
 # Domain setup
 domain = Domain()
@@ -38,7 +38,7 @@ domain = Domain()
 class Money:
     """Value object for monetary amounts."""
 
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, default="USD")
 
 

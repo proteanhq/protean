@@ -33,7 +33,7 @@ Usage:
 """
 
 from protean import Domain, current_domain, handle
-from protean.fields import Float, Identifier, List, String
+from protean.fields import Decimal, Identifier, List, String
 
 domain = Domain(__name__)
 
@@ -52,7 +52,7 @@ class ConfirmPayment:
     """Confirm a customer's payment for a plan."""
 
     customer_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     plan_name: String(required=True)
 
 
@@ -78,7 +78,7 @@ class PaymentConfirmed:
 
     payment_id: Identifier(required=True)
     customer_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     plan_name: String(required=True)
 
 
@@ -90,7 +90,7 @@ class Payment:
     """Payment aggregate (source of events)."""
 
     customer_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     plan_name: String(required=True)
     status: String(default="pending")
 

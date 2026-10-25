@@ -20,7 +20,7 @@ An upcaster transforms old event payloads to the current schema during deseriali
 ```python
 from protean import Domain
 from protean.core.upcaster import BaseUpcaster
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 domain = Domain()
 
@@ -28,7 +28,7 @@ domain = Domain()
 class OrderPlaced:
     __version__ = 2
     order_id = Identifier(required=True)
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
     currency = String(required=True)
 
 @domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
@@ -124,7 +124,7 @@ When an event evolves through multiple versions, register one upcaster per step.
 class OrderPlaced:
     __version__ = 3
     order_id = Identifier(required=True)
-    total_amount = Float(required=True)
+    total_amount = Decimal(precision=19, scale=4, required=True)
     currency = String(required=True)
 
 # v1 → v2: add currency
@@ -152,7 +152,7 @@ Upcasting is especially valuable for ES aggregates because every reconstruction 
 @domain.aggregate(event_sourced=True)
 class Order:
     order_id = Identifier(identifier=True)
-    total_amount = Float()
+    total_amount = Decimal(precision=19, scale=4)
     currency = String()
 
     @apply

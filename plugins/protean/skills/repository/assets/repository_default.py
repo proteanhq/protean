@@ -15,8 +15,10 @@ Usage:
     loaded = repo.get("ORD-001")
 """
 
+from decimal import Decimal as D
+
 from protean import Domain
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -28,10 +30,10 @@ class Order:
 
     order_id: Identifier(identifier=True)
     customer_id: String(required=True)
-    total_amount: Float(default=0.0)
+    total_amount: Decimal(precision=19, scale=4, default=0)
     status: String(default="draft")
 
-    def place(self, total_amount: float):
+    def place(self, total_amount: D):
         """Place the order with the given total amount."""
         if self.status != "draft":
             raise ValueError("Only draft orders can be placed")
@@ -63,6 +65,6 @@ if __name__ == "__main__":
         print(f"Loaded order: {loaded_order.order_id}, status={loaded_order.status}")
 
         # Modify and re-persist (add handles updates too)
-        loaded_order.place(total_amount=99.99)
+        loaded_order.place(total_amount=D("99.99"))
         repo.add(loaded_order)
         print(f"Updated order: {loaded_order.order_id}, status={loaded_order.status}")

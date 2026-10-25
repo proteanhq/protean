@@ -29,7 +29,7 @@ Usage:
 from protean import Domain
 from protean.core.aggregate import apply
 from protean.core.upcaster import BaseUpcaster
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Float, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -44,7 +44,7 @@ class ProductCreated:
 
     product_id = Identifier(required=True)
     name = String(required=True, max_length=200)
-    price = Float(required=True)
+    price = Decimal(precision=19, scale=4, required=True)
     currency = String(required=True)
 
 
@@ -62,7 +62,7 @@ class ProductPriceChanged:
     __version__ = 4
 
     product_id = Identifier(required=True)
-    new_price = Float(required=True)
+    new_price = Decimal(precision=19, scale=4, required=True)
     currency = String(required=True)
     discount_pct = Float(required=True)
 
@@ -106,7 +106,7 @@ class Product:
 
     product_id = Identifier(identifier=True)
     name = String(required=True, max_length=200)
-    price = Float(default=0.0)
+    price = Decimal(precision=19, scale=4, default=0)
     currency = String(default="USD")
     discount_pct = Float(default=0.0)
 

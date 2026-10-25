@@ -32,13 +32,13 @@ class Order:
 @domain.event(part_of="Order")
 class OrderPlaced:
     order_id = Identifier(required=True)
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
 
 # After: just add with default
 @domain.event(part_of="Order")
 class OrderPlaced:
     order_id = Identifier(required=True)
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
     discount_code = String(default=None)    # Safe: old events get None
     channel = String(default="web")         # Safe: old events get "web"
 ```

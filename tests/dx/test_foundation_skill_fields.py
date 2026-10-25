@@ -1,15 +1,20 @@
-"""Check two field rules across the skills that teach field declarations.
+"""Check two field rules in the dx pack.
 
 1. A money field (a name such as ``price``, ``amount``, ``total``, ``balance``,
-   ``subtotal``, ``cost``, ``fee`` or ``*_limit``) declared with ``Float``,
-   ``Integer`` or ``Decimal`` is ``Decimal(precision=19, scale=4)``. This holds
-   in every block, fragments included: a "wrong" example about something else
-   still declares money the right way.
-2. A ``Reference`` in runnable code (a block that is not a fragment, or an
-   asset) sits on an entity and points to that entity's ``part_of``. A link to
-   another aggregate is an ``Identifier`` field. Fragments are skipped because
-   the "wrong" examples that show a cross-aggregate ``Reference`` are
-   fragments.
+   ``subtotal``, ``cost``, ``fee``, ``deposit``, ``tax`` or ``*_limit``)
+   declared with ``Float``, ``Integer`` or ``Decimal`` is
+   ``Decimal(precision=19, scale=4)``. This holds across the pack (the skills,
+   the rules and the shared references) and in every block, fragments
+   included: a "wrong" example about something else still declares money the
+   right way. A count whose name would match, such as a stock level, takes a
+   name that does not.
+2. In the skills that teach field declarations, a ``Reference`` in runnable
+   code (a block that is not a fragment, or an asset) sits on an entity and
+   points to that entity's ``part_of``. A link to another aggregate is an
+   ``Identifier`` field. Fragments are skipped because the "wrong" examples
+   that show a cross-aggregate ``Reference`` are fragments. Other skills keep
+   runnable "before" examples that link aggregates with a ``Reference`` on
+   purpose, so this rule does not scan them.
 
 The checks read the code with ``ast``; they do not run it.
 """
@@ -28,7 +33,8 @@ from tests.support.snippets import extract_blocks
 
 pytestmark = pytest.mark.no_test_domain
 
-SKILLS_ROOT = Path(str(dx.pack_files())) / dx.SKILLS_DIR
+PACK_ROOT = Path(str(dx.pack_files()))
+SKILLS_ROOT = PACK_ROOT / dx.SKILLS_DIR
 SKILLS = (
     "aggregate",
     "entity",
@@ -44,14 +50,18 @@ if not SKILLS_ROOT.is_dir():
     )
 
 _MONEY_NAME = re.compile(
-    r"(^|_)(price|amount|total|balance|subtotal|cost|fee|limit)s?($|_)"
+    r"(^|_)(price|amount|total|balance|subtotal|cost|fee|limit|deposit|tax)s?($|_)"
 )
 _NUMBER_FIELDS = {"Float", "Integer", "Decimal"}
 
 
-def _sources(root: Path) -> Iterator[tuple[str, str, bool]]:
+def _subfolders(root: Path) -> tuple[str, ...]:
+    return tuple(sorted(path.name for path in root.iterdir() if path.is_dir()))
+
+
+def _sources(root: Path, skills: tuple[str, ...]) -> Iterator[tuple[str, str, bool]]:
     """Yield ``(location, source, is_fragment)`` for every block and asset."""
-    for skill in SKILLS:
+    for skill in skills:
         for path in sorted((root / skill).rglob("*")):
             if path.suffix == ".md":
                 for block in extract_blocks(path.read_text(encoding="utf-8")):
@@ -96,7 +106,7 @@ def money_problems(root: Path) -> tuple[int, list[str]]:
     """Return the number of money fields seen and the ones not ``Decimal(19, 4)``."""
     seen = 0
     problems = []
-    for location, source, _ in _sources(root):
+    for location, source, _ in _sources(root, _subfolders(root)):
         tree = _parse(source)
         if tree is None:
             continue
@@ -149,7 +159,7 @@ def reference_problems(root: Path) -> tuple[int, list[str]]:
     """Return the number of runnable ``Reference`` fields and the misplaced ones."""
     seen = 0
     problems = []
-    for location, source, fragment in _sources(root):
+    for location, source, fragment in _sources(root, SKILLS):
         tree = _parse(source)
         if fragment or tree is None:
             continue
@@ -169,8 +179,8 @@ def reference_problems(root: Path) -> tuple[int, list[str]]:
 
 
 def test_every_money_field_is_a_decimal_with_precision_19_and_scale_4():
-    seen, problems = money_problems(SKILLS_ROOT)
-    assert seen > 50, (
+    seen, problems = money_problems(PACK_ROOT)
+    assert seen > 300, (
         f"only {seen} money fields found; the scan is not reading the skills"
     )
     assert problems == []
@@ -182,8 +192,8 @@ def test_every_runnable_reference_points_to_the_entitys_own_parent():
     assert problems == []
 
 
-def _skill_page(tmp_path: Path, body: str) -> Path:
-    page = tmp_path / "aggregate" / "SKILL.md"
+def _skill_page(tmp_path: Path, body: str, skill: str = "aggregate") -> Path:
+    page = tmp_path / skill / "SKILL.md"
     page.parent.mkdir(parents=True)
     page.write_text(f"```python\n{body}\n```\n", encoding="utf-8")
     return tmp_path
@@ -200,6 +210,14 @@ def test_a_float_price_is_reported(tmp_path):
 def test_a_decimal_without_precision_and_scale_is_reported(tmp_path):
     root = _skill_page(
         tmp_path, "class Order:\n    total_amount = Decimal(min_value=0)"
+    )
+    seen, problems = money_problems(root)
+    assert seen == 1 and len(problems) == 1
+
+
+def test_a_float_deposit_in_any_skill_is_reported(tmp_path):
+    root = _skill_page(
+        tmp_path, "class OpenAccount:\n    initial_deposit: Float()", skill="command"
     )
     seen, problems = money_problems(root)
     assert seen == 1 and len(problems) == 1

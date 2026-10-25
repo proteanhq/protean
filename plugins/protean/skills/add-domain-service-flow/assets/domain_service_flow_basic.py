@@ -46,7 +46,7 @@ Usage:
 
 from protean import Domain, current_domain, handle, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, Identifier, List, String
+from protean.fields import Decimal, Identifier, List, String
 
 domain = Domain(__name__)
 
@@ -75,7 +75,7 @@ class TransferFunds:
     transfer_id: Identifier(required=True)
     source_id: Identifier(required=True)
     target_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command(part_of="Account")
@@ -89,7 +89,7 @@ class CreditAccount:
 
     transfer_id: Identifier(required=True)
     account_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 # --- Events ---
@@ -102,7 +102,7 @@ class FundsDebited:
     transfer_id: Identifier(required=True)
     source_id: Identifier(required=True)
     target_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 # --- Aggregates ---
@@ -121,7 +121,7 @@ class Account:
 
     account_id: Identifier(identifier=True)
     owner: String(required=True, max_length=100)
-    balance: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
     applied_transfer_ids: List(content_type=String)
 
     def debit_for_transfer(self, transfer_id, target_id, amount):

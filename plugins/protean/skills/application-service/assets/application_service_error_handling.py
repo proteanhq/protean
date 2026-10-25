@@ -19,7 +19,7 @@ Usage:
 
 from protean import Domain, current_domain, use_case
 from protean.exceptions import ValidationError
-from protean.fields import Float, Identifier, Integer, String
+from protean.fields import Decimal, Identifier, Integer, String
 
 # Domain setup
 domain = Domain()
@@ -31,7 +31,7 @@ class Order:
 
     customer_id: String(required=True)
     item_count: Integer(default=0)
-    total_amount: Float(default=0.0)
+    total_amount: Decimal(precision=19, scale=4, default=0)
     status: String(choices=["DRAFT", "PLACED", "CANCELLED"], default="DRAFT")
 
     @classmethod

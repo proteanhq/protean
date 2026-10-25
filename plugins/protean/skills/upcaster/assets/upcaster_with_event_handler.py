@@ -17,13 +17,15 @@ Usage:
 
     domain.init(traverse=False)
     with domain.domain_context():
-        order = Order.place(order_id="ORD-1", total=99.99, currency="USD")
+        order = Order.place(order_id="ORD-1", total=D("99.99"), currency="USD")
 """
+
+from decimal import Decimal as D
 
 from protean import Domain, handle
 from protean.core.aggregate import apply
 from protean.core.upcaster import BaseUpcaster
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -47,7 +49,7 @@ class OrderPlaced:
     __version__ = 2
 
     order_id = Identifier(required=True)
-    total = Float(required=True)
+    total = Decimal(precision=19, scale=4, required=True)
     currency = String(required=True)
 
 
@@ -80,7 +82,7 @@ class Order:
     """Event-sourced order aggregate."""
 
     order_id = Identifier(identifier=True)
-    total = Float(default=0.0)
+    total = Decimal(precision=19, scale=4, default=0)
     currency = String(default="USD")
     status = String(default="DRAFT")
     tracking_number = String()
@@ -144,7 +146,7 @@ class OrderSummary:
     """Read model for order summaries."""
 
     order_id = Identifier(identifier=True)
-    total = Float()
+    total = Decimal(precision=19, scale=4)
     currency = String()
     status = String()
     tracking_number = String()
@@ -186,7 +188,7 @@ if __name__ == "__main__":  # pragma: no cover
 
     with domain.domain_context():
         # Place an order (handlers receive current v2 schema)
-        order = Order.place(order_id="ORD-1", total=149.99, currency="EUR")
+        order = Order.place(order_id="ORD-1", total=D("149.99"), currency="EUR")
         print(f"\nOrder placed: {order.order_id}, status={order.status}")
 
         # Ship the order

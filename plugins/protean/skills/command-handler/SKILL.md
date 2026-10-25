@@ -119,14 +119,14 @@ Override `handle_error` classmethod for custom error recovery during async proce
 ```python
 import logging
 
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 logger = logging.getLogger(__name__)
 
 @domain.aggregate
 class Payment:
     payment_id: Identifier(identifier=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     status: String(default="pending")
 
     def execute(self):
@@ -135,7 +135,7 @@ class Payment:
 @domain.command(part_of="Payment")
 class TransferFunds:
     payment_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 @domain.command_handler(part_of=Payment)
 class PaymentCommandHandler:

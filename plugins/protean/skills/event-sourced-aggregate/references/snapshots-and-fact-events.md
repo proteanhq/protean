@@ -51,7 +51,7 @@ A fact event carries the complete current state of an aggregate after each persi
 @domain.aggregate(event_sourced=True, fact_events=True)
 class Product:
     name: String(required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     status: String(default="ACTIVE")
 ```
 

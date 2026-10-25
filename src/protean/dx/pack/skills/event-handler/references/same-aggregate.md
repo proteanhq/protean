@@ -24,7 +24,7 @@ The complete implementation is in [assets/event_handler_same_aggregate.py](../as
 class OrderPlaced:
     order_id: Identifier(required=True)
     customer_id: String(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 ```
 
 ### The Aggregate
@@ -34,7 +34,7 @@ class OrderPlaced:
 class Order:
     order_id: Identifier(identifier=True)
     customer_id: String(required=True)
-    total_amount: Float()
+    total_amount: Decimal(precision=19, scale=4)
     status: String(default="draft")
     confirmation_number: String()
 

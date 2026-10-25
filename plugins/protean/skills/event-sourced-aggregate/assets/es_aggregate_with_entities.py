@@ -27,11 +27,12 @@ Usage:
 """
 
 import uuid
+from decimal import Decimal as D
 
 from protean import Domain
 from protean.core.aggregate import apply
 from protean.fields import (
-    Float,
+    Decimal,
     HasMany,
     Identifier,
     Integer,
@@ -50,7 +51,7 @@ domain = Domain()
 class Money:
     """Immutable monetary amount. This example keeps every order in USD."""
 
-    amount: Float(required=True, min_value=0.01)
+    amount: Decimal(precision=19, scale=4, required=True, min_value=0.01)
     currency: String(max_length=3, default="USD")
 
 
@@ -68,7 +69,7 @@ class LineItem:
     unit_price: ValueObject(Money, required=True)
 
     @property
-    def subtotal(self) -> float:
+    def subtotal(self) -> D:
         return self.quantity * self.unit_price.amount
 
 
@@ -92,7 +93,7 @@ class ItemAdded:
     product_id: String(required=True)
     description: String()
     quantity: Integer(required=True)
-    unit_price: Float(required=True)
+    unit_price: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Order")
@@ -128,7 +129,7 @@ class Order:
     items: HasMany(LineItem)
 
     @property
-    def total(self) -> float:
+    def total(self) -> D:
         """Calculate order total from line items."""
         return sum(item.subtotal for item in self.items)
 

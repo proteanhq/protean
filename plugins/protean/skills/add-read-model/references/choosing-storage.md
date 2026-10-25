@@ -9,7 +9,7 @@ Projections can be stored in a database (provider) or a cache.
 class ProductListing:
     product_id: Identifier(identifier=True)
     name: String(max_length=200)
-    price: Float()
+    price: Decimal(precision=19, scale=4)
 ```
 
 By default, projections use the `"default"` database provider. This is the most common choice.

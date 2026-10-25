@@ -18,7 +18,7 @@ returns without changes.
 
 from protean import Domain, current_domain, handle, invariant
 from protean.fields import (
-    Float,
+    Decimal,
     HasMany,
     Identifier,
     Integer,
@@ -41,7 +41,7 @@ domain.config["command_processing"] = "sync"
 
 @domain.value_object
 class Money:
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
     currency = String(max_length=3, default="USD")
 
     def multiply(self, factor: int) -> "Money":
@@ -67,7 +67,7 @@ class OrderPlaced:
     customer_id = String(required=True)
     product_id = String(required=True)
     quantity = Integer(required=True)
-    total_amount = Float(required=True)
+    total_amount = Decimal(precision=19, scale=4, required=True)
 
 
 # --- Aggregate with business logic ---
@@ -144,7 +144,7 @@ class PlaceOrder:
     customer_id = String(required=True)
     product_id = String(required=True)
     quantity = Integer(required=True)
-    unit_price = Float(required=True)
+    unit_price = Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command(part_of="Inventory")

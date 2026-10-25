@@ -17,7 +17,7 @@ Usage:
 """
 
 from protean import Domain, Index
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -31,7 +31,7 @@ class Report:
     title: String(required=True, max_length=200)
     report_type: String(required=True, max_length=50)
     generated_by: String(required=True, max_length=100)
-    total_value: Float(default=0.0)
+    total_value: Decimal(precision=19, scale=4, default=0)
 
 
 @domain.repository(part_of=Report)

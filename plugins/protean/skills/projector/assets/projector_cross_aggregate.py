@@ -18,9 +18,11 @@ Usage:
     # Updates Balances projection with new balance
 """
 
+from decimal import Decimal as D
+
 from protean import Domain
 from protean.core.projector import on
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -41,7 +43,7 @@ class Transacted:
     """Event raised when a transaction occurs."""
 
     user_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.aggregate
@@ -64,7 +66,7 @@ class Transaction:
     """Transaction aggregate representing financial transactions."""
 
     user_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
     @classmethod
     def transact(cls, user_id, amount):
@@ -85,7 +87,7 @@ class Balances:
 
     user_id: Identifier(identifier=True)
     name: String()
-    balance: Float()
+    balance: Decimal(precision=19, scale=4)
 
 
 @domain.projector(
@@ -134,7 +136,7 @@ if __name__ == "__main__":
         # Verify updated balance
         balance = domain.repository_for(Balances).get(user.id)
         print(f"After deposit: {balance.name}, Balance: {balance.balance}")
-        assert balance.balance == 100.0
+        assert balance.balance == D("100.00")
 
         # Process another transaction
         txn2 = Transaction.transact(user_id=user.id, amount=-30.0)
@@ -142,5 +144,5 @@ if __name__ == "__main__":
 
         balance = domain.repository_for(Balances).get(user.id)
         print(f"After withdrawal: {balance.name}, Balance: {balance.balance}")
-        assert balance.balance == 70.0
+        assert balance.balance == D("70.00")
         print("Cross-aggregate projector working correctly!")

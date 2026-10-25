@@ -71,7 +71,7 @@ class OrderPlaced:
     customer_id: Identifier(required=True)
     product_id: Identifier(required=True)
     quantity: Integer(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 ```
 
 ### Step 3: Add the aggregate method
@@ -84,7 +84,7 @@ class Order:
     customer_id: Identifier(required=True)
     product_id: Identifier(required=True)
     quantity: Integer(required=True)
-    total_amount: Float(default=0.0)
+    total_amount: Decimal(precision=19, scale=4, default=0)
     status: String(default="placed")
 
     @classmethod

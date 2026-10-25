@@ -6,7 +6,7 @@ The examples on this page use a standard `Product` aggregate and an event-source
 
 ```python
 from protean.core.aggregate import apply
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 @domain.aggregate
 class Product:
@@ -16,23 +16,23 @@ class Product:
 class AccountOpened:
     account_id: Identifier(required=True)
     owner_name: String(required=True)
-    balance: Float(required=True)
+    balance: Decimal(precision=19, scale=4, required=True)
 
 @domain.event(part_of="Account")
 class MoneyDeposited:
     account_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 @domain.event(part_of="Account")
 class MoneyWithdrawn:
     account_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 @domain.aggregate(event_sourced=True)
 class Account:
     account_id: Identifier(identifier=True)
     owner_name: String(required=True)
-    balance: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
 
     @classmethod
     def open(cls, account_id, owner_name, balance):
@@ -97,6 +97,8 @@ When you call `repo.add(aggregate)`:
 5. **Events written to event store**: The UnitOfWork commit appends all events to the event store
 
 ```python
+from decimal import Decimal as D
+
 from protean import UnitOfWork
 
 with domain.domain_context():
@@ -105,7 +107,7 @@ with domain.domain_context():
     # A command handler runs inside an implicit UnitOfWork, like this block
     with UnitOfWork():
         account = Account.open("ACC-001", "Alice", 1000.0)
-        account.deposit(100.0)    # Raises MoneyDeposited event
+        account.deposit(D("100.00"))    # Raises MoneyDeposited event
         repo.add(account)         # Events written to event store on UoW commit
 ```
 
@@ -126,7 +128,7 @@ with domain.domain_context():
     account = repo.get("ACC-001")
     # Internally: reads events from stream "<domain>::account-ACC-001"
     # Replays: AccountOpened → MoneyDeposited
-    assert account.balance == 1100.0
+    assert account.balance == D("1100.00")
 ```
 
 If no events exist for the identifier, raises `ObjectNotFoundError`.
@@ -140,7 +142,7 @@ A command handler runs inside an implicit UnitOfWork. Events from every aggregat
 class TransferMoney:
     source_id: Identifier(required=True)
     target_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 @domain.command_handler(part_of=Account)
 class AccountCommandHandler:
@@ -166,8 +168,8 @@ Each event increments the aggregate's `_version`:
 ```python
 with domain.domain_context():
     account = Account.open("ACC-002", "Bob", 1000.0)  # version: 0
-    account.deposit(500.0)   # version: 1
-    account.withdraw(200.0)  # version: 2
+    account.deposit(D("500.00"))   # version: 1
+    account.withdraw(D("200.00"))  # version: 2
     assert account._version == 2
 ```
 

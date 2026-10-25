@@ -22,7 +22,7 @@ Usage:
 
 from protean import Domain
 from protean.exceptions import ValidationError
-from protean.fields import Float, String
+from protean.fields import Decimal, String
 
 # Domain setup
 domain = Domain(__name__)
@@ -144,7 +144,7 @@ class Payment:
         max_length=19,
         validators=[visa_mc_validator],
     )
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     description: String(
         max_length=200,
         validators=[
