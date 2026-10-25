@@ -108,20 +108,9 @@ def find_by_email(self, email):
 
 `find_by()` raises `ObjectNotFoundError` if no record matches and `TooManyObjectsError` if multiple records match.
 
-## Naming Conventions
-
-Use domain-meaningful names for repository methods:
-
-| Good | Bad |
-|------|-----|
-| `find_active_orders()` | `get_by_status_active()` |
-| `find_by_customer(customer_id)` | `query_where_customer_eq(id)` |
-| `find_overdue()` | `select_status_overdue_from_orders()` |
-| `find_affordable(max_price)` | `filter_price_lte(price)` |
-
 ## Custom Repositories Still Have Base Methods
 
-Custom repositories inherit from `BaseRepository`, so they still have `add()` and `get()`:
+Both kinds of method work on the same repository object:
 
 ```python
 domain.init(traverse=False)
@@ -163,8 +152,6 @@ class ReportRepository:
             "SELECT report_type, SUM(total_value) FROM report GROUP BY report_type"
         )
 ```
-
-**Note**: Raw queries bypass the query interface. Use them sparingly and only when the standard query interface is insufficient.
 
 ## Related
 - [Default Repository](./default-repository.md): The auto-generated repository

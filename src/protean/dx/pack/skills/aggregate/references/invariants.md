@@ -2,59 +2,11 @@
 
 Invariants are business rules that must always hold true for an aggregate. Protean provides decorators to enforce invariants before and after state changes.
 
-## Overview
-
-Invariants:
-- Ensure business rules are never violated
-- Are checked automatically by Protean
-- Can be pre-conditions (checked before a change) or post-conditions (checked after it)
-- Raise `ValidationError` in its dict form when violated
-- Help maintain aggregate consistency
-
 ## Code
 
 The complete implementation is in [assets/aggregate_with_invariants.py](../assets/aggregate_with_invariants.py).
 
-Key highlights:
-- `@invariant.pre` decorator for pre-conditions
-- `@invariant.post` decorator for post-conditions
-- `ValidationError({"field": ["message"]})` for every rule violation
-- Invariants checked at the end of `__init__` and on every field assignment
-- Multiple invariants per aggregate
-
 ## Types of Invariants
-
-### Post-Condition Invariants (`@invariant.post`)
-
-Post-conditions are checked **after** a state change:
-
-```python
-from decimal import Decimal as D
-
-from protean.exceptions import ValidationError
-
-
-@domain.aggregate
-class Account:
-    balance: Decimal(precision=19, scale=4, default=0)
-    overdraft_limit: Decimal(precision=19, scale=4, default=0)
-
-    @invariant.post
-    def balance_must_be_above_overdraft_limit(self):
-        if self.balance < -self.overdraft_limit:
-            raise ValidationError(
-                {"_entity": ["Balance cannot be below overdraft limit"]}
-            )
-
-    def withdraw(self, amount):
-        self.balance -= amount
-        # Post-invariant checked here, on the assignment
-```
-
-**Use post-conditions when:**
-- You need to validate the result of a state change
-- The rule depends on the new state
-- Several fields change together: wrap the changes in `atomic_change` so the check runs once, at the end
 
 ### Pre-Condition Invariants (`@invariant.pre`)
 
@@ -62,6 +14,11 @@ Pre-conditions are checked **before** a state change. A failing pre-condition
 rejects the change, so the field keeps its old value:
 
 ```python
+from decimal import Decimal as D
+
+from protean.exceptions import ValidationError
+
+
 @domain.aggregate
 class Account:
     balance: Decimal(precision=19, scale=4, default=0)
@@ -79,10 +36,37 @@ class Account:
         self.balance -= amount
 ```
 
-**Use pre-conditions when:**
-- You need to validate state before allowing changes
-- The rule depends on current state
-- You want to fail fast before any mutations
+### Post-Condition Invariants (`@invariant.post`)
+
+Post-conditions are checked **after** a state change. The `amount <= 0` check
+validates a method argument, so it stays in the method. The balance limit is a
+rule on the aggregate's state, so it is an invariant:
+
+```python
+@domain.aggregate
+class Account:
+    account_number: String(required=True, identifier=True)
+    balance: Decimal(precision=19, scale=4, default=0)
+    overdraft_limit: Decimal(precision=19, scale=4, default=0)
+
+    @invariant.post
+    def balance_must_be_above_overdraft_limit(self):
+        if self.balance < -self.overdraft_limit:
+            raise ValidationError(
+                {
+                    "_entity": [
+                        f"Balance {self.balance} cannot be below "
+                        f"overdraft limit -{self.overdraft_limit}"
+                    ]
+                }
+            )
+
+    def withdraw(self, amount):
+        if amount <= 0:
+            raise ValueError("Withdrawal amount must be positive")
+        self.balance -= amount
+        # Post-invariant checked here, on the assignment
+```
 
 ## Walkthrough
 
@@ -112,41 +96,7 @@ raise ValidationError({"_entity": ["Balance cannot be below overdraft limit"]})
   as it is. A plain-string `ValidationError("...")` fails with a `TypeError`,
   because the framework reads the messages as a dict.
 
-### Single Invariant Example
-
-```python
-@domain.aggregate
-class Account:
-    account_number: String(required=True, identifier=True)
-    balance: Decimal(precision=19, scale=4, default=0)
-    overdraft_limit: Decimal(precision=19, scale=4, default=0)
-
-    @invariant.post
-    def balance_must_be_above_overdraft_limit(self):
-        if self.balance < -self.overdraft_limit:
-            raise ValidationError(
-                {
-                    "_entity": [
-                        f"Balance {self.balance} cannot be below "
-                        f"overdraft limit -{self.overdraft_limit}"
-                    ]
-                }
-            )
-
-    def withdraw(self, amount):
-        if amount <= 0:
-            raise ValueError("Withdrawal amount must be positive")
-        self.balance -= amount
-```
-
-Key points:
-- Invariant method name describes the rule
-- Clear error messages explain what went wrong
-- Pre-validation (amount > 0) vs invariant (balance limits)
-
 ### Multiple Invariants
-
-An aggregate can have multiple invariants:
 
 ```python
 @domain.aggregate
@@ -218,44 +168,6 @@ class Order:
         # Post-check: must have items
 ```
 
-## Field-Level Validation vs Invariants
-
-There's an important distinction:
-
-### Field-Level Validation
-
-```python
-# fragment
-class Account:
-    balance: Decimal(precision=19, scale=4, required=True)  # Must exist
-    account_number: String(required=True, max_length=50)  # Format constraints
-```
-
-Field validation checks:
-- Data type correctness
-- Required/optional
-- String length, numeric ranges
-- Choice constraints
-
-### Invariants (Business Rules)
-
-```python
-@invariant.post
-def balance_must_be_above_overdraft_limit(self):
-    if self.balance < -self.overdraft_limit:
-        raise ValidationError({"_entity": ["Balance cannot be below overdraft limit"]})
-```
-
-Invariants check:
-- Relationships between fields
-- Business domain rules
-- State-dependent constraints
-- Cross-aggregate rules (via domain services)
-
-**Rule of thumb:**
-- Use field validation for single-field constraints
-- Use invariants for business rules involving multiple fields or complex logic
-
 ## When Invariants Are Checked
 
 Protean checks invariants at these points:
@@ -307,63 +219,11 @@ with domain.domain_context():
         account.overdraft_limit = D("1000.00")  # Valid again when the block ends
 ```
 
-## Best Practices
-
-1. **Name invariants descriptively**: Method name should explain the rule
-2. **Raise the dict form of `ValidationError`**: Key it by the field at fault, or `_entity` for a rule that compares fields
-3. **Provide clear error messages**: Include context about what failed and why
-4. **Keep invariants simple**: Each method should check one rule
-5. **Use pre-conditions for state validation**: Check if operations are allowed
-6. **Use post-conditions for result validation**: Check if changes are valid
-7. **Validate early**: Use field validation for simple constraints, invariants for business rules
-
 ## Common Patterns
-
-### Invariant with Multiple Conditions
-
-```python
-@invariant.post
-def order_state_consistency(self):
-    if self.status == "placed":
-        if not self.line_items:
-            raise ValidationError({"line_items": ["Placed order must have items"]})
-        if not self.payment_info:
-            raise ValidationError({"payment_info": ["Placed order must have payment"]})
-    if self.status == "shipped":
-        if not self.shipping_info:
-            raise ValidationError(
-                {"shipping_info": ["Shipped order must have shipping info"]}
-            )
-```
-
-### Invariant with Helper Method
-
-```python
-@domain.entity(part_of="ShoppingCart")
-class CartItem:
-    sku: String(required=True)
-    quantity: Integer(default=1, min_value=1)
-
-
-@domain.aggregate
-class ShoppingCart:
-    items = HasMany("CartItem")
-    max_items: Integer(default=50)
-
-    def _total_quantity(self) -> int:
-        return sum(item.quantity for item in self.items)
-
-    @invariant.post
-    def cart_cannot_exceed_max_items(self):
-        if self._total_quantity() > self.max_items:
-            raise ValidationError(
-                {"_entity": [f"Cart cannot exceed {self.max_items} items"]}
-            )
-```
 
 ### Soft Invariants (Warnings)
 
-Sometimes you want to log violations without failing:
+To log a violation without failing, return without raising:
 
 ```python
 import logging

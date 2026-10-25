@@ -4,12 +4,6 @@ Each command handler method in Protean runs inside a Unit of Work, and a Unit of
 
 ## Overview
 
-The `@handle` decorator wraps every handler call in its own Unit of Work. This means:
-
-- On a provider with transactions, all changes within a handler method commit together, or not at all
-- If an error occurs, the changes are rolled back
-- You do NOT need to wrap handler logic in `with UnitOfWork():` yourself
-
 These decisions record this behavior:
 
 - [ADR-0027 (The Unit of Work is a real database transaction)](https://docs.proteanhq.com/adr/0027-unit-of-work-is-a-real-transaction/)
@@ -52,7 +46,7 @@ class handle:
         return wrapper
 ```
 
-So when you write:
+The handler below runs its body inside one such `with UnitOfWork():` block:
 
 ```python
 @domain.command_handler(part_of=Order)
@@ -64,16 +58,6 @@ class OrderCommandHandler:
         domain.repository_for(Order).add(order)
 ```
 
-Protean effectively executes:
-
-```python
-# fragment
-with UnitOfWork():
-    order = Order(order_id=command.order_id, product_id=command.product_id)
-    order.place()
-    domain.repository_for(Order).add(order)
-```
-
 A handler method that reaches no repository opens no transaction.
 
 ## What a Unit of Work Holds
@@ -82,29 +66,13 @@ Writes reach the database inside the transaction. The session flushes before eac
 
 That holds on providers with real transactions, such as the SQL providers ADR-0027 covers. The in-memory provider keeps writes in the Unit of Work until it commits, so a rollback also leaves nothing behind. Elasticsearch has no transactions. There the Unit of Work logs a warning that commit and rollback are not atomic, and a rollback does not undo writes already sent.
 
-A Unit of Work can hold changes to several aggregates. "One aggregate per transaction" is a design rule, and the Unit of Work does not enforce it. Follow the rule anyway:
-
-- Persist one aggregate root, with its entities and value objects, per handler call
-- Do not persist several aggregate roots in one handler, even two instances of the same type
-- To change another aggregate, raise an event; an event handler in the owning aggregate's cluster issues a command to the other aggregate, and that command handler skips work it has already done
+A Unit of Work can hold changes to several aggregates. "One aggregate per transaction" is a design rule the Unit of Work does not enforce. The rule counts two instances of the same aggregate type as two roots. [Anti-patterns](./anti-patterns.md) section 4 shows how to change a second aggregate through an event and a command.
 
 ## Nested Units of Work
 
 A Unit of Work started while another is active joins the outer one. There are no savepoints. Only the outermost Unit of Work commits or rolls back, and a rollback inside it dooms the whole transaction.
 
-That is why wrapping a handler body yourself adds nothing:
-
-```python
-# fragment
-# Unnecessary - already wrapped by @handle
-@handle(PlaceOrder)
-def handle_place_order(self, command):
-    with UnitOfWork():  # Joins the handler's Unit of Work
-        order = Order(order_id=command.order_id)
-        domain.repository_for(Order).add(order)
-```
-
-Write the body directly, as `OrderCommandHandler` above does.
+So a `with UnitOfWork():` inside a handler body joins the handler's own Unit of Work and adds nothing. Write the body directly, as `OrderCommandHandler` above does.
 
 ## Retries on Version Conflicts
 

@@ -1,16 +1,6 @@
 # Value Object Anti-Patterns
 
-This reference documents common mistakes and anti-patterns when working with value objects. Learn what NOT to do and why, along with correct alternatives.
-
-## Overview
-
-Common anti-patterns:
-- Using primitives instead of value objects (Primitive Obsession)
-- Trying to modify immutable value objects
-- Adding identity to value objects
-- Anemic value objects without behavior
-- Value objects referencing entities
-- Overusing or underusing value objects
+Each section shows a mistake made with value objects, then the correct form.
 
 ## Primitive Obsession
 
@@ -35,11 +25,7 @@ class Order:
     shipping_country: String()
 ```
 
-**Problems:**
-- No encapsulation of validation
-- Related fields scattered
-- Difficult to maintain consistency
-- Business rules duplicated across code
+Validation and rules for the amount and the address get repeated wherever the fields are used.
 
 **✅ Good: Using value objects**
 ```python
@@ -67,12 +53,6 @@ class Order:
     total = ValueObject(Money, required=True)
     shipping_address = ValueObject(Address, required=True)
 ```
-
-**Benefits:**
-- Validation encapsulated
-- Related fields grouped
-- Easier to maintain
-- Business rules in one place
 
 ## Attempting to Modify Immutable Objects
 
@@ -178,10 +158,7 @@ class PhoneNumber:
     number: String(unique=True)  # Error!
 ```
 
-**Why it's wrong:**
-- Value objects are identified by their attributes, not by an ID
-- Two VOs with same attributes ARE the same value
-- Identity defeats the purpose of value objects
+Registering any of these raises `IncorrectUsageError`. A value object is identified by its attributes alone.
 
 **✅ Good: If you need identity, use an Entity**
 ```python
@@ -268,11 +245,7 @@ class OrderSummary:
     # This couples VO to entities - wrong!
 ```
 
-**Why it's wrong:**
-- Value objects should be self-contained
-- Creates coupling between VOs and entities
-- Violates value object independence
-- Makes VOs harder to reuse
+The value object now depends on the lifecycle of the entities it names. In the version below, the aggregate holds the identifiers.
 
 **✅ Good: Self-contained value objects**
 ```python
@@ -415,11 +388,7 @@ class Address:
     street = ValueObject(Street)  # 5 levels deep!
 ```
 
-**Problems:**
-- Hard to initialize
-- Difficult to work with
-- Confusing structure
-- Over-engineered
+Every level adds a constructor call or a nested dict when you build the address, and code that reads the unit number reaches through five attributes.
 
 **✅ Good: Reasonable nesting (2-3 levels max)**
 ```python
@@ -520,25 +489,6 @@ class Money:
                 f"{self.currency} and {other.currency}"
             )
 ```
-
-## Summary: Quick Checks
-
-**Before creating a value object, ask:**
-- ✅ Does it have identity? → Use Entity/Aggregate instead
-- ✅ Will it need to change? → Use Entity/Aggregate instead
-- ✅ Is it self-contained? → Don't reference entities
-- ✅ Does it have validation? → Add validators/invariants
-- ✅ Does it have behavior? → Add methods
-- ✅ Is nesting reasonable? → Keep to 2-3 levels max
-
-**After creating a value object, verify:**
-- ✅ No identity fields
-- ✅ Has validation logic
-- ✅ Has relevant methods
-- ✅ Methods return new instances
-- ✅ Clear error messages
-- ✅ No entity references
-- ✅ Used instead of primitives
 
 ## Related
 

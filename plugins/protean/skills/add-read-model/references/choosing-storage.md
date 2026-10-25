@@ -1,6 +1,6 @@
 # Choosing Storage for Projections
 
-Projections can be stored in a database (provider) or a cache. The choice depends on your query patterns, durability needs, and performance requirements.
+Projections can be stored in a database (provider) or a cache.
 
 ## Database-backed (default)
 
@@ -62,7 +62,7 @@ class ActiveSession:
 | Option | Default | Purpose |
 |--------|---------|---------|
 | `provider` | `"default"` | Database provider name |
-| `cache` | `None` | Cache provider name (overrides provider) |
+| `cache` | `None` | Cache provider name |
 | `schema_name` | auto-derived | Custom table/collection name |
 | `order_by` | `()` | Default query ordering |
 | `limit` | `100` | Default query result limit |

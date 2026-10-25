@@ -33,7 +33,7 @@ class MyProjector:
     pass
 ```
 
-**Fix**: Always specify `projector_for`:
+**Fix**: Specify `projector_for`:
 
 ```python
 @domain.projector(projector_for=ProductInventory, aggregates=[Product])
@@ -41,7 +41,7 @@ class MyProjector:
     pass
 ```
 
-Protean raises `IncorrectUsageError: Projector 'MyProjector' needs to be associated with a Projection`.
+Protean raises ``IncorrectUsageError: Projector `MyProjector` needs to be associated with a Projection``.
 
 ## 2. Missing aggregates and stream_categories
 
@@ -61,7 +61,7 @@ class MyProjector:
     pass
 ```
 
-Protean raises `IncorrectUsageError: Projector 'MyProjector' needs to be associated with at least one Aggregate or Stream Category`.
+Protean raises ``IncorrectUsageError: Projector `MyProjector` needs to be associated with at least one Aggregate or Stream Category``.
 
 ## 3. Projection not registered with domain
 
@@ -84,7 +84,7 @@ class UnregisteredProjection:
     product_id: Identifier(identifier=True)
 ```
 
-Protean raises `IncorrectUsageError: 'UnregisteredProjection' is not a Projection, or is not registered in domain`.
+Protean raises ``IncorrectUsageError: `UnregisteredProjection` is not a Projection, or is not registered in domain <name>``.
 
 ## 4. Using References or Associations in projections
 
@@ -96,9 +96,6 @@ class OrderView:
     customer = Reference(Customer)
     items = HasMany(OrderItem)
 ```
-
-Basic field types and `ValueObject` fields are allowed; a `ValueObject` is
-stored as flattened shadow fields.
 
 **Fix**: Flatten related data into basic field types:
 
@@ -141,34 +138,7 @@ def on_order_placed(self, event):
     domain.repository_for(OrderSummary).add(summary)
 ```
 
-## 6. Using @handle instead of @on
-
-```python
-# Works but not idiomatic for projectors
-from protean import handle
-
-@domain.projector(projector_for=ProductInventory, aggregates=[Product])
-class MyProjector:
-    @handle(ProductAdded)  # Use @on instead
-    def on_product_added(self, event):
-        ...
-```
-
-**Fix**: Use `@on` from `protean.core.projector`:
-
-```python
-from protean.core.projector import on
-
-@domain.projector(projector_for=ProductInventory, aggregates=[Product])
-class MyProjector:
-    @on(ProductAdded)  # Idiomatic for projectors
-    def on_product_added(self, event):
-        ...
-```
-
-`@on` is an alias for `@handle` but is the conventional decorator for projectors.
-
-## 7. Decorating with non-Event classes
+## 6. Decorating with non-Event classes
 
 ```python
 # fragment
@@ -183,9 +153,9 @@ class MyProjector:
 
 **Fix**: Only use `@on` with Event classes. Projectors respond to domain events.
 
-Protean raises `IncorrectUsageError: Projector method 'on_some_command' in 'MyProjector' is not associated with an event`.
+Protean raises ``IncorrectUsageError: Projector method `on_some_command` in `MyProjector` is not associated with an event``.
 
-## 8. Manually wrapping in UnitOfWork
+## 7. Manually wrapping in UnitOfWork
 
 ```python
 # fragment
@@ -206,38 +176,8 @@ def on_product_added(self, event):
     domain.repository_for(ProductInventory).add(inventory)
 ```
 
-## 9. Handling an event the domain does not register
-
-A projector may only handle events the domain registers. A handler keyed on an event that no longer exists is wired to a type that can never be dispatched, usually a stale reference left after the event was renamed or removed.
-
-```python
-# fragment
-# Wrong! ProductRenamed was removed from the domain, but the handler stays
-@domain.projector(projector_for=ProductInventory, aggregates=[Product])
-class InventoryProjector:
-    @on(ProductAdded)
-    def on_added(self, event):
-        ...
-
-    @on(ProductRenamed)   # Orphaned: ProductRenamed is not registered
-    def on_renamed(self, event):
-        ...
-```
-
-**Fix**: Register the event with the domain, or remove the handler for the orphaned type from the projector:
-
-```python
-@domain.projector(projector_for=ProductInventory, aggregates=[Product])
-class InventoryProjector:
-    @on(ProductAdded)
-    def on_added(self, event):
-        ...
-```
-
-`check` reports `PROJECTOR_HANDLES_ORPHANED_EVENT` for a projector whose handler keys on an event the domain does not register.
-
 ## Related
 
 - [Single-Aggregate Projector](single-aggregate.md): Correct basic pattern
 - [Cross-Aggregate Projector](cross-aggregate.md): Correct cross-aggregate pattern
-- [Error Handling](error-handling.md): Proper error handling patterns
+- [Error Handling](error-handling.md): Error handling patterns

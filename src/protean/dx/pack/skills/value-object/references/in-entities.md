@@ -1,25 +1,10 @@
 # Value Objects in Entities
 
-Entities can contain value objects just like aggregates. This reference shows how to embed value objects in entities, how entities with value objects work within aggregates, and patterns for using value objects at the entity level.
-
-## Overview
-
-Value objects in entities:
-- Represent complex attributes of entities
-- Work the same way as in aggregates
-- Are accessed through the parent aggregate
-- Maintain immutability at entity level
-- Simplify entity design and validation
+An entity holds value objects the same way an aggregate does, through `ValueObject` fields. The entity is reached through its parent aggregate.
 
 ## Code
 
 The complete implementation is in [assets/value_object_in_entity.py](../assets/value_object_in_entity.py).
-
-Key highlights:
-- Entities with value objects as part of aggregates
-- Multiple value objects in entities
-- Entity methods using value objects
-- Real-world line item scenarios
 
 ## Walkthrough
 
@@ -59,13 +44,7 @@ class LineItem:
         return self.unit_price.multiply(self.quantity)
 ```
 
-The entity:
-- Uses `ValueObject` field just like aggregates
-- Value object encapsulates price validation
-- Entity methods return value objects
-- Clean separation of concerns
-
-`amount` is a `Decimal` field, so money stays exact. The standard-library `Decimal` is imported as `D` to keep it apart from the field type. The rest of this page reuses this `Money` class.
+The rest of this page reuses this `Money` class.
 
 ### Multiple Value Objects in Entity
 
@@ -104,11 +83,6 @@ class LineItem:
         return 0.0
 ```
 
-Benefits:
-- Entity models complex domain concepts
-- Each value object has focused responsibility
-- Entity remains readable and maintainable
-
 ### Entity in Aggregate Context
 
 ```python
@@ -131,45 +105,7 @@ class Order:
         return total
 ```
 
-The complete picture:
-1. LineItem entities contain Money value objects
-2. Order aggregate contains LineItem entities
-3. Aggregate methods work with entity value objects
-4. Clean flow of behavior through layers
-
 ## Common Patterns
-
-### Cart Lines with Pricing
-
-```python
-@domain.entity(part_of="Cart")
-class CartLine:
-    product_id: String(required=True)
-    product_name: String(required=True)
-    quantity: Integer(required=True, min_value=1)
-    unit_price = ValueObject(Money, required=True)
-
-    @property
-    def line_total(self) -> Money:
-        return self.unit_price.multiply(self.quantity)
-
-
-@domain.aggregate
-class Cart:
-    cart_id: String(required=True, identifier=True)
-    line_items = HasMany(CartLine)
-
-    def add_item(self, product_id: str, name: str, quantity: int, price: Money):
-        """Add line item to cart."""
-        self.add_line_items(
-            CartLine(
-                product_id=product_id,
-                product_name=name,
-                quantity=quantity,
-                unit_price=price
-            )
-        )
-```
 
 ### Invoice Lines with Discounts
 
@@ -215,52 +151,6 @@ class Invoice:
             total = total.add(line.total)
 
         return total
-```
-
-### Shipping Items with Dimensions
-
-```python
-@domain.value_object
-class Dimensions:
-    length: Float(required=True)
-    width: Float(required=True)
-    height: Float(required=True)
-    weight: Float(required=True)
-
-    @property
-    def volume(self) -> float:
-        return self.length * self.width * self.height
-
-
-@domain.entity(part_of="Shipment")
-class ShipmentItem:
-    """Item in shipment with physical dimensions."""
-    tracking_number: String(required=True)
-    product_id: String(required=True)
-    quantity: Integer(required=True, min_value=1)
-    dimensions = ValueObject(Dimensions, required=True)
-
-    @property
-    def total_volume(self) -> float:
-        return self.dimensions.volume * self.quantity
-
-    @property
-    def total_weight(self) -> float:
-        return self.dimensions.weight * self.quantity
-
-
-@domain.aggregate
-class Shipment:
-    shipment_id: String(required=True, identifier=True)
-    items = HasMany(ShipmentItem)
-
-    def total_volume(self) -> float:
-        """Calculate total volume of all items."""
-        return sum(item.total_volume for item in self.items)
-
-    def total_weight(self) -> float:
-        """Calculate total weight of all items."""
-        return sum(item.total_weight for item in self.items)
 ```
 
 ### Inventory with Location
@@ -348,25 +238,6 @@ with domain.domain_context():
     )
 ```
 
-## Accessing Value Objects in Entities
-
-```python
-# Access entity
-line_item = order.line_items[0]
-
-# Access VO in entity
-print(line_item.unit_price.currency)
-print(line_item.unit_price.amount)
-
-# Use entity methods that return VOs
-total = line_item.line_total
-print(f"Line total: {total.currency} {total.amount}")
-
-# Aggregate methods using entity VOs
-order_total = order.total()
-print(f"Order total: {order_total.currency} {order_total.amount}")
-```
-
 ## Replacing Value Objects in Entities
 
 ```python
@@ -381,31 +252,13 @@ with domain.domain_context():
     line_item.unit_price = Money(currency="USD", amount=D("1000.00"))
 ```
 
-Or put the replacement in an entity method:
-
-```python
-# fragment
-def update_price(self, new_price: Money):
-    """Update line item price."""
-    self.unit_price = new_price
-```
+An entity method can do the replacement too, as `InventoryItem.move_to` does above.
 
 ## Testing Entities with Value Objects
 
 ```python
 import pytest
 
-
-def test_line_item_with_money():
-    item = LineItem(
-        product_id="PROD-001",
-        product_name="Laptop",
-        quantity=2,
-        unit_price=Money(currency="USD", amount=D("100.00"))
-    )
-
-    assert item.unit_price.amount == D("100.00")
-    assert item.unit_price.currency == "USD"
 
 def test_line_item_total_calculation():
     item = LineItem(
@@ -418,73 +271,11 @@ def test_line_item_total_calculation():
     total = item.line_total
     assert total.amount == D("150.00")
     assert total.currency == "USD"
-
-def test_entity_value_object_immutability():
-    item = LineItem(
-        product_id="PROD-001",
-        product_name="Laptop",
-        quantity=1,
-        unit_price=Money(currency="USD", amount=D("100.00"))
-    )
-
-    with pytest.raises(IncorrectUsageError):
-        item.unit_price.amount = D("200.00")
-
-    # Correct way
-    item.unit_price = Money(currency="USD", amount=D("200.00"))
-    assert item.unit_price.amount == D("200.00")
 ```
 
-These tests run inside a domain context, which the test setup provides.
-
-## Best Practices
-
-1. **Use VOs for complex entity attributes**: Not just primitives
-2. **Entity methods return VOs**: Makes operations explicit
-3. **Access entities through aggregates**: Never directly
-4. **VOs work same in entities as aggregates**: Consistent patterns
-5. **Replace, don't modify**: Honor immutability
-6. **Test entity VO interactions**: Ensure behavior is correct
-7. **Document VO usage in entities**: Help future developers
+This test runs inside a domain context, which the test setup provides.
 
 ## Common Mistakes
-
-**Exposing primitives instead of VOs** ❌
-```python
-# fragment
-@domain.entity(part_of="Order")
-class LineItem:
-    # Bad: Primitives
-    price_amount: Decimal(precision=19, scale=4)
-    price_currency: String()
-
-    # Good: Value object
-    unit_price = ValueObject(Money)
-```
-
-**Trying to modify entity VOs** ❌
-```python
-# fragment
-# Won't work
-line_item.unit_price.amount = D("100.00")
-
-# Correct
-line_item.unit_price = Money(currency="USD", amount=D("100.00"))
-```
-
-**Not using VO methods** ❌
-```python
-# fragment
-# Bad: Manual calculation
-def line_total(self):
-    return self.unit_price.amount * self.quantity
-```
-
-```python
-# Good: Using VO method
-def line_total(self):
-    return self.unit_price.multiply(self.quantity)
-```
 
 **Accessing entities directly** ❌
 ```python

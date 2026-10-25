@@ -1,35 +1,10 @@
 # Nested Entities
 
-Entities can contain other entities, creating a multi-level hierarchy within an aggregate. This pattern allows modeling complex domain structures while maintaining the aggregate boundary.
-
-## Overview
-
-Nested entities occur when an entity has HasMany or HasOne relationships to other entities, all belonging to the same aggregate. This creates a tree-like structure where the aggregate root is at the top, and entities can be nested multiple levels deep.
-
-### When to Use Nested Entities
-
-- You need multi-level hierarchical structures (e.g., Order → LineItem → LineItemNote)
-- Child entities naturally belong to parent entities, not the aggregate root
-- The nested structure represents cohesive domain concepts
-- All entities in the hierarchy belong to the same transaction boundary
-
-### When NOT to Use Nested Entities
-
-- The hierarchy becomes too deep (more than 2-3 levels)
-- Navigation becomes complex and error-prone
-- The structure should be separate aggregates
-- Performance concerns due to loading large object graphs
+An entity can hold other entities through `HasMany` or `HasOne`, so an aggregate can be a tree several levels deep, such as Order, then LineItem, then LineItemNote. Every entity in the tree belongs to the same aggregate and is saved in the same transaction. When a branch has a life of its own, make it a separate aggregate.
 
 ## Code
 
 The complete implementation is in [assets/entity_nested.py](../assets/entity_nested.py).
-
-Key highlights:
-- Order aggregate contains LineItem entities
-- LineItem entities contain LineItemNote and LineItemCustomization entities
-- All entities belong to the same aggregate (Order)
-- Navigation works across multiple levels
-- Business logic can span the entire hierarchy
 
 ## Walkthrough
 
@@ -78,8 +53,6 @@ class Order:
                     {"_entity": [f"Customization fees exceed the price of {item.product_name}"]}
                 )
 ```
-
-The Order aggregate is the root of the hierarchy. Its methods read the nested entities at every level.
 
 ### First-Level Entities
 
@@ -130,7 +103,7 @@ class LineItem:
         self.add_customizations([custom])
 ```
 
-LineItem is a first-level entity that contains other entities (notes and customizations).
+Start `sum()` at `D("0")` so `customization_fee` stays a `Decimal` when there are no customizations.
 
 ### Second-Level Entities
 
@@ -154,7 +127,7 @@ class LineItemCustomization:
 Second-level entities:
 - Are `part_of` their immediate parent entity (`LineItem`), not the aggregate root
 - Name the parent as a class (`part_of=LineItem`) or a string (`part_of="LineItem"`)
-- Get a `Reference` back to the parent entity automatically. Do not declare it yourself.
+- Get a `Reference` back to the parent entity automatically, as [Parent Direction](#parent-direction) shows
 - Still belong to the `Order` aggregate and are persisted with it
 
 ### Building the Hierarchy
@@ -229,52 +202,15 @@ Navigation works both ways through reference fields. A `HasMany` field is always
 
 ## Common Patterns
 
-The patterns below are excerpts from the `Order` and `LineItem` classes defined above.
-
-### Business Logic Across Levels
-
-```python
-# fragment
-# In Order
-@property
-def total_notes(self) -> int:
-    """Count notes across all line items."""
-    return sum(len(item.notes) for item in self.line_items)
-```
-
-The aggregate can compute values from nested entities at any level.
-
 ### Helper Methods for Nested Creation
 
-```python
-# fragment
-# In LineItem
-def add_note(self, content: str, author: str = "Customer"):
-    """Convenience method to add a note."""
-    note = LineItemNote(content=content.strip(), author=author)
-    self.add_notes([note])
-```
-
-Helper methods on the parent entity keep nested creation in one place:
+Helper methods on the parent entity, such as `LineItem.add_note()` above, keep nested creation in one place:
 
 ```python
 with domain.domain_context():
     item.add_note("Deliver after 5pm")
     item.add_customization("Size", "Large")
 ```
-
-### Computed Properties from Nested Entities
-
-```python
-# fragment
-# In LineItem
-@property
-def customization_fee(self) -> D:
-    """Calculate total customization fees."""
-    return sum((c.price for c in self.customizations), D("0"))
-```
-
-Start `sum()` at `D("0")` so the result stays a `Decimal` when there are no customizations.
 
 ### Validation Across Levels
 
@@ -298,14 +234,7 @@ Field constraints such as `min_value=1` on `quantity` and `min_value=0` on `pric
 
 ### Depth Limits
 
-**Recommended maximum depth: 2-3 levels**
-
-```
-✅ Good: Order → LineItem → LineItemNote (3 levels)
-❌ Avoid: Order → LineItem → Note → Reply → SubReply (5 levels)
-```
-
-Deep nesting makes code hard to navigate and reason about.
+Keep the tree to two or three levels, such as Order, then LineItem, then LineItemNote. [Anti-patterns](anti-patterns.md) shows how to flatten a deeper one.
 
 ### Parent Direction
 
@@ -329,7 +258,7 @@ A `Reference` field is only for an entity pointing back to its own parent. Prote
 
 ### Performance Considerations
 
-Be mindful of loading large nested structures:
+Loading an aggregate loads every entity in its tree:
 
 ```python
 with domain.domain_context():
@@ -341,13 +270,7 @@ with domain.domain_context():
     # This loads: Order + all LineItems + all Notes + all Customizations
 ```
 
-Consider limiting depth for very large structures.
-
 ## Testing
-
-See [assets/entity_nested.py](../assets/entity_nested.py) for runnable examples.
-
-To test nested entities:
 
 ```python
 def test_nested_entities():

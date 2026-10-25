@@ -1,7 +1,7 @@
 # Finding the seam
 
-Splitting an aggregate is a modelling decision. The hard part is picking where
-to cut. These are the rules to cut by.
+Two rules decide where to cut an oversized aggregate. Linking the two halves
+afterwards, by identity and a domain event, is covered in the skill itself.
 
 ## The seam is the invariant boundary
 
@@ -28,51 +28,5 @@ retired at different points belong to two aggregates.
 
 An order is placed once and then mostly settles. Its shipment is opened later,
 moves through a series of carrier updates, and is closed when the goods arrive.
-Different birth, different cadence, different end. That is a second lifecycle,
-and a second aggregate.
-
-## Link by identity
-
-Once the two aggregates are separate, one still needs to name the other. Do it
-by identity: store the other aggregate's id in a plain field.
-
-```python
-@domain.aggregate
-class Shipment:
-    order_id: Identifier(identifier=True)   # the Order's id, held by value
-```
-
-Whether that field is also the new aggregate's own identity is a modelling
-call. An order with one shipment can use it as the identity, which makes a
-duplicate impossible to store. An order that ships in several parcels cannot:
-`order_id` becomes a plain `required=True` field and the shipment gets its own
-id. The retry key moves with it. It has to name the individual shipment, since
-a handler that refused every repeated `order_id` would refuse the second
-parcel.
-
-Avoid a `Reference` field pointing at the other aggregate's root:
-
-```python
-# fragment
-# Wrong: a Reference across an aggregate boundary.
-order = Reference("Order")
-```
-
-A `Reference` across aggregates is what `check` reports as
-CROSS_AGGREGATE_REFERENCE. It couples the two clusters and pulls them back into
-one loading and locking unit, which is the coupling the split was meant to undo.
-Hold the id, and load the other aggregate through its own repository when you
-need it.
-
-## Carry the cross-aggregate step with a domain event
-
-The two aggregates commit in separate transactions, so a step that spans both
-has to happen as two writes. Carry it with a domain event: one aggregate raises
-the event on its state change, and a handler reacts and drives the other
-aggregate through a command. That keeps the link one-directional and decoupled,
-and it never reintroduces a direct object reference.
-
-Events are delivered at least once, so the second write has to survive a repeat.
-Where it creates the other aggregate, a redelivery creates a second one unless
-the id is deterministic and the handler no-ops on an aggregate that already
-exists.
+The two groups start, change and end at different times, so they are two
+lifecycles and two aggregates.

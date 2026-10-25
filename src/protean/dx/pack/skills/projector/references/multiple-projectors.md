@@ -1,15 +1,6 @@
 # Multiple Projectors
 
-## Overview
-
-Multiple projectors can handle the same events and populate their own independent projections. This is a fundamental CQRS pattern: a single domain event stream can feed multiple read models, each optimized for a specific query use case.
-
-## When to use
-
-- Building multiple views of the same data (e.g., inventory detail + catalog browse)
-- Creating specialized read models for different consumers (API, UI, reporting)
-- Maintaining both a detailed and a summarized view from the same events
-- Separating concerns: each projector focuses on one projection's needs
+Several projectors can handle the same events, each populating its own projection. One event stream can feed many read models, each shaped for one kind of query.
 
 ## The pattern
 
@@ -70,27 +61,17 @@ class ProductCatalogProjector:
         domain.repository_for(ProductCatalog).add(entry)
 ```
 
-### Different data transformations
-
-Each projector transforms the event data differently to suit its projection's purpose:
-- **ProductInventory**: Stores exact quantities for stock management
-- **ProductCatalog**: Stores simplified in-stock flag for browsing
+`ProductInventory` stores exact quantities for stock management. `ProductCatalog` stores an in-stock flag for browsing.
 
 ## Key principles
 
-1. **Independence**: Each projector is completely independent - they don't communicate with each other
-2. **Different schemas**: Each projection can have different fields and structures
-3. **Different update logic**: Each projector can transform the same event data differently
-4. **Failure isolation**: One projector failing doesn't affect others
-5. **One projection per projector**: Each projector is associated with exactly one projection via `projector_for`
+1. **Independence**: Projectors do not communicate with each other
+2. **Failure isolation**: One projector failing doesn't affect others
+3. **One projection per projector**: Each projector is associated with exactly one projection via `projector_for`
 
 ## When both projectors handle the same event
 
-When a domain event is published:
-1. The event store delivers it to ALL registered projectors that listen to that stream
-2. Each projector processes the event independently
-3. Each projector updates its own projection
-4. The order of projector execution is not guaranteed
+The event store delivers each event to every projector that listens to its stream. Each projector processes it on its own and updates its own projection. The order in which the projectors run is not guaranteed.
 
 ## Complete example
 

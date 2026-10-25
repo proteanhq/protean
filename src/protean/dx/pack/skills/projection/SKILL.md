@@ -172,7 +172,8 @@ See the `repository` skill for the full querying surface (filtering, ordering,
 pagination, Q objects).
 
 `view_for()` and `connection_for()` operate on projections only; passing a
-non-projection element (an aggregate, say) raises `USAGE_NOT_A_PROJECTION`.
+non-projection element (an aggregate, say) raises `IncorrectUsageError` with the code
+`USAGE_NOT_A_PROJECTION`.
 
 ## Common mistakes
 

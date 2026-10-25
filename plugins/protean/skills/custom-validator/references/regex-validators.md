@@ -1,32 +1,15 @@
 # Regex Validators
 
-Use Protean's built-in `RegexValidator` for pattern-based field validation.
-
-## Overview
-
-When your validation rule can be expressed as a regular expression, use `RegexValidator` instead of writing a custom callable class. It handles regex compilation, matching, and error reporting.
+When a validation rule can be written as one regular expression, use Protean's built-in `RegexValidator` instead of a custom callable class. It compiles the pattern, matches the value and reports the error.
 
 ## Code
 
 The complete implementation is in [assets/custom_validator_regex.py](../assets/custom_validator_regex.py).
 
-Key highlights:
-- SKU format validation (`XXX-9999`)
-- Hex color code validation (`#RRGGBB`)
-- US postal code validation (5-digit or 5+4 format)
-- Inverse match for deny-list patterns (profanity blocking)
-
 ## RegexValidator API
 
 ```python
 from protean.fields.validators import RegexValidator
-
-RegexValidator(
-    regex=r"^pattern$",      # Pattern string or compiled regex
-    message="Error message",  # Custom error (default: "invalid value")
-    inverse_match=False,      # True = fail when pattern MATCHES
-    flags=0,                  # Regex flags (re.IGNORECASE, etc.)
-)
 ```
 
 ### Parameters
@@ -35,8 +18,11 @@ RegexValidator(
 |-----------|------|---------|-------------|
 | `regex` | str or Pattern | `""` | Regular expression to match against |
 | `message` | str | `"invalid value"` | Error message on validation failure |
+| `code` | str | `"invalid"` | Error code |
 | `inverse_match` | bool | `False` | If True, validation fails when pattern matches |
 | `flags` | int | `0` | Regex flags (only when regex is a string) |
+
+The validator calls `re.search`, so an unanchored pattern passes when it matches any part of the value: `RegexValidator(regex=r"[A-Z]{3}")` accepts `"xxABCyy"`. Anchor a format pattern with `^` and `$`. Passing `flags` with a compiled pattern raises `TypeError: If flags are set, regex must be a regular expression string.`
 
 ## Common Patterns
 

@@ -1,26 +1,10 @@
 # Class Methods Pattern
 
-A domain service with class methods provides a stateless, functional approach. No instantiation needed - call methods directly on the class.
-
-## Overview
-
-Use this pattern when:
-- No invariants are needed. Protean does not run the service's `@invariant.pre` or `@invariant.post` methods around a class method, so a class-method service should not declare any. Protean still wraps a public class method, and treats its first argument as the service instance. It runs the first argument's own invariants around the call, so that argument must be an aggregate: a list there raises `AttributeError`. A call on an instance raises `TypeError`, because the instance is passed as one argument too many.
-- You prefer a functional style
-- Each method receives all input as parameters
-- Validation is done inline within the method
+A domain service with class methods takes a stateless, functional approach. Each method receives all its input as parameters, validates inline, and is called on the class, never on an instance. Use it only for a service with no invariants: SKILL.md flavor 3 explains how Protean wraps a class method and the `AttributeError` and `TypeError` a wrong call raises.
 
 ## Code
 
 The complete implementation is in [assets/domain_service_class_methods.py](../assets/domain_service_class_methods.py).
-
-Key highlights:
-- Methods decorated with `@classmethod`
-- No `__init__` needed
-- Aggregates passed as method parameters, not stored on instance
-- Validation done inline, with no invariant decorators on the service
-- Changes only the order, and returns it
-- Called on the class, never on an instance
 
 ## Walkthrough
 
@@ -88,7 +72,7 @@ class OrderPlacementService:
 
 ### Return values
 
-Class methods commonly return the changed aggregate, since there's no instance state to inspect:
+A class method usually returns the changed aggregate, since there is no instance state to inspect:
 
 ```python
 domain.init(traverse=False)
@@ -106,15 +90,6 @@ with domain.domain_context():
     assert inventory.quantity == 10  # read by the service, not changed
 ```
 
-### Invocation
-
-Direct class method call - no instantiation:
-
-```python
-with domain.domain_context():
-    OrderPlacementService.place_order(order, [inventory])
-```
-
 ## Trade-offs
 
 | Aspect | Class Methods | Instance Methods |
@@ -127,7 +102,6 @@ with domain.domain_context():
 
 ## When NOT to use class methods
 
-- When you need `@invariant.pre` or `@invariant.post` validation
 - When you have multiple methods sharing common validation logic
 - When operations need shared state between steps
 

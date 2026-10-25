@@ -1,6 +1,6 @@
 # Anti-Patterns Catalog
 
-Comprehensive catalog of anti-patterns found in Protean codebases, organized by how commonly they appear.
+Anti-patterns found in Protean codebases, with a bad and a good version of each, grouped by how commonly they appear.
 
 ## Tier 1: Almost Universal
 
@@ -197,7 +197,7 @@ class InventoryCommandHandler:
 
 ### God Aggregate
 
-One aggregate doing everything. `check` reports `AGGREGATE_TOO_LARGE` when the aggregate's cluster holds more child entities than `[lint] aggregate_size_limit` (default 5). Field and method counts are a judgement call that `check` does not make:
+One aggregate doing everything. Detection is SKILL.md category 4: `check` reports `AGGREGATE_TOO_LARGE` for too many child entities, and field and method counts need a reading of the code:
 
 ```python
 # fragment

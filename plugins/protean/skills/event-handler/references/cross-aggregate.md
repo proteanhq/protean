@@ -1,27 +1,10 @@
 # Cross-Aggregate Event Handling
 
-An event handler that reacts to one aggregate's event and changes a different aggregate. This is the primary mechanism for inter-aggregate coordination in DDD.
-
-## Overview
-
-The handler sits in the cluster that owns the event. It does not write the other aggregate itself. It issues a command that belongs to the other aggregate, and that aggregate's command handler does the write. With async command processing, each aggregate changes in its own transaction. With sync command processing, as in tests, the command runs inside the event handler's unit of work and commits with it.
-
-The pattern:
-1. Aggregate A raises an event on its stream
-2. An event handler in A's cluster (`part_of=A`, no `stream_category`) reacts to the event
-3. The handler calls `current_domain.process(...)` with a command that belongs to Aggregate B
-4. B's command handler loads B, applies the change, and persists
-
-For a flow with several causally dependent steps, where each step waits on the outcome of the one before, use a process manager. See [process-manager](../../process-manager/SKILL.md).
+An event handler that reacts to one aggregate's event and changes a different aggregate through a command, following the "Cross-aggregate sync pattern" in SKILL.md.
 
 ## Code
 
 The complete implementation is in [assets/event_handler_cross_aggregate.py](../assets/event_handler_cross_aggregate.py).
-
-Key highlights:
-- `@domain.event_handler(part_of=Order)`: the handler sits in Order's cluster, which owns `OrderShipped`
-- The handler issues a `ReduceStock` command, which belongs to Inventory
-- Inventory's command handler reduces the stock and skips an order it has already applied
 
 ## Walkthrough
 
@@ -83,12 +66,6 @@ class ManageInventory:
         )
 ```
 
-- `part_of=Order`: the handler belongs to the cluster that owns `OrderShipped`
-- No `stream_category`: the handler listens to Order's own stream by default
-- `current_domain.process(ReduceStock(...))`: the handler hands the change to Inventory
-
-A handler with `part_of=Inventory` that reacts to `OrderShipped` couples the two clusters directly, and `check` reports it as `EVENT_HANDLER_FOREIGN_EVENT`. See [Anti-patterns](./anti-patterns.md).
-
 ### The Command
 
 ```python
@@ -99,7 +76,7 @@ class ReduceStock:
     quantity: Integer(required=True)
 ```
 
-The command carries everything Inventory needs, so its handler does not load the Order. `order_id` is a deterministic id taken from the event. An order ships one book, so the order id names exactly one stock change. When one event drives several writes to the same aggregate, such as one per order line, derive one id per write, such as `f"{order_id}:{book_id}"`. Add up the lines for the same book first, so each book gets one write. Two lines for one book would otherwise share an id, and the handler would skip the second as a repeat.
+The command carries everything Inventory needs, so its handler does not load the Order. `order_id` is a deterministic id taken from the event. An order ships one book, so the order id names exactly one stock change.
 
 ### The Command Handler
 
@@ -116,27 +93,9 @@ class InventoryCommandHandler:
         repo.add(inventory)
 ```
 
-The handler:
-1. Looks up the Inventory record by `book_id` with `repo.find_by()`
-2. Returns without changes if this order was already applied
-3. Reduces the stock through the aggregate method, which also records the order id
-4. Persists the updated Inventory
-
 ### Why the guard?
 
-Events are delivered at least once, so `OrderShipped` can reach the handler twice and issue `ReduceStock` twice. Reducing stock is an update, so Inventory keeps `applied_order_ids: List(content_type=String)` and the command handler checks it before changing anything. When the command creates the target aggregate, check for an existing record instead:
-
-```python
-# fragment
-try:
-    repository.get(command.order_id)
-except ObjectNotFoundError:
-    repository.add(Shipment.start(command.order_id))
-else:
-    return  # already created
-```
-
-Never generate a fresh `uuid4()` in the event handler, because a redelivered event would then look like new work.
+Events are delivered at least once, so `OrderShipped` can reach the handler twice and issue `ReduceStock` twice. Reducing stock is an update, so Inventory keeps `applied_order_ids` and the command handler checks it before changing anything. SKILL.md's "Making the receiving end safe to repeat" covers the case where the command creates the target, and how to derive one id per write.
 
 ### Why find_by?
 
@@ -162,16 +121,13 @@ class OrderNotifier:
         current_domain.process(SendConfirmation(order_id=event.order_id))
 ```
 
-Both handlers process `OrderPlaced` independently. This enables fan-out patterns.
-
-## Eventual Consistency
-
-Cross-aggregate event handling provides eventual consistency. The Order aggregate's transaction completes first, then (asynchronously in production) the Inventory aggregate is updated. There is a brief window where the two aggregates are inconsistent, which is acceptable in most business scenarios.
+Both handlers process `OrderPlaced` independently.
 
 ## Related
 
 - [Same-Aggregate](./same-aggregate.md): Handling events from the same aggregate
 - [Cross-Aggregate Patterns](./cross-aggregate-patterns.md): Common sync scenarios
+- [Eventual Consistency](./eventual-consistency.md): The window between the two writes
 - [Anti-patterns](./anti-patterns.md): Common mistakes
 - `command-handler`: The write path the handler hands off to
 - `process-manager`: Flows with several causally dependent steps

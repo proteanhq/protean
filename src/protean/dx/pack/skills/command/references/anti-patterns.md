@@ -1,11 +1,5 @@
 # Command Anti-Patterns
 
-Common mistakes when working with commands and how to avoid them.
-
-## Overview
-
-Commands are deceptively simple but have specific constraints that, when violated, lead to fragile designs. This guide covers the most common anti-patterns and their correct alternatives.
-
 The examples below use these aggregates and value object:
 
 ```python
@@ -16,10 +10,6 @@ class Order:
 
     def place(self):
         self.status = "PLACED"
-
-@domain.aggregate
-class Payment:
-    amount: Float(required=True)
 
 @domain.aggregate
 class Inventory:
@@ -45,12 +35,6 @@ class OrderPlaced:  # Past-tense - this is an EVENT, not a command!
     order_id: Identifier(required=True)
 ```
 
-```python
-@domain.command(part_of="Payment")
-class PaymentProcessed:  # Wrong - sounds like something that happened
-    payment_id: Identifier(required=True)
-```
-
 ### Correct
 
 ```python
@@ -58,14 +42,6 @@ class PaymentProcessed:  # Wrong - sounds like something that happened
 class PlaceOrder:  # Imperative - describes the intent to act
     order_id: Identifier(required=True)
 ```
-
-```python
-@domain.command(part_of="Payment")
-class ProcessPayment:  # Imperative - tells the system what to do
-    payment_id: Identifier(required=True)
-```
-
-**Why it matters:** Commands represent intent to act. Past-tense names suggest events (facts that already occurred). Using the right naming convention makes the domain model clear and self-documenting.
 
 ## 2. Not Associating Commands with Aggregates
 
@@ -86,7 +62,7 @@ class PlaceOrder:
     order_id: Identifier(required=True)
 ```
 
-**Why it matters:** Commands must be associated with aggregates. Aggregates are the entry point for all modifications, and this association is required by Protean (raises `IncorrectUsageError` without it).
+The decorator raises `IncorrectUsageError` without `part_of`.
 
 ## 3. Including Entities in Commands
 
@@ -116,8 +92,6 @@ class PlaceOrder:
     total = ValueObject(Money)
 ```
 
-**Why it matters:** Commands are DTOs (Data Transfer Objects). They can only contain simple fields and value objects, not entities or aggregates. Entities have identity and lifecycle; commands carry intent.
-
 ## 4. Including Too Much Data
 
 ### Wrong
@@ -146,7 +120,7 @@ class PlaceOrder:
     # Only what's necessary to perform the action
 ```
 
-**Why it matters:** Commands should carry only the data necessary for the intended action. The handler can look up additional data if needed.
+The handler can look up any other data it needs.
 
 ## 5. Making Commands Mutable
 
@@ -167,8 +141,6 @@ with domain.domain_context():
     # Commands are immutable - create a new instance instead
     command = PlaceOrder(order_id="789", customer_id="456", total_amount=99.99)
 ```
-
-**Why it matters:** Commands are immutable. This guarantees the intent captured at creation time cannot be tampered with during processing.
 
 ## 6. Multiple Handlers for One Command
 
@@ -203,21 +175,11 @@ class OrderHandler:
         # Events will notify Inventory via event handlers
 ```
 
-**Why it matters:** A command can only be handled by ONE command handler. If you need multiple aggregates to react, use events for cross-aggregate communication.
+A command has exactly one handler. When several aggregates need to react, raise an event and let their event handlers react to it.
 
 ## 7. Confusing Commands with Events
 
-### Wrong
-
-```python
-# Using a command where an event should be used
-@domain.command(part_of="Order")
-class OrderWasPlaced:  # This is an event concept!
-    order_id: Identifier(required=True)
-    placed_at: DateTime(required=True)
-```
-
-### Correct
+A past-tense command such as `OrderWasPlaced` is an event in disguise, as in section 1. Define the command for the intent and the event for the fact:
 
 ```python
 # Command: what should happen (imperative)
@@ -232,8 +194,6 @@ class OrderPlaced:
     order_id: String(required=True, identifier=True)
     placed_at: DateTime(required=True)
 ```
-
-**Why it matters:** Commands and events are complementary but distinct. Commands represent intent (what should happen), events represent facts (what happened). Mixing them blurs domain boundaries.
 
 ## 8. Forgetting Required Fields
 
@@ -254,8 +214,6 @@ class PlaceOrder:
     order_id: Identifier(required=True)
     customer_id: String(required=True)
 ```
-
-**Why it matters:** Commands carry intent for a specific action. Critical fields should always be marked as required to ensure commands are complete and actionable.
 
 ## 9. Generic Command Names
 
@@ -282,8 +240,6 @@ class ShipOrder:  # Specific action
     order_id: Identifier(required=True)
     tracking_number: String(required=True)
 ```
-
-**Why it matters:** Command names should clearly communicate the intent. Specific names make the domain model explicit and commands self-documenting.
 
 ## 10. Not Specifying part_of for Concrete Commands
 
@@ -312,20 +268,7 @@ class CreateProduct(BaseCommand):
     name: String(required=True)
 ```
 
-**Why it matters:** Only abstract commands can omit `part_of`. Concrete commands must always be associated with an aggregate.
-
-## Summary Checklist
-
-When creating commands, ensure:
-
-- [ ] Command name uses imperative verbs (PlaceOrder, not OrderPlaced)
-- [ ] Command specifies `part_of` parameter (unless abstract)
-- [ ] Command only contains simple fields and value objects (no entities)
-- [ ] Command includes only data necessary for the action
-- [ ] Command fields that are essential are marked `required=True`
-- [ ] Command name is specific and descriptive (not generic "Update" or "Process")
-- [ ] Only one handler processes each command
-- [ ] Commands and events are not confused (commands = intent, events = facts)
+Only abstract commands can omit `part_of`.
 
 ## Related
 

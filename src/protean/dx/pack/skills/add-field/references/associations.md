@@ -1,15 +1,5 @@
 # Association Fields
 
-This guide explains how to use association fields to create relationships between Protean domain elements.
-
-## Overview
-
-Protean provides four types of association fields:
-1. **HasOne**: One-to-one relationship with an entity
-2. **HasMany**: One-to-many relationship with entities
-3. **ValueObject**: Embed an immutable value object
-4. **Reference**: Link an entity back to its parent (the aggregate root, or the parent entity when nested)
-
 To link to a *different* aggregate, do not use an association field. Store the other
 aggregate's id in an `Identifier` field. See [Linking to Another Aggregate](#linking-to-another-aggregate).
 
@@ -77,11 +67,6 @@ shipping_info = HasOne("ShippingInfo", required=True)  # Must be set
 - Child has identity (needs to be tracked separately)
 - Child is mutable
 
-**Examples**:
-- Order has one ShippingInfo
-- User has one Profile
-- Invoice has one BillingDetails
-
 **Don't use when**:
 - Need multiple children (use HasMany)
 - Data is immutable (use ValueObject)
@@ -118,20 +103,10 @@ class LineItem:
 
 ### Auto-Generated Helper Methods
 
-When you define a `HasMany` field, Protean automatically creates helper methods. For `line_items = HasMany("LineItem")`:
-
-**Generated methods**:
-- `add_line_items(item)`: Add one or more items
-- `remove_line_items(item)`: Remove an item
-- `get_one_from_line_items(id=item_id)`: Get one item by keyword criteria
-- `filter_line_items(**criteria)`: Get the items whose fields equal the given values
-
-Both take keyword arguments only. `filter_line_items` matches equality only: it does not
-support operators such as `unit_price__gt`. `get_one_from_line_items` raises
-`ObjectNotFoundError` (from `protean.exceptions`) when no item matches, and `TooManyObjectsError`
-when more than one matches. It never returns `None`.
-
-**Important**: These methods are AUTO-GENERATED. Do NOT create them manually.
+The SKILL.md describes the four methods `HasMany` generates. For
+`line_items = HasMany("LineItem")` they are `add_line_items`, `remove_line_items`,
+`get_one_from_line_items` and `filter_line_items`. The last two take keyword arguments only.
+Do not define these methods yourself.
 
 ### Access Patterns
 
@@ -220,8 +195,8 @@ class Order:
     def add_product(self, product_id: str, quantity: int, price: D):
         """Custom method with validation and business logic.
 
-        Use this when you need MORE than just adding an item.
-        Still uses the auto-generated add_line_items() under the hood.
+        Use this when you need more than adding an item. It still adds
+        new items through the generated add_line_items().
         """
         # Custom validation
         if quantity > 100:
@@ -250,11 +225,6 @@ class Order:
 - Children have identity (tracked separately)
 - Children are mutable
 - Need to add/remove children dynamically
-
-**Examples**:
-- Order has many LineItems
-- Post has many Comments
-- ShoppingCart has many CartItems
 
 **Don't use when**:
 - Simple value collections (use List)
@@ -371,12 +341,6 @@ class Order:
 - Reusable across elements
 - Behavior needed (methods like add(), format())
 
-**Examples**:
-- Money (amount + currency)
-- Address (street + city + postal_code)
-- Email (address with validation)
-- DateRange (start_date + end_date)
-
 **Don't use when**:
 - Single simple value (use simple field)
 - Mutable data (use Entity)
@@ -478,6 +442,10 @@ with domain.domain_context():
     print(loaded.name)  # "Jane Doe"
 ```
 
+An `Identifier` field stores the id as a string, so an `Integer` id of `42` comes back as
+`"42"`, and `repository_for(...).get("42")` does not find an aggregate whose id field is
+`Integer(identifier=True)`. Give the target aggregate the default id or a `String` id.
+
 ### When to Use an Identifier Link
 
 **Use an `Identifier` field when**:
@@ -485,158 +453,14 @@ with domain.domain_context():
 - You don't need the other aggregate loaded with this one
 - Eventual consistency between the two is acceptable
 
-**Examples**:
-- Order holds `customer_id`
-- Invoice holds `order_id`
-- Comment holds `author_id` (the User aggregate)
-
 **Don't use when**:
 - The other object is inside the same aggregate (use HasOne/HasMany)
 - The data is a value with no identity (use a ValueObject field)
 - You always need the other aggregate's data (copy the fields you need)
 
-## Choosing the Right Association
-
-Use this decision tree:
-
-```
-What kind of relationship?
-
-Same aggregate boundary?
-├─ One-to-one with entity → HasOne
-├─ One-to-many with entities → HasMany
-└─ Immutable complex data → ValueObject
-
-Entity pointing at its parent (aggregate root or parent entity)?
-└─ Reference (HasOne/HasMany add it for you)
-
-Another aggregate?
-└─ Store its id → Identifier
-
-Simple collection?
-├─ Values without identity → List
-└─ Key-value pairs → Dict
-```
-
-## Complete Example
-
-```python
-from decimal import Decimal as D
-
-from protean import Domain
-from protean.fields import Decimal, HasMany, HasOne, Identifier, Integer, String, ValueObject
-
-domain = Domain()
-
-# Value Object
-@domain.value_object
-class Money:
-    amount: Decimal(required=True, precision=19, scale=4)
-    currency: String(max_length=3, default="USD")
-
-# Entities
-@domain.entity(part_of="Order")
-class ShippingInfo:
-    address: String(required=True, max_length=500)
-    city: String(required=True, max_length=100)
-
-@domain.entity(part_of="Order")
-class LineItem:
-    product_id: String(required=True)
-    quantity: Integer(required=True, min_value=1)
-    unit_price = ValueObject(Money, required=True)  # Embedded VO
-
-    @property
-    def line_total(self) -> Money:
-        return Money(
-            amount=self.unit_price.amount * self.quantity,
-            currency=self.unit_price.currency
-        )
-
-# Aggregate
-@domain.aggregate
-class Order:
-    customer_id: Identifier(required=True)
-
-    # HasOne association
-    shipping_info = HasOne("ShippingInfo")
-
-    # HasMany association (auto-generates helpers)
-    line_items = HasMany("LineItem")
-
-    # ValueObject field
-    total = ValueObject(Money)
-
-    def calculate_total(self) -> Money:
-        """Calculate order total from line items."""
-        if not self.line_items:
-            return Money(amount=D("0"), currency="USD")
-
-        total = self.line_items[0].line_total
-        for item in self.line_items[1:]:
-            total = Money(
-                amount=total.amount + item.line_total.amount,
-                currency=total.currency
-            )
-        return total
-
-
-# Usage
-domain.init(traverse=False)
-
-with domain.domain_context():
-    order = Order(customer_id="C123")
-
-    # Add shipping info (HasOne)
-    order.shipping_info = ShippingInfo(
-        address="123 Main St",
-        city="New York"
-    )
-
-    # Add line items (HasMany with auto-generated helper)
-    order.add_line_items([
-        LineItem(
-            product_id="P1",
-            quantity=2,
-            unit_price=Money(amount=D("50.00"), currency="USD")
-        )
-    ])
-
-    # Calculate and set total
-    order.total = order.calculate_total()
-```
-
 ## Common Patterns
 
-### Pattern 1: HasMany with Calculation
-
-```python
-@domain.aggregate
-class ShoppingCart:
-    line_items = HasMany("CartItem")
-
-    @property
-    def item_count(self) -> int:
-        """Total number of items."""
-        return sum(item.quantity for item in self.line_items)
-
-    @property
-    def total(self) -> D:
-        """Cart total."""
-        return sum((item.subtotal for item in self.line_items), D("0"))
-
-@domain.entity(part_of="ShoppingCart")
-class CartItem:
-    product_id = Identifier(required=True)
-    quantity = Integer(required=True, min_value=1)
-    unit_price = Decimal(required=True, precision=19, scale=4)
-
-    @property
-    def subtotal(self) -> D:
-        return self.quantity * self.unit_price
-```
-
-### Pattern 2: HasOne with Validation
+### Pattern 1: HasOne with Validation
 
 ```python
 from protean.exceptions import ValidationError
@@ -659,7 +483,7 @@ class ShippingInfo:
     city: String(required=True, max_length=100)
 ```
 
-### Pattern 3: ValueObject in Entity
+### Pattern 2: ValueObject in Entity
 
 ```python
 @domain.aggregate
@@ -676,133 +500,6 @@ class Address:
 class Coordinates:
     latitude: Float(required=True, min_value=-90.0, max_value=90.0)
     longitude: Float(required=True, min_value=-180.0, max_value=180.0)
-```
-
-## Anti-Patterns
-
-### Anti-Pattern 1: Manually Creating Auto-Generated Methods
-
-**Bad**:
-```python
-# fragment
-@domain.aggregate
-class Order:
-    line_items = HasMany("LineItem")
-
-    # Don't do this - already auto-generated!
-    def add_line_items(self, items):
-        ...
-```
-
-**Good**:
-```python
-@domain.aggregate
-class Order:
-    customer_id = Identifier(required=True)
-    line_items = HasMany("LineItem")
-    # add_line_items() already exists automatically!
-
-@domain.entity(part_of="Order")
-class LineItem:
-    product_id = Identifier(required=True)
-    quantity = Integer(required=True, min_value=1)
-
-domain.init(traverse=False)
-
-# Just use it
-with domain.domain_context():
-    order = Order(customer_id="C123")
-    item1 = LineItem(product_id="P1", quantity=1)
-    item2 = LineItem(product_id="P2", quantity=2)
-    order.add_line_items([item1, item2])
-```
-
-### Anti-Pattern 2: Using HasMany for Simple Values
-
-**Bad**:
-```python
-# fragment
-# Creating entities for simple strings
-@domain.entity(part_of="Product")
-class Tag:
-    name: String(required=True)
-
-@domain.aggregate
-class Product:
-    tags = HasMany("Tag")  # Overkill!
-```
-
-**Good**:
-```python
-@domain.aggregate
-class Product:
-    tags: List(content_type=String)  # Simple list
-```
-
-### Anti-Pattern 3: Using Primitives Instead of ValueObject
-
-**Bad**:
-```python
-# fragment
-@domain.aggregate
-class Order:
-    total_amount: Decimal(precision=19, scale=4)
-    total_currency: String()  # Scattered attributes
-```
-
-**Good**:
-```python
-@domain.aggregate
-class Order:
-    total = ValueObject(Money)  # Cohesive value object
-```
-
-### Anti-Pattern 4: Reference Within Same Aggregate
-
-**Bad**:
-```python
-# fragment
-@domain.aggregate
-class Order:
-    line_items = Reference("LineItem")  # Wrong! Use HasMany
-```
-
-**Good**:
-```python
-@domain.aggregate
-class Order:
-    customer_id = Identifier(required=True)
-    line_items = HasMany("LineItem")  # Correct for same aggregate
-
-@domain.entity(part_of="Order")
-class LineItem:
-    product_id = Identifier(required=True)
-    quantity = Integer(required=True, min_value=1)
-```
-
-### Anti-Pattern 5: Reference to Another Aggregate
-
-**Bad**:
-```python
-# fragment
-@domain.aggregate
-class Order:
-    customer = Reference("Customer")  # Customer is another aggregate
-```
-
-`protean check` reports this as `CROSS_AGGREGATE_REFERENCE`.
-
-**Good**:
-```python
-@domain.aggregate
-class Order:
-    customer_id = Identifier(required=True)  # Holds the Customer's id
-    line_items = HasMany("LineItem")
-
-@domain.entity(part_of="Order")
-class LineItem:
-    product_id = Identifier(required=True)
-    quantity = Integer(required=True, min_value=1)
 ```
 
 ## See Also

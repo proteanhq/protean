@@ -1,41 +1,14 @@
 # Command Issuance
 
-Process managers drive other aggregates forward by issuing commands. This is the primary mechanism for coordinating multi-step business processes. The PM decides *what* should happen next, and the target aggregate's command handler decides *how*.
+Process managers drive other aggregates forward by issuing commands. The PM decides *what* should happen next, and the target aggregate's command handler decides *how*.
 
 ## Overview
 
-Inside any PM handler method, call `current_domain.process()` to issue a command:
-
-```python
-# fragment
-from protean import current_domain
-
-@handle(OrderPlaced, start=True, correlate="order_id")
-def on_order_placed(self, event: OrderPlaced) -> None:
-    self.order_id = event.order_id
-    self.status = "awaiting_payment"
-    current_domain.process(
-        RequestPayment(order_id=event.order_id, amount=event.total)
-    )
-```
-
-## Code
-
-The complete command issuance example is in [assets/pm_command_issuance.py](../assets/pm_command_issuance.py).
-
-`OrderPaymentPM` demonstrates two patterns:
-1. **From event data**: `RequestPayment` constructed using `event.order_id` and `event.total`
-2. **From PM state**: `CancelOrder` constructed using `self.order_id` (stored from a previous event)
+Inside any PM handler method, call `current_domain.process()` to issue a command. Build the command from event data (`RequestPayment(order_id=event.order_id, amount=event.total)`) or from PM state an earlier handler stored (`CancelOrder(order_id=self.order_id)`).
 
 ## Import Path
 
-Import `current_domain` from `protean` (the public API):
-
-```python
-from protean import current_domain
-```
-
-Do NOT import from `protean.utils.globals`. That is an internal module.
+Import `current_domain` from `protean` (the public API): `from protean import current_domain`. Do NOT import from `protean.utils.globals`. That is an internal module.
 
 ## Command persistence
 
@@ -48,32 +21,7 @@ If the handler raises after issuing a command, the Unit of Work rolls back the P
 
 ## The Coordinator Pattern
 
-Process managers should act purely as coordinators:
-
-**Right**: PM decides WHAT, aggregate decides HOW:
-```python
-# fragment
-@handle(OrderPlaced, start=True, correlate="order_id")
-def on_order_placed(self, event: OrderPlaced) -> None:
-    self.order_id = event.order_id
-    self.status = "awaiting_payment"
-    # PM issues command; Payment aggregate handles the details
-    current_domain.process(
-        RequestPayment(order_id=event.order_id, amount=event.total)
-    )
-```
-
-**Wrong**: PM contains business logic:
-```python
-# fragment
-@handle(OrderPlaced, start=True, correlate="order_id")
-def on_order_placed(self, event: OrderPlaced) -> None:
-    # Business rule validation belongs in the aggregate, not the PM
-    if event.total > 10000:
-        current_domain.process(RequestManualReview(...))
-    else:
-        current_domain.process(RequestPayment(...))
-```
+The SKILL.md's `on_order_placed` shows the right shape: the PM issues `RequestPayment`, and the Payment aggregate handles the details. A PM that branches on a business rule (`if event.total > 10000: ...`) is doing the aggregate's job. [Anti-patterns](./anti-patterns.md) shows the fix.
 
 ## Multiple Commands
 

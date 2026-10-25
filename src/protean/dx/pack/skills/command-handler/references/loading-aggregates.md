@@ -1,24 +1,10 @@
 # Loading Aggregates (Hydration)
 
-Command handlers are responsible for loading (hydrating) aggregates from the repository before invoking methods on them.
-
-## Overview
-
-There are two scenarios in a command handler:
-
-1. **Creating a new aggregate**: Construct a new instance directly from command data
-2. **Loading an existing aggregate**: Retrieve from the repository using an identifier
-
-The choice depends on the nature of the command (e.g., "create" vs. "update").
+A "create" command builds a new aggregate from the command data. An "update" command loads the aggregate from the repository by its identifier first.
 
 ## Code
 
-See [assets/command_handler_multiple_commands.py](../assets/command_handler_multiple_commands.py) for a handler that demonstrates both creating and loading aggregates, and [assets/command_handler_create_aggregate.py](../assets/command_handler_create_aggregate.py) for the create pattern in detail.
-
-Key highlights:
-- Use `domain.repository_for(Aggregate).get(id)` to load an existing aggregate
-- Construct new aggregate instances directly when creating
-- Always persist via `domain.repository_for(Aggregate).add(aggregate)` after mutation
+See [assets/command_handler_multiple_commands.py](../assets/command_handler_multiple_commands.py) for a handler that both creates and loads aggregates, and [assets/command_handler_create_aggregate.py](../assets/command_handler_create_aggregate.py) for the create pattern in detail.
 
 The examples on this page use these elements:
 
@@ -65,8 +51,6 @@ class FulfillOrder:
 
 ## Creating a New Aggregate
 
-When handling a "create" command, construct the aggregate from command data:
-
 ```python
 @domain.command_handler(part_of=Account)
 class AccountRegistrationHandler:
@@ -82,8 +66,6 @@ class AccountRegistrationHandler:
 
 ## Loading an Existing Aggregate
 
-When handling an "update" command, load from the repository first:
-
 ```python
 @domain.command_handler(part_of=Account)
 class AccountActivationHandler:
@@ -98,7 +80,7 @@ Both handlers belong to `Account`. One handler class with two `@handle` methods 
 
 ## Multiple Aggregates
 
-A handler can load more than one aggregate if the business process requires it, but it should persist only ONE aggregate root. The Unit of Work does not enforce this: it can hold changes to several aggregates and commits them together. "One aggregate per transaction" is a design rule. To change another aggregate, raise an event; an event handler in the owning aggregate's cluster issues a command to the other aggregate.
+A handler can load other aggregates to read them, and persists only one aggregate root (SKILL.md rule 7). Here the handler reads the `Order` and persists the `Shipment`:
 
 ```python
 @domain.command_handler(part_of=Shipment)

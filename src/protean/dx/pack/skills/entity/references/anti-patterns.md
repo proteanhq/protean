@@ -1,7 +1,5 @@
 # Entity Anti-Patterns
 
-This guide covers common mistakes when working with entities and how to avoid them.
-
 ## 1. Entity Without `part_of`
 
 ❌ **Wrong: Defining entity without aggregate association**
@@ -39,8 +37,6 @@ class Comment:
     author: String(max_length=100)
 ```
 
-**Why:** Entities cannot exist independently; they must belong to an aggregate that manages their lifecycle.
-
 ---
 
 ## 2. Querying Entities Directly
@@ -53,11 +49,6 @@ class Comment:
 comment_repo = domain.repository_for(Comment)
 comments = comment_repo.filter(author="John")
 ```
-
-**Problems:**
-- Bypasses aggregate boundary
-- Can violate business invariants
-- Not how Protean is designed to work
 
 ✅ **Correct: Access entities through their aggregate**
 
@@ -76,8 +67,6 @@ with domain.domain_context():
     comments = post.filter_comments(author="John")
 ```
 
-**Why:** The aggregate is responsible for managing entity access and maintaining invariants.
-
 ---
 
 ## 3. Persisting Entities Directly
@@ -90,10 +79,7 @@ comment = Comment(content="Great post!", author="John")
 domain.repository_for(Comment).add(comment)  # Wrong!
 ```
 
-**Problems:**
-- Entities don't have their own repositories
-- Breaks aggregate boundary
-- Can lead to orphaned entities
+Protean does not stop this: `domain.repository_for(Comment)` returns a repository, and `add()` saves the comment with no post. The comment is then an orphan outside its aggregate, and the post's invariants never ran.
 
 ✅ **Correct: Persist through the aggregate**
 
@@ -104,8 +90,6 @@ with domain.domain_context():
     post.add_comments([comment])
     domain.repository_for(Post).add(post)
 ```
-
-**Why:** Entities are always persisted as part of their aggregate.
 
 ---
 
@@ -120,11 +104,6 @@ class Money:
     amount: Decimal(precision=19, scale=4, required=True)
     currency: String(required=True, max_length=3)
 ```
-
-**Problems:**
-- Money doesn't need identity
-- Adds unnecessary complexity
-- Two Money objects with same values should be equal
 
 ✅ **Correct: Use value object for data without identity**
 
@@ -169,11 +148,6 @@ class RelatedLineItem:
     parent_item = Reference(LineItem)
 ```
 
-**Problems:**
-- Confusing navigation
-- Hard to maintain
-- Can cause infinite loops
-
 ✅ **Correct: Use HasMany for collections or rethink the relationship**
 
 ```python
@@ -192,8 +166,6 @@ class RelatedLineItem:
 
 `RelatedLineItem` is `part_of` its parent entity, passed as a class. Protean adds the `line_item` reference and `line_item_id` field on its own.
 
-**Why:** Clear parent-child relationship is easier to understand and maintain.
-
 ---
 
 ## 6. Deep Entity Nesting (Too Many Levels)
@@ -205,12 +177,6 @@ class RelatedLineItem:
 Order → LineItem → Note → Reply → SubReply → Attachment  # 6 levels!
 ```
 
-**Problems:**
-- Hard to navigate
-- Complex queries
-- Performance issues
-- Cognitive overload
-
 ✅ **Correct: Keep hierarchies shallow (2-3 levels max)**
 
 ```python
@@ -220,10 +186,8 @@ Order → LineItem → Note  # 3 levels
 
 # Or: Flatten structure
 Order → LineItem
-Order → Note (with reference to LineItem)
+Order → Note (holding the LineItem's id in an Identifier field)
 ```
-
-**Why:** Shallow hierarchies are easier to understand, maintain, and query efficiently.
 
 ---
 
@@ -241,11 +205,6 @@ class LineItem:
     def set_quantity(self, qty):
         self.quantity = qty  # No validation!
 ```
-
-**Problems:**
-- Can create invalid state
-- Business rules not enforced
-- Data integrity issues
 
 ✅ **Correct: Put constraints on the fields**
 
@@ -279,13 +238,7 @@ class LineItem:
     customer = Reference(Customer)  # Wrong!
 ```
 
-**Problems:**
-- Violates aggregate boundary
-- Creates tight coupling
-- Can lead to consistency issues
-- `protean check` reports it as `CROSS_AGGREGATE_REFERENCE`
-
-A `Reference` field is only for an entity pointing at its parent: the aggregate root, or the parent entity when the entity is nested.
+`protean check` reports it as `CROSS_AGGREGATE_REFERENCE`. A `Reference` field is only for an entity pointing at its parent: the aggregate root, or the parent entity when the entity is nested.
 
 ✅ **Correct: Use IDs to reference other aggregates**
 
@@ -300,8 +253,6 @@ class LineItem:
     product_id: Identifier(required=True)  # Just the ID, not the Product aggregate
     quantity: Integer(required=True)
 ```
-
-**Why:** Aggregates should be loosely coupled; use IDs to reference other aggregates.
 
 ---
 
@@ -318,11 +269,6 @@ class LineItem:
     unit_price: Decimal(precision=19, scale=4, required=True)
     # No methods, no computed properties, just data
 ```
-
-**Problems:**
-- Business logic ends up elsewhere (aggregate or service)
-- Entity is just a data bag
-- Violates object-oriented principles
 
 ✅ **Correct: Add behavior to entities**
 
@@ -360,62 +306,9 @@ class LineItem:
         self.quantity += amount
 ```
 
-**Why:** Entities should encapsulate both data and behavior related to that data.
-
 ---
 
-## 10. Forgetting Bidirectional References
-
-❌ **Wrong: Not utilizing automatic parent references**
-
-```python
-# fragment
-# Trying to navigate from entity to parent manually
-for item in order.line_items:
-    # How do I get back to the order?
-    # No reference stored!
-    pass
-```
-
-**Problems:**
-- Can't navigate back to parent
-- Have to pass parent around manually
-- Loses context
-
-✅ **Correct: Use automatic reference fields**
-
-```python
-@domain.aggregate
-class Order:
-    customer_id: Identifier(required=True)
-    line_items = HasMany("LineItem")
-
-@domain.entity(part_of="Order")
-class LineItem:
-    product_id: Identifier(required=True)
-    quantity: Integer(required=True)
-    # Automatic fields added:
-    # - order: Reference(Order)
-    # - order_id: the order's id
-
-domain.init(traverse=False)
-
-# Usage
-with domain.domain_context():
-    order = Order(customer_id="C123")
-    item = LineItem(product_id="P1", quantity=2)
-    order.add_line_items([item])
-
-    # Navigate back to parent
-    parent_order = item.order
-    parent_id = item.order_id
-```
-
-**Why:** Protean automatically creates bidirectional references for convenient navigation.
-
----
-
-## 11. Assuming a HasOne Is Always Set
+## 10. Assuming a HasOne Is Always Set
 
 ❌ **Wrong: Reading through a HasOne without checking for None**
 
@@ -432,9 +325,7 @@ class Order:
         return self.shipping_info.city
 ```
 
-**Problems:**
-- A `HasOne` field is `None` until an entity is assigned
-- The error shows up only for orders without the child entity
+A `HasOne` field is `None` until an entity is assigned, so the error shows up only for orders without one.
 
 ✅ **Correct: Check the HasOne for None; iterate a HasMany directly**
 
@@ -461,11 +352,9 @@ class ShippingInfo:
     city: String(required=True, max_length=100)
 ```
 
-**Why:** A `HasOne` field is `None` until an entity is assigned. A `HasMany` field is always a list, empty when there are no items.
-
 ---
 
-## 12. Using Entities in Different Aggregates
+## 11. Using Entities in Different Aggregates
 
 ❌ **Wrong: Reusing entity class across aggregates**
 
@@ -483,9 +372,7 @@ class Customer:
     billing_address = HasOne(Address)  # Error!
 ```
 
-**Problems:**
-- Entity can only belong to one aggregate
-- Shared entities violate aggregate boundaries
+An entity class belongs to one aggregate only.
 
 ✅ **Correct: Use value objects for shared concepts**
 
@@ -506,25 +393,7 @@ class Customer:
     billing_address = ValueObject(Address, required=True)
 ```
 
-**Why:** Value objects can be reused across aggregates; entities cannot.
-
 ---
-
-## Summary: Quick Reference
-
-| Anti-Pattern | Correct Approach |
-|-------------|------------------|
-| Entity without `part_of` | Always specify parent aggregate |
-| Querying entities directly | Access through aggregate |
-| Persisting entities directly | Persist through aggregate |
-| Entity for data without identity | Use value object instead |
-| Circular entity references | Use clear parent-child HasMany |
-| Deep nesting (5+ levels) | Limit to 2-3 levels |
-| No validation | Validate in fields and methods |
-| Entity referencing aggregate | Use IDs, not references |
-| Anemic entities | Add behavior and computed properties |
-| Assuming a HasOne is set | Check it for None; a HasMany is always a list |
-| Reusing entities across aggregates | Use value objects for shared concepts |
 
 ## Related
 

@@ -1,7 +1,5 @@
 # When to Upcast
 
-A decision guide for choosing between upcasting, creating a new event type, or taking no action when an event schema needs to change.
-
 ## Decision Table
 
 | Change | Strategy | Why |
@@ -61,12 +59,7 @@ status = String(choices=["pending", "shipped", "returned", "refunded"])
 
 ## When to Create a New Event Type Instead
 
-Create a new event type when:
-
-1. **The business meaning changed**: The same field name now means something different (e.g., `total` was tax-inclusive, now tax-exclusive)
-2. **The event represents a different operation**: What was `OrderPlaced` is now really two distinct operations
-3. **Multiple aggregates need the event**: The old event was part of Aggregate A, the new one targets Aggregate B
-4. **There's no reasonable default**: You can't compute the new field from old data (e.g., old events didn't track the information at all)
+Besides the three "New event type" rows in the table, create a new event type when there's no reasonable default: you can't compute the new field from old data (for example, old events didn't track the information at all).
 
 ## Limitations of Upcasting
 
@@ -89,24 +82,7 @@ def on_placed(self, event: OrderPlaced):
 **Upcasting** centralizes the transformation:
 
 ```python
-# Upcaster: single transformation, clean handler
-from protean.core.upcaster import BaseUpcaster
-
-
-@domain.event(part_of="Order")
-class OrderPlaced:
-    __version__ = 2
-    order_id = Identifier(required=True)
-    amount = Float(required=True)
-    currency = String(required=True)
-
-
-@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
-class UpcastV1ToV2(BaseUpcaster):
-    def upcast(self, data: dict) -> dict:
-        data["currency"] = "USD"
-        return data
-
+# With the SKILL.md's UpcastV1ToV2 filling in `currency`, the handler stays clean
 @apply
 def on_placed(self, event: OrderPlaced):
     self.currency = event.currency  # Always present

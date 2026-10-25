@@ -1,6 +1,6 @@
 # Error Handling
 
-Command handlers support custom error handling through the optional `handle_error` classmethod. This method is invoked by the Protean Engine when command processing fails during asynchronous operation.
+The Protean Engine calls a command handler's optional `handle_error` classmethod when the handler fails during asynchronous processing.
 
 ## Overview
 
@@ -73,7 +73,7 @@ def handle_error(cls, exc: Exception, message) -> None:
 ## Synchronous vs. Asynchronous
 
 - **Asynchronous processing**: `handle_error` is called by the Protean Engine. The engine catches the exception, logs it, calls `handle_error`, and continues.
-- **Synchronous processing** (`domain.process(cmd, asynchronous=False)`): Exceptions propagate directly to the caller. `handle_error` is NOT called in this case -- the caller is responsible for catching exceptions.
+- **Synchronous processing** (`domain.process(cmd, asynchronous=False)`): Exceptions propagate directly to the caller, and `handle_error` is NOT called. The caller catches the exception.
 
 ```python
 domain.init(traverse=False)
@@ -89,7 +89,7 @@ with domain.domain_context():
 
 ## Error Handler Safety
 
-If `handle_error` itself raises an exception, the Protean Engine catches that too and logs it. The engine never shuts down due to handler errors:
+If `handle_error` itself raises an exception, the Protean Engine catches and logs that too (`engine.error_handler_failed`). A handler error never shuts the engine down:
 
 ```python
 # fragment
@@ -98,13 +98,6 @@ def handle_error(cls, exc: Exception, message) -> None:
     # Even if this raises, the engine continues
     external_api.notify(str(exc))  # Might fail, but engine is safe
 ```
-
-## Best Practices
-
-1. Keep `handle_error` simple and robust -- avoid complex logic that might fail
-2. Use it for logging, monitoring, and alerting
-3. Do not attempt to re-process the command within `handle_error`
-4. Consider recording failed commands for later retry or manual intervention
 
 ## Related
 

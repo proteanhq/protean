@@ -96,15 +96,14 @@ builds its own `InlineBroker`, holding its own messages and subscribers, so the
 sales `events` broker and the fulfilment `events` broker are two objects in one
 process. Sales' outbox publishes into sales' instance and fulfilment never sees
 it. The example bridges the gap with a hand relay that republishes onto
-fulfilment's instance. Read `inline` here as a stand-in that keeps the example
-runnable with no infrastructure, and reach for a real broker when you deploy.
+fulfilment's instance, so it runs with no infrastructure. A deployment uses a
+real broker.
 
 ### 2. The event carries plain data
 
-A published event carries the fields the other context needs as plain values.
-Keep a `Reference` into the publishing context out of it. That is the whole
-point of the extraction: the consumer holds what it was told, and the two
-contexts stay independent.
+A published event carries the fields the other context needs as plain values,
+and no `Reference` into the publishing context. The consumer holds what it was
+told, so the two contexts stay independent.
 
 ### 3. The consuming context translates at a subscriber
 
@@ -113,13 +112,13 @@ into its own command. The subscriber is the anti-corruption layer: it is the one
 place that understands the external event's shape, so the rest of the context
 speaks only its own language.
 
-Two things about that shape. `OutboxProcessor` publishes each row on
-`metadata.domain.stream_category`, so the stream to subscribe to is the
-publishing aggregate's category, `sales::order`. And it publishes what
-`Message.to_external_dict()` returns, so the message arrives as
-`{"data": ..., "metadata": ...}` and the event's fields sit under `"data"`.
-The category stream carries every event of that aggregate, so the subscriber also
-checks the type header and returns early on the ones it does not act on:
+`OutboxProcessor` publishes each row on `metadata.domain.stream_category`, so
+the stream to subscribe to is the publishing aggregate's category,
+`sales::order`. It publishes what `Message.to_external_dict()` returns, so the
+message arrives as `{"data": ..., "metadata": ...}` and the event's fields sit
+under `"data"`. The category stream carries every event of that aggregate, so
+the subscriber also checks the type header and returns early on the ones it does
+not act on.
 
 The type it checks is written as a string. Importing `OrderPlaced` from sales
 would restore the dependency the extraction removed, and once the two contexts
@@ -144,9 +143,8 @@ class OrderPlacedSubscriber:
 ```
 
 Broker delivery is at-least-once, so a redelivered `OrderPlaced` runs this
-subscriber again. This example keeps the seam in focus and does nothing about
-that, which is fine for a demo and wrong for production: `CreateShipment` would
-open a second shipment for the same order. Give the consumer a way to recognise
+subscriber again. This example does nothing about that, so in production
+`CreateShipment` would open a second shipment for the same order. Give the consumer a way to recognise
 work it has already done, such as a uniqueness constraint on the identifier it
 holds across the seam (`order_id` here).
 

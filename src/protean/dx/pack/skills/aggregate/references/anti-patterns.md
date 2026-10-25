@@ -1,7 +1,5 @@
 # Aggregate Anti-Patterns
 
-Common mistakes when designing and implementing aggregates, with explanations and solutions.
-
 ## 1. Anemic Aggregates
 
 **Problem:** Aggregates with only getters/setters and no behavior, violating the principle of encapsulation.
@@ -72,12 +70,6 @@ def place_order(order_id: str):
     repository.add(order)
 ```
 
-**Why it matters:**
-- Encapsulation keeps related logic together
-- Prevents business rules from being scattered
-- Makes testing easier (test the aggregate, not services)
-- Domain experts can understand aggregate methods
-
 ---
 
 ## 2. Aggregates That Are Too Large
@@ -128,17 +120,7 @@ class SupportTicket:
     status: String(default="open")
 ```
 
-**Why it matters:**
-- Aggregates load entire object graph eagerly
-- Large graphs cause performance problems
-- Violates transaction boundary principles
-- Hard to reason about consistency
-
-**Rule of thumb:**
-- `check` flags an aggregate declaring more entity types than the configured `[lint] aggregate_size_limit` (default 5) as `AGGREGATE_TOO_LARGE`
-- A clean `check` does not mean the aggregate is small. Judge row counts yourself
-- If the aggregate is genuinely too large, split it into separate aggregates
-- Reference by ID instead of containment
+A clean `check` does not mean the aggregate is small. Judge the row counts yourself. Split an aggregate that is too large, and hold the other aggregates by id instead of containing them.
 
 ---
 
@@ -181,12 +163,6 @@ with domain.domain_context():
     # Persist the aggregate (its entities are persisted with it)
     repository.add(order)
 ```
-
-**Why it matters:**
-- Entities are not independent - they're part of aggregate lifecycle
-- Aggregate enforces invariants across all entities
-- Transaction boundaries are at aggregate level
-- Breaking this rule bypasses invariant checking
 
 ---
 
@@ -236,11 +212,6 @@ class Account:
         self.balance -= amount
         # Invariant checked automatically on the assignment
 ```
-
-**Why it matters:**
-- Aggregates exist to enforce business rules
-- Without invariants, invalid data can be persisted
-- Bugs are caught at aggregate boundary, not later in application
 
 ---
 
@@ -308,13 +279,7 @@ class FundsWithdrawnHandler:
         repository.add(to_account)
 ```
 
-**Why it matters:**
-- Each aggregate is a transaction boundary
-- Coupling transactions creates distributed transaction problems
-- Eventual consistency is more scalable
-- Domain events enable loose coupling
-
-**Alternative:** Use a saga/process manager for complex multi-aggregate transactions.
+For a flow with several steps across aggregates, use a process manager ([process-manager](../../process-manager/SKILL.md)).
 
 ---
 
@@ -350,13 +315,7 @@ class Order:
     shipping_address = ValueObject(Address)  # Simpler
 ```
 
-**Why it matters:**
-- Value objects are simpler (no identity management)
-- Immutability prevents accidental mutations
-- Better performance (no separate database records)
-- More intuitive model
-
-**Rule:** If it's defined by its attributes (not identity), use a value object.
+A value object's fields are stored in the parent's record, with no table of their own. If a concept is defined by its attributes and not by an identity, make it a value object.
 
 ---
 
@@ -453,12 +412,6 @@ class OrderCreditCheck:
 The caller (a command handler or application service) loads both aggregates through their repositories, runs the service, and persists the result.
 
 When the second step can happen later, in its own transaction, use an event instead. `Order` raises `OrderPlaced`. An event handler in `Order`'s own cluster reacts and issues a command, and the other aggregate's command handler does the work. The [split-aggregate](../../split-aggregate/SKILL.md) skill shows this form. It also covers why the handler stays in the cluster that owns the event, and how to make the step safe to repeat.
-
-**Why it matters:**
-- Aggregates should be independent
-- Cross-aggregate logic belongs in domain services
-- Prevents coupling and circular dependencies
-- Enables independent testing
 
 ---
 
@@ -564,26 +517,7 @@ class LoyaltyAccount:
     tier: String(default="bronze")
 ```
 
-**Why it matters:**
-- Each aggregate should have one clear responsibility
-- Separate bounded contexts for different business capabilities
-- Enables independent scaling and deployment
-- Reduces coupling
-
 ---
-
-## Quick Reference: Aggregate Design Checklist
-
-- [ ] Aggregate has behavior, not just data
-- [ ] Aggregate stays within `[lint] aggregate_size_limit` (default 5 entity types), or raises the limit deliberately
-- [ ] Entities accessed only through aggregate
-- [ ] Business rules enforced via invariants
-- [ ] Each aggregate is a transaction boundary
-- [ ] Value objects used instead of entities where appropriate
-- [ ] Collections not exposed for direct mutation
-- [ ] No direct dependencies on other aggregates
-- [ ] Calculated values use properties, not storage
-- [ ] Aggregate has single, clear responsibility
 
 ## Related
 

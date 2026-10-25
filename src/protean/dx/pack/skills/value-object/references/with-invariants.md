@@ -1,24 +1,10 @@
 # Value Objects with Invariants
 
-Invariants are business rules that must always be true. When validation spans multiple fields or depends on relationships between attributes, use the `@invariant.post` decorator to enforce these rules at the value object level.
-
-## Overview
-
-Use invariants when:
-- Validation depends on multiple fields
-- Business rules define relationships between attributes
-- Complex domain constraints need enforcement
-- You want validation to run automatically on initialization
+An `@invariant.post` method checks a rule that spans several fields of a value object. It runs after the value object is built and raises `ValidationError` in the dict form, `ValidationError({"<field>": ["<message>"]})`, when the rule fails.
 
 ## Code
 
 The complete implementation is in [assets/value_object_with_invariants.py](../assets/value_object_with_invariants.py).
-
-Key points:
-- `@invariant.post` decorator marks validation methods
-- Invariants run automatically after initialization
-- Raise `ValidationError` when rules are violated
-- Can have multiple invariants per value object
 
 ## Walkthrough
 
@@ -42,11 +28,7 @@ class Balance:
             )
 ```
 
-This invariant:
-- Checks a business rule across two fields (currency and amount)
-- Runs automatically after the value object is created
-- Prevents creation of invalid balance objects
-- Has a clear, descriptive method name
+The rule reads two fields, `currency` and `amount`, so it cannot be a field validator.
 
 ### Multiple Invariants
 
@@ -73,28 +55,7 @@ class DiscountPercentage:
             )
 ```
 
-Multiple invariants:
-- Each checks a specific business rule
-- All run in definition order
-- All must pass for the value object to be valid
-- Each has focused, single-responsibility validation
-
-### Date Range Invariant
-
-```python
-@domain.value_object
-class DateRange:
-    start_date: String(required=True)
-    end_date: String(required=True)
-
-    @invariant.post
-    def end_date_must_be_after_start_date(self):
-        """Invariant: End date must be after or equal to start date."""
-        if self.end_date < self.start_date:
-            raise ValidationError(
-                {"date_range": ["End date must be after or equal to start date"]}
-            )
-```
+Every invariant runs, in definition order, even after one fails. The messages of all the failing invariants are collected into one `ValidationError`, keyed by field.
 
 ## Common Invariant Patterns
 
@@ -228,28 +189,12 @@ class Rectangle:
 ## Invariants vs Field Validation
 
 ### Use Field Validation When:
-- Rule applies to single field
-- Built-in validators suffice
-- Simple type/format checking
 
-```python
-from protean.fields.validators import RegexValidator
-
-
-@domain.value_object
-class Email:
-    address: String(
-        max_length=254,
-        required=True,
-        validators=[RegexValidator(r"^[^@\s]+@[^@\s]+$")]  # Single field
-    )
-```
+The rule reads one field: a format, a range or a choice. See [Value Objects with Validation](./with-validation.md).
 
 ### Use Invariants When:
-- Rule spans multiple fields
-- Conditional validation needed
-- Complex business logic
-- Field relationships matter
+
+The rule reads two or more fields, or one field's rule depends on another's value.
 
 ```python
 @domain.value_object
@@ -273,8 +218,6 @@ class CreditCard:
 
 ## Testing Invariants
 
-Test both valid and invalid cases for each invariant:
-
 ```python
 from decimal import Decimal as D
 
@@ -296,28 +239,7 @@ def test_negative_eur_balance_allowed():
     # Negative EUR balance is allowed (different rule)
     balance = Balance(currency="EUR", amount=D("-50.00"))
     assert balance.amount == D("-50.00")
-
-def test_date_range_valid():
-    # End after start is valid
-    dr = DateRange(start_date="2024-01-01", end_date="2024-12-31")
-    assert dr.end_date > dr.start_date
-
-def test_date_range_invalid():
-    # End before start violates invariant
-    with pytest.raises(ValidationError) as exc:
-        DateRange(start_date="2024-12-31", end_date="2024-01-01")
-    assert "End date must be after" in str(exc.value)
 ```
-
-## Best Practices
-
-1. **Name methods descriptively**: Method name should explain the rule
-2. **One rule per method**: Keep invariants focused and testable
-3. **Provide clear error messages**: Explain what's wrong and why
-4. **Document business rationale**: Explain why the rule exists
-5. **Test all branches**: Cover valid and invalid cases
-6. **Run on every creation**: Invariants protect data integrity
-7. **Use appropriate exception**: Always raise `ValidationError`
 
 ## Common Mistakes
 
@@ -336,24 +258,6 @@ def check_something(self):  # Won't run automatically!
 def check_something(self):
     if self.amount < 0:
         return False  # Wrong! Should raise ValidationError
-```
-
-**Vague error messages** ❌
-```python
-# fragment
-@invariant.post
-def check_something(self):
-    if self.amount < 0:
-        raise ValidationError({"amount": ["Invalid"]})  # Too vague!
-```
-
-**Too many rules in one method** ❌
-```python
-# fragment
-@invariant.post
-def validate_everything(self):
-    # Checking 10 different things...
-    # Hard to test, hard to maintain
 ```
 
 ## Invariants vs Methods

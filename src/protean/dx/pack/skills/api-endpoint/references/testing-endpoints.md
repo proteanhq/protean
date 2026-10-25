@@ -1,7 +1,5 @@
 # Testing Endpoints
 
-How to test your project's FastAPI endpoints with FastAPI's `TestClient`.
-
 ## Overview
 
 An endpoint test sends a request through the whole app, middleware and
@@ -198,13 +196,6 @@ def test_cancel_existing_order_returns_200(client):
     assert response.status_code == 200
     assert response.json()["status"] == "cancelled"
 ```
-
-## TestClient details
-
-- `TestClient` is synchronous. It runs `def` and `async def` endpoints alike.
-- The middleware and exception handlers run just as they do in production.
-- `json=` sends a JSON body and sets the `Content-Type` header.
-- Read the response with `.status_code`, `.json()` and `.text`.
 
 ## Related
 

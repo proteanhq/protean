@@ -61,7 +61,7 @@ A single field that carries domain meaning beyond its raw type:
 |--------------|------------|
 | `email = String(...)` | `Email` (with format validation) |
 | `phone = String(...)` | `PhoneNumber` (with format validation) |
-| `price = Float(...)` | `Money` (with currency) |
+| `price = Decimal(...)` | `Money` (with currency) |
 | `url = String(...)` | `Url` (with format validation) |
 | `sku = String(...)` | `SKU` (with format rules) |
 | `percentage = Float(...)` | `Percentage` (with 0-100 constraint) |
@@ -84,9 +84,12 @@ Scan aggregate and entity definitions for the patterns above. For each candidate
 Follow [value-object](../value-object/SKILL.md) patterns:
 
 ```python
+from decimal import Decimal as D
+
+
 @domain.value_object
 class Money:
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
     currency = String(max_length=3, default="USD")
 
     def add(self, other: "Money") -> "Money":
@@ -94,12 +97,15 @@ class Money:
             raise ValueError(f"Cannot add {self.currency} and {other.currency}")
         return Money(amount=self.amount + other.amount, currency=self.currency)
 
-    def multiply(self, factor: float) -> "Money":
-        return Money(amount=self.amount * factor, currency=self.currency)
+    def multiply(self, factor: int | D) -> "Money":
+        return Money(
+            amount=(self.amount * factor).quantize(D("0.0001")),
+            currency=self.currency,
+        )
 ```
 
 Key decisions:
-1. **Fields**: Move from the aggregate and keep the same types and constraints
+1. **Fields**: Move from the aggregate and keep the same constraints. A money amount stored as `Float` becomes `Decimal(precision=19, scale=4)`, because a float cannot hold most cents exactly
 2. **Behavior**: Extract related calculations and comparisons from handlers/aggregates
 3. **Invariants**: Add `@invariant.post` for concept-level validation
 4. **Immutability**: VOs are automatically immutable, so no setters are needed
@@ -112,7 +118,7 @@ In each aggregate/entity, replace the field group with a `ValueObject` field:
 # Before
 @domain.aggregate
 class Order:
-    total_amount = Float(default=0.0)
+    total_amount = Decimal(precision=19, scale=4, default=D(0))
     total_currency = String(default="USD")
 
 # After
@@ -128,11 +134,11 @@ Replace inline calculations with VO methods:
 ```python
 # Before
 def apply_discount(self, percentage):
-    self.total_amount = self.total_amount * (1 - percentage / 100)
+    self.total_amount = self.total_amount * (1 - D(percentage) / 100)
 
 # After
 def apply_discount(self, percentage):
-    self.total = self.total.multiply(1 - percentage / 100)
+    self.total = self.total.multiply(1 - D(percentage) / 100)
 ```
 
 ### Step 5: Update commands and events
@@ -143,7 +149,7 @@ Decide: flatten or nest?
 # Option A: Flatten (simpler for API consumers)
 @domain.command(part_of="Order")
 class PlaceOrder:
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
     currency = String(default="USD")
 
 # Option B: Nest (preserves VO semantics)
@@ -162,11 +168,11 @@ For events, flattening is often preferred since events are read by many consumer
    ```python
    # fragment
    # Before
-   assert order.total_amount == 59.98
+   assert order.total_amount == D("59.98")
    assert order.total_currency == "USD"
 
    # After
-   assert order.total.amount == 59.98
+   assert order.total.amount == D("59.98")
    assert order.total.currency == "USD"
    ```
 
@@ -184,7 +190,7 @@ For events, flattening is often preferred since events are read by many consumer
 4. **Forgetting HasMany entities**: If the primitive fields are on entities inside a `HasMany`,
    update those too.
 
-5. **Losing default values**: When moving `default=0.0` from the aggregate to the VO,
+5. **Losing default values**: When moving `default=D(0)` from the aggregate to the VO,
    make sure the VO field or the aggregate `ValueObject()` field carries the default.
 
 6. **Putting a mutable collection on the VO**: a value object is compared by value and must

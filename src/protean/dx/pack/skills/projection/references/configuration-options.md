@@ -2,7 +2,7 @@
 
 ## Overview
 
-Projections can be configured with several options to control storage, querying, and schema behavior. Options are passed directly to the `@domain.projection` decorator or to `domain.register()`.
+Pass options to the `@domain.projection` decorator or to `domain.register()`.
 
 ## Storage options
 
@@ -43,11 +43,10 @@ class ActiveSession:
 
 ### No provider or cache
 
-A projection must have at least one storage backend. Registering with both set to `None` raises `NotSupportedError`:
+Registering with both set to `None` raises `NotSupportedError`, message "MyProjection projection needs to have either a database or a cache provider":
 
 ```python
 # fragment
-# This will raise NotSupportedError
 domain.register(MyProjection, provider=None, cache=None)
 ```
 
@@ -55,7 +54,7 @@ domain.register(MyProjection, provider=None, cache=None)
 
 ### schema_name
 
-Controls the table/collection name in the database. Defaults to the underscore-cased class name:
+Sets the table or collection name. It defaults to the underscore-cased class name (`ProductInventory` becomes `product_inventory`):
 
 ```python
 @domain.projection(schema_name="product_inventory_view")
@@ -64,12 +63,7 @@ class ProductCatalog:
     ...
 ```
 
-Default behavior:
-- `ProductInventory` -> `product_inventory`
-- `UserProfile` -> `user_profile`
-- `OrderSummary` -> `order_summary`
-
-Schema names are **not inherited** by subclasses - each subclass gets its own derived name.
+Schema names are **not inherited** by subclasses: each subclass gets its own derived name.
 
 ### Custom database models
 
@@ -91,7 +85,7 @@ class CustomInventoryModel(BaseDatabaseModel):
 
 ### limit
 
-Default query result limit. Set to `100` by default:
+Default query result limit, `100` unless set:
 
 ```python
 @domain.projection(limit=50)          # Limit to 50 results
@@ -125,7 +119,7 @@ Order_by can be overridden in subclasses.
 
 ### externally_populated
 
-Defaults to `False`. Set it to `True` when a subscriber or event handler fills the projection, for example from another domain's messages. Without it, `check` reports `PROJECTION_WITHOUT_PROJECTOR` for a projection that no projector writes. With it, `check` skips that diagnostic and `UNSOURCED_PROJECTION_FIELD` for the projection.
+Set it to `True` when a subscriber or event handler fills the projection, for example from another domain's messages. `check` then skips `PROJECTION_WITHOUT_PROJECTOR` and `UNSOURCED_PROJECTION_FIELD` for the projection.
 
 ```python
 @domain.projection(externally_populated=True)
@@ -138,7 +132,7 @@ The option changes only what `check` reports. Storage and querying work the same
 
 ## Abstract projections
 
-Mark a projection as abstract to create a base class that won't be registered as a concrete projection:
+An abstract projection is a base class that is not registered as a concrete projection:
 
 ```python
 @domain.projection(abstract=True)
@@ -154,10 +148,7 @@ class ConcreteView(BaseView):
 
 A subclass of an abstract projection needs its own `@domain.projection` decorator (or `domain.register()` call). Registration turns it into a concrete projection. It inherits the base's fields, so `ConcreteView` has `age`, `view_id` and `name`.
 
-Abstract projections:
-- Don't require an identifier field
-- Cannot be instantiated (raises `NotSupportedError`)
-- Serve as base classes for concrete projections
+Instantiating an abstract projection raises `NotSupportedError` ("BaseView class has been marked abstract and cannot be instantiated").
 
 ## Complete example
 

@@ -1,12 +1,8 @@
 # Database-Specific Repositories
 
-Protean supports binding repositories to specific database types, allowing you to write optimized queries for different databases while maintaining a single domain model.
-
 ## Overview
 
-By default, a repository works with ALL databases (`database="ALL"`). When you need to optimize for a specific database (for example, PostgreSQL-specific features like JSON operators, full-text search, or materialized views), you can create a database-specific repository.
-
-Protean automatically selects the correct repository based on the active database provider.
+By default, a repository works with all databases (`database="ALL"`). A repository bound to one database type, such as `database="postgresql"`, is selected when the active provider is that type. Use one for database-specific features such as JSON operators or full-text search.
 
 ## Code
 
@@ -25,29 +21,6 @@ class Report:
     total_value: Float(default=0.0)
 ```
 
-### Default Behavior: `database="ALL"`
-
-```python
-@domain.repository(part_of=Report)
-class ReportRepository:
-    """Works with any database."""
-    def find_by_type(self, report_type):
-        return self.query.filter(report_type=report_type).all()
-```
-
-This repository is used regardless of which database provider is active.
-
-### Database-Specific Binding
-
-```python
-@domain.repository(part_of=Report, database="postgresql")
-class PostgresReportRepository:
-    """Only used when the provider is PostgreSQL."""
-    def find_by_type(self, report_type):
-        # Can use PostgreSQL-specific query optimizations
-        return self.query.filter(report_type=report_type).all()
-```
-
 ### Resolution Priority
 
 When `domain.repository_for(Report)` is called:
@@ -58,7 +31,7 @@ When `domain.repository_for(Report)` is called:
 
 ### Multiple Repositories Per Aggregate
 
-You can have both a generic and a database-specific repository:
+One aggregate can have a generic and a database-specific repository:
 
 ```python
 @domain.repository(part_of=Report)  # database="ALL" (default)
@@ -101,21 +74,6 @@ class AnalyticsReport:
     report_id: Identifier(identifier=True)
     # ...
 ```
-
-## When to Use Database-Specific Repositories
-
-Use database-specific repositories when:
-- You need database-specific SQL features (JSON operators, window functions, etc.)
-- Performance optimization requires database-native queries
-- You're migrating between databases and need different implementations
-- You have multiple databases serving different purposes (OLTP vs. OLAP)
-
-## When NOT to Use
-
-Stick with `database="ALL"` when:
-- Standard query methods (filter, order_by, limit) are sufficient
-- You want maximum portability across databases
-- The application is in early development and the database isn't finalized
 
 ## Related
 - [Default Repository](./default-repository.md): Auto-generated generic repository

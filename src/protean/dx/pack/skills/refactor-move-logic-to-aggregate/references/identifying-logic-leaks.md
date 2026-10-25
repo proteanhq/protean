@@ -21,12 +21,10 @@ Every line beyond these three is a candidate for moving into the aggregate.
 
 ### In Handlers
 
+The signal table in SKILL.md covers status guards, calculations, field assignments and `raise ValidationError`. Two more:
+
 | What you see | What it means | Where it should go |
 |-------------|---------------|-------------------|
-| `if status == "X": raise` | State guard | Aggregate method (first line) |
-| `total = sum(...)` | Calculation | Aggregate method or property |
-| `agg.field = value` (multiple) | State mutation | Single aggregate method |
-| `raise ValidationError(...)` | Business rule | `@invariant.post` |
 | `if len(items) > MAX:` | Constraint check | `@invariant.post` or field constraint |
 | `datetime.now()` | Timestamp setting | Aggregate method |
 

@@ -1,10 +1,6 @@
 # Analysis Checklist
 
-Step-by-step process for analyzing Protean domain code coverage.
-
-## Overview
-
-This checklist walks through a systematic coverage analysis of Protean domain code. Follow each step to ensure no testable element is missed.
+The per-step checklist behind the coverage-analysis process: what to record for each element, and how to mark what the tests cover.
 
 ## Code
 
@@ -64,19 +60,9 @@ For each `@domain.value_object` class:
 
 ## Step 5: Inventory existing tests
 
-For each test file, map what is covered:
-- Which aggregate methods are called in tests?
-- Which events are verified with `isinstance` AND field value checks?
-- Which invariants are triggered with `pytest.raises`?
-- Which business rules are tested for both happy and rejection paths?
-- Which handlers are tested with `domain.process()`?
-- Which cross-aggregate side effects are verified?
-
-Mark coverage as: **full** (happy + negative), **partial** (happy only), or **none**.
+For each test file, map what is covered, using the SKILL.md's "What counts as tested" list for each element. Mark coverage as: **full** (happy + negative), **partial** (happy only), or **none**.
 
 ## Step 6: Compare and report gaps
-
-Cross-reference the catalog against the test inventory.
 
 ### Severity classification
 
@@ -88,28 +74,10 @@ Cross-reference the catalog against the test inventory.
 
 ## Step 7: Generate missing tests
 
-For each gap, use [generate-test-scaffold](../../generate-test-scaffold/SKILL.md) patterns:
+Map each gap to a [generate-test-scaffold](../../generate-test-scaffold/SKILL.md) test class with the table in the SKILL.md's Step 4. Two setup points for the generated tests:
 
-| Gap type | Test class pattern | Scaffold step |
-|----------|-------------------|---------------|
-| Aggregate factory/method | `Test{Aggregate}Behavior` | Step 2 |
-| Invariant / business rule | `Test{Aggregate}BusinessRules` | Step 3 |
-| Command handler | `TestHandlerProcessing` | Step 4 |
-| Event handler side effect | `TestCrossAggregateFlow` | Step 5 |
-| End-to-end lifecycle | `TestLifecycle` | Step 6 |
-
-**Key patterns:**
-- Use `_events.clear()` to isolate event assertions after a factory that also raises events
 - Set `event_processing` and `command_processing` to `"sync"` in the test conftest, so `domain.process()` and event handlers run inside the test (generate-test-scaffold Step 7)
-- For cross-aggregate tests, ensure the target aggregate exists in the repository before the source event fires
-
-## Common analysis mistakes
-
-1. **Flagging framework guarantees**: VO immutability, field validation, registration are NOT gaps
-2. **Missing negative tests**: every `if ... raise` needs both happy path and rejection test
-3. **isinstance-only event checks**: verifying event type without checking field values is partial coverage
-4. **Forgetting cross-aggregate handlers**: event handlers that issue a command to another aggregate are often undertested
-5. **Not tracing raise_() calls**: each `raise_()` should have a corresponding test
+- For cross-aggregate tests, add the target aggregate to the repository before the source event fires
 
 ## Related
 

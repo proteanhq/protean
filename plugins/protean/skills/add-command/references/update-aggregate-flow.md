@@ -1,20 +1,8 @@
 # Update-Aggregate Command Flow
 
-This reference explains the complete flow for adding a command that modifies an existing aggregate.
-
 ## Overview
 
 Use this pattern when the command acts on an aggregate that already exists in the system (e.g., cancelling a reservation, changing a user's email, closing a project). The handler loads the aggregate from the repository before modifying it.
-
-## Code
-
-The complete implementation is in [assets/add_command_update_flow.py](../assets/add_command_update_flow.py).
-
-Key highlights:
-- Command carries the aggregate's identifier plus action-specific data
-- Handler loads existing aggregate via `domain.repository_for(Aggregate).get(id)`
-- Handler calls aggregate method, then persists the modified aggregate
-- PUT endpoint uses path parameter for resource identification
 
 ## Walkthrough
 
@@ -48,8 +36,7 @@ class CancelReservation:
     reason: String(required=True)
 ```
 
-- Always includes the aggregate's identifier field so the handler can load it
-- Additional fields carry data needed for the action
+The command always carries the aggregate's identifier, so the handler can load it.
 
 ### The Handler (Update Pattern)
 
@@ -64,11 +51,7 @@ class ReservationCommandHandler:
         return reservation.reservation_id
 ```
 
-The update pattern has four steps:
-1. **Load** the aggregate from the repository using the identifier from the command
-2. **Call** the aggregate method with data from the command
-3. **Persist** the modified aggregate (same `.add()` method as create)
-4. **Return** an identifier for the caller
+Persisting a modified aggregate uses the same `.add()` call as create.
 
 ### The Endpoint
 
@@ -112,29 +95,14 @@ async def cancel_reservation(reservation_id: str, request: Request):
     return JSONResponse(content={"reservation_id": result, "status": "cancelled"})
 ```
 
-- The middleware gives each request a domain context, so `current_domain` works
-- HTTP PUT for actions on existing resources
-- Combines path parameters (resource ID) with request body (action data)
-- Uses `current_domain.process()` for synchronous processing
-
 ## Combining Path Parameters and Body
 
-A common pattern for update commands:
+An update endpoint builds the command from both:
 
 | Data source | What it provides | Example |
 |-------------|------------------|---------|
 | Path parameter | Resource identifier | `/reservations/{reservation_id}/cancel` |
 | Request body | Action-specific data | `{"reason": "Change of plans"}` |
-
-The endpoint combines both when constructing the command.
-
-## HTTP Verb Choice
-
-| Operation | HTTP Method | Status Code | Example Route |
-|-----------|-------------|-------------|---------------|
-| Action on resource | PUT | 200 OK | `PUT /reservations/{id}/cancel` |
-| Update resource | PUT | 200 OK | `PUT /users/{id}/email` |
-| Action without body | PUT | 200 OK | `PUT /shipments/{id}/deliver` |
 
 ## Error Handling
 

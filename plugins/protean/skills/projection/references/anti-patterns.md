@@ -25,8 +25,6 @@ Error: `` "Projection `UserView` needs to have at least one identifier" ``
 
 ## 2. Projection with no projector
 
-A projection needs a projector to populate it. With no projector, nothing writes to the projection, so queries against it always come back empty.
-
 ```python
 # fragment
 # Wrong! Nothing populates this projection
@@ -78,73 +76,7 @@ class PartnerOrderSummary:
 
 `check` reports `PROJECTION_WITHOUT_PROJECTOR` for a projection no projector writes and that is not marked `externally_populated`.
 
-## 3. Using Reference fields
-
-```python
-# fragment
-# Wrong! References not allowed
-@domain.projection
-class OrderView:
-    order_id: Identifier(identifier=True)
-    customer = Reference(Customer)
-```
-
-**Fix**: Store the referenced entity's relevant data as basic fields:
-
-```python
-@domain.projection
-class OrderView:
-    order_id: Identifier(identifier=True)
-    customer_id: Identifier()
-    customer_name: String()
-```
-
-## 4. Using Association fields
-
-```python
-# fragment
-# Wrong! Associations not allowed
-@domain.projection
-class OrderView:
-    order_id: Identifier(identifier=True)
-    items = HasMany(OrderItem)
-```
-
-**Fix**: Denormalize collection data:
-
-```python
-@domain.projection
-class OrderView:
-    order_id: Identifier(identifier=True)
-    item_count: Integer()
-    total_amount: Float()
-```
-
-## 5. No storage backend
-
-```python
-# fragment
-# Wrong! Must have either provider or cache
-domain.register(MyProjection, provider=None, cache=None)
-```
-
-**Fix**: Always have at least one storage backend:
-
-```python
-# fragment
-@domain.projection  # Uses default provider
-class MyProjection:
-    ...
-
-# OR explicitly set cache
-@domain.projection(cache="redis")
-class MyProjection:
-    ...
-```
-
-Error: `"MyProjection projection needs to have either a database or a cache provider"`
-
-## 6. Putting business logic in projections
+## 3. Putting business logic in projections
 
 ```python
 # fragment
@@ -158,7 +90,7 @@ class OrderView:
         self.total *= (1 - percentage / 100)
 ```
 
-**Fix**: Business logic belongs in aggregates. Projections should only have data fields and optional `defaults()`:
+**Fix**: Keep the logic in the aggregate. A projection holds data fields and an optional `defaults()`:
 
 ```python
 @domain.projection
@@ -168,7 +100,7 @@ class OrderView:
     discount_applied: Float()  # Track the discount for display purposes
 ```
 
-## 7. Treating projections as aggregates
+## 4. Treating projections as aggregates
 
 ```python
 # fragment
@@ -186,7 +118,7 @@ def place_order(product_id, quantity):
     domain.repository_for(Product).add(product)
 ```
 
-**Fix**: Use aggregates for write operations. Projections are for reading only:
+**Fix**: Change state through the aggregate, and let a projector update the projection:
 
 ```python
 # Write side: use aggregate
@@ -207,7 +139,7 @@ class ProductView:
     stock: Integer()
 ```
 
-## 8. Modifying identifier values
+## 5. Modifying identifier values
 
 ```python
 # fragment
@@ -215,11 +147,9 @@ inventory = ProductInventory(product_id="PROD-001", name="Laptop")
 inventory.product_id = "PROD-002"  # Wrong! Raises InvalidOperationError
 ```
 
-**Fix**: Identifiers are immutable once set. Create a new projection record instead.
+**Fix**: Create a new projection record. The error message is "Identifiers cannot be changed once set".
 
-## 9. Projection field no projector writes
-
-Every projection field should be written by a projector method. A field no projector fills is a dead column: it shows in the read model and carries a type, but nothing ever sets it.
+## 6. Projection field no projector writes
 
 ```python
 @domain.projection
@@ -254,7 +184,7 @@ class OrderSummaryProjector:
 
 `check` reports `UNSOURCED_PROJECTION_FIELD` for such a field. It reads what projector methods write, so it is advisory: a field filled only through a helper or a dict splat the check cannot follow can still be flagged.
 
-## 10. Reading a projection with the wrong accessor
+## 7. Reading a projection with the wrong accessor
 
 Read a projection through `view_for(Projection)`, which returns a read-only view with `get()`, `query`, `find_by()`, `count()`, and `exists()`. Use `connection_for(Projection)` for the raw store connection. Both require a projection; passing an element of another type raises `IncorrectUsageError`.
 
@@ -279,7 +209,7 @@ with domain.domain_context():
     shipped = view.query.filter(status="shipped").all()
 ```
 
-`check` reports `USAGE_NOT_A_PROJECTION` when `view_for` or `connection_for` is given a non-projection.
+Giving `view_for` or `connection_for` a non-projection raises `IncorrectUsageError` with the code `USAGE_NOT_A_PROJECTION` when the call runs. `check` does not report it.
 
 ## Related
 

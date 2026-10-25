@@ -2,7 +2,10 @@
 
 ## Wrong enricher signature
 
-Command and event enrichers have different signatures. Mixing them up fails.
+Command and event enrichers have different signatures. An event enricher that
+leaves out the `aggregate` parameter raises `TypeError` (`add_ctx() takes 1
+positional argument but 2 were given`) inside `aggregate.raise_()`, so the
+event is never appended.
 
 ```python
 # fragment
@@ -79,11 +82,6 @@ def add_ctx(event, aggregate):
 ```
 
 Capture what you need into `g` earlier (e.g. in middleware) and read it here.
-
-## Business data in extensions
-
-`metadata.extensions` is for cross-cutting metadata (tenant, request, actor,
-correlation). Domain payload belongs in the command/event fields, not extensions.
 
 ## Non-callable enricher
 

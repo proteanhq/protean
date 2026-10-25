@@ -1,7 +1,5 @@
 # Choosing the Right Validation Layer
 
-A decision framework for placing validation rules in the correct Protean layer.
-
 ## Decision Tree
 
 ```
@@ -115,10 +113,6 @@ class Money:
     def check_before_change(self):
         ...
 ```
-
-## Complete Example
-
-See [assets/validation_all_layers.py](../assets/validation_all_layers.py) for a full example showing all 4 layers working together in a realistic scenario.
 
 ## Related
 

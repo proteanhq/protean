@@ -159,7 +159,7 @@ def test_every_invariant_in_the_pack_raises_the_dict_form():
 
     # A scan that reads nothing passes; these floors make that fail instead.
     assert parsed >= 1300, f"parsed only {parsed} blocks and assets"
-    assert methods >= 140, f"found only {methods} invariant methods"
+    assert methods >= 100, f"found only {methods} invariant methods"
     assert problems == [], (
         "invariants must raise ValidationError({'<field>': ['<message>']}):\n"
         + "\n".join(problems)

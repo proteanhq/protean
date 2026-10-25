@@ -92,11 +92,3 @@ Based on impact and dependency between fixes:
 | 5-6 | Fair: several anti-patterns, refactoring recommended |
 | 3-4 | Poor: fundamental patterns violated, significant refactoring needed |
 | 1-2 | Critical: major redesign likely needed |
-
-## Tips for Presenting Findings
-
-1. **Lead with the most impactful finding**: Don't bury critical issues
-2. **Show code, not just descriptions**: A 3-line code snippet communicates faster than a paragraph
-3. **Group related findings**: If a handler has 3 issues, present them together
-4. **Be specific about locations**: Always include file path and line number
-5. **Suggest the refactoring order**: Don't just list problems, show the path forward

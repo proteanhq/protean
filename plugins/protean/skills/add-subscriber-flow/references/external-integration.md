@@ -51,35 +51,4 @@ class PaymentSubscriber:
 
 **Best for:** Simple status updates, single aggregate mutations, no authorization needed.
 
-## Configuration
-
-Subscribers need `message_processing` set to `"sync"` for testing:
-
-```python
-domain.config["message_processing"] = "sync"
-```
-
-If the subscriber dispatches commands, also set:
-
-```python
-domain.config["command_processing"] = "sync"
-```
-
-## Publishing test messages
-
-Use the broker to simulate external messages in tests. Initialize the domain
-first, and publish inside a domain context:
-
-```python
-domain.init(traverse=False)
-
-with domain.domain_context():
-    domain.repository_for(Order).add(Order(id="ORD-001"))
-
-    domain.brokers["default"].publish(
-        "payment_gateway",
-        {"orderId": "ORD-001"},
-    )
-
-    assert domain.repository_for(Order).get("ORD-001").status == "PAID"
-```
+The SKILL.md, steps 4 and 5, shows the sync settings and how to publish a test message.

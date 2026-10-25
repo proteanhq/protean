@@ -1,24 +1,10 @@
 # Basic Validators
 
-Build custom callable validator classes for format validation from scratch.
-
-## Overview
-
-A custom validator is any callable class that:
-1. Has an `__init__` method to configure error messages
-2. Has a `__call__` method that receives the field value
-3. Raises `ValidationError` (from `protean.exceptions`) if validation fails
-4. Returns nothing on success
+Two format validators built from scratch, `PhoneValidator` and `UrlValidator`. SKILL.md "Basic structure" and "Key rules" give the anatomy every validator follows.
 
 ## Code
 
 The complete implementation is in [assets/custom_validator_basic.py](../assets/custom_validator_basic.py).
-
-Key highlights:
-- `PhoneValidator` validates E.164-like phone numbers (+ prefix, 10-15 digits)
-- `UrlValidator` validates HTTP/HTTPS URLs with domain check
-- Both are attached to value objects via `validators=[ValidatorInstance()]`
-- Validators strip formatting characters before checking core format
 
 ## Walkthrough
 
@@ -45,14 +31,7 @@ class PhoneValidator:
             raise ValidationError(self.error)
 ```
 
-Design decisions:
-- Strips common separators (dashes, spaces, parens) before validation
-- Requires international prefix (+) for unambiguous formatting
-- Validates digit count range (10-15) per E.164 standard
-
-Call it on two valid numbers and two invalid ones. `"+1 (555) 123-4567"` passes
-once the separators are stripped. `"1-555-123-4567"` has the right digits but no
-`+` prefix, and `"+1234"` has the prefix but too few digits, so both raise:
+It requires the international `+` prefix and 10 to 15 digits, the E.164 range. Call it on two valid numbers and two invalid ones. `"+1 (555) 123-4567"` passes once the separators are stripped. `"1-555-123-4567"` has the right digits but no `+` prefix, and `"+1234"` has the prefix but too few digits, so both raise:
 
 ```python
 validator = PhoneValidator()
@@ -102,50 +81,6 @@ Design decisions:
 - Only allows http/https schemes (not ftp, file, etc.)
 - Checks for domain presence and basic structure
 - Handles port numbers by stripping `:port` before domain check
-
-## Validator Anatomy
-
-Every custom validator follows this pattern:
-
-```python
-from protean.exceptions import ValidationError
-
-class MyValidator:
-    """Description of what this validates."""
-
-    def __init__(self):
-        self.error = "Clear error message describing what went wrong"
-
-    def __call__(self, value):
-        """value is already type-cast by the field."""
-        if not is_valid(value):
-            raise ValidationError(self.error)
-```
-
-## Testing
-
-Test validators both in isolation and within domain elements:
-
-```python
-import pytest
-from protean.exceptions import ValidationError
-
-
-# Test validator directly
-def test_valid_phone():
-    validator = PhoneValidator()
-    validator("+1-555-123-4567")  # Should not raise
-
-def test_invalid_phone():
-    validator = PhoneValidator()
-    with pytest.raises(ValidationError):
-        validator("1-555-123-4567")  # Missing + prefix
-
-# Test via value object
-def test_phone_value_object():
-    phone = Phone(number="+1-555-123-4567")
-    assert phone.number == "+1-555-123-4567"
-```
 
 ## Related
 

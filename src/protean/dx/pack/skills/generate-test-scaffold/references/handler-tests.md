@@ -1,30 +1,15 @@
 # Handler Test Patterns
 
-Patterns for testing command handler and event handler orchestration logic.
-
-## Overview
-
-Handler tests are integration tests. They verify that the handler wires command/event data to aggregate methods and persists results correctly. These sit in the middle of the testing pyramid.
-
-## Code
-
-Complete examples are in:
+Patterns for testing command handler and event handler orchestration. Handler tests are integration tests: they check that a handler passes command or event data to the right aggregate method and persists the result. Complete examples:
 - [assets/scaffold_command_flow.py](../assets/scaffold_command_flow.py): User registration with handler and API
 - [assets/scaffold_event_driven_flow.py](../assets/scaffold_event_driven_flow.py): Cross-aggregate event handling
 
 ## Testing command handler orchestration
 
-Use `domain.process(command)` to test the full handler pipeline. The root `conftest.py` sets `command_processing = "sync"` (see [the root conftest](../assets/conftest.py)), so `process()` runs the handler before it returns and returns the handler's result:
+Use `domain.process(command)` to run the full handler pipeline. SKILL.md Step 4 shows the basic create-and-persist test. Two more checks:
 
 ```python
 class TestHandlerProcessing:
-    def test_command_creates_and_persists_aggregate(self):
-        """Handler creates aggregate and persists it."""
-        result = domain.process(RegisterUser(email="a@test.com", name="Alice"))
-        user = domain.repository_for(User).get(result)
-        assert user.email == "a@test.com"
-        assert user.status == "registered"
-
     def test_handler_returns_identifier(self):
         """Handler returns aggregate ID."""
         result = domain.process(RegisterUser(email="b@test.com", name="Bob"))
@@ -43,29 +28,9 @@ class TestHandlerProcessing:
 
 ## Testing event handler side effects
 
-Event handlers fire when their source aggregate is persisted, because the root `conftest.py` sets `event_processing = "sync"`. With the default asynchronous processing, the handler does not run inside the test. Set up the target aggregate first:
+SKILL.md Step 5 shows the basic side-effect test. In the Order and Inventory example, the event handler sits in Order's cluster (`part_of=Order`) and issues a `ReserveStock` command, and the command handler loads the Inventory. That is why the Inventory must be in the repository before the Order is persisted.
 
-```python
-class TestEventHandlerSideEffects:
-    def test_order_placed_reserves_inventory(self):
-        """OrderPlaced triggers stock reservation in Inventory."""
-        # Set up target aggregate first
-        inventory = Inventory(product_id="p-1", available=100, reserved=0)
-        domain.repository_for(Inventory).add(inventory)
-
-        # Source event fires when Order is persisted
-        order = Order.place(customer_id="c-1", product_id="p-1", quantity=5)
-        domain.repository_for(Order).add(order)
-
-        # Verify side effect
-        updated = domain.repository_for(Inventory).get(inventory.id)
-        assert updated.available == 95
-        assert updated.reserved == 5
-```
-
-**Key pattern**: The target aggregate (Inventory) must exist in the repository **before** the source aggregate (Order) is persisted. The event handler issues a `ReserveStock` command, and the command handler loads the Inventory.
-
-The event handler sits in Order's cluster (`part_of=Order`) and hands off with a command, so the command handler is where the write and its guard live. Events are delivered at least once, so test that a repeated command changes nothing:
+The command handler is where the write and its guard live. Events are delivered at least once, so test that a repeated command changes nothing:
 
 ```python
 class TestReserveStockHandler:
@@ -116,17 +81,9 @@ class TestAPIEndpoint:
         assert user.name == "Bob"
 ```
 
-## Avoid mocks: use real domain elements
-
-Use `domain.process()` and `domain.repository_for()` with real commands, aggregates, and events. Protean's synchronous processing (`event_processing` and `command_processing` set to `"sync"` in the root `conftest.py`) and in-memory repositories eliminate the need for mocks. Do not mock handlers, repositories, or aggregate methods. Test the real orchestration. Only mock truly external dependencies (third-party HTTP APIs) that have no in-memory substitute.
-
 ## What NOT to test
 
-- Handler registration in `domain.registry.command_handlers` (framework guarantee)
-- `meta_.part_of` association (framework wiring)
-- `meta_.stream_category` (framework wiring)
-- Handler method count (`len(Handler._handlers)`) (framework internals)
-- Command field validation (Protean Layer 1)
+Besides the skip list in SKILL.md, skip handler registration in `domain.registry.command_handlers` and the handler method count (`len(Handler._handlers)`). Both are framework internals.
 
 ## Related
 

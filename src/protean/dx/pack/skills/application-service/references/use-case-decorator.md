@@ -1,6 +1,6 @@
 # The @use_case Decorator
 
-The `@use_case` decorator is the primary mechanism for marking methods as use case entry points in an application service.
+The `@use_case` decorator marks a method on an application service as a use case entry point.
 
 ## Import
 
@@ -16,6 +16,8 @@ Every method decorated with `@use_case` is automatically enclosed in a `UnitOfWo
 
 - If the method completes successfully, the UoW **commits** all pending changes (aggregate mutations, event publications, persistence operations)
 - If an exception is raised, the UoW **rolls back** all changes before re-raising the exception
+
+[Unit of Work](unit-of-work.md) covers what commit and rollback mean on each provider.
 
 ```python
 from protean.fields import Identifier, String
@@ -43,11 +45,9 @@ The decorator logs each invocation at the INFO level:
 INFO: Executing use case: register_user
 ```
 
-This provides traceability for debugging and auditing.
-
 ### 3. Domain Context Check
 
-The decorator checks for an active domain context before it opens the Unit of Work. Without one, the call raises `ConfigurationError` and names the use case. Call use cases after `domain.init()` and inside `with domain.domain_context():`. In tests, the `test_domain` fixture activates a context for you.
+The decorator checks for an active domain context before it opens the Unit of Work. Without one, the call raises ``ConfigurationError: Use case `UserServices.register_user` needs an active domain context, because it runs inside a Unit of Work.`` Call use cases after `domain.init()` and inside `with domain.domain_context():`. In tests, the `test_domain` fixture activates a context for you.
 
 ## Internal Implementation
 
@@ -65,15 +65,12 @@ def use_case(func):
     return wrapper
 ```
 
-The `_use_case` attribute is set on the wrapper function to mark it as a use case method. The wrapper does not retry: a version conflict (`ExpectedVersionError`) reaches the caller after the rollback. `@handle` is the one that retries, on command handlers, event handlers, process managers and projectors alike.
+The `_use_case` attribute on the wrapper marks it as a use case method. The wrapper does not retry: a version conflict (`ExpectedVersionError`) reaches the caller after the rollback. `@handle` is the one that retries, on command handlers, event handlers, process managers and projectors alike.
 
 ## Important Notes
 
-- Only `@use_case`-decorated methods receive UoW treatment
-- Regular (non-decorated) methods on the same class do NOT get automatic transaction management
-- You can add helper methods without the decorator for internal logic
-- Do NOT manually wrap in `UnitOfWork` inside a `@use_case` method: it is already wrapped. A Unit of Work opened inside another one joins it, so the inner one adds nothing
-- A use case that calls another use case runs both in one transaction, for the same reason
+- Only `@use_case`-decorated methods get a Unit of Work. A helper method without the decorator gets none of its own
+- A `with UnitOfWork():` inside a `@use_case` method joins the decorator's Unit of Work and adds nothing. A use case that calls another use case runs both in one transaction, for the same reason
 
 ## Example: Mixed Methods
 

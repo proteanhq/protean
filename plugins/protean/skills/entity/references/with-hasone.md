@@ -1,36 +1,10 @@
 # Entity with HasOne Relationships
 
-Entities can have one-to-one relationships with other entities using the `HasOne` field. This pattern is useful when you need to model optional or required related information that logically belongs to the entity but is complex enough to warrant its own entity.
-
-## Overview
-
-A `HasOne` relationship creates a one-to-one association between two entities within the same aggregate. The parent entity "has one" instance of the child entity.
-
-### When to Use HasOne
-
-- An entity needs optional detailed information (e.g., Order → ShippingInfo)
-- The related data is complex with multiple fields
-- The relationship is one-to-one
-- Both entities belong to the same aggregate
-- You want to model optional components (can be None)
-
-### When NOT to Use HasOne
-
-- The relationship is one-to-many (use `HasMany` instead)
-- The related data is simple (use a `ValueObject` instead)
-- The related data should be embedded (use nested value object fields)
-- You need many-to-many relationships (not supported within aggregates)
+A `HasOne` field links an aggregate or entity to exactly one child entity in the same aggregate. Use it when the related data has its own identity and several fields, such as `Order` and its `ShippingInfo`. Use `HasMany` for a one-to-many link, and a `ValueObject` for simple data with no identity. Many-to-many relationships are not supported within an aggregate.
 
 ## Code
 
 The complete implementation is in [assets/entity_with_hasone.py](../assets/entity_with_hasone.py).
-
-Key highlights:
-- `ShippingInfo` entity is associated with `Order` aggregate via one-to-one relationship
-- Order defines `shipping_info = HasOne("ShippingInfo")`
-- ShippingInfo gets automatic reference back to Order
-- HasOne fields can be None (optional relationship)
-- Business logic can validate the related entity
 
 ## Walkthrough
 
@@ -43,60 +17,6 @@ from protean.fields import HasMany, HasOne, Identifier, Integer, String
 
 domain = Domain()
 
-@domain.aggregate
-class Order:
-    customer_id: Identifier(required=True)
-    status: String(max_length=20, default="pending")
-
-    # One-to-many: order has many line items
-    line_items = HasMany("LineItem")
-
-    # One-to-one: order has one shipping info
-    shipping_info = HasOne("ShippingInfo")
-
-
-@domain.entity(part_of="Order")
-class LineItem:
-    product_id: Identifier(required=True)
-    quantity: Integer(required=True, min_value=1)
-```
-
-The Order aggregate defines two types of relationships:
-- `line_items`: HasMany relationship (one-to-many)
-- `shipping_info`: HasOne relationship (one-to-one)
-
-### The HasOne Entity
-
-```python
-@domain.entity(part_of="Order")
-class ShippingInfo:
-    address: String(required=True, max_length=500)
-    city: String(required=True, max_length=100)
-    state: String(max_length=50)
-    postal_code: String(required=True, max_length=20)
-    country: String(max_length=50, default="USA")
-    phone: String(max_length=20)
-    # Protean adds `order` (a Reference to Order) and `order_id` automatically
-
-    @property
-    def full_address(self) -> str:
-        """Get formatted full address."""
-        parts = [self.address, self.city]
-        if self.state:
-            parts.append(self.state)
-        parts.extend([self.postal_code, self.country])
-        return ", ".join(parts)
-```
-
-The ShippingInfo entity:
-- Must specify `part_of="Order"` to associate with the aggregate
-- Gets an automatic `order` reference field pointing back to the parent
-- Gets an automatic `order_id` shadow field for the parent's ID
-- Can have its own business logic and validation, such as the `full_address` property
-
-### Business Logic with HasOne
-
-```python
 @domain.aggregate
 class Order:
     customer_id: Identifier(required=True)
@@ -122,9 +42,36 @@ class Order:
                 {"_entity": ["Order needs shipping info and at least one item to ship"]}
             )
         self.status = "shipped"
+
+
+@domain.entity(part_of="Order")
+class LineItem:
+    product_id: Identifier(required=True)
+    quantity: Integer(required=True, min_value=1)
 ```
 
-The aggregate can check the HasOne entity and enforce business rules.
+### The HasOne Entity
+
+```python
+@domain.entity(part_of="Order")
+class ShippingInfo:
+    address: String(required=True, max_length=500)
+    city: String(required=True, max_length=100)
+    state: String(max_length=50)
+    postal_code: String(required=True, max_length=20)
+    country: String(max_length=50, default="USA")
+    phone: String(max_length=20)
+    # Protean adds `order` (a Reference to Order) and `order_id` automatically
+
+    @property
+    def full_address(self) -> str:
+        """Get formatted full address."""
+        parts = [self.address, self.city]
+        if self.state:
+            parts.append(self.state)
+        parts.extend([self.postal_code, self.country])
+        return ", ".join(parts)
+```
 
 ### Setting HasOne Relationships
 
@@ -150,7 +97,7 @@ with domain.domain_context():
     order.shipping_info = shipping
 ```
 
-Unlike HasMany where you use `add_*` methods, HasOne relationships are set directly via assignment.
+A `HasOne` field has no `add_*` helper. You set it by assignment.
 
 ### Accessing HasOne Relationships
 
@@ -160,21 +107,8 @@ with domain.domain_context():
     if order.shipping_info:
         print(f"Shipping to: {order.shipping_info.city}")
         print(f"Address: {order.shipping_info.full_address}")
+        # Address: 123 Main Street, San Francisco, CA, 94102, USA
 ```
-
-HasOne relationships can be None if not set, so always check before accessing.
-
-### Bidirectional Navigation
-
-```python
-with domain.domain_context():
-    # Access parent from child
-    shipping = order.shipping_info
-    parent_order = shipping.order  # Navigate back to Order
-    order_id = shipping.order_id   # Get parent's ID
-```
-
-The automatic reference field enables navigation from child back to parent.
 
 ## Common Patterns
 
@@ -201,21 +135,7 @@ with domain.domain_context():
         print(exc.messages["shipping_info"])  # ['Shipping info is required to place the order']
 ```
 
-### HasOne with Computed Properties
-
-Entities in HasOne relationships can have their own methods and properties, such as `ShippingInfo.full_address` above:
-
-```python
-with domain.domain_context():
-    print(order.shipping_info.full_address)
-    # 123 Main Street, San Francisco, CA, 94102, USA
-```
-
 ## Testing
-
-See [assets/entity_with_hasone.py](../assets/entity_with_hasone.py) for runnable examples.
-
-To test HasOne relationships:
 
 ```python
 def test_hasone_relationship():

@@ -1,24 +1,10 @@
 # Instance Methods Pattern
 
-A domain service with instance methods supports multiple named business operations on the same set of aggregates.
-
-## Overview
-
-Use this pattern when:
-- The domain service has multiple related business operations
-- Operations share the same aggregates
-- You want descriptive method names (e.g., `place_order()`, `cancel_order()`)
-- You have invariants that apply to all or specific methods
+A domain service with instance methods offers several named business operations, such as `place_order()` and `cancel_order()`, on the same set of aggregates. A service that starts as a callable class and grows a second operation moves to this pattern.
 
 ## Code
 
 The complete implementation is in [assets/domain_service_instance_methods.py](../assets/domain_service_instance_methods.py).
-
-Key highlights:
-- Named methods instead of `__call__`
-- Same `__init__` pattern with `super().__init__()`
-- `@invariant.pre` checks run before **every** public method
-- Public methods are wrapped with invariant calls automatically
 
 ## Walkthrough
 
@@ -103,13 +89,6 @@ class OrderPlacementService:
 
 The stock check applies to `place_order` only, so it is a `_` helper. A `@invariant.pre` method would run before `cancel_order` too.
 
-### Method wrapping
-
-Protean automatically wraps all public instance methods (those not starting with `_`) and `__call__` with invariant checks. This means:
-- `@invariant.pre` methods run before any public method
-- `@invariant.post` methods run after any public method
-- Private methods (prefixed with `_`) are NOT wrapped
-
 ### Invocation
 
 ```python
@@ -132,25 +111,9 @@ with domain.domain_context():
     assert order.status == "CANCELLED"
 ```
 
-## Choosing between callable and instance methods
-
-If your domain service starts with one operation (callable) and grows to need more, refactor to instance methods:
-
-```python
-# fragment
-# Before: single callable
-class place_order:
-    def __call__(self): ...
-
-# After: multiple methods
-class OrderPlacementService:
-    def place_order(self): ...
-    def cancel_order(self): ...
-```
-
 ## Important: Private methods
 
-Helper methods used internally should be prefixed with `_` so they are not wrapped with the invariant checks:
+Protean wraps every public instance method and `__call__` with the invariant checks: pre invariants run before it, post invariants after it. A method whose name starts with `_` is not wrapped, so prefix internal helpers with `_`:
 
 ```python
 # fragment

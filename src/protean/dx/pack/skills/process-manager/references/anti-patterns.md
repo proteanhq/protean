@@ -1,7 +1,5 @@
 # Anti-patterns
 
-Common mistakes when defining process managers and how to avoid them.
-
 ## 1. Missing `correlate` on Handlers
 
 Every handler in a process manager must specify a `correlate` parameter. Without it, the framework cannot route events to PM instances.
@@ -14,60 +12,9 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
 ```
 
-**Right:**
-```python
-# fragment
-@handle(OrderPlaced, start=True, correlate="order_id")
-def on_order_placed(self, event: OrderPlaced) -> None:
-    self.order_id = event.order_id
-```
-
 Protean raises `IncorrectUsageError` during `domain.init()` if any PM handler is missing `correlate`.
 
-## 2. No `start=True` Handler
-
-Every process manager must have at least one handler marked with `start=True`. Without it, no new PM instances can be created.
-
-**Wrong:**
-```python
-# fragment
-@domain.process_manager(aggregates=[Order])
-class OrderPM:
-    @handle(OrderPlaced, correlate="order_id")  # No start=True!
-    def on_order_placed(self, event) -> None:
-        pass
-```
-
-**Right:**
-```python
-@domain.aggregate
-class Order:
-    status: String(default="new")
-
-@domain.event(part_of=Order)
-class OrderPlaced:
-    order_id: Identifier(required=True)
-
-@domain.event(part_of=Order)
-class OrderShipped:
-    order_id: Identifier(required=True)
-
-@domain.process_manager(aggregates=[Order])
-class OrderPM:
-    status: String(default="new")
-
-    @handle(OrderPlaced, start=True, correlate="order_id")
-    def on_order_placed(self, event) -> None:
-        self.status = "processing"
-
-    @handle(OrderShipped, correlate="order_id", end=True)
-    def on_shipped(self, event) -> None:
-        self.status = "shipped"
-```
-
-Protean raises `IncorrectUsageError` during `domain.init()` if no handler has `start=True`.
-
-## 3. Business Logic in the Process Manager
+## 2. Business Logic in the Process Manager
 
 The PM should coordinate, not compute. If you find yourself validating business rules, calculating totals, or enforcing invariants inside a PM handler, move that logic into the aggregate or a domain service.
 
@@ -85,50 +32,7 @@ def on_payment_confirmed(self, event):
 **Right:**
 The Payment aggregate enforces amount validation in its command handler. The PM only reacts to the resulting event (PaymentConfirmed or PaymentRejected).
 
-## 4. Missing Terminal State
-
-A process manager without `mark_as_complete()` or `end=True` on any handler will never finish. Its stream will grow indefinitely, and it will continue accepting events even after the business process is logically complete. `check` reports such a PM as `PROCESS_MANAGER_UNCLOSED`. It reads only the `end=True` flag, so a PM that completes through `mark_as_complete()` alone is reported too.
-
-**Wrong:**
-```python
-# fragment
-@domain.process_manager(aggregates=[Order])
-class OrderPM:
-    @handle(OrderPlaced, start=True, correlate="order_id")
-    def on_order_placed(self, event) -> None:
-        self.status = "processing"
-
-    @handle(OrderShipped, correlate="order_id")
-    def on_shipped(self, event) -> None:
-        self.status = "shipped"  # Logically done, but PM never completes!
-```
-
-**Right:**
-```python
-# fragment
-    @handle(OrderShipped, correlate="order_id", end=True)  # PM properly terminates
-    def on_shipped(self, event) -> None:
-        self.status = "shipped"
-```
-
-## 5. Assuming Correlation Matches by Field Name
-
-Each handler's `correlate` spec is resolved independently. The framework extracts a value via `getattr(event, field_name)` and looks up the PM instance purely by that value. Field name plays no part in the lookup. So this routes correctly even though the field names differ:
-
-```python
-# fragment
-@handle(OrderPlaced, start=True, correlate="order_id")
-def on_order_placed(self, event) -> None: ...
-
-@handle(PaymentConfirmed, correlate="payment_order_id")  # Different field name
-def on_payment(self, event) -> None: ...
-```
-
-`PaymentConfirmed` routes to the same PM instance as long as `event.payment_order_id` holds the same value as the order's `order_id`. Dictionary correlation, `correlate={"order_id": "payment_order_id"}`, resolves the same way. The framework reads the dict's value. The dict's key exists purely to document the mapping for readers.
-
-What actually breaks routing: an attribute whose value does not match the target instance's identifying value, or an attribute the event does not carry at all (raises `AttributeError`).
-
-## 6. Using Event Handler When Process Manager Is Needed
+## 3. Using Event Handler When Process Manager Is Needed
 
 If you find yourself:
 - Tracking state in external stores from an event handler
@@ -156,22 +60,7 @@ class OrderWorkflow:
 
 **Right**: Use a process manager for stateful, multi-step coordination.
 
-## 7. Returning Values from PM Handlers
-
-Process manager handlers do not return values. Return values are silently discarded.
-
-**Wrong:**
-```python
-# fragment
-@handle(OrderPlaced, start=True, correlate="order_id")
-def on_order_placed(self, event) -> None:
-    return {"status": "started"}  # Discarded!
-```
-
-**Right:**
-Update PM state directly and issue commands if needed.
-
-## 8. Manually Wrapping in UnitOfWork
+## 4. Manually Wrapping in UnitOfWork
 
 Each PM handler runs within an implicit UnitOfWork. Do not wrap manually.
 

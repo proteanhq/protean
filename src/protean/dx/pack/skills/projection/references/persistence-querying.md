@@ -1,9 +1,5 @@
 # Projection Persistence & Querying
 
-## Overview
-
-Projections are designed to be persisted and queried efficiently. They use the repository pattern for CRUD operations, just like aggregates. However, projections are typically populated by projectors (event handlers) rather than directly by application code.
-
 ## Persisting projections
 
 The examples below use this projection:
@@ -99,7 +95,7 @@ with domain.domain_context():
 
 ## Typical workflow: Projectors populate projections
 
-In practice, projections are populated by projectors in response to domain events:
+In an application, a projector fills the projection from domain events:
 
 ```python
 from protean.core.projector import on

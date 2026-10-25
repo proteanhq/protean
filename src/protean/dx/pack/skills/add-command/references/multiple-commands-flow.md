@@ -1,20 +1,6 @@
 # Multiple Commands Flow
 
-This reference explains how to add multiple command flows to a single aggregate, with a shared handler and router.
-
-## Overview
-
-Most aggregates support multiple operations. Rather than creating separate handlers for each command, use a single handler class with multiple `@handle` methods. This keeps the code organized and follows the Protean convention of one command handler per aggregate.
-
-## Code
-
-The complete implementation is in [assets/add_command_multiple_commands.py](../assets/add_command_multiple_commands.py).
-
-Key highlights:
-- Three commands (`PlaceOrder`, `PayOrder`, `CancelOrder`) all part_of the same aggregate
-- One `OrderCommandHandler` with three `@handle` methods
-- A FastAPI app with three endpoints (POST + two PUTs)
-- Mix of create and update patterns within the same handler
+One `Order` aggregate takes three commands, `PlaceOrder`, `PayOrder` and `CancelOrder`. One `OrderCommandHandler` handles all three, mixing the create and update patterns, and one FastAPI app exposes them.
 
 ## Walkthrough
 
@@ -69,8 +55,6 @@ class CancelOrder:
     reason: String(required=True)
 ```
 
-All commands share `part_of="Order"`. Each command carries only the data needed for its specific action.
-
 ### Shared Handler
 
 ```python
@@ -92,10 +76,7 @@ class OrderCommandHandler:
         ...
 ```
 
-Key rules:
-- **One handler class per aggregate**: Multiple `@handle` methods are fine
-- **Each command has exactly one handler**: Protean enforces this
-- **All commands must share the same aggregate**: Command's `part_of` must match handler's `part_of`
+Every command the handler handles must have the same `part_of` as the handler.
 
 ### Router Pattern
 
@@ -191,7 +172,7 @@ draft → placed → paid → (terminal)
 cancelled  cancelled
 ```
 
-Each transition is triggered by a command and enforced by the aggregate's business logic. The handler simply loads, calls, and persists - it doesn't check states.
+Each transition is triggered by a command and enforced by the aggregate's business logic. The handler loads, calls and persists. It does not check states.
 
 ## Related
 

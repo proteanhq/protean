@@ -8,8 +8,10 @@ Changes from extract_vo_money_before.py:
 4. InvoiceLine uses Money for unit_price
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, invariant
-from protean.fields import Float, HasMany, Integer, String, ValueObject
+from protean.fields import Decimal, HasMany, Integer, String, ValueObject
 
 domain = Domain()
 
@@ -18,7 +20,7 @@ domain = Domain()
 class Money:
     """Represents a monetary amount with currency."""
 
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
     currency = String(max_length=3, default="USD")
 
     @invariant.post
@@ -35,9 +37,12 @@ class Money:
             raise ValueError(f"Cannot add {self.currency} and {other.currency}")
         return Money(amount=self.amount + other.amount, currency=self.currency)
 
-    def multiply(self, factor: int | float) -> "Money":
-        """Multiply amount by a factor."""
-        return Money(amount=round(self.amount * factor, 2), currency=self.currency)
+    def multiply(self, factor: int | D) -> "Money":
+        """Multiply amount by a whole number or a decimal."""
+        return Money(
+            amount=(self.amount * factor).quantize(D("0.0001")),
+            currency=self.currency,
+        )
 
 
 @domain.entity(part_of="Invoice")
@@ -74,7 +79,7 @@ class Invoice:
         else:
             self.subtotal = line_total
 
-    def apply_tax(self, rate: float) -> None:
+    def apply_tax(self, rate: D) -> None:
         """Apply tax rate to subtotal."""
         if self.subtotal:
             self.tax = self.subtotal.multiply(rate)
@@ -91,9 +96,9 @@ if __name__ == "__main__":
     domain.init(traverse=False)
     with domain.domain_context():
         invoice = Invoice(customer_id="CUST-001")
-        invoice.add_line("Widget", 3, Money(amount=25.0))
-        invoice.add_line("Gadget", 1, Money(amount=99.99))
-        invoice.apply_tax(0.08)
+        invoice.add_line("Widget", 3, Money(amount=D("25.00")))
+        invoice.add_line("Gadget", 1, Money(amount=D("99.99")))
+        invoice.apply_tax(D("0.08"))
         print(f"Subtotal: {invoice.subtotal.amount} {invoice.subtotal.currency}")
         print(f"Tax: {invoice.tax.amount} {invoice.tax.currency}")
         print(f"Total: {invoice.total.amount}")

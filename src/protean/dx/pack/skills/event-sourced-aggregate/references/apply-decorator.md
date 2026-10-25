@@ -1,14 +1,10 @@
 # The @apply Decorator
 
-The `@apply` decorator is the core mechanism that connects events to state changes in event-sourced aggregates.
-
 ## Import
 
 ```python
 from protean.core.aggregate import apply
 ```
-
-**Note**: `from protean import apply` also works and is the same decorator; these examples use the `protean.core.aggregate` path throughout.
 
 ## How It Works
 
@@ -67,7 +63,7 @@ The decorator validates at class definition time:
 - **Wrong type**: Raises `IncorrectUsageError` if the annotation is not an Event class (e.g., a Command)
 - **Missing argument**: Raises `IncorrectUsageError` if no event parameter is provided
 
-**What the check actually catches**: the "too many arguments" check counts type-annotated parameters, and the return annotation counts too. It raises only when that count goes over 2. It never counts the real parameter list, so an extra parameter with no type annotation slips past it at class definition time. For an event-sourced aggregate, `raise_()` invokes the `@apply` handler synchronously, so that shape fails with a `TypeError` immediately, on the first live `raise_()` call, and the same way again on any later replay. Write to the contract above regardless: an extra parameter is wrong whether or not the decorator happens to catch it.
+**What the check actually catches**: the "too many arguments" check counts type-annotated parameters, and the return annotation counts too. It raises only when that count goes over 2. It never counts the real parameter list, so an extra parameter with no type annotation passes at class definition time. `raise_()` invokes the `@apply` handler synchronously, so that shape fails with a `TypeError` on the first live `raise_()` call, and again on any later replay.
 
 ```python
 # fragment
@@ -76,10 +72,8 @@ The decorator validates at class definition time:
 def activated(self, event: UserActivated, actor: str, reason: str):  # IncorrectUsageError
     ...
 
-# WRONG, but NOT caught here: the extra parameter has no type annotation, so the
-# check (which only counts annotated parameters) doesn't see it. This passes at
-# class definition time and fails with a TypeError immediately, on the first
-# live raise_() call.
+# WRONG, but NOT caught at definition: the extra parameter has no annotation.
+# TypeError on the first live raise_() call.
 @apply
 def activated(self, event: UserActivated, extra):
     ...
@@ -116,8 +110,6 @@ User._events_cls_map[fqn(UserActivated)]  # → UserActivated
 
 ### When raising events (live path)
 
-`raise_()` automatically invokes the matching `@apply` handler. Business methods should validate and call `raise_()`, and never mutate state directly:
-
 ```
 # In business method:
 self.raise_(event)
@@ -141,8 +133,6 @@ User.from_events(event_list)
     → increments _version
 ```
 
-Because the same `@apply` handler runs in both paths, live processing and replay always produce identical state.
-
 ## Missing Handler Error
 
 If an event is applied but no `@apply` method is registered for it, an `IncorrectUsageError` is raised:
@@ -162,8 +152,6 @@ with domain.domain_context():
         print(exc)
         # → No @apply handler registered for event `...UserArchived` in `User`
 ```
-
-This ensures every event type has explicit handling logic.
 
 ## Naming Conventions
 
@@ -187,5 +175,3 @@ When the `@apply` method doesn't need data from the event, use `_` as the parame
 def activated(self, _: UserActivated):
     self.status = "ACTIVE"  # No event data needed
 ```
-
-This signals that the method doesn't use the event payload, only the event type matters.

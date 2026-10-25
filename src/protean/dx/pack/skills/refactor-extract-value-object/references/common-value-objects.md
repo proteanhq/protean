@@ -1,15 +1,16 @@
 # Common Value Objects
 
-Catalog of frequently extracted value objects with implementation patterns.
+Implementations of the value objects named in the SKILL.md detection tables.
 
 ## Money
 
-The most common VO extraction. Whenever you see `amount` + `currency` (or just `price`/`cost` as a bare Float), extract to Money.
-
 ```python
+from decimal import Decimal as D
+
+
 @domain.value_object
 class Money:
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
     currency = String(max_length=3, default="USD")
 
     def add(self, other: "Money") -> "Money":
@@ -22,16 +23,17 @@ class Money:
             raise ValueError(f"Cannot subtract {self.currency} and {other.currency}")
         return Money(amount=self.amount - other.amount, currency=self.currency)
 
-    def multiply(self, factor: int | float) -> "Money":
-        return Money(amount=round(self.amount * factor, 2), currency=self.currency)
+    def multiply(self, factor: int | D) -> "Money":
+        return Money(
+            amount=(self.amount * factor).quantize(D("0.0001")),
+            currency=self.currency,
+        )
 
     def is_zero(self) -> bool:
         return self.amount == 0
 ```
 
 ## Address
-
-Extract from `street` + `city` + `state` + `zip_code` + `country` groups.
 
 ```python
 @domain.value_object
@@ -48,7 +50,7 @@ class Address:
 
 ## Email
 
-Extract from `String` fields with email validation or `_email` suffix.
+Also look for `String` fields with an `_email` suffix or hand-written email checks.
 
 ```python
 @domain.value_object
@@ -63,8 +65,6 @@ class Email:
 ```
 
 ## DateRange
-
-Extract from `start_date` + `end_date` pairs.
 
 ```python
 @domain.value_object
@@ -85,8 +85,6 @@ class DateRange:
 
 ## Coordinates
 
-Extract from `latitude` + `longitude` pairs.
-
 ```python
 @domain.value_object
 class Coordinates:
@@ -104,8 +102,6 @@ class Coordinates:
 ```
 
 ## Percentage
-
-Extract from bare `Float` fields representing percentages.
 
 ```python
 @domain.value_object

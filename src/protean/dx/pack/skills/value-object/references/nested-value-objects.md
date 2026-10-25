@@ -1,24 +1,10 @@
 # Nested Value Objects
 
-Value objects can contain other value objects, allowing you to build complex domain concepts through composition. This powerful pattern lets you create rich, expressive domain models while maintaining immutability and encapsulation.
-
-## Overview
-
-Use nested value objects when:
-- A complex concept is composed of simpler concepts
-- You want to reuse value objects across different contexts
-- Domain concepts naturally decompose into smaller pieces
-- You need to model hierarchical structures
+A value object can hold other value objects through `ValueObject` fields, several levels deep. Each level stays immutable.
 
 ## Code
 
 The complete implementation is in [assets/value_object_nested.py](../assets/value_object_nested.py).
-
-Key highlights:
-- Value objects can contain ValueObject fields
-- Nesting can be multiple levels deep
-- Immutability cascades through nested structures
-- A nested value object is passed in as an object, or as a dict of its fields
 
 ## Walkthrough
 
@@ -48,12 +34,6 @@ class Address:
     coordinates = ValueObject(Coordinates)  # Nested value object
 ```
 
-Benefits:
-- Coordinates can be reused in other contexts (Store location, Warehouse, etc.)
-- Address is complete with geographic data
-- Each value object has focused responsibility
-- Clean separation of concerns
-
 ### Multiple Nesting Levels
 
 ```python
@@ -64,11 +44,6 @@ class ContactInfo:
     phone: String(required=True, max_length=20)
     address = ValueObject(Address)  # Address contains Coordinates
 ```
-
-Three levels:
-1. ContactInfo (top level)
-2. Address (nested in ContactInfo)
-3. Coordinates (nested in Address)
 
 ### Multiple Nested Value Objects of Same Type
 
@@ -87,28 +62,9 @@ class PriceWithTax:
     total_price = ValueObject(Money, required=True)
 ```
 
-This pattern:
-- Uses the same value object type multiple times
-- Each instance has a specific meaning
-- Ensures currency consistency across all amounts
-- Makes price breakdown explicit and type-safe
+Each field gives the one `Money` type its own meaning. Nothing in `PriceWithTax` checks that the three amounts share a currency. That check needs an `@invariant.post`.
 
 ## Initialization Patterns
-
-### Initialize with Complete Objects
-
-```python
-# Create nested value objects first
-coords = Coordinates(latitude=40.7128, longitude=-74.0060)
-address = Address(
-    street="123 Broadway",
-    city="New York",
-    state="NY",
-    postal_code="10012",
-    country="USA",
-    coordinates=coords
-)
-```
 
 ### Do Not Flatten Into a Value Object
 
@@ -152,20 +108,6 @@ contact = ContactInfo(
 ```
 
 ## Common Patterns
-
-### Geographic Data
-
-```python
-@domain.value_object
-class Location:
-    """Location with name and coordinates."""
-    name: String(required=True, max_length=100)
-    coordinates = ValueObject(Coordinates, required=True)
-
-    @property
-    def description(self) -> str:
-        return f"{self.name} ({self.coordinates.latitude}, {self.coordinates.longitude})"
-```
 
 ### Money with Breakdown
 
@@ -223,34 +165,6 @@ class ContactDetails:
     name = ValueObject(PersonName, required=True)
     email: String(required=True, max_length=254)
     phone: String(max_length=20)
-```
-
-### Address with Components
-
-```python
-@domain.value_object
-class StreetAddress:
-    """Street address component."""
-    street_number: String(required=True, max_length=10)
-    street_name: String(required=True, max_length=100)
-    unit_number: String(max_length=10)
-
-    @property
-    def full_street(self) -> str:
-        parts = [self.street_number, self.street_name]
-        if self.unit_number:
-            parts.append(f"Unit {self.unit_number}")
-        return " ".join(parts)
-
-
-@domain.value_object
-class PostalAddress:
-    """Complete postal address."""
-    street_address = ValueObject(StreetAddress, required=True)
-    city: String(required=True, max_length=50)
-    state: String(required=True, max_length=50)
-    postal_code: String(required=True, max_length=20)
-    country: String(required=True, max_length=50)
 ```
 
 ## Using Nested Value Objects in Aggregates
@@ -334,72 +248,7 @@ with domain.domain_context():
     customer.shipping_address = new_address  # This works
 ```
 
-## Testing Nested Value Objects
-
-```python
-import pytest
-
-from protean.exceptions import IncorrectUsageError, ValidationError
-
-
-def test_nested_value_object_creation():
-    coords = Coordinates(latitude=40.7128, longitude=-74.0060)
-    address = Address(
-        street="123 Broadway",
-        city="New York",
-        state="NY",
-        postal_code="10012",
-        country="USA",
-        coordinates=coords
-    )
-
-    assert address.coordinates.latitude == 40.7128
-    assert address.coordinates.longitude == -74.0060
-
-def test_nested_value_object_rejects_flattened_attributes():
-    with pytest.raises(ValidationError):
-        Address(
-            street="123 Broadway",
-            city="New York",
-            state="NY",
-            postal_code="10012",
-            country="USA",
-            coordinates_latitude=40.7128,
-            coordinates_longitude=-74.0060
-        )
-
-def test_nested_value_object_immutability():
-    address = Address(
-        street="123 Broadway",
-        city="New York",
-        state="NY",
-        postal_code="10012",
-        country="USA",
-        coordinates=Coordinates(latitude=40.7128, longitude=-74.0060)
-    )
-
-    with pytest.raises(IncorrectUsageError):
-        address.coordinates.latitude = 50.0
-```
-
-## Best Practices
-
-1. **Reuse value objects**: Same VO can be nested in multiple contexts
-2. **Keep nesting reasonable**: Avoid more than 3-4 levels deep
-3. **Name fields clearly**: Field name should indicate what it contains
-4. **Document composition**: Explain why VOs are nested
-5. **Pass nested value objects as objects**: A value object's constructor takes no flattened attributes
-6. **Validate relationships**: Use invariants for cross-VO rules
-7. **Provide computed properties**: For derived values from nested data
-
 ## Common Mistakes
-
-**Over-nesting** ❌
-```python
-# fragment
-# Too many levels - hard to work with
-Customer → Profile → Contact → Address → StreetAddress → Unit → Floor
-```
 
 **Breaking encapsulation** ❌
 ```python
@@ -407,13 +256,6 @@ Customer → Profile → Contact → Address → StreetAddress → Unit → Floo
 # Reaching too deep into nested structure
 if customer.contact.address.coordinates.latitude > 40:
     # Better: Add method to appropriate level
-```
-
-**Forgetting immutability** ❌
-```python
-# fragment
-# Trying to modify nested VO
-customer.shipping_address.coordinates.latitude = 50.0  # Raises IncorrectUsageError
 ```
 
 ## Related

@@ -1,25 +1,8 @@
 # Events with Value Objects
 
-Events can contain value objects to represent complex immutable data structures. This enables events to carry rich, structured information while maintaining immutability and type safety.
-
-## Overview
-
-Value objects are immutable complex types that represent domain concepts with multiple attributes (Money, Address, Coordinates, etc.). Including value objects in events provides:
-
-- **Type safety**: Structured data with validation
-- **Immutability**: Value objects are immutable, perfect for events
-- **Domain modeling**: Express domain concepts clearly
-- **Reusability**: Same value objects used across events and aggregates
-
-## Code
+An event can carry value objects for structured, immutable data such as `Money` or `Address`. The same value object classes serve the aggregate and its events.
 
 The complete implementation is in [assets/event_with_value_object.py](../assets/event_with_value_object.py).
-
-Key highlights:
-- Value objects encapsulate complex immutable data
-- Events use `ValueObject()` field to reference them
-- Same value objects can be shared across events and aggregates
-- Type safety and validation built-in
 
 ## Common Value Objects in Events
 
@@ -27,23 +10,8 @@ The events on this page belong to these aggregates. `Order` is defined in [Creat
 
 ```python
 @domain.aggregate
-class Shipment:
-    status: String()
-
-
-@domain.aggregate
 class User:
     email: String()
-
-
-@domain.aggregate
-class Account:
-    holder_name: String()
-
-
-@domain.aggregate
-class Patient:
-    name: String()
 ```
 
 ### Money
@@ -94,43 +62,11 @@ class OrderShipped:
     tracking_number: String(required=True)
 ```
 
-### Coordinates
-
-For geolocation events:
-
-```python
-@domain.value_object
-class Coordinates:
-    latitude: Float(required=True, min_value=-90.0, max_value=90.0)
-    longitude: Float(required=True, min_value=-180.0, max_value=180.0)
-
-@domain.event(part_of="Shipment")
-class ShipmentLocationUpdated:
-    __version__ = 1
-
-    shipment_id: String(required=True, identifier=True)
-    location = ValueObject(Coordinates, required=True)
-    updated_at: DateTime(required=True)
-```
-
 ## Multiple Value Objects in One Event
 
 Events can contain multiple value objects:
 
 ```python
-@domain.value_object
-class Money:
-    amount: Float(required=True)
-    currency: String(max_length=3, default="USD")
-
-@domain.value_object
-class Address:
-    street: String(required=True, max_length=200)
-    city: String(required=True, max_length=100)
-    state: String(max_length=50)
-    postal_code: String(required=True, max_length=20)
-    country: String(required=True, max_length=50)
-
 @domain.event(part_of="Order")
 class OrderPlaced:
     __version__ = 1
@@ -151,11 +87,6 @@ class OrderPlaced:
 Value objects can contain other value objects:
 
 ```python
-@domain.value_object
-class Money:
-    amount: Float(required=True)
-    currency: String(max_length=3, default="USD")
-
 @domain.value_object
 class PriceBreakdown:
     subtotal = ValueObject(Money, required=True)
@@ -274,81 +205,6 @@ with domain.domain_context():
     )
     order.place()
 ```
-
-## Domain-Specific Value Objects
-
-Create value objects that represent your domain concepts:
-
-### E-Commerce
-
-```python
-@domain.value_object
-class OrderItem:
-    product_id: String(required=True)
-    product_name: String(required=True)
-    quantity: Integer(required=True, min_value=1)
-    unit_price = ValueObject(Money, required=True)
-
-    @property
-    def subtotal(self) -> Money:
-        return Money(
-            amount=self.unit_price.amount * self.quantity,
-            currency=self.unit_price.currency
-        )
-
-@domain.event(part_of="Order")
-class OrderItemAdded:
-    __version__ = 1
-    order_id: String(required=True, identifier=True)
-    item = ValueObject(OrderItem, required=True)
-    added_at: DateTime(required=True)
-```
-
-### Financial Services
-
-```python
-@domain.value_object
-class TransactionDetails:
-    amount = ValueObject(Money, required=True)
-    transaction_type: String(required=True, choices=["debit", "credit"])
-    reference_number: String(required=True)
-    description: String(max_length=500)
-
-@domain.event(part_of="Account")
-class TransactionProcessed:
-    __version__ = 1
-    account_id: String(required=True, identifier=True)
-    transaction = ValueObject(TransactionDetails, required=True)
-    processed_at: DateTime(required=True)
-    new_balance = ValueObject(Money, required=True)
-```
-
-### Healthcare
-
-```python
-@domain.value_object
-class VitalSigns:
-    blood_pressure_systolic: Integer(required=True, min_value=0, max_value=300)
-    blood_pressure_diastolic: Integer(required=True, min_value=0, max_value=200)
-    heart_rate: Integer(required=True, min_value=0, max_value=300)
-    temperature: Float(required=True, min_value=90.0, max_value=110.0)
-
-@domain.event(part_of="Patient")
-class VitalSignsRecorded:
-    __version__ = 1
-    patient_id: String(required=True, identifier=True)
-    vitals = ValueObject(VitalSigns, required=True)
-    recorded_at: DateTime(required=True)
-    recorded_by: String(required=True)
-```
-
-## Best Practices
-
-1. **Reuse value objects**: Same value objects across events, aggregates, and commands
-2. **Keep value objects immutable**: Never add methods that modify state
-3. **Add behavior to value objects**: Validation, calculations, formatting
-4. **Use composition**: Value objects can contain other value objects
-5. **Document purpose**: Clear docstrings on value objects and their usage
 
 ## Related
 

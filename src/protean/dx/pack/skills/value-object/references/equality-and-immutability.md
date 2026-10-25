@@ -1,14 +1,6 @@
 # Equality and Immutability
 
-Two fundamental characteristics define value objects: they are compared by their attribute values (equality) and they cannot be changed once created (immutability). Understanding these concepts is essential to using value objects correctly.
-
-## Overview
-
-Key concepts:
-- **Equality**: Two value objects with same attributes are equal
-- **Immutability**: Value objects cannot be modified after creation
-- **No Identity**: Value objects have no unique identifier
-- **Interchangeability**: Equal value objects can be swapped freely
+A value object is compared by its attribute values and cannot be changed once created. It has no identity field.
 
 ## Equality
 
@@ -68,7 +60,7 @@ with domain.domain_context():
 
 ### All Attributes Matter
 
-ALL attributes must match for equality:
+Every attribute must match for two value objects to be equal:
 
 ```python
 @domain.value_object
@@ -84,16 +76,6 @@ addr1 = Address(
     state="MA",
     postal_code="02101"
 )
-
-addr2 = Address(
-    street="123 Main St",
-    city="Boston",
-    state="MA",
-    postal_code="02101"
-)
-
-# All attributes match
-assert addr1 == addr2
 
 addr3 = Address(
     street="123 Main St",  # Same street
@@ -158,71 +140,12 @@ assert loc1 == loc2
 
 ## Immutability
 
-### Cannot Modify After Creation
-
-Value objects cannot be changed once created:
-
-```python
-money = Money(currency="USD", amount=D("100.00"))
-
-try:
-    money.currency = "EUR"
-except IncorrectUsageError:
-    print("Cannot change currency")
-
-try:
-    money.amount = D("200.00")
-except IncorrectUsageError:
-    print("Cannot change amount")
-```
-
-### Replace Instead of Modify
-
-To "change" a value object, create a new instance:
-
-```python
-# Original value object
-price = Money(currency="USD", amount=D("100.00"))
-
-# Cannot modify
-# price.amount = D("200.00")  # Raises IncorrectUsageError
-
-# Replace with new instance
-price = Money(currency="USD", amount=D("200.00"))
-```
-
-On an aggregate, assign the new instance to the field. See [Immutability in Aggregates](#immutability-in-aggregates).
+Assigning to any field of a value object raises `IncorrectUsageError`. To change a value, build a new instance. A method that "changes" a value returns a new instance and leaves the original as it was; see [Value Objects with Methods](./with-methods.md).
 
 ### Why Immutability Matters
 
-Immutability provides several benefits:
+A value object is hashable, and it cannot change, so it can serve as a cache or dictionary key:
 
-**1. Thread Safety**
-```python
-# Value objects can be safely shared between threads
-shared_price = Money(currency="USD", amount=D("50.00"))
-
-# Multiple threads can read without locks
-# No thread can modify it
-```
-
-**2. Predictable Behavior**
-```python
-def calculate_discount(price: Money, rate: D) -> Money:
-    # price parameter won't be modified
-    # Safe to use without defensive copying
-    amount = (price.amount * (1 - rate)).quantize(D("0.0001"))
-    return Money(currency=price.currency, amount=amount)
-
-original_price = Money(currency="USD", amount=D("100.00"))
-discounted = calculate_discount(original_price, D("0.1"))
-
-# original_price unchanged
-assert original_price.amount == D("100.00")
-assert discounted.amount == D("90.00")
-```
-
-**3. Safe Caching**
 ```python
 # Value objects can be cached safely
 cache = {}
@@ -233,35 +156,6 @@ cache[address] = "Delivery zone 3"  # the result of an expensive lookup
 # Address can't change, so cache entry remains valid.
 # An equal address finds the same entry.
 assert cache[Address(street="123 Main St", city="Boston", state="MA", postal_code="02101")] == "Delivery zone 3"
-```
-
-### Methods Return New Instances
-
-Value object methods that "modify" values return NEW instances:
-
-```python
-@domain.value_object
-class Money:
-    currency: String(max_length=3, required=True)
-    amount: Decimal(precision=19, scale=4, required=True)
-
-    def add(self, other: "Money") -> "Money":
-        # Returns NEW instance
-        return Money(
-            currency=self.currency,
-            amount=self.amount + other.amount
-        )
-
-m1 = Money(currency="USD", amount=D("100.00"))
-m2 = Money(currency="USD", amount=D("50.00"))
-
-# add() returns new instance
-m3 = m1.add(m2)
-
-# Original instances unchanged
-assert m1.amount == D("100.00")
-assert m2.amount == D("50.00")
-assert m3.amount == D("150.00")
 ```
 
 ### Immutability in Aggregates
@@ -292,18 +186,6 @@ with domain.domain_context():
 
 ### Value Objects Have No ID
 
-Unlike entities and aggregates, value objects don't have identity fields:
-
-```python
-@domain.value_object
-class Price:
-    # Cannot use identifier=True
-    # id: String(identifier=True)  # Raises IncorrectUsageError
-
-    currency: String(max_length=3, required=True)
-    amount: Decimal(precision=19, scale=4, required=True)
-```
-
 Marking a field as the identifier raises `IncorrectUsageError` when the class is registered:
 
 ```python
@@ -321,42 +203,7 @@ A plain `Auto()` field without `identifier=True` is accepted. It is not an ident
 
 ### Value Objects Cannot Be Unique
 
-Cannot mark fields as unique:
-
-```python
-@domain.value_object
-class Email:
-    # Cannot use unique=True
-    # address: String(unique=True)  # Raises IncorrectUsageError
-
-    address: String(max_length=254, required=True)
-```
-
-### Interchangeability
-
-Because value objects have no identity, equal instances are interchangeable:
-
-```python
-@domain.aggregate
-class Order:
-    shipping_address = ValueObject(Address)
-
-
-domain.init(traverse=False)
-
-# Two equal addresses
-addr1 = Address(street="123 Main St", city="Boston", state="MA", postal_code="02101")
-addr2 = Address(street="123 Main St", city="Boston", state="MA", postal_code="02101")
-
-with domain.domain_context():
-    order = Order(shipping_address=addr1)
-
-    # Can swap with equal VO
-    order.shipping_address = addr2
-
-# No meaningful difference - they're equal
-assert addr1 == addr2
-```
+Marking a field `unique=True` raises `IncorrectUsageError` at registration in the same way: "Value Objects cannot contain fields marked 'unique'".
 
 ## Practical Implications
 
@@ -372,19 +219,6 @@ addresses.add(Address(street="123 Main St", city="Boston", state="MA", postal_co
 # Set contains only one address (they're equal)
 assert len(addresses) == 1
 ```
-
-### As Dictionary Keys
-
-Value objects can be dictionary keys (with caution):
-
-```python
-shipping_costs = {
-    Address(street="123 Main St", city="Boston", state="MA", postal_code="02101"): Money(currency="USD", amount=D("10.00")),
-    Address(street="9 Elm St", city="Austin", state="TX", postal_code="73301"): Money(currency="USD", amount=D("15.00")),
-}
-```
-
-A key can't change after it goes into the dictionary, because value objects are immutable.
 
 ### In Comparisons
 
@@ -424,18 +258,6 @@ def test_value_object_immutability():
     with pytest.raises(IncorrectUsageError):
         money.amount = D("200.00")
 
-def test_methods_return_new_instances():
-    m1 = Money(currency="USD", amount=D("100.00"))
-    m2 = Money(currency="USD", amount=D("50.00"))
-
-    m3 = m1.add(m2)
-
-    # New instance created
-    assert m3.amount == D("150.00")
-    # Originals unchanged
-    assert m1.amount == D("100.00")
-    assert m2.amount == D("50.00")
-
 def test_nested_value_object_equality():
     loc1 = Location(
         name="Office",
@@ -451,12 +273,6 @@ def test_nested_value_object_equality():
 
 ## Common Mistakes
 
-**Trying to modify value objects** ❌
-```python
-# fragment
-money.amount = D("200.00")  # Raises IncorrectUsageError
-```
-
 **Expecting identity-based equality** ❌
 ```python
 m1 = Money(currency="USD", amount=D("100.00"))
@@ -467,32 +283,6 @@ if m1 is not m2:  # True, but misleading
     # They're EQUAL even though not same object
     assert m1 == m2  # True!
 ```
-
-**Adding identity fields** ❌
-```python
-# fragment
-@domain.value_object
-class Money:
-    id: Auto(identifier=True)  # IncorrectUsageError: VOs can't have identity
-```
-
-**Modifying then expecting changes** ❌
-```python
-# fragment
-order.total.amount = D("200.00")  # Raises IncorrectUsageError
-# Must replace entire VO
-order.total = Money(currency="USD", amount=D("200.00"))
-```
-
-## Best Practices
-
-1. **Test equality**: Verify VOs with same values are equal
-2. **Test immutability**: Ensure modifications raise errors
-3. **Replace, not modify**: Always create new instances
-4. **Use in comparisons**: Leverage equality for business logic
-5. **Document why immutable**: Help team understand the pattern
-6. **No identity fields**: Never add IDs to value objects
-7. **Return new from methods**: Never modify self
 
 ## Related
 

@@ -1,4 +1,4 @@
-"""Check two field rules across the aggregate, entity, value-object and add-field skills.
+"""Check two field rules across the skills that teach field declarations.
 
 1. A money field (a name such as ``price``, ``amount``, ``total``, ``balance``,
    ``subtotal``, ``cost``, ``fee`` or ``*_limit``) declared with ``Float``,
@@ -29,7 +29,13 @@ from tests.support.snippets import extract_blocks
 pytestmark = pytest.mark.no_test_domain
 
 SKILLS_ROOT = Path(str(dx.pack_files())) / dx.SKILLS_DIR
-SKILLS = ("aggregate", "entity", "value-object", "add-field")
+SKILLS = (
+    "aggregate",
+    "entity",
+    "value-object",
+    "add-field",
+    "refactor-extract-value-object",
+)
 
 if not SKILLS_ROOT.is_dir():
     pytest.skip(

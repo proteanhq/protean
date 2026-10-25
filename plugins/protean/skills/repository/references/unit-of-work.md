@@ -6,9 +6,8 @@ Repositories respect Protean's Unit of Work (UoW) pattern. On a provider with tr
 
 On a provider with transactions, such as the SQL databases, a Unit of Work is one real database transaction. It can hold changes to several aggregates; "one aggregate per transaction" is a design rule you keep, and the Unit of Work does not enforce it. In Protean:
 
-- **Command handlers and event handlers** have an **implicit UoW**: `@handle` wraps every handler call in its own Unit of Work, so no manual wrapping is needed
+- **Command handlers and event handlers** have an **implicit UoW**: `@handle` wraps every handler call in its own Unit of Work
 - **Outside handlers** (scripts, tests, migrations), you use an **explicit UoW**
-- The UoW manages database sessions, commits, and rollbacks
 
 Commits and rollbacks are atomic on providers with real transactions, such as the SQL providers ADR-0027 covers. The in-memory provider keeps writes in the Unit of Work until it commits, so a rollback also leaves nothing behind. Elasticsearch has no transactions. There the Unit of Work logs a warning that commit and rollback are not atomic, and a rollback does not undo writes already sent.
 
@@ -61,7 +60,7 @@ class OrderCommandHandler:
         # If an exception occurs, UoW rolls back automatically
 ```
 
-**Key point**: Do NOT wrap handler code in `with UnitOfWork()`. A Unit of Work started while another is active joins the outer one, so the inner block opens no transaction of its own and its commit and rollback defer to the handler's.
+A `with UnitOfWork()` inside handler code joins the outer one, so the inner block opens no transaction of its own and its commit and rollback defer to the handler's.
 
 ## Explicit UoW Outside Handlers
 
@@ -132,7 +131,7 @@ The UoW keeps an **identity map**: one instance of each aggregate it loads or sa
 | Handler raises exception | All changes rolled back (on Elasticsearch, writes already sent stay) |
 | Multiple `repo.add()` calls | All committed together |
 | Events raised during handler | Dispatched after successful commit |
-| Optimistic concurrency conflict | `ExpectedVersionError` raised, changes rolled back. `@handle` re-runs the whole handler body: with the default `max_retries=3`, the body runs up to 4 times in total |
+| Optimistic concurrency conflict | `ExpectedVersionError` raised, changes rolled back, and `@handle` re-runs the handler body (next section) |
 
 ## Retries on Version Conflicts
 

@@ -1,15 +1,6 @@
 # Cross-Aggregate Projector
 
-## Overview
-
-A cross-aggregate projector listens to events from multiple aggregates and combines them into a single projection. This is essential for building denormalized views that span aggregate boundaries - a core CQRS pattern where the read model needs data from multiple write models.
-
-## When to use
-
-- Building a dashboard view that combines data from multiple aggregates
-- Creating a reporting projection that aggregates metrics across bounded contexts
-- Maintaining a user balance view that tracks both registration (User) and transactions (Transaction)
-- Any read model that requires data from more than one aggregate's event stream
+A cross-aggregate projector listens to events from more than one aggregate and combines them into one projection. Use it for a read model that needs data from several write models, such as a user's balance built from `User` registrations and `Transaction` events. The SKILL.md "Cross-aggregate projector" example shows the full `TransactionProjector`.
 
 ## The aggregates, events, and projection
 
@@ -29,8 +20,6 @@ class Transaction:
     amount: Float()
 ```
 
-### Events from different aggregates
-
 Each event belongs to its own aggregate via `part_of`:
 
 ```python
@@ -46,8 +35,6 @@ class Transacted:
     amount: Float()
 ```
 
-### Cross-aggregate projection
-
 The projection combines data from both aggregates:
 
 ```python
@@ -61,8 +48,6 @@ class Balances:
 ## Specifying multiple aggregates
 
 ### Using aggregates parameter
-
-The most common way to listen to multiple aggregates:
 
 ```python
 @domain.projector(
@@ -81,66 +66,20 @@ class TransactionProjector:
         ...
 ```
 
-Protean derives stream categories from each aggregate automatically: `User.meta_.stream_category` and `Transaction.meta_.stream_category`.
+Protean derives a stream category from each aggregate: `User.meta_.stream_category` and `Transaction.meta_.stream_category`.
 
 ### Using stream_categories parameter
 
-For finer control, specify stream categories directly:
-
-```python
-@domain.projection
-class SystemMetrics:
-    metric: String(identifier=True)
-    count: Integer(default=0)
-
-@domain.projector(
-    projector_for=SystemMetrics,
-    stream_categories=[
-        User.meta_.stream_category,         # "<domain>::user"
-        Transaction.meta_.stream_category,  # "<domain>::transaction"
-    ],
-)
-class SystemMetricsProjector:
-    ...
-```
-
-This is useful when:
+Pass `stream_categories` instead of `aggregates`, as in the SKILL.md `SystemMetricsProjector` example, when:
 - You don't have direct access to the aggregate class
 - You want to use custom stream category names
 - You're listening to streams from external bounded contexts
 
 A stream category is domain-qualified: `<domain>::<aggregate>`. A bare name like `"user"` never matches. Derive the category from the registered aggregate with `meta_.stream_category`, or write it in full, as in `"shop::user"` for a domain named `shop`.
 
-## Code walkthrough
-
-### The cross-aggregate projector
-
-The projector handles events from both aggregates, each updating the shared projection:
-
-```python
-@domain.projector(
-    projector_for=Balances,
-    aggregates=[User, Transaction],
-)
-class TransactionProjector:
-    @on(Registered)
-    def on_registered(self, event: Registered):
-        balance = Balances(user_id=event.user_id, name=event.name, balance=0)
-        domain.repository_for(Balances).add(balance)
-
-    @on(Transacted)
-    def on_transacted(self, event: Transacted):
-        balance = domain.repository_for(Balances).get(event.user_id)
-        balance.balance += event.amount
-        domain.repository_for(Balances).add(balance)
-```
-
 ## Event ordering considerations
 
-When combining events from multiple aggregates, be aware that:
-- Events from different aggregates may arrive in any order
-- The Registered event may arrive after a Transacted event
-- Design handler methods to handle missing projection records gracefully
+Events from different aggregates can arrive in any order, so a `Transacted` event can reach the projector before the user's `Registered` event. Write each handler so it copes with a missing projection record:
 
 ```python
 from protean.exceptions import ObjectNotFoundError
@@ -157,6 +96,8 @@ def on_transacted(self, event: Transacted):
         balance = Balances(user_id=event.user_id, name="", balance=event.amount)
     repo.add(balance)
 ```
+
+With this handler, `on_registered` must set the name on the record when it already exists and keep its balance. Adding a new `Balances` for a `user_id` that is already stored raises `ValidationError` ("Balances with user_id '...' is already present").
 
 ## Complete example
 

@@ -15,47 +15,11 @@ When an event arrives, the framework:
 
 ## String Correlation
 
-The simplest form names the event field that holds the correlation value:
-
-```python
-# fragment
-@handle(OrderPlaced, start=True, correlate="order_id")
-def on_order_placed(self, event: OrderPlaced) -> None:
-    self.order_id = event.order_id
-    self.status = "awaiting_payment"
-```
-
-Here, `event.order_id` is extracted as the correlation value. The framework uses this value to find or create the PM instance.
-
-## Code
-
-The basic string correlation example is in [assets/pm_basic.py](../assets/pm_basic.py).
-
-All four handlers in `OrderFulfillmentPM` use `correlate="order_id"`, which means every event participating in the order fulfillment process must carry an `order_id` field.
+The simplest form names the event field that holds the correlation value. With `correlate="order_id"`, the framework reads `event.order_id` and uses its value to find or create the PM instance.
 
 ## Dictionary Correlation
 
-When the event carries the value under a different name than the PM field, use a dictionary mapping:
-
-```python
-# fragment
-@handle(
-    ExternalPaymentReceived,
-    start=True,
-    correlate={"order_id": "ext_order_ref"},
-)
-def on_payment_received(self, event: ExternalPaymentReceived) -> None:
-    self.order_id = event.ext_order_ref
-    self.status = "received"
-```
-
-The dictionary format is `{pm_field_name: event_field_name}`. The framework extracts `event.ext_order_ref` and uses its value to route to the correct PM instance. The handler then stores that value in `order_id`.
-
-## Code
-
-The dictionary correlation example is in [assets/pm_dict_correlation.py](../assets/pm_dict_correlation.py).
-
-`PaymentReconciliationPM` uses `correlate={"order_id": "ext_order_ref"}` because the external payment system uses `ext_order_ref` while the PM tracks `order_id`.
+When the event carries the value under a different name than the PM field, use a dictionary mapping. The format is `{pm_field_name: event_field_name}`. The SKILL.md's `PaymentReconciliationPM` uses `correlate={"order_id": "ext_order_ref"}`: the framework reads `event.ext_order_ref` to route the event, and the handler stores that value in `order_id`.
 
 ## Correlation Consistency
 
@@ -76,6 +40,8 @@ All events in a process must be routable to the same PM instance. The framework 
 @handle(InternalReconciled, correlate={"order_id": "order_reference"})  # event.order_reference → order_id
 ```
 
+What breaks routing: an attribute whose value does not match the target instance's identifying value, or an attribute the event does not carry at all (raises `AttributeError`).
+
 ## Stream Naming
 
 The PM's stream name is derived from the correlation value:
@@ -95,5 +61,4 @@ All transition events for this PM instance are stored in this stream.
 ## Related
 
 - [Lifecycle Management](./lifecycle.md): How correlation interacts with start/end
-- [Anti-patterns](./anti-patterns.md): Assuming correlation matches by field name
 - [Event Handler skill](../../event-handler/SKILL.md): Compare with stateless handlers (no correlation)

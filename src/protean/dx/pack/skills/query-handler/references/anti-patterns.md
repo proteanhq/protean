@@ -2,16 +2,16 @@
 
 ## Using `@handle` instead of `@read`
 
-Command and event handlers use `@handle`; query handlers use `@read`. `@read`
-signals a stateless read with no Unit of Work.
+Command and event handlers use `@handle`; query handlers use `@read`. Protean
+rejects `@handle` on a query handler method with `IncorrectUsageError`:
+``Method `get_by_id` in Query Handler `OrderQueryHandler` is decorated with
+`@handle`, which wraps execution in a UnitOfWork. Query Handler methods must be
+stateless reads. Use `@read` ...``.
 
 ```python
 # fragment
-# WRONG
-@read(GetOrderById)  # correct decorator...
-def get_by_id(self, query): ...
-
-@handle(GetOrderById)  # WRONG: @handle wraps a UoW and expects side effects
+# WRONG: @handle wraps a UoW and expects side effects
+@handle(GetOrderById)
 def get_by_id(self, query): ...
 ```
 
@@ -26,24 +26,6 @@ not `return` hands `None` back to the caller.
 @read(GetOrderById)
 def get_by_id(self, query):
     current_domain.view_for(OrderSummary).get(query.order_id)  # no return
-```
-
-```python
-# RIGHT
-@domain.projection
-class OrderSummary:
-    order_id: Identifier(identifier=True)
-    status: String(max_length=20)
-
-@domain.query(part_of="OrderSummary")
-class GetOrderById:
-    order_id: Identifier(required=True)
-
-@domain.query_handler(part_of="OrderSummary")
-class OrderQueryHandler:
-    @read(GetOrderById)
-    def get_by_id(self, query):
-        return current_domain.view_for(OrderSummary).get(query.order_id)
 ```
 
 ## Side effects in a read
@@ -77,15 +59,9 @@ def get_by_id(self, query):
     return current_domain.repository_for(Order).get(query.order_id)
 ```
 
-```python
-# fragment
-# RIGHT: read the projection
-@read(GetOrderById)
-def get_by_id(self, query):
-    return current_domain.view_for(OrderSummary).get(query.order_id)
-```
-
 ## Two handlers for one query
 
-Each query is answered by exactly one `@read` method. Registering a second is an
-error. Split the read into distinct queries instead.
+Each query is answered by exactly one `@read` method. A second
+`@read(GetOrderById)` in the same handler raises `NotSupportedError`: `Query
+GetOrderById cannot be handled by multiple handlers`. Split the read into
+distinct queries instead.

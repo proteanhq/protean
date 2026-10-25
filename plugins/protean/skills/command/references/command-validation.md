@@ -1,21 +1,10 @@
 # Command Validation
 
-Commands validate their data on instantiation. Invalid data raises `protean.exceptions.ValidationError` with an error message for each failing field. This ensures that only valid commands reach command handlers.
-
-## Overview
-
-Protean commands validate data at creation time, not when processed. This "fail fast" approach catches errors early and provides clear feedback. Validation is automatic based on field definitions.
+A command validates its data when you build it, from its field definitions, before it is processed. Invalid data raises `protean.exceptions.ValidationError` with an error message for each failing field.
 
 ## Code
 
 The complete implementation is in [assets/command_validation.py](../assets/command_validation.py).
-
-Key highlights:
-- Required fields must be provided
-- String fields validate `max_length`
-- Numeric fields validate `min_value` / `max_value`
-- Unknown fields are rejected
-- Default values fill in optional fields
 
 ## Field Validation Types
 
@@ -157,32 +146,12 @@ domain.init(traverse=False)
 
 with domain.domain_context():
     try:
-        RegisterUser(
-            user_id="USER-001",
-            email="alice@example.com",
-            username="x" * 51,  # exceeds max_length=50
-            password="secret",
-        )
-    except ValidationError as e:
-        assert e.messages == {'username': ['String should have at most 50 characters']}
-    else:
-        raise AssertionError("expected a ValidationError")
-
-    try:
         RegisterUser(user_id="USER-001")
     except ValidationError as e:
         assert e.messages == {'email': ['is required'], 'username': ['is required'], 'password': ['is required']}
     else:
         raise AssertionError("expected a ValidationError")
 ```
-
-## Validation Best Practices
-
-1. **Mark essential fields as required**: Commands should always carry complete intent
-2. **Set appropriate max_length**: Prevent unbounded string input
-3. **Use min_value/max_value for numerics**: Enforce business constraints at the boundary
-4. **Use defaults sparingly**: Only for truly optional fields with sensible defaults
-5. **Validate at command level, not handler**: Fail fast before processing begins
 
 ## Related
 
