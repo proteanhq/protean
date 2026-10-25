@@ -587,16 +587,17 @@ class BaseDAO(metaclass=ABCMeta):
         ``limit`` rows at a time, and reading goes on until ``limit`` rows are
         claimed or no candidates remain, so held rows never use up the batch.
         ``hold_back.lane_of`` gives each candidate's group from its own values.
-        For a grouped candidate, one query reads up to ``k + 1`` earlier
-        holding rows of its group, where ``k`` is how many rows of the group
-        this call has claimed. Those ``k`` rows are all earlier than the
-        candidate and still hold, so a ``k + 1``-th row is one this call has
-        not claimed, and the candidate is held. The query binds the same
-        number of parameters however large the batch is. A row lost to another
-        worker's claim holds the rest of its group the same way. Paging assumes that ``claim_fields`` makes a claimed row stop
-        matching ``criteria``, which no-double-claim already needs. There is no
-        cap on the pages read, because a cap would let a held group fill every
-        batch and keep other groups from being claimed. Pages come from
+        For a grouped candidate, one query counts the earlier holding rows of
+        its group and compares the count with ``k``, how many rows of the
+        group this call has claimed. Those ``k`` rows are all earlier than the
+        candidate and still hold, so a count above ``k`` means a row this call
+        has not claimed, and the candidate is held. The query binds the same
+        number of parameters and returns one number however large the batch
+        is. A row lost to another worker's claim holds the rest of its group
+        the same way. Paging assumes that ``claim_fields`` makes a claimed row
+        stop matching ``criteria``, which no-double-claim already needs. There
+        is no cap on the pages read, because a cap would let a held group fill
+        every batch and keep other groups from being claimed. Pages come from
         :meth:`_claim_candidates`. Its default reads held rows too, so a large
         held backlog costs one page read per ``limit`` held rows on every call.
         An adapter that can leave held rows out of the page in its query avoids
@@ -672,15 +673,8 @@ class BaseDAO(metaclass=ABCMeta):
                     & hold_back.holds
                     & _earlier_than(entity, hold_back.order)
                 )
-                seen = claimed_in_group[group]
-                found = (
-                    self.query.filter(earlier)
-                    .only(id_name)
-                    .limit(seen + 1)
-                    .all(with_total=False)
-                    .items
-                )
-                if len(found) > seen or not try_claim(entity):
+                held = self._count(earlier) > claimed_in_group[group]
+                if held or not try_claim(entity):
                     continue
 
                 claimed.append(entity)

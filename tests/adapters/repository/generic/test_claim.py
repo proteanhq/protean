@@ -527,6 +527,30 @@ class TestClaimHoldBack:
         assert len(claimed) == 300
         assert max(bound) < 50
 
+    def test_rows_read_grow_with_the_batch_not_its_square(
+        self, test_domain, monkeypatch
+    ):
+        # Checking each row of a key against the rows of that key claimed
+        # before it must not read those rows back, or one key's batch of N
+        # rows reads about N * N / 2 of them.
+        # Patched on the class: each repository_for call builds a new DAO.
+        dao_cls = type(test_domain.repository_for(KeyedJob)._dao)
+        _keyed(test_domain, *_key_rows("k1", range(150)))
+        filter_rows = dao_cls._filter
+        rows_read: list[int] = []
+
+        def counting_filter(self, *args, **kwargs):
+            result = filter_rows(self, *args, **kwargs)
+            rows_read.append(len(result.items))
+            return result
+
+        monkeypatch.setattr(dao_cls, "_filter", counting_filter)
+
+        claimed = _claim_keyed(test_domain, limit=150)
+
+        assert claimed == [f"k1-{n}" for n in range(150)]
+        assert sum(rows_read) <= 2 * 150
+
     def test_a_lost_claim_on_an_earlier_row_holds_the_rest_of_its_key(
         self, test_domain, monkeypatch
     ):
