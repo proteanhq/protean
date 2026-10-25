@@ -438,7 +438,7 @@ All possible keys (no single field has all of them):
 | `increment` | Auto-increment flag |
 | `auto_now` | `true` on a `Date` or `DateTime` field that is set to the current time on every save (added in v0.3.0) |
 | `auto_now_add` | `true` on a `Date` or `DateTime` field that is set to the current time on the save that creates the record (added in v0.3.0) |
-| `content_type` | Element type of a container (`List`, `ValueObjectList`) |
+| `content_type` | Element type of a container (`List`, `ValueObjectList`) or value type of a typed `Dict` |
 | `auto_generated` | `true` for framework-injected fields |
 | `target` | FQN of the associated element (associations) |
 | `via` | FK field name on the child entity |

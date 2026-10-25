@@ -76,9 +76,11 @@ two different verdicts: the report calls it breaking, and the Avro verdict is
 ### Dict and List value types
 
 A `Dict` or `List` field that stays `Dict` or `List` is compared on its value
-type, which the IR records as `content_type`. Any change to it breaks: rows
-stored under the old value type fail to load under the new one, in either
-direction.
+type, which the IR records as `content_type`. Any difference in that name
+breaks. Adding or changing a value type means rows stored before the change
+can fail to load. Removing one means a reader still on the old code can reject
+rows written after it. Either way, old and new code no longer accept the same
+rows.
 
 | From | To | Classification |
 |------|----|----------------|
@@ -87,10 +89,25 @@ direction.
 | `Dict(value_type=ValueObject(TierPrice))` | `Dict()` | **Breaking** (`field_type_changed`) |
 | `List(content_type=String)` | `List(content_type=Integer)` | **Breaking** (`field_type_changed`) |
 
-The message names both value types, and `unset` stands for a field with none:
-"Field 'tier_prices' value type changed from 'unset' to 'TierPrice'". A field
-renamed with `renamed_from` whose value type also changes reports
+The message names both value types: "Field 'tier_prices' value type changed
+from 'unset' to 'TierPrice'". An untyped `Dict()` records no value type and
+shows as `unset`. An untyped `List()` records `Any` and shows as `Any`. A
+field renamed with `renamed_from` whose value type also changes reports
 `field_type_changed` in place of `field_renamed`.
+
+The IR records only the value type's name, so a change that keeps the name is
+not reported. These changes give no entry:
+
+- A value object swapped for another value object with the same class name
+  from a different module.
+- A change inside a nested or generic value type that keeps its outer name,
+  such as `list[list[int]]` to `list[list[str]]`, `list[dict[str, int]]` to
+  `list[dict[str, str]]`, or `Optional[int]` to `Optional[str]`.
+- A change between two `choices` lists, which the IR records as `Literal`.
+
+`Optional` and `Union` compare equal. Python 3.14 records `Optional[int]` as
+`Union`, and earlier versions record it as `Optional`, so an IR pair built on
+two Python versions does not report a change for it.
 
 ### Published event contracts
 
@@ -98,7 +115,8 @@ renamed with `renamed_from` whose value type also changes reports
 lists the breaks in `contracts.breaking_changes`. `summary.has_breaking_changes`
 is read from that list. The published-contract check applies the same field
 rules as the compatibility report: a field type change, a `Dict` or `List`
-value type change, a breaking `Decimal` precision or scale change, and a required field added without a default. So
+value type change, a breaking `Decimal` precision or scale change, and a
+required field added without a default. So
 for a published event's fields, the two lists flag the same breaks, with these
 exceptions:
 

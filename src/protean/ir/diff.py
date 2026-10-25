@@ -2044,9 +2044,11 @@ def _field_change_kind(left: dict[str, Any], right: dict[str, Any]) -> str | Non
     """
     if left.get("type") != right.get("type"):
         return "type"
-    # Rows stored under the old value type fail to load under the new one,
-    # whichever way it moves, so every content_type difference breaks.
-    if left.get("content_type") != right.get("content_type"):
+    # A reader still on the old value type can reject rows written under the
+    # new one, so every content_type difference breaks, widening included.
+    if _comparable_content_type(left.get("content_type")) != (
+        _comparable_content_type(right.get("content_type"))
+    ):
         return "content_type"
     shape = _classify_decimal_shape(left, right)
     if shape is None:
@@ -2087,6 +2089,16 @@ def _decimal_shape_delta(left: dict[str, Any], right: dict[str, Any]) -> str:
         for key in ("precision", "scale")
         if left.get(key) != right.get(key)
     )
+
+
+def _comparable_content_type(value: Any) -> Any:
+    """Normalize a ``content_type`` for comparison across Python versions.
+
+    The builder records ``Optional[X]`` as ``"Optional"`` before Python 3.14
+    and as ``"Union"`` from 3.14 on, so an IR pair built on two versions
+    would otherwise show a value type change nobody made.
+    """
+    return "Union" if value == "Optional" else value
 
 
 def _content_type_delta(left: dict[str, Any], right: dict[str, Any]) -> str:

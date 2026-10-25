@@ -1,8 +1,8 @@
 """A change to a ``Dict`` or ``List`` field's value type breaks old payloads.
 
 The field's ``type`` stays ``Dict`` or ``List`` on both sides, so the change
-shows up only in the IR's ``content_type``. Rows stored under the old value
-type fail to load under the new one, whichever way the value type moves.
+shows up only in the IR's ``content_type``. Old and new code stop accepting
+the same rows whichever way the value type moves, so every difference breaks.
 """
 
 from __future__ import annotations
@@ -225,6 +225,19 @@ class TestUnchangedValueTypesAreNotReported:
 
         assert _breaks(left, right) == []
 
+    def test_optional_and_union_compare_equal_across_python_versions(self):
+        # Python 3.14 records ``Optional[int]`` as ``Union``; earlier versions
+        # record it as ``Optional``. Edit the IR to stand in for both builds.
+        left, right = _build(tiers=string_list), _build(tiers=string_list)
+        for ir, value in ((left, "Optional"), (right, "Union")):
+            ir["clusters"][PRICE_FQN]["aggregate"]["fields"]["tiers"][
+                "content_type"
+            ] = value
+
+        assert _breaks(left, right) == []
+        assert _breaks(left, right, fqn=EVENT_FQN) == []
+        assert _contract_breaks(left, right) == []
+
     def test_decimal_precision_rules_are_unchanged(self):
         left = _build(amount=lambda _vos: Decimal(precision=10, scale=2))
         widened = _build(amount=lambda _vos: Decimal(precision=19, scale=2))
@@ -327,12 +340,45 @@ class TestRenames:
 
 
 class TestIrDiffCommand:
-    def _invoke(self, tmp_path, left, right):
+    def _invoke(self, tmp_path, left, right, *extra: str):
         left_path, right_path = tmp_path / "left.json", tmp_path / "right.json"
         left_path.write_text(json.dumps(left), encoding="utf-8")
         right_path.write_text(json.dumps(right), encoding="utf-8")
         return runner.invoke(
-            app, ["ir", "diff", "-l", str(left_path), "-r", str(right_path)]
+            app, ["ir", "diff", "-l", str(left_path), "-r", str(right_path), *extra]
+        )
+
+    def test_typing_an_internal_events_dict_value_exits_1(self, tmp_path):
+        # No published event, so no contract break: only the report can give 1.
+        result = self._invoke(
+            tmp_path,
+            _build(published=False, tiers=untyped_dict),
+            _build(published=False, tiers=tier_dict),
+        )
+
+        assert result.exit_code == 1, result.output
+
+    def test_the_json_report_lists_the_break(self, tmp_path):
+        result = self._invoke(
+            tmp_path,
+            _build(published=False, tiers=untyped_dict),
+            _build(published=False, tiers=tier_dict),
+            "--format",
+            "json",
+        )
+
+        assert result.exit_code == 1, result.output
+        compatibility = json.loads(result.output)["compatibility"]
+        breaks = sorted(
+            (c["change_type"], c["element_fqn"], c["field_name"])
+            for c in compatibility["breaking_changes"]
+        )
+        assert breaks == [
+            ("field_type_changed", PRICE_FQN, "tiers"),
+            ("field_type_changed", EVENT_FQN, "tiers"),
+        ]
+        assert not any(
+            c.get("field_name") == "tiers" for c in compatibility["safe_changes"]
         )
 
     def test_typing_a_dict_value_exits_1_and_prints_each_break_once(self, tmp_path):
