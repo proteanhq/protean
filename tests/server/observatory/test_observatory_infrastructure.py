@@ -80,17 +80,23 @@ class TestSanitizeConfig:
         result = sanitize_config(uri)
         assert result == uri
 
-    def test_masks_password_keys(self):
-        config = {"provider": "redis", "password": "secret123"}
+    @pytest.mark.parametrize(
+        "config, secret_key, plain_key, plain_value",
+        [
+            (
+                {"provider": "redis", "password": "secret123"},
+                "password",
+                "provider",
+                "redis",
+            ),
+            ({"api_key": "sk-12345", "name": "test"}, "api_key", "name", "test"),
+        ],
+        ids=["password", "api_key"],
+    )
+    def test_masks_sensitive_keys(self, config, secret_key, plain_key, plain_value):
         result = sanitize_config(config)
-        assert result["provider"] == "redis"
-        assert result["password"] == "***"
-
-    def test_masks_secret_keys(self):
-        config = {"api_key": "sk-12345", "name": "test"}
-        result = sanitize_config(config)
-        assert result["api_key"] == "***"
-        assert result["name"] == "test"
+        assert result[secret_key] == "***"
+        assert result[plain_key] == plain_value
 
     def test_handles_nested_dicts(self):
         config = {
@@ -128,16 +134,10 @@ class TestSanitizeConfig:
 
 
 class TestServerInfo:
-    def test_includes_python_version(self, test_domain):
+    def test_includes_versions_and_platform(self, test_domain):
         info = _server_info([test_domain])
         assert info["python_version"] == platform.python_version()
-
-    def test_includes_protean_version(self, test_domain):
-        info = _server_info([test_domain])
         assert info["protean_version"] == protean.__version__
-
-    def test_includes_platform(self, test_domain):
-        info = _server_info([test_domain])
         assert "platform" in info
         assert isinstance(info["platform"], str)
 
@@ -319,10 +319,6 @@ class TestCacheStatus:
 
 
 class TestInfrastructureStatusEndpoint:
-    def test_returns_200(self, client):
-        response = client.get("/api/infrastructure/status")
-        assert response.status_code == 200
-
     def test_has_server_section(self, client):
         response = client.get("/api/infrastructure/status")
         data = response.json()
@@ -331,14 +327,12 @@ class TestInfrastructureStatusEndpoint:
         assert "protean_version" in data["server"]
         assert "domains" in data["server"]
 
-    def test_has_connections_section(self, client):
-        response = client.get("/api/infrastructure/status")
-        data = response.json()
-        assert "connections" in data
-
     def test_connections_has_all_adapters(self, client):
         response = client.get("/api/infrastructure/status")
-        connections = response.json()["connections"]
+        assert response.status_code == 200
+        data = response.json()
+        assert "connections" in data
+        connections = data["connections"]
         assert "database" in connections
         assert "broker" in connections
         assert "event_store" in connections
@@ -359,12 +353,9 @@ class TestInfrastructureStatusEndpoint:
 
 
 class TestInfrastructureTemplate:
-    def test_page_renders_200(self, client):
-        response = client.get("/infrastructure")
-        assert response.status_code == 200
-
     def test_extends_base_template(self, client):
         response = client.get("/infrastructure")
+        assert response.status_code == 200
         assert "Observatory" in response.text
 
     def test_includes_infrastructure_js(self, client):

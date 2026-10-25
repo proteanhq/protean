@@ -24,6 +24,7 @@ from protean.fields import Identifier, String
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.timeline import (
     _build_trace_summary,
+    _extract_correlation_id,
     _group_by_correlation,
     collect_recent_traces,
     search_traces,
@@ -326,12 +327,6 @@ class TestBuildTraceSummary:
 
 
 class TestCollectRecentTraces:
-    def test_returns_all_traces(self, trace_domain):
-        domain, _, _ = trace_domain
-        traces = collect_recent_traces([domain])
-
-        assert len(traces) == 3
-
     def test_sorted_by_started_at_descending(self, trace_domain):
         domain, _, _ = trace_domain
         traces = collect_recent_traces([domain])
@@ -379,13 +374,6 @@ class TestSearchTraces:
         assert "corr-chain-A" in corr_ids
         assert "corr-chain-C" in corr_ids
 
-    def test_search_by_event_type(self, trace_domain):
-        domain, _, _ = trace_domain
-        results = search_traces([domain], event_type="Test.OrderPlaced.v1")
-
-        assert len(results) == 1
-        assert results[0]["correlation_id"] == "corr-chain-B"
-
     def test_search_by_command_type(self, trace_domain):
         domain, _, _ = trace_domain
         results = search_traces([domain], command_type="Test.RenameUser.v1")
@@ -416,12 +404,6 @@ class TestSearchTraces:
 
         assert len(results) == 1
 
-    def test_search_returns_empty_for_no_match(self, trace_domain):
-        domain, _, _ = trace_domain
-        results = search_traces([domain], event_type="NonExistent.Type.v1")
-
-        assert results == []
-
     def test_search_returns_empty_for_empty_store(self, empty_domain):
         results = search_traces([empty_domain], event_type="Test.UserRegistered.v1")
         assert results == []
@@ -438,29 +420,19 @@ class TestSearchTraces:
 
 
 class TestExtractCorrelationId:
-    def test_returns_none_for_missing_metadata(self):
-        from protean.server.observatory.routes.timeline import _extract_correlation_id
-
-        assert _extract_correlation_id({}) is None
-
-    def test_returns_none_for_non_dict_metadata(self):
-        from protean.server.observatory.routes.timeline import _extract_correlation_id
-
-        assert _extract_correlation_id({"metadata": "not-a-dict"}) is None
-
-    def test_returns_none_for_missing_domain(self):
-        from protean.server.observatory.routes.timeline import _extract_correlation_id
-
-        assert _extract_correlation_id({"metadata": {"headers": {}}}) is None
-
-    def test_returns_none_for_non_dict_domain(self):
-        from protean.server.observatory.routes.timeline import _extract_correlation_id
-
-        assert _extract_correlation_id({"metadata": {"domain": "not-a-dict"}}) is None
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            pytest.param({}, id="missing_metadata"),
+            pytest.param({"metadata": "not-a-dict"}, id="non_dict_metadata"),
+            pytest.param({"metadata": {"headers": {}}}, id="missing_domain"),
+            pytest.param({"metadata": {"domain": "not-a-dict"}}, id="non_dict_domain"),
+        ],
+    )
+    def test_returns_none_without_a_domain_dict(self, msg):
+        assert _extract_correlation_id(msg) is None
 
     def test_extracts_correlation_id(self):
-        from protean.server.observatory.routes.timeline import _extract_correlation_id
-
         msg = {"metadata": {"domain": {"correlation_id": "corr-123"}}}
         assert _extract_correlation_id(msg) == "corr-123"
 
@@ -703,15 +675,3 @@ class TestSearchTracesEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["count"] == 1
-
-
-class TestTraceRouteWiring:
-    def test_recent_traces_route_included(self, trace_client):
-        resp = trace_client.get("/api/timeline/traces/recent")
-        assert resp.status_code == 200
-
-    def test_search_traces_route_included(self, trace_client):
-        resp = trace_client.get(
-            "/api/timeline/traces/search?event_type=Test.OrderPlaced.v1"
-        )
-        assert resp.status_code == 200

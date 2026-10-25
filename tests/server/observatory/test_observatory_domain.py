@@ -108,11 +108,6 @@ class TestDomainSidebarNav:
         html = client.get("/").text
         assert 'href="/domain"' in html
 
-    def test_domain_section_header(self, client):
-        html = client.get("/").text
-        # The sidebar has a "Domain" section header
-        assert "Domain" in html
-
     def test_keyboard_shortcut_in_modal(self, client):
         html = client.get("/").text
         assert "Go to Domain" in html
@@ -178,15 +173,6 @@ class TestMultiAggregateDomain:
         data = multi_agg_client.get("/api/domain/ir").json()
         assert len(data["nodes"]) == 2
 
-    def test_node_has_expected_fields(self, multi_agg_client):
-        data = multi_agg_client.get("/api/domain/ir").json()
-        node = data["nodes"][0]
-        assert "id" in node
-        assert "name" in node
-        assert "type" in node
-        assert "fqn" in node
-        assert "counts" in node
-
     def test_node_type_is_aggregate(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
         for node in data["nodes"]:
@@ -197,16 +183,6 @@ class TestMultiAggregateDomain:
         links = data["links"]
         event_links = [lnk for lnk in links if lnk["type"] == "event"]
         assert len(event_links) >= 1
-
-    def test_link_has_expected_fields(self, multi_agg_client):
-        data = multi_agg_client.get("/api/domain/ir").json()
-        links = data["links"]
-        if links:
-            link = links[0]
-            assert "source" in link
-            assert "target" in link
-            assert "type" in link
-            assert "label" in link
 
     def test_stats_reflect_multi_aggregate(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
@@ -225,9 +201,6 @@ class TestMultiAggregateDomain:
 
 
 class TestBuildNodes:
-    def test_empty_clusters(self):
-        assert _build_nodes({}) == []
-
     def test_single_aggregate(self):
         clusters = {
             "app.Order": {

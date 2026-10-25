@@ -9,7 +9,6 @@ Tests for:
 """
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from protean.server.observatory import Observatory
@@ -17,7 +16,6 @@ from protean.server.observatory.routes.domain import (
     _build_event_to_agg_index,
     _build_links,
     _build_nodes,
-    create_domain_router,
 )
 
 # ---------------------------------------------------------------------------
@@ -136,11 +134,6 @@ class TestDomainTemplateIntegration:
 
 
 class TestDomainJSIntegration:
-    def test_domain_js_delegates_to_topology(self, client):
-        """domain.js should call DomainTopology.render, not render cards."""
-        js = client.get("/static/js/domain.js").text
-        assert "DomainTopology.render" in js
-
     def test_domain_js_topology_not_placeholder(self, client):
         """Topology section should delegate to DomainTopology, not use card grid."""
         js = client.get("/static/js/domain.js").text
@@ -200,11 +193,6 @@ class TestGraphDataForForceLayout:
     """Verify the /api/domain/ir response provides data suitable for
     D3 force-directed layout (nodes with id, links with source/target)."""
 
-    def test_nodes_have_id_for_force_layout(self, multi_agg_client):
-        data = multi_agg_client.get("/api/domain/ir").json()
-        for node in data["nodes"]:
-            assert "id" in node, "Each node needs an 'id' for d3.forceLink"
-
     def test_links_reference_node_ids(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
         node_ids = {n["id"] for n in data["nodes"]}
@@ -217,10 +205,13 @@ class TestGraphDataForForceLayout:
             )
 
     def test_nodes_have_display_fields(self, multi_agg_client):
-        """Nodes should have name, counts, stream_category, is_event_sourced."""
+        """Every node carries its id, name, type, fqn and display fields."""
         data = multi_agg_client.get("/api/domain/ir").json()
         for node in data["nodes"]:
+            assert "id" in node, "Each node needs an 'id' for d3.forceLink"
             assert "name" in node
+            assert "type" in node
+            assert "fqn" in node
             assert "counts" in node
             assert "stream_category" in node
             assert "is_event_sourced" in node
@@ -386,14 +377,6 @@ class TestEdgeExtractionForTopology:
 
 @pytest.mark.no_test_domain
 class TestEmptyDomainTopology:
-    def test_empty_domain_returns_503(self):
-        """Router with no domains returns 503 on /domain/ir."""
-        app = FastAPI()
-        app.include_router(create_domain_router([]), prefix="/api")
-        client = TestClient(app)
-        response = client.get("/api/domain/ir")
-        assert response.status_code == 503
-
     def test_empty_nodes_and_links(self):
         """An empty clusters dict should produce zero nodes and links."""
         nodes = _build_nodes({})

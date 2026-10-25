@@ -24,49 +24,35 @@ from protean.server.observatory.sse import _format_sse, create_sse_endpoint
 class TestFormatSSE:
     """Tests for the _format_sse helper function (no Redis needed)."""
 
-    def test_default_event_type(self):
-        """_format_sse uses 'trace' as default event type."""
-        result = _format_sse({"key": "value"})
-        assert result.startswith("event: trace\n")
+    @pytest.mark.parametrize(
+        "kwargs, first_line",
+        [({}, "event: trace\n"), ({"event_type": "error"}, "event: error\n")],
+        ids=["default-trace", "custom"],
+    )
+    def test_event_type(self, kwargs, first_line):
+        """_format_sse uses 'trace' unless an event_type is given."""
+        assert _format_sse({"key": "value"}, **kwargs).startswith(first_line)
 
-    def test_custom_event_type(self):
-        """_format_sse uses custom event_type when provided."""
-        result = _format_sse({"error": "oops"}, event_type="error")
-        assert result.startswith("event: error\n")
-
-    def test_data_is_json(self):
-        """_format_sse serializes data dict as JSON in data field."""
-        result = _format_sse({"key": "value", "num": 42})
-        lines = result.strip().split("\n")
-        data_line = next(line for line in lines if line.startswith("data: "))
-        json_str = data_line[len("data: ") :]
-        data = json.loads(json_str)
-        assert data["key"] == "value"
-        assert data["num"] == 42
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"key": "value", "num": 42},
+            {"metadata": {"retry": 3, "dlq": "stream-dlq"}},
+            {"handler": None, "error": None},
+        ],
+        ids=["flat", "nested", "none-values"],
+    )
+    def test_data_line_is_the_payload_as_json(self, payload):
+        result = _format_sse(payload)
+        data_line = next(
+            line for line in result.strip().split("\n") if line.startswith("data: ")
+        )
+        assert json.loads(data_line[len("data: ") :]) == payload
 
     def test_ends_with_double_newline(self):
         """SSE events must end with two newlines."""
         result = _format_sse({"key": "value"})
         assert result.endswith("\n\n")
-
-    def test_format_with_nested_data(self):
-        """_format_sse handles nested dictionaries."""
-        result = _format_sse({"metadata": {"retry": 3, "dlq": "stream-dlq"}})
-        data_line = next(
-            line for line in result.strip().split("\n") if line.startswith("data: ")
-        )
-        data = json.loads(data_line[len("data: ") :])
-        assert data["metadata"]["retry"] == 3
-
-    def test_format_with_none_values(self):
-        """_format_sse handles None values."""
-        result = _format_sse({"handler": None, "error": None})
-        data_line = next(
-            line for line in result.strip().split("\n") if line.startswith("data: ")
-        )
-        data = json.loads(data_line[len("data: ") :])
-        assert data["handler"] is None
-        assert data["error"] is None
 
 
 class TestSSEFilteringLogic:

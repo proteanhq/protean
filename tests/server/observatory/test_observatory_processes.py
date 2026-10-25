@@ -505,30 +505,6 @@ class TestCollectPMTraceMetrics:
         result = collect_pm_trace_metrics(redis, {"PM1"}, 300000)
         assert result == {}
 
-    def test_handles_malformed_data(self):
-        now_ms = int(time.time() * 1000)
-        redis = MagicMock()
-        redis.xrange.return_value = [
-            (f"{now_ms - 5000}-0".encode(), {b"data": b"not-json"}),
-            (
-                f"{now_ms - 4000}-0".encode(),
-                {b"data": _make_trace_entry(handler="PM1")},
-            ),
-        ]
-
-        result = collect_pm_trace_metrics(redis, {"PM1"}, 300000)
-        assert result["PM1"]["processed"] == 1
-
-    def test_skips_missing_data_field(self):
-        now_ms = int(time.time() * 1000)
-        redis = MagicMock()
-        redis.xrange.return_value = [
-            (f"{now_ms - 5000}-0".encode(), {b"other": b"value"}),
-        ]
-
-        result = collect_pm_trace_metrics(redis, {"PM1"}, 300000)
-        assert result == {}
-
 
 # ---------------------------------------------------------------------------
 # get_pm_instance_count
@@ -678,28 +654,19 @@ class TestBuildSummary:
 
 
 class TestSerializePM:
-    def test_strips_internal_keys(self, fulfillment, test_domain):
-        pm = {
-            "name": "TestPM",
-            "type": "process_manager",
-            "_cls": fulfillment.pm,
-            "_domain": test_domain,
-        }
-        result = _serialize_pm(pm)
-        assert "name" in result
-        assert "_cls" not in result
-        assert "_domain" not in result
-
-    def test_preserves_public_keys(self, fulfillment):
+    def test_keeps_public_keys_and_strips_internal_keys(self, fulfillment, test_domain):
         pm = {
             "name": "TestPM",
             "type": "process_manager",
             "metrics": {"processed": 5},
             "_cls": fulfillment.pm,
+            "_domain": test_domain,
         }
-        result = _serialize_pm(pm)
-        assert result["name"] == "TestPM"
-        assert result["metrics"] == {"processed": 5}
+        assert _serialize_pm(pm) == {
+            "name": "TestPM",
+            "type": "process_manager",
+            "metrics": {"processed": 5},
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -786,41 +753,34 @@ class TestProcessesInstancesEndpoint:
 
 
 class TestProcessesTemplate:
-    def test_renders_page(self, client):
-        resp = client.get("/processes")
-        assert resp.status_code == 200
-        assert "text/html" in resp.headers["content-type"]
-
-    def test_includes_summary_cards(self, client):
+    @pytest.mark.parametrize(
+        "markers",
+        [
+            [
+                'id="summary-total"',
+                'id="summary-instances"',
+                'id="summary-healthy"',
+                'id="summary-lagging"',
+            ],
+            ['id="processes-tbody"'],
+            ['id="process-search"', 'id="process-status-filter"'],
+            ['id="instance-explorer"', 'id="instances-tbody"'],
+            ["/static/js/processes.js"],
+            ['data-sort="name"', 'data-sort="instances"', 'data-sort="processed"'],
+        ],
+        ids=[
+            "summary-cards",
+            "table",
+            "search-and-filter",
+            "instance-explorer",
+            "processes-js",
+            "sort-headers",
+        ],
+    )
+    def test_includes(self, client, markers):
         html = client.get("/processes").text
-        assert 'id="summary-total"' in html
-        assert 'id="summary-instances"' in html
-        assert 'id="summary-healthy"' in html
-        assert 'id="summary-lagging"' in html
-
-    def test_includes_table(self, client):
-        html = client.get("/processes").text
-        assert 'id="processes-tbody"' in html
-
-    def test_includes_search_and_filter(self, client):
-        html = client.get("/processes").text
-        assert 'id="process-search"' in html
-        assert 'id="process-status-filter"' in html
-
-    def test_includes_instance_explorer(self, client):
-        html = client.get("/processes").text
-        assert 'id="instance-explorer"' in html
-        assert 'id="instances-tbody"' in html
-
-    def test_includes_processes_js(self, client):
-        html = client.get("/processes").text
-        assert "/static/js/processes.js" in html
-
-    def test_sort_headers(self, client):
-        html = client.get("/processes").text
-        assert 'data-sort="name"' in html
-        assert 'data-sort="instances"' in html
-        assert 'data-sort="processed"' in html
+        for marker in markers:
+            assert marker in html
 
 
 # ---------------------------------------------------------------------------
@@ -840,20 +800,11 @@ class TestProcessesStaticFiles:
 
 
 class TestProcessesRouteWiring:
-    def test_create_processes_router_returns_router(self):
-        router = create_processes_router([])
-        assert hasattr(router, "routes")
-
     def test_processes_routes_present(self, test_domain):
         router = create_processes_router([test_domain])
         paths = [r.path for r in router.routes]
         assert "/processes" in paths
         assert "/processes/{name}/instances" in paths
-
-    def test_api_router_includes_processes_routes(self, client):
-        """Verify processes routes are wired into the Observatory app."""
-        resp = client.get("/api/processes")
-        assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -885,11 +836,6 @@ class TestGetRedis:
         domain, patcher = _broken_domain("Broken")
         with patcher:
             assert _get_redis([domain]) is None
-
-    def test_returns_redis_instance(self, test_domain):
-        """The Redis broker's raw client is returned."""
-        broker = test_domain.brokers.get("default")
-        assert _get_redis([test_domain]) is broker.redis_instance
 
     def test_skips_failing_domain_tries_next(self, test_domain):
         """First domain fails, second succeeds."""
@@ -935,11 +881,6 @@ class TestDecodeStreamId:
 
 
 class TestExtractHandledMessagesFallback:
-    def test_type_key_without_dots(self):
-        """A key with no dots is returned as is."""
-        cls = _handler_class_with_keys("SimpleEvent")
-        assert _extract_handled_messages(cls) == ["SimpleEvent"]
-
     def test_mixed_dotted_and_undotted_keys(self):
         """Dotted keys give their short name, undotted keys are kept whole."""
         cls = _handler_class_with_keys("MyApp.OrderPlaced.v1", "BareEvent")

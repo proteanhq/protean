@@ -69,16 +69,9 @@ class TestKeyboardShortcutsModal:
 
 
 class TestSearchInputAttribute:
-    def test_handlers_search_has_attribute(self, client):
-        html = client.get("/handlers").text
-        assert "data-search-input" in html
-
-    def test_processes_search_has_attribute(self, client):
-        html = client.get("/processes").text
-        assert "data-search-input" in html
-
-    def test_eventstore_search_has_attribute(self, client):
-        html = client.get("/eventstore").text
+    @pytest.mark.parametrize("path", ["/handlers", "/processes", "/eventstore"])
+    def test_search_has_attribute(self, client, path):
+        html = client.get(path).text
         assert "data-search-input" in html
 
 
@@ -88,18 +81,11 @@ class TestSearchInputAttribute:
 
 
 class TestCSVExportButtons:
-    def test_handlers_has_export_button(self, client):
-        html = client.get("/handlers").text
+    @pytest.mark.parametrize("path", ["/handlers", "/processes", "/eventstore"])
+    def test_has_export_button(self, client, path):
+        html = client.get(path).text
         assert 'id="export-csv"' in html
         assert "CSV" in html
-
-    def test_processes_has_export_button(self, client):
-        html = client.get("/processes").text
-        assert 'id="export-csv"' in html
-
-    def test_eventstore_has_export_button(self, client):
-        html = client.get("/eventstore").text
-        assert 'id="export-csv"' in html
 
 
 # ---------------------------------------------------------------------------
@@ -133,20 +119,9 @@ class TestCoreJSPolishFeatures:
 
 
 class TestDeepLinkingJS:
-    def test_handlers_js_has_deep_linking(self, client):
-        js = client.get("/static/js/handlers.js").text
-        assert "_readURL" in js
-        assert "_updateURL" in js
-        assert "history.replaceState" in js
-
-    def test_processes_js_has_deep_linking(self, client):
-        js = client.get("/static/js/processes.js").text
-        assert "_readURL" in js
-        assert "_updateURL" in js
-        assert "history.replaceState" in js
-
-    def test_eventstore_js_has_deep_linking(self, client):
-        js = client.get("/static/js/eventstore.js").text
+    @pytest.mark.parametrize("module", ["handlers", "processes", "eventstore"])
+    def test_view_js_has_deep_linking(self, client, module):
+        js = client.get(f"/static/js/{module}.js").text
         assert "_readURL" in js
         assert "_updateURL" in js
         assert "history.replaceState" in js
@@ -158,17 +133,8 @@ class TestDeepLinkingJS:
 
 
 class TestCSVExportWiringJS:
-    def test_handlers_js_has_csv_export(self, client):
-        js = client.get("/static/js/handlers.js").text
-        assert "_exportCSV" in js
-        assert "Observatory.exportCSV" in js
-
-    def test_processes_js_has_csv_export(self, client):
-        js = client.get("/static/js/processes.js").text
-        assert "_exportCSV" in js
-        assert "Observatory.exportCSV" in js
-
-    def test_eventstore_js_has_csv_export(self, client):
-        js = client.get("/static/js/eventstore.js").text
+    @pytest.mark.parametrize("module", ["handlers", "processes", "eventstore"])
+    def test_view_js_has_csv_export(self, client, module):
+        js = client.get(f"/static/js/{module}.js").text
         assert "_exportCSV" in js
         assert "Observatory.exportCSV" in js

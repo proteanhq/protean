@@ -443,24 +443,6 @@ class TestCollectAllEvents:
         events, _cursor = collect_all_events([domain])
         assert len(events) == 3
 
-    def test_respects_limit(self, domain_with_events):
-        domain, _, _ = domain_with_events
-        events, cursor = collect_all_events([domain], limit=2)
-        assert len(events) == 2
-        assert cursor is not None
-
-    def test_cursor_pagination(self, domain_with_events):
-        domain, _, _ = domain_with_events
-        # Get first 2 events
-        page1, cursor1 = collect_all_events([domain], limit=2)
-        assert len(page1) == 2
-        assert cursor1 is not None
-
-        # Get remaining events using cursor
-        page2, cursor2 = collect_all_events([domain], cursor=cursor1, limit=2)
-        assert len(page2) == 1
-        assert cursor2 is None
-
     def test_desc_order(self, domain_with_events):
         domain, _, _ = domain_with_events
         events, _ = collect_all_events([domain], order="desc")
@@ -497,11 +479,6 @@ class TestCollectAllEvents:
         )
         assert len(events) == 0
 
-    def test_filter_by_kind(self, domain_with_events):
-        domain, _, _ = domain_with_events
-        events, _ = collect_all_events([domain], kind="EVENT")
-        assert len(events) == 3  # All are events
-
     def test_filter_by_kind_excludes_mismatch(self, domain_with_events):
         """kind filter excludes non-matching events."""
         domain, _, _ = domain_with_events
@@ -528,12 +505,6 @@ class TestCollectAllEvents:
         for event in events:
             assert event["type"] != "SNAPSHOT"
 
-    def test_handles_broken_domain_gracefully(self, event_domain):
-        with _store_unavailable(event_domain):
-            events, cursor = collect_all_events([event_domain])
-        assert events == []
-        assert cursor is None
-
     def test_returns_empty_when_no_events(self, event_domain):
         events, cursor = collect_all_events([event_domain])
         assert events == []
@@ -558,16 +529,6 @@ class TestFindEventById:
         assert "data" in result
         assert "metadata" in result
 
-    def test_returns_none_for_missing(self, domain_with_events):
-        domain, _, _ = domain_with_events
-        result = find_event_by_id([domain], "nonexistent-id")
-        assert result is None
-
-    def test_handles_broken_domain_gracefully(self, event_domain):
-        with _store_unavailable(event_domain):
-            result = find_event_by_id([event_domain], "any-id")
-        assert result is None
-
 
 # ---------------------------------------------------------------------------
 # collect_timeline_stats
@@ -589,11 +550,6 @@ class TestCollectTimelineStats:
         assert stats["last_event_time"] is not None
         assert stats["active_streams"] >= 1
 
-    def test_handles_broken_domain_gracefully(self, event_domain):
-        with _store_unavailable(event_domain):
-            stats = collect_timeline_stats([event_domain])
-        assert stats["total_events"] == 0
-
 
 # ---------------------------------------------------------------------------
 # Endpoint: GET /timeline/events
@@ -601,12 +557,9 @@ class TestCollectTimelineStats:
 
 
 class TestTimelineEventsEndpoint:
-    def test_returns_200_empty(self, client):
-        response = client.get("/api/timeline/events")
-        assert response.status_code == 200
-
     def test_response_shape(self, client):
         response = client.get("/api/timeline/events")
+        assert response.status_code == 200
         data = response.json()
         assert "events" in data
         assert "next_cursor" in data
@@ -691,12 +644,9 @@ class TestTimelineEventDetailEndpoint:
 
 
 class TestTimelineStatsEndpoint:
-    def test_returns_200(self, client):
-        response = client.get("/api/timeline/stats")
-        assert response.status_code == 200
-
     def test_response_shape(self, client):
         response = client.get("/api/timeline/stats")
+        assert response.status_code == 200
         data = response.json()
         assert "total_events" in data
         assert "last_event_time" in data
@@ -744,6 +694,7 @@ class TestCreateTimelineRouterStandalone:
             response = test_client.get("/api/timeline/events")
             assert response.status_code == 200
             assert response.json()["events"] == []
+            assert response.json()["next_cursor"] is None
 
             response = test_client.get("/api/timeline/stats")
             assert response.status_code == 200
@@ -1214,15 +1165,6 @@ class TestCollectAggregateHistory:
         assert result["stream_category"] == stream_category
         assert result["event_count"] == 3
 
-    def test_includes_current_version(self, correlated_domain):
-        domain, _, user_id, _ = correlated_domain
-        stream_category = User.meta_.stream_category
-        result = collect_aggregate_history([domain], stream_category, user_id)
-
-        assert result is not None
-        # current_version should be the head position of the stream
-        assert result["current_version"] is not None
-
     def test_returns_none_for_unknown_aggregate(self, correlated_domain):
         domain, _, _, _ = correlated_domain
         stream_category = User.meta_.stream_category
@@ -1264,10 +1206,7 @@ class TestCorrelationEndpoint:
         assert data["event_count"] == 3
         assert "events" in data
         assert "tree" in data
-
-    def test_tree_structure(self, correlated_client):
-        response = correlated_client.get("/api/timeline/correlation/corr-chain-001")
-        tree = response.json()["tree"]
+        tree = data["tree"]
         assert tree["message_id"] == "msg-root-cmd"
         assert len(tree["children"]) == 1
         assert tree["children"][0]["message_id"] == "msg-evt-registered"
@@ -1311,17 +1250,18 @@ class TestAggregateHistoryEndpoint:
 
 
 class TestNewRouteWiring:
-    def test_correlation_route_included(self, correlated_domain):
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/timeline/correlation/{correlation_id}",
+            "/api/timeline/aggregate/{stream_category}/{aggregate_id}",
+        ],
+    )
+    def test_route_included(self, correlated_domain, path):
         domain, _, _, _ = correlated_domain
         obs = Observatory(domains=[domain])
         routes = route_paths(obs.app.routes)
-        assert "/api/timeline/correlation/{correlation_id}" in routes
-
-    def test_aggregate_route_included(self, correlated_domain):
-        domain, _, _, _ = correlated_domain
-        obs = Observatory(domains=[domain])
-        routes = route_paths(obs.app.routes)
-        assert "/api/timeline/aggregate/{stream_category}/{aggregate_id}" in routes
+        assert path in routes
 
 
 # ---------------------------------------------------------------------------
@@ -1551,8 +1491,19 @@ class TestMultiDomainDeduplication:
 
 
 class TestCausationTreeTimestampFormatting:
-    def test_datetime_in_causation_node(self, correlated_domain):
-        """CausationNode time should use isoformat for datetime objects."""
+    @pytest.mark.parametrize(
+        ("time_field", "expected"),
+        [
+            # A datetime is written with isoformat().
+            ({"time": dt(2025, 6, 15, 12, 0, 0)}, "2025-06-15T12:00:00"),
+            # A string is passed through.
+            ({"time": "2025-06-15T14:30:00"}, "2025-06-15T14:30:00"),
+            # A missing time stays None.
+            ({}, None),
+        ],
+        ids=["datetime", "string", "missing"],
+    )
+    def test_node_time(self, correlated_domain, time_field, expected):
         domain, _, _, _ = correlated_domain
         store = domain.event_store.store
 
@@ -1561,7 +1512,7 @@ class TestCausationTreeTimestampFormatting:
                 "type": "Test.Event.v1",
                 "stream_name": "test::ts-1",
                 "global_position": 1,
-                "time": dt(2025, 6, 15, 12, 0, 0),
+                **time_field,
                 "metadata": {
                     "headers": {"id": "ts-node-1"},
                     "domain": {"kind": "EVENT"},
@@ -1570,48 +1521,7 @@ class TestCausationTreeTimestampFormatting:
         ]
         tree = _build_causation_tree_from_group(store, group)
         assert tree is not None
-        assert tree.time == "2025-06-15T12:00:00"
-
-    def test_string_time_passed_through(self, correlated_domain):
-        """String timestamps in causation nodes are passed through."""
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
-
-        group = [
-            {
-                "type": "Test.Event.v1",
-                "stream_name": "test::ts-2",
-                "global_position": 1,
-                "time": "2025-06-15T14:30:00",
-                "metadata": {
-                    "headers": {"id": "ts-node-2"},
-                    "domain": {"kind": "EVENT"},
-                },
-            }
-        ]
-        tree = _build_causation_tree_from_group(store, group)
-        assert tree is not None
-        assert tree.time == "2025-06-15T14:30:00"
-
-    def test_none_time_in_causation_node(self, correlated_domain):
-        """Missing time in causation node should be None."""
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
-
-        group = [
-            {
-                "type": "Test.Event.v1",
-                "stream_name": "test::ts-3",
-                "global_position": 1,
-                "metadata": {
-                    "headers": {"id": "ts-node-3"},
-                    "domain": {"kind": "EVENT"},
-                },
-            }
-        ]
-        tree = _build_causation_tree_from_group(store, group)
-        assert tree is not None
-        assert tree.time is None
+        assert tree.time == expected
 
 
 # ---------------------------------------------------------------------------

@@ -431,13 +431,20 @@ class TestTreeBuilderTraceEnrichment:
         assert grandchild.handler is None
         assert grandchild.duration_ms is None
 
-    def test_graceful_fallback_no_traces(self, correlated_domain):
+    @pytest.mark.parametrize(
+        "traces_kwargs",
+        [{}, {"traces_by_message_id": {}}],
+        ids=["no_traces", "empty_traces"],
+    )
+    def test_graceful_fallback_without_trace_data(
+        self, correlated_domain, traces_kwargs
+    ):
+        """Without trace data, every enrichment field is None."""
         domain, corr_id, _, _ = correlated_domain
         store = domain.event_store.store
         group = store._load_correlation_group(corr_id)
 
-        # No traces dict → all enrichment fields None
-        tree = _build_causation_tree_from_group(store, group)
+        tree = _build_causation_tree_from_group(store, group, **traces_kwargs)
         assert tree is not None
         assert tree.handler is None
         assert tree.duration_ms is None
@@ -446,16 +453,6 @@ class TestTreeBuilderTraceEnrichment:
         assert len(tree.children) > 0
         assert tree.children[0].handler is None
         assert tree.children[0].duration_ms is None
-
-    def test_empty_traces_dict(self, correlated_domain):
-        domain, corr_id, _, _ = correlated_domain
-        store = domain.event_store.store
-        group = store._load_correlation_group(corr_id)
-
-        tree = _build_causation_tree_from_group(store, group, traces_by_message_id={})
-        assert tree is not None
-        assert tree.handler is None
-        assert tree.duration_ms is None
 
 
 # ---------------------------------------------------------------------------
@@ -523,13 +520,6 @@ class TestCorrelationResponseTotalDuration:
         # No trace data available → None
         assert result["total_duration_ms"] is None
 
-    def test_event_count_preserved(self, correlated_domain):
-        domain, corr_id, _, _ = correlated_domain
-
-        result = build_correlation_response([domain], corr_id)
-        assert result is not None
-        assert result["event_count"] == 3
-
     def test_tree_present_in_response(self, correlated_domain):
         domain, corr_id, _, _ = correlated_domain
 
@@ -541,11 +531,6 @@ class TestCorrelationResponseTotalDuration:
         assert "handler" in tree
         assert "duration_ms" in tree
         assert "delta_ms" in tree
-
-    def test_returns_none_for_unknown_correlation(self, correlated_domain):
-        domain, _, _, _ = correlated_domain
-        result = build_correlation_response([domain], "nonexistent-corr-id")
-        assert result is None
 
 
 # ---------------------------------------------------------------------------

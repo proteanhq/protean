@@ -14,6 +14,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from protean import Domain, handle
@@ -255,16 +256,10 @@ class TestAPIEndpointsWithFailingDomain:
 
 
 class TestObservatoryFactory:
-    def test_create_observatory_app_returns_fastapi(self, test_domain):
-        """create_observatory_app returns a FastAPI instance."""
-        from fastapi import FastAPI
-
-        app = create_observatory_app(domains=[test_domain], title="Test Observatory")
-        assert isinstance(app, FastAPI)
-
     def test_create_observatory_app_custom_title(self, test_domain):
-        """create_observatory_app passes title to Observatory."""
+        """create_observatory_app returns a FastAPI app with the given title."""
         app = create_observatory_app(domains=[test_domain], title="Custom Title")
+        assert isinstance(app, FastAPI)
         assert app.title == "Custom Title"
 
 
@@ -380,17 +375,32 @@ class TestDiscoverStreams:
         """_discover_streams(None) returns an empty list."""
         assert _discover_streams(None) == []
 
-    def test_discovers_application_streams(self):
-        """Discovers streams from Redis SCAN and returns them."""
+    @pytest.mark.parametrize(
+        "keys, expected",
+        [
+            pytest.param(
+                [b"identity::customer", b"catalogue::product"],
+                ["catalogue::product", "identity::customer"],
+                id="application_streams",
+            ),
+            pytest.param([b"ordering::order"], ["ordering::order"], id="bytes_keys"),
+            pytest.param(["ordering::order"], ["ordering::order"], id="string_keys"),
+            pytest.param(
+                [b"z-stream", b"a-stream", b"m-stream"],
+                ["a-stream", "m-stream", "z-stream"],
+                id="sorted",
+            ),
+        ],
+    )
+    def test_returns_the_scanned_keys_decoded_and_sorted(self, keys, expected):
+        """Keys from a Redis SCAN, bytes or str, come back as sorted str names."""
         mock_redis = MagicMock()
-        mock_redis.scan.return_value = (
-            0,
-            [b"identity::customer", b"catalogue::product"],
-        )
+        mock_redis.scan.return_value = (0, keys)
 
         result = _discover_streams(mock_redis)
 
-        assert result == ["catalogue::product", "identity::customer"]
+        assert result == expected
+        assert all(isinstance(name, str) for name in result)
 
     def test_excludes_internal_trace_stream(self):
         """Filters out internal streams (e.g. protean:traces)."""
@@ -406,37 +416,6 @@ class TestDiscoverStreams:
 
         assert result == ["identity::customer"]
         assert TRACE_STREAM in _INTERNAL_STREAMS
-
-    def test_decodes_bytes_keys(self):
-        """Byte keys from Redis are decoded to str."""
-        mock_redis = MagicMock()
-        mock_redis.scan.return_value = (0, [b"ordering::order"])
-
-        result = _discover_streams(mock_redis)
-
-        assert result == ["ordering::order"]
-        assert isinstance(result[0], str)
-
-    def test_handles_string_keys(self):
-        """String keys (non-bytes) are handled correctly."""
-        mock_redis = MagicMock()
-        mock_redis.scan.return_value = (0, ["ordering::order"])
-
-        result = _discover_streams(mock_redis)
-
-        assert result == ["ordering::order"]
-
-    def test_returns_sorted_results(self):
-        """Results are sorted alphabetically."""
-        mock_redis = MagicMock()
-        mock_redis.scan.return_value = (
-            0,
-            [b"z-stream", b"a-stream", b"m-stream"],
-        )
-
-        result = _discover_streams(mock_redis)
-
-        assert result == ["a-stream", "m-stream", "z-stream"]
 
     def test_returns_empty_on_redis_error(self):
         """Returns empty list when Redis raises an exception."""
@@ -512,49 +491,49 @@ class TestQueueDepthWithoutBroker:
 class TestParseWorkerKey:
     """Unit tests for _parse_worker_key() that extracts (hostname, pid) from consumer names."""
 
-    def test_standard_consumer_name(self):
-        """Parses standard format: ClassName-hostname-pid-hex."""
-        hostname, pid = _parse_worker_key("OrderProjector-worker01-12345-abcdef")
-        assert hostname == "worker01"
-        assert pid == "12345"
+    @pytest.mark.parametrize(
+        "consumer_name, hostname, pid",
+        [
+            pytest.param(
+                "OrderProjector-worker01-12345-abcdef",
+                "worker01",
+                "12345",
+                id="standard_consumer_name",
+            ),
+            pytest.param(
+                "CustomerProjector-abc123def456-7890-ff00ee",
+                "abc123def456",
+                "7890",
+                id="docker_container_id_as_hostname",
+            ),
+            pytest.param(
+                "MyHandler-my-long-host-99-1234-aabbcc",
+                "my-long-host-99",
+                "1234",
+                id="hostname_with_hyphens",
+            ),
+        ],
+    )
+    def test_parses_class_hostname_pid_hex(self, consumer_name, hostname, pid):
+        """Parses the ClassName-hostname-pid-hex format."""
+        assert _parse_worker_key(consumer_name) == (hostname, pid)
 
-    def test_docker_container_id_as_hostname(self):
-        """Parses consumer name where hostname is a Docker container ID with hyphens."""
-        hostname, pid = _parse_worker_key("CustomerProjector-abc123def456-7890-ff00ee")
-        assert hostname == "abc123def456"
-        assert pid == "7890"
-
-    def test_hostname_with_hyphens(self):
-        """Parses consumer name where hostname contains hyphens."""
-        hostname, pid = _parse_worker_key("MyHandler-my-long-host-99-1234-aabbcc")
-        assert hostname == "my-long-host-99"
-        assert pid == "1234"
-
-    def test_fallback_for_no_hyphens(self):
-        """Falls back to (consumer_name, '0') when no hyphens exist."""
-        hostname, pid = _parse_worker_key("simplestring")
-        assert hostname == "simplestring"
-        assert pid == "0"
-
-    def test_fallback_when_pid_not_numeric(self):
-        """Falls back when second-to-last segment is not a PID."""
-        hostname, pid = _parse_worker_key("Handler-notanumber-abcdef")
-        assert hostname == "Handler-notanumber-abcdef"
-        assert pid == "0"
-
-    def test_two_segment_name(self):
-        """Handles names with only two segments (too few to parse)."""
-        hostname, pid = _parse_worker_key("Handler-abcdef")
-        assert hostname == "Handler-abcdef"
-        assert pid == "0"
-
-    def test_class_name_without_hyphen_prefix(self):
-        """Falls back when prefix has no hyphen (class name == entire prefix)."""
-        # "X-1234-abcdef" → prefix="X", pid="1234", hex="abcdef"
-        # prefix "X" has no hyphen, so first_hyphen == -1 → fallback
-        hostname, pid = _parse_worker_key("X-1234-abcdef")
-        assert hostname == "X-1234-abcdef"
-        assert pid == "0"
+    @pytest.mark.parametrize(
+        "consumer_name",
+        [
+            pytest.param("simplestring", id="no_hyphens"),
+            # The second-to-last segment is not a PID.
+            pytest.param("Handler-notanumber-abcdef", id="pid_not_numeric"),
+            # Too few segments to parse.
+            pytest.param("Handler-abcdef", id="two_segment_name"),
+            # prefix="X", pid="1234", hex="abcdef": the prefix "X" has no
+            # hyphen, so there is no class name to strip.
+            pytest.param("X-1234-abcdef", id="class_name_without_hyphen_prefix"),
+        ],
+    )
+    def test_falls_back_to_the_whole_name_and_pid_zero(self, consumer_name):
+        """A name that does not parse comes back whole, with pid '0'."""
+        assert _parse_worker_key(consumer_name) == (consumer_name, "0")
 
 
 # --- Tests for /api/consumers endpoint ---
@@ -830,23 +809,19 @@ class TestWorkersStatusThresholds:
         observatory = Observatory(domains=[domain])
         return TestClient(observatory.app)
 
-    def test_status_active_when_idle_below_threshold(self, test_domain):
-        """Worker with idle < 5min is 'active'."""
-        client = self._make_client_with_idle(test_domain, 1000)
+    @pytest.mark.parametrize(
+        "idle_ms, status",
+        [
+            pytest.param(1000, "active", id="active_below_5_minutes"),
+            pytest.param(600_000, "idle", id="idle_between_5_and_30_minutes"),
+            pytest.param(3_600_000, "offline", id="offline_above_30_minutes"),
+        ],
+    )
+    def test_status_follows_idle_time(self, test_domain, idle_ms, status):
+        """A worker with no trace throughput gets its status from its idle time."""
+        client = self._make_client_with_idle(test_domain, idle_ms)
         data = client.get("/api/workers").json()
-        assert data["workers"][0]["status"] == "active"
-
-    def test_status_idle_when_between_thresholds(self, test_domain):
-        """Worker with 5min < idle < 30min is 'idle'."""
-        client = self._make_client_with_idle(test_domain, 600_000)  # 10 minutes
-        data = client.get("/api/workers").json()
-        assert data["workers"][0]["status"] == "idle"
-
-    def test_status_offline_when_above_idle_threshold(self, test_domain):
-        """Worker with idle > 30min is 'offline'."""
-        client = self._make_client_with_idle(test_domain, 3_600_000)  # 60 minutes
-        data = client.get("/api/workers").json()
-        assert data["workers"][0]["status"] == "offline"
+        assert data["workers"][0]["status"] == status
 
     def test_status_active_with_trace_throughput_overrides_idle(self, test_domain):
         """Worker with trace throughput is 'active' even with high idle."""
@@ -1416,6 +1391,15 @@ def _dlq_client(domain: Domain) -> TestClient:
     return TestClient(Observatory(domains=[domain]).app)
 
 
+_WITHOUT_DLQ = pytest.mark.parametrize(
+    "make_domain",
+    [
+        pytest.param(_domain_without_broker, id="no_broker"),
+        pytest.param(_domain_without_dlq, id="no_capability"),
+    ],
+)
+
+
 def _failing_capability_check(domain: Domain):
     """Make the broker's DLQ capability check raise an unexpected error."""
     return patch.object(
@@ -1565,15 +1549,10 @@ class TestDLQInspectEndpoint:
         assert response.json()["dlq_id"] == "2-0"
         assert response.json()["dlq_stream"] == "inventory::product:dlq"
 
-    def test_dlq_inspect_no_broker(self):
-        """DLQ inspect returns 503 when broker is unavailable."""
-        response = _dlq_client(_domain_without_broker()).get("/api/dlq/some-id")
-        assert response.status_code == 503
-        assert response.json()["error"] == "DLQ not available"
-
-    def test_dlq_inspect_no_capability(self):
-        """DLQ inspect returns 503 when broker lacks DLQ capability."""
-        response = _dlq_client(_domain_without_dlq()).get("/api/dlq/some-id")
+    @_WITHOUT_DLQ
+    def test_dlq_inspect_unavailable(self, make_domain):
+        """DLQ inspect returns 503 without a broker or without DLQ capability."""
+        response = _dlq_client(make_domain()).get("/api/dlq/some-id")
         assert response.status_code == 503
         assert response.json()["error"] == "DLQ not available"
 
@@ -1665,15 +1644,10 @@ class TestDLQReplayEndpoint:
         assert response.status_code == 404
         assert "not found" in response.json()["error"]
 
-    def test_dlq_replay_no_broker(self):
-        """DLQ replay returns 503 when broker is unavailable."""
-        response = _dlq_client(_domain_without_broker()).post("/api/dlq/some-id/replay")
-        assert response.status_code == 503
-        assert response.json()["error"] == "DLQ not available"
-
-    def test_dlq_replay_no_capability(self):
-        """DLQ replay returns 503 when broker lacks DLQ capability."""
-        response = _dlq_client(_domain_without_dlq()).post("/api/dlq/some-id/replay")
+    @_WITHOUT_DLQ
+    def test_dlq_replay_unavailable(self, make_domain):
+        """DLQ replay returns 503 without a broker or without DLQ capability."""
+        response = _dlq_client(make_domain()).post("/api/dlq/some-id/replay")
         assert response.status_code == 503
         assert response.json()["error"] == "DLQ not available"
 
@@ -1734,17 +1708,10 @@ class TestDLQReplayAllEndpoint:
         assert response.status_code == 404
         assert "No subscription" in response.json()["error"]
 
-    def test_dlq_replay_all_no_broker(self):
-        """DLQ replay-all returns 503 when broker is unavailable."""
-        response = _dlq_client(_domain_without_broker()).post(
-            "/api/dlq/replay-all?subscription=orders::order"
-        )
-        assert response.status_code == 503
-        assert response.json()["error"] == "DLQ not available"
-
-    def test_dlq_replay_all_no_capability(self):
-        """DLQ replay-all returns 503 when broker lacks DLQ capability."""
-        response = _dlq_client(_domain_without_dlq()).post(
+    @_WITHOUT_DLQ
+    def test_dlq_replay_all_unavailable(self, make_domain):
+        """DLQ replay-all returns 503 without a broker or without DLQ capability."""
+        response = _dlq_client(make_domain()).post(
             "/api/dlq/replay-all?subscription=orders::order"
         )
         assert response.status_code == 503
@@ -1808,17 +1775,10 @@ class TestDLQPurgeEndpoint:
         assert response.status_code == 404
         assert "No subscription" in response.json()["error"]
 
-    def test_dlq_purge_no_broker(self):
-        """DLQ purge returns 503 when broker is unavailable."""
-        response = _dlq_client(_domain_without_broker()).delete(
-            "/api/dlq?subscription=orders::order"
-        )
-        assert response.status_code == 503
-        assert response.json()["error"] == "DLQ not available"
-
-    def test_dlq_purge_no_capability(self):
-        """DLQ purge returns 503 when broker lacks DLQ capability."""
-        response = _dlq_client(_domain_without_dlq()).delete(
+    @_WITHOUT_DLQ
+    def test_dlq_purge_unavailable(self, make_domain):
+        """DLQ purge returns 503 without a broker or without DLQ capability."""
+        response = _dlq_client(make_domain()).delete(
             "/api/dlq?subscription=orders::order"
         )
         assert response.status_code == 503

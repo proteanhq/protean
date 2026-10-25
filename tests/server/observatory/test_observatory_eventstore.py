@@ -160,22 +160,15 @@ class TestCollectAggregateStreamMetadata:
 
 
 class TestEnrichWithEventStoreStats:
-    def test_sets_instance_count(self, order_domain):
+    def test_sets_instance_count_and_head_position(self, order_domain):
         domain, order_cls = order_domain
         _place_orders(domain, order_cls, 3)
         aggregates = collect_aggregate_stream_metadata([domain])
 
         enrich_with_event_store_stats(aggregates)
         assert aggregates[0]["instance_count"] == 3
-
-    def test_sets_head_position(self, order_domain):
-        domain, order_cls = order_domain
-        _place_orders(domain, order_cls, 2)
-        aggregates = collect_aggregate_stream_metadata([domain])
-
-        enrich_with_event_store_stats(aggregates)
-        # The store numbers messages from 1, so two events end at position 2.
-        assert aggregates[0]["head_position"] == 2
+        # The store numbers messages from 1, so three events end at position 3.
+        assert aggregates[0]["head_position"] == 3
 
     def test_head_position_negative_one_becomes_none(self, order_domain):
         domain, _ = order_domain
@@ -272,18 +265,7 @@ class TestBuildEventstoreSummary:
 
 
 class TestSerializeAggregate:
-    def test_strips_internal_keys(self, test_domain):
-        agg = {
-            "name": "Order",
-            "stream_category": "test::order",
-            "_domain": test_domain,
-        }
-        result = _serialize_aggregate(agg)
-        assert "name" in result
-        assert "stream_category" in result
-        assert "_domain" not in result
-
-    def test_preserves_all_public_keys(self, test_domain):
+    def test_strips_internal_keys_and_preserves_public_keys(self, test_domain):
         agg = {
             "name": "Order",
             "qualname": "myapp.Order",
@@ -295,7 +277,9 @@ class TestSerializeAggregate:
             "_domain": test_domain,
         }
         result = _serialize_aggregate(agg)
-        assert len(result) == 7  # All except _domain
+        assert "_domain" not in result
+        assert len(result) == 7
+        assert result == {k: v for k, v in agg.items() if k != "_domain"}
 
 
 # ---------------------------------------------------------------------------
@@ -304,12 +288,9 @@ class TestSerializeAggregate:
 
 
 class TestEventStoreStreamsEndpoint:
-    def test_returns_200(self, client):
-        response = client.get("/api/eventstore/streams")
-        assert response.status_code == 200
-
     def test_response_has_correct_shape(self, client):
         response = client.get("/api/eventstore/streams")
+        assert response.status_code == 200
         data = response.json()
         assert "aggregates" in data
         assert "summary" in data
@@ -332,12 +313,9 @@ class TestEventStoreStreamsEndpoint:
 
 
 class TestEventStoreTemplate:
-    def test_page_renders_200(self, client):
-        response = client.get("/eventstore")
-        assert response.status_code == 200
-
     def test_extends_base_template(self, client):
         response = client.get("/eventstore")
+        assert response.status_code == 200
         html = response.text
         # Base template includes the nav sidebar
         assert "Observatory" in html

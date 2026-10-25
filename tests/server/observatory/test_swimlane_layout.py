@@ -164,17 +164,17 @@ def _collect_stream_categories(node: CausationNode) -> set[str]:
 class TestSwimlaneCSSClasses:
     """The CSS must include styles for swimlane elements."""
 
-    def test_swimlane_class(self, client):
+    @pytest.mark.parametrize(
+        "fragment",
+        [
+            pytest.param(".cg-swimlane", id="swimlane"),
+            pytest.param(".cg-swimlane-label", id="swimlane-label"),
+            pytest.param(".cg-lane-accent", id="lane-accent"),
+        ],
+    )
+    def test_swimlane_css_present(self, client, fragment):
         css = client.get("/static/css/observatory.css").text
-        assert ".cg-swimlane" in css
-
-    def test_swimlane_label_class(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-swimlane-label" in css
-
-    def test_lane_accent_class(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-lane-accent" in css
+        assert fragment in css
 
 
 # ---------------------------------------------------------------------------
@@ -198,21 +198,18 @@ class TestFanOutCSS:
 class TestTimelineAxisCSS:
     """The CSS must include styles for the timeline axis."""
 
-    def test_timeline_axis_class(self, client):
+    @pytest.mark.parametrize(
+        "fragment",
+        [
+            pytest.param(".cg-timeline-axis", id="timeline-axis"),
+            pytest.param(".cg-axis-line", id="axis-line"),
+            pytest.param(".cg-axis-tick", id="axis-tick"),
+            pytest.param(".cg-axis-label", id="axis-label"),
+        ],
+    )
+    def test_timeline_axis_css_present(self, client, fragment):
         css = client.get("/static/css/observatory.css").text
-        assert ".cg-timeline-axis" in css
-
-    def test_axis_line_class(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-axis-line" in css
-
-    def test_axis_tick_class(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-axis-tick" in css
-
-    def test_axis_label_class(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-axis-label" in css
+        assert fragment in css
 
 
 # ---------------------------------------------------------------------------
@@ -223,17 +220,17 @@ class TestTimelineAxisCSS:
 class TestLegendCSS:
     """The CSS must include styles for the legend."""
 
-    def test_legend_class(self, client):
+    @pytest.mark.parametrize(
+        "fragment",
+        [
+            pytest.param(".cg-legend", id="legend"),
+            pytest.param(".cg-legend-bg", id="legend-bg"),
+            pytest.param(".cg-legend-text", id="legend-text"),
+        ],
+    )
+    def test_legend_css_present(self, client, fragment):
         css = client.get("/static/css/observatory.css").text
-        assert ".cg-legend" in css
-
-    def test_legend_bg_class(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-legend-bg" in css
-
-    def test_legend_text_class(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-legend-text" in css
+        assert fragment in css
 
 
 # ---------------------------------------------------------------------------
@@ -244,25 +241,19 @@ class TestLegendCSS:
 class TestMinimapCSS:
     """The CSS must include styles for the mini-map."""
 
-    def test_minimap_class(self, client):
+    @pytest.mark.parametrize(
+        "fragment",
+        [
+            pytest.param(".cg-minimap", id="minimap"),
+            pytest.param(".cg-minimap-bg", id="minimap-bg"),
+            pytest.param(".cg-minimap-node", id="minimap-node"),
+            pytest.param(".cg-minimap-link", id="minimap-link"),
+            pytest.param(".cg-minimap-viewport", id="minimap-viewport"),
+        ],
+    )
+    def test_minimap_css_present(self, client, fragment):
         css = client.get("/static/css/observatory.css").text
-        assert ".cg-minimap" in css
-
-    def test_minimap_bg_class(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-minimap-bg" in css
-
-    def test_minimap_node_class(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-minimap-node" in css
-
-    def test_minimap_link_class(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-minimap-link" in css
-
-    def test_minimap_viewport_class(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-minimap-viewport" in css
+        assert fragment in css
 
 
 # ---------------------------------------------------------------------------
@@ -290,37 +281,22 @@ class TestGraphHelpText:
 class TestCausationGraphJSFeatures:
     """The JS module must include swimlane, legend, minimap, and timeline code."""
 
-    def test_js_has_swimlane_function(self, client):
+    @pytest.mark.parametrize(
+        "fragment",
+        [
+            pytest.param("_renderSwimlanes", id="swimlane-function"),
+            pytest.param("_renderLegend", id="legend-function"),
+            pytest.param("_renderMinimap", id="minimap-function"),
+            pytest.param("_renderTimelineAxis", id="timeline-axis-function"),
+            pytest.param("PROGRESSIVE_THRESHOLD", id="progressive-threshold"),
+            pytest.param("_buildLaneMap", id="lane-map-builder"),
+            pytest.param("cg-fanout", id="fanout-indicator"),
+            pytest.param("cg-lane-accent", id="lane-accent"),
+        ],
+    )
+    def test_js_contains(self, client, fragment):
         js = client.get("/static/js/causation-graph.js").text
-        assert "_renderSwimlanes" in js
-
-    def test_js_has_legend_function(self, client):
-        js = client.get("/static/js/causation-graph.js").text
-        assert "_renderLegend" in js
-
-    def test_js_has_minimap_function(self, client):
-        js = client.get("/static/js/causation-graph.js").text
-        assert "_renderMinimap" in js
-
-    def test_js_has_timeline_axis_function(self, client):
-        js = client.get("/static/js/causation-graph.js").text
-        assert "_renderTimelineAxis" in js
-
-    def test_js_has_progressive_threshold(self, client):
-        js = client.get("/static/js/causation-graph.js").text
-        assert "PROGRESSIVE_THRESHOLD" in js
-
-    def test_js_has_lane_map_builder(self, client):
-        js = client.get("/static/js/causation-graph.js").text
-        assert "_buildLaneMap" in js
-
-    def test_js_has_fanout_indicator(self, client):
-        js = client.get("/static/js/causation-graph.js").text
-        assert "cg-fanout" in js
-
-    def test_js_has_lane_accent(self, client):
-        js = client.get("/static/js/causation-graph.js").text
-        assert "cg-lane-accent" in js
+        assert fragment in js
 
 
 # ---------------------------------------------------------------------------

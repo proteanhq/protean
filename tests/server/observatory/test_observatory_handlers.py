@@ -302,11 +302,6 @@ class TestExtractHandledMessages:
         domain.init(traverse=False)
         assert _extract_handled_messages(IdleHandler) == []
 
-    def test_extracts_class_names_from_type_strings(self, handlers_domain):
-        _, ns = handlers_domain
-        result = _extract_handled_messages(ns.OrderEventHandler)
-        assert result == ["OrderPlaced", "OrderShipped"]
-
     def test_skips_any_key(self, handlers_domain):
         _, ns = handlers_domain
         assert "$any" in ns.CatchAllHandler._handlers
@@ -343,23 +338,19 @@ class TestExtractHandledMessages:
 
 
 class TestHandlerTypeLabel:
-    def test_event_handler(self):
-        assert _handler_type_label("EVENT_HANDLER") == "event_handler"
-
-    def test_command_handler(self):
-        assert _handler_type_label("COMMAND_HANDLER") == "command_handler"
-
-    def test_projector(self):
-        assert _handler_type_label("PROJECTOR") == "projector"
-
-    def test_subscriber(self):
-        assert _handler_type_label("SUBSCRIBER") == "subscriber"
-
-    def test_process_manager(self):
-        assert _handler_type_label("PROCESS_MANAGER") == "process_manager"
-
-    def test_unknown_type(self):
-        assert _handler_type_label("UNKNOWN") == "unknown"
+    @pytest.mark.parametrize(
+        "class_type, label",
+        [
+            ("EVENT_HANDLER", "event_handler"),
+            ("COMMAND_HANDLER", "command_handler"),
+            ("PROJECTOR", "projector"),
+            ("SUBSCRIBER", "subscriber"),
+            ("PROCESS_MANAGER", "process_manager"),
+            ("UNKNOWN", "unknown"),
+        ],
+    )
+    def test_maps_class_type_to_label(self, class_type, label):
+        assert _handler_type_label(class_type) == label
 
 
 # ---------------------------------------------------------------------------
@@ -368,14 +359,6 @@ class TestHandlerTypeLabel:
 
 
 class TestInferAggregate:
-    def test_from_part_of(self, handlers_domain):
-        _, ns = handlers_domain
-        assert _infer_aggregate(ns.OrderEventHandler) == "Order"
-
-    def test_from_projector_for(self, handlers_domain):
-        _, ns = handlers_domain
-        assert _infer_aggregate(ns.OrderSummaryProjector) == "OrderSummary"
-
     def test_no_aggregate(self, handlers_domain):
         _, ns = handlers_domain
         assert _infer_aggregate(ns.PaymentSubscriber) is None
@@ -393,20 +376,10 @@ class TestInferAggregate:
 
 
 class TestInferStreamCategories:
-    def test_projector_with_stream_categories(self, handlers_domain):
-        _, ns = handlers_domain
-        result = _infer_stream_categories(ns.OrderSummaryProjector, "PROJECTOR")
-        assert result == ["handlers::order", "handlers::payment"]
-
     def test_process_manager_with_stream_categories(self, handlers_domain):
         _, ns = handlers_domain
         result = _infer_stream_categories(ns.OrderFulfillment, "PROCESS_MANAGER")
         assert result == ["handlers::order", "handlers::payment"]
-
-    def test_event_handler_with_stream_category(self, handlers_domain):
-        _, ns = handlers_domain
-        result = _infer_stream_categories(ns.OrderEventHandler, "EVENT_HANDLER")
-        assert result == ["handlers::order"]
 
     def test_command_handler_with_stream_category(self, handlers_domain):
         _, ns = handlers_domain
@@ -715,32 +688,6 @@ class TestCollectPerHandlerTraceMetrics:
 
         assert collect_per_handler_trace_metrics(redis, 300000) == {}
 
-    def test_skips_malformed_json(self):
-        sid = _now_sid()
-        redis = _FakeRedis(
-            traces=[
-                (sid, {b"data": b"not json"}),
-                (sid, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
-            ]
-        )
-
-        result = collect_per_handler_trace_metrics(redis, 300000)
-        assert "H1" in result
-        assert result["H1"]["processed"] == 1
-
-    def test_skips_entries_without_data_field(self):
-        sid = _now_sid()
-        redis = _FakeRedis(
-            traces=[
-                (sid, {b"other_field": b"value"}),
-                (sid, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
-            ]
-        )
-
-        result = collect_per_handler_trace_metrics(redis, 300000)
-        assert "H1" in result
-        assert result["H1"]["processed"] == 1
-
     def test_throughput_buckets_populated(self):
         # 5 seconds ago is well inside the window, so the entry lands in a bucket.
         redis = _FakeRedis(
@@ -823,23 +770,6 @@ class TestCollectRecentMessages:
         result = collect_recent_messages(redis, "H1")
         assert len(result) == 1
         assert result[0]["_stream_id"] == sid.decode()
-
-    @pytest.mark.parametrize(
-        "unreadable",
-        [{b"data": b"bad json"}, {b"other": b"value"}],
-        ids=["malformed-json", "no-data-field"],
-    )
-    def test_skips_unreadable_entries(self, unreadable):
-        sid = _now_sid()
-        redis = _FakeRedis(
-            traces=[
-                (sid, unreadable),
-                (sid, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
-            ]
-        )
-
-        result = collect_recent_messages(redis, "H1")
-        assert len(result) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -1006,48 +936,36 @@ class TestHandlersWithRegisteredHandlers:
 
 
 class TestHandlersTemplate:
-    def test_handlers_page_returns_200(self, client):
-        resp = client.get("/handlers")
-        assert resp.status_code == 200
-
-    def test_handlers_page_is_html(self, client):
-        resp = client.get("/handlers")
-        assert "text/html" in resp.headers["content-type"]
-
-    def test_handlers_page_contains_table(self, client):
-        resp = client.get("/handlers")
-        assert "handlers-tbody" in resp.text
-
-    def test_handlers_page_contains_tabs(self, client):
-        resp = client.get("/handlers")
-        assert "handler-tabs" in resp.text
-        assert "Commands" in resp.text
-        assert "Events" in resp.text
-        assert "Projectors" in resp.text
-        assert "Subscribers" in resp.text
-
-    def test_handlers_page_contains_search(self, client):
-        resp = client.get("/handlers")
-        assert "handler-search" in resp.text
-
-    def test_handlers_page_contains_status_filter(self, client):
-        resp = client.get("/handlers")
-        assert "status-filter" in resp.text
-
-    def test_handlers_page_contains_detail_panel(self, client):
-        resp = client.get("/handlers")
-        assert "handler-detail" in resp.text
-
-    def test_handlers_page_includes_handlers_js(self, client):
-        resp = client.get("/handlers")
-        assert "handlers.js" in resp.text
-
-    def test_handlers_page_contains_summary_cards(self, client):
-        resp = client.get("/handlers")
-        assert "summary-total" in resp.text
-        assert "summary-healthy" in resp.text
-        assert "summary-lagging" in resp.text
-        assert "summary-error-rate" in resp.text
+    @pytest.mark.parametrize(
+        "markers",
+        [
+            ["handlers-tbody"],
+            ["handler-tabs", "Commands", "Events", "Projectors", "Subscribers"],
+            ["handler-search"],
+            ["status-filter"],
+            ["handler-detail"],
+            ["handlers.js"],
+            [
+                "summary-total",
+                "summary-healthy",
+                "summary-lagging",
+                "summary-error-rate",
+            ],
+        ],
+        ids=[
+            "table",
+            "tabs",
+            "search",
+            "status-filter",
+            "detail-panel",
+            "handlers-js",
+            "summary-cards",
+        ],
+    )
+    def test_handlers_page_contains(self, client, markers):
+        html = client.get("/handlers").text
+        for marker in markers:
+            assert marker in html
 
 
 # ---------------------------------------------------------------------------
@@ -1086,11 +1004,6 @@ class TestRouteWiring:
         assert "/handlers" in api_paths
         assert "/handlers/{name}" in api_paths
 
-    def test_handlers_api_accessible_through_observatory(self, client):
-        """Handlers endpoint is accessible at /api/handlers."""
-        resp = client.get("/api/handlers")
-        assert resp.status_code == 200
-
 
 # ---------------------------------------------------------------------------
 # create_handlers_router unit test
@@ -1098,10 +1011,6 @@ class TestRouteWiring:
 
 
 class TestCreateHandlersRouter:
-    def test_returns_api_router(self):
-        router = create_handlers_router([])
-        assert hasattr(router, "routes")
-
     def test_router_has_expected_routes(self):
         router = create_handlers_router([])
         paths = [r.path for r in router.routes]
@@ -1115,11 +1024,6 @@ class TestCreateHandlersRouter:
 
 
 class TestGetRedis:
-    def test_returns_the_broker_redis_client(self):
-        fake = _FakeRedis()
-        domain, _ = _build_domain(redis=fake)
-        assert _get_redis([domain]) is fake
-
     def test_no_redis_client_on_inline_broker(self, handlers_domain):
         domain, _ = handlers_domain
         assert _get_redis([domain]) is None

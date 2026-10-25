@@ -52,18 +52,6 @@ def client(observatory):
 class TestTimelineViewContainers:
     """The timeline page has three mutually exclusive view sections."""
 
-    def test_has_list_view_container(self, client):
-        html = client.get("/timeline").text
-        assert 'id="timeline-list-view"' in html
-
-    def test_has_correlation_view_container(self, client):
-        html = client.get("/timeline").text
-        assert 'id="correlation-view"' in html
-
-    def test_has_aggregate_view_container(self, client):
-        html = client.get("/timeline").text
-        assert 'id="aggregate-view"' in html
-
     def test_correlation_view_starts_hidden(self, client):
         html = client.get("/timeline").text
         assert 'id="correlation-view" class="hidden"' in html
@@ -210,14 +198,6 @@ class TestEventDetailModal:
 class TestTimelineJSCorrelation:
     """Verify JS has correlation chain functionality."""
 
-    def test_has_show_correlation_view(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_showCorrelationView" in js
-
-    def test_has_render_causation_tree(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_renderCausationTree" in js
-
     def test_has_compute_tree_depth(self, client):
         js = client.get("/static/js/timeline.js").text
         assert "_computeTreeDepth" in js
@@ -242,10 +222,6 @@ class TestTimelineJSCorrelation:
 
 class TestTimelineJSAggregate:
     """Verify JS has aggregate history functionality."""
-
-    def test_has_show_aggregate_view(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_showAggregateView" in js
 
     def test_has_render_aggregate_timeline(self, client):
         js = client.get("/static/js/timeline.js").text
@@ -274,10 +250,6 @@ class TestTimelineJSAggregate:
 class TestTimelineJSViewManagement:
     """Verify JS manages view switching correctly."""
 
-    def test_has_current_view_state(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_currentView" in js
-
     def test_has_show_view_function(self, client):
         js = client.get("/static/js/timeline.js").text
         assert "_showView" in js
@@ -286,20 +258,9 @@ class TestTimelineJSViewManagement:
         js = client.get("/static/js/timeline.js").text
         assert "_backToList" in js
 
-    def test_has_enter_list_view_helper(self, client):
-        """_enterListView loads list data when returning from sub-views."""
-        js = client.get("/static/js/timeline.js").text
-        assert "_enterListView" in js
-
     def test_back_to_list_delegates_to_enter_list_view(self, client):
         """_backToList calls _enterListView to ensure data is loaded."""
         js = client.get("/static/js/timeline.js").text
-        assert "_enterListView()" in js
-
-    def test_popstate_list_calls_enter_list_view(self, client):
-        """Popstate to list view calls _enterListView to load data."""
-        js = client.get("/static/js/timeline.js").text
-        # The popstate handler calls _enterListView when no sub-view params
         assert "_enterListView()" in js
 
     def test_binds_back_buttons(self, client):
@@ -335,14 +296,6 @@ class TestTimelineJSViewManagement:
 class TestTimelineJSEntryPoints:
     """Event detail has clickable links for correlation and stream."""
 
-    def test_has_correlation_link_in_detail(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "detail-correlation-link" in js
-
-    def test_has_stream_link_in_detail(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "detail-stream-link" in js
-
     def test_correlation_link_triggers_view(self, client):
         """Clicking correlation link calls _showCorrelationView."""
         js = client.get("/static/js/timeline.js").text
@@ -363,11 +316,6 @@ class TestTimelineJSEntryPoints:
 
 class TestTimelineJSRendering:
     """Verify shared rendering function was extracted."""
-
-    def test_has_render_event_rows(self, client):
-        """_renderEventRows is shared between list and correlation views."""
-        js = client.get("/static/js/timeline.js").text
-        assert "_renderEventRows" in js
 
     def test_render_table_uses_shared_function(self, client):
         js = client.get("/static/js/timeline.js").text
@@ -395,10 +343,6 @@ class TestVerticalTimelineCSS:
         css = client.get("/static/css/observatory.css").text
         assert ".vtl-root" in css
 
-    def test_has_vtl_card(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".vtl-card" in css
-
     def test_has_vtl_children(self, client):
         css = client.get("/static/css/observatory.css").text
         assert ".vtl-children" in css
@@ -422,10 +366,6 @@ class TestVerticalTimelineCSS:
     def test_has_agg_tl_line(self, client):
         css = client.get("/static/css/observatory.css").text
         assert ".agg-tl-line" in css
-
-    def test_has_agg_tl_content(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".agg-tl-content" in css
 
     def test_has_agg_tl_marker(self, client):
         css = client.get("/static/css/observatory.css").text
@@ -521,10 +461,6 @@ class TestTimelineJSAccessibility:
         js = client.get("/static/js/timeline.js").text
         assert "link.addEventListener('keydown'" in js
 
-    def test_includes_timeline_js(self, client):
-        html = client.get("/timeline").text
-        assert "/static/js/timeline.js" in html
-
 
 # ---------------------------------------------------------------------------
 # Enhanced correlation view — HTML stat cards
@@ -569,10 +505,6 @@ class TestEnhancedCorrelationCSS:
     def test_has_vtl_latency_class(self, client):
         css = client.get("/static/css/observatory.css").text
         assert ".vtl-latency" in css
-
-    def test_has_vtl_cross_aggregate_class(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".vtl-cross-aggregate" in css
 
     def test_has_vtl_cross_aggregate_icon_class(self, client):
         css = client.get("/static/css/observatory.css").text
