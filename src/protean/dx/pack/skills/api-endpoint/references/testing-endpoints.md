@@ -27,11 +27,11 @@ project they live in your own modules, for example `myapp/domain.py` and
 ```python
 from fastapi import APIRouter, FastAPI
 from pydantic import BaseModel
+from protean import current_domain
 from protean.integrations.fastapi import (
     DomainContextMiddleware,
     register_exception_handlers,
 )
-from protean.utils.globals import current_domain
 
 
 @domain.aggregate

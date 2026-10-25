@@ -3,9 +3,9 @@
 The examples on this page use these events and aggregates:
 
 ```python
+from protean import current_domain
 from protean.core.aggregate import apply
 from protean.fields import Decimal, Identifier, String
-from protean.utils.globals import current_domain
 
 @domain.event(part_of="Account")
 class AccountOpened:

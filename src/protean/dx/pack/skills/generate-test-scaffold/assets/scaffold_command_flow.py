@@ -21,9 +21,8 @@ then persists. A FastAPI endpoint wires HTTP to the command.
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from protean import Domain, handle
+from protean import Domain, current_domain, handle
 from protean.fields import Identifier, String
-from protean.utils.globals import current_domain
 
 domain = Domain()
 

@@ -12,9 +12,8 @@ Usage:
     order.place()  # raises OrderPlaced; enricher merges tenant + aggregate_type
 """
 
-from protean import Domain
+from protean import Domain, g
 from protean.fields import Identifier, String
-from protean.utils.globals import g
 
 # Domain setup
 domain = Domain()

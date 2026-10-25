@@ -26,8 +26,7 @@ before an aggregate is saved and sets fields on the aggregate itself, such as
 ## Basic structure
 
 ```python
-from protean import Domain
-from protean.utils.globals import g
+from protean import Domain, g
 
 domain = Domain()
 
@@ -74,8 +73,7 @@ event._metadata.extensions     # after event enrichment
 ## Quick example: tenant + audit context
 
 ```python
-from protean import Domain
-from protean.utils.globals import g
+from protean import Domain, g
 
 domain = Domain()
 

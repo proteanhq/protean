@@ -7,7 +7,7 @@ from decimal import Decimal as D
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from protean.utils.globals import current_domain
+from protean import current_domain
 
 
 @domain.aggregate

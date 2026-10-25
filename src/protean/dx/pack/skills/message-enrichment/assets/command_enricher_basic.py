@@ -13,9 +13,8 @@ Usage:
     # the enricher merges request context into the command's metadata.extensions
 """
 
-from protean import Domain, current_domain, handle
+from protean import Domain, current_domain, g, handle
 from protean.fields import Identifier, String
-from protean.utils.globals import g
 
 # Domain setup
 domain = Domain()

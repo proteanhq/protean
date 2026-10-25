@@ -8,7 +8,7 @@ from decimal import Decimal as D
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from protean.utils.globals import current_domain
+from protean import current_domain
 
 
 @domain.aggregate
@@ -120,7 +120,7 @@ def place_order(body: PlaceOrderRequest):
     domain.process(command)  # Uses the module-level reference
 ```
 
-**Correct:** Use `current_domain` from `protean.utils.globals`. The middleware
+**Correct:** Use `current_domain`, imported from `protean`. The middleware
 sets it for each request, so the same router works for whichever domain the
 request is routed to, and in tests that build their own domain.
 
