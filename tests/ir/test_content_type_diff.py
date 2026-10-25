@@ -225,18 +225,26 @@ class TestUnchangedValueTypesAreNotReported:
 
         assert _breaks(left, right) == []
 
-    def test_optional_and_union_compare_equal_across_python_versions(self):
-        # Python 3.14 records ``Optional[int]`` as ``Union``; earlier versions
-        # record it as ``Optional``. Edit the IR to stand in for both builds.
+    def test_optional_to_union_is_a_break(self):
+        # Before Python 3.14, ``Optional[int]`` records ``Optional`` and
+        # ``Union[int, str]`` records ``Union``. The names alone cannot tell
+        # that change from the same ``Optional[int]`` built on 3.14, so the
+        # check reports it.
         left, right = _build(tiers=string_list), _build(tiers=string_list)
         for ir, value in ((left, "Optional"), (right, "Union")):
-            ir["clusters"][PRICE_FQN]["aggregate"]["fields"]["tiers"][
-                "content_type"
-            ] = value
+            cluster = ir["clusters"][PRICE_FQN]
+            cluster["aggregate"]["fields"]["tiers"]["content_type"] = value
+            cluster["events"][EVENT_FQN]["fields"]["tiers"]["content_type"] = value
+            ir["contracts"]["events"][0]["fields"]["tiers"]["content_type"] = value
 
-        assert _breaks(left, right) == []
-        assert _breaks(left, right, fqn=EVENT_FQN) == []
-        assert _contract_breaks(left, right) == []
+        assert [b[2] for b in _breaks(left, right)] == [
+            (
+                "Field 'tiers' value type changed from 'Optional' to 'Union' "
+                f"in AGGREGATE '{PRICE_FQN}'"
+            )
+        ]
+        assert len(_breaks(left, right, fqn=EVENT_FQN)) == 1
+        assert len(_contract_breaks(left, right)) == 1
 
     def test_decimal_precision_rules_are_unchanged(self):
         left = _build(amount=lambda _vos: Decimal(precision=10, scale=2))

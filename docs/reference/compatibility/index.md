@@ -105,9 +105,12 @@ not reported. These changes give no entry:
   `list[dict[str, str]]`, or `Optional[int]` to `Optional[str]`.
 - A change between two `choices` lists, which the IR records as `Literal`.
 
-`Optional` and `Union` compare equal. Python 3.14 records `Optional[int]` as
-`Union`, and earlier versions record it as `Optional`, so an IR pair built on
-two Python versions does not report a change for it.
+`Optional` and `Union` are different names, so a change between them is
+breaking. Before Python 3.14, `Optional[int]` records `Optional` and
+`Union[int, str]` records `Union`, and a list that took `None` no longer does.
+Python 3.14 records `Optional[int]` itself as `Union`, so an IR pair built on
+3.13 and 3.14 also reports the unchanged field. Build both IRs on the same
+Python version to avoid it.
 
 ### Published event contracts
 
