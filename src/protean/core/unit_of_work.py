@@ -422,7 +422,12 @@ class UnitOfWork:
 
                 outbox_repo = self.domain._get_outbox_repo(provider_name)
 
-                for event in events:
+                # Each event's position within this provider's part of the
+                # commit, written to ``sequence_number`` so rows of equal
+                # priority and equal ``created_at`` still claim in event order.
+                # Each provider has its own outbox table, so the count starts
+                # at 0 per provider; an event's external rows share its number.
+                for sequence_number, event in enumerate(events):
                     # Extract trace context for outbox denormalized fields
                     correlation_id = None
                     causation_id = None
@@ -449,6 +454,7 @@ class UnitOfWork:
                         priority=priority,
                         correlation_id=correlation_id,
                         causation_id=causation_id,
+                        sequence_number=sequence_number,
                         target_broker=internal_broker,
                         partition_key=partition_key,
                     )
@@ -471,6 +477,7 @@ class UnitOfWork:
                                 priority=priority,
                                 correlation_id=correlation_id,
                                 causation_id=causation_id,
+                                sequence_number=sequence_number,
                                 target_broker=ext_broker,
                                 partition_key=partition_key,
                             )

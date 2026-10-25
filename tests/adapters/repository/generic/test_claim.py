@@ -23,6 +23,7 @@ from protean.utils.query import Q
 class ClaimJob(BaseAggregate):
     status: String(max_length=20, default="ready")
     priority: Integer(default=0)
+    seq: Integer()
     locked_by: String(max_length=50)
 
 
@@ -98,6 +99,92 @@ class TestClaimConformance:
         )
 
         assert [j.priority for j in claimed] == [5, 4, 3]
+
+    def test_list_order_by_applies_every_key_in_its_direction(self, test_domain):
+        repo = test_domain.repository_for(ClaimJob)
+        # Inserted so that neither insertion order nor a priority-only sort
+        # gives the expected result.
+        for priority, seq in [(0, 2), (1, 1), (0, 0), (1, 0), (0, 1), (1, 2)]:
+            repo.add(ClaimJob(priority=priority, seq=seq))
+        dao = repo._dao
+
+        claimed = dao._claim(
+            Q(status="ready"),
+            {"status": "claimed"},
+            limit=10,
+            order_by=["-priority", "seq"],
+        )
+
+        assert [(j.priority, j.seq) for j in claimed] == [
+            (1, 0),
+            (1, 1),
+            (1, 2),
+            (0, 0),
+            (0, 1),
+            (0, 2),
+        ]
+
+    def test_list_order_by_with_limit_claims_the_top_rows(self, test_domain):
+        repo = test_domain.repository_for(ClaimJob)
+        for priority, seq in [(0, 2), (1, 1), (0, 0), (1, 0), (0, 1), (1, 2)]:
+            repo.add(ClaimJob(priority=priority, seq=seq))
+        dao = repo._dao
+
+        claimed = dao._claim(
+            Q(status="ready"),
+            {"status": "claimed"},
+            limit=4,
+            order_by=["-priority", "seq"],
+        )
+
+        assert [(j.priority, j.seq) for j in claimed] == [
+            (1, 0),
+            (1, 1),
+            (1, 2),
+            (0, 0),
+        ]
+        left = dao.query.filter(status="ready").all().items
+        assert sorted((j.priority, j.seq) for j in left) == [(0, 1), (0, 2)]
+
+    def test_null_sorts_first_on_a_descending_key(self, test_domain):
+        repo = test_domain.repository_for(ClaimJob)
+        for priority, seq in [(0, 1), (1, None), (0, None), (1, 2), (0, 2)]:
+            repo.add(ClaimJob(priority=priority, seq=seq))
+        dao = repo._dao
+        expected = [(0, None), (1, None), (0, 2), (1, 2), (0, 1)]
+        listed = (
+            dao.query.filter(status="ready").order_by(["-seq", "priority"]).all().items
+        )
+
+        claimed = dao._claim(
+            Q(status="ready"),
+            {"status": "claimed"},
+            limit=10,
+            order_by=["-seq", "priority"],
+        )
+
+        assert [(j.priority, j.seq) for j in listed] == expected
+        assert [(j.priority, j.seq) for j in claimed] == expected
+
+    def test_null_sorts_last_on_an_ascending_key(self, test_domain):
+        repo = test_domain.repository_for(ClaimJob)
+        for priority, seq in [(1, None), (0, 1), (0, None), (1, 0)]:
+            repo.add(ClaimJob(priority=priority, seq=seq))
+        dao = repo._dao
+        expected = [(1, 0), (0, 1), (0, None), (1, None)]
+        listed = (
+            dao.query.filter(status="ready").order_by(["seq", "priority"]).all().items
+        )
+
+        claimed = dao._claim(
+            Q(status="ready"),
+            {"status": "claimed"},
+            limit=3,
+            order_by=["seq", "priority"],
+        )
+
+        assert [(j.priority, j.seq) for j in listed] == expected
+        assert [(j.priority, j.seq) for j in claimed] == expected[:3]
 
     def test_non_positive_limit_claims_nothing(self, test_domain):
         _seed(test_domain, 3)

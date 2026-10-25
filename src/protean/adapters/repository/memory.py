@@ -823,7 +823,7 @@ class DictDAO(BaseDAO):
         criteria: Q,
         claim_fields: dict[str, typing.Any],
         limit: int,
-        order_by: str | None = None,
+        order_by: str | list[str] | None = None,
     ) -> list[typing.Any]:
         """Atomic find-and-claim for the in-memory adapter.
 

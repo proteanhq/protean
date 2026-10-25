@@ -62,7 +62,7 @@ class TestOutboxIndexes:
         page = by_fields(outbox.Outbox.meta_.indexes)
         framework = by_fields(OUTBOX_INDEXES)
 
-        polling = framework[("status", "priority")]
+        polling = framework[("status", "priority", "created_at", "sequence_number")]
         assert polling.name == "ix_outbox_active"
         assert polling.desc == page[("status", "priority")].desc
         assert polling.where == page[("status", "priority")].where
