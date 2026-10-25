@@ -818,6 +818,7 @@ class TestGetRedis:
         ):
             assert _get_redis([test_domain]) is None
 
+    @pytest.mark.no_test_domain
     def test_returns_none_when_domain_context_raises(self):
         """A domain whose context cannot be entered yields no client."""
         domain, patcher = _broken_domain("Broken")
@@ -831,6 +832,7 @@ class TestGetRedis:
             result = _get_redis([failing, test_domain])
         assert result is test_domain.brokers.get("default").redis_instance
 
+    @pytest.mark.no_test_domain
     def test_returns_none_without_a_redis_broker(self):
         """An inline broker has no Redis client to hand out."""
         domain = Domain(name="Inline")

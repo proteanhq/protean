@@ -141,6 +141,7 @@ class TestServerInfo:
         assert "platform" in info
         assert isinstance(info["platform"], str)
 
+    @pytest.mark.no_test_domain
     def test_includes_domain_names(self):
         info = _server_info([Domain(name="Domain1"), Domain(name="Domain2")])
         assert len(info["domains"]) == 2
@@ -155,6 +156,7 @@ class TestServerInfo:
         assert config["brokers"]["default"]["provider"] == "redis"
         assert config["has_outbox"] is True
 
+    @pytest.mark.no_test_domain
     def test_omits_missing_config_sections(self, uninitialized_domain):
         del uninitialized_domain.config["server"]
 
@@ -175,6 +177,7 @@ class TestDatabaseStatus:
         assert result["status"] == "healthy"
         assert result["provider"] == "memory"
 
+    @pytest.mark.no_test_domain
     def test_provider_not_configured(self, uninitialized_domain):
         result = _database_status(uninitialized_domain)
         assert result["status"] == "not_configured"
@@ -242,6 +245,7 @@ class TestBrokerStatus:
         result = _broker_status(test_domain)
         assert result["status"] == "unhealthy"
 
+    @pytest.mark.no_test_domain
     def test_no_broker(self, uninitialized_domain):
         result = _broker_status(uninitialized_domain)
         assert result["status"] == "not_configured"
@@ -265,6 +269,7 @@ class TestEventStoreStatus:
         assert result["status"] == "healthy"
         assert result["provider"] == "memory"
 
+    @pytest.mark.no_test_domain
     def test_no_event_store(self, uninitialized_domain):
         result = _event_store_status(uninitialized_domain)
         assert result["status"] == "not_configured"
@@ -288,6 +293,7 @@ class TestCacheStatus:
         assert result["status"] == "healthy"
         assert result["provider"] == "memory"
 
+    @pytest.mark.no_test_domain
     def test_cache_without_ping(self):
         domain = _initialized_domain()
         domain.caches["default"] = _CacheWithoutPing()
@@ -295,6 +301,7 @@ class TestCacheStatus:
         result = _cache_status(domain)
         assert result["status"] == "healthy"
 
+    @pytest.mark.no_test_domain
     def test_no_cache_configured(self, uninitialized_domain):
         result = _cache_status(uninitialized_domain)
         assert result["status"] == "not_configured"
@@ -441,6 +448,7 @@ class TestDatabaseStatusConfigWithoutGet:
         assert result["status"] == "healthy"
 
 
+@pytest.mark.no_test_domain
 class TestBrokerStatusConfigWithoutGet:
     def test_broker_config_without_get_method(self, uninitialized_domain):
         """A brokers section that is not a mapping leaves provider at 'none'."""
@@ -483,6 +491,7 @@ class TestCacheStatusConfigWithoutGet:
         result = _cache_status(test_domain)
         assert result["provider"] == "none"
 
+    @pytest.mark.no_test_domain
     def test_cache_is_none(self):
         """Caches are configured, but none of them is named 'default'."""
         domain = _initialized_domain(

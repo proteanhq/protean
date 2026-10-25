@@ -282,6 +282,7 @@ def _now_sid(offset_ms=0):
 
 
 class TestExtractHandledMessages:
+    @pytest.mark.no_test_domain
     def test_handler_without_handled_messages(self, handlers_domain):
         """A subscriber has no ``_handlers`` map; a plain class has neither."""
 
@@ -292,6 +293,7 @@ class TestExtractHandledMessages:
         assert _extract_handled_messages(ns.PaymentSubscriber) == []
         assert _extract_handled_messages(NotAHandler) == []
 
+    @pytest.mark.no_test_domain
     def test_empty_handlers_map(self):
         domain = Domain(name="EmptyHandler", config=_inline_config())
 
@@ -306,6 +308,7 @@ class TestExtractHandledMessages:
         domain.init(traverse=False)
         assert _extract_handled_messages(IdleHandler) == []
 
+    @pytest.mark.no_test_domain
     def test_skips_any_key(self, handlers_domain):
         _, ns = handlers_domain
         assert "$any" in ns.CatchAllHandler._handlers
@@ -325,6 +328,7 @@ class TestExtractHandledMessages:
 
         assert _extract_handled_messages(UndottedKeys) == ["SimpleType"]
 
+    @pytest.mark.no_test_domain
     def test_sorted_output(self, handlers_domain):
         _, ns = handlers_domain
         keys = [k.split(".")[1] for k in ns.OrderEventHandler._handlers]
@@ -363,6 +367,7 @@ class TestHandlerTypeLabel:
 
 
 class TestInferAggregate:
+    @pytest.mark.no_test_domain
     def test_no_aggregate(self, handlers_domain):
         _, ns = handlers_domain
         assert _infer_aggregate(ns.PaymentSubscriber) is None
@@ -380,16 +385,19 @@ class TestInferAggregate:
 
 
 class TestInferStreamCategories:
+    @pytest.mark.no_test_domain
     def test_process_manager_with_stream_categories(self, handlers_domain):
         _, ns = handlers_domain
         result = _infer_stream_categories(ns.OrderFulfillment, "PROCESS_MANAGER")
         assert result == ["handlers::order", "handlers::payment"]
 
+    @pytest.mark.no_test_domain
     def test_command_handler_with_stream_category(self, handlers_domain):
         _, ns = handlers_domain
         result = _infer_stream_categories(ns.OrderCommandHandler, "COMMAND_HANDLER")
         assert result == ["handlers::order:command"]
 
+    @pytest.mark.no_test_domain
     def test_projector_type_without_list_falls_back_to_stream_category(
         self, handlers_domain
     ):
@@ -399,6 +407,7 @@ class TestInferStreamCategories:
         result = _infer_stream_categories(ns.OrderEventHandler, "PROJECTOR")
         assert result == ["handlers::order"]
 
+    @pytest.mark.no_test_domain
     def test_no_stream_info(self, handlers_domain):
         _, ns = handlers_domain
         result = _infer_stream_categories(ns.PaymentSubscriber, "EVENT_HANDLER")
@@ -416,6 +425,7 @@ class TestInferStreamCategories:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.no_test_domain
 class TestCollectHandlerMetadata:
     def test_empty_domain(self):
         domain = Domain(name="Empty", config=_inline_config())
@@ -498,6 +508,7 @@ class TestMergeSubscriptionStatus:
         merge_subscription_status(handlers, [test_domain])
         assert handlers[0].get("subscription") is None
 
+    @pytest.mark.no_test_domain
     def test_event_handler_direct_match(self):
         fake = _FakeRedis()
         domain, ns = _build_domain(redis=fake)
@@ -514,6 +525,7 @@ class TestMergeSubscriptionStatus:
         assert sub["lag"] == 0
         assert sub["consumer_count"] == 1
 
+    @pytest.mark.no_test_domain
     def test_command_handler_matches_by_stream(self):
         fake = _FakeRedis()
         domain, _ = _build_domain(redis=fake)
@@ -530,6 +542,7 @@ class TestMergeSubscriptionStatus:
         assert sub["status"] == "ok"
         assert sub["subscription_type"] == "stream"
 
+    @pytest.mark.no_test_domain
     def test_projector_aggregates_across_streams(self):
         fake = _FakeRedis()
         domain, ns = _build_domain(redis=fake)
@@ -551,6 +564,7 @@ class TestMergeSubscriptionStatus:
         assert sub["status"] == "lagging"
         assert sub["consumer_count"] == 2  # max
 
+    @pytest.mark.no_test_domain
     def test_projector_worst_of_lagging_and_ok_is_lagging(self):
         """A lagging stream read before an ok one still sets the status."""
         fake = _FakeRedis()
@@ -566,6 +580,7 @@ class TestMergeSubscriptionStatus:
         assert sub["status"] == "lagging"
         assert sub["lag"] == 4
 
+    @pytest.mark.no_test_domain
     def test_projector_worst_status_unknown(self):
         """One stream lags and the other has no consumer group, so its lag is
         unknown; the projector reports the worse of the two."""
@@ -580,6 +595,7 @@ class TestMergeSubscriptionStatus:
         assert sub["status"] == "unknown"
         assert sub["lag"] == 2
 
+    @pytest.mark.no_test_domain
     def test_event_handler_carries_lag_seconds(self):
         domain, ns = _build_domain(event_store_subscriptions=True)
         written_at = _seed_event_store_lag(
@@ -594,6 +610,7 @@ class TestMergeSubscriptionStatus:
         assert sub["subscription_type"] == "event_store"
         assert sub["lag_seconds"] == 8.5
 
+    @pytest.mark.no_test_domain
     def test_projector_lag_seconds_is_max_not_sum(self):
         """Seconds-lag aggregates as the worst (max) stream staleness, not a sum."""
         domain, ns = _build_domain(event_store_subscriptions=True)
@@ -613,6 +630,7 @@ class TestMergeSubscriptionStatus:
         order_lag = (now - order_at).total_seconds()
         assert sub["lag_seconds"] == pytest.approx(order_lag)  # max, not order + 3
 
+    @pytest.mark.no_test_domain
     def test_projector_lag_seconds_none_when_all_none(self):
         """Stream subscriptions report no seconds, so the aggregate stays None."""
         fake = _FakeRedis()
@@ -883,6 +901,7 @@ class TestHandlersDetailEndpoint:
         assert resp.status_code == 400
 
 
+@pytest.mark.no_test_domain
 class TestHandlersWithRegisteredHandlers:
     """The endpoints serve a domain with handlers and an inline broker (no Redis)."""
 
@@ -1023,6 +1042,7 @@ class TestCreateHandlersRouter:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.no_test_domain
 class TestGetRedis:
     def test_no_redis_client_on_inline_broker(self, handlers_domain):
         domain, _ = handlers_domain
@@ -1041,6 +1061,7 @@ class TestGetRedis:
 
 
 class TestMergeSubscriptionStatusNoMatch:
+    @pytest.mark.no_test_domain
     def test_command_handler_no_matching_stream_status(self):
         """A dispatcher status for another stream does not attach to the handler."""
         fake = _FakeRedis()

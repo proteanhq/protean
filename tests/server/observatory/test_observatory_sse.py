@@ -144,6 +144,7 @@ def _fake_redis(pubsub_messages: list) -> tuple[MagicMock, MagicMock]:
     return fake_redis, pubsub
 
 
+@pytest.mark.no_test_domain
 class TestSSEEndpointNoRedis:
     """Test the SSE endpoint behavior when Redis is unavailable."""
 

@@ -686,18 +686,21 @@ def fake_redis(test_domain):
 
 
 class TestTracesEndpointNoRedis:
+    @pytest.mark.no_test_domain
     def test_traces_returns_503_when_no_redis(self, no_redis_client):
         """GET /api/traces returns 503 when Redis is unavailable."""
         response = no_redis_client.get("/api/traces")
         assert response.status_code == 503
         assert response.json()["error"] == "Redis not available"
 
+    @pytest.mark.no_test_domain
     def test_traces_stats_returns_503_when_no_redis(self, no_redis_client):
         """GET /api/traces/stats returns 503 when Redis is unavailable."""
         response = no_redis_client.get("/api/traces/stats?window=5m")
         assert response.status_code == 503
         assert response.json()["error"] == "Redis not available"
 
+    @pytest.mark.no_test_domain
     def test_delete_traces_returns_503_when_no_redis(self, no_redis_client):
         """DELETE /api/traces returns 503 when Redis is unavailable."""
         response = no_redis_client.delete("/api/traces")
@@ -1002,6 +1005,7 @@ class TestTracesTimelineEndpoint:
 class TestTracesTimelineNoRedis:
     """Test timeline error paths without Redis."""
 
+    @pytest.mark.no_test_domain
     def test_timeline_returns_503_when_no_redis(self, no_redis_client):
         """GET /api/traces/timeline returns 503 when Redis is unavailable."""
         response = no_redis_client.get("/api/traces/timeline?window=5m")

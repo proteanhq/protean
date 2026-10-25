@@ -159,6 +159,7 @@ class TestOutboxStatusErrorPaths:
         assert "connection lost" not in result["error"]
 
 
+@pytest.mark.no_test_domain
 class TestBrokerHealthErrorPaths:
     def test_returns_error_when_no_broker(self):
         """_broker_health returns error when no default broker is configured."""
@@ -182,6 +183,7 @@ class TestBrokerHealthErrorPaths:
         assert "connection refused" not in result["error"]
 
 
+@pytest.mark.no_test_domain
 class TestBrokerInfoErrorPaths:
     def test_returns_error_when_no_broker(self):
         """_broker_info returns error when no default broker is configured."""
@@ -203,6 +205,7 @@ class TestBrokerInfoErrorPaths:
         assert "timeout" not in result["error"]
 
 
+@pytest.mark.no_test_domain
 class TestAPIEndpointsWithFailingDomain:
     """Test API endpoints gracefully handle domain failures."""
 
@@ -458,6 +461,7 @@ class TestQueueDepthEndpoint:
         assert "consumer_pending" in totals
 
 
+@pytest.mark.no_test_domain
 class TestQueueDepthWithoutBroker:
     """Queue-depth endpoint with a domain that has no broker."""
 
@@ -590,6 +594,7 @@ class TestConsumersEndpoint:
         assert data["count"] == 0
 
 
+@pytest.mark.no_test_domain
 class TestConsumersEndpointNoRedis:
     """Error-path tests for /api/consumers when Redis is unavailable."""
 
@@ -749,6 +754,7 @@ class TestWorkersEndpoint:
         assert len(worker["subscriptions"]) == 2
 
 
+@pytest.mark.no_test_domain
 class TestWorkersEndpointNoRedis:
     """Error-path tests for /api/workers when Redis is unavailable."""
 
@@ -847,6 +853,7 @@ class TestWorkersStatusThresholds:
 # --- Tests for _broker_info success path ---
 
 
+@pytest.mark.no_test_domain
 class TestBrokerInfoSuccessPath:
     """Tests for _broker_info when broker is available and responds."""
 
@@ -1468,12 +1475,14 @@ class TestDLQListEndpoint:
         assert response.status_code == 404
         assert "No subscription" in response.json()["error"]
 
+    @pytest.mark.no_test_domain
     def test_dlq_list_no_broker(self):
         """DLQ list returns 503 when no broker configured."""
         response = _dlq_client(_domain_without_broker()).get("/api/dlq")
         assert response.status_code == 503
         assert response.json()["error"] == "No default broker configured"
 
+    @pytest.mark.no_test_domain
     def test_dlq_list_broker_no_capability(self):
         """DLQ list returns 501 when broker lacks DLQ capability."""
         response = _dlq_client(_domain_without_dlq()).get("/api/dlq")

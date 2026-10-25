@@ -102,6 +102,7 @@ def order_domain():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.no_test_domain
 class TestCollectAggregateStreamMetadata:
     def test_empty_domain(self):
         domain = _new_domain()
@@ -160,16 +161,24 @@ class TestCollectAggregateStreamMetadata:
 
 
 class TestEnrichWithEventStoreStats:
+    @pytest.mark.no_test_domain
     def test_sets_instance_count_and_head_position(self, order_domain):
         domain, order_cls = order_domain
+        # An event in another category first, so the head position (a global
+        # position) differs from the number of order instances.
+        with domain.domain_context():
+            domain.event_store.store._write(
+                "testdomain::customer-1", "CustomerRegistered", {}
+            )
         _place_orders(domain, order_cls, 3)
         aggregates = collect_aggregate_stream_metadata([domain])
 
         enrich_with_event_store_stats(aggregates)
         assert aggregates[0]["instance_count"] == 3
-        # The store numbers messages from 1, so three events end at position 3.
-        assert aggregates[0]["head_position"] == 3
+        # The store numbers messages from 1, so the last order event is at 4.
+        assert aggregates[0]["head_position"] == 4
 
+    @pytest.mark.no_test_domain
     def test_head_position_negative_one_becomes_none(self, order_domain):
         domain, _ = order_domain
         aggregates = collect_aggregate_stream_metadata([domain])
@@ -191,6 +200,7 @@ class TestEnrichWithEventStoreStats:
         enrich_with_event_store_stats(aggregates)
         assert aggregates[0]["instance_count"] is None
 
+    @pytest.mark.no_test_domain
     def test_handles_exception_gracefully(self):
         # A domain that has not run init() has no event store to query.
         aggregates = [
@@ -212,6 +222,7 @@ class TestEnrichWithEventStoreStats:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.no_test_domain
 class TestCollectOutboxStatus:
     def test_returns_counts(self, order_domain):
         domain, order_cls = order_domain
@@ -378,6 +389,7 @@ class TestEventStoreRouteWiring:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.no_test_domain
 class TestEventStoreStreamsEndpointEnrichException:
     def test_enrich_exception_does_not_break_endpoint(self, order_domain):
         """When adding event store stats raises, the endpoint still lists

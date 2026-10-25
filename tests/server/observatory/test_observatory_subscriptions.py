@@ -198,6 +198,7 @@ class TestSubscriptionsEndpoint:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.no_test_domain
 class TestSubscriptionsEndpointUnit:
     def test_returns_subscription_list(self):
         """Endpoint returns subscriptions with lag data."""
@@ -274,6 +275,7 @@ class TestSubscriptionsEndpointUnit:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.no_test_domain
 class TestSubscriptionsMetrics:
     def test_metrics_contains_subscription_lag_help(self):
         """Prometheus output contains subscription lag HELP/TYPE."""
