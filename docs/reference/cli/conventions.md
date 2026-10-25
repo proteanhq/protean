@@ -9,7 +9,9 @@ the shape a new command that emits `--json` output should follow.
 catalog`, `subscriptions status`, and `projection status` follow them for their
 `--json` machine output: a successful run and any usage or load error are the
 envelope, with the exit codes below. Their human (non-`--json`) output keeps its
-historical shape, so a load failure there still exits `1`. The other commands
+historical shape, so a load failure there still exits `1`. `eventstore verify`
+follows the same `--json` contracts, and in both modes it exits `2` when it
+cannot connect to the event store. The other commands
 that print JSON (`upgrade-check`, `ir diff`, `ir check`) predate the contracts
 and are **not yet converged**: their exit codes and output shapes still differ.
 
