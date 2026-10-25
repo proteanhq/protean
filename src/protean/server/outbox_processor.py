@@ -26,10 +26,12 @@ logger = logging.getLogger(__name__)
 def _in_group_commit_order(messages: list[Outbox], lanes: OutboxLanes) -> list[Outbox]:
     """Reorder *messages* so each hold-back group's rows are in commit order.
 
-    The claim returns rows by priority first, so rows of one group with
-    different priorities may not be in commit order. Each group's rows are
-    sorted by commit order and put back into the positions that group already
-    holds in the batch. Rows with no group keep their positions.
+    The built-in claim already returns a group's rows in commit order: it
+    skips a row whose earlier group rows do not sort ahead of it in claim
+    order. A DAO that overrides ``_claim`` gives no such promise, so the
+    publish loop does not rely on it. Each group's rows are sorted by commit
+    order and put back into the positions that group already holds in the
+    batch. Rows with no group keep their positions.
     """
     positions: dict[tuple[str, str, str, bool], list[int]] = {}
     for index, message in enumerate(messages):
