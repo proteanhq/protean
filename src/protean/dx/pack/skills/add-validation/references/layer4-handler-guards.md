@@ -7,10 +7,9 @@ Handler guards enforce context-dependent rules that cannot be expressed as field
 ```python
 from datetime import datetime
 
-from protean import handle
+from protean import current_domain, handle
 from protean.exceptions import ValidationError
 from protean.fields import Identifier, String
-from protean.utils.globals import current_domain
 
 ALLOWED_ROLES = {"admin", "manager"}
 

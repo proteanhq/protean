@@ -1,7 +1,8 @@
 """The DX pack does not bring back errors that once repeated across its skills.
 
 Each rule below names one error that used to appear in the pack's skills or
-rules: the old ``protean.globals`` import path, calls into the private ``_dao``,
+rules: the old ``protean.globals`` import path and the internal
+``protean.utils.globals`` one, calls into the private ``_dao``,
 links to docs pages that do not exist, the claim that a string ``part_of`` is
 rejected on a handler or repository, and a ``repository`` attribute that no
 handler has, auto-injected or otherwise. The test reads every text file in the
@@ -41,7 +42,12 @@ _STRING_PART_OF_REJECTED = re.compile(
 
 # (name, pattern, lines allowed to match as "path:line")
 RULES: list[tuple[str, re.Pattern[str], frozenset[str]]] = [
-    ("the protean.globals import path", re.compile(r"protean\.globals"), frozenset()),
+    (
+        "a globals import path that is not the public one",
+        re.compile(r"protean\.(utils\.)?globals"),
+        # The line that tells agents to import from protean instead.
+        frozenset({"skills/process-manager/references/command-issuance.md:11"}),
+    ),
     (
         "the private _dao",
         re.compile(r"\b_dao\b"),
@@ -100,7 +106,8 @@ def test_the_pack_holds_none_of_the_stale_claims():
 @pytest.mark.parametrize(
     ("line", "rule"),
     [
-        ("from protean.globals import current_domain", "protean.globals"),
+        ("from protean.globals import current_domain", "globals"),
+        ("from protean.utils.globals import current_domain", "globals"),
         ("order = repo._dao.find_by(order_id=event.order_id)", "_dao"),
         ("See https://protean.readthedocs.io/en/latest/", "does not exist"),
         ("[CQRS](https://docs.proteanhq.com/patterns/cqrs/)", "does not exist"),
@@ -166,7 +173,7 @@ def test_a_rule_file_with_handler_examples_imports_current_domain(rule_file):
     text = (PACK_ROOT / rule_file).read_text(encoding="utf-8")
 
     assert "current_domain.repository_for(" in text
-    assert "from protean.utils.globals import current_domain" in text
+    assert "from protean import current_domain" in text
 
 
 def test_an_allowed_line_passes_only_at_its_own_location():

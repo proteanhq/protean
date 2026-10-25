@@ -196,10 +196,9 @@ aggregate.
 Use for authorization, context-dependent rules, and checks that need external data not available inside the aggregate.
 
 ```python
-from protean import handle
+from protean import current_domain, handle
 from protean.exceptions import ValidationError
 from protean.fields import Identifier, String
-from protean.utils.globals import current_domain
 
 
 @domain.command(part_of=Order)

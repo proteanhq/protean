@@ -142,7 +142,7 @@ class ReportRepository:
 A result that cannot become an aggregate, such as an aggregation or a two-column summary, needs the provider-level `raw()` instead. It hands back the rows as the database returned them. Look the provider up through the aggregate's own `meta_.provider`, so the query runs against the database the repository is wired to:
 
 ```python
-from protean.utils.globals import current_domain
+from protean import current_domain
 
 @domain.repository(part_of=Report)
 class ReportRepository:

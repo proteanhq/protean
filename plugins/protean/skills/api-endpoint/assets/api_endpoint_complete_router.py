@@ -52,14 +52,13 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, FastAPI
 from pydantic import BaseModel
 
-from protean import Domain, handle
+from protean import Domain, current_domain, handle
 from protean.exceptions import InvalidStateError
 from protean.fields import DateTime, Float, Identifier, String
 from protean.integrations.fastapi import (
     DomainContextMiddleware,
     register_exception_handlers,
 )
-from protean.utils.globals import current_domain
 
 domain = Domain()
 

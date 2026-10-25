@@ -12,7 +12,7 @@ call `current_domain.repository_for(AggregateClass)`. Outside handlers, call
 `domain.repository_for()` inside a domain context. Never construct repositories manually:
 
 ```python
-from protean.utils.globals import current_domain
+from protean import current_domain
 
 # In handler methods — use current_domain.repository_for()
 @handle(PlaceOrder)

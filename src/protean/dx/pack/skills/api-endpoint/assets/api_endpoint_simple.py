@@ -28,9 +28,8 @@ from decimal import Decimal as D
 
 from fastapi import APIRouter
 
-from protean import Domain, handle
+from protean import Domain, current_domain, handle
 from protean.fields import DateTime, Decimal, Identifier, String
-from protean.utils.globals import current_domain
 
 domain = Domain()
 

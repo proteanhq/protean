@@ -32,10 +32,9 @@ Usage, once the app is running:
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from protean import Domain, handle
+from protean import Domain, current_domain, handle
 from protean.exceptions import InvalidStateError
 from protean.fields import Identifier, String
-from protean.utils.globals import current_domain
 
 domain = Domain()
 

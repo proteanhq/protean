@@ -12,7 +12,7 @@ call domain methods, and persist. Business logic (validation, state transitions,
 belongs in **aggregate methods**, not handlers.
 
 ```python
-from protean.utils.globals import current_domain
+from protean import current_domain
 
 # Good — handler delegates to aggregate
 @handle(PlaceOrder)

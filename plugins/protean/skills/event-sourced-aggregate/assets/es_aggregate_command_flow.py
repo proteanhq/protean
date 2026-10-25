@@ -23,11 +23,10 @@ Usage:
         domain.process(OpenAccount(account_id="ACC-001", owner_name="Alice", initial_deposit=500.0))  # noqa: E501
 """
 
-from protean import Domain, handle, invariant
+from protean import Domain, current_domain, handle, invariant
 from protean.core.aggregate import apply
 from protean.exceptions import ValidationError
 from protean.fields import Decimal, Identifier, String
-from protean.utils.globals import current_domain
 
 # Domain setup
 domain = Domain()
