@@ -110,7 +110,7 @@ def _inline_config():
 
 
 def _build_domain(name="Handlers", *, redis=None, event_store_subscriptions=False):
-    """A real domain with one handler of each kind.
+    """A real domain with two event handlers and one handler of each other kind.
 
     With ``redis`` set, the domain reads this directory's ``domain.toml`` (a
     Redis broker and stream subscriptions) and its broker's raw client is

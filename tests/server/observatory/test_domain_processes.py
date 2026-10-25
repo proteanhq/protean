@@ -184,7 +184,7 @@ class TestStateLabelFromEvent:
             pytest.param(
                 "Ordering.ShipmentDispatched.v1",
                 "Shipment Dispatched",
-                id="two-segments",
+                id="multi-word-name",
             ),
             pytest.param("OrderPlaced", "Order Placed", id="single-segment"),
             pytest.param("", "", id="empty-string"),

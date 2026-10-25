@@ -439,7 +439,7 @@ class TestTreeBuilderTraceEnrichment:
     def test_graceful_fallback_without_trace_data(
         self, correlated_domain, traces_kwargs
     ):
-        """Without trace data, every enrichment field is None."""
+        """Without trace data, the handler and duration_ms fields are None."""
         domain, corr_id, _, _ = correlated_domain
         store = domain.event_store.store
         group = store._load_correlation_group(corr_id)

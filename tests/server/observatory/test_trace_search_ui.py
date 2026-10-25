@@ -4,7 +4,7 @@ Tests for:
 - Timeline page renders with Events/Traces tab bar
 - Traces view section with search inputs and results table
 - Deep link ?view=traces works
-- Deep link ?view=traces&aggregate_id=... populates search fields
+- Deep link ?view=traces&aggregate_id=... loads the traces view
 - Tab switching JavaScript references
 """
 

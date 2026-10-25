@@ -869,7 +869,7 @@ class TestBrokerInfoSuccessPath:
 
 
 class TestStreamsEndpointWithMockRedis:
-    """/api/streams sums stream lengths and consumer groups across Redis streams."""
+    """/api/streams sums stream lengths and pending counts, and lists each consumer group."""
 
     def test_streams_aggregates_xlen_and_consumer_groups(self, test_domain):
         """Streams endpoint aggregates xlen and consumer group data."""
@@ -1074,7 +1074,7 @@ class TestConsumersEndpointBytesHandling:
 
 
 class TestQueueDepthStreamAggregation:
-    """/api/queue-depth sums pending and lag per consumer group across Redis streams."""
+    """/api/queue-depth sums pending counts and adds each stream's largest lag."""
 
     def test_queue_depth_aggregates_lag_and_pending(self, test_domain):
         """Queue depth totals include stream_depth (max lag) and consumer_pending."""
@@ -1162,7 +1162,7 @@ class TestQueueDepthStreamAggregation:
 
 
 class TestStatsEndpointStreamAggregation:
-    """/api/stats sums message and consumer-group counts across Redis streams."""
+    """/api/stats sums stream lengths and pending counts across Redis streams."""
 
     def test_stats_aggregates_xlen_and_pending(self, test_domain):
         """Stats endpoint aggregates total_messages and in_flight counts."""
