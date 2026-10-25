@@ -15,6 +15,7 @@ from protean.core.event import BaseEvent
 from protean.fields import Integer, String
 from protean.port.broker import BrokerCapabilities
 from protean.server.outbox_processor import OutboxProcessor, _in_group_commit_order
+from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox, OutboxLanes, OutboxStatus
 
@@ -80,9 +81,11 @@ def outbox_repo(test_domain):
     return test_domain._get_outbox_repo("default")
 
 
-async def _processor(test_domain, fail_ids: set[str]) -> OutboxProcessor:
+async def _processor(
+    test_domain, fail_ids: set[str], engine: FakeEngine | None = None
+) -> OutboxProcessor:
     processor = OutboxProcessor(
-        FakeEngine(test_domain), "default", "default", worker_id="worker-1"
+        engine or FakeEngine(test_domain), "default", "default", worker_id="worker-1"
     )
     await processor.initialize()
     processor.broker = FailingBroker(fail_ids)
@@ -276,13 +279,15 @@ class TestProcessBatchWithPriorityLanes:
         assert _stored(outbox_repo, "backfill").status == OutboxStatus.FAILED.value
 
     @pytest.mark.asyncio
-    async def test_routing_uses_the_lanes_in_config_when_the_row_publishes(
+    async def test_routing_uses_the_lanes_the_consumers_started_with(
         self, test_domain, outbox_repo
     ):
         test_domain.config["server"]["priority_lanes"] = {"enabled": False}
-        processor = await _processor(test_domain, fail_ids=set())
-        # Lanes turn on after the processor started, so the claim already
-        # groups the row as backfill and routing must agree.
+        engine = FakeEngine(test_domain)
+        consumer = StreamSubscription(engine, CATEGORY, Counter)
+        processor = await _processor(test_domain, fail_ids=set(), engine=engine)
+        # Lanes turn on after startup. The running consumer still reads only
+        # the primary stream, so the row must go there.
         test_domain.config["server"]["priority_lanes"] = {
             "enabled": True,
             "threshold": 5,
@@ -293,4 +298,43 @@ class TestProcessBatchWithPriorityLanes:
         assert [row.message_id for row in batch] == ["low"]
         await processor.process_batch(batch)
 
-        assert processor.broker.streams == [f"{CATEGORY}:backfill"]
+        assert consumer._lanes_enabled is False
+        assert processor.broker.streams == [consumer.stream_category]
+
+    @pytest.mark.asyncio
+    async def test_routing_keeps_the_backfill_lane_the_consumers_started_with(
+        self, test_domain, outbox_repo
+    ):
+        engine = FakeEngine(test_domain)
+        consumer = StreamSubscription(engine, CATEGORY, Counter)
+        processor = await _processor(test_domain, fail_ids=set(), engine=engine)
+        test_domain.config["server"]["priority_lanes"] = {"enabled": False}
+        outbox_repo.add(_row("low", 0, priority=0))
+
+        batch = await processor.get_next_batch_of_messages()
+        await processor.process_batch(batch)
+
+        assert consumer._lanes_enabled is True
+        assert processor.broker.streams == [consumer.backfill_stream]
+
+    @pytest.mark.asyncio
+    async def test_the_claim_groups_by_the_lanes_the_processor_started_with(
+        self, test_domain, outbox_repo
+    ):
+        test_domain.config["server"]["priority_lanes"] = {"enabled": False}
+        processor = await _processor(test_domain, fail_ids={"low"})
+        # Under the new config "low" and "high" would sit in different lanes.
+        # The processor still routes both to one stream, so "high" waits.
+        test_domain.config["server"]["priority_lanes"] = {
+            "enabled": True,
+            "threshold": 5,
+        }
+        outbox_repo.add(_row("low", 0, priority=0))
+        outbox_repo.add(_row("high", 1, priority=10))
+
+        batch = await processor.get_next_batch_of_messages()
+        await processor.process_batch(batch)
+
+        assert processor.broker.published == []
+        assert _stored(outbox_repo, "high").status == OutboxStatus.PENDING.value
+        assert (await processor.get_next_batch_of_messages()) == []

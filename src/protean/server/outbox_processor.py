@@ -152,6 +152,12 @@ class OutboxProcessor(BaseSubscription):
         self._lanes_enabled = lanes_config.get("enabled", False)
         self._lane_threshold = lanes_config.get("threshold", 0)
         self._backfill_suffix = lanes_config.get("backfill_suffix", "backfill")
+        # Read once, at the same startup the consumers read their lane config
+        # at. The claim, ``process_batch`` and routing all use this one split,
+        # so a row is grouped by the lane it publishes to and the running
+        # consumers read that lane. A later config change takes effect on
+        # restart, for both sides together.
+        self._lanes = OutboxLanes.from_config(engine.domain.config)
 
         # Filter outbox rows by target_broker when external brokers are
         # configured.  Without external brokers the field is always None
@@ -242,6 +248,7 @@ class OutboxProcessor(BaseSubscription):
             self.worker_id,
             self.messages_per_tick,
             target_broker,
+            lanes=self._lanes,
         )
         if messages:
             logger.debug(
@@ -304,9 +311,7 @@ class OutboxProcessor(BaseSubscription):
             successful_count = 0
             released_count = 0
 
-            # Read on every batch, like ``claim_batch``, so both sides group
-            # rows the same way.
-            lanes = OutboxLanes.from_config(self.engine.domain.config)
+            lanes = self._lanes
             failed_groups: set[tuple[str, str, str, bool]] = set()
 
             for message in _in_group_commit_order(messages, lanes):
@@ -723,14 +728,11 @@ class OutboxProcessor(BaseSubscription):
                 self.broker.record_partition(stream_category, message.partition_key)
                 stream_category = f"{stream_category}:{message.partition_key}"
 
-            # Priority lanes only apply to internal processors. The lane comes
-            # from ``OutboxLanes``, read now, so routing puts a row in the same
-            # lane that the claim and ``process_batch`` grouped it by.
-            lanes = OutboxLanes.from_config(self.engine.domain.config)
+            # Priority lanes only apply to internal processors.
             if (
                 not self.is_external
                 and stream_category
-                and lanes.is_backfill(message.target_broker, message.priority)
+                and self._lanes.is_backfill(message.target_broker, message.priority)
             ):
                 stream_category = f"{stream_category}:{self._backfill_suffix}"
 

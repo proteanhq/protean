@@ -791,6 +791,7 @@ class OutboxRepository(BaseRepository):
         limit: int,
         target_broker: str | None = None,
         lock_duration_minutes: int = DEFAULT_LOCK_DURATION_MINUTES,
+        lanes: OutboxLanes | None = None,
     ) -> list[Outbox]:
         """Atomically select and claim up to ``limit`` ready messages.
 
@@ -811,8 +812,9 @@ class OutboxRepository(BaseRepository):
         A partitioned row is also held back while an earlier row of its group
         is not published and is not claimed in the same call (ADR-0028). The
         group is ``(target_broker, stream_category, partition_key, lane)``,
-        where the lane comes from ``[server.priority_lanes]``, read from domain
-        config on every call (see :class:`OutboxLanes`). A failed, abandoned or
+        where the lane comes from ``lanes`` (see :class:`OutboxLanes`), or
+        from ``[server.priority_lanes]`` in domain config when ``lanes`` is
+        not given. A failed, abandoned or
         in-flight row therefore stops the later rows of its key, while other
         keys keep flowing. Rows with no ``partition_key`` or no
         ``stream_category`` are never held.
@@ -822,6 +824,9 @@ class OutboxRepository(BaseRepository):
             limit: Maximum number of messages to claim. ``<= 0`` claims none.
             target_broker: When provided, only claim rows for this broker.
             lock_duration_minutes: How long the processing lock is held.
+            lanes: The lane split to group rows by. ``OutboxProcessor`` passes
+                the split it read at startup, so the claim groups rows by the
+                lane it routes them to.
 
         Returns:
             The claimed messages, already in ``PROCESSING`` state, ordered by
@@ -832,7 +837,9 @@ class OutboxRepository(BaseRepository):
             return []
 
         now = self._dao.domain.clock.now()
-        hold_back = OutboxLanes.from_config(self._dao.domain.config).hold_back()
+        if lanes is None:
+            lanes = OutboxLanes.from_config(self._dao.domain.config)
+        hold_back = lanes.hold_back()
 
         claimed = cast(
             list[Outbox],
