@@ -90,7 +90,9 @@ def emit_usage_error(*, as_json: bool, message: str) -> NoReturn:
             )
         )
     else:
-        _ERR_CONSOLE.print(f"[red]{escape(message)}[/red]")
+        # soft_wrap leaves wrapping to the terminal, so the error stays one
+        # line for a script reading stderr.
+        _ERR_CONSOLE.print(f"[red]{escape(message)}[/red]", soft_wrap=True)
     raise typer.Exit(code=EXIT_USAGE)
 
 

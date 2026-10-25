@@ -93,7 +93,8 @@ def verify(
     Verifies per-stream position gaplessness, store-wide global_position
     monotonicity, message-id uniqueness, and that no snapshot runs ahead of its
     aggregate stream. Exits 0 when clean, 1 when any violation is found, and 2
-    when the event store cannot be reached.
+    when the command cannot connect to the event store or, under ``--json``,
+    when the domain cannot be loaded.
 
     ``verify`` checks *internal* consistency only. Physical backup and restore
     stay with the database and its own tooling.
@@ -112,9 +113,10 @@ def verify(
         try:
             report = store.verify()
         except ConfigurationError as exc:
-            # The store connects lazily, so an unreachable database surfaces
-            # here rather than in load_domain.
-            emit_usage_error(as_json=as_json, message=str(exc))
+            # The Message DB adapter opens its first connection inside
+            # verify(), so a connection error is raised here. The driver's
+            # message spans several lines; join it so stderr gets one line.
+            emit_usage_error(as_json=as_json, message=" ".join(str(exc).split()))
 
     if as_json:
         envelope = build_envelope(

@@ -100,14 +100,14 @@ Each violation carries a stable `kind` (`malformed_message`,
 |------|---------|
 | 0 | The store is consistent. |
 | 1 | At least one violation was found. |
-| 2 | Usage or environment error: no or unloadable domain (under `--json` only), or an event store that cannot be reached (with or without `--json`). |
+| 2 | Usage or environment error: no or unloadable domain (under `--json` only), or an event store the command cannot connect to (with or without `--json`). |
 
 Without `--json`, a domain that fails to load aborts with exit 1, the same as
 every other `protean` command, so exit 1 in human mode covers both a real
 violation and a domain load error. Use `--json` when a script needs to tell the
 two apart.
 
-An event store that cannot be reached exits 2 in both modes. Under `--json`,
+An event store the command cannot connect to exits 2 in both modes. Under `--json`,
 stdout holds one envelope with `status` set to `error` and the connection error
 under `data.error`. Without `--json`, the command prints the connection error as
 one line on stderr.
