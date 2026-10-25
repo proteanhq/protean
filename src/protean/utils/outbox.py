@@ -136,7 +136,8 @@ class Outbox(BaseAggregate):
     # instead of ``TEXT`` / ``VARCHAR(MAX)``. Unbounded columns cannot be
     # indexed on SQL Server, require blind prefix lengths on MySQL, and waste
     # storage everywhere. The outbox path needs indexes on exactly these
-    # columns. ``data`` and ``metadata_`` stay unbounded JSON blobs.
+    # columns. ``data`` stays an unbounded JSON column, and SQL providers store
+    # ``metadata_`` as a pickled blob.
     #
     # ``message_id`` is a composite Protean message id (headers.id), e.g.
     # ``testdomain::order-<aggregate-id>-3``, not a bare UUID, so it needs the
@@ -370,6 +371,12 @@ class Outbox(BaseAggregate):
         effective_max_retries = (
             max_retries if max_retries is not None else self.max_retries
         )
+        # The claim compares ``retry_count`` with the row's ``max_retries``
+        # column. Store the threshold used here so a row kept FAILED stays
+        # claimable. Otherwise a configured ``max_attempts`` above the column
+        # would leave the row FAILED and never claimed, and it would halt its
+        # partition key with no ABANDONED row to show why.
+        self.max_retries = effective_max_retries
 
         # Determine next action based on retry eligibility
         if self.retry_count < effective_max_retries:

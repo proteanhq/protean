@@ -140,6 +140,48 @@ class TestEarlierRowHoldsLaterRows:
 
         assert _labels(outbox_repo.claim_batch("worker-1", limit=10)) == ["a", "b"]
 
+    def test_a_row_failed_under_a_higher_max_attempts_is_retried(
+        self, outbox_repo, now
+    ):
+        # The processor passes ``outbox.retry.max_attempts`` to
+        # ``mark_failed``. Above the row's ``max_retries`` of 3, the row must
+        # stay claimable, or it would halt its key while still FAILED.
+        _insert(outbox_repo, _row("b", minute=1), _row("a", minute=0))
+        for _ in range(3):
+            [row] = outbox_repo.find_all_by_message_id("a")
+            row.status = OutboxStatus.PROCESSING.value
+            row.mark_failed(RuntimeError("broker down"), max_retries=5, now=now)
+            row.next_retry_at = now - timedelta(minutes=1)
+            outbox_repo.add(row)
+
+        [row] = outbox_repo.find_all_by_message_id("a")
+        assert (row.status, row.retry_count) == (OutboxStatus.FAILED.value, 3)
+        assert _labels(outbox_repo.claim_batch("worker-1", limit=10)) == ["a", "b"]
+
+    def test_a_row_with_no_sequence_number_sorts_after_one_with_a_number(
+        self, outbox_repo, now
+    ):
+        # Same ``created_at``: the row without a sequence number is the later
+        # one, as in the claim order.
+        later = _row("later", minute=0)
+        later.sequence_number = None
+        earlier = _failed(_row("earlier", minute=0), now + timedelta(hours=1))
+        earlier.sequence_number = 5
+        _insert(outbox_repo, later, earlier)
+
+        assert outbox_repo.claim_batch("worker-1", limit=10) == []
+
+    def test_a_row_with_a_sequence_number_is_not_held_by_one_without(
+        self, outbox_repo, now
+    ):
+        later = _failed(_row("later", minute=0), now + timedelta(hours=1))
+        later.sequence_number = None
+        earlier = _row("earlier", minute=0)
+        earlier.sequence_number = 5
+        _insert(outbox_repo, later, earlier)
+
+        assert _labels(outbox_repo.claim_batch("worker-1", limit=10)) == ["earlier"]
+
     def test_an_abandoned_row_halts_its_key(self, outbox_repo):
         _insert(outbox_repo, _row("b", minute=1), _abandoned(_row("a", minute=0)))
 

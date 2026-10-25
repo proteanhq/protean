@@ -371,6 +371,15 @@ class TestMarkFailed:
         assert sample_outbox.retry_count == sample_outbox.max_retries
         assert sample_outbox.last_error["reason"] == "Max retries exceeded"
 
+    def test_mark_failed_stores_the_max_retries_it_used(self, sample_outbox):
+        sample_outbox.retry_count = 3  # past the row's own max_retries of 3
+
+        sample_outbox.mark_failed(ValueError("boom"), max_retries=5)
+
+        assert sample_outbox.status == OutboxStatus.FAILED.value
+        assert sample_outbox.retry_count == 4
+        assert sample_outbox.max_retries == 5
+
     def test_mark_failed_exponential_backoff(self, sample_outbox):
         """Test that exponential backoff is applied correctly."""
         base_delay = 60

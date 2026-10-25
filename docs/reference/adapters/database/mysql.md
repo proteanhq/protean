@@ -284,7 +284,14 @@ no `UPDATE ... RETURNING`, so the single-statement claim PostgreSQL uses does
 not compile here. [ADR-0013](../../../adr/0013-optimistic-concurrency-and-claim-contract.md)
 covers why the portable path is correct wherever a guarded `UPDATE` re-evaluates
 its predicate against committed state under row-lock contention, which InnoDB
-does. The cost is `1 + N` round trips instead of one.
+does. The cost is `1 + N` round trips instead of one. When a partition key's
+rows are held back (see
+[`sequential_by`](../../server/sequential-by.md#how-the-outbox-keeps-a-key-in-order)),
+each candidate row that has both a partition key and a stream category adds
+one more query, which checks
+for an earlier row of its key. A candidate behind a row of its key that is
+already held is skipped without that query. The `SELECT` leaves out rows that are held, so a halted key's backlog
+adds no queries.
 
 The bounded delete behind `_delete_top` takes the portable path for the same
 kind of reason: MySQL rejects a subquery that reads the table being deleted

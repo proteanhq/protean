@@ -583,6 +583,7 @@ on this logger.
 | `outbox.status_save_failed` | ERROR (exc) | `message_id` |
 | `outbox.broker_published` | DEBUG | `message_id`, `broker_message_id` |
 | `outbox.broker_publish_failed` | ERROR (exc) | `message_id` |
+| `outbox.release_failed` | ERROR (exc) | `message_id` |
 | `outbox.cleanup` | DEBUG | `database_provider`, `broker_provider` |
 | `outbox.cleanup_completed` | INFO | `total`, `published`, `abandoned` |
 | `outbox.cleanup_failed` | ERROR (exc) | |

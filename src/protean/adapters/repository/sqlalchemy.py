@@ -2104,6 +2104,80 @@ class SADAO(BaseDAO):
             )
         return and_(*clauses)
 
+    def _blocks_candidate(
+        self, hold_back: HoldBack, criteria: Q, order_by: str | list[str] | None
+    ) -> typing.Any:
+        """SQL ``EXISTS`` that is true when the outer row must not be a claim
+        candidate.
+
+        It looks for an earlier holding row of the outer row's group that
+        either does not match ``criteria`` (so this call cannot claim it) or
+        sorts after the outer row in the claim order (so the outer row would
+        be reached first). Either way the outer row would be held.
+        """
+        model = self.database_model_cls
+        earlier = orm.aliased(model, name="hold_back_earlier")
+        entity_id_field = id_field(self.entity_cls)
+        assert entity_id_field is not None
+        assert entity_id_field.attribute_name is not None
+        claim_order = _order_keys(order_by) or [entity_id_field.attribute_name]
+        return (
+            select(1)
+            .select_from(earlier)
+            .where(
+                self._same_group(hold_back, model, earlier),
+                self._build_filters(hold_back.holds, earlier),
+                self._sorts_before(earlier, model, hold_back.order),
+                ~and_(
+                    self._build_filters(criteria, earlier),
+                    self._sorts_before(earlier, model, claim_order),
+                ),
+            )
+            .exists()
+        )
+
+    def _claim_candidates(
+        self,
+        criteria: Q,
+        limit: int,
+        offset: int,
+        order_by: str | list[str] | None,
+        hold_back: HoldBack | None,
+    ) -> list[typing.Any]:
+        """Read one page of claim candidates for the portable claim path.
+
+        With ``hold_back``, the page leaves out every row that
+        :meth:`_blocks_candidate` holds, the same filter the PostgreSQL
+        statement applies. A held group's backlog then never fills a page, so
+        a halted key costs no extra reads on SQLite, MySQL, MariaDB and SQL
+        Server. The portable claim still checks each candidate, because
+        another worker can claim an earlier row between this read and the
+        claim.
+        """
+        if hold_back is None:
+            return super()._claim_candidates(
+                criteria, limit, offset, order_by, hold_back
+            )
+
+        table, _, inner = self._bounded_id_select(criteria, limit, order_by)
+        stmt = (
+            inner.where(~self._blocks_candidate(hold_back, criteria, order_by))
+            .with_only_columns(*table.c)
+            .offset(offset)
+        )
+
+        conn = self._get_session()
+        assert conn is not None
+        try:
+            candidates = []
+            for row in conn.execute(stmt).all():
+                entity = self.database_model_cls.to_entity(row)
+                entity.state_.mark_retrieved()
+                candidates.append(entity)
+        finally:
+            self._commit_if_standalone(conn)
+        return candidates
+
     def _claim(
         self,
         criteria: Q,
@@ -2185,24 +2259,8 @@ class SADAO(BaseDAO):
             claimable = id_col.in_(inner.scalar_subquery())
         else:
             model = self.database_model_cls
-            earlier = orm.aliased(model, name="hold_back_earlier")
-            claim_order = _order_keys(order_by) or [id_col.name]
-            blocks_candidate = (
-                select(1)
-                .select_from(earlier)
-                .where(
-                    self._same_group(hold_back, model, earlier),
-                    self._build_filters(hold_back.holds, earlier),
-                    self._sorts_before(earlier, model, hold_back.order),
-                    ~and_(
-                        self._build_filters(criteria, earlier),
-                        self._sorts_before(earlier, model, claim_order),
-                    ),
-                )
-                .exists()
-            )
             candidates = (
-                inner.where(~blocks_candidate)
+                inner.where(~self._blocks_candidate(hold_back, criteria, order_by))
                 .cte("hold_back_candidates")
                 .prefix_with("MATERIALIZED")
             )

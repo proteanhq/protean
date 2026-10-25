@@ -450,8 +450,9 @@ class OutboxProcessor(BaseSubscription):
         # creation, so an invalid key on a row that reaches here is a corrupt or
         # legacy row. It only matters when the broker actually partitions (else
         # the key is ignored during routing); there, abandon it at once —
-        # terminal, no retry — so one bad row can never wedge the outbox behind
-        # it rather than retrying forever.
+        # terminal, no retry — rather than retrying forever. The abandoned row
+        # keeps its key, so it holds that key's later rows until an operator
+        # re-queues it or marks it published; other keys keep flowing.
         #
         # Check ``is not None`` rather than truthiness: ``None`` is the
         # legitimate value for a non-partitioned category and must skip
@@ -722,12 +723,14 @@ class OutboxProcessor(BaseSubscription):
                 self.broker.record_partition(stream_category, message.partition_key)
                 stream_category = f"{stream_category}:{message.partition_key}"
 
-            # Priority lanes only apply to internal processors
+            # Priority lanes only apply to internal processors. The lane comes
+            # from ``OutboxLanes``, read now, so routing puts a row in the same
+            # lane that the claim and ``process_batch`` grouped it by.
+            lanes = OutboxLanes.from_config(self.engine.domain.config)
             if (
                 not self.is_external
-                and self._lanes_enabled
                 and stream_category
-                and message.priority < self._lane_threshold
+                and lanes.is_backfill(message.target_broker, message.priority)
             ):
                 stream_category = f"{stream_category}:{self._backfill_suffix}"
 

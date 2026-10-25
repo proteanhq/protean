@@ -176,7 +176,7 @@ stateDiagram-v2
 
 Cleanup removes an abandoned row only when it has no partition key. An
 abandoned row with a partition key stays in the outbox until someone retries
-or deletes it.
+it or marks it published.
 
 ### Message States
 
@@ -218,8 +218,8 @@ For tuning retry attempts, backoff, and jitter, see the
 table doesn't grow unbounded. Published rows are kept long enough to
 serve as an audit trail; abandoned rows are kept long enough to
 investigate. An abandoned row with a partition key is never purged: it
-holds its key's later rows, so it stays until someone retries or deletes
-it. The retention windows are separately configurable, see [Outbox
+holds its key's later rows, so it stays until someone retries it or
+marks it published. The retention windows are separately configurable, see [Outbox
 Guide: Configure cleanup](../../guides/server/outbox.md#configure-cleanup).
 
 ## Multi-Worker Support

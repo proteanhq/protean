@@ -73,7 +73,7 @@ anyway.
 
 The outbox table ships with the indexes the processor needs, created
 automatically by the commands above: a partial index on the active set
-(`status`, `priority`) for the polling query, a composite unique index on
+(`status`, `priority`, `created_at`, `sequence_number`) for the polling query, a composite unique index on
 (`message_id`, `target_broker`) for idempotency, an index on
 `correlation_id`, and `ix_outbox_hold_back` on (`target_broker`,
 `stream_category`, `partition_key`, `status`) for the check that holds a
@@ -258,11 +258,16 @@ An earlier row holds the later ones while it is pending, in flight, failed or
 abandoned:
 
 - A **failed** row holds its key until its retry is due and it publishes.
+  If it runs out of retries, it becomes abandoned.
 - An **abandoned** row halts its key. None of the key's later rows publish
-  until you re-queue the row (the SQL above) or delete it. Deleting the row
-  drops its event for that broker.
-- When a row fails in the middle of a batch, the processor puts the key's
-  later rows from that batch back to `pending` without publishing them. Their
+  until you re-queue the row (the SQL above) or mark it published, which
+  drops its event for that broker. Do not delete the row: reconciliation at
+  server start can rebuild it as `pending`, and it would then publish after
+  the key's later rows. The
+  [0.19 migration notes](../../reference/migration/v0-19.md#a-partition-key-can-halt)
+  give the SQL for both.
+- When a row fails in the middle of a batch, the processor puts the later
+  rows of its group (same key, stream and lane) from that batch back to `pending` without publishing them. Their
   retry counts do not change.
 
 Other keys, rows without a partition key, and the other priority lane keep

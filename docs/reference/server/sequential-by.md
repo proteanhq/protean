@@ -137,7 +137,8 @@ the priority-lane suffix when a low-priority row also uses the backfill lane:
 Under a broker without the capability the key is carried on the row but not
 applied, so routing falls back to the base category. As a safety backstop, a row
 that somehow reaches publishing with an invalid key is marked `ABANDONED` at once
-rather than retried, so one bad row can never wedge the outbox behind it.
+rather than retried. The row keeps its key, so it halts that key's later rows
+(see the next section), while other keys keep flowing.
 
 ## How the outbox keeps a key in order
 
@@ -152,11 +153,11 @@ rows of its group:
 
 - A **failed** row holds its key until its retry is due and it publishes.
 - An **abandoned** row halts its key. The key's later rows stay in the outbox
-  until an operator re-queues or deletes the row, as described in
+  until an operator re-queues the row or marks it published, as described in
   [the outbox guide](../../guides/server/outbox.md#a-partitioned-key-can-halt).
   Cleanup does not delete abandoned rows that have a partition key.
-- When a row fails mid-batch, the processor puts the key's later rows from that
-  batch back to `pending` without publishing them, and leaves their retry
+- When a row fails mid-batch, the processor puts the later rows of its group
+  (same key, stream and lane) from that batch back to `pending` without publishing them, and leaves their retry
   counts alone.
 
 The halt is scoped to one group. Other keys, the other priority lane, rows

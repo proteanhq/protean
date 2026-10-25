@@ -51,8 +51,10 @@ class HoldBack:
     :param group_by: Column names that must be equal for two rows to share a
         group.
     :param applies: Rows that take part in grouping. It must require every
-        ``group_by`` column to be non-null: SQL never treats two NULLs as equal,
-        but the in-memory adapter does.
+        ``group_by`` column to be non-null. The portable path builds its
+        lookups from a row's values, and a SQL adapter turns ``column=None``
+        into ``IS NULL``, so without that rule rows with a NULL in a
+        ``group_by`` column could share a group there.
     :param holds: Rows that still hold their group (for example, every status
         except "published").
     :param order: Column names, all ascending, that define "earlier" within a
@@ -584,10 +586,13 @@ class BaseDAO(metaclass=ABCMeta):
         candidate is held, and so is every later row of its group in this
         call. A guarded update that affects 0 rows also holds the rest of the
         group. Paging assumes that ``claim_fields`` makes a claimed row stop
-        matching ``criteria``, which no-double-claim already needs. On a large
-        held backlog this costs several queries per call. There is no cap on
-        the pages read, because a cap would let a held group fill every batch
-        and keep other groups from being claimed.
+        matching ``criteria``, which no-double-claim already needs. There is no
+        cap on the pages read, because a cap would let a held group fill every
+        batch and keep other groups from being claimed. Pages come from
+        :meth:`_claim_candidates`. Its default reads held rows too, so a large
+        held backlog costs one page read per ``limit`` held rows on every call.
+        An adapter that can leave held rows out of the page in its query avoids
+        that cost.
 
         :param criteria: A ``Q`` object selecting eligible (claimable) rows.
         :param claim_fields: Attribute values to write on each claimed row.
@@ -611,15 +616,7 @@ class BaseDAO(metaclass=ABCMeta):
         id_name = entity_id_field.field_name
 
         def read_candidates(offset: int) -> list[Any]:
-            # Read candidate entities via the entity-level query API
-            # (``self.query`` returns entities; the low-level ``_filter``
-            # returns raw model objects).
-            candidate_qs = self.query.filter(criteria)
-            if order_by:
-                candidate_qs = candidate_qs.order_by(order_by)
-            return list(
-                candidate_qs.offset(offset).limit(limit).all(with_total=False).items
-            )
+            return self._claim_candidates(criteria, limit, offset, order_by, hold_back)
 
         def try_claim(entity: Any) -> bool:
             # Re-assert the eligibility criteria in the update so a row claimed
@@ -709,6 +706,31 @@ class BaseDAO(metaclass=ABCMeta):
                 claimed_ids.setdefault(group, []).append(identifier)
 
         return claimed
+
+    def _claim_candidates(
+        self,
+        criteria: Q,
+        limit: int,
+        offset: int,
+        order_by: str | list[str] | None,
+        hold_back: HoldBack | None,
+    ) -> list[Any]:
+        """Read one page of claim candidates for the portable :meth:`_claim`.
+
+        Returns up to ``limit`` entities matching ``criteria`` in ``order_by``
+        order, skipping the first ``offset``. An adapter may also leave out
+        rows that ``hold_back`` would hold, so that a held group's backlog is
+        not read page after page. It must not leave out a row that the claim
+        could take. This default ignores ``hold_back``.
+        """
+        # The entity-level query API returns entities; the low-level
+        # ``_filter`` returns raw model objects.
+        candidate_qs = self.query.filter(criteria)
+        if order_by:
+            candidate_qs = candidate_qs.order_by(order_by)
+        return list(
+            candidate_qs.offset(offset).limit(limit).all(with_total=False).items
+        )
 
     def _delete_top(
         self,

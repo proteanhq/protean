@@ -40,6 +40,7 @@ class FailingBroker:
     def __init__(self, fail_ids: set[str]) -> None:
         self.fail_ids = fail_ids
         self.published: list[str] = []
+        self.streams: list[str] = []
 
     def has_capability(self, capability: BrokerCapabilities) -> bool:
         return False
@@ -49,6 +50,7 @@ class FailingBroker:
         if message_id in self.fail_ids:
             raise RuntimeError("broker down")
         self.published.append(message_id)
+        self.streams.append(stream)
         return "broker-msg-id"
 
 
@@ -203,3 +205,76 @@ class TestProcessBatchHoldsBackAfterAFailure:
         row = _stored(outbox_repo, "b")
         assert row.status == OutboxStatus.PROCESSING.value
         assert row.locked_by == "worker-2"
+
+    @pytest.mark.asyncio
+    async def test_a_failed_release_is_logged_and_the_batch_goes_on(
+        self, test_domain, outbox_repo, caplog
+    ):
+        for label, minute in (("a", 0), ("b", 1), ("c", 2)):
+            outbox_repo.add(_row(label, minute))
+        processor = await _processor(test_domain, fail_ids={"a"})
+        batch = await processor.get_next_batch_of_messages()
+        assert [row.message_id for row in batch] == ["a", "b", "c"]
+
+        # "b" is gone when the worker tries to release it, so the release fails.
+        outbox_repo._dao.delete(_stored(outbox_repo, "b"))
+
+        with caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"):
+            successful = await processor.process_batch(batch)
+
+        assert successful == 0
+        [failure] = [
+            r for r in caplog.records if r.getMessage() == "outbox.release_failed"
+        ]
+        assert failure.message_id == "b"
+        [record] = [
+            r for r in caplog.records if r.getMessage() == "outbox.batch_completed"
+        ]
+        assert record.released == 1
+        assert _stored(outbox_repo, "c").status == OutboxStatus.PENDING.value
+
+
+@pytest.mark.database
+class TestProcessBatchWithPriorityLanes:
+    @pytest.fixture(autouse=True)
+    def enable_lanes(self, test_domain):
+        test_domain.config["server"]["priority_lanes"] = {
+            "enabled": True,
+            "threshold": 5,
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_failed_backfill_row_does_not_hold_a_primary_row_of_its_key(
+        self, test_domain, outbox_repo
+    ):
+        outbox_repo.add(_row("backfill", 0, priority=0))
+        outbox_repo.add(_row("primary", 1, priority=10))
+        processor = await _processor(test_domain, fail_ids={"backfill"})
+
+        batch = await processor.get_next_batch_of_messages()
+        assert sorted(row.message_id for row in batch) == ["backfill", "primary"]
+        successful = await processor.process_batch(batch)
+
+        assert successful == 1
+        assert processor.broker.published == ["primary"]
+        assert _stored(outbox_repo, "backfill").status == OutboxStatus.FAILED.value
+
+    @pytest.mark.asyncio
+    async def test_routing_uses_the_lanes_in_config_when_the_row_publishes(
+        self, test_domain, outbox_repo
+    ):
+        test_domain.config["server"]["priority_lanes"] = {"enabled": False}
+        processor = await _processor(test_domain, fail_ids=set())
+        # Lanes turn on after the processor started, so the claim already
+        # groups the row as backfill and routing must agree.
+        test_domain.config["server"]["priority_lanes"] = {
+            "enabled": True,
+            "threshold": 5,
+        }
+        outbox_repo.add(_row("low", 0, priority=0))
+
+        batch = await processor.get_next_batch_of_messages()
+        assert [row.message_id for row in batch] == ["low"]
+        await processor.process_batch(batch)
+
+        assert processor.broker.streams == [f"{CATEGORY}:backfill"]

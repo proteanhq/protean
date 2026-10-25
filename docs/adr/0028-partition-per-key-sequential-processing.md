@@ -172,7 +172,9 @@ publish and would sit failing on the outbox. Validating in the caller's UoW mean
 bad value fails the user's operation immediately and never enters the outbox. As a
 backstop, if an invalid value ever reaches the publish path, the record is marked
 `ABANDONED` at once (the existing terminal state, with an invalid-key reason) rather
-than retried, so one bad record can never wedge the outbox behind it.
+than retried, so it does not fail over and over. The abandoned record keeps its
+key, so that key's later records wait until an operator re-queues it or marks it
+published. Other keys keep flowing.
 
 We reject rather than route a bad key to a default partition. A default partition
 would silently coalesce unrelated keys and quietly break the ordering guarantee
@@ -531,10 +533,10 @@ projector over several aggregates is not ordered across their categories.
 ## Amendment (October 2026): outbox-side ordering
 
 The consumer kept a key's events in publish order, but the outbox did not
-publish them in commit order. The claim sorted by priority alone, so rows of
-equal priority came back in whatever order the database returned them. A failed
-row was retried later while the rows behind it published, and two workers could
-publish one key's rows at the same time. The consumer then applied a key's
+publish them in commit order. The claim sorts rows by priority and then by
+commit order, but it claimed each row on its own. A failed row was retried
+later while the rows behind it published, and two workers could publish one
+key's rows at the same time. The consumer then applied a key's
 events out of commit order.
 
 **Amended decision:** the outbox holds a partitioned row back until every
@@ -542,7 +544,9 @@ earlier row of its group has published.
 
 - **Commit order** is `created_at`, then `sequence_number`, the event's
   position within its Unit of Work commit. The claim orders rows by
-  `-priority`, `created_at`, `sequence_number`, `id`.
+  `-priority`, `created_at`, `sequence_number`, `id`. Rows of one key that
+  commit concurrently are ordered by `created_at`, which is not always the
+  order in which their commits became visible (see the limits below).
 - **The group is the destination stream:** `(target_broker, stream_category,
   partition_key, lane)`. The lane is backfill when priority lanes are enabled,
   the row targets the internal broker, and its priority is below the threshold.
@@ -569,8 +573,9 @@ earlier row of its group has published.
   for the earlier rows of its group.
 - **An abandoned partitioned row halts its key**, matching decision 6 (halt on
   poison) on the consumer side. Cleanup does not delete abandoned rows that
-  have a partition key. An operator re-queues or deletes the row to restart
-  the key.
+  have a partition key. An operator re-queues the row or marks it published
+  to restart the key. Deleting it is unsafe, because startup reconciliation
+  can rebuild it as `pending` behind the key's later rows.
 - **The processor publishes each group's rows in commit order within a batch.**
   When a row fails, the processor puts the group's later rows from that batch
   back to `pending` (`Outbox.release()`), without changing their retry counts.
@@ -590,5 +595,11 @@ in-memory adapter apply it in the portable guarded read-then-update path.
   published.
 - `created_at` comes from the writing host's clock. Clock skew between hosts
   larger than the gap between two commits can swap those commits.
+- A row rebuilt by reconciliation gets the default priority, because the
+  original priority is not stored with the event. With priority lanes on, the
+  rebuilt row can land in the backfill lane while the key's other rows are in
+  the primary lane. The two lanes are separate groups with no order between
+  them, so the rebuilt row is ordered only against the key's other backfill
+  rows.
 - `specs/Outbox.tla` does not model the hold-back yet. `Outbox.release()`
   emits no trace record, the same as the backstop abandon.

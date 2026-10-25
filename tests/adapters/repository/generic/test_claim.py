@@ -287,6 +287,13 @@ def _skip_unless_postgresql(test_domain) -> None:
         pytest.skip("the single-statement claim is PostgreSQL only")
 
 
+def _skip_if_postgresql(test_domain) -> None:
+    dao = test_domain.repository_for(KeyedJob)._dao
+    engine = getattr(getattr(dao, "provider", None), "_engine", None)
+    if engine is not None and engine.dialect.name == "postgresql":
+        pytest.skip("PostgreSQL claims in one statement, with no guarded update")
+
+
 def _claim_keyed(test_domain, hold_back=HOLD_BY_KEY, limit=10):
     dao = test_domain.repository_for(KeyedJob)._dao
     claimed = dao._claim(
@@ -371,6 +378,50 @@ class TestClaimHoldBack:
         repo.add(KeyedJob(id="high-b", seq=2, key="k1", priority=10))
 
         assert _claim_keyed(test_domain, hold_back=hold_back) == ["high-b"]
+
+    def test_a_lost_claim_on_an_earlier_row_holds_the_rest_of_its_key(
+        self, test_domain, monkeypatch
+    ):
+        _skip_if_postgresql(test_domain)
+        _keyed(
+            test_domain,
+            ("a", 0, "k1", "ready"),
+            ("b", 1, "k1", "ready"),
+            ("c", 2, "k2", "ready"),
+        )
+        dao = test_domain.repository_for(KeyedJob)._dao
+        update_all = dao._update_all
+
+        def another_worker_takes_a(criteria, values):
+            # Another worker claims "a" between this call's read and its
+            # guarded update, so the update matches no row.
+            if "'a'" in str(criteria):
+                return 0
+            return update_all(criteria, values)
+
+        monkeypatch.setattr(dao, "_update_all", another_worker_takes_a)
+
+        claimed = dao._claim(
+            Q(status="ready"),
+            {"status": "claimed"},
+            limit=10,
+            order_by=["seq"],
+            hold_back=HOLD_BY_KEY,
+        )
+
+        assert [job.id for job in claimed] == ["c"]
+
+    def test_a_sql_page_leaves_out_the_rows_of_a_held_key(self, test_domain):
+        dao = test_domain.repository_for(KeyedJob)._dao
+        if not hasattr(dao, "provider") or not hasattr(dao.provider, "_engine"):
+            pytest.skip("the page filter is in the SQLAlchemy adapter")
+        _keyed(test_domain, ("k1-0", 0, "k1", "failed"))
+        _keyed(test_domain, *[(f"k1-{n}", n, "k1", "ready") for n in range(1, 6)])
+        _keyed(test_domain, ("k2-0", 10, "k2", "ready"))
+
+        page = dao._claim_candidates(Q(status="ready"), 3, 0, ["seq"], HOLD_BY_KEY)
+
+        assert [job.id for job in page] == ["k2-0"]
 
 
 @pytest.mark.atomic_transactions
