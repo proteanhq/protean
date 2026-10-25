@@ -150,7 +150,7 @@ class Order:
 
     # --- Business methods (validate then raise; @apply handles state) ---
 
-    def add_item(self, product_id, description="", quantity=1, unit_price=0.0):
+    def add_item(self, product_id, description="", quantity=1, unit_price=D("0.00")):
         """Add an item to the order."""
         if self.status != "DRAFT":
             raise ValueError(f"Cannot add items to order in '{self.status}' status")

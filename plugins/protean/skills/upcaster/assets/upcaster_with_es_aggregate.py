@@ -103,7 +103,7 @@ class BankAccount:
     currency = String(default="USD")
 
     @classmethod
-    def open(cls, account_id, owner, initial_balance=0.0, currency="USD"):
+    def open(cls, account_id, owner, initial_balance=D("0.00"), currency="USD"):
         """Factory: open a new bank account."""
         account = cls(
             account_id=account_id,
