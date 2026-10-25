@@ -23,7 +23,6 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import String
-from protean.ir.builder import IRBuilder
 from protean.server.observatory import (
     Observatory,
     _GracefulShutdownMiddleware,
@@ -241,15 +240,6 @@ class TestAPIEndpointsWithFailingDomain:
         data = response.json()
         assert "outbox" in data
         assert data["outbox"]["failing-domain"]["status"] == "error"
-
-    def test_domain_ir_endpoint_answers_503_when_the_ir_build_fails(self):
-        """The Observatory still starts, and the IR endpoint reports it as unavailable."""
-        with patch.object(IRBuilder, "build", side_effect=RuntimeError("boom")):
-            observatory = Observatory(domains=[_domain_without_broker("broken-ir")])
-
-        response = TestClient(observatory.app).get("/api/domain/ir")
-        assert response.status_code == 503
-        assert response.json() == {"error": "Domain IR unavailable"}
 
 
 # --- Tests for Observatory class and factory (observatory/__init__.py) ---

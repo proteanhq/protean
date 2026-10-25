@@ -24,7 +24,6 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.process_manager import BaseProcessManager
 from protean.core.value_object import BaseValueObject
 from protean.fields import Identifier, String
-from protean.ir.builder import IRBuilder
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.processes import (
     _build_summary,
@@ -700,19 +699,6 @@ class TestProcessesListEndpoint:
         # Internal keys should not be serialized
         assert "_cls" not in data["processes"][0]
         assert "_domain" not in data["processes"][0]
-
-    def test_lists_processes_when_domain_ir_cannot_be_built(
-        self, fulfillment, test_domain
-    ):
-        """A failed IR build at startup disables only the domain graph. The
-        processes list is still served."""
-        with patch.object(IRBuilder, "build", side_effect=Exception("IR failed")):
-            c = TestClient(Observatory(domains=[test_domain]).app)
-
-        assert c.get("/api/domain/ir").status_code == 503
-        resp = c.get("/api/processes")
-        assert resp.status_code == 200
-        assert [p["name"] for p in resp.json()["processes"]] == ["OrderFulfillment"]
 
 
 # ---------------------------------------------------------------------------

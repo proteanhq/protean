@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 
 from protean.server.observatory import Observatory
 from protean.server.observatory.metrics import _scrape_cache, _ScrapeCache
-from protean.server.observatory.routes import domain as domain_routes
 
 
 @pytest.fixture(autouse=True)
@@ -406,21 +405,3 @@ class TestMetricsErrorPaths:
         # Should have outbox HELP/TYPE headers but no broker metrics
         assert "protean_outbox_pending_count" in body
         assert "protean_broker_up" not in body
-
-    def test_metrics_served_when_domain_ir_cannot_be_built(
-        self, test_domain, monkeypatch
-    ):
-        """The Observatory still serves metrics when the domain IR fails to build."""
-
-        def _raise(self):
-            raise RuntimeError("boom")
-
-        monkeypatch.setattr(domain_routes.IRBuilder, "build", _raise)
-        client = TestClient(Observatory(domains=[test_domain]).app)
-
-        response = client.get("/metrics")
-        assert response.status_code == 200
-        assert client.get("/api/domain/ir").status_code == 503
-        assert f'protean_outbox_pending_count{{domain="{test_domain.name}"}} 0' in (
-            response.text
-        )

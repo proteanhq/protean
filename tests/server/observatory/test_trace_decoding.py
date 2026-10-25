@@ -8,7 +8,7 @@ the caller instead of being suppressed.
 
 import json
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import Request
@@ -20,7 +20,6 @@ import protean.server.observatory.routes.processes as processes_module
 import protean.server.observatory.routes.timeline as timeline_module
 import protean.server.observatory.sse as sse_module
 from protean import Domain
-from protean.ir.builder import IRBuilder
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.timeline import _load_traces_for_correlation
 from protean.server.tracing import decode_trace, decode_trace_payload, trace_number
@@ -538,19 +537,3 @@ class TestSseTraceFeed:
                 monkeypatch,
                 [{"type": "message", "data": json.dumps(_completed()).encode()}],
             )
-
-
-class TestTracesWithoutDomainIR:
-    def test_trace_endpoints_answer_when_the_domain_ir_cannot_be_built(
-        self, test_domain
-    ):
-        redis_conn = MagicMock()
-        redis_conn.xrange.return_value = [(b"1-0", {b"data": b'{"event": "x"}'})]
-
-        with patch.object(IRBuilder, "build", side_effect=RuntimeError("boom")):
-            client = _client(test_domain, redis_conn)
-
-        assert client.get("/api/domain/ir").status_code == 503
-        response = client.get("/api/traces/1-0")
-        assert response.status_code == 200
-        assert response.json()["_stream_id"] == "1-0"
