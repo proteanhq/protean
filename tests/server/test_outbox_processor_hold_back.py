@@ -5,6 +5,7 @@ When a row of a group fails to publish, the later rows of that group in the
 same batch are released back to ``PENDING`` unpublished, so they wait for it.
 """
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -115,7 +116,7 @@ def _stored(outbox_repo, label: str) -> Outbox:
 class TestProcessBatchHoldsBackAfterAFailure:
     @pytest.mark.asyncio
     async def test_later_rows_of_the_key_are_released_unpublished(
-        self, test_domain, outbox_repo
+        self, test_domain, outbox_repo, caplog
     ):
         for label, minute in (("a", 0), ("b", 1), ("c", 2)):
             outbox_repo.add(_row(label, minute))
@@ -124,9 +125,19 @@ class TestProcessBatchHoldsBackAfterAFailure:
         batch = await processor.get_next_batch_of_messages()
         assert [row.message_id for row in batch] == ["a", "b", "c"]
 
-        successful = await processor.process_batch(batch)
+        with caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"):
+            successful = await processor.process_batch(batch)
 
         assert successful == 0
+        [record] = [
+            r for r in caplog.records if r.getMessage() == "outbox.batch_completed"
+        ]
+        assert (record.total, record.successful, record.failed, record.released) == (
+            3,
+            0,
+            1,
+            2,
+        )
         assert processor.broker.published == []
         assert _stored(outbox_repo, "a").status == OutboxStatus.FAILED.value
         for label in ("b", "c"):

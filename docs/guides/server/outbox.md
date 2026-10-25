@@ -74,8 +74,10 @@ anyway.
 The outbox table ships with the indexes the processor needs, created
 automatically by the commands above: a partial index on the active set
 (`status`, `priority`) for the polling query, a composite unique index on
-(`message_id`, `target_broker`) for idempotency, and an index on
-`correlation_id`. The unique index is composite because a single event is
+(`message_id`, `target_broker`) for idempotency, an index on
+`correlation_id`, and `ix_outbox_hold_back` on (`target_broker`,
+`stream_category`, `partition_key`, `status`) for the check that holds a
+partition key's later rows. The unique index is composite because a single event is
 dual-written once per target broker (the internal broker plus every external
 broker), all rows sharing one `message_id` and differing only by
 `target_broker`, so `message_id` is not unique on its own across those
@@ -348,8 +350,8 @@ remains, are not rebuilt. If the event's `partition_key` can no longer be
 computed, every rebuilt row is saved as abandoned and the event is not sent.
 
 Cleanup deletes delivered rows after `published_retention_hours` and abandoned
-rows after `abandoned_retention_hours`. A deleted row looks the same as a row
-lost in a crash. So reconciliation skips events older than the shorter of the
+rows without a partition key after `abandoned_retention_hours`. A deleted row
+looks the same as a row lost in a crash. So reconciliation skips events older than the shorter of the
 two retentions, which keeps a restart from sending old events again. An event
 lost in a crash and left unrepaired for longer than that is not repaired.
 

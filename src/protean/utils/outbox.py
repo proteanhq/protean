@@ -1187,7 +1187,9 @@ class OutboxRepository(BaseRepository):
         """Clean up old published and abandoned messages based on retention periods.
 
         This method cleans up both published and abandoned messages that are older
-        than their respective retention periods.
+        than their respective retention periods. Abandoned messages with a
+        partition key are kept whatever their age, as in
+        ``cleanup_old_abandoned``.
 
         Args:
             published_retention_hours: Age in hours after which published messages should be cleaned up (default: 168 = 7 days)
@@ -1425,7 +1427,8 @@ def reconcile_outbox(
     not created again.
 
     Cleanup deletes published rows after ``outbox.cleanup.published_retention_hours``
-    and abandoned rows after ``outbox.cleanup.abandoned_retention_hours``. A
+    and abandoned rows without a partition key after
+    ``outbox.cleanup.abandoned_retention_hours``. A
     deleted row cannot be told apart from one lost in a crash, so events older
     than the shorter of the two retentions are skipped. Otherwise a restart
     after cleanup would send those events again. An event lost in a crash and
@@ -1483,9 +1486,9 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     # newest message overall may be foreign, a command, or a transition event.
     # None of those ever get a row, so a missing row for one of them does not
     # mean the last commit crashed.
-    # Cleanup deletes delivered and abandoned rows once they pass their
-    # retention, and a deleted row looks the same as one lost in a crash. An
-    # event is never older than its row's ``published_at`` or
+    # Cleanup deletes delivered rows and abandoned rows without a partition key
+    # once they pass their retention, and a deleted row looks the same as one
+    # lost in a crash. An event is never older than its row's ``published_at`` or
     # ``last_processed_at``, so skipping events older than the shorter
     # retention skips every row cleanup could have deleted.
     cutoff = _cleanup_cutoff(domain, outbox_config)

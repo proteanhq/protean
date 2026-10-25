@@ -1,5 +1,4 @@
 from protean import Domain
-from protean.utils.outbox import OutboxStatus
 
 domain = Domain(
     name="Shop",
@@ -8,6 +7,8 @@ domain = Domain(
 
 
 # --8<-- [start:fill]
+from protean.utils.outbox import OutboxStatus
+
 UNPUBLISHED = [
     OutboxStatus.PENDING.value,
     OutboxStatus.PROCESSING.value,

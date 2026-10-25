@@ -5,8 +5,8 @@
 lane)``. A grouped row is claimed only when every earlier row of its group is
 published or claimed in the same call (ADR-0028, outbox-side ordering).
 
-Each test inserts the later row first, so a claim that ignored the group would
-still return it.
+Where a test seeds both rows at once, it inserts the later row first, so a
+claim that ignored the group would still return it.
 
 Marked ``transactional`` so the suite runs on the in-memory adapter and on every
 SQL database the test matrix covers.
