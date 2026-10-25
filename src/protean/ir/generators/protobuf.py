@@ -14,17 +14,22 @@ Usage::
 
 Conventions:
 
-- Each element becomes a proto3 ``message`` in its own file. When the caller
+- Each element's file holds its own proto3 ``message``. When the caller
   passes ``import_path`` (the schema writer does), a file that references a
   value object or entity imports that element's file and names the type by its
   full name, ``.<package>.<Name>``. The leading dot makes ``protoc`` resolve
   the name from the root, so a package such as ``a.a.a`` cannot shadow it.
-- Without ``import_path``, or for a target the lookup has no file for, the
-  referenced value objects and entities become sibling messages in the same
-  file, so a single file still compiles on its own.
+- With ``import_path``, a target the lookup has no file for is defined as a
+  nested message inside the file's main message. Its full name then includes
+  the main message's name, so two files in one package never define it twice.
+- Without ``import_path``, the referenced value objects and entities become
+  sibling messages in the same file, so a single file still compiles on its
+  own.
 - Optional fields use the proto3 ``optional`` label (explicit presence);
   list / has-many / value-object-list fields use ``repeated``.
-- Date/DateTime map to the well-known ``google.protobuf.Timestamp``.
+- Date/DateTime map to the well-known ``google.protobuf.Timestamp``, written
+  ``.google.protobuf.Timestamp`` so a package with a ``google`` part cannot
+  shadow it.
 - **Field numbers are assigned 1..N in sorted field-name order.** This is
   deterministic, so re-generating the same schema always yields the same
   numbers. (Adding a new field can shift the numbers of alphabetically-later
@@ -41,7 +46,7 @@ from typing import Any
 from protean.ir.generators.base import module_path, short_name
 from protean.ir.generators.schema import _build_flat_elements, iter_data_elements
 
-_TIMESTAMP = "google.protobuf.Timestamp"
+_TIMESTAMP = ".google.protobuf.Timestamp"
 
 # IR scalar type → proto3 scalar type. Integers use int64 and floats double to
 # avoid silently narrowing unbounded Python numbers. Both Date and DateTime map
@@ -148,8 +153,9 @@ def generate_proto_schema(
             ``.proto`` file that defines it, relative to the ``schemas/`` root.
             When it returns a path, the file imports it and names the type
             ``.<package>.<Name>`` instead of emitting a copy of the message.
-            When it returns ``None``, or when no lookup is given, the target is
-            emitted as a sibling message in this file.
+            When it returns ``None`` or an empty string, the target is defined
+            as a nested message inside this file's main message. When no
+            lookup is given, every target is emitted as a sibling message.
     """
     flat = all_elements or {}
     own_fqn = element.get("fqn", "")
@@ -162,25 +168,22 @@ def generate_proto_schema(
         ref_name = short_name(target_fqn)
         if not ref_name:
             return "map<string, string>"
-        # A self-reference names the message defined in this very file.
-        path = (
-            import_path(target_fqn)
-            if import_path is not None and target_fqn != own_fqn
-            else None
-        )
-        if path is None:
+        # A self-reference names the message defined in this very file. An
+        # element without an fqn can only be matched by its name.
+        is_self = target_fqn == own_fqn if own_fqn else ref_name == name
+        path = import_path(target_fqn) if import_path and not is_self else None
+        if not path:
             referenced.add(target_fqn)
             return ref_name
         imports.add(path)
         return f".{module_path(target_fqn) or 'protean'}.{ref_name}"
 
     referenced: set[str] = set()
-    message_blocks: list[list[str]] = [
-        _message_body(name, element.get("fields", {}), resolve, referenced)
-    ]
+    main_block = _message_body(name, element.get("fields", {}), resolve, referenced)
 
     # Emit referenced value-object / entity messages (deterministic order,
     # cycle-safe via a seen set).
+    ref_blocks: list[list[str]] = []
     seen: set[str] = set()
     queue = sorted(referenced)
     while queue:
@@ -191,10 +194,23 @@ def generate_proto_schema(
         seen.add(ref_name)
         target = flat.get(target_fqn, {})
         nested_refs: set[str] = set()
-        message_blocks.append(
+        ref_blocks.append(
             _message_body(ref_name, target.get("fields", {}), resolve, nested_refs)
         )
         queue.extend(sorted(nested_refs))
+
+    if import_path is not None and ref_blocks:
+        # Nested inside the main message, a target with no file of its own gets
+        # a name scoped to this message. As a sibling it would be defined again
+        # by every other file in the package that uses it.
+        nested = [[f"  {line}" for line in block] for block in ref_blocks]
+        main_block = main_block[:-1]
+        for block in nested:
+            main_block.extend(["", *block])
+        main_block.append("}")
+        message_blocks = [main_block]
+    else:
+        message_blocks = [main_block, *ref_blocks]
 
     if any(_TIMESTAMP in line for block in message_blocks for line in block):
         imports.add("google/protobuf/timestamp.proto")

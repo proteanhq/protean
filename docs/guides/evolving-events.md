@@ -239,7 +239,7 @@ message OrderPlaced {
   optional string currency = 2;
   string customer = 3;
   string order_id = 4;
-  optional google.protobuf.Timestamp placed_at = 5;
+  optional .google.protobuf.Timestamp placed_at = 5;
 }
 ```
 
