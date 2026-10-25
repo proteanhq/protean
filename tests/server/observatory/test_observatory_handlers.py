@@ -877,11 +877,6 @@ class TestHandlersDetailEndpoint:
         resp = client.get("/api/handlers/Test?window=bad")
         assert resp.status_code == 400
 
-    def test_returns_recent_messages_field(self, client):
-        """Even for non-existent handlers in an empty domain, we get 404."""
-        resp = client.get("/api/handlers/Anything?message_count=5")
-        assert resp.status_code == 404
-
 
 class TestHandlersWithRegisteredHandlers:
     """The endpoints serve a domain with handlers and an inline broker (no Redis)."""

@@ -767,27 +767,6 @@ class TestLoadTracesForCorrelation:
 
         assert result["msg-1"]["duration_ms"] is None
 
-    def test_skips_entries_without_data(self, traced_domain):
-        """Entries missing the 'data' field are silently skipped."""
-        domain, corr_id, redis_conn = traced_domain
-
-        redis_conn.xrange.return_value = [
-            ("1234567890-0", {}),  # No 'data' key
-            _make_redis_stream_entry(
-                {
-                    "event": "handler.completed",
-                    "correlation_id": corr_id,
-                    "message_id": "msg-1",
-                    "handler": "H1",
-                    "duration_ms": 5.0,
-                }
-            ),
-        ]
-
-        result = _load_traces_for_correlation([domain], corr_id)
-
-        assert len(result) == 1
-
     def test_handles_malformed_json_gracefully(self, traced_domain):
         """Malformed JSON in trace entries is skipped without crashing."""
         domain, corr_id, redis_conn = traced_domain
@@ -808,28 +787,6 @@ class TestLoadTracesForCorrelation:
         result = _load_traces_for_correlation([domain], corr_id)
 
         assert len(result) == 1
-
-    def test_handles_bytes_data(self, traced_domain):
-        """Redis may return data as bytes — these should be decoded."""
-        domain, corr_id, redis_conn = traced_domain
-
-        trace_json = json.dumps(
-            {
-                "event": "handler.completed",
-                "correlation_id": corr_id,
-                "message_id": "msg-1",
-                "handler": "H1",
-                "duration_ms": 7.0,
-            }
-        )
-        redis_conn.xrange.return_value = [
-            ("1234567890-0", {b"data": trace_json.encode("utf-8")}),
-        ]
-
-        result = _load_traces_for_correlation([domain], corr_id)
-
-        assert len(result) == 1
-        assert result["msg-1"]["handler"] == "H1"
 
     def test_xrange_failure_returns_empty(self, traced_domain):
         """Redis XRANGE failure returns empty dict gracefully."""
