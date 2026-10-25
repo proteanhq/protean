@@ -288,10 +288,8 @@ does. The cost is `1 + N` round trips instead of one. When a partition key's
 rows are held back (see
 [`sequential_by`](../../server/sequential-by.md#how-the-outbox-keeps-a-key-in-order)),
 each candidate row that has both a partition key and a stream category adds
-one more query, which checks
-for an earlier row of its key. A candidate behind a row of its key that is
-already held is skipped without that query. The `SELECT` leaves out rows that are held, so a halted key's backlog
-adds no queries.
+one more query, which checks for an earlier row of its key. The `SELECT`
+leaves out rows that are held, so a halted key's backlog adds no queries.
 
 The bounded delete behind `_delete_top` takes the portable path for the same
 kind of reason: MySQL rejects a subquery that reads the table being deleted

@@ -271,14 +271,32 @@ HOLD_BY_KEY = HoldBack(
     applies=Q(key__isnull=False),
     holds=Q(status__in=["ready", "failed", "claimed"]),
     order=("seq",),
+    lane_of=lambda row: None if row.key is None else 0,
+)
+
+# The same grouping, split into a high-priority lane and a low-priority one.
+HOLD_BY_KEY_AND_LANE = HoldBack(
+    group_by=HOLD_BY_KEY.group_by,
+    applies=HOLD_BY_KEY.applies,
+    holds=HOLD_BY_KEY.holds,
+    order=HOLD_BY_KEY.order,
+    lane_of=lambda row: None if row.key is None else int(row.priority < 5),
+    lanes=(Q(priority__gte=5), Q(priority__lt=5)),
 )
 
 
-def _keyed(test_domain, *rows: tuple[str, int, str | None, str]) -> None:
-    """Add ``(label, seq, key, status)`` rows, using the label as the id."""
+def _row(
+    label: str, seq: int, key: str | None, status: str = "ready", priority: int = 0
+) -> tuple[str, int, str | None, str, int]:
+    return (label, seq, key, status, priority)
+
+
+def _keyed(test_domain, *rows: tuple[str, int, str | None, str, int]) -> None:
+    """Add ``(label, seq, key, status, priority)`` rows, using the label as
+    the id."""
     repo = test_domain.repository_for(KeyedJob)
-    for label, seq, key, status in rows:
-        repo.add(KeyedJob(id=label, seq=seq, key=key, status=status))
+    for label, seq, key, status, priority in rows:
+        repo.add(KeyedJob(id=label, seq=seq, key=key, status=status, priority=priority))
 
 
 def _skip_unless_postgresql(test_domain) -> None:
@@ -300,111 +318,220 @@ def _claim_keyed(test_domain, hold_back=HOLD_BY_KEY, limit=10):
         Q(status="ready"),
         {"status": "claimed"},
         limit=limit,
-        order_by=["seq"],
+        order_by=["-priority", "seq"],
         hold_back=hold_back,
     )
     return [job.id for job in claimed]
+
+
+def _key_rows(key: str, seqs: range, prefix: str | None = None) -> list[tuple]:
+    return [_row(f"{prefix or key}-{n}", n, key) for n in seqs]
+
+
+# One case per cell of what the hold-back claim decides over: whether the
+# candidate is grouped, how an earlier row relates to it (same key, another
+# key, a key that differs only in case, another lane), that row's state
+# (claimable now, unfinished outside the criteria, claimed by another call,
+# finished), whether claim order and commit order agree, and how the limit
+# compares with the group and with the default query limit of 100. Rows are
+# ``(label, seq, key, status, priority)``, and the claim takes "ready" rows in
+# ``-priority, seq`` order.
+HOLD_BACK_CASES = [
+    pytest.param(
+        [_row("b", 1, "k1"), _row("a", 0, "k1", "failed")],
+        None,
+        10,
+        ["b"],
+        id="no-hold-back-an-unfinished-earlier-row-holds-nothing",
+    ),
+    pytest.param(
+        [_row("a", 0, None, "failed"), _row("b", 1, None)],
+        HOLD_BY_KEY,
+        10,
+        ["b"],
+        id="ungrouped-an-unfinished-earlier-row-holds-nothing",
+    ),
+    pytest.param(
+        [_row("a", 0, "k1")],
+        HOLD_BY_KEY,
+        10,
+        ["a"],
+        id="grouped-with-no-earlier-row",
+    ),
+    pytest.param(
+        [_row("c", 2, "k1"), _row("b", 1, "k1"), _row("a", 0, "k1")],
+        HOLD_BY_KEY,
+        10,
+        ["a", "b", "c"],
+        id="earlier-claimable-rows-are-claimed-together",
+    ),
+    pytest.param(
+        [_row("b", 1, "k1"), _row("a", 0, "k1", "failed")],
+        HOLD_BY_KEY,
+        10,
+        [],
+        id="earlier-row-outside-the-criteria-holds",
+    ),
+    pytest.param(
+        [_row("a", 0, "k1", "claimed"), _row("b", 1, "k1")],
+        HOLD_BY_KEY,
+        10,
+        [],
+        id="earlier-row-claimed-by-another-call-holds",
+    ),
+    pytest.param(
+        [_row("b", 1, "k1"), _row("a", 0, "k1", "done")],
+        HOLD_BY_KEY,
+        10,
+        ["b"],
+        id="earlier-finished-row-holds-nothing",
+    ),
+    pytest.param(
+        [_row("a", 0, "k1"), _row("b", 1, "k1", "failed"), _row("c", 2, "k1")],
+        HOLD_BY_KEY,
+        10,
+        ["a"],
+        id="unfinished-row-in-the-middle-holds-the-rest",
+    ),
+    pytest.param(
+        [_row("a", 0, "k1", priority=1), _row("b", 1, "k1", priority=2)],
+        HOLD_BY_KEY,
+        10,
+        ["a"],
+        id="earlier-row-with-lower-priority-goes-first",
+    ),
+    pytest.param(
+        [_row("a", 0, "k1", priority=2), _row("b", 1, "k1", priority=1)],
+        HOLD_BY_KEY,
+        10,
+        ["a", "b"],
+        id="earlier-row-with-higher-priority-goes-first",
+    ),
+    pytest.param(
+        [
+            _row("k1-b", 1, "k1"),
+            _row("k1-a", 0, "k1", "failed"),
+            _row("k2-a", 2, "k2"),
+            _row("none-a", 3, None),
+        ],
+        HOLD_BY_KEY,
+        10,
+        ["k2-a", "none-a"],
+        id="other-keys-and-ungrouped-rows-keep-flowing",
+    ),
+    pytest.param(
+        [_row("upper-a", 0, "ACME", "failed"), _row("lower-a", 1, "acme")],
+        HOLD_BY_KEY,
+        10,
+        ["lower-a"],
+        id="keys-that-differ-only-in-case-are-separate",
+    ),
+    pytest.param(
+        [
+            _row("low-a", 0, "k1", "failed"),
+            _row("low-b", 1, "k1"),
+            _row("high-b", 2, "k1", priority=10),
+        ],
+        HOLD_BY_KEY_AND_LANE,
+        10,
+        ["high-b"],
+        id="rows-in-different-lanes-are-separate",
+    ),
+    pytest.param(
+        [_row("high-a", 0, "k1", "failed", 10), _row("high-b", 1, "k1", priority=7)],
+        HOLD_BY_KEY_AND_LANE,
+        10,
+        [],
+        id="rows-in-the-same-lane-hold",
+    ),
+    pytest.param(
+        [_row("a", 0, "k1"), _row("b", 1, "k1"), _row("c", 2, "k1")],
+        HOLD_BY_KEY,
+        2,
+        ["a", "b"],
+        id="limit-smaller-than-the-group",
+    ),
+    pytest.param(
+        [
+            _row("k1-0", 0, "k1", "failed"),
+            *_key_rows("k1", range(1, 6)),
+            *_key_rows("k2", range(10, 12)),
+        ],
+        HOLD_BY_KEY,
+        2,
+        ["k2-10", "k2-11"],
+        id="held-backlog-past-the-limit-does-not-starve-other-keys",
+    ),
+    pytest.param(
+        [_row("k1-0", 0, "k1", "failed"), *_key_rows("k1", range(1, 102))],
+        HOLD_BY_KEY,
+        101,
+        [],
+        id="page-past-the-default-query-limit-is-all-held",
+    ),
+    pytest.param(
+        _key_rows("k1", range(120)),
+        HOLD_BY_KEY,
+        120,
+        [f"k1-{n}" for n in range(120)],
+        id="claims-past-the-default-query-limit-in-one-group",
+    ),
+]
 
 
 @pytest.mark.transactional
 class TestClaimHoldBack:
     """``_claim`` with ``hold_back`` on any transactional adapter."""
 
-    def test_without_hold_back_an_unfinished_earlier_row_holds_nothing(
-        self, test_domain
+    @pytest.mark.parametrize(
+        ("rows", "hold_back", "limit", "expected"), HOLD_BACK_CASES
+    )
+    def test_claim_decides_each_case(
+        self, test_domain, rows, hold_back, limit, expected
     ):
-        _keyed(test_domain, ("b", 1, "k1", "ready"), ("a", 0, "k1", "failed"))
+        _keyed(test_domain, *rows)
 
-        assert _claim_keyed(test_domain, hold_back=None) == ["b"]
-
-    def test_an_earlier_row_outside_the_criteria_holds_the_later_row(self, test_domain):
-        _keyed(test_domain, ("b", 1, "k1", "ready"), ("a", 0, "k1", "failed"))
-
-        assert _claim_keyed(test_domain) == []
-
-    def test_a_finished_earlier_row_holds_nothing(self, test_domain):
-        _keyed(test_domain, ("b", 1, "k1", "ready"), ("a", 0, "k1", "done"))
-
-        assert _claim_keyed(test_domain) == ["b"]
-
-    def test_rows_of_one_key_are_claimed_together(self, test_domain):
-        _keyed(
-            test_domain,
-            ("c", 2, "k1", "ready"),
-            ("b", 1, "k1", "ready"),
-            ("a", 0, "k1", "ready"),
-        )
-
-        assert _claim_keyed(test_domain) == ["a", "b", "c"]
+        assert _claim_keyed(test_domain, hold_back=hold_back, limit=limit) == expected
 
     def test_a_row_claimed_by_an_earlier_call_holds_the_later_row(self, test_domain):
-        _keyed(test_domain, ("a", 0, "k1", "ready"))
+        _keyed(test_domain, _row("a", 0, "k1"))
         assert _claim_keyed(test_domain) == ["a"]
-        _keyed(test_domain, ("b", 1, "k1", "ready"))
+        _keyed(test_domain, _row("b", 1, "k1"))
 
         assert _claim_keyed(test_domain) == []
 
-    def test_other_keys_and_ungrouped_rows_keep_flowing(self, test_domain):
-        _keyed(
-            test_domain,
-            ("k1-b", 1, "k1", "ready"),
-            ("k1-a", 0, "k1", "failed"),
-            ("k2-a", 2, "k2", "ready"),
-            ("none-a", 3, None, "ready"),
-        )
+    def test_no_statement_binds_a_parameter_per_claimed_row(self, test_domain):
+        # SQL Server allows 2,100 bound parameters in one statement, so a claim
+        # that binds one per row fails on a large batch.
+        dao = test_domain.repository_for(KeyedJob)._dao
+        engine = getattr(getattr(dao, "provider", None), "_engine", None)
+        if engine is None:
+            pytest.skip("only a SQL adapter binds parameters")
+        # SQLAlchemy is an optional extra, absent when only memory is tested.
+        from sqlalchemy import event
 
-        assert _claim_keyed(test_domain) == ["k2-a", "none-a"]
+        _keyed(test_domain, *_key_rows("k1", range(150)))
+        _keyed(test_domain, *[_row(f"none-{n}", 200 + n, None) for n in range(150)])
+        bound: list[int] = []
 
-    def test_a_held_backlog_larger_than_the_limit_does_not_starve_other_keys(
-        self, test_domain
-    ):
-        _keyed(test_domain, ("k1-0", 0, "k1", "failed"))
-        _keyed(test_domain, *[(f"k1-{n}", n, "k1", "ready") for n in range(1, 6)])
-        _keyed(test_domain, *[(f"k2-{n}", 10 + n, "k2", "ready") for n in range(2)])
+        def count_parameters(conn, cursor, statement, parameters, context, many):
+            rows = parameters if many else [parameters]
+            bound.extend(len(row) for row in rows)
 
-        assert _claim_keyed(test_domain, limit=2) == ["k2-0", "k2-1"]
+        event.listen(engine, "before_cursor_execute", count_parameters)
+        try:
+            claimed = _claim_keyed(test_domain, limit=300)
+        finally:
+            event.remove(engine, "before_cursor_execute", count_parameters)
 
-    def test_keys_that_differ_only_in_case_never_hold_each_other(self, test_domain):
-        _keyed(
-            test_domain,
-            ("upper-a", 0, "ACME", "failed"),
-            ("lower-a", 1, "acme", "ready"),
-        )
-
-        assert _claim_keyed(test_domain) == ["lower-a"]
-
-    def test_a_page_larger_than_the_default_query_limit_is_all_held(self, test_domain):
-        # 101 is past the aggregate's default query limit of 100.
-        _keyed(test_domain, ("k1-0", 0, "k1", "failed"))
-        _keyed(test_domain, *[(f"k1-{n}", n, "k1", "ready") for n in range(1, 102)])
-
-        assert _claim_keyed(test_domain, limit=101) == []
-
-    def test_rows_in_different_lanes_never_hold_each_other(self, test_domain):
-        hold_back = HoldBack(
-            group_by=HOLD_BY_KEY.group_by,
-            applies=HOLD_BY_KEY.applies,
-            holds=HOLD_BY_KEY.holds,
-            order=HOLD_BY_KEY.order,
-            lanes=(Q(priority__gte=5), Q(priority__lt=5)),
-        )
-        repo = test_domain.repository_for(KeyedJob)
-        repo.add(KeyedJob(id="low-a", seq=0, key="k1", priority=0, status="failed"))
-        repo.add(KeyedJob(id="low-b", seq=1, key="k1", priority=0))
-        repo.add(KeyedJob(id="high-b", seq=2, key="k1", priority=10))
-
-        assert _claim_keyed(test_domain, hold_back=hold_back) == ["high-b"]
+        assert len(claimed) == 300
+        assert max(bound) < 50
 
     def test_a_lost_claim_on_an_earlier_row_holds_the_rest_of_its_key(
         self, test_domain, monkeypatch
     ):
         _skip_if_postgresql(test_domain)
-        _keyed(
-            test_domain,
-            ("a", 0, "k1", "ready"),
-            ("b", 1, "k1", "ready"),
-            ("c", 2, "k2", "ready"),
-        )
+        _keyed(test_domain, _row("a", 0, "k1"), _row("b", 1, "k1"), _row("c", 2, "k2"))
         dao = test_domain.repository_for(KeyedJob)._dao
         update_all = dao._update_all
 
@@ -431,9 +558,9 @@ class TestClaimHoldBack:
         dao = test_domain.repository_for(KeyedJob)._dao
         if not hasattr(dao, "provider") or not hasattr(dao.provider, "_engine"):
             pytest.skip("the page filter is in the SQLAlchemy adapter")
-        _keyed(test_domain, ("k1-0", 0, "k1", "failed"))
-        _keyed(test_domain, *[(f"k1-{n}", n, "k1", "ready") for n in range(1, 6)])
-        _keyed(test_domain, ("k2-0", 10, "k2", "ready"))
+        _keyed(test_domain, _row("k1-0", 0, "k1", "failed"))
+        _keyed(test_domain, *_key_rows("k1", range(1, 6)))
+        _keyed(test_domain, _row("k2-0", 10, "k2"))
 
         page = dao._claim_candidates(Q(status="ready"), 3, 0, ["seq"], HOLD_BY_KEY)
 
@@ -453,7 +580,7 @@ class TestClaimHoldBackUnderContention:
         self, test_domain
     ):
         _skip_unless_postgresql(test_domain)
-        _keyed(test_domain, ("a", 0, "k1", "ready"), ("b", 1, "k1", "ready"))
+        _keyed(test_domain, _row("a", 0, "k1"), _row("b", 1, "k1"))
         dao = test_domain.repository_for(KeyedJob)._dao
 
         # Worker 1 locks "a" in an open transaction on its own connection.
@@ -490,7 +617,7 @@ class TestClaimHoldBackUnderContention:
         _keyed(
             test_domain,
             *[
-                (f"{key}-{n}", n * len(keys) + i, key, "ready")
+                _row(f"{key}-{n}", n * len(keys) + i, key)
                 for n in range(per_key)
                 for i, key in enumerate(keys)
             ],

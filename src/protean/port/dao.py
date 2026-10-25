@@ -1,7 +1,8 @@
 import datetime
 import logging
 from abc import ABCMeta, abstractmethod
-from collections.abc import Iterator, Sequence
+from collections import Counter
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, get_args
@@ -56,10 +57,18 @@ class HoldBack:
         into ``IS NULL``, so without that rule rows with a NULL in a
         ``group_by`` column could share a group there.
     :param holds: Rows that still hold their group (for example, every status
-        except "published").
+        except "published"). It must match every row the claim's criteria
+        match, and every row once ``claim_fields`` are applied to it: a row
+        that can still be claimed, or is claimed and not finished, holds the
+        rows behind it.
     :param order: Column names, all ascending, that define "earlier" within a
         group. NULL sorts last, as in ``_claim``'s ``order_by``. The last key
         must be unique so that the order is total.
+    :param lane_of: The same split as ``applies`` and ``lanes``, computed from
+        an entity's own values: ``None`` when the row does not match
+        ``applies``, else the index of its entry in ``lanes`` (``0`` when
+        ``lanes`` is empty). The portable claim reads a candidate's group with
+        it instead of asking the database.
     :param lanes: Disjoint ``Q`` objects that together cover every grouped row.
         Rows in different lanes never share a group. Empty means one lane.
     """
@@ -68,6 +77,7 @@ class HoldBack:
     applies: Q
     holds: Q
     order: tuple[str, ...]
+    lane_of: Callable[[Any], int | None]
     lanes: tuple[Q, ...] = ()
 
 
@@ -75,11 +85,6 @@ def _lookup(key: str, value: Any) -> Q:
     """``Q`` for one lookup whose key is only known at run time."""
     kwargs: dict[str, Any] = {key: value}
     return Q(**kwargs)
-
-
-def _commit_order_key(entity: Any, order: Sequence[str]) -> tuple[Any, ...]:
-    """Python sort key for ``HoldBack.order``, with NULL last."""
-    return tuple((getattr(entity, key) is None, getattr(entity, key)) for key in order)
 
 
 def _earlier_than(entity: Any, order: Sequence[str]) -> Q:
@@ -581,11 +586,14 @@ class BaseDAO(metaclass=ABCMeta):
         **Hold-back on the portable default.** Candidates are read a page of
         ``limit`` rows at a time, and reading goes on until ``limit`` rows are
         claimed or no candidates remain, so held rows never use up the batch.
-        For each grouped candidate, one query asks whether an earlier holding
-        row of its group is missing from this call's claims. If one is, the
-        candidate is held, and so is every later row of its group in this
-        call. A guarded update that affects 0 rows also holds the rest of the
-        group. Paging assumes that ``claim_fields`` makes a claimed row stop
+        ``hold_back.lane_of`` gives each candidate's group from its own values.
+        For a grouped candidate, one query reads up to ``k + 1`` earlier
+        holding rows of its group, where ``k`` is how many rows of the group
+        this call has claimed. Those ``k`` rows are all earlier than the
+        candidate and still hold, so a ``k + 1``-th row is one this call has
+        not claimed, and the candidate is held. The query binds the same
+        number of parameters however large the batch is. A row lost to another
+        worker's claim holds the rest of its group the same way. Paging assumes that ``claim_fields`` makes a claimed row stop
         matching ``criteria``, which no-double-claim already needs. There is no
         cap on the pages read, because a cap would let a held group fill every
         batch and keep other groups from being claimed. Pages come from
@@ -632,12 +640,10 @@ class BaseDAO(metaclass=ABCMeta):
             return [entity for entity in read_candidates(0) if try_claim(entity)]
 
         claimed: list[BaseEntity] = []
-        claimed_ids: dict[tuple[Any, ...], list[Any]] = {}
-        # The earliest held row seen so far in each group. A later row of that
-        # group is held too, with no query needed. An earlier one still gets
-        # checked: candidates come in ``order_by`` order, not commit order, so
-        # a group's earlier low-priority row can come after a held row.
-        held_from: dict[tuple[Any, ...], tuple[Any, ...]] = {}
+        # A row is claimed only after every earlier holding row of its group
+        # is, so the rows a group has claimed here all sort before any of its
+        # rows still to be checked.
+        claimed_in_group: Counter[tuple[Any, ...]] = Counter()
         lanes: tuple[Q, ...] = hold_back.lanes or (Q(),)
         rows_read = 0
         while len(claimed) < limit:
@@ -646,45 +652,19 @@ class BaseDAO(metaclass=ABCMeta):
                 break
             rows_read += len(page)
 
-            page_ids = [getattr(entity, id_name) for entity in page]
-            # Keyed by ``str``: a record from ``only()`` carries the column's
-            # raw value (an ``int`` for an integer column), while the entity
-            # holds its field's type (a ``str`` for ``Auto``).
-            lane_of: dict[str, int] = {}
-            for index, lane in enumerate(lanes):
-                in_lane = (
-                    self.query.filter(
-                        _lookup(f"{id_name}__in", page_ids) & hold_back.applies & lane
-                    )
-                    .only(id_name)
-                    .limit(len(page_ids))
-                    .all(with_total=False)
-                    .items
-                )
-                for record in in_lane:
-                    lane_of.setdefault(str(getattr(record, id_name)), index)
-
             for entity in page:
                 if len(claimed) >= limit:
                     break
-                identifier = getattr(entity, id_name)
-                lane_index = lane_of.get(str(identifier))
+                lane_index = hold_back.lane_of(entity)
                 if lane_index is None:
                     if try_claim(entity):
                         claimed.append(entity)
                     continue
 
-                group = (
-                    *(getattr(entity, column) for column in hold_back.group_by),
-                    lane_index,
-                )
-                position = _commit_order_key(entity, hold_back.order)
-                if group in held_from and position > held_from[group]:
-                    continue
-
                 same_group: dict[str, Any] = {
                     column: getattr(entity, column) for column in hold_back.group_by
                 }
+                group = (*same_group.values(), lane_index)
                 earlier = (
                     Q(**same_group)
                     & hold_back.applies
@@ -692,22 +672,19 @@ class BaseDAO(metaclass=ABCMeta):
                     & hold_back.holds
                     & _earlier_than(entity, hold_back.order)
                 )
-                if group in claimed_ids:
-                    earlier = earlier & ~_lookup(f"{id_name}__in", claimed_ids[group])
-                waits = bool(
+                seen = claimed_in_group[group]
+                found = (
                     self.query.filter(earlier)
                     .only(id_name)
-                    .limit(1)
+                    .limit(seen + 1)
                     .all(with_total=False)
                     .items
                 )
-                if waits or not try_claim(entity):
-                    if group not in held_from or position < held_from[group]:
-                        held_from[group] = position
+                if len(found) > seen or not try_claim(entity):
                     continue
 
                 claimed.append(entity)
-                claimed_ids.setdefault(group, []).append(identifier)
+                claimed_in_group[group] += 1
 
         return claimed
 

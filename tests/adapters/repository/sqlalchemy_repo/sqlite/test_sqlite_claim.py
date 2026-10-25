@@ -160,6 +160,7 @@ class TestSqliteClaimHoldBackWithIntegerIdentity:
                     applies=Q(key__isnull=False),
                     holds=Q(status__in=["ready", "claimed"]),
                     order=("seq",),
+                    lane_of=lambda row: None if row.key is None else 0,
                 ),
             )
 

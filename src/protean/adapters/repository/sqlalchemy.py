@@ -2290,22 +2290,25 @@ class SADAO(BaseDAO):
         try:
             # Core ``Row`` objects support attribute access by column name,
             # which is what ``to_entity`` (via ``getattr``) expects.
-            rows = conn.execute(stmt).all()
+            rows = list(conn.execute(stmt).all())
+
+            # ``RETURNING`` does not preserve the inner ``ORDER BY`` used to
+            # select the top-N rows, so restore the requested order here.
+            # Stable sorts from the last key to the first apply each key in its
+            # own direction. The sort reads the column values, not the
+            # entity's: an ``Auto`` id on an integer column is a ``str`` on the
+            # entity, and ``"10"`` sorts before ``"2"``.
+            for key in reversed(_order_keys(order_by)):
+                rows.sort(
+                    key=functools.partial(_null_aware_sort_key, key.lstrip("-")),
+                    reverse=key.startswith("-"),
+                )
+
             claimed = []
             for row in rows:
                 entity = self.database_model_cls.to_entity(row)
                 entity.state_.mark_retrieved()
                 claimed.append(entity)
-
-            # ``RETURNING`` does not preserve the inner ``ORDER BY`` used to
-            # select the top-N rows, so restore the requested order here.
-            # Stable sorts from the last key to the first apply each key in its
-            # own direction.
-            for key in reversed(_order_keys(order_by)):
-                claimed.sort(
-                    key=functools.partial(_null_aware_sort_key, key.lstrip("-")),
-                    reverse=key.startswith("-"),
-                )
         except DatabaseError:
             logger.exception("repository.sqlalchemy.claim_atomically_failed")
             raise

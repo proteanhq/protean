@@ -623,6 +623,12 @@ class OutboxLanes:
             self.is_backfill(row.target_broker, row.priority),
         )
 
+    def lane_index(self, row: "Outbox") -> int | None:
+        """The row's entry in :meth:`hold_back`'s lanes (primary ``0``,
+        backfill ``1``), or ``None`` when it has no group."""
+        group = self.group_key(row)
+        return None if group is None else int(group[3])
+
     def hold_back(self) -> HoldBack:
         """The :class:`~protean.port.dao.HoldBack` that ``claim_batch``
         passes to the DAO."""
@@ -649,6 +655,7 @@ class OutboxLanes:
                 ]
             ),
             order=_COMMIT_ORDER,
+            lane_of=self.lane_index,
             lanes=lanes,
         )
 

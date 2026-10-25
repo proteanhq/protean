@@ -11,7 +11,8 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
-from protean.fields import Auto, Identifier, String
+from protean.fields import Auto, Identifier, Integer, String
+from protean.utils.query import Q
 from protean.utils.reflection import id_field
 from tests.shared import POSTGRES_URI
 
@@ -97,3 +98,49 @@ def test_an_integer_identity_saves_and_loads_back(aggregate_cls, config, values)
 
     assert getattr(loaded, id_name) == getattr(saved, id_name)
     assert loaded.title == "first"
+
+
+class TiedJob(BaseAggregate):
+    job_id: Auto(identifier=True)
+    status: String(max_length=20, default="ready")
+    seq: Integer(required=True)
+
+
+@pytest.mark.postgresql
+def test_a_claim_breaks_order_ties_by_the_integer_id_value():
+    # ``Auto`` holds the id as a ``str``, and "10" sorts before "2", so the
+    # claim must order its rows by the column's integer values.
+    ids = iter([10, 2])
+    domain = Domain(
+        name="PostgresIntegerIdentityClaim",
+        config={
+            "identity_type": "integer",
+            "identity_strategy": "function",
+            "databases": {
+                "default": {"provider": "postgresql", "database_uri": POSTGRES_URI}
+            },
+        },
+        identity_function=lambda: next(ids),
+    )
+    domain.register(TiedJob)
+    domain.init(traverse=False)
+    with domain.domain_context():
+        repo = domain.repository_for(TiedJob)
+        # Reading the DAO registers the table in the provider's metadata.
+        dao = repo._dao
+        provider = domain.providers["default"]
+        provider._metadata.create_all(provider._engine)
+        try:
+            repo.add(TiedJob(seq=0))
+            repo.add(TiedJob(seq=0))
+            claimed = dao._claim(
+                Q(status="ready"),
+                {"status": "claimed"},
+                limit=10,
+                order_by=["seq", "job_id"],
+            )
+        finally:
+            provider._metadata.drop_all(provider._engine)
+            domain.providers.close()
+
+    assert [job.job_id for job in claimed] == ["2", "10"]
