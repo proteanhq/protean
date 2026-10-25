@@ -2,6 +2,9 @@
 
 Writes JSON Schema files produced by :mod:`protean.ir.generators.schema`
 to a ``.protean/schemas/`` directory tree, grouped by aggregate cluster.
+Avro and Protobuf files go into the same tree. A ``.proto`` file imports the
+files of the value objects and entities it references by their paths relative
+to ``schemas/``, so compile the tree with ``protoc -I <output_dir>/schemas``.
 
 Usage::
 
@@ -35,7 +38,7 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from protean.ir.generators.avro import generate_avro_schema
@@ -98,6 +101,30 @@ def _cluster_for_fqn(fqn: str, ir: dict[str, Any]) -> str | None:
                 return short_name(cluster_fqn)
 
     return None
+
+
+def _relative_schema_path(
+    fqn: str,
+    element: dict[str, Any],
+    ir: dict[str, Any],
+    ext: str,
+) -> PurePosixPath:
+    """Return where *element*'s schema file goes, relative to ``schemas/``.
+
+    Projections go under ``projections/``; every other element goes under its
+    owning cluster and element-type subdirectory. The writer places files with
+    this path and the protobuf generator imports files by it, so both agree.
+    """
+    name = element.get("name", "") or short_name(fqn)
+    version = int(element.get("__version__", 1))
+    filename = f"{name}.v{version}.{ext}"
+
+    if element.get("element_type", "").upper() == "PROJECTION":
+        return PurePosixPath("projections", filename)
+
+    cluster_name = _cluster_for_fqn(fqn, ir) or short_name(fqn)
+    subdir = _ELEMENT_TYPE_TO_DIR.get(element.get("element_type", "").upper(), "other")
+    return PurePosixPath(cluster_name, subdir, filename)
 
 
 def _reset_schemas_dir(output_dir: str | Path) -> Path:
@@ -185,27 +212,26 @@ def _write_format(
     ext, generate_one, serialize = _FORMATS[fmt]
 
     flat = _build_flat_elements(ir)
+    paths = {
+        fqn: _relative_schema_path(fqn, element, ir, ext)
+        for fqn, element in iter_data_elements(flat)
+    }
+
+    # Protobuf files import the files of the value objects and entities they
+    # reference, so the generator needs every written file's path. Only
+    # elements that get a file are in the lookup, so no import can dangle.
+    extra: dict[str, Any] = {}
+    if fmt == "protobuf":
+        import_paths = {fqn: path.as_posix() for fqn, path in paths.items()}
+        extra["import_path"] = import_paths.get
+
     written: list[Path] = []
-
     for fqn, element in iter_data_elements(flat):
-        element_type = element.get("element_type", "").upper()
-        name = element.get("name", "") or short_name(fqn)
-        version = int(element.get("__version__", 1))
-        filename = f"{name}.v{version}.{ext}"
-
-        if element_type == "PROJECTION":
-            # Projections go under top-level projections/ directory
-            file_dir = schemas_dir / "projections"
-        else:
-            # Cluster-aware placement
-            cluster_name = _cluster_for_fqn(fqn, ir) or short_name(fqn)
-            subdir = _ELEMENT_TYPE_TO_DIR.get(element_type, "other")
-            file_dir = schemas_dir / cluster_name / subdir
-
-        file_dir.mkdir(parents=True, exist_ok=True)
-        file_path = file_dir / filename
+        file_path = schemas_dir.joinpath(*paths[fqn].parts)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(
-            serialize(generate_one(element, all_elements=flat)), encoding="utf-8"
+            serialize(generate_one(element, all_elements=flat, **extra)),
+            encoding="utf-8",
         )
         written.append(file_path.resolve())
 

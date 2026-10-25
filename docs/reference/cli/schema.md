@@ -54,7 +54,14 @@ named records referenced by fullname). `--format protobuf` emits proto3
 `google.protobuf.Timestamp` for dates, `string` for a `Decimal` field, and field numbers assigned
 deterministically in sorted field-name order, so re-generating an *unchanged*
 schema is byte-identical. Adding a field renumbers alphabetically-later fields,
-so these numbers are for emission, not wire-compatible evolution. Both are
+so these numbers are for emission, not wire-compatible evolution. Each value
+object and entity is defined once, in its own file. A file that uses one
+imports that file by its path under `schemas/` and names the type by its full
+name with a leading dot, such as `.shared.kernel.Money`. The leading dot tells
+`protoc` to resolve the name from the root package. Compile the files with
+`-I <output>/schemas`, for example
+`protoc -I .protean/schemas --descriptor_set_out=out.pb $(find .protean/schemas -name '*.proto')`.
+Both are
 compiler backends for schema *emission*; runtime binary encode/decode is out of
 scope, and field-level constraints (choices/enums, min/max) are not carried
 into either format.
