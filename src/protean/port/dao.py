@@ -647,7 +647,10 @@ class BaseDAO(metaclass=ABCMeta):
             rows_read += len(page)
 
             page_ids = [getattr(entity, id_name) for entity in page]
-            lane_of: dict[Any, int] = {}
+            # Keyed by ``str``: a record from ``only()`` carries the column's
+            # raw value (an ``int`` for an integer column), while the entity
+            # holds its field's type (a ``str`` for ``Auto``).
+            lane_of: dict[str, int] = {}
             for index, lane in enumerate(lanes):
                 in_lane = (
                     self.query.filter(
@@ -659,13 +662,13 @@ class BaseDAO(metaclass=ABCMeta):
                     .items
                 )
                 for record in in_lane:
-                    lane_of.setdefault(getattr(record, id_name), index)
+                    lane_of.setdefault(str(getattr(record, id_name)), index)
 
             for entity in page:
                 if len(claimed) >= limit:
                     break
                 identifier = getattr(entity, id_name)
-                lane_index = lane_of.get(identifier)
+                lane_index = lane_of.get(str(identifier))
                 if lane_index is None:
                     if try_claim(entity):
                         claimed.append(entity)
