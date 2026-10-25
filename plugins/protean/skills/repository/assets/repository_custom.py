@@ -17,8 +17,10 @@ Usage:
     cheap_products = repo.find_affordable(max_price=50.0)
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, Index
-from protean.fields import Boolean, Float, Identifier, String
+from protean.fields import Boolean, Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -33,14 +35,14 @@ class Product:
     product_id: Identifier(identifier=True)
     name: String(required=True, max_length=200)
     category: String(required=True, max_length=50)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     is_active: Boolean(default=True)
 
     def deactivate(self):
         """Mark the product as inactive."""
         self.is_active = False
 
-    def update_price(self, new_price: float):
+    def update_price(self, new_price: D):
         """Update the product price."""
         if new_price < 0:
             raise ValueError("Price cannot be negative")
@@ -63,7 +65,7 @@ class ProductRepository:
         """Find all active products."""
         return self.query.filter(is_active=True).all()
 
-    def find_affordable(self, max_price: float):
+    def find_affordable(self, max_price: D):
         """Find products at or below the given price."""
         return self.query.filter(price__lte=max_price).all()
 

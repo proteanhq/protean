@@ -18,9 +18,11 @@ Usage:
     # Changes are committed when exiting the context manager
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, handle
 from protean.core.unit_of_work import UnitOfWork
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -32,16 +34,16 @@ class Account:
 
     account_id: Identifier(identifier=True)
     holder_name: String(required=True)
-    balance: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
     status: String(default="active")
 
-    def deposit(self, amount: float):
+    def deposit(self, amount: D):
         """Deposit money into the account."""
         if amount <= 0:
             raise ValueError("Deposit amount must be positive")
         self.balance += amount
 
-    def withdraw(self, amount: float):
+    def withdraw(self, amount: D):
         """Withdraw money from the account."""
         if amount <= 0:
             raise ValueError("Withdrawal amount must be positive")
@@ -62,7 +64,7 @@ class OpenAccount:
 
     account_id: Identifier(required=True)
     holder_name: String(required=True)
-    initial_deposit: Float(default=0.0)
+    initial_deposit: Decimal(precision=19, scale=4, default=0)
 
 
 @domain.command_handler(part_of=Account)
@@ -109,7 +111,7 @@ if __name__ == "__main__":
         with UnitOfWork():
             repo = domain.repository_for(Account)
             account = repo.get("ACC-001")
-            account.deposit(500.0)
+            account.deposit(D("500.00"))
             repo.add(account)
         # Changes are committed when exiting the `with` block
 

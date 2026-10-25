@@ -13,7 +13,7 @@ Usage:
 """
 
 from protean import Domain
-from protean.fields import Identifier, Integer, String
+from protean.fields import Decimal, Identifier, Integer, String
 
 # Domain setup
 domain = Domain()
@@ -26,7 +26,7 @@ class OrderSummary:
     order_id: Identifier(identifier=True)
     customer_name: String(max_length=100)
     status: String(max_length=20)
-    total_amount: Integer(default=0)
+    total_amount: Decimal(precision=19, scale=4, default=0)
 
 
 @domain.query(part_of="OrderSummary")

@@ -25,7 +25,7 @@ class Customer:
 @domain.aggregate
 class Order:
     customer_id: Identifier(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 
     @classmethod
     def place(cls, customer_id, total_amount):
@@ -44,14 +44,14 @@ class CustomerRegistered:
 class OrderPlaced:
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 
 @domain.projection
 class CustomerOrderSummary:
     customer_id: Identifier(identifier=True)
     customer_name: String(max_length=100)
     order_count: Integer(default=0)
-    total_spent: Float(default=0.0)
+    total_spent: Decimal(precision=19, scale=4, default=0)
 ```
 
 The projector listens to both aggregates:
@@ -131,6 +131,8 @@ The `aggregates` parameter lists every contributing aggregate class, as above. A
 A query handler reads through `domain.view_for`, as in SKILL.md Step 6:
 
 ```python
+from decimal import Decimal as D
+
 from protean import current_domain, read
 
 @domain.query(part_of=CustomerOrderSummary)
@@ -150,7 +152,7 @@ with domain.domain_context():
     customer = Customer.register(name="Ada")
     domain.repository_for(Customer).add(customer)
 
-    order = Order.place(customer_id=customer.id, total_amount=120.0)
+    order = Order.place(customer_id=customer.id, total_amount=D("120.00"))
     domain.repository_for(Order).add(order)
 
     summary = domain.dispatch(GetCustomerOrderSummary(customer_id=customer.id))

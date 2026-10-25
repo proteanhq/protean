@@ -4,7 +4,7 @@
 
 ```python
 from protean import Domain
-from protean.fields import DateTime, Float, Identifier, Integer, String
+from protean.fields import DateTime, Decimal, Identifier, Integer, String
 
 domain = Domain()
 
@@ -12,7 +12,7 @@ domain = Domain()
 class ProductInventory:
     product_id: Identifier(identifier=True, required=True)
     name: String(max_length=100, required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer(default=0)
     last_updated: DateTime()
 ```

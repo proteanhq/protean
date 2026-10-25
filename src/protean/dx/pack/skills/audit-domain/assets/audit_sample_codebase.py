@@ -12,7 +12,7 @@ The "after" version is in audit_sample_refactored.py.
 """
 
 from protean import Domain, handle
-from protean.fields import Float, HasMany, Integer, String
+from protean.fields import Decimal, HasMany, Integer, String
 
 domain = Domain()
 
@@ -24,7 +24,7 @@ domain = Domain()
 class LineItem:
     product_id = String(required=True)
     quantity = Integer(required=True, min_value=1)
-    unit_price_amount = Float(required=True)  # Primitive obsession: should be Money VO
+    unit_price_amount = Decimal(precision=19, scale=4, required=True)  # Primitive obsession: should be Money VO
     unit_price_currency = String(
         default="USD"
     )  # Primitive obsession: should be Money VO
@@ -34,7 +34,7 @@ class LineItem:
 class Order:
     customer_id = String(required=True)
     items = HasMany(LineItem)
-    total_amount = Float(default=0.0)  # Primitive obsession
+    total_amount = Decimal(precision=19, scale=4, default=0)  # Primitive obsession
     total_currency = String(default="USD")  # Primitive obsession
     status = String(default="DRAFT")
 
@@ -57,7 +57,7 @@ class PlaceOrder:
     customer_id = String(required=True)
     product_id = String(required=True)
     quantity = Integer(required=True)
-    unit_price = Float(required=True)
+    unit_price = Decimal(precision=19, scale=4, required=True)
 
 
 # --- Handler with multiple anti-patterns ---

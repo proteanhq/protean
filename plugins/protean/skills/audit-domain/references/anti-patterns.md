@@ -50,7 +50,7 @@ Using raw fields where value objects should model domain concepts:
 # fragment
 # Bad: raw fields
 class Order:
-    total_amount = Float()
+    total_amount = Decimal(precision=19, scale=4)
     total_currency = String(default="USD")
     shipping_street = String()
     shipping_city = String()
@@ -89,7 +89,7 @@ Aggregate is just a data container with no behavior:
 class Order:
     customer_id = String(required=True)
     status = String(default="DRAFT")
-    total = Float(default=0.0)
+    total = Decimal(precision=19, scale=4, default=0)
 ```
 
 ```python

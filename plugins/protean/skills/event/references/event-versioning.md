@@ -11,7 +11,7 @@ The examples on this page use these aggregates and value objects:
 ```python
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, default="USD")
 
 
@@ -132,7 +132,7 @@ class PriceChanged:
     __version__ = 1
 
     product_id: String(required=True, identifier=True)
-    new_price: Float(required=True)  # Simple float
+    new_price: Decimal(precision=19, scale=4, required=True)  # Simple float
 
 # v2 - changed to value object
 @domain.event(part_of="Product")
@@ -241,6 +241,9 @@ The version is not a payload field. It comes from the class attribute, and the e
 Test that the current version builds and that the upcaster turns an old payload into a valid current one:
 
 ```python
+from decimal import Decimal as D
+
+
 @domain.event(part_of="Order")
 class OrderPlaced:
     __version__ = 2
@@ -263,7 +266,7 @@ def test_v2_event_carries_its_version():
         customer_id="CUST-123",
         total=Money(amount=99.99, currency="USD"),
     )
-    assert event.total.amount == 99.99
+    assert event.total.amount == D("99.99")
     assert event._metadata.domain.version == 2
     assert event._metadata.headers.type.endswith(".v2")
 
@@ -272,7 +275,7 @@ def test_v1_payload_upcasts_to_v2():
     v1_data = {"order_id": "ORD-001", "customer_id": "CUST-123"}
     data = UpcastOrderPlacedV1ToV2().upcast(v1_data)
     event = OrderPlaced(**data)
-    assert event.total.amount == 0.0
+    assert event.total.amount == D("0.00")
 
 
 domain.init(traverse=False)

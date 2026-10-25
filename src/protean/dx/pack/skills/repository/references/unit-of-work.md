@@ -40,7 +40,7 @@ class PlaceOrder:
 class Account:
     account_id: Identifier(identifier=True)
     holder_name: String(required=True, max_length=100)
-    balance: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
 
     def deposit(self, amount):
         self.balance += amount
@@ -67,6 +67,8 @@ A `with UnitOfWork()` inside handler code joins the outer one, so the inner bloc
 When working outside handler methods (e.g., scripts, test setup, data migrations), use the UoW as a context manager:
 
 ```python
+from decimal import Decimal as D
+
 from protean.core.unit_of_work import UnitOfWork
 
 domain.init(traverse=False)
@@ -79,7 +81,7 @@ with domain.domain_context():
 with domain.domain_context(), UnitOfWork():
     repo = domain.repository_for(Account)
     account = repo.get("ACC-001")
-    account.deposit(500.0)
+    account.deposit(D("500.00"))
     repo.add(account)
 # Changes are committed when exiting the `with` block
 ```

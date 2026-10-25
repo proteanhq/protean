@@ -17,7 +17,7 @@ Usage:
 """
 
 from protean import Domain
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -29,7 +29,7 @@ class Payment:
     """Payment aggregate tracking order payments."""
 
     order_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     status: String(choices=["PENDING", "CONFIRMED", "FAILED"], default="PENDING")
 
     def confirm(self):

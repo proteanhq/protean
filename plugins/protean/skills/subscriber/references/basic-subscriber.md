@@ -10,7 +10,7 @@ A subscriber that listens to a single external broker stream and performs a sing
 @domain.aggregate
 class Payment:
     order_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     status: String(choices=["PENDING", "CONFIRMED", "FAILED"], default="PENDING")
 
     def confirm(self):

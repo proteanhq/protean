@@ -45,13 +45,13 @@ Before building a read model, understand:
 Create a flat data structure that holds what the query returns.
 
 ```python
-from protean.fields import Float, Identifier, Integer, String
+from protean.fields import Decimal, Identifier, Integer, String
 
 @domain.projection
 class ProductListing:
     product_id: Identifier(identifier=True, required=True)
     name: String(max_length=200, required=True)
-    price: Float()
+    price: Decimal(precision=19, scale=4)
     stock_quantity: Integer(default=0)
 ```
 
@@ -73,13 +73,13 @@ Events carry the data needed to populate the projection. Define them with `part_
 class ProductAdded:
     product_id: Identifier(required=True)
     name: String(required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer(required=True)
 
 @domain.event(part_of="Product")
 class ProductPriceChanged:
     product_id: Identifier(required=True)
-    new_price: Float(required=True)
+    new_price: Decimal(precision=19, scale=4, required=True)
 ```
 
 ### Step 3: Raise events from aggregates
@@ -90,7 +90,7 @@ Use factory methods or domain methods to raise events when state changes.
 @domain.aggregate
 class Product:
     name: String(required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer(default=0)
 
     @classmethod
@@ -200,7 +200,7 @@ class User:
 @domain.aggregate
 class Transaction:
     user_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 @domain.event(part_of=User)
 class UserRegistered:
@@ -210,13 +210,13 @@ class UserRegistered:
 @domain.event(part_of=Transaction)
 class TransactionCompleted:
     user_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 @domain.projection
 class UserBalance:
     user_id: Identifier(identifier=True)
     name: String()
-    balance: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
 
 @domain.projector(
     projector_for=UserBalance,

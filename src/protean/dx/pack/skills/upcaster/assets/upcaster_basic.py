@@ -21,10 +21,12 @@ Usage:
         assert result["currency"] == "USD"
 """
 
+from decimal import Decimal as D
+
 from protean import Domain
 from protean.core.aggregate import apply
 from protean.core.upcaster import BaseUpcaster
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -46,7 +48,7 @@ class OrderPlaced:
     __version__ = 3
 
     order_id = Identifier(required=True)
-    total_amount = Float(required=True)
+    total_amount = Decimal(precision=19, scale=4, required=True)
     currency = String(required=True)
 
 
@@ -113,7 +115,7 @@ class Order:
     """
 
     order_id = Identifier(identifier=True)
-    total_amount = Float(default=0.0)
+    total_amount = Decimal(precision=19, scale=4, default=0)
     currency = String(default="USD")
     status = String(default="DRAFT")
     confirmed_by = String()
@@ -180,7 +182,7 @@ if __name__ == "__main__":  # pragma: no cover
         print(f"Confirmed v1 -> v2: {v2_confirmed}")  # Removed legacy_code, renamed
 
         # Normal aggregate usage
-        order = Order.place(order_id="ORD-100", total_amount=250.00, currency="EUR")
+        order = Order.place(order_id="ORD-100", total_amount=D("250.00"), currency="EUR")
         print(
             f"\nOrder: {order.order_id}, total={order.total_amount}, currency={order.currency}"
         )

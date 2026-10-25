@@ -30,7 +30,7 @@ represents a valid domain concept:
 ```python
 @domain.value_object
 class Money:
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
     currency = String(required=True, max_length=3)
 
     @invariant.post
@@ -46,8 +46,8 @@ Cross-field business rules on aggregates and entities using `@invariant.post`:
 ```python
 @domain.aggregate
 class Order:
-    subtotal = Float()
-    discount = Float(default=0.0)
+    subtotal = Decimal(precision=19, scale=4)
+    discount = Decimal(precision=19, scale=4, default=0)
 
     @invariant.post
     def discount_cannot_exceed_subtotal(self):

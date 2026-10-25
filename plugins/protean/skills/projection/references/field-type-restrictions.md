@@ -49,7 +49,7 @@ class Customer:
 @domain.entity(part_of="Order")
 class OrderItem:
     product_id: Identifier()
-    price: Float()
+    price: Decimal(precision=19, scale=4)
 
 
 @domain.value_object
@@ -75,7 +75,7 @@ class OrderView:
     customer_name: String()
     customer_email: String()
     item_count: Integer()
-    total_amount: Float()
+    total_amount: Decimal(precision=19, scale=4)
     shipping_street: String()
     shipping_city: String()
     shipping_zip: String()

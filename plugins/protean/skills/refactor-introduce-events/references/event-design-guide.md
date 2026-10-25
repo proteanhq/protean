@@ -43,7 +43,7 @@ class Order:
     customer_id = String(required=True)
     product_id = String(required=True)
     quantity = Integer(required=True, min_value=1)
-    total = Float(default=0.0)
+    total = Decimal(precision=19, scale=4, default=0)
 ```
 
 An event that carries what its handlers need:
@@ -56,7 +56,7 @@ class OrderPlaced:
     customer_id = String(required=True)     # Notification handler needs this
     product_id = String(required=True)       # Inventory handler needs this
     quantity = Integer(required=True)         # Inventory handler needs this
-    total_amount = Float(required=True)       # Analytics might need this
+    total_amount = Decimal(precision=19, scale=4, required=True)  # Analytics might need this
 ```
 
 Two shapes to avoid:
@@ -76,7 +76,7 @@ class OrderPlaced:
     customer_id = String()
     product_id = String()
     quantity = Integer()
-    total_amount = Float()
+    total_amount = Decimal(precision=19, scale=4)
     status = String()
     created_at = DateTime()
     updated_at = DateTime()

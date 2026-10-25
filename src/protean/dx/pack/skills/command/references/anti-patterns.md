@@ -21,7 +21,7 @@ class Product:
 
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, default="USD")
 ```
 
@@ -116,7 +116,7 @@ class PlaceOrder:
 class PlaceOrder:
     order_id: Identifier(required=True)
     customer_id: String(required=True)  # Just the ID
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
     # Only what's necessary to perform the action
 ```
 

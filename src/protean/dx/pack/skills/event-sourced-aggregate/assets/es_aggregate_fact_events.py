@@ -23,9 +23,11 @@ Usage:
         )
 """
 
+from decimal import Decimal as D
+
 from protean import Domain
 from protean.core.aggregate import apply
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -57,7 +59,7 @@ class ProductCreated:
 
     product_id: Identifier(required=True)
     name: String(required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     category_id: Identifier()
 
 
@@ -66,8 +68,8 @@ class ProductPriceChanged:
     """Delta event: captures only the price change."""
 
     product_id: Identifier(required=True)
-    old_price: Float(required=True)
-    new_price: Float(required=True)
+    old_price: Decimal(precision=19, scale=4, required=True)
+    new_price: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Product")
@@ -96,7 +98,7 @@ class Product:
 
     product_id: Identifier(identifier=True)
     name: String(required=True, max_length=200)
-    price: Float(required=True, min_value=0.01)
+    price: Decimal(precision=19, scale=4, required=True, min_value=0.01)
     category_id: Identifier()
     status: String(max_length=20, default="ACTIVE")
 
@@ -186,7 +188,7 @@ if __name__ == "__main__":  # pragma: no cover
         print(f"Delta events: {len(product._events)}")
 
         # Change price
-        product.change_price(24.99)
+        product.change_price(D("24.99"))
         print(f"After price change: ${product.price:.2f}")
         print(f"Delta events: {len(product._events)}")
 

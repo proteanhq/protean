@@ -31,7 +31,7 @@ A subscriber consumes messages that another system publishes on a broker stream,
 
 ```python
 from protean import Domain
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 domain = Domain()
 domain.config["message_processing"] = "sync"
@@ -39,7 +39,7 @@ domain.config["message_processing"] = "sync"
 @domain.aggregate
 class Payment:
     order_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     status: String(default="PENDING")
 
     def confirm(self):

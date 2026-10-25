@@ -14,7 +14,7 @@ can approve expenses, and the expense must exist.
 
 from protean import Domain, handle
 from protean.exceptions import ValidationError
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 domain = Domain(__name__)
 domain.config["event_processing"] = "sync"
@@ -29,7 +29,7 @@ class ExpenseSubmitted:
 
     expense_id: Identifier(required=True)
     submitter: String(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     description: String(required=True)
 
 
@@ -61,7 +61,7 @@ class Expense:
     """Expense aggregate for tracking expense reports."""
 
     submitter: String(required=True, max_length=100)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     description: String(required=True, max_length=500)
     status: String(default="pending")
     reviewed_by: String(max_length=100)
@@ -103,7 +103,7 @@ class SubmitExpense:
     """Command to submit a new expense."""
 
     submitter: String(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     description: String(required=True)
 
 

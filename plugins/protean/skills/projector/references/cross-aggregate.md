@@ -17,7 +17,7 @@ class User:
 @domain.aggregate
 class Transaction:
     user_id: Identifier()
-    amount: Float()
+    amount: Decimal(precision=19, scale=4)
 ```
 
 Each event belongs to its own aggregate via `part_of`:
@@ -32,7 +32,7 @@ class Registered:
 @domain.event(part_of="Transaction")
 class Transacted:
     user_id: Identifier()
-    amount: Float()
+    amount: Decimal(precision=19, scale=4)
 ```
 
 The projection combines data from both aggregates:
@@ -42,7 +42,7 @@ The projection combines data from both aggregates:
 class Balances:
     user_id: Identifier(identifier=True)
     name: String()
-    balance: Float()
+    balance: Decimal(precision=19, scale=4)
 ```
 
 ## Specifying multiple aggregates

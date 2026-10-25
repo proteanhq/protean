@@ -41,7 +41,7 @@ from protean.utils.globals import current_domain
 class Order:
     order_id = Identifier(identifier=True)
     customer_id = String(required=True)
-    total_amount = Float(min_value=0)
+    total_amount = Decimal(precision=19, scale=4, min_value=0)
     status = String(default="placed")
     cancel_reason = String()
 
@@ -56,7 +56,7 @@ class Order:
 class PlaceOrder:
     order_id = Identifier(required=True)
     customer_id = String(required=True, max_length=50)
-    total_amount = Float(required=True, min_value=0)
+    total_amount = Decimal(precision=19, scale=4, required=True, min_value=0)
 
 
 @domain.command(part_of=Order)
@@ -91,6 +91,8 @@ Put endpoints on an `APIRouter`. Each endpoint builds a command from the
 request and passes it to `current_domain.process(..., asynchronous=False)`.
 
 ```python
+from decimal import Decimal as D
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -98,7 +100,7 @@ from pydantic import BaseModel
 class PlaceOrderRequest(BaseModel):
     order_id: str
     customer_id: str
-    total_amount: float
+    total_amount: D
 
 
 router = APIRouter(prefix="/orders", tags=["orders"])

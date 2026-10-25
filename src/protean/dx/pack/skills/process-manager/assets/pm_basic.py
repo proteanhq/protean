@@ -26,7 +26,7 @@ Usage:
 """
 
 from protean import Domain, handle
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain(__file__, "ecommerce")
@@ -41,7 +41,7 @@ class OrderPlaced:
 
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
-    total: Float(required=True)
+    total: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Payment")
@@ -50,7 +50,7 @@ class PaymentConfirmed:
 
     payment_id: Identifier(required=True)
     order_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Payment")
@@ -77,7 +77,7 @@ class Order:
     """Order aggregate representing a customer's purchase."""
 
     customer_id: Identifier(required=True)
-    total: Float(required=True)
+    total: Decimal(precision=19, scale=4, required=True)
     status: String(default="new")
 
 
@@ -86,7 +86,7 @@ class Payment:
     """Payment aggregate representing a financial transaction."""
 
     order_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.aggregate

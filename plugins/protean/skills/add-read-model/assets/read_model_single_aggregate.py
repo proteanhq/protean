@@ -15,7 +15,7 @@ provides a query-optimized view of product data for the storefront.
 
 from protean import Domain
 from protean.core.projector import on
-from protean.fields import Float, Identifier, Integer, String
+from protean.fields import Decimal, Identifier, Integer, String
 
 domain = Domain(__name__)
 domain.config["event_processing"] = "sync"
@@ -30,7 +30,7 @@ class ProductAdded:
 
     product_id: Identifier(required=True)
     name: String(required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer(required=True)
 
 
@@ -39,7 +39,7 @@ class ProductPriceChanged:
     """Raised when a product's price is updated."""
 
     product_id: Identifier(required=True)
-    new_price: Float(required=True)
+    new_price: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Product")
@@ -58,7 +58,7 @@ class Product:
     """Product aggregate - the write model for product data."""
 
     name: String(required=True, max_length=200)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer(default=0)
 
     @classmethod
@@ -109,7 +109,7 @@ class ProductListing:
 
     product_id: Identifier(identifier=True, required=True)
     name: String(max_length=200, required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer(default=0)
 
 

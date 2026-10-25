@@ -133,7 +133,7 @@ class ProductInventoryProjector:
 ## Quick example: Cross-aggregate projector
 
 ```python
-from protean.fields import Float
+from protean.fields import Decimal
 
 @domain.aggregate
 class User:
@@ -142,7 +142,7 @@ class User:
 @domain.aggregate
 class Transaction:
     user_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 @domain.event(part_of=User)
 class Registered:
@@ -152,13 +152,13 @@ class Registered:
 @domain.event(part_of=Transaction)
 class Transacted:
     user_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 @domain.projection
 class Balances:
     user_id: Identifier(identifier=True, required=True)
     name: String()
-    balance: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
 
 @domain.projector(
     projector_for=Balances,

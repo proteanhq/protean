@@ -4,6 +4,8 @@ Each **Wrong** block is shown on purpose and does not run. The **Correct**
 block builds on this domain:
 
 ```python
+from decimal import Decimal as D
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 from protean.utils.globals import current_domain
@@ -13,14 +15,14 @@ from protean.utils.globals import current_domain
 class Order:
     order_id = Identifier(identifier=True)
     customer_id = String(required=True)
-    total_amount = Float(min_value=0, max_value=10000)
+    total_amount = Decimal(precision=19, scale=4, min_value=0, max_value=10000)
 
 
 @domain.command(part_of=Order)
 class PlaceOrder:
     order_id = Identifier(required=True)
     customer_id = String(required=True)
-    total_amount = Float(required=True)
+    total_amount = Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command_handler(part_of=Order)
@@ -39,7 +41,7 @@ class OrderCommandHandler:
 class PlaceOrderRequest(BaseModel):
     order_id: str
     customer_id: str
-    total_amount: float
+    total_amount: D
 
 
 router = APIRouter(prefix="/orders")
@@ -128,7 +130,7 @@ request is routed to, and in tests that build their own domain.
 ```python
 # fragment
 class PlaceOrderRequest(BaseModel):
-    total_amount: float = Field(..., gt=0, lt=10000)  # Business rule in Pydantic!
+    total_amount: D = Field(..., gt=0, lt=10000)  # Business rule in Pydantic!
 ```
 
 **Correct:** Pydantic checks format: types, required keys, an email pattern.

@@ -15,7 +15,7 @@ Order aggregate's payment status directly.
 import logging
 
 from protean import Domain
-from protean.fields import Float, String
+from protean.fields import Decimal, String
 
 domain = Domain(__name__)
 domain.config["message_processing"] = "sync"
@@ -31,7 +31,7 @@ class Order:
     """Order aggregate with payment status tracking."""
 
     customer_email: String(required=True, max_length=200)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
     status: String(default="pending")
     payment_ref: String(max_length=100)
 
