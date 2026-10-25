@@ -56,11 +56,12 @@ class TestFormatSSE:
 
 
 class TestSSEFilteringLogic:
-    """Tests for the filtering logic used by the SSE endpoint.
+    """Tests for the matching rules the SSE endpoint's filters use.
 
-    The SSE endpoint uses fnmatch for glob-style pattern matching.
-    We test the filtering logic directly since SSE streaming tests
-    are inherently fragile due to the long-lived connection nature.
+    The endpoint matches ``event`` and ``type`` with fnmatch glob patterns
+    and ``domain`` and ``stream`` exactly. These tests pin those rules on
+    plain values; ``TestSSEStreamingLogic`` runs each filter through the
+    real endpoint.
     """
 
     def test_domain_exact_match(self):

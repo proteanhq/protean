@@ -878,10 +878,11 @@ class TestStreamsEndpointWithMockRedis:
             0,
             [b"orders::order", b"inventory::product"],
         )
-        redis_conn.xlen.side_effect = [100, 50]  # orders=100, inventory=50
+        # Streams are read in sorted order: inventory=50, then orders=100
+        redis_conn.xlen.side_effect = [50, 100]
         redis_conn.xinfo_groups.side_effect = [
-            [{"name": "OrderHandler", "pending": 5, "lag": 10}],
             [{"name": "ProductHandler", "pending": 3, "lag": 7}],
+            [{"name": "OrderHandler", "pending": 5, "lag": 10}],
         ]
 
         observatory = Observatory(domains=[test_domain])
@@ -957,8 +958,8 @@ class TestStreamsEndpointWithMockRedis:
         assert data["message_counts"]["in_flight"] == 1
         assert "RealHandler" in data["consumer_groups"]
 
-    def test_streams_handles_xinfo_groups_exception(self, test_domain):
-        """Streams endpoint handles exceptions from xinfo_groups gracefully."""
+    def test_streams_handles_xlen_exception(self, test_domain):
+        """Streams endpoint still answers, with zero totals, when xlen raises."""
         redis_conn = _stand_in_redis(test_domain)
         redis_conn.scan.return_value = (0, [b"orders::order"])
         redis_conn.xlen.side_effect = Exception("Redis error")
