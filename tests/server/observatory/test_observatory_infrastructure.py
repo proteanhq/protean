@@ -58,8 +58,8 @@ def _initialized_domain(name="TestDomain", config=None):
 class _CacheWithoutPing:
     """Stands in for a cache adapter that has no ping() method.
 
-    Every real cache inherits ping() from BaseCache, so the no-ping case
-    needs a stand-in object.
+    BaseCache declares ping() abstract, so every real cache defines it and
+    the no-ping case needs a stand-in object.
     """
 
 
