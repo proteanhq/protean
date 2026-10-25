@@ -1,6 +1,6 @@
 """Tests for the D3-based interactive causation graph.
 
-Covers:
+Tests for:
 - causation-graph.js script is included in the timeline page
 - Graph container and toggle UI elements are present
 - Correlation API response structure supports the graph

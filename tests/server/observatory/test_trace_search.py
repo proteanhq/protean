@@ -1,6 +1,6 @@
 """Tests for trace search and recent traces list endpoints.
 
-Covers:
+Tests for:
 - GET /timeline/traces/recent — recent correlation chains with summaries
 - GET /timeline/traces/search — search by aggregate_id, event_type,
   command_type, stream_category
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -488,17 +489,29 @@ class TestGroupByCorrelationEdgeCases:
         # Snapshot excluded — corr-snap should not appear
         assert "corr-snap" not in groups
 
-    def test_handles_broken_domain_gracefully(self, trace_domain):
-        from unittest.mock import MagicMock
-
+    def test_handles_broken_domain_gracefully(self, trace_domain, tmp_path):
         domain, _, _ = trace_domain
 
-        broken = MagicMock()
-        broken.domain_context.side_effect = Exception("broken")
-        broken.event_store.store.conn_info = {"database_uri": "broken://unique"}
+        broken = Domain(
+            name="Broken",
+            root_path=str(tmp_path / "broken"),
+            config={
+                "event_store": {
+                    "provider": "memory",
+                    "database_uri": "broken://unique",
+                }
+            },
+        )
+        broken._initialize()
+        broken.init(traverse=False)
 
-        # Should still return groups from the working domain
-        groups = _group_by_correlation([domain, broken])
+        # The memory event store cannot fail for real, so its read is forced
+        # to raise as an unreachable database would.
+        with patch.object(
+            broken.event_store.store, "_read", side_effect=RuntimeError("broken")
+        ):
+            # Should still return groups from the working domain
+            groups = _group_by_correlation([domain, broken])
         assert len(groups) == 3
 
 

@@ -1,6 +1,6 @@
 """Tests for Trace Search UI and Recent Traces List View.
 
-Covers:
+Tests for:
 - Timeline page renders with Events/Traces tab bar
 - Traces view section with search inputs and results table
 - Deep link ?view=traces works

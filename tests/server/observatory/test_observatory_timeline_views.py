@@ -1,6 +1,6 @@
 """Tests for Timeline sub-views: correlation chain and aggregate history.
 
-Covers the HTML template structure, CSS styles, and JavaScript logic
+Checks the HTML template structure, CSS styles, and JavaScript logic
 for the correlation chain view, aggregate history view, and view management
 features.
 

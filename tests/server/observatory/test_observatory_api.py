@@ -1,24 +1,28 @@
 """Tests for Observatory REST API endpoints.
 
-These tests require a running Redis instance and are gated behind @pytest.mark.redis.
-Unit tests for error paths use mock domains and need no infrastructure.
+Tests marked ``@pytest.mark.redis`` read a running Redis server. The other
+tests use a real domain. Where an endpoint reads Redis directly, they swap the
+broker's raw redis-py client for an in-memory stand-in, because the core test
+lane has no Redis server.
 """
 
 import asyncio
 import contextlib
 import json
 import logging
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-from protean import handle
+from protean import Domain, handle
+from protean.adapters.broker.redis import DATA_FIELD
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import String
-from protean.port.broker import DLQEntry
+from protean.ir.builder import IRBuilder
 from protean.server.observatory import (
     Observatory,
     _GracefulShutdownMiddleware,
@@ -126,25 +130,29 @@ class TestStatsEndpoint:
         assert test_domain.name in data["outbox"]
 
 
-# --- Unit tests for error/edge-case paths (no Redis needed) ---
+# --- Error and edge-case paths that need no Redis server ---
 
 
-def _make_mock_domain(name: str = "mock-domain") -> MagicMock:
-    """Create a mock Domain that simulates a domain without a broker."""
-    mock = MagicMock()
-    mock.name = name
-    mock.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-    mock.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-    return mock
+def _domain_without_broker(name: str = "no-broker") -> Domain:
+    """A domain that was never initialized, so it has no broker and no outbox."""
+    return Domain(name=name)
+
+
+def _domain_without_redis(name: str = "no-redis") -> Domain:
+    """An initialized domain whose default broker is the in-memory inline broker."""
+    domain = Domain(name=name)
+    domain.config["brokers"] = {"default": {"provider": "inline"}}
+    domain.init(traverse=False)
+    return domain
 
 
 class TestOutboxStatusErrorPaths:
-    def test_returns_error_on_exception(self):
+    def test_returns_error_on_exception(self, test_domain):
         """_outbox_status returns generic error when outbox query fails."""
-        mock_domain = _make_mock_domain()
-        mock_domain._get_outbox_repo.side_effect = RuntimeError("connection lost")
-
-        result = _outbox_status(mock_domain)
+        with patch.object(
+            test_domain, "_get_outbox_repo", side_effect=RuntimeError("connection lost")
+        ):
+            result = _outbox_status(test_domain)
 
         assert result["status"] == "error"
         assert result["error"] == "Failed to query outbox"
@@ -154,20 +162,20 @@ class TestOutboxStatusErrorPaths:
 class TestBrokerHealthErrorPaths:
     def test_returns_error_when_no_broker(self):
         """_broker_health returns error when no default broker is configured."""
-        mock_domain = _make_mock_domain()
-        mock_domain.brokers.get.return_value = None
-
-        result = _broker_health(mock_domain)
+        result = _broker_health(_domain_without_broker())
 
         assert result["status"] == "error"
         assert result["error"] == "No default broker configured"
 
     def test_returns_error_on_exception(self):
         """_broker_health returns generic error when broker query fails."""
-        mock_domain = _make_mock_domain()
-        mock_domain.brokers.get.side_effect = RuntimeError("connection refused")
+        domain = _domain_without_redis()
+        broker = domain.brokers["default"]
 
-        result = _broker_health(mock_domain)
+        with patch.object(
+            broker, "health_stats", side_effect=RuntimeError("connection refused")
+        ):
+            result = _broker_health(domain)
 
         assert result["status"] == "error"
         assert result["error"] == "Failed to query broker health"
@@ -177,20 +185,18 @@ class TestBrokerHealthErrorPaths:
 class TestBrokerInfoErrorPaths:
     def test_returns_error_when_no_broker(self):
         """_broker_info returns error when no default broker is configured."""
-        mock_domain = _make_mock_domain()
-        mock_domain.brokers.get.return_value = None
-
-        result = _broker_info(mock_domain)
+        result = _broker_info(_domain_without_broker())
 
         assert result["status"] == "error"
         assert result["error"] == "No default broker configured"
 
     def test_returns_error_on_exception(self):
         """_broker_info returns generic error when broker query fails."""
-        mock_domain = _make_mock_domain()
-        mock_domain.brokers.get.side_effect = RuntimeError("timeout")
+        domain = _domain_without_redis()
+        broker = domain.brokers["default"]
 
-        result = _broker_info(mock_domain)
+        with patch.object(broker, "info", side_effect=RuntimeError("timeout")):
+            result = _broker_info(domain)
 
         assert result["status"] == "error"
         assert result["error"] == "Failed to query broker info"
@@ -202,12 +208,8 @@ class TestAPIEndpointsWithFailingDomain:
 
     @pytest.fixture
     def failing_client(self):
-        """Client backed by a mock domain whose broker always fails."""
-        mock_domain = _make_mock_domain("failing-domain")
-        mock_domain.brokers.get.return_value = None
-        mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
-
-        observatory = Observatory(domains=[mock_domain])
+        """Client backed by a domain with no broker and no outbox."""
+        observatory = Observatory(domains=[_domain_without_broker("failing-domain")])
         return TestClient(observatory.app)
 
     def test_health_endpoint_with_no_broker(self, failing_client):
@@ -238,6 +240,15 @@ class TestAPIEndpointsWithFailingDomain:
         data = response.json()
         assert "outbox" in data
         assert data["outbox"]["failing-domain"]["status"] == "error"
+
+    def test_domain_ir_endpoint_answers_503_when_the_ir_build_fails(self):
+        """The Observatory still starts, and the IR endpoint reports it as unavailable."""
+        with patch.object(IRBuilder, "build", side_effect=RuntimeError("boom")):
+            observatory = Observatory(domains=[_domain_without_broker("broken-ir")])
+
+        response = TestClient(observatory.app).get("/api/domain/ir")
+        assert response.status_code == 503
+        assert response.json() == {"error": "Domain IR unavailable"}
 
 
 # --- Tests for Observatory class and factory (observatory/__init__.py) ---
@@ -359,7 +370,7 @@ class TestObservatoryRun:
             )
 
 
-# --- Tests for _discover_streams (mock-based, no Redis) ---
+# --- _discover_streams lists application streams from a Redis SCAN ---
 
 
 class TestDiscoverStreams:
@@ -477,16 +488,14 @@ class TestQueueDepthEndpoint:
         assert "consumer_pending" in totals
 
 
-class TestQueueDepthWithMockDomain:
-    """Queue-depth endpoint with a mock domain that has no broker."""
+class TestQueueDepthWithoutBroker:
+    """Queue-depth endpoint with a domain that has no broker."""
 
     def test_queue_depth_returns_zeros_when_no_broker(self):
         """totals are all zero when domain has no working broker."""
-        mock_domain = _make_mock_domain("no-broker-domain")
-        mock_domain.brokers.get.return_value = None
-        mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
+        domain = _domain_without_broker("no-broker-domain")
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/queue-depth")
@@ -616,10 +625,7 @@ class TestConsumersEndpointNoRedis:
 
     def test_consumers_returns_503_when_no_redis(self):
         """Returns 503 with error when Redis is unavailable."""
-        mock_domain = _make_mock_domain("no-redis")
-        mock_domain.brokers.get.return_value = None
-
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[_domain_without_redis()])
         client = TestClient(observatory.app)
 
         response = client.get("/api/consumers")
@@ -778,10 +784,7 @@ class TestWorkersEndpointNoRedis:
 
     def test_workers_returns_503_when_no_redis(self):
         """Returns 503 with error when Redis is unavailable."""
-        mock_domain = _make_mock_domain("no-redis")
-        mock_domain.brokers.get.return_value = None
-
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[_domain_without_redis()])
         client = TestClient(observatory.app)
 
         response = client.get("/api/workers")
@@ -792,64 +795,67 @@ class TestWorkersEndpointNoRedis:
         assert data["count"] == 0
 
 
+def _stand_in_redis(domain: Domain) -> MagicMock:
+    """Give the domain's Redis broker a stand-in redis-py client and return it.
+
+    The core test lane has no Redis server. Each test sets the replies the
+    client gives, including the odd shapes (bytes keys, non-dict entries) that
+    redis-py can return.
+    """
+    redis_conn = MagicMock()
+    domain.brokers["default"].redis_instance = redis_conn
+    return redis_conn
+
+
 class TestWorkersStatusThresholds:
     """Tests for worker status derivation.
 
-    These use mocks because idle_ms thresholds are time-dependent and
-    cannot be reliably controlled with real Redis.
+    The stand-in Redis client sets each consumer's idle time exactly. A real
+    Redis server reports idle time from its own clock, so a test cannot hold it
+    at a chosen value.
     """
 
-    def _make_client_with_idle(self, idle_ms: int) -> TestClient:
+    def _make_client_with_idle(self, domain: Domain, idle_ms: int) -> TestClient:
         """Create a client whose single worker has the specified idle_ms."""
-        mock_domain = _make_mock_domain("test")
-        mock_redis = MagicMock()
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-        mock_domain.brokers.get.return_value = mock_broker
-
-        mock_redis.scan.return_value = (0, [b"test::stream"])
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn = _stand_in_redis(domain)
+        redis_conn.scan.return_value = (0, [b"test::stream"])
+        redis_conn.xinfo_groups.return_value = [
             {"name": "Handler", "pending": 0, "lag": 0}
         ]
-        mock_redis.xinfo_consumers.return_value = [
+        redis_conn.xinfo_consumers.return_value = [
             {"name": "Handler-host1-1000-abc", "pending": 0, "idle": idle_ms}
         ]
-        mock_redis.xrange.return_value = []  # No trace throughput
+        redis_conn.xrange.return_value = []  # No trace throughput
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[domain])
         return TestClient(observatory.app)
 
-    def test_status_active_when_idle_below_threshold(self):
+    def test_status_active_when_idle_below_threshold(self, test_domain):
         """Worker with idle < 5min is 'active'."""
-        client = self._make_client_with_idle(1000)
+        client = self._make_client_with_idle(test_domain, 1000)
         data = client.get("/api/workers").json()
         assert data["workers"][0]["status"] == "active"
 
-    def test_status_idle_when_between_thresholds(self):
+    def test_status_idle_when_between_thresholds(self, test_domain):
         """Worker with 5min < idle < 30min is 'idle'."""
-        client = self._make_client_with_idle(600_000)  # 10 minutes
+        client = self._make_client_with_idle(test_domain, 600_000)  # 10 minutes
         data = client.get("/api/workers").json()
         assert data["workers"][0]["status"] == "idle"
 
-    def test_status_offline_when_above_idle_threshold(self):
+    def test_status_offline_when_above_idle_threshold(self, test_domain):
         """Worker with idle > 30min is 'offline'."""
-        client = self._make_client_with_idle(3_600_000)  # 60 minutes
+        client = self._make_client_with_idle(test_domain, 3_600_000)  # 60 minutes
         data = client.get("/api/workers").json()
         assert data["workers"][0]["status"] == "offline"
 
-    def test_status_active_with_trace_throughput_overrides_idle(self):
+    def test_status_active_with_trace_throughput_overrides_idle(self, test_domain):
         """Worker with trace throughput is 'active' even with high idle."""
-        mock_domain = _make_mock_domain("test")
-        mock_redis = MagicMock()
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-        mock_domain.brokers.get.return_value = mock_broker
-
-        mock_redis.scan.return_value = (0, [b"test::stream"])
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"test::stream"])
+        redis_conn.xinfo_groups.return_value = [
             {"name": "Handler", "pending": 0, "lag": 0}
         ]
-        mock_redis.xinfo_consumers.return_value = [
+        redis_conn.xinfo_consumers.return_value = [
             {"name": "Handler-host1-1000-abc123", "pending": 0, "idle": 3_600_000}
         ]
 
@@ -859,63 +865,17 @@ class TestWorkersStatusThresholds:
         trace_data = json.dumps(
             {"event": "handler.completed", "worker_id": "Handler-host1-1000-abc123"}
         )
-        mock_redis.xrange.return_value = [
+        redis_conn.xrange.return_value = [
             (f"{now_ms - 1000}-0".encode(), {b"data": trace_data.encode()}),
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         data = client.get("/api/workers").json()
         worker = data["workers"][0]
         assert worker["status"] == "active"
         assert worker["throughput"]["total"] == 1
-
-
-# --- Helper for mock domain with working broker ---
-
-
-def _make_mock_domain_with_broker(
-    name: str = "test",
-) -> tuple[MagicMock, MagicMock, MagicMock]:
-    """Create a mock Domain with a functioning mock broker and Redis.
-
-    Returns (mock_domain, mock_broker, mock_redis).
-    """
-    mock = MagicMock()
-    mock.name = name
-    mock.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-    mock.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-    mock_broker = MagicMock()
-    mock_redis = MagicMock()
-    mock_broker.redis_instance = mock_redis
-    mock.brokers.get.return_value = mock_broker
-    return mock, mock_broker, mock_redis
-
-
-def _make_dlq_entry(
-    dlq_id: str = "1234-0",
-    original_id: str = "orig-1",
-    stream: str = "orders::order",
-    consumer_group: str = "OrderHandler",
-    failure_reason: str = "ValueError: bad data",
-    failed_at: str = "2026-03-04T10:00:00Z",
-    retry_count: int = 3,
-    dlq_stream: str = "orders::order:dlq",
-    payload: dict | None = None,
-) -> DLQEntry:
-    """Create a DLQEntry for testing."""
-    return DLQEntry(
-        dlq_id=dlq_id,
-        original_id=original_id,
-        stream=stream,
-        consumer_group=consumer_group,
-        payload=payload or {"type": "OrderPlaced", "data": {"order_id": "123"}},
-        failure_reason=failure_reason,
-        failed_at=failed_at,
-        retry_count=retry_count,
-        dlq_stream=dlq_stream,
-    )
 
 
 # --- Tests for _broker_info success path ---
@@ -926,41 +886,40 @@ class TestBrokerInfoSuccessPath:
 
     def test_returns_ok_with_broker_info(self):
         """_broker_info returns status ok with broker info when broker works."""
-        mock_domain = _make_mock_domain("test-domain")
-        mock_broker = MagicMock()
-        mock_broker.info.return_value = {
-            "consumer_groups": 5,
-            "streams": ["orders::order"],
-        }
-        mock_domain.brokers.get.return_value = mock_broker
+        domain = _domain_without_redis("test-domain")
+        # A stream name without "::", because the inline broker splits its group
+        # keys on the first ":".
+        domain.brokers["default"]._ensure_group("OrderHandler", "orders")
 
-        result = _broker_info(mock_domain)
+        result = _broker_info(domain)
 
         assert result["status"] == "ok"
-        assert result["consumer_groups"] == 5
-        assert result["streams"] == ["orders::order"]
+        group = result["consumer_groups"]["OrderHandler"]
+        assert group["consumer_count"] == 0
+        assert group["in_flight_messages"] == {"orders": 0}
+        assert group["dlq_messages"] == {"orders": 0}
 
 
 # --- Tests for streams endpoint with stream aggregation and consumer groups ---
 
 
 class TestStreamsEndpointWithMockRedis:
-    """Mock-based tests for /api/streams covering stream aggregation."""
+    """/api/streams sums stream lengths and consumer groups across Redis streams."""
 
-    def test_streams_aggregates_xlen_and_consumer_groups(self):
+    def test_streams_aggregates_xlen_and_consumer_groups(self, test_domain):
         """Streams endpoint aggregates xlen and consumer group data."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_redis.scan.return_value = (
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (
             0,
             [b"orders::order", b"inventory::product"],
         )
-        mock_redis.xlen.side_effect = [100, 50]  # orders=100, inventory=50
-        mock_redis.xinfo_groups.side_effect = [
+        redis_conn.xlen.side_effect = [100, 50]  # orders=100, inventory=50
+        redis_conn.xinfo_groups.side_effect = [
             [{"name": "OrderHandler", "pending": 5, "lag": 10}],
             [{"name": "ProductHandler", "pending": 3, "lag": 7}],
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/streams")
@@ -974,16 +933,16 @@ class TestStreamsEndpointWithMockRedis:
         assert data["consumer_groups"]["OrderHandler"]["pending"] == 5
         assert data["consumer_groups"]["OrderHandler"]["lag"] == 10
 
-    def test_streams_handles_bytes_keys_in_consumer_groups(self):
+    def test_streams_handles_bytes_keys_in_consumer_groups(self, test_domain):
         """Streams endpoint handles consumer group dicts with bytes keys."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xlen.return_value = 42
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xlen.return_value = 42
+        redis_conn.xinfo_groups.return_value = [
             {b"name": b"OrderHandler", b"pending": 3, b"lag": 5}
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/streams")
@@ -995,17 +954,17 @@ class TestStreamsEndpointWithMockRedis:
         assert data["consumer_groups"]["OrderHandler"]["pending"] == 3
         assert data["consumer_groups"]["OrderHandler"]["lag"] == 5
 
-    def test_streams_handles_mixed_string_and_bytes_keys(self):
+    def test_streams_handles_mixed_string_and_bytes_keys(self, test_domain):
         """Streams endpoint handles dicts with a mix of string and bytes keys."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xlen.return_value = 10
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xlen.return_value = 10
         # Dict with string "name" but bytes "pending"
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn.xinfo_groups.return_value = [
             {"name": "MixedHandler", b"pending": 7, "lag": 2}
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/streams")
@@ -1014,17 +973,17 @@ class TestStreamsEndpointWithMockRedis:
         assert data["message_counts"]["in_flight"] == 7
         assert "MixedHandler" in data["consumer_groups"]
 
-    def test_streams_skips_non_dict_group_entries(self):
+    def test_streams_skips_non_dict_group_entries(self, test_domain):
         """Streams endpoint skips group entries that are not dicts."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xlen.return_value = 10
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xlen.return_value = 10
+        redis_conn.xinfo_groups.return_value = [
             "not-a-dict",
             {"name": "RealHandler", "pending": 1, "lag": 0},
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/streams")
@@ -1033,13 +992,13 @@ class TestStreamsEndpointWithMockRedis:
         assert data["message_counts"]["in_flight"] == 1
         assert "RealHandler" in data["consumer_groups"]
 
-    def test_streams_handles_xinfo_groups_exception(self):
+    def test_streams_handles_xinfo_groups_exception(self, test_domain):
         """Streams endpoint handles exceptions from xinfo_groups gracefully."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xlen.side_effect = Exception("Redis error")
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xlen.side_effect = Exception("Redis error")
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/streams")
@@ -1055,14 +1014,14 @@ class TestStreamsEndpointWithMockRedis:
 class TestConsumersEndpointBytesHandling:
     """Tests for /api/consumers when Redis returns bytes keys."""
 
-    def test_consumers_decodes_bytes_group_and_consumer_names(self):
+    def test_consumers_decodes_bytes_group_and_consumer_names(self, test_domain):
         """Consumer endpoint decodes bytes keys in group and consumer info."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xinfo_groups.return_value = [
             {b"name": b"OrderHandler", "pending": 0, "lag": 0}
         ]
-        mock_redis.xinfo_consumers.return_value = [
+        redis_conn.xinfo_consumers.return_value = [
             {
                 b"name": b"OrderHandler-host1-1000-abc123",
                 b"pending": 2,
@@ -1070,7 +1029,7 @@ class TestConsumersEndpointBytesHandling:
             }
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/consumers")
@@ -1085,14 +1044,14 @@ class TestConsumersEndpointBytesHandling:
         assert entry["pending"] == 2
         assert entry["idle_ms"] == 5000
 
-    def test_consumers_handles_mixed_bytes_and_string_keys(self):
+    def test_consumers_handles_mixed_bytes_and_string_keys(self, test_domain):
         """Consumer endpoint handles dicts with mixed bytes/string keys."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xinfo_groups.return_value = [
             {"name": "OrderHandler", b"pending": 0, "lag": 0}
         ]
-        mock_redis.xinfo_consumers.return_value = [
+        redis_conn.xinfo_consumers.return_value = [
             {
                 "name": "OrderHandler-host1-1000-abc123",
                 b"pending": 1,
@@ -1100,7 +1059,7 @@ class TestConsumersEndpointBytesHandling:
             }
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/consumers")
@@ -1111,34 +1070,34 @@ class TestConsumersEndpointBytesHandling:
         assert entry["pending"] == 1
         assert entry["idle_ms"] == 3000
 
-    def test_consumers_skips_non_dict_consumer_entries(self):
+    def test_consumers_skips_non_dict_consumer_entries(self, test_domain):
         """Consumer endpoint skips consumer entries that are not dicts."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xinfo_groups.return_value = [
             {"name": "OrderHandler", "pending": 0, "lag": 0}
         ]
-        mock_redis.xinfo_consumers.return_value = [
+        redis_conn.xinfo_consumers.return_value = [
             "not-a-dict",
             {"name": "OrderHandler-host1-1000-abc123", "pending": 0, "idle": 0},
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/consumers")
         data = response.json()
         assert data["count"] == 1
 
-    def test_consumers_skips_group_with_no_name(self):
+    def test_consumers_skips_group_with_no_name(self, test_domain):
         """Consumer endpoint skips groups where name resolves to None."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xinfo_groups.return_value = [
             {"pending": 0, "lag": 0},  # no "name" key at all
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/consumers")
@@ -1150,21 +1109,19 @@ class TestConsumersEndpointBytesHandling:
 
 
 class TestQueueDepthStreamAggregation:
-    """Mock-based tests for /api/queue-depth covering Redis stream aggregation."""
+    """/api/queue-depth sums pending and lag per consumer group across Redis streams."""
 
-    def test_queue_depth_aggregates_lag_and_pending(self):
+    def test_queue_depth_aggregates_lag_and_pending(self, test_domain):
         """Queue depth totals include stream_depth (max lag) and consumer_pending."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
-
+        redis_conn = _stand_in_redis(test_domain)
         # _discover_streams sorts alphabetically, so inventory comes first
-        mock_redis.scan.return_value = (
+        redis_conn.scan.return_value = (
             0,
             [b"orders::order", b"inventory::product"],
         )
         # xlen called in sorted order: inventory::product=100, orders::order=200
-        mock_redis.xlen.side_effect = [100, 200]
-        mock_redis.xinfo_groups.side_effect = [
+        redis_conn.xlen.side_effect = [100, 200]
+        redis_conn.xinfo_groups.side_effect = [
             # inventory::product has 1 consumer group
             [
                 {"name": "ProductHandler", "pending": 2, "lag": 8},
@@ -1176,7 +1133,7 @@ class TestQueueDepthStreamAggregation:
             ],
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/queue-depth")
@@ -1200,18 +1157,16 @@ class TestQueueDepthStreamAggregation:
             == 5
         )
 
-    def test_queue_depth_handles_bytes_keys_in_groups(self):
+    def test_queue_depth_handles_bytes_keys_in_groups(self, test_domain):
         """Queue depth handles consumer group dicts with bytes keys."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
-
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xlen.return_value = 50
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xlen.return_value = 50
+        redis_conn.xinfo_groups.return_value = [
             {b"name": b"OrderHandler", b"pending": 4, b"lag": 12}
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/queue-depth")
@@ -1220,15 +1175,13 @@ class TestQueueDepthStreamAggregation:
         assert data["totals"]["stream_depth"] == 12
         assert data["totals"]["consumer_pending"] == 4
 
-    def test_queue_depth_handles_xlen_exception(self):
+    def test_queue_depth_handles_xlen_exception(self, test_domain):
         """Queue depth handles Redis xlen exceptions gracefully."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xlen.side_effect = Exception("Redis error")
 
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xlen.side_effect = Exception("Redis error")
-
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/queue-depth")
@@ -1244,19 +1197,17 @@ class TestQueueDepthStreamAggregation:
 
 
 class TestStatsEndpointStreamAggregation:
-    """Mock-based tests for /api/stats covering Redis stream aggregation."""
+    """/api/stats sums message and consumer-group counts across Redis streams."""
 
-    def test_stats_aggregates_xlen_and_pending(self):
+    def test_stats_aggregates_xlen_and_pending(self, test_domain):
         """Stats endpoint aggregates total_messages and in_flight counts."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
-
-        mock_redis.scan.return_value = (
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (
             0,
             [b"orders::order", b"inventory::product"],
         )
-        mock_redis.xlen.side_effect = [100, 75]
-        mock_redis.xinfo_groups.side_effect = [
+        redis_conn.xlen.side_effect = [100, 75]
+        redis_conn.xinfo_groups.side_effect = [
             [{"name": "OrderHandler", "pending": 4, "lag": 0}],
             [
                 {"name": "ProductHandler", "pending": 2, "lag": 0},
@@ -1264,7 +1215,7 @@ class TestStatsEndpointStreamAggregation:
             ],
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/stats")
@@ -1275,18 +1226,16 @@ class TestStatsEndpointStreamAggregation:
         assert data["message_counts"]["in_flight"] == 7  # 4 + 2 + 1
         assert data["streams"]["count"] == 2
 
-    def test_stats_handles_bytes_keys_in_groups(self):
+    def test_stats_handles_bytes_keys_in_groups(self, test_domain):
         """Stats endpoint handles consumer group dicts with bytes keys."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
-
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xlen.return_value = 30
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xlen.return_value = 30
+        redis_conn.xinfo_groups.return_value = [
             {b"name": b"OrderHandler", b"pending": 6, "lag": 0}
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/stats")
@@ -1295,15 +1244,13 @@ class TestStatsEndpointStreamAggregation:
         assert data["message_counts"]["total_messages"] == 30
         assert data["message_counts"]["in_flight"] == 6
 
-    def test_stats_handles_xlen_exception(self):
+    def test_stats_handles_xlen_exception(self, test_domain):
         """Stats endpoint handles exceptions from stream queries gracefully."""
-        mock_domain, _mock_broker, mock_redis = _make_mock_domain_with_broker()
-        mock_domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xlen.side_effect = Exception("Redis error")
 
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xlen.side_effect = Exception("Redis error")
-
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/stats")
@@ -1314,137 +1261,253 @@ class TestStatsEndpointStreamAggregation:
         assert data["message_counts"]["in_flight"] == 0
 
 
+# --- Shared setup for the DLQ endpoints ---
+
+
+class _StreamRedis:
+    """In-memory stand-in for the redis-py client, holding streams only.
+
+    The core test lane has no Redis server. The Redis broker's own DLQ methods
+    run unchanged on top of this client, so the tests check the broker and the
+    endpoint together. Entry IDs count up from ``1-0`` across all streams, and
+    keys and values come back as bytes, as redis-py returns them.
+    """
+
+    def __init__(self) -> None:
+        self.streams: dict[str, list[tuple[bytes, dict[bytes, bytes]]]] = {}
+        self._next_id = 0
+
+    @staticmethod
+    def _id_key(stream_id: bytes | str) -> tuple[int, int]:
+        text = stream_id.decode() if isinstance(stream_id, bytes) else stream_id
+        ms, seq = text.split("-")
+        return int(ms), int(seq)
+
+    def xadd(self, name: str, fields: dict[str, str]) -> bytes:
+        self._next_id += 1
+        entry_id = f"{self._next_id}-0".encode()
+        encoded = {k.encode(): v.encode() for k, v in fields.items()}
+        self.streams.setdefault(name, []).append((entry_id, encoded))
+        return entry_id
+
+    def xrange(
+        self, name: str, min: str = "-", max: str = "+", count: int | None = None
+    ) -> list[tuple[bytes, dict[bytes, bytes]]]:
+        entries = list(self.streams.get(name, []))
+        if min != "-":
+            entries = [e for e in entries if self._id_key(e[0]) >= self._id_key(min)]
+        if max != "+":
+            entries = [e for e in entries if self._id_key(e[0]) <= self._id_key(max)]
+        return entries[:count] if count is not None else entries
+
+    def xdel(self, name: str, *ids: str) -> int:
+        before = len(self.streams.get(name, []))
+        wanted = {self._id_key(i) for i in ids}
+        self.streams[name] = [
+            e for e in self.streams.get(name, []) if self._id_key(e[0]) not in wanted
+        ]
+        return before - len(self.streams[name])
+
+    def xlen(self, name: str) -> int:
+        return len(self.streams.get(name, []))
+
+    def delete(self, *names: str) -> int:
+        return sum(1 for n in names if self.streams.pop(n, None) is not None)
+
+
+class _EntryTakenRedis(_StreamRedis):
+    """Another worker removes each entry right after this client first reads it."""
+
+    def xrange(
+        self, name: str, min: str = "-", max: str = "+", count: int | None = None
+    ) -> list[tuple[bytes, dict[bytes, bytes]]]:
+        entries = super().xrange(name, min, max, count)
+        self.xdel(name, *(e[0].decode() for e in entries))
+        return entries
+
+
+class _DLQOrder(BaseAggregate):
+    name: String()
+
+
+class _DLQOrderPlaced(BaseEvent):
+    name: String()
+
+
+class _OrderDLQHandler(BaseEventHandler):
+    @handle(_DLQOrderPlaced)
+    def on_placed(self, event: _DLQOrderPlaced) -> None:
+        pass
+
+
+class _ProductDLQHandler(BaseEventHandler):
+    @handle(_DLQOrderPlaced)
+    def on_placed(self, event: _DLQOrderPlaced) -> None:
+        pass
+
+
+def _dlq_setup(
+    domain: Domain, *, backfill: bool = False, redis_cls: type = _StreamRedis
+) -> _StreamRedis:
+    """Subscribe handlers to ``orders::order`` and ``inventory::product``.
+
+    Gives the domain's Redis broker an in-memory client and returns it. With
+    ``backfill``, priority lanes are on, so each subscription also has a
+    backfill DLQ stream.
+    """
+    domain.register(_DLQOrder)
+    domain.register(_DLQOrderPlaced, part_of=_DLQOrder)
+    domain.register(
+        _OrderDLQHandler, part_of=_DLQOrder, stream_category="orders::order"
+    )
+    domain.register(
+        _ProductDLQHandler, part_of=_DLQOrder, stream_category="inventory::product"
+    )
+    domain.init(traverse=False)
+    if backfill:
+        domain.config["server"]["priority_lanes"] = {"enabled": True}
+
+    redis_conn = redis_cls()
+    domain.brokers["default"].redis_instance = redis_conn
+    return redis_conn
+
+
+def _add_dlq_message(
+    redis_conn: _StreamRedis,
+    dlq_stream: str = "orders::order:dlq",
+    *,
+    original_id: str = "orig-1",
+    stream: str = "orders::order",
+    consumer_group: str = "OrderHandler",
+    failure_reason: str = "ValueError: bad data",
+    failed_at: str = "2026-03-04T10:00:00Z",
+    retry_count: int = 3,
+) -> str:
+    """Write a failed message to a DLQ stream the way the engine does. Returns its ID."""
+    message: dict[str, Any] = {
+        "type": "OrderPlaced",
+        "data": {"order_id": "123"},
+        "_dlq_metadata": {
+            "original_id": original_id,
+            "original_stream": stream,
+            "consumer_group": consumer_group,
+            "failure_reason": failure_reason,
+            "failed_at": failed_at,
+            "retry_count": retry_count,
+        },
+    }
+    return redis_conn.xadd(dlq_stream, {DATA_FIELD: json.dumps(message)}).decode()
+
+
+def _domain_without_dlq() -> Domain:
+    """A domain whose default broker, Redis Pub/Sub, has no DLQ capability.
+
+    The broker never connects: these tests stop at the capability check.
+    """
+    domain = Domain(name="no-dlq")
+    domain.config["brokers"] = {
+        "default": {"provider": "redis_pubsub", "URI": "redis://127.0.0.1:1/0"}
+    }
+    domain.init(traverse=False)
+    return domain
+
+
+def _dlq_client(domain: Domain) -> TestClient:
+    return TestClient(Observatory(domains=[domain]).app)
+
+
+def _failing_capability_check(domain: Domain):
+    """Make the broker's DLQ capability check raise an unexpected error."""
+    return patch.object(
+        domain.brokers["default"],
+        "has_capability",
+        side_effect=RuntimeError("unexpected"),
+    )
+
+
 # --- Tests for DLQ list endpoint ---
 
 
 class TestDLQListEndpoint:
     """Tests for GET /api/dlq."""
 
-    def test_dlq_list_returns_entries(self):
+    def test_dlq_list_returns_entries(self, test_domain):
         """DLQ list returns entries from the broker."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
+        redis_conn = _dlq_setup(test_domain)
+        _add_dlq_message(redis_conn, original_id="orig-1")
+        _add_dlq_message(redis_conn, original_id="orig-2")
 
-        entries = [
-            _make_dlq_entry(dlq_id="1-0", original_id="orig-1"),
-            _make_dlq_entry(dlq_id="2-0", original_id="orig-2"),
-        ]
-        mock_broker.dlq_list.return_value = entries
+        response = _dlq_client(test_domain).get("/api/dlq")
+        assert response.status_code == 200
+        data = response.json()
 
-        with patch("protean.utils.dlq.collect_dlq_streams") as mock_collect:
-            mock_collect.return_value = ["orders::order:dlq"]
+        assert data["total_count"] == 2
+        assert data["entries"][0]["dlq_id"] == "1-0"
+        assert data["entries"][1]["dlq_id"] == "2-0"
+        assert data["entries"][0] == {
+            "dlq_id": "1-0",
+            "original_id": "orig-1",
+            "stream": "orders::order",
+            "consumer_group": "OrderHandler",
+            "failure_reason": "ValueError: bad data",
+            "failed_at": "2026-03-04T10:00:00Z",
+            "retry_count": 3,
+            "dlq_stream": "orders::order:dlq",
+        }
 
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.get("/api/dlq")
-            assert response.status_code == 200
-            data = response.json()
-
-            assert data["total_count"] == 2
-            assert data["entries"][0]["dlq_id"] == "1-0"
-            assert data["entries"][1]["dlq_id"] == "2-0"
-            assert data["entries"][0]["failure_reason"] == "ValueError: bad data"
-
-    def test_dlq_list_with_subscription_filter(self):
+    def test_dlq_list_with_subscription_filter(self, test_domain):
         """DLQ list filters by subscription when query param provided."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
+        redis_conn = _dlq_setup(test_domain)
+        _add_dlq_message(redis_conn)
+        _add_dlq_message(
+            redis_conn, "inventory::product:dlq", stream="inventory::product"
+        )
 
-        entries = [_make_dlq_entry(dlq_id="1-0")]
-        mock_broker.dlq_list.return_value = entries
+        response = _dlq_client(test_domain).get("/api/dlq?subscription=orders::order")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_count"] == 1
+        assert data["entries"][0]["dlq_stream"] == "orders::order:dlq"
 
-        mock_info = MagicMock()
-        mock_info.stream_category = "orders::order"
-        mock_info.dlq_stream = "orders::order:dlq"
-        mock_info.backfill_dlq_stream = None
-
-        with patch("protean.utils.dlq.discover_subscriptions") as mock_discover:
-            mock_discover.return_value = [mock_info]
-
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.get("/api/dlq?subscription=orders::order")
-            assert response.status_code == 200
-            data = response.json()
-            assert data["total_count"] == 1
-
-    def test_dlq_list_with_subscription_filter_includes_backfill(self):
+    def test_dlq_list_with_subscription_filter_includes_backfill(self, test_domain):
         """DLQ list includes backfill DLQ stream when present."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
+        redis_conn = _dlq_setup(test_domain, backfill=True)
+        _add_dlq_message(redis_conn, "orders::order:dlq")
+        _add_dlq_message(redis_conn, "orders::order:backfill:dlq")
 
-        entries = [_make_dlq_entry(dlq_id="1-0")]
-        mock_broker.dlq_list.return_value = entries
+        response = _dlq_client(test_domain).get("/api/dlq?subscription=orders::order")
+        assert response.status_code == 200
 
-        mock_info = MagicMock()
-        mock_info.stream_category = "orders::order"
-        mock_info.dlq_stream = "orders::order:dlq"
-        mock_info.backfill_dlq_stream = "orders::order:backfill:dlq"
+        dlq_streams = {e["dlq_stream"] for e in response.json()["entries"]}
+        assert "orders::order:dlq" in dlq_streams
+        assert "orders::order:backfill:dlq" in dlq_streams
 
-        with patch("protean.utils.dlq.discover_subscriptions") as mock_discover:
-            mock_discover.return_value = [mock_info]
-
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.get("/api/dlq?subscription=orders::order")
-            assert response.status_code == 200
-
-            # Verify dlq_list was called with both streams
-            call_args = mock_broker.dlq_list.call_args[0][0]
-            assert "orders::order:dlq" in call_args
-            assert "orders::order:backfill:dlq" in call_args
-
-    def test_dlq_list_subscription_not_found(self):
+    def test_dlq_list_subscription_not_found(self, test_domain):
         """DLQ list returns 404 when subscription filter matches nothing."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
+        _dlq_setup(test_domain)
 
-        with patch("protean.utils.dlq.discover_subscriptions") as mock_discover:
-            mock_discover.return_value = []
-
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.get("/api/dlq?subscription=nonexistent::stream")
-            assert response.status_code == 404
-            assert "No subscription" in response.json()["error"]
+        response = _dlq_client(test_domain).get(
+            "/api/dlq?subscription=nonexistent::stream"
+        )
+        assert response.status_code == 404
+        assert "No subscription" in response.json()["error"]
 
     def test_dlq_list_no_broker(self):
         """DLQ list returns 503 when no broker configured."""
-        mock_domain = _make_mock_domain("no-broker")
-        mock_domain.brokers.get.return_value = None
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.get("/api/dlq")
+        response = _dlq_client(_domain_without_broker()).get("/api/dlq")
         assert response.status_code == 503
         assert response.json()["error"] == "No default broker configured"
 
     def test_dlq_list_broker_no_capability(self):
         """DLQ list returns 501 when broker lacks DLQ capability."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = False
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.get("/api/dlq")
+        response = _dlq_client(_domain_without_dlq()).get("/api/dlq")
         assert response.status_code == 501
         assert response.json()["error"] == "Broker does not support DLQ"
 
-    def test_dlq_list_handles_exception(self):
+    def test_dlq_list_handles_exception(self, test_domain):
         """DLQ list returns 500 on unexpected exception."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.side_effect = RuntimeError("unexpected")
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.get("/api/dlq")
+        with _failing_capability_check(test_domain):
+            response = _dlq_client(test_domain).get("/api/dlq")
         assert response.status_code == 500
         assert response.json()["error"] == "Failed to list DLQ messages"
 
@@ -1455,117 +1518,74 @@ class TestDLQListEndpoint:
 class TestDLQInspectEndpoint:
     """Tests for GET /api/dlq/{dlq_id}."""
 
-    def test_dlq_inspect_returns_entry_with_payload(self):
+    def test_dlq_inspect_returns_entry_with_payload(self, test_domain):
         """DLQ inspect returns entry details including payload."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
+        redis_conn = _dlq_setup(test_domain)
+        dlq_id = _add_dlq_message(redis_conn)
 
-        entry = _make_dlq_entry(
-            dlq_id="1-0",
-            payload={
-                "type": "OrderPlaced",
-                "data": {"order_id": "123"},
-                "_dlq_metadata": {"internal": "hidden"},
-            },
-        )
-        mock_broker.dlq_inspect.return_value = entry
+        response = _dlq_client(test_domain).get(f"/api/dlq/{dlq_id}")
+        assert response.status_code == 200
+        data = response.json()
 
-        with patch("protean.utils.dlq.collect_dlq_streams") as mock_collect:
-            mock_collect.return_value = ["orders::order:dlq"]
+        assert data["dlq_id"] == "1-0"
+        assert data["original_id"] == "orig-1"
+        assert data["stream"] == "orders::order"
+        assert data["consumer_group"] == "OrderHandler"
+        assert data["failure_reason"] == "ValueError: bad data"
+        assert data["failed_at"] == "2026-03-04T10:00:00Z"
+        assert data["retry_count"] == 3
+        assert data["dlq_stream"] == "orders::order:dlq"
+        # _dlq_metadata should be stripped from payload
+        assert "_dlq_metadata" not in data["payload"]
+        assert data["payload"] == {"type": "OrderPlaced", "data": {"order_id": "123"}}
 
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.get("/api/dlq/1-0")
-            assert response.status_code == 200
-            data = response.json()
-
-            assert data["dlq_id"] == "1-0"
-            assert data["original_id"] == "orig-1"
-            assert data["stream"] == "orders::order"
-            assert data["consumer_group"] == "OrderHandler"
-            assert data["failure_reason"] == "ValueError: bad data"
-            assert data["retry_count"] == 3
-            # _dlq_metadata should be stripped from payload
-            assert "_dlq_metadata" not in data["payload"]
-            assert data["payload"]["type"] == "OrderPlaced"
-
-    def test_dlq_inspect_not_found(self):
+    def test_dlq_inspect_not_found(self, test_domain):
         """DLQ inspect returns 404 when message is not in any DLQ stream."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
-        mock_broker.dlq_inspect.return_value = None
+        _dlq_setup(test_domain)
 
-        with patch("protean.utils.dlq.collect_dlq_streams") as mock_collect:
-            mock_collect.return_value = ["orders::order:dlq"]
+        response = _dlq_client(test_domain).get("/api/dlq/nonexistent-id")
+        assert response.status_code == 404
+        assert "not found" in response.json()["error"]
 
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.get("/api/dlq/nonexistent-id")
-            assert response.status_code == 404
-            assert "not found" in response.json()["error"]
-
-    def test_dlq_inspect_searches_multiple_streams(self):
+    def test_dlq_inspect_searches_multiple_streams(self, test_domain):
         """DLQ inspect searches across multiple DLQ streams."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
+        redis_conn = _dlq_setup(test_domain)
+        # Not in the first DLQ stream, which holds a different entry
+        _add_dlq_message(redis_conn, "orders::order:dlq")
+        dlq_id = _add_dlq_message(
+            redis_conn, "inventory::product:dlq", stream="inventory::product"
+        )
+        assert collect_dlq_streams(test_domain) == [
+            "orders::order:dlq",
+            "inventory::product:dlq",
+        ]
 
-        entry = _make_dlq_entry(dlq_id="2-0", dlq_stream="inventory::product:dlq")
-        # Not found in first stream, found in second
-        mock_broker.dlq_inspect.side_effect = [None, entry]
-
-        with patch("protean.utils.dlq.collect_dlq_streams") as mock_collect:
-            mock_collect.return_value = [
-                "orders::order:dlq",
-                "inventory::product:dlq",
-            ]
-
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.get("/api/dlq/2-0")
-            assert response.status_code == 200
-            assert response.json()["dlq_id"] == "2-0"
+        response = _dlq_client(test_domain).get(f"/api/dlq/{dlq_id}")
+        assert response.status_code == 200
+        assert response.json()["dlq_id"] == "2-0"
+        assert response.json()["dlq_stream"] == "inventory::product:dlq"
 
     def test_dlq_inspect_no_broker(self):
         """DLQ inspect returns 503 when broker is unavailable."""
-        mock_domain = _make_mock_domain("no-broker")
-        mock_domain.brokers.get.return_value = None
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.get("/api/dlq/some-id")
+        response = _dlq_client(_domain_without_broker()).get("/api/dlq/some-id")
         assert response.status_code == 503
         assert response.json()["error"] == "DLQ not available"
 
     def test_dlq_inspect_no_capability(self):
         """DLQ inspect returns 503 when broker lacks DLQ capability."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = False
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.get("/api/dlq/some-id")
+        response = _dlq_client(_domain_without_dlq()).get("/api/dlq/some-id")
         assert response.status_code == 503
         assert response.json()["error"] == "DLQ not available"
 
-    def test_dlq_inspect_handles_exception(self):
+    def test_dlq_inspect_handles_exception(self, test_domain):
         """DLQ inspect returns 500 on unexpected exception."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.side_effect = RuntimeError("unexpected")
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.get("/api/dlq/some-id")
+        with _failing_capability_check(test_domain):
+            response = _dlq_client(test_domain).get("/api/dlq/some-id")
         assert response.status_code == 500
         assert response.json()["error"] == "Failed to inspect DLQ message"
 
 
-# --- Tests for DLQ replay endpoint ---
+# --- A DLQ key that holds a plain string, on a running Redis ---
 
 
 class _DLQAggregate(BaseAggregate):
@@ -1607,100 +1627,60 @@ class TestDLQInspectEndpointWithRedis:
             redis_client.delete(*dlq_streams)
 
 
+# --- Tests for DLQ replay endpoint ---
+
+
 class TestDLQReplayEndpoint:
     """Tests for POST /api/dlq/{dlq_id}/replay."""
 
-    def test_dlq_replay_success(self):
+    def test_dlq_replay_success(self, test_domain):
         """DLQ replay replays a message back to its original stream."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
+        redis_conn = _dlq_setup(test_domain)
+        dlq_id = _add_dlq_message(redis_conn, stream="orders::order")
 
-        entry = _make_dlq_entry(dlq_id="1-0", stream="orders::order")
-        mock_broker.dlq_inspect.return_value = entry
-        mock_broker.dlq_replay.return_value = True
+        response = _dlq_client(test_domain).post(f"/api/dlq/{dlq_id}/replay")
+        assert response.status_code == 200
+        data = response.json()
 
-        with patch("protean.utils.dlq.collect_dlq_streams") as mock_collect:
-            mock_collect.return_value = ["orders::order:dlq"]
+        assert data["status"] == "ok"
+        assert data["replayed"] is True
+        assert data["target_stream"] == "orders::order"
+        assert redis_conn.xlen("orders::order:dlq") == 0
+        assert redis_conn.xlen("orders::order") == 1
 
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.post("/api/dlq/1-0/replay")
-            assert response.status_code == 200
-            data = response.json()
-
-            assert data["status"] == "ok"
-            assert data["replayed"] is True
-            assert data["target_stream"] == "orders::order"
-
-    def test_dlq_replay_failure(self):
+    def test_dlq_replay_failure(self, test_domain):
         """DLQ replay returns 500 when replay operation fails."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
+        redis_conn = _dlq_setup(test_domain, redis_cls=_EntryTakenRedis)
+        dlq_id = _add_dlq_message(redis_conn)
 
-        entry = _make_dlq_entry(dlq_id="1-0")
-        mock_broker.dlq_inspect.return_value = entry
-        mock_broker.dlq_replay.return_value = False
+        response = _dlq_client(test_domain).post(f"/api/dlq/{dlq_id}/replay")
+        assert response.status_code == 500
+        assert response.json()["error"] == "Replay failed"
 
-        with patch("protean.utils.dlq.collect_dlq_streams") as mock_collect:
-            mock_collect.return_value = ["orders::order:dlq"]
-
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.post("/api/dlq/1-0/replay")
-            assert response.status_code == 500
-            assert response.json()["error"] == "Replay failed"
-
-    def test_dlq_replay_not_found(self):
+    def test_dlq_replay_not_found(self, test_domain):
         """DLQ replay returns 404 when message is not in any DLQ stream."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
-        mock_broker.dlq_inspect.return_value = None
+        _dlq_setup(test_domain)
 
-        with patch("protean.utils.dlq.collect_dlq_streams") as mock_collect:
-            mock_collect.return_value = ["orders::order:dlq"]
-
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.post("/api/dlq/nonexistent-id/replay")
-            assert response.status_code == 404
-            assert "not found" in response.json()["error"]
+        response = _dlq_client(test_domain).post("/api/dlq/nonexistent-id/replay")
+        assert response.status_code == 404
+        assert "not found" in response.json()["error"]
 
     def test_dlq_replay_no_broker(self):
         """DLQ replay returns 503 when broker is unavailable."""
-        mock_domain = _make_mock_domain("no-broker")
-        mock_domain.brokers.get.return_value = None
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.post("/api/dlq/some-id/replay")
+        response = _dlq_client(_domain_without_broker()).post("/api/dlq/some-id/replay")
         assert response.status_code == 503
         assert response.json()["error"] == "DLQ not available"
 
     def test_dlq_replay_no_capability(self):
         """DLQ replay returns 503 when broker lacks DLQ capability."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = False
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.post("/api/dlq/some-id/replay")
+        response = _dlq_client(_domain_without_dlq()).post("/api/dlq/some-id/replay")
         assert response.status_code == 503
         assert response.json()["error"] == "DLQ not available"
 
-    def test_dlq_replay_handles_exception(self):
+    def test_dlq_replay_handles_exception(self, test_domain):
         """DLQ replay returns 500 on unexpected exception."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.side_effect = RuntimeError("unexpected")
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.post("/api/dlq/some-id/replay")
+        with _failing_capability_check(test_domain):
+            response = _dlq_client(test_domain).post("/api/dlq/some-id/replay")
         assert response.status_code == 500
         assert response.json()["error"] == "Failed to replay DLQ message"
 
@@ -1711,104 +1691,71 @@ class TestDLQReplayEndpoint:
 class TestDLQReplayAllEndpoint:
     """Tests for POST /api/dlq/replay-all."""
 
-    def test_dlq_replay_all_success(self):
+    def test_dlq_replay_all_success(self, test_domain):
         """DLQ replay-all replays all messages for a subscription."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
-        mock_broker.dlq_replay_all.return_value = 5
+        redis_conn = _dlq_setup(test_domain)
+        for _ in range(5):
+            _add_dlq_message(redis_conn)
 
-        mock_info = MagicMock()
-        mock_info.stream_category = "orders::order"
-        mock_info.dlq_stream = "orders::order:dlq"
-        mock_info.backfill_dlq_stream = None
+        response = _dlq_client(test_domain).post(
+            "/api/dlq/replay-all?subscription=orders::order"
+        )
+        assert response.status_code == 200
+        data = response.json()
 
-        with patch("protean.utils.dlq.discover_subscriptions") as mock_discover:
-            mock_discover.return_value = [mock_info]
+        assert data["status"] == "ok"
+        assert data["replayed"] == 5
+        assert data["target_stream"] == "orders::order"
+        assert redis_conn.xlen("orders::order") == 5
 
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.post("/api/dlq/replay-all?subscription=orders::order")
-            assert response.status_code == 200
-            data = response.json()
-
-            assert data["status"] == "ok"
-            assert data["replayed"] == 5
-            assert data["target_stream"] == "orders::order"
-
-    def test_dlq_replay_all_with_backfill(self):
+    def test_dlq_replay_all_with_backfill(self, test_domain):
         """DLQ replay-all includes backfill DLQ streams."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
-        mock_broker.dlq_replay_all.side_effect = [3, 2]  # primary=3, backfill=2
+        redis_conn = _dlq_setup(test_domain, backfill=True)
+        for _ in range(3):
+            _add_dlq_message(redis_conn, "orders::order:dlq")
+        for _ in range(2):
+            _add_dlq_message(redis_conn, "orders::order:backfill:dlq")
 
-        mock_info = MagicMock()
-        mock_info.stream_category = "orders::order"
-        mock_info.dlq_stream = "orders::order:dlq"
-        mock_info.backfill_dlq_stream = "orders::order:backfill:dlq"
+        response = _dlq_client(test_domain).post(
+            "/api/dlq/replay-all?subscription=orders::order"
+        )
+        assert response.status_code == 200
+        data = response.json()
 
-        with patch("protean.utils.dlq.discover_subscriptions") as mock_discover:
-            mock_discover.return_value = [mock_info]
+        assert data["replayed"] == 5  # 3 + 2
 
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.post("/api/dlq/replay-all?subscription=orders::order")
-            assert response.status_code == 200
-            data = response.json()
-
-            assert data["replayed"] == 5  # 3 + 2
-
-    def test_dlq_replay_all_subscription_not_found(self):
+    def test_dlq_replay_all_subscription_not_found(self, test_domain):
         """DLQ replay-all returns 404 when subscription not found."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
+        _dlq_setup(test_domain)
 
-        with patch("protean.utils.dlq.discover_subscriptions") as mock_discover:
-            mock_discover.return_value = []
-
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.post(
-                "/api/dlq/replay-all?subscription=nonexistent::stream"
-            )
-            assert response.status_code == 404
-            assert "No subscription" in response.json()["error"]
+        response = _dlq_client(test_domain).post(
+            "/api/dlq/replay-all?subscription=nonexistent::stream"
+        )
+        assert response.status_code == 404
+        assert "No subscription" in response.json()["error"]
 
     def test_dlq_replay_all_no_broker(self):
         """DLQ replay-all returns 503 when broker is unavailable."""
-        mock_domain = _make_mock_domain("no-broker")
-        mock_domain.brokers.get.return_value = None
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.post("/api/dlq/replay-all?subscription=orders::order")
+        response = _dlq_client(_domain_without_broker()).post(
+            "/api/dlq/replay-all?subscription=orders::order"
+        )
         assert response.status_code == 503
         assert response.json()["error"] == "DLQ not available"
 
     def test_dlq_replay_all_no_capability(self):
         """DLQ replay-all returns 503 when broker lacks DLQ capability."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = False
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.post("/api/dlq/replay-all?subscription=orders::order")
+        response = _dlq_client(_domain_without_dlq()).post(
+            "/api/dlq/replay-all?subscription=orders::order"
+        )
         assert response.status_code == 503
         assert response.json()["error"] == "DLQ not available"
 
-    def test_dlq_replay_all_handles_exception(self):
+    def test_dlq_replay_all_handles_exception(self, test_domain):
         """DLQ replay-all returns 500 on unexpected exception."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.side_effect = RuntimeError("unexpected")
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.post("/api/dlq/replay-all?subscription=orders::order")
+        with _failing_capability_check(test_domain):
+            response = _dlq_client(test_domain).post(
+                "/api/dlq/replay-all?subscription=orders::order"
+            )
         assert response.status_code == 500
         assert response.json()["error"] == "Failed to replay DLQ messages"
 
@@ -1819,135 +1766,92 @@ class TestDLQReplayAllEndpoint:
 class TestDLQPurgeEndpoint:
     """Tests for DELETE /api/dlq."""
 
-    def test_dlq_purge_success(self):
+    def test_dlq_purge_success(self, test_domain):
         """DLQ purge removes all messages for a subscription."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
-        mock_broker.dlq_purge.return_value = 7
+        redis_conn = _dlq_setup(test_domain)
+        for _ in range(7):
+            _add_dlq_message(redis_conn)
 
-        mock_info = MagicMock()
-        mock_info.stream_category = "orders::order"
-        mock_info.dlq_stream = "orders::order:dlq"
-        mock_info.backfill_dlq_stream = None
+        response = _dlq_client(test_domain).delete(
+            "/api/dlq?subscription=orders::order"
+        )
+        assert response.status_code == 200
+        data = response.json()
 
-        with patch("protean.utils.dlq.discover_subscriptions") as mock_discover:
-            mock_discover.return_value = [mock_info]
+        assert data["status"] == "ok"
+        assert data["purged"] == 7
+        assert redis_conn.xlen("orders::order:dlq") == 0
 
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.delete("/api/dlq?subscription=orders::order")
-            assert response.status_code == 200
-            data = response.json()
-
-            assert data["status"] == "ok"
-            assert data["purged"] == 7
-
-    def test_dlq_purge_with_backfill(self):
+    def test_dlq_purge_with_backfill(self, test_domain):
         """DLQ purge includes backfill DLQ streams."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
-        mock_broker.dlq_purge.side_effect = [4, 3]  # primary=4, backfill=3
+        redis_conn = _dlq_setup(test_domain, backfill=True)
+        for _ in range(4):
+            _add_dlq_message(redis_conn, "orders::order:dlq")
+        for _ in range(3):
+            _add_dlq_message(redis_conn, "orders::order:backfill:dlq")
 
-        mock_info = MagicMock()
-        mock_info.stream_category = "orders::order"
-        mock_info.dlq_stream = "orders::order:dlq"
-        mock_info.backfill_dlq_stream = "orders::order:backfill:dlq"
+        response = _dlq_client(test_domain).delete(
+            "/api/dlq?subscription=orders::order"
+        )
+        assert response.status_code == 200
+        data = response.json()
 
-        with patch("protean.utils.dlq.discover_subscriptions") as mock_discover:
-            mock_discover.return_value = [mock_info]
+        assert data["purged"] == 7  # 4 + 3
 
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.delete("/api/dlq?subscription=orders::order")
-            assert response.status_code == 200
-            data = response.json()
-
-            assert data["purged"] == 7  # 4 + 3
-
-    def test_dlq_purge_subscription_not_found(self):
+    def test_dlq_purge_subscription_not_found(self, test_domain):
         """DLQ purge returns 404 when subscription not found."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = True
+        _dlq_setup(test_domain)
 
-        with patch("protean.utils.dlq.discover_subscriptions") as mock_discover:
-            mock_discover.return_value = []
-
-            observatory = Observatory(domains=[mock_domain])
-            client = TestClient(observatory.app)
-
-            response = client.delete("/api/dlq?subscription=nonexistent::stream")
-            assert response.status_code == 404
-            assert "No subscription" in response.json()["error"]
+        response = _dlq_client(test_domain).delete(
+            "/api/dlq?subscription=nonexistent::stream"
+        )
+        assert response.status_code == 404
+        assert "No subscription" in response.json()["error"]
 
     def test_dlq_purge_no_broker(self):
         """DLQ purge returns 503 when broker is unavailable."""
-        mock_domain = _make_mock_domain("no-broker")
-        mock_domain.brokers.get.return_value = None
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.delete("/api/dlq?subscription=orders::order")
+        response = _dlq_client(_domain_without_broker()).delete(
+            "/api/dlq?subscription=orders::order"
+        )
         assert response.status_code == 503
         assert response.json()["error"] == "DLQ not available"
 
     def test_dlq_purge_no_capability(self):
         """DLQ purge returns 503 when broker lacks DLQ capability."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.return_value = False
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.delete("/api/dlq?subscription=orders::order")
+        response = _dlq_client(_domain_without_dlq()).delete(
+            "/api/dlq?subscription=orders::order"
+        )
         assert response.status_code == 503
         assert response.json()["error"] == "DLQ not available"
 
-    def test_dlq_purge_handles_exception(self):
+    def test_dlq_purge_handles_exception(self, test_domain):
         """DLQ purge returns 500 on unexpected exception."""
-        mock_domain, mock_broker, _ = _make_mock_domain_with_broker()
-        mock_broker.has_capability.side_effect = RuntimeError("unexpected")
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.delete("/api/dlq?subscription=orders::order")
+        with _failing_capability_check(test_domain):
+            response = _dlq_client(test_domain).delete(
+                "/api/dlq?subscription=orders::order"
+            )
         assert response.status_code == 500
         assert response.json()["error"] == "Failed to purge DLQ"
 
 
-# --- Mock-based tests for /api/workers endpoint ---
+# --- /api/workers grouping, throughput and trace-read errors ---
 
 
-@pytest.mark.no_test_domain
-class TestWorkersEndpointMocked:
-    """Mock-based tests for /api/workers covering grouping, throughput, and error paths."""
+class TestWorkersEndpointGrouping:
+    """/api/workers groups consumers into workers and counts their throughput.
 
-    def test_workers_returns_503_when_no_redis(self):
-        """Returns 503 with error when no domain has a redis_instance."""
-        mock_domain = _make_mock_domain("no-redis")
-        mock_domain.brokers.get.return_value = None
+    Redis replies come from a stand-in client, so each test sets the consumer
+    names, idle times and trace entries exactly.
+    """
 
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.get("/api/workers")
-        assert response.status_code == 503
-        data = response.json()
-        assert data["error"] == "Redis not available"
-        assert data["workers"] == []
-        assert data["count"] == 0
-
-    def test_workers_returns_empty_list_when_no_consumers(self):
+    def test_workers_returns_empty_list_when_no_consumers(self, test_domain):
         """Returns empty workers list when streams exist but have no consumers."""
-        mock_domain, _, mock_redis = _make_mock_domain_with_broker()
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xinfo_groups.return_value = []
-        mock_redis.xrange.return_value = []
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xinfo_groups.return_value = []
+        redis_conn.xrange.return_value = []
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/workers")
@@ -1957,22 +1861,22 @@ class TestWorkersEndpointMocked:
         assert data["count"] == 0
         assert "timestamp" in data
 
-    def test_workers_groups_consumers_by_hostname_pid(self):
+    def test_workers_groups_consumers_by_hostname_pid(self, test_domain):
         """Consumers from the same host-pid are grouped into a single worker."""
-        mock_domain, _, mock_redis = _make_mock_domain_with_broker()
+        redis_conn = _stand_in_redis(test_domain)
 
-        mock_redis.scan.return_value = (
+        redis_conn.scan.return_value = (
             0,
             [b"orders::order", b"inventory::product"],
         )
         # Two streams, each with one group
-        mock_redis.xinfo_groups.side_effect = [
+        redis_conn.xinfo_groups.side_effect = [
             [{"name": "OrderHandler", "pending": 0, "lag": 0}],
             [{"name": "InventoryHandler", "pending": 0, "lag": 0}],
         ]
         # Both groups have consumers from the same worker (host1-1000)
         # and one consumer from a different worker (host2-2000)
-        mock_redis.xinfo_consumers.side_effect = [
+        redis_conn.xinfo_consumers.side_effect = [
             # Consumers for OrderHandler on orders::order
             [
                 {"name": "OrderHandler-host1-1000-aaa111", "pending": 2, "idle": 500},
@@ -1987,9 +1891,9 @@ class TestWorkersEndpointMocked:
                 },
             ],
         ]
-        mock_redis.xrange.return_value = []  # No trace data
+        redis_conn.xrange.return_value = []  # No trace data
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/workers")
@@ -2014,17 +1918,17 @@ class TestWorkersEndpointMocked:
         assert w2["subscription_count"] == 1
         assert w2["total_pending"] == 1
 
-    def test_workers_computes_throughput_from_trace_stream(self):
+    def test_workers_computes_throughput_from_trace_stream(self, test_domain):
         """Per-worker throughput counts are computed from trace stream entries."""
         import time as time_mod
 
-        mock_domain, _, mock_redis = _make_mock_domain_with_broker()
+        redis_conn = _stand_in_redis(test_domain)
 
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xinfo_groups.return_value = [
             {"name": "OrderHandler", "pending": 0, "lag": 0}
         ]
-        mock_redis.xinfo_consumers.return_value = [
+        redis_conn.xinfo_consumers.return_value = [
             {"name": "OrderHandler-host1-1000-abc123", "pending": 0, "idle": 100}
         ]
 
@@ -2047,13 +1951,13 @@ class TestWorkersEndpointMocked:
             {"event": "handler.started", "worker_id": "OrderHandler-host1-1000-abc123"}
         )
 
-        mock_redis.xrange.return_value = [
+        redis_conn.xrange.return_value = [
             (f"{now_ms - 2000}-0".encode(), {b"data": trace1.encode()}),
             (f"{now_ms - 1500}-0".encode(), {b"data": trace2.encode()}),
             (f"{now_ms - 1000}-0".encode(), {b"data": trace_skip.encode()}),
         ]
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/workers")
@@ -2074,21 +1978,21 @@ class TestWorkersEndpointMocked:
         # Worker should be active because of throughput
         assert worker["status"] == "active"
 
-    def test_workers_handles_trace_stream_exception_gracefully(self):
+    def test_workers_handles_trace_stream_exception_gracefully(self, test_domain):
         """Workers endpoint still returns results when trace stream read fails."""
-        mock_domain, _, mock_redis = _make_mock_domain_with_broker()
+        redis_conn = _stand_in_redis(test_domain)
 
-        mock_redis.scan.return_value = (0, [b"orders::order"])
-        mock_redis.xinfo_groups.return_value = [
+        redis_conn.scan.return_value = (0, [b"orders::order"])
+        redis_conn.xinfo_groups.return_value = [
             {"name": "OrderHandler", "pending": 0, "lag": 0}
         ]
-        mock_redis.xinfo_consumers.return_value = [
+        redis_conn.xinfo_consumers.return_value = [
             {"name": "OrderHandler-host1-1000-abc123", "pending": 0, "idle": 100}
         ]
         # xrange raises an exception (e.g., trace stream does not exist)
-        mock_redis.xrange.side_effect = Exception("NOGROUP No such stream")
+        redis_conn.xrange.side_effect = Exception("NOGROUP No such stream")
 
-        observatory = Observatory(domains=[mock_domain])
+        observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
 
         response = client.get("/api/workers")
@@ -2104,8 +2008,12 @@ class TestWorkersEndpointMocked:
 
 
 class TestTraceReadErrorPaths:
+    @pytest.fixture(autouse=True)
+    def _domain(self, test_domain):
+        self.domain = test_domain
+
     def _client(self) -> TestClient:
-        observatory = Observatory(domains=[_make_mock_domain()])
+        observatory = Observatory(domains=[self.domain])
         return TestClient(observatory.app)
 
     def test_failed_traces_accepts_utc_z_timestamps(self):

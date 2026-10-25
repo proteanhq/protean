@@ -1,6 +1,6 @@
 """Tests for the Observatory Domain Detail Panel.
 
-Covers:
+Tests for:
 - templates/domain.html: Slide-in panel markup
 - static/js/domain-detail.js: DomainDetail module
 - static/css/observatory.css: Panel styling classes

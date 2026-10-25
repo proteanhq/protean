@@ -1,6 +1,6 @@
 """Tests for Observatory Handlers API endpoints and supporting functions.
 
-Covers:
+Tests for:
 - routes/handlers.py: _extract_handled_messages, _handler_type_label,
   _infer_aggregate, _infer_stream_categories, collect_handler_metadata,
   merge_subscription_status, collect_per_handler_trace_metrics,
@@ -10,16 +10,28 @@ Covers:
 
 import json
 import time
-from collections import defaultdict
+from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from protean import Domain
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector
+from protean.core.subscriber import BaseSubscriber
+from protean.fields import Identifier, String
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.handlers import (
     _build_summary,
     _extract_handled_messages,
+    _get_redis,
     _handler_type_label,
     _infer_aggregate,
     _infer_stream_categories,
@@ -29,7 +41,11 @@ from protean.server.observatory.routes.handlers import (
     create_handlers_router,
     merge_subscription_status,
 )
+from protean.server.tracing import TRACE_STREAM
+from protean.utils import fqn
+from protean.utils.mixins import handle
 from tests.server.observatory.conftest import route_paths
+from tests.shared import FrozenClock
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -46,82 +62,190 @@ def client(observatory):
     return TestClient(observatory.app)
 
 
-def _make_mock_handler_cls(
-    *,
-    name="TestHandler",
-    handlers=None,
-    part_of=None,
-    projector_for=None,
-    stream_category=None,
-    stream_categories=None,
-    stream=None,
-    broker=None,
-):
-    """Create a mock handler class with the given metadata."""
-    cls = MagicMock()
-    cls.__name__ = name
+class _FakeRedis:
+    """In-memory stand-in for the raw ``redis.Redis`` client.
 
-    if handlers is not None:
-        cls._handlers = handlers
+    The core test lane has no Redis server, so the stream reads the Observatory
+    and the subscription-status collector make are answered from dicts here.
+    """
+
+    def __init__(self, *, lengths=None, groups=None, traces=None):
+        self.lengths = lengths or {}
+        self.groups = groups or {}
+        # Trace stream entries, oldest first, as (stream_id, fields) pairs.
+        self.traces = traces or []
+
+    def xlen(self, name):
+        return self.lengths.get(name, 0)
+
+    def xinfo_groups(self, name):
+        return self.groups.get(name, [])
+
+    def xinfo_consumers(self, name, group):
+        return []
+
+    def xrange(self, name, min="-", max="+", count=None):
+        if name != TRACE_STREAM:
+            return []
+        floor = 0 if min == "-" else int(str(min).split("-")[0])
+        return [
+            (sid, fields)
+            for sid, fields in self.traces
+            if int(_sid_str(sid).split("-")[0]) >= floor
+        ]
+
+    def xrevrange(self, name, max="+", min="-", count=None):
+        if name != TRACE_STREAM:
+            return []
+        entries = list(reversed(self.traces))
+        return entries[:count] if count else entries
+
+
+def _sid_str(sid):
+    return sid.decode() if isinstance(sid, bytes) else sid
+
+
+def _inline_config():
+    return {"brokers": {"default": {"provider": "inline"}}}
+
+
+def _build_domain(name="Handlers", *, redis=None, event_store_subscriptions=False):
+    """A real domain with one handler of each kind.
+
+    With ``redis`` set, the domain reads this directory's ``domain.toml`` (a
+    Redis broker and stream subscriptions) and its broker's raw client is
+    replaced by that fake. Without it, the domain uses the inline broker, which
+    has no Redis client at all.
+    """
+    if redis is not None:
+        domain = Domain(name=name, root_path=__file__)
     else:
-        cls._handlers = defaultdict(set)
+        domain = Domain(name=name, config=_inline_config())
 
-    meta = MagicMock()
-    meta.part_of = part_of
-    meta.projector_for = projector_for
-    meta.stream_category = stream_category
-    meta.stream_categories = stream_categories
-    meta.stream = stream
-    meta.broker = broker
+    sub_opts = {"subscription_type": "event_store"} if event_store_subscriptions else {}
 
-    # Control hasattr behavior
-    if stream_categories is None:
-        del meta.stream_categories
-    if projector_for is None:
-        del meta.projector_for
-    if part_of is None:
-        del meta.part_of
-    if stream_category is None:
-        del meta.stream_category
-    if stream is None:
-        del meta.stream
-    if broker is None:
-        del meta.broker
+    @domain.aggregate
+    class Order(BaseAggregate):
+        customer = String()
 
-    cls.meta_ = meta
-    return cls
+    @domain.aggregate
+    class Payment(BaseAggregate):
+        amount = String()
+
+    @domain.event(part_of=Order)
+    class OrderPlaced(BaseEvent):
+        order_id = Identifier(required=True)
+
+    @domain.event(part_of=Order)
+    class OrderShipped(BaseEvent):
+        order_id = Identifier(required=True)
+
+    @domain.event(part_of=Payment)
+    class PaymentReceived(BaseEvent):
+        order_id = Identifier(required=True)
+
+    @domain.command(part_of=Order)
+    class PlaceOrder(BaseCommand):
+        order_id = Identifier(required=True)
+
+    @domain.event_handler(part_of=Order, **sub_opts)
+    class OrderEventHandler(BaseEventHandler):
+        # Declared out of alphabetical order, so a sorted result shows sorting.
+        @handle(OrderShipped)
+        def a_on_shipped(self, event):
+            pass
+
+        @handle(OrderPlaced)
+        def b_on_placed(self, event):
+            pass
+
+    @domain.event_handler(part_of=Order, **sub_opts)
+    class CatchAllHandler(BaseEventHandler):
+        @handle("$any")
+        def on_any(self, event):
+            pass
+
+        @handle(OrderPlaced)
+        def on_placed(self, event):
+            pass
+
+    @domain.command_handler(part_of=Order)
+    class OrderCommandHandler(BaseCommandHandler):
+        @handle(PlaceOrder)
+        def place(self, command):
+            pass
+
+    @domain.projection
+    class OrderSummary(BaseProjection):
+        order_id = Identifier(identifier=True)
+
+    @domain.projector(
+        projector_for=OrderSummary, aggregates=[Order, Payment], **sub_opts
+    )
+    class OrderSummaryProjector(BaseProjector):
+        @handle(OrderPlaced)
+        def on_placed(self, event):
+            pass
+
+        @handle(PaymentReceived)
+        def on_paid(self, event):
+            pass
+
+    @domain.subscriber(stream="external:payments")
+    class PaymentSubscriber(BaseSubscriber):
+        def __call__(self, data):
+            pass
+
+    @domain.process_manager(
+        stream_categories=[Order.meta_.stream_category, Payment.meta_.stream_category]
+    )
+    class OrderFulfillment:
+        order_id = Identifier(required=True)
+
+        @handle(OrderPlaced, start=True, correlate="order_id")
+        def on_placed(self, event):
+            pass
+
+        @handle(PaymentReceived, end=True, correlate="order_id")
+        def on_paid(self, event):
+            pass
+
+    domain.init(traverse=False)
+    if redis is not None:
+        domain.brokers.get("default").redis_instance = redis
+
+    return domain, SimpleNamespace(
+        Order=Order,
+        Payment=Payment,
+        OrderEventHandler=OrderEventHandler,
+        CatchAllHandler=CatchAllHandler,
+        OrderCommandHandler=OrderCommandHandler,
+        OrderSummary=OrderSummary,
+        OrderSummaryProjector=OrderSummaryProjector,
+        PaymentSubscriber=PaymentSubscriber,
+        OrderFulfillment=OrderFulfillment,
+    )
 
 
-def _make_mock_domain_record(name, qualname, class_type, cls):
-    """Create a mock DomainRecord."""
-    record = MagicMock()
-    record.name = name
-    record.qualname = qualname
-    record.class_type = class_type
-    record.cls = cls
-    return record
+@pytest.fixture(scope="module")
+def handlers_domain():
+    # Read-only in every test that uses it, so one build serves the module.
+    return _build_domain()
 
 
-def _make_mock_domain(
-    *,
-    name="TestDomain",
-    event_handlers=None,
-    command_handlers=None,
-    projectors=None,
-    subscribers=None,
-):
-    """Create a mock domain with the given registry."""
-    domain = MagicMock()
-    domain.name = name
+def _group(name, *, lag, pending=0, consumers=1):
+    """One ``XINFO GROUPS`` entry, as redis-py returns it."""
+    return {
+        "name": name,
+        "pending": pending,
+        "lag": lag,
+        "consumers": consumers,
+        "last-delivered-id": "0-0",
+    }
 
-    registry = MagicMock()
-    registry.event_handlers = event_handlers or {}
-    registry.command_handlers = command_handlers or {}
-    registry.projectors = projectors or {}
-    registry.subscribers = subscribers or {}
 
-    domain.registry = registry
-    return domain
+def _by_name(handlers):
+    return {h["name"]: h for h in handlers}
 
 
 def _make_trace_entry(
@@ -144,56 +268,73 @@ def _make_trace_entry(
     return json.dumps(trace).encode("utf-8")
 
 
+def _now_sid(offset_ms=0):
+    return f"{int(time.time() * 1000) - offset_ms}-0".encode()
+
+
 # ---------------------------------------------------------------------------
 # _extract_handled_messages
 # ---------------------------------------------------------------------------
 
 
 class TestExtractHandledMessages:
-    def test_empty_handlers(self):
-        cls = _make_mock_handler_cls(handlers=defaultdict(set))
-        assert _extract_handled_messages(cls) == []
+    def test_handler_without_handled_messages(self, handlers_domain):
+        """A subscriber has no ``_handlers`` map; a plain class has neither."""
 
-    def test_no_handlers_attr(self):
-        cls = MagicMock(spec=[])
-        assert _extract_handled_messages(cls) == []
+        class NotAHandler:
+            pass
 
-    def test_extracts_class_names_from_type_strings(self):
-        handlers = defaultdict(set)
-        handlers["App.OrderPlaced.v1"] = {MagicMock()}
-        handlers["App.OrderShipped.v1"] = {MagicMock()}
-        cls = _make_mock_handler_cls(handlers=handlers)
+        _, ns = handlers_domain
+        assert _extract_handled_messages(ns.PaymentSubscriber) == []
+        assert _extract_handled_messages(NotAHandler) == []
 
-        result = _extract_handled_messages(cls)
+    def test_empty_handlers_map(self):
+        domain = Domain(name="EmptyHandler", config=_inline_config())
+
+        @domain.aggregate
+        class Order(BaseAggregate):
+            customer = String()
+
+        @domain.event_handler(part_of=Order)
+        class IdleHandler(BaseEventHandler):
+            pass
+
+        domain.init(traverse=False)
+        assert _extract_handled_messages(IdleHandler) == []
+
+    def test_extracts_class_names_from_type_strings(self, handlers_domain):
+        _, ns = handlers_domain
+        result = _extract_handled_messages(ns.OrderEventHandler)
         assert result == ["OrderPlaced", "OrderShipped"]
 
-    def test_skips_any_key(self):
-        handlers = defaultdict(set)
-        handlers["$any"] = {MagicMock()}
-        handlers["App.OrderPlaced.v1"] = {MagicMock()}
-        cls = _make_mock_handler_cls(handlers=handlers)
+    def test_skips_any_key(self, handlers_domain):
+        _, ns = handlers_domain
+        assert "$any" in ns.CatchAllHandler._handlers
 
-        result = _extract_handled_messages(cls)
+        result = _extract_handled_messages(ns.CatchAllHandler)
         assert result == ["OrderPlaced"]
-        assert "$any" not in result
 
     def test_single_part_type_string(self):
-        """Type string without dots uses entire key."""
-        handlers = defaultdict(set)
-        handlers["SimpleType"] = {MagicMock()}
-        cls = _make_mock_handler_cls(handlers=handlers)
+        """Type string without dots uses entire key.
 
-        result = _extract_handled_messages(cls)
-        assert result == ["SimpleType"]
+        Registered handlers always carry dotted ``__type__`` keys, so a plain
+        class holds the undotted key here.
+        """
 
-    def test_sorted_output(self):
-        handlers = defaultdict(set)
-        handlers["App.Zebra.v1"] = {MagicMock()}
-        handlers["App.Alpha.v1"] = {MagicMock()}
-        cls = _make_mock_handler_cls(handlers=handlers)
+        class UndottedKeys:
+            _handlers = {"SimpleType": set()}
 
-        result = _extract_handled_messages(cls)
-        assert result == ["Alpha", "Zebra"]
+        assert _extract_handled_messages(UndottedKeys) == ["SimpleType"]
+
+    def test_sorted_output(self, handlers_domain):
+        _, ns = handlers_domain
+        keys = [k.split(".")[1] for k in ns.OrderEventHandler._handlers]
+        assert keys == ["OrderShipped", "OrderPlaced"]
+
+        assert _extract_handled_messages(ns.OrderEventHandler) == [
+            "OrderPlaced",
+            "OrderShipped",
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -227,34 +368,23 @@ class TestHandlerTypeLabel:
 
 
 class TestInferAggregate:
-    def test_from_part_of(self):
-        part_of = MagicMock()
-        part_of.__name__ = "Order"
-        cls = _make_mock_handler_cls(part_of=part_of)
-        assert _infer_aggregate(cls) == "Order"
+    def test_from_part_of(self, handlers_domain):
+        _, ns = handlers_domain
+        assert _infer_aggregate(ns.OrderEventHandler) == "Order"
 
-    def test_from_projector_for(self):
-        proj_for = MagicMock()
-        proj_for.__name__ = "OrderProjection"
-        cls = _make_mock_handler_cls(projector_for=proj_for)
-        assert _infer_aggregate(cls) == "OrderProjection"
+    def test_from_projector_for(self, handlers_domain):
+        _, ns = handlers_domain
+        assert _infer_aggregate(ns.OrderSummaryProjector) == "OrderSummary"
 
-    def test_projector_for_takes_priority(self):
-        """projector_for is checked before part_of."""
-        proj_for = MagicMock()
-        proj_for.__name__ = "OrderProjection"
-        part_of = MagicMock()
-        part_of.__name__ = "Order"
-        cls = _make_mock_handler_cls(projector_for=proj_for, part_of=part_of)
-        assert _infer_aggregate(cls) == "OrderProjection"
-
-    def test_no_aggregate(self):
-        cls = _make_mock_handler_cls()
-        assert _infer_aggregate(cls) is None
+    def test_no_aggregate(self, handlers_domain):
+        _, ns = handlers_domain
+        assert _infer_aggregate(ns.PaymentSubscriber) is None
 
     def test_no_meta(self):
-        cls = MagicMock(spec=[])
-        assert _infer_aggregate(cls) is None
+        class NotAHandler:
+            pass
+
+        assert _infer_aggregate(NotAHandler) is None
 
 
 # ---------------------------------------------------------------------------
@@ -263,35 +393,45 @@ class TestInferAggregate:
 
 
 class TestInferStreamCategories:
-    def test_projector_with_stream_categories(self):
-        cls = _make_mock_handler_cls(stream_categories=["order", "payment"])
-        result = _infer_stream_categories(cls, "PROJECTOR")
-        assert result == ["order", "payment"]
+    def test_projector_with_stream_categories(self, handlers_domain):
+        _, ns = handlers_domain
+        result = _infer_stream_categories(ns.OrderSummaryProjector, "PROJECTOR")
+        assert result == ["handlers::order", "handlers::payment"]
 
-    def test_process_manager_with_stream_categories(self):
-        cls = _make_mock_handler_cls(stream_categories=["order"])
-        result = _infer_stream_categories(cls, "PROCESS_MANAGER")
-        assert result == ["order"]
+    def test_process_manager_with_stream_categories(self, handlers_domain):
+        _, ns = handlers_domain
+        result = _infer_stream_categories(ns.OrderFulfillment, "PROCESS_MANAGER")
+        assert result == ["handlers::order", "handlers::payment"]
 
-    def test_event_handler_with_stream_category(self):
-        cls = _make_mock_handler_cls(stream_category="order")
-        result = _infer_stream_categories(cls, "EVENT_HANDLER")
-        assert result == ["order"]
+    def test_event_handler_with_stream_category(self, handlers_domain):
+        _, ns = handlers_domain
+        result = _infer_stream_categories(ns.OrderEventHandler, "EVENT_HANDLER")
+        assert result == ["handlers::order"]
 
-    def test_command_handler_with_stream_category(self):
-        cls = _make_mock_handler_cls(stream_category="order")
-        result = _infer_stream_categories(cls, "COMMAND_HANDLER")
-        assert result == ["order"]
+    def test_command_handler_with_stream_category(self, handlers_domain):
+        _, ns = handlers_domain
+        result = _infer_stream_categories(ns.OrderCommandHandler, "COMMAND_HANDLER")
+        assert result == ["handlers::order:command"]
 
-    def test_no_stream_info(self):
-        cls = _make_mock_handler_cls()
-        result = _infer_stream_categories(cls, "EVENT_HANDLER")
+    def test_projector_type_without_list_falls_back_to_stream_category(
+        self, handlers_domain
+    ):
+        """A projector-type class with no ``stream_categories`` list uses its
+        single ``stream_category``."""
+        _, ns = handlers_domain
+        result = _infer_stream_categories(ns.OrderEventHandler, "PROJECTOR")
+        assert result == ["handlers::order"]
+
+    def test_no_stream_info(self, handlers_domain):
+        _, ns = handlers_domain
+        result = _infer_stream_categories(ns.PaymentSubscriber, "EVENT_HANDLER")
         assert result == []
 
     def test_no_meta(self):
-        cls = MagicMock(spec=[])
-        result = _infer_stream_categories(cls, "EVENT_HANDLER")
-        assert result == []
+        class NotAHandler:
+            pass
+
+        assert _infer_stream_categories(NotAHandler, "EVENT_HANDLER") == []
 
 
 # ---------------------------------------------------------------------------
@@ -301,160 +441,56 @@ class TestInferStreamCategories:
 
 class TestCollectHandlerMetadata:
     def test_empty_domain(self):
-        domain = _make_mock_domain()
-        result = collect_handler_metadata([domain])
-        assert result == []
+        domain = Domain(name="Empty", config=_inline_config())
+        domain.init(traverse=False)
+        assert collect_handler_metadata([domain]) == []
 
-    def test_event_handler(self):
-        part_of = MagicMock()
-        part_of.__name__ = "Order"
-        handlers = defaultdict(set)
-        handlers["App.OrderPlaced.v1"] = {MagicMock()}
+    def test_event_handler(self, handlers_domain):
+        domain, ns = handlers_domain
+        h = _by_name(collect_handler_metadata([domain]))["OrderEventHandler"]
 
-        cls = _make_mock_handler_cls(
-            name="OrderEventHandler",
-            handlers=handlers,
-            part_of=part_of,
-            stream_category="order",
-        )
-        record = _make_mock_domain_record(
-            "OrderEventHandler",
-            "myapp.handlers.OrderEventHandler",
-            "EVENT_HANDLER",
-            cls,
-        )
-        domain = _make_mock_domain(event_handlers={"OrderEventHandler": record})
-
-        result = collect_handler_metadata([domain])
-        assert len(result) == 1
-        h = result[0]
-        assert h["name"] == "OrderEventHandler"
-        assert h["qualname"] == "myapp.handlers.OrderEventHandler"
+        assert h["qualname"] == fqn(ns.OrderEventHandler)
         assert h["type"] == "event_handler"
-        assert h["domain"] == "TestDomain"
+        assert h["domain"] == "Handlers"
         assert h["aggregate"] == "Order"
-        assert h["stream_categories"] == ["order"]
-        assert h["handled_messages"] == ["OrderPlaced"]
+        assert h["stream_categories"] == ["handlers::order"]
+        assert h["handled_messages"] == ["OrderPlaced", "OrderShipped"]
         assert h["subscription"] is None
         assert h["metrics"] is None
 
-    def test_command_handler(self):
-        part_of = MagicMock()
-        part_of.__name__ = "Order"
-        handlers = defaultdict(set)
-        handlers["App.PlaceOrder.v1"] = {MagicMock()}
+    def test_command_handler(self, handlers_domain):
+        domain, _ = handlers_domain
+        h = _by_name(collect_handler_metadata([domain]))["OrderCommandHandler"]
+        assert h["type"] == "command_handler"
+        assert h["handled_messages"] == ["PlaceOrder"]
 
-        cls = _make_mock_handler_cls(
-            name="OrderCommandHandler",
-            handlers=handlers,
-            part_of=part_of,
-            stream_category="order",
-        )
-        record = _make_mock_domain_record(
-            "OrderCommandHandler",
-            "myapp.handlers.OrderCommandHandler",
-            "COMMAND_HANDLER",
-            cls,
-        )
-        domain = _make_mock_domain(command_handlers={"OrderCommandHandler": record})
+    def test_projector(self, handlers_domain):
+        domain, _ = handlers_domain
+        h = _by_name(collect_handler_metadata([domain]))["OrderSummaryProjector"]
+        assert h["type"] == "projector"
+        assert h["aggregate"] == "OrderSummary"
+        assert h["stream_categories"] == ["handlers::order", "handlers::payment"]
 
-        result = collect_handler_metadata([domain])
-        assert len(result) == 1
-        assert result[0]["type"] == "command_handler"
-        assert result[0]["handled_messages"] == ["PlaceOrder"]
-
-    def test_projector(self):
-        proj_for = MagicMock()
-        proj_for.__name__ = "OrderProjection"
-        handlers = defaultdict(set)
-        handlers["App.OrderPlaced.v1"] = {MagicMock()}
-
-        cls = _make_mock_handler_cls(
-            name="OrderProjector",
-            handlers=handlers,
-            projector_for=proj_for,
-            stream_categories=["order"],
-        )
-        record = _make_mock_domain_record(
-            "OrderProjector",
-            "myapp.projectors.OrderProjector",
-            "PROJECTOR",
-            cls,
-        )
-        domain = _make_mock_domain(projectors={"OrderProjector": record})
-
-        result = collect_handler_metadata([domain])
-        assert len(result) == 1
-        assert result[0]["type"] == "projector"
-        assert result[0]["aggregate"] == "OrderProjection"
-        assert result[0]["stream_categories"] == ["order"]
-
-    def test_subscriber(self):
-        cls = _make_mock_handler_cls(
-            name="PaymentSubscriber",
-            stream="external:payments",
-            broker="default",
-        )
-        # Subscribers have no _handlers dict
-        cls._handlers = defaultdict(set)
-
-        record = _make_mock_domain_record(
-            "PaymentSubscriber",
-            "myapp.subscribers.PaymentSubscriber",
-            "SUBSCRIBER",
-            cls,
-        )
-        domain = _make_mock_domain(subscribers={"PaymentSubscriber": record})
-
-        result = collect_handler_metadata([domain])
-        assert len(result) == 1
-        h = result[0]
+    def test_subscriber(self, handlers_domain):
+        domain, _ = handlers_domain
+        h = _by_name(collect_handler_metadata([domain]))["PaymentSubscriber"]
         assert h["type"] == "subscriber"
         assert h["handled_messages"] == ["external:payments"]
         assert h["stream_categories"] == ["external:payments"]
 
-    def test_multiple_domains(self):
-        part_of = MagicMock()
-        part_of.__name__ = "User"
-        cls = _make_mock_handler_cls(
-            name="UserHandler",
-            part_of=part_of,
-            stream_category="user",
-        )
-        record = _make_mock_domain_record(
-            "UserHandler", "app.UserHandler", "EVENT_HANDLER", cls
-        )
+    def test_multiple_domains(self, handlers_domain):
+        domain, _ = handlers_domain
+        empty = Domain(name="Empty", config=_inline_config())
+        empty.init(traverse=False)
 
-        d1 = _make_mock_domain(name="Domain1", event_handlers={"UserHandler": record})
-        d2 = _make_mock_domain(name="Domain2")
+        result = collect_handler_metadata([domain, empty])
+        assert len(result) == 5
+        assert {h["domain"] for h in result} == {"Handlers"}
 
-        result = collect_handler_metadata([d1, d2])
-        assert len(result) == 1
-        assert result[0]["domain"] == "Domain1"
-
-    def test_multiple_handler_types_combined(self):
-        part_of = MagicMock()
-        part_of.__name__ = "Order"
-
-        eh_cls = _make_mock_handler_cls(
-            name="EH", part_of=part_of, stream_category="order"
-        )
-        eh_rec = _make_mock_domain_record("EH", "app.EH", "EVENT_HANDLER", eh_cls)
-
-        ch_cls = _make_mock_handler_cls(
-            name="CH", part_of=part_of, stream_category="order"
-        )
-        ch_rec = _make_mock_domain_record("CH", "app.CH", "COMMAND_HANDLER", ch_cls)
-
-        domain = _make_mock_domain(
-            event_handlers={"EH": eh_rec},
-            command_handlers={"CH": ch_rec},
-        )
-
-        result = collect_handler_metadata([domain])
-        assert len(result) == 2
-        types = {h["type"] for h in result}
-        assert types == {"event_handler", "command_handler"}
+    def test_multiple_handler_types_combined(self, handlers_domain):
+        domain, _ = handlers_domain
+        types = {h["type"] for h in collect_handler_metadata([domain])}
+        assert types == {"event_handler", "command_handler", "projector", "subscriber"}
 
 
 # ---------------------------------------------------------------------------
@@ -462,252 +498,166 @@ class TestCollectHandlerMetadata:
 # ---------------------------------------------------------------------------
 
 
+def _seed_event_store_lag(domain, handler_cls, category, *, read_up_to):
+    """Write three events to ``category`` and a position at ``read_up_to``.
+
+    Returns the time stamped on the position record, which is what the
+    collector measures seconds of lag from.
+    """
+    store = domain.event_store.store
+    with domain.domain_context():
+        for n in range(3):
+            store._write(f"{category}-1", "Happened", {"n": n})
+        position_stream = f"position-{fqn(handler_cls)}-{category}"
+        store._write(position_stream, "Read", {"position": read_up_to})
+        return datetime.fromisoformat(store._read_last_message(position_stream)["time"])
+
+
 class TestMergeSubscriptionStatus:
-    def test_no_statuses_leaves_subscription_none(self):
+    def test_no_statuses_leaves_subscription_none(self, test_domain):
         handlers = [
             {"name": "TestHandler", "type": "event_handler", "stream_categories": []}
         ]
-        domain = MagicMock()
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[],
-        ):
-            merge_subscription_status(handlers, [domain])
+        merge_subscription_status(handlers, [test_domain])
         assert handlers[0].get("subscription") is None
 
     def test_event_handler_direct_match(self):
-        status = MagicMock()
-        status.name = "OrderEventHandler"
-        status.handler_name = "OrderEventHandler"
-        status.status = "ok"
-        status.lag = 0
-        status.pending = 0
-        status.dlq_depth = 0
-        status.consumer_count = 1
-        status.subscription_type = "stream"
-
-        handlers = [
-            {
-                "name": "OrderEventHandler",
-                "type": "event_handler",
-                "stream_categories": ["order"],
-            }
+        fake = _FakeRedis()
+        domain, ns = _build_domain(redis=fake)
+        fake.groups["handlers::order"] = [
+            _group(fqn(ns.OrderEventHandler), lag=0, consumers=1)
         ]
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[status],
-        ):
-            merge_subscription_status(handlers, [MagicMock()])
 
-        sub = handlers[0]["subscription"]
+        handlers = collect_handler_metadata([domain])
+        merge_subscription_status(handlers, [domain])
+
+        sub = _by_name(handlers)["OrderEventHandler"]["subscription"]
         assert sub is not None
         assert sub["status"] == "ok"
         assert sub["lag"] == 0
         assert sub["consumer_count"] == 1
 
     def test_command_handler_matches_by_stream(self):
-        status = MagicMock()
-        status.name = "commands:order"
-        status.handler_name = "OrderCommandHandler"
-        status.status = "ok"
-        status.lag = 0
-        status.pending = 0
-        status.dlq_depth = 0
-        status.consumer_count = 1
-        status.subscription_type = "stream"
-
-        handlers = [
-            {
-                "name": "OrderCommandHandler",
-                "type": "command_handler",
-                "stream_categories": ["order"],
-            }
+        fake = _FakeRedis()
+        domain, _ = _build_domain(redis=fake)
+        category = "handlers::order:command"
+        fake.groups[category] = [
+            _group(f"protean.server.engine.Commands:{category}", lag=0)
         ]
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[status],
-        ):
-            merge_subscription_status(handlers, [MagicMock()])
 
-        sub = handlers[0]["subscription"]
+        handlers = collect_handler_metadata([domain])
+        merge_subscription_status(handlers, [domain])
+
+        sub = _by_name(handlers)["OrderCommandHandler"]["subscription"]
         assert sub is not None
+        assert sub["status"] == "ok"
         assert sub["subscription_type"] == "stream"
 
     def test_projector_aggregates_across_streams(self):
-        s1 = MagicMock()
-        s1.name = "MyProjector-order"
-        s1.handler_name = "MyProjector"
-        s1.status = "ok"
-        s1.lag = 2
-        s1.lag_seconds = None
-        s1.pending = 1
-        s1.dlq_depth = 0
-        s1.consumer_count = 1
-        s1.subscription_type = "stream"
-
-        s2 = MagicMock()
-        s2.name = "MyProjector-payment"
-        s2.handler_name = "MyProjector"
-        s2.status = "lagging"
-        s2.lag = 5
-        s2.lag_seconds = None
-        s2.pending = 3
-        s2.dlq_depth = 1
-        s2.consumer_count = 2
-        s2.subscription_type = "stream"
-
-        handlers = [
-            {
-                "name": "MyProjector",
-                "type": "projector",
-                "stream_categories": ["order", "payment"],
-            }
+        fake = _FakeRedis()
+        domain, ns = _build_domain(redis=fake)
+        group = fqn(ns.OrderSummaryProjector)
+        fake.groups["handlers::order"] = [_group(group, lag=2, pending=1, consumers=1)]
+        fake.groups["handlers::payment"] = [
+            _group(group, lag=5, pending=3, consumers=2)
         ]
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[s1, s2],
-        ):
-            merge_subscription_status(handlers, [MagicMock()])
+        fake.lengths["handlers::payment:dlq"] = 1
 
-        sub = handlers[0]["subscription"]
+        handlers = collect_handler_metadata([domain])
+        merge_subscription_status(handlers, [domain])
+
+        sub = _by_name(handlers)["OrderSummaryProjector"]["subscription"]
         assert sub is not None
         assert sub["lag"] == 7  # 2 + 5
         assert sub["pending"] == 4  # 1 + 3
         assert sub["dlq_depth"] == 1
-        assert sub["status"] == "lagging"  # worst of ok/lagging
+        assert sub["status"] == "lagging"
         assert sub["consumer_count"] == 2  # max
 
+    def test_projector_worst_of_ok_and_lagging_is_lagging(self):
+        fake = _FakeRedis()
+        domain, ns = _build_domain(redis=fake)
+        group = fqn(ns.OrderSummaryProjector)
+        fake.groups["handlers::order"] = [_group(group, lag=0)]
+        fake.groups["handlers::payment"] = [_group(group, lag=4)]
+
+        handlers = collect_handler_metadata([domain])
+        merge_subscription_status(handlers, [domain])
+
+        sub = _by_name(handlers)["OrderSummaryProjector"]["subscription"]
+        assert sub["status"] == "lagging"
+        assert sub["lag"] == 4
+
     def test_projector_worst_status_unknown(self):
-        s1 = MagicMock()
-        s1.name = "P-order"
-        s1.handler_name = "P"
-        s1.status = "lagging"
-        s1.lag = 2
-        s1.lag_seconds = None
-        s1.pending = 0
-        s1.dlq_depth = 0
-        s1.consumer_count = 1
-        s1.subscription_type = "stream"
+        """One stream lags and the other has no consumer group, so its lag is
+        unknown; the projector reports the worse of the two."""
+        fake = _FakeRedis()
+        domain, ns = _build_domain(redis=fake)
+        fake.groups["handlers::order"] = [_group(fqn(ns.OrderSummaryProjector), lag=2)]
 
-        s2 = MagicMock()
-        s2.name = "P-payment"
-        s2.handler_name = "P"
-        s2.status = "unknown"
-        s2.lag = None
-        s2.lag_seconds = None
-        s2.pending = 0
-        s2.dlq_depth = 0
-        s2.consumer_count = 0
-        s2.subscription_type = "stream"
+        handlers = collect_handler_metadata([domain])
+        merge_subscription_status(handlers, [domain])
 
-        handlers = [{"name": "P", "type": "projector", "stream_categories": []}]
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[s1, s2],
-        ):
-            merge_subscription_status(handlers, [MagicMock()])
-
-        assert handlers[0]["subscription"]["status"] == "unknown"
+        sub = _by_name(handlers)["OrderSummaryProjector"]["subscription"]
+        assert sub["status"] == "unknown"
+        assert sub["lag"] == 2
 
     def test_event_handler_carries_lag_seconds(self):
-        status = MagicMock()
-        status.name = "OrderEventHandler"
-        status.handler_name = "OrderEventHandler"
-        status.status = "lagging"
-        status.lag = 5
-        status.lag_seconds = 8.5
-        status.pending = 0
-        status.dlq_depth = 0
-        status.consumer_count = 1
-        status.subscription_type = "event_store"
+        domain, ns = _build_domain(event_store_subscriptions=True)
+        written_at = _seed_event_store_lag(
+            domain, ns.OrderEventHandler, "handlers::order", read_up_to=1
+        )
+        domain.clock = FrozenClock(written_at + timedelta(seconds=8.5))
 
-        handlers = [
-            {
-                "name": "OrderEventHandler",
-                "type": "event_handler",
-                "stream_categories": ["order"],
-            }
-        ]
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[status],
-        ):
-            merge_subscription_status(handlers, [MagicMock()])
+        handlers = collect_handler_metadata([domain])
+        merge_subscription_status(handlers, [domain])
 
-        assert handlers[0]["subscription"]["lag_seconds"] == 8.5
+        sub = _by_name(handlers)["OrderEventHandler"]["subscription"]
+        assert sub["subscription_type"] == "event_store"
+        assert sub["lag_seconds"] == 8.5
 
     def test_projector_lag_seconds_is_max_not_sum(self):
         """Seconds-lag aggregates as the worst (max) stream staleness, not a sum."""
-        s1 = MagicMock()
-        s1.name = "MyProjector-order"
-        s1.handler_name = "MyProjector"
-        s1.status = "lagging"
-        s1.lag = 2
-        s1.lag_seconds = 3.0
-        s1.pending = 0
-        s1.dlq_depth = 0
-        s1.consumer_count = 1
-        s1.subscription_type = "event_store"
+        domain, ns = _build_domain(event_store_subscriptions=True)
+        order_at = _seed_event_store_lag(
+            domain, ns.OrderSummaryProjector, "handlers::order", read_up_to=1
+        )
+        payment_at = _seed_event_store_lag(
+            domain, ns.OrderSummaryProjector, "handlers::payment", read_up_to=1
+        )
+        now = payment_at + timedelta(seconds=3)
+        domain.clock = FrozenClock(now)
 
-        s2 = MagicMock()
-        s2.name = "MyProjector-payment"
-        s2.handler_name = "MyProjector"
-        s2.status = "lagging"
-        s2.lag = 5
-        s2.lag_seconds = 12.0
-        s2.pending = 0
-        s2.dlq_depth = 0
-        s2.consumer_count = 1
-        s2.subscription_type = "event_store"
+        handlers = collect_handler_metadata([domain])
+        merge_subscription_status(handlers, [domain])
 
-        handlers = [
-            {
-                "name": "MyProjector",
-                "type": "projector",
-                "stream_categories": ["order", "payment"],
-            }
-        ]
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[s1, s2],
-        ):
-            merge_subscription_status(handlers, [MagicMock()])
-
-        assert handlers[0]["subscription"]["lag_seconds"] == 12.0  # max, not 15.0
+        sub = _by_name(handlers)["OrderSummaryProjector"]["subscription"]
+        order_lag = (now - order_at).total_seconds()
+        assert sub["lag_seconds"] == pytest.approx(order_lag)  # max, not order + 3
 
     def test_projector_lag_seconds_none_when_all_none(self):
-        """No stream reports seconds, so the aggregate stays None (unavailable)."""
-        s1 = MagicMock()
-        s1.name = "MyProjector-order"
-        s1.handler_name = "MyProjector"
-        s1.status = "lagging"
-        s1.lag = 2
-        s1.lag_seconds = None
-        s1.pending = 0
-        s1.dlq_depth = 0
-        s1.consumer_count = 1
-        s1.subscription_type = "stream"
+        """Stream subscriptions report no seconds, so the aggregate stays None."""
+        fake = _FakeRedis()
+        domain, ns = _build_domain(redis=fake)
+        group = fqn(ns.OrderSummaryProjector)
+        fake.groups["handlers::order"] = [_group(group, lag=2)]
+        fake.groups["handlers::payment"] = [_group(group, lag=1)]
 
-        handlers = [
-            {"name": "MyProjector", "type": "projector", "stream_categories": ["order"]}
-        ]
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[s1],
-        ):
-            merge_subscription_status(handlers, [MagicMock()])
+        handlers = collect_handler_metadata([domain])
+        merge_subscription_status(handlers, [domain])
 
-        assert handlers[0]["subscription"]["lag_seconds"] is None
+        sub = _by_name(handlers)["OrderSummaryProjector"]["subscription"]
+        assert sub["lag"] == 3
+        assert sub["lag_seconds"] is None
 
-    def test_exception_in_collect_does_not_crash(self):
+    def test_exception_in_collect_does_not_crash(self, test_domain):
         handlers = [{"name": "H", "type": "event_handler", "stream_categories": []}]
-        domain = MagicMock()
         with patch(
             "protean.server.observatory.routes.handlers.collect_subscription_statuses",
             side_effect=Exception("Redis down"),
         ):
             # Should not raise
-            merge_subscription_status(handlers, [domain])
+            merge_subscription_status(handlers, [test_domain])
 
         assert handlers[0].get("subscription") is None
 
@@ -727,15 +677,15 @@ class TestCollectPerHandlerTraceMetrics:
         assert collect_per_handler_trace_metrics(redis, 300000) == {}
 
     def test_counts_completed_and_failed(self):
-        now_ms = int(time.time() * 1000)
-        stream_id = f"{now_ms}-0".encode()
-        redis = MagicMock()
-        redis.xrange.return_value = [
-            (stream_id, {b"data": _make_trace_entry("handler.completed", "H1", 20)}),
-            (stream_id, {b"data": _make_trace_entry("handler.completed", "H1", 30)}),
-            (stream_id, {b"data": _make_trace_entry("handler.failed", "H1")}),
-            (stream_id, {b"data": _make_trace_entry("handler.completed", "H2", 10)}),
-        ]
+        sid = _now_sid()
+        redis = _FakeRedis(
+            traces=[
+                (sid, {b"data": _make_trace_entry("handler.completed", "H1", 20)}),
+                (sid, {b"data": _make_trace_entry("handler.completed", "H1", 30)}),
+                (sid, {b"data": _make_trace_entry("handler.failed", "H1")}),
+                (sid, {b"data": _make_trace_entry("handler.completed", "H2", 10)}),
+            ]
+        )
 
         result = collect_per_handler_trace_metrics(redis, 300000)
 
@@ -751,77 +701,75 @@ class TestCollectPerHandlerTraceMetrics:
         assert result["H2"]["error_rate"] == 0.0
 
     def test_message_dlq_counts_as_failed(self):
-        now_ms = int(time.time() * 1000)
-        stream_id = f"{now_ms}-0".encode()
-        redis = MagicMock()
-        redis.xrange.return_value = [
-            (stream_id, {b"data": _make_trace_entry("message.dlq", "H1")}),
-        ]
+        redis = _FakeRedis(
+            traces=[(_now_sid(), {b"data": _make_trace_entry("message.dlq", "H1")})]
+        )
 
         result = collect_per_handler_trace_metrics(redis, 300000)
         assert result["H1"]["failed"] == 1
         assert result["H1"]["processed"] == 0
 
     def test_skips_entries_without_handler(self):
-        now_ms = int(time.time() * 1000)
-        stream_id = f"{now_ms}-0".encode()
         trace = json.dumps({"event": "handler.completed", "duration_ms": 10}).encode()
-        redis = MagicMock()
-        redis.xrange.return_value = [(stream_id, {b"data": trace})]
+        redis = _FakeRedis(traces=[(_now_sid(), {b"data": trace})])
 
-        result = collect_per_handler_trace_metrics(redis, 300000)
-        assert result == {}
+        assert collect_per_handler_trace_metrics(redis, 300000) == {}
 
     def test_skips_malformed_json(self):
-        now_ms = int(time.time() * 1000)
-        stream_id = f"{now_ms}-0".encode()
-        redis = MagicMock()
-        redis.xrange.return_value = [
-            (stream_id, {b"data": b"not json"}),
-            (stream_id, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
-        ]
+        sid = _now_sid()
+        redis = _FakeRedis(
+            traces=[
+                (sid, {b"data": b"not json"}),
+                (sid, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
+            ]
+        )
+
+        result = collect_per_handler_trace_metrics(redis, 300000)
+        assert "H1" in result
+        assert result["H1"]["processed"] == 1
+
+    def test_skips_entries_without_data_field(self):
+        sid = _now_sid()
+        redis = _FakeRedis(
+            traces=[
+                (sid, {b"other_field": b"value"}),
+                (sid, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
+            ]
+        )
 
         result = collect_per_handler_trace_metrics(redis, 300000)
         assert "H1" in result
         assert result["H1"]["processed"] == 1
 
     def test_throughput_buckets_populated(self):
-        now_ms = int(time.time() * 1000)
-        window_ms = 300000
-        # Place stream ID near end of window so bucket index is valid
-        # The bucket_idx formula is: (ts_ms - (now_ms - window_ms)) // bucket_ms
-        # We need ts_ms > (now_ms - window_ms) to get a positive bucket index
-        trace_ts = now_ms - 5000  # 5 seconds ago — well within window
-        stream_id = f"{trace_ts}-0".encode()
-        redis = MagicMock()
-        redis.xrange.return_value = [
-            (stream_id, {b"data": _make_trace_entry("handler.completed", "H1", 5)}),
-        ]
+        # 5 seconds ago is well inside the window, so the entry lands in a bucket.
+        redis = _FakeRedis(
+            traces=[
+                (
+                    _now_sid(offset_ms=5000),
+                    {b"data": _make_trace_entry("handler.completed", "H1", 5)},
+                ),
+            ]
+        )
 
-        result = collect_per_handler_trace_metrics(redis, window_ms)
+        result = collect_per_handler_trace_metrics(redis, 300000)
         assert "throughput" in result["H1"]
         assert isinstance(result["H1"]["throughput"], list)
-        # At least one bucket should have a count
         assert sum(result["H1"]["throughput"]) >= 1
 
     def test_handles_string_data_field(self):
         """Redis may return string keys instead of bytes."""
-        now_ms = int(time.time() * 1000)
-        stream_id = f"{now_ms}-0"
         trace = json.dumps(
             {"event": "handler.completed", "handler": "H1", "duration_ms": 15}
         )
-        redis = MagicMock()
-        redis.xrange.return_value = [(stream_id, {"data": trace})]
+        redis = _FakeRedis(traces=[(_sid_str(_now_sid()), {"data": trace})])
 
         result = collect_per_handler_trace_metrics(redis, 300000)
         assert "H1" in result
         assert result["H1"]["processed"] == 1
 
     def test_no_entries(self):
-        redis = MagicMock()
-        redis.xrange.return_value = []
-        assert collect_per_handler_trace_metrics(redis, 300000) == {}
+        assert collect_per_handler_trace_metrics(_FakeRedis(), 300000) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -839,53 +787,56 @@ class TestCollectRecentMessages:
         assert collect_recent_messages(redis, "H1") == []
 
     def test_filters_by_handler_name(self):
-        now_ms = int(time.time() * 1000)
-        sid = f"{now_ms}-0".encode()
-        redis = MagicMock()
-        redis.xrevrange.return_value = [
-            (sid, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
-            (sid, {b"data": _make_trace_entry("handler.completed", "H2", 20)}),
-            (sid, {b"data": _make_trace_entry("handler.failed", "H1")}),
-        ]
+        sid = _now_sid()
+        redis = _FakeRedis(
+            traces=[
+                (sid, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
+                (sid, {b"data": _make_trace_entry("handler.completed", "H2", 20)}),
+                (sid, {b"data": _make_trace_entry("handler.failed", "H1")}),
+            ]
+        )
 
         result = collect_recent_messages(redis, "H1", count=10)
         assert len(result) == 2
         assert all(m["handler"] == "H1" for m in result)
 
     def test_respects_count_limit(self):
-        now_ms = int(time.time() * 1000)
-        sid = f"{now_ms}-0".encode()
-        entries = [
-            (sid, {b"data": _make_trace_entry("handler.completed", "H1", i)})
-            for i in range(10)
-        ]
-        redis = MagicMock()
-        redis.xrevrange.return_value = entries
+        sid = _now_sid()
+        redis = _FakeRedis(
+            traces=[
+                (sid, {b"data": _make_trace_entry("handler.completed", "H1", i)})
+                for i in range(10)
+            ]
+        )
 
         result = collect_recent_messages(redis, "H1", count=3)
         assert len(result) == 3
 
     def test_includes_stream_id(self):
-        now_ms = int(time.time() * 1000)
-        sid = f"{now_ms}-0".encode()
-        redis = MagicMock()
-        redis.xrevrange.return_value = [
-            (sid, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
-        ]
+        sid = _now_sid()
+        redis = _FakeRedis(
+            traces=[
+                (sid, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
+            ]
+        )
 
         result = collect_recent_messages(redis, "H1")
         assert len(result) == 1
-        assert "_stream_id" in result[0]
-        assert result[0]["_stream_id"] == f"{now_ms}-0"
+        assert result[0]["_stream_id"] == sid.decode()
 
-    def test_skips_malformed_json(self):
-        now_ms = int(time.time() * 1000)
-        sid = f"{now_ms}-0".encode()
-        redis = MagicMock()
-        redis.xrevrange.return_value = [
-            (sid, {b"data": b"bad json"}),
-            (sid, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
-        ]
+    @pytest.mark.parametrize(
+        "unreadable",
+        [{b"data": b"bad json"}, {b"other": b"value"}],
+        ids=["malformed-json", "no-data-field"],
+    )
+    def test_skips_unreadable_entries(self, unreadable):
+        sid = _now_sid()
+        redis = _FakeRedis(
+            traces=[
+                (sid, unreadable),
+                (sid, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
+            ]
+        )
 
         result = collect_recent_messages(redis, "H1")
         assert len(result) == 1
@@ -1002,109 +953,51 @@ class TestHandlersDetailEndpoint:
         assert resp.status_code == 404
 
 
-@pytest.mark.no_test_domain
-class TestHandlersWithMockDomain:
-    """Tests using mock domains to verify handler data integration."""
+class TestHandlersWithRegisteredHandlers:
+    """The endpoints serve a domain with handlers and an inline broker (no Redis)."""
 
-    def _make_observatory_with_handlers(self):
-        """Create an Observatory with mock domains containing handlers."""
-        part_of = MagicMock()
-        part_of.__name__ = "Order"
-        part_of.meta_ = MagicMock()
-        part_of.meta_.stream_category = "order"
+    @pytest.fixture
+    def handlers_client(self, handlers_domain):
+        domain, _ = handlers_domain
+        return TestClient(Observatory(domains=[domain]).app)
 
-        handlers = defaultdict(set)
-        handlers["App.OrderPlaced.v1"] = {MagicMock()}
-
-        cls = _make_mock_handler_cls(
-            name="OrderEventHandler",
-            handlers=handlers,
-            part_of=part_of,
-            stream_category="order",
-        )
-        record = _make_mock_domain_record(
-            "OrderEventHandler",
-            "myapp.OrderEventHandler",
-            "EVENT_HANDLER",
-            cls,
-        )
-
-        domain = _make_mock_domain(event_handlers={"OrderEventHandler": record})
-        # Mock domain_context
-        domain.domain_context.return_value.__enter__ = MagicMock()
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-
-        # Mock brokers to avoid Redis
-        domain.brokers = MagicMock()
-        domain.brokers.get.return_value = None
-
-        return Observatory(domains=[domain])
-
-    def test_list_returns_handlers(self):
-        obs = self._make_observatory_with_handlers()
-        client = TestClient(obs.app)
-
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[],
-        ):
-            resp = client.get("/api/handlers")
+    def test_list_returns_handlers(self, handlers_client):
+        resp = handlers_client.get("/api/handlers")
 
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data["handlers"]) == 1
-        assert data["handlers"][0]["name"] == "OrderEventHandler"
-        assert data["handlers"][0]["type"] == "event_handler"
-        assert data["summary"]["total"] == 1
+        h = _by_name(data["handlers"])["OrderEventHandler"]
+        assert h["type"] == "event_handler"
+        assert data["summary"]["total"] == 5
 
-    def test_detail_returns_handler(self):
-        obs = self._make_observatory_with_handlers()
-        client = TestClient(obs.app)
-
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[],
-        ):
-            resp = client.get("/api/handlers/OrderEventHandler")
+    def test_detail_returns_handler(self, handlers_client):
+        resp = handlers_client.get("/api/handlers/OrderEventHandler")
 
         assert resp.status_code == 200
         data = resp.json()
         assert data["handler"]["name"] == "OrderEventHandler"
-        assert "recent_messages" in data["handler"]
+        assert data["handler"]["recent_messages"] == []
 
-    def test_detail_nonexistent_returns_404(self):
-        obs = self._make_observatory_with_handlers()
-        client = TestClient(obs.app)
-
-        resp = client.get("/api/handlers/DoesNotExist")
+    def test_detail_nonexistent_returns_404(self, handlers_client):
+        resp = handlers_client.get("/api/handlers/DoesNotExist")
         assert resp.status_code == 404
 
-    def test_metrics_null_without_redis(self):
-        obs = self._make_observatory_with_handlers()
-        client = TestClient(obs.app)
+    def test_metrics_null_without_redis(self, handlers_client):
+        resp = handlers_client.get("/api/handlers")
 
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[],
-        ):
-            resp = client.get("/api/handlers")
+        for h in resp.json()["handlers"]:
+            assert h["metrics"] is None
 
-        data = resp.json()
-        assert data["handlers"][0]["metrics"] is None
-
-    def test_subscription_status_failure_graceful(self):
+    def test_subscription_status_failure_graceful(self, handlers_client):
         """If subscription collection raises, handlers still returned."""
-        obs = self._make_observatory_with_handlers()
-        client = TestClient(obs.app)
-
         with patch(
             "protean.server.observatory.routes.handlers.collect_subscription_statuses",
             side_effect=Exception("Redis down"),
         ):
-            resp = client.get("/api/handlers")
+            resp = handlers_client.get("/api/handlers")
 
         assert resp.status_code == 200
-        assert len(resp.json()["handlers"]) == 1
+        assert len(resp.json()["handlers"]) == 5
 
 
 # ---------------------------------------------------------------------------
@@ -1217,98 +1110,57 @@ class TestCreateHandlersRouter:
 
 
 # ---------------------------------------------------------------------------
-# Coverage gap tests
+# _get_redis
 # ---------------------------------------------------------------------------
 
 
 class TestGetRedis:
-    """Cover _get_redis exception path."""
+    def test_returns_the_broker_redis_client(self):
+        fake = _FakeRedis()
+        domain, _ = _build_domain(redis=fake)
+        assert _get_redis([domain]) is fake
 
-    def test_get_redis_exception_continues(self):
-        from protean.server.observatory.routes.handlers import _get_redis
-
-        domain = MagicMock()
-        domain.domain_context.return_value.__enter__ = MagicMock(
-            side_effect=Exception("boom")
-        )
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-
+    def test_no_redis_client_on_inline_broker(self, handlers_domain):
+        domain, _ = handlers_domain
         assert _get_redis([domain]) is None
 
-    def test_get_redis_returns_instance(self):
-        from protean.server.observatory.routes.handlers import _get_redis
+    def test_skips_a_broken_domain(self, handlers_domain):
+        """A domain whose context cannot be entered is skipped, and the search
+        moves on to the next domain."""
+        broken, _ = handlers_domain
+        fake = _FakeRedis()
+        working, _ = _build_domain(name="Working", redis=fake)
 
-        mock_redis = MagicMock()
-        broker = MagicMock()
-        broker.redis_instance = mock_redis
-
-        domain = MagicMock()
-        ctx = MagicMock()
-        ctx.__enter__ = MagicMock(return_value=None)
-        ctx.__exit__ = MagicMock(return_value=False)
-        domain.domain_context.return_value = ctx
-        domain.brokers.get.return_value = broker
-
-        assert _get_redis([domain]) is mock_redis
+        with patch.object(broken, "domain_context", side_effect=Exception("boom")):
+            assert _get_redis([broken]) is None
+            assert _get_redis([broken, working]) is fake
 
 
-class TestProjectorFallthrough:
-    """Cover projector with empty stream_categories falling to stream_category."""
-
-    def test_projector_empty_stream_categories_falls_through(self):
-        """Projector with stream_categories=[] falls through to stream_category."""
-        cls = _make_mock_handler_cls(stream_categories=[], stream_category="order")
-        result = _infer_stream_categories(cls, "PROJECTOR")
-        # Empty list is falsy, so it falls through to stream_category
-        assert result == ["order"]
-
-
-class TestCommandHandlerNoMatchingStream:
-    """Cover command handler loop where no stream matches."""
-
+class TestMergeSubscriptionStatusNoMatch:
     def test_command_handler_no_matching_stream_status(self):
-        status = MagicMock()
-        status.name = "commands:payment"
-        status.handler_name = "PaymentCH"
-        status.status = "ok"
-
+        """A dispatcher status for another stream does not attach to the handler."""
+        fake = _FakeRedis()
+        domain, _ = _build_domain(redis=fake)
         handlers = [
             {
-                "name": "OrderCH",
+                "name": "PaymentCommandHandler",
                 "type": "command_handler",
-                "stream_categories": ["order"],
+                "stream_categories": ["handlers::payment:command"],
             }
         ]
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[status],
-        ):
-            merge_subscription_status(handlers, [MagicMock()])
-
-        # No match → subscription stays None
-        assert handlers[0].get("subscription") is None
-
-    def test_command_handler_empty_stream_categories(self):
-        handlers = [
-            {
-                "name": "EmptyCH",
-                "type": "command_handler",
-                "stream_categories": [],
-            }
-        ]
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[],
-        ):
-            merge_subscription_status(handlers, [MagicMock()])
+        merge_subscription_status(handlers, [domain])
 
         assert handlers[0].get("subscription") is None
 
+    def test_command_handler_empty_stream_categories(self, test_domain):
+        handlers = [
+            {"name": "EmptyCH", "type": "command_handler", "stream_categories": []}
+        ]
+        merge_subscription_status(handlers, [test_domain])
 
-class TestProjectorNoStatuses:
-    """Cover projector/PM path where status_by_handler has no match."""
+        assert handlers[0].get("subscription") is None
 
-    def test_projector_no_matching_statuses(self):
+    def test_projector_no_matching_statuses(self, test_domain):
         handlers = [
             {
                 "name": "OrphanProjector",
@@ -1316,103 +1168,35 @@ class TestProjectorNoStatuses:
                 "stream_categories": ["order"],
             }
         ]
-        with patch(
-            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-            return_value=[],
-        ):
-            merge_subscription_status(handlers, [MagicMock()])
+        merge_subscription_status(handlers, [test_domain])
 
         assert handlers[0].get("subscription") is None
 
 
-class TestTraceEntryNoDataField:
-    """Cover trace entries with missing data field."""
+class TestEndpointsWithRedis:
+    """The endpoints with a Redis broker whose raw client is a fake, and the
+    failures each endpoint survives."""
 
-    def test_trace_entry_with_no_data(self):
-        now_ms = int(time.time() * 1000)
-        stream_id = f"{now_ms}-0".encode()
-        redis = MagicMock()
-        redis.xrange.return_value = [
-            (stream_id, {b"other_field": b"value"}),  # no "data" key
-            (stream_id, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
-        ]
-
-        result = collect_per_handler_trace_metrics(redis, 300000)
-        assert "H1" in result
-        assert result["H1"]["processed"] == 1
-
-    def test_recent_messages_entry_with_no_data(self):
-        now_ms = int(time.time() * 1000)
-        sid = f"{now_ms}-0".encode()
-        redis = MagicMock()
-        redis.xrevrange.return_value = [
-            (sid, {b"other": b"value"}),  # no "data" key
-            (sid, {b"data": _make_trace_entry("handler.completed", "H1", 10)}),
-        ]
-
-        result = collect_recent_messages(redis, "H1")
-        assert len(result) == 1
-
-
-@pytest.mark.no_test_domain
-class TestEndpointExceptionPaths:
-    """Cover exception handling in the list and detail endpoints."""
-
-    def _make_obs_with_redis(self):
-        """Create Observatory with a mock domain that has a Redis broker."""
-        part_of = MagicMock()
-        part_of.__name__ = "Order"
-        part_of.meta_ = MagicMock()
-        part_of.meta_.stream_category = "order"
-
-        cls = _make_mock_handler_cls(
-            name="OrderHandler",
-            part_of=part_of,
-            stream_category="order",
-        )
-        record = _make_mock_domain_record(
-            "OrderHandler", "app.OrderHandler", "EVENT_HANDLER", cls
-        )
-        domain = _make_mock_domain(event_handlers={"OrderHandler": record})
-
-        # Set up broker with redis
-        mock_redis = MagicMock()
-        broker = MagicMock()
-        broker.redis_instance = mock_redis
-
-        ctx = MagicMock()
-        ctx.__enter__ = MagicMock(return_value=None)
-        ctx.__exit__ = MagicMock(return_value=False)
-        domain.domain_context.return_value = ctx
-        domain.brokers.get.return_value = broker
-
-        obs = Observatory(domains=[domain])
-        return obs, mock_redis
+    def _client(self, fake=None):
+        domain, _ = _build_domain(redis=fake or _FakeRedis())
+        return TestClient(Observatory(domains=[domain]).app)
 
     def test_list_trace_metrics_exception_graceful(self):
         """Trace metrics exception in list endpoint doesn't crash."""
-        obs, _mock_redis = self._make_obs_with_redis()
-        client = TestClient(obs.app)
+        client = self._client()
 
-        with (
-            patch(
-                "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-                return_value=[],
-            ),
-            patch(
-                "protean.server.observatory.routes.handlers.collect_per_handler_trace_metrics",
-                side_effect=Exception("Redis error"),
-            ),
+        with patch(
+            "protean.server.observatory.routes.handlers.collect_per_handler_trace_metrics",
+            side_effect=Exception("Redis error"),
         ):
             resp = client.get("/api/handlers")
 
         assert resp.status_code == 200
-        assert len(resp.json()["handlers"]) == 1
+        assert len(resp.json()["handlers"]) == 5
 
     def test_list_merge_subscription_exception_graceful(self):
         """merge_subscription_status exception in list endpoint caught."""
-        obs, _ = self._make_obs_with_redis()
-        client = TestClient(obs.app)
+        client = self._client()
 
         with patch(
             "protean.server.observatory.routes.handlers.merge_subscription_status",
@@ -1422,86 +1206,83 @@ class TestEndpointExceptionPaths:
 
         assert resp.status_code == 200
 
+    def test_list_includes_trace_metrics(self):
+        sid = _now_sid()
+        fake = _FakeRedis(
+            traces=[
+                (
+                    sid,
+                    {
+                        b"data": _make_trace_entry(
+                            "handler.completed", "OrderEventHandler", 10
+                        )
+                    },
+                )
+            ]
+        )
+        resp = self._client(fake).get("/api/handlers")
+
+        handlers = _by_name(resp.json()["handlers"])
+        assert handlers["OrderEventHandler"]["metrics"]["processed"] == 1
+        assert handlers["OrderCommandHandler"]["metrics"] is None
+
     def test_detail_with_redis_and_metrics(self):
         """Detail endpoint with Redis returns metrics and recent messages."""
-        obs, _mock_redis = self._make_obs_with_redis()
-        client = TestClient(obs.app)
-
-        with (
-            patch(
-                "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-                return_value=[],
-            ),
-            patch(
-                "protean.server.observatory.routes.handlers.collect_per_handler_trace_metrics",
-                return_value={"OrderHandler": {"processed": 5, "failed": 0}},
-            ),
-            patch(
-                "protean.server.observatory.routes.handlers.collect_recent_messages",
-                return_value=[
-                    {"event": "handler.completed", "handler": "OrderHandler"}
-                ],
-            ),
-        ):
-            resp = client.get("/api/handlers/OrderHandler")
+        sid = _now_sid()
+        fake = _FakeRedis(
+            traces=[
+                (
+                    sid,
+                    {
+                        b"data": _make_trace_entry(
+                            "handler.completed", "OrderEventHandler", 10
+                        )
+                    },
+                )
+                for _ in range(5)
+            ]
+            + [(sid, {b"data": _make_trace_entry("handler.completed", "Other", 10)})]
+        )
+        resp = self._client(fake).get("/api/handlers/OrderEventHandler")
 
         assert resp.status_code == 200
         data = resp.json()
         assert data["handler"]["metrics"]["processed"] == 5
-        assert len(data["handler"]["recent_messages"]) == 1
+        assert len(data["handler"]["recent_messages"]) == 5
 
     def test_detail_subscription_exception_graceful(self):
         """Subscription exception in detail endpoint doesn't crash."""
-        obs, _ = self._make_obs_with_redis()
-        client = TestClient(obs.app)
+        client = self._client()
 
         with patch(
             "protean.server.observatory.routes.handlers.merge_subscription_status",
             side_effect=Exception("Error"),
         ):
-            resp = client.get("/api/handlers/OrderHandler")
+            resp = client.get("/api/handlers/OrderEventHandler")
 
         assert resp.status_code == 200
 
     def test_detail_trace_metrics_exception_graceful(self):
         """Trace metrics exception in detail endpoint caught."""
-        obs, _mock_redis = self._make_obs_with_redis()
-        client = TestClient(obs.app)
+        client = self._client()
 
-        with (
-            patch(
-                "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-                return_value=[],
-            ),
-            patch(
-                "protean.server.observatory.routes.handlers.collect_per_handler_trace_metrics",
-                side_effect=Exception("Error"),
-            ),
+        with patch(
+            "protean.server.observatory.routes.handlers.collect_per_handler_trace_metrics",
+            side_effect=Exception("Error"),
         ):
-            resp = client.get("/api/handlers/OrderHandler")
+            resp = client.get("/api/handlers/OrderEventHandler")
 
         assert resp.status_code == 200
 
     def test_detail_recent_messages_exception_graceful(self):
         """Recent messages exception in detail endpoint returns empty list."""
-        obs, _mock_redis = self._make_obs_with_redis()
-        client = TestClient(obs.app)
+        client = self._client()
 
-        with (
-            patch(
-                "protean.server.observatory.routes.handlers.collect_subscription_statuses",
-                return_value=[],
-            ),
-            patch(
-                "protean.server.observatory.routes.handlers.collect_per_handler_trace_metrics",
-                return_value={},
-            ),
-            patch(
-                "protean.server.observatory.routes.handlers.collect_recent_messages",
-                side_effect=Exception("Error"),
-            ),
+        with patch(
+            "protean.server.observatory.routes.handlers.collect_recent_messages",
+            side_effect=Exception("Error"),
         ):
-            resp = client.get("/api/handlers/OrderHandler")
+            resp = client.get("/api/handlers/OrderEventHandler")
 
         assert resp.status_code == 200
         assert resp.json()["handler"]["recent_messages"] == []

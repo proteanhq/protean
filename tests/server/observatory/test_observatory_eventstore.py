@@ -1,6 +1,6 @@
 """Tests for Observatory Event Store API endpoints and supporting functions.
 
-Covers:
+Tests for:
 - routes/eventstore.py: collect_aggregate_stream_metadata,
   enrich_with_event_store_stats, collect_outbox_status,
   _build_eventstore_summary, create_eventstore_router
@@ -8,11 +8,16 @@ Covers:
 - static/js/eventstore.js: file presence
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from protean import Domain
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.fields import Identifier, String
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.eventstore import (
     _build_eventstore_summary,
@@ -22,6 +27,7 @@ from protean.server.observatory.routes.eventstore import (
     create_eventstore_router,
     enrich_with_event_store_stats,
 )
+from protean.utils import fqn
 from tests.server.observatory.conftest import route_paths
 
 # ---------------------------------------------------------------------------
@@ -39,41 +45,56 @@ def client(observatory):
     return TestClient(observatory.app)
 
 
-def _make_mock_agg_cls(
-    *,
-    name="TestAggregate",
-    stream_category=None,
-    is_event_sourced=False,
-):
-    """Create a mock aggregate class with the given metadata."""
-    cls = MagicMock()
-    cls.__name__ = name
-
-    meta = MagicMock()
-    meta.stream_category = stream_category
-    meta.is_event_sourced = is_event_sourced
-    cls.meta_ = meta
-    return cls
+def _new_domain(name="TestDomain"):
+    """A fresh domain with an outbox, so outbox counts can be read."""
+    return Domain(
+        name=name,
+        config={
+            "enable_outbox": True,
+            "server": {"default_subscription_type": "stream"},
+        },
+    )
 
 
-def _make_mock_domain_record(name, qualname, cls):
-    """Create a mock DomainRecord."""
-    record = MagicMock()
-    record.name = name
-    record.qualname = qualname
-    record.cls = cls
-    return record
+def _register_order(domain, **options):
+    """Register a fresh Order aggregate that raises OrderPlaced."""
+
+    class Order(BaseAggregate):
+        name = String()
+
+        def place(self):
+            self.raise_(OrderPlaced(order_id=self.id))
+
+    class OrderPlaced(BaseEvent):
+        order_id = Identifier(required=True)
+
+    domain.register(Order, **options)
+    domain.register(OrderPlaced, part_of=Order)
+    return Order
 
 
-def _make_mock_domain(*, name="TestDomain", aggregates=None):
-    """Create a mock domain with the given aggregate registry."""
-    domain = MagicMock()
-    domain.name = name
+def _register_plain(domain, cls_name, **options):
+    """Register a fresh aggregate class named ``cls_name``."""
+    agg_cls = type(cls_name, (BaseAggregate,), {"name": String()})
+    domain.register(agg_cls, **options)
+    return agg_cls
 
-    registry = MagicMock()
-    registry.aggregates = aggregates or {}
-    domain.registry = registry
-    return domain
+
+def _place_orders(domain, order_cls, count):
+    """Persist ``count`` orders, each raising one OrderPlaced event."""
+    with domain.domain_context():
+        for i in range(count):
+            order = order_cls(name=f"order-{i}")
+            order.place()
+            domain.repository_for(order_cls).add(order)
+
+
+@pytest.fixture
+def order_domain():
+    domain = _new_domain()
+    order_cls = _register_order(domain, stream_category="test::order")
+    domain.init(traverse=False)
+    return domain, order_cls
 
 
 # ---------------------------------------------------------------------------
@@ -83,65 +104,49 @@ def _make_mock_domain(*, name="TestDomain", aggregates=None):
 
 class TestCollectAggregateStreamMetadata:
     def test_empty_domain(self):
-        domain = _make_mock_domain()
+        domain = _new_domain()
+        domain.init(traverse=False)
         assert collect_aggregate_stream_metadata([domain]) == []
 
-    def test_single_aggregate(self):
-        agg_cls = _make_mock_agg_cls(
-            name="Order",
-            stream_category="test::order",
-            is_event_sourced=False,
-        )
-        record = _make_mock_domain_record("Order", "myapp.Order", agg_cls)
-        domain = _make_mock_domain(aggregates={"myapp.Order": record})
-
+    def test_single_aggregate(self, order_domain):
+        domain, order_cls = order_domain
         result = collect_aggregate_stream_metadata([domain])
         assert len(result) == 1
         agg = result[0]
         assert agg["name"] == "Order"
-        assert agg["qualname"] == "myapp.Order"
+        assert agg["qualname"] == fqn(order_cls)
         assert agg["domain"] == "TestDomain"
-        assert agg["stream_category"] == "test::order"
+        assert agg["stream_category"] == "testdomain::test::order"
         assert agg["is_event_sourced"] is False
         assert agg["instance_count"] is None
         assert agg["head_position"] is None
         assert agg["_domain"] is domain
 
     def test_event_sourced_aggregate(self):
-        agg_cls = _make_mock_agg_cls(
-            name="Account",
-            stream_category="test::account",
-            is_event_sourced=True,
-        )
-        record = _make_mock_domain_record("Account", "myapp.Account", agg_cls)
-        domain = _make_mock_domain(aggregates={"myapp.Account": record})
+        domain = _new_domain()
+        _register_plain(domain, "Account", event_sourced=True)
+        domain.init(traverse=False)
 
         result = collect_aggregate_stream_metadata([domain])
         assert result[0]["is_event_sourced"] is True
 
     def test_multiple_aggregates_across_domains(self):
-        agg1 = _make_mock_agg_cls(name="Order", stream_category="test::order")
-        agg2 = _make_mock_agg_cls(name="User", stream_category="test::user")
-        d1 = _make_mock_domain(
-            name="D1",
-            aggregates={"a.Order": _make_mock_domain_record("Order", "a.Order", agg1)},
-        )
-        d2 = _make_mock_domain(
-            name="D2",
-            aggregates={"b.User": _make_mock_domain_record("User", "b.User", agg2)},
-        )
+        d1 = _new_domain(name="D1")
+        _register_order(d1)
+        d1.init(traverse=False)
+        d2 = _new_domain(name="D2")
+        _register_plain(d2, "User")
+        d2.init(traverse=False)
 
         result = collect_aggregate_stream_metadata([d1, d2])
         assert len(result) == 2
         names = {a["name"] for a in result}
         assert names == {"Order", "User"}
 
-    def test_aggregate_without_meta(self):
-        cls = MagicMock()
-        cls.__name__ = "NoMeta"
-        cls.meta_ = None
-        record = _make_mock_domain_record("NoMeta", "a.NoMeta", cls)
-        domain = _make_mock_domain(aggregates={"a.NoMeta": record})
+    def test_aggregate_without_meta(self, order_domain, monkeypatch):
+        # Every registered aggregate class has meta_, so it is removed here.
+        domain, order_cls = order_domain
+        monkeypatch.setattr(order_cls, "meta_", None)
 
         result = collect_aggregate_stream_metadata([domain])
         assert len(result) == 1
@@ -155,63 +160,37 @@ class TestCollectAggregateStreamMetadata:
 
 
 class TestEnrichWithEventStoreStats:
-    def test_sets_instance_count(self):
-        domain = MagicMock()
-        store = MagicMock()
-        store._stream_identifiers.return_value = ["id1", "id2", "id3"]
-        store._stream_head_position.return_value = 42
-        domain.event_store.store = store
+    def test_sets_instance_count(self, order_domain):
+        domain, order_cls = order_domain
+        _place_orders(domain, order_cls, 3)
+        aggregates = collect_aggregate_stream_metadata([domain])
 
-        aggregates = [
-            {
-                "name": "Order",
-                "stream_category": "test::order",
-                "_domain": domain,
-            }
-        ]
         enrich_with_event_store_stats(aggregates)
         assert aggregates[0]["instance_count"] == 3
 
-    def test_sets_head_position(self):
-        domain = MagicMock()
-        store = MagicMock()
-        store._stream_identifiers.return_value = ["id1"]
-        store._stream_head_position.return_value = 100
-        domain.event_store.store = store
+    def test_sets_head_position(self, order_domain):
+        domain, order_cls = order_domain
+        _place_orders(domain, order_cls, 2)
+        aggregates = collect_aggregate_stream_metadata([domain])
 
-        aggregates = [
-            {
-                "name": "Order",
-                "stream_category": "test::order",
-                "_domain": domain,
-            }
-        ]
         enrich_with_event_store_stats(aggregates)
-        assert aggregates[0]["head_position"] == 100
+        # The store numbers messages from 1, so two events end at position 2.
+        assert aggregates[0]["head_position"] == 2
 
-    def test_head_position_negative_one_becomes_none(self):
-        domain = MagicMock()
-        store = MagicMock()
-        store._stream_identifiers.return_value = []
-        store._stream_head_position.return_value = -1
-        domain.event_store.store = store
+    def test_head_position_negative_one_becomes_none(self, order_domain):
+        domain, _ = order_domain
+        aggregates = collect_aggregate_stream_metadata([domain])
 
-        aggregates = [
-            {
-                "name": "Empty",
-                "stream_category": "test::empty",
-                "_domain": domain,
-            }
-        ]
         enrich_with_event_store_stats(aggregates)
+        assert aggregates[0]["instance_count"] == 0
         assert aggregates[0]["head_position"] is None
 
-    def test_skips_aggregate_without_stream_category(self):
+    def test_skips_aggregate_without_stream_category(self, test_domain):
         aggregates = [
             {
                 "name": "NoStream",
                 "stream_category": None,
-                "_domain": MagicMock(),
+                "_domain": test_domain,
                 "instance_count": None,
                 "head_position": None,
             }
@@ -220,20 +199,19 @@ class TestEnrichWithEventStoreStats:
         assert aggregates[0]["instance_count"] is None
 
     def test_handles_exception_gracefully(self):
-        domain = MagicMock()
-        domain.domain_context.side_effect = Exception("DB error")
-
+        # A domain that has not run init() has no event store to query.
         aggregates = [
             {
                 "name": "Broken",
                 "stream_category": "test::broken",
-                "_domain": domain,
+                "_domain": Domain(name="Uninitialized"),
                 "instance_count": None,
                 "head_position": None,
             }
         ]
         enrich_with_event_store_stats(aggregates)
         assert aggregates[0]["instance_count"] is None
+        assert aggregates[0]["head_position"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -242,23 +220,18 @@ class TestEnrichWithEventStoreStats:
 
 
 class TestCollectOutboxStatus:
-    def test_returns_counts(self):
-        domain = MagicMock()
-        domain.name = "TestDomain"
-        outbox_repo = MagicMock()
-        outbox_repo.count_by_status.return_value = {"pending": 5, "processing": 2}
-        domain._get_outbox_repo.return_value = outbox_repo
+    def test_returns_counts(self, order_domain):
+        domain, order_cls = order_domain
+        _place_orders(domain, order_cls, 5)
 
         result = collect_outbox_status([domain])
         assert result["TestDomain"]["status"] == "ok"
         assert result["TestDomain"]["counts"]["pending"] == 5
+        assert result["TestDomain"]["counts"]["processing"] == 0
 
     def test_handles_exception(self):
-        domain = MagicMock()
-        domain.name = "Broken"
-        domain.domain_context.side_effect = Exception("Outbox error")
-
-        result = collect_outbox_status([domain])
+        # A domain that has not run init() has no outbox repository.
+        result = collect_outbox_status([Domain(name="Broken")])
         assert result["Broken"]["status"] == "error"
 
 
@@ -299,18 +272,18 @@ class TestBuildEventstoreSummary:
 
 
 class TestSerializeAggregate:
-    def test_strips_internal_keys(self):
+    def test_strips_internal_keys(self, test_domain):
         agg = {
             "name": "Order",
             "stream_category": "test::order",
-            "_domain": MagicMock(),
+            "_domain": test_domain,
         }
         result = _serialize_aggregate(agg)
         assert "name" in result
         assert "stream_category" in result
         assert "_domain" not in result
 
-    def test_preserves_all_public_keys(self):
+    def test_preserves_all_public_keys(self, test_domain):
         agg = {
             "name": "Order",
             "qualname": "myapp.Order",
@@ -319,7 +292,7 @@ class TestSerializeAggregate:
             "is_event_sourced": True,
             "instance_count": 5,
             "head_position": 100,
-            "_domain": MagicMock(),
+            "_domain": test_domain,
         }
         result = _serialize_aggregate(agg)
         assert len(result) == 7  # All except _domain
@@ -383,7 +356,7 @@ class TestEventStoreTemplate:
 
     def test_has_streams_table(self, client):
         response = client.get("/eventstore")
-        assert "streams-tbody" in html if (html := response.text) else False
+        assert "streams-tbody" in response.text
 
     def test_has_outbox_table(self, client):
         response = client.get("/eventstore")
@@ -423,39 +396,28 @@ class TestEventStoreRouteWiring:
 
 
 # ---------------------------------------------------------------------------
-# Endpoint: enrich_with_event_store_stats exception
+# Endpoint: a failure while adding event store stats
 # ---------------------------------------------------------------------------
 
 
 class TestEventStoreStreamsEndpointEnrichException:
-    def test_enrich_exception_does_not_break_endpoint(self):
-        """enrich_with_event_store_stats raises at the
-        endpoint level, endpoint catches and continues."""
-        from unittest.mock import patch
-
-        from fastapi import FastAPI
-
-        agg_cls = _make_mock_agg_cls(name="Order", stream_category="test::order")
-        record = _make_mock_domain_record("Order", "myapp.Order", agg_cls)
-        domain = _make_mock_domain(aggregates={"myapp.Order": record})
-
+    def test_enrich_exception_does_not_break_endpoint(self, order_domain):
+        """When adding event store stats raises, the endpoint still lists
+        the aggregates, without counts."""
+        domain, _ = order_domain
         router = create_eventstore_router([domain])
         app = FastAPI()
         app.include_router(router, prefix="/api")
         test_client = TestClient(app)
 
-        with (
-            patch(
-                "protean.server.observatory.routes.eventstore.enrich_with_event_store_stats",
-                side_effect=Exception("unexpected enrich error"),
-            ),
-            patch(
-                "protean.server.observatory.routes.eventstore.collect_outbox_status",
-                return_value={},
-            ),
+        with patch(
+            "protean.server.observatory.routes.eventstore.enrich_with_event_store_stats",
+            side_effect=Exception("unexpected enrich error"),
         ):
             response = test_client.get("/api/eventstore/streams")
-            assert response.status_code == 200
-            data = response.json()
-            assert "aggregates" in data
-            assert "summary" in data
+        assert response.status_code == 200
+        data = response.json()
+        assert [a["name"] for a in data["aggregates"]] == ["Order"]
+        assert data["aggregates"][0]["instance_count"] is None
+        assert data["summary"]["total_aggregates"] == 1
+        assert data["outbox"]["TestDomain"]["status"] == "ok"

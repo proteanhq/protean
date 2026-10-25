@@ -1,6 +1,6 @@
 """Tests for Observatory polish features: keyboard shortcuts, deep linking, CSV export.
 
-Covers:
+Tests for:
 - base.html: Keyboard shortcuts modal
 - templates/*.html: data-search-input attributes, CSV export buttons
 - static/js/core.js: exportCSV function presence

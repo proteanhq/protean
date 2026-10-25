@@ -6,11 +6,12 @@ Tests for the trace stream persistence (XADD) in TraceEmitter, the
 
 import contextlib
 import json
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from protean import Domain
 from protean.server.observatory import Observatory
 from protean.server.tracing import (
     DEFAULT_TRACE_RETENTION_DAYS,
@@ -666,198 +667,117 @@ class TestTracesPayloadInResponse:
 # ===== Error path tests (no Redis needed) =====
 
 
-@pytest.mark.no_test_domain
+@pytest.fixture
+def no_redis_client():
+    """Client over a real domain on the default inline broker, which has no
+    Redis client."""
+    domain = Domain(name="No Redis", config={})
+    domain.init(traverse=False)
+    return TestClient(Observatory(domains=[domain]).app)
+
+
+@pytest.fixture
+def fake_redis(test_domain):
+    """A fake Redis client in place of the test domain's real one, so a test
+    can script what Redis returns or make a call fail."""
+    fake = MagicMock()
+    test_domain.brokers.get("default").redis_instance = fake
+    return fake
+
+
 class TestTracesEndpointNoRedis:
-    def test_traces_returns_503_when_no_redis(self):
+    def test_traces_returns_503_when_no_redis(self, no_redis_client):
         """GET /api/traces returns 503 when Redis is unavailable."""
-        mock_domain = MagicMock()
-        mock_domain.name = "mock"
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        mock_broker = MagicMock(spec=[])  # No redis_instance attribute
-        mock_domain.brokers.get.return_value = mock_broker
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.get("/api/traces")
+        response = no_redis_client.get("/api/traces")
         assert response.status_code == 503
         assert response.json()["error"] == "Redis not available"
 
-    def test_traces_stats_returns_503_when_no_redis(self):
+    def test_traces_stats_returns_503_when_no_redis(self, no_redis_client):
         """GET /api/traces/stats returns 503 when Redis is unavailable."""
-        mock_domain = MagicMock()
-        mock_domain.name = "mock"
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        mock_broker = MagicMock(spec=[])
-        mock_domain.brokers.get.return_value = mock_broker
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.get("/api/traces/stats?window=5m")
+        response = no_redis_client.get("/api/traces/stats?window=5m")
         assert response.status_code == 503
         assert response.json()["error"] == "Redis not available"
 
-    def test_delete_traces_returns_503_when_no_redis(self):
+    def test_delete_traces_returns_503_when_no_redis(self, no_redis_client):
         """DELETE /api/traces returns 503 when Redis is unavailable."""
-        mock_domain = MagicMock()
-        mock_domain.name = "mock"
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        mock_broker = MagicMock(spec=[])
-        mock_domain.brokers.get.return_value = mock_broker
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.delete("/api/traces")
+        response = no_redis_client.delete("/api/traces")
         assert response.status_code == 503
         assert response.json()["error"] == "Redis not available"
 
-    def test_traces_returns_500_when_xrevrange_fails(self):
+    def test_traces_returns_500_when_xrevrange_fails(self, fake_redis, client):
         """GET /api/traces returns 500 when Redis XREVRANGE raises an error."""
-        mock_domain = MagicMock()
-        mock_domain.name = "mock"
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        mock_redis = MagicMock()
-        mock_redis.xrevrange.side_effect = Exception("Redis connection lost")
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-        mock_domain.brokers.get.return_value = mock_broker
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
+        fake_redis.xrevrange.side_effect = Exception("Redis connection lost")
 
         response = client.get("/api/traces")
         assert response.status_code == 500
         assert response.json()["error"] == "Failed to read traces"
 
-    def test_traces_stats_returns_500_when_xrange_fails(self):
+    def test_traces_stats_returns_500_when_xrange_fails(self, fake_redis, client):
         """GET /api/traces/stats returns 500 when Redis XRANGE raises an error."""
-        mock_domain = MagicMock()
-        mock_domain.name = "mock"
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        mock_redis = MagicMock()
-        mock_redis.xrange.side_effect = Exception("Redis timeout")
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-        mock_domain.brokers.get.return_value = mock_broker
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
+        fake_redis.xrange.side_effect = Exception("Redis timeout")
 
         response = client.get("/api/traces/stats?window=5m")
         assert response.status_code == 500
         assert response.json()["error"] == "Failed to read traces"
 
-    def test_delete_traces_returns_500_when_delete_fails(self):
+    def test_delete_traces_returns_500_when_delete_fails(self, fake_redis, client):
         """DELETE /api/traces returns 500 when Redis delete raises an error."""
-        mock_domain = MagicMock()
-        mock_domain.name = "mock"
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        mock_redis = MagicMock()
-        mock_redis.delete.side_effect = Exception("Redis connection refused")
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-        mock_domain.brokers.get.return_value = mock_broker
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
+        fake_redis.delete.side_effect = Exception("Redis connection refused")
 
         response = client.delete("/api/traces")
         assert response.status_code == 500
         assert response.json()["error"] == "Failed to delete traces"
 
-    def test_get_redis_skips_domain_on_exception(self):
-        """_get_redis continues to next domain when one raises an exception."""
+    def test_get_redis_skips_domain_on_exception(self, test_domain, fake_redis):
+        """_get_redis continues to next domain when one raises an exception,
+        and the endpoints then read traces from that next domain's Redis."""
         from protean.server.observatory.api import _get_redis
 
-        # First domain raises, second has Redis
-        mock_domain1 = MagicMock()
-        mock_domain1.domain_context.return_value.__enter__ = MagicMock(
-            side_effect=RuntimeError("broken")
-        )
-        mock_domain1.domain_context.return_value.__exit__ = MagicMock(
-            return_value=False
-        )
+        broken = Domain(name="Broken", config={})
+        broken.init(traverse=False)
+        fake_redis.xrevrange.return_value = [
+            (b"1700000000000-0", {b"data": json.dumps(_make_trace()).encode()}),
+        ]
 
-        mock_redis = MagicMock()
-        mock_domain2 = MagicMock()
-        mock_domain2.domain_context.return_value.__enter__ = MagicMock(
-            return_value=None
-        )
-        mock_domain2.domain_context.return_value.__exit__ = MagicMock(
-            return_value=False
-        )
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-        mock_domain2.brokers.get.return_value = mock_broker
+        with patch.object(broken, "domain_context", side_effect=RuntimeError("broken")):
+            assert _get_redis([broken, test_domain]) is fake_redis
 
-        result = _get_redis([mock_domain1, mock_domain2])
-        assert result is mock_redis
+            client = TestClient(Observatory(domains=[broken, test_domain]).app)
+            response = client.get("/api/traces")
+
+        assert response.status_code == 200
+        assert response.json()["count"] == 1
 
 
-@pytest.mark.no_test_domain
 class TestTracesEdgeCases:
     """Test edge cases in trace processing: malformed data, bytes decoding, etc."""
 
-    def _make_mock_redis_domain(self, mock_redis: MagicMock) -> MagicMock:
-        mock_domain = MagicMock()
-        mock_domain.name = "mock"
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-        mock_domain.brokers.get.return_value = mock_broker
-        return mock_domain
-
-    def test_traces_skips_entries_with_no_data_field(self):
+    def test_traces_skips_entries_with_no_data_field(self, fake_redis, client):
         """Entries without a 'data' field are silently skipped."""
-        mock_redis = MagicMock()
-        # Return entry with no 'data' key
-        mock_redis.xrevrange.return_value = [
+        fake_redis.xrevrange.return_value = [
             (b"1234-0", {b"other": b"value"}),
         ]
-        mock_domain = self._make_mock_redis_domain(mock_redis)
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
 
         response = client.get("/api/traces")
         assert response.status_code == 200
         assert response.json()["count"] == 0
 
-    def test_traces_handles_malformed_json(self):
+    def test_traces_handles_malformed_json(self, fake_redis, client):
         """Entries with invalid JSON are silently skipped."""
-        mock_redis = MagicMock()
-        mock_redis.xrevrange.return_value = [
+        fake_redis.xrevrange.return_value = [
             (b"1234-0", {b"data": b"not-valid-json{{{"}),
         ]
-        mock_domain = self._make_mock_redis_domain(mock_redis)
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
 
         response = client.get("/api/traces")
         assert response.status_code == 200
         assert response.json()["count"] == 0
 
-    def test_traces_decodes_bytes_stream_id(self):
+    def test_traces_decodes_bytes_stream_id(self, fake_redis, client):
         """Stream IDs returned as bytes are decoded to strings."""
         trace_data = json.dumps(_make_trace())
-        mock_redis = MagicMock()
-        mock_redis.xrevrange.return_value = [
+        fake_redis.xrevrange.return_value = [
             (b"1700000000000-0", {b"data": trace_data.encode()}),
         ]
-        mock_domain = self._make_mock_redis_domain(mock_redis)
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
 
         response = client.get("/api/traces")
         data = response.json()
@@ -871,49 +791,34 @@ class TestTracesEdgeCases:
         assert _decode_stream_id("1234-0") == "1234-0"
         assert _decode_stream_id(b"1234-0") == "1234-0"
 
-    def test_traces_stats_skips_entries_with_no_data(self):
+    def test_traces_stats_skips_entries_with_no_data(self, fake_redis, client):
         """Stats endpoint skips entries without a 'data' field."""
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        fake_redis.xrange.return_value = [
             (b"1234-0", {b"other": b"value"}),
         ]
-        mock_domain = self._make_mock_redis_domain(mock_redis)
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
 
         response = client.get("/api/traces/stats?window=7d")
         data = response.json()
         assert data["total"] == 0
 
-    def test_traces_stats_skips_malformed_json(self):
+    def test_traces_stats_skips_malformed_json(self, fake_redis, client):
         """Stats endpoint skips entries with invalid JSON."""
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        fake_redis.xrange.return_value = [
             (b"1234-0", {b"data": b"{{invalid"}),
         ]
-        mock_domain = self._make_mock_redis_domain(mock_redis)
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
 
         response = client.get("/api/traces/stats?window=7d")
         data = response.json()
         assert data["total"] == 0
 
-    def test_traces_stats_decodes_bytes_data(self):
+    def test_traces_stats_decodes_bytes_data(self, fake_redis, client):
         """Stats endpoint correctly decodes bytes data fields."""
         trace_data = json.dumps(
             _make_trace(event="handler.completed", duration_ms=25.0)
         )
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        fake_redis.xrange.return_value = [
             (b"1234-0", {b"data": trace_data.encode("utf-8")}),
         ]
-        mock_domain = self._make_mock_redis_domain(mock_redis)
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
 
         response = client.get("/api/traces/stats?window=7d")
         data = response.json()
@@ -1094,70 +999,32 @@ class TestTracesTimelineEndpoint:
         assert data["bucket_ms"] == 10_000
 
 
-@pytest.mark.no_test_domain
 class TestTracesTimelineNoRedis:
     """Test timeline error paths without Redis."""
 
-    def test_timeline_returns_503_when_no_redis(self):
+    def test_timeline_returns_503_when_no_redis(self, no_redis_client):
         """GET /api/traces/timeline returns 503 when Redis is unavailable."""
-        mock_domain = MagicMock()
-        mock_domain.name = "mock"
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        mock_broker = MagicMock(spec=[])
-        mock_domain.brokers.get.return_value = mock_broker
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.get("/api/traces/timeline?window=5m")
+        response = no_redis_client.get("/api/traces/timeline?window=5m")
         assert response.status_code == 503
         assert response.json()["error"] == "Redis not available"
 
-    def test_timeline_returns_500_when_xrange_fails(self):
+    def test_timeline_returns_500_when_xrange_fails(self, fake_redis, client):
         """GET /api/traces/timeline returns 500 when Redis XRANGE fails."""
-        mock_domain = MagicMock()
-        mock_domain.name = "mock"
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        mock_redis = MagicMock()
-        mock_redis.xrange.side_effect = Exception("Redis connection lost")
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-        mock_domain.brokers.get.return_value = mock_broker
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
+        fake_redis.xrange.side_effect = Exception("Redis connection lost")
 
         response = client.get("/api/traces/timeline?window=5m")
         assert response.status_code == 500
         assert response.json()["error"] == "Failed to read traces"
 
 
-@pytest.mark.no_test_domain
 class TestTracesTimelineEdgeCases:
     """Test edge cases in timeline trace processing."""
 
-    def _make_mock_redis_domain(self, mock_redis: MagicMock) -> MagicMock:
-        mock_domain = MagicMock()
-        mock_domain.name = "mock"
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-        mock_domain.brokers.get.return_value = mock_broker
-        return mock_domain
-
-    def test_timeline_skips_entries_with_no_data_field(self):
+    def test_timeline_skips_entries_with_no_data_field(self, fake_redis, client):
         """Timeline skips entries without a 'data' field."""
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        fake_redis.xrange.return_value = [
             (b"1700000000000-0", {b"other": b"value"}),
         ]
-        mock_domain = self._make_mock_redis_domain(mock_redis)
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
 
         response = client.get("/api/traces/timeline?window=7d")
         data = response.json()
@@ -1165,16 +1032,11 @@ class TestTracesTimelineEdgeCases:
         total = sum(b["total"] for b in data["buckets"])
         assert total == 0
 
-    def test_timeline_skips_malformed_json(self):
+    def test_timeline_skips_malformed_json(self, fake_redis, client):
         """Timeline skips entries with invalid JSON."""
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        fake_redis.xrange.return_value = [
             (b"1700000000000-0", {b"data": b"{{invalid-json"}),
         ]
-        mock_domain = self._make_mock_redis_domain(mock_redis)
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
 
         response = client.get("/api/traces/timeline?window=7d")
         data = response.json()

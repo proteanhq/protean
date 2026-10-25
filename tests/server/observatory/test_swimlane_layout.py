@@ -1,6 +1,6 @@
 """Tests for swimlane layout and fan-out polish.
 
-Covers:
+Tests for:
 - Swimlane CSS classes present in stylesheet
 - Legend, timeline axis, mini-map CSS classes
 - Fan-out indicator CSS class

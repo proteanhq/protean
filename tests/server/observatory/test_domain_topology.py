@@ -1,6 +1,6 @@
 """Tests for the Domain Topology D3 force-directed graph.
 
-Covers:
+Tests for:
 - domain-topology.js static asset serving
 - domain.js integration with DomainTopology module
 - Template includes the new script

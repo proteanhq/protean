@@ -1,6 +1,6 @@
 """Tests for live SSE updates on the correlation view.
 
-Covers:
+Tests for:
 - Correlation SSE listener filtering by correlation_id and view state
 - Debounce coalescing of rapid SSE events
 - Live badge display and staleness timeout

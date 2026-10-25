@@ -1,6 +1,6 @@
 """Tests for Observatory page routes, Jinja2 template rendering, and static asset serving.
 
-Covers:
+Tests for:
 - routes/pages.py: All 6 page routes, _get_domain_names, _ctx helper
 - routes/__init__.py: create_all_routes composition
 - __init__.py: Jinja2Templates + StaticFiles integration, _TEMPLATES_DIR, _STATIC_DIR

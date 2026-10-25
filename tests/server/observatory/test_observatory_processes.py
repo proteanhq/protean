@@ -1,6 +1,6 @@
 """Tests for Observatory Processes API endpoints and supporting functions.
 
-Covers:
+Tests for:
 - routes/processes.py: collect_pm_metadata, merge_pm_subscription_status,
   collect_pm_trace_metrics, get_pm_instance_count, get_pm_instances,
   _build_summary, create_processes_router
@@ -10,12 +10,21 @@ Covers:
 
 import json
 import time
-from collections import defaultdict
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from protean import Domain
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
+from protean.core.process_manager import BaseProcessManager
+from protean.core.value_object import BaseValueObject
+from protean.fields import Identifier, String
+from protean.ir.builder import IRBuilder
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.processes import (
     _build_summary,
@@ -31,6 +40,10 @@ from protean.server.observatory.routes.processes import (
     get_pm_instances,
     merge_pm_subscription_status,
 )
+from protean.utils import fqn
+from protean.utils.eventing import Message
+from protean.utils.mixins import handle
+from tests.shared import FrozenClock
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -47,54 +60,124 @@ def client(observatory):
     return TestClient(observatory.app)
 
 
-def _make_mock_pm_cls(
-    *,
-    name="TestPM",
-    handlers=None,
-    stream_category=None,
-    stream_categories=None,
-):
-    """Create a mock PM class with the given metadata."""
-    cls = MagicMock()
-    cls.__name__ = name
+def _register_fulfillment(domain, **pm_options):
+    """Register an order-fulfillment process manager on ``domain`` and init it.
 
-    if handlers is not None:
-        cls._handlers = handlers
-    else:
-        cls._handlers = defaultdict(set)
+    The process manager listens to the ``order`` and ``shipment`` streams. It
+    starts on ``OrderPlaced`` and completes on ``OrderShipped``.
+    """
 
-    meta = MagicMock()
-    meta.stream_category = stream_category
-    meta.stream_categories = stream_categories or []
+    class Order(BaseAggregate):
+        customer_id = Identifier()
 
-    if stream_category is None:
-        del meta.stream_category
-    if stream_categories is None:
-        meta.stream_categories = []
+    class Shipment(BaseAggregate):
+        order_id = Identifier()
 
-    cls.meta_ = meta
-    return cls
+    class OrderPlaced(BaseEvent):
+        order_id = Identifier(required=True)
+
+    class OrderShipped(BaseEvent):
+        order_id = Identifier(required=True)
+
+    class OrderFulfillment(BaseProcessManager):
+        order_id = Identifier()
+        status = String(default="new")
+
+        @handle(OrderPlaced, start=True, correlate="order_id")
+        def on_placed(self, event):
+            self.order_id = event.order_id
+            self.status = "started"
+
+        @handle(OrderShipped, end=True, correlate="order_id")
+        def on_shipped(self, event):
+            self.status = "shipped"
+
+    domain.register(Order)
+    domain.register(Shipment)
+    domain.register(OrderPlaced, part_of=Order)
+    domain.register(OrderShipped, part_of=Shipment)
+    domain.register(
+        OrderFulfillment, stream_categories=["order", "shipment"], **pm_options
+    )
+    domain.init(traverse=False)
+
+    return SimpleNamespace(
+        domain=domain,
+        pm=OrderFulfillment,
+        Order=Order,
+        Shipment=Shipment,
+        OrderPlaced=OrderPlaced,
+        OrderShipped=OrderShipped,
+    )
 
 
-def _make_mock_domain_record(name, qualname, cls):
-    """Create a mock DomainRecord."""
-    record = MagicMock()
-    record.name = name
-    record.qualname = qualname
-    record.cls = cls
-    return record
+def _deliver_latest(app, aggregate_cls, aggregate):
+    """Save the aggregate, then hand its newest stored event to the process
+    manager, the way the engine delivers it."""
+    domain = app.domain
+    with domain.domain_context():
+        domain.repository_for(aggregate_cls).add(aggregate)
+        store = domain.event_store.store
+        stream = f"{aggregate_cls.meta_.stream_category}-{aggregate.id}"
+        message = store.read(stream)[-1]
+        app.pm._handle(message)
 
 
-def _make_mock_domain(*, name="TestDomain", process_managers=None):
-    """Create a mock domain with the given PM registry."""
-    domain = MagicMock()
-    domain.name = name
+def _start_order(app):
+    """Start one process-manager instance and return its correlation id."""
+    order = app.Order(customer_id="c1")
+    order.raise_(app.OrderPlaced(order_id=order.id))
+    _deliver_latest(app, app.Order, order)
+    return order.id
 
-    registry = MagicMock()
-    registry.process_managers = process_managers or {}
 
-    domain.registry = registry
-    return domain
+def _ship_order(app, order_id):
+    """Complete the process-manager instance for ``order_id``."""
+    shipment = app.Shipment(order_id=order_id)
+    shipment.raise_(app.OrderShipped(order_id=order_id))
+    _deliver_latest(app, app.Shipment, shipment)
+
+
+@pytest.fixture
+def fulfillment(test_domain):
+    """The test domain with the order-fulfillment process manager registered.
+
+    The test domain's default subscription type is ``stream``, so each of the
+    two stream categories becomes a Redis stream subscription.
+    """
+    return _register_fulfillment(test_domain)
+
+
+class _FakeRedisStreams:
+    """Stands in for the raw ``redis.Redis`` client the broker holds.
+
+    ``groups`` maps a stream name to its consumer-group entries, ``lengths``
+    maps a stream name (including ``<stream>:dlq``) to its length.
+    """
+
+    def __init__(self, groups=None, lengths=None):
+        self.groups = groups or {}
+        self.lengths = lengths or {}
+
+    def xlen(self, stream):
+        return self.lengths.get(stream, 0)
+
+    def xinfo_groups(self, stream):
+        return self.groups.get(stream, [])
+
+    def xrange(self, stream, min="-", max="+", count=None):
+        return []
+
+
+def _group(pm_cls, *, lag, pending=0, consumers=1):
+    """One consumer-group entry for ``pm_cls``, shaped like ``XINFO GROUPS``."""
+    return {
+        "name": fqn(pm_cls),
+        "pending": pending,
+        "last-delivered-id": "1-0",
+        "lag": lag,
+        "consumers": consumers,
+    }
 
 
 def _make_trace_entry(
@@ -112,37 +195,54 @@ def _make_trace_entry(
     return json.dumps(trace).encode("utf-8")
 
 
+def _handler_class_with_keys(*type_keys):
+    """A class carrying only a ``_handlers`` map with the given keys."""
+    return type("KeyedHandler", (), {"_handlers": {k: set() for k in type_keys}})
+
+
 # ---------------------------------------------------------------------------
 # _extract_handled_messages
 # ---------------------------------------------------------------------------
 
 
 class TestExtractHandledMessages:
-    def test_empty_handlers(self):
-        cls = _make_mock_pm_cls(handlers=defaultdict(set))
-        assert _extract_handled_messages(cls) == []
+    def test_empty_handlers(self, test_domain):
+        @test_domain.event_handler(part_of=test_domain.aggregate(type("Idle", (), {})))
+        class IdleHandler(BaseEventHandler):
+            pass
+
+        test_domain.init(traverse=False)
+        assert _extract_handled_messages(IdleHandler) == []
 
     def test_no_handlers_attr(self):
-        cls = MagicMock(spec=[])
-        assert _extract_handled_messages(cls) == []
+        assert _extract_handled_messages(object) == []
 
-    def test_extracts_short_names(self):
-        handlers = defaultdict(set)
-        handlers["MyApp.OrderPlaced.v1"] = {MagicMock()}
-        handlers["MyApp.ShipmentCreated.v1"] = {MagicMock()}
-        cls = _make_mock_pm_cls(handlers=handlers)
-        result = _extract_handled_messages(cls)
-        assert "OrderPlaced" in result
-        assert "ShipmentCreated" in result
+    def test_extracts_short_names(self, fulfillment):
+        result = _extract_handled_messages(fulfillment.pm)
+        assert result == ["OrderPlaced", "OrderShipped"]
 
-    def test_skips_dollar_any(self):
-        handlers = defaultdict(set)
-        handlers["$any"] = {MagicMock()}
-        handlers["MyApp.OrderPlaced.v1"] = {MagicMock()}
-        cls = _make_mock_pm_cls(handlers=handlers)
-        result = _extract_handled_messages(cls)
-        assert len(result) == 1
-        assert "OrderPlaced" in result
+    def test_skips_dollar_any(self, test_domain):
+        @test_domain.aggregate
+        class Ledger(BaseAggregate):
+            name = String()
+
+        @test_domain.event(part_of=Ledger)
+        class LedgerOpened(BaseEvent):
+            name = String()
+
+        @test_domain.event_handler(part_of=Ledger)
+        class LedgerAudit(BaseEventHandler):
+            @handle("$any")
+            def on_any(self, event):
+                pass
+
+            @handle(LedgerOpened)
+            def on_opened(self, event):
+                pass
+
+        test_domain.init(traverse=False)
+        assert "$any" in LedgerAudit._handlers
+        assert _extract_handled_messages(LedgerAudit) == ["LedgerOpened"]
 
 
 # ---------------------------------------------------------------------------
@@ -151,51 +251,35 @@ class TestExtractHandledMessages:
 
 
 class TestCollectPMMetadata:
-    def test_empty_domain(self):
-        domain = _make_mock_domain()
-        assert collect_pm_metadata([domain]) == []
+    def test_empty_domain(self, test_domain):
+        assert collect_pm_metadata([test_domain]) == []
 
-    def test_single_pm(self):
-        pm_cls = _make_mock_pm_cls(
-            name="ShippingProcess",
-            stream_category="test::shipping_process",
-            stream_categories=["test::order", "test::shipment"],
-        )
-        record = _make_mock_domain_record(
-            "ShippingProcess", "myapp.ShippingProcess", pm_cls
-        )
-        domain = _make_mock_domain(process_managers={"ShippingProcess": record})
-
-        result = collect_pm_metadata([domain])
+    def test_single_pm(self, fulfillment, test_domain):
+        result = collect_pm_metadata([test_domain])
         assert len(result) == 1
         pm = result[0]
-        assert pm["name"] == "ShippingProcess"
-        assert pm["qualname"] == "myapp.ShippingProcess"
+        assert pm["name"] == "OrderFulfillment"
+        assert pm["qualname"] == fqn(fulfillment.pm)
         assert pm["type"] == "process_manager"
-        assert pm["domain"] == "TestDomain"
-        assert pm["stream_category"] == "test::shipping_process"
-        assert pm["stream_categories"] == ["test::order", "test::shipment"]
+        assert pm["domain"] == "Observatory Tests"
+        assert pm["stream_category"] == "observatory_tests::order_fulfillment"
+        assert pm["stream_categories"] == [
+            "observatory_tests::order",
+            "observatory_tests::shipment",
+        ]
+        assert pm["handled_messages"] == ["OrderPlaced", "OrderShipped"]
         assert pm["subscription"] is None
         assert pm["metrics"] is None
-        assert pm["_cls"] is pm_cls
-        assert pm["_domain"] is domain
+        assert pm["_cls"] is fulfillment.pm
+        assert pm["_domain"] is test_domain
 
-    def test_multiple_pms_across_domains(self):
-        pm1 = _make_mock_pm_cls(name="PM1")
-        pm2 = _make_mock_pm_cls(name="PM2")
-        d1 = _make_mock_domain(
-            name="D1",
-            process_managers={"PM1": _make_mock_domain_record("PM1", "a.PM1", pm1)},
-        )
-        d2 = _make_mock_domain(
-            name="D2",
-            process_managers={"PM2": _make_mock_domain_record("PM2", "b.PM2", pm2)},
-        )
+    def test_multiple_pms_across_domains(self, fulfillment, test_domain):
+        other = _register_fulfillment(Domain(name="Other"))
 
-        result = collect_pm_metadata([d1, d2])
+        result = collect_pm_metadata([test_domain, other.domain])
         assert len(result) == 2
-        names = {p["name"] for p in result}
-        assert names == {"PM1", "PM2"}
+        assert {p["domain"] for p in result} == {"Observatory Tests", "Other"}
+        assert {p["_cls"] for p in result} == {fulfillment.pm, other.pm}
 
 
 # ---------------------------------------------------------------------------
@@ -203,185 +287,150 @@ class TestCollectPMMetadata:
 # ---------------------------------------------------------------------------
 
 
-class TestMergePMSubscriptionStatus:
-    def test_no_statuses(self):
-        pms = [{"name": "PM1", "type": "process_manager", "subscription": None}]
-        domain = _make_mock_domain()
+def _use_redis(domain, fake):
+    """Point the domain's Redis broker at a fake raw client."""
+    return patch.object(domain.brokers.get("default"), "redis_instance", fake)
 
-        with patch(
-            "protean.server.observatory.routes.processes.collect_subscription_statuses",
-            return_value=[],
-        ):
-            merge_pm_subscription_status(pms, [domain])
+
+class TestMergePMSubscriptionStatus:
+    def test_no_statuses(self, test_domain):
+        pms = [{"name": "PM1", "type": "process_manager", "subscription": None}]
+
+        merge_pm_subscription_status(pms, [test_domain])
 
         assert pms[0]["subscription"] is None
 
-    def test_matches_by_handler_name(self):
-        pms = [
-            {"name": "ShippingProcess", "type": "process_manager", "subscription": None}
-        ]
-        domain = _make_mock_domain()
+    def test_matches_by_handler_name(self, fulfillment, test_domain):
+        pm_cls = fulfillment.pm
+        order, shipment = pm_cls.meta_.stream_categories
+        fake = _FakeRedisStreams(
+            groups={
+                order: [_group(pm_cls, lag=5, pending=2)],
+                shipment: [_group(pm_cls, lag=0)],
+            }
+        )
+        pms = collect_pm_metadata([test_domain])
 
-        status = MagicMock()
-        status.name = "ShippingProcess"
-        status.handler_name = "ShippingProcess"
-        status.status = "ok"
-        status.lag = 5
-        status.pending = 2
-        status.dlq_depth = 0
-        status.consumer_count = 1
-        status.subscription_type = "event_store"
-
-        with patch(
-            "protean.server.observatory.routes.processes.collect_subscription_statuses",
-            return_value=[status],
-        ):
-            merge_pm_subscription_status(pms, [domain])
+        with _use_redis(test_domain, fake):
+            merge_pm_subscription_status(pms, [test_domain])
 
         sub = pms[0]["subscription"]
         assert sub is not None
-        assert sub["status"] == "ok"
+        assert sub["status"] == "lagging"
         assert sub["lag"] == 5
         assert sub["pending"] == 2
+        assert sub["consumer_count"] == 1
+        assert sub["subscription_type"] == "stream"
 
-    def test_aggregates_multiple_subscriptions(self):
-        pms = [
-            {"name": "ShippingProcess", "type": "process_manager", "subscription": None}
-        ]
-        domain = _make_mock_domain()
+    def test_all_caught_up_is_ok(self, fulfillment, test_domain):
+        pm_cls = fulfillment.pm
+        order, shipment = pm_cls.meta_.stream_categories
+        fake = _FakeRedisStreams(
+            groups={
+                order: [_group(pm_cls, lag=0)],
+                shipment: [_group(pm_cls, lag=0)],
+            }
+        )
+        pms = collect_pm_metadata([test_domain])
 
-        s1 = MagicMock()
-        s1.name = "ShippingProcess:order"
-        s1.handler_name = "ShippingProcess"
-        s1.status = "ok"
-        s1.lag = 3
-        s1.lag_seconds = None
-        s1.pending = 1
-        s1.dlq_depth = 0
-        s1.consumer_count = 1
-        s1.subscription_type = "event_store"
+        with _use_redis(test_domain, fake):
+            merge_pm_subscription_status(pms, [test_domain])
 
-        s2 = MagicMock()
-        s2.name = "ShippingProcess:shipment"
-        s2.handler_name = "ShippingProcess"
-        s2.status = "lagging"
-        s2.lag = 10
-        s2.lag_seconds = None
-        s2.pending = 5
-        s2.dlq_depth = 2
-        s2.consumer_count = 1
-        s2.subscription_type = "event_store"
+        assert pms[0]["subscription"]["status"] == "ok"
+        assert pms[0]["subscription"]["lag"] == 0
 
-        with patch(
-            "protean.server.observatory.routes.processes.collect_subscription_statuses",
-            return_value=[s1, s2],
-        ):
-            merge_pm_subscription_status(pms, [domain])
+    def test_aggregates_multiple_subscriptions(self, fulfillment, test_domain):
+        pm_cls = fulfillment.pm
+        order, shipment = pm_cls.meta_.stream_categories
+        fake = _FakeRedisStreams(
+            groups={
+                order: [_group(pm_cls, lag=3, pending=1, consumers=1)],
+                shipment: [_group(pm_cls, lag=10, pending=5, consumers=2)],
+            },
+            lengths={f"{shipment}:dlq": 2},
+        )
+        pms = collect_pm_metadata([test_domain])
+
+        with _use_redis(test_domain, fake):
+            merge_pm_subscription_status(pms, [test_domain])
 
         sub = pms[0]["subscription"]
         assert sub["lag"] == 13
         assert sub["pending"] == 6
         assert sub["dlq_depth"] == 2
+        assert sub["consumer_count"] == 2
         assert sub["status"] == "lagging"
 
-    def test_worst_status_unknown(self):
-        pms = [{"name": "PM1", "type": "process_manager", "subscription": None}]
-        domain = _make_mock_domain()
+    def test_worst_status_unknown(self, fulfillment, test_domain):
+        """One stream lags and the other has no consumer group, so its lag is
+        unknown. The process manager reports the worse of the two: unknown."""
+        pm_cls = fulfillment.pm
+        order, _shipment = pm_cls.meta_.stream_categories
+        fake = _FakeRedisStreams(groups={order: [_group(pm_cls, lag=5)]})
+        pms = collect_pm_metadata([test_domain])
 
-        s1 = MagicMock()
-        s1.handler_name = "PM1"
-        s1.status = "lagging"
-        s1.lag = 5
-        s1.lag_seconds = None
-        s1.pending = 0
-        s1.dlq_depth = 0
-        s1.consumer_count = 1
-        s1.subscription_type = "event_store"
-
-        s2 = MagicMock()
-        s2.handler_name = "PM1"
-        s2.status = "unknown"
-        s2.lag = None
-        s2.lag_seconds = None
-        s2.pending = 0
-        s2.dlq_depth = 0
-        s2.consumer_count = 0
-        s2.subscription_type = "event_store"
-
-        with patch(
-            "protean.server.observatory.routes.processes.collect_subscription_statuses",
-            return_value=[s1, s2],
-        ):
-            merge_pm_subscription_status(pms, [domain])
+        with _use_redis(test_domain, fake):
+            merge_pm_subscription_status(pms, [test_domain])
 
         assert pms[0]["subscription"]["status"] == "unknown"
+        assert pms[0]["subscription"]["lag"] == 5
 
-    def test_lag_seconds_is_max_not_sum(self):
+    def test_lag_seconds_is_max_not_sum(self, test_domain):
         """Seconds-lag aggregates as the worst (max) stream staleness, not a sum."""
-        pms = [{"name": "PM1", "type": "process_manager", "subscription": None}]
-        domain = _make_mock_domain()
+        app = _register_fulfillment(test_domain, subscription_type="event_store")
+        pm_cls = app.pm
+        store = test_domain.event_store.store
+        start = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 
-        s1 = MagicMock()
-        s1.handler_name = "PM1"
-        s1.status = "lagging"
-        s1.lag = 3
-        s1.lag_seconds = 4.0
-        s1.pending = 0
-        s1.dlq_depth = 0
-        s1.consumer_count = 1
-        s1.subscription_type = "event_store"
-
-        s2 = MagicMock()
-        s2.handler_name = "PM1"
-        s2.status = "lagging"
-        s2.lag = 10
-        s2.lag_seconds = 30.0
-        s2.pending = 0
-        s2.dlq_depth = 0
-        s2.consumer_count = 1
-        s2.subscription_type = "event_store"
-
-        with patch(
-            "protean.server.observatory.routes.processes.collect_subscription_statuses",
-            return_value=[s1, s2],
+        # Each stream gets one checkpoint at position 0, then one event past it,
+        # so both lag. The order checkpoint is 30s old, the shipment one 4s old.
+        for category, written_at in zip(
+            pm_cls.meta_.stream_categories,
+            [start, start + timedelta(seconds=26)],
+            strict=True,
         ):
-            merge_pm_subscription_status(pms, [domain])
+            test_domain.clock = FrozenClock(written_at)
+            store._write(f"position-{fqn(pm_cls)}-{category}", "Read", {"position": 0})
+        order_id = _start_order(app)
+        _ship_order(app, order_id)
 
-        assert pms[0]["subscription"]["lag_seconds"] == 30.0  # max, not 34.0
+        test_domain.clock = FrozenClock(start + timedelta(seconds=30))
+        pms = collect_pm_metadata([test_domain])
+        merge_pm_subscription_status(pms, [test_domain])
 
-    def test_lag_seconds_none_when_all_none(self):
-        """No stream reports seconds, so the aggregate stays None (unavailable)."""
-        pms = [{"name": "PM1", "type": "process_manager", "subscription": None}]
-        domain = _make_mock_domain()
+        sub = pms[0]["subscription"]
+        assert sub["subscription_type"] == "event_store"
+        assert sub["status"] == "lagging"
+        assert sub["lag_seconds"] == 30.0  # max, not 34.0
 
-        s1 = MagicMock()
-        s1.handler_name = "PM1"
-        s1.status = "lagging"
-        s1.lag = 3
-        s1.lag_seconds = None
-        s1.pending = 0
-        s1.dlq_depth = 0
-        s1.consumer_count = 1
-        s1.subscription_type = "stream"
+    def test_lag_seconds_none_when_all_none(self, fulfillment, test_domain):
+        """Stream subscriptions report no seconds, so the aggregate stays None
+        (unavailable)."""
+        pm_cls = fulfillment.pm
+        order, shipment = pm_cls.meta_.stream_categories
+        fake = _FakeRedisStreams(
+            groups={
+                order: [_group(pm_cls, lag=3)],
+                shipment: [_group(pm_cls, lag=1)],
+            }
+        )
+        pms = collect_pm_metadata([test_domain])
 
-        with patch(
-            "protean.server.observatory.routes.processes.collect_subscription_statuses",
-            return_value=[s1],
-        ):
-            merge_pm_subscription_status(pms, [domain])
+        with _use_redis(test_domain, fake):
+            merge_pm_subscription_status(pms, [test_domain])
 
+        assert pms[0]["subscription"]["lag"] == 4
         assert pms[0]["subscription"]["lag_seconds"] is None
 
-    def test_handles_collection_exception(self):
-        pms = [{"name": "PM1", "type": "process_manager", "subscription": None}]
-        domain = _make_mock_domain()
+    def test_handles_collection_exception(self, fulfillment, test_domain):
+        pms = collect_pm_metadata([test_domain])
 
         with patch(
             "protean.server.observatory.routes.processes.collect_subscription_statuses",
             side_effect=Exception("fail"),
         ):
             # Should not raise
-            merge_pm_subscription_status(pms, [domain])
+            merge_pm_subscription_status(pms, [test_domain])
 
         assert pms[0]["subscription"] is None
 
@@ -486,47 +535,44 @@ class TestCollectPMTraceMetrics:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def plain_value_object(test_domain):
+    """A real element whose ``meta_`` has no stream category."""
+
+    @test_domain.value_object
+    class Money(BaseValueObject):
+        currency = String()
+
+    return Money
+
+
+def _fail_stream_identifiers(domain):
+    """Make the event store fail to list stream identifiers."""
+    return patch.object(
+        domain.event_store.store,
+        "_stream_identifiers",
+        side_effect=Exception("fail"),
+    )
+
+
 class TestGetPMInstanceCount:
-    def test_no_meta(self):
-        cls = MagicMock(spec=[])
-        domain = MagicMock()
-        assert get_pm_instance_count(domain, cls) is None
+    def test_no_meta(self, test_domain):
+        assert get_pm_instance_count(test_domain, object) is None
 
-    def test_no_stream_category(self):
-        cls = MagicMock()
-        cls.meta_ = MagicMock()
-        cls.meta_.stream_category = None
-        domain = MagicMock()
-        assert get_pm_instance_count(domain, cls) is None
+    def test_no_stream_category(self, test_domain, plain_value_object):
+        assert get_pm_instance_count(test_domain, plain_value_object) is None
 
-    def test_returns_count(self):
-        cls = MagicMock()
-        cls.meta_ = MagicMock()
-        cls.meta_.stream_category = "test::pm"
+    def test_returns_count(self, fulfillment, test_domain):
+        for _ in range(3):
+            _start_order(fulfillment)
 
-        domain = MagicMock()
-        domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        domain.event_store.store._stream_identifiers.return_value = [
-            "id1",
-            "id2",
-            "id3",
-        ]
+        assert get_pm_instance_count(test_domain, fulfillment.pm) == 3
 
-        assert get_pm_instance_count(domain, cls) == 3
+    def test_handles_exception(self, fulfillment, test_domain):
+        _start_order(fulfillment)
 
-    def test_handles_exception(self):
-        cls = MagicMock()
-        cls.__name__ = "TestPM"
-        cls.meta_ = MagicMock()
-        cls.meta_.stream_category = "test::pm"
-
-        domain = MagicMock()
-        domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        domain.event_store.store._stream_identifiers.side_effect = Exception("fail")
-
-        assert get_pm_instance_count(domain, cls) is None
+        with _fail_stream_identifiers(test_domain):
+            assert get_pm_instance_count(test_domain, fulfillment.pm) is None
 
 
 # ---------------------------------------------------------------------------
@@ -535,95 +581,48 @@ class TestGetPMInstanceCount:
 
 
 class TestGetPMInstances:
-    def test_no_meta(self):
-        cls = MagicMock(spec=[])
-        domain = MagicMock()
-        assert get_pm_instances(domain, cls) == []
+    def test_no_meta(self, test_domain):
+        assert get_pm_instances(test_domain, object) == []
 
-    def test_no_stream_category(self):
-        cls = MagicMock()
-        cls.meta_ = MagicMock()
-        cls.meta_.stream_category = None
-        domain = MagicMock()
-        assert get_pm_instances(domain, cls) == []
+    def test_no_stream_category(self, test_domain, plain_value_object):
+        assert get_pm_instances(test_domain, plain_value_object) == []
 
-    def test_returns_instances(self):
-        cls = MagicMock()
-        cls.__name__ = "TestPM"
-        cls.meta_ = MagicMock()
-        cls.meta_.stream_category = "test::pm"
+    def test_returns_instances(self, fulfillment, test_domain):
+        order_id = _start_order(fulfillment)
+        _ship_order(fulfillment, order_id)
 
-        msg1 = MagicMock()
-        msg1.data = {"state": {"status": "started"}, "is_complete": False}
-        msg1.time = "2024-01-01T00:00:00Z"
-
-        msg2 = MagicMock()
-        msg2.data = {"state": {"status": "completed"}, "is_complete": True}
-        msg2.time = "2024-01-01T01:00:00Z"
-
-        domain = MagicMock()
-        domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        domain.event_store.store._stream_identifiers.return_value = ["id1"]
-        domain.event_store.store.read.return_value = [msg1, msg2]
-
-        result = get_pm_instances(domain, cls)
+        result = get_pm_instances(test_domain, fulfillment.pm)
         assert len(result) == 1
         inst = result[0]
-        assert inst["instance_id"] == "id1"
+        assert inst["instance_id"] == order_id
         assert inst["version"] == 2
         assert inst["is_complete"] is True
-        assert inst["state"] == {"status": "completed"}
+        assert inst["state"]["status"] == "shipped"
         assert inst["event_count"] == 2
 
-    def test_empty_stream(self):
-        cls = MagicMock()
-        cls.__name__ = "TestPM"
-        cls.meta_ = MagicMock()
-        cls.meta_.stream_category = "test::pm"
+    def test_empty_stream(self, fulfillment, test_domain):
+        """A stream from another category whose name ends with the process
+        manager's category is listed as an identifier, but the process
+        manager's own stream for it is empty, so no instance is returned."""
+        store = test_domain.event_store.store
+        category = fulfillment.pm.meta_.stream_category
+        store._write(f"legacy_{category}-id1", "Noted", {})
 
-        domain = MagicMock()
-        domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        domain.event_store.store._stream_identifiers.return_value = ["id1"]
-        domain.event_store.store.read.return_value = []
+        assert store._stream_identifiers(category) == ["id1"]
+        assert get_pm_instances(test_domain, fulfillment.pm) == []
 
-        result = get_pm_instances(domain, cls)
-        assert result == []
+    def test_respects_limit(self, fulfillment, test_domain):
+        for _ in range(5):
+            _start_order(fulfillment)
 
-    def test_respects_limit(self):
-        cls = MagicMock()
-        cls.__name__ = "TestPM"
-        cls.meta_ = MagicMock()
-        cls.meta_.stream_category = "test::pm"
-
-        msg = MagicMock()
-        msg.data = {"state": {}, "is_complete": False}
-        msg.time = "2024-01-01T00:00:00Z"
-
-        domain = MagicMock()
-        domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        domain.event_store.store._stream_identifiers.return_value = [
-            f"id{i}" for i in range(10)
-        ]
-        domain.event_store.store.read.return_value = [msg]
-
-        result = get_pm_instances(domain, cls, limit=3)
+        result = get_pm_instances(test_domain, fulfillment.pm, limit=3)
         assert len(result) == 3
 
-    def test_handles_stream_identifiers_exception(self):
-        cls = MagicMock()
-        cls.__name__ = "TestPM"
-        cls.meta_ = MagicMock()
-        cls.meta_.stream_category = "test::pm"
+    def test_handles_stream_identifiers_exception(self, fulfillment, test_domain):
+        _start_order(fulfillment)
 
-        domain = MagicMock()
-        domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        domain.event_store.store._stream_identifiers.side_effect = Exception("fail")
-
-        assert get_pm_instances(domain, cls) == []
+        with _fail_stream_identifiers(test_domain):
+            assert get_pm_instances(test_domain, fulfillment.pm) == []
 
 
 # ---------------------------------------------------------------------------
@@ -679,24 +678,24 @@ class TestBuildSummary:
 
 
 class TestSerializePM:
-    def test_strips_internal_keys(self):
+    def test_strips_internal_keys(self, fulfillment, test_domain):
         pm = {
             "name": "TestPM",
             "type": "process_manager",
-            "_cls": MagicMock(),
-            "_domain": MagicMock(),
+            "_cls": fulfillment.pm,
+            "_domain": test_domain,
         }
         result = _serialize_pm(pm)
         assert "name" in result
         assert "_cls" not in result
         assert "_domain" not in result
 
-    def test_preserves_public_keys(self):
+    def test_preserves_public_keys(self, fulfillment):
         pm = {
             "name": "TestPM",
             "type": "process_manager",
             "metrics": {"processed": 5},
-            "_cls": MagicMock(),
+            "_cls": fulfillment.pm,
         }
         result = _serialize_pm(pm)
         assert result["name"] == "TestPM"
@@ -721,25 +720,32 @@ class TestProcessesListEndpoint:
         resp = client.get("/api/processes?window=invalid")
         assert resp.status_code == 400
 
-    def test_with_mock_pms(self):
-        pm_cls = _make_mock_pm_cls(
-            name="TestPM",
-            stream_category="test::pm",
-            stream_categories=["test::order"],
-        )
-        record = _make_mock_domain_record("TestPM", "a.TestPM", pm_cls)
-        domain = _make_mock_domain(process_managers={"TestPM": record})
+    def test_lists_registered_process_manager(self, fulfillment, client):
+        _start_order(fulfillment)
 
-        obs = Observatory(domains=[domain])
-        c = TestClient(obs.app)
-        resp = c.get("/api/processes")
+        resp = client.get("/api/processes")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["processes"]) == 1
-        assert data["processes"][0]["name"] == "TestPM"
+        assert data["processes"][0]["name"] == "OrderFulfillment"
+        assert data["processes"][0]["instance_count"] == 1
+        assert data["summary"]["total_instances"] == 1
         # Internal keys should not be serialized
         assert "_cls" not in data["processes"][0]
         assert "_domain" not in data["processes"][0]
+
+    def test_lists_processes_when_domain_ir_cannot_be_built(
+        self, fulfillment, test_domain
+    ):
+        """A failed IR build at startup disables only the domain graph. The
+        processes list is still served."""
+        with patch.object(IRBuilder, "build", side_effect=Exception("IR failed")):
+            c = TestClient(Observatory(domains=[test_domain]).app)
+
+        assert c.get("/api/domain/ir").status_code == 503
+        resp = c.get("/api/processes")
+        assert resp.status_code == 200
+        assert [p["name"] for p in resp.json()["processes"]] == ["OrderFulfillment"]
 
 
 # ---------------------------------------------------------------------------
@@ -752,57 +758,26 @@ class TestProcessesInstancesEndpoint:
         resp = client.get("/api/processes/NonExistentPM/instances")
         assert resp.status_code == 404
 
-    def test_returns_instances(self):
-        pm_cls = MagicMock()
-        pm_cls.__name__ = "TestPM"
-        pm_cls.meta_ = MagicMock()
-        pm_cls.meta_.stream_category = "test::pm"
-        pm_cls.meta_.stream_categories = []
-        pm_cls._handlers = defaultdict(set)
+    def test_returns_instances(self, fulfillment, client):
+        order_id = _start_order(fulfillment)
 
-        record = _make_mock_domain_record("TestPM", "a.TestPM", pm_cls)
-        domain = _make_mock_domain(process_managers={"TestPM": record})
-
-        # Mock event store
-        domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        domain.event_store.store._stream_identifiers.return_value = ["inst-1"]
-
-        msg = MagicMock()
-        msg.data = {"state": {"status": "active"}, "is_complete": False}
-        msg.time = "2024-01-01T00:00:00Z"
-        domain.event_store.store.read.return_value = [msg]
-
-        obs = Observatory(domains=[domain])
-        c = TestClient(obs.app)
-        resp = c.get("/api/processes/TestPM/instances")
+        resp = client.get("/api/processes/OrderFulfillment/instances")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["process"] == "TestPM"
+        assert data["process"] == "OrderFulfillment"
         assert len(data["instances"]) == 1
-        assert data["instances"][0]["instance_id"] == "inst-1"
+        assert data["instances"][0]["instance_id"] == order_id
+        assert data["total"] == 1
 
-    def test_handles_instance_exception(self):
-        pm_cls = MagicMock()
-        pm_cls.__name__ = "TestPM"
-        pm_cls.meta_ = MagicMock()
-        pm_cls.meta_.stream_category = "test::pm"
-        pm_cls.meta_.stream_categories = []
-        pm_cls._handlers = defaultdict(set)
+    def test_handles_instance_exception(self, fulfillment, test_domain, client):
+        _start_order(fulfillment)
 
-        record = _make_mock_domain_record("TestPM", "a.TestPM", pm_cls)
-        domain = _make_mock_domain(process_managers={"TestPM": record})
-
-        domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        domain.event_store.store._stream_identifiers.side_effect = Exception("fail")
-
-        obs = Observatory(domains=[domain])
-        c = TestClient(obs.app)
-        resp = c.get("/api/processes/TestPM/instances")
+        with _fail_stream_identifiers(test_domain):
+            resp = client.get("/api/processes/OrderFulfillment/instances")
         assert resp.status_code == 200
         data = resp.json()
         assert data["instances"] == []
+        assert data["total"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -869,10 +844,8 @@ class TestProcessesRouteWiring:
         router = create_processes_router([])
         assert hasattr(router, "routes")
 
-    def test_processes_routes_present(self):
-        domain = MagicMock()
-        domain.name = "test"
-        router = create_processes_router([domain])
+    def test_processes_routes_present(self, test_domain):
+        router = create_processes_router([test_domain])
         paths = [r.path for r in router.routes]
         assert "/processes" in paths
         assert "/processes/{name}/instances" in paths
@@ -888,58 +861,49 @@ class TestProcessesRouteWiring:
 # ---------------------------------------------------------------------------
 
 
-class TestGetRedis:
-    def test_returns_none_when_broker_raises_exception(self):
-        """broker raises exception, _get_redis returns None."""
-        domain = MagicMock()
-        domain.name = "TestDomain"
-        domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        domain.brokers.get.side_effect = Exception("Redis connection refused")
+def _broken_domain(name):
+    """A domain whose context cannot be entered."""
+    domain = Domain(name=name)
+    patcher = patch.object(
+        domain, "domain_context", side_effect=Exception("context error")
+    )
+    return domain, patcher
 
-        result = _get_redis([domain])
-        assert result is None
+
+class TestGetRedis:
+    def test_returns_none_when_broker_raises_exception(self, test_domain):
+        """A broker lookup that raises makes _get_redis return None."""
+        with patch.object(
+            test_domain.brokers,
+            "get",
+            side_effect=Exception("Redis connection refused"),
+        ):
+            assert _get_redis([test_domain]) is None
 
     def test_returns_none_when_domain_context_raises(self):
-        """domain_context itself raises, _get_redis continues."""
-        domain = MagicMock()
-        domain.name = "TestDomain"
-        domain.domain_context.side_effect = Exception("context error")
+        """A domain whose context cannot be entered yields no client."""
+        domain, patcher = _broken_domain("Broken")
+        with patcher:
+            assert _get_redis([domain]) is None
 
-        result = _get_redis([domain])
-        assert result is None
+    def test_returns_redis_instance(self, test_domain):
+        """The Redis broker's raw client is returned."""
+        broker = test_domain.brokers.get("default")
+        assert _get_redis([test_domain]) is broker.redis_instance
 
-    def test_returns_redis_instance(self):
-        """Happy path: broker has redis_instance attribute."""
-        domain = MagicMock()
-        domain.name = "TestDomain"
-        domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        redis_mock = MagicMock()
-        broker = MagicMock()
-        broker.redis_instance = redis_mock
-        domain.brokers.get.return_value = broker
-
-        result = _get_redis([domain])
-        assert result is redis_mock
-
-    def test_skips_failing_domain_tries_next(self):
+    def test_skips_failing_domain_tries_next(self, test_domain):
         """First domain fails, second succeeds."""
-        d1 = MagicMock()
-        d1.name = "Failing"
-        d1.domain_context.side_effect = Exception("fail")
+        failing, patcher = _broken_domain("Failing")
+        with patcher:
+            result = _get_redis([failing, test_domain])
+        assert result is test_domain.brokers.get("default").redis_instance
 
-        d2 = MagicMock()
-        d2.name = "Working"
-        d2.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        d2.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        redis_mock = MagicMock()
-        broker = MagicMock()
-        broker.redis_instance = redis_mock
-        d2.brokers.get.return_value = broker
-
-        result = _get_redis([d1, d2])
-        assert result is redis_mock
+    def test_returns_none_without_a_redis_broker(self):
+        """An inline broker has no Redis client to hand out."""
+        domain = Domain(name="Inline")
+        domain.config["brokers"] = {"default": {"provider": "inline"}}
+        domain.init(traverse=False)
+        assert _get_redis([domain]) is None
 
     def test_returns_none_for_empty_domains(self):
         result = _get_redis([])
@@ -966,86 +930,75 @@ class TestDecodeStreamId:
 
 
 # ---------------------------------------------------------------------------
-# _extract_handled_messages — fallback type key
+# _extract_handled_messages: keys without a dotted type
 # ---------------------------------------------------------------------------
 
 
 class TestExtractHandledMessagesFallback:
     def test_type_key_without_dots(self):
-        """type key with no dots falls through to append(type_key)."""
-        handlers = defaultdict(set)
-        handlers["SimpleEvent"] = {MagicMock()}
-        cls = _make_mock_pm_cls(handlers=handlers)
-        result = _extract_handled_messages(cls)
-        assert result == ["SimpleEvent"]
+        """A key with no dots is returned as is."""
+        cls = _handler_class_with_keys("SimpleEvent")
+        assert _extract_handled_messages(cls) == ["SimpleEvent"]
 
     def test_mixed_dotted_and_undotted_keys(self):
-        """Mix of dotted keys (normal) and undotted keys (fallback)."""
-        handlers = defaultdict(set)
-        handlers["MyApp.OrderPlaced.v1"] = {MagicMock()}
-        handlers["BareEvent"] = {MagicMock()}
-        cls = _make_mock_pm_cls(handlers=handlers)
+        """Dotted keys give their short name, undotted keys are kept whole."""
+        cls = _handler_class_with_keys("MyApp.OrderPlaced.v1", "BareEvent")
         result = _extract_handled_messages(cls)
-        assert "BareEvent" in result
-        assert "OrderPlaced" in result
+        assert result == ["BareEvent", "OrderPlaced"]
 
 
 # ---------------------------------------------------------------------------
-# _extract_time (from processes.py) — timestamp from metadata
+# _extract_time (from processes.py): timestamp from metadata
 # ---------------------------------------------------------------------------
 
 
 class TestExtractTimeProcesses:
+    """A stored ``Message`` carries neither ``time`` nor ``metadata.timestamp``,
+    so the tests that need those attributes pass a plain object that has them."""
+
     def test_extracts_time_attribute(self):
-        msg = MagicMock()
-        msg.time = "2024-01-01T00:00:00Z"
+        msg = SimpleNamespace(time="2024-01-01T00:00:00Z")
         assert _extract_time(msg) == "2024-01-01T00:00:00Z"
 
     def test_falls_back_to_metadata_timestamp(self):
-        """message has no time, falls back to metadata.timestamp."""
-        msg = MagicMock()
-        msg.time = None
-        msg.metadata = MagicMock()
-        msg.metadata.timestamp = "2024-06-15T12:00:00Z"
+        """A message with no time falls back to metadata.timestamp."""
+        msg = SimpleNamespace(
+            time=None, metadata=SimpleNamespace(timestamp="2024-06-15T12:00:00Z")
+        )
         assert _extract_time(msg) == "2024-06-15T12:00:00Z"
 
     def test_returns_none_when_no_time_or_metadata(self):
-        msg = MagicMock()
-        msg.time = None
-        msg.metadata = None
-        assert _extract_time(msg) is None
+        assert _extract_time(Message(data={})) is None
 
-    def test_returns_none_when_metadata_has_no_timestamp(self):
-        msg = MagicMock(spec=["time", "metadata"])
-        msg.time = None
-        msg.metadata = MagicMock(spec=[])  # no timestamp attribute
-        assert _extract_time(msg) is None
+    def test_returns_none_when_metadata_has_no_timestamp(
+        self, fulfillment, test_domain
+    ):
+        order_id = _start_order(fulfillment)
+        stream = f"{fulfillment.pm.meta_.stream_category}-{order_id}"
+        stored = test_domain.event_store.store.read(stream)[-1]
+
+        assert stored.metadata is not None
+        assert _extract_time(stored) is None
 
     def test_datetime_object_uses_isoformat(self):
         """datetime objects should be serialized via .isoformat(), not str()."""
-        from datetime import datetime as dt
-
-        msg = MagicMock()
-        msg.time = dt(2025, 6, 15, 12, 30, 45)
+        msg = SimpleNamespace(time=datetime(2025, 6, 15, 12, 30, 45))
         result = _extract_time(msg)
         assert result == "2025-06-15T12:30:45"
         assert "T" in result  # isoformat uses 'T' separator
 
     def test_metadata_timestamp_datetime_uses_isoformat(self):
         """Metadata timestamp as datetime should use .isoformat()."""
-        from datetime import datetime as dt
-
-        msg = MagicMock()
-        msg.time = None
-        msg.metadata = MagicMock()
-        msg.metadata.timestamp = dt(2025, 1, 1, 0, 0, 0)
+        msg = SimpleNamespace(
+            time=None, metadata=SimpleNamespace(timestamp=datetime(2025, 1, 1))
+        )
         result = _extract_time(msg)
         assert result == "2025-01-01T00:00:00"
         assert "T" in result
 
 
 # ---------------------------------------------------------------------------
-# _build_summary — unknown subscription status
+# _build_summary: unknown subscription status
 # ---------------------------------------------------------------------------
 
 
@@ -1067,179 +1020,108 @@ class TestBuildSummaryUnknownStatus:
 
 
 # ---------------------------------------------------------------------------
-# Endpoint: /api/processes/{name}/instances — get_pm_instances fails
+# Endpoint: /api/processes/{name}/instances, get_pm_instances fails
 # ---------------------------------------------------------------------------
 
 
 class TestProcessesInstancesGetPMInstancesFails:
-    def test_pm_instances_endpoint_when_get_pm_instances_raises(self):
+    def test_pm_instances_endpoint_when_get_pm_instances_raises(
+        self, fulfillment, client
+    ):
         """get_pm_instances raises inside the endpoint handler,
         endpoint catches and returns empty list."""
-        pm_cls = MagicMock()
-        pm_cls.__name__ = "TestPM"
-        pm_cls.meta_ = MagicMock()
-        pm_cls.meta_.stream_category = "test::pm"
-        pm_cls.meta_.stream_categories = []
-        pm_cls._handlers = defaultdict(set)
-
-        record = _make_mock_domain_record("TestPM", "a.TestPM", pm_cls)
-        domain = _make_mock_domain(process_managers={"TestPM": record})
-
-        domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-
-        # Make _stream_identifiers work for collect but get_pm_instances fail
-        call_count = 0
-        original_identifiers = ["inst-1"]
-
-        def side_effect_identifiers(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count <= 2:
-                # First calls for collect_pm_metadata (instance count check)
-                return original_identifiers
-            raise Exception("Store connection lost")
-
-        domain.event_store.store._stream_identifiers.side_effect = (
-            side_effect_identifiers
-        )
-
-        obs = Observatory(domains=[domain])
-        c = TestClient(obs.app)
+        _start_order(fulfillment)
 
         with patch(
             "protean.server.observatory.routes.processes.get_pm_instances",
             side_effect=Exception("unexpected error"),
         ):
-            resp = c.get("/api/processes/TestPM/instances")
+            resp = client.get("/api/processes/OrderFulfillment/instances")
             assert resp.status_code == 200
             data = resp.json()
             assert data["instances"] == []
+            assert data["total"] == 1
 
 
 # ---------------------------------------------------------------------------
-# Endpoint: /api/processes/{name}/instances — stream read fails
+# get_pm_instances: one stream read fails
 # ---------------------------------------------------------------------------
 
 
 class TestGetPMInstancesStreamReadFails:
-    def test_stream_read_exception_skips_instance(self):
+    def test_stream_read_exception_skips_instance(self, fulfillment, test_domain):
         """individual stream read fails, that instance is skipped."""
-        cls = MagicMock()
-        cls.__name__ = "TestPM"
-        cls.meta_ = MagicMock()
-        cls.meta_.stream_category = "test::pm"
+        first, second = sorted([_start_order(fulfillment), _start_order(fulfillment)])
+        store = test_domain.event_store.store
+        category = fulfillment.pm.meta_.stream_category
+        real_read = store.read
 
-        msg = MagicMock()
-        msg.data = {"state": {"status": "active"}, "is_complete": False}
-        msg.time = "2024-01-01T00:00:00Z"
+        def read_failing_first(stream_name, *args, **kwargs):
+            if stream_name == f"{category}-{first}":
+                raise Exception("stream corrupted")
+            return real_read(stream_name, *args, **kwargs)
 
-        domain = MagicMock()
-        domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-        domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        domain.event_store.store._stream_identifiers.return_value = ["id1", "id2"]
+        with patch.object(store, "read", side_effect=read_failing_first):
+            result = get_pm_instances(test_domain, fulfillment.pm)
 
-        # First read fails, second succeeds
-        domain.event_store.store.read.side_effect = [
-            Exception("stream corrupted"),
-            [msg],
-        ]
-
-        result = get_pm_instances(domain, cls)
         assert len(result) == 1
-        assert result[0]["instance_id"] == "id2"
+        assert result[0]["instance_id"] == second
 
 
 # ---------------------------------------------------------------------------
-# Endpoint: /api/processes — collect_subscription_statuses raises
+# Endpoint: /api/processes, a collaborator raises
 # ---------------------------------------------------------------------------
 
 
 class TestProcessesEndpointSubscriptionStatusException:
-    def test_processes_endpoint_when_merge_subscription_status_raises(self):
+    def test_processes_endpoint_when_merge_subscription_status_raises(
+        self, fulfillment, client
+    ):
         """merge_pm_subscription_status raises at the endpoint level."""
-        pm_cls = _make_mock_pm_cls(
-            name="TestPM",
-            stream_category="test::pm",
-            stream_categories=[],
-        )
-        record = _make_mock_domain_record("TestPM", "a.TestPM", pm_cls)
-        domain = _make_mock_domain(process_managers={"TestPM": record})
-
-        obs = Observatory(domains=[domain])
-        c = TestClient(obs.app)
-
         with patch(
             "protean.server.observatory.routes.processes.merge_pm_subscription_status",
             side_effect=Exception("subscription merge error"),
         ):
-            resp = c.get("/api/processes")
+            resp = client.get("/api/processes")
             assert resp.status_code == 200
             data = resp.json()
             # Should still return processes even when merge fails
             assert len(data["processes"]) == 1
-            assert data["processes"][0]["name"] == "TestPM"
-
-
-# ---------------------------------------------------------------------------
-# Endpoint: /api/processes — collect_pm_trace_metrics raises
-# ---------------------------------------------------------------------------
+            assert data["processes"][0]["name"] == "OrderFulfillment"
 
 
 class TestProcessesEndpointTraceMetricsException:
-    def test_processes_endpoint_when_trace_metrics_raises(self):
-        """collect_pm_trace_metrics raises inside the endpoint."""
-        pm_cls = _make_mock_pm_cls(
-            name="TestPM",
-            stream_category="test::pm",
-            stream_categories=[],
-        )
-        record = _make_mock_domain_record("TestPM", "a.TestPM", pm_cls)
-        domain = _make_mock_domain(process_managers={"TestPM": record})
-
-        obs = Observatory(domains=[domain])
-        c = TestClient(obs.app)
-
-        with (
-            patch(
-                "protean.server.observatory.routes.processes._get_redis",
-                return_value=MagicMock(),  # Return a non-None redis
-            ),
-            patch(
-                "protean.server.observatory.routes.processes.collect_pm_trace_metrics",
-                side_effect=Exception("trace stream error"),
-            ),
-        ):
-            resp = c.get("/api/processes")
+    def test_processes_endpoint_when_trace_metrics_raises(self, fulfillment, client):
+        """collect_pm_trace_metrics raises inside the endpoint. The test
+        domain's Redis broker hands out a client, so the endpoint calls it."""
+        with patch(
+            "protean.server.observatory.routes.processes.collect_pm_trace_metrics",
+            side_effect=Exception("trace stream error"),
+        ) as collect:
+            resp = client.get("/api/processes")
             assert resp.status_code == 200
             data = resp.json()
             assert len(data["processes"]) == 1
+            assert data["processes"][0]["metrics"] is None
+        assert collect.called
 
-    def test_processes_endpoint_when_instance_count_raises(self):
+    def test_processes_endpoint_when_instance_count_raises(self, fulfillment, client):
         """get_pm_instance_count raises for a PM."""
-        pm_cls = _make_mock_pm_cls(
-            name="TestPM",
-            stream_category="test::pm",
-            stream_categories=[],
-        )
-        record = _make_mock_domain_record("TestPM", "a.TestPM", pm_cls)
-        domain = _make_mock_domain(process_managers={"TestPM": record})
-
-        obs = Observatory(domains=[domain])
-        c = TestClient(obs.app)
+        _start_order(fulfillment)
 
         with patch(
             "protean.server.observatory.routes.processes.get_pm_instance_count",
             side_effect=Exception("count error"),
         ):
-            resp = c.get("/api/processes")
+            resp = client.get("/api/processes")
             assert resp.status_code == 200
             data = resp.json()
             assert len(data["processes"]) == 1
+            assert data["processes"][0]["instance_count"] is None
 
 
 # ---------------------------------------------------------------------------
-# get_pm_instance_count / get_pm_instances — event store not yet initialized
+# get_pm_instance_count / get_pm_instances: event store not yet initialized
 # (store is None)
 # ---------------------------------------------------------------------------
 
@@ -1249,18 +1131,12 @@ class TestPMInstancesStoreUnavailable:
     initialized its event store yet), the instance helpers must degrade
     gracefully rather than raise."""
 
-    def test_get_pm_instance_count_returns_none_when_store_is_none(self):
-        """``store is None`` short-circuits to ``None``."""
-        pm_cls = _make_mock_pm_cls(name="TestPM", stream_category="test::pm")
-        domain = _make_mock_domain()
-        domain.event_store.store = None
+    def test_get_pm_instance_count_returns_none_when_store_is_none(self, fulfillment):
+        """An uninitialized domain has no store, so the count is ``None``."""
+        domain = Domain(name="NotInitialized")
+        assert get_pm_instance_count(domain, fulfillment.pm) is None
 
-        assert get_pm_instance_count(domain, pm_cls) is None
-
-    def test_get_pm_instances_returns_empty_when_store_is_none(self):
-        """``store is None`` short-circuits to ``[]``."""
-        pm_cls = _make_mock_pm_cls(name="TestPM", stream_category="test::pm")
-        domain = _make_mock_domain()
-        domain.event_store.store = None
-
-        assert get_pm_instances(domain, pm_cls) == []
+    def test_get_pm_instances_returns_empty_when_store_is_none(self, fulfillment):
+        """An uninitialized domain has no store, so no instances are listed."""
+        domain = Domain(name="NotInitialized")
+        assert get_pm_instances(domain, fulfillment.pm) == []

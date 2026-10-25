@@ -8,7 +8,7 @@ the caller instead of being suppressed.
 
 import json
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import Request
@@ -19,6 +19,8 @@ import protean.server.observatory.routes.handlers as handlers_module
 import protean.server.observatory.routes.processes as processes_module
 import protean.server.observatory.routes.timeline as timeline_module
 import protean.server.observatory.sse as sse_module
+from protean import Domain
+from protean.ir.builder import IRBuilder
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.timeline import _load_traces_for_correlation
 from protean.server.tracing import decode_trace, decode_trace_payload, trace_number
@@ -66,19 +68,18 @@ def _raise_type_error(*args, **kwargs):
     raise TypeError("bug after decoding")
 
 
-def _domain_with_redis(redis_conn: MagicMock) -> MagicMock:
-    domain = MagicMock()
-    domain.name = "test"
-    domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-    domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-    broker = MagicMock()
-    broker.redis_instance = redis_conn
-    domain.brokers.get.return_value = broker
+def _domain_with_redis(domain: Domain, redis_conn: MagicMock) -> Domain:
+    """Give the domain's Redis broker a stand-in raw client.
+
+    The core test lane has no Redis server, and these tests need trace entries
+    that a real server would never hold, such as bytes that are not UTF-8.
+    """
+    domain.brokers["default"].redis_instance = redis_conn
     return domain
 
 
-def _client(redis_conn: MagicMock) -> TestClient:
-    return TestClient(Observatory(domains=[_domain_with_redis(redis_conn)]).app)
+def _client(domain: Domain, redis_conn: MagicMock) -> TestClient:
+    return TestClient(Observatory(domains=[_domain_with_redis(domain, redis_conn)]).app)
 
 
 class TestDecodeTracePayload:
@@ -145,7 +146,6 @@ class TestTraceNumber:
         assert trace_number(value) is None
 
 
-@pytest.mark.no_test_domain
 class TestWorkerThroughput:
     def _redis(self, entries: list) -> MagicMock:
         redis_conn = MagicMock()
@@ -159,57 +159,56 @@ class TestWorkerThroughput:
         redis_conn.xrange.return_value = entries
         return redis_conn
 
-    def test_malformed_entries_are_skipped(self):
+    def test_malformed_entries_are_skipped(self, test_domain):
         entries = [
             *_malformed_entries(),
             _entry(_completed(worker_id="Handler-host-1-abc")),
             _entry(_completed(worker_id=["not", "a", "str"])),
         ]
 
-        response = _client(self._redis(entries)).get("/api/workers")
+        response = _client(test_domain, self._redis(entries)).get("/api/workers")
 
         assert response.status_code == 200
         workers = response.json()["workers"]
         assert len(workers) == 1
         assert workers[0]["throughput"]["total"] == 1
 
-    def test_a_trace_from_an_unknown_worker_is_not_counted(self):
+    def test_a_trace_from_an_unknown_worker_is_not_counted(self, test_domain):
         entries = [
             _entry(_completed(worker_id="Handler-host-1-abc")),
             _entry(_completed(worker_id="Handler-other-2-xyz")),
         ]
 
-        response = _client(self._redis(entries)).get("/api/workers")
+        response = _client(test_domain, self._redis(entries)).get("/api/workers")
 
         assert response.json()["workers"][0]["throughput"]["total"] == 1
 
-    def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
+    def test_an_error_after_decoding_reaches_the_caller(self, test_domain, monkeypatch):
         monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
         entries = [_entry(_completed(worker_id="Handler-host-1-abc"))]
 
         with pytest.raises(TypeError, match="bug after decoding"):
-            _client(self._redis(entries)).get("/api/workers")
+            _client(test_domain, self._redis(entries)).get("/api/workers")
 
-    def test_a_trace_read_failure_shows_zero_throughput(self):
+    def test_a_trace_read_failure_shows_zero_throughput(self, test_domain):
         redis_conn = self._redis([])
         redis_conn.xrange.side_effect = RuntimeError("redis down")
 
-        response = _client(redis_conn).get("/api/workers")
+        response = _client(test_domain, redis_conn).get("/api/workers")
 
         assert response.status_code == 200
         assert response.json()["workers"][0]["throughput"]["total"] == 0
 
 
-@pytest.mark.no_test_domain
 class TestTraceListing:
-    def test_malformed_entries_are_skipped(self):
+    def test_malformed_entries_are_skipped(self, test_domain):
         redis_conn = MagicMock()
         redis_conn.xrevrange.return_value = [
             *_malformed_entries(),
             _entry(_completed()),
         ]
 
-        response = _client(redis_conn).get("/api/traces")
+        response = _client(test_domain, redis_conn).get("/api/traces")
 
         assert response.status_code == 200
         traces = response.json()["traces"]
@@ -224,7 +223,7 @@ class TestTraceListing:
             "message_id=m2",
         ],
     )
-    def test_filters_drop_traces_that_do_not_match(self, query):
+    def test_filters_drop_traces_that_do_not_match(self, test_domain, query):
         redis_conn = MagicMock()
         redis_conn.xrevrange.return_value = [
             _entry(
@@ -233,30 +232,29 @@ class TestTraceListing:
             _entry(_failed(domain="sales", stream="sales::order", message_id="m2")),
         ]
 
-        response = _client(redis_conn).get(f"/api/traces?{query}")
+        response = _client(test_domain, redis_conn).get(f"/api/traces?{query}")
 
         assert [t["event"] for t in response.json()["traces"]] == ["handler.failed"]
 
-    def test_stops_at_the_requested_count(self):
+    def test_stops_at_the_requested_count(self, test_domain):
         redis_conn = MagicMock()
         redis_conn.xrevrange.return_value = [_entry(_completed()), _entry(_failed())]
 
-        response = _client(redis_conn).get("/api/traces?count=1")
+        response = _client(test_domain, redis_conn).get("/api/traces?count=1")
 
         assert response.json()["count"] == 1
 
-    def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
+    def test_an_error_after_decoding_reaches_the_caller(self, test_domain, monkeypatch):
         monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
         redis_conn = MagicMock()
         redis_conn.xrevrange.return_value = [_entry(_completed())]
 
         with pytest.raises(TypeError, match="bug after decoding"):
-            _client(redis_conn).get("/api/traces")
+            _client(test_domain, redis_conn).get("/api/traces")
 
 
-@pytest.mark.no_test_domain
 class TestTraceOverview:
-    def test_malformed_entries_are_skipped(self):
+    def test_malformed_entries_are_skipped(self, test_domain):
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [
             *_malformed_entries(),
@@ -265,7 +263,9 @@ class TestTraceOverview:
             _entry({"event": ["not", "a", "str"]}),
         ]
 
-        response = _client(redis_conn).get("/api/traces/overview?window=15m")
+        response = _client(test_domain, redis_conn).get(
+            "/api/traces/overview?window=15m"
+        )
 
         assert response.status_code == 200
         body = response.json()
@@ -273,29 +273,30 @@ class TestTraceOverview:
         assert body["counts"] == {"handler.completed": 2}
         assert body["avg_latency_ms"] == 10.0
 
-    def test_counts_errors_in_the_totals_and_the_timeline(self):
+    def test_counts_errors_in_the_totals_and_the_timeline(self, test_domain):
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [_entry(_completed()), _entry(_failed())]
 
-        response = _client(redis_conn).get("/api/traces/overview?window=15m")
+        response = _client(test_domain, redis_conn).get(
+            "/api/traces/overview?window=15m"
+        )
 
         body = response.json()
         assert body["error_count"] == 1
         assert sum(b["errors"] for b in body["buckets"]) == 1
         assert sum(b["success"] for b in body["buckets"]) == 1
 
-    def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
+    def test_an_error_after_decoding_reaches_the_caller(self, test_domain, monkeypatch):
         monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [_entry(_completed())]
 
         with pytest.raises(TypeError, match="bug after decoding"):
-            _client(redis_conn).get("/api/traces/overview?window=1h")
+            _client(test_domain, redis_conn).get("/api/traces/overview?window=1h")
 
 
-@pytest.mark.no_test_domain
 class TestFailedTraces:
-    def test_malformed_entries_are_skipped(self):
+    def test_malformed_entries_are_skipped(self, test_domain):
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [
             *_malformed_entries(),
@@ -303,7 +304,7 @@ class TestFailedTraces:
             _entry({"event": ["not", "a", "str"]}),
         ]
 
-        response = _client(redis_conn).get("/api/traces/failed")
+        response = _client(test_domain, redis_conn).get("/api/traces/failed")
 
         assert response.status_code == 200
         body = response.json()
@@ -313,46 +314,45 @@ class TestFailedTraces:
     @pytest.mark.parametrize(
         "query", ["handler=PaymentHandler", "message_type=PaymentFailed"]
     )
-    def test_filters_drop_traces_that_do_not_match(self, query):
+    def test_filters_drop_traces_that_do_not_match(self, test_domain, query):
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [
             _entry(_failed()),
             _entry(_failed(handler="PaymentHandler", message_type="PaymentFailed")),
         ]
 
-        response = _client(redis_conn).get(f"/api/traces/failed?{query}")
+        response = _client(test_domain, redis_conn).get(f"/api/traces/failed?{query}")
 
         body = response.json()
         assert body["total_count"] == 1
         assert body["traces"][0]["handler"] == "PaymentHandler"
 
-    def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
+    def test_an_error_after_decoding_reaches_the_caller(self, test_domain, monkeypatch):
         monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [_entry(_failed())]
 
         with pytest.raises(TypeError, match="bug after decoding"):
-            _client(redis_conn).get("/api/traces/failed")
+            _client(test_domain, redis_conn).get("/api/traces/failed")
 
 
-@pytest.mark.no_test_domain
 class TestTraceDetail:
-    def test_a_malformed_entry_is_reported_as_unparseable(self):
+    def test_a_malformed_entry_is_reported_as_unparseable(self, test_domain):
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [(b"1-0", {b"data": b"[1, 2]"})]
 
-        response = _client(redis_conn).get("/api/traces/1-0")
+        response = _client(test_domain, redis_conn).get("/api/traces/1-0")
 
         assert response.status_code == 500
         assert response.json() == {"error": "Failed to parse trace data"}
 
-    def test_a_trace_is_returned_with_its_stream_id(self):
+    def test_a_trace_is_returned_with_its_stream_id(self, test_domain):
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [
             (b"1-0", {b"data": json.dumps(_completed()).encode()})
         ]
 
-        response = _client(redis_conn).get("/api/traces/1-0")
+        response = _client(test_domain, redis_conn).get("/api/traces/1-0")
 
         assert response.status_code == 200
         assert response.json()["_stream_id"] == "1-0"
@@ -438,7 +438,7 @@ class TestProcessManagerTraceMetrics:
 
 
 class TestCorrelationTraces:
-    def test_malformed_entries_are_skipped(self):
+    def test_malformed_entries_are_skipped(self, test_domain):
         redis_conn = MagicMock()
         redis_conn.xrange.return_value = [
             *_malformed_entries(),
@@ -447,12 +447,12 @@ class TestCorrelationTraces:
         ]
 
         traces = _load_traces_for_correlation(
-            [_domain_with_redis(redis_conn)], "corr-1"
+            [_domain_with_redis(test_domain, redis_conn)], "corr-1"
         )
 
         assert traces == {"m-1": {"handler": "OrderHandler", "duration_ms": 10.0}}
 
-    def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
+    def test_an_error_after_decoding_reaches_the_caller(self, test_domain, monkeypatch):
         class BrokenTrace(dict):
             def get(self, key, default=None):
                 if key == "message_id":
@@ -468,13 +468,16 @@ class TestCorrelationTraces:
         redis_conn.xrange.return_value = [_entry(_completed(correlation_id="corr-1"))]
 
         with pytest.raises(TypeError, match="bug after decoding"):
-            _load_traces_for_correlation([_domain_with_redis(redis_conn)], "corr-1")
+            _load_traces_for_correlation(
+                [_domain_with_redis(test_domain, redis_conn)], "corr-1"
+            )
 
 
-@pytest.mark.no_test_domain
 class TestSseTraceFeed:
     @staticmethod
-    def _sent_traces(monkeypatch, messages: list, path: str = "/stream") -> list:
+    def _sent_traces(
+        domain, monkeypatch, messages: list, path: str = "/stream"
+    ) -> list:
         pending = list(messages)
 
         # The test client only returns once the stream ends, so the fake
@@ -488,7 +491,7 @@ class TestSseTraceFeed:
             pending.pop(0)
         )
 
-        response = _client(redis_conn).get(path)
+        response = _client(domain, redis_conn).get(path)
 
         return [
             json.loads(line[len("data: ") :])
@@ -496,11 +499,12 @@ class TestSseTraceFeed:
             if line.startswith("data: ")
         ]
 
-    def test_malformed_messages_are_skipped(self, monkeypatch):
+    def test_malformed_messages_are_skipped(self, test_domain, monkeypatch):
         def message(data):
             return {"type": "message", "data": data}
 
         sent = self._sent_traces(
+            test_domain,
             monkeypatch,
             [
                 message(b"{not json"),
@@ -512,8 +516,9 @@ class TestSseTraceFeed:
 
         assert [t["event"] for t in sent] == ["handler.completed"]
 
-    def test_a_non_str_value_does_not_match_a_filter(self, monkeypatch):
+    def test_a_non_str_value_does_not_match_a_filter(self, test_domain, monkeypatch):
         sent = self._sent_traces(
+            test_domain,
             monkeypatch,
             [
                 {"type": "message", "data": json.dumps(_completed(event=["x"]))},
@@ -524,11 +529,28 @@ class TestSseTraceFeed:
 
         assert [t["event"] for t in sent] == ["handler.completed"]
 
-    def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
+    def test_an_error_after_decoding_reaches_the_caller(self, test_domain, monkeypatch):
         monkeypatch.setattr(sse_module, "_format_sse", _raise_type_error)
 
         with pytest.raises(TypeError, match="bug after decoding"):
             self._sent_traces(
+                test_domain,
                 monkeypatch,
                 [{"type": "message", "data": json.dumps(_completed()).encode()}],
             )
+
+
+class TestTracesWithoutDomainIR:
+    def test_trace_endpoints_answer_when_the_domain_ir_cannot_be_built(
+        self, test_domain
+    ):
+        redis_conn = MagicMock()
+        redis_conn.xrange.return_value = [(b"1-0", {b"data": b'{"event": "x"}'})]
+
+        with patch.object(IRBuilder, "build", side_effect=RuntimeError("boom")):
+            client = _client(test_domain, redis_conn)
+
+        assert client.get("/api/domain/ir").status_code == 503
+        response = client.get("/api/traces/1-0")
+        assert response.status_code == 200
+        assert response.json()["_stream_id"] == "1-0"

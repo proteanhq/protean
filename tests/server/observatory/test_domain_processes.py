@@ -1,6 +1,6 @@
 """Tests for Process Manager State Machine View and Domain Stats.
 
-Covers:
+Tests for:
 - domain-processes.js static asset serving
 - Template includes the new script
 - _build_pm_graphs state machine extraction from IR

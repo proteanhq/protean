@@ -1,19 +1,19 @@
 """Tests for the Observatory Domain page and /api/domain/ir endpoint.
 
-Covers:
+Tests for:
 - routes/pages.py: /domain page route
 - routes/domain.py: /api/domain/ir API endpoint, IR→D3 graph transformation
 - templates/domain.html: Template rendering
 - base.html: Sidebar navigation entry for Domain
 """
 
-from unittest.mock import MagicMock
-
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from protean import Domain
 from protean.server.observatory import Observatory
+from protean.server.observatory.routes import domain as domain_routes
 from protean.server.observatory.routes.domain import (
     _build_event_to_agg_index,
     _build_graph,
@@ -554,17 +554,18 @@ class TestCreateDomainRouterEdgeCases:
         assert response.status_code == 503
         assert response.json()["error"] == "Domain IR unavailable"
 
-    def test_ir_build_failure_returns_503(self):
+    def test_ir_build_failure_returns_503(self, monkeypatch):
         """Router gracefully handles IR build failure."""
-        mock_domain = MagicMock()
-        mock_domain.name = "broken"
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(
-            side_effect=RuntimeError("boom")
-        )
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+        domain = Domain(name="broken")
+        domain.init(traverse=False)
+
+        def _raise(self):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(domain_routes.IRBuilder, "build", _raise)
 
         app = FastAPI()
-        app.include_router(create_domain_router([mock_domain]), prefix="/api")
+        app.include_router(create_domain_router([domain]), prefix="/api")
         client = TestClient(app)
         response = client.get("/api/domain/ir")
         assert response.status_code == 503
