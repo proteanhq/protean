@@ -535,6 +535,48 @@ class TestResetForRetry:
         assert sample_outbox.status == OutboxStatus.PROCESSING.value
 
 
+class TestRelease:
+    """Test release method."""
+
+    def test_release_processing_message(self, sample_outbox):
+        """A claimed row goes back to pending with its retry state untouched."""
+        next_retry_at = datetime.now(UTC) + timedelta(minutes=5)
+        sample_outbox.status = OutboxStatus.PROCESSING.value
+        sample_outbox.locked_by = "worker-1"
+        sample_outbox.locked_until = datetime.now(UTC) + timedelta(minutes=2)
+        sample_outbox.retry_count = 2
+        sample_outbox.next_retry_at = next_retry_at
+
+        result = sample_outbox.release()
+
+        assert result is True
+        assert sample_outbox.status == OutboxStatus.PENDING.value
+        assert sample_outbox.locked_by is None
+        assert sample_outbox.locked_until is None
+        assert sample_outbox.retry_count == 2
+        assert sample_outbox.next_retry_at == next_retry_at
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            OutboxStatus.PENDING,
+            OutboxStatus.PUBLISHED,
+            OutboxStatus.FAILED,
+            OutboxStatus.ABANDONED,
+        ],
+    )
+    def test_release_unclaimed_message_fails(self, sample_outbox, status):
+        """A row that is not processing is left as it is."""
+        sample_outbox.status = status.value
+        sample_outbox.locked_by = "worker-1"
+
+        result = sample_outbox.release()
+
+        assert result is False
+        assert sample_outbox.status == status.value
+        assert sample_outbox.locked_by == "worker-1"
+
+
 class TestUpdatePriority:
     """Test update_priority method."""
 

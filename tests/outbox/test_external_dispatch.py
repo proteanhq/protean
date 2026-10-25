@@ -199,6 +199,20 @@ class TestExternalOutboxRows:
             (OrderCancelled.__type__, "default"): 1,
         }
 
+    def test_internal_and_external_rows_carry_the_stream_category(self, test_domain):
+        order = Order.place(customer_id="C6", total=10.0)
+        outbox_repo = test_domain._get_outbox_repo("default")
+
+        with UnitOfWork():
+            test_domain.repository_for(Order).add(order)
+
+        rows = outbox_repo.find_unprocessed()
+        assert len(rows) == 2
+        assert {r.target_broker: r.stream_category for r in rows} == {
+            "default": Order.meta_.stream_category,
+            "external": Order.meta_.stream_category,
+        }
+
     def test_non_published_aggregate_no_external_rows(self, test_domain):
         inv = Inventory(sku="WIDGET", qty=10)
         inv.adjust(5)

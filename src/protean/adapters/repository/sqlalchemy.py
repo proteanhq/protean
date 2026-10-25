@@ -69,7 +69,7 @@ from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject, _ShadowField
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET, FieldSpec
-from protean.port.dao import BaseDAO, BaseLookup
+from protean.port.dao import BaseDAO, BaseLookup, HoldBack
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
 from protean.utils import (
     Database,
@@ -1684,23 +1684,27 @@ class SADAO(BaseDAO):
                 new_connection.begin()
             return new_connection
 
-    def _build_filters(self, criteria: Q) -> typing.Any:
-        """Recursively Build the filters from the criteria object"""
+    def _build_filters(self, criteria: Q, model: typing.Any = None) -> typing.Any:
+        """Recursively Build the filters from the criteria object.
+
+        ``model`` is the mapped class (or an ``orm.aliased`` copy of it) whose
+        columns the filters read. It defaults to the DAO's own model; the
+        hold-back claim passes an alias to filter a second copy of the table.
+        """
+        model = self.database_model_cls if model is None else model
         # Decide the function based on the connector type
         func = and_ if criteria.connector == criteria.AND else or_
         params = []
         for child in criteria.children:
             if isinstance(child, Q):
                 # Call the function again with the child
-                params.append(self._build_filters(child))
+                params.append(self._build_filters(child, model))
             else:
                 # Find the lookup class and the key
                 stripped_key, lookup_class = self.provider._extract_lookup(child[0])
 
                 # Instantiate the lookup class and get the expression
-                lookup = lookup_class(
-                    stripped_key, child[1], database_model_cls=self.database_model_cls
-                )
+                lookup = lookup_class(stripped_key, child[1], database_model_cls=model)
                 if criteria.negated:
                     expression = lookup.as_expression()
                     assert expression is not None
@@ -2043,12 +2047,70 @@ class SADAO(BaseDAO):
         inner = inner.order_by(*order_cols).limit(limit)
         return table, id_col, inner
 
+    def _sorts_before(
+        self, left: typing.Any, right: typing.Any, keys: Sequence[str]
+    ) -> typing.Any:
+        """SQL expression that is true when row ``left`` sorts strictly before
+        row ``right`` on ``keys``.
+
+        ``left`` and ``right`` are the mapped class or aliases of it. A ``-``
+        prefix sorts that key descending. NULL sorts as the largest value (last
+        ascending, first descending), the same as :meth:`_order_clauses`.
+        """
+        table = self.database_model_cls.__table__
+        before_clauses = []
+        equal_so_far: list[typing.Any] = []
+        for key in keys:
+            name = key.lstrip("-")
+            descending = key.startswith("-")
+            left_col, right_col = getattr(left, name), getattr(right, name)
+            before = left_col > right_col if descending else left_col < right_col
+            if table.c[name].nullable:
+                if descending:
+                    null_side = and_(left_col.is_(None), right_col.is_not(None))
+                else:
+                    null_side = and_(left_col.is_not(None), right_col.is_(None))
+                before = or_(before, null_side)
+                same = left_col.is_not_distinct_from(right_col)
+            else:
+                same = left_col == right_col
+            before_clauses.append(and_(*equal_so_far, before))
+            equal_so_far.append(same)
+        return or_(*before_clauses)
+
+    def _same_group(
+        self, hold_back: HoldBack, row: typing.Any, other: typing.Any
+    ) -> typing.Any:
+        """SQL expression that is true when ``row`` and ``other`` share a
+        hold-back group: both match ``applies``, the ``group_by`` columns are
+        equal, and both match the same lane."""
+        clauses = [
+            getattr(other, column) == getattr(row, column)
+            for column in hold_back.group_by
+        ]
+        clauses.append(self._build_filters(hold_back.applies, row))
+        clauses.append(self._build_filters(hold_back.applies, other))
+        if hold_back.lanes:
+            clauses.append(
+                or_(
+                    *(
+                        and_(
+                            self._build_filters(lane, row),
+                            self._build_filters(lane, other),
+                        )
+                        for lane in hold_back.lanes
+                    )
+                )
+            )
+        return and_(*clauses)
+
     def _claim(
         self,
         criteria: Q,
         claim_fields: dict[str, typing.Any],
         limit: int,
         order_by: str | list[str] | None = None,
+        hold_back: HoldBack | None = None,
     ) -> "list[BaseEntity]":
         """Atomic find-and-claim in a single ``UPDATE … RETURNING`` statement.
 
@@ -2067,6 +2129,41 @@ class SADAO(BaseDAO):
         TOCTOU window between the read and the claim. ``RETURNING`` hands back
         the post-claim rows.
 
+        With ``hold_back`` the statement stays one round trip::
+
+            WITH candidates AS MATERIALIZED (
+                SELECT id FROM <table> AS c
+                WHERE <criteria>
+                  AND NOT EXISTS (
+                    SELECT 1 FROM <table> AS e
+                    WHERE <e in c's group> AND <e holds> AND <e earlier than c>
+                      AND NOT (<e matches criteria> AND <e sorts before c>)
+                  )
+                ORDER BY <order> LIMIT <n> FOR UPDATE SKIP LOCKED
+            )
+            UPDATE <table> AS c SET <claim_fields>
+            WHERE id IN (SELECT id FROM candidates)
+              AND NOT EXISTS (
+                SELECT 1 FROM <table> AS e
+                WHERE <e in c's group> AND <e holds> AND <e earlier than c>
+                  AND e.id NOT IN (SELECT id FROM candidates)
+              )
+            RETURNING *
+
+        The outer ``NOT EXISTS`` is the claim rule: a grouped row is claimed
+        only when every earlier holding row of its group is in the locked set.
+        A row another worker has locked is skipped by ``SKIP LOCKED``, so it is
+        outside the set and holds the rows behind it.
+
+        The inner ``NOT EXISTS`` narrows the candidates before ``LIMIT``
+        applies. Without it, a held group with more than ``n`` waiting rows
+        would fill the candidate set on every call and keep other groups from
+        being claimed. And a group whose earlier row has a lower priority than
+        its later rows would never get that earlier row into the set, so the
+        group would stop for good. With it, a group's first waiting row always
+        sorts ahead of the group's other candidates. The cost is that a later,
+        higher-priority row waits one call for the earlier rows of its group.
+
         Every other dialect (MySQL/MariaDB — which lack ``UPDATE … RETURNING``;
         SQL Server; SQLite) falls back to the portable
         :meth:`BaseDAO._claim` default. That default is correct everywhere a
@@ -2079,17 +2176,53 @@ class SADAO(BaseDAO):
             return []
 
         if self.provider._engine.dialect.name not in self._SKIP_LOCKED_DIALECTS:
-            return super()._claim(criteria, claim_fields, limit, order_by)
+            return super()._claim(criteria, claim_fields, limit, order_by, hold_back)
 
         table, id_col, inner = self._bounded_id_select(criteria, limit, order_by)
-        inner = inner.with_for_update(skip_locked=True)
+        inner = inner.with_for_update(skip_locked=True, of=table)
 
-        stmt = (
-            update(table)
-            .where(id_col.in_(inner.scalar_subquery()))
-            .values(**claim_fields)
-            .returning(table)
-        )
+        if hold_back is None:
+            claimable = id_col.in_(inner.scalar_subquery())
+        else:
+            model = self.database_model_cls
+            earlier = orm.aliased(model, name="hold_back_earlier")
+            claim_order = _order_keys(order_by) or [id_col.name]
+            blocks_candidate = (
+                select(1)
+                .select_from(earlier)
+                .where(
+                    self._same_group(hold_back, model, earlier),
+                    self._build_filters(hold_back.holds, earlier),
+                    self._sorts_before(earlier, model, hold_back.order),
+                    ~and_(
+                        self._build_filters(criteria, earlier),
+                        self._sorts_before(earlier, model, claim_order),
+                    ),
+                )
+                .exists()
+            )
+            candidates = (
+                inner.where(~blocks_candidate)
+                .cte("hold_back_candidates")
+                .prefix_with("MATERIALIZED")
+            )
+            candidate_ids = select(candidates.c[id_col.name])
+
+            outside = orm.aliased(model, name="hold_back_outside")
+            held = (
+                select(1)
+                .select_from(outside)
+                .where(
+                    self._same_group(hold_back, model, outside),
+                    self._build_filters(hold_back.holds, outside),
+                    self._sorts_before(outside, model, hold_back.order),
+                    getattr(outside, id_col.name).not_in(candidate_ids),
+                )
+                .exists()
+            )
+            claimable = and_(id_col.in_(candidate_ids), ~held)
+
+        stmt = update(table).where(claimable).values(**claim_fields).returning(table)
 
         conn = self._get_session()
         assert conn is not None

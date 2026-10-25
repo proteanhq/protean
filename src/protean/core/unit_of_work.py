@@ -431,9 +431,11 @@ class UnitOfWork:
                     # Extract trace context for outbox denormalized fields
                     correlation_id = None
                     causation_id = None
+                    stream_category = None
                     if event._metadata and event._metadata.domain:
                         correlation_id = event._metadata.domain.correlation_id
                         causation_id = event._metadata.domain.causation_id
+                        stream_category = event._metadata.domain.stream_category
 
                     # Partition key for per-key sequential routing (ADR-0028).
                     # Extracted and validated here, synchronously in the caller's
@@ -457,6 +459,7 @@ class UnitOfWork:
                         sequence_number=sequence_number,
                         target_broker=internal_broker,
                         partition_key=partition_key,
+                        stream_category=stream_category,
                     )
                     outbox_repo._dao._apply_pre_persist_hooks(outbox_message)
                     outbox_rows.append((outbox_repo, outbox_message))
@@ -480,6 +483,7 @@ class UnitOfWork:
                                 sequence_number=sequence_number,
                                 target_broker=ext_broker,
                                 partition_key=partition_key,
+                                stream_category=stream_category,
                             )
                             outbox_repo._dao._apply_pre_persist_hooks(ext_outbox)
                             outbox_rows.append((outbox_repo, ext_outbox))

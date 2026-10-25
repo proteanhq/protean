@@ -3,6 +3,7 @@ import logging
 from abc import ABCMeta, abstractmethod
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, get_args
 
 from protean._deprecation import deprecated_from_registry
@@ -31,6 +32,75 @@ logger = logging.getLogger(__name__)
 # default. Kept under SQLite's default ``SQLITE_MAX_VARIABLE_NUMBER`` of 999 so
 # the fallback path is safe on every backend regardless of batch size.
 _DELETE_IN_CHUNK_SIZE = 900
+
+
+@dataclass(frozen=True)
+class HoldBack:
+    """How :meth:`BaseDAO._claim` holds back a row behind earlier rows of its
+    group.
+
+    Two rows share a group when both match ``applies``, their ``group_by``
+    columns are equal, and both match the same ``lanes`` entry. A grouped row is
+    claimable only when every earlier row of its group that matches ``holds``
+    is claimed by the same call. Rows that do not match ``applies`` are never
+    held and never hold another row.
+
+    A ``Q`` cannot compare a row with other rows, which is why this is a
+    separate parameter and not part of the claim criteria.
+
+    :param group_by: Column names that must be equal for two rows to share a
+        group.
+    :param applies: Rows that take part in grouping. It must require every
+        ``group_by`` column to be non-null: SQL never treats two NULLs as equal,
+        but the in-memory adapter does.
+    :param holds: Rows that still hold their group (for example, every status
+        except "published").
+    :param order: Column names, all ascending, that define "earlier" within a
+        group. NULL sorts last, as in ``_claim``'s ``order_by``. The last key
+        must be unique so that the order is total.
+    :param lanes: Disjoint ``Q`` objects that together cover every grouped row.
+        Rows in different lanes never share a group. Empty means one lane.
+    """
+
+    group_by: tuple[str, ...]
+    applies: Q
+    holds: Q
+    order: tuple[str, ...]
+    lanes: tuple[Q, ...] = ()
+
+
+def _lookup(key: str, value: Any) -> Q:
+    """``Q`` for one lookup whose key is only known at run time."""
+    kwargs: dict[str, Any] = {key: value}
+    return Q(**kwargs)
+
+
+def _commit_order_key(entity: Any, order: Sequence[str]) -> tuple[Any, ...]:
+    """Python sort key for ``HoldBack.order``, with NULL last."""
+    return tuple((getattr(entity, key) is None, getattr(entity, key)) for key in order)
+
+
+def _earlier_than(entity: Any, order: Sequence[str]) -> Q:
+    """``Q`` matching rows that sort before ``entity`` on the ascending
+    ``order`` keys, with NULL last.
+
+    Built from ``entity``'s values so that every adapter can run it. A NULL
+    never matches ``<``, so a row with NULL in a key is never "before" a row
+    with a value there, which is what NULL-last means.
+    """
+    earlier = Q()
+    equal_so_far = Q()
+    for key in order:
+        value = getattr(entity, key)
+        if value is None:
+            before = _lookup(f"{key}__isnull", False)
+            same = _lookup(f"{key}__isnull", True)
+        else:
+            before = _lookup(f"{key}__lt", value)
+            same = _lookup(key, value)
+        earlier = earlier | (equal_so_far & before)
+        equal_so_far = equal_so_far & same
+    return earlier
 
 
 def _lifecycle_timestamp_fields(
@@ -454,6 +524,7 @@ class BaseDAO(metaclass=ABCMeta):
         claim_fields: dict[str, Any],
         limit: int,
         order_by: str | list[str] | None = None,
+        hold_back: HoldBack | None = None,
     ) -> list[BaseEntity]:
         """Atomically select up to ``limit`` rows matching ``criteria``, apply
         ``claim_fields`` as an update, and return the claimed rows.
@@ -496,11 +567,27 @@ class BaseDAO(metaclass=ABCMeta):
           double-claim). A caller that loses a race for a row simply does not
           get it.
         - Returned rows reflect post-claim state (the applied ``claim_fields``).
+        - With ``hold_back``, a grouped row is claimed only when every earlier
+          row of its group that matches ``hold_back.holds`` is claimed by the
+          same call. A row locked by another caller holds the rows behind it.
 
         Non-blocking is *not* part of the contract: the portable default may
         briefly block on a contended row's lock before its guard rejects the
         claim. Only the ``FOR UPDATE SKIP LOCKED`` fast path steps over locked
         rows without waiting.
+
+        **Hold-back on the portable default.** Candidates are read a page of
+        ``limit`` rows at a time, and reading goes on until ``limit`` rows are
+        claimed or no candidates remain, so held rows never use up the batch.
+        For each grouped candidate, one query asks whether an earlier holding
+        row of its group is missing from this call's claims. If one is, the
+        candidate is held, and so is every later row of its group in this
+        call. A guarded update that affects 0 rows also holds the rest of the
+        group. Paging assumes that ``claim_fields`` makes a claimed row stop
+        matching ``criteria``, which no-double-claim already needs. On a large
+        held backlog this costs several queries per call. There is no cap on
+        the pages read, because a cap would let a held group fill every batch
+        and keep other groups from being claimed.
 
         :param criteria: A ``Q`` object selecting eligible (claimable) rows.
         :param claim_fields: Attribute values to write on each claimed row.
@@ -508,6 +595,9 @@ class BaseDAO(metaclass=ABCMeta):
         :param order_by: Optional ordering key, or list of keys applied in
             turn (e.g. ``["-priority", "created_at"]``). A ``-`` prefix sorts
             that key descending.
+        :param hold_back: Optional :class:`HoldBack` that keeps a grouped row
+            back until the earlier rows of its group are claimed with it.
+            ``None`` claims the top rows with no grouping.
         :return: List of claimed entity instances reflecting ``claim_fields``.
         """
         if limit <= 0:
@@ -520,23 +610,103 @@ class BaseDAO(metaclass=ABCMeta):
         assert entity_id_field.field_name is not None
         id_name = entity_id_field.field_name
 
-        # Read candidate entities via the entity-level query API (``self.query``
-        # returns entities; the low-level ``_filter`` returns raw model objects).
-        candidate_qs = self.query.filter(criteria)
-        if order_by:
-            candidate_qs = candidate_qs.order_by(order_by)
-        candidates = candidate_qs.limit(limit).all(with_total=False).items
+        def read_candidates(offset: int) -> list[Any]:
+            # Read candidate entities via the entity-level query API
+            # (``self.query`` returns entities; the low-level ``_filter``
+            # returns raw model objects).
+            candidate_qs = self.query.filter(criteria)
+            if order_by:
+                candidate_qs = candidate_qs.order_by(order_by)
+            return list(
+                candidate_qs.offset(offset).limit(limit).all(with_total=False).items
+            )
 
-        claimed = []
-        for entity in candidates:
-            identifier = getattr(entity, id_name)
+        def try_claim(entity: Any) -> bool:
             # Re-assert the eligibility criteria in the update so a row claimed
             # by another worker between the read and this write is skipped.
-            guard = Q(**{id_name: identifier}) & criteria
+            guard = Q(**{id_name: getattr(entity, id_name)}) & criteria
             if self._update_all(guard, dict(claim_fields)) > 0:
                 for attr, value in claim_fields.items():
                     setattr(entity, attr, value)
+                return True
+            return False
+
+        if hold_back is None:
+            return [entity for entity in read_candidates(0) if try_claim(entity)]
+
+        claimed: list[BaseEntity] = []
+        claimed_ids: dict[tuple[Any, ...], list[Any]] = {}
+        # The earliest held row seen so far in each group. A later row of that
+        # group is held too, with no query needed. An earlier one still gets
+        # checked: candidates come in ``order_by`` order, not commit order, so
+        # a group's earlier low-priority row can come after a held row.
+        held_from: dict[tuple[Any, ...], tuple[Any, ...]] = {}
+        lanes: tuple[Q, ...] = hold_back.lanes or (Q(),)
+        rows_read = 0
+        while len(claimed) < limit:
+            page = read_candidates(rows_read - len(claimed))
+            if not page:
+                break
+            rows_read += len(page)
+
+            page_ids = [getattr(entity, id_name) for entity in page]
+            lane_of: dict[Any, int] = {}
+            for index, lane in enumerate(lanes):
+                in_lane = (
+                    self.query.filter(
+                        _lookup(f"{id_name}__in", page_ids) & hold_back.applies & lane
+                    )
+                    .only(id_name)
+                    .all(with_total=False)
+                    .items
+                )
+                for record in in_lane:
+                    lane_of.setdefault(getattr(record, id_name), index)
+
+            for entity in page:
+                if len(claimed) >= limit:
+                    break
+                identifier = getattr(entity, id_name)
+                lane_index = lane_of.get(identifier)
+                if lane_index is None:
+                    if try_claim(entity):
+                        claimed.append(entity)
+                    continue
+
+                group = (
+                    *(getattr(entity, column) for column in hold_back.group_by),
+                    lane_index,
+                )
+                position = _commit_order_key(entity, hold_back.order)
+                if group in held_from and position > held_from[group]:
+                    continue
+
+                same_group: dict[str, Any] = {
+                    column: getattr(entity, column) for column in hold_back.group_by
+                }
+                earlier = (
+                    Q(**same_group)
+                    & hold_back.applies
+                    & lanes[lane_index]
+                    & hold_back.holds
+                    & _earlier_than(entity, hold_back.order)
+                )
+                if group in claimed_ids:
+                    earlier = earlier & ~_lookup(f"{id_name}__in", claimed_ids[group])
+                waits = bool(
+                    self.query.filter(earlier)
+                    .only(id_name)
+                    .limit(1)
+                    .all(with_total=False)
+                    .items
+                )
+                if waits or not try_claim(entity):
+                    if group not in held_from or position < held_from[group]:
+                        held_from[group] = position
+                    continue
+
                 claimed.append(entity)
+                claimed_ids.setdefault(group, []).append(identifier)
 
         return claimed
 

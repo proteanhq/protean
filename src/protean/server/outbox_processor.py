@@ -8,7 +8,9 @@ from protean.utils import ensure_utc_aware, outbox_trace
 from protean.utils.eventing import Message
 from protean.utils.outbox import (
     Outbox,
+    OutboxLanes,
     OutboxRepository,
+    commit_order_key,
     invalid_partition_key_reason,
 )
 from protean.utils.telemetry import get_domain_metrics, get_tracer, set_span_error
@@ -19,6 +21,28 @@ if TYPE_CHECKING:
     from protean.server.engine import Engine
 
 logger = logging.getLogger(__name__)
+
+
+def _in_group_commit_order(messages: list[Outbox], lanes: OutboxLanes) -> list[Outbox]:
+    """Reorder *messages* so each hold-back group's rows are in commit order.
+
+    The claim returns rows by priority first, so rows of one group with
+    different priorities may not be in commit order. Each group's rows are
+    sorted by commit order and put back into the positions that group already
+    holds in the batch. Rows with no group keep their positions.
+    """
+    positions: dict[tuple[str, str, str, bool], list[int]] = {}
+    for index, message in enumerate(messages):
+        group = lanes.group_key(message)
+        if group is not None:
+            positions.setdefault(group, []).append(index)
+
+    ordered = list(messages)
+    for indexes in positions.values():
+        rows = sorted((messages[i] for i in indexes), key=commit_order_key)
+        for index, row in zip(indexes, rows, strict=True):
+            ordered[index] = row
+    return ordered
 
 
 class OutboxProcessor(BaseSubscription):
@@ -234,6 +258,13 @@ class OutboxProcessor(BaseSubscription):
         Each message is processed individually within its own atomic transaction
         to ensure consistency and avoid race conditions in multi-processor environments.
 
+        Rows of one partition key's group (see :class:`OutboxLanes`) are
+        published in commit order, whatever their priority. When one of them
+        fails to publish, the later rows of its group in this batch are not
+        published: each is released back to ``PENDING`` with its
+        ``retry_count`` and ``next_retry_at`` unchanged, so it waits for the
+        failed row.
+
         Args:
             messages (List[Outbox]): The batch of outbox messages to process.
 
@@ -269,27 +300,66 @@ class OutboxProcessor(BaseSubscription):
                     )
 
             successful_count = 0
+            released_count = 0
 
-            for message in messages:
+            # Read on every batch, like ``claim_batch``, so both sides group
+            # rows the same way.
+            lanes = OutboxLanes.from_config(self.engine.domain.config)
+            failed_groups: set[tuple[str, str, str, bool]] = set()
+
+            for message in _in_group_commit_order(messages, lanes):
+                group = lanes.group_key(message)
+                if group is not None and group in failed_groups:
+                    if self._release_message(message):
+                        released_count += 1
+                    continue
+
                 success = await self._process_single_message(message)
                 if success:
                     successful_count += 1
+                elif group is not None:
+                    failed_groups.add(group)
                 # Yield control after each message for better interleaving
                 await asyncio.sleep(0)
 
             span.set_attribute("protean.outbox.successful_count", successful_count)
 
             if len(messages) > 0:
-                failed = len(messages) - successful_count
+                failed = len(messages) - successful_count - released_count
                 logger.info(
                     "outbox.batch_completed",
                     extra={
                         "total": len(messages),
                         "successful": successful_count,
                         "failed": failed,
+                        "released": released_count,
                     },
                 )
             return successful_count
+
+    def _release_message(self, message: Outbox) -> bool:
+        """Give a claimed row back unpublished, so it waits for an earlier row
+        of its group that failed in the same batch.
+
+        Only a row still ``PROCESSING`` under this worker's lock is released.
+        Returns whether the row was released. If it was not, the row stays
+        ``PROCESSING`` until its lock expires and is then claimable again.
+        """
+        assert self.outbox_repo is not None, "Outbox repository not initialized"
+        try:
+            with UnitOfWork():
+                fresh = self.outbox_repo.get(message.id)
+                if fresh.locked_by != self.worker_id or not fresh.release():
+                    return False
+                self.outbox_repo.add(fresh)
+        # a failed release must not abort the batch; logged, the lock expires
+        except Exception:
+            logger.exception(
+                "outbox.release_failed",
+                extra={"message_id": message.message_id[:8]},
+            )
+            return False
+        return True
 
     async def tick(self) -> bool:
         """
