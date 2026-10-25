@@ -1,0 +1,1 @@
+[Process managers] A `Decimal` field no longer fails the transition save, and a `Date`, `DateTime` or `Decimal` field keeps its type when the process manager is reloaded instead of holding the stored string. See the 0.18 migration guide.
