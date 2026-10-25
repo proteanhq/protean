@@ -10,8 +10,9 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
-from protean.exceptions import NoDomainException
+from protean.exceptions import ConfigurationError, NoDomainException
 from protean.port.event_store import BaseEventStore, IntegrityReport, IntegrityViolation
+from tests.cli._envelope import assert_envelope
 from tests.shared import change_working_directory_to
 
 # A wide terminal so Rich never wraps a violation token mid-string, keeping the
@@ -217,6 +218,50 @@ class TestEventStoreVerify:
         payload = json.loads(result.stdout)
         assert payload["status"] == "error"
 
+    def _invoke_with_verify_error(self, error: Exception, *extra_args: str):
+        change_working_directory_to("test7")
+        mock_domain = MagicMock()
+        mock_domain.event_store.store.verify.side_effect = error
+        mock_domain.domain_context.return_value.__enter__.return_value = None
+        mock_domain.domain_context.return_value.__exit__.return_value = False
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
+            return runner.invoke(
+                app,
+                ["eventstore", "verify", "--domain", "publishing7.py", *extra_args],
+            )
+
+    def test_unreachable_store_json_emits_error_envelope_exit_two(self):
+        result = self._invoke_with_verify_error(
+            ConfigurationError("Unable to connect to Event Store - connection refused"),
+            "--json",
+        )
+
+        assert result.exit_code == 2
+        payload = assert_envelope(result.stdout)
+        assert payload["status"] == "error"
+        assert (
+            payload["data"]["error"]
+            == "Unable to connect to Event Store - connection refused"
+        )
+
+    def test_unreachable_store_human_mode_exits_two_with_one_line_error(self):
+        # psycopg2's connection error spans lines and is longer than 80 columns.
+        message = (
+            "Unable to connect to Event Store - connection to server at "
+            '"127.0.0.1", port 1 failed: Connection refused\n'
+            "\tIs the server running on that host and accepting TCP/IP connections?\n"
+        )
+        result = self._invoke_with_verify_error(ConfigurationError(message))
+
+        assert result.exit_code == 2
+        assert result.stdout == ""
+        assert result.stderr.strip().splitlines() == [" ".join(message.split())]
+
+    def test_other_verify_errors_still_exit_one(self):
+        result = self._invoke_with_verify_error(RuntimeError("boom"), "--json")
+
+        assert result.exit_code == 1
+
 
 @pytest.mark.no_test_domain
 class TestEventStoreVerifyEndToEnd:
@@ -255,6 +300,51 @@ class TestEventStoreVerifyEndToEnd:
 
         assert result.exit_code == 0
         assert "consistent" in result.output
+
+    def _write_unreachable_message_db_domain(self, tmp_path: Path) -> Path:
+        # Port 1 refuses connections, so no Message DB service is needed. A
+        # module name of its own keeps the import cache from handing back the
+        # memory-store domain the other tests load.
+        domain_file = tmp_path / "unreachable_domain.py"
+        domain_file.write_text(
+            "from protean import Domain\n\n"
+            "domain = Domain(name='VerifyDemo')\n"
+            "domain.config['event_store'] = {\n"
+            "    'provider': 'message_db',\n"
+            "    'database_uri': 'postgresql://message_store@127.0.0.1:1/message_store',\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        return domain_file
+
+    def test_real_unreachable_message_db_json(self, tmp_path):
+        domain_file = self._write_unreachable_message_db_domain(tmp_path)
+        os.chdir(tmp_path)
+
+        result = runner.invoke(
+            app, ["eventstore", "verify", "--domain", str(domain_file), "--json"]
+        )
+
+        assert result.exit_code == 2
+        payload = assert_envelope(result.stdout)
+        assert payload["status"] == "error"
+        assert payload["data"]["error"].startswith("Unable to connect to Event Store")
+        assert "\n" not in payload["data"]["error"]
+
+    def test_real_unreachable_message_db_human(self, tmp_path):
+        domain_file = self._write_unreachable_message_db_domain(tmp_path)
+        os.chdir(tmp_path)
+
+        result = runner.invoke(
+            app, ["eventstore", "verify", "--domain", str(domain_file)]
+        )
+
+        assert result.exit_code == 2
+        assert result.stdout == ""
+        lines = result.stderr.strip().splitlines()
+        error_lines = [line for line in lines if "Unable to connect" in line]
+        assert len(error_lines) == 1
+        assert "Traceback" not in result.stderr
 
     def test_real_clean_store_json(self, tmp_path):
         domain_file = self._write_domain(tmp_path)
