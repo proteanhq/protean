@@ -12,6 +12,21 @@ from .elements import Alien, Person
 
 
 @pytest.mark.sqlite
+@pytest.mark.no_test_domain
+def test_exception_on_invalid_sqlite_provider():
+    """Test exception on invalid SQLite provider"""
+    domain = Domain()
+    domain.config["databases"]["default"] = {
+        "provider": "sqlite",
+        "database_uri": "sqlite:////C:/Users/username/foobar.db",
+    }
+    with pytest.raises(ConfigurationError) as exc:
+        domain.init(traverse=False)
+
+    assert "Could not connect to database at" in str(exc.value)
+
+
+@pytest.mark.sqlite
 class TestSqliteProvider:
     """Test SQLite-specific provider functionality"""
 
@@ -32,19 +47,6 @@ class TestSqliteProvider:
         assert conn is not None
         assert isinstance(conn, Session)
         assert conn.is_active
-
-    @pytest.mark.no_test_domain
-    def test_exception_on_invalid_sqlite_provider(self):
-        """Test exception on invalid SQLite provider"""
-        domain = Domain()
-        domain.config["databases"]["default"] = {
-            "provider": "sqlite",
-            "database_uri": "sqlite:////C:/Users/username/foobar.db",
-        }
-        with pytest.raises(ConfigurationError) as exc:
-            domain.init(traverse=False)
-
-        assert "Could not connect to database at" in str(exc.value)
 
     def test_sqlite_raw_queries_with_sql(self, test_domain):
         """Test SQLite-specific raw SQL queries"""

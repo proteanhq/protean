@@ -1116,6 +1116,26 @@ class Domain:
 
         return factories[domain_object_type.value]
 
+    def _file_database_model(self, model_cls: type[BaseDatabaseModel]) -> None:
+        """Record a database model against its target and database type.
+
+        ``meta_.part_of`` must already be a class.
+
+        Raises:
+            IncorrectUsageError: When a model for the same target and
+                database type is already recorded.
+        """
+        entity_key = fqn(model_cls.meta_.part_of)
+        db_key = model_cls.meta_.database  # e.g., "postgresql", "sqlite", or None
+        if db_key in self._database_models[entity_key]:
+            raise IncorrectUsageError(
+                f"A database model for `{model_cls.meta_.part_of.__name__}` "
+                f"targeting database `{db_key}` is already registered",
+                code=DiagnosticCode.USAGE_DUPLICATE_DATABASE_MODEL,
+                location="Domain._register_element",
+            )
+        self._database_models[entity_key][db_key] = model_cls
+
     def _register_element(
         self,
         element_type: DomainObjects,
@@ -1156,18 +1176,11 @@ class Domain:
         # treat it as Any internally and re-narrow to ``type[_T]`` at return.
         new_cls: Any = factory(element_cls, self, **opts)
 
-        if element_type == DomainObjects.DATABASE_MODEL:
-            # Remember model association with aggregate/entity class, for easy fetching
-            entity_key = fqn(new_cls.meta_.part_of)
-            db_key = new_cls.meta_.database  # e.g., "postgresql", "sqlite", or None
-            if db_key in self._database_models[entity_key]:
-                raise IncorrectUsageError(
-                    f"A database model for `{new_cls.meta_.part_of.__name__}` "
-                    f"targeting database `{db_key}` is already registered",
-                    code=DiagnosticCode.USAGE_DUPLICATE_DATABASE_MODEL,
-                    location="Domain._register_element",
-                )
-            self._database_models[entity_key][db_key] = new_cls
+        # A string ``part_of`` is filed once ``domain.init()`` resolves it.
+        if element_type == DomainObjects.DATABASE_MODEL and not isinstance(
+            new_cls.meta_.part_of, str
+        ):
+            self._file_database_model(new_cls)
 
         # Register element with domain
         self._domain_registry.register_element(new_cls, internal, auto_generated)
@@ -1221,6 +1234,7 @@ class Domain:
             DomainObjects.EVENT_HANDLER,
             DomainObjects.COMMAND,
             DomainObjects.COMMAND_HANDLER,
+            DomainObjects.DATABASE_MODEL,
             DomainObjects.REPOSITORY,
             DomainObjects.EVENT_SOURCED_REPOSITORY,
             DomainObjects.VALUE_OBJECT,

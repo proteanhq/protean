@@ -37,7 +37,7 @@ class BaseDatabaseModel(Element, OptionsMixin):
 
     | Option | Type | Description |
     |--------|------|-------------|
-    | ``part_of`` | ``type`` | The aggregate, entity or projection this model maps. Required. |
+    | ``part_of`` | ``type`` or ``str`` | The aggregate, entity or projection this model maps. Required. A string names the element and is resolved at ``domain.init()``. |
     | ``database`` | ``str`` | The database type this model applies to (e.g. ``"sqlite"``, ``"elasticsearch"``), not a provider name. Without it, the model is used for any database type that has no model of its own. |
     | ``schema_name`` | ``str`` | Override the storage table/collection name. |
     """
@@ -227,6 +227,37 @@ def _entity_to_dict(
     return item_dict
 
 
+def check_database_model_fields(model_cls: type[BaseDatabaseModel]) -> None:
+    """Check that every field a database model declares exists on its target.
+
+    ``meta_.part_of`` must already be a class.
+
+    Raises:
+        IncorrectUsageError: When the model declares a field that the
+            aggregate, entity or projection in ``part_of`` does not.
+    """
+    part_of_cls = model_cls.meta_.part_of
+    entity_field_names = set(declared_fields(part_of_cls).keys())
+
+    _SKIP = {"Meta", "meta_", "element_type"}
+    _DESCRIPTOR_TYPES = (classmethod, staticmethod, property)
+    model_field_names = {
+        name
+        for name, value in vars(model_cls).items()
+        if not name.startswith("_")
+        and name not in _SKIP
+        and not callable(value)
+        and not isinstance(value, _DESCRIPTOR_TYPES)
+    }
+
+    extra = model_field_names - entity_field_names
+    if extra:
+        raise IncorrectUsageError(
+            f"Database Model `{model_cls.__name__}` has field(s) "
+            f"{extra} not declared in `{part_of_cls.__name__}`"
+        )
+
+
 _T = TypeVar("_T")
 
 
@@ -246,26 +277,9 @@ def database_model_factory(element_cls: type[_T], domain: Any, **opts: Any) -> t
 
     _check_part_of_kind(model_cls)
 
-    # Validate that model fields exist in the associated aggregate/entity
-    part_of_cls = model_cls.meta_.part_of
-    entity_field_names = set(declared_fields(part_of_cls).keys())
-
-    _SKIP = {"Meta", "meta_", "element_type"}
-    _DESCRIPTOR_TYPES = (classmethod, staticmethod, property)
-    model_field_names = {
-        name
-        for name, value in vars(element_cls).items()
-        if not name.startswith("_")
-        and name not in _SKIP
-        and not callable(value)
-        and not isinstance(value, _DESCRIPTOR_TYPES)
-    }
-
-    extra = model_field_names - entity_field_names
-    if extra:
-        raise IncorrectUsageError(
-            f"Database Model `{element_cls.__name__}` has field(s) "
-            f"{extra} not declared in `{part_of_cls.__name__}`"
-        )
+    # A string target is resolved at ``domain.init()``, which runs this
+    # check once the target class is known.
+    if not isinstance(model_cls.meta_.part_of, str):
+        check_database_model_fields(model_cls)
 
     return element_cls

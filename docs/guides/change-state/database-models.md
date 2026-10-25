@@ -58,7 +58,7 @@ handled by auto-generation:
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `part_of` | class | **Required.** The aggregate, entity or projection this model maps to |
+| `part_of` | class or str | **Required.** The aggregate, entity or projection this model maps to. A string names the element and is resolved when `domain.init()` runs, so the model can be declared before its target. |
 | `schema_name` | str | Override the storage table/collection name |
 | `database` | str | The database type this model applies to: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or `elasticsearch`. This is not a provider name. It has no default: without it, the model is used for any database type that has no model of its own. |
 
