@@ -17,6 +17,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event_handler import BaseEventHandler
 from protean.server.observatory import Observatory
 from protean.utils import fqn
+from tests.shared import FrozenClock
 
 
 @pytest.fixture(autouse=True)
@@ -32,16 +33,6 @@ def _clear_scrape_cache():
 # ---------------------------------------------------------------------------
 
 T0 = datetime(2026, 1, 15, 10, 0, tzinfo=UTC)
-
-
-class _FrozenClock:
-    """A domain clock the test moves by hand."""
-
-    def __init__(self, now: datetime) -> None:
-        self.current = now
-
-    def now(self) -> datetime:
-        return self.current
 
 
 class _StatusDomain:
@@ -62,7 +53,7 @@ class _StatusDomain:
                 "brokers": {
                     "default": {
                         "provider": "redis",
-                        "URI": "redis://127.0.0.1:56379/2",
+                        "URI": "redis://127.0.0.1:1/0",
                     }
                 }
             }
@@ -71,7 +62,7 @@ class _StatusDomain:
         )
         self.domain = Domain(name=name, config=config)
         self._redis = redis
-        self.clock = _FrozenClock(T0)
+        self.clock = FrozenClock(T0)
         self.domain.clock = self.clock
 
         @self.domain.aggregate
@@ -105,11 +96,11 @@ class _StatusDomain:
         if in_group:
             self._groups.setdefault(stream, []).append(
                 {
-                    "name": fqn(handler_cls),
+                    "name": fqn(handler_cls).encode(),
                     "pending": pending,
                     "lag": lag,
                     "consumers": 2,
-                    "last-delivered-id": "1700000000000-0",
+                    "last-delivered-id": b"1700000000000-0",
                 }
             )
         self._lengths[f"{stream}:dlq"] = dlq
@@ -363,7 +354,7 @@ class TestSubscriptionsMetrics:
         setup.event_store_handler("OrderHandler", "order", events=3, position=0)
         domain = setup.build()
         # The position was written at T0; the scrape happens 12.5 s later.
-        setup.clock.current = T0 + timedelta(seconds=12.5)
+        setup.clock.advance(timedelta(seconds=12.5))
 
         body = _get(domain, "/metrics").text
 

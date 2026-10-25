@@ -385,7 +385,9 @@ class TestDiscoverStreams:
     def test_returns_the_scanned_keys_decoded_and_sorted(self, keys, expected):
         """Keys from a Redis SCAN, bytes or str, come back as sorted str names."""
         mock_redis = MagicMock()
-        mock_redis.scan.return_value = (0, keys)
+        # One page only: a second SCAN call raises, so a loop that does not
+        # stop at cursor 0 fails instead of hanging.
+        mock_redis.scan.side_effect = [(0, keys)]
 
         result = _discover_streams(mock_redis)
 
@@ -397,10 +399,9 @@ class TestDiscoverStreams:
         from protean.server.tracing import TRACE_STREAM
 
         mock_redis = MagicMock()
-        mock_redis.scan.return_value = (
-            0,
-            [TRACE_STREAM.encode(), b"identity::customer"],
-        )
+        mock_redis.scan.side_effect = [
+            (0, [TRACE_STREAM.encode(), b"identity::customer"]),
+        ]
 
         result = _discover_streams(mock_redis)
 

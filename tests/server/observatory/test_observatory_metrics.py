@@ -6,6 +6,7 @@ so they need no infrastructure.
 """
 
 import contextlib
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -266,41 +267,56 @@ class TestConsumerMetricsWithFakeRedis:
         assert response.status_code == 200
         assert 'consumer="ValidConsumer"' in body
 
-    def test_xinfo_consumers_exception_handled(self, test_domain, monkeypatch):
-        """Exception in xinfo_consumers does not crash the metrics endpoint."""
+    def test_xinfo_consumers_exception_handled(self, test_domain, monkeypatch, caplog):
+        """An error reading one group's consumers is logged and the scrape goes on."""
         fake = _fake_redis(groups=[{"name": "FailGroup", "pending": 0, "lag": 0}])
         fake.xinfo_consumers.side_effect = RuntimeError("connection reset")
         _use_fake_redis(test_domain, monkeypatch, fake)
         client = TestClient(Observatory(domains=[test_domain]).app)
 
-        response = client.get("/metrics")
+        with caplog.at_level(logging.DEBUG, logger="protean.server.observatory"):
+            response = client.get("/metrics")
         assert response.status_code == 200
-        assert 'group="FailGroup"' not in response.text
         assert "protean_broker_up 1" in response.text
+        messages = [r.getMessage() for r in caplog.records]
+        assert (
+            "Metrics: could not read consumers of group FailGroup "
+            "on stream test::stream" in messages
+        )
 
-    def test_xinfo_groups_exception_handled(self, test_domain, monkeypatch):
-        """Exception in xinfo_groups does not crash the metrics endpoint."""
+    def test_xinfo_groups_exception_handled(self, test_domain, monkeypatch, caplog):
+        """An error reading a stream's groups is logged and the scrape goes on."""
         fake = _fake_redis()
         fake.xinfo_groups.side_effect = RuntimeError("timeout")
         _use_fake_redis(test_domain, monkeypatch, fake)
         client = TestClient(Observatory(domains=[test_domain]).app)
 
-        response = client.get("/metrics")
+        with caplog.at_level(logging.DEBUG, logger="protean.server.observatory"):
+            response = client.get("/metrics")
         assert response.status_code == 200
-        # Should still have broker/outbox metrics
-        assert "protean_broker_up" in response.text
+        assert "protean_broker_up 1" in response.text
+        messages = [r.getMessage() for r in caplog.records]
+        assert "Metrics: could not read groups of stream test::stream" in messages
 
-    def test_stream_discovery_failure_handled(self, test_domain, monkeypatch):
-        """A Redis error while listing streams yields no consumer metrics."""
-        fake = _fake_redis(groups=[{"name": "TestGroup", "pending": 0, "lag": 0}])
+    def test_stream_discovery_failure_handled(self, test_domain, monkeypatch, caplog):
+        """A Redis error while listing streams is logged and yields no consumer metrics."""
+        fake = _fake_redis(
+            groups=[{"name": "TestGroup", "pending": 0, "lag": 0}],
+            consumers_by_group={
+                "TestGroup": [{"name": "TestConsumer", "pending": 1, "idle": 5}]
+            },
+        )
         fake.scan.side_effect = redis.ConnectionError("connection lost")
         _use_fake_redis(test_domain, monkeypatch, fake)
         client = TestClient(Observatory(domains=[test_domain]).app)
 
-        response = client.get("/metrics")
+        with caplog.at_level(logging.DEBUG, logger="protean.server.observatory"):
+            response = client.get("/metrics")
         assert response.status_code == 200
         assert "# HELP protean_consumer_pending" in response.text
         assert 'group="TestGroup"' not in response.text
+        messages = [r.getMessage() for r in caplog.records]
+        assert "Error discovering streams from Redis: connection lost" in messages
 
 
 class TestScrapeCache:

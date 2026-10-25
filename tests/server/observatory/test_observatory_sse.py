@@ -60,8 +60,8 @@ class TestSSEFilteringLogic:
 
     The endpoint matches ``event`` and ``type`` with fnmatch glob patterns
     and ``domain`` and ``stream`` exactly. These tests pin those rules on
-    plain values; ``TestSSEStreamingLogic`` runs each filter through the
-    real endpoint.
+    plain values; ``TestSSEStreamingLogic`` calls the endpoint function from
+    ``create_sse_endpoint`` with each filter.
     """
 
     def test_domain_exact_match(self):

@@ -88,11 +88,14 @@ class _FakeRedis:
         if name != TRACE_STREAM:
             return []
         floor = 0 if min == "-" else int(str(min).split("-")[0])
-        return [
+        ceiling = None if max == "+" else int(str(max).split("-")[0])
+        entries = [
             (sid, fields)
             for sid, fields in self.traces
-            if int(_sid_str(sid).split("-")[0]) >= floor
+            if floor <= int(_sid_str(sid).split("-")[0])
+            and (ceiling is None or int(_sid_str(sid).split("-")[0]) <= ceiling)
         ]
+        return entries[:count] if count else entries
 
     def xrevrange(self, name, max="+", min="-", count=None):
         if name != TRACE_STREAM:
@@ -234,13 +237,14 @@ def handlers_domain():
 
 
 def _group(name, *, lag, pending=0, consumers=1):
-    """One ``XINFO GROUPS`` entry, as redis-py returns it."""
+    """One ``XINFO GROUPS`` entry, as redis-py returns it from a client that
+    does not decode responses."""
     return {
-        "name": name,
+        "name": name.encode(),
         "pending": pending,
         "lag": lag,
         "consumers": consumers,
-        "last-delivered-id": "0-0",
+        "last-delivered-id": b"0-0",
     }
 
 
@@ -547,12 +551,13 @@ class TestMergeSubscriptionStatus:
         assert sub["status"] == "lagging"
         assert sub["consumer_count"] == 2  # max
 
-    def test_projector_worst_of_ok_and_lagging_is_lagging(self):
+    def test_projector_worst_of_lagging_and_ok_is_lagging(self):
+        """A lagging stream read before an ok one still sets the status."""
         fake = _FakeRedis()
         domain, ns = _build_domain(redis=fake)
         group = fqn(ns.OrderSummaryProjector)
-        fake.groups["handlers::order"] = [_group(group, lag=0)]
-        fake.groups["handlers::payment"] = [_group(group, lag=4)]
+        fake.groups["handlers::order"] = [_group(group, lag=4)]
+        fake.groups["handlers::payment"] = [_group(group, lag=0)]
 
         handlers = collect_handler_metadata([domain])
         merge_subscription_status(handlers, [domain])

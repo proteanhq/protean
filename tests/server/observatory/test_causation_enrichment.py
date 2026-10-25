@@ -144,7 +144,7 @@ def correlated_domain(tmp_path):
 # which does not connect until it is used, and only its raw Redis client is
 # replaced, so each test controls what XRANGE on the trace stream returns.
 _REDIS_BROKER_CONFIG = {
-    "brokers": {"default": {"provider": "redis", "URI": "redis://127.0.0.1:6379/0"}}
+    "brokers": {"default": {"provider": "redis", "URI": "redis://127.0.0.1:1/0"}}
 }
 
 

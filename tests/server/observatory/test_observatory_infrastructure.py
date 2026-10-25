@@ -229,11 +229,14 @@ class TestBrokerStatus:
 
     def test_unhealthy_broker(self, test_domain, monkeypatch):
         broker = test_domain.brokers["default"]
-        # Nothing listens on port 1, so every Redis call is refused.
+        # Nothing listens on port 1, so every Redis call is refused. The
+        # client's default retries would back off for seconds before failing.
         monkeypatch.setattr(
             broker,
             "redis_instance",
-            redis.Redis(host="127.0.0.1", port=1, socket_connect_timeout=0.5),
+            redis.Redis(
+                host="127.0.0.1", port=1, socket_connect_timeout=0.5, retry=None
+            ),
         )
 
         result = _broker_status(test_domain)

@@ -23,7 +23,7 @@ from protean.server.observatory.routes.processes import (
 )
 from protean.server.observatory.routes.timeline import _load_traces_for_correlation
 
-_REDIS_BROKER = {"provider": "redis", "URI": "redis://127.0.0.1:56379/2"}
+_REDIS_BROKER = {"provider": "redis", "URI": "redis://127.0.0.1:1/0"}
 
 
 def _domain(name: str, broker: dict) -> Domain:

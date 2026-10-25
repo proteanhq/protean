@@ -48,6 +48,7 @@ from protean.server.observatory.routes.timeline import (
     find_event_by_id,
 )
 from tests.server.observatory.conftest import route_paths
+from tests.shared import FrozenClock
 
 # All tests in this module use standalone in-memory domains
 # so they don't need the observatory conftest's Redis-dependent test_domain.
@@ -102,8 +103,13 @@ def _store_unavailable(domain: Domain, method: str = "_read"):
 
 def _write_at(domain: Domain, when: dt, stream: str, message_type: str) -> None:
     """Write a message to the memory event store with a fixed creation time."""
-    with patch("protean.adapters.event_store.memory._domain_now", return_value=when):
-        domain.event_store.store._write(stream, message_type, {})
+    original_clock = domain.clock
+    domain.clock = FrozenClock(when)
+    try:
+        with domain.domain_context():
+            domain.event_store.store._write(stream, message_type, {})
+    finally:
+        domain.clock = original_clock
 
 
 def _add_raw_message(domain: Domain, **fields) -> None:
@@ -709,7 +715,7 @@ class TestCreateTimelineRouterStandalone:
 # ---------------------------------------------------------------------------
 
 
-class TestCollectTimelineStatsEdgeCases:
+class TestCollectTimelineStatsMessageTimes:
     """How collect_timeline_stats treats snapshots, odd time values and
     messages that cannot give a rate."""
 
@@ -883,7 +889,7 @@ class TestCollectTimelineStatsEdgeCases:
 # ---------------------------------------------------------------------------
 
 
-class TestCollectAllEventsEdgeCases:
+class TestCollectAllEventsWithoutGlobalPosition:
     def test_last_pos_none_skips_next_cursor(self, event_domain):
         """Without a global position on the last event, no next cursor is given.
 

@@ -169,11 +169,12 @@ class _FakeRedisStreams:
 
 
 def _group(pm_cls, *, lag, pending=0, consumers=1):
-    """One consumer-group entry for ``pm_cls``, shaped like ``XINFO GROUPS``."""
+    """One consumer-group entry for ``pm_cls``, as redis-py returns ``XINFO
+    GROUPS`` from a client that does not decode responses."""
     return {
-        "name": fqn(pm_cls),
+        "name": fqn(pm_cls).encode(),
         "pending": pending,
-        "last-delivered-id": "1-0",
+        "last-delivered-id": b"1-0",
         "lag": lag,
         "consumers": consumers,
     }
