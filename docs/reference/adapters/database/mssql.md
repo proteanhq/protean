@@ -97,11 +97,12 @@ that column is a primary key or is `unique=True`.
 | `DateTime` | `DATETIME2` |
 | `Date`     | `DATE`      |
 
-SQL Server's `DATETIME` rounds to increments of about 3 milliseconds (.000,
-.003 or .007 seconds). Protean writes microsecond-precision timestamps, so two
-values written less than 3 ms apart could read back equal, and a value read
-back could differ from the one written. `DATETIME2` keeps 100-nanosecond steps,
-so every `DateTime` field maps to it.
+SQL Server's `DATETIME` rounds to increments of about 3 milliseconds: the last
+digit of the milliseconds becomes 0, 3 or 7, so `.125` is stored as `.127`.
+Protean writes microsecond-precision timestamps, so two values written less
+than 3 ms apart could read back equal, and a value read back could differ from
+the one written. `DATETIME2` keeps 100-nanosecond steps, so every `DateTime`
+column Protean generates uses it.
 
 A table created before 0.19 keeps its `DATETIME` columns, because Protean does
 not change an existing table. See
@@ -122,6 +123,10 @@ same as for [PostgreSQL](./postgresql.md#sqlalchemy-model).
 !!!note
     Column names in the model must match the attribute names of the aggregate
     or entity they represent.
+
+A column you declare in the model keeps the type you give it. Declare a
+timestamp column as `DATETIME2` (`sqlalchemy.dialects.mssql.DATETIME2`) to keep
+microseconds.
 
 ## Slow query detection
 
