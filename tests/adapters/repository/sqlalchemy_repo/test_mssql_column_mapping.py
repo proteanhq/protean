@@ -10,6 +10,8 @@ written microseconds apart can read back equal. Nothing fails when that happens,
 which is why the column type is asserted directly.
 """
 
+import types
+
 import pytest
 from sqlalchemy import types as sa_types
 from sqlalchemy.dialects import mssql as mssql_dialect
@@ -57,14 +59,26 @@ def host_domain(aggregate_cls):
     return domain
 
 
+def stub_dbapi():
+    """A DBAPI module that stands in for pyodbc.
+
+    pyodbc loads only where the unixODBC library is installed, and nothing here
+    connects, so the SQL Server engine gets this module instead.
+    """
+    dbapi = types.ModuleType("stub_dbapi")
+    dbapi.paramstyle = "qmark"
+    dbapi.version = "5.0.0"
+    dbapi.Cursor = type("Cursor", (), {"nextset": None})
+    return dbapi
+
+
 def table_for(aggregate_cls, provider_cls=MssqlProvider, uri=MSSQL_URI):
     """The SQLAlchemy ``Table`` ``provider_cls`` builds for ``aggregate_cls``."""
     domain = host_domain(aggregate_cls)
-    provider = provider_cls(
-        name="sql",
-        domain=domain,
-        conn_info={"provider": provider_cls.__database__, "database_uri": uri},
-    )
+    conn_info = {"provider": provider_cls.__database__, "database_uri": uri}
+    if provider_cls is MssqlProvider:
+        conn_info["module"] = stub_dbapi()
+    provider = provider_cls(name="sql", domain=domain, conn_info=conn_info)
     with domain.domain_context():
         return provider.construct_database_model_class(aggregate_cls).__table__
 
