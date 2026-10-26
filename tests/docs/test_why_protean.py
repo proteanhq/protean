@@ -23,7 +23,7 @@ def test_to_ir_returns_a_json_ready_description_of_the_domain():
     example = load_example("why-protean/001.py")
 
     assert example.ir["domain"]["name"] == example.domain.name
-    assert example.ir["$schema"].startswith("https://protean.dev/ir/")
+    assert example.ir["$schema"].startswith("https://docs.proteanhq.com/assets/ir/")
     assert example.ir["checksum"].startswith("sha256:")
     # The page defines no elements, so every element list is empty.
     assert example.ir["elements"]["AGGREGATE"] == []

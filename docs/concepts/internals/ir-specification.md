@@ -121,7 +121,7 @@ clear it.
 
 ```json
 {
-  "$schema": "https://protean.dev/ir/v0.3.0/schema.json",
+  "$schema": "https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json",
   "ir_version": "0.3.0",
   "generated_at": "2026-03-01T12:00:00Z",
   "checksum": "sha256:a1b2c3...",
@@ -843,7 +843,8 @@ The complete JSON Schema (Draft 2020-12) for IR v0.3.0 is available at:
 
 - **In the package**: `protean.ir.SCHEMA_PATH`
   (`src/protean/ir/schema/v0.3.0/schema.json`)
-- **Canonical URL**: `https://protean.dev/ir/v0.3.0/schema.json`
+- **Canonical URL**: `https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json`,
+  also available as `protean.ir.SCHEMA_URL`
 
 ### Reference Examples
 

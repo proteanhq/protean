@@ -59,7 +59,7 @@ Every IR document has the same shape:
 
 ```json
 {
-  "$schema": "https://protean.dev/ir/v0.3.0/schema.json",
+  "$schema": "https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json",
   "ir_version": "0.3.0",
   "generated_at": "2026-03-01T12:00:00Z",
   "checksum": "sha256:a1b2c3...",
@@ -148,10 +148,15 @@ breaking changes automatically.
 
 ## The `$schema` URI
 
-The `$schema` field contains a logical URI
-(`https://protean.dev/ir/v0.3.0/schema.json`). This URI identifies the
-schema version but is **not a network endpoint**, the actual JSON Schema ships
-with the Protean package at `protean.ir.SCHEMA_PATH`.
+The `$schema` field names the schema version and the URL it is published at,
+`https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json`. The same JSON Schema
+ships with the Protean package at `protean.ir.SCHEMA_PATH`, so validation needs
+no network access.
+
+IR files written by earlier releases carry `https://protean.dev/ir/v0.3.0/schema.json`.
+`protean ir check` and `protean ir diff` ignore `$schema`, so the old URL alone
+does not make a baseline stale or show up as a change. It picks up the new URL the next time you
+regenerate it.
 
 To validate an IR document programmatically:
 

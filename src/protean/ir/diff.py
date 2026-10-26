@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import contextlib
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from protean.exceptions import ConfigurationError
 from protean.ir.generators.avro import has_emittable_default
+from protean.utils import _require_version_string
 from protean.utils.upcasting import missing_upcaster_source_versions
 
 # The Avro compatibility verdict vocabulary (matches Confluent/Avro terms).
@@ -53,7 +55,16 @@ def diff_ir(
             deprecated elements/fields as "expected" (safe) vs "premature"
             (breaking) based on the ``removal`` version in the deprecation
             metadata.
+
+    Raises:
+        ConfigurationError: A ``deprecated`` block in either IR is malformed,
+            such as a ``since`` or ``removal`` version written as a number, or
+            *current_version* is not a string.
     """
+    _check_current_version(current_version)
+    _check_deprecations(left, "left")
+    _check_deprecations(right, "right")
+
     result: dict[str, Any] = {}
 
     result["clusters"] = _diff_keyed_section(
@@ -375,6 +386,10 @@ _CLUSTER_SUBSECTIONS = (
     "application_services",
 )
 
+_PROJECTION_SUBSECTIONS = ("projectors", "queries", "query_handlers")
+
+_FLOW_SUBSECTIONS = ("domain_services", "process_managers", "subscribers")
+
 
 def _diff_cluster(
     left_cluster: dict[str, Any],
@@ -415,7 +430,7 @@ def _diff_projection_group(
     if proj_diff:
         delta["projection"] = proj_diff
 
-    for section in ("projectors", "queries", "query_handlers"):
+    for section in _PROJECTION_SUBSECTIONS:
         left_sec = left_proj.get(section, {})
         right_sec = right_proj.get(section, {})
         if left_sec != right_sec:
@@ -433,7 +448,7 @@ def _diff_flows(
     """Diff the flows section (domain_services, process_managers, subscribers)."""
     delta: dict[str, Any] = {}
 
-    for section in ("domain_services", "process_managers", "subscribers"):
+    for section in _FLOW_SUBSECTIONS:
         left_sec = left_flows.get(section, {})
         right_sec = right_flows.get(section, {})
         if left_sec != right_sec:
@@ -460,11 +475,98 @@ def _parse_version_tuple(version_str: str) -> tuple[int | str, ...]:
     return tuple(parts)
 
 
+def _check_current_version(current_version: object) -> None:
+    """Raise ``ConfigurationError`` when *current_version* is not a string."""
+    if current_version is not None and not isinstance(current_version, str):
+        raise ConfigurationError(
+            f"current_version is {current_version!r}, which is not a string. "
+            'Pass it as a string, such as "0.20".'
+        )
+
+
+def _check_deprecated(value: object, subject: str) -> None:
+    """Raise ``ConfigurationError`` when *value* is not a well-formed
+    ``deprecated`` block. ``None`` means not deprecated."""
+    if value is None:
+        return
+    if not isinstance(value, Mapping):
+        raise ConfigurationError(
+            f"The `deprecated` value of {subject} is {value!r}, which is not an "
+            'object. Write it as an object, such as {"since": "0.18"}.'
+        )
+    if "since" not in value:
+        raise ConfigurationError(
+            f"The `deprecated` value of {subject} has no `since` version. "
+            'Add one as a string, such as "since": "0.18".'
+        )
+    _require_version_string("since", value["since"], subject)
+    if value.get("removal") is not None:
+        _require_version_string("removal", value["removal"], subject)
+
+
+def _as_mapping(value: object) -> Mapping[str, Any]:
+    """Return *value* when it is a mapping, else an empty one.
+
+    The check looks only at ``deprecated`` blocks. A section or entry of some
+    other shape is the diff's to handle, as it was before the check existed.
+    """
+    return value if isinstance(value, Mapping) else {}
+
+
+def _element_entries(ir: Mapping[str, Any]) -> Iterator[tuple[str, Mapping[str, Any]]]:
+    """Yield a label and the entry of every element in *ir*, published events
+    included."""
+    for event in _as_mapping(ir.get("contracts")).get("events") or []:
+        if isinstance(event, Mapping):
+            yield f"published event '{event.get('type') or event.get('fqn')}'", event
+
+    entries: list[object] = []
+    for cluster in _as_mapping(ir.get("clusters")).values():
+        cluster = _as_mapping(cluster)
+        entries.append(cluster.get("aggregate"))
+        for section in _CLUSTER_SUBSECTIONS:
+            entries.extend(_as_mapping(cluster.get(section)).values())
+    for group in _as_mapping(ir.get("projections")).values():
+        group = _as_mapping(group)
+        entries.append(group.get("projection"))
+        for section in _PROJECTION_SUBSECTIONS:
+            entries.extend(_as_mapping(group.get(section)).values())
+    flows = _as_mapping(ir.get("flows"))
+    for section in _FLOW_SUBSECTIONS:
+        entries.extend(_as_mapping(flows.get(section)).values())
+
+    for entry in entries:
+        if isinstance(entry, Mapping):
+            yield f"{entry.get('element_type')} '{entry.get('fqn')}'", entry
+
+
+def _check_deprecations(ir: Mapping[str, Any], side: str) -> None:
+    """Raise ``ConfigurationError`` on a malformed ``deprecated`` block on any
+    element or field in *ir*.
+
+    The builder always writes a well-formed block, so a bad one comes from a
+    hand-edited IR file. Checking every block before diffing refuses that file
+    whatever else changed. A check made only when an element or field is
+    removed would accept it until the removal.
+    """
+    for label, entry in _element_entries(ir):
+        where = f"{label} in the {side} IR"
+        _check_deprecated(entry.get("deprecated"), where)
+        for field_name, field_entry in _as_mapping(entry.get("fields")).items():
+            _check_deprecated(
+                _as_mapping(field_entry).get("deprecated"),
+                f"field '{field_name}' of {where}",
+            )
+
+
 def _classify_removal(
-    deprecated: dict[str, str] | None,
+    deprecated: Mapping[str, str] | None,
     current_version: str | None = None,
-) -> str:
+) -> Literal["expected_removal", "premature_removal", "unexpected_removal"]:
     """Classify a removal based on deprecation metadata.
+
+    Expects *deprecated* and *current_version* to have passed
+    :func:`_check_deprecations` and :func:`_check_current_version`.
 
     Returns one of:
     - ``"expected_removal"`` — deprecated and past the removal version (safe)
@@ -481,13 +583,10 @@ def _classify_removal(
         return "premature_removal"
 
     if current_version is not None:
-        # ``str()`` accepts a version written as a number (``removal: 0.18``).
         # Mixed numeric and text segments (``"1.0"`` vs ``"1.x"``) cannot be
         # ordered and raise ``TypeError``; treat those as premature.
         with contextlib.suppress(TypeError):
-            if _parse_version_tuple(str(current_version)) >= _parse_version_tuple(
-                str(removal)
-            ):
+            if _parse_version_tuple(current_version) >= _parse_version_tuple(removal):
                 return "expected_removal"
 
     # Without a current version to compare, we can't confirm the removal
@@ -1083,7 +1182,15 @@ def classify_changes(
       replay drops assignments to the reserved name, and calls to its
       ``add_``/``remove_`` helpers, instead of raising. Child entities those
       calls would have added are dropped with them.
+
+    Raises:
+        ConfigurationError: A ``deprecated`` block in either IR is malformed,
+            or *current_version* is not a string, as in :func:`diff_ir`.
     """
+    _check_current_version(current_version)
+    _check_deprecations(left_ir, "left")
+    _check_deprecations(right_ir, "right")
+
     report = CompatibilityReport()
 
     _classify_clusters(diff_result.get("clusters", {}), report, current_version)

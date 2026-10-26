@@ -38,7 +38,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
-from protean.exceptions import NoDomainException
+from protean.exceptions import ConfigurationError, NoDomainException
 from protean.ir.config import load_config
 from protean.ir.constants import canonical_ir_json
 from protean.ir.diff import (
@@ -254,8 +254,15 @@ def diff(
     # ------------------------------------------------------------------ #
     # Compute diff and classify                                           #
     # ------------------------------------------------------------------ #
-    result = diff_ir(baseline_ir, current_ir)
-    report = classify_changes(result, baseline_ir, current_ir)
+    try:
+        result = diff_ir(baseline_ir, current_ir)
+        report = classify_changes(result, baseline_ir, current_ir)
+    except ConfigurationError as exc:
+        print(
+            f"[red]Error:[/red] {escape(str(exc))} "
+            "Fix that IR file by hand, or regenerate it."
+        )
+        raise typer.Abort() from exc
 
     # Filter out excluded elements from the report
     if config.exclude:
