@@ -2,6 +2,9 @@
 
 Writes JSON Schema files produced by :mod:`protean.ir.generators.schema`
 to a ``.protean/schemas/`` directory tree, grouped by aggregate cluster.
+Avro and Protobuf files go into the same tree. A ``.proto`` file imports the
+files of the value objects and entities it references by their paths relative
+to ``schemas/``, so compile the tree with ``protoc -I <output_dir>/schemas``.
 
 Usage::
 
@@ -35,7 +38,7 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from protean.ir.generators.avro import generate_avro_schema
@@ -98,6 +101,123 @@ def _cluster_for_fqn(fqn: str, ir: dict[str, Any]) -> str | None:
                 return short_name(cluster_fqn)
 
     return None
+
+
+def _relative_schema_path(
+    fqn: str,
+    element: dict[str, Any],
+    ir: dict[str, Any],
+    ext: str,
+) -> PurePosixPath:
+    """Return where *element*'s schema file goes, relative to ``schemas/``.
+
+    Projections go under ``projections/``; every other element goes under its
+    owning cluster and element-type subdirectory. The writer places files with
+    this path and the protobuf generator imports files by it, so both agree.
+    """
+    name = element.get("name", "") or short_name(fqn)
+    version = int(element.get("__version__", 1))
+    filename = f"{name}.v{version}.{ext}"
+
+    if element.get("element_type", "").upper() == "PROJECTION":
+        return PurePosixPath("projections", filename)
+
+    cluster_name = _cluster_for_fqn(fqn, ir) or short_name(fqn)
+    subdir = _ELEMENT_TYPE_TO_DIR.get(element.get("element_type", "").upper(), "other")
+    return PurePosixPath(cluster_name, subdir, filename)
+
+
+def _check_unique_paths(paths: dict[str, PurePosixPath]) -> None:
+    """Raise if two elements would be written to the same schema file.
+
+    Two elements with the same short name in one cluster (or two aggregates
+    with the same short name in different modules) map to one path, and the
+    second file would silently replace the first.
+    """
+    by_path: dict[PurePosixPath, list[str]] = {}
+    for fqn, path in paths.items():
+        by_path.setdefault(path, []).append(fqn)
+    clashes = {path: fqns for path, fqns in by_path.items() if len(fqns) > 1}
+    if clashes:
+        details = "; ".join(
+            f"{path.as_posix()}: {', '.join(fqns)}"
+            for path, fqns in sorted(clashes.items())
+        )
+        raise ValueError(
+            f"Several elements map to the same schema file, so one would "
+            f"overwrite the other. Give them distinct names. {details}"
+        )
+
+
+_PROTO_REFERENCE_KINDS = frozenset(
+    {"value_object", "value_object_list", "has_one", "has_many"}
+)
+
+
+def _proto_references(
+    fqn: str,
+    flat: dict[str, dict[str, Any]],
+    paths: dict[str, PurePosixPath],
+) -> set[str]:
+    """Return the elements with a file that *fqn*'s ``.proto`` file refers to.
+
+    A target without a file is defined inside the referencing file, so its own
+    references count as the referencing file's.
+    """
+    found: set[str] = set()
+    seen = {fqn}
+    pending = [fqn]
+    while pending:
+        current = pending.pop()
+        for field in flat.get(current, {}).get("fields", {}).values():
+            if field.get("kind") not in _PROTO_REFERENCE_KINDS:
+                continue
+            target = field.get("target", "")
+            if not target or target in seen:
+                continue
+            seen.add(target)
+            if target in paths:
+                found.add(target)
+            else:
+                pending.append(target)
+    return found
+
+
+def _reachable(start: str, graph: dict[str, set[str]]) -> set[str]:
+    """Return every node reachable from *start* in one or more steps."""
+    found: set[str] = set()
+    pending = list(graph.get(start, ()))
+    while pending:
+        node = pending.pop()
+        if node not in found:
+            found.add(node)
+            pending.extend(graph.get(node, ()))
+    return found
+
+
+def _proto_import_lookups(
+    flat: dict[str, dict[str, Any]],
+    paths: dict[str, PurePosixPath],
+) -> dict[str, Callable[[str], str | None]]:
+    """Build, per element, the lookup the protobuf generator imports through.
+
+    ``protoc`` rejects files that import each other in a cycle, which entities
+    referring to each other through ``HasOne``/``HasMany`` would produce. So an
+    element never imports a file from its own cycle: the lookup returns
+    ``None`` for those targets and the generator defines them as nested
+    messages instead.
+    """
+    import_paths = {fqn: path.as_posix() for fqn, path in paths.items()}
+    graph = {fqn: _proto_references(fqn, flat, paths) for fqn in paths}
+    reachable = {fqn: _reachable(fqn, graph) for fqn in paths}
+
+    def lookup_for(fqn: str) -> Callable[[str], str | None]:
+        cycle = {other for other in reachable[fqn] if fqn in reachable[other]}
+        if not cycle:
+            return import_paths.get
+        return lambda target: None if target in cycle else import_paths.get(target)
+
+    return {fqn: lookup_for(fqn) for fqn in paths}
 
 
 def _reset_schemas_dir(output_dir: str | Path) -> Path:
@@ -185,27 +305,29 @@ def _write_format(
     ext, generate_one, serialize = _FORMATS[fmt]
 
     flat = _build_flat_elements(ir)
+    paths = {
+        fqn: _relative_schema_path(fqn, element, ir, ext)
+        for fqn, element in iter_data_elements(flat)
+    }
+    _check_unique_paths(paths)
+
+    # Protobuf files import the files of the value objects and entities they
+    # reference, so the generator needs every written file's path. Only
+    # elements that get a file are in the lookup, so no import can dangle.
+    lookups: dict[str, Callable[[str], str | None]] = {}
+    if fmt == "protobuf":
+        lookups = _proto_import_lookups(flat, paths)
+
     written: list[Path] = []
-
     for fqn, element in iter_data_elements(flat):
-        element_type = element.get("element_type", "").upper()
-        name = element.get("name", "") or short_name(fqn)
-        version = int(element.get("__version__", 1))
-        filename = f"{name}.v{version}.{ext}"
-
-        if element_type == "PROJECTION":
-            # Projections go under top-level projections/ directory
-            file_dir = schemas_dir / "projections"
-        else:
-            # Cluster-aware placement
-            cluster_name = _cluster_for_fqn(fqn, ir) or short_name(fqn)
-            subdir = _ELEMENT_TYPE_TO_DIR.get(element_type, "other")
-            file_dir = schemas_dir / cluster_name / subdir
-
-        file_dir.mkdir(parents=True, exist_ok=True)
-        file_path = file_dir / filename
+        extra: dict[str, Any] = {}
+        if fqn in lookups:
+            extra["import_path"] = lookups[fqn]
+        file_path = schemas_dir.joinpath(*paths[fqn].parts)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(
-            serialize(generate_one(element, all_elements=flat)), encoding="utf-8"
+            serialize(generate_one(element, all_elements=flat, **extra)),
+            encoding="utf-8",
         )
         written.append(file_path.resolve())
 
