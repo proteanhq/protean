@@ -1,11 +1,16 @@
 """The email port is removed, and an ``[email_providers]`` block is ignored."""
 
 import importlib
+import inspect
+import tomllib
 import warnings
+from pathlib import Path
 
 import pytest
 
+import protean
 import protean.adapters
+import protean.domain.registry
 from protean._deprecation import DEPRECATIONS, ProteanDeprecationWarning
 from protean.domain import Domain
 from protean.fields import String
@@ -71,11 +76,13 @@ class TestEmailPortIsRemoved:
         with pytest.raises(AttributeError):
             getattr(domain, name)
 
-    def test_registry_has_no_emails_accessor(self):
-        domain = Domain(name="NoEmail")
+    def test_registry_declares_no_emails_accessor(self):
+        # The accessor annotations sit in a ``TYPE_CHECKING`` block that never
+        # runs, so only the source shows whether ``emails`` is still declared.
+        source = inspect.getsource(protean.domain.registry)
 
-        with pytest.raises(AttributeError):
-            domain.registry.emails
+        assert "aggregates: dict[str, DomainRecord]" in source
+        assert "emails:" not in source
 
     def test_email_is_not_an_element_type(self):
         assert "EMAIL" not in DomainObjects.__members__
@@ -93,11 +100,56 @@ class TestEmailPortIsRemoved:
             "send_email",
         }.isdisjoint(DEPRECATIONS)
 
-    @pytest.mark.parametrize("module", ["protean.core.email", "protean.adapters.email"])
-    def test_email_modules_are_gone(self, module):
-        with pytest.raises(ImportError):
-            importlib.import_module(module)
+    # A checkout that moved past the removal can keep an untracked
+    # ``__pycache__`` directory, which imports as an empty namespace package,
+    # so the check looks for a name the module used to define.
+    @pytest.mark.parametrize(
+        "module, name",
+        [
+            ("protean.core.email", "BaseEmail"),
+            ("protean.adapters.email", "EmailProviders"),
+        ],
+    )
+    def test_email_modules_are_gone(self, module, name):
+        try:
+            imported = importlib.import_module(module)
+        except ImportError:
+            return
+
+        assert not hasattr(imported, name)
 
     @pytest.mark.parametrize("name", ["EmailProviders", "DummyEmailProvider"])
     def test_adapters_package_does_not_export_email_providers(self, name):
         assert not hasattr(protean.adapters, name)
+
+
+def _pyproject_path() -> Path:
+    path = Path(protean.__file__).resolve().parents[2] / "pyproject.toml"
+    if not path.exists():
+        pytest.skip("pyproject.toml not available (installed, non-editable)")
+    return path
+
+
+class TestSendgridPackagingIsRemoved:
+    def test_there_is_no_sendgrid_extra(self):
+        pyproject = tomllib.loads(_pyproject_path().read_text(encoding="utf-8"))
+        extras = pyproject["project"]["optional-dependencies"]
+
+        assert extras
+        assert "sendgrid" not in extras
+
+    def test_there_is_no_sendgrid_pytest_marker(self):
+        pyproject = tomllib.loads(_pyproject_path().read_text(encoding="utf-8"))
+        markers = pyproject["tool"]["pytest"]["ini_options"]["markers"]
+
+        assert markers
+        assert [m for m in markers if m.split(":")[0].strip() == "sendgrid"] == []
+
+    def test_the_lock_has_no_sendgrid_package(self):
+        lock_path = _pyproject_path().with_name("uv.lock")
+        if not lock_path.exists():
+            pytest.skip("uv.lock not available")
+        packages = tomllib.loads(lock_path.read_text(encoding="utf-8"))["package"]
+
+        assert packages
+        assert "sendgrid" not in {p["name"] for p in packages}

@@ -257,18 +257,18 @@ class TestResolve:
     def test_repeats_are_dropped(self, manifest):
         assert len(manifest.resolve(["redis", "redis-cache"])) == 3
 
-    @pytest.mark.parametrize("name", ["nope", "core-thing", "mail"])
-    def test_an_unknown_core_or_off_name_is_rejected(self, name):
+    @pytest.mark.parametrize("name", ["nope", "memory"], ids=["unknown", "core"])
+    def test_an_unknown_or_core_name_is_rejected(self, manifest, name):
+        with pytest.raises(typer.BadParameter, match="is not an adapter or leg"):
+            manifest.resolve([name])
+
+    def test_an_off_name_is_rejected(self):
         manifest = AdapterManifest(
-            adapters=[
-                _entry("core-thing", lane="core"),
-                _entry("es"),
-                _entry("mail", lane="off"),
-            ],
+            adapters=[_entry("es"), _entry("mail", lane="off")],
             trigger_all=[],
         )
         with pytest.raises(typer.BadParameter, match="is not an adapter or leg"):
-            manifest.resolve([name])
+            manifest.resolve(["mail"])
 
 
 class TestBuildAdapterMatrix:

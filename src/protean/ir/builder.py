@@ -4015,8 +4015,8 @@ class IRBuilder:
 
         ``abstract`` is not projected into the aggregate IR ``options`` block, so
         it is sourced from the registry (mirroring ``_diagnose_upcaster_gap``).
-        Internal and abstract aggregates are skipped. ``invariants`` is the dict ``{"pre": [...], "post": [...]}``;
-        flag only when *both* lists are empty.
+        Internal and abstract aggregates are skipped. ``invariants`` is the dict
+        ``{"pre": [...], "post": [...]}``; flag only when *both* lists are empty.
         """
         registry = self._domain._domain_registry
         for record in registry._elements.get("AGGREGATE", {}).values():

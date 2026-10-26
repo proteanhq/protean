@@ -276,7 +276,12 @@ class DatabaseError(ProteanException):
 
 
 class SendError(ProteanException):
-    """Raised when sending or dispatching a message to an external service fails."""
+    """Raise from application code when a send to an external service fails.
+
+    Protean does not raise it itself. The default transient-retry exception set
+    includes it, so a handler that raises it is retried when transient retry is
+    enabled.
+    """
 
 
 class ExpectedVersionError(ProteanException):

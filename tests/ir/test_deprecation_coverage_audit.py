@@ -290,10 +290,9 @@ class TestCheckArm:
 
         for entry in check_entries:
             # Tie the entry to a diagnostic emitted by ITS OWN rule (matching the
-            # entry's ``check_code``), not any deprecation message. Otherwise a
-            # broken rule can ride on another rule's message: every message
-            # carries the same removal version, so a message-substring match
-            # alone would report an entry covered from another rule's diagnostic.
+            # entry's ``check_code``), not any deprecation message. The code
+            # match stops a message that happens to carry another entry's hint
+            # and removal version from counting as coverage for that entry.
             hits = [
                 d
                 for d in diagnostics
