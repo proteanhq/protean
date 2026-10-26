@@ -16,6 +16,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from protean.exceptions import ConfigurationError
 from protean.ir.generators.avro import has_emittable_default
 from protean.utils import _require_version_string
 from protean.utils.upcasting import missing_upcaster_source_versions
@@ -478,7 +479,8 @@ def _classify_removal(
     - ``"unexpected_removal"`` — not deprecated at all (breaking)
 
     Raises:
-        ConfigurationError: The removal version is not a string.
+        ConfigurationError: The removal version or *current_version* is not a
+            string.
     """
     if deprecated is None:
         return "unexpected_removal"
@@ -492,12 +494,15 @@ def _classify_removal(
     removal = _require_version_string("removal", removal, subject)
 
     if current_version is not None:
+        if not isinstance(current_version, str):
+            raise ConfigurationError(
+                f"current_version is {current_version!r}, which is not a string. "
+                'Pass it as a string, such as "0.20".'
+            )
         # Mixed numeric and text segments (``"1.0"`` vs ``"1.x"``) cannot be
         # ordered and raise ``TypeError``; treat those as premature.
         with contextlib.suppress(TypeError):
-            if _parse_version_tuple(str(current_version)) >= _parse_version_tuple(
-                removal
-            ):
+            if _parse_version_tuple(current_version) >= _parse_version_tuple(removal):
                 return "expected_removal"
 
     # Without a current version to compare, we can't confirm the removal

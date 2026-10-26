@@ -154,8 +154,8 @@ ships with the Protean package at `protean.ir.SCHEMA_PATH`, so validation needs
 no network access.
 
 IR files written by earlier releases carry `https://protean.dev/ir/v0.3.0/schema.json`.
-`protean ir check` and `protean ir diff` ignore `$schema`, so an older baseline
-stays fresh and gives no diff. It picks up the new URL the next time you
+`protean ir check` and `protean ir diff` ignore `$schema`, so the old URL alone
+does not make a baseline stale or show up as a change. It picks up the new URL the next time you
 regenerate it.
 
 To validate an IR document programmatically:

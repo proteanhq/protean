@@ -1,1 +1,1 @@
-[IR] The IR's `$schema` and each IR schema's `$id` name `https://docs.proteanhq.com/assets/ir/v{X}/schema.json`, where the docs site serves the schema. A baseline that still names `protean.dev` stays fresh under `protean ir check` and gives no `protean ir diff` change.
+[IR] The IR's `$schema` and each IR schema's `$id` name `https://docs.proteanhq.com/assets/ir/v{X}/schema.json`, where the docs site serves the schema. A baseline that still names `protean.dev` is not made stale by the URL alone, under `protean ir check` or `protean ir diff`.

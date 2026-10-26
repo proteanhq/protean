@@ -788,6 +788,19 @@ class TestClassifyRemoval:
         )
         assert result == "premature_removal"
 
+    @pytest.mark.parametrize("current_version", [0.2, 1])
+    def test_current_version_written_as_a_number_raises(
+        self, current_version: object
+    ) -> None:
+        with pytest.raises(ConfigurationError) as exc_info:
+            _classify_removal(
+                {"since": "0.15", "removal": "0.19"},
+                current_version=current_version,  # type: ignore[arg-type]
+                subject="x",
+            )
+
+        assert f"current_version is {current_version!r}" in str(exc_info.value)
+
     @pytest.mark.parametrize("current_version", ["0.18", None])
     @pytest.mark.parametrize("removal", [0.2, 0.18, 1])
     def test_removal_written_as_a_number_raises(

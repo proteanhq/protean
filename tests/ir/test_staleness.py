@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 
 from protean.cli import app
 from protean.ir import SCHEMA_URL, SCHEMA_VERSION
+from protean.ir.builder import IRBuilder
 from protean.ir.config import CompatConfig
 from protean.ir.staleness import (
     StalenessResult,
@@ -199,6 +200,9 @@ class TestCheckStalenessFresh:
         live_ir = _live_ir_for_test7()
         assert live_ir["$schema"] == SCHEMA_URL
         live_ir["$schema"] = f"https://protean.dev/ir/v{SCHEMA_VERSION}/schema.json"
+        # Recompute as an older release would have, so the test fails if
+        # ``$schema`` ever counts toward the checksum.
+        live_ir["checksum"] = IRBuilder._compute_checksum(live_ir)
         _write_ir(self._protean_dir, live_ir)
 
         result = runner.invoke(
