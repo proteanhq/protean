@@ -843,7 +843,8 @@ The complete JSON Schema (Draft 2020-12) for IR v0.3.0 is available at:
 
 - **In the package**: `protean.ir.SCHEMA_PATH`
   (`src/protean/ir/schema/v0.3.0/schema.json`)
-- **Canonical URL**: `https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json`
+- **Canonical URL**: `https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json`,
+  also available as `protean.ir.SCHEMA_URL`
 
 ### Reference Examples
 

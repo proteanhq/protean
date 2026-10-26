@@ -606,13 +606,15 @@ def _require_version_string(key: str, value: object, subject: str) -> str:
     """
     if isinstance(value, str):
         return value
+    message = (
+        f"The `{key}` version of {subject} is {value!r}, which is not a string. "
+        f'Write it as a string, such as "{key}": "0.20".'
+    )
     # A number cannot be repaired: Python and JSON both read ``0.20`` as
     # ``0.2``, which sorts before ``0.18`` when versions are compared.
-    raise ConfigurationError(
-        f"The `{key}` version of {subject} is {value!r}, which is not a string. "
-        f'Write it as a string, such as "{key}": "0.20". A number loses its '
-        "trailing zeros, so 0.20 arrives as 0.2."
-    )
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        message += " A number loses its trailing zeros, so 0.20 arrives as 0.2."
+    raise ConfigurationError(message)
 
 
 def _normalize_deprecated(value: str | dict[str, Any] | None) -> dict[str, str] | None:
@@ -639,11 +641,15 @@ def _normalize_deprecated(value: str | dict[str, Any] | None) -> dict[str, str] 
             raise ConfigurationError(
                 f"The `deprecated` value must include a 'since' key (got {value!r})"
             )
-        return {
-            key: _require_version_string(key, value[key], "`deprecated=`")
-            for key in ("since", "removal")
-            if key in value
+        result = {
+            "since": _require_version_string("since", value["since"], "`deprecated=`")
         }
+        # ``removal: None`` means no removal version, as it does in ``ir diff``.
+        if value.get("removal") is not None:
+            result["removal"] = _require_version_string(
+                "removal", value["removal"], "`deprecated=`"
+            )
+        return result
     raise ConfigurationError(
         f"Invalid `deprecated` value: {value!r}. "
         "Expected a version string or dict with 'since' (and optional 'removal') keys."

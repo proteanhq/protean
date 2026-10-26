@@ -378,7 +378,11 @@ def _check_compat_single(
         result = diff_ir(baseline_ir, current_ir)
         report = classify_changes(result, baseline_ir, current_ir)
     except ConfigurationError as exc:
-        print(f"Error comparing IR for {domain_module}: {exc}", file=sys.stderr)
+        print(
+            f"Error comparing IR for {domain_module}: {exc} "
+            f"Fix {ir_path} at {base} by hand, or regenerate it.",
+            file=sys.stderr,
+        )
         return False
 
     if config.exclude:
@@ -428,7 +432,8 @@ def check_compat_hook() -> None:
     Exit codes:
       0 --- no breaking changes (safe or no changes), or strictness is
           "off" / "warn"
-      1 --- breaking changes found (strictness = "strict")
+      1 --- breaking changes found (strictness = "strict"), or the baseline
+          cannot be loaded or compared (strictness = "strict" or "warn")
     """
     from protean.ir.config import load_config  # noqa: PLC0415
 

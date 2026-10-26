@@ -833,6 +833,7 @@ class TestDiffRefusesRemovalVersionWrittenAsANumber:
         assert not isinstance(result.exception, ConfigurationError)
         assert f"Error: The `removal` version of {subject} is 0.2" in output
         assert '"removal": "0.20"' in output
+        assert "Fix the baseline IR by hand, or regenerate it." in output
 
     def test_removed_published_event(self, tmp_path):
         result, output = self._run(

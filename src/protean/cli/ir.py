@@ -258,7 +258,10 @@ def diff(
         result = diff_ir(baseline_ir, current_ir)
         report = classify_changes(result, baseline_ir, current_ir)
     except ConfigurationError as exc:
-        print(f"[red]Error:[/red] {escape(str(exc))}")
+        print(
+            f"[red]Error:[/red] {escape(str(exc))} "
+            "Fix the baseline IR by hand, or regenerate it."
+        )
         raise typer.Abort() from exc
 
     # Filter out excluded elements from the report

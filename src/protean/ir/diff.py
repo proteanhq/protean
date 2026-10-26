@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import contextlib
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -462,15 +462,15 @@ def _parse_version_tuple(version_str: str) -> tuple[int | str, ...]:
 
 
 def _classify_removal(
-    deprecated: dict[str, Any] | None,
+    deprecated: Mapping[str, object] | None,
     current_version: str | None = None,
     *,
     subject: str,
-) -> str:
+) -> Literal["expected_removal", "premature_removal", "unexpected_removal"]:
     """Classify a removal based on deprecation metadata.
 
-    *subject* names the removed element or field in the error raised for a
-    removal version that is not a string.
+    *subject* names the removed element or field. It is used only in the
+    error message.
 
     Returns one of:
     - ``"expected_removal"`` — deprecated and past the removal version (safe)
@@ -495,7 +495,9 @@ def _classify_removal(
         # Mixed numeric and text segments (``"1.0"`` vs ``"1.x"``) cannot be
         # ordered and raise ``TypeError``; treat those as premature.
         with contextlib.suppress(TypeError):
-            if _parse_version_tuple(current_version) >= _parse_version_tuple(removal):
+            if _parse_version_tuple(str(current_version)) >= _parse_version_tuple(
+                removal
+            ):
                 return "expected_removal"
 
     # Without a current version to compare, we can't confirm the removal

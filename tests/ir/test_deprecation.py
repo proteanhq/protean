@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from protean import Domain
@@ -64,6 +66,22 @@ class TestNormalizeDeprecated:
         message = str(exc_info.value)
         assert f"The `{key}` version of `deprecated=` is {value[key]!r}" in message
         assert f'"{key}": "0.20"' in message
+        assert "0.20 arrives as 0.2" in message
+
+    def test_removal_none_means_no_removal_version(self) -> None:
+        result = _normalize_deprecated({"since": "0.15", "removal": None})
+        assert result == {"since": "0.15"}
+
+    @pytest.mark.parametrize("version", [True, ["0", "20"]])
+    def test_value_that_is_not_a_number_gets_no_number_hint(
+        self, version: object
+    ) -> None:
+        with pytest.raises(ConfigurationError) as exc_info:
+            _normalize_deprecated({"since": "0.15", "removal": version})
+
+        message = str(exc_info.value)
+        assert f"is {version!r}, which is not a string" in message
+        assert "trailing zeros" not in message
 
     def test_extra_keys_ignored(self) -> None:
         """Extra keys beyond since/removal are silently dropped."""
@@ -273,10 +291,7 @@ class TestNormalizerParity:
 
         assert field_result == fieldspec_result == Order.meta_.deprecated
 
-    @pytest.mark.parametrize(
-        "value",
-        [{"removal": "0.18"}, True, 42, {"since": "0.18", "removal": 0.20}],
-    )
+    @pytest.mark.parametrize("value", [{"removal": "0.18"}, True, 42])
     def test_rejection_parity(self, value: object) -> None:
         from protean.fields.spec import FieldSpec
 
@@ -294,6 +309,39 @@ class TestNormalizerParity:
 
             @self.domain.aggregate(deprecated=value)
             class Order:
+                pass
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (
+                {"since": "0.18", "removal": 0.20},
+                "The `removal` version of `deprecated=` is 0.2",
+            ),
+            ({"since": 0.20}, "The `since` version of `deprecated=` is 0.2"),
+        ],
+    )
+    def test_version_written_as_a_number_is_refused_everywhere(
+        self, value: dict[str, object], expected: str
+    ) -> None:
+        from protean.fields.spec import FieldSpec
+
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            String(deprecated=value)
+
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            FieldSpec(str, deprecated=value)
+
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+
+            @self.domain.aggregate(deprecated=value)
+            class Order:
+                pass
+
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+
+            @self.domain.event(part_of="Order", deprecated=value)
+            class OrderPlaced:
                 pass
 
     def test_deprecated_true_raises_actionable_message_for_field(self) -> None:
