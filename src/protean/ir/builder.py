@@ -2627,12 +2627,17 @@ class IRBuilder:
 
         An aggregate cluster that has no command handlers has no way to
         receive commands — likely a wiring gap.  Internal/infrastructure
-        aggregates (from ``protean.adapters``) are excluded.
+        aggregates (from ``protean.adapters``) and abstract aggregates are
+        excluded: an abstract base is never instantiated, so its concrete
+        subclasses carry the write path.
         """
+        abstract_fqns = self._abstract_aggregate_fqns()
         for cluster in ir["clusters"].values():
             aggregate = cluster["aggregate"]
             # Skip infrastructure aggregates (e.g. MemoryMessage)
             if aggregate["fqn"].startswith("protean.adapters."):
+                continue
+            if aggregate["fqn"] in abstract_fqns:
                 continue
             if not cluster["command_handlers"]:
                 self._diagnostics.append(
