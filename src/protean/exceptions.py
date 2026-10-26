@@ -276,7 +276,7 @@ class DatabaseError(ProteanException):
 
 
 class SendError(ProteanException):
-    """Raised on email dispatch failure."""
+    """Raised when sending or dispatching a message to an external service fails."""
 
 
 class ExpectedVersionError(ProteanException):

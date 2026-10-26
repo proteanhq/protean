@@ -72,12 +72,6 @@ def _default_config() -> dict[str, Any]:
             }
         },
         "brokers": {"default": {"provider": "inline"}},
-        "email_providers": {
-            "default": {
-                "provider": "protean.adapters.DummyEmailProvider",
-                "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
-            },
-        },
         "snapshot_threshold": 10,
         "enable_outbox": False,
         "outbox": {

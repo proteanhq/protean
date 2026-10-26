@@ -124,9 +124,10 @@ mssql = [
 # whose job is being installable. Do not drop this on the assumption that the
 # driver encrypts the transport; whether it does depends on the resolved
 # version, which is why the provider doc says to configure TLS explicitly and
-# verify it. `cffi` rides along for the same reason it does under sendgrid: it
-# is cryptography's own dependency and declares no floor, and 2.0.0 is the first
-# release with cp314 wheels (ADR-0020).
+# verify it. `cffi` rides along because cryptography (pulled in by
+# `pymysql[rsa]`) depends on it and declares no floor, and 2.0.0 is the first
+# release with cp314 wheels (ADR-0020). The marker mirrors cryptography's own,
+# so the extra never requires cffi on PyPy, where cryptography would not.
 mysql = [
     "sqlalchemy>=2.0.36,<2.2",
     "pymysql[rsa]>=1.1.1",
@@ -135,15 +136,6 @@ mysql = [
 ]
 message-db = ["message-db-py>=0.3.4"]
 flask = ["flask>=3.0.0"]
-# `cffi` rides with sendgrid for the same reason: its only consumer is
-# cryptography (a sendgrid dependency), which declares no floor; 2.0.0 ships
-# cp314 wheels (ADR-0020). Nothing in core imports it. The marker mirrors
-# cryptography's own, so the extra never requires cffi on PyPy, where
-# cryptography would not.
-sendgrid = [
-    "sendgrid>=6.11.0",
-    "cffi>=2.0.0; platform_python_implementation != 'PyPy'",
-]
 # Runtime feature extras, right-sized out of the lean core (ADR-0029). Each
 # gates a feature whose CLI command or import fails with an actionable
 # "install protean[<extra>]" message when the extra is absent.
@@ -394,7 +386,6 @@ markers = [
     "elasticsearch",
     "redis",
     "message_db",
-    "sendgrid",
     "database",
     "eventstore",
     "no_test_domain",

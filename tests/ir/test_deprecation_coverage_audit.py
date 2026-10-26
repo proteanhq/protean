@@ -15,7 +15,6 @@ entry at its warn site at all), this audit fails.
 """
 
 import ast
-import contextlib
 import re
 import warnings
 from collections.abc import Callable
@@ -46,16 +45,6 @@ def _build_audit_domain() -> Domain:
     """One domain that exercises every ``detection='check'`` deprecated path."""
     domain = Domain(name="DeprecationAudit", root_path=".")
 
-    # Non-default ``email_providers`` block (DEPRECATED_CONFIG). Mutated after
-    # construction, so it is the check rule — not ``load_config``'s bootstrap
-    # warning — that this audit exercises.
-    domain.config["email_providers"] = {
-        "default": {
-            "provider": "protean.adapters.DummyEmailProvider",
-            "DEFAULT_FROM_EMAIL": "custom@example.com",
-        },
-    }
-
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
 
@@ -70,10 +59,6 @@ def _build_audit_domain() -> Domain:
         @domain.command(part_of="PickledOrder", published=True)  # DEPRECATED_OPTION
         class DoThing:
             name = String(max_length=50)
-
-        @domain.email  # DEPRECATED_EMAIL
-        class WelcomeMail:
-            pass
 
         # Method / Nested / protean.utils — on-disk DEPRECATED_IMPORT scan.
         domain.register(deprecated_usage_domain.DeprecatedUsageOrder)
@@ -92,8 +77,8 @@ def _deprecation_diagnostics(ir: dict) -> list[dict]:
 
 
 class TestRegistryCompleteness:
-    def test_registry_holds_fifteen_active_deprecations(self) -> None:
-        assert len(DEPRECATIONS) == 15
+    def test_registry_holds_eleven_active_deprecations(self) -> None:
+        assert len(DEPRECATIONS) == 11
 
     def test_every_entry_is_well_formed(self) -> None:
         for slug, entry in DEPRECATIONS.items():
@@ -296,20 +281,19 @@ class TestCheckArm:
     """Every ``detection='check'`` entry fires on the fixture domain, and the
     firing diagnostic reports its removal version."""
 
-    def test_all_eight_check_entries_are_detected_with_removal_version(self) -> None:
+    def test_all_six_check_entries_are_detected_with_removal_version(self) -> None:
         ir = IRBuilder(_build_audit_domain()).build()
         diagnostics = _deprecation_diagnostics(ir)
 
         check_entries = [e for e in DEPRECATIONS.values() if e.detection == "check"]
-        assert len(check_entries) == 8, "expected 8 statically-detectable deprecations"
+        assert len(check_entries) == 6, "expected 6 statically-detectable deprecations"
 
         for entry in check_entries:
             # Tie the entry to a diagnostic emitted by ITS OWN rule (matching the
             # entry's ``check_code``), not any deprecation message. Otherwise a
-            # broken rule can ride on another rule's message: the email element
-            # and the ``email_providers`` config both say "email subsystem", and
-            # every message carries the same removal version, so a message-substring match alone
-            # would report the email element covered from the config diagnostic.
+            # broken rule can ride on another rule's message: every message
+            # carries the same removal version, so a message-substring match
+            # alone would report an entry covered from another rule's diagnostic.
             hits = [
                 d
                 for d in diagnostics
@@ -355,20 +339,6 @@ class TestCheckArm:
             if d["code"] == entry.check_code and entry.detection_hint in d["message"]
         ]
         assert hits, "pickled=False did not fire DEPRECATED_FIELD"
-
-
-def _trigger_get_email_provider() -> None:
-    domain = Domain(name="RuntimeArmEmail")
-    domain.init(traverse=False)
-    with contextlib.suppress(Exception):
-        domain.get_email_provider("default")
-
-
-def _trigger_send_email() -> None:
-    domain = Domain(name="RuntimeArmSend")
-    domain.init(traverse=False)
-    with contextlib.suppress(Exception):
-        domain.send_email(object())
 
 
 def _runtime_arm_update_domain() -> tuple[Domain, type]:
@@ -436,8 +406,6 @@ def _trigger_pm_sequential_by_non_boolean() -> None:
 # registry's runtime arm stay in lock-step: adding a runtime entry without a
 # trigger here (or vice versa) fails the audit.
 _RUNTIME_TRIGGERS: dict[str, Callable[[], None]] = {
-    "get_email_provider": _trigger_get_email_provider,
-    "send_email": _trigger_send_email,
     "dao_update": _trigger_dao_update,
     "queryset_update": _trigger_queryset_update,
     "supervisor_debug": _trigger_supervisor_debug,
@@ -485,23 +453,8 @@ class TestNegativeCoverage:
         ir = IRBuilder(domain).build()
 
         codes = {d["code"] for d in ir["diagnostics"]}
-        assert "DEPRECATED_CONFIG" not in codes
         assert "DEPRECATED_IMPORT" not in codes
         assert "DEPRECATED_FIELD" not in codes
-
-    def test_default_email_providers_block_stays_silent(self) -> None:
-        # A domain that never touches ``email_providers`` keeps the default
-        # block, so the equality guard suppresses DEPRECATED_CONFIG.
-        domain = Domain(name="DefaultEmail", root_path=".")
-
-        @domain.aggregate
-        class Order:
-            name = String(max_length=50)
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        assert not [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_CONFIG"]
 
     def test_non_deprecated_import_module_is_not_flagged(self) -> None:
         # ``infra_import_domain`` imports only live symbols (String, ValueObject,

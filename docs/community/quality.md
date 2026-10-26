@@ -157,7 +157,7 @@ Protean's source is organized into 10 top-level packages:
 |---|---|
 | Domain element types | 18 (Aggregate, Entity, Value Object, Command, Event, Domain Service, Command Handler, Event Handler, Query Handler, Application Service, Subscriber, Projection, Projector, Repository, Database Model, and more) |
 | Port interfaces | 5 (Provider, Broker, Event Store, Cache, DAO) |
-| Adapter implementations | 12 (Memory, SQLAlchemy, Elasticsearch, Redis Stream, Redis PubSub, Inline, MessageDB, SendGrid, and more) |
+| Adapter implementations | 10 (Memory, SQLAlchemy, Elasticsearch, Redis Stream, Redis PubSub, Inline, MessageDB, and more) |
 
 ---
 
