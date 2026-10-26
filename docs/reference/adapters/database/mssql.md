@@ -90,6 +90,24 @@ error comes from a column with no length, such as `max_length=None`. A column
 with no length is fine on MSSQL as an ordinary column. Protean raises only when
 that column is a primary key or is `unique=True`.
 
+## Date and time columns
+
+| Field      | Column      |
+|------------|-------------|
+| `DateTime` | `DATETIME2` |
+| `Date`     | `DATE`      |
+
+SQL Server's `DATETIME` rounds to increments of about 3 milliseconds (.000,
+.003 or .007 seconds). Protean writes microsecond-precision timestamps, so two
+values written less than 3 ms apart could read back equal, and a value read
+back could differ from the one written. `DATETIME2` keeps 100-nanosecond steps,
+so every `DateTime` field maps to it.
+
+A table created before 0.19 keeps its `DATETIME` columns, because Protean does
+not change an existing table. See
+[SQL Server stores `DateTime` as `DATETIME2`](../../migration/v0-19.md#sql-server-stores-datetime-as-datetime2)
+for the statements that convert them.
+
 ## SQLAlchemy model
 
 You can supply a custom SQLAlchemy model in place of the one Protean generates,
