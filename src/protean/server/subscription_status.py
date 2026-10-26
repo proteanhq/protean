@@ -178,9 +178,9 @@ def _infer_stream_category(handler_cls: type[Any]) -> str:
 
     # Priority 2: Infer from part_of aggregate
     part_of = getattr(meta, "part_of", None)
-    if part_of:  # pragma: no cover  # registration copies a part_of aggregate's stream onto meta_.stream_category, so only an unresolved string part_of gets here
+    if part_of:
         aggregate_meta = getattr(part_of, "meta_", None)
-        if aggregate_meta:
+        if aggregate_meta:  # pragma: no cover  # registration copies a part_of aggregate's stream onto meta_.stream_category, so only an unresolved string part_of gets here
             aggregate_stream: str | None = getattr(
                 aggregate_meta, "stream_category", None
             )
@@ -403,8 +403,8 @@ def _collect_partitioned_stream_status(
             if native_lag is not None:
                 any_lag_known = True
                 total_lag += native_lag
-            else:  # pragma: no cover  # RedisBroker reads Redis 7's nil `lag` as 0, so this fallback runs only on Redis before 7.0
-                # No native `lag` (Redis before 7.0). Count what is left after
+            else:
+                # No native `lag` (Redis before 7.0, or nil). Count what is left after
                 # the group's last delivered entry, which is what the
                 # non-partitioned path does and what the subscription reference
                 # already promises for stream subscriptions. Without this, a
@@ -523,7 +523,7 @@ def _collect_stream_status(
                         native_lag = broker._get_field_value(
                             g, "lag", convert_to_int=True
                         )
-                        if native_lag is not None:  # pragma: no branch  # RedisBroker reads Redis 7's nil `lag` as 0  # fmt: skip
+                        if native_lag is not None:
                             lag = native_lag
                         consumer_count = (
                             broker._get_field_value(g, "consumers", convert_to_int=True)
@@ -541,12 +541,12 @@ def _collect_stream_status(
 
             # Fallback: count messages after last-delivered-id via xrange
             if lag is None and last_delivered_id is not None:
-                try:  # pragma: no cover  # RedisBroker reads Redis 7's nil `lag` as 0, so this fallback runs only on Redis before 7.0
+                try:
                     remaining = redis_conn.xrange(
                         stream_category, min=f"({last_delivered_id}"
                     )
                     lag = len(remaining)
-                except Exception as exc:  # noqa: BLE001 - status probe: lag stays unknown  # pragma: no cover  # the fallback above runs only on Redis before 7.0
+                except Exception as exc:  # noqa: BLE001 - status probe: lag stays unknown
                     logger.debug("Could not count lag of %s: %r", stream_category, exc)
                     # Leave lag unknown rather than falling back to `pending`.
                     # With nothing pending that fallback yields lag=0, which
@@ -576,7 +576,7 @@ def _collect_stream_status(
                 consumer_count=consumer_count,
                 dlq_depth=dlq_depth,
             )
-    except Exception as exc:  # noqa: BLE001 - status probe: any fault means unknown  # pragma: no cover  # every Redis call above has its own handler
+    except Exception as exc:  # noqa: BLE001 - status probe: any fault means unknown
         logger.debug(
             "Error collecting stream subscription status for %s: %s", name, exc
         )
@@ -641,7 +641,7 @@ def _collect_broker_status(
                             native_lag = broker._get_field_value(
                                 g, "lag", convert_to_int=True
                             )
-                            if native_lag is not None:  # pragma: no branch  # RedisBroker reads Redis 7's nil `lag` as 0  # fmt: skip
+                            if native_lag is not None:
                                 lag = native_lag
                             consumer_count = (
                                 broker._get_field_value(
@@ -660,12 +660,12 @@ def _collect_broker_status(
                     )
 
                 if lag is None and last_delivered_id is not None:
-                    try:  # pragma: no cover  # RedisBroker reads Redis 7's nil `lag` as 0, so this fallback runs only on Redis before 7.0
+                    try:
                         remaining = redis_conn.xrange(
                             stream_name, min=f"({last_delivered_id}"
                         )
                         lag = len(remaining)
-                    except Exception as exc:  # noqa: BLE001 - status probe: lag stays unknown  # pragma: no cover  # the fallback above runs only on Redis before 7.0
+                    except Exception as exc:  # noqa: BLE001 - status probe: lag stays unknown
                         logger.debug("Could not count lag of %s: %r", stream_name, exc)
                         # See the stream path: an unknown lag must not be
                         # reported as zero.

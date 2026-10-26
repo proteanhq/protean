@@ -466,6 +466,20 @@ class TestEventStoreStatus:
         assert status.lag == 2
         assert status.lag_seconds == 0.0
 
+    def test_checkpoint_past_the_head_is_zero_lag(self, test_domain):
+        """A checkpoint past the head is what ``protean recover
+        --reset-beyond-head`` repairs. The status shows it as caught up, not as
+        a negative lag."""
+        _write_events(self.store, self.category, 3)
+        _write_checkpoint(self.store, self.position_stream, 10)
+
+        status = _statuses(test_domain)[fqn(OrderNotifier)]
+
+        assert status.current_position == "10"
+        assert status.head_position == "3"
+        assert status.lag == 0
+        assert status.status == "ok"
+
     def test_no_checkpoint_counts_the_whole_stream_with_no_seconds(self, test_domain):
         """A subscription that never wrote a checkpoint counts from -1, so its
         lag covers the whole stream. With no write time its seconds behind are
@@ -563,6 +577,22 @@ class TestBrokerStatusWithoutRedis:
         assert status.consumer_count == 0
         assert status.status == "ok"
         assert status.head_position is None
+
+    def test_pending_reported_by_broker_info_is_lagging(self, test_domain):
+        """A broker adapter that reports a pending count in ``info()`` shows
+        that count as the lag. No broker that ships with Protean other than
+        Redis reports one, so the reply stands for a third-party adapter's."""
+        reply = {
+            "consumer_groups": {fqn(PartnerFeed): {"pending": 2, "consumer_count": 1}}
+        }
+
+        with patch.object(self.broker, "info", return_value=reply):
+            status = _statuses(test_domain)[fqn(PartnerFeed)]
+
+        assert status.lag == 2
+        assert status.pending == 2
+        assert status.consumer_count == 1
+        assert status.status == "lagging"
 
     def test_info_failure_is_unknown(self, test_domain):
         with patch.object(self.broker, "info", side_effect=RuntimeError("down")):
@@ -817,6 +847,25 @@ def _raise_on(real, stream: str, exc: Exception):
     return side_effect
 
 
+def _lose_native_lag(broker, stream: str, group: str) -> None:
+    """Publish four entries, read the first as ``group``, then delete the third.
+
+    Redis 7 cannot compute a lag across a deleted entry, so ``XINFO GROUPS``
+    reports ``lag`` as nil. Two entries are left after the last-delivered id.
+    """
+    for n in range(4):
+        broker.publish(stream, {"n": n})
+    broker.get_next(stream, group)
+    third_id = broker.redis_instance.xrange(stream)[2][0]
+    broker.redis_instance.xdel(stream, third_id)
+    [info] = [
+        g
+        for g in broker.redis_instance.xinfo_groups(stream)
+        if g["name"] == group.encode()
+    ]
+    assert info["lag"] is None
+
+
 def _messages_about(caplog, *streams: str) -> list[str]:
     """The status log lines that name one of ``streams`` exactly. Every other
     subscription in the domain is probed in the same call and logs about its
@@ -963,6 +1012,39 @@ class TestRedisStreamStatus:
         assert record.levelno == logging.DEBUG
         assert str(record.exc_info[1]) == "redis down"
 
+    def test_lag_redis_cannot_report_is_counted_after_the_last_delivered_entry(
+        self,
+    ):
+        """Deleting an entry past the group's last-delivered id makes Redis 7
+        send a nil ``lag``. The entries left after that id are counted."""
+        _lose_native_lag(self.broker, self.stream, self.group)
+
+        status = self._status()
+
+        assert status.lag == 2
+        assert status.pending == 1
+        assert status.status == "lagging"
+
+    def test_lag_that_cannot_be_counted_is_unknown_and_logged(self, caplog):
+        """With nothing pending, reading a failed count as 0 would show the
+        subscription as caught up."""
+        _lose_native_lag(self.broker, self.stream, self.group)
+        self.redis.xack(self.stream, self.group, self._status().current_position)
+        error = redis.ConnectionError("range gone")
+
+        with (
+            patch.object(self.redis, "xrange", side_effect=error),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.lag is None
+        assert status.pending == 0
+        assert status.status == "unknown"
+        assert _messages_about(caplog, self.stream) == [
+            f"Could not count lag of {self.stream}: {error!r}"
+        ]
+
 
 @pytest.mark.redis
 @pytest.mark.no_test_domain
@@ -1044,6 +1126,34 @@ class TestRedisBrokerSubscriberStatus:
         ]
         assert record.levelno == logging.DEBUG
         assert str(record.exc_info[1]) == "redis down"
+
+    def test_lag_redis_cannot_report_is_counted_after_the_last_delivered_entry(
+        self,
+    ):
+        _lose_native_lag(self.broker, "partner-feed", self.group)
+
+        status = self._status()
+
+        assert status.lag == 2
+        assert status.pending == 1
+        assert status.status == "lagging"
+
+    def test_lag_that_cannot_be_counted_is_unknown_and_logged(self, caplog):
+        _lose_native_lag(self.broker, "partner-feed", self.group)
+        error = redis.ConnectionError("range gone")
+
+        with (
+            patch.object(self.redis, "xrange", side_effect=error),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.lag is None
+        assert status.pending == 1
+        assert status.status == "unknown"
+        assert _messages_about(caplog, "partner-feed") == [
+            f"Could not count lag of partner-feed: {error!r}"
+        ]
 
 
 @pytest.mark.redis
@@ -1245,18 +1355,82 @@ class TestRedisPartitionedStatus:
             f"Could not read DLQ depth of {self.category}: {error!r}",
         ]
 
-    def test_unreadable_partition_index_is_unknown(self):
+    def test_unreadable_partition_index_is_unknown(self, caplog):
         self._publish("a", 2)
 
-        with patch.object(
-            self.broker,
-            "_partition_keys",
-            side_effect=redis.ConnectionError("index gone"),
+        with (
+            patch.object(
+                self.broker,
+                "_partition_keys",
+                side_effect=redis.ConnectionError("index gone"),
+            ),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
         ):
             status = self._status()
 
         assert status.lag is None
         assert status.status == "unknown"
+        assert _messages_about(caplog, *self.streams) == [
+            f"Error listing partitions for {self.category}: index gone"
+        ]
+
+    def test_lag_redis_cannot_report_is_counted_per_partition(self):
+        """A group created at an entry in the middle of a partition has no
+        native ``lag`` on Redis 7. That partition's entries after the group's
+        last-delivered id are counted and added to the native lag of the
+        others."""
+        a = self._publish("a", 4, group_at=None)
+        second_id = self.redis.xrange(a)[1][0]
+        self.redis.xgroup_create(a, self.group, id=second_id)
+        self._publish("b", 3)
+
+        status = self._status()
+
+        assert status.lag == 2 + 3
+        assert status.status == "lagging"
+
+    def test_partition_lag_that_cannot_be_counted_adds_nothing(self, caplog):
+        """Partition ``a`` has no native lag and its count fails, so only ``b``
+        is summed. A category whose only partition fails is unknown."""
+        a = self._publish("a", 4, group_at=None)
+        self.redis.xgroup_create(a, self.group, id=self.redis.xrange(a)[1][0])
+        error = redis.ConnectionError("range gone")
+
+        with patch.object(self.redis, "xrange", side_effect=error):
+            assert self._status().status == "unknown"
+
+        self._publish("b", 3)
+        with (
+            patch.object(self.redis, "xrange", side_effect=error),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.lag == 3
+        assert _messages_about(caplog, *self.streams) == [
+            f"Could not count lag of {a}: {error!r}"
+        ]
+
+    def test_a_group_name_that_is_not_utf8_makes_the_category_unknown(self, caplog):
+        """Another client can name a group with bytes that are not UTF-8. The
+        partition reader cannot decode the name, and the status reports the
+        category as unknown instead of raising."""
+        a = self._publish("a", 2)
+        self.redis.xgroup_create(a, b"a\xff", id="0")
+
+        with caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER):
+            status = self._status()
+
+        assert status.lag is None
+        assert status.status == "unknown"
+        [message] = [
+            r.getMessage()
+            for r in caplog.records
+            if r.getMessage().startswith(
+                f"Error collecting stream subscription status for {self.group}: "
+            )
+        ]
+        assert "can't decode byte 0xff" in message
 
     def test_an_unpartitioned_category_on_the_same_domain_reads_its_base_stream(
         self,
