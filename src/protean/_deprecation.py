@@ -242,9 +242,9 @@ class Deprecation:
       is a token guaranteed to appear in *that* diagnostic's message (e.g.
       ``"Method"``, ``"pickled"``). The coverage audit confirms the rule fires
       by finding a diagnostic whose code is ``check_code`` and whose message
-      carries the hint and the removal version, so two entries that share a code
-      (``is_event_sourced``/``published`` under ``DEPRECATED_OPTION``) are told
-      apart by their hint.
+      carries the hint and the removal version, so entries that share a code
+      (``is_event_sourced`` and ``published`` under ``DEPRECATED_OPTION``) are
+      told apart by their hint.
     - ``"runtime"`` — the usage is an imperative call with no static site, so
       only the per-version ``DeprecationWarning`` can catch it. ``reason``
       records why ``check`` structurally cannot.
