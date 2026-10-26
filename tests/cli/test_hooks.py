@@ -1515,7 +1515,9 @@ class TestCheckCompatSingle:
         assert result is False
         err = capsys.readouterr().err
         assert "Error comparing IR for publishing7.py" in err
-        assert f"field 'legacy' of AGGREGATE '{aggregate_fqn}' is 0.2" in err
+        assert (
+            f"field 'legacy' of AGGREGATE '{aggregate_fqn}' in the left IR is 0.2"
+        ) in err
         assert '"removal": "0.20"' in err
         assert "Fix .protean/ir.json at HEAD by hand, or regenerate it." in err
 

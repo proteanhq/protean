@@ -795,8 +795,7 @@ class TestDiffExitCodes:
 
 class TestDiffRefusesRemovalVersionWrittenAsANumber:
     """A number cannot keep a trailing zero (0.20 arrives as 0.2), so the
-    diff refuses it with an error naming the removed element or field, rather
-    than classing the removal against the wrong version."""
+    diff refuses it with an error naming the element or field."""
 
     _DEPRECATED = {"since": "0.15", "removal": 0.2}
 
@@ -828,12 +827,14 @@ class TestDiffRefusesRemovalVersionWrittenAsANumber:
         # Rich wraps the error at the terminal width; compare without breaks.
         return result, " ".join(result.output.split())
 
-    def _assert_refused(self, result, output, subject):
+    def _assert_refused(self, result, output, subject, side="left"):
         assert result.exit_code == 1
         assert not isinstance(result.exception, ConfigurationError)
-        assert f"Error: The `removal` version of {subject} is 0.2" in output
+        assert (
+            f"Error: The `removal` version of {subject} in the {side} IR is 0.2"
+        ) in output
         assert '"removal": "0.20"' in output
-        assert "Fix the baseline IR by hand, or regenerate it." in output
+        assert "Fix that IR file by hand, or regenerate it." in output
 
     def test_removed_published_event(self, tmp_path):
         result, output = self._run(
@@ -865,6 +866,25 @@ class TestDiffRefusesRemovalVersionWrittenAsANumber:
             self._order_ir({}),
         )
         self._assert_refused(result, output, "field 'legacy' of AGGREGATE 'app.Order'")
+
+    def test_unchanged_field(self, tmp_path):
+        """The check covers every field, not only removed ones."""
+        fields = {"legacy": self._legacy_field(self._DEPRECATED)}
+        result, output = self._run(
+            tmp_path, self._order_ir(fields), self._order_ir(fields)
+        )
+        self._assert_refused(result, output, "field 'legacy' of AGGREGATE 'app.Order'")
+
+    def test_field_in_the_right_ir(self, tmp_path):
+        legacy = self._legacy_field({"since": "0.15", "removal": "0.20"})
+        result, output = self._run(
+            tmp_path,
+            self._order_ir({"legacy": legacy}),
+            self._order_ir({"legacy": self._legacy_field(self._DEPRECATED)}),
+        )
+        self._assert_refused(
+            result, output, "field 'legacy' of AGGREGATE 'app.Order'", side="right"
+        )
 
     def test_removal_version_written_as_a_string_is_classified(self, tmp_path):
         """The same removal with a string version runs to a normal verdict."""

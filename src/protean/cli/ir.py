@@ -260,7 +260,7 @@ def diff(
     except ConfigurationError as exc:
         print(
             f"[red]Error:[/red] {escape(str(exc))} "
-            "Fix the baseline IR by hand, or regenerate it."
+            "Fix that IR file by hand, or regenerate it."
         )
         raise typer.Abort() from exc
 

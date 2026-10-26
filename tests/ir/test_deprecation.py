@@ -10,7 +10,13 @@ from protean import Domain
 from protean.exceptions import ConfigurationError
 from protean.fields import Float, Identifier, String
 from protean.ir.builder import IRBuilder
-from protean.ir.diff import _classify_removal, _parse_version_tuple, diff_ir
+from protean.ir.diff import (
+    _check_deprecations,
+    _classify_removal,
+    _parse_version_tuple,
+    classify_changes,
+    diff_ir,
+)
 from protean.utils import _normalize_deprecated
 from protean.utils.mixins import handle, read
 
@@ -743,14 +749,14 @@ class TestClassifyRemoval:
     """Tests for ``_classify_removal`` in the diff engine."""
 
     def test_no_deprecation_is_unexpected(self) -> None:
-        assert _classify_removal(None, subject="x") == "unexpected_removal"
+        assert _classify_removal(None) == "unexpected_removal"
 
     def test_deprecated_no_removal_version_is_premature(self) -> None:
-        assert _classify_removal({"since": "0.15"}, subject="x") == "premature_removal"
+        assert _classify_removal({"since": "0.15"}) == "premature_removal"
 
     def test_deprecated_with_removal_no_current_is_premature(self) -> None:
         assert (
-            _classify_removal({"since": "0.15", "removal": "0.18"}, subject="x")
+            _classify_removal({"since": "0.15", "removal": "0.18"})
             == "premature_removal"
         )
 
@@ -758,7 +764,6 @@ class TestClassifyRemoval:
         result = _classify_removal(
             {"since": "0.15", "removal": "0.18"},
             current_version="0.16",
-            subject="x",
         )
         assert result == "premature_removal"
 
@@ -766,7 +771,6 @@ class TestClassifyRemoval:
         result = _classify_removal(
             {"since": "0.15", "removal": "0.18"},
             current_version="0.18",
-            subject="x",
         )
         assert result == "expected_removal"
 
@@ -774,7 +778,6 @@ class TestClassifyRemoval:
         result = _classify_removal(
             {"since": "0.15", "removal": "0.18"},
             current_version="0.19",
-            subject="x",
         )
         assert result == "expected_removal"
 
@@ -784,41 +787,219 @@ class TestClassifyRemoval:
         result = _classify_removal(
             {"since": "0.15", "removal": "1.x"},
             current_version="1.0",
-            subject="x",
         )
         assert result == "premature_removal"
 
+
+# =====================================================================
+# diff_ir / classify_changes — checking every deprecated block
+# =====================================================================
+
+
+def _element(element_type: str, fqn: str, **extra: object) -> dict:
+    return {"element_type": element_type, "fqn": fqn, "fields": {}, **extra}
+
+
+def _ir_with(path: str, deprecated: object) -> tuple[dict, str]:
+    """Return an IR holding *deprecated* at *path*, and the subject an error
+    names for it."""
+    ir: dict = {
+        "clusters": {},
+        "projections": {},
+        "flows": {},
+        "contracts": {"events": []},
+    }
+    if path == "aggregate":
+        aggregate = _element("AGGREGATE", "app.Order", deprecated=deprecated)
+        ir["clusters"]["app.Order"] = {"aggregate": aggregate}
+        return ir, "AGGREGATE 'app.Order'"
+    if path == "aggregate field":
+        aggregate = _element("AGGREGATE", "app.Order")
+        aggregate["fields"]["legacy"] = {"kind": "standard", "deprecated": deprecated}
+        ir["clusters"]["app.Order"] = {"aggregate": aggregate}
+        return ir, "field 'legacy' of AGGREGATE 'app.Order'"
+    if path == "entity field":
+        entity = _element("ENTITY", "app.LineItem")
+        entity["fields"]["legacy"] = {"kind": "standard", "deprecated": deprecated}
+        ir["clusters"]["app.Order"] = {
+            "aggregate": _element("AGGREGATE", "app.Order"),
+            "entities": {"app.LineItem": entity},
+        }
+        return ir, "field 'legacy' of ENTITY 'app.LineItem'"
+    if path in ("command field", "value object field"):
+        section, element_type, fqn = {
+            "command field": ("commands", "COMMAND", "app.PlaceOrder"),
+            "value object field": ("value_objects", "VALUE_OBJECT", "app.Address"),
+        }[path]
+        element = _element(element_type, fqn)
+        element["fields"]["legacy"] = {"kind": "standard", "deprecated": deprecated}
+        ir["clusters"]["app.Order"] = {
+            "aggregate": _element("AGGREGATE", "app.Order"),
+            section: {fqn: element},
+        }
+        return ir, f"field 'legacy' of {element_type} '{fqn}'"
+    if path == "published event":
+        ir["contracts"]["events"].append(
+            {
+                "fqn": "app.OrderPlaced",
+                "type": "App.OrderPlaced.v1",
+                "deprecated": deprecated,
+            }
+        )
+        return ir, "published event 'App.OrderPlaced.v1'"
+    if path == "published event field":
+        ir["contracts"]["events"].append(
+            {
+                "fqn": "app.OrderPlaced",
+                "type": "App.OrderPlaced.v1",
+                "fields": {"legacy": {"kind": "standard", "deprecated": deprecated}},
+            }
+        )
+        return ir, "field 'legacy' of published event 'App.OrderPlaced.v1'"
+    if path == "projection":
+        ir["projections"]["app.Summary"] = {
+            "projection": _element("PROJECTION", "app.Summary", deprecated=deprecated)
+        }
+        return ir, "PROJECTION 'app.Summary'"
+    if path == "projector":
+        ir["projections"]["app.Summary"] = {
+            "projection": _element("PROJECTION", "app.Summary"),
+            "projectors": {
+                "app.SummaryProjector": _element(
+                    "PROJECTOR", "app.SummaryProjector", deprecated=deprecated
+                )
+            },
+        }
+        return ir, "PROJECTOR 'app.SummaryProjector'"
+    if path == "subscriber":
+        ir["flows"]["subscribers"] = {
+            "app.Payments": _element(
+                "SUBSCRIBER", "app.Payments", deprecated=deprecated
+            )
+        }
+        return ir, "SUBSCRIBER 'app.Payments'"
+    assert path == "domain service"
+    ir["flows"]["domain_services"] = {
+        "app.Pricing": _element("DOMAIN_SERVICE", "app.Pricing", deprecated=deprecated)
+    }
+    return ir, "DOMAIN_SERVICE 'app.Pricing'"
+
+
+_PATHS = [
+    "aggregate",
+    "aggregate field",
+    "entity field",
+    "command field",
+    "value object field",
+    "published event",
+    "published event field",
+    "projection",
+    "projector",
+    "domain service",
+    "subscriber",
+]
+
+
+class TestDiffChecksEveryDeprecatedBlock:
+    """The diff checks every ``deprecated`` block in both IRs before comparing,
+    so a malformed one is refused whether or not anything around it changed."""
+
+    @pytest.mark.parametrize("path", _PATHS)
+    @pytest.mark.parametrize("side", ["left", "right"])
+    def test_number_is_refused_when_nothing_is_removed(
+        self, path: str, side: str
+    ) -> None:
+        bad, subject = _ir_with(path, {"since": "0.15", "removal": 0.2})
+        good, _ = _ir_with(path, {"since": "0.15", "removal": "0.20"})
+        left, right = (bad, good) if side == "left" else (good, bad)
+
+        expected = f"The `removal` version of {subject} in the {side} IR is 0.2"
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            diff_ir(left, right)
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            classify_changes({}, left, right)
+
+    @pytest.mark.parametrize(
+        ("deprecated", "problem"),
+        [
+            ({"since": 0.2}, "The `since` version of {where} is 0.2"),
+            ({"since": "0.15", "removal": 1}, "The `removal` version of {where} is 1"),
+            (
+                "0.15",
+                "The `deprecated` value of {where} is '0.15', which is not an object",
+            ),
+            (
+                False,
+                "The `deprecated` value of {where} is False, which is not an object",
+            ),
+            (
+                {"removal": "0.20"},
+                "The `deprecated` value of {where} has no `since` version",
+            ),
+            ({}, "The `deprecated` value of {where} has no `since` version"),
+        ],
+    )
+    def test_malformed_block_is_refused(self, deprecated: object, problem: str) -> None:
+        ir, subject = _ir_with("aggregate field", deprecated)
+        expected = problem.format(where=f"{subject} in the left IR")
+
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            diff_ir(ir, ir)
+
+    @pytest.mark.parametrize("path", _PATHS)
+    @pytest.mark.parametrize(
+        "deprecated",
+        [
+            None,
+            {"since": "0.15"},
+            {"since": "0.15", "removal": None},
+            {"since": "0.15", "removal": "0.20"},
+        ],
+    )
+    def test_well_formed_block_is_accepted(self, path: str, deprecated: object) -> None:
+        ir, _ = _ir_with(path, deprecated)
+
+        assert diff_ir(ir, ir)["summary"]["has_changes"] is False
+        assert not classify_changes({}, ir, ir).breaking_changes
+
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            {"clusters": {"app.Order": {"aggregate": None, "entities": None}}},
+            {"clusters": {"app.Order": {"entities": {"app.LineItem": None}}}},
+            {"clusters": {"app.Order": {"aggregate": {"fields": None}}}},
+            {"clusters": {"app.Order": {"aggregate": {"fields": ["id"]}}}},
+            {"clusters": {"app.Order": {"aggregate": {"fields": {"id": "Auto"}}}}},
+            {"projections": {"app.Summary": {"projectors": None}}},
+            {"flows": {"domain_services": None}},
+            {"contracts": {"events": ["app.OrderPlaced"]}},
+        ],
+    )
+    def test_shape_that_is_not_an_object_is_left_to_the_diff(self, shape: dict) -> None:
+        """The check reads only ``deprecated`` blocks, and skips a section or
+        entry of another shape."""
+        _check_deprecations(shape, "left")
+
+    def test_field_named_deprecated_is_not_read_as_a_block(self) -> None:
+        ir, _ = _ir_with("aggregate", None)
+        ir["clusters"]["app.Order"]["aggregate"]["fields"]["deprecated"] = {
+            "kind": "standard",
+            "type": "Boolean",
+        }
+
+        assert diff_ir(ir, ir)["summary"]["has_changes"] is False
+
     @pytest.mark.parametrize("current_version", [0.2, 1])
-    def test_current_version_written_as_a_number_raises(
+    def test_current_version_written_as_a_number_is_refused(
         self, current_version: object
     ) -> None:
-        with pytest.raises(ConfigurationError) as exc_info:
-            _classify_removal(
-                {"since": "0.15", "removal": "0.19"},
-                current_version=current_version,  # type: ignore[arg-type]
-                subject="x",
-            )
+        ir, _ = _ir_with("aggregate", None)
+        expected = f"current_version is {current_version!r}, which is not a string"
 
-        assert f"current_version is {current_version!r}" in str(exc_info.value)
-
-    @pytest.mark.parametrize("current_version", ["0.18", None])
-    @pytest.mark.parametrize("removal", [0.2, 0.18, 1])
-    def test_removal_written_as_a_number_raises(
-        self, removal: object, current_version: str | None
-    ) -> None:
-        with pytest.raises(ConfigurationError) as exc_info:
-            _classify_removal(
-                {"since": "0.15", "removal": removal},
-                current_version=current_version,
-                subject="field 'legacy' of event 'app.OrderPlaced'",
-            )
-
-        message = str(exc_info.value)
-        assert (
-            "The `removal` version of field 'legacy' of event 'app.OrderPlaced' "
-            f"is {removal!r}"
-        ) in message
-        assert '"removal": "0.20"' in message
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            diff_ir(ir, ir, current_version=current_version)  # type: ignore[arg-type]
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            classify_changes({}, ir, ir, current_version=current_version)  # type: ignore[arg-type]
 
 
 # =====================================================================
@@ -1019,7 +1200,6 @@ class TestParseVersionTuple:
         result = _classify_removal(
             {"since": "0.15", "removal": "not-a-version"},
             current_version="also-bad",
-            subject="x",
         )
         # Both are non-numeric strings; comparison still works (string vs string)
         # but the key thing is no crash
