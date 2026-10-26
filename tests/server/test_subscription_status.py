@@ -1232,7 +1232,12 @@ class TestRedisPartitionedStatus:
         self._read(a, "worker-1", 1)
         self._read(b, "worker-2", 1)
 
-        assert self._status().consumer_count == 2
+        status = self._status()
+
+        assert status.consumer_count == 2
+        assert status.lag == 0
+        assert status.pending == 2
+        assert status.status == "lagging"
 
     def test_no_partitions_yet_is_zero_lag(self):
         status = self._status()
