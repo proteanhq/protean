@@ -92,14 +92,14 @@ class RedisPubSubBroker(BaseBroker):
 
         return messages
 
-    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:  # pragma: no cover  # the base class returns before this: no ACK_NACK capability  # fmt: skip
         """Acknowledge - not supported in simple queuing"""
         logger.warning(
             f"ACK not supported by {self.__class__.__name__} - message {identifier} cannot be acknowledged"
         )
         return False
 
-    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:  # pragma: no cover  # the base class returns before this: no ACK_NACK capability  # fmt: skip
         """Negative acknowledge - not supported in simple queuing"""
         logger.warning(
             f"NACK not supported by {self.__class__.__name__} - message {identifier} cannot be nacked"
