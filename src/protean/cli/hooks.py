@@ -60,7 +60,7 @@ import sys
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from protean.exceptions import NoDomainException
+from protean.exceptions import ConfigurationError, NoDomainException
 from protean.ir.diff import breaking_change_messages, classify_changes, diff_ir
 from protean.ir.git import GitError
 from protean.ir.staleness import StalenessStatus, check_staleness
@@ -374,8 +374,12 @@ def _check_compat_single(
 
     current_ir = _load_live_ir(domain_module)
 
-    result = diff_ir(baseline_ir, current_ir)
-    report = classify_changes(result, baseline_ir, current_ir)
+    try:
+        result = diff_ir(baseline_ir, current_ir)
+        report = classify_changes(result, baseline_ir, current_ir)
+    except ConfigurationError as exc:
+        print(f"Error comparing IR for {domain_module}: {exc}", file=sys.stderr)
+        return False
 
     if config.exclude:
         report.breaking_changes = [

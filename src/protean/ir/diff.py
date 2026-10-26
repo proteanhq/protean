@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from protean.ir.generators.avro import has_emittable_default
+from protean.utils import _require_version_string
 from protean.utils.upcasting import missing_upcaster_source_versions
 
 # The Avro compatibility verdict vocabulary (matches Confluent/Avro terms).
@@ -461,15 +462,23 @@ def _parse_version_tuple(version_str: str) -> tuple[int | str, ...]:
 
 
 def _classify_removal(
-    deprecated: dict[str, str] | None,
+    deprecated: dict[str, Any] | None,
     current_version: str | None = None,
+    *,
+    subject: str,
 ) -> str:
     """Classify a removal based on deprecation metadata.
+
+    *subject* names the removed element or field in the error raised for a
+    removal version that is not a string.
 
     Returns one of:
     - ``"expected_removal"`` — deprecated and past the removal version (safe)
     - ``"premature_removal"`` — deprecated but before removal version (breaking)
     - ``"unexpected_removal"`` — not deprecated at all (breaking)
+
+    Raises:
+        ConfigurationError: The removal version is not a string.
     """
     if deprecated is None:
         return "unexpected_removal"
@@ -480,14 +489,13 @@ def _classify_removal(
         # removed, since consumers may not have migrated yet.
         return "premature_removal"
 
+    removal = _require_version_string("removal", removal, subject)
+
     if current_version is not None:
-        # ``str()`` accepts a version written as a number (``removal: 0.18``).
         # Mixed numeric and text segments (``"1.0"`` vs ``"1.x"``) cannot be
         # ordered and raise ``TypeError``; treat those as premature.
         with contextlib.suppress(TypeError):
-            if _parse_version_tuple(str(current_version)) >= _parse_version_tuple(
-                str(removal)
-            ):
+            if _parse_version_tuple(current_version) >= _parse_version_tuple(removal):
                 return "expected_removal"
 
     # Without a current version to compare, we can't confirm the removal
@@ -530,7 +538,9 @@ def _diff_contracts(
     for event in removed:
         event_label = event.get("type", event["fqn"])
         deprecated = event.get("deprecated")
-        classification = _classify_removal(deprecated, current_version)
+        classification = _classify_removal(
+            deprecated, current_version, subject=f"published event '{event_label}'"
+        )
 
         if classification == "expected_removal":
             expected_removals.append(
@@ -702,7 +712,11 @@ def _diff_contracts(
             if field_name in contract_renames:
                 continue
             field_deprecated = left_fields[field_name].get("deprecated")
-            field_classification = _classify_removal(field_deprecated, current_version)
+            field_classification = _classify_removal(
+                field_deprecated,
+                current_version,
+                subject=f"field '{field_name}' of published event '{left_type}'",
+            )
 
             if field_classification == "expected_removal":
                 expected_removals.append(
@@ -1782,7 +1796,11 @@ def _classify_field_changes(
         # which previously only got raw (always-breaking) classification (the
         # deprecation grace was limited to published contracts).
         deprecated = removed[field_name].get("deprecated")
-        classification = _classify_removal(deprecated, current_version)
+        classification = _classify_removal(
+            deprecated,
+            current_version,
+            subject=f"field '{field_name}' of {element_type} '{fqn}'",
+        )
         forward_safe = _removal_forward_safe(removed[field_name])
         if classification == "expected_removal":
             report.safe_changes.append(

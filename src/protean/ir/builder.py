@@ -32,7 +32,7 @@ from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET
-from protean.ir import SCHEMA_VERSION
+from protean.ir import SCHEMA_URL, SCHEMA_VERSION
 from protean.ir.analysis import (
     RAISE_METHOD,
     BehavioralView,
@@ -343,7 +343,7 @@ class IRBuilder:
     def build(self) -> dict[str, Any]:
         """Return the complete IR dictionary."""
         ir: dict[str, Any] = {
-            "$schema": f"https://protean.dev/ir/v{SCHEMA_VERSION}/schema.json",
+            "$schema": SCHEMA_URL,
             "checksum": "",
             "clusters": self._build_clusters(),
             "contracts": self._build_contracts(),

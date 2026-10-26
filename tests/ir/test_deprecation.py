@@ -46,9 +46,24 @@ class TestNormalizeDeprecated:
         with pytest.raises(ConfigurationError, match="Invalid `deprecated`"):
             _normalize_deprecated(42)
 
-    def test_values_coerced_to_string(self) -> None:
-        result = _normalize_deprecated({"since": 15, "removal": 18})
-        assert result == {"since": "15", "removal": "18"}
+    @pytest.mark.parametrize(
+        ("value", "key"),
+        [
+            ({"since": "0.18", "removal": 0.20}, "removal"),
+            ({"since": "0.18", "removal": 1}, "removal"),
+            ({"since": 0.20}, "since"),
+            ({"since": 15, "removal": "0.20"}, "since"),
+        ],
+    )
+    def test_version_written_as_a_number_raises(
+        self, value: dict[str, object], key: str
+    ) -> None:
+        with pytest.raises(ConfigurationError) as exc_info:
+            _normalize_deprecated(value)
+
+        message = str(exc_info.value)
+        assert f"The `{key}` version of `deprecated=` is {value[key]!r}" in message
+        assert f'"{key}": "0.20"' in message
 
     def test_extra_keys_ignored(self) -> None:
         """Extra keys beyond since/removal are silently dropped."""
@@ -258,7 +273,10 @@ class TestNormalizerParity:
 
         assert field_result == fieldspec_result == Order.meta_.deprecated
 
-    @pytest.mark.parametrize("value", [{"removal": "0.18"}, True, 42])
+    @pytest.mark.parametrize(
+        "value",
+        [{"removal": "0.18"}, True, 42, {"since": "0.18", "removal": 0.20}],
+    )
     def test_rejection_parity(self, value: object) -> None:
         from protean.fields.spec import FieldSpec
 
@@ -677,14 +695,14 @@ class TestClassifyRemoval:
     """Tests for ``_classify_removal`` in the diff engine."""
 
     def test_no_deprecation_is_unexpected(self) -> None:
-        assert _classify_removal(None) == "unexpected_removal"
+        assert _classify_removal(None, subject="x") == "unexpected_removal"
 
     def test_deprecated_no_removal_version_is_premature(self) -> None:
-        assert _classify_removal({"since": "0.15"}) == "premature_removal"
+        assert _classify_removal({"since": "0.15"}, subject="x") == "premature_removal"
 
     def test_deprecated_with_removal_no_current_is_premature(self) -> None:
         assert (
-            _classify_removal({"since": "0.15", "removal": "0.18"})
+            _classify_removal({"since": "0.15", "removal": "0.18"}, subject="x")
             == "premature_removal"
         )
 
@@ -692,6 +710,7 @@ class TestClassifyRemoval:
         result = _classify_removal(
             {"since": "0.15", "removal": "0.18"},
             current_version="0.16",
+            subject="x",
         )
         assert result == "premature_removal"
 
@@ -699,6 +718,7 @@ class TestClassifyRemoval:
         result = _classify_removal(
             {"since": "0.15", "removal": "0.18"},
             current_version="0.18",
+            subject="x",
         )
         assert result == "expected_removal"
 
@@ -706,6 +726,7 @@ class TestClassifyRemoval:
         result = _classify_removal(
             {"since": "0.15", "removal": "0.18"},
             current_version="0.19",
+            subject="x",
         )
         assert result == "expected_removal"
 
@@ -715,25 +736,28 @@ class TestClassifyRemoval:
         result = _classify_removal(
             {"since": "0.15", "removal": "1.x"},
             current_version="1.0",
+            subject="x",
         )
         assert result == "premature_removal"
 
-    @pytest.mark.parametrize(
-        ("removal", "current_version", "expected"),
-        [
-            (0.18, "0.18", "expected_removal"),
-            (0.18, "0.17", "premature_removal"),
-            (1, 1, "expected_removal"),
-        ],
-    )
-    def test_versions_written_as_numbers_are_compared(
-        self, removal, current_version, expected
+    @pytest.mark.parametrize("current_version", ["0.18", None])
+    @pytest.mark.parametrize("removal", [0.2, 0.18, 1])
+    def test_removal_written_as_a_number_raises(
+        self, removal: object, current_version: str | None
     ) -> None:
-        result = _classify_removal(
-            {"since": "0.15", "removal": removal},
-            current_version=current_version,
-        )
-        assert result == expected
+        with pytest.raises(ConfigurationError) as exc_info:
+            _classify_removal(
+                {"since": "0.15", "removal": removal},
+                current_version=current_version,
+                subject="field 'legacy' of event 'app.OrderPlaced'",
+            )
+
+        message = str(exc_info.value)
+        assert (
+            "The `removal` version of field 'legacy' of event 'app.OrderPlaced' "
+            f"is {removal!r}"
+        ) in message
+        assert '"removal": "0.20"' in message
 
 
 # =====================================================================
@@ -934,6 +958,7 @@ class TestParseVersionTuple:
         result = _classify_removal(
             {"since": "0.15", "removal": "not-a-version"},
             current_version="also-bad",
+            subject="x",
         )
         # Both are non-numeric strings; comparison still works (string vs string)
         # but the key thing is no crash

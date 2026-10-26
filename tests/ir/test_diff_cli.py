@@ -11,6 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
+from protean.exceptions import ConfigurationError
 from protean.ir.builder import IRBuilder
 
 runner = CliRunner()
@@ -792,6 +793,89 @@ class TestDiffExitCodes:
         assert result.exit_code == 0
 
 
+class TestDiffRefusesRemovalVersionWrittenAsANumber:
+    """A number cannot keep a trailing zero (0.20 arrives as 0.2), so the
+    diff refuses it with an error naming the removed element or field, rather
+    than classing the removal against the wrong version."""
+
+    _DEPRECATED = {"since": "0.15", "removal": 0.2}
+
+    @staticmethod
+    def _event(**extra):
+        return {
+            "__type__": "Test.OrderPlaced.v1",
+            "fqn": "app.OrderPlaced",
+            "type": "Test.OrderPlaced.v1",
+            **extra,
+        }
+
+    @staticmethod
+    def _order_ir(fields):
+        return _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields=fields)}
+        )
+
+    @staticmethod
+    def _legacy_field(deprecated):
+        return {"kind": "standard", "type": "String", "deprecated": deprecated}
+
+    def _run(self, tmp_path, left_ir, right_ir):
+        left = _write_ir(tmp_path, "left.json", left_ir)
+        right = _write_ir(tmp_path, "right.json", right_ir)
+        result = runner.invoke(
+            app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
+        )
+        # Rich wraps the error at the terminal width; compare without breaks.
+        return result, " ".join(result.output.split())
+
+    def _assert_refused(self, result, output, subject):
+        assert result.exit_code == 1
+        assert not isinstance(result.exception, ConfigurationError)
+        assert f"Error: The `removal` version of {subject} is 0.2" in output
+        assert '"removal": "0.20"' in output
+
+    def test_removed_published_event(self, tmp_path):
+        result, output = self._run(
+            tmp_path,
+            _minimal_ir(
+                contracts={"events": [self._event(deprecated=self._DEPRECATED)]}
+            ),
+            _minimal_ir(),
+        )
+        self._assert_refused(result, output, "published event 'Test.OrderPlaced.v1'")
+
+    def test_removed_field_of_published_event(self, tmp_path):
+        legacy = self._legacy_field(self._DEPRECATED)
+        result, output = self._run(
+            tmp_path,
+            _minimal_ir(contracts={"events": [self._event(fields={"legacy": legacy})]}),
+            _minimal_ir(contracts={"events": [self._event(fields={})]}),
+        )
+        self._assert_refused(
+            result,
+            output,
+            "field 'legacy' of published event 'Test.OrderPlaced.v1'",
+        )
+
+    def test_removed_field_of_aggregate(self, tmp_path):
+        result, output = self._run(
+            tmp_path,
+            self._order_ir({"legacy": self._legacy_field(self._DEPRECATED)}),
+            self._order_ir({}),
+        )
+        self._assert_refused(result, output, "field 'legacy' of AGGREGATE 'app.Order'")
+
+    def test_removal_version_written_as_a_string_is_classified(self, tmp_path):
+        """The same removal with a string version runs to a normal verdict."""
+        legacy = self._legacy_field({"since": "0.15", "removal": "0.20"})
+        result, output = self._run(
+            tmp_path, self._order_ir({"legacy": legacy}), self._order_ir({})
+        )
+        assert result.exit_code == 1
+        assert "Error:" not in output
+        assert json.loads(result.output)["summary"]["has_changes"] is True
+
+
 # ------------------------------------------------------------------
 # Auto-baseline: --domain only (no --left/--right)
 # ------------------------------------------------------------------
@@ -825,6 +909,39 @@ class TestDiffAutoBaseline:
         self._protean_dir.mkdir(parents=True)
         (self._protean_dir / "ir.json").write_text(
             json.dumps(live_ir), encoding="utf-8"
+        )
+
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+                "-f",
+                "json",
+            ],
+        )
+        parsed = json.loads(result.output)
+        assert parsed["summary"]["has_changes"] is False
+        assert result.exit_code == 0
+
+    def test_baseline_with_old_schema_url_gives_no_diff(self):
+        """Baselines written before the IR's ``$schema`` URL moved to the docs
+        site still name ``protean.dev``. The URL alone is not a change."""
+        live_ir = self._live_ir()
+        assert live_ir["$schema"].startswith("https://docs.proteanhq.com/assets/ir/")
+        baseline = dict(
+            live_ir,
+            **{
+                "$schema": f"https://protean.dev/ir/v{live_ir['ir_version']}/schema.json"
+            },
+        )
+        self._protean_dir.mkdir(parents=True)
+        (self._protean_dir / "ir.json").write_text(
+            json.dumps(baseline), encoding="utf-8"
         )
 
         result = runner.invoke(

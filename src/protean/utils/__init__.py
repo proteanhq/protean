@@ -598,6 +598,23 @@ TRUTHY_FLAG_SPELLINGS = frozenset({"true", "1", "yes", "on"})
 FALSY_FLAG_SPELLINGS = frozenset({"false", "0", "no", "off", ""})
 
 
+def _require_version_string(key: str, value: object, subject: str) -> str:
+    """Return *value* if it is a string, else raise :class:`ConfigurationError`.
+
+    *key* is ``"since"`` or ``"removal"`` and *subject* names what carries the
+    version, for the error message.
+    """
+    if isinstance(value, str):
+        return value
+    # A number cannot be repaired: Python and JSON both read ``0.20`` as
+    # ``0.2``, which sorts before ``0.18`` when versions are compared.
+    raise ConfigurationError(
+        f"The `{key}` version of {subject} is {value!r}, which is not a string. "
+        f'Write it as a string, such as "{key}": "0.20". A number loses its '
+        "trailing zeros, so 0.20 arrives as 0.2."
+    )
+
+
 def _normalize_deprecated(value: str | dict[str, Any] | None) -> dict[str, str] | None:
     """Normalize the ``deprecated`` value used by element decorators and by
     the ``Field``/``FieldSpec`` ``deprecated`` parameter.
@@ -608,7 +625,8 @@ def _normalize_deprecated(value: str | dict[str, Any] | None) -> dict[str, str] 
     - ``{"since": "0.15"}`` → as-is
     - ``{"since": "0.15", "removal": "0.18"}`` → as-is
 
-    Raises :class:`ConfigurationError` on invalid input.
+    Raises :class:`ConfigurationError` on invalid input, including a ``since``
+    or ``removal`` version that is not a string.
     """
     # `False` is also tolerated as a `None` synonym for backward compatibility,
     # but intentionally left off the type hint and docstring above.
@@ -621,10 +639,11 @@ def _normalize_deprecated(value: str | dict[str, Any] | None) -> dict[str, str] 
             raise ConfigurationError(
                 f"The `deprecated` value must include a 'since' key (got {value!r})"
             )
-        result: dict[str, str] = {"since": str(value["since"])}
-        if "removal" in value:
-            result["removal"] = str(value["removal"])
-        return result
+        return {
+            key: _require_version_string(key, value[key], "`deprecated=`")
+            for key in ("since", "removal")
+            if key in value
+        }
     raise ConfigurationError(
         f"Invalid `deprecated` value: {value!r}. "
         "Expected a version string or dict with 'since' (and optional 'removal') keys."

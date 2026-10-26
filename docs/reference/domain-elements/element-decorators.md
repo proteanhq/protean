@@ -148,7 +148,7 @@ past tense (`OrderPlaced`, `CustomerRegistered`).
 | `abstract` | `False` | Cannot be instantiated when `True` |
 | **`part_of`** | — | **Required.** Aggregate or process manager that raises this event |
 | `version` | `1` | Schema version (positive integer). Feeds the `vN` suffix of the event's type string |
-| `deprecated` | `None` | Marks the event deprecated. A dict `{"since": ..., "removal": ...}` recording the deprecation and planned removal versions |
+| `deprecated` | `None` | Marks the event deprecated. A dict `{"since": ..., "removal": ...}` recording the deprecation and planned removal versions. Both versions are strings, such as `"0.20"`; a number raises `ConfigurationError` |
 | `superseded_by` | `None` | Names the replacement event (an Event class or a string). Raising a deprecated event emits a `DeprecationWarning` naming it |
 | `published` | `False` | The event is part of this context's published language, so other contexts may depend on its shape. See [Guarantees](../guarantees.md) |
 | `lenient` | `None` | Overrides the domain's `lenient_deserialization` for this class. `True` drops unknown fields when reading an old message instead of raising; `None` follows the domain setting |

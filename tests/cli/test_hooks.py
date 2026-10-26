@@ -1465,6 +1465,37 @@ class TestCheckCompatSingle:
         captured = capsys.readouterr()
         assert "error" in captured.err.lower()
 
+    @pytest.mark.parametrize("strictness", ["strict", "warn"])
+    def test_returns_false_on_removal_version_written_as_a_number(
+        self, capsys, strictness
+    ):
+        """A baseline field whose removal version is a number blocks the commit."""
+        live_ir = _live_ir_for_test7()
+        baseline_ir = json.loads(json.dumps(live_ir))
+        assert len(baseline_ir["clusters"]) > 0
+        cluster = next(iter(baseline_ir["clusters"].values()))
+        aggregate_fqn = cluster["aggregate"]["fqn"]
+        cluster["aggregate"]["fields"]["legacy"] = {
+            "kind": "standard",
+            "type": "String",
+            "deprecated": {"since": "0.15", "removal": 0.2},
+        }
+
+        config = CompatConfig(strictness=strictness)
+        with patch("protean.ir.git.load_ir_from_commit", return_value=baseline_ir):
+            result = _check_compat_single(
+                "publishing7.py",
+                Path(".protean"),
+                base="HEAD",
+                config=config,
+            )
+
+        assert result is False
+        err = capsys.readouterr().err
+        assert "Error comparing IR for publishing7.py" in err
+        assert f"field 'legacy' of AGGREGATE '{aggregate_fqn}' is 0.2" in err
+        assert '"removal": "0.20"' in err
+
     def test_warn_mode_returns_true_for_breaking(self, capsys):
         """strictness=warn → report breaking changes but return True."""
         live_ir = _live_ir_for_test7()
