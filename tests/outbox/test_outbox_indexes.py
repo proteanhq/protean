@@ -18,8 +18,8 @@ from protean.utils.reflection import declared_fields
 
 
 class TestOutboxIndexDeclarations:
-    def test_declares_three_recommended_indexes(self):
-        assert len(OUTBOX_INDEXES) == 3
+    def test_declares_four_recommended_indexes(self):
+        assert len(OUTBOX_INDEXES) == 4
         by_name = {(ix.name or "_".join(ix.fields)): ix for ix in OUTBOX_INDEXES}
         assert "ix_outbox_active" in by_name
         # (message_id, target_broker) composite unique, correlation_id plain.
@@ -33,6 +33,19 @@ class TestOutboxIndexDeclarations:
             for ix in OUTBOX_INDEXES
         )
         assert any(ix.fields == ("correlation_id",) for ix in OUTBOX_INDEXES)
+
+    def test_hold_back_index_covers_the_group_and_status(self):
+        hold_back = next(
+            ix for ix in OUTBOX_INDEXES if ix.name == "ix_outbox_hold_back"
+        )
+        assert hold_back.fields == (
+            "target_broker",
+            "stream_category",
+            "partition_key",
+            "status",
+        )
+        assert not hold_back.unique
+        assert hold_back.where is None
 
     def test_active_index_is_partial_and_follows_the_claim_order(self):
         active = next(ix for ix in OUTBOX_INDEXES if ix.name == "ix_outbox_active")
@@ -70,6 +83,7 @@ class TestOutboxIndexCreation:
             assert {
                 "ix_outbox_active",
                 "ix_outbox_correlation_id",
+                "ix_outbox_hold_back",
                 "uq_outbox_message_id_target_broker",
             } <= set(indexes)
             assert indexes["ix_outbox_active"]["column_names"] == [

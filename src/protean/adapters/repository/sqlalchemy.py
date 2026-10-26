@@ -69,7 +69,7 @@ from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject, _ShadowField
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET, FieldSpec
-from protean.port.dao import BaseDAO, BaseLookup
+from protean.port.dao import BaseDAO, BaseLookup, HoldBack
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
 from protean.utils import (
     Database,
@@ -1684,23 +1684,27 @@ class SADAO(BaseDAO):
                 new_connection.begin()
             return new_connection
 
-    def _build_filters(self, criteria: Q) -> typing.Any:
-        """Recursively Build the filters from the criteria object"""
+    def _build_filters(self, criteria: Q, model: typing.Any = None) -> typing.Any:
+        """Recursively Build the filters from the criteria object.
+
+        ``model`` is the mapped class (or an ``orm.aliased`` copy of it) whose
+        columns the filters read. It defaults to the DAO's own model; the
+        hold-back claim passes an alias to filter a second copy of the table.
+        """
+        model = self.database_model_cls if model is None else model
         # Decide the function based on the connector type
         func = and_ if criteria.connector == criteria.AND else or_
         params = []
         for child in criteria.children:
             if isinstance(child, Q):
                 # Call the function again with the child
-                params.append(self._build_filters(child))
+                params.append(self._build_filters(child, model))
             else:
                 # Find the lookup class and the key
                 stripped_key, lookup_class = self.provider._extract_lookup(child[0])
 
                 # Instantiate the lookup class and get the expression
-                lookup = lookup_class(
-                    stripped_key, child[1], database_model_cls=self.database_model_cls
-                )
+                lookup = lookup_class(stripped_key, child[1], database_model_cls=model)
                 if criteria.negated:
                     expression = lookup.as_expression()
                     assert expression is not None
@@ -2043,12 +2047,147 @@ class SADAO(BaseDAO):
         inner = inner.order_by(*order_cols).limit(limit)
         return table, id_col, inner
 
+    def _sorts_before(
+        self, left: typing.Any, right: typing.Any, keys: Sequence[str]
+    ) -> typing.Any:
+        """SQL expression that is true when row ``left`` sorts strictly before
+        row ``right`` on ``keys``.
+
+        ``left`` and ``right`` are the mapped class or aliases of it. A ``-``
+        prefix sorts that key descending. NULL sorts as the largest value (last
+        ascending, first descending), the same as :meth:`_order_clauses`.
+        """
+        table = self.database_model_cls.__table__
+        before_clauses = []
+        equal_so_far: list[typing.Any] = []
+        for key in keys:
+            name = key.lstrip("-")
+            descending = key.startswith("-")
+            left_col, right_col = getattr(left, name), getattr(right, name)
+            before = left_col > right_col if descending else left_col < right_col
+            if table.c[name].nullable:
+                if descending:
+                    null_side = and_(left_col.is_(None), right_col.is_not(None))
+                else:
+                    null_side = and_(left_col.is_not(None), right_col.is_(None))
+                before = or_(before, null_side)
+                same = left_col.is_not_distinct_from(right_col)
+            else:
+                same = left_col == right_col
+            before_clauses.append(and_(*equal_so_far, before))
+            equal_so_far.append(same)
+        return or_(*before_clauses)
+
+    def _same_group(
+        self, hold_back: HoldBack, row: typing.Any, other: typing.Any
+    ) -> typing.Any:
+        """SQL expression that is true when ``row`` and ``other`` share a
+        hold-back group: both match ``applies``, the ``group_by`` columns are
+        equal, and both match the same lane."""
+        # Through the provider's exact lookup, so the comparison is as
+        # case-sensitive as a ``Q`` filter (MSSQL's default collation is not).
+        clauses = []
+        for column in hold_back.group_by:
+            name, lookup_class = self.provider._extract_lookup(column)
+            lookup = lookup_class(name, getattr(row, column), database_model_cls=other)
+            clauses.append(lookup.as_expression())
+        clauses.append(self._build_filters(hold_back.applies, row))
+        clauses.append(self._build_filters(hold_back.applies, other))
+        if hold_back.lanes:
+            clauses.append(
+                or_(
+                    *(
+                        and_(
+                            self._build_filters(lane, row),
+                            self._build_filters(lane, other),
+                        )
+                        for lane in hold_back.lanes
+                    )
+                )
+            )
+        return and_(*clauses)
+
+    def _blocks_candidate(
+        self, hold_back: HoldBack, criteria: Q, order_by: str | list[str] | None
+    ) -> typing.Any:
+        """SQL ``EXISTS`` that is true when the outer row must not be a claim
+        candidate.
+
+        It looks for an earlier holding row of the outer row's group that
+        either does not match ``criteria`` (so this call cannot claim it) or
+        sorts after the outer row in the claim order (so the outer row would
+        be reached first). Either way the outer row would be held.
+        """
+        model = self.database_model_cls
+        earlier = orm.aliased(model, name="hold_back_earlier")
+        entity_id_field = id_field(self.entity_cls)
+        assert entity_id_field is not None
+        assert entity_id_field.attribute_name is not None
+        claim_order = _order_keys(order_by) or [entity_id_field.attribute_name]
+        return (
+            select(1)
+            .select_from(earlier)
+            .where(
+                self._same_group(hold_back, model, earlier),
+                self._build_filters(hold_back.holds, earlier),
+                self._sorts_before(earlier, model, hold_back.order),
+                ~and_(
+                    self._build_filters(criteria, earlier),
+                    self._sorts_before(earlier, model, claim_order),
+                ),
+            )
+            .exists()
+        )
+
+    def _claim_candidates(
+        self,
+        criteria: Q,
+        limit: int,
+        offset: int,
+        order_by: str | list[str] | None,
+        hold_back: HoldBack | None,
+    ) -> list[typing.Any]:
+        """Read one page of claim candidates for the portable claim path.
+
+        With ``hold_back``, the page leaves out every row that
+        :meth:`_blocks_candidate` holds, the same filter the PostgreSQL
+        statement applies. A held group's backlog then never fills a page, so
+        a halted key costs no extra reads on SQLite, MySQL, MariaDB and SQL
+        Server. The portable claim still checks each candidate, because
+        another worker can claim an earlier row between this read and the
+        claim.
+        """
+        if hold_back is None:
+            return super()._claim_candidates(
+                criteria, limit, offset, order_by, hold_back
+            )
+
+        table, _, inner = self._bounded_id_select(criteria, limit, order_by)
+        stmt = (
+            inner.where(~self._blocks_candidate(hold_back, criteria, order_by))
+            .with_only_columns(*table.c)
+            .offset(offset)
+        )
+
+        conn = self._get_session()
+        assert conn is not None
+        try:
+            candidates = []
+            for row in conn.execute(stmt).all():
+                entity = self.database_model_cls.to_entity(row)
+                entity.state_.mark_retrieved()
+                candidates.append(entity)
+        finally:
+            self._commit_if_standalone(conn)
+        return candidates
+
     def _claim(
         self,
         criteria: Q,
         claim_fields: dict[str, typing.Any],
         limit: int,
         order_by: str | list[str] | None = None,
+        hold_back: HoldBack | None = None,
     ) -> "list[BaseEntity]":
         """Atomic find-and-claim in a single ``UPDATE … RETURNING`` statement.
 
@@ -2067,6 +2206,41 @@ class SADAO(BaseDAO):
         TOCTOU window between the read and the claim. ``RETURNING`` hands back
         the post-claim rows.
 
+        With ``hold_back`` the statement stays one round trip::
+
+            WITH candidates AS MATERIALIZED (
+                SELECT id FROM <table> AS c
+                WHERE <criteria>
+                  AND NOT EXISTS (
+                    SELECT 1 FROM <table> AS e
+                    WHERE <e in c's group> AND <e holds> AND <e earlier than c>
+                      AND NOT (<e matches criteria> AND <e sorts before c>)
+                  )
+                ORDER BY <order> LIMIT <n> FOR UPDATE SKIP LOCKED
+            )
+            UPDATE <table> AS c SET <claim_fields>
+            WHERE id IN (SELECT id FROM candidates)
+              AND NOT EXISTS (
+                SELECT 1 FROM <table> AS e
+                WHERE <e in c's group> AND <e holds> AND <e earlier than c>
+                  AND e.id NOT IN (SELECT id FROM candidates)
+              )
+            RETURNING *
+
+        The outer ``NOT EXISTS`` is the claim rule: a grouped row is claimed
+        only when every earlier holding row of its group is in the locked set.
+        A row another worker has locked is skipped by ``SKIP LOCKED``, so it is
+        outside the set and holds the rows behind it.
+
+        The inner ``NOT EXISTS`` narrows the candidates before ``LIMIT``
+        applies. Without it, a held group with more than ``n`` waiting rows
+        would fill the candidate set on every call and keep other groups from
+        being claimed. And a group whose earlier row has a lower priority than
+        its later rows would never get that earlier row into the set, so the
+        group would stop for good. With it, a group's first waiting row always
+        sorts ahead of the group's other candidates. The cost is that a later,
+        higher-priority row waits one call for the earlier rows of its group.
+
         Every other dialect (MySQL/MariaDB — which lack ``UPDATE … RETURNING``;
         SQL Server; SQLite) falls back to the portable
         :meth:`BaseDAO._claim` default. That default is correct everywhere a
@@ -2079,39 +2253,62 @@ class SADAO(BaseDAO):
             return []
 
         if self.provider._engine.dialect.name not in self._SKIP_LOCKED_DIALECTS:
-            return super()._claim(criteria, claim_fields, limit, order_by)
+            return super()._claim(criteria, claim_fields, limit, order_by, hold_back)
 
         table, id_col, inner = self._bounded_id_select(criteria, limit, order_by)
-        inner = inner.with_for_update(skip_locked=True)
+        inner = inner.with_for_update(skip_locked=True, of=table)
 
-        stmt = (
-            update(table)
-            .where(id_col.in_(inner.scalar_subquery()))
-            .values(**claim_fields)
-            .returning(table)
-        )
+        if hold_back is None:
+            claimable = id_col.in_(inner.scalar_subquery())
+        else:
+            model = self.database_model_cls
+            candidates = (
+                inner.where(~self._blocks_candidate(hold_back, criteria, order_by))
+                .cte("hold_back_candidates")
+                .prefix_with("MATERIALIZED")
+            )
+            candidate_ids = select(candidates.c[id_col.name])
+
+            outside = orm.aliased(model, name="hold_back_outside")
+            held = (
+                select(1)
+                .select_from(outside)
+                .where(
+                    self._same_group(hold_back, model, outside),
+                    self._build_filters(hold_back.holds, outside),
+                    self._sorts_before(outside, model, hold_back.order),
+                    getattr(outside, id_col.name).not_in(candidate_ids),
+                )
+                .exists()
+            )
+            claimable = and_(id_col.in_(candidate_ids), ~held)
+
+        stmt = update(table).where(claimable).values(**claim_fields).returning(table)
 
         conn = self._get_session()
         assert conn is not None
         try:
             # Core ``Row`` objects support attribute access by column name,
             # which is what ``to_entity`` (via ``getattr``) expects.
-            rows = conn.execute(stmt).all()
+            rows = list(conn.execute(stmt).all())
+
+            # ``RETURNING`` does not preserve the inner ``ORDER BY`` used to
+            # select the top-N rows, so restore the requested order here.
+            # Stable sorts from the last key to the first apply each key in its
+            # own direction. The sort reads the column values, not the
+            # entity's: an ``Auto`` id on an integer column is a ``str`` on the
+            # entity, and ``"10"`` sorts before ``"2"``.
+            for key in reversed(_order_keys(order_by)):
+                rows.sort(
+                    key=functools.partial(_null_aware_sort_key, key.lstrip("-")),
+                    reverse=key.startswith("-"),
+                )
+
             claimed = []
             for row in rows:
                 entity = self.database_model_cls.to_entity(row)
                 entity.state_.mark_retrieved()
                 claimed.append(entity)
-
-            # ``RETURNING`` does not preserve the inner ``ORDER BY`` used to
-            # select the top-N rows, so restore the requested order here.
-            # Stable sorts from the last key to the first apply each key in its
-            # own direction.
-            for key in reversed(_order_keys(order_by)):
-                claimed.sort(
-                    key=functools.partial(_null_aware_sort_key, key.lstrip("-")),
-                    reverse=key.startswith("-"),
-                )
         except DatabaseError:
             logger.exception("repository.sqlalchemy.claim_atomically_failed")
             raise

@@ -1,5 +1,6 @@
 import logging
 import traceback
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING, Annotated, Any, cast
@@ -15,6 +16,7 @@ from protean.core.index import Index
 from protean.core.repository import BaseRepository
 from protean.exceptions import DeserializationError, ValidationError
 from protean.fields import Auto
+from protean.port.dao import HoldBack
 from protean.utils import (
     DomainObjects,
     OptionalStdlibDatetime,
@@ -134,7 +136,8 @@ class Outbox(BaseAggregate):
     # instead of ``TEXT`` / ``VARCHAR(MAX)``. Unbounded columns cannot be
     # indexed on SQL Server, require blind prefix lengths on MySQL, and waste
     # storage everywhere. The outbox path needs indexes on exactly these
-    # columns. ``data`` and ``metadata_`` stay unbounded JSON blobs.
+    # columns. ``data`` stays an unbounded JSON column, and SQL providers store
+    # ``metadata_`` as a pickled blob.
     #
     # ``message_id`` is a composite Protean message id (headers.id), e.g.
     # ``testdomain::order-<aggregate-id>-3``, not a bare UUID, so it needs the
@@ -193,6 +196,13 @@ class Outbox(BaseAggregate):
         None
     )
 
+    # The stream category the row publishes to, copied from
+    # ``metadata.domain.stream_category`` when the row is written. The claim
+    # groups partitioned rows by it, so a key's later rows wait for its earlier
+    # ones (ADR-0028). ``None`` on rows written before it was set; such a row
+    # is claimed as if it had no partition key.
+    stream_category: Annotated[str | None, Field(max_length=255)] = None
+
     # Message priority for processing order
     priority: int = 0  # Higher = more important
 
@@ -222,6 +232,7 @@ class Outbox(BaseAggregate):
         sequence_number: int | None = None,
         target_broker: str = DEFAULT_TARGET_BROKER,
         partition_key: str | None = None,
+        stream_category: str | None = None,
     ) -> "Outbox":
         """Create a new outbox message ready for publishing.
 
@@ -240,6 +251,8 @@ class Outbox(BaseAggregate):
             partition_key: Per-key sequential-routing key (ADR-0028), or
                 ``None`` for a non-partitioned category. Already validated by
                 the caller (the Unit of Work) before it reaches here.
+            stream_category: The event's ``metadata.domain.stream_category``.
+                The claim groups partitioned rows by it.
             target_broker: Name of the broker this message targets. The
                 framework's write path always passes it explicitly (the
                 configured internal broker, or an external broker name). The
@@ -264,6 +277,7 @@ class Outbox(BaseAggregate):
             sequence_number=sequence_number,
             target_broker=target_broker,
             partition_key=partition_key,
+            stream_category=stream_category,
             status=OutboxStatus.PENDING.value,
         )
 
@@ -357,6 +371,12 @@ class Outbox(BaseAggregate):
         effective_max_retries = (
             max_retries if max_retries is not None else self.max_retries
         )
+        # The claim compares ``retry_count`` with the row's ``max_retries``
+        # column. Store the threshold used here so a row kept FAILED stays
+        # claimable. Otherwise a configured ``max_attempts`` above the column
+        # would leave the row FAILED and never claimed, and it would halt its
+        # partition key with no ABANDONED row to show why.
+        self.max_retries = effective_max_retries
 
         # Determine next action based on retry eligibility
         if self.retry_count < effective_max_retries:
@@ -403,6 +423,26 @@ class Outbox(BaseAggregate):
 
         self.status = OutboxStatus.PENDING.value
         self.next_retry_at = None
+        self._clear_lock()
+        return True
+
+    def release(self) -> bool:
+        """Give a claimed row back unpublished, as if it had not been claimed.
+
+        The outbox processor calls this on the later rows of a group in a batch
+        after an earlier row of that group fails to publish, so that they wait
+        for it. The row goes back to ``PENDING`` with its lock cleared.
+        ``retry_count`` and ``next_retry_at`` are left as they are, because the
+        row itself did not fail.
+
+        Returns:
+            True if the row was released, False if it was not ``PROCESSING``
+            (nothing is changed then)
+        """
+        if self.status != OutboxStatus.PROCESSING.value:
+            return False
+
+        self.status = OutboxStatus.PENDING.value
         self._clear_lock()
         return True
 
@@ -495,6 +535,9 @@ class Outbox(BaseAggregate):
 #   defeat idempotency. In single-broker mode the index still enforces one row
 #   per ``message_id`` (under the internal broker name).
 # - ``correlation_id`` supports trace-oriented lookups.
+# - ``(target_broker, stream_category, partition_key, status)`` backs the
+#   claim's hold-back check, which looks for earlier rows of the same group
+#   that are not yet published.
 OUTBOX_INDEXES = [
     Index(
         "status",
@@ -507,6 +550,13 @@ OUTBOX_INDEXES = [
     ),
     Index("message_id", "target_broker", unique=True),
     Index("correlation_id"),
+    Index(
+        "target_broker",
+        "stream_category",
+        "partition_key",
+        "status",
+        name="ix_outbox_hold_back",
+    ),
 ]
 
 # The order rows are claimed in: higher priority first, then commit order
@@ -515,6 +565,114 @@ OUTBOX_INDEXES = [
 # every run when the other keys tie. Shared by ``find_unprocessed`` and
 # ``claim_batch`` so the two cannot drift.
 _CLAIM_ORDER = ["-priority", "created_at", "sequence_number", "id"]
+
+# Commit order without the priority key: the order a group's rows must publish
+# in. Matches the tail of ``_CLAIM_ORDER``.
+_COMMIT_ORDER = ("created_at", "sequence_number", "id")
+
+
+@dataclass(frozen=True)
+class OutboxLanes:
+    """The priority-lane split as the outbox sees it.
+
+    A row is in the backfill lane when lanes are enabled, it targets the
+    internal broker, and its priority is below the threshold. Every other row
+    is in the primary lane. Rows for an external broker are always primary,
+    because lanes apply only to the internal processor. The claim's hold-back
+    and :meth:`OutboxProcessor.process_batch` both use this, so they agree on
+    which rows share a group.
+    """
+
+    enabled: bool
+    threshold: int
+    internal_broker: str
+
+    @classmethod
+    def from_config(cls, config: Any) -> "OutboxLanes":
+        """Read the lane split from domain config."""
+        lanes_config = config.get("server", {}).get("priority_lanes", {})
+        return cls(
+            enabled=bool(lanes_config.get("enabled", False)),
+            threshold=lanes_config.get("threshold", 0),
+            internal_broker=config.get("outbox", {}).get(
+                "broker", DEFAULT_TARGET_BROKER
+            ),
+        )
+
+    def is_backfill(self, target_broker: str, priority: int) -> bool:
+        """Whether a row with these values publishes to the backfill lane."""
+        return (
+            self.enabled
+            and target_broker == self.internal_broker
+            and priority < self.threshold
+        )
+
+    def group_key(self, row: "Outbox") -> tuple[str, str, str, bool] | None:
+        """The row's hold-back group, or ``None`` when it has none.
+
+        The group is ``(target_broker, stream_category, partition_key,
+        backfill)``, which is the stream the row publishes to. A row without
+        both a ``partition_key`` and a ``stream_category`` has no group.
+        """
+        if row.partition_key is None or row.stream_category is None:
+            return None
+        return (
+            row.target_broker,
+            row.stream_category,
+            row.partition_key,
+            self.is_backfill(row.target_broker, row.priority),
+        )
+
+    def lane_index(self, row: "Outbox") -> int | None:
+        """The row's entry in :meth:`hold_back`'s lanes (primary ``0``,
+        backfill ``1``), or ``None`` when it has no group."""
+        group = self.group_key(row)
+        return None if group is None else int(group[3])
+
+    def hold_back(self) -> HoldBack:
+        """The :class:`~protean.port.dao.HoldBack` that ``claim_batch``
+        passes to the DAO."""
+        lanes: tuple[Q, ...] = ()
+        if self.enabled:
+            backfill = Q(target_broker=self.internal_broker) & Q(
+                priority__lt=self.threshold
+            )
+            primary = ~Q(target_broker=self.internal_broker) | Q(
+                priority__gte=self.threshold
+            )
+            lanes = (primary, backfill)
+        return HoldBack(
+            group_by=("target_broker", "stream_category", "partition_key"),
+            applies=Q(partition_key__isnull=False) & Q(stream_category__isnull=False),
+            # Every status but PUBLISHED holds the group. An ABANDONED row
+            # halts its key until an operator deals with it.
+            holds=Q(
+                status__in=[
+                    OutboxStatus.PENDING.value,
+                    OutboxStatus.PROCESSING.value,
+                    OutboxStatus.FAILED.value,
+                    OutboxStatus.ABANDONED.value,
+                ]
+            ),
+            order=_COMMIT_ORDER,
+            lane_of=self.lane_index,
+            lanes=lanes,
+        )
+
+
+def commit_order_key(row: "Outbox") -> tuple[Any, ...]:
+    """Python sort key for commit order, with NULL ``sequence_number`` last,
+    the same as the claim order.
+
+    ``id`` is left out: the store compares it by its column type (a number
+    under ``identity_type="integer"``), which ``str`` would not match. A
+    stable sort keeps the claim's own order when the other keys tie.
+    """
+    return (
+        ensure_utc_aware(row.created_at),
+        row.sequence_number is None,
+        row.sequence_number or 0,
+    )
 
 
 class OutboxRepository(BaseRepository):
@@ -610,6 +768,10 @@ class OutboxRepository(BaseRepository):
             the processing path, use :meth:`claim_batch`, which atomically
             selects and claims rows in one round trip. ``find_unprocessed`` is
             for inspection and monitoring of the queue.
+
+            It does not apply the claim's hold-back, so it can list a
+            partitioned row that :meth:`claim_batch` will not return yet,
+            because an earlier row of its key is not published.
         """
         # Handle zero limit case
         if limit is not None and limit == 0:
@@ -629,6 +791,7 @@ class OutboxRepository(BaseRepository):
         limit: int,
         target_broker: str | None = None,
         lock_duration_minutes: int = DEFAULT_LOCK_DURATION_MINUTES,
+        lanes: OutboxLanes | None = None,
     ) -> list[Outbox]:
         """Atomically select and claim up to ``limit`` ready messages.
 
@@ -646,11 +809,24 @@ class OutboxRepository(BaseRepository):
         filtered to ``target_broker``. Every predicate is enforced in the claim
         query itself, so a retry-exhausted row is never claimed.
 
+        A partitioned row is also held back while an earlier row of its group
+        is not published and is not claimed in the same call (ADR-0028). The
+        group is ``(target_broker, stream_category, partition_key, lane)``,
+        where the lane comes from ``lanes`` (see :class:`OutboxLanes`), or
+        from ``[server.priority_lanes]`` in domain config when ``lanes`` is
+        not given. A failed, abandoned or
+        in-flight row therefore stops the later rows of its key, while other
+        keys keep flowing. Rows with no ``partition_key`` or no
+        ``stream_category`` are never held.
+
         Args:
             worker_id: Identifier of the worker claiming the messages.
             limit: Maximum number of messages to claim. ``<= 0`` claims none.
             target_broker: When provided, only claim rows for this broker.
             lock_duration_minutes: How long the processing lock is held.
+            lanes: The lane split to group rows by. ``OutboxProcessor`` passes
+                the split it read at startup, so the claim groups rows by the
+                lane it routes them to.
 
         Returns:
             The claimed messages, already in ``PROCESSING`` state, ordered by
@@ -661,6 +837,9 @@ class OutboxRepository(BaseRepository):
             return []
 
         now = self._dao.domain.clock.now()
+        if lanes is None:
+            lanes = OutboxLanes.from_config(self._dao.domain.config)
+        hold_back = lanes.hold_back()
 
         claimed = cast(
             list[Outbox],
@@ -674,6 +853,7 @@ class OutboxRepository(BaseRepository):
                 },
                 limit=limit,
                 order_by=_CLAIM_ORDER,
+                hold_back=hold_back,
             ),
         )
 
@@ -996,6 +1176,12 @@ class OutboxRepository(BaseRepository):
         Abandoned messages remain in the table for observability but can be cleaned up
         after a reasonable retention period (default 30 days).
 
+        Abandoned rows with a ``partition_key`` are kept whatever their age. Such
+        a row holds the later rows of its key, and deleting it would let the
+        key move on with a gap. This includes rows written before
+        ``stream_category`` existed, which are never held, so keeping them is
+        only the safe side.
+
         Args:
             older_than_hours: Age in hours after which abandoned messages should be cleaned up (default: 720 = 30 days)
             batch_size: Rows to delete per batch. Defaults to the
@@ -1012,6 +1198,7 @@ class OutboxRepository(BaseRepository):
             Q(
                 status=OutboxStatus.ABANDONED.value,
                 last_processed_at__lt=threshold_time,
+                partition_key__isnull=True,
             ),
             batch_size if batch_size is not None else self._cleanup_batch_size(),
         )
@@ -1025,7 +1212,9 @@ class OutboxRepository(BaseRepository):
         """Clean up old published and abandoned messages based on retention periods.
 
         This method cleans up both published and abandoned messages that are older
-        than their respective retention periods.
+        than their respective retention periods. Abandoned messages with a
+        partition key are kept whatever their age, as in
+        ``cleanup_old_abandoned``.
 
         Args:
             published_retention_hours: Age in hours after which published messages should be cleaned up (default: 168 = 7 days)
@@ -1263,7 +1452,8 @@ def reconcile_outbox(
     not created again.
 
     Cleanup deletes published rows after ``outbox.cleanup.published_retention_hours``
-    and abandoned rows after ``outbox.cleanup.abandoned_retention_hours``. A
+    and abandoned rows without a partition key after
+    ``outbox.cleanup.abandoned_retention_hours``. A
     deleted row cannot be told apart from one lost in a crash, so events older
     than the shorter of the two retentions are skipped. Otherwise a restart
     after cleanup would send those events again. An event lost in a crash and
@@ -1321,9 +1511,9 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     # newest message overall may be foreign, a command, or a transition event.
     # None of those ever get a row, so a missing row for one of them does not
     # mean the last commit crashed.
-    # Cleanup deletes delivered and abandoned rows once they pass their
-    # retention, and a deleted row looks the same as one lost in a crash. An
-    # event is never older than its row's ``published_at`` or
+    # Cleanup deletes delivered rows and abandoned rows without a partition key
+    # once they pass their retention, and a deleted row looks the same as one
+    # lost in a crash. An event is never older than its row's ``published_at`` or
     # ``last_processed_at``, so skipping events older than the shorter
     # retention skips every row cleanup could have deleted.
     cutoff = _cleanup_cutoff(domain, outbox_config)
@@ -1400,6 +1590,7 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                     sequence_number=sequence_number,
                     target_broker=target_broker,
                     partition_key=partition_key,
+                    stream_category=getattr(domain_meta, "stream_category", None),
                 )
                 if abandon_reason is not None:
                     outbox_message.mark_abandoned(

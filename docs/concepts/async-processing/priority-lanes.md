@@ -277,6 +277,13 @@ to 5, another worker can claim them only after their lock expires, so rows 6 to
 [Outbox ordering](../../reference/guarantees.md#outbox-transactional-delivery-to-brokers)
 for the full list.
 
+A category partitioned with
+[`sequential_by`](../../reference/server/sequential-by.md#how-the-outbox-keeps-a-key-in-order)
+is the exception. The outbox holds a key's later rows until its earlier rows
+in the same lane publish, so retries and extra workers do not reorder a key
+within a lane. A key's primary and backfill rows are held separately, and
+neither lane waits for the other.
+
 ### What this means in practice
 
 For most use cases, the key guarantee is simple: **production events are never

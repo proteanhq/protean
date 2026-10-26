@@ -643,6 +643,18 @@ class TestReconcilePartitionKey:
         [rebuilt] = outbox_repo.find_all_by_message_id(event_id)
         assert rebuilt.partition_key == original.partition_key
 
+    def test_rebuilt_row_carries_the_unit_of_work_stream_category(self, partitioned):
+        domain, outbox_repo = partitioned
+        event_id = self._deposit_keyed(domain, "key-7")
+        [original] = outbox_repo.find_all_by_message_id(event_id)
+        assert original.stream_category == Account.meta_.stream_category
+
+        outbox_repo._dao._delete_all()
+        assert reconcile_outbox(domain) == 1
+
+        [rebuilt] = outbox_repo.find_all_by_message_id(event_id)
+        assert rebuilt.stream_category == Account.meta_.stream_category
+
     def test_unpartitioned_category_gets_no_key_beside_a_partitioned_one(
         self, partitioned
     ):
