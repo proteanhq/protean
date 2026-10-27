@@ -1,10 +1,15 @@
 """Value Object module providing the base class for immutable value objects."""
 
 import contextlib
+import decimal
 import inspect
 import logging
+import types
+import typing
+import uuid
 from collections import defaultdict
 from collections.abc import Callable
+from datetime import date, datetime, time, timedelta
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -48,6 +53,47 @@ from protean.utils.reflection import fields as get_fields
 
 logger = logging.getLogger(__name__)
 
+# Built-in types whose ``hash`` agrees with ``==`` for every value, including
+# across types (``hash(1) == hash(Decimal("1.0"))``).
+_VALUE_HASHED_TYPES: frozenset[type] = frozenset(
+    {
+        type(None),
+        str,
+        bytes,
+        bool,
+        int,
+        float,
+        decimal.Decimal,
+        date,
+        datetime,
+        time,
+        timedelta,
+        uuid.UUID,
+    }
+)
+
+
+def _hashes_by_value(annotation: Any) -> bool:
+    """Whether every value a field declared as *annotation* can hold has a
+    hash that agrees with ``==``.
+
+    The declaration decides, not the value: a custom type may accept equal
+    values of which only some are hashable, so hashing whatever arrives would
+    give equal value objects different hashes.
+    """
+    origin = typing.get_origin(annotation)
+    if origin is typing.Annotated:
+        return _hashes_by_value(typing.get_args(annotation)[0])
+    if origin is types.UnionType or origin is typing.Union:
+        return all(_hashes_by_value(arg) for arg in typing.get_args(annotation))
+    if origin is typing.Literal:
+        return all(
+            type(arg) in _VALUE_HASHED_TYPES for arg in typing.get_args(annotation)
+        )
+    if annotation in _VALUE_HASHED_TYPES:
+        return True
+    return isinstance(annotation, type) and issubclass(annotation, BaseValueObject)
+
 
 # ---------------------------------------------------------------------------
 # BaseValueObject
@@ -77,6 +123,9 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         # so static checkers see the attribute. Keyed by invariant stage
         # ("post") -> {method_name: method}.
         _invariants: ClassVar[defaultdict[str, dict[str, Callable[..., Any]]]]
+        # Fields whose declared type hashes consistently with ``==``; assigned
+        # in ``__pydantic_init_subclass__``.
+        __value_hashed_fields__: ClassVar[frozenset[str]]
 
     model_config = ConfigDict(
         extra="forbid",
@@ -200,6 +249,11 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         for fname, finfo in cls.model_fields.items():
             fields_dict[fname] = ResolvedField(fname, finfo, finfo.annotation)
         setattr(cls, _FIELDS, fields_dict)
+        cls.__value_hashed_fields__ = frozenset(
+            fname
+            for fname, finfo in cls.model_fields.items()
+            if _hashes_by_value(finfo.annotation)
+        )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         # Support template dict pattern: VO({"key": "val"}, key2="val2")
@@ -341,19 +395,16 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         return self._field_values() == other._field_values()
 
     def __hash__(self) -> int:
-        parts: list[int] = []
-        for fname in getattr(self, _FIELDS, {}):
-            value = getattr(self, fname, None)
-            try:
-                parts.append(hash(value))
-            except TypeError:
-                # A custom type can define ``__eq__`` without ``__hash__``.
-                # Neither its raw value nor its serialized form is a safe
-                # hash input: equal values can serialize differently (a
-                # Decimal keeps its scale). A constant stays consistent with
-                # ``__eq__``; the other fields still spread the hashes.
-                parts.append(0)
-        return hash(tuple(parts))
+        # Fields of other types (lists, dicts, custom types) add a constant:
+        # their equal values can be unhashable, or hash differently from each
+        # other. The value-hashed fields still spread the hashes.
+        hashed = type(self).__value_hashed_fields__
+        return hash(
+            tuple(
+                hash(getattr(self, fname, None)) if fname in hashed else 0
+                for fname in getattr(self, _FIELDS, {})
+            )
+        )
 
     def _field_values(self) -> tuple[Any, ...]:
         # Compare raw values, not ``to_dict()`` output: serialization keeps a
