@@ -5,7 +5,7 @@ The suite pins the contract that ``to_dict()`` (``S``) and reconstruction via
 ``Type(**data)`` (``D``) are inverses. Equality means different things per
 element kind, so the invariant asserted differs:
 
-* **Value objects** use *value* equality (``__eq__`` compares ``to_dict()``),
+* **Value objects** use *value* equality (``__eq__`` compares the field values),
   so the strongest form holds directly::
 
       D(S(x)) == x
