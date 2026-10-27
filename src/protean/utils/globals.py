@@ -66,12 +66,29 @@ class _ContextLocalProxy(Generic[_T]):
     behaves like ``None``: it is falsy, its representation and string form are
     ``"None"``, it compares equal to ``None``, and containment/iteration raise
     the same ``TypeError`` that ``None`` would.
+
+    Dunder attribute lookups that reach ``__getattr__`` (``__test__``,
+    ``__bases__``, ...) and the ``__class__`` property resolve through
+    ``quiet_lookup``, which must not warn. Tools probe module globals this way
+    without meaning to use the proxy: pytest collection checks ``__test__``,
+    ``__bases__`` and ``__class__`` on every name a test module imports. With
+    no object active these probes raise ``AttributeError`` or report the proxy
+    type silently. Truthiness, representation and ordinary attribute access
+    still go through ``lookup`` and keep its warning.
     """
 
     _lookup: Callable[[], _T | None]
+    _quiet_lookup: Callable[[], _T | None]
 
-    def __init__(self, lookup: Callable[[], _T | None]) -> None:
+    def __init__(
+        self,
+        lookup: Callable[[], _T | None],
+        quiet_lookup: Callable[[], _T | None] | None = None,
+    ) -> None:
         object.__setattr__(self, "_lookup", lookup)
+        object.__setattr__(
+            self, "_quiet_lookup", quiet_lookup if quiet_lookup is not None else lookup
+        )
 
     def _get_current_object(self) -> _T | None:
         return self._lookup()
@@ -87,12 +104,17 @@ class _ContextLocalProxy(Generic[_T]):
         # ``object.__class__`` is a read/write property; overriding it read-only
         # is deliberate (the proxy reports the wrapped type for ``isinstance``),
         # so silence the incompatible-override report.
-        obj = self._get_current_object()
+        obj = self._quiet_lookup()
         if obj is None:
             return type(self)
         return type(obj)
 
     def __getattr__(self, name: str) -> Any:
+        if name.startswith("__") and name.endswith("__"):
+            obj = self._quiet_lookup()
+            if obj is None:
+                raise AttributeError(name)
+            return getattr(obj, name)
         return getattr(self._get_object_or_raise(name), name)
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -176,8 +198,18 @@ def _lookup_domain_object(name: str) -> Any | None:
     return getattr(top, name) if top is not None else None
 
 
+def _quiet_lookup_domain_object(name: str) -> Any | None:
+    top = _domain_context_stack.top
+    return getattr(top, name) if top is not None else None
+
+
 def _find_domain() -> "Domain | None":
     top = _active_domain_context(log_traceback=True)
+    return top.domain if top is not None else None
+
+
+def _quiet_find_domain() -> "Domain | None":
+    top = _domain_context_stack.top
     return top.domain if top is not None else None
 
 
@@ -220,11 +252,13 @@ def _domain_now(now: datetime | None = None) -> datetime:
 # context locals
 _domain_context_stack: _ContextStack[Any] = _ContextStack("protean.domain_context")
 _uow_context_stack: _ContextStack[Any] = _ContextStack("protean.uow_context")
-current_domain: "Domain" = _ContextLocalProxy(_find_domain)  # type: ignore[assignment]
+current_domain: "Domain" = _ContextLocalProxy(_find_domain, _quiet_find_domain)  # type: ignore[assignment]
 current_uow: "UnitOfWork" = _ContextLocalProxy(_find_uow)  # type: ignore[assignment]
 # ``g`` is a request-scoped scratch namespace that intentionally holds arbitrary
 # attributes; typing it ``Any`` reflects that dynamic contract.
-g: Any = _ContextLocalProxy(partial(_lookup_domain_object, "g"))
+g: Any = _ContextLocalProxy(
+    partial(_lookup_domain_object, "g"), partial(_quiet_lookup_domain_object, "g")
+)
 
 # Only the three request-scoped proxies are public; the lookup helpers and the
 # context stacks above stay internal and are excluded from ``import *``.

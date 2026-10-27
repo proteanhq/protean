@@ -9,6 +9,7 @@ from .core.unit_of_work import UnitOfWork
 from .core.value_object import value_object_from_entity
 from .core.view import ReadView
 from .domain import Domain
+from .domain.context import has_domain_context
 from .server import Engine
 from .utils import get_version
 from .utils.globals import current_domain, current_uow, g
@@ -36,6 +37,7 @@ __all__ = [
     "g",
     "get_version",
     "handle",
+    "has_domain_context",
     "invariant",
     "processing_priority",
     "read",

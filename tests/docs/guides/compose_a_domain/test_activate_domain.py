@@ -1,9 +1,10 @@
 """The examples on the Activate the domain guide behave as the page says."""
 
+import warnings
+
 import pytest
 
-from protean import current_domain, g
-from protean.domain.context import has_domain_context
+from protean import current_domain, g, has_domain_context
 from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -63,3 +64,13 @@ def test_teardown_is_safe_when_no_log_was_opened():
     assert example.teardown_log_file in (
         example.domain.teardown_domain_context_functions
     )
+
+
+def test_has_domain_context_reports_activity_without_warning():
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", message="Working outside of domain context")
+        example = load_example("guides/compose-a-domain/activate-domain/003.py")
+
+    assert example.active_before is False
+    assert example.active_inside is True
+    assert example.active_after is False

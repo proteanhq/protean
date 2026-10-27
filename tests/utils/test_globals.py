@@ -6,12 +6,16 @@ execution context across async boundaries.
 """
 
 import asyncio
+import os
+import subprocess
+import sys
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from protean import Domain, UnitOfWork
+import protean
+from protean import Domain, UnitOfWork, has_domain_context
 from protean.utils.globals import (
     _ContextLocalProxy,
     _domain_context_stack,
@@ -353,3 +357,132 @@ class TestDomainContextWarning:
         assert all(
             "Working outside of domain context" in str(w.message) for w in caught
         )
+
+
+class TestQuietProbesOutsideContext:
+    """Dunder probes, as pytest collection makes them, do not warn."""
+
+    @pytest.mark.no_test_domain
+    @pytest.mark.parametrize("proxy", [current_domain, g], ids=["current_domain", "g"])
+    def test_dunder_probes_are_silent(self, proxy):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert getattr(proxy, "__test__", None) is None
+            assert getattr(proxy, "__bases__", None) is None
+            assert isinstance(proxy, type) is False
+            assert proxy.__class__ is _ContextLocalProxy
+            with pytest.raises(TypeError):
+                issubclass(proxy, object)
+
+    @pytest.mark.no_test_domain
+    @pytest.mark.parametrize("proxy", [current_domain, g], ids=["current_domain", "g"])
+    def test_dunder_lookup_raises_attribute_error(self, proxy):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with pytest.raises(AttributeError, match="__test__"):
+                getattr(proxy, "__test__")
+
+    @pytest.mark.no_test_domain
+    @pytest.mark.parametrize(
+        "probe",
+        [bool, repr, str],
+        ids=["bool", "repr", "str"],
+    )
+    def test_current_domain_resolution_still_warns(self, probe):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            probe(current_domain)
+        assert len(caught) == 1
+        assert "Working outside of domain context" in str(caught[0].message)
+
+    @pytest.mark.no_test_domain
+    def test_current_domain_plain_attribute_still_warns(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with pytest.raises(AttributeError):
+                _ = current_domain.name
+        assert len(caught) == 1
+        assert "Working outside of domain context" in str(caught[0].message)
+        assert (
+            caught[0]
+            .filename.replace("\\", "/")
+            .endswith("tests/utils/test_globals.py")
+        )
+
+    @pytest.mark.no_test_domain
+    def test_g_resolution_still_warns(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            bool(g)
+            with pytest.raises(AttributeError):
+                _ = g.missing
+        assert len(caught) == 2
+        assert all(
+            "Working outside of domain context" in str(w.message) for w in caught
+        )
+
+    @pytest.mark.no_test_domain
+    def test_current_uow_dunder_lookup_outside_uow(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert getattr(current_uow, "__test__", None) is None
+            assert current_uow.__class__ is _ContextLocalProxy
+
+    @pytest.mark.no_test_domain
+    def test_dunder_lookups_delegate_inside_context(self, fresh_domain):
+        with fresh_domain.domain_context():
+            assert getattr(current_domain, "__test__", None) is None
+            assert current_domain.__class__ is type(fresh_domain)
+            assert isinstance(current_domain, Domain)
+            fresh_domain.__probe__ = "domain"
+            assert current_domain.__probe__ == "domain"
+            g.__probe__ = "g"
+            assert g.__probe__ == "g"
+
+
+class TestHasDomainContext:
+    """``has_domain_context`` is the quiet check, exported from ``protean``."""
+
+    @pytest.mark.no_test_domain
+    def test_exported_from_protean(self):
+        assert "has_domain_context" in protean.__all__
+        assert protean.has_domain_context is has_domain_context
+
+    @pytest.mark.no_test_domain
+    def test_reports_context_without_warning(self, fresh_domain):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert has_domain_context() is False
+            with fresh_domain.domain_context():
+                assert has_domain_context() is True
+            assert has_domain_context() is False
+
+
+@pytest.mark.no_test_domain
+def test_collecting_a_module_that_imports_current_domain_is_silent(tmp_path):
+    module = tmp_path / "test_imports_proxy.py"
+    module.write_text(
+        "from protean import current_domain, g\n\n\ndef test_x():\n    pass\n"
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "no:cacheprovider",
+            "-q",
+            "--rootdir",
+            str(tmp_path),
+            "-c",
+            os.devnull,
+            str(module),
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "1 passed" in result.stdout
+    assert "Working outside of domain context" not in result.stdout + result.stderr
