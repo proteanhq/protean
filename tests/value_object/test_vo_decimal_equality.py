@@ -207,6 +207,8 @@ class Card(BaseValueObject):
     amount: Decimal()
 
 
+OMITTED = object()
+
 # Pydantic resolves this alias through a definition that refers to itself.
 NoneAlias = TypeAliasType("NoneAlias", "NoneAlias | None")
 
@@ -225,7 +227,10 @@ NoneAlias = TypeAliasType("NoneAlias", "NoneAlias | None")
 #   ``Annotated`` declaration;
 # - annotation metadata that cannot be hashed, at any depth;
 # - the stored values: equal or unequal, of the same or different types,
-#   hashable or not.
+#   hashable or not;
+# - where a value comes from: assigned, a static default, or a default
+#   factory (``OMITTED`` as the first value builds the value object without
+#   it, so the default fills it in).
 #
 # Columns: case, field factory, first value, second value, whether the two
 # value objects are equal, whether the field is hashed by value.
@@ -424,6 +429,47 @@ HASH_SPACE = [
         False,
         False,
     ),
+    (
+        "decimal-static-default",
+        lambda: Decimal(default=D("1.0")),
+        OMITTED,
+        D(1),
+        True,
+        True,
+    ),
+    (
+        "decimal-static-default-unhashable-subclass",
+        lambda: Decimal(default=UnhashableDecimal("1.0")),
+        OMITTED,
+        D("1.0"),
+        True,
+        True,
+    ),
+    (
+        "decimal-factory-default-unhashable-subclass",
+        lambda: Decimal(default=lambda: UnhashableDecimal("1.0")),
+        OMITTED,
+        D(1),
+        True,
+        True,
+    ),
+    (
+        "decimal-factory-default-differs",
+        lambda: Decimal(default=lambda: D("1.0")),
+        OMITTED,
+        D(2),
+        False,
+        True,
+    ),
+    ("integer-default-coerced", lambda: Integer(default="5"), OMITTED, 5, True, True),
+    (
+        "list-factory-default",
+        lambda: List(content_type=Integer, default=list),
+        OMITTED,
+        [],
+        True,
+        False,
+    ),
 ]
 
 
@@ -436,7 +482,7 @@ def test_equal_value_objects_hash_equal_across_field_types(
     case, make_field, first, second, equal, value_hashed
 ):
     vo_cls = _single_field_vo(f"VO_{case.replace('-', '_')}", make_field())
-    a = vo_cls(value=first)
+    a = vo_cls() if first is OMITTED else vo_cls(value=first)
     b = vo_cls(value=second)
 
     assert ("value" in vo_cls._value_hashed_fields()) is value_hashed

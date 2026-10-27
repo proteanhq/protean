@@ -189,8 +189,11 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         # Fields hashed by value, cached by ``_value_hashed_fields``.
         __value_hashed_fields__: ClassVar[frozenset[str]]
 
+    # Defaults pass through the field schema like assigned values, so the
+    # schema bounds every stored value and ``__hash__`` can rely on it.
     model_config = ConfigDict(
         extra="forbid",
+        validate_default=True,
         ignored_types=(
             FieldSpec,
             ValueObjectField,
