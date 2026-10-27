@@ -154,38 +154,20 @@ class SubscriptionStatus:
 
 
 # ---------------------------------------------------------------------------
-# Stream category inference (mirrors Engine._infer_stream_category)
+# Stream category
 # ---------------------------------------------------------------------------
 
 
 def _infer_stream_category(handler_cls: type[Any]) -> str:
-    """Infer the stream category for a handler.
+    """Return the stream category a registered handler reads.
 
-    Mirrors ``Engine._infer_stream_category`` in
-    ``src/protean/server/engine.py``.
+    Registration derives ``meta_.stream_category`` from ``part_of`` when the
+    handler does not name one, and the resolver fills it in once a string
+    ``part_of`` resolves. So this reads ``meta_`` and never ``part_of``.
     """
-    meta = getattr(handler_cls, "meta_", None)
-    if meta is None:  # pragma: no cover  # registration gives every handler a meta_
-        raise ValueError(
-            f"Handler '{handler_cls.__name__}' has no meta_ attribute. "
-            f"Cannot infer stream category."
-        )
-
-    # Priority 1: Explicit stream_category on handler
-    stream_category: str | None = getattr(meta, "stream_category", None)
+    stream_category: str | None = handler_cls.meta_.stream_category
     if stream_category:
         return stream_category
-
-    # Priority 2: Infer from part_of aggregate
-    part_of = getattr(meta, "part_of", None)
-    if part_of:
-        aggregate_meta = getattr(part_of, "meta_", None)
-        if aggregate_meta:  # pragma: no cover  # registration copies a part_of aggregate's stream onto meta_.stream_category, so only an unresolved string part_of gets here
-            aggregate_stream: str | None = getattr(
-                aggregate_meta, "stream_category", None
-            )
-            if aggregate_stream:
-                return aggregate_stream
 
     raise ValueError(
         f"Cannot infer stream category for handler '{handler_cls.__name__}'."
@@ -387,8 +369,6 @@ def _collect_partitioned_stream_status(
             )
             continue
         for group in groups:
-            if not isinstance(group, dict):
-                continue  # pragma: no cover  # redis-py parses each XINFO GROUPS entry into a dict
             if broker._get_field_value(group, "name") != consumer_group:
                 continue
             total_pending += (
@@ -434,8 +414,6 @@ def _collect_partitioned_stream_status(
             logger.debug("Could not read consumers of %s: %r", partition, exc)
             consumers = []
         for consumer in consumers:
-            if not isinstance(consumer, dict):
-                continue  # pragma: no cover  # redis-py parses each XINFO CONSUMERS entry into a dict
             consumer_name = broker._get_field_value(consumer, "name")
             if consumer_name is not None:
                 consumer_names.add(consumer_name)
@@ -508,8 +486,6 @@ def _collect_stream_status(
             try:
                 groups = redis_conn.xinfo_groups(stream_category)
                 for g in groups:
-                    if not isinstance(g, dict):
-                        continue  # pragma: no cover  # redis-py parses each XINFO GROUPS entry into a dict
                     gname = broker._get_field_value(g, "name")
                     if gname == consumer_group:
                         pending = (
@@ -625,8 +601,6 @@ def _collect_broker_status(
                 try:
                     groups = redis_conn.xinfo_groups(stream_name)
                     for g in groups:
-                        if not isinstance(g, dict):
-                            continue  # pragma: no cover  # redis-py parses each XINFO GROUPS entry into a dict
                         gname = broker._get_field_value(g, "name")
                         if gname == consumer_group:
                             pending = (
