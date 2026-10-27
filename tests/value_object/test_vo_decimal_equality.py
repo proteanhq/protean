@@ -1,10 +1,17 @@
 import enum
 from datetime import date, datetime
 from decimal import Decimal as D
-from typing import Annotated
+from typing import Annotated, Literal, NewType
 
 import pytest
-from pydantic import PlainSerializer, PlainValidator, WrapValidator
+from pydantic import (
+    AfterValidator,
+    BeforeValidator,
+    PlainSerializer,
+    PlainValidator,
+    WrapValidator,
+    model_validator,
+)
 
 from protean.core.value_object import BaseValueObject
 from protean.fields import (
@@ -185,14 +192,18 @@ def _keep_unhashable_decimal(value):
 
 
 # The space ``__hash__`` decides over, one row per cell. A field is hashed by
-# value only when its declared type bounds every value it can store to types
-# whose hash agrees with ``==``; any other field adds a constant. The cells:
+# value only when Pydantic's core schema for it bounds every value it can
+# store to types whose hash agrees with ``==``; any other field adds a
+# constant. The cells:
 #
-# - declared type: a built-in scalar, ``None``, a ``Literal`` or ``Status``, an
-#   optional (union) of those, a nested value object, a container, or a custom
-#   type;
-# - whether a ``PlainValidator`` or ``WrapValidator`` replaces the cast, on a
-#   ``Custom`` field or a raw ``Annotated`` declaration;
+# - the schema's output type: a built-in scalar, ``None``, a ``Literal`` or
+#   ``Status``, an optional or other union of those, a nested value object, a
+#   container, a custom type, or a type alias of any of these;
+# - the validators around the cast: none, a ``BeforeValidator``, Protean's own
+#   after-validators, a user ``AfterValidator``, or a ``PlainValidator`` or
+#   ``WrapValidator`` that replaces the cast, on a ``Custom`` field or a raw
+#   ``Annotated`` declaration;
+# - annotation metadata that cannot be hashed, at any depth;
 # - the stored values: equal or unequal, of the same or different types,
 #   hashable or not.
 #
@@ -311,6 +322,61 @@ HASH_SPACE = [
         True,
         True,
     ),
+    ("literal", lambda: Literal["a", 1], "a", "a", True, True),
+    ("literal-differs", lambda: Literal["a", 1], "a", 1, False, True),
+    ("union-of-scalars", lambda: int | str, 1, 1, True, True),
+    ("union-of-scalars-differs", lambda: int | str, 1, "1", False, True),
+    ("union-with-container", lambda: int | list[int], [1], [1], True, False),
+    ("new-type", lambda: NewType("Sku", str), "x", "x", True, True),
+    ("new-type-differs", lambda: NewType("Sku", str), "x", "y", False, True),
+    (
+        "before-validator",
+        lambda: Annotated[D, BeforeValidator(lambda v: _keep_unhashable_decimal(v))],
+        UnhashableDecimal("1.0"),
+        D(1),
+        True,
+        True,
+    ),
+    (
+        "user-after-validator",
+        lambda: Annotated[D, AfterValidator(lambda v: UnhashableDecimal(str(v)))],
+        D("1.0"),
+        D(1),
+        True,
+        False,
+    ),
+    (
+        "unhashable-metadata-on-scalar",
+        lambda: Annotated[int, {"unit": "items"}],
+        1,
+        1,
+        True,
+        True,
+    ),
+    (
+        "unhashable-metadata-in-optional",
+        lambda: Annotated[int, {"unit": "items"}] | None,
+        1,
+        1,
+        True,
+        True,
+    ),
+    (
+        "unhashable-metadata-in-list",
+        lambda: list[Annotated[int, {"unit": "items"}]],
+        [1],
+        [1],
+        True,
+        False,
+    ),
+    (
+        "unhashable-metadata-in-list-differs",
+        lambda: list[Annotated[int, {"unit": "items"}]],
+        [1],
+        [2],
+        False,
+        False,
+    ),
 ]
 
 
@@ -326,7 +392,7 @@ def test_equal_value_objects_hash_equal_across_field_types(
     a = vo_cls(value=first)
     b = vo_cls(value=second)
 
-    assert ("value" in vo_cls.__value_hashed_fields__) is value_hashed
+    assert ("value" in vo_cls._value_hashed_fields()) is value_hashed
     assert (a == b) is equal
     if equal:
         assert hash(a) == hash(b)
@@ -358,3 +424,51 @@ def test_to_dict_keeps_the_given_scale():
 
     assert price.to_dict() == {"amount": "9.9900"}
     assert str(price.amount) == "9.9900"
+
+
+class _Validated(BaseValueObject):
+    amount: Decimal()
+
+    @model_validator(mode="after")
+    def _check(self):
+        return self
+
+
+class _SharedInner(BaseValueObject):
+    first = ValueObject(Inner)
+    second = ValueObject(Inner)
+
+
+class _Linked(BaseValueObject):
+    amount: Decimal()
+    next: "_Linked | None" = None
+
+
+# Class shapes that change where Pydantic puts the field schemas: a model
+# validator wraps them, a reused nested value object moves into shared
+# definitions, and a self-reference resolves only after the class exists.
+@pytest.mark.parametrize(
+    "first, second, value_hashed",
+    [
+        (
+            _Validated(amount=D("1.0")),
+            _Validated(amount=D(1)),
+            {"amount"},
+        ),
+        (
+            _SharedInner(first=Inner(amount=D("1.0")), second=Inner(amount=D(2))),
+            _SharedInner(first=Inner(amount=D(1)), second=Inner(amount=D("2.0"))),
+            {"first", "second"},
+        ),
+        (
+            _Linked(amount=D("1.0"), next=_Linked(amount=D(2))),
+            _Linked(amount=D(1), next=_Linked(amount=D("2.0"))),
+            {"amount", "next"},
+        ),
+    ],
+    ids=["model-validator", "shared-definitions", "self-reference"],
+)
+def test_class_shape_does_not_change_field_hashing(first, second, value_hashed):
+    assert type(first)._value_hashed_fields() == value_hashed
+    assert first == second
+    assert hash(first) == hash(second)
