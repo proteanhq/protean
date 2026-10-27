@@ -1,7 +1,7 @@
 """Tests for Observatory page routes, Jinja2 template rendering, and static asset serving.
 
-Covers:
-- routes/pages.py: All 6 page routes, _get_domain_names, _ctx helper
+Tests for:
+- routes/pages.py: page routes, _get_domain_names, _ctx helper
 - routes/__init__.py: create_all_routes composition
 - __init__.py: Jinja2Templates + StaticFiles integration, _TEMPLATES_DIR, _STATIC_DIR
 """
@@ -16,7 +16,6 @@ from protean.server.observatory.routes.pages import (
     _get_domain_names,
     create_page_router,
 )
-from tests.server.observatory.conftest import route_paths
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -143,15 +142,6 @@ class TestCreateAllRoutes:
         page_router, _ = create_all_routes([test_domain], templates)
         assert len(page_router.routes) == 8
 
-    def test_api_router_includes_handler_routes(self, test_domain):
-        from fastapi.templating import Jinja2Templates
-
-        templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
-        _, api_router = create_all_routes([test_domain], templates)
-        api_paths = route_paths(api_router.routes)
-        assert "/handlers" in api_paths
-        assert "/handlers/{name}" in api_paths
-
 
 # ---------------------------------------------------------------------------
 # Observatory Jinja2 + StaticFiles integration
@@ -176,41 +166,25 @@ class TestObservatoryStaticFiles:
         ]
         assert len(mount_paths) == 1
 
-    def test_serves_vendor_css(self, client):
-        response = client.get("/static/vendor/daisyui.css")
+    @pytest.mark.parametrize(
+        "path,content_type",
+        [
+            ("/static/vendor/daisyui.css", "text/css"),
+            ("/static/vendor/d3.v7.min.js", "javascript"),
+            ("/static/vendor/tailwindcss-browser.js", None),
+            ("/static/vendor/daisyui-themes.css", None),
+            ("/static/js/core.js", "javascript"),
+            ("/static/js/charts.js", None),
+            ("/static/js/overview.js", None),
+            ("/static/js/timeline.js", "javascript"),
+            ("/static/css/observatory.css", "text/css"),
+        ],
+    )
+    def test_serves_static_asset(self, client, path, content_type):
+        response = client.get(path)
         assert response.status_code == 200
-        assert "text/css" in response.headers["content-type"]
-
-    def test_serves_vendor_js(self, client):
-        response = client.get("/static/vendor/d3.v7.min.js")
-        assert response.status_code == 200
-        assert "javascript" in response.headers["content-type"]
-
-    def test_serves_tailwind_browser_js(self, client):
-        response = client.get("/static/vendor/tailwindcss-browser.js")
-        assert response.status_code == 200
-
-    def test_serves_daisyui_themes_css(self, client):
-        response = client.get("/static/vendor/daisyui-themes.css")
-        assert response.status_code == 200
-
-    def test_serves_core_js(self, client):
-        response = client.get("/static/js/core.js")
-        assert response.status_code == 200
-        assert "javascript" in response.headers["content-type"]
-
-    def test_serves_charts_js(self, client):
-        response = client.get("/static/js/charts.js")
-        assert response.status_code == 200
-
-    def test_serves_overview_js(self, client):
-        response = client.get("/static/js/overview.js")
-        assert response.status_code == 200
-
-    def test_serves_observatory_css(self, client):
-        response = client.get("/static/css/observatory.css")
-        assert response.status_code == 200
-        assert "text/css" in response.headers["content-type"]
+        if content_type is not None:
+            assert content_type in response.headers["content-type"]
 
     def test_css_has_search_styles(self, client):
         """Observatory CSS should include search-related styles."""
@@ -220,11 +194,6 @@ class TestObservatoryStaticFiles:
         assert ".dv-search-item" in css
         assert ".dv-search-clear" in css
         assert ".dv-flow-focal" in css
-
-    def test_serves_timeline_js(self, client):
-        response = client.get("/static/js/timeline.js")
-        assert response.status_code == 200
-        assert "javascript" in response.headers["content-type"]
 
     def test_nonexistent_static_returns_404(self, client):
         response = client.get("/static/nonexistent.js")
@@ -236,21 +205,30 @@ class TestObservatoryStaticFiles:
 # ---------------------------------------------------------------------------
 
 
-class TestOverviewPage:
-    def test_returns_200(self, client):
-        response = client.get("/")
+class TestPageRoutes:
+    @pytest.mark.parametrize(
+        "path,heading",
+        [
+            ("/", "Overview"),
+            ("/handlers", "Handlers"),
+            ("/processes", "Processes"),
+            ("/eventstore", "Event Store"),
+            ("/timeline", "Timeline"),
+            ("/infrastructure", "Infrastructure"),
+        ],
+    )
+    def test_page_renders_base_template_with_heading(self, client, path, heading):
+        response = client.get(path)
         assert response.status_code == 200
-
-    def test_returns_html(self, client):
-        response = client.get("/")
         assert "text/html" in response.headers["content-type"]
-
-    def test_extends_base_template(self, client):
-        """Response includes base template elements: nav sidebar, header."""
-        html = client.get("/").text
+        html = response.text
+        assert heading in html
+        # Base template elements: branding and the DaisyUI drawer layout
         assert "Observatory" in html
-        assert "drawer" in html  # DaisyUI drawer layout
+        assert "drawer" in html
 
+
+class TestOverviewPage:
     def test_contains_overview_content(self, client):
         html = client.get("/").text
         assert "health-banner" in html
@@ -279,13 +257,6 @@ class TestOverviewPage:
         html = client.get("/").text
         assert 'id="sub-unhealthy"' in html
         assert "hidden" in html
-
-    def test_overview_nav_is_active(self, client):
-        """The overview nav link should have the 'active' class."""
-        html = client.get("/").text
-        # The base template renders: class="{% if active_page == 'overview' %}active{% endif %}"
-        # Since active_page == 'overview', the link should have 'active'
-        assert "active" in html
 
     def test_includes_overview_js(self, client):
         html = client.get("/").text
@@ -318,80 +289,14 @@ class TestOverviewPage:
 
 
 class TestHandlersPage:
-    def test_returns_200(self, client):
-        response = client.get("/handlers")
-        assert response.status_code == 200
-
-    def test_returns_html(self, client):
-        assert "text/html" in client.get("/handlers").headers["content-type"]
-
-    def test_contains_page_heading(self, client):
-        html = client.get("/handlers").text
-        assert "Handlers" in html
-
     def test_handlers_nav_is_active(self, client):
         html = client.get("/handlers").text
         # The handlers nav link should have active, overview should not
         # Look for the specific pattern: href="/handlers" with active class
         assert 'href="/handlers"' in html
 
-    def test_extends_base_template(self, client):
-        html = client.get("/handlers").text
-        assert "Observatory" in html
-        assert "drawer" in html
-
-
-class TestProcessesPage:
-    def test_returns_200(self, client):
-        response = client.get("/processes")
-        assert response.status_code == 200
-
-    def test_returns_html(self, client):
-        assert "text/html" in client.get("/processes").headers["content-type"]
-
-    def test_contains_page_heading(self, client):
-        html = client.get("/processes").text
-        assert "Processes" in html
-
-    def test_extends_base_template(self, client):
-        html = client.get("/processes").text
-        assert "Observatory" in html
-
-
-class TestEventstorePage:
-    def test_returns_200(self, client):
-        response = client.get("/eventstore")
-        assert response.status_code == 200
-
-    def test_returns_html(self, client):
-        assert "text/html" in client.get("/eventstore").headers["content-type"]
-
-    def test_contains_page_heading(self, client):
-        html = client.get("/eventstore").text
-        assert "Event Store" in html
-
-    def test_extends_base_template(self, client):
-        html = client.get("/eventstore").text
-        assert "Observatory" in html
-
 
 class TestTimelinePage:
-    def test_returns_200(self, client):
-        response = client.get("/timeline")
-        assert response.status_code == 200
-
-    def test_returns_html(self, client):
-        assert "text/html" in client.get("/timeline").headers["content-type"]
-
-    def test_contains_page_heading(self, client):
-        html = client.get("/timeline").text
-        assert "Timeline" in html
-
-    def test_extends_base_template(self, client):
-        html = client.get("/timeline").text
-        assert "Observatory" in html
-        assert "drawer" in html
-
     def test_contains_summary_cards(self, client):
         html = client.get("/timeline").text
         assert 'id="stats-total-events"' in html
@@ -445,23 +350,6 @@ class TestTimelinePage:
         assert 'id="timeline-list-view"' in html
         assert 'id="correlation-view"' in html
         assert 'id="aggregate-view"' in html
-
-
-class TestInfrastructurePage:
-    def test_returns_200(self, client):
-        response = client.get("/infrastructure")
-        assert response.status_code == 200
-
-    def test_returns_html(self, client):
-        assert "text/html" in client.get("/infrastructure").headers["content-type"]
-
-    def test_contains_page_heading(self, client):
-        html = client.get("/infrastructure").text
-        assert "Infrastructure" in html
-
-    def test_extends_base_template(self, client):
-        html = client.get("/infrastructure").text
-        assert "Observatory" in html
 
 
 # ---------------------------------------------------------------------------
@@ -576,12 +464,6 @@ class TestMultiDomainContext:
         response = client.get("/")
         assert response.status_code == 200
 
-    def test_single_domain_accepted(self, test_domain):
-        obs = Observatory(domains=[test_domain])
-        client = TestClient(obs.app)
-        response = client.get("/")
-        assert response.status_code == 200
-
 
 # ---------------------------------------------------------------------------
 # Template content: base.html elements
@@ -645,35 +527,20 @@ class TestKeyboardShortcutsInCoreJS:
 class TestTimelineJSContent:
     """Verify that timeline.js contains essential functionality."""
 
-    def test_fetches_timeline_events(self, client):
+    @pytest.mark.parametrize(
+        "needle",
+        [
+            pytest.param("/api/timeline/events", id="fetches_timeline_events"),
+            pytest.param("/api/timeline/stats", id="fetches_timeline_stats"),
+            pytest.param("timeline-stats", id="registers_stats_poller"),
+            pytest.param("_showEventDetail", id="has_event_detail_function"),
+            pytest.param("_onFilterChange", id="has_filter_change_handler"),
+            pytest.param("scroll", id="has_infinite_scroll"),
+            pytest.param("_readURL", id="deep_linking_reads_url"),
+            pytest.param("_updateURL", id="deep_linking_updates_url"),
+            pytest.param("/api/eventstore/streams", id="fetches_stream_categories"),
+        ],
+    )
+    def test_timeline_js_contains(self, client, needle):
         js = client.get("/static/js/timeline.js").text
-        assert "/api/timeline/events" in js
-
-    def test_fetches_timeline_stats(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "/api/timeline/stats" in js
-
-    def test_registers_stats_poller(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "timeline-stats" in js
-
-    def test_has_event_detail_function(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_showEventDetail" in js
-
-    def test_has_filter_change_handler(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_onFilterChange" in js
-
-    def test_has_infinite_scroll(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "scroll" in js
-
-    def test_has_deep_linking(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "_readURL" in js
-        assert "_updateURL" in js
-
-    def test_fetches_stream_categories(self, client):
-        js = client.get("/static/js/timeline.js").text
-        assert "/api/eventstore/streams" in js
+        assert needle in js

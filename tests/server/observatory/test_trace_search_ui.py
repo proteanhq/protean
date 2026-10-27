@@ -1,10 +1,10 @@
 """Tests for Trace Search UI and Recent Traces List View.
 
-Covers:
+Tests for:
 - Timeline page renders with Events/Traces tab bar
 - Traces view section with search inputs and results table
 - Deep link ?view=traces works
-- Deep link ?view=traces&aggregate_id=... populates search fields
+- Deep link ?view=traces&aggregate_id=... loads the traces view
 - Tab switching JavaScript references
 """
 
@@ -44,13 +44,10 @@ def client(tmp_path):
 class TestTabBar:
     """The timeline page has an Events/Traces tab bar."""
 
-    def test_has_events_tab(self, client):
+    @pytest.mark.parametrize("tab_id", ["tab-events", "tab-traces"])
+    def test_has_tab(self, client, tab_id):
         html = client.get("/timeline").text
-        assert 'id="tab-events"' in html
-
-    def test_has_traces_tab(self, client):
-        html = client.get("/timeline").text
-        assert 'id="tab-traces"' in html
+        assert f'id="{tab_id}"' in html
 
     def test_events_tab_is_active_by_default(self, client):
         html = client.get("/timeline").text
@@ -81,37 +78,26 @@ class TestTabBar:
 class TestTracesViewSection:
     """The traces view section has search inputs and results table."""
 
-    def test_has_traces_view_container(self, client):
+    @pytest.mark.parametrize(
+        "element_id",
+        [
+            "traces-view",
+            "trace-search-aggregate-id",
+            "trace-search-event-type",
+            "trace-search-command-type",
+            "trace-search-stream-category",
+            "btn-clear-trace-search",
+            "traces-tbody",
+            "traces-empty",
+        ],
+    )
+    def test_has_element(self, client, element_id):
         html = client.get("/timeline").text
-        assert 'id="traces-view"' in html
+        assert f'id="{element_id}"' in html
 
     def test_traces_view_starts_hidden(self, client):
         html = client.get("/timeline").text
         assert 'id="traces-view" class="hidden"' in html
-
-    def test_has_aggregate_id_search_input(self, client):
-        html = client.get("/timeline").text
-        assert 'id="trace-search-aggregate-id"' in html
-
-    def test_has_event_type_search_input(self, client):
-        html = client.get("/timeline").text
-        assert 'id="trace-search-event-type"' in html
-
-    def test_has_command_type_search_input(self, client):
-        html = client.get("/timeline").text
-        assert 'id="trace-search-command-type"' in html
-
-    def test_has_stream_category_search_input(self, client):
-        html = client.get("/timeline").text
-        assert 'id="trace-search-stream-category"' in html
-
-    def test_has_clear_search_button(self, client):
-        html = client.get("/timeline").text
-        assert 'id="btn-clear-trace-search"' in html
-
-    def test_has_traces_table(self, client):
-        html = client.get("/timeline").text
-        assert 'id="traces-tbody"' in html
 
     def test_traces_table_has_expected_columns(self, client):
         html = client.get("/timeline").text
@@ -119,10 +105,6 @@ class TestTracesViewSection:
         assert "Event Count" in html
         assert "Streams" in html
         assert "Started At" in html
-
-    def test_has_traces_empty_placeholder(self, client):
-        html = client.get("/timeline").text
-        assert 'id="traces-empty"' in html
 
 
 # ---------------------------------------------------------------------------
@@ -133,37 +115,23 @@ class TestTracesViewSection:
 class TestJavaScriptReferences:
     """The timeline.js file contains expected trace-related functions."""
 
-    def test_js_has_fetch_recent_traces(self, client):
+    @pytest.mark.parametrize(
+        "needle",
+        [
+            pytest.param("fetchRecentTraces", id="fetch_recent_traces"),
+            pytest.param("searchTraces", id="search_traces"),
+            pytest.param("_renderTracesTable", id="render_traces_table"),
+            pytest.param("traces-view", id="traces_view_handling"),
+            # _readURL handles ?view=traces
+            pytest.param("'traces'", id="view_traces_deep_link"),
+            pytest.param("tab-events", id="events_tab_binding"),
+            pytest.param("tab-traces", id="traces_tab_binding"),
+        ],
+    )
+    def test_js_contains(self, client, needle):
         resp = client.get("/static/js/timeline.js")
         assert resp.status_code == 200
-        assert "fetchRecentTraces" in resp.text
-
-    def test_js_has_search_traces(self, client):
-        resp = client.get("/static/js/timeline.js")
-        assert resp.status_code == 200
-        assert "searchTraces" in resp.text
-
-    def test_js_has_render_traces_table(self, client):
-        resp = client.get("/static/js/timeline.js")
-        assert resp.status_code == 200
-        assert "_renderTracesTable" in resp.text
-
-    def test_js_has_traces_view_handling(self, client):
-        resp = client.get("/static/js/timeline.js")
-        assert resp.status_code == 200
-        assert "traces-view" in resp.text
-
-    def test_js_handles_view_traces_deep_link(self, client):
-        resp = client.get("/static/js/timeline.js")
-        assert resp.status_code == 200
-        # Check that the _readURL function handles ?view=traces
-        assert "'traces'" in resp.text
-
-    def test_js_has_tab_event_binding(self, client):
-        resp = client.get("/static/js/timeline.js")
-        assert resp.status_code == 200
-        assert "tab-events" in resp.text
-        assert "tab-traces" in resp.text
+        assert needle in resp.text
 
 
 # ---------------------------------------------------------------------------
@@ -174,15 +142,11 @@ class TestJavaScriptReferences:
 class TestDeepLinking:
     """The timeline page supports ?view=traces deep linking via JS."""
 
-    def test_timeline_page_loads_with_view_traces_param(self, client):
-        """The page should load successfully even with ?view=traces."""
-        resp = client.get("/timeline?view=traces")
-        assert resp.status_code == 200
-        # The traces view container should be in the HTML
-        assert 'id="traces-view"' in resp.text
-
-    def test_timeline_page_loads_with_traces_search_params(self, client):
-        """The page should load with search parameters in the URL."""
-        resp = client.get("/timeline?view=traces&aggregate_id=abc-123")
+    @pytest.mark.parametrize(
+        "url",
+        ["/timeline?view=traces", "/timeline?view=traces&aggregate_id=abc-123"],
+    )
+    def test_timeline_page_loads_with_traces_query(self, client, url):
+        resp = client.get(url)
         assert resp.status_code == 200
         assert 'id="traces-view"' in resp.text

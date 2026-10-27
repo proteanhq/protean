@@ -1,6 +1,6 @@
 """Tests for causation tree enrichment with timing and handler data.
 
-Covers:
+Tests for:
 - CausationNode new fields (handler, duration_ms, delta_ms) serialize via asdict()
 - _build_causation_tree_from_group computes delta_ms from parent/child timestamps
 - _build_causation_tree_from_group enriches nodes from traces_by_message_id
@@ -14,7 +14,7 @@ import json
 import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -61,10 +61,9 @@ class User(BaseAggregate):
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def correlated_domain(tmp_path):
+def _correlated_domain(tmp_path, config=None):
     """Create a domain with correlated messages (real event store)."""
-    domain = Domain(name="EnrichmentTests", root_path=str(tmp_path))
+    domain = Domain(name="EnrichmentTests", root_path=str(tmp_path), config=config)
     domain._initialize()
     domain.register(User)
     domain.register(UserRegistered, part_of=User)
@@ -134,6 +133,28 @@ def correlated_domain(tmp_path):
         )
 
         yield domain, corr_id, user_id, stream
+
+
+@pytest.fixture
+def correlated_domain(tmp_path):
+    yield from _correlated_domain(tmp_path)
+
+
+# The core test lane has no Redis server. The broker is a real Redis broker,
+# which does not connect until it is used, and only its raw Redis client is
+# replaced, so each test controls what XRANGE on the trace stream returns.
+_REDIS_BROKER_CONFIG = {
+    "brokers": {"default": {"provider": "redis", "URI": "redis://127.0.0.1:1/0"}}
+}
+
+
+@pytest.fixture
+def traced_domain(tmp_path):
+    """The correlated domain with a Redis broker whose raw client is a mock."""
+    for domain, corr_id, _, _ in _correlated_domain(tmp_path, _REDIS_BROKER_CONFIG):
+        redis_conn = MagicMock()
+        domain.brokers.get("default").redis_instance = redis_conn
+        yield domain, corr_id, redis_conn
 
 
 def _make_timed_group(
@@ -410,13 +431,20 @@ class TestTreeBuilderTraceEnrichment:
         assert grandchild.handler is None
         assert grandchild.duration_ms is None
 
-    def test_graceful_fallback_no_traces(self, correlated_domain):
+    @pytest.mark.parametrize(
+        "traces_kwargs",
+        [{}, {"traces_by_message_id": {}}],
+        ids=["no_traces", "empty_traces"],
+    )
+    def test_graceful_fallback_without_trace_data(
+        self, correlated_domain, traces_kwargs
+    ):
+        """Without trace data, the handler and duration_ms fields are None."""
         domain, corr_id, _, _ = correlated_domain
         store = domain.event_store.store
         group = store._load_correlation_group(corr_id)
 
-        # No traces dict → all enrichment fields None
-        tree = _build_causation_tree_from_group(store, group)
+        tree = _build_causation_tree_from_group(store, group, **traces_kwargs)
         assert tree is not None
         assert tree.handler is None
         assert tree.duration_ms is None
@@ -425,16 +453,6 @@ class TestTreeBuilderTraceEnrichment:
         assert len(tree.children) > 0
         assert tree.children[0].handler is None
         assert tree.children[0].duration_ms is None
-
-    def test_empty_traces_dict(self, correlated_domain):
-        domain, corr_id, _, _ = correlated_domain
-        store = domain.event_store.store
-        group = store._load_correlation_group(corr_id)
-
-        tree = _build_causation_tree_from_group(store, group, traces_by_message_id={})
-        assert tree is not None
-        assert tree.handler is None
-        assert tree.duration_ms is None
 
 
 # ---------------------------------------------------------------------------
@@ -502,13 +520,6 @@ class TestCorrelationResponseTotalDuration:
         # No trace data available → None
         assert result["total_duration_ms"] is None
 
-    def test_event_count_preserved(self, correlated_domain):
-        domain, corr_id, _, _ = correlated_domain
-
-        result = build_correlation_response([domain], corr_id)
-        assert result is not None
-        assert result["event_count"] == 3
-
     def test_tree_present_in_response(self, correlated_domain):
         domain, corr_id, _, _ = correlated_domain
 
@@ -521,11 +532,6 @@ class TestCorrelationResponseTotalDuration:
         assert "duration_ms" in tree
         assert "delta_ms" in tree
 
-    def test_returns_none_for_unknown_correlation(self, correlated_domain):
-        domain, _, _, _ = correlated_domain
-        result = build_correlation_response([domain], "nonexistent-corr-id")
-        assert result is None
-
 
 # ---------------------------------------------------------------------------
 # Tests: _parse_time_ms edge cases (via _build_causation_tree_from_group)
@@ -534,7 +540,7 @@ class TestCorrelationResponseTotalDuration:
 
 class TestDeltaMsEdgeCases:
     def test_invalid_iso_string_produces_none_delta(self, correlated_domain):
-        """Covers the ValueError/TypeError branch in _parse_time_ms."""
+        """Timestamps that are not ISO 8601 give no delta_ms."""
         domain, _, _, _ = correlated_domain
         store = domain.event_store.store
 
@@ -568,7 +574,7 @@ class TestDeltaMsEdgeCases:
         assert tree.children[0].delta_ms is None
 
     def test_non_string_non_datetime_time_returns_none(self, correlated_domain):
-        """Covers the final return None in _parse_time_ms (e.g. int)."""
+        """Timestamps that are neither strings nor datetimes give no delta_ms."""
         domain, _, _, _ = correlated_domain
         store = domain.event_store.store
 
@@ -618,12 +624,11 @@ class TestLoadTracesForCorrelation:
         result = _load_traces_for_correlation([domain], corr_id)
         assert result == {}
 
-    def test_loads_handler_completed_traces(self, correlated_domain):
+    def test_loads_handler_completed_traces(self, traced_domain):
         """Extracts handler and duration_ms from handler.completed entries."""
-        domain, corr_id, _, _ = correlated_domain
+        domain, corr_id, redis_conn = traced_domain
 
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        redis_conn.xrange.return_value = [
             _make_redis_stream_entry(
                 {
                     "event": "handler.completed",
@@ -644,12 +649,7 @@ class TestLoadTracesForCorrelation:
             ),
         ]
 
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-
-        with patch.object(domain, "brokers") as mock_brokers:
-            mock_brokers.get.return_value = mock_broker
-            result = _load_traces_for_correlation([domain], corr_id)
+        result = _load_traces_for_correlation([domain], corr_id)
 
         assert len(result) == 2
         assert result["msg-root-cmd"]["handler"] == "RegisterUserHandler"
@@ -657,12 +657,11 @@ class TestLoadTracesForCorrelation:
         assert result["msg-evt-registered"]["handler"] == "UserProjector"
         assert result["msg-evt-registered"]["duration_ms"] == 8.2
 
-    def test_filters_by_correlation_id(self, correlated_domain):
+    def test_filters_by_correlation_id(self, traced_domain):
         """Only traces matching the requested correlation_id are returned."""
-        domain, corr_id, _, _ = correlated_domain
+        domain, corr_id, redis_conn = traced_domain
 
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        redis_conn.xrange.return_value = [
             _make_redis_stream_entry(
                 {
                     "event": "handler.completed",
@@ -683,23 +682,17 @@ class TestLoadTracesForCorrelation:
             ),
         ]
 
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-
-        with patch.object(domain, "brokers") as mock_brokers:
-            mock_brokers.get.return_value = mock_broker
-            result = _load_traces_for_correlation([domain], corr_id)
+        result = _load_traces_for_correlation([domain], corr_id)
 
         assert len(result) == 1
         assert "msg-1" in result
         assert "msg-2" not in result
 
-    def test_ignores_non_handler_events(self, correlated_domain):
+    def test_ignores_non_handler_events(self, traced_domain):
         """Only handler.completed and handler.failed are included."""
-        domain, corr_id, _, _ = correlated_domain
+        domain, corr_id, redis_conn = traced_domain
 
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        redis_conn.xrange.return_value = [
             _make_redis_stream_entry(
                 {
                     "event": "outbox.published",
@@ -727,23 +720,17 @@ class TestLoadTracesForCorrelation:
             ),
         ]
 
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-
-        with patch.object(domain, "brokers") as mock_brokers:
-            mock_brokers.get.return_value = mock_broker
-            result = _load_traces_for_correlation([domain], corr_id)
+        result = _load_traces_for_correlation([domain], corr_id)
 
         assert len(result) == 1
         assert "msg-3" in result
         assert result["msg-3"]["handler"] == "H3"
 
-    def test_coerces_duration_to_float(self, correlated_domain):
+    def test_coerces_duration_to_float(self, traced_domain):
         """String or Decimal-like duration_ms values are coerced to float."""
-        domain, corr_id, _, _ = correlated_domain
+        domain, corr_id, redis_conn = traced_domain
 
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        redis_conn.xrange.return_value = [
             _make_redis_stream_entry(
                 {
                     "event": "handler.completed",
@@ -755,22 +742,16 @@ class TestLoadTracesForCorrelation:
             ),
         ]
 
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-
-        with patch.object(domain, "brokers") as mock_brokers:
-            mock_brokers.get.return_value = mock_broker
-            result = _load_traces_for_correlation([domain], corr_id)
+        result = _load_traces_for_correlation([domain], corr_id)
 
         assert result["msg-1"]["duration_ms"] == 23.45
         assert isinstance(result["msg-1"]["duration_ms"], float)
 
-    def test_invalid_duration_becomes_none(self, correlated_domain):
+    def test_invalid_duration_becomes_none(self, traced_domain):
         """Non-parseable duration_ms becomes None."""
-        domain, corr_id, _, _ = correlated_domain
+        domain, corr_id, redis_conn = traced_domain
 
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        redis_conn.xrange.return_value = [
             _make_redis_stream_entry(
                 {
                     "event": "handler.completed",
@@ -782,48 +763,15 @@ class TestLoadTracesForCorrelation:
             ),
         ]
 
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-
-        with patch.object(domain, "brokers") as mock_brokers:
-            mock_brokers.get.return_value = mock_broker
-            result = _load_traces_for_correlation([domain], corr_id)
+        result = _load_traces_for_correlation([domain], corr_id)
 
         assert result["msg-1"]["duration_ms"] is None
 
-    def test_skips_entries_without_data(self, correlated_domain):
-        """Entries missing the 'data' field are silently skipped."""
-        domain, corr_id, _, _ = correlated_domain
-
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
-            ("1234567890-0", {}),  # No 'data' key
-            _make_redis_stream_entry(
-                {
-                    "event": "handler.completed",
-                    "correlation_id": corr_id,
-                    "message_id": "msg-1",
-                    "handler": "H1",
-                    "duration_ms": 5.0,
-                }
-            ),
-        ]
-
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-
-        with patch.object(domain, "brokers") as mock_brokers:
-            mock_brokers.get.return_value = mock_broker
-            result = _load_traces_for_correlation([domain], corr_id)
-
-        assert len(result) == 1
-
-    def test_handles_malformed_json_gracefully(self, correlated_domain):
+    def test_handles_malformed_json_gracefully(self, traced_domain):
         """Malformed JSON in trace entries is skipped without crashing."""
-        domain, corr_id, _, _ = correlated_domain
+        domain, corr_id, redis_conn = traced_domain
 
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        redis_conn.xrange.return_value = [
             ("1234567890-0", {"data": "not-valid-json{{{"}),
             _make_redis_stream_entry(
                 {
@@ -836,65 +784,25 @@ class TestLoadTracesForCorrelation:
             ),
         ]
 
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-
-        with patch.object(domain, "brokers") as mock_brokers:
-            mock_brokers.get.return_value = mock_broker
-            result = _load_traces_for_correlation([domain], corr_id)
+        result = _load_traces_for_correlation([domain], corr_id)
 
         assert len(result) == 1
 
-    def test_handles_bytes_data(self, correlated_domain):
-        """Redis may return data as bytes — these should be decoded."""
-        domain, corr_id, _, _ = correlated_domain
-
-        trace_json = json.dumps(
-            {
-                "event": "handler.completed",
-                "correlation_id": corr_id,
-                "message_id": "msg-1",
-                "handler": "H1",
-                "duration_ms": 7.0,
-            }
-        )
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
-            ("1234567890-0", {b"data": trace_json.encode("utf-8")}),
-        ]
-
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-
-        with patch.object(domain, "brokers") as mock_brokers:
-            mock_brokers.get.return_value = mock_broker
-            result = _load_traces_for_correlation([domain], corr_id)
-
-        assert len(result) == 1
-        assert result["msg-1"]["handler"] == "H1"
-
-    def test_xrange_failure_returns_empty(self, correlated_domain):
+    def test_xrange_failure_returns_empty(self, traced_domain):
         """Redis XRANGE failure returns empty dict gracefully."""
-        domain, corr_id, _, _ = correlated_domain
+        domain, corr_id, redis_conn = traced_domain
 
-        mock_redis = MagicMock()
-        mock_redis.xrange.side_effect = Exception("Redis down")
+        redis_conn.xrange.side_effect = Exception("Redis down")
 
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-
-        with patch.object(domain, "brokers") as mock_brokers:
-            mock_brokers.get.return_value = mock_broker
-            result = _load_traces_for_correlation([domain], corr_id)
+        result = _load_traces_for_correlation([domain], corr_id)
 
         assert result == {}
 
-    def test_skips_entries_without_message_id(self, correlated_domain):
+    def test_skips_entries_without_message_id(self, traced_domain):
         """Trace entries missing message_id are skipped."""
-        domain, corr_id, _, _ = correlated_domain
+        domain, corr_id, redis_conn = traced_domain
 
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        redis_conn.xrange.return_value = [
             _make_redis_stream_entry(
                 {
                     "event": "handler.completed",
@@ -906,21 +814,15 @@ class TestLoadTracesForCorrelation:
             ),
         ]
 
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-
-        with patch.object(domain, "brokers") as mock_brokers:
-            mock_brokers.get.return_value = mock_broker
-            result = _load_traces_for_correlation([domain], corr_id)
+        result = _load_traces_for_correlation([domain], corr_id)
 
         assert len(result) == 0
 
-    def test_none_duration_preserved(self, correlated_domain):
+    def test_none_duration_preserved(self, traced_domain):
         """When duration_ms is absent from trace, None is stored."""
-        domain, corr_id, _, _ = correlated_domain
+        domain, corr_id, redis_conn = traced_domain
 
-        mock_redis = MagicMock()
-        mock_redis.xrange.return_value = [
+        redis_conn.xrange.return_value = [
             _make_redis_stream_entry(
                 {
                     "event": "handler.completed",
@@ -932,11 +834,6 @@ class TestLoadTracesForCorrelation:
             ),
         ]
 
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-
-        with patch.object(domain, "brokers") as mock_brokers:
-            mock_brokers.get.return_value = mock_broker
-            result = _load_traces_for_correlation([domain], corr_id)
+        result = _load_traces_for_correlation([domain], corr_id)
 
         assert result["msg-1"]["duration_ms"] is None

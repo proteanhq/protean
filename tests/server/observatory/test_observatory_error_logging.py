@@ -1,8 +1,8 @@
-"""Observatory scrapes log the Redis errors they skip.
+"""Observatory scrapes log the Redis, outbox and domain-graph errors they skip.
 
 Each scrape is best-effort: a failure on one domain, stream or group must not
 break the endpoint. These tests force the failure and check two things: the
-endpoint still returns its fallback, and a debug record names what was skipped.
+endpoint still returns its fallback, and a log record names what was skipped.
 """
 
 import json
@@ -12,40 +12,57 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from protean import Domain
 from protean.server.observatory import Observatory
 from protean.server.observatory.api import _get_redis as api_get_redis
-from protean.server.observatory.metrics import _hand_rolled_metrics
+from protean.server.observatory.metrics import _hand_rolled_metrics, _scrape_cache
+from protean.server.observatory.routes import domain as domain_routes
 from protean.server.observatory.routes.handlers import _get_redis as handlers_get_redis
 from protean.server.observatory.routes.processes import (
     _get_redis as processes_get_redis,
 )
 from protean.server.observatory.routes.timeline import _load_traces_for_correlation
 
-
-def _mock_domain(name: str) -> MagicMock:
-    mock = MagicMock()
-    mock.name = name
-    mock.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-    mock.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-    return mock
+_REDIS_BROKER = {"provider": "redis", "URI": "redis://127.0.0.1:1/0"}
 
 
-def _failing_domain(name: str = "broken") -> MagicMock:
-    domain = _mock_domain(name)
-    domain.brokers.get.side_effect = RuntimeError("broker init failed")
+def _domain(name: str, broker: dict) -> Domain:
+    domain = Domain(name=name, config={"brokers": {"default": broker}})
+    domain.init(traverse=False)
     return domain
 
 
-def _domain_with_redis(name: str = "test") -> tuple[MagicMock, MagicMock]:
-    domain = _mock_domain(name)
-    broker = MagicMock()
+def _failing_domain(name: str = "broken") -> Domain:
+    """A real domain whose broker lookup raises, as when a broker fails to start."""
+    domain = _domain(name, {"provider": "inline"})
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("broker init failed")
+
+    domain.brokers.get = _raise
+    return domain
+
+
+def _domain_with_redis(name: str = "test") -> tuple[Domain, MagicMock]:
+    """A real domain on the Redis broker, with a fake Redis client under it.
+
+    The client is never connected; every Redis call goes to the fake.
+    """
+    domain = _domain(name, _REDIS_BROKER)
     redis_conn = MagicMock()
-    broker.redis_instance = redis_conn
-    domain.brokers.get.return_value = broker
-    domain._get_outbox_repo.side_effect = RuntimeError("no outbox")
+    domain.brokers.get("default").redis_instance = redis_conn
     redis_conn.scan.return_value = (0, [b"orders::order"])
     redis_conn.xrange.return_value = []
     return domain, redis_conn
+
+
+def _fail_outbox(domain: Domain) -> None:
+    """Make the domain's outbox query raise, as when its database is down."""
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("no outbox")
+
+    domain._get_outbox_repo = _raise
 
 
 def _records(caplog, logger_name: str, message: str) -> list[logging.LogRecord]:
@@ -125,8 +142,7 @@ class TestBrokerLookupLogsSkippedDomain:
         logger_name = "protean.server.observatory.sse"
         caplog.set_level(logging.DEBUG, logger=logger_name)
         # The broker lookup succeeds but finds no Redis broker
-        domain = _mock_domain("no-redis")
-        domain.brokers.get.return_value = MagicMock(spec=[])
+        domain = _domain("no-redis", {"provider": "inline"})
         client = TestClient(Observatory(domains=[domain]).app)
 
         with client.stream("GET", "/stream") as response:
@@ -165,7 +181,7 @@ class TestBrokerLookupLogsSkippedDomain:
 class TestApiStreamScrapesLogSkippedStream:
     logger_name = "protean.server.observatory.api"
 
-    def _client(self, domain: MagicMock) -> TestClient:
+    def _client(self, domain: Domain) -> TestClient:
         return TestClient(Observatory(domains=[domain]).app)
 
     @pytest.mark.parametrize("path", ["/api/streams", "/api/stats"])
@@ -256,6 +272,22 @@ class TestApiStreamScrapesLogSkippedStream:
             "redis down",
         )
 
+    def test_outbox_failure_drops_domain_and_is_logged(self, caplog):
+        caplog.set_level(logging.DEBUG, logger=self.logger_name)
+        domain, redis_conn = _domain_with_redis()
+        redis_conn.xlen.return_value = 0
+        redis_conn.xinfo_groups.return_value = []
+        _fail_outbox(domain)
+
+        response = self._client(domain).get("/api/queue-depth")
+
+        assert response.status_code == 200
+        assert response.json()["outbox"] == {}
+        records = _records(caplog, self.logger_name, "Error querying outbox for test")
+        assert len(records) == 1
+        assert records[0].levelno == logging.ERROR
+        assert str(records[0].exc_info[1]) == "no outbox"
+
     def test_no_record_when_scrape_succeeds(self, caplog):
         caplog.set_level(logging.DEBUG, logger=self.logger_name)
         domain, redis_conn = _domain_with_redis()
@@ -342,3 +374,40 @@ class TestConsumerMetricsLogSkippedStream:
             if r.name == self.logger_name
             and r.getMessage().startswith("Metrics: could not read")
         ]
+
+    def test_outbox_failure_is_logged(self, caplog):
+        caplog.set_level(logging.DEBUG, logger=self.logger_name)
+        domain = _domain("no-redis", {"provider": "inline"})
+        _fail_outbox(domain)
+        # The metrics module caches collections for a few seconds across calls,
+        # so an earlier test's Redis broker would leak into this output.
+        _scrape_cache.clear()
+
+        body = _hand_rolled_metrics([domain])
+
+        assert "protean_outbox_pending_count{" not in body
+        assert "protean_broker_pool_active_connections" not in body
+        assert _records(
+            caplog,
+            self.logger_name,
+            "Metrics: outbox query failed for no-redis: no outbox",
+        )
+
+
+@pytest.mark.no_test_domain
+class TestDomainGraphBuildFailureIsLogged:
+    def test_failing_ir_build_is_logged(self, caplog, monkeypatch):
+        logger_name = domain_routes.__name__
+        caplog.set_level(logging.WARNING, logger=logger_name)
+        domain = _domain("broken-ir", {"provider": "inline"})
+
+        def _raise(self):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(domain_routes.IRBuilder, "build", _raise)
+
+        Observatory(domains=[domain])
+
+        records = _records(caplog, logger_name, "Failed to build domain IR graph")
+        assert len(records) == 1
+        assert str(records[0].exc_info[1]) == "boom"

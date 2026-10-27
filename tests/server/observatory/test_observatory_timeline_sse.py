@@ -1,6 +1,6 @@
 """Tests for real-time SSE updates on the Timeline page.
 
-Covers:
+Tests for:
 - SSE toast notification element in timeline HTML
 - SSE-related CSS animations and styles
 - JavaScript SSE trace listener, deduplication, toast, and scroll handling
@@ -367,5 +367,4 @@ class TestTimelineJSAscendingRefresh:
 
     def test_asc_order_full_refresh(self, timeline_js):
         """In ascending order, new events call fetchEvents(false)."""
-        # The else branch for ascending order calls full refresh
         assert "fetchEvents(false)" in timeline_js

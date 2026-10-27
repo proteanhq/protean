@@ -1,6 +1,6 @@
 """Tests for Observatory Timeline API endpoints and supporting functions.
 
-Covers:
+Tests for:
 - routes/timeline.py: collect_all_events, find_event_by_id,
   collect_timeline_stats, create_timeline_router,
   build_correlation_response, collect_aggregate_history
@@ -13,13 +13,16 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import UTC
 from datetime import datetime as dt
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import PropertyMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from protean.adapters.event_store import EventStore
+from protean.adapters.event_store.memory import MemoryMessage
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.domain import Domain
@@ -45,6 +48,7 @@ from protean.server.observatory.routes.timeline import (
     find_event_by_id,
 )
 from tests.server.observatory.conftest import route_paths
+from tests.shared import FrozenClock
 
 # All tests in this module use standalone in-memory domains
 # so they don't need the observatory conftest's Redis-dependent test_domain.
@@ -82,6 +86,37 @@ class User(BaseAggregate):
     def rename(self, name: str) -> None:
         self.name = name
         self.raise_(UserRenamed(user_id=self.user_id, name=name))
+
+
+def _store_unavailable(domain: Domain, method: str = "_read"):
+    """Make one read method of the domain's event store raise.
+
+    The memory event store cannot be made to fail for real, so the read is
+    forced to raise as an unreachable database would.
+    """
+    return patch.object(
+        domain.event_store.store,
+        method,
+        side_effect=RuntimeError("Store unavailable"),
+    )
+
+
+def _write_at(domain: Domain, when: dt, stream: str, message_type: str) -> None:
+    """Write a message to the memory event store with a fixed creation time."""
+    original_clock = domain.clock
+    domain.clock = FrozenClock(when)
+    try:
+        with domain.domain_context():
+            domain.event_store.store._write(stream, message_type, {})
+    finally:
+        domain.clock = original_clock
+
+
+def _add_raw_message(domain: Domain, **fields) -> None:
+    """Store a message row as given, bypassing the defaults ``_write`` fills in."""
+    domain.repository_for(MemoryMessage).add(
+        MemoryMessage(position=0, type="Test.Raw.v1", data={}, **fields)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -331,7 +366,7 @@ class TestExtractStreamCategory:
         assert _extract_stream_category(msg) == "test::user"
 
     def test_falls_through_when_no_stream_category_in_domain_meta(self):
-        """Covers partial branches 94→101, 96→101."""
+        """Without a stream_category in the domain metadata, the stream name is used."""
         msg = {
             "stream_name": "test::order-abc",
             "metadata": {"domain": {"kind": "EVENT"}},
@@ -395,11 +430,11 @@ class TestExtractAggregateId:
         assert _extract_aggregate_id({}) is None
 
     def test_returns_none_with_non_dict_metadata(self):
-        """Covers partial branch 128→133."""
+        """Non-dict metadata gives no stream to read an ID from."""
         assert _extract_aggregate_id({"metadata": "bad"}) is None
 
     def test_returns_none_with_non_dict_headers(self):
-        """Covers partial branch 130→133."""
+        """Non-dict headers give no stream to read an ID from."""
         assert _extract_aggregate_id({"metadata": {"headers": "bad"}}) is None
 
 
@@ -413,24 +448,6 @@ class TestCollectAllEvents:
         domain, _user1_id, _user2_id = domain_with_events
         events, _cursor = collect_all_events([domain])
         assert len(events) == 3
-
-    def test_respects_limit(self, domain_with_events):
-        domain, _, _ = domain_with_events
-        events, cursor = collect_all_events([domain], limit=2)
-        assert len(events) == 2
-        assert cursor is not None
-
-    def test_cursor_pagination(self, domain_with_events):
-        domain, _, _ = domain_with_events
-        # Get first 2 events
-        page1, cursor1 = collect_all_events([domain], limit=2)
-        assert len(page1) == 2
-        assert cursor1 is not None
-
-        # Get remaining events using cursor
-        page2, cursor2 = collect_all_events([domain], cursor=cursor1, limit=2)
-        assert len(page2) == 1
-        assert cursor2 is None
 
     def test_desc_order(self, domain_with_events):
         domain, _, _ = domain_with_events
@@ -468,11 +485,6 @@ class TestCollectAllEvents:
         )
         assert len(events) == 0
 
-    def test_filter_by_kind(self, domain_with_events):
-        domain, _, _ = domain_with_events
-        events, _ = collect_all_events([domain], kind="EVENT")
-        assert len(events) == 3  # All are events
-
     def test_filter_by_kind_excludes_mismatch(self, domain_with_events):
         """kind filter excludes non-matching events."""
         domain, _, _ = domain_with_events
@@ -499,15 +511,6 @@ class TestCollectAllEvents:
         for event in events:
             assert event["type"] != "SNAPSHOT"
 
-    def test_handles_broken_domain_gracefully(self):
-        domain = MagicMock()
-        domain.name = "Broken"
-        domain.domain_context.side_effect = Exception("Store unavailable")
-
-        events, cursor = collect_all_events([domain])
-        assert events == []
-        assert cursor is None
-
     def test_returns_empty_when_no_events(self, event_domain):
         events, cursor = collect_all_events([event_domain])
         assert events == []
@@ -532,19 +535,6 @@ class TestFindEventById:
         assert "data" in result
         assert "metadata" in result
 
-    def test_returns_none_for_missing(self, domain_with_events):
-        domain, _, _ = domain_with_events
-        result = find_event_by_id([domain], "nonexistent-id")
-        assert result is None
-
-    def test_handles_broken_domain_gracefully(self):
-        domain = MagicMock()
-        domain.name = "Broken"
-        domain.domain_context.side_effect = Exception("Store unavailable")
-
-        result = find_event_by_id([domain], "any-id")
-        assert result is None
-
 
 # ---------------------------------------------------------------------------
 # collect_timeline_stats
@@ -566,14 +556,6 @@ class TestCollectTimelineStats:
         assert stats["last_event_time"] is not None
         assert stats["active_streams"] >= 1
 
-    def test_handles_broken_domain_gracefully(self):
-        domain = MagicMock()
-        domain.name = "Broken"
-        domain.domain_context.side_effect = Exception("Store unavailable")
-
-        stats = collect_timeline_stats([domain])
-        assert stats["total_events"] == 0
-
 
 # ---------------------------------------------------------------------------
 # Endpoint: GET /timeline/events
@@ -581,12 +563,9 @@ class TestCollectTimelineStats:
 
 
 class TestTimelineEventsEndpoint:
-    def test_returns_200_empty(self, client):
-        response = client.get("/api/timeline/events")
-        assert response.status_code == 200
-
     def test_response_shape(self, client):
         response = client.get("/api/timeline/events")
+        assert response.status_code == 200
         data = response.json()
         assert "events" in data
         assert "next_cursor" in data
@@ -671,12 +650,9 @@ class TestTimelineEventDetailEndpoint:
 
 
 class TestTimelineStatsEndpoint:
-    def test_returns_200(self, client):
-        response = client.get("/api/timeline/stats")
-        assert response.status_code == 200
-
     def test_response_shape(self, client):
         response = client.get("/api/timeline/stats")
+        assert response.status_code == 200
         data = response.json()
         assert "total_events" in data
         assert "last_event_time" in data
@@ -709,39 +685,42 @@ class TestTimelineRouteWiring:
 
 
 class TestCreateTimelineRouterStandalone:
-    def test_router_functions_with_mock_domain(self):
-        """The router factory works without a real domain when no events exist."""
-        domain = MagicMock()
-        domain.name = "MockDomain"
-        domain.domain_context.side_effect = Exception("No store")
-
+    def test_router_answers_when_the_event_store_cannot_be_read(
+        self, domain_with_events
+    ):
+        """A router on its own app returns empty results, not errors, when the
+        event store fails on every read."""
+        domain, _, _ = domain_with_events
         router = create_timeline_router([domain])
         app = FastAPI()
         app.include_router(router, prefix="/api")
         test_client = TestClient(app)
 
-        response = test_client.get("/api/timeline/events")
-        assert response.status_code == 200
-        assert response.json()["events"] == []
+        with _store_unavailable(domain):
+            response = test_client.get("/api/timeline/events")
+            assert response.status_code == 200
+            assert response.json()["events"] == []
+            assert response.json()["next_cursor"] is None
 
-        response = test_client.get("/api/timeline/stats")
-        assert response.status_code == 200
-        assert response.json()["total_events"] == 0
+            response = test_client.get("/api/timeline/stats")
+            assert response.status_code == 200
+            assert response.json()["total_events"] == 0
 
-        response = test_client.get("/api/timeline/events/some-id")
-        assert response.status_code == 404
+            response = test_client.get("/api/timeline/events/some-id")
+            assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# Coverage-targeted tests for collect_timeline_stats edge cases
+# collect_timeline_stats: unusual messages and time values
 # ---------------------------------------------------------------------------
 
 
-class TestCollectTimelineStatsEdgeCases:
-    """Tests targeting uncovered lines and partial branches in collect_timeline_stats."""
+class TestCollectTimelineStatsMessageTimes:
+    """How collect_timeline_stats treats snapshots, odd time values and
+    messages that cannot give a rate."""
 
     def test_snapshot_excluded_from_stats(self, domain_with_events):
-        """snapshot messages skipped in stats loop."""
+        """Snapshot messages are not counted as events."""
         domain, user1_id, _ = domain_with_events
 
         # Write a snapshot message
@@ -755,8 +734,13 @@ class TestCollectTimelineStatsEdgeCases:
         # Should count only the 3 real events, not the snapshot
         assert stats["total_events"] == 3
 
+    # The memory event store returns ``time`` as an ISO string and validates it
+    # as a datetime on write. A store that returns datetime objects (MessageDB),
+    # an unparseable string, a number, or no ``global_position`` cannot be
+    # produced with it, so these tests feed such rows through ``_read``.
+
     def test_datetime_object_time(self, event_domain):
-        """isinstance(raw_time, datetime) branch."""
+        """A datetime ``time`` is used as is for the last time and the rate."""
         fake_messages = [
             {
                 "stream_name": "test::manual-1",
@@ -784,7 +768,7 @@ class TestCollectTimelineStatsEdgeCases:
         assert stats["events_per_minute"] is not None
 
     def test_invalid_time_format(self, event_domain, caplog):
-        """ValueError from fromisoformat."""
+        """A ``time`` string that is not ISO 8601 is skipped and logged."""
         fake_messages = [
             {
                 "stream_name": "test::badtime-1",
@@ -814,31 +798,8 @@ class TestCollectTimelineStatsEdgeCases:
             "'not-a-date' is not ISO 8601"
         )
 
-    def test_iso_string_time_logs_nothing(self, event_domain, caplog):
-        fake_messages = [
-            {
-                "stream_name": "test::goodtime-1",
-                "type": "Test.GoodTime.v1",
-                "global_position": 1,
-                "time": "2025-06-15T12:00:00+00:00",
-                "metadata": {},
-                "data": {},
-            },
-        ]
-        with (
-            patch.object(
-                event_domain.event_store.store, "_read", return_value=fake_messages
-            ),
-            caplog.at_level(
-                logging.DEBUG, logger="protean.server.observatory.routes.timeline"
-            ),
-        ):
-            stats = collect_timeline_stats([event_domain])
-        assert stats["last_event_time"] == "2025-06-15T12:00:00+00:00"
-        assert not [r for r in caplog.records if "is not ISO 8601" in r.getMessage()]
-
     def test_non_string_non_datetime_time(self, event_domain):
-        """else branch for unrecognized time type."""
+        """A ``time`` that is neither a string nor a datetime is ignored."""
         fake_messages = [
             {
                 "stream_name": "test::weirdtime-1",
@@ -856,116 +817,85 @@ class TestCollectTimelineStatsEdgeCases:
         assert stats["total_events"] == 1
         assert stats["last_event_time"] is None
 
-    def test_empty_stream_name_in_stats(self, event_domain):
-        """Covers partial 274→277: empty stream name doesn't get added to active_streams."""
-        fake_messages = [
-            {
-                "stream_name": "",
-                "type": "Test.Event.v1",
-                "global_position": 1,
-                "time": "2025-06-15T12:00:00",
-                "metadata": {},
-                "data": {},
-            },
-        ]
-        with patch.object(
-            event_domain.event_store.store, "_read", return_value=fake_messages
+    def test_iso_string_time_logs_nothing(self, event_domain, caplog):
+        """An ISO 8601 ``time`` becomes the last event time without a log line."""
+        _write_at(
+            event_domain,
+            dt(2025, 6, 15, 12, 0, 0, tzinfo=UTC),
+            "test::goodtime-1",
+            "Test.GoodTime.v1",
+        )
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.server.observatory.routes.timeline"
         ):
             stats = collect_timeline_stats([event_domain])
+        assert stats["last_event_time"] == "2025-06-15T12:00:00+00:00"
+        assert not [r for r in caplog.records if "is not ISO 8601" in r.getMessage()]
+
+    def test_empty_stream_name_in_stats(self, event_domain):
+        """A message with an empty stream name counts, but adds no active stream."""
+        _add_raw_message(event_domain, stream_name="", time=dt(2025, 6, 15, 12, 0, 0))
+        stats = collect_timeline_stats([event_domain])
         assert stats["total_events"] == 1
         assert stats["active_streams"] == 0
 
     def test_falsy_raw_time(self, event_domain):
-        """Covers partial 278→266: falsy raw_time skips time tracking."""
-        fake_messages = [
-            {
-                "stream_name": "test::notime-1",
-                "type": "Test.NoTime.v1",
-                "global_position": 1,
-                "time": None,
-                "metadata": {},
-                "data": {},
-            },
-        ]
-        with patch.object(
-            event_domain.event_store.store, "_read", return_value=fake_messages
-        ):
-            stats = collect_timeline_stats([event_domain])
+        """A message without a time counts, but sets no last event time."""
+        _add_raw_message(event_domain, stream_name="test::notime-1", time=None)
+        stats = collect_timeline_stats([event_domain])
         assert stats["total_events"] == 1
         assert stats["last_event_time"] is None
 
     def test_events_same_timestamp_zero_duration(self, event_domain):
-        """Covers partial 307→310: duration == 0 means events_per_minute stays None."""
-        same_time = "2025-06-15T12:00:00"
-        fake_messages = [
-            {
-                "stream_name": "test::same-1",
-                "type": "Test.SameTime1.v1",
-                "global_position": 1,
-                "time": same_time,
-                "metadata": {},
-                "data": {},
-            },
-            {
-                "stream_name": "test::same-2",
-                "type": "Test.SameTime2.v1",
-                "global_position": 2,
-                "time": same_time,
-                "metadata": {},
-                "data": {},
-            },
-        ]
-        with patch.object(
-            event_domain.event_store.store, "_read", return_value=fake_messages
-        ):
-            stats = collect_timeline_stats([event_domain])
+        """Events that all share one time give no events_per_minute."""
+        same_time = dt(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+        _write_at(event_domain, same_time, "test::same-1", "Test.SameTime1.v1")
+        _write_at(event_domain, same_time, "test::same-2", "Test.SameTime2.v1")
+        stats = collect_timeline_stats([event_domain])
         assert stats["total_events"] == 2
         assert stats["events_per_minute"] is None
 
     def test_first_event_datetime_comparison(self, event_domain):
-        """Covers partial 289→293: first_event_datetime comparison when msg_dt is not smaller."""
-        fake_messages = [
-            {
-                "stream_name": "test::first-1",
-                "type": "Test.First.v1",
-                "global_position": 1,
-                "time": "2025-06-15T12:00:00",
-                "metadata": {},
-                "data": {},
-            },
-            {
-                "stream_name": "test::first-2",
-                "type": "Test.First.v1",
-                "global_position": 2,
-                "time": "2025-06-15T12:05:00",
-                "metadata": {},
-                "data": {},
-            },
-            {
-                "stream_name": "test::first-3",
-                "type": "Test.First.v1",
-                "global_position": 3,
-                "time": "2025-06-15T12:03:00",
-                "metadata": {},
-                "data": {},
-            },
-        ]
-        with patch.object(
-            event_domain.event_store.store, "_read", return_value=fake_messages
-        ):
-            stats = collect_timeline_stats([event_domain])
+        """A later message with a time between the first and last changes
+        neither end of the window."""
+        _write_at(
+            event_domain,
+            dt(2025, 6, 15, 12, 0, 0, tzinfo=UTC),
+            "test::first-1",
+            "Test.First.v1",
+        )
+        _write_at(
+            event_domain,
+            dt(2025, 6, 15, 12, 5, 0, tzinfo=UTC),
+            "test::first-2",
+            "Test.First.v1",
+        )
+        _write_at(
+            event_domain,
+            dt(2025, 6, 15, 12, 3, 0, tzinfo=UTC),
+            "test::first-3",
+            "Test.First.v1",
+        )
+        stats = collect_timeline_stats([event_domain])
         assert stats["total_events"] == 3
         assert stats["events_per_minute"] is not None
+        # Three events over the five minutes from 12:00 to 12:05.
+        assert stats["events_per_minute"] == 0.6
+        assert stats["last_event_time"] == "2025-06-15T12:05:00+00:00"
 
 
 # ---------------------------------------------------------------------------
-# Coverage-targeted tests for collect_all_events edge cases
+# collect_all_events: messages without a global position
 # ---------------------------------------------------------------------------
 
 
-class TestCollectAllEventsEdgeCases:
+class TestCollectAllEventsWithoutGlobalPosition:
     def test_last_pos_none_skips_next_cursor(self, event_domain):
-        """Covers partial 214→220: last_pos is None means next_cursor stays None."""
+        """Without a global position on the last event, no next cursor is given.
+
+        The memory event store always assigns ``global_position``, so the rows
+        are fed through ``_read``.
+        """
         fake_messages = [
             {
                 "stream_name": "test::npos-1",
@@ -1106,7 +1036,7 @@ class TestBuildCausationTreeFromGroup:
         assert tree.children[0].message_id == "msg-evt-registered"
 
     def test_handles_malformed_metadata(self, correlated_domain):
-        """Covers branches for non-dict metadata/headers/domain."""
+        """Non-dict metadata gives a node of unknown kind."""
         domain, _, _, _ = correlated_domain
         store = domain.event_store.store
         group = [
@@ -1122,7 +1052,7 @@ class TestBuildCausationTreeFromGroup:
         assert tree.kind == "?"
 
     def test_handles_non_dict_headers_and_domain(self, correlated_domain):
-        """Covers branches for non-dict headers and domain inside metadata."""
+        """Non-dict headers and domain inside metadata give a node of unknown kind."""
         domain, _, _, _ = correlated_domain
         store = domain.event_store.store
         group = [
@@ -1142,7 +1072,8 @@ class TestBuildCausationTreeFromGroup:
         assert tree.message_type == "Test.BadInner.v1"
 
     def test_handles_all_messages_with_causation_id(self, correlated_domain):
-        """Covers the 'not roots' fallback when all messages have causation_id."""
+        """When every message has a causation_id, the one whose parent is outside
+        the group becomes the root."""
         domain, _, _, _ = correlated_domain
         store = domain.event_store.store
         group = [
@@ -1217,12 +1148,9 @@ class TestBuildCorrelationResponse:
         result = build_correlation_response([domain], "nonexistent-corr")
         assert result is None
 
-    def test_handles_broken_domain_gracefully(self):
-        domain = MagicMock()
-        domain.name = "Broken"
-        domain.domain_context.side_effect = Exception("Store unavailable")
-
-        result = build_correlation_response([domain], "any-id")
+    def test_handles_broken_domain_gracefully(self, event_domain):
+        with _store_unavailable(event_domain, "_load_correlation_group"):
+            result = build_correlation_response([event_domain], "any-id")
         assert result is None
 
 
@@ -1243,15 +1171,6 @@ class TestCollectAggregateHistory:
         assert result["stream_category"] == stream_category
         assert result["event_count"] == 3
 
-    def test_includes_current_version(self, correlated_domain):
-        domain, _, user_id, _ = correlated_domain
-        stream_category = User.meta_.stream_category
-        result = collect_aggregate_history([domain], stream_category, user_id)
-
-        assert result is not None
-        # current_version should be the head position of the stream
-        assert result["current_version"] is not None
-
     def test_returns_none_for_unknown_aggregate(self, correlated_domain):
         domain, _, _, _ = correlated_domain
         stream_category = User.meta_.stream_category
@@ -1263,12 +1182,9 @@ class TestCollectAggregateHistory:
         result = collect_aggregate_history([domain], "nonexistent::category", user_id)
         assert result is None
 
-    def test_handles_broken_domain_gracefully(self):
-        domain = MagicMock()
-        domain.name = "Broken"
-        domain.domain_context.side_effect = Exception("Store unavailable")
-
-        result = collect_aggregate_history([domain], "cat", "id")
+    def test_handles_broken_domain_gracefully(self, event_domain):
+        with _store_unavailable(event_domain):
+            result = collect_aggregate_history([event_domain], "cat", "id")
         assert result is None
 
     def test_current_version_is_stream_position(self, correlated_domain):
@@ -1296,10 +1212,7 @@ class TestCorrelationEndpoint:
         assert data["event_count"] == 3
         assert "events" in data
         assert "tree" in data
-
-    def test_tree_structure(self, correlated_client):
-        response = correlated_client.get("/api/timeline/correlation/corr-chain-001")
-        tree = response.json()["tree"]
+        tree = data["tree"]
         assert tree["message_id"] == "msg-root-cmd"
         assert len(tree["children"]) == 1
         assert tree["children"][0]["message_id"] == "msg-evt-registered"
@@ -1343,22 +1256,35 @@ class TestAggregateHistoryEndpoint:
 
 
 class TestNewRouteWiring:
-    def test_correlation_route_included(self, correlated_domain):
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/timeline/correlation/{correlation_id}",
+            "/api/timeline/aggregate/{stream_category}/{aggregate_id}",
+        ],
+    )
+    def test_route_included(self, correlated_domain, path):
         domain, _, _, _ = correlated_domain
         obs = Observatory(domains=[domain])
         routes = route_paths(obs.app.routes)
-        assert "/api/timeline/correlation/{correlation_id}" in routes
-
-    def test_aggregate_route_included(self, correlated_domain):
-        domain, _, _, _ = correlated_domain
-        obs = Observatory(domains=[domain])
-        routes = route_paths(obs.app.routes)
-        assert "/api/timeline/aggregate/{stream_category}/{aggregate_id}" in routes
+        assert path in routes
 
 
 # ---------------------------------------------------------------------------
 # _unique_store_domains
 # ---------------------------------------------------------------------------
+
+
+def _domain_with_store_uri(tmp_path, name: str, database_uri: str) -> Domain:
+    """A memory-store domain whose event store reports ``database_uri``."""
+    domain = Domain(
+        name=name,
+        root_path=str(tmp_path),
+        config={"event_store": {"provider": "memory", "database_uri": database_uri}},
+    )
+    domain._initialize()
+    domain.init(traverse=False)
+    return domain
 
 
 class TestUniqueStoreDomains:
@@ -1389,61 +1315,63 @@ class TestUniqueStoreDomains:
     def test_empty_list_returns_empty(self):
         assert _unique_store_domains([]) == []
 
-    def test_broken_domain_treated_as_unique(self, caplog):
+    def test_broken_domain_treated_as_unique(self, tmp_path, caplog):
         """A domain that raises on event_store access is treated as unique."""
-        d1 = MagicMock()
-        d1.event_store.store.conn_info = {"database_uri": "postgresql://shared"}
+        d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://shared")
+        d2 = _domain_with_store_uri(tmp_path, "broken", "postgresql://shared")
 
-        d2 = MagicMock()
-        d2.name = "broken"
-        type(d2).event_store = PropertyMock(side_effect=RuntimeError("no store"))
-
-        with caplog.at_level(
-            logging.DEBUG, logger="protean.server.observatory.routes.timeline"
+        # Reading the store of the second domain fails, as a store whose
+        # set-up raised would; the first read returns d1's real store.
+        with (
+            patch.object(
+                EventStore,
+                "store",
+                new_callable=PropertyMock,
+                side_effect=[d1.event_store.store, RuntimeError("no store")],
+            ),
+            caplog.at_level(
+                logging.DEBUG, logger="protean.server.observatory.routes.timeline"
+            ),
         ):
             result = _unique_store_domains([d1, d2])
 
         assert result == [d1, d2]
         assert "Cannot read the event store of domain broken" in caplog.text
 
-    def test_same_conn_info_deduplicates(self):
-        """Two mock domains with the same database_uri produce one entry."""
-        d1 = MagicMock()
-        d1.event_store.store.conn_info = {"database_uri": "postgresql://shared-db"}
-        d2 = MagicMock()
-        d2.event_store.store.conn_info = {"database_uri": "postgresql://shared-db"}
+    def test_same_conn_info_deduplicates(self, tmp_path):
+        """Two domains with the same database_uri produce one entry."""
+        d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://shared-db")
+        d2 = _domain_with_store_uri(tmp_path, "d2", "postgresql://shared-db")
 
         result = _unique_store_domains([d1, d2])
         assert len(result) == 1
         assert result[0] is d1
 
-    def test_different_conn_info_keeps_both(self):
-        """Two mock domains with different database_uris are kept."""
-        d1 = MagicMock()
-        d1.event_store.store.conn_info = {"database_uri": "postgresql://db-a"}
-        d2 = MagicMock()
-        d2.event_store.store.conn_info = {"database_uri": "postgresql://db-b"}
+    def test_different_conn_info_keeps_both(self, tmp_path):
+        """Two domains with different database_uris are kept."""
+        d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://db-a")
+        d2 = _domain_with_store_uri(tmp_path, "d2", "postgresql://db-b")
 
         result = _unique_store_domains([d1, d2])
         assert len(result) == 2
 
-    def test_store_without_conn_info_falls_back_to_id(self):
+    def test_store_without_conn_info_falls_back_to_id(self, tmp_path):
         """Stores without conn_info attribute use id() as fallback."""
-        d1 = MagicMock()
-        del d1.event_store.store.conn_info  # No conn_info attribute
-        d2 = MagicMock()
+        d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://shared-db")
+        d2 = _domain_with_store_uri(tmp_path, "d2", "postgresql://shared-db")
+        # Every built-in store sets conn_info; removing it stands for a
+        # third-party store that does not.
+        del d1.event_store.store.conn_info
         del d2.event_store.store.conn_info
 
         result = _unique_store_domains([d1, d2])
         # Different store objects → different id() → both kept
         assert len(result) == 2
 
-    def test_store_with_empty_database_uri_falls_back_to_id(self):
+    def test_store_with_empty_database_uri_falls_back_to_id(self, tmp_path):
         """Empty database_uri string falls back to id()-based key."""
-        d1 = MagicMock()
-        d1.event_store.store.conn_info = {"database_uri": ""}
-        d2 = MagicMock()
-        d2.event_store.store.conn_info = {"database_uri": ""}
+        d1 = _domain_with_store_uri(tmp_path, "d1", "")
+        d2 = _domain_with_store_uri(tmp_path, "d2", "")
 
         result = _unique_store_domains([d1, d2])
         # Empty URI → fallback to id(store) → different objects → both kept
@@ -1569,8 +1497,19 @@ class TestMultiDomainDeduplication:
 
 
 class TestCausationTreeTimestampFormatting:
-    def test_datetime_in_causation_node(self, correlated_domain):
-        """CausationNode time should use isoformat for datetime objects."""
+    @pytest.mark.parametrize(
+        ("time_field", "expected"),
+        [
+            # A datetime is written with isoformat().
+            ({"time": dt(2025, 6, 15, 12, 0, 0)}, "2025-06-15T12:00:00"),
+            # A string is passed through.
+            ({"time": "2025-06-15T14:30:00"}, "2025-06-15T14:30:00"),
+            # A missing time stays None.
+            ({}, None),
+        ],
+        ids=["datetime", "string", "missing"],
+    )
+    def test_node_time(self, correlated_domain, time_field, expected):
         domain, _, _, _ = correlated_domain
         store = domain.event_store.store
 
@@ -1579,7 +1518,7 @@ class TestCausationTreeTimestampFormatting:
                 "type": "Test.Event.v1",
                 "stream_name": "test::ts-1",
                 "global_position": 1,
-                "time": dt(2025, 6, 15, 12, 0, 0),
+                **time_field,
                 "metadata": {
                     "headers": {"id": "ts-node-1"},
                     "domain": {"kind": "EVENT"},
@@ -1588,54 +1527,12 @@ class TestCausationTreeTimestampFormatting:
         ]
         tree = _build_causation_tree_from_group(store, group)
         assert tree is not None
-        assert tree.time == "2025-06-15T12:00:00"
-
-    def test_string_time_passed_through(self, correlated_domain):
-        """String timestamps in causation nodes are passed through."""
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
-
-        group = [
-            {
-                "type": "Test.Event.v1",
-                "stream_name": "test::ts-2",
-                "global_position": 1,
-                "time": "2025-06-15T14:30:00",
-                "metadata": {
-                    "headers": {"id": "ts-node-2"},
-                    "domain": {"kind": "EVENT"},
-                },
-            }
-        ]
-        tree = _build_causation_tree_from_group(store, group)
-        assert tree is not None
-        assert tree.time == "2025-06-15T14:30:00"
-
-    def test_none_time_in_causation_node(self, correlated_domain):
-        """Missing time in causation node should be None."""
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
-
-        group = [
-            {
-                "type": "Test.Event.v1",
-                "stream_name": "test::ts-3",
-                "global_position": 1,
-                "metadata": {
-                    "headers": {"id": "ts-node-3"},
-                    "domain": {"kind": "EVENT"},
-                },
-            }
-        ]
-        tree = _build_causation_tree_from_group(store, group)
-        assert tree is not None
-        assert tree.time is None
+        assert tree.time == expected
 
 
 # ---------------------------------------------------------------------------
-# Event store not yet initialized (store is None) — the collectors iterate
+# Event store not yet initialized (store is None): the collectors iterate
 # domains and must skip any whose event store hasn't been initialized.
-# Covers the ``if store is None: continue`` guards across every collector.
 # ---------------------------------------------------------------------------
 
 

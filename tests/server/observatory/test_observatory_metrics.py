@@ -1,16 +1,28 @@
 """Tests for Observatory Prometheus metrics endpoint.
 
 Integration tests require a running Redis instance and are gated behind @pytest.mark.redis.
-Unit tests for error paths use mock domains and need no infrastructure.
+Tests for error paths use the real test domain with a fake raw Redis client,
+so they need no infrastructure.
 """
 
 import contextlib
-from unittest.mock import MagicMock
+import logging
+from unittest.mock import MagicMock, patch
 
 import pytest
+import redis
 from fastapi.testclient import TestClient
 
 from protean.server.observatory import Observatory
+from protean.server.observatory.metrics import _scrape_cache, _ScrapeCache
+
+
+@pytest.fixture(autouse=True)
+def _clear_scrape_cache():
+    """The metrics module caches collected data for a short time between scrapes."""
+    _scrape_cache.clear()
+    yield
+    _scrape_cache.clear()
 
 
 @pytest.fixture
@@ -92,16 +104,31 @@ class TestPrometheusMetrics:
         assert "protean_consumer_groups_count" in body
 
 
-# --- Unit tests for error paths (no Redis needed) ---
+# --- Error paths, with a fake raw Redis client (no Redis server needed) ---
 
 
-def _make_mock_domain(name: str = "mock-domain") -> MagicMock:
-    """Create a mock Domain for metrics error-path tests."""
-    mock = MagicMock()
-    mock.name = name
-    mock.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-    mock.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-    return mock
+def _fake_redis(groups=(), consumers_by_group=None, used_memory=1024):
+    """A fake raw Redis client holding one stream, ``test::stream``.
+
+    The core test lane has no Redis server, so only the raw client under the
+    real Redis broker is faked.
+    """
+    consumers_by_group = consumers_by_group or {}
+    fake = MagicMock()
+    fake.ping.return_value = True
+    fake.info.return_value = {"used_memory": used_memory, "connected_clients": 2}
+    fake.scan.return_value = (0, [b"test::stream"])
+    fake.xinfo_groups.return_value = list(groups)
+    fake.xinfo_consumers.side_effect = lambda stream, group: consumers_by_group.get(
+        group, []
+    )
+    # A real pool object; it opens no connection until a command runs.
+    fake.connection_pool = redis.ConnectionPool()
+    return fake
+
+
+def _use_fake_redis(domain, monkeypatch, fake):
+    monkeypatch.setattr(domain.brokers["default"], "redis_instance", fake)
 
 
 @pytest.mark.redis
@@ -159,53 +186,23 @@ class TestPerConsumerMetrics:
         assert "# TYPE protean_consumer_idle_ms gauge" in body
 
 
-class TestConsumerMetricsWithMockRedis:
-    """Tests for per-consumer metrics with mock Redis."""
+class TestConsumerMetricsWithFakeRedis:
+    """Per-consumer metrics read from a fake raw Redis client."""
 
-    def _make_client_with_mock_redis(self, groups, consumers_by_group=None):
-        """Create a TestClient with mock Redis returning specified groups/consumers."""
-        mock_domain = _make_mock_domain("consumer-test")
-
-        mock_redis = MagicMock()
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-        mock_broker.health_stats.return_value = {
-            "connected": True,
-            "details": {"healthy": True, "used_memory": 1024},
-        }
-        mock_domain.brokers.get.return_value = mock_broker
-
-        # Stream discovery returns one stream
-        mock_redis.scan.return_value = (0, [b"test::stream"])
-
-        # xinfo_groups returns the provided groups
-        mock_redis.xinfo_groups.return_value = groups
-
-        # xinfo_consumers returns per-group consumers
-        if consumers_by_group:
-
-            def xinfo_consumers_side_effect(stream, group):
-                return consumers_by_group.get(group, [])
-
-            mock_redis.xinfo_consumers.side_effect = xinfo_consumers_side_effect
-        else:
-            mock_redis.xinfo_consumers.return_value = []
-
-        # outbox
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {}
-        mock_domain._get_outbox_repo.return_value = mock_outbox
-
-        observatory = Observatory(domains=[mock_domain])
+    def _make_client(self, test_domain, monkeypatch, groups, consumers_by_group=None):
+        _use_fake_redis(
+            test_domain, monkeypatch, _fake_redis(groups, consumers_by_group)
+        )
+        observatory = Observatory(domains=[test_domain])
         return TestClient(observatory.app)
 
-    def test_consumer_metrics_with_string_keys(self):
+    def test_consumer_metrics_with_string_keys(self, test_domain, monkeypatch):
         """Consumer metrics correctly parse groups/consumers with string keys."""
         groups = [{"name": "TestGroup", "pending": 5, "lag": 10}]
         consumers = {
             "TestGroup": [{"name": "TestConsumer", "pending": 3, "idle": 1000}]
         }
-        client = self._make_client_with_mock_redis(groups, consumers)
+        client = self._make_client(test_domain, monkeypatch, groups, consumers)
 
         response = client.get("/metrics")
         body = response.text
@@ -214,14 +211,17 @@ class TestConsumerMetricsWithMockRedis:
         assert 'group="TestGroup"' in body
         assert "protean_consumer_pending" in body
         assert "protean_consumer_idle_ms" in body
+        labels = 'consumer="TestConsumer",group="TestGroup",stream="test::stream"'
+        assert f"protean_consumer_pending{{{labels}}} 3" in body
+        assert f"protean_consumer_idle_ms{{{labels}}} 1000" in body
 
-    def test_consumer_metrics_with_bytes_keys(self):
+    def test_consumer_metrics_with_bytes_keys(self, test_domain, monkeypatch):
         """Consumer metrics correctly decode bytes keys from Redis."""
         groups = [{b"name": b"ByteGroup", b"pending": 2, b"lag": 5}]
         consumers = {
             "ByteGroup": [{b"name": b"ByteConsumer", b"pending": 1, b"idle": 500}]
         }
-        client = self._make_client_with_mock_redis(groups, consumers)
+        client = self._make_client(test_domain, monkeypatch, groups, consumers)
 
         response = client.get("/metrics")
         body = response.text
@@ -229,115 +229,136 @@ class TestConsumerMetricsWithMockRedis:
         assert 'consumer="ByteConsumer"' in body
         assert 'group="ByteGroup"' in body
 
-    def test_non_dict_group_skipped(self):
+    def test_non_dict_group_skipped(self, test_domain, monkeypatch):
         """Non-dict group entries are silently skipped."""
         groups = ["not-a-dict", {"name": "ValidGroup", "pending": 0, "lag": 0}]
         consumers = {"ValidGroup": [{"name": "Consumer1", "pending": 0, "idle": 0}]}
-        client = self._make_client_with_mock_redis(groups, consumers)
+        client = self._make_client(test_domain, monkeypatch, groups, consumers)
 
         response = client.get("/metrics")
         body = response.text
         assert response.status_code == 200
         assert 'group="ValidGroup"' in body
 
-    def test_empty_group_name_skipped(self):
+    def test_empty_group_name_skipped(self, test_domain, monkeypatch):
         """Groups with empty/None name are skipped."""
         groups = [
             {"name": None, "pending": 0, "lag": 0},
             {"name": "GoodGroup", "pending": 0, "lag": 0},
         ]
         consumers = {"GoodGroup": [{"name": "Consumer1", "pending": 0, "idle": 0}]}
-        client = self._make_client_with_mock_redis(groups, consumers)
+        client = self._make_client(test_domain, monkeypatch, groups, consumers)
 
         response = client.get("/metrics")
         body = response.text
         assert response.status_code == 200
         assert 'group="GoodGroup"' in body
 
-    def test_non_dict_consumer_skipped(self):
+    def test_non_dict_consumer_skipped(self, test_domain, monkeypatch):
         """Non-dict consumer entries are silently skipped."""
         groups = [{"name": "Group1", "pending": 0, "lag": 0}]
         consumers = {
             "Group1": ["not-a-dict", {"name": "ValidConsumer", "pending": 0, "idle": 0}]
         }
-        client = self._make_client_with_mock_redis(groups, consumers)
+        client = self._make_client(test_domain, monkeypatch, groups, consumers)
 
         response = client.get("/metrics")
         body = response.text
         assert response.status_code == 200
         assert 'consumer="ValidConsumer"' in body
 
-    def test_xinfo_consumers_exception_handled(self):
-        """Exception in xinfo_consumers does not crash the metrics endpoint."""
-        groups = [{"name": "FailGroup", "pending": 0, "lag": 0}]
-        mock_domain = _make_mock_domain("exc-test")
-        mock_redis = MagicMock()
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-        mock_broker.health_stats.return_value = {
-            "connected": True,
-            "details": {"healthy": True, "used_memory": 0},
-        }
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_redis.scan.return_value = (0, [b"test::stream"])
-        mock_redis.xinfo_groups.return_value = groups
-        mock_redis.xinfo_consumers.side_effect = RuntimeError("connection reset")
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {}
-        mock_domain._get_outbox_repo.return_value = mock_outbox
+    def test_xinfo_consumers_exception_handled(self, test_domain, monkeypatch, caplog):
+        """An error reading one group's consumers is logged and the scrape goes on."""
+        fake = _fake_redis(groups=[{"name": "FailGroup", "pending": 0, "lag": 0}])
+        fake.xinfo_consumers.side_effect = RuntimeError("connection reset")
+        _use_fake_redis(test_domain, monkeypatch, fake)
+        client = TestClient(Observatory(domains=[test_domain]).app)
 
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.get("/metrics")
+        with caplog.at_level(logging.DEBUG, logger="protean.server.observatory"):
+            response = client.get("/metrics")
         assert response.status_code == 200
+        assert "protean_broker_up 1" in response.text
+        messages = [r.getMessage() for r in caplog.records]
+        assert (
+            "Metrics: could not read consumers of group FailGroup "
+            "on stream test::stream" in messages
+        )
 
-    def test_xinfo_groups_exception_handled(self):
-        """Exception in xinfo_groups does not crash the metrics endpoint."""
-        mock_domain = _make_mock_domain("exc-test")
-        mock_redis = MagicMock()
-        mock_broker = MagicMock()
-        mock_broker.redis_instance = mock_redis
-        mock_broker.health_stats.return_value = {
-            "connected": True,
-            "details": {"healthy": True, "used_memory": 0},
-        }
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_redis.scan.return_value = (0, [b"test::stream"])
-        mock_redis.xinfo_groups.side_effect = RuntimeError("timeout")
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {}
-        mock_domain._get_outbox_repo.return_value = mock_outbox
+    def test_xinfo_groups_exception_handled(self, test_domain, monkeypatch, caplog):
+        """An error reading a stream's groups is logged and the scrape goes on."""
+        fake = _fake_redis()
+        fake.xinfo_groups.side_effect = RuntimeError("timeout")
+        _use_fake_redis(test_domain, monkeypatch, fake)
+        client = TestClient(Observatory(domains=[test_domain]).app)
 
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-
-        response = client.get("/metrics")
+        with caplog.at_level(logging.DEBUG, logger="protean.server.observatory"):
+            response = client.get("/metrics")
         assert response.status_code == 200
-        # Should still have broker/outbox metrics
-        assert "protean_broker_up" in response.text
+        assert "protean_broker_up 1" in response.text
+        messages = [r.getMessage() for r in caplog.records]
+        assert "Metrics: could not read groups of stream test::stream" in messages
+
+    def test_stream_discovery_failure_handled(self, test_domain, monkeypatch, caplog):
+        """A Redis error while listing streams is logged and yields no consumer metrics."""
+        fake = _fake_redis(
+            groups=[{"name": "TestGroup", "pending": 0, "lag": 0}],
+            consumers_by_group={
+                "TestGroup": [{"name": "TestConsumer", "pending": 1, "idle": 5}]
+            },
+        )
+        fake.scan.side_effect = redis.ConnectionError("connection lost")
+        _use_fake_redis(test_domain, monkeypatch, fake)
+        client = TestClient(Observatory(domains=[test_domain]).app)
+
+        with caplog.at_level(logging.DEBUG, logger="protean.server.observatory"):
+            response = client.get("/metrics")
+        assert response.status_code == 200
+        assert "# HELP protean_consumer_pending" in response.text
+        assert 'group="TestGroup"' not in response.text
+        messages = [r.getMessage() for r in caplog.records]
+        assert "Error discovering streams from Redis: connection lost" in messages
+
+
+class TestScrapeCache:
+    def test_reuses_value_within_ttl(self):
+        cache = _ScrapeCache(ttl_seconds=60)
+        calls = []
+
+        def collector():
+            calls.append(1)
+            return len(calls)
+
+        assert cache.get("key", collector) == 1
+        assert cache.get("key", collector) == 1
+        assert len(calls) == 1
+
+    def test_collects_again_after_ttl(self):
+        cache = _ScrapeCache(ttl_seconds=0)
+        calls = []
+
+        def collector():
+            calls.append(1)
+            return len(calls)
+
+        assert cache.get("key", collector) == 1
+        assert cache.get("key", collector) == 2
+
+    def test_clear_discards_cached_values(self):
+        cache = _ScrapeCache(ttl_seconds=60)
+        cache.get("key", lambda: "old")
+        cache.clear()
+        assert cache.get("key", lambda: "new") == "new"
 
 
 class TestConsumerMetricsOuterException:
-    """Test the outer exception handler for consumer metrics."""
+    """A failure to reach Redis for consumer metrics leaves the other metrics."""
 
-    def test_consumer_metrics_handles_get_redis_exception(self):
+    def test_consumer_metrics_handles_get_redis_exception(
+        self, test_domain, monkeypatch
+    ):
         """Metrics endpoint handles _get_redis exception in consumer section."""
-        from unittest.mock import patch
-
-        mock_domain = _make_mock_domain("redis-fail")
-        mock_broker = MagicMock()
-        mock_broker.health_stats.return_value = {
-            "connected": True,
-            "details": {"healthy": True, "used_memory": 1024},
-        }
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {}
-        mock_domain._get_outbox_repo.return_value = mock_outbox
-
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
+        _use_fake_redis(test_domain, monkeypatch, _fake_redis())
+        client = TestClient(Observatory(domains=[test_domain]).app)
 
         # Patch _get_redis in the api module (where metrics.py imports it from)
         with patch(
@@ -350,59 +371,49 @@ class TestConsumerMetricsOuterException:
         body = response.text
         # Broker/outbox metrics should still be present
         assert "protean_broker_up" in body
+        assert "# HELP protean_consumer_pending" not in body
 
 
 class TestMetricsErrorPaths:
-    def test_metrics_when_outbox_query_fails(self):
+    def test_metrics_when_outbox_query_fails(self, test_domain, monkeypatch):
         """Metrics endpoint handles outbox query exceptions gracefully."""
-        mock_domain = _make_mock_domain("failing-domain")
-        mock_domain._get_outbox_repo.side_effect = RuntimeError("outbox error")
         # Broker works fine
-        mock_broker = MagicMock()
-        mock_broker.health_stats.return_value = {
-            "connected": True,
-            "details": {"healthy": True, "used_memory": 1024, "connected_clients": 2},
-        }
-        mock_domain.brokers.get.return_value = mock_broker
+        _use_fake_redis(test_domain, monkeypatch, _fake_redis())
+        client = TestClient(Observatory(domains=[test_domain]).app)
 
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-        response = client.get("/metrics")
+        with patch.object(
+            test_domain, "_get_outbox_repo", side_effect=RuntimeError("outbox error")
+        ):
+            response = client.get("/metrics")
 
         assert response.status_code == 200
         body = response.text
         # Should still have broker metrics even though outbox failed
         assert "protean_broker_up" in body
+        assert "protean_outbox_pending_count{" not in body
 
-    def test_metrics_when_broker_query_fails(self):
+    def test_metrics_when_broker_query_fails(self, test_domain):
         """Metrics endpoint handles broker query exceptions gracefully."""
-        mock_domain = _make_mock_domain("failing-domain")
-        # Outbox works fine
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {"PENDING": 5}
-        mock_domain._get_outbox_repo.return_value = mock_outbox
-        # Broker raises
-        mock_domain.brokers.get.side_effect = RuntimeError("broker down")
+        client = TestClient(Observatory(domains=[test_domain]).app)
 
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
-        response = client.get("/metrics")
+        # Broker raises; the real memory outbox still answers
+        with patch.object(
+            test_domain.brokers, "get", side_effect=RuntimeError("broker down")
+        ):
+            response = client.get("/metrics")
 
         assert response.status_code == 200
         body = response.text
         # Outbox metrics should still be present
         assert "protean_outbox_pending_count" in body
+        assert f'protean_outbox_pending_count{{domain="{test_domain.name}"}} 0' in body
+        assert "protean_broker_up" not in body
 
-    def test_metrics_when_broker_is_none(self):
+    def test_metrics_when_broker_is_none(self, test_domain):
         """Metrics endpoint handles missing broker gracefully."""
-        mock_domain = _make_mock_domain("no-broker")
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {}
-        mock_domain._get_outbox_repo.return_value = mock_outbox
-        mock_domain.brokers.get.return_value = None
+        del test_domain.brokers["default"]
+        client = TestClient(Observatory(domains=[test_domain]).app)
 
-        observatory = Observatory(domains=[mock_domain])
-        client = TestClient(observatory.app)
         response = client.get("/metrics")
 
         assert response.status_code == 200

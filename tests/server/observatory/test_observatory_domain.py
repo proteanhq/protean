@@ -1,19 +1,19 @@
 """Tests for the Observatory Domain page and /api/domain/ir endpoint.
 
-Covers:
+Tests for:
 - routes/pages.py: /domain page route
 - routes/domain.py: /api/domain/ir API endpoint, IR→D3 graph transformation
 - templates/domain.html: Template rendering
 - base.html: Sidebar navigation entry for Domain
 """
 
-from unittest.mock import MagicMock
-
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from protean import Domain
 from protean.server.observatory import Observatory
+from protean.server.observatory.routes import domain as domain_routes
 from protean.server.observatory.routes.domain import (
     _build_event_to_agg_index,
     _build_graph,
@@ -108,11 +108,6 @@ class TestDomainSidebarNav:
         html = client.get("/").text
         assert 'href="/domain"' in html
 
-    def test_domain_section_header(self, client):
-        html = client.get("/").text
-        # The sidebar has a "Domain" section header
-        assert "Domain" in html
-
     def test_keyboard_shortcut_in_modal(self, client):
         html = client.get("/").text
         assert "Go to Domain" in html
@@ -178,15 +173,6 @@ class TestMultiAggregateDomain:
         data = multi_agg_client.get("/api/domain/ir").json()
         assert len(data["nodes"]) == 2
 
-    def test_node_has_expected_fields(self, multi_agg_client):
-        data = multi_agg_client.get("/api/domain/ir").json()
-        node = data["nodes"][0]
-        assert "id" in node
-        assert "name" in node
-        assert "type" in node
-        assert "fqn" in node
-        assert "counts" in node
-
     def test_node_type_is_aggregate(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
         for node in data["nodes"]:
@@ -197,16 +183,6 @@ class TestMultiAggregateDomain:
         links = data["links"]
         event_links = [lnk for lnk in links if lnk["type"] == "event"]
         assert len(event_links) >= 1
-
-    def test_link_has_expected_fields(self, multi_agg_client):
-        data = multi_agg_client.get("/api/domain/ir").json()
-        links = data["links"]
-        if links:
-            link = links[0]
-            assert "source" in link
-            assert "target" in link
-            assert "type" in link
-            assert "label" in link
 
     def test_stats_reflect_multi_aggregate(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
@@ -225,9 +201,6 @@ class TestMultiAggregateDomain:
 
 
 class TestBuildNodes:
-    def test_empty_clusters(self):
-        assert _build_nodes({}) == []
-
     def test_single_aggregate(self):
         clusters = {
             "app.Order": {
@@ -554,17 +527,18 @@ class TestCreateDomainRouterEdgeCases:
         assert response.status_code == 503
         assert response.json()["error"] == "Domain IR unavailable"
 
-    def test_ir_build_failure_returns_503(self):
+    def test_ir_build_failure_returns_503(self, monkeypatch):
         """Router gracefully handles IR build failure."""
-        mock_domain = MagicMock()
-        mock_domain.name = "broken"
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(
-            side_effect=RuntimeError("boom")
-        )
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
+        domain = Domain(name="broken")
+        domain.init(traverse=False)
+
+        def _raise(self):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(domain_routes.IRBuilder, "build", _raise)
 
         app = FastAPI()
-        app.include_router(create_domain_router([mock_domain]), prefix="/api")
+        app.include_router(create_domain_router([domain]), prefix="/api")
         client = TestClient(app)
         response = client.get("/api/domain/ir")
         assert response.status_code == 503

@@ -1,6 +1,6 @@
 """Tests for the D3-based interactive causation graph.
 
-Covers:
+Tests for:
 - causation-graph.js script is included in the timeline page
 - Graph container and toggle UI elements are present
 - Correlation API response structure supports the graph
@@ -86,24 +86,12 @@ class TestCausationGraphScript:
 class TestGraphContainerAndToggle:
     """The correlation view must have graph container and toggle buttons."""
 
-    def test_has_graph_container(self, client):
-        html = client.get("/timeline").text
-        assert 'id="causation-graph-container"' in html
-
     def test_graph_container_starts_hidden(self, client):
         html = client.get("/timeline").text
         assert (
             'id="causation-graph-container" class="causation-graph-container hidden"'
             in html
         )
-
-    def test_has_tree_view_toggle_button(self, client):
-        html = client.get("/timeline").text
-        assert 'id="btn-tree-view"' in html
-
-    def test_has_graph_view_toggle_button(self, client):
-        html = client.get("/timeline").text
-        assert 'id="btn-graph-view"' in html
 
     def test_tree_view_button_is_active_by_default(self, client):
         html = client.get("/timeline").text
@@ -118,6 +106,7 @@ class TestGraphContainerAndToggle:
 
     def test_graph_view_button_is_inactive_by_default(self, client):
         html = client.get("/timeline").text
+        assert 'id="btn-graph-view"' in html
         idx = html.index('id="btn-graph-view"')
         btn_start = html.rfind("<button", 0, idx)
         btn_snippet = html[btn_start : idx + 30]
@@ -126,10 +115,6 @@ class TestGraphContainerAndToggle:
     def test_has_view_toggle_container(self, client):
         html = client.get("/timeline").text
         assert 'id="causation-view-toggle"' in html
-
-    def test_has_graph_help_text(self, client):
-        html = client.get("/timeline").text
-        assert 'id="graph-help-text"' in html
 
     def test_graph_help_text_starts_hidden(self, client):
         html = client.get("/timeline").text
@@ -218,33 +203,21 @@ class TestCorrelationAPIForGraph:
 class TestCausationGraphCSS:
     """The observatory CSS must include styles for the D3 graph."""
 
-    def test_graph_container_styles(self, client):
+    @pytest.mark.parametrize(
+        "selector",
+        [
+            ".causation-graph-container",
+            ".cg-node",
+            ".cg-card",
+            ".cg-link",
+            ".cg-link--cross",
+            ".cg-highlighted",
+            ".cg-dimmed",
+            ".cg-badge--evt",
+            ".cg-badge--cmd",
+            ".cg-latency",
+        ],
+    )
+    def test_graph_style_present(self, client, selector):
         css = client.get("/static/css/observatory.css").text
-        assert ".causation-graph-container" in css
-
-    def test_graph_node_styles(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-node" in css
-        assert ".cg-card" in css
-
-    def test_graph_link_styles(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-link" in css
-
-    def test_cross_aggregate_link_styles(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-link--cross" in css
-
-    def test_highlight_styles(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-highlighted" in css
-        assert ".cg-dimmed" in css
-
-    def test_badge_styles(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-badge--evt" in css
-        assert ".cg-badge--cmd" in css
-
-    def test_latency_label_styles(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".cg-latency" in css
+        assert selector in css

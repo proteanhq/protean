@@ -1,6 +1,6 @@
 """Tests for the Event Flow View — D3 DAG visualization.
 
-Covers:
+Tests for:
 - domain-flows.js static asset serving
 - Template includes the new script and filter toggles
 - _build_flow_graph DAG extraction from IR
@@ -464,12 +464,12 @@ class TestBuildFlowGraph:
 
 
 # ---------------------------------------------------------------------------
-# Edge-case tests (synthetic IR) — cover partial branches
+# Edge cases: hand-written IR with dangling references and duplicate nodes
 # ---------------------------------------------------------------------------
 
 
 class TestFlowGraphEdgeCases:
-    """Tests using hand-crafted IR dicts to cover defensive branches."""
+    """The flow graph skips references to unknown types and repeated nodes."""
 
     def _minimal_cluster(self, **overrides):
         base = {

@@ -1,6 +1,6 @@
 """Tests for Observatory Infrastructure API endpoints and supporting functions.
 
-Covers:
+Tests for:
 - routes/infrastructure.py: _server_info, _database_status, _broker_status,
   _event_store_status, _cache_status, sanitize_config,
   create_infrastructure_router
@@ -9,12 +9,14 @@ Covers:
 """
 
 import platform
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+import redis
 from fastapi.testclient import TestClient
 
 import protean
+from protean import Domain
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.infrastructure import (
     _broker_status,
@@ -41,16 +43,24 @@ def client(observatory):
     return TestClient(observatory.app)
 
 
-def _make_mock_domain(*, name="TestDomain", config=None):
-    """Create a mock domain with the given config."""
-    domain = MagicMock()
-    domain.name = name
+@pytest.fixture
+def uninitialized_domain():
+    """A domain that has not run init(), so it has no adapters yet."""
+    return Domain(name="Uninitialized")
 
-    mock_config = config or {}
-    domain.config = MagicMock()
-    domain.config.get = lambda key, default=None: mock_config.get(key, default)
 
+def _initialized_domain(name="TestDomain", config=None):
+    domain = Domain(name=name, config=config)
+    domain.init(traverse=False)
     return domain
+
+
+class _CacheWithoutPing:
+    """Stands in for a cache adapter that has no ping() method.
+
+    BaseCache declares ping() abstract, so every real cache defines it and
+    the no-ping case needs a stand-in object.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -70,17 +80,23 @@ class TestSanitizeConfig:
         result = sanitize_config(uri)
         assert result == uri
 
-    def test_masks_password_keys(self):
-        config = {"provider": "redis", "password": "secret123"}
+    @pytest.mark.parametrize(
+        "config, secret_key, plain_key, plain_value",
+        [
+            (
+                {"provider": "redis", "password": "secret123"},
+                "password",
+                "provider",
+                "redis",
+            ),
+            ({"api_key": "sk-12345", "name": "test"}, "api_key", "name", "test"),
+        ],
+        ids=["password", "api_key"],
+    )
+    def test_masks_sensitive_keys(self, config, secret_key, plain_key, plain_value):
         result = sanitize_config(config)
-        assert result["provider"] == "redis"
-        assert result["password"] == "***"
-
-    def test_masks_secret_keys(self):
-        config = {"api_key": "sk-12345", "name": "test"}
-        result = sanitize_config(config)
-        assert result["api_key"] == "***"
-        assert result["name"] == "test"
+        assert result[secret_key] == "***"
+        assert result[plain_key] == plain_value
 
     def test_handles_nested_dicts(self):
         config = {
@@ -118,46 +134,36 @@ class TestSanitizeConfig:
 
 
 class TestServerInfo:
-    def test_includes_python_version(self):
-        domain = _make_mock_domain()
-        info = _server_info([domain])
+    def test_includes_versions_and_platform(self, test_domain):
+        info = _server_info([test_domain])
         assert info["python_version"] == platform.python_version()
-
-    def test_includes_protean_version(self):
-        domain = _make_mock_domain()
-        info = _server_info([domain])
         assert info["protean_version"] == protean.__version__
-
-    def test_includes_platform(self):
-        domain = _make_mock_domain()
-        info = _server_info([domain])
         assert "platform" in info
         assert isinstance(info["platform"], str)
 
+    @pytest.mark.no_test_domain
     def test_includes_domain_names(self):
-        d1 = _make_mock_domain(name="Domain1")
-        d2 = _make_mock_domain(name="Domain2")
-        info = _server_info([d1, d2])
+        info = _server_info([Domain(name="Domain1"), Domain(name="Domain2")])
         assert len(info["domains"]) == 2
         names = {d["name"] for d in info["domains"]}
         assert names == {"Domain1", "Domain2"}
 
-    def test_includes_domain_config(self):
-        domain = _make_mock_domain(
-            config={
-                "databases": {"default": {"provider": "memory"}},
-                "brokers": {"default": {"provider": "redis"}},
-            }
-        )
-        # Make config values have .items() so sanitize_config handles them
-        domain.config.get = lambda key, default=None: {
-            "databases": {"default": {"provider": "memory"}},
-            "brokers": {"default": {"provider": "redis"}},
-        }.get(key, default)
-
-        info = _server_info([domain])
+    def test_includes_domain_config(self, test_domain):
+        info = _server_info([test_domain])
         assert len(info["domains"]) == 1
-        assert "config" in info["domains"][0]
+        config = info["domains"][0]["config"]
+        assert config["databases"]["default"]["provider"] == "memory"
+        assert config["brokers"]["default"]["provider"] == "redis"
+        assert config["has_outbox"] is True
+
+    @pytest.mark.no_test_domain
+    def test_omits_missing_config_sections(self, uninitialized_domain):
+        del uninitialized_domain.config["server"]
+
+        info = _server_info([uninitialized_domain])
+        config = info["domains"][0]["config"]
+        assert "server" not in config
+        assert "databases" in config
 
 
 # ---------------------------------------------------------------------------
@@ -166,29 +172,21 @@ class TestServerInfo:
 
 
 class TestDatabaseStatus:
-    def test_provider_available(self):
-        domain = _make_mock_domain(
-            config={"databases": {"default": {"provider": "memory"}}}
-        )
-        domain.providers = {"default": MagicMock()}
-
-        result = _database_status(domain)
+    def test_provider_available(self, test_domain):
+        result = _database_status(test_domain)
         assert result["status"] == "healthy"
         assert result["provider"] == "memory"
 
-    def test_provider_not_configured(self):
-        domain = _make_mock_domain(config={"databases": {}})
-        domain.providers = {"default": None}
+    @pytest.mark.no_test_domain
+    def test_provider_not_configured(self, uninitialized_domain):
+        result = _database_status(uninitialized_domain)
+        assert result["status"] == "not_configured"
 
-        result = _database_status(domain)
-        # Provider is None → not_configured
-        assert result["status"] in ("not_configured", "healthy")
-
-    def test_handles_exception(self):
-        domain = _make_mock_domain()
-        domain.domain_context.side_effect = Exception("DB error")
-
-        result = _database_status(domain)
+    def test_handles_exception(self, test_domain):
+        with patch.object(
+            test_domain, "domain_context", side_effect=Exception("DB error")
+        ):
+            result = _database_status(test_domain)
         assert result["status"] == "unhealthy"
 
 
@@ -198,57 +196,65 @@ class TestDatabaseStatus:
 
 
 class TestBrokerStatus:
-    def test_healthy_broker(self):
-        domain = _make_mock_domain(
-            config={"brokers": {"default": {"provider": "redis"}}}
-        )
-        broker = MagicMock()
-        broker.health_stats.return_value = {
-            "connected": True,
-            "details": {
-                "redis_version": "7.2.4",
-                "connected_clients": 5,
-                "used_memory_human": "2.5M",
-                "uptime_in_seconds": 86400,
-                "instantaneous_ops_per_sec": 120,
-                "hit_rate": 98.5,
-                "streams": {"count": 8, "names": []},
-                "consumer_groups": {"count": 12, "names": []},
-            },
+    def test_healthy_broker(self, test_domain, monkeypatch):
+        broker = test_domain.brokers["default"]
+        # The core lane has no Redis server, so the raw Redis client is faked.
+        fake_redis = MagicMock()
+        fake_redis.ping.return_value = True
+        fake_redis.info.return_value = {
+            "redis_version": "7.2.4",
+            "connected_clients": 5,
+            "used_memory_human": "2.5M",
+            "uptime_in_seconds": 86400,
+            "instantaneous_ops_per_sec": 120,
+            "keyspace_hits": 985,
+            "keyspace_misses": 15,
         }
-        domain.brokers = {"default": broker}
+        fake_redis.type.return_value = b"stream"
+        fake_redis.xlen.return_value = 0
+        fake_redis.xinfo_groups.return_value = []
+        monkeypatch.setattr(broker, "redis_instance", fake_redis)
+        monkeypatch.setattr(
+            broker, "_created_groups_set", {"order:g1", "order:g2", "payment:g3"}
+        )
 
-        result = _broker_status(domain)
+        result = _broker_status(test_domain)
         assert result["status"] == "healthy"
         assert result["provider"] == "redis"
         assert result["details"]["redis_version"] == "7.2.4"
         assert result["details"]["connected_clients"] == 5
-        assert result["details"]["stream_count"] == 8
-        assert result["details"]["consumer_group_count"] == 12
+        assert result["details"]["used_memory_human"] == "2.5M"
+        assert result["details"]["uptime_in_seconds"] == 86400
+        assert result["details"]["instantaneous_ops_per_sec"] == 120
+        assert result["details"]["hit_rate"] == pytest.approx(0.985)
+        assert result["details"]["stream_count"] == 2
+        assert result["details"]["consumer_group_count"] == 3
 
-    def test_unhealthy_broker(self):
-        domain = _make_mock_domain(
-            config={"brokers": {"default": {"provider": "redis"}}}
+    def test_unhealthy_broker(self, test_domain, monkeypatch):
+        broker = test_domain.brokers["default"]
+        # Nothing listens on port 1, so every Redis call is refused. The
+        # client's default retries would back off for seconds before failing.
+        monkeypatch.setattr(
+            broker,
+            "redis_instance",
+            redis.Redis(
+                host="127.0.0.1", port=1, socket_connect_timeout=0.5, retry=None
+            ),
         )
-        broker = MagicMock()
-        broker.health_stats.return_value = {"connected": False, "details": {}}
-        domain.brokers = {"default": broker}
 
-        result = _broker_status(domain)
+        result = _broker_status(test_domain)
         assert result["status"] == "unhealthy"
 
-    def test_no_broker(self):
-        domain = _make_mock_domain(config={"brokers": {}})
-        domain.brokers = {"default": None}
-
-        result = _broker_status(domain)
+    @pytest.mark.no_test_domain
+    def test_no_broker(self, uninitialized_domain):
+        result = _broker_status(uninitialized_domain)
         assert result["status"] == "not_configured"
 
-    def test_handles_exception(self):
-        domain = _make_mock_domain()
-        domain.domain_context.side_effect = Exception("Broker error")
-
-        result = _broker_status(domain)
+    def test_handles_exception(self, test_domain):
+        with patch.object(
+            test_domain, "domain_context", side_effect=Exception("Broker error")
+        ):
+            result = _broker_status(test_domain)
         assert result["status"] == "unhealthy"
 
 
@@ -258,26 +264,21 @@ class TestBrokerStatus:
 
 
 class TestEventStoreStatus:
-    def test_memory_event_store(self):
-        domain = _make_mock_domain(config={"event_store": {"provider": "memory"}})
-        domain.event_store.store = MagicMock()
-
-        result = _event_store_status(domain)
+    def test_memory_event_store(self, test_domain):
+        result = _event_store_status(test_domain)
         assert result["status"] == "healthy"
         assert result["provider"] == "memory"
 
-    def test_no_event_store(self):
-        domain = _make_mock_domain(config={"event_store": {}})
-        domain.event_store.store = None
-
-        result = _event_store_status(domain)
+    @pytest.mark.no_test_domain
+    def test_no_event_store(self, uninitialized_domain):
+        result = _event_store_status(uninitialized_domain)
         assert result["status"] == "not_configured"
 
-    def test_handles_exception(self):
-        domain = _make_mock_domain()
-        domain.domain_context.side_effect = Exception("ES error")
-
-        result = _event_store_status(domain)
+    def test_handles_exception(self, test_domain):
+        with patch.object(
+            test_domain, "domain_context", side_effect=Exception("ES error")
+        ):
+            result = _event_store_status(test_domain)
         assert result["status"] == "unhealthy"
 
 
@@ -287,51 +288,38 @@ class TestEventStoreStatus:
 
 
 class TestCacheStatus:
-    def test_cache_available_with_ping(self):
-        domain = _make_mock_domain(
-            config={"caches": {"default": {"provider": "redis"}}}
-        )
-        cache = MagicMock()
-        cache.ping.return_value = True
-        domain.caches = {"default": cache}
-
-        result = _cache_status(domain)
+    def test_cache_available_with_ping(self, test_domain):
+        result = _cache_status(test_domain)
         assert result["status"] == "healthy"
-        assert result["provider"] == "redis"
+        assert result["provider"] == "memory"
 
+    @pytest.mark.no_test_domain
     def test_cache_without_ping(self):
-        domain = _make_mock_domain(
-            config={"caches": {"default": {"provider": "memory"}}}
-        )
-        cache = MagicMock(spec=[])  # No ping method
-        domain.caches = {"default": cache}
+        domain = _initialized_domain()
+        domain.caches["default"] = _CacheWithoutPing()
 
         result = _cache_status(domain)
         assert result["status"] == "healthy"
 
-    def test_no_cache_configured(self):
-        domain = _make_mock_domain(config={"caches": {}})
-        domain.caches = {}
-
-        result = _cache_status(domain)
+    @pytest.mark.no_test_domain
+    def test_no_cache_configured(self, uninitialized_domain):
+        result = _cache_status(uninitialized_domain)
         assert result["status"] == "not_configured"
 
-    def test_handles_exception(self):
-        domain = _make_mock_domain()
-        domain.domain_context.side_effect = Exception("Cache error")
-
-        result = _cache_status(domain)
+    def test_handles_exception(self, test_domain):
+        with patch.object(
+            test_domain, "domain_context", side_effect=Exception("Cache error")
+        ):
+            result = _cache_status(test_domain)
         assert result["status"] == "unhealthy"
 
-    def test_ping_failure(self):
-        domain = _make_mock_domain(
-            config={"caches": {"default": {"provider": "redis"}}}
-        )
-        cache = MagicMock()
-        cache.ping.side_effect = Exception("Connection refused")
-        domain.caches = {"default": cache}
-
-        result = _cache_status(domain)
+    def test_ping_failure(self, test_domain):
+        with patch.object(
+            test_domain.caches["default"],
+            "ping",
+            side_effect=ConnectionError("Connection refused"),
+        ):
+            result = _cache_status(test_domain)
         assert result["status"] == "unhealthy"
 
 
@@ -341,10 +329,6 @@ class TestCacheStatus:
 
 
 class TestInfrastructureStatusEndpoint:
-    def test_returns_200(self, client):
-        response = client.get("/api/infrastructure/status")
-        assert response.status_code == 200
-
     def test_has_server_section(self, client):
         response = client.get("/api/infrastructure/status")
         data = response.json()
@@ -353,14 +337,12 @@ class TestInfrastructureStatusEndpoint:
         assert "protean_version" in data["server"]
         assert "domains" in data["server"]
 
-    def test_has_connections_section(self, client):
-        response = client.get("/api/infrastructure/status")
-        data = response.json()
-        assert "connections" in data
-
     def test_connections_has_all_adapters(self, client):
         response = client.get("/api/infrastructure/status")
-        connections = response.json()["connections"]
+        assert response.status_code == 200
+        data = response.json()
+        assert "connections" in data
+        connections = data["connections"]
         assert "database" in connections
         assert "broker" in connections
         assert "event_store" in connections
@@ -381,12 +363,9 @@ class TestInfrastructureStatusEndpoint:
 
 
 class TestInfrastructureTemplate:
-    def test_page_renders_200(self, client):
-        response = client.get("/infrastructure")
-        assert response.status_code == 200
-
     def test_extends_base_template(self, client):
         response = client.get("/infrastructure")
+        assert response.status_code == 200
         assert "Observatory" in response.text
 
     def test_includes_infrastructure_js(self, client):
@@ -447,137 +426,78 @@ class TestInfrastructureRouteWiring:
 
 
 # ---------------------------------------------------------------------------
-# Config objects without .get() method
+# Config sections that are not mappings
 # ---------------------------------------------------------------------------
 
 
 class TestDatabaseStatusConfigWithoutGet:
-    def test_database_config_without_get_method(self):
-        """databases config is a non-dict object (no .get()),
-        provider stays at 'none'."""
-        domain = MagicMock()
-        domain.name = "TestDomain"
-        # Return a non-dict object (e.g., a string) for databases config
-        domain.config = MagicMock()
-        domain.config.get = lambda key, default=None: {
-            "databases": "some_string_value"
-        }.get(key, default)
+    def test_database_config_without_get_method(self, test_domain):
+        """A databases section that is not a mapping leaves provider at 'none'."""
+        test_domain.config["databases"] = "some_string_value"
 
-        domain.providers = {"default": MagicMock()}
-
-        result = _database_status(domain)
+        result = _database_status(test_domain)
         assert result["provider"] == "none"
         assert result["status"] == "healthy"
 
-    def test_database_default_config_without_get_method(self):
-        """default sub-config has no .get(), provider stays 'none'."""
-        domain = MagicMock()
-        domain.name = "TestDomain"
-        # databases has .get() but default value is not a dict
-        domain.config = MagicMock()
-        domain.config.get = lambda key, default=None: {
-            "databases": {"default": "not-a-dict"}
-        }.get(key, default)
+    def test_database_default_config_without_get_method(self, test_domain):
+        """A default database entry that is not a mapping leaves provider at 'none'."""
+        test_domain.config["databases"] = {"default": "not-a-dict"}
 
-        domain.providers = {"default": MagicMock()}
-
-        result = _database_status(domain)
+        result = _database_status(test_domain)
         assert result["provider"] == "none"
         assert result["status"] == "healthy"
 
 
+@pytest.mark.no_test_domain
 class TestBrokerStatusConfigWithoutGet:
-    def test_broker_config_without_get_method(self):
-        """brokers config is a non-dict object (no .get()),
-        provider stays at 'none'."""
-        domain = MagicMock()
-        domain.name = "TestDomain"
-        domain.config = MagicMock()
-        domain.config.get = lambda key, default=None: {"brokers": "string_config"}.get(
-            key, default
-        )
+    def test_broker_config_without_get_method(self, uninitialized_domain):
+        """A brokers section that is not a mapping leaves provider at 'none'."""
+        uninitialized_domain.config["brokers"] = "string_config"
 
-        domain.brokers = {"default": None}
-
-        result = _broker_status(domain)
+        result = _broker_status(uninitialized_domain)
         assert result["provider"] == "none"
 
-    def test_broker_default_config_without_get_method(self):
-        """default broker sub-config has no .get()."""
-        domain = MagicMock()
-        domain.name = "TestDomain"
-        domain.config = MagicMock()
-        domain.config.get = lambda key, default=None: {
-            "brokers": {"default": 42}  # int has no .get()
-        }.get(key, default)
+    def test_broker_default_config_without_get_method(self, uninitialized_domain):
+        """A default broker entry that is not a mapping leaves provider at 'none'."""
+        uninitialized_domain.config["brokers"] = {"default": 42}
 
-        domain.brokers = {"default": None}
-
-        result = _broker_status(domain)
+        result = _broker_status(uninitialized_domain)
         assert result["provider"] == "none"
 
 
 class TestEventStoreStatusConfigWithoutGet:
-    def test_event_store_config_without_get_method(self):
-        """event_store config is a non-dict object,
-        provider stays at 'none'."""
-        domain = MagicMock()
-        domain.name = "TestDomain"
-        domain.config = MagicMock()
-        domain.config.get = lambda key, default=None: {"event_store": "not-a-dict"}.get(
-            key, default
-        )
+    def test_event_store_config_without_get_method(self, test_domain):
+        """An event_store section that is not a mapping leaves provider at 'none'."""
+        test_domain.config["event_store"] = "not-a-dict"
 
-        domain.event_store.store = MagicMock()
-
-        result = _event_store_status(domain)
+        result = _event_store_status(test_domain)
         assert result["provider"] == "none"
         assert result["status"] == "healthy"
 
 
 class TestCacheStatusConfigWithoutGet:
-    def test_cache_config_without_get_method(self):
-        """caches config is a non-dict object,
-        provider stays at 'none'."""
-        domain = MagicMock()
-        domain.name = "TestDomain"
-        domain.config = MagicMock()
-        domain.config.get = lambda key, default=None: {"caches": "not-a-dict"}.get(
-            key, default
-        )
+    def test_cache_config_without_get_method(self, test_domain):
+        """A caches section that is not a mapping leaves provider at 'none'."""
+        test_domain.config["caches"] = "not-a-dict"
 
-        cache = MagicMock(spec=[])
-        domain.caches = {"default": cache}
-
-        result = _cache_status(domain)
+        result = _cache_status(test_domain)
         assert result["provider"] == "none"
         assert result["status"] == "healthy"
 
-    def test_cache_default_config_without_get_method(self):
-        """default cache sub-config has no .get()."""
-        domain = MagicMock()
-        domain.name = "TestDomain"
-        domain.config = MagicMock()
-        domain.config.get = lambda key, default=None: {
-            "caches": {"default": True}  # bool has no .get()
-        }.get(key, default)
+    def test_cache_default_config_without_get_method(self, test_domain):
+        """A default cache entry that is not a mapping leaves provider at 'none'."""
+        test_domain.config["caches"] = {"default": True}
 
-        cache = MagicMock(spec=[])
-        domain.caches = {"default": cache}
-
-        result = _cache_status(domain)
+        result = _cache_status(test_domain)
         assert result["provider"] == "none"
 
+    @pytest.mark.no_test_domain
     def test_cache_is_none(self):
-        """caches.get('default') returns None."""
-        domain = MagicMock()
-        domain.name = "TestDomain"
-        domain.config = MagicMock()
-        domain.config.get = lambda key, default=None: {
-            "caches": {"default": {"provider": "redis"}}
-        }.get(key, default)
-
-        domain.caches = {"default": None}
+        """Caches are configured, but none of them is named 'default'."""
+        domain = _initialized_domain(
+            config={"caches": {"secondary": {"provider": "memory"}}}
+        )
+        del domain.caches["default"]
 
         result = _cache_status(domain)
         assert result["status"] == "not_configured"

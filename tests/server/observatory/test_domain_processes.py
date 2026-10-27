@@ -1,6 +1,6 @@
 """Tests for Process Manager State Machine View and Domain Stats.
 
-Covers:
+Tests for:
 - domain-processes.js static asset serving
 - Template includes the new script
 - _build_pm_graphs state machine extraction from IR
@@ -119,20 +119,21 @@ class TestDomainProcessesJS:
         assert response.status_code == 200
         assert "javascript" in response.headers["content-type"]
 
-    def test_processes_js_has_module(self, client):
+    @pytest.mark.parametrize(
+        "fragments",
+        [
+            pytest.param(["DomainProcesses", "render"], id="module"),
+            pytest.param(["destroy"], id="destroy"),
+            pytest.param(
+                ["_renderStateMachine", "_renderStates", "_renderTransitions"],
+                id="state-machine-rendering",
+            ),
+        ],
+    )
+    def test_processes_js_contains(self, client, fragments):
         js = client.get("/static/js/domain-processes.js").text
-        assert "DomainProcesses" in js
-        assert "render" in js
-
-    def test_processes_js_has_destroy(self, client):
-        js = client.get("/static/js/domain-processes.js").text
-        assert "destroy" in js
-
-    def test_processes_js_has_state_machine_rendering(self, client):
-        js = client.get("/static/js/domain-processes.js").text
-        assert "_renderStateMachine" in js
-        assert "_renderStates" in js
-        assert "_renderTransitions" in js
+        for fragment in fragments:
+            assert fragment in js
 
 
 # ---------------------------------------------------------------------------
@@ -141,25 +142,19 @@ class TestDomainProcessesJS:
 
 
 class TestDomainPageTemplateProcessManagers:
-    def test_includes_processes_script(self, client):
+    @pytest.mark.parametrize(
+        "fragment",
+        [
+            pytest.param("domain-processes.js", id="processes-script"),
+            pytest.param('id="dv-pm-container"', id="pm-container"),
+            pytest.param('data-tab="process-managers"', id="pm-tab"),
+            pytest.param('id="dv-stat-handlers"', id="handlers-stat"),
+            pytest.param('id="dv-stat-diagnostics"', id="diagnostics-stat"),
+        ],
+    )
+    def test_domain_page_contains(self, client, fragment):
         html = client.get("/domain").text
-        assert "domain-processes.js" in html
-
-    def test_has_pm_container(self, client):
-        html = client.get("/domain").text
-        assert 'id="dv-pm-container"' in html
-
-    def test_has_pm_tab(self, client):
-        html = client.get("/domain").text
-        assert 'data-tab="process-managers"' in html
-
-    def test_has_handlers_stat(self, client):
-        html = client.get("/domain").text
-        assert 'id="dv-stat-handlers"' in html
-
-    def test_has_diagnostics_stat(self, client):
-        html = client.get("/domain").text
-        assert 'id="dv-stat-diagnostics"' in html
+        assert fragment in html
 
 
 # ---------------------------------------------------------------------------
@@ -168,34 +163,35 @@ class TestDomainPageTemplateProcessManagers:
 
 
 class TestEventNameFromType:
-    def test_full_type_key(self):
-        assert _event_name_from_type("Ordering.OrderPlaced.v1") == "OrderPlaced"
-
-    def test_two_segments(self):
-        assert _event_name_from_type("OrderPlaced.v1") == "OrderPlaced"
-
-    def test_single_segment(self):
-        assert _event_name_from_type("OrderPlaced") == "OrderPlaced"
-
-    def test_empty_string(self):
-        assert _event_name_from_type("") == ""
+    @pytest.mark.parametrize(
+        "type_key,expected",
+        [
+            pytest.param("Ordering.OrderPlaced.v1", "OrderPlaced", id="full-type-key"),
+            pytest.param("OrderPlaced.v1", "OrderPlaced", id="two-segments"),
+            pytest.param("OrderPlaced", "OrderPlaced", id="single-segment"),
+            pytest.param("", "", id="empty-string"),
+        ],
+    )
+    def test_event_name(self, type_key, expected):
+        assert _event_name_from_type(type_key) == expected
 
 
 class TestStateLabelFromEvent:
-    def test_full_type_key(self):
-        assert _state_label_from_event("Ordering.OrderPlaced.v1") == "Order Placed"
-
-    def test_two_segments(self):
-        assert (
-            _state_label_from_event("Ordering.ShipmentDispatched.v1")
-            == "Shipment Dispatched"
-        )
-
-    def test_single_segment(self):
-        assert _state_label_from_event("OrderPlaced") == "Order Placed"
-
-    def test_empty_string(self):
-        assert _state_label_from_event("") == ""
+    @pytest.mark.parametrize(
+        "type_key,expected",
+        [
+            pytest.param("Ordering.OrderPlaced.v1", "Order Placed", id="full-type-key"),
+            pytest.param(
+                "Ordering.ShipmentDispatched.v1",
+                "Shipment Dispatched",
+                id="multi-word-name",
+            ),
+            pytest.param("OrderPlaced", "Order Placed", id="single-segment"),
+            pytest.param("", "", id="empty-string"),
+        ],
+    )
+    def test_state_label(self, type_key, expected):
+        assert _state_label_from_event(type_key) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -204,13 +200,15 @@ class TestStateLabelFromEvent:
 
 
 class TestBuildPMGraphs:
-    def test_empty_flows_returns_empty_list(self):
-        result = _build_pm_graphs({}, {})
-        assert result == []
-
-    def test_no_process_managers_returns_empty_list(self):
-        result = _build_pm_graphs({"process_managers": {}}, {})
-        assert result == []
+    @pytest.mark.parametrize(
+        "flows",
+        [
+            pytest.param({}, id="empty-flows"),
+            pytest.param({"process_managers": {}}, id="no-process-managers"),
+        ],
+    )
+    def test_no_process_managers_returns_empty_list(self, flows):
+        assert _build_pm_graphs(flows, {}) == []
 
     # Note: synthetic IR tests below pass {} for event_to_agg since they
     # don't need aggregate detection (no clusters defined).
@@ -400,15 +398,20 @@ class TestBuildStatsEnhanced:
         stats = _build_stats(ir)
         assert stats["diagnostics"] == 2
 
-    def test_stats_diagnostics_zero_when_no_key(self):
-        ir = {"elements": {}, "clusters": {}, "projections": {}}
-        stats = _build_stats(ir)
-        assert stats["diagnostics"] == 0
-
-    def test_stats_diagnostics_zero_when_empty(self):
-        ir = {"elements": {}, "clusters": {}, "projections": {}, "diagnostics": []}
-        stats = _build_stats(ir)
-        assert stats["diagnostics"] == 0
+    @pytest.mark.parametrize(
+        "ir",
+        [
+            pytest.param(
+                {"elements": {}, "clusters": {}, "projections": {}}, id="no-key"
+            ),
+            pytest.param(
+                {"elements": {}, "clusters": {}, "projections": {}, "diagnostics": []},
+                id="empty",
+            ),
+        ],
+    )
+    def test_stats_diagnostics_zero(self, ir):
+        assert _build_stats(ir)["diagnostics"] == 0
 
 
 # ---------------------------------------------------------------------------

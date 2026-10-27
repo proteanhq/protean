@@ -1,6 +1,6 @@
 """Tests for the Observatory Domain Detail Panel.
 
-Covers:
+Tests for:
 - templates/domain.html: Slide-in panel markup
 - static/js/domain-detail.js: DomainDetail module
 - static/css/observatory.css: Panel styling classes
@@ -17,38 +17,22 @@ import pytest
 class TestDetailPanelMarkup:
     """Verify the slide-in panel HTML structure in domain.html."""
 
-    def test_panel_container_exists(self, client):
+    @pytest.mark.parametrize(
+        "fragment",
+        [
+            pytest.param('id="dv-detail-panel"', id="container"),
+            pytest.param('id="dv-detail-title"', id="title"),
+            pytest.param('id="dv-detail-fqn"', id="fqn-display"),
+            pytest.param('id="dv-detail-content"', id="content-area"),
+            pytest.param('id="dv-detail-close"', id="close-button"),
+            pytest.param('id="dv-detail-backdrop"', id="backdrop"),
+            pytest.param("dv-detail-header", id="header"),
+            pytest.param("dv-detail-body", id="body"),
+        ],
+    )
+    def test_panel_markup_present(self, client, fragment):
         html = client.get("/domain").text
-        assert 'id="dv-detail-panel"' in html
-
-    def test_panel_has_slide_in_class(self, client):
-        html = client.get("/domain").text
-        assert "dv-detail-panel" in html
-
-    def test_panel_has_title(self, client):
-        html = client.get("/domain").text
-        assert 'id="dv-detail-title"' in html
-
-    def test_panel_has_fqn_display(self, client):
-        html = client.get("/domain").text
-        assert 'id="dv-detail-fqn"' in html
-
-    def test_panel_has_content_area(self, client):
-        html = client.get("/domain").text
-        assert 'id="dv-detail-content"' in html
-
-    def test_panel_has_close_button(self, client):
-        html = client.get("/domain").text
-        assert 'id="dv-detail-close"' in html
-
-    def test_panel_has_backdrop(self, client):
-        html = client.get("/domain").text
-        assert 'id="dv-detail-backdrop"' in html
-
-    def test_panel_has_header_and_body(self, client):
-        html = client.get("/domain").text
-        assert "dv-detail-header" in html
-        assert "dv-detail-body" in html
+        assert fragment in html
 
 
 # ---------------------------------------------------------------------------
@@ -64,58 +48,28 @@ class TestDomainDetailJS:
         assert response.status_code == 200
         assert "javascript" in response.headers["content-type"]
 
-    def test_exports_domain_detail_object(self, client):
+    @pytest.mark.parametrize(
+        "fragment",
+        [
+            pytest.param("var DomainDetail", id="exports-domain-detail-object"),
+            pytest.param("init:", id="init-method"),
+            pytest.param("show:", id="show-method"),
+            pytest.param("hide:", id="hide-method"),
+            pytest.param("_renderFieldsSection", id="fields-section"),
+            pytest.param("_renderElementSection", id="element-section"),
+            pytest.param("_renderHandlerSection", id="handler-section"),
+            pytest.param("_renderInvariantsSection", id="invariants-section"),
+            pytest.param("_renderRepoSection", id="repo-section"),
+            pytest.param("_renderFieldsTable", id="fields-table"),
+            pytest.param("Escape", id="escape-key-handler"),
+            pytest.param("dv-detail-backdrop", id="backdrop-click-handler"),
+            pytest.param("dv-section-toggle", id="accordion-toggle"),
+            pytest.param("dv-open", id="accordion-open-class"),
+        ],
+    )
+    def test_module_contains(self, client, fragment):
         js = client.get("/static/js/domain-detail.js").text
-        assert "var DomainDetail" in js
-
-    def test_has_init_method(self, client):
-        js = client.get("/static/js/domain-detail.js").text
-        assert "init:" in js
-
-    def test_has_show_method(self, client):
-        js = client.get("/static/js/domain-detail.js").text
-        assert "show:" in js
-
-    def test_has_hide_method(self, client):
-        js = client.get("/static/js/domain-detail.js").text
-        assert "hide:" in js
-
-    def test_renders_fields_section(self, client):
-        js = client.get("/static/js/domain-detail.js").text
-        assert "_renderFieldsSection" in js
-
-    def test_renders_element_section(self, client):
-        js = client.get("/static/js/domain-detail.js").text
-        assert "_renderElementSection" in js
-
-    def test_renders_handler_section(self, client):
-        js = client.get("/static/js/domain-detail.js").text
-        assert "_renderHandlerSection" in js
-
-    def test_renders_invariants_section(self, client):
-        js = client.get("/static/js/domain-detail.js").text
-        assert "_renderInvariantsSection" in js
-
-    def test_renders_repo_section(self, client):
-        js = client.get("/static/js/domain-detail.js").text
-        assert "_renderRepoSection" in js
-
-    def test_renders_fields_table(self, client):
-        js = client.get("/static/js/domain-detail.js").text
-        assert "_renderFieldsTable" in js
-
-    def test_has_escape_key_handler(self, client):
-        js = client.get("/static/js/domain-detail.js").text
-        assert "Escape" in js
-
-    def test_has_backdrop_click_handler(self, client):
-        js = client.get("/static/js/domain-detail.js").text
-        assert "dv-detail-backdrop" in js
-
-    def test_accordion_toggle_wiring(self, client):
-        js = client.get("/static/js/domain-detail.js").text
-        assert "dv-section-toggle" in js
-        assert "dv-open" in js
+        assert fragment in js
 
 
 # ---------------------------------------------------------------------------
@@ -145,13 +99,10 @@ class TestScriptInclusion:
 class TestDomainJSIntegration:
     """domain.js should delegate to DomainDetail for detail panel logic."""
 
-    def test_domain_js_calls_domain_detail_show(self, client):
+    @pytest.mark.parametrize("call", ["DomainDetail.show", "DomainDetail.init"])
+    def test_domain_js_calls_domain_detail(self, client, call):
         js = client.get("/static/js/domain.js").text
-        assert "DomainDetail.show" in js
-
-    def test_domain_js_calls_domain_detail_init(self, client):
-        js = client.get("/static/js/domain.js").text
-        assert "DomainDetail.init" in js
+        assert call in js
 
 
 # ---------------------------------------------------------------------------
@@ -162,38 +113,28 @@ class TestDomainJSIntegration:
 class TestDetailPanelCSS:
     """Verify the CSS classes for the detail panel exist."""
 
-    def test_panel_css_exists(self, client):
+    @pytest.mark.parametrize(
+        "fragments",
+        [
+            pytest.param([".dv-detail-panel"], id="panel"),
+            pytest.param([".dv-detail-backdrop"], id="backdrop"),
+            pytest.param(
+                [".dv-section", ".dv-section-toggle", ".dv-section-body"],
+                id="section",
+            ),
+            pytest.param([".dv-field-table"], id="field-table"),
+            pytest.param(
+                [".dv-badge--id", ".dv-badge--version", ".dv-badge--published"],
+                id="badge",
+            ),
+            pytest.param([".dv-handler-map"], id="handler-map"),
+            pytest.param(["translateX", "transition"], id="slide-transition"),
+        ],
+    )
+    def test_panel_css_present(self, client, fragments):
         css = client.get("/static/css/observatory.css").text
-        assert ".dv-detail-panel" in css
-
-    def test_backdrop_css_exists(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".dv-detail-backdrop" in css
-
-    def test_section_css_exists(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".dv-section" in css
-        assert ".dv-section-toggle" in css
-        assert ".dv-section-body" in css
-
-    def test_field_table_css_exists(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".dv-field-table" in css
-
-    def test_badge_css_exists(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".dv-badge--id" in css
-        assert ".dv-badge--version" in css
-        assert ".dv-badge--published" in css
-
-    def test_handler_map_css_exists(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert ".dv-handler-map" in css
-
-    def test_slide_transition_css(self, client):
-        css = client.get("/static/css/observatory.css").text
-        assert "translateX" in css
-        assert "transition" in css
+        for fragment in fragments:
+            assert fragment in css
 
 
 # ---------------------------------------------------------------------------

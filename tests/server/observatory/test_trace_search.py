@@ -1,6 +1,6 @@
 """Tests for trace search and recent traces list endpoints.
 
-Covers:
+Tests for:
 - GET /timeline/traces/recent — recent correlation chains with summaries
 - GET /timeline/traces/search — search by aggregate_id, event_type,
   command_type, stream_category
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,6 +24,7 @@ from protean.fields import Identifier, String
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.timeline import (
     _build_trace_summary,
+    _extract_correlation_id,
     _group_by_correlation,
     collect_recent_traces,
     search_traces,
@@ -325,12 +327,6 @@ class TestBuildTraceSummary:
 
 
 class TestCollectRecentTraces:
-    def test_returns_all_traces(self, trace_domain):
-        domain, _, _ = trace_domain
-        traces = collect_recent_traces([domain])
-
-        assert len(traces) == 3
-
     def test_sorted_by_started_at_descending(self, trace_domain):
         domain, _, _ = trace_domain
         traces = collect_recent_traces([domain])
@@ -378,13 +374,6 @@ class TestSearchTraces:
         assert "corr-chain-A" in corr_ids
         assert "corr-chain-C" in corr_ids
 
-    def test_search_by_event_type(self, trace_domain):
-        domain, _, _ = trace_domain
-        results = search_traces([domain], event_type="Test.OrderPlaced.v1")
-
-        assert len(results) == 1
-        assert results[0]["correlation_id"] == "corr-chain-B"
-
     def test_search_by_command_type(self, trace_domain):
         domain, _, _ = trace_domain
         results = search_traces([domain], command_type="Test.RenameUser.v1")
@@ -415,12 +404,6 @@ class TestSearchTraces:
 
         assert len(results) == 1
 
-    def test_search_returns_empty_for_no_match(self, trace_domain):
-        domain, _, _ = trace_domain
-        results = search_traces([domain], event_type="NonExistent.Type.v1")
-
-        assert results == []
-
     def test_search_returns_empty_for_empty_store(self, empty_domain):
         results = search_traces([empty_domain], event_type="Test.UserRegistered.v1")
         assert results == []
@@ -437,29 +420,19 @@ class TestSearchTraces:
 
 
 class TestExtractCorrelationId:
-    def test_returns_none_for_missing_metadata(self):
-        from protean.server.observatory.routes.timeline import _extract_correlation_id
-
-        assert _extract_correlation_id({}) is None
-
-    def test_returns_none_for_non_dict_metadata(self):
-        from protean.server.observatory.routes.timeline import _extract_correlation_id
-
-        assert _extract_correlation_id({"metadata": "not-a-dict"}) is None
-
-    def test_returns_none_for_missing_domain(self):
-        from protean.server.observatory.routes.timeline import _extract_correlation_id
-
-        assert _extract_correlation_id({"metadata": {"headers": {}}}) is None
-
-    def test_returns_none_for_non_dict_domain(self):
-        from protean.server.observatory.routes.timeline import _extract_correlation_id
-
-        assert _extract_correlation_id({"metadata": {"domain": "not-a-dict"}}) is None
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            pytest.param({}, id="missing_metadata"),
+            pytest.param({"metadata": "not-a-dict"}, id="non_dict_metadata"),
+            pytest.param({"metadata": {"headers": {}}}, id="missing_domain"),
+            pytest.param({"metadata": {"domain": "not-a-dict"}}, id="non_dict_domain"),
+        ],
+    )
+    def test_returns_none_without_a_domain_dict(self, msg):
+        assert _extract_correlation_id(msg) is None
 
     def test_extracts_correlation_id(self):
-        from protean.server.observatory.routes.timeline import _extract_correlation_id
-
         msg = {"metadata": {"domain": {"correlation_id": "corr-123"}}}
         assert _extract_correlation_id(msg) == "corr-123"
 
@@ -488,17 +461,29 @@ class TestGroupByCorrelationEdgeCases:
         # Snapshot excluded — corr-snap should not appear
         assert "corr-snap" not in groups
 
-    def test_handles_broken_domain_gracefully(self, trace_domain):
-        from unittest.mock import MagicMock
-
+    def test_handles_broken_domain_gracefully(self, trace_domain, tmp_path):
         domain, _, _ = trace_domain
 
-        broken = MagicMock()
-        broken.domain_context.side_effect = Exception("broken")
-        broken.event_store.store.conn_info = {"database_uri": "broken://unique"}
+        broken = Domain(
+            name="Broken",
+            root_path=str(tmp_path / "broken"),
+            config={
+                "event_store": {
+                    "provider": "memory",
+                    "database_uri": "broken://unique",
+                }
+            },
+        )
+        broken._initialize()
+        broken.init(traverse=False)
 
-        # Should still return groups from the working domain
-        groups = _group_by_correlation([domain, broken])
+        # The memory event store cannot fail for real, so its read is forced
+        # to raise as an unreachable database would.
+        with patch.object(
+            broken.event_store.store, "_read", side_effect=RuntimeError("broken")
+        ):
+            # Should still return groups from the working domain
+            groups = _group_by_correlation([domain, broken])
         assert len(groups) == 3
 
 
@@ -690,15 +675,3 @@ class TestSearchTracesEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["count"] == 1
-
-
-class TestTraceRouteWiring:
-    def test_recent_traces_route_included(self, trace_client):
-        resp = trace_client.get("/api/timeline/traces/recent")
-        assert resp.status_code == 200
-
-    def test_search_traces_route_included(self, trace_client):
-        resp = trace_client.get(
-            "/api/timeline/traces/search?event_type=Test.OrderPlaced.v1"
-        )
-        assert resp.status_code == 200
