@@ -10,7 +10,8 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
-from protean.ir import SCHEMA_VERSION
+from protean.ir import SCHEMA_URL, SCHEMA_VERSION
+from protean.ir.builder import IRBuilder
 from protean.ir.config import CompatConfig
 from protean.ir.staleness import (
     StalenessResult,
@@ -192,6 +193,34 @@ class TestCheckStalenessFresh:
         result = check_staleness("publishing7.py", self._protean_dir)
 
         assert result.status == StalenessStatus.FRESH
+
+    def test_fresh_when_baseline_has_old_schema_url(self):
+        """Baselines written before the IR's ``$schema`` URL moved to the docs
+        site still name ``protean.dev``. The URL alone does not make them stale."""
+        live_ir = _live_ir_for_test7()
+        assert live_ir["$schema"] == SCHEMA_URL
+        live_ir["$schema"] = f"https://protean.dev/ir/v{SCHEMA_VERSION}/schema.json"
+        # Recompute as an older release would have, so the test fails if
+        # ``$schema`` ever counts toward the checksum.
+        live_ir["checksum"] = IRBuilder._compute_checksum(live_ir)
+        _write_ir(self._protean_dir, live_ir)
+
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "check",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+                "--format",
+                "json",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["status"] == "fresh"
 
     def test_raises_when_derive_domain_returns_none(self, monkeypatch):
         """A stored IR present but no derivable domain must raise, not crash.

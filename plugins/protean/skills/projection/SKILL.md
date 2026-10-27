@@ -33,7 +33,7 @@ A projection is a read model: a flat record shaped for one query and filled by a
 
 ```python
 from protean import Domain
-from protean.fields import DateTime, Float, Identifier, Integer, String, Text
+from protean.fields import DateTime, Decimal, Identifier, Integer, String, Text
 
 domain = Domain()
 
@@ -42,7 +42,7 @@ class ProductInventory:
     product_id: Identifier(identifier=True, required=True)
     name: String(max_length=100, required=True)
     description: Text()
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer(default=0)
     last_updated: DateTime()
 ```

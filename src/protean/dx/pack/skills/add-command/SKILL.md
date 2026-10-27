@@ -54,7 +54,7 @@ Key points for this workflow:
 class PlaceOrder:
     order_id: Identifier(required=True)
     customer_id: String(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 ```
 
 ### Step 2: Define the Command Handler
@@ -72,15 +72,18 @@ Key points for this workflow:
 The handler works on an existing `Order` aggregate like this one:
 
 ```python
+from decimal import Decimal as D
+
+
 @domain.aggregate
 class Order:
     order_id: Identifier(identifier=True)
     customer_id: String(required=True)
-    total_amount: Float()
+    total_amount: Decimal(precision=19, scale=4)
     status: String(default="draft")
     cancellation_reason: String()
 
-    def place(self, total_amount: float):
+    def place(self, total_amount: D):
         self.total_amount = total_amount
         self.status = "placed"
 
@@ -121,7 +124,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from protean.utils.globals import current_domain
+from protean import current_domain
 
 
 @asynccontextmanager

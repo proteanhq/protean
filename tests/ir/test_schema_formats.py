@@ -6,6 +6,8 @@ file emission, and an fastavro round-trip parse of the generated Avro.
 """
 
 import json
+import re
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import pytest
@@ -13,11 +15,18 @@ from typer.testing import CliRunner
 
 from protean.cli import app
 from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
-from protean.fields import Identifier, Integer
+from protean.core.projection import BaseProjection
+from protean.core.value_object import BaseValueObject
+from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
 from protean.ir.generators.avro import generate_avro_schema
 from protean.ir.generators.protobuf import generate_proto_schema
-from protean.ir.generators.schema_writer import write_schemas
+from protean.ir.generators.schema_writer import (
+    _relative_schema_path,
+    write_all_schemas,
+    write_schemas,
+)
 
 
 def _f(type_name: str, **extra: Any) -> dict[str, Any]:
@@ -136,7 +145,7 @@ class TestProtobufMapping:
         # Numbers assigned 1..N in sorted field-name order.
         assert "  string aaa = 1;" in proto
         assert "  optional int64 bbb = 2;" in proto
-        assert "  optional google.protobuf.Timestamp ccc = 3;" in proto
+        assert "  optional .google.protobuf.Timestamp ccc = 3;" in proto
 
     def test_repeated_for_list(self):
         proto = generate_proto_schema(
@@ -520,12 +529,14 @@ class TestProtobufComplexFields:
         )
         assert "  map<string, string> x = 1;" in proto
 
-    def test_nested_messages_are_emitted_and_deduped(self):
+    def test_without_import_path_referenced_messages_are_inlined(self):
+        # With no path lookup the file stays self-contained: Money and Currency
+        # are emitted as sibling messages and named by their short names.
         currency = {
             "element_type": "VALUE_OBJECT",
             "name": "Currency",
             "fqn": "app.Currency",
-            "fields": {"code": _f("String", required=True)},
+            "fields": {"code": _f("String", required=True), "at": _f("DateTime")},
         }
         money = {
             "element_type": "VALUE_OBJECT",
@@ -540,9 +551,8 @@ class TestProtobufComplexFields:
                 },
             },
         }
-        # Order references Money (single + repeated) and Currency directly, so
-        # Currency is reached both directly and via Money — exercising the
-        # already-emitted dedup guard.
+        # Currency is reached both directly and via Money, exercising the
+        # already-emitted guard.
         order = _elem(
             "Order",
             {
@@ -559,8 +569,707 @@ class TestProtobufComplexFields:
                 "app.Order": order,
             },
         )
-        assert "  optional Money total = " in proto  # single value-object ref
-        assert "  repeated Money fees = " in proto  # has_many -> repeated
-        # Each referenced message is emitted exactly once.
-        assert proto.count("message Money {") == 1
-        assert proto.count("message Currency {") == 1
+        assert proto == (
+            'syntax = "proto3";\n'
+            "package app;\n"
+            'import "google/protobuf/timestamp.proto";\n'
+            "\n"
+            "message Order {\n"
+            "  optional Currency cur = 1;\n"
+            "  repeated Money fees = 2;\n"
+            "  optional Money total = 3;\n"
+            "}\n"
+            "\n"
+            "message Currency {\n"
+            "  optional .google.protobuf.Timestamp at = 1;\n"
+            "  string code = 2;\n"
+            "}\n"
+            "\n"
+            "message Money {\n"
+            "  double amount = 1;\n"
+            "  optional Currency currency = 2;\n"
+            "}\n"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Protobuf trees: files import each other and define each message once
+# ---------------------------------------------------------------------------
+
+_PROTO_SCALARS = {
+    "string",
+    "bytes",
+    "bool",
+    "int32",
+    "int64",
+    "uint32",
+    "uint64",
+    "sint32",
+    "sint64",
+    "fixed32",
+    "fixed64",
+    "sfixed32",
+    "sfixed64",
+    "float",
+    "double",
+}
+_TIMESTAMP_IMPORT = "google/protobuf/timestamp.proto"
+_IMPORT_RE = re.compile(r'^import "([^"]+)";$', re.MULTILINE)
+_HEADER_LINE_RE = re.compile(
+    r'^(?:syntax = "proto3";|package (?P<package>[\w.]+);|import "(?P<import>[^"]+)";)$'
+)
+_MESSAGE_OPEN_RE = re.compile(r"^(?P<indent>(?:  )*)message (?P<name>\w+) \{$")
+_FIELD_RE = re.compile(
+    r"^(?P<indent>(?:  )+)(?:optional |repeated )?"
+    r"(?P<type>map<string, string>|[.\w]+) \w+ = \d+;$"
+)
+
+
+def _parse_proto(text: str) -> dict[str, Any]:
+    """Parse the generator's output shape; any other line fails the test.
+
+    Returns the package, the imports, every message's scoped name (``Outer``
+    or ``Outer.Inner``) and each field type with the scope it appears in.
+    """
+    packages: list[str] = []
+    imports: list[str] = []
+    messages: list[str] = []
+    types: list[tuple[str, str]] = []
+    scope: list[str] = []
+    for line in text.splitlines():
+        if not line:
+            continue
+        if not scope and (header := _HEADER_LINE_RE.match(line)):
+            if header["package"]:
+                packages.append(header["package"])
+            if header["import"]:
+                imports.append(header["import"])
+            continue
+        if opened := _MESSAGE_OPEN_RE.match(line):
+            assert len(opened["indent"]) == 2 * len(scope), line
+            scope.append(opened["name"])
+            messages.append(".".join(scope))
+            continue
+        if line == "  " * (len(scope) - 1) + "}" and scope:
+            scope.pop()
+            continue
+        field = _FIELD_RE.match(line)
+        assert field is not None and scope, f"unexpected line: {line!r}"
+        assert len(field["indent"]) == 2 * len(scope), line
+        types.append((".".join(scope), field["type"]))
+    assert scope == [], "unclosed message block"
+    assert len(packages) == 1, packages
+    assert len(imports) == len(set(imports)), f"duplicate import in {imports}"
+    return {
+        "package": packages[0],
+        "imports": imports,
+        "messages": messages,
+        "types": types,
+    }
+
+
+def _assert_valid_proto_tree(schemas_dir: Path) -> dict[str, dict[str, Any]]:
+    """Check the generator's ``.proto`` output shape across a written tree.
+
+    Every ``<package>.<message>`` is defined once across the tree, every import
+    names a file in the tree, and every non-scalar field type resolves to a
+    message the file defines or imports. A bare name is looked up from the
+    innermost enclosing message outwards, as ``protoc`` does. Returns the
+    parsed files by path.
+    """
+    files = {
+        p.relative_to(schemas_dir).as_posix(): _parse_proto(p.read_text())
+        for p in sorted(schemas_dir.rglob("*.proto"))
+    }
+    assert files, "the tree holds no .proto files"
+
+    defined_in: dict[str, list[str]] = {}
+    for path, parsed in files.items():
+        for message in parsed["messages"]:
+            defined_in.setdefault(f"{parsed['package']}.{message}", []).append(path)
+    duplicates = {name: paths for name, paths in defined_in.items() if len(paths) > 1}
+    assert duplicates == {}
+
+    for path, parsed in files.items():
+        package = parsed["package"]
+        own = {f"{package}.{m}" for m in parsed["messages"]}
+        visible = set(own)
+        for imported in parsed["imports"]:
+            if imported == _TIMESTAMP_IMPORT:
+                continue
+            assert imported in files, f"{path} imports missing {imported}"
+            target = files[imported]
+            visible |= {f"{target['package']}.{m}" for m in target["messages"]}
+
+        for scope, proto_type in parsed["types"]:
+            if proto_type in _PROTO_SCALARS or proto_type == "map<string, string>":
+                continue
+            if proto_type == ".google.protobuf.Timestamp":
+                assert _TIMESTAMP_IMPORT in parsed["imports"]
+                continue
+            if proto_type.startswith("."):
+                assert proto_type[1:] in visible, f"{path}: {proto_type} unresolved"
+                continue
+            # A bare name names a message in this file, searched from the
+            # innermost scope outwards.
+            parts = scope.split(".")
+            candidates = [
+                ".".join([package, *parts[:depth], proto_type])
+                for depth in range(len(parts), -1, -1)
+            ]
+            assert any(c in own for c in candidates), f"{path}: {proto_type}"
+    return files
+
+
+def _vo_field(target: str, kind: str = "value_object") -> dict[str, Any]:
+    return {"kind": kind, "type": "VO", "target": target}
+
+
+# Module-level, so the fqn (and with it the proto package) is a plain dotted
+# module path; a class defined in a function carries "<locals>" in its fqn.
+class Dimensions(BaseValueObject):
+    weight = Float()
+
+
+class Package(BaseEntity):
+    dimensions = ValueObject(Dimensions)
+
+
+class Order(BaseAggregate):
+    name = String()
+    packages = HasMany(Package)
+
+
+class ShippingAddress(BaseValueObject):
+    city = String()
+
+
+class CustomerCard(BaseProjection):
+    customer_id = Identifier(identifier=True)
+    address = ValueObject(ShippingAddress)
+
+
+class CustomerReport(BaseProjection):
+    customer_id = Identifier(identifier=True)
+    address = ValueObject(ShippingAddress)
+
+
+class TestProtobufSchemaTree:
+    def _repro_ir(self, test_domain):
+        test_domain.register(Order)
+        test_domain.register(Package, part_of=Order)
+        test_domain.register(Dimensions, part_of=Order)
+        test_domain.init(traverse=False)
+        return test_domain.to_ir()
+
+    def test_repro_tree_defines_each_message_once_and_imports_it(
+        self, test_domain, tmp_path
+    ):
+        write_schemas(self._repro_ir(test_domain), tmp_path, fmt="protobuf")
+        files = _assert_valid_proto_tree(tmp_path / "schemas")
+
+        dims_path = "Order/value_objects/Dimensions.v1.proto"
+        package_path = "Order/entities/Package.v1.proto"
+        order_path = "Order/aggregates/Order.v1.proto"
+        assert [p for p, f in files.items() if "Dimensions" in f["messages"]] == [
+            dims_path
+        ]
+        assert [p for p, f in files.items() if "Package" in f["messages"]] == [
+            package_path
+        ]
+
+        order_text = (tmp_path / "schemas" / order_path).read_text()
+        package_pkg = files[package_path]["package"]
+        assert f'import "{package_path}";' in order_text
+        assert f"  repeated .{package_pkg}.Package packages = " in order_text
+
+        package_text = (tmp_path / "schemas" / package_path).read_text()
+        dims_pkg = files[dims_path]["package"]
+        assert f'import "{dims_path}";' in package_text
+        assert f"  optional .{dims_pkg}.Dimensions dimensions = " in package_text
+
+    def test_rewriting_the_tree_is_byte_identical(self, test_domain, tmp_path):
+        ir = self._repro_ir(test_domain)
+        first = {
+            p.relative_to(tmp_path / "a"): p.read_bytes()
+            for p in write_schemas(ir, tmp_path / "a", fmt="protobuf")
+        }
+        second = {
+            p.relative_to(tmp_path / "b"): p.read_bytes()
+            for p in write_schemas(ir, tmp_path / "b", fmt="protobuf")
+        }
+        assert first
+        assert first == second
+
+    def test_write_all_schemas_writes_the_importing_tree(self, test_domain, tmp_path):
+        write_all_schemas(self._repro_ir(test_domain), tmp_path)
+        _assert_valid_proto_tree(tmp_path / "schemas")
+        order = (tmp_path / "schemas/Order/aggregates/Order.v1.proto").read_text()
+        assert 'import "Order/entities/Package.v1.proto";' in order
+        assert "message Package {" not in order
+
+    @staticmethod
+    def _cross_module_ir() -> dict[str, Any]:
+        money = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Money",
+            "fqn": "shared.kernel.Money",
+            "fields": {
+                "amount": _f("Float", required=True),
+                "at": _f("DateTime"),
+            },
+        }
+        order = {
+            "element_type": "AGGREGATE",
+            "name": "Order",
+            "fqn": "sales.ordering.Order",
+            "fields": {
+                "id": _f("Identifier", identifier=True),
+                "total": _vo_field("shared.kernel.Money"),
+                "fee": _vo_field("shared.kernel.Money"),
+                "placed_at": _f("DateTime"),
+            },
+        }
+        return {
+            "clusters": {
+                "shared.kernel.Wallet": {
+                    "aggregate": {
+                        "element_type": "AGGREGATE",
+                        "name": "Wallet",
+                        "fqn": "shared.kernel.Wallet",
+                        "fields": {"id": _f("Identifier", identifier=True)},
+                    },
+                    "value_objects": {"shared.kernel.Money": money},
+                },
+                "sales.ordering.Order": {"aggregate": order},
+            },
+            "projections": {},
+        }
+
+    def test_cross_module_value_object_keeps_its_own_full_name(self, tmp_path):
+        write_schemas(self._cross_module_ir(), tmp_path, fmt="protobuf")
+        _assert_valid_proto_tree(tmp_path / "schemas")
+
+        order = (tmp_path / "schemas/Order/aggregates/Order.v1.proto").read_text()
+        money_import = 'import "Wallet/value_objects/Money.v1.proto";'
+        assert order.count(money_import) == 1
+        assert "  optional .shared.kernel.Money fee = " in order
+        assert "  optional .shared.kernel.Money total = " in order
+        assert "message Money {" not in order
+        # Imports are one sorted list, the timestamp import included.
+        imports = _IMPORT_RE.findall(order)
+        assert imports == sorted(imports)
+        assert imports == [
+            "Wallet/value_objects/Money.v1.proto",
+            _TIMESTAMP_IMPORT,
+        ]
+
+    def test_repeating_package_parts_use_root_relative_names(self, tmp_path):
+        # In package f.f.f, protoc would read a bare "f.f.f.V" as "f.f.f.f.f.V",
+        # so a cross-file type must carry the leading dot.
+        vo = {
+            "element_type": "VALUE_OBJECT",
+            "name": "V",
+            "fqn": "f.f.f.V",
+            "fields": {"x": _f("String")},
+        }
+        agg = {
+            "element_type": "AGGREGATE",
+            "name": "A",
+            "fqn": "f.f.f.A",
+            "fields": {"v": _vo_field("f.f.f.V")},
+        }
+        ir = {
+            "clusters": {
+                "f.f.f.A": {"aggregate": agg, "value_objects": {"f.f.f.V": vo}}
+            },
+            "projections": {},
+        }
+        write_schemas(ir, tmp_path, fmt="protobuf")
+        _assert_valid_proto_tree(tmp_path / "schemas")
+        text = (tmp_path / "schemas/A/aggregates/A.v1.proto").read_text()
+        assert "  optional .f.f.f.V v = 1;" in text
+
+    def test_reference_field_is_string_and_adds_no_import(self, tmp_path):
+        agg = {
+            "element_type": "AGGREGATE",
+            "name": "Order",
+            "fqn": "app.Order",
+            "fields": {
+                "id": _f("Identifier", identifier=True),
+                "items": _vo_field("app.Item", kind="has_many"),
+            },
+        }
+        item = {
+            "element_type": "ENTITY",
+            "name": "Item",
+            "fqn": "app.Item",
+            "fields": {"order": {"kind": "reference", "type": "Ref", "to": "Order"}},
+        }
+        ir = {
+            "clusters": {
+                "app.Order": {"aggregate": agg, "entities": {"app.Item": item}}
+            },
+            "projections": {},
+        }
+        write_schemas(ir, tmp_path, fmt="protobuf")
+        _assert_valid_proto_tree(tmp_path / "schemas")
+        text = (tmp_path / "schemas/Order/entities/Item.v1.proto").read_text()
+        assert "  optional string order = 1;" in text
+        assert "import " not in text
+
+    def test_self_reference_imports_nothing(self, tmp_path):
+        node = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Node",
+            "fqn": "app.Node",
+            "fields": {"child": _vo_field("app.Node")},
+        }
+        agg = {
+            "element_type": "AGGREGATE",
+            "name": "Tree",
+            "fqn": "app.Tree",
+            "fields": {"id": _f("Identifier", identifier=True)},
+        }
+        ir = {
+            "clusters": {
+                "app.Tree": {"aggregate": agg, "value_objects": {"app.Node": node}}
+            },
+            "projections": {},
+        }
+        write_schemas(ir, tmp_path, fmt="protobuf")
+        _assert_valid_proto_tree(tmp_path / "schemas")
+        text = (tmp_path / "schemas/Tree/value_objects/Node.v1.proto").read_text()
+        assert "  optional Node child = 1;" in text
+        assert "import " not in text
+
+    def test_projection_imports_value_object_from_its_cluster(self, tmp_path):
+        money = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Money",
+            "fqn": "app.Money",
+            "fields": {"amount": _f("Float")},
+        }
+        agg = {
+            "element_type": "AGGREGATE",
+            "name": "Order",
+            "fqn": "app.Order",
+            "fields": {"id": _f("Identifier", identifier=True)},
+        }
+        dashboard = {
+            "element_type": "PROJECTION",
+            "name": "Dashboard",
+            "fqn": "app.Dashboard",
+            "fields": {"total": _vo_field("app.Money")},
+        }
+        ir = {
+            "clusters": {
+                "app.Order": {"aggregate": agg, "value_objects": {"app.Money": money}}
+            },
+            "projections": {"app.Dashboard": {"projection": dashboard}},
+        }
+        write_schemas(ir, tmp_path, fmt="protobuf")
+        _assert_valid_proto_tree(tmp_path / "schemas")
+        text = (tmp_path / "schemas/projections/Dashboard.v1.proto").read_text()
+        assert 'import "Order/value_objects/Money.v1.proto";' in text
+        assert "  optional .app.Money total = 1;" in text
+
+    def test_target_without_a_file_is_inlined_without_an_import(self):
+        money = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Money",
+            "fqn": "app.Money",
+            "fields": {"amount": _f("Float")},
+        }
+        currency = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Currency",
+            "fqn": "app.Currency",
+            "fields": {"code": _f("String")},
+        }
+        order = _elem(
+            "Order",
+            {"total": _vo_field("app.Money"), "cur": _vo_field("app.Currency")},
+        )
+        paths = {"app.Currency": "Order/value_objects/Currency.v1.proto"}
+        proto = generate_proto_schema(
+            order,
+            all_elements={"app.Money": money, "app.Currency": currency},
+            import_path=paths.get,
+        )
+        # Currency has a file, so it is imported; Money has none, so it is
+        # defined as a nested message inside Order.
+        assert proto == (
+            'syntax = "proto3";\n'
+            "package app;\n"
+            'import "Order/value_objects/Currency.v1.proto";\n'
+            "\n"
+            "message Order {\n"
+            "  optional .app.Currency cur = 1;\n"
+            "  optional Money total = 2;\n"
+            "\n"
+            "  message Money {\n"
+            "    optional double amount = 1;\n"
+            "  }\n"
+            "}\n"
+        )
+
+    def test_nested_target_imports_the_files_its_own_fields_use(self):
+        # Money has no file but refers to Currency, which has one: the file
+        # that nests Money imports Currency on its behalf.
+        currency = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Currency",
+            "fqn": "app.Currency",
+            "fields": {"code": _f("String")},
+        }
+        money = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Money",
+            "fqn": "app.Money",
+            "fields": {"currency": _vo_field("app.Currency")},
+        }
+        order = _elem("Order", {"total": _vo_field("app.Money")})
+        paths = {"app.Currency": "Order/value_objects/Currency.v1.proto"}
+        proto = generate_proto_schema(
+            order,
+            all_elements={"app.Money": money, "app.Currency": currency},
+            import_path=paths.get,
+        )
+        assert _IMPORT_RE.findall(proto) == ["Order/value_objects/Currency.v1.proto"]
+        assert "    optional .app.Currency currency = 1;" in proto
+        assert "  message Money {" in proto
+
+    def test_empty_import_path_counts_as_no_file(self):
+        money = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Money",
+            "fqn": "app.Money",
+            "fields": {"amount": _f("Float")},
+        }
+        order = _elem("Order", {"total": _vo_field("app.Money")})
+        proto = generate_proto_schema(
+            order, all_elements={"app.Money": money}, import_path=lambda _: ""
+        )
+        assert "import " not in proto
+        assert "  optional Money total = 1;" in proto
+        assert "  message Money {" in proto
+
+    def test_element_without_fqn_does_not_import_itself(self):
+        node = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Node",
+            "fields": {"child": _vo_field("app.Node")},
+        }
+        proto = generate_proto_schema(
+            node, import_path={"app.Node": "T/value_objects/Node.v1.proto"}.get
+        )
+        assert "import " not in proto
+        assert "  optional Node child = 1;" in proto
+
+    def test_projections_sharing_a_value_object_without_a_file(
+        self, test_domain, tmp_path
+    ):
+        # A value object with no part_of that only projections use has no
+        # cluster, so it gets no file. Each projection defines it inside its
+        # own message, so the package does not define it twice.
+        test_domain.register(ShippingAddress)
+        test_domain.register(CustomerCard)
+        test_domain.register(CustomerReport)
+        test_domain.init(traverse=False)
+        write_schemas(test_domain.to_ir(), tmp_path, fmt="protobuf")
+        files = _assert_valid_proto_tree(tmp_path / "schemas")
+
+        card = files["projections/CustomerCard.v1.proto"]
+        report = files["projections/CustomerReport.v1.proto"]
+        assert card["messages"] == ["CustomerCard", "CustomerCard.ShippingAddress"]
+        assert report["messages"] == [
+            "CustomerReport",
+            "CustomerReport.ShippingAddress",
+        ]
+        assert card["package"] == report["package"]
+
+    def test_entities_referring_to_each_other_do_not_import_in_a_cycle(self, tmp_path):
+        root = {
+            "element_type": "AGGREGATE",
+            "name": "Root",
+            "fqn": "app.Root",
+            "fields": {
+                "id": _f("Identifier", identifier=True),
+                "x": _vo_field("app.X", kind="has_one"),
+            },
+        }
+        x = {
+            "element_type": "ENTITY",
+            "name": "X",
+            "fqn": "app.X",
+            "fields": {"y": _vo_field("app.Y", kind="has_one")},
+        }
+        y = {
+            "element_type": "ENTITY",
+            "name": "Y",
+            "fqn": "app.Y",
+            "fields": {"xs": _vo_field("app.X", kind="has_many")},
+        }
+        ir = {
+            "clusters": {
+                "app.Root": {
+                    "aggregate": root,
+                    "entities": {"app.X": x, "app.Y": y},
+                }
+            },
+            "projections": {},
+        }
+        write_schemas(ir, tmp_path, fmt="protobuf")
+        files = _assert_valid_proto_tree(tmp_path / "schemas")
+
+        x_path = "Root/entities/X.v1.proto"
+        y_path = "Root/entities/Y.v1.proto"
+        assert files[x_path]["imports"] == []
+        assert files[x_path]["messages"] == ["X", "X.Y"]
+        assert files[y_path]["imports"] == []
+        assert files[y_path]["messages"] == ["Y", "Y.X"]
+        # Root is outside the cycle, so it still imports X.
+        assert files["Root/aggregates/Root.v1.proto"]["imports"] == [x_path]
+
+    def test_timestamp_resolves_from_the_root_in_a_google_package(self, tmp_path):
+        agg = {
+            "element_type": "AGGREGATE",
+            "name": "Calendar",
+            "fqn": "integrations.google.cal.Calendar",
+            "fields": {"synced_at": _f("DateTime")},
+        }
+        ir = {"clusters": {agg["fqn"]: {"aggregate": agg}}, "projections": {}}
+        write_schemas(ir, tmp_path, fmt="protobuf")
+        _assert_valid_proto_tree(tmp_path / "schemas")
+        text = (tmp_path / "schemas/Calendar/aggregates/Calendar.v1.proto").read_text()
+        assert "  optional .google.protobuf.Timestamp synced_at = 1;" in text
+
+    def test_file_with_several_imports_lists_them_sorted(self, tmp_path):
+        address = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Address",
+            "fqn": "app.Address",
+            "fields": {"city": _f("String")},
+        }
+        money = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Money",
+            "fqn": "app.Money",
+            "fields": {"amount": _f("Float")},
+        }
+        line = {
+            "element_type": "ENTITY",
+            "name": "Line",
+            "fqn": "app.Line",
+            "fields": {"qty": _f("Integer")},
+        }
+        order = {
+            "element_type": "AGGREGATE",
+            "name": "Order",
+            "fqn": "app.Order",
+            "fields": {
+                "total": _vo_field("app.Money"),
+                "ship_to": _vo_field("app.Address"),
+                "lines": _vo_field("app.Line", kind="has_many"),
+                "placed_at": _f("DateTime"),
+            },
+        }
+        ir = {
+            "clusters": {
+                "app.Order": {
+                    "aggregate": order,
+                    "entities": {"app.Line": line},
+                    "value_objects": {"app.Address": address, "app.Money": money},
+                }
+            },
+            "projections": {},
+        }
+        write_schemas(ir, tmp_path, fmt="protobuf")
+        files = _assert_valid_proto_tree(tmp_path / "schemas")
+        assert files["Order/aggregates/Order.v1.proto"]["imports"] == [
+            "Order/entities/Line.v1.proto",
+            "Order/value_objects/Address.v1.proto",
+            "Order/value_objects/Money.v1.proto",
+            _TIMESTAMP_IMPORT,
+        ]
+
+    def test_fqn_without_a_module_uses_the_protean_package(self, tmp_path):
+        money = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Money",
+            "fqn": "Money",
+            "fields": {"amount": _f("Float")},
+        }
+        order = {
+            "element_type": "AGGREGATE",
+            "name": "Order",
+            "fqn": "Order",
+            "fields": {"total": _vo_field("Money")},
+        }
+        ir = {
+            "clusters": {
+                "Order": {"aggregate": order, "value_objects": {"Money": money}}
+            },
+            "projections": {},
+        }
+        write_schemas(ir, tmp_path, fmt="protobuf")
+        _assert_valid_proto_tree(tmp_path / "schemas")
+        text = (tmp_path / "schemas/Order/aggregates/Order.v1.proto").read_text()
+        assert "package protean;" in text
+        assert "  optional .protean.Money total = 1;" in text
+
+    @pytest.mark.parametrize("fmt", ["json", "avro", "protobuf"])
+    def test_two_elements_with_one_path_raise(self, tmp_path, fmt):
+        agg = {
+            "element_type": "AGGREGATE",
+            "name": "Order",
+            "fqn": "app.Order",
+            "fields": {"id": _f("Identifier", identifier=True)},
+        }
+        first = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Money",
+            "fqn": "a.Money",
+            "fields": {"amount": _f("Float")},
+        }
+        second = {**first, "fqn": "b.Money"}
+        ir = {
+            "clusters": {
+                "app.Order": {
+                    "aggregate": agg,
+                    "value_objects": {"a.Money": first, "b.Money": second},
+                }
+            },
+            "projections": {},
+        }
+        with pytest.raises(ValueError) as exc:
+            write_schemas(ir, tmp_path, fmt=fmt)
+        assert "a.Money, b.Money" in str(exc.value)
+        assert "Order/value_objects/Money.v1." in str(exc.value)
+
+
+class TestRelativeSchemaPath:
+    def test_cluster_member_and_projection_paths(self):
+        ir = {
+            "clusters": {
+                "app.Order": {
+                    "aggregate": {"fqn": "app.Order"},
+                    "value_objects": {"app.Money": {}},
+                }
+            }
+        }
+        money = {"element_type": "VALUE_OBJECT", "name": "Money", "__version__": 3}
+        dash = {"element_type": "PROJECTION", "name": "Dash"}
+        assert _relative_schema_path("app.Money", money, ir, "proto") == (
+            PurePosixPath("Order/value_objects/Money.v3.proto")
+        )
+        assert _relative_schema_path("app.Dash", dash, ir, "json") == (
+            PurePosixPath("projections/Dash.v1.json")
+        )
+
+    def test_element_outside_any_cluster_uses_its_short_name(self):
+        loose = {"element_type": "EVENT", "name": "Loose"}
+        assert _relative_schema_path("app.Loose", loose, {}, "avsc") == (
+            PurePosixPath("Loose/events/Loose.v1.avsc")
+        )

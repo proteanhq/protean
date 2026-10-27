@@ -45,8 +45,6 @@ paths = [
     "src/protean/adapters/broker/inline.py",
     "src/protean/adapters/cache/__init__.py",
     "src/protean/adapters/cache/memory.py",
-    "src/protean/adapters/email/__init__.py",
-    "src/protean/adapters/email/dummy.py",
     "src/protean/adapters/event_store/__init__.py",
     "src/protean/adapters/event_store/memory.py",
     "src/protean/adapters/repository/__init__.py",
@@ -206,13 +204,3 @@ paths = [
 ]
 markers = ["message_db"]
 stores = ["MESSAGE_DB"]
-
-# Off: no CI run has passed `--sendgrid` (it is not in `-c FULL` either), and
-# its tests fail on a stale email setup. Give it a lane once they pass.
-[adapters.sendgrid]
-lane = "off"
-paths = [
-    "src/protean/adapters/email/sendgrid.py",
-    "tests/adapters/email/sendgrid_email/",
-]
-markers = ["sendgrid"]

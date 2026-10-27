@@ -1,5 +1,5 @@
 {
-  "$schema": "https://protean.dev/ir/v0.3.0/schema.json",
+  "$schema": "https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json",
   "checksum": "sha256:3efb381bb5a5018ebe5f06b216bd13303a248252d18cd86754fe7ec22599b6d6",
   "clusters": {
     "banking.accounts.Account": {

@@ -15,7 +15,7 @@ the Customer and Order aggregates.
 
 from protean import Domain
 from protean.core.projector import on
-from protean.fields import Float, Identifier, Integer, String
+from protean.fields import Decimal, Identifier, Integer, String
 
 domain = Domain(__name__)
 domain.config["event_processing"] = "sync"
@@ -39,7 +39,7 @@ class OrderPlaced:
 
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Order")
@@ -48,7 +48,7 @@ class OrderCancelled:
 
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
-    refund_amount: Float(required=True)
+    refund_amount: Decimal(precision=19, scale=4, required=True)
 
 
 # --- Aggregates (write models) ---
@@ -80,7 +80,7 @@ class Order:
     """Order aggregate."""
 
     customer_id: Identifier(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
     status: String(default="placed")
 
     @classmethod
@@ -123,7 +123,7 @@ class CustomerOrderSummary:
     customer_name: String(max_length=100, required=True)
     email: String(max_length=200)
     order_count: Integer(default=0)
-    total_spent: Float(default=0.0)
+    total_spent: Decimal(precision=19, scale=4, default=0)
 
 
 # --- Projector ---

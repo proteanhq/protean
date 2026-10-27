@@ -137,7 +137,42 @@ the priority-lane suffix when a low-priority row also uses the backfill lane:
 Under a broker without the capability the key is carried on the row but not
 applied, so routing falls back to the base category. As a safety backstop, a row
 that somehow reaches publishing with an invalid key is marked `ABANDONED` at once
-rather than retried, so one bad row can never wedge the outbox behind it.
+rather than retried. The row keeps its key, so it halts that key's later rows
+(see the next section), while other keys keep flowing.
+
+## How the outbox keeps a key in order
+
+The outbox processor publishes a key's rows in commit order. It groups
+partitioned rows by target broker, stream category, partition key and priority
+lane. A row is claimed only when every earlier row of its group has been
+published, or is claimed in the same batch. Within a batch, the processor
+publishes each group's rows in commit order.
+
+An earlier row that is pending, in flight, failed or abandoned holds the later
+rows of its group:
+
+- A **failed** row holds its key until its retry is due and it publishes.
+- An **abandoned** row halts its key. The key's later rows stay in the outbox
+  until an operator re-queues the row or marks it published, as described in
+  [the outbox guide](../../guides/server/outbox.md#a-partitioned-key-can-halt).
+  Cleanup does not delete abandoned rows that have a partition key.
+- When a row fails mid-batch, the processor puts the later rows of its group
+  (same key, stream and lane) from that batch back to `pending` without publishing them, and leaves their retry
+  counts alone.
+
+The halt is scoped to one group. Other keys, the other priority lane, rows
+without a partition key, and other target brokers keep flowing. This holds on
+every broker, including one that does not advertise `STREAM_PARTITIONING`, since
+the outbox applies it before routing.
+
+The hold-back follows the order in which rows were written, which matches
+commit order for one aggregate instance. When the key is a field that several
+aggregate instances carry (many orders with one `client_id`), nothing orders
+their commits against each other. A row written earlier can commit later,
+after a later row of the same key has already published. Rows written before
+0.19 have no stream category and are never held unless you fill the column; see
+the
+[0.19 migration notes](../migration/v0-19.md#outbox-rows-wait-for-their-partition-keys-earlier-rows).
 
 ## How the consumer enforces ordering
 

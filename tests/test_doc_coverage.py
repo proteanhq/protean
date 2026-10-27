@@ -21,8 +21,6 @@ _API = _ROOT / "docs" / "api"
 # Element types currently/intentionally without a dedicated building-block or API page,
 # each with its reason. Burn these down (write the page, drop the entry) over time.
 ALLOWLIST = {
-    "EMAIL": "Infrastructure/adapter element, not a domain building block; documented "
-    "(if at all) under adapters rather than building-blocks/API.",
     "EVENT_SOURCED_REPOSITORY": "Covered in the event-sourcing / repositories docs; "
     "no standalone page.",
     "UPCASTER": "Infrastructure helper for event schema migration, not a domain "

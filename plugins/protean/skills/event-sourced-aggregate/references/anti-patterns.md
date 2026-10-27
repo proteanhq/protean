@@ -3,15 +3,15 @@
 The examples on this page use these events and aggregates:
 
 ```python
+from protean import current_domain
 from protean.core.aggregate import apply
-from protean.fields import Float, Identifier, String
-from protean.utils.globals import current_domain
+from protean.fields import Decimal, Identifier, String
 
 @domain.event(part_of="Account")
 class AccountOpened:
     account_id: Identifier(required=True)
     owner_name: String(required=True)
-    balance: Float(required=True)
+    balance: Decimal(precision=19, scale=4, required=True)
 
 @domain.event(part_of="Account")
 class NameUpdated:
@@ -22,7 +22,7 @@ class NameUpdated:
 class Account:
     account_id: Identifier(identifier=True)
     owner_name: String(required=True)
-    balance: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
     status: String(default="ACTIVE")
 
     @apply
@@ -137,7 +137,7 @@ class ItemAdded:
     order_id: Identifier(required=True)
     item: Dict()  # Item details
     all_items: List()  # All items (redundant!)
-    order_total: Float()  # Calculated (redundant!)
+    order_total: Decimal(precision=19, scale=4)  # Calculated (redundant!)
     customer_details: Dict()  # Not related to this change
 ```
 
@@ -151,7 +151,7 @@ class ItemAdded:
     item_id: Identifier(required=True)
     product_id: String(required=True)
     quantity: Integer(required=True)
-    unit_price: Float(required=True)
+    unit_price: Decimal(precision=19, scale=4, required=True)
 ```
 
 ## 6. Forgetting to Raise Events in Business Methods

@@ -13,6 +13,7 @@ from typing import Any
 __all__ = [
     "EXAMPLES_DIR",
     "SCHEMA_PATH",
+    "SCHEMA_URL",
     "SCHEMA_VERSION",
     "CompatConfig",
     "CompatibilityChange",
@@ -30,6 +31,7 @@ __all__ = [
 ]
 
 SCHEMA_VERSION = "0.3.0"
+SCHEMA_URL = f"https://docs.proteanhq.com/assets/ir/v{SCHEMA_VERSION}/schema.json"
 
 _IR_DIR = Path(__file__).parent
 SCHEMA_PATH = _IR_DIR / "schema" / f"v{SCHEMA_VERSION}" / "schema.json"

@@ -171,8 +171,12 @@ stateDiagram-v2
     FAILED --> PENDING: Retry scheduled
     FAILED --> ABANDONED: Max retries exceeded
     PUBLISHED --> [*]: Cleanup removes
-    ABANDONED --> [*]: Cleanup removes
+    ABANDONED --> [*]: Cleanup removes (no partition key)
 ```
+
+Cleanup removes an abandoned row only when it has no partition key. An
+abandoned row with a partition key stays in the outbox until someone retries
+it or marks it published.
 
 ### Message States
 
@@ -202,7 +206,8 @@ become retry-eligible simultaneously.
 
 After `max_attempts` failures, the message is marked `ABANDONED` and
 stops retrying. It remains in the outbox table as a durable record of
-the failure until cleanup removes it.
+the failure until cleanup removes it. Cleanup does not remove an
+abandoned row with a partition key; see [Message Cleanup](#message-cleanup).
 
 For tuning retry attempts, backoff, and jitter, see the
 [Outbox Guide](../../guides/server/outbox.md#configure-retries).
@@ -212,7 +217,9 @@ For tuning retry attempts, backoff, and jitter, see the
 `PUBLISHED` and `ABANDONED` rows are purged on a schedule so the outbox
 table doesn't grow unbounded. Published rows are kept long enough to
 serve as an audit trail; abandoned rows are kept long enough to
-investigate. The retention windows are separately configurable, see [Outbox
+investigate. An abandoned row with a partition key is never purged: it
+holds its key's later rows, so it stays until someone retries it or
+marks it published. The retention windows are separately configurable, see [Outbox
 Guide: Configure cleanup](../../guides/server/outbox.md#configure-cleanup).
 
 ## Multi-Worker Support

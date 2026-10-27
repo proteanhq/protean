@@ -31,8 +31,6 @@ _BUILTIN_CODES = frozenset(
         "DEPRECATED_ELEMENT",
         "DEPRECATED_FIELD",
         "DEPRECATED_OPTION",
-        "DEPRECATED_EMAIL",
-        "DEPRECATED_CONFIG",
         "DEPRECATED_IMPORT",
         "CROSS_AGGREGATE_REFERENCE",
         "ES_AGGREGATE_NO_EVENTS",
@@ -284,8 +282,7 @@ def _all_builtin_diagnostics() -> list[dict]:
     interactions, so each code (or small compatible group) gets a minimal
     domain. The merged list drives the schema-enrichment assertions across
     *every* emit site — including the second ``DEPRECATED_OPTION`` site
-    (command ``published``) and ``DEPRECATED_EMAIL``, which are otherwise
-    unasserted.
+    (command ``published``), which is otherwise unasserted.
     """
     import warnings
 
@@ -319,34 +316,6 @@ def _all_builtin_diagnostics() -> list[dict]:
 
     cmd_domain.init(traverse=False)
     diagnostics += IRBuilder(cmd_domain).build()["diagnostics"]
-
-    # DEPRECATED_EMAIL — the email subsystem is itself deprecated.
-    email_domain = Domain(name="EnrichEmail")
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-
-        @email_domain.email
-        class WelcomeMail:
-            pass
-
-    email_domain.init(traverse=False)
-    diagnostics += IRBuilder(email_domain).build()["diagnostics"]
-
-    # DEPRECATED_CONFIG — a non-default ``email_providers`` config block.
-    email_cfg_domain = Domain(name="EnrichEmailConfig", root_path=".")
-    email_cfg_domain.config["email_providers"] = {
-        "default": {
-            "provider": "protean.adapters.DummyEmailProvider",
-            "DEFAULT_FROM_EMAIL": "custom@example.com",
-        },
-    }
-
-    @email_cfg_domain.aggregate
-    class CfgOrder:
-        name = String(max_length=10)
-
-    email_cfg_domain.init(traverse=False)
-    diagnostics += IRBuilder(email_cfg_domain).build()["diagnostics"]
 
     # DEPRECATED_IMPORT — on-disk scan of a module using Method/Nested and a
     # deprecated ``protean.utils`` plumbing access.

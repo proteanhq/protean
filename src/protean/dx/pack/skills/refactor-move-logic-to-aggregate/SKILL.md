@@ -66,7 +66,7 @@ Aggregate is a data bag: no methods, no invariants:
 @domain.aggregate
 class Order:
     customer_id = String(required=True)
-    total = Float(default=0.0)
+    total = Decimal(precision=19, scale=4, default=0)
     status = String(default="DRAFT")
     # No methods!
 ```
@@ -104,7 +104,7 @@ The order's methods use a `Money` value object, a `LineItem` entity and an
 ```python
 @domain.value_object
 class Money:
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
     currency = String(max_length=3, default="USD")
 
 
@@ -118,7 +118,7 @@ class LineItem:
 @domain.event(part_of="Order")
 class OrderPlaced:
     order_id = Identifier(required=True)
-    total = Float(required=True)
+    total = Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command(part_of="Order")
@@ -137,6 +137,8 @@ Move validation from handlers into `@invariant.post`. With the methods from Step
 2, the `Order` class reads:
 
 ```python
+from decimal import Decimal as D
+
 from protean.exceptions import ValidationError
 
 
@@ -157,7 +159,7 @@ class Order:
 
     def _calculate_total(self) -> Money:
         """Sum all line item totals."""
-        total = 0.0
+        total = D(0)
         for item in self.items:
             total += item.unit_price.amount * item.quantity
         return Money(amount=total)
@@ -173,6 +175,21 @@ class Order:
         """Order total cannot exceed $50,000."""
         if self.total and self.total.amount > 50000:
             raise ValidationError({"total": ["Exceeds maximum order amount"]})
+```
+
+Placing an order with one line sets the total from that line:
+
+```python
+domain.init(traverse=False)
+
+with domain.domain_context():
+    order = Order(customer_id="CUST-001")
+    order.place(
+        items=[
+            {"product_id": "P-1", "quantity": 2, "unit_price": Money(amount=D("10.00"))}
+        ]
+    )
+    assert order.total.amount == D("20.00")
 ```
 
 Do not skip this step. An aggregate that ends the refactor with rich methods but no

@@ -14,9 +14,11 @@ Orders can be placed (which raises OrderPlaced) and cancelled (which raises
 OrderCancelled), with business rules guarding both transitions.
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
+from protean.fields import Decimal, HasMany, Identifier, Integer, String, ValueObject
 
 domain = Domain()
 
@@ -32,7 +34,7 @@ class Money:
     business logic (not a framework feature) and should be tested.
     """
 
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, default="USD")
 
     def add(self, other: "Money") -> "Money":
@@ -52,7 +54,7 @@ class OrderPlaced:
     order_id: Identifier(required=True)
     customer_id: String(required=True)
     item_count: Integer(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Order")
@@ -75,7 +77,7 @@ class LineItem:
     unit_price: ValueObject(Money, required=True)
 
     @property
-    def subtotal(self) -> float:
+    def subtotal(self) -> D:
         """Calculate line item subtotal."""
         return self.quantity * self.unit_price.amount
 
@@ -131,7 +133,7 @@ class Order:
         self.remove_line_items(item)
 
     @property
-    def total(self) -> float:
+    def total(self) -> D:
         """Calculate order total from line items."""
         if not self.line_items:
             return 0.0
@@ -174,6 +176,8 @@ class Order:
 
 # --- Tests ---
 
+from decimal import Decimal as D
+
 import pytest
 
 from protean.exceptions import ValidationError
@@ -188,25 +192,25 @@ class TestOrderBehavior:
 
     def test_place_sets_status_to_placed(self):
         order = Order.create(customer_id="cust-1")
-        order.add_item(product_id="p-1", quantity=2, unit_price=10.0)
+        order.add_item(product_id="p-1", quantity=2, unit_price=D("10.00"))
         order.place()
         assert order.status == "placed"
 
     def test_add_and_remove_items(self):
         order = Order.create(customer_id="cust-1")
-        order.add_item(product_id="p-1", quantity=2, unit_price=10.0)
-        order.add_item(product_id="p-2", quantity=1, unit_price=25.0)
-        assert order.total == 45.0
+        order.add_item(product_id="p-1", quantity=2, unit_price=D("10.00"))
+        order.add_item(product_id="p-2", quantity=1, unit_price=D("25.00"))
+        assert order.total == D("45.00")
 
         order.remove_item("p-1")
         assert [item.product_id for item in order.line_items] == ["p-2"]
-        assert order.total == 25.0
+        assert order.total == D("25.00")
 
 
 class TestOrderEvents:
     def test_place_raises_order_placed_with_its_data(self):
         order = Order.create(customer_id="cust-1")
-        order.add_item(product_id="p-1", quantity=2, unit_price=10.0)
+        order.add_item(product_id="p-1", quantity=2, unit_price=D("10.00"))
         order.place()
 
         assert len(order._events) == 1
@@ -215,11 +219,11 @@ class TestOrderEvents:
         assert event.order_id == order.id
         assert event.customer_id == "cust-1"
         assert event.item_count == 1
-        assert event.total_amount == 20.0
+        assert event.total_amount == D("20.00")
 
     def test_cancel_raises_order_cancelled(self):
         order = Order.create(customer_id="cust-1")
-        order.add_item(product_id="p-1", quantity=1, unit_price=5.0)
+        order.add_item(product_id="p-1", quantity=1, unit_price=D("5.00"))
         order.place()
         order._events.clear()  # Keep only the events cancel() raises
 
@@ -244,7 +248,7 @@ class TestOrderBusinessRules:
     def test_cannot_place_an_order_twice(self):
         # place() raises ValueError when the order is not a draft.
         order = Order.create(customer_id="cust-1")
-        order.add_item(product_id="p-1", quantity=1, unit_price=5.0)
+        order.add_item(product_id="p-1", quantity=1, unit_price=D("5.00"))
         order.place()
         with pytest.raises(ValueError, match="Cannot place order in 'placed' status"):
             order.place()
@@ -265,7 +269,7 @@ class TestOrderBusinessRules:
 class TestMoney:
     def test_add_same_currency(self):
         result = Money(amount=10.0, currency="USD").add(Money(amount=20.0))
-        assert result.amount == 30.0
+        assert result.amount == D("30.00")
         assert result.currency == "USD"
 
     def test_add_different_currency_fails(self):

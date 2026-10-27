@@ -74,13 +74,16 @@ class OrderSubscriber:
 The examples in this section use this aggregate:
 
 ```python
+from decimal import Decimal as D
+
+
 @domain.aggregate
 class Order:
-    total_amount: Float(default=0.0)
-    amount_paid: Float(default=0.0)
+    total_amount: Decimal(precision=19, scale=4, default=0)
+    amount_paid: Decimal(precision=19, scale=4, default=0)
     status: String(max_length=20, default="PENDING")
 
-    def process_payment(self, amount: float) -> None:
+    def process_payment(self, amount: D) -> None:
         self.amount_paid = amount
         if self.total_amount > 1000:
             self.status = "REQUIRES_REVIEW"

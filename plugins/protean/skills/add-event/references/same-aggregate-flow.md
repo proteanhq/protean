@@ -11,7 +11,7 @@ An event handler that belongs to and processes events from the same aggregate. U
 class OrderPlaced:
     order_id: Identifier(required=True)
     customer_id: String(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 ```
 
 ### The Aggregate Method
@@ -21,7 +21,7 @@ class OrderPlaced:
 class Order:
     order_id: Identifier(identifier=True)
     customer_id: String(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
     status: String(default="draft")
     confirmation_number: String()
 

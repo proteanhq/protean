@@ -21,7 +21,7 @@ from protean.exceptions import (
     ObjectNotFoundError,
     ValidationError,
 )
-from protean.port.dao import BaseDAO, BaseLookup
+from protean.port.dao import BaseDAO, BaseLookup, HoldBack
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
 from protean.utils import _fully_qualified_name, occ_trace
 from protean.utils.container import Options
@@ -824,6 +824,7 @@ class DictDAO(BaseDAO):
         claim_fields: dict[str, typing.Any],
         limit: int,
         order_by: str | list[str] | None = None,
+        hold_back: HoldBack | None = None,
     ) -> list[typing.Any]:
         """Atomic find-and-claim for the in-memory adapter.
 
@@ -841,7 +842,7 @@ class DictDAO(BaseDAO):
         conn = self._get_session()
         assert conn is not None
         with conn._db["lock"]:
-            return super()._claim(criteria, claim_fields, limit, order_by)
+            return super()._claim(criteria, claim_fields, limit, order_by, hold_back)
 
     def _delete(self, model_obj: typing.Any) -> typing.Any:
         """Delete the entity record in the dictionary"""

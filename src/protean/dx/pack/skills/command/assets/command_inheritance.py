@@ -19,7 +19,7 @@ Usage:
 """
 
 from protean import Domain
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -63,7 +63,7 @@ class CreateProduct(AbstractEntityCommand):
     """
 
     name: String(required=True, max_length=200)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     category: String(max_length=100)
 
 
@@ -76,7 +76,7 @@ class UpdateProduct(AbstractEntityCommand):
     """
 
     name: String(max_length=200)
-    price: Float()
+    price: Decimal(precision=19, scale=4)
 
 
 # Multi-level abstract hierarchy

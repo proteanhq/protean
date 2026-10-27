@@ -33,15 +33,15 @@ handler loads an existing order with `repository.get`, which raises
 `ObjectNotFoundError` for an unknown id.
 
 ```python
+from protean import current_domain
 from protean.exceptions import InvalidStateError
-from protean.utils.globals import current_domain
 
 
 @domain.aggregate
 class Order:
     order_id = Identifier(identifier=True)
     customer_id = String(required=True)
-    total_amount = Float(min_value=0)
+    total_amount = Decimal(precision=19, scale=4, min_value=0)
     status = String(default="placed")
     cancel_reason = String()
 
@@ -56,7 +56,7 @@ class Order:
 class PlaceOrder:
     order_id = Identifier(required=True)
     customer_id = String(required=True, max_length=50)
-    total_amount = Float(required=True, min_value=0)
+    total_amount = Decimal(precision=19, scale=4, required=True, min_value=0)
 
 
 @domain.command(part_of=Order)
@@ -91,6 +91,8 @@ Put endpoints on an `APIRouter`. Each endpoint builds a command from the
 request and passes it to `current_domain.process(..., asynchronous=False)`.
 
 ```python
+from decimal import Decimal as D
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -98,7 +100,7 @@ from pydantic import BaseModel
 class PlaceOrderRequest(BaseModel):
     order_id: str
     customer_id: str
-    total_amount: float
+    total_amount: D
 
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -154,7 +156,7 @@ uvicorn.run(create_app(domain), host="127.0.0.1", port=8000)
 1. **Endpoints are thin adapters**: A write endpoint translates HTTP into a command. It holds no business logic, and it does not change or save aggregates itself. This skill covers write endpoints. For read endpoints, see the `query` and `projection` skills.
 2. **Write endpoints as plain `def`**: `current_domain.process(..., asynchronous=False)` is a blocking call. FastAPI runs a `def` endpoint in its thread pool, which keeps that call off the event loop. The domain context from the middleware still reaches the endpoint there. An `async def` endpoint that calls `process()` blocks every other request while it runs.
 3. **Use the integration's middleware and exception handlers**: Add `DomainContextMiddleware` and call `register_exception_handlers(app)` in the app factory. Do not write your own.
-4. **Always go through `current_domain.process()`**: Never call a handler directly. Import `current_domain` from `protean.utils.globals`.
+4. **Always go through `current_domain.process()`**: Never call a handler directly. Import `current_domain` from `protean`.
 5. **Pass `asynchronous=False`**: The endpoint then gets the handler's return value, and a domain error such as a missing aggregate is raised inside the request, where the exception handlers can turn it into a 404 or 409.
 6. **Build the command from the request**: Map the body fields, and the path parameters, to command fields one by one.
 7. **Return the right success code**: 201 for creation, 200 for a change to an existing aggregate.

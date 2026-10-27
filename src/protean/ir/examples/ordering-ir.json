@@ -1,5 +1,5 @@
 {
-  "$schema": "https://protean.dev/ir/v0.3.0/schema.json",
+  "$schema": "https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json",
   "checksum": "sha256:5372a9b078d2a372f9e455df3fdf7d3529b785d47b8d7fca986a5b16300bdaab",
   "clusters": {
     "ecommerce.ordering.Order": {

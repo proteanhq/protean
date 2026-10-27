@@ -160,7 +160,13 @@ The checker understands three evolution mechanisms:
   applies to every persisted element, including internal and event-sourced
   events (not only published event contracts). It compares against the release
   version; the `protean ir diff` CLI does not yet supply one, so this downgrade
-  applies when the diff is run with an explicit current version.
+  applies when the diff is run with an explicit current version. Write the
+  `removal` version as a string, such as `"0.20"`, because a number loses its
+  trailing zeros. `deprecated=` refuses a number when the element or field is
+  declared. The diff checks every `deprecated` block in both IR files before
+  comparing them. A malformed block in a hand-written file, such as a version
+  written as a number, makes it raise `ConfigurationError` naming the element
+  or field, and `protean ir diff` prints the error and exits 1.
 - **Upcaster mitigation**: When an event's `__version__` bumps and a registered
   [upcaster](../../patterns/event-versioning-and-evolution.md) chain covers the
   old→new version path, the schema-transformation changes that make up that

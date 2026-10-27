@@ -2,6 +2,9 @@
 
 **Status:** Accepted
 
+> Amended October 2026, see
+[Amendment](#amendment-october-2026-hold-back) below.
+
 **Date:** June 2026
 
 ## Context
@@ -213,3 +216,42 @@ same mapping the commit path applies.
 - **Put dialect dispatch in `OutboxRepository`**: Rejected. The contract is
   broader than the outbox and belongs at the DAO layer where other consumers
   can reuse it.
+
+## Amendment (October 2026): hold-back
+
+The outbox needs a partition key's rows published in commit order
+(ADR-0028, outbox-side ordering amendment). A plain `criteria` filter cannot
+express that, because whether a row may be claimed depends on other rows.
+
+**Amended decision:** `_claim` takes an optional `hold_back: HoldBack`. When it
+is `None`, the claim behaves as described above. When it is set, a row that
+matches `hold_back.applies` belongs to a group: the rows with equal
+`hold_back.group_by` fields, in the same entry of `hold_back.lanes`. Such a row
+is claimed only when every earlier row of its group (by `hold_back.order`)
+that matches `hold_back.holds` is claimed in the same call. Rows that do not
+match `applies` are claimed as before.
+
+Held rows must not fill the batch, or a halted group with more rows than
+`limit` would keep every other group from being claimed.
+
+- **PostgreSQL** keeps one statement. A `MATERIALIZED` CTE selects and locks
+  the candidates with `FOR UPDATE SKIP LOCKED`. A grouped row is a candidate
+  only when every earlier holding row of its group matches `criteria` and
+  sorts before it in the claim order, so held rows rarely enter the `LIMIT`.
+  A row another transaction has locked can still take a slot before
+  `SKIP LOCKED` drops it.
+  The outer `UPDATE` claims a candidate only when no earlier holding row of
+  its group sits outside the CTE, which covers rows another worker has
+  locked.
+- **The portable default** reads candidates a page at a time, `limit` rows per
+  page, until the batch is full or the rows run out. For each grouped
+  candidate it queries for an earlier holding row of the group that this call
+  has not claimed. Once a group has a held row, its later rows in the call are
+  skipped. There is no cap on the scan, because a cap would let a halted
+  group starve the others. Pages come from `_claim_candidates`. The SQL
+  adapter's version adds the same candidate filter as the PostgreSQL
+  statement, so on SQLite, MySQL, MariaDB and SQL Server a halted group's
+  backlog never enters a page. The base version reads held rows too, so on an
+  adapter that does not override it a large halted backlog costs one page read
+  per `limit` held rows on every call.
+- **The memory adapter** runs the portable default under its lock, as before.

@@ -34,13 +34,13 @@ Usage:
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal as D
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from protean import Domain, handle
-from protean.fields import DateTime, Float, Identifier, String
-from protean.utils.globals import current_domain
+from protean import Domain, current_domain, handle
+from protean.fields import DateTime, Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -52,7 +52,7 @@ class Order:
 
     order_id: Identifier(identifier=True)
     customer_id: String(required=True)
-    total_amount: Float()
+    total_amount: Decimal(precision=19, scale=4)
     status: String(default="draft")
     payment_method: String()
     placed_at: DateTime()
@@ -60,7 +60,7 @@ class Order:
     cancelled_at: DateTime()
     cancel_reason: String()
 
-    def place(self, total_amount: float):
+    def place(self, total_amount: D):
         """Place the order with a total amount."""
         self.total_amount = total_amount
         self.status = "placed"
@@ -92,7 +92,7 @@ class PlaceOrder:
 
     order_id: Identifier(required=True)
     customer_id: String(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command(part_of="Order")

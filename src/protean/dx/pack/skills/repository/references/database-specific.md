@@ -18,7 +18,7 @@ class Report:
     report_id: Identifier(identifier=True)
     title: String(required=True, max_length=200)
     report_type: String(required=True, max_length=50)
-    total_value: Float(default=0.0)
+    total_value: Decimal(precision=19, scale=4, default=0)
 ```
 
 ### Resolution Priority

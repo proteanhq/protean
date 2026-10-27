@@ -84,7 +84,7 @@ class PartnerOrderSummary:
 @domain.projection
 class OrderView:
     order_id: Identifier(identifier=True)
-    total: Float()
+    total: Decimal(precision=19, scale=4)
 
     def apply_discount(self, percentage):
         self.total *= (1 - percentage / 100)
@@ -96,8 +96,8 @@ class OrderView:
 @domain.projection
 class OrderView:
     order_id: Identifier(identifier=True)
-    total: Float()           # Already includes discount, applied by aggregate
-    discount_applied: Float()  # Track the discount for display purposes
+    total: Decimal(precision=19, scale=4)  # Already includes discount, applied by aggregate
+    discount_applied: Decimal(precision=19, scale=4)  # Track the discount for display purposes
 ```
 
 ## 4. Treating projections as aggregates

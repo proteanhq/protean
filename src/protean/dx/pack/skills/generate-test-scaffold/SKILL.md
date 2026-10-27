@@ -71,18 +71,21 @@ Read the domain code and fill in the checklist above.
 For each aggregate method, generate tests for:
 
 ```python
+from decimal import Decimal as D
+
+
 class TestOrderBehavior:
     def test_place_sets_status_to_placed(self):
         """place() transitions status from draft to placed."""
         order = Order.create(customer_id="cust-1")
-        order.add_item(product_id="p-1", quantity=2, unit_price=10.0)
+        order.add_item(product_id="p-1", quantity=2, unit_price=D("10.00"))
         order.place()
         assert order.status == "placed"
 
     def test_place_raises_order_placed_event(self):
         """place() raises OrderPlaced with correct data."""
         order = Order.create(customer_id="cust-1")
-        order.add_item(product_id="p-1", quantity=2, unit_price=10.0)
+        order.add_item(product_id="p-1", quantity=2, unit_price=D("10.00"))
         order.place()
         assert len(order._events) == 1
         event = order._events[0]
@@ -92,7 +95,7 @@ class TestOrderBehavior:
     def test_place_fails_for_non_draft_order(self):
         """place() rejects orders not in draft status."""
         order = Order.create(customer_id="cust-1")
-        order.add_item(product_id="p-1", quantity=1, unit_price=5.0)
+        order.add_item(product_id="p-1", quantity=1, unit_price=D("5.00"))
         order.place()
         # place() raises ValueError for an order that is not a draft.
         with pytest.raises(ValueError, match="Cannot place order"):

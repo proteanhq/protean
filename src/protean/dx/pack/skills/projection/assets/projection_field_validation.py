@@ -24,7 +24,7 @@ from protean.core.projection import BaseProjection
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError
 from protean.fields import (
-    Float,
+    Decimal,
     HasOne,
     Identifier,
     Integer,
@@ -89,7 +89,7 @@ class OrderView:
     customer_name: String(max_length=100)
     customer_email: String(max_length=200)
     item_count: Integer(default=0)
-    total_amount: Float(default=0.0)
+    total_amount: Decimal(precision=19, scale=4, default=0)
     shipping_city: String(max_length=100)
     shipping_zip: String(max_length=20)
 

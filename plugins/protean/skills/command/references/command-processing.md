@@ -15,7 +15,7 @@ The examples on this page use this aggregate, command and command handler:
 class Order:
     order_id: Identifier(identifier=True)
     customer_id: String(required=True)
-    total_amount: Float()
+    total_amount: Decimal(precision=19, scale=4)
     status: String(default="DRAFT")
 
     def place(self, total_amount):
@@ -26,7 +26,7 @@ class Order:
 class PlaceOrder:
     order_id: Identifier(required=True)
     customer_id: String(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command_handler(part_of="Order")

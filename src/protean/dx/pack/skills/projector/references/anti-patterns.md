@@ -106,7 +106,7 @@ class OrderView:
     customer_name: String()
     customer_email: String()
     item_count: Integer()
-    total_amount: Float()
+    total_amount: Decimal(precision=19, scale=4)
     shipping_city: String()
     shipping_zip: String()
 ```
@@ -115,12 +115,14 @@ class OrderView:
 
 ```python
 # fragment
+from decimal import Decimal as D
+
 # Wrong! Projectors should not contain business logic
 @on(OrderPlaced)
 def on_order_placed(self, event):
     if event.total > 1000:
         # Business rule: apply discount for large orders
-        event.total *= 0.9
+        event.total *= D("0.9")
     ...
 ```
 

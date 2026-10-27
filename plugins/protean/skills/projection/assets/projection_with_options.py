@@ -48,7 +48,7 @@ class FullReport:
 
     report_id: Identifier(identifier=True, required=True)
     title: String(max_length=200, required=True)
-    total: Integer(default=0)
+    row_count: Integer(default=0)
 
 
 @domain.projection(abstract=True)

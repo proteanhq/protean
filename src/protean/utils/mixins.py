@@ -40,15 +40,15 @@ _VERSION_RETRY_DEFAULTS = {
 
 # Transient-failure retry is distinct from version (OCC) retry above: it retries
 # handlers that fail with *transient* infrastructure exceptions (a dropped
-# connection, a timeout, an email-dispatch blip) rather than version conflicts.
+# connection, a timeout, a failed send to an external service) rather than version conflicts.
 # It is **opt-in** (``enabled=False``) so existing behavior is unchanged until an
 # operator turns it on, either domain-wide via ``server.transient_retry`` or
 # per-handler via ``@domain.command_handler(retries=...)``.
 #
 # The default exception set is deliberately narrow — every entry must be
 # genuinely transient so a retry has a chance of succeeding. ``ConnectionError``
-# and ``TimeoutError`` are builtin I/O failures; ``SendError`` wraps transient
-# email-gateway failures. Non-transient errors (validation, business-rule, or
+# and ``TimeoutError`` are builtin I/O failures; ``SendError`` is what
+# application code raises for a failed send to an external service. Non-transient errors (validation, business-rule, or
 # database constraint violations) must never be retried by default.
 _TRANSIENT_RETRY_DEFAULTS = {
     "enabled": False,

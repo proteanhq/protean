@@ -25,7 +25,7 @@ Usage:
 import logging
 
 from protean import Domain, handle
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -40,7 +40,7 @@ class Payment:
     payment_id: Identifier(identifier=True)
     from_account: String(required=True)
     to_account: String(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     status: String(default="pending")
     error_message: String()
 
@@ -65,7 +65,7 @@ class TransferFunds:
     transfer_id: Identifier(required=True)
     from_account: String(required=True)
     to_account: String(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command_handler(part_of=Payment)

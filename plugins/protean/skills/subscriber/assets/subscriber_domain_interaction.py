@@ -18,7 +18,7 @@ Usage:
 import logging
 
 from protean import Domain
-from protean.fields import Float, String
+from protean.fields import Decimal, String
 
 # Domain setup
 domain = Domain()
@@ -32,7 +32,7 @@ class Order:
     """Order aggregate with payment-related status transitions."""
 
     customer_email: String(max_length=255, required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
     status: String(
         choices=["PENDING", "PAID", "SHIPPED", "CANCELLED"], default="PENDING"
     )

@@ -20,7 +20,7 @@ Usage:
 
 from protean import Domain
 from protean.core.projector import on
-from protean.fields import Float, Identifier, Integer, String, Text
+from protean.fields import Decimal, Identifier, Integer, String, Text
 
 # Domain setup
 domain = Domain()
@@ -34,7 +34,7 @@ class ProductAdded:
     product_id: Identifier(required=True)
     name: String(required=True)
     description: Text(required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer(required=True)
 
 
@@ -53,7 +53,7 @@ class Product:
 
     name: String(required=True)
     description: Text()
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer(default=0)
 
     @classmethod
@@ -99,7 +99,7 @@ class ProductInventory:
     product_id: Identifier(identifier=True, required=True)
     name: String(required=True)
     description: Text(required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     stock_quantity: Integer(default=0)
 
 

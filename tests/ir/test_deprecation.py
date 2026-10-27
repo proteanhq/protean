@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from protean import Domain
 from protean.exceptions import ConfigurationError
 from protean.fields import Float, Identifier, String
 from protean.ir.builder import IRBuilder
-from protean.ir.diff import _classify_removal, _parse_version_tuple, diff_ir
+from protean.ir.diff import (
+    _check_deprecations,
+    _classify_removal,
+    _parse_version_tuple,
+    classify_changes,
+    diff_ir,
+)
 from protean.utils import _normalize_deprecated
 from protean.utils.mixins import handle, read
 
@@ -46,9 +54,40 @@ class TestNormalizeDeprecated:
         with pytest.raises(ConfigurationError, match="Invalid `deprecated`"):
             _normalize_deprecated(42)
 
-    def test_values_coerced_to_string(self) -> None:
-        result = _normalize_deprecated({"since": 15, "removal": 18})
-        assert result == {"since": "15", "removal": "18"}
+    @pytest.mark.parametrize(
+        ("value", "key"),
+        [
+            ({"since": "0.18", "removal": 0.20}, "removal"),
+            ({"since": "0.18", "removal": 1}, "removal"),
+            ({"since": 0.20}, "since"),
+            ({"since": 15, "removal": "0.20"}, "since"),
+        ],
+    )
+    def test_version_written_as_a_number_raises(
+        self, value: dict[str, object], key: str
+    ) -> None:
+        with pytest.raises(ConfigurationError) as exc_info:
+            _normalize_deprecated(value)
+
+        message = str(exc_info.value)
+        assert f"The `{key}` version of `deprecated=` is {value[key]!r}" in message
+        assert f'"{key}": "0.20"' in message
+        assert "0.20 arrives as 0.2" in message
+
+    def test_removal_none_means_no_removal_version(self) -> None:
+        result = _normalize_deprecated({"since": "0.15", "removal": None})
+        assert result == {"since": "0.15"}
+
+    @pytest.mark.parametrize("version", [True, ["0", "20"]])
+    def test_value_that_is_not_a_number_gets_no_number_hint(
+        self, version: object
+    ) -> None:
+        with pytest.raises(ConfigurationError) as exc_info:
+            _normalize_deprecated({"since": "0.15", "removal": version})
+
+        message = str(exc_info.value)
+        assert f"is {version!r}, which is not a string" in message
+        assert "trailing zeros" not in message
 
     def test_extra_keys_ignored(self) -> None:
         """Extra keys beyond since/removal are silently dropped."""
@@ -276,6 +315,39 @@ class TestNormalizerParity:
 
             @self.domain.aggregate(deprecated=value)
             class Order:
+                pass
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (
+                {"since": "0.18", "removal": 0.20},
+                "The `removal` version of `deprecated=` is 0.2",
+            ),
+            ({"since": 0.20}, "The `since` version of `deprecated=` is 0.2"),
+        ],
+    )
+    def test_version_written_as_a_number_is_refused_everywhere(
+        self, value: dict[str, object], expected: str
+    ) -> None:
+        from protean.fields.spec import FieldSpec
+
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            String(deprecated=value)
+
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            FieldSpec(str, deprecated=value)
+
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+
+            @self.domain.aggregate(deprecated=value)
+            class Order:
+                pass
+
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+
+            @self.domain.event(part_of="Order", deprecated=value)
+            class OrderPlaced:
                 pass
 
     def test_deprecated_true_raises_actionable_message_for_field(self) -> None:
@@ -718,22 +790,216 @@ class TestClassifyRemoval:
         )
         assert result == "premature_removal"
 
+
+# =====================================================================
+# diff_ir / classify_changes — checking every deprecated block
+# =====================================================================
+
+
+def _element(element_type: str, fqn: str, **extra: object) -> dict:
+    return {"element_type": element_type, "fqn": fqn, "fields": {}, **extra}
+
+
+def _ir_with(path: str, deprecated: object) -> tuple[dict, str]:
+    """Return an IR holding *deprecated* at *path*, and the subject an error
+    names for it."""
+    ir: dict = {
+        "clusters": {},
+        "projections": {},
+        "flows": {},
+        "contracts": {"events": []},
+    }
+    if path == "aggregate":
+        aggregate = _element("AGGREGATE", "app.Order", deprecated=deprecated)
+        ir["clusters"]["app.Order"] = {"aggregate": aggregate}
+        return ir, "AGGREGATE 'app.Order'"
+    if path == "aggregate field":
+        aggregate = _element("AGGREGATE", "app.Order")
+        aggregate["fields"]["legacy"] = {"kind": "standard", "deprecated": deprecated}
+        ir["clusters"]["app.Order"] = {"aggregate": aggregate}
+        return ir, "field 'legacy' of AGGREGATE 'app.Order'"
+    if path == "entity field":
+        entity = _element("ENTITY", "app.LineItem")
+        entity["fields"]["legacy"] = {"kind": "standard", "deprecated": deprecated}
+        ir["clusters"]["app.Order"] = {
+            "aggregate": _element("AGGREGATE", "app.Order"),
+            "entities": {"app.LineItem": entity},
+        }
+        return ir, "field 'legacy' of ENTITY 'app.LineItem'"
+    if path in ("command field", "value object field"):
+        section, element_type, fqn = {
+            "command field": ("commands", "COMMAND", "app.PlaceOrder"),
+            "value object field": ("value_objects", "VALUE_OBJECT", "app.Address"),
+        }[path]
+        element = _element(element_type, fqn)
+        element["fields"]["legacy"] = {"kind": "standard", "deprecated": deprecated}
+        ir["clusters"]["app.Order"] = {
+            "aggregate": _element("AGGREGATE", "app.Order"),
+            section: {fqn: element},
+        }
+        return ir, f"field 'legacy' of {element_type} '{fqn}'"
+    if path == "published event":
+        ir["contracts"]["events"].append(
+            {
+                "fqn": "app.OrderPlaced",
+                "type": "App.OrderPlaced.v1",
+                "deprecated": deprecated,
+            }
+        )
+        return ir, "published event 'App.OrderPlaced.v1'"
+    if path == "published event field":
+        ir["contracts"]["events"].append(
+            {
+                "fqn": "app.OrderPlaced",
+                "type": "App.OrderPlaced.v1",
+                "fields": {"legacy": {"kind": "standard", "deprecated": deprecated}},
+            }
+        )
+        return ir, "field 'legacy' of published event 'App.OrderPlaced.v1'"
+    if path == "projection":
+        ir["projections"]["app.Summary"] = {
+            "projection": _element("PROJECTION", "app.Summary", deprecated=deprecated)
+        }
+        return ir, "PROJECTION 'app.Summary'"
+    if path == "projector":
+        ir["projections"]["app.Summary"] = {
+            "projection": _element("PROJECTION", "app.Summary"),
+            "projectors": {
+                "app.SummaryProjector": _element(
+                    "PROJECTOR", "app.SummaryProjector", deprecated=deprecated
+                )
+            },
+        }
+        return ir, "PROJECTOR 'app.SummaryProjector'"
+    if path == "subscriber":
+        ir["flows"]["subscribers"] = {
+            "app.Payments": _element(
+                "SUBSCRIBER", "app.Payments", deprecated=deprecated
+            )
+        }
+        return ir, "SUBSCRIBER 'app.Payments'"
+    assert path == "domain service"
+    ir["flows"]["domain_services"] = {
+        "app.Pricing": _element("DOMAIN_SERVICE", "app.Pricing", deprecated=deprecated)
+    }
+    return ir, "DOMAIN_SERVICE 'app.Pricing'"
+
+
+_PATHS = [
+    "aggregate",
+    "aggregate field",
+    "entity field",
+    "command field",
+    "value object field",
+    "published event",
+    "published event field",
+    "projection",
+    "projector",
+    "domain service",
+    "subscriber",
+]
+
+
+class TestDiffChecksEveryDeprecatedBlock:
+    """The diff checks every ``deprecated`` block in both IRs before comparing,
+    so a malformed one is refused whether or not anything around it changed."""
+
+    @pytest.mark.parametrize("path", _PATHS)
+    @pytest.mark.parametrize("side", ["left", "right"])
+    def test_number_is_refused_when_nothing_is_removed(
+        self, path: str, side: str
+    ) -> None:
+        bad, subject = _ir_with(path, {"since": "0.15", "removal": 0.2})
+        good, _ = _ir_with(path, {"since": "0.15", "removal": "0.20"})
+        left, right = (bad, good) if side == "left" else (good, bad)
+
+        expected = f"The `removal` version of {subject} in the {side} IR is 0.2"
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            diff_ir(left, right)
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            classify_changes({}, left, right)
+
     @pytest.mark.parametrize(
-        ("removal", "current_version", "expected"),
+        ("deprecated", "problem"),
         [
-            (0.18, "0.18", "expected_removal"),
-            (0.18, "0.17", "premature_removal"),
-            (1, 1, "expected_removal"),
+            ({"since": 0.2}, "The `since` version of {where} is 0.2"),
+            ({"since": "0.15", "removal": 1}, "The `removal` version of {where} is 1"),
+            (
+                "0.15",
+                "The `deprecated` value of {where} is '0.15', which is not an object",
+            ),
+            (
+                False,
+                "The `deprecated` value of {where} is False, which is not an object",
+            ),
+            (
+                {"removal": "0.20"},
+                "The `deprecated` value of {where} has no `since` version",
+            ),
+            ({}, "The `deprecated` value of {where} has no `since` version"),
         ],
     )
-    def test_versions_written_as_numbers_are_compared(
-        self, removal, current_version, expected
+    def test_malformed_block_is_refused(self, deprecated: object, problem: str) -> None:
+        ir, subject = _ir_with("aggregate field", deprecated)
+        expected = problem.format(where=f"{subject} in the left IR")
+
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            diff_ir(ir, ir)
+
+    @pytest.mark.parametrize("path", _PATHS)
+    @pytest.mark.parametrize(
+        "deprecated",
+        [
+            None,
+            {"since": "0.15"},
+            {"since": "0.15", "removal": None},
+            {"since": "0.15", "removal": "0.20"},
+        ],
+    )
+    def test_well_formed_block_is_accepted(self, path: str, deprecated: object) -> None:
+        ir, _ = _ir_with(path, deprecated)
+
+        assert diff_ir(ir, ir)["summary"]["has_changes"] is False
+        assert not classify_changes({}, ir, ir).breaking_changes
+
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            {"clusters": {"app.Order": {"aggregate": None, "entities": None}}},
+            {"clusters": {"app.Order": {"entities": {"app.LineItem": None}}}},
+            {"clusters": {"app.Order": {"aggregate": {"fields": None}}}},
+            {"clusters": {"app.Order": {"aggregate": {"fields": ["id"]}}}},
+            {"clusters": {"app.Order": {"aggregate": {"fields": {"id": "Auto"}}}}},
+            {"projections": {"app.Summary": {"projectors": None}}},
+            {"flows": {"domain_services": None}},
+            {"contracts": {"events": ["app.OrderPlaced"]}},
+        ],
+    )
+    def test_shape_that_is_not_an_object_is_left_to_the_diff(self, shape: dict) -> None:
+        """The check reads only ``deprecated`` blocks, and skips a section or
+        entry of another shape."""
+        _check_deprecations(shape, "left")
+
+    def test_field_named_deprecated_is_not_read_as_a_block(self) -> None:
+        ir, _ = _ir_with("aggregate", None)
+        ir["clusters"]["app.Order"]["aggregate"]["fields"]["deprecated"] = {
+            "kind": "standard",
+            "type": "Boolean",
+        }
+
+        assert diff_ir(ir, ir)["summary"]["has_changes"] is False
+
+    @pytest.mark.parametrize("current_version", [0.2, 1])
+    def test_current_version_written_as_a_number_is_refused(
+        self, current_version: object
     ) -> None:
-        result = _classify_removal(
-            {"since": "0.15", "removal": removal},
-            current_version=current_version,
-        )
-        assert result == expected
+        ir, _ = _ir_with("aggregate", None)
+        expected = f"current_version is {current_version!r}, which is not a string"
+
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            diff_ir(ir, ir, current_version=current_version)  # type: ignore[arg-type]
+        with pytest.raises(ConfigurationError, match=re.escape(expected)):
+            classify_changes({}, ir, ir, current_version=current_version)  # type: ignore[arg-type]
 
 
 # =====================================================================
@@ -1391,120 +1657,3 @@ class TestIRBuilderFieldDeprecatedResolvedField:
             "since": "0.14",
             "removal": "0.17",
         }
-
-
-# =====================================================================
-# IR Diagnostics — DEPRECATED_EMAIL (email subsystem)
-# =====================================================================
-
-
-@pytest.mark.no_test_domain
-class TestIRDiagnosticsEmailDeprecated:
-    """The email subsystem is not projected into the IR, so its deprecation
-    diagnostic reads the registry directly. One INFO-level ``DEPRECATED_EMAIL``
-    per registered email element; none when no email is registered."""
-
-    @pytest.fixture(autouse=True)
-    def setup_domain(self) -> None:
-        self.domain = Domain(name="TestEmailDiag")
-
-    def test_registered_email_yields_diagnostic(self) -> None:
-        import warnings
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-
-            @self.domain.email
-            class WelcomeMail:
-                pass
-
-        self.domain.init(traverse=False)
-        ir = IRBuilder(self.domain).build()
-
-        email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
-        assert len(email_diags) == 1
-        assert email_diags[0]["level"] == "info"
-        assert "WelcomeMail" in email_diags[0]["message"]
-        assert "v0.19.0" in email_diags[0]["message"]
-        assert "v1.0.0" not in email_diags[0]["message"]
-
-    def test_multiple_registered_emails_yield_one_diagnostic_each(self) -> None:
-        """One diagnostic *per* email element — guards against a regression that
-        appends a single diagnostic regardless of how many are registered."""
-        import warnings
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-
-            @self.domain.email
-            class WelcomeMail:
-                pass
-
-            @self.domain.email
-            class GoodbyeMail:
-                pass
-
-        self.domain.init(traverse=False)
-        ir = IRBuilder(self.domain).build()
-
-        email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
-        assert len(email_diags) == 2
-        messages = " ".join(d["message"] for d in email_diags)
-        assert "WelcomeMail" in messages
-        assert "GoodbyeMail" in messages
-
-    def test_no_email_no_diagnostic(self) -> None:
-        @self.domain.aggregate
-        class Order:
-            pass
-
-        self.domain.init(traverse=False)
-        ir = IRBuilder(self.domain).build()
-
-        email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
-        assert email_diags == []
-
-    def test_email_accepts_and_honours_suppress_checks(self) -> None:
-        """The email Root carries ``suppress_checks`` (the email FQN is the
-        ``element`` target of DEPRECATED_EMAIL), so the option is accepted and
-        silences the finding for that element."""
-        import warnings
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-
-            @self.domain.email(suppress_checks=["DEPRECATED_EMAIL"])
-            class WelcomeMail:
-                pass
-
-            @self.domain.email
-            class GoodbyeMail:
-                pass
-
-        self.domain.init(traverse=False)
-        ir = IRBuilder(self.domain).build()
-
-        email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
-        messages = " ".join(d["message"] for d in email_diags)
-        assert "WelcomeMail" not in messages  # suppressed for this element
-        assert "GoodbyeMail" in messages  # untouched
-
-    def test_internal_email_yields_no_diagnostic(self) -> None:
-        """Internal/auto-generated email records are skipped: the deprecation
-        diagnostic targets user code, not platform-internal registrations."""
-        import warnings
-
-        from protean.core.email import BaseEmail
-
-        class InternalMail(BaseEmail):
-            pass
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            self.domain.register(InternalMail, internal=True)
-
-        self.domain.init(traverse=False)
-        ir = IRBuilder(self.domain).build()
-
-        email_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_EMAIL"]
-        assert email_diags == []

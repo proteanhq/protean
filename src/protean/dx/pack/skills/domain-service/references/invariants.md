@@ -39,7 +39,7 @@ class Order:
 class OrderItem:
     product_id: Identifier(required=True)
     quantity: Integer(required=True)
-    price: Float(default=0.0)
+    price: Decimal(precision=19, scale=4, default=0)
 
 @domain.aggregate
 class Inventory:

@@ -73,9 +73,11 @@ anyway.
 
 The outbox table ships with the indexes the processor needs, created
 automatically by the commands above: a partial index on the active set
-(`status`, `priority`) for the polling query, a composite unique index on
-(`message_id`, `target_broker`) for idempotency, and an index on
-`correlation_id`. The unique index is composite because a single event is
+(`status`, `priority`, `created_at`, `sequence_number`) for the polling query, a composite unique index on
+(`message_id`, `target_broker`) for idempotency, an index on
+`correlation_id`, and `ix_outbox_hold_back` on (`target_broker`,
+`stream_category`, `partition_key`, `status`) for the check that holds a
+partition key's later rows. The unique index is composite because a single event is
 dual-written once per target broker (the internal broker plus every external
 broker), all rows sharing one `message_id` and differing only by
 `target_broker`, so `message_id` is not unique on its own across those
@@ -160,6 +162,11 @@ cleanup_interval_ticks = 86400    # Run cleanup roughly daily
 batch_size = 5000                 # Rows deleted per bounded batch
 ```
 
+Cleanup never deletes an abandoned row that has a partition key. That row
+holds its key's later rows (see
+[A partitioned key can halt](#a-partitioned-key-can-halt)), and deleting it
+would let them publish out of order.
+
 Tune these with two trade-offs in mind:
 
 - **Shorter `published_retention_hours`** = less storage, less audit
@@ -236,6 +243,35 @@ WHERE id = '<message_id>';
 ```
 
 The next `OutboxProcessor` tick picks it up.
+
+### A partitioned key can halt
+
+When a handler category declares
+[`sequential_by`](../../reference/server/sequential-by.md), each outbox row
+carries a partition key. The processor publishes a key's rows in commit order.
+A row is claimed only when every earlier row of its key has been published or
+is claimed in the same batch. Rows are grouped by target broker, stream
+category, partition key and [priority lane](using-priority-lanes.md), so each
+group keeps its own order.
+
+An earlier row holds the later ones while it is pending, in flight, failed or
+abandoned:
+
+- A **failed** row holds its key until its retry is due and it publishes.
+  If it runs out of retries, it becomes abandoned.
+- An **abandoned** row halts its key. None of the key's later rows publish
+  until you re-queue the row (the SQL above) or mark it published, which
+  drops its event for that broker. Do not delete the row: reconciliation at
+  server start can rebuild it as `pending`, and it would then publish after
+  the key's later rows. The
+  [0.19 migration notes](../../reference/migration/v0-19.md#a-partition-key-can-halt)
+  give the SQL for both.
+- When a row fails in the middle of a batch, the processor puts the later
+  rows of its group (same key, stream and lane) from that batch back to `pending` without publishing them. Their
+  retry counts do not change.
+
+Other keys, rows without a partition key, and the other priority lane keep
+publishing while a key is halted.
 
 ---
 
@@ -319,8 +355,8 @@ remains, are not rebuilt. If the event's `partition_key` can no longer be
 computed, every rebuilt row is saved as abandoned and the event is not sent.
 
 Cleanup deletes delivered rows after `published_retention_hours` and abandoned
-rows after `abandoned_retention_hours`. A deleted row looks the same as a row
-lost in a crash. So reconciliation skips events older than the shorter of the
+rows without a partition key after `abandoned_retention_hours`. A deleted row
+looks the same as a row lost in a crash. So reconciliation skips events older than the shorter of the
 two retentions, which keeps a restart from sending old events again. An event
 lost in a crash and left unrepaired for longer than that is not repaired.
 

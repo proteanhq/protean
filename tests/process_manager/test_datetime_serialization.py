@@ -135,8 +135,8 @@ class TestDateTimeSerialization:
 class TestDateTimeReconstitution:
     """Verify that PMs with datetime fields can be reconstituted from transitions."""
 
-    def test_reconstitution_preserves_datetime_as_string(self, test_domain):
-        """After reconstitution, datetime fields should hold the ISO string value."""
+    def test_reconstitution_restores_datetime_and_date_values(self, test_domain):
+        """After reconstitution, datetime and date fields hold datetime and date values."""
         sub_id = str(uuid4())
 
         SubscriptionPM._handle(
@@ -149,8 +149,8 @@ class TestDateTimeReconstitution:
         assert pm is not None
         assert pm.subscription_id == sub_id
         assert pm.user_id == "USER-1"
-        assert pm.started_at == "2025-06-15T10:30:00"
-        assert pm.trial_end_date == "2025-07-15"
+        assert pm.started_at == datetime(2025, 6, 15, 10, 30, 0)
+        assert pm.trial_end_date == date(2025, 7, 15)
 
     def test_full_lifecycle_with_datetime_fields(self, test_domain):
         """A PM with datetime fields should complete its full lifecycle without errors."""

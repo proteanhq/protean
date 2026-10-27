@@ -294,7 +294,7 @@ from protean.exceptions import ValidationError
 @domain.aggregate
 class Order:
     buyer_id = Identifier(required=True)
-    total = Float()
+    total = Decimal(precision=19, scale=4)
     status = String(default="DRAFT")
 
 

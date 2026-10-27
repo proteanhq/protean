@@ -17,6 +17,7 @@ import itertools
 import runpy
 from collections import Counter
 from collections.abc import Callable
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -174,7 +175,7 @@ def test_the_command_handler_persists_only_the_primary_aggregate(asset: str) -> 
 # --- Funds transfer: the debit and the credit apply once per transfer id ---
 
 
-def _balances(ns: Namespace, domain: Domain) -> tuple[float, float]:
+def _balances(ns: Namespace, domain: Domain) -> tuple[Decimal, Decimal]:
     repo = domain.repository_for(ns["Account"])
     return repo.get("A-1").balance, repo.get("B-1").balance
 
@@ -185,7 +186,7 @@ def _open_accounts(ns: Namespace, domain: Domain) -> None:
     repo.add(ns["Account"](account_id="B-1", owner="Bob", balance=0.0))
 
 
-@pytest.mark.parametrize("amount", [0.0, -5.0, float("nan")])
+@pytest.mark.parametrize("amount", [0.0, -5.0])
 def test_a_transfer_amount_that_is_not_positive_is_rejected(amount: float) -> None:
     ns, domain = _load("domain_service_flow_basic.py")
     with domain.domain_context():
@@ -199,6 +200,20 @@ def test_a_transfer_amount_that_is_not_positive_is_rejected(amount: float) -> No
             )
 
         assert exc.value.messages == {"_service": ["Transfer amount must be positive"]}
+        assert _balances(ns, domain) == (100.0, 0.0)
+
+
+def test_a_nan_transfer_amount_is_rejected_by_the_command_field() -> None:
+    ns, domain = _load("domain_service_flow_basic.py")
+    with domain.domain_context():
+        _open_accounts(ns, domain)
+
+        with pytest.raises(ValidationError) as exc:
+            ns["TransferFunds"](
+                transfer_id="T-1", source_id="A-1", target_id="B-1", amount=float("nan")
+            )
+
+        assert list(exc.value.messages) == ["amount"]
         assert _balances(ns, domain) == (100.0, 0.0)
 
 

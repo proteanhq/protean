@@ -45,7 +45,7 @@ class TestIRTopLevelStructure:
     def test_schema_uri(self):
         assert (
             self.ir["$schema"]
-            == f"https://protean.dev/ir/v{SCHEMA_VERSION}/schema.json"
+            == f"https://docs.proteanhq.com/assets/ir/v{SCHEMA_VERSION}/schema.json"
         )
 
     def test_ir_version(self):
@@ -155,7 +155,7 @@ class TestChecksum:
         baseline = IRBuilder._compute_checksum(ir)
 
         sentinels = {
-            "$schema": "https://protean.dev/ir/v9.9.9/schema.json",
+            "$schema": "https://docs.proteanhq.com/assets/ir/v9.9.9/schema.json",
             "ir_version": "9.9.9",
             "generated_at": "2099-01-01T00:00:00Z",
             "checksum": "sha256:deadbeef",
@@ -183,7 +183,7 @@ class TestChecksum:
 
         bumped = dict(ir)
         bumped["ir_version"] = "9.9.9"
-        bumped["$schema"] = "https://protean.dev/ir/v9.9.9/schema.json"
+        bumped["$schema"] = "https://docs.proteanhq.com/assets/ir/v9.9.9/schema.json"
         bumped["generated_at"] = "2099-01-01T00:00:00Z"
 
         # ir diff sees no change ...

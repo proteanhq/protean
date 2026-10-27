@@ -575,7 +575,7 @@ on this logger.
 | `outbox.repo_selected` | DEBUG | `repo` |
 | `outbox.initialized` | DEBUG | `database_provider`, `broker_provider` |
 | `outbox.batch_fetched` | DEBUG | `count` |
-| `outbox.batch_completed` | INFO | `total`, `successful`, `failed` |
+| `outbox.batch_completed` | INFO | `total`, `successful`, `failed`, `released` |
 | `outbox.message_already_claimed` | DEBUG | `message_id` |
 | `outbox.message_published` | DEBUG | `message_id`, `broker` |
 | `outbox.publish_failed` | WARNING | `message_id`, `error_type`, `error` |
@@ -583,6 +583,7 @@ on this logger.
 | `outbox.status_save_failed` | ERROR (exc) | `message_id` |
 | `outbox.broker_published` | DEBUG | `message_id`, `broker_message_id` |
 | `outbox.broker_publish_failed` | ERROR (exc) | `message_id` |
+| `outbox.release_failed` | ERROR (exc) | `message_id` |
 | `outbox.cleanup` | DEBUG | `database_provider`, `broker_provider` |
 | `outbox.cleanup_completed` | INFO | `total`, `published`, `abandoned` |
 | `outbox.cleanup_failed` | ERROR (exc) | |

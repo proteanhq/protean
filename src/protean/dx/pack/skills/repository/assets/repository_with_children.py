@@ -11,13 +11,15 @@ This example demonstrates:
 Usage:
     repo = domain.repository_for(Order)
     order = Order(order_id="ORD-001", customer_id="CUST-123")
-    order.add_item("PROD-1", 2, 10.0)
+    order.add_item("PROD-1", 2, D("10.00"))
     repo.add(order)
 """
 
+from decimal import Decimal as D
+
 from protean import Domain
 from protean.fields import (
-    Float,
+    Decimal,
     HasMany,
     HasOne,
     Identifier,
@@ -49,12 +51,12 @@ class Order:
         return len(self.items) if self.items else 0
 
     @property
-    def total(self) -> float:
+    def total(self) -> D:
         if not self.items:
             return 0.0
         return sum(item.quantity * item.unit_price for item in self.items)
 
-    def add_item(self, product_id: str, quantity: int, unit_price: float):
+    def add_item(self, product_id: str, quantity: int, unit_price: D):
         """Add a line item to the order."""
         item = LineItem(
             product_id=product_id,
@@ -78,12 +80,12 @@ class LineItem:
 
     product_id: String(required=True)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True)
+    unit_price: Decimal(precision=19, scale=4, required=True)
 
     order = Reference(Order)
 
     @property
-    def subtotal(self) -> float:
+    def subtotal(self) -> D:
         return self.quantity * self.unit_price
 
 
@@ -110,8 +112,8 @@ if __name__ == "__main__":
         order = Order(order_id="ORD-001", customer_id="CUST-123")
 
         # Add line items via helper method
-        order.add_item("PROD-1", 2, 29.99)
-        order.add_item("PROD-2", 1, 49.99)
+        order.add_item("PROD-1", 2, D("29.99"))
+        order.add_item("PROD-2", 1, D("49.99"))
 
         # Set shipping address
         order.shipping_address = ShippingAddress(

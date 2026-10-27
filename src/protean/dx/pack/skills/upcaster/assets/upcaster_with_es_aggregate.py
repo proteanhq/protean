@@ -20,13 +20,15 @@ Usage:
         account = BankAccount.open(
             account_id="ACCT-1", owner="Alice", initial_balance=100.0, currency="USD"
         )
-        account.deposit(50.0)
+        account.deposit(D("50.00"))
 """
+
+from decimal import Decimal as D
 
 from protean import Domain
 from protean.core.aggregate import apply
 from protean.core.upcaster import BaseUpcaster
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -48,7 +50,7 @@ class AccountOpened:
 
     account_id = Identifier(required=True)
     owner = String(required=True, max_length=150)
-    initial_balance = Float(required=True)
+    initial_balance = Decimal(precision=19, scale=4, required=True)
     currency = String(required=True)
 
 
@@ -57,7 +59,7 @@ class FundsDeposited:
     """Funds were deposited into the account. Unchanged since v1."""
 
     account_id = Identifier(required=True)
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="BankAccount")
@@ -65,7 +67,7 @@ class FundsWithdrawn:
     """Funds were withdrawn from the account. Unchanged since v1."""
 
     account_id = Identifier(required=True)
-    amount = Float(required=True)
+    amount = Decimal(precision=19, scale=4, required=True)
 
 
 # --- Upcaster ---
@@ -97,11 +99,11 @@ class BankAccount:
 
     account_id = Identifier(identifier=True)
     owner = String(required=True, max_length=150)
-    balance = Float(default=0.0)
+    balance = Decimal(precision=19, scale=4, default=0)
     currency = String(default="USD")
 
     @classmethod
-    def open(cls, account_id, owner, initial_balance=0.0, currency="USD"):
+    def open(cls, account_id, owner, initial_balance=D("0.00"), currency="USD"):
         """Factory: open a new bank account."""
         account = cls(
             account_id=account_id,
@@ -168,10 +170,10 @@ if __name__ == "__main__":  # pragma: no cover
         )
 
         # Deposit and withdraw
-        account.deposit(250.0)
+        account.deposit(D("250.00"))
         print(f"After deposit: balance={account.balance}")
 
-        account.withdraw(100.0)
+        account.withdraw(D("100.00"))
         print(f"After withdrawal: balance={account.balance}")
 
         # Reconstruct from events

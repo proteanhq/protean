@@ -25,8 +25,8 @@ from protean import Domain, invariant
 from protean.exceptions import ValidationError
 from protean.fields import (
     DateTime,
+    Decimal,
     Dict,
-    Float,
     HasMany,
     Identifier,
     Integer,
@@ -79,7 +79,7 @@ class Order:
 class OrderItem:
     product_id: Identifier(required=True)
     quantity: Integer()
-    price: Float()
+    price: Decimal(precision=19, scale=4)
 
 
 @domain.value_object(part_of="Inventory")

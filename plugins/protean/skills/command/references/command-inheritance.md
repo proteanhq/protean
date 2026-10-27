@@ -14,7 +14,7 @@ The examples on this page are commands for these two aggregates:
 @domain.aggregate
 class Product:
     name: String(required=True, max_length=200)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
 
 @domain.aggregate
 class Customer:
@@ -37,7 +37,7 @@ class AbstractEntityCommand:
 class CreateProduct(AbstractEntityCommand):
     """Inherits entity_id and reason, adds own fields."""
     name: String(required=True, max_length=200)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     category: String(max_length=100)
 ```
 

@@ -144,17 +144,20 @@ gift wraps. It raises `OrderPlaced`, and `StartShipment` is a command on
 `Shipment`:
 
 ```python
+from decimal import Decimal as D
+
+
 @domain.event(part_of="Order")
 class OrderPlaced:
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
-    total: Float(required=True)
+    total: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.aggregate
 class Order:
     customer_id: Identifier(required=True)
-    total: Float(default=0.0)
+    total: Decimal(precision=19, scale=4, default=0)
     status: String(default="draft")
 
     items = HasMany("OrderItem")
@@ -162,7 +165,7 @@ class Order:
     gift_wraps = HasMany("GiftWrap")
 
     @classmethod
-    def place(cls, order_id: str, customer_id: str, total: float) -> "Order":
+    def place(cls, order_id: str, customer_id: str, total: D) -> "Order":
         order = cls(id=order_id, customer_id=customer_id, total=total, status="placed")
         order.raise_(
             OrderPlaced(order_id=order.id, customer_id=customer_id, total=total)
@@ -179,13 +182,13 @@ class Order:
 class OrderItem:
     product_id: Identifier(required=True)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True, min_value=0.0)
+    unit_price: Decimal(precision=19, scale=4, required=True, min_value=0)
 
 
 @domain.entity(part_of="Order")
 class Discount:
     code: String(required=True, max_length=50)
-    amount: Float(required=True, min_value=0.0)
+    amount: Decimal(precision=19, scale=4, required=True, min_value=0)
 
 
 @domain.entity(part_of="Order")

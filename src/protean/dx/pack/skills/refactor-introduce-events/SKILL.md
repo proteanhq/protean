@@ -105,7 +105,7 @@ class PlaceOrder:
     customer_id = String(required=True)
     product_id = String(required=True)
     quantity = Integer(required=True, min_value=1)
-    unit_price = Float(required=True)
+    unit_price = Decimal(precision=19, scale=4, required=True)
 
 
 @domain.aggregate
@@ -139,7 +139,7 @@ class OrderPlaced:
     customer_id = String(required=True)
     product_id = String(required=True)
     quantity = Integer(required=True)
-    total_amount = Float(required=True)
+    total_amount = Decimal(precision=19, scale=4, required=True)
 ```
 
 **Event naming**: past tense of what happened: `OrderPlaced`, `PaymentProcessed`, `TicketEscalated`.
@@ -154,13 +154,16 @@ the change, or confirm the event is meant as a bare signal.
 ### Step 3: Raise the event in the source aggregate
 
 ```python
+from decimal import Decimal as D
+
+
 @domain.aggregate
 class Order:
     customer_id = String(required=True)
     status = String(default="DRAFT")
-    total = Float(default=0.0)
+    total = Decimal(precision=19, scale=4, default=0)
 
-    def place(self, product_id: str, quantity: int, price: float) -> None:
+    def place(self, product_id: str, quantity: int, price: D) -> None:
         self.status = "PLACED"
         self.total = price * quantity
         self.raise_(

@@ -51,13 +51,30 @@ for a `Decimal` field that sets a positive `precision` no smaller than its
 `scale`; nested value objects become
 named records referenced by fullname). `--format protobuf` emits proto3
 `{name}.v{version}.proto` messages with `optional`/`repeated` labels,
-`google.protobuf.Timestamp` for dates, `string` for a `Decimal` field, and field numbers assigned
+`.google.protobuf.Timestamp` for dates, `string` for a `Decimal` field, and field numbers assigned
 deterministically in sorted field-name order, so re-generating an *unchanged*
 schema is byte-identical. Adding a field renumbers alphabetically-later fields,
 so these numbers are for emission, not wire-compatible evolution. Both are
 compiler backends for schema *emission*; runtime binary encode/decode is out of
 scope, and field-level constraints (choices/enums, min/max) are not carried
 into either format.
+
+**Protobuf imports.** Each value object and entity is defined once, in its own
+file. A file that uses one imports that file by its path under `schemas/` and
+names the type by its full name with a leading dot, such as
+`.shared.kernel.Money`. The leading dot tells `protoc` to resolve the name from
+the root package. Compile the files with `-I <output>/schemas`, for example
+`protoc -I .protean/schemas --descriptor_set_out=out.pb $(find .protean/schemas -name '*.proto')`.
+Two cases are defined as a nested message inside the file that uses them,
+instead of being imported:
+
+- A value object that belongs to no aggregate cluster, such as one with no
+  `part_of` that only projections use, gets no file of its own.
+- Entities that refer to each other through `HasOne` or `HasMany` would import
+  each other in a cycle, which `protoc` rejects.
+
+The command fails with an error when two elements would be written to the same
+file, for example two value objects with the same class name in one cluster.
 
 `--format all` emits every format into one `schemas/` tree in a single pass, JSON, Avro, and
 Protobuf files coexist per element (distinct extensions) rather than one

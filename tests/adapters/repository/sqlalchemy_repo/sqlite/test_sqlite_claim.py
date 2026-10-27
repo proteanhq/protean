@@ -6,10 +6,14 @@ correct because SQLite serializes writers. These tests assert that fallback
 produces correct claims through the SQLAlchemy DAO's ``_filter``/``_update_all``.
 """
 
+import itertools
+
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import DateTime, Integer, String
+from protean.domain import Domain
+from protean.fields import Auto, DateTime, Integer, String
+from protean.port.dao import HoldBack
 from protean.utils.query import Q
 
 
@@ -91,3 +95,73 @@ class TestSqliteClaim:
 
         assert dao._claim(Q(status="ready"), {"status": "claimed"}, 0) == []
         assert dao._claim(Q(status="ready"), {"status": "claimed"}, -1) == []
+
+
+@pytest.mark.sqlite
+class TestSqliteClaimHoldBackWithIntegerIdentity:
+    def test_a_lost_claim_on_an_earlier_row_holds_the_rest_of_its_key(
+        self, monkeypatch
+    ):
+        # An integer column hands ``only()`` records an ``int`` id, while the
+        # ``Auto`` field gives the entity a ``str`` one.
+        ids = itertools.count(1)
+        domain = Domain(
+            name="IntegerIdentityClaim",
+            config={
+                "databases": {
+                    "default": {
+                        "provider": "sqlite",
+                        "database_uri": "sqlite:///:memory:",
+                    }
+                },
+                "identity_type": "integer",
+                "identity_strategy": "function",
+            },
+            identity_function=lambda: next(ids),
+        )
+
+        @domain.aggregate
+        class IntKeyedJob(BaseAggregate):
+            job_id: Auto(identifier=True)
+            status: String(max_length=20, default="ready")
+            key: String(max_length=20)
+            seq: Integer(required=True)
+
+        domain.init(traverse=False)
+        with domain.domain_context():
+            repo = domain.repository_for(IntKeyedJob)
+            dao = repo._dao
+            provider = domain.providers["default"]
+            provider._metadata.create_all(provider._engine)
+            head = IntKeyedJob(seq=0, key="k1")
+            repo.add(head)
+            repo.add(IntKeyedJob(seq=1, key="k1"))
+            other = IntKeyedJob(seq=2, key="k2")
+            repo.add(other)
+
+            update_all = dao._update_all
+
+            def another_worker_takes_the_head(criteria, values):
+                # Another worker claims the head row between this call's read
+                # and its guarded update, so the update matches no row.
+                if f"('job_id', '{head.job_id}')" in str(criteria):
+                    return 0
+                return update_all(criteria, values)
+
+            monkeypatch.setattr(dao, "_update_all", another_worker_takes_the_head)
+
+            claimed = dao._claim(
+                Q(status="ready"),
+                {"status": "claimed"},
+                limit=10,
+                order_by=["seq"],
+                hold_back=HoldBack(
+                    group_by=("key",),
+                    applies=Q(key__isnull=False),
+                    holds=Q(status__in=["ready", "claimed"]),
+                    order=("seq",),
+                    lane_of=lambda row: None if row.key is None else 0,
+                ),
+            )
+
+        assert [job.job_id for job in claimed] == [other.job_id]

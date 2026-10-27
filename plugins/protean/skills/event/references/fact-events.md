@@ -13,7 +13,7 @@ A fact event carries every field of the aggregate. You do not declare the event 
 ```python
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, default="USD")
 
 @domain.value_object

@@ -4,7 +4,7 @@ The examples on this page use these aggregates and services. Each "Correct" meth
 
 ```python
 from protean.exceptions import ValidationError
-from protean.fields import Float, Identifier, List, String
+from protean.fields import Decimal, Identifier, List, String
 
 @domain.aggregate
 class User:
@@ -30,11 +30,11 @@ class Order:
 class FundsDebited:
     account_id: Identifier(required=True)
     to_account_id: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 @domain.aggregate
 class Account:
-    balance: Float(default=0.0)
+    balance: Decimal(precision=19, scale=4, default=0)
 
     def debit(self, amount, to_account_id):
         self.balance -= amount

@@ -21,7 +21,7 @@ Usage:
 """
 
 from protean import Domain, handle
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain(__file__, "billing")
@@ -39,7 +39,7 @@ class ExternalPaymentReceived:
     """
 
     ext_order_ref: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Invoice")
@@ -57,7 +57,7 @@ class Invoice:
     """Invoice aggregate representing an external billing record."""
 
     ext_order_ref: Identifier(required=True)
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
 
 
 # --- Process Manager ---
@@ -74,7 +74,7 @@ class PaymentReconciliationPM:
     """
 
     order_id: Identifier()
-    amount: Float()
+    amount: Decimal(precision=19, scale=4)
     status: String(default="pending")
 
     @handle(

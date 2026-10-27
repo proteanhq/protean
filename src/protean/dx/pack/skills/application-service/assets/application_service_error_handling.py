@@ -12,14 +12,16 @@ Usage:
     with domain.domain_context():
         svc = OrderApplicationServices()
         try:
-            order_id = svc.place_order(customer_id="CUST-001", items=[10.00, 20.00])
+            order_id = svc.place_order(customer_id="CUST-001", items=[D("10.00"), D("20.00")])
         except ValidationError:
             ...  # Handle domain validation error
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, current_domain, use_case
 from protean.exceptions import ValidationError
-from protean.fields import Float, Identifier, Integer, String
+from protean.fields import Decimal, Identifier, Integer, String
 
 # Domain setup
 domain = Domain()
@@ -31,11 +33,11 @@ class Order:
 
     customer_id: String(required=True)
     item_count: Integer(default=0)
-    total_amount: Float(default=0.0)
+    total_amount: Decimal(precision=19, scale=4, default=0)
     status: String(choices=["DRAFT", "PLACED", "CANCELLED"], default="DRAFT")
 
     @classmethod
-    def place(cls, customer_id: str, items: list):
+    def place(cls, customer_id: str, items: list[D]):
         """Factory method that enforces the 'orders must have items' rule.
 
         Raises:
@@ -47,7 +49,7 @@ class Order:
         order = cls(
             customer_id=customer_id,
             item_count=len(items),
-            total_amount=sum(items),
+            total_amount=sum(items, D("0")),
         )
         order.status = "PLACED"
         return order
@@ -73,7 +75,7 @@ class OrderApplicationServices:
     """
 
     @use_case
-    def place_order(self, customer_id: str, items: list) -> Identifier:
+    def place_order(self, customer_id: str, items: list[D]) -> Identifier:
         """Place a new order.
 
         The aggregate's factory method enforces business rules.
@@ -104,7 +106,7 @@ if __name__ == "__main__":
         svc = OrderApplicationServices()
 
         # Successful order placement
-        order_id = svc.place_order(customer_id="CUST-001", items=[10.00, 20.00, 15.00])
+        order_id = svc.place_order(customer_id="CUST-001", items=[D("10.00"), D("20.00"), D("15.00")])
         print(f"Order placed: {order_id}")
 
         # Attempting to place an order with no items: raises ValidationError

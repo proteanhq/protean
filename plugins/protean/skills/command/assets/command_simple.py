@@ -24,7 +24,7 @@ Usage:
 from datetime import UTC, datetime
 
 from protean import Domain
-from protean.fields import DateTime, Float, Identifier, Integer, String
+from protean.fields import DateTime, Decimal, Float, Identifier, Integer, String
 
 # Domain setup (required for runnable examples)
 domain = Domain()
@@ -68,7 +68,7 @@ class PlaceOrder:
     customer_id: String(required=True)
     product_id: String(required=True)
     quantity: Integer(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.command(part_of="User")

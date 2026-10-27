@@ -8,7 +8,7 @@ The complete implementation is in
 ### The command carries the domain rules
 
 ```python
-from protean.utils.globals import current_domain
+from protean import current_domain
 
 
 @domain.aggregate

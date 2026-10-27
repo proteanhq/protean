@@ -1,7 +1,7 @@
 """Tests for structured logging in OutboxProcessor.
 
 Verifies that:
-- outbox.batch_completed is logged at INFO with total, successful, failed counts
+- outbox.batch_completed is logged at INFO with total, successful, failed, released counts
 - outbox.publish_failed is logged at WARNING with message_id, error_type, error
 - outbox.processing_error is logged at ERROR with exc_info
 """
@@ -107,6 +107,7 @@ class TestOutboxBatchCompletedLog:
         assert record.total == 2
         assert record.successful == 1
         assert record.failed == 1
+        assert record.released == 0
 
 
 class TestOutboxPublishFailedLog:

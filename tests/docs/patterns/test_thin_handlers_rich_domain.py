@@ -246,6 +246,18 @@ def test_thin_handler_tests_pass():
 # --- Aggregate Methods: Single-Aggregate Business Rules ---
 
 
+# A parametrize list is built when pytest collects the tests, so a date taken
+# there goes stale if the run crosses midnight. The lists hold TODAY instead,
+# and each test swaps in the date when it runs.
+TODAY = object()
+
+
+def _on_the_run_date(values: dict) -> dict:
+    return {
+        key: date.today() if value is TODAY else value for key, value in values.items()
+    }
+
+
 def _account(example, **values):
     account = example.Account(**values)
     example.domain.repository_for(example.Account).add(account)
@@ -324,7 +336,7 @@ def test_daily_total_restarts_on_a_new_day(accounts):
             {
                 "balance": 10000.0,
                 "daily_withdrawal_total": 4800.0,
-                "last_withdrawal_date": date.today(),
+                "last_withdrawal_date": TODAY,
             },
             300.0,
             {"amount": ["Daily withdrawal limit of 5000.0 exceeded"]},
@@ -340,6 +352,7 @@ def test_daily_total_restarts_on_a_new_day(accounts):
 def test_withdraw_rule_rejects_and_leaves_stored_account_unchanged(
     accounts, values, amount, messages
 ):
+    values = _on_the_run_date(values)
     account = _account(accounts, **values)
 
     with pytest.raises(ValidationError) as exc:
@@ -371,7 +384,7 @@ def test_withdraw_rule_rejects_and_leaves_stored_account_unchanged(
             {
                 "balance": 10000.0,
                 "daily_withdrawal_total": 4800.0,
-                "last_withdrawal_date": date.today(),
+                "last_withdrawal_date": TODAY,
             },
             300.0,
             {"amount": ["Daily withdrawal limit of 5000.0 exceeded"]},
@@ -387,6 +400,7 @@ def test_withdraw_rule_rejects_and_leaves_stored_account_unchanged(
 def test_the_account_aggregate_enforces_each_withdrawal_rule(
     accounts, values, amount, messages
 ):
+    values = _on_the_run_date(values)
     account = accounts.Account(**values)
 
     with pytest.raises(ValidationError) as exc:

@@ -21,9 +21,12 @@ The PM should coordinate, not compute. If you find yourself validating business 
 **Wrong:**
 ```python
 # fragment
+from decimal import Decimal as D
+
+
 @handle(PaymentConfirmed, correlate="order_id")
 def on_payment_confirmed(self, event):
-    if event.amount < self.total * 0.95:  # Business rule in PM!
+    if event.amount < self.total * D("0.95"):  # Business rule in PM!
         current_domain.process(RejectPayment(...))
     else:
         current_domain.process(ConfirmShipment(...))

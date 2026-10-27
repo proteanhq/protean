@@ -60,7 +60,7 @@ Delta events capture incremental changes to aggregate state. Most events are del
 class OrderPlaced:
     order_id: String(required=True, identifier=True)
     customer_id: String(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 ```
 
 ### Fact Events
@@ -96,7 +96,7 @@ Events can contain value objects for complex immutable data:
 ```python
 @domain.value_object
 class Money:
-    amount: Float(required=True)
+    amount: Decimal(precision=19, scale=4, required=True)
     currency: String(max_length=3, default="USD")
 
 @domain.event(part_of="Order")

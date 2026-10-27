@@ -2,8 +2,10 @@
 
 **Status:** Accepted
 
-> Amended October 2026, see
-[Amendment](#amendment-october-2026-projectors) below.
+> Amended October 2026, see the
+[projectors amendment](#amendment-october-2026-projectors) and the
+[outbox-side ordering amendment](#amendment-october-2026-outbox-side-ordering)
+below.
 
 **Date:** July 2026
 
@@ -170,7 +172,9 @@ publish and would sit failing on the outbox. Validating in the caller's UoW mean
 bad value fails the user's operation immediately and never enters the outbox. As a
 backstop, if an invalid value ever reaches the publish path, the record is marked
 `ABANDONED` at once (the existing terminal state, with an invalid-key reason) rather
-than retried, so one bad record can never wedge the outbox behind it.
+than retried, so it does not fail over and over. The abandoned record keeps its
+key, so that key's later records wait until an operator re-queues it or marks it
+published. Other keys keep flowing.
 
 We reject rather than route a bad key to a default partition. A default partition
 would silently coalesce unrelated keys and quietly break the ordering guarantee
@@ -525,3 +529,77 @@ process-manager boolean form does not apply to projectors. The ordering holds
 for a projector on a stream subscription; an event-store subscription reads the
 event store directly and is not affected. Ordering is per stream category, so a
 projector over several aggregates is not ordered across their categories.
+
+## Amendment (October 2026): outbox-side ordering
+
+The consumer kept a key's events in publish order, but the outbox did not
+publish them in commit order. The claim sorts rows by priority and then by
+commit order, but it claimed each row on its own. A failed row was retried
+later while the rows behind it published, and two workers could publish one
+key's rows at the same time. The consumer then applied a key's
+events out of commit order.
+
+**Amended decision:** the outbox holds a partitioned row back until every
+earlier row of its group has published.
+
+- **Commit order** is `created_at`, then `sequence_number`, the event's
+  position within its Unit of Work commit. The claim orders rows by
+  `-priority`, `created_at`, `sequence_number`, `id`. Rows of one key that
+  commit concurrently are ordered by `created_at`, which is not always the
+  order in which their commits became visible (see the limits below).
+- **The group is the destination stream:** `(target_broker, stream_category,
+  partition_key, lane)`. The lane is backfill when priority lanes are enabled,
+  the row targets the internal broker, and its priority is below the threshold.
+  Every other row is in the primary lane. The two lanes and the different
+  brokers are separate streams with no order promised between them, so a row
+  in one never holds a row in another. Rows without a partition key are never
+  held.
+- **The outbox row stores its stream category.** The Unit of Work and the
+  reconciliation sweep copy `metadata.domain.stream_category` into a new
+  `stream_category` column, so the claim query can compare it and an index
+  (`ix_outbox_hold_back`) can cover it. A row with no stream category is not
+  grouped.
+- **The claim rule.** A row is claimable only when every earlier row of its
+  group that is `pending`, `processing`, `failed` or `abandoned` is claimed in
+  the same call. One claim can therefore take a run of rows from one group. A
+  row another worker has locked, a failed row whose retry is not due, and an
+  abandoned row all hold the rows behind them.
+- **Candidates are narrowed before the limit applies.** A row is a candidate
+  only when every earlier holding row of its group is itself claimable now and
+  sorts before it in the claim order. Without that, a halted key with more
+  rows than the batch size would fill every batch and starve other keys, and a
+  later high-priority row would take the batch slot its earlier low-priority
+  group rows needed. The cost is that a later high-priority row waits one tick
+  for the earlier rows of its group.
+- **An abandoned partitioned row halts its key**, matching decision 6 (halt on
+  poison) on the consumer side. Cleanup does not delete abandoned rows that
+  have a partition key. An operator re-queues the row or marks it published
+  to restart the key. Deleting it is unsafe, because startup reconciliation
+  can rebuild it as `pending` behind the key's later rows.
+- **The processor publishes each group's rows in commit order within a batch.**
+  When a row fails, the processor puts the group's later rows from that batch
+  back to `pending` (`Outbox.release()`), without changing their retry counts.
+- **No flag.** `sequential_by` has promised commit order since 0.17.0, and a
+  flag that defaulted to the old behaviour would default to breaking that
+  promise.
+
+The hold-back is a parameter on the DAO claim contract (ADR-0013). PostgreSQL
+applies it in the single claim statement. The other databases and the
+in-memory adapter apply it in the portable guarded read-then-update path.
+
+**Limits:**
+
+- When `sequential_by` names a field that several aggregate instances carry,
+  nothing serializes commits across those instances. A row with an earlier
+  `created_at` can become visible after a later row of the same key has
+  published.
+- `created_at` comes from the writing host's clock. Clock skew between hosts
+  larger than the gap between two commits can swap those commits.
+- A row rebuilt by reconciliation gets the default priority, because the
+  original priority is not stored with the event. With priority lanes on, the
+  rebuilt row can land in the backfill lane while the key's other rows are in
+  the primary lane. The two lanes are separate groups with no order between
+  them, so the rebuilt row is ordered only against the key's other backfill
+  rows.
+- `specs/Outbox.tla` does not model the hold-back yet. `Outbox.release()`
+  emits no trace record, the same as the backstop abandon.

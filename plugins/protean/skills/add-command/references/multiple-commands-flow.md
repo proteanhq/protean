@@ -9,16 +9,19 @@ One `Order` aggregate takes three commands, `PlaceOrder`, `PayOrder` and `Cancel
 The commands below all act on one `Order` aggregate:
 
 ```python
+from decimal import Decimal as D
+
+
 @domain.aggregate
 class Order:
     order_id: Identifier(identifier=True)
     customer_id: String(required=True)
-    total_amount: Float()
+    total_amount: Decimal(precision=19, scale=4)
     status: String(default="draft")
     payment_method: String()
     cancel_reason: String()
 
-    def place(self, total_amount: float):
+    def place(self, total_amount: D):
         self.total_amount = total_amount
         self.status = "placed"
 
@@ -42,7 +45,7 @@ class Order:
 class PlaceOrder:
     order_id: Identifier(required=True)
     customer_id: String(required=True)
-    total_amount: Float(required=True)
+    total_amount: Decimal(precision=19, scale=4, required=True)
 
 @domain.command(part_of="Order")
 class PayOrder:
@@ -96,7 +99,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from protean.utils.globals import current_domain
+from protean import current_domain
 
 
 @asynccontextmanager
@@ -128,7 +131,7 @@ When the aggregate already has commands and a handler:
    @domain.command(part_of="Order")
    class RefundOrder:
        order_id: Identifier(required=True)
-       refund_amount: Float(required=True)
+       refund_amount: Decimal(precision=19, scale=4, required=True)
    ```
 
 2. **Add a `@handle` method** to the existing handler:
@@ -143,7 +146,7 @@ When the aggregate already has commands and a handler:
 
 3. **Add the aggregate method** (if it doesn't exist):
    ```python
-   def refund(self, amount: float):
+   def refund(self, amount: D):
        if self.status != "paid":
            raise ValueError("Can only refund paid orders")
        self.status = "refunded"

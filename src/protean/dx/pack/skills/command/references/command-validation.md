@@ -78,7 +78,7 @@ with domain.domain_context():
 @domain.command(part_of="Product")
 class UpdatePricing:
     product_id: Identifier(required=True)
-    new_price: Float(required=True, min_value=0.01)
+    new_price: Decimal(precision=19, scale=4, required=True, min_value=0.01)
     discount: Float(min_value=0.0, max_value=100.0)
 
 domain.init(traverse=False)

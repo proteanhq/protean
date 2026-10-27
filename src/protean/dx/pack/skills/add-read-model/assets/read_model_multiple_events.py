@@ -14,7 +14,7 @@ provides real-time stock levels including reservations.
 
 from protean import Domain
 from protean.core.projector import on
-from protean.fields import Float, Identifier, Integer, String
+from protean.fields import Decimal, Identifier, Integer, String
 
 domain = Domain(__name__)
 domain.config["event_processing"] = "sync"
@@ -31,7 +31,7 @@ class ItemStocked:
     sku: String(required=True)
     item_name: String(required=True)
     quantity: Integer(required=True)
-    unit_cost: Float(required=True)
+    unit_cost: Decimal(precision=19, scale=4, required=True)
 
 
 @domain.event(part_of="Warehouse")
@@ -70,9 +70,9 @@ class Warehouse:
 
     sku: String(required=True, max_length=50)
     item_name: String(required=True, max_length=200)
-    total_stock: Integer(default=0)
+    stock_on_hand: Integer(default=0)
     reserved: Integer(default=0)
-    unit_cost: Float(default=0.0)
+    unit_cost: Decimal(precision=19, scale=4, default=0)
 
     @classmethod
     def stock_item(cls, sku, item_name, quantity, unit_cost):
@@ -80,7 +80,7 @@ class Warehouse:
         warehouse = cls(
             sku=sku,
             item_name=item_name,
-            total_stock=quantity,
+            stock_on_hand=quantity,
             unit_cost=unit_cost,
         )
         warehouse.raise_(
@@ -96,7 +96,7 @@ class Warehouse:
 
     def restock(self, quantity):
         """Add more stock for this item."""
-        self.total_stock += quantity
+        self.stock_on_hand += quantity
         self.raise_(
             ItemRestocked(
                 warehouse_id=self.id,
@@ -142,10 +142,10 @@ class InventoryStatus:
     warehouse_id: Identifier(identifier=True, required=True)
     sku: String(max_length=50, required=True)
     item_name: String(max_length=200, required=True)
-    total_stock: Integer(default=0)
+    stock_on_hand: Integer(default=0)
     reserved: Integer(default=0)
     available: Integer(default=0)
-    unit_cost: Float(default=0.0)
+    unit_cost: Decimal(precision=19, scale=4, default=0)
 
 
 # --- Projector ---
@@ -167,7 +167,7 @@ class InventoryStatusProjector:
             warehouse_id=event.warehouse_id,
             sku=event.sku,
             item_name=event.item_name,
-            total_stock=event.quantity,
+            stock_on_hand=event.quantity,
             reserved=0,
             available=event.quantity,
             unit_cost=event.unit_cost,
@@ -179,7 +179,7 @@ class InventoryStatusProjector:
         """Update stock levels when additional stock arrives."""
         repo = domain.repository_for(InventoryStatus)
         status = repo.get(event.warehouse_id)
-        status.total_stock += event.added_quantity
+        status.stock_on_hand += event.added_quantity
         status.available += event.added_quantity
         repo.add(status)
 

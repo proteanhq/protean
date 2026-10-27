@@ -8,9 +8,12 @@ forgets to re-publish the docs copy fails these tests, which run in the core
 suite (and therefore in CI).
 """
 
+import json
 from pathlib import Path
 
 import pytest
+
+from protean.ir import SCHEMA_URL, load_schema
 
 # Repo root: tests/ir/test_schema_publication.py → parents[2] is the repo root.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -64,3 +67,19 @@ class TestSchemaPublication:
             f"Published schema {published} has drifted from runtime schema "
             f"{runtime_schema}. Re-sync by copying the runtime schema verbatim."
         )
+
+    @pytest.mark.parametrize(
+        "runtime_schema",
+        _runtime_schema_files(),
+        ids=lambda p: p.parent.name,
+    )
+    def test_schema_id_is_the_url_it_is_served_from(self, runtime_schema: Path):
+        # mkdocs serves ``docs/assets/ir/<version>/schema.json`` at this URL.
+        version_dir = runtime_schema.parent.name
+        schema = json.loads(runtime_schema.read_text(encoding="utf-8"))
+        assert schema["$id"] == (
+            f"https://docs.proteanhq.com/assets/ir/{version_dir}/schema.json"
+        )
+
+    def test_schema_url_is_the_current_schema_id(self):
+        assert load_schema()["$id"] == SCHEMA_URL

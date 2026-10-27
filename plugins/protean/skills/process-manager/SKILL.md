@@ -19,7 +19,7 @@ A process manager coordinates a business process that spans several aggregates. 
 
 ```python
 from protean import Domain, handle
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 domain = Domain(__file__, "ecommerce")
 
@@ -27,7 +27,7 @@ domain = Domain(__file__, "ecommerce")
 class OrderPlaced:
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
-    total: Float(required=True)
+    total: Decimal(precision=19, scale=4, required=True)
 
 @domain.event(part_of="Payment")
 class PaymentConfirmed:
@@ -37,7 +37,7 @@ class PaymentConfirmed:
 @domain.aggregate
 class Order:
     customer_id: Identifier(required=True)
-    total: Float(required=True)
+    total: Decimal(precision=19, scale=4, required=True)
 
 @domain.aggregate
 class Payment:
@@ -208,10 +208,12 @@ class OnboardingPM:
 
 ```python
 # fragment
+from decimal import Decimal as D
+
 # WRONG: PM is doing business validation
 @handle(PaymentConfirmed, correlate="order_id")
 def on_payment_confirmed(self, event):
-    if event.amount < self.total * 0.95:
+    if event.amount < self.total * D("0.95"):
         current_domain.process(RejectPayment(...))
 ```
 

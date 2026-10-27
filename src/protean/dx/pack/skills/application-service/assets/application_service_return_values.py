@@ -12,12 +12,14 @@ Usage:
     with domain.domain_context():
         svc = ProductApplicationServices()
         product_id = svc.create_product(name="Widget", sku="WDG-001", price=29.99)
-        svc.update_price(product_id=product_id, new_price=34.99)
+        svc.update_price(product_id=product_id, new_price=D("34.99"))
         product = svc.get_product(product_id=product_id)
 """
 
+from decimal import Decimal as D
+
 from protean import Domain, current_domain, use_case
-from protean.fields import Float, Identifier, String
+from protean.fields import Decimal, Identifier, String
 
 # Domain setup
 domain = Domain()
@@ -29,10 +31,10 @@ class Product:
 
     name: String(required=True)
     sku: String(required=True)
-    price: Float(required=True)
+    price: Decimal(precision=19, scale=4, required=True)
     status: String(choices=["DRAFT", "ACTIVE", "DISCONTINUED"], default="DRAFT")
 
-    def update_price(self, new_price: float):
+    def update_price(self, new_price: D):
         """Update the product price."""
         self.price = new_price
 
@@ -54,7 +56,7 @@ class ProductApplicationServices:
     """
 
     @use_case
-    def create_product(self, name: str, sku: str, price: float) -> Identifier:
+    def create_product(self, name: str, sku: str, price: D) -> Identifier:
         """Create a new product and return its ID.
 
         Returns:
@@ -65,7 +67,7 @@ class ProductApplicationServices:
         return product.id
 
     @use_case
-    def update_price(self, product_id: Identifier, new_price: float) -> None:
+    def update_price(self, product_id: Identifier, new_price: D) -> None:
         """Update a product's price.
 
         Returns:
@@ -109,7 +111,7 @@ if __name__ == "__main__":
         print(f"Created product ID: {product_id}")
 
         # Update price: returns None
-        result = svc.update_price(product_id=product_id, new_price=34.99)
+        result = svc.update_price(product_id=product_id, new_price=D("34.99"))
         print(f"Update result: {result}")
 
         # Activate: returns status string

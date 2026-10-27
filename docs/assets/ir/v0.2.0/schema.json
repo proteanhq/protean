@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://protean.dev/ir/v0.2.0/schema.json",
+  "$id": "https://docs.proteanhq.com/assets/ir/v0.2.0/schema.json",
   "title": "Protean IR v0.2.0",
   "description": "Intermediate Representation for Protean domain models. Captures topology — what domain elements exist, their shape, and how they connect.",
 

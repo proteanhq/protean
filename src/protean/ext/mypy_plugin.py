@@ -242,7 +242,6 @@ DECORATOR_BASE_CLASS_MAP: dict[str, str] = {
     "process_manager": "protean.core.process_manager.BaseProcessManager",
     "repository": "protean.core.repository.BaseRepository",
     "database_model": "protean.core.database_model.BaseDatabaseModel",
-    "email": "protean.core.email.BaseEmail",
 }
 
 _BASE_CLASS_FQNS: frozenset[str] = frozenset(DECORATOR_BASE_CLASS_MAP.values())

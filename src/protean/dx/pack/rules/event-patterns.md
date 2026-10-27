@@ -29,7 +29,7 @@ or `HasMany` associations. Use simple fields and value objects only:
 @domain.event(part_of="Order")
 class OrderPlaced:
     order_id = Identifier(required=True)
-    total = Float()
+    total = Decimal(precision=19, scale=4)
     shipping_address = ValueObject(Address)
 
 # Bad — entity reference inside event
@@ -88,7 +88,7 @@ version when the event schema changes and use upcasters for backwards-compatible
 class OrderPlaced:
     __version__ = 2
     order_id = Identifier(required=True)
-    total = Float()
+    total = Decimal(precision=19, scale=4)
     currency = String(default="USD")  # Added in v2
 ```
 

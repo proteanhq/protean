@@ -115,7 +115,6 @@ its full entry (rationale, fix, and configuration) in the
 | [`DEPRECATED_ELEMENT`](../reference/fitness-functions.md#deprecated-element) | info | Element scheduled for removal. |
 | [`DEPRECATED_FIELD`](../reference/fitness-functions.md#deprecated-field) | info | Field scheduled for removal. |
 | [`DEPRECATED_OPTION`](../reference/fitness-functions.md#deprecated-option) | warning or info | Deprecated option or alias. |
-| [`DEPRECATED_EMAIL`](../reference/fitness-functions.md#deprecated-email) | info | Deprecated email subsystem. |
 
 ---
 
