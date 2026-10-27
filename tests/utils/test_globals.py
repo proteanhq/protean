@@ -471,6 +471,8 @@ def test_collecting_a_module_that_imports_current_domain_is_silent(tmp_path):
             "pytest",
             "-p",
             "no:cacheprovider",
+            "-p",
+            "no:randomly",
             "-q",
             "--rootdir",
             str(tmp_path),
