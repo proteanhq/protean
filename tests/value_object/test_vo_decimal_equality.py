@@ -66,6 +66,20 @@ class TestEqualDecimalsWithDifferentScales:
         assert a == b
         assert hash(a) == hash(b)
 
+    def test_nested_value_object_is_hashed_once_per_outer_hash(self, monkeypatch):
+        calls = []
+        original = Inner.__hash__
+
+        def counting_hash(self):
+            calls.append(self)
+            return original(self)
+
+        monkeypatch.setattr(Inner, "__hash__", counting_hash)
+
+        hash(Outer(label="x", inner=Inner(amount=D("1.0"))))
+
+        assert len(calls) == 1
+
 
 class Color:
     """Defines ``__eq__`` without ``__hash__``, so instances are unhashable."""
@@ -101,6 +115,43 @@ def test_unhashable_custom_values_hash_by_their_serialized_form():
     assert hash(a) == hash(b)
     assert len({a, b}) == 1
     assert Palette(primary="#ff0000") != a
+
+
+class Money:
+    """Unhashable, and compares numerically while serializing with its scale."""
+
+    def __init__(self, value: object) -> None:
+        self.amount = D(str(value))
+
+    def to_dict(self) -> str:
+        return str(self.amount)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Money) and other.amount == self.amount
+
+
+def parse_money(value: object) -> Money:
+    return value if isinstance(value, Money) else Money(value)
+
+
+class Wallet(BaseValueObject):
+    balance = Custom(
+        Money,
+        validators=[PlainValidator(parse_money)],
+        serializers=[PlainSerializer(lambda m: str(m.amount), return_type=str)],
+        required=True,
+    )
+
+
+def test_equal_unhashable_values_hash_equal_when_they_serialize_differently():
+    a = Wallet(balance="9.99")
+    b = Wallet(balance="9.9900")
+
+    assert a.to_dict() != b.to_dict()
+    assert a == b
+    assert hash(a) == hash(b)
+    assert len({a, b}) == 1
+    assert {a: "found"}[b] == "found"
 
 
 class TestUnequalValueObjects:
