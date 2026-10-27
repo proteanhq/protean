@@ -62,6 +62,19 @@ methods of the domain context:
     If you do activate context manually, ensure you call context.pop() once the
     task has been completed to prevent context leakage across threads.
 
+### Check whether a domain is active
+
+Code that can run both inside and outside a domain context can ask with
+`has_domain_context()`. It returns `True` when a domain context is active and
+`False` otherwise, and it never warns:
+
+```python
+--8<-- "guides/compose-a-domain/activate-domain/003.py:check"
+```
+
+`bool(current_domain)` gives the same answer, but outside a domain context it
+also emits a "Working outside of domain context" warning.
+
 ## Storing Data
 
 The domain context also provides a `g` object for storing data. It is a simple

@@ -90,9 +90,11 @@ class _DomainContextGlobals:
 
 
 def has_domain_context() -> bool:
-    """If you have code that wants to test if a domain context is there or
-    not this function can be used.  You can also just do a boolean check on the
-    :data:`current_domain` object instead.
+    """Return whether a domain context is active in the current execution context.
+
+    This check never warns. ``bool(current_domain)`` gives the same answer, but
+    it emits the "Working outside of domain context" warning when no context is
+    active.
     """
     return _domain_ctx_stack.top is not None
 
