@@ -257,14 +257,18 @@ class TestResolve:
     def test_repeats_are_dropped(self, manifest):
         assert len(manifest.resolve(["redis", "redis-cache"])) == 3
 
-    # Explicit ids: a test id containing "sendgrid" would pick up the root
-    # conftest's `--sendgrid` skip.
-    @pytest.mark.parametrize(
-        "name", ["nope", "memory", "sendgrid"], ids=["unknown", "core", "off"]
-    )
-    def test_an_unknown_core_or_off_name_is_rejected(self, manifest, name):
+    @pytest.mark.parametrize("name", ["nope", "memory"], ids=["unknown", "core"])
+    def test_an_unknown_or_core_name_is_rejected(self, manifest, name):
         with pytest.raises(typer.BadParameter, match="is not an adapter or leg"):
             manifest.resolve([name])
+
+    def test_an_off_name_is_rejected(self):
+        manifest = AdapterManifest(
+            adapters=[_entry("es"), _entry("mail", lane="off")],
+            trigger_all=[],
+        )
+        with pytest.raises(typer.BadParameter, match="is not an adapter or leg"):
+            manifest.resolve(["mail"])
 
 
 class TestBuildAdapterMatrix:

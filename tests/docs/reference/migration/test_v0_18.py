@@ -550,16 +550,22 @@ PAGE = pathlib.Path(__file__).parents[4] / "docs/reference/migration/v0-18.md"
 MOVED_OFF_1_0 = (
     "is_event_sourced_alias",
     "command_published_option",
-    "email_element",
-    "email_providers_config",
-    "get_email_provider",
-    "send_email",
     "method_field",
     "nested_field",
     "list_pickled",
     "utils_plumbing",
     "dao_update",
     "queryset_update",
+)
+
+# The email deprecations also moved off 1.0.0 in 0.18. Their APIs were removed
+# in 0.19.0 and their registry entries with them, but the v0.18 guide still
+# lists them, so their names and removal version are fixed here.
+REMOVED_EMAIL_ENTRIES = (
+    ("`@domain.email` element", "0.19.0"),
+    ("`email_providers` config block", "0.19.0"),
+    ("`Domain.get_email_provider()`", "0.19.0"),
+    ("`Domain.send_email()`", "0.19.0"),
 )
 
 
@@ -591,6 +597,8 @@ class TestRemovalScheduleTables:
         for slug in MOVED_OFF_1_0:
             entry = DEPRECATIONS[slug]
             expected.setdefault(entry.removal, []).append(entry.name)
+        for name, removal in REMOVED_EMAIL_ENTRIES:
+            expected.setdefault(removal, []).append(name)
 
         assert {v: sorted(names) for v, names in tables.items()} == {
             v: sorted(names) for v, names in expected.items()

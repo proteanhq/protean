@@ -653,31 +653,6 @@ Emitted at `warning` level for a deprecated option alias (for example the
 
 **Fix.** Use the current option name instead of the deprecated alias.
 
-### DEPRECATED_EMAIL { #deprecated-email }
-
-| | |
-|---|---|
-| **Category** | `deprecation` |
-| **Level** | `info` |
-
-**Why.** The email subsystem is deprecated and scheduled for removal in v0.19.0.
-
-**Fix.** Notify from an event handler or subscriber that calls an
-application-level notification service instead.
-
-### DEPRECATED_CONFIG { #deprecated-config }
-
-| | |
-|---|---|
-| **Category** | `deprecation` |
-| **Level** | `info` |
-
-**Why.** A non-default `email_providers` config block uses the deprecated email
-subsystem, scheduled for removal in v0.19.0. The default block stays silent.
-
-**Fix.** Notify from an event handler or subscriber that calls an
-application-level notification service instead.
-
 ### DEPRECATED_IMPORT { #deprecated-import }
 
 | | |

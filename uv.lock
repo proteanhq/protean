@@ -2729,10 +2729,6 @@ redis = [
 scaffold = [
     { name = "copier" },
 ]
-sendgrid = [
-    { name = "cffi", marker = "platform_python_implementation != 'PyPy'" },
-    { name = "sendgrid" },
-]
 server = [
     { name = "fastapi" },
     { name = "jinja2" },
@@ -2804,7 +2800,6 @@ types = [
 requires-dist = [
     { name = "bleach", specifier = ">=6.1.0" },
     { name = "cffi", marker = "platform_python_implementation != 'PyPy' and extra == 'mysql'", specifier = ">=2.0.0" },
-    { name = "cffi", marker = "platform_python_implementation != 'PyPy' and extra == 'sendgrid'", specifier = ">=2.0.0" },
     { name = "copier", marker = "extra == 'scaffold'", specifier = ">=9.4.0,<10" },
     { name = "elasticsearch", marker = "extra == 'elasticsearch'", specifier = ">=8.18.0,<9.0.0" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.139.0" },
@@ -2834,7 +2829,6 @@ requires-dist = [
     { name = "pyodbc", marker = "extra == 'mssql'", specifier = ">=5.3.0" },
     { name = "python-dateutil", specifier = ">=2.8.2" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=8.0.0,<8.2.0" },
-    { name = "sendgrid", marker = "extra == 'sendgrid'", specifier = ">=6.11.0" },
     { name = "sqlalchemy", marker = "extra == 'mssql'", specifier = ">=2.0.36,<2.2" },
     { name = "sqlalchemy", marker = "extra == 'mysql'", specifier = ">=2.0.36,<2.2" },
     { name = "sqlalchemy", marker = "extra == 'postgresql'", specifier = ">=2.0.36,<2.2" },
@@ -2846,7 +2840,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.30.0" },
     { name = "watchfiles", marker = "extra == 'dev'", specifier = ">=1.2.0" },
 ]
-provides-extras = ["elasticsearch", "redis", "postgresql", "postgresql-psycopg2", "sqlite", "mssql", "mysql", "message-db", "flask", "sendgrid", "server", "shell", "scaffold", "mcp", "cli", "all", "dev", "telemetry"]
+provides-extras = ["elasticsearch", "redis", "postgresql", "postgresql-psycopg2", "sqlite", "mssql", "mysql", "message-db", "flask", "server", "shell", "scaffold", "mcp", "cli", "all", "dev", "telemetry"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3526,15 +3520,6 @@ wheels = [
 ]
 
 [[package]]
-name = "python-http-client"
-version = "3.3.7"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/56/fa/284e52a8c6dcbe25671f02d217bf2f85660db940088faf18ae7a05e97313/python_http_client-3.3.7.tar.gz", hash = "sha256:bf841ee45262747e00dec7ee9971dfb8c7d83083f5713596488d67739170cea0", size = 9377, upload-time = "2022-03-09T20:23:56.386Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/29/31/9b360138f4e4035ee9dac4fe1132b6437bd05751aaf1db2a2d83dc45db5f/python_http_client-3.3.7-py3-none-any.whl", hash = "sha256:ad371d2bbedc6ea15c26179c6222a78bc9308d272435ddf1d5c84f068f249a36", size = 8352, upload-time = "2022-03-09T20:23:54.862Z" },
-]
-
-[[package]]
 name = "python-multipart"
 version = "0.0.32"
 source = { registry = "https://pypi.org/simple" }
@@ -3960,20 +3945,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/46/f5af3402b579fd5e11573ce652019a67074317e18c1935cc0b4ba9b35552/secretstorage-3.5.0-py3-none-any.whl", hash = "sha256:0ce65888c0725fcb2c5bc0fdb8e5438eece02c523557ea40ce0703c266248137", size = 15554, upload-time = "2025-11-23T19:02:51.545Z" },
-]
-
-[[package]]
-name = "sendgrid"
-version = "6.12.5"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "cryptography" },
-    { name = "python-http-client" },
-    { name = "werkzeug" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/da/fa/f718b2b953f99c1f0085811598ac7e31ccbd4229a81ec2a5290be868187a/sendgrid-6.12.5.tar.gz", hash = "sha256:ea9aae30cd55c332e266bccd11185159482edfc07c149b6cd15cf08869fabdb7", size = 50310, upload-time = "2025-09-19T06:23:09.229Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bd/55/b3c3880a77082e8f7374954e0074aafafaa9bc78bdf9c8f5a92c2e7afc6a/sendgrid-6.12.5-py3-none-any.whl", hash = "sha256:96f92cc91634bf552fdb766b904bbb53968018da7ae41fdac4d1090dc0311ca8", size = 102173, upload-time = "2025-09-19T06:23:07.93Z" },
 ]
 
 [[package]]

@@ -2060,8 +2060,6 @@ class IRBuilder:
         self._diagnose_process_manager_unclosed(ir)
         self._diagnose_deprecated_elements(ir)
         self._diagnose_deprecated_options(ir)
-        self._diagnose_email_deprecated(ir)
-        self._diagnose_email_config_deprecated(ir)
         self._diagnose_deprecated_imports(ir)
         self._diagnose_aggregate_no_invariants(ir)
         self._diagnose_event_not_past_tense(ir)
@@ -3864,66 +3862,6 @@ class IRBuilder:
                     )
                 )
 
-    def _diagnose_email_deprecated(self, ir: dict[str, Any]) -> None:
-        """DEPRECATED_EMAIL: registered ``@domain.email`` elements.
-
-        The email subsystem is deprecated and scheduled for removal.
-        Email elements are not projected into the IR (they appear in no
-        cluster/projection/flow), so ``_diagnose_deprecated_elements`` cannot
-        see them. Read the registry directly, mirroring
-        ``_diagnose_upcaster_gap``, and emit one INFO-level diagnostic per
-        registered email element (INFO keeps ``check``'s exit code at 0 for a
-        deprecation, matching the ``DEPRECATED_ELEMENT`` convention).
-        """
-        registry = self._domain._domain_registry
-        removal = DEPRECATIONS["email_element"].removal
-        for record in registry._elements.get("EMAIL", {}).values():
-            if record.internal or record.auto_generated:
-                continue
-            email_cls = record.cls
-            self._diagnostics.append(
-                build_diagnostic(
-                    DiagnosticCode.DEPRECATED_EMAIL,
-                    element=fqn(email_cls),
-                    message=f"Email element `{email_cls.__name__}` uses the "
-                    f"deprecated email subsystem, scheduled for removal in "
-                    f"v{removal}. Notify from an event handler or subscriber "
-                    f"that calls an application-level notification service "
-                    f"instead.",
-                )
-            )
-
-    def _diagnose_email_config_deprecated(self, ir: dict[str, Any]) -> None:
-        """DEPRECATED_CONFIG: a non-default ``email_providers`` config block.
-
-        The email subsystem is deprecated and scheduled for removal. ``load_config``
-        warns once at bootstrap, but that warning is transient; ``check`` reads
-        the live ``email_providers`` config off the domain and re-surfaces it as
-        an INFO-level diagnostic. The equality guard mirrors ``load_config``'s:
-        the default block (always present via ``_deep_merge``) stays silent, so
-        only an operator-configured block is flagged.
-        """
-        # Local import: ``protean.domain`` imports this module (``protean.ir``),
-        # so a module-level import would be circular.
-        from protean.domain.config import _default_config  # noqa: PLC0415
-
-        configured = self._domain.config.get("email_providers")
-        if configured == _default_config()["email_providers"]:
-            return
-
-        entry = DEPRECATIONS["email_providers_config"]
-        alternative = entry.alternative or ""
-        self._diagnostics.append(
-            build_diagnostic(
-                DiagnosticCode.DEPRECATED_CONFIG,
-                element="email_providers",
-                message=f"The `email_providers` config block uses the deprecated "
-                f"email subsystem, scheduled for removal in v{entry.removal}. "
-                f"{alternative}",
-                fix=alternative,
-            )
-        )
-
     def _diagnose_deprecated_imports(self, ir: dict[str, Any]) -> None:
         """DEPRECATED_IMPORT: a registered element's source module uses a
         deprecated import surface that leaves no IR trace.
@@ -4076,10 +4014,9 @@ class IRBuilder:
         INFO-level design nudge, not a build failure.
 
         ``abstract`` is not projected into the aggregate IR ``options`` block, so
-        it is sourced from the registry (mirroring ``_diagnose_upcaster_gap`` /
-        ``_diagnose_email_deprecated``). Internal and abstract aggregates are
-        skipped. ``invariants`` is the dict ``{"pre": [...], "post": [...]}``;
-        flag only when *both* lists are empty.
+        it is sourced from the registry (mirroring ``_diagnose_upcaster_gap``).
+        Internal and abstract aggregates are skipped. ``invariants`` is the dict
+        ``{"pre": [...], "post": [...]}``; flag only when *both* lists are empty.
         """
         registry = self._domain._domain_registry
         for record in registry._elements.get("AGGREGATE", {}).values():

@@ -229,15 +229,6 @@ def deprecated(
 # a rule that can see it statically, and every ``detection="runtime"`` one
 # records why it cannot.
 
-# Shared "what to do instead" clause for the email subsystem, deprecated across
-# four surfaces (element registration, ``send_email``, ``get_email_provider``,
-# and a non-default ``email_providers`` config block). Kept here so the runtime
-# warning text and the registry entries never drift apart.
-_EMAIL_ALTERNATIVE = (
-    "Notify from an event handler or subscriber that calls an "
-    "application-level notification service instead."
-)
-
 
 @dataclass(frozen=True)
 class Deprecation:
@@ -249,13 +240,11 @@ class Deprecation:
       built domain. ``check_code`` is the diagnostic code that rule emits (e.g.
       ``"DEPRECATED_OPTION"``, ``"DEPRECATED_IMPORT"``), and ``detection_hint``
       is a token guaranteed to appear in *that* diagnostic's message (e.g.
-      ``"Method"``, ``"pickled"``, ``"email_providers"``). The coverage audit
-      confirms the rule fires by finding a diagnostic whose code is
-      ``check_code`` and whose message carries the hint and the removal version,
-      so two entries that share a code (``is_event_sourced``/``published`` under
-      ``DEPRECATED_OPTION``) are told apart by their hint, and two entries that
-      share a hint substring (the email element and the ``email_providers``
-      config both say "email subsystem") are told apart by their code.
+      ``"Method"``, ``"pickled"``). The coverage audit confirms the rule fires
+      by finding a diagnostic whose code is ``check_code`` and whose message
+      carries the hint and the removal version, so entries that share a code
+      (``is_event_sourced`` and ``published`` under ``DEPRECATED_OPTION``) are
+      told apart by their hint.
     - ``"runtime"`` — the usage is an imperative call with no static site, so
       only the per-version ``DeprecationWarning`` can catch it. ``reason``
       records why ``check`` structurally cannot.
@@ -342,16 +331,6 @@ DEPRECATIONS: dict[str, Deprecation] = {
             check_code=DiagnosticCode.DEPRECATED_OPTION.value,
         ),
         Deprecation(
-            slug="email_element",
-            name="`@domain.email` element",
-            since="0.12.0",
-            removal="0.19.0",
-            detection="check",
-            alternative=_EMAIL_ALTERNATIVE,
-            detection_hint="email subsystem",
-            check_code=DiagnosticCode.DEPRECATED_EMAIL.value,
-        ),
-        Deprecation(
             slug="method_field",
             name="`Method` field type",
             since="0.12.0",
@@ -382,16 +361,6 @@ DEPRECATIONS: dict[str, Deprecation] = {
             check_code=DiagnosticCode.DEPRECATED_FIELD.value,
         ),
         Deprecation(
-            slug="email_providers_config",
-            name="`email_providers` config block",
-            since="0.12.0",
-            removal="0.19.0",
-            detection="check",
-            alternative=_EMAIL_ALTERNATIVE,
-            detection_hint="email_providers",
-            check_code=DiagnosticCode.DEPRECATED_CONFIG.value,
-        ),
-        Deprecation(
             slug="utils_plumbing",
             name="`protean.utils.*` import shims",
             since="0.12.0",
@@ -400,32 +369,6 @@ DEPRECATIONS: dict[str, Deprecation] = {
             alternative="It is internal plumbing with no public replacement.",
             detection_hint="protean.utils",
             check_code=DiagnosticCode.DEPRECATED_IMPORT.value,
-        ),
-        Deprecation(
-            slug="get_email_provider",
-            name="`Domain.get_email_provider()`",
-            since="0.12.0",
-            removal="0.19.0",
-            detection="runtime",
-            alternative=_EMAIL_ALTERNATIVE,
-            reason=(
-                "An imperative method call has no static declaration site for a "
-                "rule to read off a built domain; the per-call "
-                "RemovedInProtean019Warning is the only detector."
-            ),
-        ),
-        Deprecation(
-            slug="send_email",
-            name="`Domain.send_email()`",
-            since="0.12.0",
-            removal="0.19.0",
-            detection="runtime",
-            alternative=_EMAIL_ALTERNATIVE,
-            reason=(
-                "An imperative method call has no static declaration site for a "
-                "rule to read off a built domain; the per-call "
-                "RemovedInProtean019Warning is the only detector."
-            ),
         ),
         Deprecation(
             slug="dao_update",

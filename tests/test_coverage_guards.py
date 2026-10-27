@@ -9,7 +9,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from protean.adapters.cache import Caches
-from protean.adapters.email import EmailProviders
 from protean.adapters.repository import Providers
 from protean.exceptions import ConfigurationError, DeserializationError
 from protean.utils.container import Options, OptionsMixin
@@ -72,25 +71,6 @@ class TestProvidersGuards:
         providers._providers = None
         with pytest.raises(AssertionError):
             del providers["key"]
-
-
-class TestEmailProvidersGuards:
-    """Tests for EmailProviders assertion guards."""
-
-    def test_get_email_provider_assert_after_init(self, test_domain):
-        """get_email_provider passes through assert after initialization."""
-        with test_domain.domain_context():
-            test_domain.init(traverse=False)
-            provider = test_domain.email_providers.get_email_provider("default")
-            assert provider is not None
-
-    def test_send_email_assert_after_init(self, test_domain):
-        """send_email passes through assert after initialization."""
-        # Just verify the assert path doesn't fail when providers are initialized
-        email_providers = EmailProviders.__new__(EmailProviders)
-        email_providers._email_providers = {"default": "mock_provider"}
-        # The assert self._email_providers is not None should pass
-        assert email_providers._email_providers is not None
 
 
 class TestOptionsMixinDefaultOptions:
@@ -807,47 +787,3 @@ class TestRepositoryMissingDefault:
             ),
         ):
             domain.providers._initialize()
-
-
-class TestEmailSendEmail:
-    """Tests for EmailProviders.send_email assert path (email/__init__.py 51-56)."""
-
-    def test_send_email_exercises_assert_and_dispatch(self, test_domain):
-        """send_email initializes lazily and dispatches to provider."""
-        from protean.core.email import BaseEmail
-
-        class TestWelcome(BaseEmail):
-            pass
-
-        test_domain.register(TestWelcome)
-        test_domain.init(traverse=False)
-
-        with test_domain.domain_context():
-            email = TestWelcome(
-                subject="Hello",
-                to=["test@example.com"],
-                text="Test body",
-            )
-            # send_email should exercise lazy init + assert + dispatch
-            test_domain.send_email(email)
-
-    def test_send_email_lazy_init(self, test_domain):
-        """send_email triggers lazy init when _email_providers is None."""
-        from protean.core.email import BaseEmail
-
-        class LazyTestEmail(BaseEmail):
-            pass
-
-        test_domain.register(LazyTestEmail)
-        test_domain.init(traverse=False)
-
-        with test_domain.domain_context():
-            # Reset to None to exercise lazy init path
-            test_domain.email_providers._email_providers = None
-
-            email = LazyTestEmail(
-                subject="Lazy Hello",
-                to=["test@example.com"],
-                text="Lazy test body",
-            )
-            test_domain.send_email(email)

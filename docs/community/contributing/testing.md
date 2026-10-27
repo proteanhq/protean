@@ -273,7 +273,7 @@ Pytest markers are used to categorize tests and control their execution. Protean
 
 - `slow`: Tests that take longer to run and may be skipped during development
 - `pending`: Tests that are not yet fully implemented or are waiting for a feature
-- `sqlite`, `postgresql`, `elasticsearch`, `redis`, `message_db`, `sendgrid`: Tests for specific adapters
+- `sqlite`, `postgresql`, `elasticsearch`, `redis`, `message_db`: Tests for specific adapters
 - `database`: Tests that require database interaction
 - `broker_common`: Tests for message broker functionality
 - `eventstore`: Tests for event store functionality

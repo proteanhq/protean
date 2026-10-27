@@ -23,7 +23,6 @@ from pathlib import Path
 import pytest
 
 import protean
-from protean._deprecation import DEPRECATIONS
 from protean.dx import pack
 from protean.ir.diagnostics import (
     REGISTRY,
@@ -145,9 +144,7 @@ class TestGoldenSnapshot:
             "CONFIG_INVALID_FIELD_DEFAULTS",
             "CONFIG_UNRESOLVED_ENV_VAR",
             "CROSS_AGGREGATE_REFERENCE",
-            "DEPRECATED_CONFIG",
             "DEPRECATED_ELEMENT",
-            "DEPRECATED_EMAIL",
             "DEPRECATED_FIELD",
             "DEPRECATED_IMPORT",
             "DEPRECATED_OPTION",
@@ -296,9 +293,7 @@ class TestMetadataSnapshot:
         "CONFIG_INVALID_FIELD_DEFAULTS": "c8c416d9a8395327",
         "CONFIG_UNRESOLVED_ENV_VAR": "de62569dadbc3090",
         "CROSS_AGGREGATE_REFERENCE": "dac1046534ebd07a",
-        "DEPRECATED_CONFIG": "3d79ec9da488e2f2",
         "DEPRECATED_ELEMENT": "5ae99f3b24d74d4b",
-        "DEPRECATED_EMAIL": "ff0bb5d9c5d564b1",
         "DEPRECATED_FIELD": "19ea505765933f5d",
         "DEPRECATED_IMPORT": "76194fd361610560",
         "DEPRECATED_OPTION": "41573660a59e367d",
@@ -374,22 +369,6 @@ class TestAggregateTooLargeText:
         meaning = REGISTRY[DiagnosticCode.AGGREGATE_TOO_LARGE].meaning
         assert "entities" in meaning
         assert "field" not in meaning.lower()
-
-
-class TestEmailRationaleVersion:
-    # ``diagnostics`` cannot import the deprecation registry (the registry
-    # imports ``DiagnosticCode`` from it), so the email rationales spell the
-    # removal version out. Keep that literal in step with the registry.
-    @pytest.mark.parametrize(
-        "code, slug",
-        [
-            (DiagnosticCode.DEPRECATED_EMAIL, "email_element"),
-            (DiagnosticCode.DEPRECATED_CONFIG, "email_providers_config"),
-        ],
-    )
-    def test_rationale_names_the_registry_removal_version(self, code, slug):
-        removal = DEPRECATIONS[slug].removal
-        assert f"scheduled for removal in v{removal}." in REGISTRY[code].rationale
 
 
 class TestResolve:

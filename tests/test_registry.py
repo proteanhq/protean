@@ -95,7 +95,6 @@ def test_properties_method_returns_a_dictionary_of_all_protean_elements():
         "command_handlers": DomainObjects.COMMAND_HANDLER.value,
         "commands": DomainObjects.COMMAND.value,
         "domain_services": DomainObjects.DOMAIN_SERVICE.value,
-        "emails": DomainObjects.EMAIL.value,
         "entities": DomainObjects.ENTITY.value,
         "event_handlers": DomainObjects.EVENT_HANDLER.value,
         "event_sourced_repositories": DomainObjects.EVENT_SOURCED_REPOSITORY.value,
