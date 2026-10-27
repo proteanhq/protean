@@ -30,6 +30,7 @@ from protean.utils.eventing import (
     Metadata,
 )
 from protean.utils.globals import current_domain
+from tests.shared import FrozenClock
 
 
 class Product(BaseAggregate):
@@ -416,3 +417,47 @@ class TestMarkerCleanup:
         # No projector opted in → no marker table, nothing to clean.
         assert current_domain.has_idempotent_consumers is False
         assert cleanup_processed_messages(test_domain) == 0
+
+
+# An instant in the real past: a marker stamped from real UTC would look years
+# younger than this clock says, so the boundary tests below fail if ``mark()``
+# ignores the domain clock.
+T0 = datetime(2020, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+
+class TestMarkerAgeOnTheDomainClock:
+    """``mark()`` and ``cleanup_old_markers`` measure age on the same clock."""
+
+    def test_clock_ahead_of_real_time_keeps_a_fresh_marker(self, test_domain):
+        _register(test_domain, idempotent=True)
+        test_domain.clock = FrozenClock(datetime.now(UTC) + timedelta(days=8))
+        repo = current_domain._get_processed_message_repo("default")
+        repo.mark("m1", "h")
+
+        assert repo.cleanup_old_markers(retention_hours=168, batch_size=5000) == 0
+        assert repo.is_processed("m1", "h")
+
+    def test_retention_boundary_follows_the_domain_clock(self, test_domain):
+        _register(test_domain, idempotent=True)
+        clock = FrozenClock(T0)
+        test_domain.clock = clock
+        repo = current_domain._get_processed_message_repo("default")
+        repo.mark("m1", "h")
+
+        clock.advance(timedelta(hours=167))
+        assert repo.cleanup_old_markers(retention_hours=168, batch_size=5000) == 0
+        assert repo.is_processed("m1", "h")
+
+        clock.advance(timedelta(hours=2))
+        assert repo.cleanup_old_markers(retention_hours=168, batch_size=5000) == 1
+        assert not repo.is_processed("m1", "h")
+
+    def test_mark_stamps_processed_at_from_the_domain_clock(self, test_domain):
+        _register(test_domain, idempotent=True)
+        test_domain.clock = FrozenClock(T0)
+        repo = current_domain._get_processed_message_repo("default")
+        repo.mark("m1", "h")
+
+        rows = repo._dao.query.filter(message_id="m1", handler="h").all().items
+        assert len(rows) == 1
+        assert rows[0].processed_at == T0
