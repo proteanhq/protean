@@ -2,6 +2,9 @@
 
 **Status:** Accepted
 
+> Amended October 2026, see "Being in the map does not make an aggregate's
+> events commit" under Decision.
+
 **Date:** October 2026
 
 ## Context
@@ -47,10 +50,17 @@ A Unit of Work holds one instance of each aggregate for the whole transaction.
   match changes.
 - An aggregate is added to the map on its first read or save in the
   transaction. This applies to state-based and event-sourced aggregates.
-- Being in the map does not make an event-sourced aggregate's events commit.
-  Its events are its state, and `add()` raises its fact event, so its events
-  commit only once `add()` has saved it. A state-based aggregate's events
-  commit once it is read, as before.
+- Being in the map does not make an aggregate's events commit. An
+  event-sourced aggregate's events are its state, and `add()` raises its fact
+  event, so its events commit only once `add()` has saved it.
+
+  *Amended (October 2026): a state-based aggregate's events also commit only
+  once `add()` has saved it in the transaction. Its field changes are saved
+  only through `add()`, so saving the events of an aggregate that was only
+  read stored an event without the state change it records. Events raised on
+  an aggregate that was only read are discarded at commit, with no warning.
+  The first version of this decision kept the earlier rule, under which a
+  state-based aggregate's events committed once it was read.*
 - A read through a DAO set to work outside the Unit of Work (`outside_uow()`)
   and a temporal query (`at_version` or `as_of`) do not use the map.
 
@@ -60,17 +70,15 @@ them across copies.
 ## Consequences
 
 - Events raised on an aggregate in a transaction are all gathered at commit,
-  however many times the aggregate was read. An event-sourced aggregate's
-  events are gathered once `add()` has saved it.
+  however many times the aggregate was read, once `add()` has saved it.
 - Version and event-position conflicts inside one transaction come only from
   another writer.
 - A second `get()` of an aggregate in a Unit of Work returns the first result,
   with any changes made to it that were not saved. This is how the identity
   map in SQLAlchemy's session and in Hibernate behaves. Code that read an
   aggregate again to throw its changes away now gets them back. Saving it with
-  `add()` writes those changes. The events raised with them are saved at
-  commit even without `add()` on a state-based aggregate, and only through
-  `add()` on an event-sourced one. To abandon a change, code raises an
+  `add()` writes those changes and the events raised with them. Without
+  `add()`, neither is saved. To abandon a change, code raises an
   exception so the Unit of Work rolls back, or reads the stored state in a new
   Unit of Work. A change that breaks an invariant needs neither, because
   Protean undoes the assignment when the check fails.

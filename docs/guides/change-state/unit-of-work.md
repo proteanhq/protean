@@ -176,8 +176,10 @@ sequenceDiagram
     UoW->>IM: Clear events from tracked aggregates
 ```
 
-1. **Gather events**: The UoW walks its identity map and collects all
-   domain events that aggregates have raised (via `self.raise_()`).
+1. **Gather events**: The UoW walks its identity map and collects the
+   domain events raised (via `self.raise_()`) on each aggregate that `add()`
+   saved in this transaction. Events raised on an aggregate that was only
+   read are not saved.
 
 2. **Write outbox messages**: Each event is serialized and written to the
    outbox table as part of the same database transaction. The outbox ensures
@@ -240,10 +242,15 @@ three purposes:
    back. To read the stored state, read the aggregate in a new UoW.
 
 2. **Event collection**: At commit time, the UoW walks the identity map to
-   gather all events raised by tracked aggregates. Without the identity map,
-   events raised between `add()` and `commit()` would be lost. An
-   event-sourced aggregate's events are collected only once `add()` has saved
-   it, because `add()` is where its fact event is raised.
+   gather the events raised by the aggregates that `add()` saved. An
+   aggregate's events are saved only when it is passed to `add()`. Its field
+   changes are saved only through `add()`, so an event saved without it
+   would record a change that never reached the database. For an
+   event-sourced aggregate, `add()` is also where its fact event is raised.
+   Events raised on an aggregate that was only read are discarded at commit,
+   with no warning. Once `add()` has saved an aggregate, events raised on it
+   later in the same transaction are gathered too, because the map holds
+   that instance until commit.
 
 3. **Per-provider tracking**: Aggregates are grouped by their database
    provider, so the UoW can commit each provider's session independently.

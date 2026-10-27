@@ -333,8 +333,9 @@ class BaseDAO(metaclass=ABCMeta):
 
         Otherwise the loaded aggregate's event position is synced from the
         event store and, inside a Unit of Work, the aggregate is registered so
-        that the UoW collects the events it raises and persists them on
-        commit. Non-aggregate entities are returned unchanged.
+        that later reads return this instance. The events it raises are
+        persisted on commit only once ``add()`` saves it. Non-aggregate
+        entities are returned unchanged.
         """
         if not isinstance(entity, BaseAggregate):
             return entity

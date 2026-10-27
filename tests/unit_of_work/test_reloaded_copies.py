@@ -98,7 +98,7 @@ def test_a_second_get_returns_the_instance_already_tracked(test_domain, tally):
 
         assert second is first
         assert found is first
-        tracked = [item for _, item in uow._items_to_commit()]
+        tracked = [item for m in uow._identity_map.values() for item in m.values()]
         assert len(tracked) == 1
         assert tracked[0] is first
 
@@ -300,6 +300,7 @@ def test_a_result_cached_before_the_unit_of_work_is_tracked_by_it(test_domain, t
         found = query.first
         assert repo.get(tally.id) is found
         found.bump()
+        repo.add(found)
 
     assert _bumped(test_domain, tally) == [(0, 1)]
 
@@ -325,10 +326,12 @@ def test_every_read_of_a_query_evaluated_earlier_returns_tracked_instances(
         assert all(
             a is b for read in reads for a, b in zip(read, (first, second), strict=True)
         )
-        assert len(uow._items_to_commit()) == 2
+        assert sum(len(m) for m in uow._identity_map.values()) == 2
 
         first.bump()
         second.bump()
+        repo.add(first)
+        repo.add(second)
 
     assert _bumped(test_domain, tally) == [(0, 1)]
     assert _bumped(test_domain, other) == [(0, 1)]
