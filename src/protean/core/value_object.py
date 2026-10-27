@@ -338,10 +338,15 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
             return False
         # The exact-type guard above guarantees ``other`` is the same
         # ``BaseValueObject`` subclass, which static checkers narrow for us.
-        return self.to_dict() == other.to_dict()
+        return self._field_values() == other._field_values()
 
     def __hash__(self) -> int:
-        return hash(frozenset(self.to_dict().items()))
+        return hash(self._field_values())
+
+    def _field_values(self) -> tuple[Any, ...]:
+        # Compare raw values, not ``to_dict()`` output: serialization keeps a
+        # Decimal's scale, so ``9.99`` and ``9.9900`` would differ as strings.
+        return tuple(getattr(self, fname, None) for fname in getattr(self, _FIELDS, {}))
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}: {self}>"
