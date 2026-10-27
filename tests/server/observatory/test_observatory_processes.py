@@ -142,8 +142,10 @@ def fulfillment(test_domain):
     """The test domain with the order-fulfillment process manager registered.
 
     The test domain's default subscription type is ``stream``, so each of the
-    two stream categories becomes a Redis stream subscription.
+    two stream categories becomes a Redis stream subscription. The broker's raw
+    client is an empty fake, so the endpoints never read a live Redis server.
     """
+    test_domain.brokers.get("default").redis_instance = _FakeRedisStreams()
     return _register_fulfillment(test_domain)
 
 
@@ -166,6 +168,9 @@ class _FakeRedisStreams:
 
     def xrange(self, stream, min="-", max="+", count=None):
         return []
+
+    def flushdb(self):
+        pass
 
 
 def _group(pm_cls, *, lag, pending=0, consumers=1):

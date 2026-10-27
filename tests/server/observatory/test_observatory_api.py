@@ -1393,8 +1393,12 @@ def _dlq_client(domain: Domain) -> TestClient:
 _WITHOUT_DLQ = pytest.mark.parametrize(
     "make_domain",
     [
-        pytest.param(_domain_without_broker, id="no_broker"),
-        pytest.param(_domain_without_dlq, id="no_capability"),
+        pytest.param(
+            _domain_without_broker, id="no_broker", marks=pytest.mark.no_test_domain
+        ),
+        pytest.param(
+            _domain_without_dlq, id="no_capability", marks=pytest.mark.no_test_domain
+        ),
     ],
 )
 

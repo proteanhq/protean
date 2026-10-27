@@ -1098,6 +1098,7 @@ class TestMergeSubscriptionStatusNoMatch:
         assert handlers[0].get("subscription") is None
 
 
+@pytest.mark.no_test_domain
 class TestEndpointsWithRedis:
     """The endpoints with a Redis broker whose raw client is a fake, and the
     failures each endpoint survives."""
