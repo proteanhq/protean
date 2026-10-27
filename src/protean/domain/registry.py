@@ -103,7 +103,6 @@ class _DomainRegistry:
         command_handlers: dict[str, DomainRecord]
         database_models: dict[str, DomainRecord]
         domain_services: dict[str, DomainRecord]
-        emails: dict[str, DomainRecord]
         entities: dict[str, DomainRecord]
         events: dict[str, DomainRecord]
         event_handlers: dict[str, DomainRecord]

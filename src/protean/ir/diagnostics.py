@@ -48,9 +48,7 @@ class DiagnosticCode(StrEnum):
     CONFIG_INVALID_FIELD_DEFAULTS = "CONFIG_INVALID_FIELD_DEFAULTS"
     CONFIG_UNRESOLVED_ENV_VAR = "CONFIG_UNRESOLVED_ENV_VAR"
     CROSS_AGGREGATE_REFERENCE = "CROSS_AGGREGATE_REFERENCE"
-    DEPRECATED_CONFIG = "DEPRECATED_CONFIG"
     DEPRECATED_ELEMENT = "DEPRECATED_ELEMENT"
-    DEPRECATED_EMAIL = "DEPRECATED_EMAIL"
     DEPRECATED_FIELD = "DEPRECATED_FIELD"
     DEPRECATED_IMPORT = "DEPRECATED_IMPORT"
     DEPRECATED_OPTION = "DEPRECATED_OPTION"
@@ -421,18 +419,6 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
             "aggregate through its own repository when needed."
         ),
     ),
-    DiagnosticCode.DEPRECATED_CONFIG: CodeMeta(
-        category="deprecation",
-        level="info",
-        meaning="A configuration block uses a deprecated subsystem.",
-        rationale=(
-            "The email subsystem is deprecated and scheduled for removal in v0.19.0."
-        ),
-        fix=(
-            "Migrate off the deprecated configuration block before the "
-            "scheduled removal version."
-        ),
-    ),
     DiagnosticCode.DEPRECATED_ELEMENT: CodeMeta(
         category="deprecation",
         level="info",
@@ -443,18 +429,6 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         ),
         fix=(
             "Migrate to the replacement element before the scheduled removal version."
-        ),
-    ),
-    DiagnosticCode.DEPRECATED_EMAIL: CodeMeta(
-        category="deprecation",
-        level="info",
-        meaning="An element uses the deprecated email subsystem.",
-        rationale=(
-            "The email subsystem is deprecated and scheduled for removal in v0.19.0."
-        ),
-        fix=(
-            "Notify from an event handler or subscriber that calls an "
-            "application-level notification service instead."
         ),
     ),
     DiagnosticCode.DEPRECATED_FIELD: CodeMeta(

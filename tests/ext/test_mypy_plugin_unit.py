@@ -284,8 +284,8 @@ class TestExtractDecoratorNameFromExpr:
 class TestDecoratorBaseClassMap:
     """Tests for DECORATOR_BASE_CLASS_MAP completeness and correctness."""
 
-    def test_has_19_entries(self):
-        assert len(DECORATOR_BASE_CLASS_MAP) == 19
+    def test_has_18_entries(self):
+        assert len(DECORATOR_BASE_CLASS_MAP) == 18
 
     def test_all_expected_decorators_present(self):
         expected = {
@@ -307,7 +307,6 @@ class TestDecoratorBaseClassMap:
             "process_manager",
             "repository",
             "database_model",
-            "email",
         }
         assert set(DECORATOR_BASE_CLASS_MAP.keys()) == expected
 

@@ -20,12 +20,14 @@ def setup_db():
     )
     with domain.domain_context():
         # Create all associated tables
-        from .elements import MssqlTestEntity
+        from .elements import MssqlTestEntity, MssqlTimestampedEntity
 
         domain.register(MssqlTestEntity)
+        domain.register(MssqlTimestampedEntity)
         domain.init(traverse=False)
 
         domain.repository_for(MssqlTestEntity)._dao
+        domain.repository_for(MssqlTimestampedEntity)._dao
 
         default_provider = domain.providers["default"]
         default_provider._metadata.create_all(default_provider._engine)

@@ -80,9 +80,6 @@ def pytest_addoption(parser):
         "--message_db", action="store_true", default=False, help="Run Redis based tests"
     )
     parser.addoption(
-        "--sendgrid", action="store_true", default=False, help="Run Sendgrid tests"
-    )
-    parser.addoption(
         "--service-tests",
         action="store",
         default="all",
@@ -149,7 +146,6 @@ SERVICE_KEYWORDS = (
     "mysql",
     "redis",
     "message_db",
-    "sendgrid",
 )
 
 
@@ -180,7 +176,7 @@ def pytest_collection_modifyitems(config, items):
 
     run_slow = run_pending = run_sqlite = run_postgresql = run_elasticsearch = (
         run_redis
-    ) = run_message_db = run_sendgrid = run_mssql = run_mysql = False
+    ) = run_message_db = run_mssql = run_mysql = False
 
     if config.getoption("--slow"):
         # --slow given in cli: do not skip slow tests
@@ -210,9 +206,6 @@ def pytest_collection_modifyitems(config, items):
     if config.getoption("--message_db"):
         run_message_db = True
 
-    if config.getoption("--sendgrid"):
-        run_sendgrid = True
-
     skip_slow = pytest.mark.skip(reason="need --slow option to run")
     skip_pending = pytest.mark.skip(reason="need --pending option to run")
     skip_sqlite = pytest.mark.skip(reason="need --sqlite option to run")
@@ -222,7 +215,6 @@ def pytest_collection_modifyitems(config, items):
     skip_mysql = pytest.mark.skip(reason="need --mysql option to run")
     skip_redis = pytest.mark.skip(reason="need --redis option to run")
     skip_message_db = pytest.mark.skip(reason="need --message_db option to run")
-    skip_sendgrid = pytest.mark.skip(reason="need --sendgrid option to run")
 
     for item in items:
         if "slow" in item.keywords and run_slow is False:
@@ -243,8 +235,6 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_redis)
         if "message_db" in item.keywords and run_message_db is False:
             item.add_marker(skip_message_db)
-        if "sendgrid" in item.keywords and run_sendgrid is False:
-            item.add_marker(skip_sendgrid)
 
         # Automatically add the `db` fixture to tests marked with `database`
         #   or any database capability marker, to setup and destroy database artifacts

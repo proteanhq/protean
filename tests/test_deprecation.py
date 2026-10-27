@@ -335,10 +335,6 @@ class TestExternalStacklevel:
 _TO_0_19 = (
     "is_event_sourced_alias",
     "command_published_option",
-    "email_element",
-    "email_providers_config",
-    "get_email_provider",
-    "send_email",
     "method_field",
     "nested_field",
     "list_pickled",
@@ -375,7 +371,5 @@ class TestRegistryRemovalVersions:
         assert f"Will be removed in v{removal}." in str(caught[0].message)
 
     def test_runtime_reasons_name_the_class_each_entry_emits(self):
-        for slug in ("get_email_provider", "send_email"):
-            assert "RemovedInProtean019Warning" in (DEPRECATIONS[slug].reason or "")
         for slug in _TO_0_20:
             assert "RemovedInProtean020Warning" in (DEPRECATIONS[slug].reason or "")

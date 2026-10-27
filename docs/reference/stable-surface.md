@@ -177,6 +177,7 @@ or `protean.integrations.*`; see their own reference pages for those.
 | `g` | `protean` | Stable |
 | `get_version` | `protean` | Stable |
 | `handle` | `protean` | Stable |
+| `has_domain_context` | `protean` | Stable |
 | `invariant` | `protean` | Stable |
 | `processing_priority` | `protean` | Stable |
 | `read` | `protean` | Stable |

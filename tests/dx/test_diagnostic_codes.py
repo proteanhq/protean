@@ -96,9 +96,7 @@ _EXCLUDED_CODES = {
     # test_no_lint_exclusion_is_already_taught enforces that.
     # A deprecation notice's fix is specific to the API being deprecated, not a
     # reusable modeling convention a skill teaches.
-    "DEPRECATED_CONFIG": "deprecation notice; fix is API-specific",
     "DEPRECATED_ELEMENT": "deprecation notice; fix is API-specific",
-    "DEPRECATED_EMAIL": "deprecation notice; fix is API-specific",
     "DEPRECATED_FIELD": "deprecation notice; fix is API-specific",
     "DEPRECATED_IMPORT": "deprecation notice; fix is API-specific",
     "DEPRECATED_OPTION": "deprecation notice; fix is API-specific",

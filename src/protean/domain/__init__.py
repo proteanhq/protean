@@ -81,12 +81,7 @@ if TYPE_CHECKING:
 
 from inflection import parameterize, titleize, transliterate, underscore
 
-from protean._deprecation import (
-    deprecated_from_registry,
-    external_stacklevel,
-    warn_from_registry,
-)
-from protean.adapters import Brokers, Caches, EmailProviders, Providers
+from protean.adapters import Brokers, Caches, Providers
 from protean.adapters.event_store import EventStore
 from protean.core.aggregate import aggregate_factory
 from protean.core.application_service import application_service_factory
@@ -94,7 +89,6 @@ from protean.core.command import BaseCommand, command_factory
 from protean.core.command_handler import BaseCommandHandler, command_handler_factory
 from protean.core.database_model import BaseDatabaseModel, database_model_factory
 from protean.core.domain_service import domain_service_factory
-from protean.core.email import email_factory
 from protean.core.entity import entity_factory
 from protean.core.event import BaseEvent, domain_event_factory
 from protean.core.event_handler import event_handler_factory
@@ -183,7 +177,7 @@ from protean.utils.telemetry import (
 )
 
 from .command_processor import CommandProcessor
-from .config import Config2, ConfigAttribute, _default_config
+from .config import Config2, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals
 from .handler_setup import HandlerConfigurator
 from .infrastructure import InfrastructureManager
@@ -384,7 +378,6 @@ class Domain:
         self.event_store: EventStore = EventStore(self)
         self.brokers: Brokers = Brokers(self)
         self.caches: Caches = Caches(self)
-        self.email_providers: EmailProviders = EmailProviders(self)
 
         # Cache for holding Model to Entity/Aggregate associations
         # Structure mirrors Providers._repositories:
@@ -1007,20 +1000,6 @@ class Domain:
             for constant, value in config_obj["custom"].items():
                 setattr(self, constant, value)
 
-        # The email subsystem is deprecated, removed at v0.19.0.
-        # ``load_config`` runs in ``__init__``, so this fires uniformly through
-        # every bootstrap path (programmatic ``Domain()``, ``protean server``,
-        # ``protean shell``, ``protean test``, FastAPI). The default
-        # ``email_providers`` block is always present via ``_deep_merge``, so
-        # the equality guard is what keeps an untouched config silent: warn only
-        # when the operator has configured a non-default block.
-        if config_obj.get("email_providers") != _default_config()["email_providers"]:
-            warn_from_registry(
-                "email_providers_config",
-                "Configuring `email_providers`",
-                stacklevel=3,
-            )
-
         return config_obj
 
     def domain_context(self, **kwargs: Any) -> DomainContext:
@@ -1093,7 +1072,6 @@ class Domain:
             DomainObjects.EVENT_HANDLER.value: event_handler_factory,
             DomainObjects.EVENT_SOURCED_REPOSITORY.value: event_sourced_repository_factory,
             DomainObjects.DOMAIN_SERVICE.value: domain_service_factory,
-            DomainObjects.EMAIL.value: email_factory,
             DomainObjects.ENTITY.value: entity_factory,
             DomainObjects.DATABASE_MODEL.value: database_model_factory,
             DomainObjects.PROCESS_MANAGER.value: process_manager_factory,
@@ -1145,18 +1123,6 @@ class Domain:
         **opts: Any,
     ) -> type[_T]:
         """Register class into the domain"""
-        # The email subsystem is deprecated, removed at v0.19.0.
-        # This is the single funnel for both ``@domain.email`` (via
-        # ``_domain_element``) and ``domain.register(SomeEmail)``, so one guard
-        # here covers every registration path. Framework code registers no
-        # email elements, so this only fires on user code.
-        if element_type == DomainObjects.EMAIL:
-            warn_from_registry(
-                "email_element",
-                "The email element",
-                stacklevel=external_stacklevel(),
-            )
-
         # Check if `element_cls` is already a subclass of the Element Type
         #   which would be the case in an explicit declaration like `class Account(BaseEntity):`
         #
@@ -1776,37 +1742,6 @@ class Domain:
         self, _cls: type[_T] | None = None, **kwargs: Any
     ) -> type[_T] | Callable[[type[_T]], type[_T]]:
         return self._domain_element(DomainObjects.ENTITY, _cls=_cls, **kwargs)
-
-    @overload
-    def email(self, _cls: type[_T], **kwargs: Any) -> type[_T]: ...  # pragma: no cover
-    @overload
-    def email(
-        self, _cls: None = ..., **kwargs: Any
-    ) -> Callable[[type[_T]], type[_T]]: ...
-    @dataclass_transform(
-        field_specifiers=(
-            Auto,
-            Boolean,
-            Date,
-            DateTime,
-            DictField,
-            Float,
-            HasMany,
-            HasOne,
-            Identifier,
-            Integer,
-            ListField,
-            Reference,
-            Status,
-            String,
-            Text,
-            ValueObject,
-        )
-    )
-    def email(
-        self, _cls: type[_T] | None = None, **kwargs: Any
-    ) -> type[_T] | Callable[[type[_T]], type[_T]]:
-        return self._domain_element(DomainObjects.EMAIL, _cls=_cls, **kwargs)
 
     @overload
     def database_model(
@@ -2794,18 +2729,6 @@ class Domain:
             Dictionary mapping projection class names to their RebuildResult.
         """
         return rebuild_all_projections(self, batch_size)
-
-    #######################
-    # Email Functionality #
-    #######################
-
-    @deprecated_from_registry("get_email_provider")
-    def get_email_provider(self, provider_name: str) -> Any:
-        return self.email_providers.get_email_provider(provider_name)
-
-    @deprecated_from_registry("send_email")
-    def send_email(self, email: Any) -> Any:
-        return self.email_providers.send_email(email)
 
     def make_shell_context(self) -> dict[str, Any]:
         """Return a dictionary of context variables for a shell session."""
