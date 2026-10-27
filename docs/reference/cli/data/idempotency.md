@@ -19,8 +19,8 @@ All commands accept a `--domain` option to specify the domain module path
 Deletes idempotency markers older than the retention window, in bounded batches.
 A marker is only useful while its event can still be redelivered, so older
 markers are safe to remove. A marker's age is measured on the domain clock
-(`domain.clock`, real UTC by default). Run it periodically from a cron job; it is not
-auto-scheduled today.
+(`domain.clock`, real UTC by default). Run it periodically from a cron job; it
+is not auto-scheduled today.
 
 ```bash
 # Prune markers older than the configured retention window

@@ -370,8 +370,10 @@ class Domain:
         self._identity_function = identity_function
 
         # Injectable source of "now" for deadline, lock, and retry-backoff time
-        # comparisons. Defaults to real UTC; tests assign a stub clock to make
-        # boundary behavior deterministic. See :class:`protean.utils.Clock`.
+        # comparisons, and for the stamps those comparisons read later (such as
+        # outbox and idempotency-marker timestamps). Defaults to real UTC; tests
+        # assign a stub clock to make boundary behavior deterministic. See
+        # :class:`protean.utils.Clock`.
         self.clock: Clock = SystemClock()
 
         self.providers: Providers = Providers(self)

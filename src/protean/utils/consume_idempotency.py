@@ -63,8 +63,8 @@ class ProcessedMessage(BaseAggregate):
     handler: Annotated[str, Field(max_length=255)]
     # ``mark()`` stamps this from the domain clock, so a marker's age is measured
     # on the same clock ``cleanup_old_markers`` reads. The default factory only
-    # covers direct construction: a default_factory has no domain to read a
-    # clock from.
+    # covers direct construction: it gets no domain argument and may run with no
+    # domain context active, so it falls back to real UTC.
     processed_at: StdlibDatetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

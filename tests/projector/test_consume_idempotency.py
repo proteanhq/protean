@@ -15,6 +15,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
 from protean.core.projector import BaseProjector, on
+from protean.domain import Domain
 from protean.exceptions import ConfigurationError, ObjectNotFoundError
 from protean.fields import Identifier, Integer, String
 from protean.utils import fqn
@@ -105,6 +106,22 @@ def _register(test_domain, *, idempotent: bool):
         idempotent=idempotent,
     )
     test_domain.init(traverse=False)
+
+
+def _assert_redelivery_skipped_after_cleanup_with_clock_ahead(test_domain):
+    """A projector writes the marker, cleanup runs, the event is redelivered."""
+    _register(test_domain, idempotent=True)
+    _create_tables(test_domain)
+    test_domain.clock = FrozenClock(datetime.now(UTC) + timedelta(days=8))
+    product_id = str(uuid4())
+    message = _review_message(product_id)
+
+    RatingProjector._handle(message)
+    assert cleanup_processed_messages(test_domain) == 0
+    RatingProjector._handle(message)  # redelivery after cleanup
+
+    stats = current_domain.repository_for(ProductStats).get(product_id)
+    assert stats.total_reviews == 1
 
 
 class TestConsumeIdempotency:
@@ -267,6 +284,11 @@ class TestConsumeIdempotencyRelational:
         assert repo.cleanup_old_markers(retention_hours=168, batch_size=5000) == 1
         assert not repo.is_processed("old", "h")
         assert repo.is_processed("recent", "h")
+
+    def test_redelivery_after_cleanup_with_the_clock_ahead_on_a_relational_provider(
+        self, test_domain
+    ):
+        _assert_redelivery_skipped_after_cleanup_with_clock_ahead(test_domain)
 
     @pytest.mark.sqlite
     def test_duplicate_marker_is_rejected_by_unique_index(self, test_domain):
@@ -457,6 +479,25 @@ class TestMarkerAgeOnTheDomainClock:
         test_domain.clock = FrozenClock(T0)
         repo = current_domain._get_processed_message_repo("default")
         repo.mark("m1", "h")
+
+        rows = repo._dao.query.filter(message_id="m1", handler="h").all().items
+        assert len(rows) == 1
+        assert rows[0].processed_at == T0
+
+    def test_redelivery_after_cleanup_is_skipped_with_the_clock_ahead(
+        self, test_domain
+    ):
+        _assert_redelivery_skipped_after_cleanup_with_clock_ahead(test_domain)
+
+    def test_mark_reads_the_clock_of_the_repository_domain(self, test_domain):
+        _register(test_domain, idempotent=True)
+        test_domain.clock = FrozenClock(T0)
+        repo = current_domain._get_processed_message_repo("default")
+
+        other = Domain(name="Other")
+        other.clock = FrozenClock(T0 + timedelta(days=30))
+        with other.domain_context():
+            repo.mark("m1", "h")
 
         rows = repo._dao.query.filter(message_id="m1", handler="h").all().items
         assert len(rows) == 1
