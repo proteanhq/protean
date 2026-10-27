@@ -123,7 +123,7 @@ When no UoW is active:
 
 ## Identity Map
 
-The UoW keeps an **identity map**: one instance of each aggregate it loads or saves during the transaction. At commit it collects the events those aggregates raised and dispatches them. An event-sourced aggregate's events are collected only once `add()` has saved it. Once an aggregate is in the map, a `get()` or query of the same id in that UoW returns the same object, with any changes made to it since, so a second `get()` does not throw away unsaved changes. To abandon a change, raise an exception so the UoW rolls back; to read the stored state, use a new UoW. This holds for state-based and event-sourced aggregates. A temporal query on an event-sourced aggregate (`at_version` or `as_of`) does not use the map.
+The UoW keeps an **identity map**: one instance of each aggregate it loads or saves during the transaction. At commit it collects the events raised on the aggregates that `add()` saved in the transaction and dispatches them. This holds for state-based and event-sourced aggregates. Events raised on an aggregate that was only read are not saved, and nothing is logged, so call `repo.add()` after the last change to keep both the change and its events. Once an aggregate is in the map, a `get()` or query of the same id in that UoW returns the same object, with any changes made to it since, so a second `get()` does not throw away unsaved changes. To abandon a change, raise an exception so the UoW rolls back; to read the stored state, use a new UoW. This holds for state-based and event-sourced aggregates. A temporal query on an event-sourced aggregate (`at_version` or `as_of`) does not use the map.
 
 ## Transactional Guarantees
 
@@ -132,7 +132,7 @@ The UoW keeps an **identity map**: one instance of each aggregate it loads or sa
 | Handler succeeds | All changes committed together (atomic on providers with transactions) |
 | Handler raises exception | All changes rolled back (on Elasticsearch, writes already sent stay) |
 | Multiple `repo.add()` calls | All committed together |
-| Events raised during handler | Dispatched after successful commit |
+| Events raised during handler | Dispatched after successful commit, for aggregates passed to `repo.add()` |
 | Optimistic concurrency conflict | `ExpectedVersionError` raised, changes rolled back, and `@handle` re-runs the handler body (next section) |
 
 ## Retries on Version Conflicts

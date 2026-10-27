@@ -51,7 +51,7 @@ with domain.domain_context():
 ### On Success
 When a `@use_case` method completes without exception:
 1. The Unit of Work commits, and every write the method made becomes visible to other connections
-2. The domain events the aggregates raised are written during the commit, to the event store and, when the outbox is enabled, to the outbox
+2. The domain events raised on the aggregates passed to `repo.add()` are written during the commit, to the event store and, when the outbox is enabled, to the outbox. Events raised on an aggregate that was only read are not saved
 
 Before the commit, writes already reach the database inside the transaction. The session flushes them before each query, so reads in the same Unit of Work see them. Nothing is visible to other connections until the commit.
 

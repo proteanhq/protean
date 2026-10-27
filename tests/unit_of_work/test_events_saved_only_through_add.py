@@ -1,6 +1,6 @@
 """A Unit of Work saves an aggregate's events only once ``add()`` has saved it.
 
-A read alone tracks the aggregate, but what is raised on it is discarded at
+A read alone tracks the aggregate, but what is raised on it is not saved at
 commit, for state-based and event-sourced aggregates alike.
 """
 
@@ -10,9 +10,10 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
 from protean.core.unit_of_work import UnitOfWork
-from protean.domain import Domain
 from protean.fields import Identifier, Integer, String
+from protean.utils.mixins import handle
 
 
 class Bumped(BaseEvent):
@@ -72,26 +73,28 @@ class Ledger(BaseAggregate):
         self.name = event.name
 
 
-@pytest.fixture
-def test_domain():
-    """An outbox-enabled domain, so a test can check the outbox too."""
-    domain = Domain(name="Test")
-    domain.config["enable_outbox"] = True
-    domain.config["server"]["default_subscription_type"] = "stream"
+received: list[int] = []
 
-    with domain.domain_context():
-        yield domain
+
+class BumpedReceiver(BaseEventHandler):
+    @handle(Bumped)
+    def record(self, event: Bumped) -> None:
+        received.append(event.value)
 
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
+    test_domain.config["enable_outbox"] = True
+    test_domain.config["server"]["default_subscription_type"] = "stream"
     test_domain.register(Tally)
     test_domain.register(Bumped, part_of=Tally)
     test_domain.register(Marker)
     test_domain.register(Pinged, part_of=Marker)
-    test_domain.register(Ledger, is_event_sourced=True)
+    test_domain.register(Ledger, event_sourced=True)
     test_domain.register(Opened, part_of=Ledger)
     test_domain.register(Renamed, part_of=Ledger)
+    test_domain.register(BumpedReceiver, part_of=Tally)
+    received.clear()
     test_domain.init(traverse=False)
 
 
@@ -126,7 +129,7 @@ def test_a_read_and_raise_without_add_saves_no_event(test_domain, tally, caplog)
     stored_before = _stored_types(test_domain, tally)
     outbox_before = _outbox_types(test_domain)
 
-    with caplog.at_level(logging.DEBUG, logger="protean.core.unit_of_work"):
+    with caplog.at_level(logging.DEBUG, logger="protean"):
         with UnitOfWork():
             found = test_domain.repository_for(Tally).get(tally.id)
             found.bump()
@@ -138,9 +141,25 @@ def test_a_read_and_raise_without_add_saves_no_event(test_domain, tally, caplog)
     assert [
         record
         for record in caplog.records
-        if record.name == "protean.core.unit_of_work"
-        and record.levelno >= logging.WARNING
+        if record.name.startswith("protean") and record.levelno >= logging.WARNING
     ] == []
+
+
+def test_a_read_and_raise_without_add_reaches_no_handler(test_domain, tally):
+    with UnitOfWork():
+        test_domain.repository_for(Tally).get(tally.id).bump()
+
+    assert received == []
+
+
+def test_a_read_and_raise_with_add_reaches_the_handler(test_domain, tally):
+    with UnitOfWork():
+        repo = test_domain.repository_for(Tally)
+        found = repo.get(tally.id)
+        found.bump()
+        repo.add(found)
+
+    assert received == [1]
 
 
 def test_a_read_and_raise_with_add_saves_the_event_and_the_state(test_domain, tally):
@@ -170,15 +189,17 @@ def test_a_read_alone_saves_nothing(test_domain, tally):
     assert (reloaded.name, reloaded.value) == ("t", 0)
 
 
-def test_events_raised_after_add_in_the_same_transaction_are_saved(test_domain, tally):
+def test_a_second_change_saved_with_another_add_commits_both_events(test_domain, tally):
     with UnitOfWork():
         repo = test_domain.repository_for(Tally)
         found = repo.get(tally.id)
         found.bump()
         repo.add(found)
         found.bump()
+        repo.add(found)
 
     assert _stored_types(test_domain, tally).count(Bumped.__type__) == 2
+    assert test_domain.repository_for(Tally).get(tally.id).value == 2
 
 
 def test_only_the_added_aggregate_commits_its_events(test_domain, tally, caplog):

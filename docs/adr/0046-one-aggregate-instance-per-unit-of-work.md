@@ -58,7 +58,7 @@ A Unit of Work holds one instance of each aggregate for the whole transaction.
   once `add()` has saved it in the transaction. Its field changes are saved
   only through `add()`, so saving the events of an aggregate that was only
   read stored an event without the state change it records. Events raised on
-  an aggregate that was only read are discarded at commit, with no warning.
+  an aggregate that was only read are not saved at commit, with no warning.
   The first version of this decision kept the earlier rule, under which a
   state-based aggregate's events committed once it was read.*
 - A read through a DAO set to work outside the Unit of Work (`outside_uow()`)

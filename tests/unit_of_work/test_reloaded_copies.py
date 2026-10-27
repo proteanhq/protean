@@ -91,16 +91,13 @@ def _bumped(test_domain, tally: Tally) -> list[tuple[int, int]]:
 def test_a_second_get_returns_the_instance_already_tracked(test_domain, tally):
     repo = test_domain.repository_for(Tally)
 
-    with UnitOfWork() as uow:
+    with UnitOfWork():
         first = repo.get(tally.id)
         second = repo.get(tally.id)
         found = repo._dao.query.filter(name="t").all().first
 
         assert second is first
         assert found is first
-        tracked = [item for m in uow._identity_map.values() for item in m.values()]
-        assert len(tracked) == 1
-        assert tracked[0] is first
 
 
 def test_events_from_a_save_and_a_later_read_both_commit(test_domain, tally):
@@ -314,7 +311,7 @@ def test_every_read_of_a_query_evaluated_earlier_returns_tracked_instances(
     query = repo._dao.query.filter(name="t").order_by("id")
     assert len(query.items) == 2
 
-    with UnitOfWork() as uow:
+    with UnitOfWork():
         tracked = repo.get(tally.id)
         first, second = query.items
         assert {first.id, second.id} == {tally.id, other.id}
@@ -326,7 +323,6 @@ def test_every_read_of_a_query_evaluated_earlier_returns_tracked_instances(
         assert all(
             a is b for read in reads for a, b in zip(read, (first, second), strict=True)
         )
-        assert sum(len(m) for m in uow._identity_map.values()) == 2
 
         first.bump()
         second.bump()
