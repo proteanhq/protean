@@ -8,7 +8,7 @@ import types
 import typing
 import uuid
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import date, datetime, time, timedelta
 from typing import (
     TYPE_CHECKING,
@@ -20,7 +20,7 @@ from typing import (
     cast,
 )
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, PlainValidator, WrapValidator
 from pydantic import Field as PydanticField
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_core import PydanticUndefined
@@ -73,17 +73,23 @@ _VALUE_HASHED_TYPES: frozenset[type] = frozenset(
 )
 
 
-def _hashes_by_value(annotation: Any) -> bool:
+def _hashes_by_value(annotation: Any, metadata: Iterable[Any] = ()) -> bool:
     """Whether every value a field declared as *annotation* can hold has a
     hash that agrees with ``==``.
 
     The declaration decides, not the value: a custom type may accept equal
     values of which only some are hashable, so hashing whatever arrives would
-    give equal value objects different hashes.
+    give equal value objects different hashes. A ``PlainValidator`` or
+    ``WrapValidator`` (which every parsing ``Custom`` field carries) returns
+    whatever its function builds, so the declared type no longer bounds the
+    stored value and the field is not value-hashed.
     """
+    if any(isinstance(m, (PlainValidator, WrapValidator)) for m in metadata):
+        return False
     origin = typing.get_origin(annotation)
     if origin is typing.Annotated:
-        return _hashes_by_value(typing.get_args(annotation)[0])
+        base, *annotated_metadata = typing.get_args(annotation)
+        return _hashes_by_value(base, annotated_metadata)
     if origin is types.UnionType or origin is typing.Union:
         return all(_hashes_by_value(arg) for arg in typing.get_args(annotation))
     if origin is typing.Literal:
@@ -252,7 +258,7 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         cls.__value_hashed_fields__ = frozenset(
             fname
             for fname, finfo in cls.model_fields.items()
-            if _hashes_by_value(finfo.annotation)
+            if _hashes_by_value(finfo.annotation, finfo.metadata)
         )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

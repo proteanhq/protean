@@ -1,9 +1,10 @@
 import enum
 from datetime import date, datetime
 from decimal import Decimal as D
+from typing import Annotated
 
 import pytest
-from pydantic import PlainSerializer, PlainValidator
+from pydantic import PlainSerializer, PlainValidator, WrapValidator
 
 from protean.core.value_object import BaseValueObject
 from protean.fields import (
@@ -22,6 +23,7 @@ from protean.fields import (
     Text,
     ValueObject,
 )
+from protean.fields.spec import FieldSpec
 
 
 class Price(BaseValueObject):
@@ -158,7 +160,10 @@ def _custom(cls):
 
 
 def _single_field_vo(name, field):
-    return type(name, (BaseValueObject,), {"value": field})
+    if isinstance(field, FieldSpec):
+        return type(name, (BaseValueObject,), {"value": field})
+    # A raw annotation, such as ``Annotated[T, PlainValidator(...)]``
+    return type(name, (BaseValueObject,), {"__annotations__": {"value": field}})
 
 
 class Level(enum.Enum):
@@ -166,84 +171,168 @@ class Level(enum.Enum):
     HIGH = "high"
 
 
-# One row per (declared field type, pair of values). Each row says whether the
-# two values are equal; equal rows must also hash equal.
+class UnhashableDecimal(D):
+    """Equal to the ``Decimal`` of the same amount, but unhashable."""
+
+    def __eq__(self, other: object) -> bool:
+        return D.__eq__(self, other)
+
+    __hash__ = None  # type: ignore[assignment]
+
+
+def _keep_unhashable_decimal(value):
+    return value if isinstance(value, D) else UnhashableDecimal(str(value))
+
+
+# The space ``__hash__`` decides over, one row per cell. A field is hashed by
+# value only when its declared type bounds every value it can store to types
+# whose hash agrees with ``==``; any other field adds a constant. The cells:
+#
+# - declared type: a built-in scalar, ``None``, a ``Literal`` or ``Status``, an
+#   optional (union) of those, a nested value object, a container, or a custom
+#   type;
+# - whether a ``PlainValidator`` or ``WrapValidator`` replaces the cast, on a
+#   ``Custom`` field or a raw ``Annotated`` declaration;
+# - the stored values: equal or unequal, of the same or different types,
+#   hashable or not.
+#
+# Columns: case, field factory, first value, second value, whether the two
+# value objects are equal, whether the field is hashed by value.
 HASH_SPACE = [
-    ("string", lambda: String(), "a", "a", True),
-    ("string-differs", lambda: String(), "a", "b", False),
-    ("text", lambda: Text(), "a", "a", True),
-    ("identifier", lambda: Identifier(), "id-1", "id-1", True),
-    ("integer", lambda: Integer(), 1, 1, True),
-    ("integer-differs", lambda: Integer(), 1, 2, False),
-    ("float", lambda: Float(), 1.5, 1.5, True),
+    ("string", lambda: String(), "a", "a", True, True),
+    ("string-differs", lambda: String(), "a", "b", False, True),
+    ("text", lambda: Text(), "a", "a", True, True),
+    ("identifier", lambda: Identifier(), "id-1", "id-1", True, True),
+    ("integer", lambda: Integer(), 1, 1, True, True),
+    ("integer-differs", lambda: Integer(), 1, 2, False, True),
+    ("float", lambda: Float(), 1.5, 1.5, True, True),
     (
         "decimal-scaled",
         lambda: Decimal(precision=19, scale=4),
         D("9.99"),
         D("9.9900"),
         True,
+        True,
     ),
-    ("decimal-unscaled", lambda: Decimal(), D("1.0"), D(1), True),
-    ("decimal-differs", lambda: Decimal(), D("9.99"), D("9.98"), False),
-    ("boolean", lambda: Boolean(), True, True, True),
-    ("date", lambda: Date(), date(2026, 1, 1), date(2026, 1, 1), True),
-    ("datetime", lambda: DateTime(), datetime(2026, 1, 1), datetime(2026, 1, 1), True),
-    ("status", lambda: Status(Level), "low", "low", True),
-    ("none-both", lambda: String(), None, None, True),
-    ("none-one", lambda: String(), None, "a", False),
-    ("list", lambda: List(content_type=Decimal()), [D("1.0")], [D(1)], True),
-    ("list-differs", lambda: List(content_type=Integer()), [1], [2], False),
-    ("dict", lambda: Dict(), {"a": D("1.0")}, {"a": D(1)}, True),
+    ("decimal-unscaled", lambda: Decimal(), D("1.0"), D(1), True, True),
+    ("decimal-differs", lambda: Decimal(), D("9.99"), D("9.98"), False, True),
+    ("boolean", lambda: Boolean(), True, True, True, True),
+    ("date", lambda: Date(), date(2026, 1, 1), date(2026, 1, 1), True, True),
+    (
+        "datetime",
+        lambda: DateTime(),
+        datetime(2026, 1, 1),
+        datetime(2026, 1, 1),
+        True,
+        True,
+    ),
+    ("status", lambda: Status(Level), "low", "low", True, True),
+    ("none-both", lambda: String(), None, None, True, True),
+    ("none-one", lambda: String(), None, "a", False, True),
+    ("list", lambda: List(content_type=Decimal()), [D("1.0")], [D(1)], True, False),
+    ("list-differs", lambda: List(content_type=Integer()), [1], [2], False, False),
+    ("dict", lambda: Dict(), {"a": D("1.0")}, {"a": D(1)}, True, False),
     (
         "nested-vo",
         lambda: ValueObject(Inner),
         Inner(amount=D("1.0")),
         Inner(amount=D(1)),
         True,
+        True,
     ),
-    ("nested-vo-none", lambda: ValueObject(Inner), None, Inner(amount=D(1)), False),
-    ("custom-unhashable", lambda: _custom(Color), "#00ff00", "#00FF00", True),
-    ("custom-unhashable-differs", lambda: _custom(Color), "#00ff00", "#ff0000", False),
-    ("custom-unhashable-scale", lambda: _custom(Money), "9.99", "9.9900", True),
+    (
+        "nested-vo-none",
+        lambda: ValueObject(Inner),
+        None,
+        Inner(amount=D(1)),
+        False,
+        True,
+    ),
+    ("custom-unhashable", lambda: _custom(Color), "#00ff00", "#00FF00", True, False),
+    (
+        "custom-unhashable-differs",
+        lambda: _custom(Color),
+        "#00ff00",
+        "#ff0000",
+        False,
+        False,
+    ),
+    ("custom-unhashable-scale", lambda: _custom(Money), "9.99", "9.9900", True, False),
     (
         "custom-mixed-hashability",
         lambda: _custom(Color),
         Color("#0f0"),
         HashableColor("#0F0"),
         True,
+        False,
     ),
-    ("custom-hashable", lambda: _custom(Code), "x", "x", True),
-    ("custom-hashable-differs", lambda: _custom(Code), "x", "y", False),
+    ("custom-hashable", lambda: _custom(Code), "x", "x", True, False),
+    ("custom-hashable-differs", lambda: _custom(Code), "x", "y", False, False),
+    (
+        "custom-decimal-parser-keeps-unhashable-subclass",
+        lambda: Custom(D, validators=[PlainValidator(_keep_unhashable_decimal)]),
+        UnhashableDecimal("9.99"),
+        D("9.9900"),
+        True,
+        False,
+    ),
+    (
+        "raw-annotated-decimal-plain-validator",
+        lambda: Annotated[D, PlainValidator(_keep_unhashable_decimal)],
+        UnhashableDecimal("1.0"),
+        D(1),
+        True,
+        False,
+    ),
+    (
+        "raw-annotated-decimal-wrap-validator",
+        lambda: Annotated[D, WrapValidator(lambda v, _: _keep_unhashable_decimal(v))],
+        UnhashableDecimal("1.0"),
+        D(1),
+        True,
+        False,
+    ),
+    # Without a replacing validator, Pydantic casts a ``Decimal`` subclass to a
+    # plain ``Decimal``, so the declared type still bounds the stored value.
+    ("custom-decimal-no-validator", lambda: Custom(D), D("1.0"), D(1), True, True),
+    (
+        "custom-decimal-no-validator-differs",
+        lambda: Custom(D),
+        D("1.0"),
+        D(2),
+        False,
+        True,
+    ),
+    (
+        "decimal-given-unhashable-subclass",
+        lambda: Decimal(),
+        UnhashableDecimal("1.0"),
+        D(1),
+        True,
+        True,
+    ),
 ]
-
-# Rows whose field type hashes by value: unequal values should spread.
-VALUE_HASHED_UNEQUAL = {
-    "string-differs",
-    "integer-differs",
-    "decimal-differs",
-    "none-one",
-    "nested-vo-none",
-}
 
 
 @pytest.mark.parametrize(
-    "case, make_field, first, second, equal",
+    "case, make_field, first, second, equal, value_hashed",
     HASH_SPACE,
     ids=[row[0] for row in HASH_SPACE],
 )
 def test_equal_value_objects_hash_equal_across_field_types(
-    case, make_field, first, second, equal
+    case, make_field, first, second, equal, value_hashed
 ):
     vo_cls = _single_field_vo(f"VO_{case.replace('-', '_')}", make_field())
     a = vo_cls(value=first)
     b = vo_cls(value=second)
 
+    assert ("value" in vo_cls.__value_hashed_fields__) is value_hashed
     assert (a == b) is equal
     if equal:
         assert hash(a) == hash(b)
         assert len({a, b}) == 1
         assert {a: "found"}[b] == "found"
-    elif case in VALUE_HASHED_UNEQUAL:
+    elif value_hashed:
         assert hash(a) != hash(b)
 
 
