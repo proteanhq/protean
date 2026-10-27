@@ -489,16 +489,21 @@ class TestMarkerAgeOnTheDomainClock:
     ):
         _assert_redelivery_skipped_after_cleanup_with_clock_ahead(test_domain)
 
-    def test_mark_reads_the_clock_of_the_repository_domain(self, test_domain):
-        _register(test_domain, idempotent=True)
-        test_domain.clock = FrozenClock(T0)
-        repo = current_domain._get_processed_message_repo("default")
-
+    @pytest.mark.no_test_domain
+    def test_mark_reads_the_clock_of_the_repository_domain(self):
+        owner = Domain(name="Owner")
+        owner._initialize()
         other = Domain(name="Other")
         other.clock = FrozenClock(T0 + timedelta(days=30))
-        with other.domain_context():
-            repo.mark("m1", "h")
 
-        rows = repo._dao.query.filter(message_id="m1", handler="h").all().items
-        assert len(rows) == 1
-        assert rows[0].processed_at == T0
+        with owner.domain_context():
+            _register(owner, idempotent=True)
+            owner.clock = FrozenClock(T0)
+            repo = owner._get_processed_message_repo("default")
+
+            with other.domain_context():
+                repo.mark("m1", "h")
+
+            rows = repo._dao.query.filter(message_id="m1", handler="h").all().items
+            assert len(rows) == 1
+            assert rows[0].processed_at == T0
