@@ -410,16 +410,28 @@ class TestQuietProbesOutsideContext:
         )
 
     @pytest.mark.no_test_domain
-    def test_g_resolution_still_warns(self):
+    @pytest.mark.parametrize(
+        "probe",
+        [bool, repr, str],
+        ids=["bool", "repr", "str"],
+    )
+    def test_g_resolution_still_warns(self, probe):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            bool(g)
+            probe(g)
+        assert len(caught) == 1
+        assert "Working outside of domain context" in str(caught[0].message)
+
+    @pytest.mark.no_test_domain
+    @pytest.mark.parametrize("proxy", [current_domain, g], ids=["current_domain", "g"])
+    @pytest.mark.parametrize("name", ["missing", "_private", "__private"])
+    def test_non_dunder_attribute_still_warns(self, proxy, name):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
             with pytest.raises(AttributeError):
-                _ = g.missing
-        assert len(caught) == 2
-        assert all(
-            "Working outside of domain context" in str(w.message) for w in caught
-        )
+                getattr(proxy, name)
+        assert len(caught) == 1
+        assert "Working outside of domain context" in str(caught[0].message)
 
     @pytest.mark.no_test_domain
     def test_current_uow_dunder_lookup_outside_uow(self):
@@ -464,6 +476,13 @@ def test_collecting_a_module_that_imports_current_domain_is_silent(tmp_path):
     module.write_text(
         "from protean import current_domain, g\n\n\ndef test_x():\n    pass\n"
     )
+    # An inherited PYTHONWARNINGS=ignore or PYTEST_ADDOPTS="-p no:warnings"
+    # would hide the warning and let this test pass on a regression.
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in ("PYTHONWARNINGS", "PYTEST_ADDOPTS")
+    }
     result = subprocess.run(
         [
             sys.executable,
@@ -484,6 +503,7 @@ def test_collecting_a_module_that_imports_current_domain_is_silent(tmp_path):
         check=False,
         text=True,
         cwd=tmp_path,
+        env=env,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "1 passed" in result.stdout

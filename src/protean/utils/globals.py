@@ -74,7 +74,12 @@ class _ContextLocalProxy(Generic[_T]):
     ``__bases__`` and ``__class__`` on every name a test module imports. With
     no object active these probes raise ``AttributeError`` or report the proxy
     type silently. Truthiness, representation and ordinary attribute access
-    still go through ``lookup`` and keep its warning.
+    still go through ``lookup`` and keep its warning. Pytest before 8.4 also
+    reads the non-dunder ``_pytestfixturefunction`` during collection, so on
+    those versions collection still warns once.
+
+    ``quiet_lookup`` defaults to ``lookup``. A proxy whose ``lookup`` warns
+    must pass a quiet one.
     """
 
     _lookup: Callable[[], _T | None]
