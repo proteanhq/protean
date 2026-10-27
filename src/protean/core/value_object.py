@@ -341,7 +341,19 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         return self._field_values() == other._field_values()
 
     def __hash__(self) -> int:
-        return hash(self._field_values())
+        parts: list[Any] = []
+        for fname, shim in getattr(self, _FIELDS, {}).items():
+            value = getattr(self, fname, None)
+            try:
+                hash(value)
+            except TypeError:
+                # A custom type can define ``__eq__`` without ``__hash__``.
+                # Its serialized form is often a hashable scalar, and equal
+                # values serialize equally, so hashing that keeps
+                # ``__hash__`` consistent with ``__eq__``.
+                value = shim.as_dict(value)
+            parts.append(value)
+        return hash(tuple(parts))
 
     def _field_values(self) -> tuple[Any, ...]:
         # Compare raw values, not ``to_dict()`` output: serialization keeps a

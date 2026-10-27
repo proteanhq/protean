@@ -1,9 +1,10 @@
 from decimal import Decimal as D
 
 import pytest
+from pydantic import PlainSerializer, PlainValidator
 
 from protean.core.value_object import BaseValueObject
-from protean.fields import Decimal, String, ValueObject
+from protean.fields import Custom, Decimal, String, ValueObject
 
 
 class Price(BaseValueObject):
@@ -64,6 +65,42 @@ class TestEqualDecimalsWithDifferentScales:
 
         assert a == b
         assert hash(a) == hash(b)
+
+
+class Color:
+    """Defines ``__eq__`` without ``__hash__``, so instances are unhashable."""
+
+    def __init__(self, value: str) -> None:
+        self.hex = str(value).upper()
+
+    def to_dict(self) -> str:
+        return self.hex
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Color) and other.hex == self.hex
+
+
+def parse_color(value: object) -> Color:
+    return value if isinstance(value, Color) else Color(value)  # type: ignore[arg-type]
+
+
+class Palette(BaseValueObject):
+    primary = Custom(
+        Color,
+        validators=[PlainValidator(parse_color)],
+        serializers=[PlainSerializer(lambda c: c.hex, return_type=str)],
+        required=True,
+    )
+
+
+def test_unhashable_custom_values_hash_by_their_serialized_form():
+    a = Palette(primary="#00ff00")
+    b = Palette(primary="#00FF00")
+
+    assert a == b
+    assert hash(a) == hash(b)
+    assert len({a, b}) == 1
+    assert Palette(primary="#ff0000") != a
 
 
 class TestUnequalValueObjects:
