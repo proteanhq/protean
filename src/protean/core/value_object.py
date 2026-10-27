@@ -92,8 +92,9 @@ def _schema_hashes_by_value(
     The schema decides, not the value: equal values a field accepts may differ
     in hashability, so hashing whatever arrives would give equal value objects
     different hashes. Any schema type not named here (containers, ``any``,
-    enums, plain and wrap validators, custom types) does not bound its output
-    and returns ``False``.
+    enums, plain and wrap validators, custom types, and the ``lax-or-strict``
+    and ``json-or-python`` pairs Pydantic builds around instance checks) does
+    not bound its output and returns ``False``.
     """
     kind = schema["type"]
     if kind in _VALUE_HASHED_SCHEMA_TYPES:
@@ -121,16 +122,6 @@ def _schema_hashes_by_value(
             _schema_hashes_by_value(choice, definitions, resolving)
             for choice in schema["choices"].values()
         )
-    if kind == "lax-or-strict":
-        return _schema_hashes_by_value(
-            schema["lax_schema"], definitions, resolving
-        ) and _schema_hashes_by_value(schema["strict_schema"], definitions, resolving)
-    if kind == "json-or-python":
-        return _schema_hashes_by_value(
-            schema["json_schema"], definitions, resolving
-        ) and _schema_hashes_by_value(schema["python_schema"], definitions, resolving)
-    if kind == "chain":
-        return _schema_hashes_by_value(schema["steps"][-1], definitions, resolving)
     if kind == "literal":
         return all(
             type(value) in _VALUE_HASHED_LITERAL_TYPES for value in schema["expected"]

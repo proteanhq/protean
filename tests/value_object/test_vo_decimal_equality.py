@@ -1,6 +1,7 @@
 import enum
 from datetime import date, datetime
 from decimal import Decimal as D
+from ipaddress import IPv4Address
 from typing import Annotated, Literal, NewType
 
 import pytest
@@ -12,8 +13,13 @@ from pydantic import (
     WrapValidator,
     model_validator,
 )
+from pydantic import Field as PydanticField
+from typing_extensions import TypeAliasType
 
-from protean.core.value_object import BaseValueObject
+from protean.core.value_object import (
+    BaseValueObject,
+    _value_hashed_field_names,
+)
 from protean.fields import (
     Boolean,
     Custom,
@@ -191,6 +197,20 @@ def _keep_unhashable_decimal(value):
     return value if isinstance(value, D) else UnhashableDecimal(str(value))
 
 
+class Cash(BaseValueObject):
+    kind: Literal["cash"] = "cash"
+    amount: Decimal()
+
+
+class Card(BaseValueObject):
+    kind: Literal["card"] = "card"
+    amount: Decimal()
+
+
+# Pydantic resolves this alias through a definition that refers to itself.
+NoneAlias = TypeAliasType("NoneAlias", "NoneAlias | None")
+
+
 # The space ``__hash__`` decides over, one row per cell. A field is hashed by
 # value only when Pydantic's core schema for it bounds every value it can
 # store to types whose hash agrees with ``==``; any other field adds a
@@ -328,6 +348,33 @@ HASH_SPACE = [
     ("union-of-scalars-differs", lambda: int | str, 1, "1", False, True),
     ("union-with-container", lambda: int | list[int], [1], [1], True, False),
     ("new-type", lambda: NewType("Sku", str), "x", "x", True, True),
+    (
+        "tagged-union-of-vos",
+        lambda: Annotated[Cash | Card, PydanticField(discriminator="kind")],
+        Cash(amount=D("1.0")),
+        Cash(amount=D(1)),
+        True,
+        True,
+    ),
+    (
+        "tagged-union-of-vos-differs",
+        lambda: Annotated[Cash | Card, PydanticField(discriminator="kind")],
+        Cash(amount=D(1)),
+        Card(amount=D(1)),
+        False,
+        True,
+    ),
+    # Pydantic wraps the instance check in ``lax-or-strict`` and
+    # ``json-or-python`` schemas, which do not bound the stored type.
+    (
+        "ip-address",
+        lambda: IPv4Address,
+        IPv4Address("10.0.0.1"),
+        IPv4Address("10.0.0.1"),
+        True,
+        False,
+    ),
+    ("self-referencing-alias", lambda: NoneAlias, None, None, True, False),
     ("new-type-differs", lambda: NewType("Sku", str), "x", "y", False, True),
     (
         "before-validator",
@@ -472,3 +519,7 @@ def test_class_shape_does_not_change_field_hashing(first, second, value_hashed):
     assert type(first)._value_hashed_fields() == value_hashed
     assert first == second
     assert hash(first) == hash(second)
+
+
+def test_model_schema_without_a_fields_node_hashes_no_field_by_value():
+    assert _value_hashed_field_names({"type": "any"}) == frozenset()
