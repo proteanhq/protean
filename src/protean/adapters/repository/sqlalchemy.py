@@ -1565,6 +1565,15 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                             owner_name=entity_cls.__name__,
                             is_key_column=is_key_column,
                         )
+                    # SQL Server's DATETIME rounds to about 3 ms, so two
+                    # timestamps written microseconds apart can read back
+                    # equal. DATETIME2 defaults to 100 ns precision.
+                    elif (
+                        dialect_name == "mssql"
+                        and resolved_type is _datetime
+                        and sa_type_cls is sa_types.DateTime
+                    ):
+                        sa_type_cls = mssql.DATETIME2
 
                     # Update the attributes of the class
                     column = Column(sa_type_cls(*type_args, **type_kwargs), **col_args)
