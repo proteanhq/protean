@@ -105,8 +105,9 @@ partition key is the value set by a handler's
 [`sequential_by`](../../server/sequential-by.md), and the processor publishes a
 key's rows in commit order. Rows are grouped by target broker, stream
 category, partition key and [priority lane](../../../guides/server/using-priority-lanes.md),
-the same groups the processor uses, so a key is listed exactly when the
-processor holds its later rows behind an abandoned row. A key whose earliest
+the same groups the processor uses, so a key is listed exactly when its
+earliest holding row is abandoned. The listing includes a key with no rows
+behind it yet, because the processor will hold any later row. A key whose earliest
 holding row is `pending`, `processing` or `failed` also has its later rows
 held, but it is not listed, because the processor will still publish or retry
 that row.

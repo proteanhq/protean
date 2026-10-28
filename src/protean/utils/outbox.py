@@ -961,8 +961,9 @@ class OutboxRepository(BaseRepository):
 
         A key is halted when the earliest row of its group that still holds
         the group is ``ABANDONED``. The group, the holding statuses and the
-        order are the ones :meth:`claim_batch` uses, so a key is listed exactly
-        when the claim holds its later rows behind that abandoned row.
+        order are the ones :meth:`claim_batch` uses, so the claim holds every
+        later row of a listed key. A key is listed even when no row waits
+        behind the abandoned one (``waiting`` is 0).
 
         Args:
             lanes: The lane split to group rows by. Defaults to
