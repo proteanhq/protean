@@ -6,8 +6,8 @@ A value object is compared by its attribute values and cannot be changed once cr
 
 ### Value-Based Equality
 
-Value objects are equal when all their attributes match. A Decimal amount matches only in the
-same exact form (see [Decimal Amounts Compare by Their Exact Form](#decimal-amounts-compare-by-their-exact-form)):
+Value objects are equal when all their attributes match. A Decimal amount matches by its
+numeric value (see [Decimal Amounts Compare by Value](#decimal-amounts-compare-by-value)):
 
 ```python
 from decimal import Decimal as D
@@ -88,25 +88,20 @@ addr3 = Address(
 assert addr1 != addr3
 ```
 
-### Decimal Amounts Compare by Their Exact Form
+### Decimal Amounts Compare by Value
 
-A value object compares its `to_dict()` output, and `to_dict()` turns a `decimal.Decimal`
-into its string. So `D("1.0")` and `D("1.00")`, which are equal as numbers, make two
-unequal value objects:
+A value object compares its field values as Python holds them. `decimal.Decimal` treats
+`D("1.0")` and `D("1.00")` as equal, with equal hashes, so two value objects that differ
+only in the scale of an amount are equal and collapse to one entry in a set:
 
 ```python
-assert Money(currency="USD", amount=D("1.0")) != Money(currency="USD", amount=D("1.00"))
-
-# Quantize to the field's scale before building the value object
-FOUR_PLACES = D("0.0001")
-assert Money(currency="USD", amount=D("1.0").quantize(FOUR_PLACES)) == Money(
-    currency="USD", amount=D("1.00").quantize(FOUR_PLACES)
-)
+assert Money(currency="USD", amount=D("1.0")) == Money(currency="USD", amount=D("1.00"))
+assert len({Money(currency="USD", amount=D("1.0")), Money(currency="USD", amount=D("1.00"))}) == 1
 ```
 
-The same applies to a value read back from a database, which may come back with a different
-number of decimal places, and to a `default=0`, which the field keeps as the int `0`.
-Quantize amounts in the methods that build them, as `with-methods.md` does.
+The value keeps its scale. `to_dict()` still renders `D("1.00")` as `"1.00"`, so quantize
+amounts in the methods that build them, as `with-methods.md` does, when the stored or
+serialized form matters.
 
 ### Nested Value Objects
 
