@@ -1264,3 +1264,96 @@ class TestEdgeCases:
 
         assert attempt_count == 2
         mock_sleep.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Nested handlers: retry happens at the outermost handler only
+# ---------------------------------------------------------------------------
+
+
+class Account(BaseAggregate):
+    name: String(max_length=50)
+
+
+class OpenAccount(BaseCommand):
+    account_id: Identifier(required=True)
+
+
+class WriteAccount(BaseCommand):
+    account_id: Identifier(required=True)
+
+
+class TestNestedHandlerRetry:
+    """A handler that runs inside an active UnitOfWork does not retry in place.
+
+    Its UnitOfWork joins the outer one, so a failed attempt has already marked
+    the whole transaction rollback-only. The conflict propagates, and the
+    outermost handler retries the whole chain in a fresh UnitOfWork.
+    """
+
+    @pytest.fixture(autouse=True)
+    def register_accounts(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(OpenAccount, part_of=Account)
+        test_domain.register(WriteAccount, part_of=Account)
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_conflict_in_nested_handler_is_retried_by_the_outer_handler(
+        self, mock_sleep, test_domain
+    ):
+        outer_runs = 0
+        inner_runs = 0
+
+        class AccountHandlers(BaseCommandHandler):
+            @handle(OpenAccount)
+            def open(self, command: OpenAccount) -> None:
+                nonlocal outer_runs
+                outer_runs += 1
+                current_domain.process(
+                    WriteAccount(account_id=command.account_id), asynchronous=False
+                )
+
+            @handle(WriteAccount)
+            def write(self, command: WriteAccount) -> None:
+                nonlocal inner_runs
+                inner_runs += 1
+                if inner_runs == 1:
+                    raise ExpectedVersionError("stale")
+                current_domain.repository_for(Account).add(
+                    Account(id=command.account_id, name="written")
+                )
+
+        test_domain.register(AccountHandlers, part_of=Account)
+        test_domain.init(traverse=False)
+
+        test_domain.process(OpenAccount(account_id="a1"), asynchronous=False)
+
+        assert inner_runs == 2
+        assert outer_runs == 2
+        account = test_domain.repository_for(Account).get_or_none("a1")
+        assert account is not None
+        assert account.name == "written"
+        mock_sleep.assert_called_once()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_handler_inside_an_open_unit_of_work_does_not_retry(
+        self, mock_sleep, test_domain
+    ):
+        runs = 0
+
+        class AccountHandlers(BaseCommandHandler):
+            @handle(WriteAccount)
+            def write(self, command: WriteAccount) -> None:
+                nonlocal runs
+                runs += 1
+                raise ExpectedVersionError("stale")
+
+        test_domain.register(AccountHandlers, part_of=Account)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ExpectedVersionError):
+            with UnitOfWork():
+                test_domain.process(WriteAccount(account_id="a1"), asynchronous=False)
+
+        assert runs == 1
+        mock_sleep.assert_not_called()

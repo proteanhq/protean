@@ -139,7 +139,7 @@ The UoW keeps an **identity map**: one instance of each aggregate it loads or sa
 
 On a version conflict, `@handle` re-runs the whole handler body. The default is `max_retries=3`, so the body runs up to 4 times in total. The wait between runs doubles each time, from 0.05 seconds up to a cap of 1 second. The retries stop early if the next run would start after the command's deadline. Change these settings, or turn the retry off, under `server.version_retry` in the domain config.
 
-Each run opens its own Unit of Work. When the handler runs inside an outer Unit of Work, for example a use case that calls `domain.process()` synchronously, every run joins that outer one. The first failed run has already doomed the outer transaction, so the later runs cannot save it.
+Each run opens its own Unit of Work. A handler that runs inside an outer Unit of Work does not retry. This happens when another handler or a use case calls `domain.process()` synchronously. The handler's Unit of Work joins the outer one, so a failed run has already doomed the outer transaction. The conflict goes up instead: an enclosing handler re-runs the whole chain in a fresh Unit of Work, and a use case passes it to its caller.
 
 `@use_case` in an application service does not retry. It runs the method once.
 

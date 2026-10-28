@@ -330,10 +330,14 @@ first writer wins, and subsequent writers must retry with the latest version.
 In async handlers (command handlers and event handlers decorated with
 `@handle`), the framework **automatically retries** `ExpectedVersionError`
 with exponential backoff. Each retry runs in a new `UnitOfWork`, so the
-handler re-reads the aggregate at the latest version. When the handler runs
-inside an outer `UnitOfWork`, as a synchronous command processed from an
-application service does, every retry joins that outer one instead. This is transparent, most
-version conflicts resolve without any manual intervention. For details, see
+handler re-reads the aggregate at the latest version. A handler that runs
+inside an outer `UnitOfWork` does not retry. This happens when another handler
+or an application service processes a command synchronously. The handler's
+`UnitOfWork` joins the outer one, so the failed attempt has already doomed the
+outer transaction. The conflict goes up instead: an enclosing handler retries
+the whole chain in a fresh `UnitOfWork`, and an application service passes it
+to its caller. This is transparent, most version conflicts resolve without any
+manual intervention. For details, see
 [Version conflict
 auto-retry](../server/error-handling.md#version-conflict-auto-retry).
 
