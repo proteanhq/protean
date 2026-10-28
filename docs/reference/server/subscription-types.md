@@ -344,7 +344,7 @@ API, and Prometheus metrics. Lag is computed differently for each type:
 | Type | How lag is calculated |
 |------|----------------------|
 | **EventStoreSubscription** | `stream_head_position(category) - current_position` where `current_position` is read from the handler's `position-{subscriber}-{category}` stream |
-| **StreamSubscription** | Redis `XINFO GROUPS` native `lag` field (Redis 7.0+), falling back to counting messages after `last-delivered-id` via `XRANGE` |
+| **StreamSubscription** | Redis `XINFO GROUPS` native `lag` field (Redis 7.0+). When Redis has no lag to report (before 7.0, or when it sends nil), the messages after `last-delivered-id` are counted with `XRANGE` |
 
 Check subscription lag from the CLI:
 

@@ -154,38 +154,20 @@ class SubscriptionStatus:
 
 
 # ---------------------------------------------------------------------------
-# Stream category inference (mirrors Engine._infer_stream_category)
+# Stream category
 # ---------------------------------------------------------------------------
 
 
 def _infer_stream_category(handler_cls: type[Any]) -> str:
-    """Infer the stream category for a handler.
+    """Return the stream category a registered handler reads.
 
-    Mirrors ``Engine._infer_stream_category`` in
-    ``src/protean/server/engine.py``.
+    Registration derives ``meta_.stream_category`` from ``part_of`` when the
+    handler does not name one, and the resolver fills it in once a string
+    ``part_of`` resolves. So this reads ``meta_`` and never ``part_of``.
     """
-    meta = getattr(handler_cls, "meta_", None)
-    if meta is None:
-        raise ValueError(
-            f"Handler '{handler_cls.__name__}' has no meta_ attribute. "
-            f"Cannot infer stream category."
-        )
-
-    # Priority 1: Explicit stream_category on handler
-    stream_category: str | None = getattr(meta, "stream_category", None)
+    stream_category: str | None = handler_cls.meta_.stream_category
     if stream_category:
         return stream_category
-
-    # Priority 2: Infer from part_of aggregate
-    part_of = getattr(meta, "part_of", None)
-    if part_of:
-        aggregate_meta = getattr(part_of, "meta_", None)
-        if aggregate_meta:
-            aggregate_stream: str | None = getattr(
-                aggregate_meta, "stream_category", None
-            )
-            if aggregate_stream:
-                return aggregate_stream
 
     raise ValueError(
         f"Cannot infer stream category for handler '{handler_cls.__name__}'."
@@ -339,7 +321,7 @@ def _collect_partitioned_stream_status(
     """
     base_broker = domain.brokers.get("default")
     if not base_broker or not hasattr(base_broker, "redis_instance"):
-        return _unknown_status(name, handler_cls.__name__, "stream", stream_category)
+        return _unknown_status(name, handler_cls.__name__, "stream", stream_category)  # pragma: no cover  # only RedisBroker advertises STREAM_PARTITIONING  # fmt: skip
 
     broker = cast(_RedisStyleBroker, base_broker)
     redis_conn = broker.redis_instance
@@ -387,8 +369,6 @@ def _collect_partitioned_stream_status(
             )
             continue
         for group in groups:
-            if not isinstance(group, dict):
-                continue
             if broker._get_field_value(group, "name") != consumer_group:
                 continue
             total_pending += (
@@ -404,7 +384,7 @@ def _collect_partitioned_stream_status(
                 any_lag_known = True
                 total_lag += native_lag
             else:
-                # No native `lag` (Redis before 7.0). Count what is left after
+                # No native `lag` (Redis before 7.0, or nil). Count what is left after
                 # the group's last delivered entry, which is what the
                 # non-partitioned path does and what the subscription reference
                 # already promises for stream subscriptions. Without this, a
@@ -434,8 +414,6 @@ def _collect_partitioned_stream_status(
             logger.debug("Could not read consumers of %s: %r", partition, exc)
             consumers = []
         for consumer in consumers:
-            if not isinstance(consumer, dict):
-                continue
             consumer_name = broker._get_field_value(consumer, "name")
             if consumer_name is not None:
                 consumer_names.add(consumer_name)
@@ -508,8 +486,6 @@ def _collect_stream_status(
             try:
                 groups = redis_conn.xinfo_groups(stream_category)
                 for g in groups:
-                    if not isinstance(g, dict):
-                        continue
                     gname = broker._get_field_value(g, "name")
                     if gname == consumer_group:
                         pending = (
@@ -625,8 +601,6 @@ def _collect_broker_status(
                 try:
                     groups = redis_conn.xinfo_groups(stream_name)
                     for g in groups:
-                        if not isinstance(g, dict):
-                            continue
                         gname = broker._get_field_value(g, "name")
                         if gname == consumer_group:
                             pending = (

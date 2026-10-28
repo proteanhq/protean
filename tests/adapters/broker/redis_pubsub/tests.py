@@ -1,6 +1,11 @@
+import logging
+from unittest.mock import patch
+
 import pytest
+import redis
 
 from protean.adapters.broker.redis_pubsub import RedisPubSubBroker
+from tests.shared import REDIS_URI
 
 
 @pytest.mark.redis
@@ -14,7 +19,7 @@ class TestRedisConnectionAndConfiguration:
         assert broker.__broker__ == "redis_pubsub"
         expected_uri = test_domain.config["brokers"]["default"]["URI"]
         assert broker.conn_info["URI"] == expected_uri
-        assert broker.redis_instance is not None
+        assert isinstance(broker.redis_instance, redis.Redis)
 
     def test_broker_capabilities_simple_queuing(self, broker):
         """Test that broker reports simple queuing capabilities"""
@@ -52,6 +57,8 @@ class TestRedisConnectionAndConfiguration:
         assert "keyspace_misses" in details
         assert "connected_clients" in details
         assert "hit_rate" in details
+        assert isinstance(details["used_memory"], int)
+        assert isinstance(details["used_memory_human"], str)
 
 
 @pytest.mark.redis
@@ -97,3 +104,419 @@ class TestRedisSpecificBehavior:
         # NACK should not be supported
         nack_result = broker.nack(stream, identifier, consumer_group)
         assert nack_result is False
+
+
+@pytest.mark.redis
+class TestRedisHealthAndStats:
+    def test_message_count_calculation_uses_redis_llen(self, broker):
+        """Test that message count calculation uses Redis LLEN"""
+        # Create consumer groups to track the streams
+        broker.get_next("test_stream", "test_group")
+        broker.get_next("another_stream", "another_group")
+
+        # Publish some messages
+        broker.publish("test_stream", {"message": "test1"})
+        broker.publish("test_stream", {"message": "test2"})
+        broker.publish("another_stream", {"message": "test3"})
+
+        stats = broker.health_stats()
+
+        # Check that message counts are available under details
+        assert "details" in stats
+        details = stats["details"]
+        assert "message_counts" in details
+
+        message_counts = details["message_counts"]
+        assert "total_messages" in message_counts
+        assert message_counts["total_messages"] == 3
+
+    def test_health_stats_hit_rate_calculation_with_hits_and_misses(self, broker):
+        """Test hit rate calculation when there are hits and misses"""
+        # Mock Redis info to return specific hit/miss values
+        mock_redis_info = {
+            "connected_clients": 1,
+            "used_memory": 1024,
+            "used_memory_human": "1K",
+            "keyspace_hits": 100,
+            "keyspace_misses": 50,
+            "loading": 0,
+            "rejected_connections": 0,
+        }
+
+        with patch.object(broker.redis_instance, "info", return_value=mock_redis_info):
+            stats = broker.health_stats()
+
+            # Check that hit rate is calculated correctly
+            assert "details" in stats
+            details = stats["details"]
+            assert "hit_rate" in details
+
+            # Hit rate should be hits / (hits + misses) = 100 / (100 + 50) = 0.6667
+            expected_hit_rate = 100 / (100 + 50)
+            assert abs(details["hit_rate"] - expected_hit_rate) < 0.0001
+
+    def test_health_stats_hit_rate_calculation_with_no_hits_or_misses(self, broker):
+        """Test hit rate calculation when there are no hits or misses"""
+        # Mock Redis info to return zero hits and misses
+        mock_redis_info = {
+            "connected_clients": 1,
+            "used_memory": 1024,
+            "used_memory_human": "1K",
+            "keyspace_hits": 0,
+            "keyspace_misses": 0,
+            "loading": 0,
+            "rejected_connections": 0,
+        }
+
+        with patch.object(broker.redis_instance, "info", return_value=mock_redis_info):
+            stats = broker.health_stats()
+
+            # Check that hit rate is set to 0.0
+            assert "details" in stats
+            details = stats["details"]
+            assert "hit_rate" in details
+            assert details["hit_rate"] == 0.0
+
+    def test_health_stats_detects_loading_state(self, broker):
+        """Test that health stats detects when Redis is loading data from disk"""
+        # Mock Redis info to indicate loading state
+        mock_redis_info = {
+            "connected_clients": 1,
+            "used_memory": 1024,
+            "used_memory_human": "1K",
+            "keyspace_hits": 10,
+            "keyspace_misses": 5,
+            "loading": 1,  # Redis is loading data from disk
+            "rejected_connections": 0,
+        }
+
+        with patch.object(broker.redis_instance, "info", return_value=mock_redis_info):
+            stats = broker.health_stats()
+
+            # Check that loading state is detected
+            assert "details" in stats
+            details = stats["details"]
+            assert details["healthy"] is False
+            assert "warning" in details
+            assert "Redis is loading data from disk" in details["warning"]
+
+    def test_health_stats_detects_rejected_connections(self, broker):
+        """Test that health stats detects when Redis has rejected connections"""
+        # Mock Redis info to indicate rejected connections
+        mock_redis_info = {
+            "connected_clients": 1,
+            "used_memory": 1024,
+            "used_memory_human": "1K",
+            "keyspace_hits": 10,
+            "keyspace_misses": 5,
+            "loading": 0,
+            "rejected_connections": 5,  # Redis has rejected connections
+        }
+
+        with patch.object(broker.redis_instance, "info", return_value=mock_redis_info):
+            stats = broker.health_stats()
+
+            # Check that rejected connections are detected
+            assert "details" in stats
+            details = stats["details"]
+            assert details["healthy"] is False
+            assert "warning" in details
+            assert "Redis has rejected connections" in details["warning"]
+
+    def test_health_stats_exception_handling(self, broker, caplog):
+        """Test that _health_stats method handles exceptions properly"""
+        # Mock Redis instance to raise exception when calling info()
+        with patch.object(broker.redis_instance, "info") as mock_info:
+            mock_info.side_effect = redis.ConnectionError("Connection failed")
+
+            # Clear any existing logs
+            caplog.clear()
+
+            # Set log level to capture error messages
+            with caplog.at_level(logging.ERROR):
+                # Call health_stats which should handle the exception
+                stats = broker.health_stats()
+
+                # Should return error stats structure
+                assert "details" in stats
+                details = stats["details"]
+                assert details["healthy"] is False
+                assert "error" in details
+                assert "Connection failed" in details["error"]
+                assert "message_counts" in details
+                assert details["message_counts"]["total_messages"] == 0
+                assert "consumer_groups" in details
+                assert details["consumer_groups"]["count"] == 0
+                assert details["consumer_groups"]["names"] == []
+                assert "configuration" in details
+                assert details["configuration"]["broker_type"] == "redis_pubsub"
+                assert "error" in details["configuration"]
+                assert (
+                    "Failed to get configuration" in details["configuration"]["error"]
+                )
+                assert details["configuration"]["simple_queuing_only"] is True
+
+                # Should log error message
+                assert len(caplog.records) == 1
+                assert caplog.records[0].levelname == "ERROR"
+                assert (
+                    "broker.redis_pubsub.health_check_failed"
+                    in caplog.records[0].message
+                )
+
+
+@pytest.mark.redis
+class TestRedisDataReset:
+    def test_data_reset_leaves_other_databases_alone(self, broker):
+        # Redis database 14 is outside every domain and adapter config in the
+        # suite, so no reset or teardown flushes it while this test runs under
+        # xdist. The tests that share it each use their own key.
+        other_db = redis.Redis.from_url(f"{REDIS_URI}/14")
+        other_key = "protean-test:redis-pubsub-reset-survivor"
+        try:
+            other_db.set(other_key, "kept")
+            broker.publish("reset_stream", {"message": "test"})
+            assert broker.redis_instance.llen("reset_stream") == 1
+
+            broker._data_reset()
+
+            assert broker.redis_instance.llen("reset_stream") == 0
+            assert other_db.get(other_key) == b"kept"
+        finally:
+            other_db.delete(other_key)
+            other_db.close()
+
+    def test_data_reset_exception_handling(self, broker, caplog):
+        """Test that _data_reset method handles exceptions properly"""
+        # Create some consumer groups to verify they get cleared even with exceptions
+        broker.get_next("test_stream", "test_group")
+
+        # Mock Redis instance to raise exception when calling flushdb()
+        with patch.object(broker.redis_instance, "flushdb") as mock_flushdb:
+            mock_flushdb.side_effect = redis.ConnectionError("Connection failed")
+
+            # Clear any existing logs
+            caplog.clear()
+
+            # Set log level to capture error messages
+            with caplog.at_level(logging.ERROR):
+                # Call _data_reset which should handle the exception
+                broker._data_reset()
+
+                # Consumer groups should NOT be cleared if Redis flushdb fails
+                # because clear() is called in the try block after flushdb()
+                assert len(broker._consumer_groups) == 1
+
+                # Should log error message
+                assert len(caplog.records) == 1
+                assert caplog.records[0].levelname == "ERROR"
+                assert (
+                    "broker.redis_pubsub.data_reset_failed" in caplog.records[0].message
+                )
+
+
+@pytest.mark.redis
+class TestRedisErrorHandling:
+    """Test Redis-specific error handling behavior"""
+
+    def test_redis_response_error_handling(self, broker):
+        """Test that Redis ResponseError is properly raised"""
+        # Mock Redis instance to raise ResponseError
+        with patch.object(broker.redis_instance, "lindex") as mock_lindex:
+            mock_lindex.side_effect = redis.ResponseError("Invalid operation")
+
+            # The broker should let the Redis exception bubble up
+            with pytest.raises(redis.ResponseError, match="Invalid operation"):
+                broker.get_next("test_stream", "test_group")
+
+    def test_redis_timeout_error_handling(self, broker):
+        """Test that Redis TimeoutError is properly raised"""
+        # Mock Redis instance to raise TimeoutError
+        with patch.object(broker.redis_instance, "lindex") as mock_lindex:
+            mock_lindex.side_effect = redis.TimeoutError("Operation timed out")
+
+            # The broker should let the Redis exception bubble up
+            with pytest.raises(redis.TimeoutError, match="Operation timed out"):
+                broker.get_next("test_stream", "test_group")
+
+    def test_ping_exception_handling(self, broker, caplog):
+        """Test that _ping method handles exceptions properly"""
+        # Mock Redis instance to raise exception on ping
+        with patch.object(broker.redis_instance, "ping") as mock_ping:
+            mock_ping.side_effect = redis.ConnectionError("Connection failed")
+
+            # Clear any existing logs
+            caplog.clear()
+
+            # Set log level to capture debug messages
+            with caplog.at_level(logging.DEBUG):
+                # Call ping which should handle the exception
+                result = broker._ping()
+
+                # Should return False when exception occurs
+                assert result is False
+
+                # Should log debug message about the failure
+                assert len(caplog.records) == 1
+                assert caplog.records[0].levelname == "DEBUG"
+                assert "Redis PubSub ping failed" in caplog.records[0].message
+                assert "Connection failed" in caplog.records[0].message
+
+    def test_calculate_message_counts_exception_handling(self, broker, caplog):
+        """Test that _calculate_message_counts method handles exceptions properly"""
+        # Create consumer groups and streams to track
+        broker.get_next("test_stream", "test_group")
+        broker.get_next("another_stream", "another_group")
+        broker.redis_instance.rpush("test_stream", "m1")
+
+        # Mock Redis llen to raise exception
+        with patch.object(broker.redis_instance, "llen") as mock_llen:
+            mock_llen.side_effect = redis.ConnectionError("Connection failed")
+
+            # Clear any existing logs
+            caplog.clear()
+
+            # Set log level to capture debug messages
+            with caplog.at_level(logging.DEBUG):
+                # Call _calculate_message_counts which should handle the exception
+                result = broker._calculate_message_counts()
+
+                # Should return default counts when exception occurs
+                assert result == {"total_messages": 0}
+
+                # Should log debug message about the failure
+                assert len(caplog.records) == 1
+                assert caplog.records[0].levelname == "DEBUG"
+                assert "Error calculating message counts" in caplog.records[0].message
+                assert "Connection failed" in caplog.records[0].message
+
+    def test_ping_lets_other_errors_through(self, broker):
+        """An error that is neither a Redis nor a socket error reaches the caller"""
+        with patch.object(broker.redis_instance, "ping") as mock_ping:
+            mock_ping.side_effect = RuntimeError("bug in ping")
+
+            with pytest.raises(RuntimeError, match="bug in ping"):
+                broker._ping()
+
+    def test_calculate_message_counts_lets_other_errors_through(self, broker):
+        """An error that is not a Redis error reaches the caller"""
+        broker.get_next("test_stream", "test_group")
+        broker.redis_instance.rpush("test_stream", "m1")
+
+        with patch.object(broker.redis_instance, "llen") as mock_llen:
+            mock_llen.side_effect = TypeError("bad length")
+
+            with pytest.raises(TypeError, match="bad length"):
+                broker._calculate_message_counts()
+
+    def test_ensure_connection_logs_a_bad_reconnect_uri(self, broker, caplog):
+        """A failed ping triggers a reconnect; a bad URI is logged, not raised"""
+        with (
+            patch.object(broker.redis_instance, "ping") as mock_ping,
+            patch("redis.Redis.from_url", side_effect=ValueError("bad URI scheme")),
+            caplog.at_level(logging.DEBUG),
+        ):
+            mock_ping.side_effect = redis.ConnectionError("Connection refused")
+            assert broker._ensure_connection() is False
+
+        assert "Redis connection attempt 1 failed: Connection refused" in caplog.text
+        assert "Failed to create new Redis connection: bad URI scheme" in caplog.text
+
+    @pytest.mark.parametrize(
+        "error",
+        [OSError("socket closed"), ValueError("malformed reply")],
+        ids=["socket-error", "malformed-reply"],
+    )
+    def test_ping_returns_false_on_a_socket_error_or_a_malformed_reply(
+        self, broker, error
+    ):
+        with patch.object(broker.redis_instance, "ping", side_effect=error):
+            assert broker._ping() is False
+
+    def test_ensure_connection_retries_after_a_malformed_reply(self, broker):
+        with (
+            patch.object(
+                broker.redis_instance,
+                "ping",
+                side_effect=[ValueError("malformed reply"), True],
+            ),
+            patch("redis.Redis.from_url", return_value=broker.redis_instance),
+        ):
+            assert broker._ensure_connection() is True
+
+    def test_ensure_connection_lets_other_reconnect_errors_through(self, broker):
+        """from_url() raises only ValueError for a bad URI; other errors reach the caller"""
+        with (
+            patch.object(
+                broker.redis_instance,
+                "ping",
+                side_effect=redis.ConnectionError("Connection refused"),
+            ),
+            patch(
+                "redis.Redis.from_url",
+                side_effect=redis.ConnectionError("from_url connected"),
+            ),
+        ):
+            with pytest.raises(redis.ConnectionError, match="from_url connected"):
+                broker._ensure_connection()
+
+    def test_ensure_connection_lets_other_errors_through(self, broker):
+        """A ping error that is neither a Redis nor a socket error reaches the caller"""
+        with patch.object(broker.redis_instance, "ping") as mock_ping:
+            mock_ping.side_effect = RuntimeError("bug in ping")
+
+            with pytest.raises(RuntimeError, match="bug in ping"):
+                broker._ensure_connection()
+
+    def test_calculate_message_counts_skips_keys_that_are_not_lists(
+        self, broker, caplog
+    ):
+        """A missing key or a key of another type is not counted"""
+        broker.get_next("test_stream", "test_group")
+        broker.get_next("another_stream", "another_group")
+        broker.get_next("missing_stream", "missing_group")
+        broker.redis_instance.set("test_stream", "not-a-list")
+        broker.redis_instance.rpush("another_stream", "m1", "m2", "m3")
+
+        caplog.clear()
+        with caplog.at_level(logging.DEBUG):
+            result = broker._calculate_message_counts()
+
+        assert result == {"total_messages": 3}
+        assert not [r for r in caplog.records if r.levelname == "DEBUG"]
+
+
+@pytest.mark.redis
+class TestRedisConsumerGroupInfo:
+    def test_info_aggregates_consumer_groups_across_streams(self, broker):
+        """Test that _info method properly aggregates consumer groups across multiple streams"""
+        # Create same consumer group name across different streams
+        broker.get_next("stream1", "shared_group")
+        broker.get_next("stream2", "shared_group")
+        broker.get_next("stream1", "unique_group")
+
+        # Get info
+        info = broker.info()
+
+        # Should have consumer groups section
+        assert "consumer_groups" in info
+        consumer_groups = info["consumer_groups"]
+
+        # Should have both groups
+        assert "shared_group" in consumer_groups
+        assert "unique_group" in consumer_groups
+
+        # Shared group should be aggregated (not duplicated)
+        shared_group_info = consumer_groups["shared_group"]
+        assert "consumers" in shared_group_info
+        assert "created_at" in shared_group_info
+        assert "consumer_count" in shared_group_info
+        assert isinstance(shared_group_info["consumers"], list)
+        assert isinstance(shared_group_info["created_at"], float)
+        assert shared_group_info["consumer_count"] == 0  # No active consumers
+
+        # Unique group should also be present
+        unique_group_info = consumer_groups["unique_group"]
+        assert "consumers" in unique_group_info
+        assert "created_at" in unique_group_info
+        assert "consumer_count" in unique_group_info

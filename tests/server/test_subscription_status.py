@@ -1,33 +1,180 @@
-"""Tests for subscription lag monitoring core module.
+"""Tests for subscription lag monitoring.
 
-Tests cover the SubscriptionStatus dataclass, collection functions,
-stream category inference, classification helpers, and graceful degradation
-when infrastructure is unavailable.
+Every test builds a real domain and reads the statuses through
+``collect_subscription_statuses``. The core tests use the memory event store,
+the inline broker and the memory database. The Redis tests run against a live
+Redis with the Redis Streams broker as the default broker, and register a
+``sequential_by`` handler to get a partitioned category.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+import redis
 
-from protean.server.subscription_status import (
-    SubscriptionStatus,
-    _classify_status,
-    _collect_broker_status,
-    _collect_event_store_status,
-    _collect_outbox_statuses,
-    _collect_stream_status,
-    _infer_stream_category,
-    _lag_seconds,
-    _unknown_status,
-    collect_subscription_statuses,
+from protean.cli.recover import _perform_resets, _verdict
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
+from protean.core.process_manager import BaseProcessManager
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector
+from protean.core.subscriber import BaseSubscriber
+from protean.domain import Domain
+from protean.fields import Identifier, String
+from protean.server.engine import Engine
+from protean.server.subscription.event_store_subscription import (
+    EventStoreSubscription,
+    checkpoint_ahead_of_failed_stream,
+    reconstruct_unresolved,
 )
-from protean.utils.eventing import MessageType
+from protean.server.subscription_status import (
+    RecoveryCheckpointStatus,
+    SubscriptionStatus,
+    collect_recovery_checkpoint_statuses,
+    collect_subscription_statuses,
+    reset_checkpoint_to_head,
+    reset_recovery_checkpoint,
+)
+from protean.utils import fqn
+from protean.utils.eventing import DomainMeta, MessageHeaders, MessageType, Metadata
+from protean.utils.mixins import handle
+from protean.utils.outbox import Outbox
+from tests.shared import REDIS_URI, FrozenClock
+
+STATUS_LOGGER = "protean.server.subscription_status"
+
+# ---------------------------------------------------------------------------
+# Domain elements
+# ---------------------------------------------------------------------------
+
+
+class Order(BaseAggregate):
+    client_id = String()
+
+
+class OrderPlaced(BaseEvent):
+    order_id = Identifier(identifier=True)
+    client_id = String()
+
+
+class PlaceOrder(BaseCommand):
+    order_id = Identifier(identifier=True)
+
+
+class CancelOrder(BaseCommand):
+    order_id = Identifier(identifier=True)
+
+
+class Account(BaseAggregate):
+    name = String()
+
+
+class AccountOpened(BaseEvent):
+    account_id = Identifier(identifier=True)
+
+
+class OpenAccount(BaseCommand):
+    account_id = Identifier(identifier=True)
+
+
+class OrderNotifier(BaseEventHandler):
+    @handle(OrderPlaced)
+    def on_placed(self, event: OrderPlaced) -> None:
+        pass
+
+
+class OrderMirror(BaseEventHandler):
+    """Registered with ``subscription_type="stream"``."""
+
+    @handle(OrderPlaced)
+    def on_placed(self, event: OrderPlaced) -> None:
+        pass
+
+
+class OrderSequencer(BaseEventHandler):
+    """Registered with ``sequential_by``."""
+
+    @handle(OrderPlaced)
+    def on_placed(self, event: OrderPlaced) -> None:
+        pass
+
+
+class AccountWatcher(BaseEventHandler):
+    @handle(AccountOpened)
+    def on_opened(self, event: AccountOpened) -> None:
+        pass
+
+
+class PlaceOrderHandler(BaseCommandHandler):
+    @handle(PlaceOrder)
+    def place(self, command: PlaceOrder) -> None:
+        pass
+
+
+class CancelOrderHandler(BaseCommandHandler):
+    @handle(CancelOrder)
+    def cancel(self, command: CancelOrder) -> None:
+        pass
+
+
+class OpenAccountHandler(BaseCommandHandler):
+    @handle(OpenAccount)
+    def open(self, command: OpenAccount) -> None:
+        pass
+
+
+class OrderSummary(BaseProjection):
+    order_id = Identifier(identifier=True)
+
+
+class OrderSummaryProjector(BaseProjector):
+    @handle(OrderPlaced)
+    def on_placed(self, event: OrderPlaced) -> None:
+        pass
+
+
+class Fulfillment(BaseProcessManager):
+    order_id = Identifier()
+
+    @handle(OrderPlaced, start=True, correlate="order_id")
+    def on_placed(self, event: OrderPlaced) -> None:
+        pass
+
+
+class PartnerFeed(BaseSubscriber):
+    def __call__(self, payload: dict) -> None:
+        pass
+
+
+def _statuses(domain: Domain) -> dict[str, SubscriptionStatus]:
+    return {status.name: status for status in collect_subscription_statuses(domain)}
+
+
+def _register_order(domain: Domain) -> str:
+    domain.register(Order)
+    domain.register(OrderPlaced, part_of=Order)
+    return Order.meta_.stream_category
+
+
+def _write_events(store, stream_category: str, count: int) -> None:
+    with_metadata = {"headers": {"id": str(uuid4()), "type": "OrderPlaced"}}
+    for n in range(count):
+        store._write(f"{stream_category}-1", "OrderPlaced", {"n": n}, with_metadata)
+
+
+def _write_checkpoint(store, position_stream: str, position: int) -> None:
+    """Write a ``Read`` position record, the shape a live subscription writes."""
+    store._write(position_stream, "Read", {"position": position})
+
 
 # ---------------------------------------------------------------------------
 # SubscriptionStatus dataclass
@@ -86,1677 +233,1224 @@ class TestSubscriptionStatusDataclass:
 
 
 # ---------------------------------------------------------------------------
-# Classification helpers
+# Which subscriptions are reported
 # ---------------------------------------------------------------------------
 
 
-class TestClassifyStatus:
-    def test_ok_when_zero_lag_and_zero_pending(self):
-        assert _classify_status(0, 0) == "ok"
+class TestDiscovery:
+    def test_empty_domain_reports_nothing(self, test_domain):
+        test_domain.init(traverse=False)
+        assert collect_subscription_statuses(test_domain) == []
 
-    def test_lagging_when_lag_positive(self):
-        assert _classify_status(5) == "lagging"
+    def test_event_handler_is_read_from_the_event_store(self, test_domain):
+        category = _register_order(test_domain)
+        test_domain.register(OrderNotifier, part_of=Order)
+        test_domain.init(traverse=False)
 
-    def test_lagging_when_pending_positive(self):
-        assert _classify_status(0, 3) == "lagging"
+        status = _statuses(test_domain)[fqn(OrderNotifier)]
 
-    def test_unknown_when_lag_is_none(self):
-        assert _classify_status(None) == "unknown"
+        assert status.handler_name == "OrderNotifier"
+        assert status.subscription_type == "event_store"
+        assert status.stream_category == category
+        assert status.position_stream == f"position-{fqn(OrderNotifier)}-{category}"
 
+    def test_explicit_stream_category_wins(self, test_domain):
+        _register_order(test_domain)
+        test_domain.register(OrderNotifier, stream_category="audit")
+        test_domain.init(traverse=False)
 
-class TestLagSeconds:
-    def test_positive_lag_reports_seconds_behind(self):
-        """A lagging subscription reports wall-clock seconds since last update."""
-        now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
-        last_updated = (now - timedelta(seconds=42)).isoformat()
-        assert _lag_seconds(5, last_updated, now) == pytest.approx(42.0)
+        status = _statuses(test_domain)[fqn(OrderNotifier)]
 
-    def test_caught_up_is_zero_without_touching_now(self):
-        """``lag == 0`` is 0.0 and never does datetime arithmetic on ``now``."""
-        assert _lag_seconds(0, None, MagicMock()) == 0.0
+        assert status.stream_category == "audit"
+        assert status.position_stream == f"position-{fqn(OrderNotifier)}-audit"
 
-    def test_unknown_lag_is_none(self):
-        """``lag is None`` (unreadable) reports ``None`` seconds, not 0.0."""
-        assert _lag_seconds(None, "2026-01-01T12:00:00Z", MagicMock()) is None
+    def test_stream_handler_without_a_redis_broker_is_unknown(self, test_domain):
+        """The inline broker has no Redis client, so there is nothing to read."""
+        category = _register_order(test_domain)
+        test_domain.register(OrderMirror, part_of=Order, subscription_type="stream")
+        test_domain.init(traverse=False)
 
-    def test_missing_last_updated_is_none_not_zero(self):
-        """Lagging with no timestamp is unavailable (``None``), never 0.0."""
-        assert _lag_seconds(5, None, datetime(2026, 1, 1, tzinfo=UTC)) is None
+        status = _statuses(test_domain)[fqn(OrderMirror)]
 
-    def test_unparseable_last_updated_is_none(self):
-        """A timestamp that will not parse yields ``None``, not 0.0."""
-        assert _lag_seconds(5, "not-a-timestamp", datetime(2026, 1, 1, tzinfo=UTC)) is (
-            None
+        assert status.subscription_type == "stream"
+        assert status.stream_category == category
+        assert status.status == "unknown"
+        assert status.lag is None
+        assert status.position_stream is None
+
+    def test_sequential_by_on_a_non_partitioning_broker_reads_the_base_stream(
+        self, test_domain
+    ):
+        """``sequential_by`` is a no-op under the inline broker, so the
+        category is not read as partitions."""
+        category = _register_order(test_domain)
+        test_domain.register(
+            OrderSequencer,
+            part_of=Order,
+            sequential_by="client_id",
+            subscription_type="stream",
+        )
+        test_domain.init(traverse=False)
+
+        status = _statuses(test_domain)[fqn(OrderSequencer)]
+
+        assert status.stream_category == category
+        assert status.current_position is None
+        assert status.status == "unknown"
+
+    def test_command_handlers_on_one_stream_share_one_dispatcher(self, test_domain):
+        """The Engine runs one dispatcher per command stream, named
+        ``protean.server.engine.Commands:{stream}``, and the status reads that
+        dispatcher's checkpoint."""
+        _register_order(test_domain)
+        test_domain.register(PlaceOrder, part_of=Order)
+        test_domain.register(CancelOrder, part_of=Order)
+        test_domain.register(PlaceOrderHandler, part_of=Order)
+        test_domain.register(CancelOrderHandler, part_of=Order)
+        test_domain.init(traverse=False)
+        command_stream = f"{Order.meta_.stream_category}:command"
+
+        statuses = collect_subscription_statuses(test_domain)
+
+        assert [s.name for s in statuses] == [f"commands:{command_stream}"]
+        assert statuses[0].handler_name == "PlaceOrderHandler"
+        assert statuses[0].subscription_type == "event_store"
+        assert statuses[0].stream_category == command_stream
+        assert statuses[0].position_stream == (
+            f"position-protean.server.engine.Commands:{command_stream}-{command_stream}"
         )
 
-    def test_clock_skew_clamps_to_zero(self):
-        """A position timestamp slightly ahead of ``now`` clamps to 0.0."""
-        now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
-        ahead = (now + timedelta(seconds=3)).isoformat()
-        assert _lag_seconds(5, ahead, now) == 0.0
-
-
-class TestUnknownStatus:
-    def test_returns_unknown_subscription_status(self):
-        result = _unknown_status("sub-1", "MyHandler", "stream", "my-stream")
-        assert result.name == "sub-1"
-        assert result.handler_name == "MyHandler"
-        assert result.subscription_type == "stream"
-        assert result.stream_category == "my-stream"
-        assert result.lag is None
-        assert result.status == "unknown"
-        assert result.pending == 0
-        assert result.dlq_depth == 0
-
-
-# ---------------------------------------------------------------------------
-# Stream category inference
-# ---------------------------------------------------------------------------
-
-
-class TestInferStreamCategory:
-    def test_explicit_stream_category_on_handler(self):
-        handler = MagicMock()
-        handler.__name__ = "TestHandler"
-        handler.meta_.stream_category = "explicit-stream"
-        handler.meta_.part_of = None
-        assert _infer_stream_category(handler) == "explicit-stream"
-
-    def test_infers_from_part_of_aggregate(self):
-        handler = MagicMock()
-        handler.__name__ = "TestHandler"
-        handler.meta_.stream_category = None
-        handler.meta_.part_of = MagicMock()
-        handler.meta_.part_of.meta_.stream_category = "order"
-        assert _infer_stream_category(handler) == "order"
-
-    def test_raises_when_no_meta(self):
-        handler = MagicMock(spec=[])
-        handler.__name__ = "NoMetaHandler"
-        with pytest.raises(ValueError, match="has no meta_ attribute"):
-            _infer_stream_category(handler)
-
-    def test_raises_when_no_stream_category(self):
-        handler = MagicMock()
-        handler.__name__ = "AmbiguousHandler"
-        handler.meta_.stream_category = None
-        handler.meta_.part_of = None
-        with pytest.raises(ValueError, match="Cannot infer stream category"):
-            _infer_stream_category(handler)
-
-
-# ---------------------------------------------------------------------------
-# EventStore subscription status collection
-# ---------------------------------------------------------------------------
-
-
-class TestCollectEventStoreStatus:
-    def test_computes_lag_correctly(self):
-        """When current_position=5 and head=10, lag should be 5."""
-        mock_domain = MagicMock()
-        mock_store = MagicMock()
-        mock_domain.event_store.store = mock_store
-
-        # Position stream returns current position
-        mock_store._read_last_message.return_value = {"data": {"position": 5}}
-        # Head position
-        mock_store.stream_head_position.return_value = 10
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "OrderHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "OrderHandler"
-
-        result = _collect_event_store_status(
-            mock_domain, "order-handler", handler_cls, "order"
+    def test_stream_command_handler_is_read_from_the_broker(self, test_domain):
+        _register_order(test_domain)
+        test_domain.register(PlaceOrder, part_of=Order)
+        test_domain.register(
+            PlaceOrderHandler, part_of=Order, subscription_type="stream"
         )
+        test_domain.init(traverse=False)
+        command_stream = f"{Order.meta_.stream_category}:command"
 
-        assert result.lag == 5
-        assert result.current_position == "5"
-        assert result.head_position == "10"
-        assert result.status == "lagging"
+        status = _statuses(test_domain)[f"commands:{command_stream}"]
 
-    def test_lag_seconds_from_last_updated_and_clock(self):
-        """A lagging event-store subscription reports seconds behind the clock."""
-        now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
-        last_updated = (now - timedelta(seconds=30)).isoformat()
+        assert status.subscription_type == "stream"
+        assert status.status == "unknown"
 
-        mock_domain = MagicMock()
-        mock_domain.clock.now.return_value = now
-        mock_store = MagicMock()
-        mock_domain.event_store.store = mock_store
-
-        mock_store._read_last_message.return_value = {
-            "data": {"position": 5},
-            "time": last_updated,
-        }
-        mock_store.stream_head_position.return_value = 10
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "LaggingHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "LaggingHandler"
-
-        result = _collect_event_store_status(
-            mock_domain, "lagging", handler_cls, "order"
+    def test_projector_reports_one_row_per_stream_category(self, test_domain):
+        category = _register_order(test_domain)
+        test_domain.register(OrderSummary)
+        test_domain.register(
+            OrderSummaryProjector,
+            projector_for=OrderSummary,
+            stream_categories=[category, "test::payment"],
         )
+        test_domain.init(traverse=False)
+        name = fqn(OrderSummaryProjector)
 
-        assert result.lag == 5
-        assert result.lag_seconds == pytest.approx(30.0)
+        statuses = collect_subscription_statuses(test_domain)
 
-    def test_lag_seconds_none_without_last_updated(self):
-        """No ``last_updated`` reports ``lag_seconds is None``, not 0.0."""
-        mock_domain = MagicMock()
-        mock_store = MagicMock()
-        mock_domain.event_store.store = mock_store
-
-        # No "time" key, so last_updated is None even though lag is positive.
-        mock_store._read_last_message.return_value = {"data": {"position": 5}}
-        mock_store.stream_head_position.return_value = 10
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "NoTimeHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "NoTimeHandler"
-
-        result = _collect_event_store_status(
-            mock_domain, "no-time", handler_cls, "order"
-        )
-
-        assert result.lag == 5
-        assert result.lag_seconds is None
-
-    def test_lag_zero_when_caught_up(self):
-        mock_domain = MagicMock()
-        mock_store = MagicMock()
-        mock_domain.event_store.store = mock_store
-
-        mock_store._read_last_message.return_value = {"data": {"position": 10}}
-        mock_store.stream_head_position.return_value = 10
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "CaughtUpHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "CaughtUpHandler"
-
-        result = _collect_event_store_status(
-            mock_domain, "caught-up", handler_cls, "order"
-        )
-
-        assert result.lag == 0
-        assert result.status == "ok"
-        assert result.lag_seconds == 0.0
-
-    def test_unknown_when_empty_stream(self):
-        """When head is -1 (no messages), lag should be None."""
-        mock_domain = MagicMock()
-        mock_store = MagicMock()
-        mock_domain.event_store.store = mock_store
-
-        mock_store._read_last_message.return_value = None
-        mock_store.stream_head_position.return_value = -1
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "EmptyHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "EmptyHandler"
-
-        result = _collect_event_store_status(
-            mock_domain, "empty", handler_cls, "nothing"
-        )
-
-        assert result.lag is None
-        assert result.status == "unknown"
-
-    def test_graceful_degradation_on_error(self):
-        """Returns unknown status when event store query fails."""
-        mock_domain = MagicMock()
-        mock_domain.event_store.store._read_last_message.side_effect = RuntimeError(
-            "event store down"
-        )
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "FailHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "FailHandler"
-
-        result = _collect_event_store_status(
-            mock_domain, "fail-sub", handler_cls, "broken"
-        )
-
-        assert result.status == "unknown"
-        assert result.lag is None
-
-    def test_unknown_when_event_store_not_initialized(self):
-        """Returns unknown status when the backing store is None."""
-        mock_domain = MagicMock()
-        mock_domain.event_store.store = None
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "UninitHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "UninitHandler"
-
-        result = _collect_event_store_status(
-            mock_domain, "uninit-sub", handler_cls, "order"
-        )
-
-        assert result.status == "unknown"
-        assert result.subscription_type == "event_store"
-        assert result.handler_name == "UninitHandler"
-
-
-# ---------------------------------------------------------------------------
-# Stream subscription status collection
-# ---------------------------------------------------------------------------
-
-
-class TestCollectStreamStatus:
-    def test_uses_native_lag_when_available(self):
-        """Uses Redis 7.0+ native lag field from xinfo_groups."""
-        mock_domain = MagicMock()
-        mock_broker = MagicMock()
-        mock_redis = MagicMock()
-
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_broker.redis_instance = mock_redis
-
-        mock_redis.xlen.return_value = 100
-        mock_redis.xinfo_groups.return_value = [
-            {
-                "name": "tests.handlers.OrderHandler",
-                "pending": 2,
-                "last-delivered-id": "1234-0",
-                "lag": 5,
-                "consumers": 1,
-            }
+        assert [(s.name, s.subscription_type, s.stream_category) for s in statuses] == [
+            (f"{name}-{category}", "event_store", category),
+            (f"{name}-test::payment", "event_store", "test::payment"),
         ]
 
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "OrderHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "OrderHandler"
-
-        # Mock broker's _get_field_value to return the correct field
-        def _get_field_value(d, key, convert_to_int=False):
-            val = d.get(key)
-            if convert_to_int and val is not None:
-                return int(val)
-            return val
-
-        mock_broker._get_field_value.side_effect = _get_field_value
-
-        result = _collect_stream_status(
-            mock_domain, "order-stream", handler_cls, "order"
+    def test_stream_projector_is_read_from_the_broker(self, test_domain):
+        category = _register_order(test_domain)
+        test_domain.register(OrderSummary)
+        test_domain.register(
+            OrderSummaryProjector,
+            projector_for=OrderSummary,
+            stream_categories=[category],
+            subscription_type="stream",
         )
+        test_domain.init(traverse=False)
 
-        assert result.lag == 5
-        assert result.pending == 2
-        assert result.consumer_count == 1
+        status = _statuses(test_domain)[f"{fqn(OrderSummaryProjector)}-{category}"]
 
-    def test_falls_back_to_xrange_when_no_native_lag(self):
-        """Falls back to xrange counting when Redis < 7.0."""
-        mock_domain = MagicMock()
-        mock_broker = MagicMock()
-        mock_redis = MagicMock()
+        assert status.subscription_type == "stream"
+        assert status.status == "unknown"
 
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_broker.redis_instance = mock_redis
+    def test_process_manager_reports_one_row_per_stream_category(self, test_domain):
+        category = _register_order(test_domain)
+        test_domain.register(Fulfillment, stream_categories=[category, "test::payment"])
+        test_domain.init(traverse=False)
+        name = fqn(Fulfillment)
 
-        mock_redis.xlen.return_value = 50
-        mock_redis.xinfo_groups.return_value = [
-            {
-                "name": "tests.handlers.OrderHandler",
-                "pending": 1,
-                "last-delivered-id": "1000-0",
-                "consumers": 2,
-            }
-        ]
-        # xrange returns 3 messages after last-delivered-id
-        mock_redis.xrange.return_value = [
-            ("1001-0", {}),
-            ("1002-0", {}),
-            ("1003-0", {}),
+        statuses = collect_subscription_statuses(test_domain)
+
+        assert [(s.name, s.subscription_type, s.stream_category) for s in statuses] == [
+            (f"{name}-{category}", "event_store", category),
+            (f"{name}-test::payment", "event_store", "test::payment"),
         ]
 
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "OrderHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "OrderHandler"
-
-        def _get_field_value(d, key, convert_to_int=False):
-            val = d.get(key)
-            if convert_to_int and val is not None:
-                return int(val)
-            return val
-
-        mock_broker._get_field_value.side_effect = _get_field_value
-
-        result = _collect_stream_status(
-            mock_domain, "order-stream", handler_cls, "order"
+    def test_stream_process_manager_is_read_from_the_broker(self, test_domain):
+        category = _register_order(test_domain)
+        test_domain.register(
+            Fulfillment, stream_categories=[category], subscription_type="stream"
         )
-
-        assert result.lag == 3
-        assert result.pending == 1
-        assert result.consumer_count == 2
-
-    def test_unknown_when_broker_not_available(self):
-        mock_domain = MagicMock()
-        mock_domain.brokers.get.return_value = None
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "Handler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "Handler"
-
-        result = _collect_stream_status(mock_domain, "no-broker", handler_cls, "test")
-
-        assert result.status == "unknown"
-
-    def test_dlq_depth_queried(self):
-        """DLQ depth is read from the :dlq stream."""
-        mock_domain = MagicMock()
-        mock_broker = MagicMock()
-        mock_redis = MagicMock()
-
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_broker.redis_instance = mock_redis
-
-        mock_redis.xlen.side_effect = lambda name: 7 if name.endswith(":dlq") else 100
-        mock_redis.xinfo_groups.return_value = [
-            {
-                "name": "tests.handlers.H",
-                "pending": 0,
-                "last-delivered-id": "999-0",
-                "lag": 0,
-                "consumers": 1,
-            }
-        ]
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "H"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "H"
-
-        def _get_field_value(d, key, convert_to_int=False):
-            val = d.get(key)
-            if convert_to_int and val is not None:
-                return int(val)
-            return val
-
-        mock_broker._get_field_value.side_effect = _get_field_value
-
-        result = _collect_stream_status(
-            mock_domain, "h-stream", handler_cls, "my-stream"
-        )
-
-        assert result.dlq_depth == 7
-
-
-# ---------------------------------------------------------------------------
-# Outbox processor status collection
-# ---------------------------------------------------------------------------
-
-
-def _aggregates_on_default() -> dict:
-    """Registry records for one aggregate stored in the ``default`` provider."""
-    return {
-        "Order": SimpleNamespace(
-            cls=SimpleNamespace(meta_=SimpleNamespace(provider="default"))
-        )
-    }
-
-
-class TestCollectOutboxStatuses:
-    def test_returns_empty_when_no_outbox(self):
-        mock_domain = MagicMock()
-        mock_domain.has_outbox = False
-
-        result = _collect_outbox_statuses(mock_domain)
-        assert result == []
-
-    def test_returns_status_per_provider(self):
-        mock_domain = MagicMock()
-        mock_domain.has_outbox = True
-        mock_domain.config = {"outbox": {"broker": "default"}}
-        mock_domain.providers = {"default": MagicMock(managed=True)}
-        mock_domain.registry.aggregates = _aggregates_on_default()
-
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {
-            "pending": 3,
-            "processing": 1,
-            "failed": 2,
-            "abandoned": 0,
-        }
-        mock_domain._get_outbox_repo.return_value = mock_outbox
-
-        result = _collect_outbox_statuses(mock_domain)
-        assert len(result) == 1
-
-        status = result[0]
-        assert status.handler_name == "OutboxProcessor"
-        assert status.subscription_type == "outbox"
-        assert status.lag == 4  # pending + processing
-        assert status.pending == 3
-        assert status.dlq_depth == 2  # failed + abandoned
-        assert status.status == "lagging"
-
-    def test_ok_when_no_pending(self):
-        mock_domain = MagicMock()
-        mock_domain.has_outbox = True
-        mock_domain.config = {"outbox": {"broker": "default"}}
-        mock_domain.providers = {"default": MagicMock(managed=True)}
-        mock_domain.registry.aggregates = _aggregates_on_default()
-
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {
-            "pending": 0,
-            "processing": 0,
-            "failed": 0,
-            "abandoned": 0,
-        }
-        mock_domain._get_outbox_repo.return_value = mock_outbox
-
-        result = _collect_outbox_statuses(mock_domain)
-        assert len(result) == 1
-        assert result[0].status == "ok"
-        assert result[0].lag == 0
-
-    def test_graceful_degradation_on_error(self):
-        mock_domain = MagicMock()
-        mock_domain.has_outbox = True
-        mock_domain.config = {"outbox": {"broker": "default"}}
-        mock_domain.providers = {"default": MagicMock(managed=True)}
-        mock_domain.registry.aggregates = _aggregates_on_default()
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(
-            side_effect=RuntimeError("db down")
-        )
-
-        result = _collect_outbox_statuses(mock_domain)
-        assert len(result) == 1
-        assert result[0].status == "unknown"
-
-
-# ---------------------------------------------------------------------------
-# Public collection function
-# ---------------------------------------------------------------------------
-
-
-class TestCollectSubscriptionStatuses:
-    def test_empty_domain_returns_empty_list(self):
-        """A domain with no handlers returns an empty list."""
-        mock_domain = MagicMock()
-        mock_domain.registry.event_handlers = {}
-        mock_domain.registry.command_handlers = {}
-        mock_domain.registry.projectors = {}
-        mock_domain.registry.process_managers = {}
-        mock_domain.registry.subscribers = {}
-        mock_domain.has_outbox = False
-
-        result = collect_subscription_statuses(mock_domain)
-        assert result == []
-
-    def test_discovers_event_handler(self):
-        """Collects status for a registered event handler."""
-        mock_domain = MagicMock()
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "OrderHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "OrderHandler"
-        handler_cls.meta_.stream_category = "order"
-        handler_cls.meta_.part_of = None
-
-        record = MagicMock()
-        record.cls = handler_cls
-
-        mock_domain.registry.event_handlers = {"order-handler": record}
-        mock_domain.registry.command_handlers = {}
-        mock_domain.registry.projectors = {}
-        mock_domain.registry.process_managers = {}
-        mock_domain.registry.subscribers = {}
-        mock_domain.has_outbox = False
-
-        # Mock ConfigResolver to return event_store type
-        from protean.server.subscription.profiles import SubscriptionType
-
-        mock_config = MagicMock()
-        mock_config.subscription_type = SubscriptionType.EVENT_STORE
-
-        with patch("protean.server.subscription_status.ConfigResolver") as MockResolver:
-            resolver_instance = MockResolver.return_value
-            resolver_instance.resolve.return_value = mock_config
-
-            # Mock _collect_event_store_status to avoid infrastructure
-            with patch(
-                "protean.server.subscription_status._collect_event_store_status"
-            ) as mock_collect:
-                mock_collect.return_value = SubscriptionStatus(
-                    name="order-handler",
-                    handler_name="OrderHandler",
-                    subscription_type="event_store",
-                    stream_category="order",
-                    lag=0,
-                    pending=0,
-                    current_position="10",
-                    head_position="10",
-                    status="ok",
-                    consumer_count=0,
-                    dlq_depth=0,
-                )
-
-                result = collect_subscription_statuses(mock_domain)
-
-        assert len(result) == 1
-        assert result[0].handler_name == "OrderHandler"
-        assert result[0].status == "ok"
-
-    def test_discovers_command_handler_dispatcher(self):
-        """Command handlers are grouped by stream into a single dispatcher subscription."""
-        mock_domain = MagicMock()
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "PlaceOrderHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "PlaceOrderHandler"
-        handler_cls.meta_.stream_category = "order"
-        handler_cls.meta_.part_of = None
-
-        record = MagicMock()
-        record.cls = handler_cls
-
-        mock_domain.registry.event_handlers = {}
-        mock_domain.registry.command_handlers = {"place-order": record}
-        mock_domain.registry.projectors = {}
-        mock_domain.registry.process_managers = {}
-        mock_domain.registry.subscribers = {}
-        mock_domain.has_outbox = False
-
-        from protean.server.subscription.profiles import SubscriptionType
-
-        mock_config = MagicMock()
-        mock_config.subscription_type = SubscriptionType.STREAM
-
-        with patch("protean.server.subscription_status.ConfigResolver") as MockResolver:
-            resolver_instance = MockResolver.return_value
-            resolver_instance.resolve.return_value = mock_config
-
-            with patch(
-                "protean.server.subscription_status._collect_stream_status"
-            ) as mock_collect:
-                mock_collect.return_value = SubscriptionStatus(
-                    name="commands:order",
-                    handler_name="PlaceOrderHandler",
-                    subscription_type="stream",
-                    stream_category="order",
-                    lag=0,
-                    pending=0,
-                    current_position="0-0",
-                    head_position="100",
-                    status="ok",
-                    consumer_count=1,
-                    dlq_depth=0,
-                )
-
-                result = collect_subscription_statuses(mock_domain)
-
-        assert len(result) == 1
-        assert result[0].name == "commands:order"
-
-        # Verify the dispatcher fqn was used as consumer group name
-        mock_collect.assert_called_once()
-        call_kwargs = mock_collect.call_args
-        assert (
-            call_kwargs.kwargs["consumer_group_name"]
-            == "protean.server.engine.Commands:order"
-        )
-
-    def test_discovers_projectors_across_streams(self):
-        """A projector with two stream_categories produces two statuses."""
-        mock_domain = MagicMock()
-
-        projector_cls = MagicMock()
-        projector_cls.__name__ = "OrderSummary"
-        projector_cls.__module__ = "tests.projectors"
-        projector_cls.__qualname__ = "OrderSummary"
-        projector_cls.meta_.stream_categories = ["order", "payment"]
-
-        record = MagicMock()
-        record.cls = projector_cls
-
-        mock_domain.registry.event_handlers = {}
-        mock_domain.registry.command_handlers = {}
-        mock_domain.registry.projectors = {"order-summary": record}
-        mock_domain.registry.process_managers = {}
-        mock_domain.registry.subscribers = {}
-        mock_domain.has_outbox = False
-
-        from protean.server.subscription.profiles import SubscriptionType
-
-        mock_config = MagicMock()
-        mock_config.subscription_type = SubscriptionType.EVENT_STORE
-
-        with patch("protean.server.subscription_status.ConfigResolver") as MockResolver:
-            resolver_instance = MockResolver.return_value
-            resolver_instance.resolve.return_value = mock_config
-
-            with patch(
-                "protean.server.subscription_status._collect_event_store_status"
-            ) as mock_collect:
-                mock_collect.return_value = _unknown_status(
-                    "stub", "OrderSummary", "event_store", "order"
-                )
-
-                result = collect_subscription_statuses(mock_domain)
-
-        assert len(result) == 2
-        # Called once per stream category
-        assert mock_collect.call_count == 2
-
-    def test_discovers_event_handler_stream_type(self):
-        """Event handler resolved to STREAM type calls _collect_stream_status."""
-        mock_domain = MagicMock()
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "OrderHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "OrderHandler"
-        handler_cls.meta_.stream_category = "order"
-        handler_cls.meta_.part_of = None
-
-        record = MagicMock()
-        record.cls = handler_cls
-
-        mock_domain.registry.event_handlers = {"order-handler": record}
-        mock_domain.registry.command_handlers = {}
-        mock_domain.registry.projectors = {}
-        mock_domain.registry.process_managers = {}
-        mock_domain.registry.subscribers = {}
-        mock_domain.has_outbox = False
-
-        from protean.server.subscription.profiles import SubscriptionType
-
-        mock_config = MagicMock()
-        mock_config.subscription_type = SubscriptionType.STREAM
-
-        with patch("protean.server.subscription_status.ConfigResolver") as MockResolver:
-            resolver_instance = MockResolver.return_value
-            resolver_instance.resolve.return_value = mock_config
-
-            with patch(
-                "protean.server.subscription_status._collect_stream_status"
-            ) as mock_collect:
-                mock_collect.return_value = _unknown_status(
-                    "order-handler", "OrderHandler", "stream", "order"
-                )
-
-                result = collect_subscription_statuses(mock_domain)
-
-        assert len(result) == 1
-        mock_collect.assert_called_once()
-
-    def test_skips_handler_with_no_stream_category(self, caplog):
-        """Handlers that raise ValueError in _infer_stream_category are skipped."""
-        mock_domain = MagicMock()
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "BrokenHandler"
-        handler_cls.meta_.stream_category = None
-        handler_cls.meta_.part_of = None
-
-        record = MagicMock()
-        record.cls = handler_cls
-
-        # Also a command handler with broken stream category
-        cmd_handler_cls = MagicMock()
-        cmd_handler_cls.__name__ = "BrokenCmd"
-        cmd_handler_cls.meta_.stream_category = None
-        cmd_handler_cls.meta_.part_of = None
-
-        cmd_record = MagicMock()
-        cmd_record.cls = cmd_handler_cls
-
-        mock_domain.registry.event_handlers = {"broken-handler": record}
-        mock_domain.registry.command_handlers = {"broken-cmd": cmd_record}
-        mock_domain.registry.projectors = {}
-        mock_domain.registry.process_managers = {}
-        mock_domain.registry.subscribers = {}
-        mock_domain.has_outbox = False
-
-        with (
-            patch("protean.server.subscription_status.ConfigResolver"),
-            caplog.at_level(logging.DEBUG, logger="protean.server.subscription_status"),
-        ):
-            result = collect_subscription_statuses(mock_domain)
+        test_domain.init(traverse=False)
+
+        status = _statuses(test_domain)[f"{fqn(Fulfillment)}-{category}"]
+
+        assert status.subscription_type == "stream"
+        assert status.status == "unknown"
+
+    @pytest.mark.no_test_domain
+    def test_handlers_with_no_stream_category_are_left_out(self, caplog):
+        """A handler whose ``part_of`` never resolved to an aggregate has no
+        stream to read. It is left out, with the reason logged at DEBUG."""
+        domain = Domain(name="Unresolved")
+        domain.register(OrderNotifier, part_of="Order")
+        domain.register(PlaceOrderHandler, part_of="Order")
+
+        with caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER):
+            result = collect_subscription_statuses(domain)
 
         assert result == []
-        skipped = [
-            r
-            for r in caplog.records
-            if r.name == "protean.server.subscription_status"
-            and "out of the subscription status" in r.getMessage()
-        ]
+        skipped = [r for r in caplog.records if "out of the subscription" in r.message]
         assert [r.getMessage() for r in skipped] == [
-            "Leaving broken-handler out of the subscription status",
-            "Leaving broken-cmd out of the subscription status",
+            f"Leaving {fqn(OrderNotifier)} out of the subscription status",
+            f"Leaving {fqn(PlaceOrderHandler)} out of the subscription status",
         ]
-        assert all(r.levelno == logging.DEBUG for r in skipped)
-        assert all(isinstance(r.exc_info[1], ValueError) for r in skipped)
+        assert [r.levelno for r in skipped] == [logging.DEBUG, logging.DEBUG]
+        assert [type(r.exc_info[1]) for r in skipped] == [ValueError, ValueError]
 
-    def test_discovers_command_handler_event_store_type(self):
-        """Command handler resolved to EVENT_STORE type calls _collect_event_store_status."""
-        mock_domain = MagicMock()
 
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "PlaceOrderHandler"
-        handler_cls.__module__ = "tests.handlers"
-        handler_cls.__qualname__ = "PlaceOrderHandler"
-        handler_cls.meta_.stream_category = "order"
-        handler_cls.meta_.part_of = None
+# ---------------------------------------------------------------------------
+# Event-store subscriptions
+# ---------------------------------------------------------------------------
 
-        record = MagicMock()
-        record.cls = handler_cls
 
-        mock_domain.registry.event_handlers = {}
-        mock_domain.registry.command_handlers = {"place-order": record}
-        mock_domain.registry.projectors = {}
-        mock_domain.registry.process_managers = {}
-        mock_domain.registry.subscribers = {}
-        mock_domain.has_outbox = False
+class TestEventStoreStatus:
+    @pytest.fixture(autouse=True)
+    def register(self, test_domain):
+        self.category = _register_order(test_domain)
+        test_domain.register(OrderNotifier, part_of=Order)
+        test_domain.init(traverse=False)
+        self.store = test_domain.event_store.store
+        self.position_stream = f"position-{fqn(OrderNotifier)}-{self.category}"
 
-        from protean.server.subscription.profiles import SubscriptionType
+    def test_lag_is_head_minus_checkpoint(self, test_domain):
+        test_domain.clock = FrozenClock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+        _write_events(self.store, self.category, 5)
+        _write_checkpoint(self.store, self.position_stream, 2)
+        test_domain.clock.advance(timedelta(seconds=30))
 
-        mock_config = MagicMock()
-        mock_config.subscription_type = SubscriptionType.EVENT_STORE
+        status = _statuses(test_domain)[fqn(OrderNotifier)]
 
-        with patch("protean.server.subscription_status.ConfigResolver") as MockResolver:
-            resolver_instance = MockResolver.return_value
-            resolver_instance.resolve.return_value = mock_config
+        assert status.current_position == "2"
+        assert status.head_position == "5"
+        assert status.lag == 3
+        assert status.status == "lagging"
+        assert status.last_updated == "2026-01-01T12:00:00+00:00"
+        assert status.lag_seconds == 30.0
 
-            with patch(
-                "protean.server.subscription_status._collect_event_store_status"
-            ) as mock_collect:
-                mock_collect.return_value = _unknown_status(
-                    "commands:order", "PlaceOrderHandler", "event_store", "order"
-                )
+    def test_caught_up_is_ok_with_zero_seconds(self, test_domain):
+        test_domain.clock = FrozenClock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+        _write_events(self.store, self.category, 3)
+        _write_checkpoint(self.store, self.position_stream, 3)
+        test_domain.clock.advance(timedelta(seconds=30))
 
-                result = collect_subscription_statuses(mock_domain)
+        status = _statuses(test_domain)[fqn(OrderNotifier)]
 
-        assert len(result) == 1
-        mock_collect.assert_called_once()
-        call_kwargs = mock_collect.call_args
-        assert (
-            call_kwargs.kwargs["subscriber_name"]
-            == "protean.server.engine.Commands:order"
-        )
+        assert status.lag == 0
+        assert status.status == "ok"
+        assert status.lag_seconds == 0.0
 
-    def test_discovers_projector_stream_type(self):
-        """Projector resolved to STREAM type calls _collect_stream_status."""
-        mock_domain = MagicMock()
+    def test_clock_behind_the_checkpoint_clamps_seconds_to_zero(self, test_domain):
+        test_domain.clock = FrozenClock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+        _write_events(self.store, self.category, 3)
+        _write_checkpoint(self.store, self.position_stream, 1)
+        test_domain.clock = FrozenClock(datetime(2026, 1, 1, 11, 59, 57, tzinfo=UTC))
 
-        projector_cls = MagicMock()
-        projector_cls.__name__ = "OrderSummary"
-        projector_cls.__module__ = "tests.projectors"
-        projector_cls.__qualname__ = "OrderSummary"
-        projector_cls.meta_.stream_categories = ["order"]
+        status = _statuses(test_domain)[fqn(OrderNotifier)]
 
-        record = MagicMock()
-        record.cls = projector_cls
+        assert status.lag == 2
+        assert status.lag_seconds == 0.0
 
-        mock_domain.registry.event_handlers = {}
-        mock_domain.registry.command_handlers = {}
-        mock_domain.registry.projectors = {"order-summary": record}
-        mock_domain.registry.process_managers = {}
-        mock_domain.registry.subscribers = {}
-        mock_domain.has_outbox = False
+    def test_checkpoint_past_the_head_is_zero_lag(self, test_domain):
+        """A checkpoint past the head is what ``protean recover
+        --reset-beyond-head`` repairs. The status shows it as caught up, not as
+        a negative lag."""
+        _write_events(self.store, self.category, 3)
+        _write_checkpoint(self.store, self.position_stream, 10)
 
-        from protean.server.subscription.profiles import SubscriptionType
+        status = _statuses(test_domain)[fqn(OrderNotifier)]
 
-        mock_config = MagicMock()
-        mock_config.subscription_type = SubscriptionType.STREAM
+        assert status.current_position == "10"
+        assert status.head_position == "3"
+        assert status.lag == 0
+        assert status.status == "ok"
 
-        with patch("protean.server.subscription_status.ConfigResolver") as MockResolver:
-            resolver_instance = MockResolver.return_value
-            resolver_instance.resolve.return_value = mock_config
+    def test_no_checkpoint_counts_the_whole_stream_with_no_seconds(self, test_domain):
+        """A subscription that never wrote a checkpoint counts from -1, so its
+        lag covers the whole stream. With no write time its seconds behind are
+        unknown, not 0."""
+        _write_events(self.store, self.category, 3)
 
-            with patch(
-                "protean.server.subscription_status._collect_stream_status"
-            ) as mock_collect:
-                mock_collect.return_value = _unknown_status(
-                    "stub", "OrderSummary", "stream", "order"
-                )
+        status = _statuses(test_domain)[fqn(OrderNotifier)]
 
-                result = collect_subscription_statuses(mock_domain)
+        assert status.current_position == "-1"
+        assert status.head_position == "3"
+        assert status.lag == 4
+        assert status.last_updated is None
+        assert status.lag_seconds is None
 
-        assert len(result) == 1
-        mock_collect.assert_called_once()
+    def test_empty_stream_is_unknown(self, test_domain):
+        status = _statuses(test_domain)[fqn(OrderNotifier)]
 
-    def test_discovers_process_managers(self):
-        """Process managers produce one status per stream category."""
-        mock_domain = MagicMock()
+        assert status.head_position == "-1"
+        assert status.lag is None
+        assert status.status == "unknown"
+        assert status.lag_seconds is None
 
-        pm_cls = MagicMock()
-        pm_cls.__name__ = "PaymentFlow"
-        pm_cls.__module__ = "tests.pm"
-        pm_cls.__qualname__ = "PaymentFlow"
-        pm_cls.meta_.stream_categories = ["order", "payment"]
-
-        record = MagicMock()
-        record.cls = pm_cls
-
-        mock_domain.registry.event_handlers = {}
-        mock_domain.registry.command_handlers = {}
-        mock_domain.registry.projectors = {}
-        mock_domain.registry.process_managers = {"payment-flow": record}
-        mock_domain.registry.subscribers = {}
-        mock_domain.has_outbox = False
-
-        from protean.server.subscription.profiles import SubscriptionType
-
-        mock_config = MagicMock()
-        mock_config.subscription_type = SubscriptionType.EVENT_STORE
-
-        with patch("protean.server.subscription_status.ConfigResolver") as MockResolver:
-            resolver_instance = MockResolver.return_value
-            resolver_instance.resolve.return_value = mock_config
-
-            with patch(
-                "protean.server.subscription_status._collect_event_store_status"
-            ) as mock_collect:
-                mock_collect.return_value = _unknown_status(
-                    "stub", "PaymentFlow", "event_store", "order"
-                )
-
-                result = collect_subscription_statuses(mock_domain)
-
-        assert len(result) == 2
-        assert mock_collect.call_count == 2
-
-    def test_discovers_process_managers_stream_type(self):
-        """Process managers with STREAM type call _collect_stream_status."""
-        mock_domain = MagicMock()
-
-        pm_cls = MagicMock()
-        pm_cls.__name__ = "PaymentFlow"
-        pm_cls.__module__ = "tests.pm"
-        pm_cls.__qualname__ = "PaymentFlow"
-        pm_cls.meta_.stream_categories = ["order"]
-
-        record = MagicMock()
-        record.cls = pm_cls
-
-        mock_domain.registry.event_handlers = {}
-        mock_domain.registry.command_handlers = {}
-        mock_domain.registry.projectors = {}
-        mock_domain.registry.process_managers = {"payment-flow": record}
-        mock_domain.registry.subscribers = {}
-        mock_domain.has_outbox = False
-
-        from protean.server.subscription.profiles import SubscriptionType
-
-        mock_config = MagicMock()
-        mock_config.subscription_type = SubscriptionType.STREAM
-
-        with patch("protean.server.subscription_status.ConfigResolver") as MockResolver:
-            resolver_instance = MockResolver.return_value
-            resolver_instance.resolve.return_value = mock_config
-
-            with patch(
-                "protean.server.subscription_status._collect_stream_status"
-            ) as mock_collect:
-                mock_collect.return_value = _unknown_status(
-                    "stub", "PaymentFlow", "stream", "order"
-                )
-
-                result = collect_subscription_statuses(mock_domain)
-
-        assert len(result) == 1
-        mock_collect.assert_called_once()
-
-    def test_discovers_broker_subscribers(self):
-        """Broker subscribers call _collect_broker_status."""
-        mock_domain = MagicMock()
-
-        subscriber_cls = MagicMock()
-        subscriber_cls.__name__ = "ExternalHandler"
-        subscriber_cls.__module__ = "tests.subscribers"
-        subscriber_cls.__qualname__ = "ExternalHandler"
-        subscriber_cls.meta_.broker = "default"
-        subscriber_cls.meta_.stream = "external-events"
-
-        record = MagicMock()
-        record.cls = subscriber_cls
-
-        mock_domain.registry.event_handlers = {}
-        mock_domain.registry.command_handlers = {}
-        mock_domain.registry.projectors = {}
-        mock_domain.registry.process_managers = {}
-        mock_domain.registry.subscribers = {"ext-handler": record}
-        mock_domain.has_outbox = False
-
-        with (
-            patch("protean.server.subscription_status.ConfigResolver"),
-            patch(
-                "protean.server.subscription_status._collect_broker_status"
-            ) as mock_collect,
+    def test_store_read_failure_is_unknown_and_keeps_recovery_streams(
+        self, test_domain
+    ):
+        with patch.object(
+            self.store, "_read_last_message", side_effect=RuntimeError("store down")
         ):
-            mock_collect.return_value = _unknown_status(
-                "ext-handler", "ExternalHandler", "broker", "external-events"
-            )
+            status = _statuses(test_domain)[fqn(OrderNotifier)]
 
-            result = collect_subscription_statuses(mock_domain)
-
-        assert len(result) == 1
-        mock_collect.assert_called_once_with(
-            mock_domain, "ext-handler", subscriber_cls, "external-events", "default"
+        assert status.status == "unknown"
+        assert status.lag is None
+        assert status.recovery_checkpoint_stream == (
+            f"recovery-checkpoint-{fqn(OrderNotifier)}-{self.category}"
         )
-
-
-# ---------------------------------------------------------------------------
-# Broker subscription status collection
-# ---------------------------------------------------------------------------
-
-
-class TestCollectBrokerStatus:
-    def test_redis_broker_with_native_lag(self):
-        """Broker with redis_instance uses Redis introspection."""
-        mock_domain = MagicMock()
-        mock_broker = MagicMock()
-        mock_redis = MagicMock()
-
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_broker.redis_instance = mock_redis
-
-        mock_redis.xlen.return_value = 200
-        mock_redis.xinfo_groups.return_value = [
-            {
-                "name": "tests.subscribers.ExternalHandler",
-                "pending": 5,
-                "last-delivered-id": "500-0",
-                "lag": 10,
-                "consumers": 3,
-            }
-        ]
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "ExternalHandler"
-        handler_cls.__module__ = "tests.subscribers"
-        handler_cls.__qualname__ = "ExternalHandler"
-
-        def _get_field_value(d, key, convert_to_int=False):
-            val = d.get(key)
-            if convert_to_int and val is not None:
-                return int(val)
-            return val
-
-        mock_broker._get_field_value.side_effect = _get_field_value
-
-        result = _collect_broker_status(
-            mock_domain, "ext-handler", handler_cls, "external-events", "default"
+        assert status.failed_positions_stream == (
+            f"failed-{fqn(OrderNotifier)}-{self.category}"
         )
-
-        assert result.subscription_type == "broker"
-        assert result.lag == 10
-        assert result.pending == 5
-        assert result.consumer_count == 3
-
-    def test_redis_broker_xrange_fallback(self):
-        """Broker falls back to xrange when no native lag field."""
-        mock_domain = MagicMock()
-        mock_broker = MagicMock()
-        mock_redis = MagicMock()
-
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_broker.redis_instance = mock_redis
-
-        mock_redis.xlen.return_value = 50
-        mock_redis.xinfo_groups.return_value = [
-            {
-                "name": "tests.subscribers.ExternalHandler",
-                "pending": 2,
-                "last-delivered-id": "100-0",
-                "consumers": 1,
-            }
-        ]
-        mock_redis.xrange.return_value = [("101-0", {}), ("102-0", {})]
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "ExternalHandler"
-        handler_cls.__module__ = "tests.subscribers"
-        handler_cls.__qualname__ = "ExternalHandler"
-
-        def _get_field_value(d, key, convert_to_int=False):
-            val = d.get(key)
-            if convert_to_int and val is not None:
-                return int(val)
-            return val
-
-        mock_broker._get_field_value.side_effect = _get_field_value
-
-        result = _collect_broker_status(
-            mock_domain, "ext-handler", handler_cls, "external-events", "default"
-        )
-
-        assert result.lag == 2
-        assert result.pending == 2
-
-    def test_non_redis_broker_uses_info_api(self):
-        """Broker without redis_instance uses info() API."""
-        mock_domain = MagicMock()
-        mock_broker = MagicMock(spec=["info", "get"])
-        # No redis_instance attribute (spec controls which attributes exist)
-        mock_domain.brokers.get.return_value = mock_broker
-
-        mock_broker.info.return_value = {
-            "consumer_groups": {
-                "tests.subscribers.ExternalHandler": {
-                    "pending": 7,
-                    "consumer_count": 2,
-                }
-            }
-        }
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "ExternalHandler"
-        handler_cls.__module__ = "tests.subscribers"
-        handler_cls.__qualname__ = "ExternalHandler"
-
-        result = _collect_broker_status(
-            mock_domain, "ext-handler", handler_cls, "external-events", "default"
-        )
-
-        assert result.subscription_type == "broker"
-        assert result.lag == 7
-        assert result.pending == 7
-        assert result.consumer_count == 2
-        assert result.status == "lagging"
-
-    def test_non_redis_broker_ok_when_no_pending(self):
-        """Non-Redis broker returns ok when no pending."""
-        mock_domain = MagicMock()
-        mock_broker = MagicMock(spec=["info", "get"])
-        mock_domain.brokers.get.return_value = mock_broker
-
-        mock_broker.info.return_value = {
-            "consumer_groups": {
-                "tests.subscribers.ExternalHandler": {
-                    "pending": 0,
-                    "consumer_count": 1,
-                }
-            }
-        }
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "ExternalHandler"
-        handler_cls.__module__ = "tests.subscribers"
-        handler_cls.__qualname__ = "ExternalHandler"
-
-        result = _collect_broker_status(
-            mock_domain, "ext-handler", handler_cls, "external-events", "default"
-        )
-
-        assert result.status == "ok"
-
-    def test_unknown_when_broker_is_none(self):
-        """Returns unknown when broker is not configured."""
-        mock_domain = MagicMock()
-        mock_domain.brokers.get.return_value = None
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "ExternalHandler"
-        handler_cls.__module__ = "tests.subscribers"
-        handler_cls.__qualname__ = "ExternalHandler"
-
-        result = _collect_broker_status(
-            mock_domain, "ext-handler", handler_cls, "ext-events", "default"
-        )
-
-        assert result.status == "unknown"
-
-    def test_graceful_degradation_on_error(self):
-        """Returns unknown when broker query raises."""
-        mock_domain = MagicMock()
-        mock_domain.brokers.get.side_effect = RuntimeError("broker down")
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "ExternalHandler"
-        handler_cls.__module__ = "tests.subscribers"
-        handler_cls.__qualname__ = "ExternalHandler"
-
-        result = _collect_broker_status(
-            mock_domain, "ext-handler", handler_cls, "ext-events", "default"
-        )
-
-        assert result.status == "unknown"
-
-    def test_redis_broker_xlen_exception(self, caplog):
-        """When xlen raises on Redis broker, stream_length defaults to 0."""
-        mock_domain = MagicMock()
-        mock_broker = MagicMock()
-        mock_redis = MagicMock()
-
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_broker.redis_instance = mock_redis
-
-        mock_redis.xlen.side_effect = Exception("stream gone")
-        mock_redis.xinfo_groups.return_value = []
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "ExternalHandler"
-        handler_cls.__module__ = "tests.subscribers"
-        handler_cls.__qualname__ = "ExternalHandler"
-
-        def _get_field_value(d, key, convert_to_int=False):
-            val = d.get(key)
-            if convert_to_int and val is not None:
-                return int(val)
-            return val
-
-        mock_broker._get_field_value.side_effect = _get_field_value
-
-        with caplog.at_level(
-            logging.DEBUG, logger="protean.server.subscription_status"
-        ):
-            result = _collect_broker_status(
-                mock_domain, "ext-handler", handler_cls, "external-events", "default"
-            )
-
-        assert result.head_position == "0"
-        assert "Could not read length of external-events: Exception('stream gone')" in (
-            caplog.messages
-        )
-
-    def test_redis_broker_non_dict_group_entries(self):
-        """Non-dict entries in xinfo_groups are skipped for broker."""
-        mock_domain = MagicMock()
-        mock_broker = MagicMock()
-        mock_redis = MagicMock()
-
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_broker.redis_instance = mock_redis
-
-        mock_redis.xlen.return_value = 100
-        mock_redis.xinfo_groups.return_value = [
-            "not-a-dict",
-            42,
-            {
-                "name": "tests.subscribers.ExternalHandler",
-                "pending": 0,
-                "last-delivered-id": "99-0",
-                "lag": 0,
-                "consumers": 1,
-            },
-        ]
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "ExternalHandler"
-        handler_cls.__module__ = "tests.subscribers"
-        handler_cls.__qualname__ = "ExternalHandler"
-
-        def _get_field_value(d, key, convert_to_int=False):
-            val = d.get(key)
-            if convert_to_int and val is not None:
-                return int(val)
-            return val
-
-        mock_broker._get_field_value.side_effect = _get_field_value
-
-        result = _collect_broker_status(
-            mock_domain, "ext-handler", handler_cls, "external-events", "default"
-        )
-
-        assert result.lag == 0
-        assert result.status == "ok"
-
-    def test_redis_broker_xinfo_groups_exception(self):
-        """When xinfo_groups raises, group data is skipped."""
-        mock_domain = MagicMock()
-        mock_broker = MagicMock()
-        mock_redis = MagicMock()
-
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_broker.redis_instance = mock_redis
-
-        mock_redis.xlen.return_value = 100
-        mock_redis.xinfo_groups.side_effect = Exception("no groups")
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "ExternalHandler"
-        handler_cls.__module__ = "tests.subscribers"
-        handler_cls.__qualname__ = "ExternalHandler"
-
-        def _get_field_value(d, key, convert_to_int=False):
-            val = d.get(key)
-            if convert_to_int and val is not None:
-                return int(val)
-            return val
-
-        mock_broker._get_field_value.side_effect = _get_field_value
-
-        result = _collect_broker_status(
-            mock_domain, "ext-handler", handler_cls, "external-events", "default"
-        )
-
-        assert result.lag is None
-        assert result.pending == 0
-
-    def test_redis_broker_group_name_mismatch(self):
-        """Broker skips groups with non-matching names."""
-        mock_domain = MagicMock()
-        mock_broker = MagicMock()
-        mock_redis = MagicMock()
-
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_broker.redis_instance = mock_redis
-
-        mock_redis.xlen.return_value = 100
-        mock_redis.xinfo_groups.return_value = [
-            {
-                "name": "other-group",
-                "pending": 99,
-                "last-delivered-id": "10-0",
-                "lag": 50,
-                "consumers": 5,
-            },
-            {
-                "name": "tests.subscribers.ExternalHandler",
-                "pending": 2,
-                "last-delivered-id": "98-0",
-                "lag": 2,
-                "consumers": 1,
-            },
-        ]
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "ExternalHandler"
-        handler_cls.__module__ = "tests.subscribers"
-        handler_cls.__qualname__ = "ExternalHandler"
-
-        def _get_field_value(d, key, convert_to_int=False):
-            val = d.get(key)
-            if convert_to_int and val is not None:
-                return int(val)
-            return val
-
-        mock_broker._get_field_value.side_effect = _get_field_value
-
-        result = _collect_broker_status(
-            mock_domain, "ext-handler", handler_cls, "external-events", "default"
-        )
-
-        # Should pick up second group's values
-        assert result.lag == 2
-        assert result.pending == 2
-        assert result.consumer_count == 1
-
-    def test_redis_broker_xrange_exception_leaves_lag_unknown(self, caplog):
-        """When xrange fails, lag stays unknown rather than becoming pending.
-
-        `lag = pending` reads like a conservative lower bound, but with nothing
-        pending it is `lag: 0`, which classifies as `ok` and reports a
-        subscription as caught up when its lag was never read (#1288).
-        """
-        mock_domain = MagicMock()
-        mock_broker = MagicMock()
-        mock_redis = MagicMock()
-
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_broker.redis_instance = mock_redis
-
-        mock_redis.xlen.return_value = 100
-        mock_redis.xinfo_groups.return_value = [
-            {
-                "name": "tests.subscribers.ExternalHandler",
-                "pending": 3,
-                "last-delivered-id": "50-0",
-                "consumers": 1,
-            }
-        ]
-        mock_redis.xrange.side_effect = Exception("xrange failed")
-
-        handler_cls = MagicMock()
-        handler_cls.__name__ = "ExternalHandler"
-        handler_cls.__module__ = "tests.subscribers"
-        handler_cls.__qualname__ = "ExternalHandler"
-
-        def _get_field_value(d, key, convert_to_int=False):
-            val = d.get(key)
-            if convert_to_int and val is not None:
-                return int(val)
-            return val
-
-        mock_broker._get_field_value.side_effect = _get_field_value
-
-        with caplog.at_level(
-            logging.DEBUG, logger="protean.server.subscription_status"
-        ):
-            result = _collect_broker_status(
-                mock_domain, "ext-handler", handler_cls, "external-events", "default"
-            )
-
-        assert result.lag is None
-        assert result.status == "unknown"
-        assert result.pending == 3
-        assert "Could not count lag of external-events: Exception('xrange failed')" in (
-            caplog.messages
-        )
-
-
-# ---------------------------------------------------------------------------
-# Stream status edge cases (error paths)
-# ---------------------------------------------------------------------------
-
-
-class TestStreamStatusEdgeCases:
-    def _make_mock_domain_with_redis(self):
-        """Create a mock domain with a redis broker."""
-        mock_domain = MagicMock()
-        mock_broker = MagicMock()
-        mock_redis = MagicMock()
-        mock_domain.brokers.get.return_value = mock_broker
-        mock_broker.redis_instance = mock_redis
-        return mock_domain, mock_broker, mock_redis
-
-    def _make_handler(self, name="TestHandler"):
-        handler = MagicMock()
-        handler.__name__ = name
-        handler.__module__ = "tests.handlers"
-        handler.__qualname__ = name
-        return handler
-
-    def _field_getter(self, d, key, convert_to_int=False):
-        val = d.get(key)
-        if convert_to_int and val is not None:
-            return int(val)
-        return val
-
-    def test_xlen_exception_sets_stream_length_to_zero(self, caplog):
-        """When xlen raises, stream_length defaults to 0."""
-        mock_domain, mock_broker, mock_redis = self._make_mock_domain_with_redis()
-        handler_cls = self._make_handler()
-
-        mock_redis.xlen.side_effect = Exception("stream gone")
-        mock_redis.xinfo_groups.return_value = []
-
-        mock_broker._get_field_value.side_effect = self._field_getter
-
-        with caplog.at_level(
-            logging.DEBUG, logger="protean.server.subscription_status"
-        ):
-            result = _collect_stream_status(
-                mock_domain, "sub", handler_cls, "broken-stream"
-            )
-
-        assert result.head_position == "0"
-        assert "Could not read length of broken-stream: Exception('stream gone')" in (
-            caplog.messages
-        )
-
-    def test_xinfo_groups_exception_skips_group_data(self):
-        """When xinfo_groups raises, no group info is available."""
-        mock_domain, mock_broker, mock_redis = self._make_mock_domain_with_redis()
-        handler_cls = self._make_handler()
-
-        mock_redis.xlen.return_value = 100
-        mock_redis.xinfo_groups.side_effect = Exception("no groups")
-
-        mock_broker._get_field_value.side_effect = self._field_getter
-
-        result = _collect_stream_status(mock_domain, "sub", handler_cls, "my-stream")
-
-        assert result.pending == 0
-        assert (
-            result.lag is None
-        )  # No group info, no last_delivered_id → lag stays None
-
-    def test_xrange_exception_leaves_lag_unknown(self, caplog):
-        """An unreadable lag is null, not the pending count.
-
-        Falling back to `pending` reported `lag: 0, status: "ok"` whenever
-        nothing happened to be pending, so a subscription whose lag could not
-        be read at all looked healthy (#1288).
-        """
-        mock_domain, mock_broker, mock_redis = self._make_mock_domain_with_redis()
-        handler_cls = self._make_handler()
-
-        mock_redis.xlen.return_value = 100
-        mock_redis.xinfo_groups.return_value = [
-            {
-                "name": "tests.handlers.TestHandler",
-                "pending": 4,
-                "last-delivered-id": "50-0",
-                "consumers": 1,
-            }
-        ]
-        mock_redis.xrange.side_effect = Exception("xrange failed")
-
-        mock_broker._get_field_value.side_effect = self._field_getter
-
-        with caplog.at_level(
-            logging.DEBUG, logger="protean.server.subscription_status"
-        ):
-            result = _collect_stream_status(
-                mock_domain, "sub", handler_cls, "my-stream"
-            )
-
-        assert "Could not count lag of my-stream: Exception('xrange failed')" in (
-            caplog.messages
-        )
-        assert result.lag is None
-        assert result.status == "unknown"
-        # The pending count is still reported; it just is not passed off as lag.
-        assert result.pending == 4
-
-    def test_dlq_xlen_exception_sets_dlq_to_zero(self, caplog):
-        """When DLQ xlen fails, dlq_depth stays 0."""
-        mock_domain, mock_broker, mock_redis = self._make_mock_domain_with_redis()
-        handler_cls = self._make_handler()
-
-        def xlen_side_effect(name):
-            if ":dlq" in name:
-                raise Exception("dlq gone")
-            return 100
-
-        mock_redis.xlen.side_effect = xlen_side_effect
-        mock_redis.xinfo_groups.return_value = [
-            {
-                "name": "tests.handlers.TestHandler",
-                "pending": 0,
-                "last-delivered-id": "99-0",
-                "lag": 0,
-                "consumers": 1,
-            }
-        ]
-
-        mock_broker._get_field_value.side_effect = self._field_getter
-
-        with caplog.at_level(
-            logging.DEBUG, logger="protean.server.subscription_status"
-        ):
-            result = _collect_stream_status(
-                mock_domain, "sub", handler_cls, "my-stream"
-            )
-
-        assert result.dlq_depth == 0
-        assert (
-            "Could not read DLQ depth of my-stream: Exception('dlq gone')"
-            in caplog.messages
-        )
-
-    def test_top_level_exception_returns_unknown(self):
-        """When the outer try/except catches, returns unknown."""
-        mock_domain = MagicMock()
-        mock_domain.domain_context.return_value.__enter__ = MagicMock(
-            side_effect=RuntimeError("context failed")
-        )
-
-        handler_cls = self._make_handler()
-
-        result = _collect_stream_status(mock_domain, "sub", handler_cls, "my-stream")
-
-        assert result.status == "unknown"
-
-    def test_group_name_mismatch_continues_loop(self):
-        """When consumer group name doesn't match, continues to next entry."""
-        mock_domain, mock_broker, mock_redis = self._make_mock_domain_with_redis()
-        handler_cls = self._make_handler()
-
-        mock_redis.xlen.return_value = 100
-        mock_redis.xinfo_groups.return_value = [
-            {
-                "name": "other-consumer-group",
-                "pending": 10,
-                "last-delivered-id": "50-0",
-                "lag": 20,
-                "consumers": 3,
-            },
-            {
-                "name": "tests.handlers.TestHandler",
-                "pending": 1,
-                "last-delivered-id": "99-0",
-                "lag": 1,
-                "consumers": 1,
-            },
-        ]
-
-        mock_broker._get_field_value.side_effect = self._field_getter
-
-        result = _collect_stream_status(mock_domain, "sub", handler_cls, "my-stream")
-
-        # Should use the second group's values, not the first
-        assert result.lag == 1
-        assert result.pending == 1
-        assert result.consumer_count == 1
-
-    def test_non_dict_group_entries_are_skipped(self):
-        """Non-dict entries in xinfo_groups are skipped."""
-        mock_domain, mock_broker, mock_redis = self._make_mock_domain_with_redis()
-        handler_cls = self._make_handler()
-
-        mock_redis.xlen.return_value = 50
-        mock_redis.xinfo_groups.return_value = [
-            "not-a-dict",
-            42,
-            {
-                "name": "tests.handlers.TestHandler",
-                "pending": 0,
-                "last-delivered-id": "49-0",
-                "lag": 0,
-                "consumers": 1,
-            },
-        ]
-
-        mock_broker._get_field_value.side_effect = self._field_getter
-
-        result = _collect_stream_status(mock_domain, "sub", handler_cls, "my-stream")
-
-        # Should still find the correct group despite non-dict entries
-        assert result.lag == 0
-        assert result.status == "ok"
-
-
-# ---------------------------------------------------------------------------
-# Infer stream category edge cases
-# ---------------------------------------------------------------------------
-
-
-class TestInferStreamCategoryEdgeCases:
-    def test_part_of_with_no_aggregate_meta(self):
-        """When part_of has no meta_, falls through to ValueError."""
-        handler = MagicMock()
-        handler.__name__ = "WeirdHandler"
-        handler.meta_.stream_category = None
-        handler.meta_.part_of = MagicMock(spec=[])  # no meta_ attribute
-
-        with pytest.raises(ValueError, match="Cannot infer"):
-            _infer_stream_category(handler)
-
-    def test_part_of_with_no_aggregate_stream_category(self):
-        """When aggregate meta has no stream_category, falls through."""
-        handler = MagicMock()
-        handler.__name__ = "WeirdHandler"
-        handler.meta_.stream_category = None
-        handler.meta_.part_of = MagicMock()
-        handler.meta_.part_of.meta_.stream_category = None
-
-        with pytest.raises(ValueError, match="Cannot infer"):
-            _infer_stream_category(handler)
-
-
-# ---------------------------------------------------------------------------
-# Checkpoint stream carried on the status
-# ---------------------------------------------------------------------------
-
-
-class TestPositionStreamField:
-    def test_event_store_status_carries_its_checkpoint_stream(self):
-        """The event-store status names the ``position-{fqn}-{category}`` stream a
-        reset writes to; other subscription types leave it ``None``."""
-        mock_domain = MagicMock()
-        mock_store = MagicMock()
-        mock_domain.event_store.store = mock_store
-        mock_domain.clock.now.return_value = datetime(2026, 1, 1, tzinfo=UTC)
-        mock_store._read_last_message.return_value = {"data": {"position": 5}}
-        mock_store.stream_head_position.return_value = 10
-
-        handler = MagicMock()
-        handler.__name__ = "OrderHandler"
-
-        result = _collect_event_store_status(
-            mock_domain,
-            "order-handler",
-            handler,
-            "order",
-            subscriber_name="my.OrderHandler",
-        )
-
-        assert result.position_stream == "position-my.OrderHandler-order"
-
-    def test_position_stream_falls_back_to_handler_fqn(self):
-        """With no explicit subscriber_name, the checkpoint stream is built from
-        the handler's fqn, matching what an event handler / projector uses."""
-        from protean.utils import fqn
-
-        mock_domain = MagicMock()
-        mock_store = MagicMock()
-        mock_domain.event_store.store = mock_store
-        mock_domain.clock.now.return_value = datetime(2026, 1, 1, tzinfo=UTC)
-        mock_store._read_last_message.return_value = {"data": {"position": 1}}
-        mock_store.stream_head_position.return_value = 5
-
-        class OrderHandler:
-            pass
-
-        result = _collect_event_store_status(mock_domain, "n", OrderHandler, "order")
-
-        assert result.position_stream == f"position-{fqn(OrderHandler)}-order"
 
     def test_reset_targets_the_stream_the_subscription_reads(self, test_domain):
         """The stream a reset writes to (status.position_stream) is exactly the
         stream a live EventStoreSubscription loads its checkpoint from. Binds the
         two independent ``position-...`` derivations so a drift cannot send the
         reset to a dead stream the engine never reads."""
-        from protean.server.engine import Engine
-        from protean.server.subscription.event_store_subscription import (
-            EventStoreSubscription,
-        )
+        engine = Engine(test_domain, test_mode=True)
+        subscription = EventStoreSubscription(engine, self.category, OrderNotifier)
 
-        class OrderHandler:
-            pass
-
-        with test_domain.domain_context():
-            engine = Engine(test_domain, test_mode=True)
-            subscription = EventStoreSubscription(engine, "order", OrderHandler)
-
-        status = _collect_event_store_status(
-            test_domain, "order-handler", OrderHandler, "order"
-        )
+        status = _statuses(test_domain)[fqn(OrderNotifier)]
 
         assert status.position_stream == subscription.subscriber_stream_name
 
-    def test_unknown_status_has_no_checkpoint_stream(self):
-        assert _unknown_status("n", "H", "event_store", "order").position_stream is None
+
+@pytest.mark.no_test_domain
+def test_event_store_status_is_unknown_when_the_domain_has_no_store():
+    """An uninitialized domain has no event store. The status is unknown but
+    still names the recovery streams, so ``protean recover`` can scan them."""
+    domain = Domain(name="NoStore")
+    domain.register(OrderNotifier, stream_category="order")
+
+    status = _statuses(domain)[fqn(OrderNotifier)]
+
+    assert status.status == "unknown"
+    assert status.subscription_type == "event_store"
+    assert status.position_stream is None
+    assert status.recovery_checkpoint_stream == (
+        f"recovery-checkpoint-{fqn(OrderNotifier)}-order"
+    )
+    assert status.failed_positions_stream == f"failed-{fqn(OrderNotifier)}-order"
+
+
+# ---------------------------------------------------------------------------
+# Broker subscribers on a broker with no Redis client
+# ---------------------------------------------------------------------------
+
+
+class TestBrokerStatusWithoutRedis:
+    @pytest.fixture(autouse=True)
+    def register(self, test_domain):
+        test_domain.register(PartnerFeed, stream="partner-feed", broker="default")
+        test_domain.init(traverse=False)
+        self.broker = test_domain.brokers["default"]
+
+    def test_counts_come_from_broker_info(self, test_domain):
+        """The inline broker's ``info()`` reports no pending count, so the
+        subscriber reads as caught up."""
+        self.broker.publish("partner-feed", {"n": 1})
+        self.broker.get_next("partner-feed", fqn(PartnerFeed))
+
+        status = _statuses(test_domain)[fqn(PartnerFeed)]
+
+        assert status.subscription_type == "broker"
+        assert status.stream_category == "partner-feed"
+        assert status.lag == 0
+        assert status.pending == 0
+        assert status.consumer_count == 0
+        assert status.status == "ok"
+        assert status.head_position is None
+
+    def test_pending_reported_by_broker_info_is_lagging(self, test_domain):
+        """A broker adapter that reports a pending count in ``info()`` shows
+        that count as the lag. No broker that ships with Protean other than
+        Redis reports one, so the reply stands for a third-party adapter's."""
+        reply = {
+            "consumer_groups": {fqn(PartnerFeed): {"pending": 2, "consumer_count": 1}}
+        }
+
+        with patch.object(self.broker, "info", return_value=reply):
+            status = _statuses(test_domain)[fqn(PartnerFeed)]
+
+        assert status.lag == 2
+        assert status.pending == 2
+        assert status.consumer_count == 1
+        assert status.status == "lagging"
+
+    def test_info_failure_is_unknown(self, test_domain):
+        with patch.object(self.broker, "info", side_effect=RuntimeError("down")):
+            status = _statuses(test_domain)[fqn(PartnerFeed)]
+
+        assert status.subscription_type == "broker"
+        assert status.status == "unknown"
+        assert status.lag is None
+
+
+@pytest.mark.no_test_domain
+def test_broker_subscriber_on_an_unconfigured_broker_is_unknown():
+    domain = Domain(name="NoBroker")
+    domain.register(PartnerFeed, stream="partner-feed", broker="partner")
+
+    status = _statuses(domain)[fqn(PartnerFeed)]
+
+    assert status.subscription_type == "broker"
+    assert status.stream_category == "partner-feed"
+    assert status.status == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Outbox processors
+# ---------------------------------------------------------------------------
+
+
+def _outbox_domain(*, external_brokers: list[str] | None = None) -> Domain:
+    domain = Domain(name="OutboxStatus")
+    domain.config["enable_outbox"] = True
+    domain.config["server"] = {"default_subscription_type": "stream"}
+    domain.config["databases"]["unmanaged"] = {"provider": "memory", "managed": False}
+    domain.config["outbox"] = {
+        "broker": "default",
+        "external_brokers": external_brokers or [],
+    }
+    for broker_name in external_brokers or []:
+        domain.config["brokers"][broker_name] = {"provider": "inline"}
+    domain._initialize()
+    _register_order(domain)
+    return domain
+
+
+def _add_outbox_rows(domain: Domain, provider: str, rows: list[tuple[str, str]]):
+    """Add one outbox row per ``(status, target_broker)`` pair."""
+    metadata = Metadata(
+        headers=MessageHeaders(
+            id="status-test", type="OrderPlaced", time=datetime.now(UTC), stream="s"
+        ),
+        domain=DomainMeta(
+            fqn="tests.OrderPlaced",
+            kind="event",
+            origin_stream="order-1",
+            version="1.0",
+            sequence_id="1",
+        ),
+    )
+    repo = domain._get_outbox_repo(provider)
+    for n, (row_status, target_broker) in enumerate(rows):
+        row = Outbox.create_message(
+            message_id=f"{provider}-{n}",
+            stream_name="order-1",
+            message_type="OrderPlaced",
+            data={},
+            metadata=metadata,
+            target_broker=target_broker,
+        )
+        row.status = row_status
+        repo.add(row)
+
+
+@pytest.mark.no_test_domain
+class TestOutboxStatus:
+    def test_no_outbox_means_no_rows(self, test_domain):
+        domain = Domain(name="NoOutbox")
+        domain._initialize()
+        _register_order(domain)
+        domain.init(traverse=False)
+
+        assert collect_subscription_statuses(domain) == []
+
+    def test_one_row_per_provider_an_aggregate_uses(self):
+        """The memory provider holds no aggregate and the unmanaged one runs no
+        processor, so only ``default`` is reported."""
+        domain = _outbox_domain()
+        domain.init(traverse=False)
+        with domain.domain_context():
+            _add_outbox_rows(
+                domain,
+                "default",
+                [
+                    ("pending", "default"),
+                    ("pending", "default"),
+                    ("processing", "default"),
+                    ("failed", "default"),
+                    ("abandoned", "default"),
+                    ("published", "default"),
+                ],
+            )
+
+        statuses = collect_subscription_statuses(domain)
+
+        assert [s.name for s in statuses] == ["outbox-processor-default-to-default"]
+        status = statuses[0]
+        assert status.handler_name == "OutboxProcessor"
+        assert status.subscription_type == "outbox"
+        assert status.stream_category == "default → default"
+        assert status.lag == 3
+        assert status.pending == 2
+        assert status.dlq_depth == 2
+        assert status.status == "lagging"
+
+    def test_drained_outbox_is_ok(self):
+        domain = _outbox_domain()
+        domain.init(traverse=False)
+        with domain.domain_context():
+            _add_outbox_rows(domain, "default", [("published", "default")])
+
+        [status] = collect_subscription_statuses(domain)
+
+        assert status.lag == 0
+        assert status.status == "ok"
+
+    def test_every_provider_an_aggregate_uses_gets_a_row(self):
+        domain = _outbox_domain(external_brokers=["partner"])
+        domain.config["databases"]["ledger"] = {"provider": "memory"}
+        domain._initialize()
+        _register_order(domain)
+        domain.register(Account, provider="ledger")
+        domain.init(traverse=False)
+
+        names = [s.name for s in collect_subscription_statuses(domain)]
+
+        assert names == [
+            "outbox-processor-default-to-default",
+            "outbox-processor-ledger-to-default",
+            "outbox-processor-default-to-partner-external",
+            "outbox-processor-ledger-to-partner-external",
+        ]
+
+    def test_each_processor_counts_only_rows_for_its_broker(self):
+        domain = _outbox_domain(external_brokers=["partner", "analytics"])
+        domain.init(traverse=False)
+        with domain.domain_context():
+            _add_outbox_rows(
+                domain,
+                "default",
+                [
+                    ("pending", "default"),
+                    ("pending", "partner"),
+                    ("pending", "partner"),
+                    ("failed", "partner"),
+                ],
+            )
+
+        statuses = collect_subscription_statuses(domain)
+
+        assert [(s.name, s.stream_category, s.lag, s.dlq_depth) for s in statuses] == [
+            (
+                "outbox-processor-default-to-default",
+                "default → default",
+                1,
+                0,
+            ),
+            (
+                "outbox-processor-default-to-partner-external",
+                "default → partner (external)",
+                2,
+                1,
+            ),
+            (
+                "outbox-processor-default-to-analytics-external",
+                "default → analytics (external)",
+                0,
+                0,
+            ),
+        ]
+
+    def test_without_external_brokers_every_row_is_counted(self):
+        """The single processor owns every row, whatever its target broker."""
+        domain = _outbox_domain()
+        domain.init(traverse=False)
+        with domain.domain_context():
+            _add_outbox_rows(
+                domain, "default", [("pending", "default"), ("pending", "partner")]
+            )
+
+        [status] = collect_subscription_statuses(domain)
+
+        assert status.lag == 2
+
+    def test_count_failure_is_unknown(self):
+        domain = _outbox_domain()
+        domain.init(traverse=False)
+        with domain.domain_context():
+            repo = domain._get_outbox_repo("default")
+
+        with patch.object(repo, "count_by_status", side_effect=RuntimeError("db")):
+            [status] = collect_subscription_statuses(domain)
+
+        assert status.name == "outbox-processor-default-to-default"
+        assert status.status == "unknown"
+        assert status.lag is None
+
+
+# ---------------------------------------------------------------------------
+# Redis Streams broker
+# ---------------------------------------------------------------------------
+
+
+def _redis_domain() -> Domain:
+    domain = Domain(name="StatusRedis")
+    domain.config["brokers"]["default"] = {
+        "provider": "redis",
+        "URI": f"{REDIS_URI}/13",
+    }
+    domain._initialize()
+    _register_order(domain)
+    domain.register(Account)
+    domain.register(AccountOpened, part_of=Account)
+    domain.register(OpenAccount, part_of=Account)
+    domain.register(
+        OrderSequencer,
+        part_of=Order,
+        sequential_by="client_id",
+        subscription_type="stream",
+    )
+    domain.register(AccountWatcher, part_of=Account, subscription_type="stream")
+    domain.register(OpenAccountHandler, part_of=Account, subscription_type="stream")
+    domain.register(PartnerFeed, stream="partner-feed", broker="default")
+    domain.init(traverse=False)
+    return domain
+
+
+@pytest.fixture
+def redis_domain():
+    domain = _redis_domain()
+    with domain.domain_context():
+        domain.brokers["default"]._data_reset()
+        yield domain
+        domain.brokers["default"]._data_reset()
+
+
+def _raise_on(real, stream: str, exc: Exception):
+    """A side effect that raises for one stream and passes the rest through."""
+
+    def side_effect(name, *args, **kwargs):
+        if name == stream:
+            raise exc
+        return real(name, *args, **kwargs)
+
+    return side_effect
+
+
+def _lose_native_lag(broker, stream: str, group: str) -> None:
+    """Publish four entries, read the first as ``group``, then delete the third.
+
+    Redis 7 cannot compute a lag across a deleted entry, so ``XINFO GROUPS``
+    reports ``lag`` as nil. Two entries are left after the last-delivered id.
+    """
+    for n in range(4):
+        broker.publish(stream, {"n": n})
+    broker.get_next(stream, group)
+    third_id = broker.redis_instance.xrange(stream)[2][0]
+    broker.redis_instance.xdel(stream, third_id)
+    [info] = [
+        g
+        for g in broker.redis_instance.xinfo_groups(stream)
+        if g["name"] == group.encode()
+    ]
+    assert info["lag"] is None
+
+
+def _messages_about(caplog, *streams: str) -> list[str]:
+    """The status log lines that name one of ``streams`` exactly. Every other
+    subscription in the domain is probed in the same call and logs about its
+    own stream."""
+    patterns = [re.compile(rf" {re.escape(stream)}(: |$)") for stream in streams]
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == STATUS_LOGGER
+        and any(pattern.search(r.getMessage()) for pattern in patterns)
+    ]
+
+
+@pytest.mark.redis
+@pytest.mark.no_test_domain
+class TestRedisStreamStatus:
+    @pytest.fixture(autouse=True)
+    def setup(self, redis_domain):
+        self.domain = redis_domain
+        self.broker = redis_domain.brokers["default"]
+        self.redis = self.broker.redis_instance
+        self.stream = Account.meta_.stream_category
+        self.group = fqn(AccountWatcher)
+
+    def _status(self) -> SubscriptionStatus:
+        return _statuses(self.domain)[self.group]
+
+    def test_lag_pending_and_consumers_come_from_the_group(self, caplog):
+        for n in range(4):
+            self.broker.publish(self.stream, {"n": n})
+        first_id, _ = self.broker.get_next(self.stream, self.group)
+
+        with caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER):
+            status = self._status()
+
+        assert status.subscription_type == "stream"
+        assert status.stream_category == self.stream
+        assert status.lag == 3
+        assert status.pending == 1
+        assert status.consumer_count == 1
+        assert status.head_position == "4"
+        assert status.current_position == first_id
+        assert status.status == "lagging"
+        assert _messages_about(caplog, self.stream) == []
+
+    def test_caught_up_group_is_ok(self):
+        self.broker.publish(self.stream, {"n": 1})
+        self.redis.xgroup_create(self.stream, self.group, id="$")
+
+        status = self._status()
+
+        assert status.lag == 0
+        assert status.pending == 0
+        assert status.status == "ok"
+
+    def test_stream_without_the_group_is_unknown(self):
+        """No consumer group means no reading, and that is unknown lag, not 0."""
+        self.broker.publish(self.stream, {"n": 1})
+
+        status = self._status()
+
+        assert status.head_position == "1"
+        assert status.current_position is None
+        assert status.lag is None
+        assert status.pending == 0
+        assert status.status == "unknown"
+
+    def test_another_group_on_the_stream_is_ignored(self):
+        self.broker.publish(self.stream, {"n": 1})
+        self.broker.publish(self.stream, {"n": 2})
+        self.broker.get_next(self.stream, "someone-else")
+        self.redis.xgroup_create(self.stream, self.group, id="$")
+
+        status = self._status()
+
+        assert status.lag == 0
+        assert status.pending == 0
+        assert status.consumer_count == 0
+
+    def test_dlq_depth_is_the_length_of_the_dlq_stream(self):
+        self.broker.publish(self.stream, {"n": 1})
+        self.redis.xgroup_create(self.stream, self.group, id="$")
+        self.redis.xadd(f"{self.stream}:dlq", {"n": 1})
+        self.redis.xadd(f"{self.stream}:dlq", {"n": 2})
+
+        assert self._status().dlq_depth == 2
+
+    def test_command_dispatcher_group_is_read(self):
+        command_stream = f"{self.stream}:command"
+        dispatcher = f"protean.server.engine.Commands:{command_stream}"
+        self.broker.publish(command_stream, {"n": 1})
+        self.broker.publish(command_stream, {"n": 2})
+        self.broker.get_next(command_stream, dispatcher)
+
+        status = _statuses(self.domain)[f"commands:{command_stream}"]
+
+        assert status.handler_name == "OpenAccountHandler"
+        assert status.lag == 1
+        assert status.pending == 1
+        assert status.consumer_count == 1
+
+    def test_unreadable_lengths_show_zero_and_are_logged(self, caplog):
+        self.broker.publish(self.stream, {"n": 1})
+        self.redis.xgroup_create(self.stream, self.group, id="$")
+        error = redis.ConnectionError("length gone")
+
+        with (
+            patch.object(self.redis, "xlen", side_effect=error),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.head_position == "0"
+        assert status.dlq_depth == 0
+        assert status.lag == 0
+        assert _messages_about(caplog, self.stream) == [
+            f"Could not read length of {self.stream}: {error!r}",
+            f"Could not read DLQ depth of {self.stream}: {error!r}",
+        ]
+
+    def test_unreadable_groups_are_unknown_and_logged(self, caplog):
+        self.broker.publish(self.stream, {"n": 1})
+        self.broker.get_next(self.stream, self.group)
+
+        with (
+            patch.object(
+                self.redis,
+                "xinfo_groups",
+                side_effect=redis.ConnectionError("redis down"),
+            ),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.lag is None
+        assert status.pending == 0
+        assert status.status == "unknown"
+        [record] = [
+            r
+            for r in caplog.records
+            if r.getMessage()
+            == f"Could not read group {self.group} on stream {self.stream}"
+        ]
+        assert record.levelno == logging.DEBUG
+        assert str(record.exc_info[1]) == "redis down"
+
+    def test_lag_redis_cannot_report_is_counted_after_the_last_delivered_entry(
+        self,
+    ):
+        """Deleting an entry past the group's last-delivered id makes Redis 7
+        send a nil ``lag``. The entries left after that id are counted."""
+        _lose_native_lag(self.broker, self.stream, self.group)
+
+        status = self._status()
+
+        assert status.lag == 2
+        assert status.pending == 1
+        assert status.status == "lagging"
+
+    def test_lag_that_cannot_be_counted_is_unknown_and_logged(self, caplog):
+        """With nothing pending, reading a failed count as 0 would show the
+        subscription as caught up."""
+        _lose_native_lag(self.broker, self.stream, self.group)
+        self.redis.xack(self.stream, self.group, self._status().current_position)
+        error = redis.ConnectionError("range gone")
+
+        with (
+            patch.object(self.redis, "xrange", side_effect=error),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.lag is None
+        assert status.pending == 0
+        assert status.status == "unknown"
+        assert _messages_about(caplog, self.stream) == [
+            f"Could not count lag of {self.stream}: {error!r}"
+        ]
+
+
+@pytest.mark.redis
+@pytest.mark.no_test_domain
+class TestRedisBrokerSubscriberStatus:
+    @pytest.fixture(autouse=True)
+    def setup(self, redis_domain):
+        self.domain = redis_domain
+        self.broker = redis_domain.brokers["default"]
+        self.redis = self.broker.redis_instance
+        self.group = fqn(PartnerFeed)
+
+    def _status(self) -> SubscriptionStatus:
+        return _statuses(self.domain)[self.group]
+
+    def test_lag_pending_and_consumers_come_from_the_group(self):
+        for n in range(3):
+            self.broker.publish("partner-feed", {"n": n})
+        first_id, _ = self.broker.get_next("partner-feed", self.group)
+
+        status = self._status()
+
+        assert status.subscription_type == "broker"
+        assert status.stream_category == "partner-feed"
+        assert status.lag == 2
+        assert status.pending == 1
+        assert status.consumer_count == 1
+        assert status.head_position == "3"
+        assert status.current_position == first_id
+        assert status.status == "lagging"
+
+    def test_another_group_on_the_stream_is_ignored(self):
+        self.broker.publish("partner-feed", {"n": 1})
+        self.broker.get_next("partner-feed", "someone-else")
+
+        status = self._status()
+
+        assert status.lag is None
+        assert status.pending == 0
+        assert status.consumer_count == 0
+        assert status.status == "unknown"
+
+    def test_unreadable_length_shows_zero_and_is_logged(self, caplog):
+        self.broker.publish("partner-feed", {"n": 1})
+        self.broker.get_next("partner-feed", self.group)
+        error = redis.ConnectionError("length gone")
+
+        with (
+            patch.object(self.redis, "xlen", side_effect=error),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.head_position == "0"
+        assert status.lag == 0
+        assert _messages_about(caplog, "partner-feed") == [
+            f"Could not read length of partner-feed: {error!r}"
+        ]
+
+    def test_unreadable_groups_are_unknown_and_logged(self, caplog):
+        self.broker.publish("partner-feed", {"n": 1})
+
+        with (
+            patch.object(
+                self.redis,
+                "xinfo_groups",
+                side_effect=redis.ConnectionError("redis down"),
+            ),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.lag is None
+        assert status.pending == 0
+        [record] = [
+            r
+            for r in caplog.records
+            if r.getMessage()
+            == f"Could not read group {self.group} on stream partner-feed"
+        ]
+        assert record.levelno == logging.DEBUG
+        assert str(record.exc_info[1]) == "redis down"
+
+    def test_lag_redis_cannot_report_is_counted_after_the_last_delivered_entry(
+        self,
+    ):
+        _lose_native_lag(self.broker, "partner-feed", self.group)
+
+        status = self._status()
+
+        assert status.lag == 2
+        assert status.pending == 1
+        assert status.status == "lagging"
+
+    def test_lag_that_cannot_be_counted_is_unknown_and_logged(self, caplog):
+        _lose_native_lag(self.broker, "partner-feed", self.group)
+        error = redis.ConnectionError("range gone")
+
+        with (
+            patch.object(self.redis, "xrange", side_effect=error),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.lag is None
+        assert status.pending == 1
+        assert status.status == "unknown"
+        assert _messages_about(caplog, "partner-feed") == [
+            f"Could not count lag of partner-feed: {error!r}"
+        ]
+
+
+@pytest.mark.redis
+@pytest.mark.no_test_domain
+class TestRedisPartitionedStatus:
+    """``OrderSequencer`` declares ``sequential_by``, so its category is
+    published to one ``{category}:{key}`` stream per key and the status sums
+    the partitions."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, redis_domain):
+        self.domain = redis_domain
+        self.broker = redis_domain.brokers["default"]
+        self.redis = self.broker.redis_instance
+        self.category = Order.meta_.stream_category
+        self.group = fqn(OrderSequencer)
+        self.streams = (self.category, f"{self.category}:a", f"{self.category}:b")
+
+    def _status(self) -> SubscriptionStatus:
+        return _statuses(self.domain)[self.group]
+
+    def _publish(self, key: str, count: int, *, group_at: str | None = "0") -> str:
+        partition = f"{self.category}:{key}"
+        self.broker.record_partition(self.category, key)
+        for n in range(count):
+            self.broker.publish(partition, {"key": key, "n": n})
+        if group_at is not None:
+            self.redis.xgroup_create(partition, self.group, id=group_at)
+        return partition
+
+    def _read(self, partition: str, consumer: str, count: int) -> None:
+        self.redis.xreadgroup(self.group, consumer, {partition: ">"}, count=count)
+
+    def test_lag_and_length_are_summed_across_partitions(self, caplog):
+        self._publish("a", 3)
+        self._publish("b", 4)
+
+        with caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER):
+            status = self._status()
+
+        assert status.subscription_type == "stream"
+        assert status.stream_category == self.category
+        assert status.current_position == "2 partition(s)"
+        assert status.head_position == "7"
+        assert status.lag == 7
+        assert status.pending == 0
+        assert status.consumer_count == 0
+        assert status.status == "lagging"
+        assert _messages_about(caplog, *self.streams) == []
+
+    def test_caught_up_partitions_are_ok(self):
+        self._publish("a", 2, group_at="$")
+        self._publish("b", 1, group_at="$")
+
+        status = self._status()
+
+        assert status.lag == 0
+        assert status.pending == 0
+        assert status.status == "ok"
+
+    def test_pending_is_summed_and_one_worker_counts_once(self):
+        a = self._publish("a", 3)
+        b = self._publish("b", 4)
+        self._read(a, "worker-1", 2)
+        self._read(b, "worker-1", 3)
+
+        status = self._status()
+
+        assert status.pending == 5
+        assert status.lag == 2
+        assert status.consumer_count == 1
+
+    def test_distinct_workers_are_counted(self):
+        a = self._publish("a", 1)
+        b = self._publish("b", 1)
+        self._read(a, "worker-1", 1)
+        self._read(b, "worker-2", 1)
+
+        status = self._status()
+
+        assert status.consumer_count == 2
+        assert status.lag == 0
+        assert status.pending == 2
+        assert status.status == "lagging"
+
+    def test_no_partitions_yet_is_zero_lag(self):
+        status = self._status()
+
+        assert status.lag == 0
+        assert status.pending == 0
+        assert status.head_position == "0"
+        assert status.current_position is None
+        assert status.status == "ok"
+
+    def test_dlq_depth_is_the_length_of_the_category_dlq(self):
+        self._publish("a", 1, group_at="$")
+        self.redis.xadd(f"{self.category}:dlq", {"n": 1})
+
+        assert self._status().dlq_depth == 1
+
+    def test_an_unreadable_partition_is_skipped_and_logged(self, caplog):
+        """Partition ``a`` was recorded but its stream does not exist, so Redis
+        rejects the group read. ``b`` is still counted."""
+        self._publish("a", 0, group_at=None)
+        b = self._publish("b", 9)
+        self._read(b, "worker-1", 1)
+
+        with caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER):
+            status = self._status()
+
+        assert status.current_position == "2 partition(s)"
+        assert status.lag == 8
+        assert status.pending == 1
+        assert status.consumer_count == 1
+        [record] = [
+            r
+            for r in caplog.records
+            if r.getMessage() == f"Could not read groups of partition {self.category}:a"
+        ]
+        assert record.levelno == logging.DEBUG
+        assert isinstance(record.exc_info[1], redis.ResponseError)
+
+    def test_no_readable_partition_is_unknown(self):
+        self._publish("a", 0, group_at=None)
+
+        status = self._status()
+
+        assert status.lag is None
+        assert status.status == "unknown"
+
+    def test_another_groups_entries_are_ignored(self):
+        """A partition read only by some other group gives no reading of this
+        group's lag, and that is unknown, not zero."""
+        partition = self._publish("a", 3, group_at=None)
+        self.redis.xgroup_create(partition, "someone-else", id="0")
+        self.redis.xreadgroup("someone-else", "worker-9", {partition: ">"}, count=1)
+
+        status = self._status()
+
+        assert status.lag is None
+        assert status.pending == 0
+        assert status.consumer_count == 0
+        assert status.status == "unknown"
+
+    def test_group_read_failure_on_one_partition_is_logged(self, caplog):
+        self._publish("a", 2)
+        self._publish("b", 3)
+
+        with (
+            patch.object(
+                self.redis,
+                "xinfo_groups",
+                side_effect=_raise_on(
+                    self.redis.xinfo_groups,
+                    f"{self.category}:a",
+                    redis.ConnectionError("redis down"),
+                ),
+            ),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.lag == 3
+        [record] = [
+            r
+            for r in caplog.records
+            if r.getMessage() == f"Could not read groups of partition {self.category}:a"
+        ]
+        assert str(record.exc_info[1]) == "redis down"
+
+    def test_unreadable_consumers_count_nobody_and_are_logged(self, caplog):
+        a = self._publish("a", 4)
+        self._read(a, "worker-1", 1)
+        error = redis.ConnectionError("consumers gone")
+
+        with (
+            patch.object(self.redis, "xinfo_consumers", side_effect=error),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.lag == 3
+        assert status.pending == 1
+        assert status.consumer_count == 0
+        assert _messages_about(caplog, *self.streams) == [
+            f"Could not read consumers of {self.category}:a: {error!r}"
+        ]
+
+    def test_unreadable_lengths_show_zero_and_are_logged(self, caplog):
+        self._publish("a", 2)
+        error = redis.ConnectionError("length gone")
+
+        with (
+            patch.object(self.redis, "xlen", side_effect=error),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.head_position == "0"
+        assert status.dlq_depth == 0
+        assert status.lag == 2
+        assert _messages_about(caplog, *self.streams) == [
+            f"Could not read length of {self.category}:a: {error!r}",
+            f"Could not read DLQ depth of {self.category}: {error!r}",
+        ]
+
+    def test_unreadable_partition_index_is_unknown(self, caplog):
+        self._publish("a", 2)
+
+        with (
+            patch.object(
+                self.broker,
+                "_partition_keys",
+                side_effect=redis.ConnectionError("index gone"),
+            ),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.lag is None
+        assert status.status == "unknown"
+        assert _messages_about(caplog, *self.streams) == [
+            f"Error listing partitions for {self.category}: index gone"
+        ]
+
+    def test_lag_redis_cannot_report_is_counted_per_partition(self):
+        """A group created at an entry in the middle of a partition has no
+        native ``lag`` on Redis 7. That partition's entries after the group's
+        last-delivered id are counted and added to the native lag of the
+        others."""
+        a = self._publish("a", 4, group_at=None)
+        second_id = self.redis.xrange(a)[1][0]
+        self.redis.xgroup_create(a, self.group, id=second_id)
+        self._publish("b", 3)
+
+        status = self._status()
+
+        assert status.lag == 2 + 3
+        assert status.status == "lagging"
+
+    def test_partition_lag_that_cannot_be_counted_adds_nothing(self, caplog):
+        """Partition ``a`` has no native lag and its count fails, so only ``b``
+        is summed. A category whose only partition fails is unknown."""
+        a = self._publish("a", 4, group_at=None)
+        self.redis.xgroup_create(a, self.group, id=self.redis.xrange(a)[1][0])
+        error = redis.ConnectionError("range gone")
+
+        with patch.object(self.redis, "xrange", side_effect=error):
+            assert self._status().status == "unknown"
+
+        self._publish("b", 3)
+        with (
+            patch.object(self.redis, "xrange", side_effect=error),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.lag == 3
+        assert _messages_about(caplog, *self.streams) == [
+            f"Could not count lag of {a}: {error!r}"
+        ]
+
+    def test_a_group_name_that_is_not_utf8_makes_the_category_unknown(self, caplog):
+        """Another client can name a group with bytes that are not UTF-8. The
+        partition reader cannot decode the name, and the status reports the
+        category as unknown instead of raising."""
+        a = self._publish("a", 2)
+        self.redis.xgroup_create(a, b"a\xff", id="0")
+
+        with caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER):
+            status = self._status()
+
+        assert status.lag is None
+        assert status.status == "unknown"
+        [message] = [
+            r.getMessage()
+            for r in caplog.records
+            if r.getMessage().startswith(
+                f"Error collecting stream subscription status for {self.group}: "
+            )
+        ]
+        assert "can't decode byte 0xff" in message
+
+    def test_an_unpartitioned_category_on_the_same_domain_reads_its_base_stream(
+        self,
+    ):
+        """Partitioning is decided per category: ``AccountWatcher`` declares no
+        ``sequential_by`` and is read from its base stream."""
+        self._publish("a", 2)
+        account_stream = Account.meta_.stream_category
+        self.broker.publish(account_stream, {"n": 1})
+        first_id, _ = self.broker.get_next(account_stream, fqn(AccountWatcher))
+
+        status = _statuses(self.domain)[fqn(AccountWatcher)]
+
+        assert status.current_position == first_id
+        assert status.head_position == "1"
 
 
 # ---------------------------------------------------------------------------
@@ -1801,8 +1495,6 @@ class TestResetCheckpointToHead:
         readable back from the checkpoint stream, in the same ``Read`` record shape
         the runtime writes. It uses that recorded head, not a fresh store read, so
         the live store head deliberately differs here to pin which one is used."""
-        from protean.server.subscription_status import reset_checkpoint_to_head
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             # Live store head for `order` is 2; the status carries head 7 from
@@ -1830,11 +1522,8 @@ class TestResetCheckpointToHead:
         assert last["type"] == "Read"
 
     def test_reset_then_verify_reads_consistent(self, test_domain):
-        """Criterion 1 round-trip: after a reset, the subscription verifies as
+        """Round-trip: after a reset, the subscription verifies as
         consistent against the same head."""
-        from protean.cli.recover import _verdict
-        from protean.server.subscription_status import reset_checkpoint_to_head
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             store._write("order-1", "Placed", {"n": 1})
@@ -1864,8 +1553,6 @@ class TestResetCheckpointToHead:
     def test_empty_stream_resets_to_minus_one(self, test_domain):
         """A restored stream with no events has head ``-1``; the reset writes that,
         which sends the subscription back to the start of the stream."""
-        from protean.server.subscription_status import reset_checkpoint_to_head
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = store.stream_head_position("empty")
@@ -1886,42 +1573,33 @@ class TestResetCheckpointToHead:
         assert last["data"]["position"] == -1
 
     def test_raises_for_non_event_store_status(self, test_domain):
-        from protean.server.subscription_status import reset_checkpoint_to_head
-
         status = _es_status(subscription_type="broker")
         with pytest.raises(ValueError, match="not an event-store"):
             reset_checkpoint_to_head(test_domain, status)
 
     def test_raises_when_checkpoint_stream_missing(self, test_domain):
-        from protean.server.subscription_status import reset_checkpoint_to_head
-
         status = _es_status(position_stream=None)
         with pytest.raises(ValueError, match="no checkpoint stream"):
             reset_checkpoint_to_head(test_domain, status)
 
     def test_raises_when_head_position_unknown(self, test_domain):
-        from protean.server.subscription_status import reset_checkpoint_to_head
-
         status = _es_status(head_position=None)
         with pytest.raises(ValueError, match="stream head is unknown"):
             reset_checkpoint_to_head(test_domain, status)
 
     def test_raises_when_head_position_not_numeric(self, test_domain):
-        from protean.server.subscription_status import reset_checkpoint_to_head
-
         status = _es_status(head_position="abc")
         with pytest.raises(ValueError, match="not a number"):
             reset_checkpoint_to_head(test_domain, status)
 
+    @pytest.mark.no_test_domain
     def test_raises_when_store_not_configured(self):
-        from protean.server.subscription_status import reset_checkpoint_to_head
-
-        mock_domain = MagicMock()
-        mock_domain.event_store.store = None
+        """An uninitialized domain has no event store to write to."""
+        domain = Domain(name="NoStore")
 
         status = _es_status()
         with pytest.raises(ValueError, match="no.*event store"):
-            reset_checkpoint_to_head(mock_domain, status)
+            reset_checkpoint_to_head(domain, status)
 
 
 class TestPerformResetsScope:
@@ -1930,8 +1608,6 @@ class TestPerformResetsScope:
     alone."""
 
     def test_only_beyond_head_checkpoint_is_modified(self, test_domain):
-        from protean.cli.recover import _perform_resets
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             store._write("order-1", "Placed", {"n": 1})
@@ -2127,10 +1803,6 @@ class TestReconstructUnresolved:
     watermark."""
 
     def test_snapshot_only(self, test_domain):
-        from protean.server.subscription.event_store_subscription import (
-            reconstruct_unresolved,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             _seed_recovery_checkpoint(
@@ -2155,10 +1827,6 @@ class TestReconstructUnresolved:
         assert watermark == 0
 
     def test_failed_stream_after_watermark_is_merged(self, test_domain):
-        from protean.server.subscription.event_store_subscription import (
-            reconstruct_unresolved,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             # Snapshot at watermark 0 with one position; the failed stream adds a
@@ -2195,10 +1863,6 @@ class TestReconstructUnresolved:
         assert watermark == 2
 
     def test_no_checkpoint_reads_failed_stream_from_zero(self, test_domain):
-        from protean.server.subscription.event_store_subscription import (
-            reconstruct_unresolved,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             _seed_failed_record(store, "failed-Handler-order", "Failed", 4)
@@ -2215,10 +1879,6 @@ class TestReconstructUnresolved:
         """The failed stream is paged in full, not capped: a record past the first
         page is still merged, so a long failure history is not silently truncated.
         """
-        from protean.server.subscription.event_store_subscription import (
-            reconstruct_unresolved,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             for pos in (4, 5, 6, 7, 8):
@@ -2246,9 +1906,6 @@ class TestReconstructUnresolved:
         may have been truncated, so re-reading it would resurrect an already-
         resolved position. Here a resolved position (5, whose Resolved was rolled
         back) stays out of the set and the snapshot is returned unchanged."""
-        from protean.server.subscription.event_store_subscription import (
-            reconstruct_unresolved,
-        )
 
         store = test_domain.event_store.store
         with test_domain.domain_context():
@@ -2284,10 +1941,6 @@ class TestReconstructUnresolved:
     def test_merges_records_after_watermark(self, test_domain):
         """The normal case: the snapshot is kept and only records after the
         watermark are merged. A record at or below the watermark is not re-read."""
-        from protean.server.subscription.event_store_subscription import (
-            reconstruct_unresolved,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             # Three failed-stream records at per-stream positions 0, 1, 2.
@@ -2325,10 +1978,6 @@ class TestReconstructUnresolved:
         cursor. Used directly, 1.5 would read from position >= 1.5 and skip the
         records at positions 0 and 1, returning an incomplete set as if clean.
         Instead the whole failed stream is re-read from the start."""
-        from protean.server.subscription.event_store_subscription import (
-            reconstruct_unresolved,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             # Two failed records at per-stream positions 0 and 1.
@@ -2355,10 +2004,6 @@ class TestReconstructUnresolved:
         """``bool`` is an ``int`` subclass, so a ``True`` watermark passes a plain
         int check yet reads from position >= 1 and skips position 0. It is treated
         as corrupt and the failed stream is re-read from the start."""
-        from protean.server.subscription.event_store_subscription import (
-            reconstruct_unresolved,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             # One failed record at per-stream position 0.
@@ -2385,10 +2030,6 @@ class TestReconstructUnresolved:
         """A failed record whose last page entry carries no per-stream position
         cannot advance the cursor. Rather than silently return a partial scan as
         if complete, it raises so the CLI reports the subscription unverified."""
-        from protean.server.subscription.event_store_subscription import (
-            reconstruct_unresolved,
-        )
-
         store = MagicMock()
         store._read_last_message.return_value = None  # no checkpoint
         msg = MagicMock()
@@ -2412,10 +2053,6 @@ class TestReconstructUnresolved:
         pagination is already complete, so no cursor advance is needed. The set is
         returned best-effort so one malformed trailing record does not fail
         subscription startup. (A full page in this state still raises.)"""
-        from protean.server.subscription.event_store_subscription import (
-            reconstruct_unresolved,
-        )
-
         store = MagicMock()
         store._read_last_message.return_value = None  # no checkpoint
         msg = MagicMock()
@@ -2446,10 +2083,6 @@ class TestReconstructUnresolved:
         """A full page whose last record does not move the cursor forward (a
         non-monotonic or duplicate position) would loop forever; it raises so the
         CLI reports the subscription unverified instead of hanging."""
-        from protean.server.subscription.event_store_subscription import (
-            reconstruct_unresolved,
-        )
-
         store = MagicMock()
         store._read_last_message.return_value = None  # cursor starts at 0
         msg = MagicMock()
@@ -2472,27 +2105,16 @@ class TestReconstructUnresolved:
 class TestCheckpointAheadOfFailedStream:
     """The shared inconsistency check both the runtime rebuild and the CLI use."""
 
-    @pytest.mark.no_test_domain
-    def test_no_checkpoint_is_not_ahead(self):
-        from protean.server.subscription.event_store_subscription import (
-            checkpoint_ahead_of_failed_stream,
-        )
-
-        store = MagicMock()
-        store._read_last_message.return_value = None  # no checkpoint
+    def test_no_checkpoint_is_not_ahead(self, test_domain):
+        store = test_domain.event_store.store
         assert checkpoint_ahead_of_failed_stream(store, "rec", "failed") is False
 
-    @pytest.mark.no_test_domain
-    def test_non_integer_watermark_is_not_ahead(self):
+    def test_non_integer_watermark_is_not_ahead(self, test_domain):
         """A corrupt checkpoint whose watermark is not an int is left for the
         reconstruction to handle, not read as ahead-of-stream (which would compare
         a string to an int and raise)."""
-        from protean.server.subscription.event_store_subscription import (
-            checkpoint_ahead_of_failed_stream,
-        )
-
-        store = MagicMock()
-        store._read_last_message.return_value = {"data": {"watermark": "oops"}}
+        store = test_domain.event_store.store
+        store._write("rec", "Checkpoint", {"watermark": "oops"})
         assert checkpoint_ahead_of_failed_stream(store, "rec", "failed") is False
 
 
@@ -2503,11 +2125,7 @@ class TestCollectRecoveryCheckpointStatuses:
         return store.stream_head_position("order")
 
     def test_flags_beyond_head_unresolved_entry(self, test_domain):
-        """AC1: an unresolved entry past the head is named as stale."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
+        """An unresolved entry past the head is named as stale."""
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -2547,10 +2165,6 @@ class TestCollectRecoveryCheckpointStatuses:
         no resolved-position tombstones), so the subscription is reported
         ``unknown`` rather than verified. Reset already refuses a non-stale
         finding, so it never touches an unverifiable checkpoint."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -2584,10 +2198,6 @@ class TestCollectRecoveryCheckpointStatuses:
         the failed stream to the first row only. Rather than replay ``Failed(5)``
         and resurrect a resolved position (a duplicate delivery, or a false stale
         report), the inconsistent state is reported ``unknown``."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -2617,10 +2227,6 @@ class TestCollectRecoveryCheckpointStatuses:
         normal, consistent case, not an inconsistent restore. It is verified (its
         stale entry is reported stale), not reported unknown. Guards the ahead-of
         check against flagging a healthy checkpoint."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -2654,9 +2260,6 @@ class TestCollectRecoveryCheckpointStatuses:
     ):
         """The maximal rollback leaves an empty category (head ``-1``); every
         tracked position is then past the head and flagged."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
 
         store = test_domain.event_store.store
         with test_domain.domain_context():
@@ -2687,10 +2290,6 @@ class TestCollectRecoveryCheckpointStatuses:
         present are not stale. Both a below-head position (0) and an at-head
         position resolve here because their category messages exist; staleness is
         decided by the re-read finding nothing, not by comparing to the head."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -2722,10 +2321,6 @@ class TestCollectRecoveryCheckpointStatuses:
         """A position that began failing after the last checkpoint lives only in
         the failed stream; reconstruction merges it and the re-read (no specific
         stream recorded, so the category stream at its position) finds nothing."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -2746,10 +2341,6 @@ class TestCollectRecoveryCheckpointStatuses:
         another aggregate has a later event so the category head stays above it.
         Comparing the global position to the head would miss it; re-reading the
         specific stream catches it."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)  # order-1 holds events; head == 2
@@ -2779,10 +2370,6 @@ class TestCollectRecoveryCheckpointStatuses:
     def test_present_specific_stream_is_not_flagged(self, test_domain):
         """A tracked position whose specific stream still holds its message is
         healthy and left unreported, even below the head."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)  # order-1 holds events at pos 0, 1
@@ -2808,9 +2395,6 @@ class TestCollectRecoveryCheckpointStatuses:
     @pytest.mark.no_test_domain
     def test_non_event_store_subscription_skipped(self):
         # A broker subscription is skipped before any domain access.
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
 
         findings = collect_recovery_checkpoint_statuses(
             None, [_rec_status(subscription_type="broker")]
@@ -2822,10 +2406,6 @@ class TestCollectRecoveryCheckpointStatuses:
         stale entry when the read-position collection failed and left the status
         with no head (an unreadable read-position checkpoint must not hide
         readable recovery tracking)."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)  # store is readable
@@ -2857,9 +2437,6 @@ class TestCollectRecoveryCheckpointStatuses:
     @pytest.mark.no_test_domain
     def test_missing_recovery_streams_skipped(self):
         # A status with no recovery streams is skipped before any domain access.
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
 
         findings = collect_recovery_checkpoint_statuses(
             None, [_rec_status(recovery_checkpoint_stream=None)]
@@ -2869,10 +2446,6 @@ class TestCollectRecoveryCheckpointStatuses:
     def test_no_tracking_returns_no_finding(self, test_domain):
         """An event-store subscription that never failed a position has no
         recovery streams to read, so it is not a finding."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -2882,108 +2455,91 @@ class TestCollectRecoveryCheckpointStatuses:
         )
         assert findings == []
 
-    @pytest.mark.no_test_domain
-    def test_store_read_failure_is_reported_unknown(self):
+    def test_store_read_failure_is_reported_unknown(self, test_domain):
         """A store read that raises is reported as an unverified finding, not
         crashed and not silently folded into clean."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
-        mock_domain = MagicMock()
-        store = mock_domain.event_store.store
-        store._read_last_message.side_effect = RuntimeError("boom")
+        store = test_domain.event_store.store
         # The head read also fails, so it falls back to the status head; a
         # non-numeric status head (a foreign store) is reported as -1 rather than
         # crashing the int parse.
-        store.stream_head_position.side_effect = RuntimeError("head boom")
-        findings = collect_recovery_checkpoint_statuses(
-            mock_domain, [_rec_status(head_position="abc")]
-        )
+        with (
+            patch.object(store, "_read_last_message", side_effect=RuntimeError("boom")),
+            patch.object(
+                store, "stream_head_position", side_effect=RuntimeError("head boom")
+            ),
+        ):
+            findings = collect_recovery_checkpoint_statuses(
+                test_domain, [_rec_status(head_position="abc")]
+            )
         assert len(findings) == 1
         assert findings[0].verdict == "unknown"
         assert findings[0].stale_positions == []
         assert findings[0].head_position == -1
 
-    @pytest.mark.no_test_domain
-    def test_reuses_status_head_and_skips_the_store_read(self):
+    def test_reuses_status_head_and_skips_the_store_read(self, test_domain):
         """When the read-position collection already recorded a head, the recovery
         lane reuses it and does not pay a second (potentially expensive) store
         head read; the stale entry is still reported."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
-        store = MagicMock()
-        # Would raise if the head were read; the test proves it is not.
-        store.stream_head_position.side_effect = RuntimeError("head boom")
-        # A checkpoint tracking one position, an empty failed stream, and a
-        # re-read of that position that finds nothing (message gone -> stale).
-        store._read_last_message.return_value = {
-            "data": {
-                "watermark": 0,
-                "unresolved": {
+        store = test_domain.event_store.store
+        # A checkpoint tracking one position, an empty failed stream, and no
+        # event at that position (message gone -> stale).
+        with test_domain.domain_context():
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
                     "5": {
                         "retry_count": 1,
                         "stream_name": None,
                         "stream_position": None,
                     }
                 },
-            }
-        }
-        store.read.return_value = []
-        mock_domain = MagicMock()
-        mock_domain.event_store.store = store
+            )
 
-        findings = collect_recovery_checkpoint_statuses(
-            mock_domain, [_rec_status(head_position="7")]
-        )
+        # Would raise if the head were read; the test proves it is not.
+        with patch.object(
+            store, "stream_head_position", side_effect=RuntimeError("head boom")
+        ) as head_read:
+            findings = collect_recovery_checkpoint_statuses(
+                test_domain, [_rec_status(head_position="7")]
+            )
 
         assert len(findings) == 1
         assert findings[0].verdict == "stale"
         assert findings[0].stale_positions == [5]
         # The status head (7) was reused; the store head was never read.
         assert findings[0].head_position == 7
-        store.stream_head_position.assert_not_called()
+        head_read.assert_not_called()
 
     @pytest.mark.no_test_domain
     def test_store_not_configured_is_reported_unknown(self):
         """A domain with no event store yields an unverified finding, not silence
         and not a raise."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
-        mock_domain = MagicMock()
-        mock_domain.event_store.store = None
-        findings = collect_recovery_checkpoint_statuses(mock_domain, [_rec_status()])
+        domain = Domain(name="NoStore")
+        findings = collect_recovery_checkpoint_statuses(domain, [_rec_status()])
         assert len(findings) == 1
         assert findings[0].verdict == "unknown"
 
-    @pytest.mark.no_test_domain
-    def test_corrupt_checkpoint_record_is_reported_unknown(self):
+    def test_corrupt_checkpoint_record_is_reported_unknown(self, test_domain):
         """A restore can leave a checkpoint record whose ``data`` is malformed;
         the reconstruction raises and the subscription is reported unverified."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
-        mock_domain = MagicMock()
-        # ``data`` is not a dict, so ``checkpoint["data"].get(...)`` raises.
-        mock_domain.event_store.store._read_last_message.return_value = {
-            "data": "not-a-dict"
-        }
-        findings = collect_recovery_checkpoint_statuses(mock_domain, [_rec_status()])
+        store = test_domain.event_store.store
+        # ``unresolved`` is a list, so reading its entries as a mapping raises.
+        with test_domain.domain_context():
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved=["not", "a", "dict"],
+            )
+        findings = collect_recovery_checkpoint_statuses(test_domain, [_rec_status()])
         assert len(findings) == 1
         assert findings[0].verdict == "unknown"
 
     def test_read_error_on_one_position_keeps_confirmed_stale(self, test_domain):
         """A re-read that raises for one position must not discard the stale
         entries already confirmed for the same subscription."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -3020,10 +2576,6 @@ class TestCollectRecoveryCheckpointStatuses:
     def test_read_error_with_no_confirmed_stale_is_unknown(self, test_domain):
         """When the only re-read that could run raises and nothing is confirmed
         stale, the subscription is reported unverified rather than clean."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -3051,10 +2603,6 @@ class TestCollectRecoveryCheckpointStatuses:
     def test_malformed_failed_record_is_skipped(self, test_domain):
         """A failed record missing its position is skipped, not merged as a
         phantom entry."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -3083,11 +2631,7 @@ class TestCollectRecoveryCheckpointStatuses:
         assert findings == []
 
     def test_collect_does_not_modify_any_stream(self, test_domain):
-        """AC3: a verify-only collection never writes to the recovery stream."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
+        """A verify-only collection never writes to the recovery stream."""
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -3128,11 +2672,6 @@ class TestResetRecoveryCheckpoint:
         category re-read finds nothing) and keeps the one whose message is still
         present (position 1, re-read from its specific stream order-1), and a later
         collection finds nothing."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-            reset_recovery_checkpoint,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -3172,11 +2711,6 @@ class TestResetRecoveryCheckpoint:
     def test_reset_holds_when_stale_only_in_failed_stream(self, test_domain):
         """A stale position present only in the failed stream is cleared and the
         watermark is advanced past it, so a later collection stays clean."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-            reset_recovery_checkpoint,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
@@ -3201,13 +2735,7 @@ class TestResetRecoveryCheckpoint:
 
     @pytest.mark.no_test_domain
     def test_raises_when_store_not_configured(self):
-        from protean.server.subscription_status import (
-            RecoveryCheckpointStatus,
-            reset_recovery_checkpoint,
-        )
-
-        mock_domain = MagicMock()
-        mock_domain.event_store.store = None
+        domain = Domain(name="NoStore")
 
         finding = RecoveryCheckpointStatus(
             name="sub",
@@ -3223,17 +2751,12 @@ class TestResetRecoveryCheckpoint:
             watermark=0,
         )
         with pytest.raises(ValueError, match="no event store"):
-            reset_recovery_checkpoint(mock_domain, finding)
+            reset_recovery_checkpoint(domain, finding)
 
     def test_refuses_to_reset_an_unknown_finding(self, test_domain):
         """An unknown finding carries an empty snapshot, so resetting it would
         wipe the subscription's real recovery state. It is refused, and the real
         checkpoint is left untouched."""
-        from protean.server.subscription_status import (
-            RecoveryCheckpointStatus,
-            reset_recovery_checkpoint,
-        )
-
         store = test_domain.event_store.store
         with test_domain.domain_context():
             _seed_recovery_checkpoint(

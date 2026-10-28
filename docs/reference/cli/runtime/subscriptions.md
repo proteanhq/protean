@@ -100,7 +100,7 @@ the appropriate backend for each:
 | Type | Backend | Lag calculation |
 |------|---------|-----------------|
 | `event_store` | Event store position streams | `head_position - current_position` |
-| `stream` | Redis consumer groups | Native lag (Redis 7.0+) or `xrange` fallback |
+| `stream` | Redis consumer groups | Native lag (Redis 7.0+), or an `xrange` count when Redis reports no lag |
 | `broker` | Broker consumer group info | Same as stream for Redis brokers |
 | `outbox` | Outbox repository | `pending + processing` count |
 

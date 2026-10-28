@@ -1239,6 +1239,12 @@ class RedisBroker(BaseBroker):
         for key_format in [field_name.encode(), field_name]:
             if key_format in info_dict:
                 value = info_dict[key_format]
+                # Redis sends nil for a value it cannot compute, such as a
+                # group's `lag` after an entry past its last-delivered id was
+                # deleted. Reading nil as 0 would report an unknown lag as
+                # caught up.
+                if value is None:
+                    return None
                 decoded_value = self._decode_if_bytes(value)
 
                 if convert_to_int:

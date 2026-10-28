@@ -1178,10 +1178,10 @@ def test_data_reset_with_exception(redis_broker, monkeypatch, caplog):
 
 @pytest.mark.redis
 def test_data_reset_leaves_other_databases_alone(redis_broker):
-    # Redis database 12 is outside every domain and adapter config in the
+    # Redis database 14 is outside every domain and adapter config in the
     # suite, so no reset or teardown flushes it while this test runs under
     # xdist. The tests that share it each use their own key.
-    other_db = redis.Redis.from_url(f"{REDIS_URI}/12")
+    other_db = redis.Redis.from_url(f"{REDIS_URI}/14")
     other_key = "protean-test:redis-broker-reset-survivor"
     try:
         other_db.set(other_key, "kept")
