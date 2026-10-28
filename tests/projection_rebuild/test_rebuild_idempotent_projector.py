@@ -218,6 +218,28 @@ class TestRebuildIdempotentProjector:
         assert _counts(Tally) == {first_id: 2, second_id: 1}
         assert test_domain._infrastructure.processed_message_repos == {}
 
+    def test_provider_without_a_marker_store_still_rebuilds(
+        self, test_domain, monkeypatch
+    ):
+        _register(test_domain)
+        first_id, second_id = _populate()
+        lookups = []
+
+        def _no_marker_store(provider_name):
+            lookups.append(provider_name)
+            raise KeyError(provider_name)
+
+        monkeypatch.setattr(
+            test_domain, "_get_processed_message_repo", _no_marker_store
+        )
+
+        result = test_domain.rebuild_projection(Tally)
+
+        assert result.success
+        assert result.events_dispatched == 3
+        assert _counts(Tally) == {first_id: 2, second_id: 1}
+        assert "default" in lookups
+
     def test_cache_backed_projection_does_not_touch_the_marker_store(
         self, test_domain, monkeypatch
     ):
