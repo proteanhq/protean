@@ -257,6 +257,7 @@ aggregates on other providers.
 | `retry` or `discard` on a row that is not `failed` or `abandoned` | Aborts with "Outbox row ... is \<status\>. Only a failed or abandoned row can be retried or discarded." and changes nothing |
 | `retry` or `discard` on a row a worker claims or fails while the command runs | Aborts with "Outbox row ... changed while the command ran" and changes nothing |
 | `discard` without `--reason`, or with an empty one | Usage error, exit code 2 |
+| `halted`, `retry` or `discard` with a `--provider` that has no outbox | Prints "No outbox for provider ..." (the error envelope under `halted --json`) and exits 2 |
 
 ## How reconciliation works
 

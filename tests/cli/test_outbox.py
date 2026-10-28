@@ -398,3 +398,26 @@ class TestNewCommandsNeedTheOutbox:
         assert envelope["status"] == "error"
         assert "under [server]" in envelope["data"]["error"]
         domain._get_outbox_repo.assert_not_called()
+
+
+class TestUnknownProvider:
+    def test_halted_json_reports_an_unknown_provider_as_an_error_envelope(
+        self, outbox_domain
+    ):
+        result = _invoke("halted", "--json", "--provider", "no-such-provider")
+
+        assert result.exit_code == 2
+        envelope = assert_envelope(result.stdout)
+        assert envelope["status"] == "error"
+        assert "no-such-provider" in envelope["data"]["error"]
+
+    @pytest.mark.parametrize(
+        "args",
+        [("halted",), ("retry", "1"), ("discard", "1", "--reason", "skip")],
+        ids=["halted", "retry", "discard"],
+    )
+    def test_each_command_reports_an_unknown_provider(self, outbox_domain, args):
+        result = _invoke(*args, "--provider", "no-such-provider")
+
+        assert result.exit_code == 2
+        assert "no-such-provider" in _flat(result.stderr)
