@@ -254,9 +254,9 @@ aggregates on other providers.
 | Nothing to reconcile | Prints "Nothing to reconcile: no event in the scanned window is missing its outbox row" |
 | `halted --json` with an invalid domain path or the outbox not enabled | Prints the error envelope (`status` `error`, the message under `data.error`) and exits 2 |
 | `halted` finds no halted key | Prints "No partition key is halted." and exits 0 |
-| `retry` or `discard` with an unknown id | Aborts with "No outbox row with id ..." and changes nothing |
-| `retry` or `discard` on a row that is not `failed` or `abandoned` | Aborts with "Outbox row ... is \<status\>. Only a failed or abandoned row can be retried or discarded." and changes nothing |
-| `retry` or `discard` on a row a worker claims or fails while the command runs | Aborts with "Outbox row ... changed while the command ran" and changes nothing |
+| `retry` or `discard` with an unknown id | Aborts with "No outbox row with id ..." exits 1, and changes nothing |
+| `retry` or `discard` on a row that is not `failed` or `abandoned` | Aborts with "Outbox row ... is \<status\>. Only a failed or abandoned row can be retried or discarded." exits 1, and changes nothing |
+| `retry` or `discard` on a row a worker claims or fails while the command runs | Aborts with "Outbox row ... changed while the command ran" exits 1, and changes nothing |
 | `discard` without `--reason`, or with an empty one | Usage error, exit code 2 |
 | `halted`, `retry` or `discard` with a `--provider` that has no outbox | Prints "No outbox for provider ..." (the error envelope under `halted --json`) and exits 2 |
 
