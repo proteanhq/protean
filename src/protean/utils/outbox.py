@@ -389,11 +389,13 @@ class Outbox(BaseAggregate):
         self._clear_lock()
 
     def reset_for_retry(self) -> bool:
-        """Reset a failed or abandoned message so it is claimed again at once.
+        """Reset a failed or abandoned message so the claim can pick it up again.
 
         The row goes back to ``PENDING`` with ``retry_count`` at 0, no retry
-        time and no lock, so it gets the full number of attempts again.
-        ``last_error`` is kept.
+        time and no lock, so it gets the full number of attempts again. A row
+        with ``max_retries`` below 1 gets one attempt. ``last_error`` is kept.
+        The claim still takes it only after the earlier rows of its partition
+        key, in priority and commit order.
 
         Returns:
             True if reset was successful, False if the row is not ``FAILED``
@@ -404,6 +406,9 @@ class Outbox(BaseAggregate):
 
         self.status = OutboxStatus.PENDING.value
         self.retry_count = 0
+        # The claim needs ``retry_count < max_retries``, so a row written with
+        # ``max_attempts = 0`` would stay pending and never be claimed.
+        self.max_retries = max(self.max_retries, 1)
         self.next_retry_at = None
         self._clear_lock()
         return True
@@ -877,7 +882,7 @@ class OutboxRepository(BaseRepository):
         return self._apply_limit_and_execute(query, limit)
 
     def find_halted(self, lanes: OutboxLanes | None = None) -> list[HaltedKey]:
-        """List every partition key that an abandoned row halts.
+        """List the partition keys that an abandoned row halts.
 
         A key is halted when the earliest row of its group that still holds
         the group is ``ABANDONED``. The group, the holding statuses and the
@@ -891,7 +896,9 @@ class OutboxRepository(BaseRepository):
 
         Returns:
             One :class:`HaltedKey` per halted group, in the commit order of
-            the abandoned rows. Every halted key is listed, with no page cap.
+            the abandoned rows. There is no page cap. The scan pages through
+            the rows by offset, so a row whose status changes during the scan
+            can be missed or listed twice.
         """
         if lanes is None:
             lanes = OutboxLanes.from_config(self._dao.domain.config)
@@ -914,8 +921,9 @@ class OutboxRepository(BaseRepository):
             )
             for row in page:
                 lane_index = lanes.lane_index(row)
-                if lane_index is None:
-                    continue
+                # ``hold_back.applies`` in the query already keeps out rows
+                # with no group.
+                assert lane_index is not None
                 group = (
                     Q(
                         target_broker=row.target_broker,
@@ -943,6 +951,41 @@ class OutboxRepository(BaseRepository):
                 break
             offset += PAGE_SIZE
         return halted
+
+    def save_operator_change(
+        self, row: Outbox, read_status: str, read_retry_count: int
+    ) -> bool:
+        """Write an operator's retry or discard of ``row``, if the stored row
+        has not changed since it was read.
+
+        ``row`` holds the change made by :meth:`Outbox.reset_for_retry` or
+        :meth:`Outbox.discard`. The write goes through only while the stored
+        row still has ``read_status`` and ``read_retry_count``. A worker that
+        claims a failed row moves it to ``PROCESSING``, and a failed attempt
+        raises ``retry_count``, so either one makes the write match no row.
+        A plain save would pass in that case, because the claim does not bump
+        the row's version, and the worker would then publish a discarded row
+        or a second worker would claim a retried one.
+
+        Returns:
+            True if the row was written, False if it changed in the meantime
+            (nothing is written then)
+        """
+        values = {
+            field: getattr(row, field)
+            for field in (
+                "status",
+                "retry_count",
+                "max_retries",
+                "next_retry_at",
+                "last_processed_at",
+                "last_error",
+                "locked_by",
+                "locked_until",
+            )
+        }
+        guard = Q(id=row.id, status=read_status, retry_count=read_retry_count)
+        return self._dao._update_all(guard, values) > 0
 
     def find_published(self, limit: int | None = PAGE_SIZE) -> list[Outbox]:
         """Find messages that have been successfully published.

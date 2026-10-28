@@ -98,7 +98,7 @@ passed. A row abandoned because its partition key is invalid carries
 
 ## `protean outbox halted`
 
-Lists every partition key whose earliest row that still holds the key is
+Lists the partition keys whose earliest row that still holds the key is
 `abandoned`. Rows that are `pending`, `processing`, `failed` or `abandoned`
 hold the key. `published` and `discarded` rows do not, so they are skipped. A
 partition key is the value set by a handler's
@@ -127,16 +127,22 @@ protean outbox halted --json --domain=my_domain
 **Output**
 
 ```
-1 halted partition key(s):
+1 halted group(s) of broker, stream category, partition key and lane:
 - default shop::order key=cust-42 lane=primary: head row 6f1c2a9e-... is abandoned (broker rejected the payload), 3 row(s) waiting
 ```
 
 Each line names the target broker, the stream category, the partition key and
 the lane, then the abandoned row at the head of the key, the message from its
-`last_error`, and how many later rows of the key are waiting. With no halted
-key it prints `No partition key is halted.` and exits 0.
+`last_error`, and how many later rows of the key are waiting. There is one
+line per group, so a key with rows for two brokers or in both lanes appears
+once for each. With no halted key it prints `No partition key is halted.` and
+exits 0. The scan reads the abandoned rows a page at a time, so a row whose
+status changes while it runs can be missed or listed twice.
 
-Under `--json`, `data.halted` holds one object per halted key:
+Under `--json`, `data.halted` holds one object per halted group. The
+`last_error` below is shortened. A real one also holds the `traceback`,
+`failed_at` and `retry_count` of the last failure, and prints across several
+lines:
 
 ```json
 {
@@ -145,7 +151,10 @@ Under `--json`, `data.halted` holds one object per halted key:
       {
         "head_id": "6f1c2a9e-...",
         "lane": "primary",
-        "last_error": {"message": "broker rejected the payload", "reason": "Max retries exceeded"},
+        "last_error": {
+          "message": "broker rejected the payload",
+          "reason": "Max retries exceeded"
+        },
         "partition_key": "cust-42",
         "status": "abandoned",
         "stream_category": "shop::order",
@@ -166,9 +175,11 @@ Under `--json`, `data.halted` holds one object per halted key:
 ## `protean outbox retry`
 
 Sends a `failed` or `abandoned` row back to `pending` with its retry count at
-zero and no retry delay, so the processor claims it on its next poll and it
-gets the full number of attempts again. The later rows of its key publish
-after it.
+zero and no retry delay, so it gets the full number of attempts again. A row
+whose `max_retries` is 0 gets one attempt. The processor can then claim the
+row, in the same priority and commit order as any other row, and still only
+after the earlier rows of its key. The later rows of its key publish after
+it.
 
 ```bash
 protean outbox retry 6f1c2a9e-... --domain=my_domain
@@ -195,7 +206,7 @@ its event is dropped for that broker, and the later rows of its key publish
 without it. The row stays in the outbox with the `discarded` status. Its
 `last_error` keeps the original error and gains `discarded_at` and
 `discard_reason`. Cleanup deletes it `abandoned_retention_hours` after it was
-discarded.
+discarded. The reason cannot be empty.
 
 ```bash
 protean outbox discard 6f1c2a9e-... --reason "payload rejected by the broker" --domain=my_domain
@@ -244,7 +255,8 @@ aggregates on other providers.
 | `halted` finds no halted key | Prints "No partition key is halted." and exits 0 |
 | `retry` or `discard` with an unknown id | Aborts with "No outbox row with id ..." and changes nothing |
 | `retry` or `discard` on a row that is not `failed` or `abandoned` | Aborts with "Outbox row ... is \<status\>. Only a failed or abandoned row can be retried or discarded." and changes nothing |
-| `discard` without `--reason` | Usage error, exit code 2 |
+| `retry` or `discard` on a row a worker claims or fails while the command runs | Aborts with "Outbox row ... changed while the command ran" and changes nothing |
+| `discard` without `--reason`, or with an empty one | Usage error, exit code 2 |
 
 ## How reconciliation works
 

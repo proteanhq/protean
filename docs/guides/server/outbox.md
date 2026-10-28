@@ -215,7 +215,7 @@ Messages that exhaust `max_attempts` move to the `ABANDONED` state and stop
 retrying. They do **not** route to a DLQ. The outbox table itself is durable
 storage.
 
-**The CLI**: `protean outbox halted` lists every partition key an abandoned
+**The CLI**: `protean outbox halted` lists the partition keys an abandoned
 row halts, with the row's id, its last error and the number of rows waiting
 behind it. `protean outbox retry <id>` sends a failed or abandoned row back to
 `pending`, and `protean outbox discard <id> --reason "..."` skips it for good.
@@ -247,7 +247,8 @@ a larger `limit`. `limit=None` does not lift the cap: it still returns at most
 
 **The database**: abandoned rows can also be inspected with regular SQL.
 Prefer `protean outbox retry` and `discard` for changing them, because those
-commands refuse a row that is not failed or abandoned.
+commands refuse a row that is not failed or abandoned, and a row a worker
+claims while the command runs.
 
 ### A partitioned key can halt
 
@@ -255,7 +256,7 @@ When a handler category declares
 [`sequential_by`](../../reference/server/sequential-by.md), each outbox row
 carries a partition key. The processor publishes a key's rows in commit order.
 A row is claimed only when every earlier row of its key has been published or
-is claimed in the same batch. Rows are grouped by target broker, stream
+discarded, or is claimed in the same batch. Rows are grouped by target broker, stream
 category, partition key and [priority lane](using-priority-lanes.md), so each
 group keeps its own order.
 

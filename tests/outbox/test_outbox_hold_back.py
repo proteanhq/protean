@@ -411,10 +411,14 @@ class TestAnOperatorReleasesAHaltedKey:
         _insert(outbox_repo, _row("b", minute=1), _abandoned(_row("a", minute=0)))
         head = _reload(outbox_repo, "a")
         assert head.discard("poison") is True
-        outbox_repo.add(head)
+        assert outbox_repo.save_operator_change(
+            head, OutboxStatus.ABANDONED.value, head.max_retries
+        )
 
         assert _labels(outbox_repo.claim_batch("worker-1", limit=10)) == ["b"]
-        assert _reload(outbox_repo, "a").status == OutboxStatus.DISCARDED.value
+        stored = _reload(outbox_repo, "a")
+        assert stored.status == OutboxStatus.DISCARDED.value
+        assert stored.last_error["discard_reason"] == "poison"
 
     def test_a_discarded_row_without_a_key_is_never_claimed(self, outbox_repo):
         row = _abandoned(_row("a", minute=0, key=None))
@@ -427,9 +431,64 @@ class TestAnOperatorReleasesAHaltedKey:
         _insert(outbox_repo, _row("b", minute=1), _abandoned(_row("a", minute=0)))
         head = _reload(outbox_repo, "a")
         assert head.reset_for_retry() is True
-        outbox_repo.add(head)
+        assert outbox_repo.save_operator_change(
+            head, OutboxStatus.ABANDONED.value, head.max_retries
+        )
 
         assert _labels(outbox_repo.claim_batch("worker-1", limit=10)) == ["a", "b"]
+
+    def test_a_retried_row_with_no_retries_is_claimed(self, outbox_repo):
+        row = _abandoned(_row("a", minute=0))
+        row.max_retries = 0
+        row.retry_count = 0
+        _insert(outbox_repo, row)
+        head = _reload(outbox_repo, "a")
+        assert head.reset_for_retry() is True
+        assert outbox_repo.save_operator_change(head, OutboxStatus.ABANDONED.value, 0)
+
+        assert _labels(outbox_repo.claim_batch("worker-1", limit=10)) == ["a"]
+
+    @pytest.mark.parametrize("action", ["retry", "discard"])
+    def test_a_row_a_worker_claimed_after_the_read_is_not_written(
+        self, outbox_repo, now, action
+    ):
+        _insert(
+            outbox_repo,
+            _failed(_row("a", minute=0), next_retry_at=now - timedelta(minutes=1)),
+        )
+        stale = _reload(outbox_repo, "a")
+        assert _labels(outbox_repo.claim_batch("worker-1", limit=10)) == ["a"]
+        changed = stale.reset_for_retry() if action == "retry" else stale.discard("x")
+        assert changed is True
+
+        assert (
+            outbox_repo.save_operator_change(stale, OutboxStatus.FAILED.value, 1)
+            is False
+        )
+
+        stored = _reload(outbox_repo, "a")
+        assert stored.status == OutboxStatus.PROCESSING.value
+        assert stored.locked_by == "worker-1"
+        assert stored.last_error is None
+
+    def test_a_row_that_failed_again_after_the_read_is_not_written(
+        self, outbox_repo, now
+    ):
+        _insert(
+            outbox_repo,
+            _failed(_row("a", minute=0), next_retry_at=now + timedelta(hours=1)),
+        )
+        stale = _reload(outbox_repo, "a")
+        again = _reload(outbox_repo, "a")
+        again.retry_count = 2
+        outbox_repo.add(again)
+        assert stale.discard("x") is True
+
+        assert (
+            outbox_repo.save_operator_change(stale, OutboxStatus.FAILED.value, 1)
+            is False
+        )
+        assert _reload(outbox_repo, "a").status == OutboxStatus.FAILED.value
 
 
 def _halted(outbox_repo) -> list[tuple[str, str, str, str, int]]:
@@ -466,6 +525,17 @@ class TestFindHalted:
         _insert(
             outbox_repo,
             _row("b", minute=1),
+            _failed(_row("a", minute=0), next_retry_at=now + timedelta(hours=1)),
+        )
+
+        assert outbox_repo.find_halted() == []
+
+    def test_an_abandoned_row_behind_an_earlier_failed_row_is_not_the_head(
+        self, outbox_repo, now
+    ):
+        _insert(
+            outbox_repo,
+            _abandoned(_row("b", minute=1)),
             _failed(_row("a", minute=0), next_retry_at=now + timedelta(hours=1)),
         )
 
