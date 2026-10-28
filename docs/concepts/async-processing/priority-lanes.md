@@ -274,7 +274,7 @@ A retried row, a second worker, or host clocks that disagree can still publish
 events out of that order. For example, if a worker crashes while holding rows 1
 to 5, another worker can claim them only after their lock expires, so rows 6 to
 10 are published first. See
-[Outbox ordering](../../reference/guarantees.md#outbox-transactional-delivery-to-brokers)
+[Outbox ordering](../../reference/guarantees.md#outbox-ordering)
 for the full list.
 
 A category partitioned with

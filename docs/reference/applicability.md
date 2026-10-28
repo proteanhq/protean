@@ -145,7 +145,7 @@ follows from that.
   refuses to start more than one of it by default, on a best-effort basis. When
   you need that kind of work to scale out, use a stream subscription, which is
   built for it. See
-  [Subscriptions & delivery](guarantees.md#subscriptions-delivery).
+  [Single writer](guarantees.md#single-writer).
 - **Background processing needs an always-on worker**: The background engine and
   its retry and delivery machinery assume a process that keeps running, so that
   side of Protean does not fit a scale-to-zero or serverless-function model.
