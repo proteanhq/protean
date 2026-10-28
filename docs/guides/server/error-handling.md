@@ -210,7 +210,9 @@ When a handler raises `ExpectedVersionError`, the framework:
 2. Waits with exponential backoff (50 ms &rarr; 100 ms &rarr; 200 ms …).
 3. Re-executes the handler in a **new `UnitOfWork`**, so the aggregate
    is re-read at the latest version. A handler that runs inside an outer
-   `UnitOfWork` joins that outer one on every retry instead.
+   `UnitOfWork` does not retry. Its conflict goes up to the enclosing
+   handler, which retries the whole chain, or to the caller when nothing
+   encloses it with a retry.
 4. After exhausting fast retries (default 3), propagates the error to the
    subscription for normal retry/DLQ handling.
 
