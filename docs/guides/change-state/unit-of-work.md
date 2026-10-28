@@ -330,14 +330,19 @@ first writer wins, and subsequent writers must retry with the latest version.
 In async handlers (command handlers and event handlers decorated with
 `@handle`), the framework **automatically retries** `ExpectedVersionError`
 with exponential backoff. Each retry runs in a new `UnitOfWork`, so the
-handler re-reads the aggregate at the latest version. A handler that runs
-inside an outer `UnitOfWork` does not retry. This happens when another handler
-or an application service processes a command synchronously. The handler's
-`UnitOfWork` joins the outer one, so the failed attempt has already doomed the
-outer transaction. The conflict goes up instead: an enclosing handler retries
-the whole chain in a fresh `UnitOfWork`, and an application service passes it
-to its caller. This is transparent, most version conflicts resolve without any
-manual intervention. For details, see
+handler re-reads the aggregate at the latest version. Most version conflicts
+in a handler resolve this way without any manual intervention.
+
+A handler that runs inside an outer `UnitOfWork` does not retry. This happens
+when another handler or an application service processes a command
+synchronously, or when your code opens a `UnitOfWork` around
+`domain.process()`. The handler's `UnitOfWork` joins the outer one, so the
+failed attempt has already doomed the outer transaction. The conflict
+propagates instead. When the outermost caller is a `@handle` handler with
+version retry on, that handler re-runs the whole chain in a fresh
+`UnitOfWork`. An application service, a process manager or your own
+`UnitOfWork` has no retry, so its caller receives the `ExpectedVersionError`.
+For details, see
 [Version conflict
 auto-retry](../server/error-handling.md#version-conflict-auto-retry).
 

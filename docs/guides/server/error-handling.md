@@ -210,13 +210,17 @@ When a handler raises `ExpectedVersionError`, the framework:
 2. Waits with exponential backoff (50 ms &rarr; 100 ms &rarr; 200 ms …).
 3. Re-executes the handler in a **new `UnitOfWork`**, so the aggregate
    is re-read at the latest version. A handler that runs inside an outer
-   `UnitOfWork` does not retry. Its conflict goes up to the enclosing
-   handler, which retries the whole chain, or to the caller when nothing
-   encloses it with a retry.
+   `UnitOfWork` does not retry. Its conflict propagates to the outermost
+   `@handle` handler, which retries the whole chain when version retry is
+   on. A process manager, a `@use_case` or a caller-opened `UnitOfWork`
+   has no retry, so the conflict reaches its caller.
 4. After exhausting fast retries (default 3), propagates the error to the
    subscription for normal retry/DLQ handling.
 
-This is transparent, the subscription never sees transient version conflicts.
+This is transparent: the subscription does not see transient version
+conflicts in a handler it runs directly. A command handler that a process
+manager calls synchronously gets no fast retry, so its conflict reaches the
+subscription.
 Only persistent conflicts (extremely rare) surface as failures.
 
 Under `event_processing = "sync"`, event handlers run inside the command's

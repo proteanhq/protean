@@ -1357,3 +1357,103 @@ class TestNestedHandlerRetry:
 
         assert runs == 1
         mock_sleep.assert_not_called()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_a_nested_conflict_that_never_clears_is_retried_only_by_the_outer_handler(
+        self, mock_sleep, test_domain
+    ):
+        outer_runs = 0
+        inner_runs = 0
+
+        class AccountHandlers(BaseCommandHandler):
+            @handle(OpenAccount)
+            def open(self, command: OpenAccount) -> None:
+                nonlocal outer_runs
+                outer_runs += 1
+                current_domain.process(
+                    WriteAccount(account_id=command.account_id), asynchronous=False
+                )
+
+            @handle(WriteAccount)
+            def write(self, command: WriteAccount) -> None:
+                nonlocal inner_runs
+                inner_runs += 1
+                raise ExpectedVersionError("stale")
+
+        test_domain.register(AccountHandlers, part_of=Account)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ExpectedVersionError):
+            test_domain.process(OpenAccount(account_id="a1"), asynchronous=False)
+
+        max_retries = _VERSION_RETRY_DEFAULTS["max_retries"]
+        assert outer_runs == max_retries + 1
+        assert inner_runs == max_retries + 1
+        assert mock_sleep.call_count == max_retries
+
+
+class CloseAccount(BaseCommand):
+    account_id: Identifier(required=True)
+
+
+class TestThreeLevelNestedRetry:
+    @pytest.fixture(autouse=True)
+    def register_accounts(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(OpenAccount, part_of=Account)
+        test_domain.register(WriteAccount, part_of=Account)
+        test_domain.register(CloseAccount, part_of=Account)
+
+    def _register_chain(self, test_domain, runs, conflicts):
+        class AccountHandlers(BaseCommandHandler):
+            @handle(CloseAccount)
+            def first(self, command: CloseAccount) -> None:
+                runs["first"] += 1
+                current_domain.process(
+                    OpenAccount(account_id=command.account_id), asynchronous=False
+                )
+
+            @handle(OpenAccount)
+            def second(self, command: OpenAccount) -> None:
+                runs["second"] += 1
+                current_domain.process(
+                    WriteAccount(account_id=command.account_id), asynchronous=False
+                )
+
+            @handle(WriteAccount)
+            def third(self, command: WriteAccount) -> None:
+                runs["third"] += 1
+                if runs["third"] <= conflicts:
+                    raise ExpectedVersionError("stale")
+                current_domain.repository_for(Account).add(
+                    Account(id=command.account_id, name="written")
+                )
+
+        test_domain.register(AccountHandlers, part_of=Account)
+        test_domain.init(traverse=False)
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_a_conflict_two_levels_down_is_retried_by_the_outermost_handler(
+        self, mock_sleep, test_domain
+    ):
+        runs = {"first": 0, "second": 0, "third": 0}
+        self._register_chain(test_domain, runs, conflicts=1)
+
+        test_domain.process(CloseAccount(account_id="a1"), asynchronous=False)
+
+        assert runs == {"first": 2, "second": 2, "third": 2}
+        account = test_domain.repository_for(Account).get_or_none("a1")
+        assert account is not None
+        assert account.name == "written"
+        mock_sleep.assert_called_once()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_retries_are_not_multiplied_across_levels(self, mock_sleep, test_domain):
+        runs = {"first": 0, "second": 0, "third": 0}
+        self._register_chain(test_domain, runs, conflicts=1_000)
+
+        with pytest.raises(ExpectedVersionError):
+            test_domain.process(CloseAccount(account_id="a1"), asynchronous=False)
+
+        attempts = _VERSION_RETRY_DEFAULTS["max_retries"] + 1
+        assert runs == {"first": attempts, "second": attempts, "third": attempts}
