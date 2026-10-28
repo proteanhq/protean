@@ -20,7 +20,7 @@ from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
 from protean.core.value_object import BaseValueObject
 from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
-from protean.ir.generators.avro import generate_avro_schema
+from protean.ir.generators.avro import generate_avro_schema, generate_avro_schemas
 from protean.ir.generators.protobuf import generate_proto_schema
 from protean.ir.generators.schema_writer import (
     _relative_schema_path,
@@ -61,7 +61,7 @@ class TestAvroMapping:
         assert schema["type"] == "record"
         assert schema["name"] == "E"
         types = {f["name"]: f["type"] for f in schema["fields"]}
-        assert types["id"] == {"type": "string", "logicalType": "uuid"}
+        assert types["id"] == "string"
         assert types["count"] == "long"
         assert types["ratio"] == "double"
         assert types["flag"] == "boolean"
@@ -345,6 +345,23 @@ class TestAvroComplexFields:
         nums = next(f for f in schema["fields"] if f["name"] == "nums")
         assert nums["type"] == {"type": "array", "items": "long"}
 
+    def test_list_of_identifier_items_are_plain_strings(self):
+        schema = generate_avro_schema(
+            _elem(
+                "E",
+                {
+                    "ids": {
+                        "kind": "list",
+                        "type": "List",
+                        "content_type": "Identifier",
+                        "required": True,
+                    }
+                },
+            )
+        )
+        ids = next(f for f in schema["fields"] if f["name"] == "ids")
+        assert ids["type"] == {"type": "array", "items": "string"}
+
     def test_unresolvable_target_falls_back_to_map(self):
         schema = generate_avro_schema(
             _elem("E", {"x": {"kind": "value_object", "type": "VO", "target": ""}})
@@ -373,6 +390,80 @@ class TestGenerateAllSchemas:
         proto = generate_proto_schemas(ir)
         assert any("OrderPlaced" in k for k in avro)
         assert any("OrderPlaced" in k for k in proto)
+
+    def test_identifier_fields_are_plain_strings_without_uuid(self, test_domain):
+        class Customer(BaseAggregate):
+            email = String()
+
+        class CustomerLookup(BaseProjection):
+            email = Identifier(identifier=True, required=True)
+            customer_id = Identifier()
+
+        test_domain.register(Customer)
+        test_domain.register(CustomerLookup)
+        test_domain.init(traverse=False)
+
+        avro = generate_avro_schemas(test_domain.to_ir())
+        lookup = next((s for k, s in avro.items() if "CustomerLookup" in k), None)
+        assert lookup is not None
+        fields = {f["name"]: f for f in lookup["fields"]}
+        assert fields["email"]["type"] == "string"
+        assert fields["customer_id"]["type"] == ["null", "string"]
+        assert fields["customer_id"]["default"] is None
+
+        assert _uuid_logical_types(avro) == []
+
+    def test_required_and_nested_identifiers_are_plain_strings(self, test_domain):
+        class Ref(BaseValueObject):
+            ref_id = Identifier()
+
+        class Account(BaseAggregate):
+            ref = ValueObject(Ref)
+
+        class AccountOpened(BaseEvent):
+            customer_id = Identifier(required=True)
+
+        test_domain.register(Ref)
+        test_domain.register(Account)
+        test_domain.register(AccountOpened, part_of=Account)
+        test_domain.init(traverse=False)
+
+        avro = generate_avro_schemas(test_domain.to_ir())
+
+        opened = next((s for k, s in avro.items() if "AccountOpened" in k), None)
+        assert opened is not None
+        opened_fields = {f["name"]: f for f in opened["fields"]}
+        assert opened_fields["customer_id"]["type"] == "string"
+
+        account = next((s for k, s in avro.items() if k.endswith(".Account")), None)
+        assert account is not None
+        ref = next(f for f in account["fields"] if f["name"] == "ref")
+        assert ref["type"][0] == "null"
+        ref_record = ref["type"][1]
+        assert ref_record["type"] == "record"
+        nested = {f["name"]: f["type"] for f in ref_record["fields"]}
+        assert nested["ref_id"] == ["null", "string"]
+
+        assert _uuid_logical_types(avro) == []
+
+
+def _uuid_logical_types(schemas: dict[str, Any]) -> list[Any]:
+    """Collect every node in the schemas that carries ``logicalType: uuid``."""
+    found: list[Any] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            if node.get("logicalType") == "uuid":
+                found.append(node)
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    assert schemas
+    walk(list(schemas.values()))
+    return found
 
 
 class TestSchemaGenerateCLI:
