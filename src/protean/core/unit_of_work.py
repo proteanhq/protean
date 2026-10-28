@@ -132,6 +132,11 @@ class UnitOfWork:
         # (see ``run_after_commit``). A rollback discards it.
         self._after_commit: list[Callable[[], None]] = []
 
+        # Results of commands processed inside this transaction, by idempotency
+        # key. Their keys reach the idempotency store only on commit, so a
+        # repeat of the same key before then is caught here instead.
+        self._pending_idempotency_results: dict[str, Any] = {}
+
     @property
     def in_progress(self) -> bool:
         return self._in_progress
@@ -716,6 +721,7 @@ class UnitOfWork:
         self._identity_map = defaultdict(dict)
         self._saved = set()
         self._after_commit = []
+        self._pending_idempotency_results = {}
         self._in_progress = False
 
     def rollback(self) -> None:
