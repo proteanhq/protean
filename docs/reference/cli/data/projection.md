@@ -238,7 +238,12 @@ are found, the rebuild fails immediately with an error.
 Existing projection data is cleared:
 
 - **Database-backed projections** (the default): All rows are deleted via
-  the DAO's `_delete_all()` method.
+  the DAO's `_delete_all()` method. When a projector of the projection is
+  registered with `idempotent=True`, its delivery markers are deleted in the
+  same transaction as the rows. Without this, the replay would find a marker
+  for every event, skip it as a redelivery, and leave the projection empty.
+  The replay writes fresh markers. If the marker delete fails, the row delete
+  rolls back with it.
 - **Cache-backed projections**: Keys matching the projection's naming
   pattern are removed via `remove_by_key_pattern()`.
 
@@ -255,7 +260,8 @@ Each event is dispatched through the projector's `_handle()` method, which:
 - Converts the stored `Message` to a domain event object (applying
   upcasters automatically)
 - Looks up the `@on` handler for the event type
-- Executes the handler within a `UnitOfWork`
+- Executes the handler within a `UnitOfWork`, and for an idempotent
+  projector writes a new delivery marker in the same `UnitOfWork`
 - Events with no matching `@on` handler are silently skipped (no error)
 
 If an event type cannot be resolved (deprecated event without an upcaster
