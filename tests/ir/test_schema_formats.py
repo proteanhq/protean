@@ -20,7 +20,7 @@ from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
 from protean.core.value_object import BaseValueObject
 from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
-from protean.ir.generators.avro import generate_avro_schema
+from protean.ir.generators.avro import generate_avro_schema, generate_avro_schemas
 from protean.ir.generators.protobuf import generate_proto_schema
 from protean.ir.generators.schema_writer import (
     _relative_schema_path,
@@ -61,7 +61,7 @@ class TestAvroMapping:
         assert schema["type"] == "record"
         assert schema["name"] == "E"
         types = {f["name"]: f["type"] for f in schema["fields"]}
-        assert types["id"] == {"type": "string", "logicalType": "uuid"}
+        assert types["id"] == "string"
         assert types["count"] == "long"
         assert types["ratio"] == "double"
         assert types["flag"] == "boolean"
@@ -373,6 +373,30 @@ class TestGenerateAllSchemas:
         proto = generate_proto_schemas(ir)
         assert any("OrderPlaced" in k for k in avro)
         assert any("OrderPlaced" in k for k in proto)
+
+    def test_identifier_fields_are_plain_strings_without_uuid(self, test_domain):
+        class Customer(BaseAggregate):
+            email = String()
+
+        class CustomerLookup(BaseProjection):
+            email = Identifier(identifier=True, required=True)
+            customer_id = Identifier()
+
+        test_domain.register(Customer)
+        test_domain.register(CustomerLookup)
+        test_domain.init(traverse=False)
+
+        avro = generate_avro_schemas(test_domain.to_ir())
+        lookup = next((s for k, s in avro.items() if "CustomerLookup" in k), None)
+        assert lookup is not None
+        fields = {f["name"]: f for f in lookup["fields"]}
+        assert fields["email"]["type"] == "string"
+        assert fields["customer_id"]["type"] == ["null", "string"]
+        assert fields["customer_id"]["default"] is None
+
+        assert len(avro) > 0
+        for schema in avro.values():
+            assert '"uuid"' not in json.dumps(schema)
 
 
 class TestSchemaGenerateCLI:

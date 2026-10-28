@@ -46,8 +46,8 @@ Either `--domain` or `--ir` is required; they are mutually exclusive.
 
 **Formats.** `--format avro` emits Avro `{name}.v{version}.avsc` records (null-first
 unions for optionals, so optional fields default to `null`;
-`uuid`/`date`/`timestamp-millis` logical types, and the `decimal` logical type
-for a `Decimal` field that sets a positive `precision` no smaller than its
+`date`/`timestamp-millis` logical types, `Identifier` fields as a plain
+`string`, and the `decimal` logical type for a `Decimal` field that sets a positive `precision` no smaller than its
 `scale`; nested value objects become
 named records referenced by fullname). `--format protobuf` emits proto3
 `{name}.v{version}.proto` messages with `optional`/`repeated` labels,
