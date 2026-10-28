@@ -830,7 +830,7 @@ class OutboxRepository(BaseRepository):
 
             It does not apply the claim's hold-back, so it can list a
             partitioned row that :meth:`claim_batch` will not return yet,
-            because an earlier row of its key is not published.
+            because an earlier row of its key is not published or discarded.
         """
         # Handle zero limit case
         if limit is not None and limit == 0:
@@ -869,7 +869,8 @@ class OutboxRepository(BaseRepository):
         query itself, so a retry-exhausted row is never claimed.
 
         A partitioned row is also held back while an earlier row of its group
-        is not published and is not claimed in the same call (ADR-0028). The
+        is not published or discarded and is not claimed in the same call
+        (ADR-0028). The
         group is ``(target_broker, stream_category, partition_key, lane)``,
         where the lane comes from ``lanes`` (see :class:`OutboxLanes`), or
         from ``[server.priority_lanes]`` in domain config when ``lanes`` is
@@ -1652,8 +1653,8 @@ def reconcile_outbox(
     that still have their internal row. An external row that already exists is
     not created again.
 
-    Cleanup deletes published rows after ``outbox.cleanup.published_retention_hours``
-    and abandoned rows without a partition key after
+    Cleanup deletes published rows after ``outbox.cleanup.published_retention_hours``,
+    and abandoned rows without a partition key and all discarded rows after
     ``outbox.cleanup.abandoned_retention_hours``. A
     deleted row cannot be told apart from one lost in a crash, so events older
     than the shorter of the two retentions are skipped. Otherwise a restart
@@ -1712,11 +1713,11 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     # newest message overall may be foreign, a command, or a transition event.
     # None of those ever get a row, so a missing row for one of them does not
     # mean the last commit crashed.
-    # Cleanup deletes delivered rows and abandoned rows without a partition key
-    # once they pass their retention, and a deleted row looks the same as one
-    # lost in a crash. An event is never older than its row's ``published_at`` or
-    # ``last_processed_at``, so skipping events older than the shorter
-    # retention skips every row cleanup could have deleted.
+    # Cleanup deletes delivered rows, abandoned rows without a partition key
+    # and discarded rows once they pass their retention, and a deleted row
+    # looks the same as one lost in a crash. An event is never older than its
+    # row's ``published_at`` or ``last_processed_at``, so skipping events older
+    # than the shorter retention skips every row cleanup could have deleted.
     cutoff = _cleanup_cutoff(domain, outbox_config)
     qualifying = [
         m
