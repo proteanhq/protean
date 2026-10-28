@@ -98,7 +98,9 @@ passed. A row abandoned because its partition key is invalid carries
 
 ## `protean outbox halted`
 
-Lists every partition key whose earliest unpublished row is `abandoned`. A
+Lists every partition key whose earliest row that still holds the key is
+`abandoned`. Rows that are `pending`, `processing`, `failed` or `abandoned`
+hold the key. `published` and `discarded` rows do not, so they are skipped. A
 partition key is the value set by a handler's
 [`sequential_by`](../../server/sequential-by.md), and the processor publishes a
 key's rows in commit order. Rows are grouped by target broker, stream
