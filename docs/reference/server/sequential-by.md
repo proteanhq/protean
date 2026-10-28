@@ -145,7 +145,7 @@ rather than retried. The row keeps its key, so it halts that key's later rows
 The outbox processor publishes a key's rows in commit order. It groups
 partitioned rows by target broker, stream category, partition key and priority
 lane. A row is claimed only when every earlier row of its group has been
-published, or is claimed in the same batch. Within a batch, the processor
+published or discarded, or is claimed in the same batch. Within a batch, the processor
 publishes each group's rows in commit order.
 
 An earlier row that is pending, in flight, failed or abandoned holds the later
