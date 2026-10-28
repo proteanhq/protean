@@ -361,8 +361,9 @@ event was written. External rows lost on their own, while the internal row
 remains, are not rebuilt. If the event's `partition_key` can no longer be
 computed, every rebuilt row is saved as abandoned and the event is not sent.
 
-Cleanup deletes delivered rows after `published_retention_hours` and abandoned
-rows without a partition key after `abandoned_retention_hours`. A deleted row
+Cleanup deletes delivered rows after `published_retention_hours`. After
+`abandoned_retention_hours` it deletes abandoned rows without a partition key
+and every discarded row. A deleted row
 looks the same as a row lost in a crash. So reconciliation skips events older than the shorter of the
 two retentions, which keeps a restart from sending old events again. An event
 lost in a crash and left unrepaired for longer than that is not repaired.
