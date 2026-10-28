@@ -17,7 +17,7 @@ from protean.core.projector import BaseProjector, on
 from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, Integer, String
 from protean.ir.builder import validate_lint_table
-from protean.ir.diagnostics import DiagnosticCode
+from protean.ir.diagnostics import REGISTRY, DiagnosticCode
 from protean.server import Engine
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.partitioned_stream_subscription import (
@@ -29,7 +29,7 @@ from protean.utils.consume_idempotency import (
     cleanup_processed_messages,
 )
 from protean.utils.telemetry import init_telemetry, shutdown_telemetry
-from tests.docs.support import DOCS_SRC, load_example
+from tests.docs.support import DOCS_SRC, REPO_ROOT, load_example
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -586,6 +586,17 @@ def test_lint_values_are_valid(load_toml):
 )
 def test_lint_bad_values_are_errors(bad):
     assert validate_lint_table(bad) is not None
+
+
+def test_command_verbs_is_documented_where_the_finding_points():
+    docs = REPO_ROOT / "docs" / "reference"
+    config_page = (docs / "configuration" / "index.md").read_text()
+    fitness_page = (docs / "fitness-functions.md").read_text()
+    fix = REGISTRY[DiagnosticCode.COMMAND_NOT_IMPERATIVE].fix
+
+    assert "| `command_verbs` | list[str] |" in config_page
+    assert "[`[lint].command_verbs`](configuration/index.md#lint)" in fitness_page
+    assert "[lint].command_verbs" in fix
 
 
 def test_observatory_retention(load_toml):

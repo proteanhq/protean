@@ -932,6 +932,23 @@ class AdjustStock:
 
 _BAD_COMMAND_VERBS = ["adjust", [1], [""], ["void-it"]]
 
+_TOML_COMMAND_VERBS_DOMAIN = """
+from protean import Domain
+from protean.fields import Identifier, String
+
+domain = Domain()
+
+
+@domain.aggregate
+class Stock:
+    title = String()
+
+
+@domain.command(part_of=Stock)
+class AdjustStock:
+    stock_id = Identifier(identifier=True)
+"""
+
 _STRING_PART_OF = """
 from protean import Domain
 from protean.fields import String
@@ -1011,6 +1028,19 @@ class TestCheckCommandVerbs:
         codes = [d["code"] for d in json.loads(result.stdout)["diagnostics"]]
         assert "COMMAND_NOT_IMPERATIVE" in codes
 
+    def test_project_verb_in_domain_toml_clears_command_not_imperative(self, tmp_path):
+        (tmp_path / "domain.toml").write_text('[lint]\ncommand_verbs = ["adjust"]\n')
+        path = tmp_path / "command_verbs_toml_1872.py"
+        path.write_text(_TOML_COMMAND_VERBS_DOMAIN)
+
+        result = runner.invoke(app, ["check", "-d", str(path), "-f", "json"])
+
+        assert result.exit_code in (0, 1), result.output
+        assert json.loads(result.stdout)["data"]["errors"] == []
+        codes = [d["code"] for d in json.loads(result.stdout)["diagnostics"]]
+        assert codes
+        assert "COMMAND_NOT_IMPERATIVE" not in codes
+
     @pytest.mark.parametrize("index, bad", list(enumerate(_BAD_COMMAND_VERBS)))
     def test_bad_command_verbs_exit_2(self, tmp_path, index, bad):
         path = tmp_path / f"command_verbs_bad_{index}_1872.py"
@@ -1020,7 +1050,9 @@ class TestCheckCommandVerbs:
 
         assert result.exit_code == 2, result.output
         output = result.output.replace("\n", "")
-        assert "[lint].command_verbs must be a list of non-empty alphabetic" in output
+        assert (
+            "[lint].command_verbs must be a list of non-empty words of ASCII" in output
+        )
 
 
 @pytest.mark.no_test_domain

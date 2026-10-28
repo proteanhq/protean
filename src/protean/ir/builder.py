@@ -235,9 +235,10 @@ def validate_lint_suppressions(suppressions: Any) -> str | None:
 def validate_lint_table(lint_config: Any) -> str | None:
     """Return an error message if ``[lint]`` or one of its options is malformed.
 
-    Returns ``None`` when ``[lint]`` is a table and ``rules``,
-    ``command_verbs``, ``aggregate_size_limit``, ``handler_breadth_limit``,
-    ``check_infra_imports`` and ``check_adapter_calls`` have the right types. ``level`` and
+    Returns ``None`` when ``[lint]`` is a table, ``rules``,
+    ``aggregate_size_limit``, ``handler_breadth_limit``, ``check_infra_imports``
+    and ``check_adapter_calls`` have the right types, and ``command_verbs`` is
+    a list of non-empty words made of ASCII letters. ``level`` and
     ``suppressions`` are checked elsewhere.
 
     Every ``[lint]``-scoped setting (``level``, ``suppressions``,
@@ -252,8 +253,11 @@ def validate_lint_table(lint_config: Any) -> str | None:
     check, a wrong type fails in one of several ways: ``rules = 5`` or
     ``aggregate_size_limit = "5"`` raises a ``TypeError`` inside the build,
     ``rules = "my.module"`` is iterated one character at a time, so each
-    character is logged and skipped as a rule path, and ``check_infra_imports =
-    "no"`` is truthy and turns the scan on.
+    character is logged and skipped as a rule path, ``command_verbs = "adjust"``
+    is read as six one-letter verbs, and ``check_infra_imports = "no"`` is
+    truthy and turns the scan on. ``command_verbs`` entries must be ASCII
+    because the name check compares the lowercased verb against the name by
+    index, and some non-ASCII letters change length when lowercased.
     """
     if not isinstance(lint_config, dict):
         return f"[lint] must be a table, got {type(lint_config).__name__}."
@@ -264,10 +268,11 @@ def validate_lint_table(lint_config: Any) -> str | None:
 
     command_verbs = lint_config.get("command_verbs", [])
     if not isinstance(command_verbs, list) or not all(
-        isinstance(v, str) and v.isalpha() for v in command_verbs
+        isinstance(v, str) and v.isascii() and v.isalpha() for v in command_verbs
     ):
         return (
-            "[lint].command_verbs must be a list of non-empty alphabetic words, "
+            "[lint].command_verbs must be a list of non-empty words of ASCII "
+            "letters, "
             f"got {command_verbs!r}."
         )
 
