@@ -1051,3 +1051,70 @@ class TestNestedHandlerTransientRetry:
         assert account is not None
         assert account.name == "written"
         mock_sleep.assert_called_once()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_transient_error_inside_an_open_unit_of_work_is_not_retried(
+        self, mock_sleep, test_domain
+    ):
+        runs = 0
+
+        class AccountHandlers(BaseCommandHandler):
+            @handle(WriteAccount)
+            def write(self, command: WriteAccount) -> None:
+                nonlocal runs
+                runs += 1
+                raise ConnectionError("transient")
+
+        test_domain.register(Account)
+        test_domain.register(WriteAccount, part_of=Account)
+        test_domain.register(AccountHandlers, part_of=Account)
+        test_domain.init(traverse=False)
+        test_domain.config["server"]["transient_retry"]["enabled"] = True
+        test_domain.config["server"]["transient_retry"]["exceptions"] = [
+            "ConnectionError"
+        ]
+
+        with pytest.raises(ConnectionError):
+            with UnitOfWork():
+                test_domain.process(WriteAccount(account_id="a1"), asynchronous=False)
+
+        assert runs == 1
+        mock_sleep.assert_not_called()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_a_nested_handlers_own_retry_policy_does_not_apply(
+        self, mock_sleep, test_domain
+    ):
+        runs = {"outer": 0, "inner": 0}
+
+        class OuterHandlers(BaseCommandHandler):
+            @handle(OpenAccount)
+            def open(self, command: OpenAccount) -> None:
+                runs["outer"] += 1
+                current_domain.process(
+                    WriteAccount(account_id=command.account_id), asynchronous=False
+                )
+
+        class InnerHandlers(BaseCommandHandler):
+            @handle(WriteAccount)
+            def write(self, command: WriteAccount) -> None:
+                runs["inner"] += 1
+                raise ConnectionError("transient")
+
+        test_domain.register(Account)
+        test_domain.register(OpenAccount, part_of=Account)
+        test_domain.register(WriteAccount, part_of=Account)
+        test_domain.register(OuterHandlers, part_of=Account)
+        test_domain.register(
+            InnerHandlers,
+            part_of=Account,
+            retries=3,
+            retry_exceptions=[ConnectionError],
+        )
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ConnectionError):
+            test_domain.process(OpenAccount(account_id="a1"), asynchronous=False)
+
+        assert runs == {"outer": 1, "inner": 1}
+        mock_sleep.assert_not_called()

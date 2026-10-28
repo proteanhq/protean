@@ -515,7 +515,7 @@ class handle:
                         return result
                     return fn(instance, target_obj)
 
-            # Fast path: nested, or neither policy active — run once, no retry.
+            # Fast path: nested, or neither policy active: run once, no retry.
             if nested or (version_max == 0 and transient_max == 0):
                 return _invoke()
 

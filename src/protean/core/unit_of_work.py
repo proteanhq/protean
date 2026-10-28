@@ -1,5 +1,6 @@
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Protocol, Self, cast
 
@@ -45,6 +46,21 @@ class _UoWStack(Protocol):
 
 # Typed handle onto the process-wide UnitOfWork context stack.
 _uow_stack = cast(_UoWStack, _uow_context_stack)
+
+
+def run_after_commit(callback: Callable[[], None]) -> None:
+    """Run ``callback`` once the active transaction's writes are durable.
+
+    With no UnitOfWork active, the callback runs now. Otherwise it waits for the
+    outermost UnitOfWork (a nested one is never on the stack) to commit, and is
+    dropped if that transaction rolls back.
+    """
+    outermost = _uow_stack.top
+    if outermost is None:
+        callback()
+    else:
+        outermost._after_commit.append(callback)
+
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +127,10 @@ class UnitOfWork:
         # rolls back, dooming the whole transaction.
         self._nested = False
         self._rollback_only = False
+
+        # Work that must happen only once this transaction's writes are durable
+        # (see ``run_after_commit``). A rollback discards it.
+        self._after_commit: list[Callable[[], None]] = []
 
     @property
     def in_progress(self) -> bool:
@@ -564,6 +584,9 @@ class UnitOfWork:
                 session.commit()
                 self._advance_next_versions(provider_name)
 
+            for callback in self._after_commit:
+                callback()
+
             # Dispatch messages to their designated broker
             for stream, message, broker_name in self._messages_to_dispatch:
                 if broker_name and broker_name in self.domain.brokers:
@@ -692,6 +715,7 @@ class UnitOfWork:
         self._messages_to_dispatch = []
         self._identity_map = defaultdict(dict)
         self._saved = set()
+        self._after_commit = []
         self._in_progress = False
 
     def rollback(self) -> None:

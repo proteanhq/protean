@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
+from protean.core.unit_of_work import run_after_commit
 from protean.exceptions import (
     CommandExpiredError,
     DuplicateCommandError,
@@ -535,9 +536,13 @@ class CommandProcessor:
                         worker_id="api",
                     )
 
-                    # Record success
+                    # Record success once the write is durable. Inside an
+                    # outer UnitOfWork, a later failure rolls this command's
+                    # write back, and a key recorded now would make the outer
+                    # retry skip the command.
                     if idempotency_key and store.is_active:
-                        store.record_success(idempotency_key, result)
+                        key = idempotency_key
+                        run_after_commit(lambda: store.record_success(key, result))
                     return result
 
             # Async path: record enqueue (actual processing happens later)
