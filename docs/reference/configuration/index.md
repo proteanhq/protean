@@ -542,14 +542,15 @@ are optional.
 | `handler_breadth_limit` | int | `5` | Message-type count above which a handler emits `HANDLER_TOO_BROAD`. |
 | `check_infra_imports` | bool | `false` | When `true`, `protean check` AST-parses each resolvable domain element's source module (skipping elements with no file-backed module and imports guarded by `TYPE_CHECKING`, `try`/`except`, or a function body) and emits `INFRA_IMPORT_IN_DOMAIN` for any top-level import from `protean.adapters`. Off by default because it reads source files. |
 | `check_adapter_calls` | bool | `false` | When `true`, `protean check` emits `ADAPTER_CALL_IN_DOMAIN` for a domain element calling into an adapter directly rather than through a port. Off by default because it reads source files. |
+| `command_verbs` | list[str] | `[]` | Extra verbs a command name may start with, added to Protean's built-in list for [`COMMAND_NOT_IMPERATIVE`](../fitness-functions.md#command-not-imperative). Each entry must be a non-empty word of ASCII letters. Matching ignores case and still needs a CamelCase boundary after the verb, so `"void"` accepts `VoidInvoice` but not `Voidance`. A project verb accepts every command name that starts with it: `"order"` also accepts `OrderCreation`. |
 | `rules` | list[str] | `[]` | Dotted import paths to custom lint callables with the signature `(ir: dict) -> list[dict]`. |
 | `suppressions` | table | `{}` | A `{CODE: N}` map that grandfathers the first `N` findings of each code, in a deterministic `(code, element, field, message)` order. Findings beyond `N` are still reported. |
 
 `level` sets the CI failure floor without hiding findings; the `--level` CLI
 flag only filters what is displayed and never changes the exit code.
 
-A bad value in `[lint]` (for example `level = 5`, `rules = 5` or
-`aggregate_size_limit = "5"`) is an error. `protean check` exits `2` and
+A bad value in `[lint]` (for example `level = 5`, `rules = 5`,
+`command_verbs = ["void-it"]` or `aggregate_size_limit = "5"`) is an error. `protean check` exits `2` and
 `protean verify` exits `4`. Building the IR raises `ConfigurationError` for
 the same values, except `level`: the IR builder does not read `level`.
 

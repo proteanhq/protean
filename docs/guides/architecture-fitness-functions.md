@@ -170,7 +170,8 @@ Per-element `suppress_checks` takes precedence over the config allow-list.
     Two `info` rules are threshold-tunable
     (`[lint].aggregate_size_limit`, `[lint].handler_breadth_limit`) and
     `INFRA_IMPORT_IN_DOMAIN` is opt-in
-    (`[lint].check_infra_imports`).
+    (`[lint].check_infra_imports`). `COMMAND_NOT_IMPERATIVE` accepts your
+    project's own verbs when you list them in `[lint].command_verbs`.
 
 ---
 

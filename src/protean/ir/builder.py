@@ -78,8 +78,8 @@ if TYPE_CHECKING:
 # case-insensitive: the (lowercased) command name is compared against these
 # prefixes, so every entry is stored lowercase. This is a closed, pinned
 # heuristic floor — not an exhaustive lexicon — so teams whose ubiquitous
-# language uses verbs outside this set will see advisory (info) findings they
-# can silence per-element via ``suppress_checks``.
+# language uses verbs outside this set can add them through
+# ``[lint].command_verbs``, or silence a single finding via ``suppress_checks``.
 IMPERATIVE_VERBS = {
     "accept",
     "activate",
@@ -235,9 +235,10 @@ def validate_lint_suppressions(suppressions: Any) -> str | None:
 def validate_lint_table(lint_config: Any) -> str | None:
     """Return an error message if ``[lint]`` or one of its options is malformed.
 
-    Returns ``None`` when ``[lint]`` is a table and ``rules``,
+    Returns ``None`` when ``[lint]`` is a table, ``rules``,
     ``aggregate_size_limit``, ``handler_breadth_limit``, ``check_infra_imports``
-    and ``check_adapter_calls`` have the right types. ``level`` and
+    and ``check_adapter_calls`` have the right types, and ``command_verbs`` is
+    a list of non-empty words made of ASCII letters. ``level`` and
     ``suppressions`` are checked elsewhere.
 
     Every ``[lint]``-scoped setting (``level``, ``suppressions``,
@@ -252,8 +253,11 @@ def validate_lint_table(lint_config: Any) -> str | None:
     check, a wrong type fails in one of several ways: ``rules = 5`` or
     ``aggregate_size_limit = "5"`` raises a ``TypeError`` inside the build,
     ``rules = "my.module"`` is iterated one character at a time, so each
-    character is logged and skipped as a rule path, and ``check_infra_imports =
-    "no"`` is truthy and turns the scan on.
+    character is logged and skipped as a rule path, ``command_verbs = "adjust"``
+    is read as six one-letter verbs, and ``check_infra_imports = "no"`` is
+    truthy and turns the scan on. ``command_verbs`` entries must be ASCII
+    because the name check compares the lowercased verb against the name by
+    index, and some non-ASCII letters change length when lowercased.
     """
     if not isinstance(lint_config, dict):
         return f"[lint] must be a table, got {type(lint_config).__name__}."
@@ -261,6 +265,16 @@ def validate_lint_table(lint_config: Any) -> str | None:
     rules = lint_config.get("rules", [])
     if not isinstance(rules, list) or not all(isinstance(r, str) for r in rules):
         return f"[lint].rules must be a list of dotted paths, got {rules!r}."
+
+    command_verbs = lint_config.get("command_verbs", [])
+    if not isinstance(command_verbs, list) or not all(
+        isinstance(v, str) and v.isascii() and v.isalpha() for v in command_verbs
+    ):
+        return (
+            "[lint].command_verbs must be a list of non-empty words of ASCII "
+            "letters, "
+            f"got {command_verbs!r}."
+        )
 
     for key in ("aggregate_size_limit", "handler_breadth_limit"):
         limit = lint_config.get(key, 5)
@@ -4080,8 +4094,11 @@ class IRBuilder:
         ``OrderCommand``) reads like a noun or an event. The prefix match is
         case-insensitive and requires a CamelCase token boundary right after
         the verb, so ``AddressChange`` is not mistaken for ``Add``-prefixed
-        (``AddItem``).
+        (``AddItem``). Verbs listed in ``[lint].command_verbs`` are accepted
+        alongside :data:`IMPERATIVE_VERBS`, under the same rules.
         """
+        project_verbs = self._domain.config.get("lint", {}).get("command_verbs", [])
+        verbs = IMPERATIVE_VERBS | {verb.lower() for verb in project_verbs}
         for cluster in ir["clusters"].values():
             for command in cluster["commands"].values():
                 raw_name = command["name"]
@@ -4089,7 +4106,7 @@ class IRBuilder:
                 if not any(
                     name.startswith(verb)
                     and (len(raw_name) == len(verb) or raw_name[len(verb)].isupper())
-                    for verb in IMPERATIVE_VERBS
+                    for verb in verbs
                 ):
                     self._diagnostics.append(
                         build_diagnostic(
