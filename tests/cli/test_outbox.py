@@ -116,10 +116,12 @@ CATEGORY = "test::counter"
 
 
 @pytest.fixture
-def outbox_domain(test_domain):
+def outbox_domain(test_domain, request):
     test_domain.config["enable_outbox"] = True
     test_domain.config["server"]["default_subscription_type"] = "stream"
     test_domain.init(traverse=False)
+    # `db` creates the outbox table, so it must run after init registers it.
+    request.getfixturevalue("db")
     with patch("protean.cli.outbox.load_domain", return_value=test_domain):
         yield test_domain
 
