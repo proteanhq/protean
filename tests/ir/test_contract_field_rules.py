@@ -18,7 +18,7 @@ from typer.testing import CliRunner
 from protean import Domain
 from protean.cli import app
 from protean.cli.hooks import _check_compat_single
-from protean.fields import Decimal, Float, Identifier, Integer, String
+from protean.fields import Decimal, Float, Identifier, Integer, List, String
 from protean.ir.builder import IRBuilder
 from protean.ir.config import CompatConfig
 from protean.ir.diff import (
@@ -128,6 +128,21 @@ _PARITY_CASES = {
     "plain-rename": (
         {"amount": Decimal(precision=19, scale=2)},
         {"total": Decimal(precision=19, scale=2, renamed_from="amount")},
+        set(),
+    ),
+    "list-content-type-changed": (
+        {"tags": List(content_type=String)},
+        {"tags": List(content_type=Integer)},
+        {"tags"},
+    ),
+    "rename-with-value-type-change": (
+        {"tags": List(content_type=String)},
+        {"labels": List(content_type=Integer, renamed_from="tags")},
+        {"tags"},
+    ),
+    "same-value-type": (
+        {"tags": List(content_type=String)},
+        {"tags": List(content_type=String, description="Tags")},
         set(),
     ),
     "non-shape-attribute-change": (

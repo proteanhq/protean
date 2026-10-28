@@ -738,6 +738,23 @@ def _diff_contracts(
                         ),
                     }
                 )
+            elif change == "content_type":
+                breaking.append(
+                    {
+                        "type": "contract_field_type_changed",
+                        "fqn": event_fqn,
+                        "field": old_name,
+                        "renamed_to": new_name,
+                        "left": old_type,
+                        "right": new_type,
+                        "message": (
+                            f"Field '{old_name}' renamed to '{new_name}' with a "
+                            f"value type change "
+                            f"{_content_type_delta(old_field, new_field)} in "
+                            f"published event '{left_type}'"
+                        ),
+                    }
+                )
             else:
                 renamed_fields.append(
                     {
@@ -766,6 +783,12 @@ def _diff_contracts(
                 message = (
                     f"Field '{field_name}' Decimal shape changed "
                     f"({_decimal_shape_delta(old_field, new_field)}) in "
+                    f"published event '{left_type}'"
+                )
+            elif change == "content_type":
+                message = (
+                    f"Field '{field_name}' value type changed "
+                    f"{_content_type_delta(old_field, new_field)} in "
                     f"published event '{left_type}'"
                 )
             else:
@@ -1776,8 +1799,9 @@ def _classify_field_changes(
 
     # Declared renames are safe (the alias covers old payloads) and suppress
     # the remove+add pair they would otherwise be diffed as — unless the rename
-    # also changes the field type, or a Decimal field's precision or scale in
-    # a breaking way, which old payloads cannot satisfy.
+    # also changes the field type, a Dict or List value type, or a Decimal
+    # field's precision or scale in a breaking way, which old payloads cannot
+    # satisfy.
     renames = _detect_field_renames(added, removed)
     renamed_new = set(renames.values())
     for old_name, new_name in renames.items():
@@ -1794,6 +1818,21 @@ def _classify_field_changes(
                         f"Field '{old_name}' renamed to '{new_name}' with a "
                         f"Decimal shape change "
                         f"({_decimal_shape_delta(removed[old_name], added[new_name])})"
+                        f" in {element_type} '{fqn}'"
+                    ),
+                    field_name=old_name,
+                )
+            )
+        elif change == "content_type":
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="field_type_changed",
+                    message=(
+                        f"Field '{old_name}' renamed to '{new_name}' with a value "
+                        f"type change "
+                        f"{_content_type_delta(removed[old_name], added[new_name])}"
                         f" in {element_type} '{fqn}'"
                     ),
                     field_name=old_name,
@@ -1955,6 +1994,20 @@ def _classify_field_changes(
                     field_name=field_name,
                 )
             )
+        elif change == "content_type":
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="field_type_changed",
+                    message=(
+                        f"Field '{field_name}' value type changed "
+                        f"{_content_type_delta(left, right)} "
+                        f"in {element_type} '{fqn}'"
+                    ),
+                    field_name=field_name,
+                )
+            )
         elif change == "decimal_widened":
             report.safe_changes.append(
                 _precision_widened_change(field_name, left, right, fqn, element_type)
@@ -1978,16 +2031,23 @@ def _classify_field_changes(
 def _field_change_kind(left: dict[str, Any], right: dict[str, Any]) -> str | None:
     """Classify how a field changed between two field dicts.
 
-    Returns ``"type"`` when the ``type`` differs, ``"decimal_breaking"`` or
-    ``"decimal_widened"`` when only a Decimal field's precision or scale
-    differs (see ``_classify_decimal_shape``), and ``None`` otherwise. Both
-    the compatibility report and the published-contract check call this, so
-    they agree on which field changes break old payloads. It accepts full
-    field dicts or a field delta: only Decimal fields carry ``precision`` and
-    ``scale``, and a key absent from both sides compares equal.
+    Returns ``"type"`` when the ``type`` differs, ``"content_type"`` when a
+    ``Dict`` or ``List`` field's value type is added, changed or removed,
+    ``"decimal_breaking"`` or ``"decimal_widened"`` when only a Decimal
+    field's precision or scale differs (see ``_classify_decimal_shape``), and
+    ``None`` otherwise. Both the compatibility report and the
+    published-contract check call this, so they agree on which field changes
+    break old payloads. It accepts full field dicts or a field delta: only
+    Decimal fields carry ``precision`` and ``scale``, only ``Dict`` and
+    ``List`` fields carry ``content_type``, and a key absent from both sides
+    compares equal.
     """
     if left.get("type") != right.get("type"):
         return "type"
+    # A reader still on the old value type can reject rows written under the
+    # new one, so every content_type difference breaks, widening included.
+    if left.get("content_type") != right.get("content_type"):
+        return "content_type"
     shape = _classify_decimal_shape(left, right)
     if shape is None:
         return None
@@ -2026,6 +2086,18 @@ def _decimal_shape_delta(left: dict[str, Any], right: dict[str, Any]) -> str:
         f"{key} from {shown(left.get(key))} to {shown(right.get(key))}"
         for key in ("precision", "scale")
         if left.get(key) != right.get(key)
+    )
+
+
+def _content_type_delta(left: dict[str, Any], right: dict[str, Any]) -> str:
+    """Describe how ``content_type`` differs, e.g. ``from 'unset' to 'TierPrice'``."""
+
+    def shown(value: Any) -> str:
+        return "unset" if value is None else str(value)
+
+    return (
+        f"from '{shown(left.get('content_type'))}' "
+        f"to '{shown(right.get('content_type'))}'"
     )
 
 

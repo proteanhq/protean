@@ -21,11 +21,14 @@ Protean classifies changes to persisted domain elements using these rules:
 | Remove field from any persisted element | **Breaking** |
 | Remove a field deprecated past its removal version | Safe (expected removal) |
 | Remove a field from an event-sourced aggregate that declares the name `reserved` | Safe (`reserved`) |
-| Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`), unless it is a `Decimal` field with a breaking precision or scale change (see the `Decimal` rows below) |
+| Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`), unless the rename also changes a `Dict` or `List` value type, or a `Decimal` field's precision or scale in a breaking way (see the rows below) |
 | Rename a field *and* change its type | **Breaking** (`field_type_changed`) |
 | Change field type | **Breaking** |
 | Raise or remove a `Decimal` field's `precision`, same `scale` | Safe (`field_precision_widened`) |
 | Lower or add a `Decimal` field's `precision`, or change its `scale` | **Breaking** (`field_type_changed`) |
+| Add a value type to a `Dict` or `List` field | **Breaking** (`field_type_changed`) |
+| Change a `Dict` or `List` field's value type | **Breaking** (`field_type_changed`) |
+| Remove a `Dict` or `List` field's value type | **Breaking** (`field_type_changed`) |
 | Remove an element | **Breaking** |
 | Add a new element | Safe |
 | Visibility public to internal | **Breaking** |
@@ -70,13 +73,53 @@ are both equal. A change of visibility from public to internal also gives
 two different verdicts: the report calls it breaking, and the Avro verdict is
 `FULL`.
 
+### Dict and List value types
+
+A `Dict` or `List` field that stays `Dict` or `List` is compared on its value
+type, which the IR records as `content_type`. Any difference in that name
+breaks. Adding or changing a value type means rows stored before the change
+can fail to load. Removing one means a reader still on the old code can reject
+rows written after it. Either way, old and new code no longer accept the same
+rows.
+
+| From | To | Classification |
+|------|----|----------------|
+| `Dict()` | `Dict(value_type=ValueObject(TierPrice))` | **Breaking** (`field_type_changed`) |
+| `Dict(value_type=ValueObject(TierPrice))` | `Dict(value_type=ValueObject(Band))` | **Breaking** (`field_type_changed`) |
+| `Dict(value_type=ValueObject(TierPrice))` | `Dict()` | **Breaking** (`field_type_changed`) |
+| `List(content_type=String)` | `List(content_type=Integer)` | **Breaking** (`field_type_changed`) |
+
+The message names both value types: "Field 'tier_prices' value type changed
+from 'unset' to 'TierPrice'". An untyped `Dict()` records no value type and
+shows as `unset`. An untyped `List()` records `Any` and shows as `Any`. A
+field renamed with `renamed_from` whose value type also changes reports
+`field_type_changed` in place of `field_renamed`.
+
+The IR records only the value type's name, so a change that keeps the name is
+not reported. These changes give no entry:
+
+- A value object swapped for another value object with the same class name
+  from a different module.
+- A change inside a nested or generic value type that keeps its outer name,
+  such as `list[list[int]]` to `list[list[str]]`, `list[dict[str, int]]` to
+  `list[dict[str, str]]`, or `Optional[int]` to `Optional[str]`.
+- A change between two `choices` lists, which the IR records as `Literal`.
+
+`Optional` and `Union` are different names, so a change between them is
+breaking. Before Python 3.14, `Optional[int]` records `Optional` and
+`Union[int, str]` records `Union`, and a list that took `None` no longer does.
+Python 3.14 records `Optional[int]` itself as `Union`, so an IR pair built on
+3.13 and 3.14 also reports the unchanged field. Build both IRs on the same
+Python version to avoid it.
+
 ### Published event contracts
 
 `diff_ir()` also checks every published event in its `contracts` section and
 lists the breaks in `contracts.breaking_changes`. `summary.has_breaking_changes`
 is read from that list. The published-contract check applies the same field
-rules as the compatibility report: a field type change, a breaking `Decimal`
-precision or scale change, and a required field added without a default. So
+rules as the compatibility report: a field type change, a `Dict` or `List`
+value type change, a breaking `Decimal` precision or scale change, and a
+required field added without a default. So
 for a published event's fields, the two lists flag the same breaks, with these
 exceptions:
 
@@ -96,11 +139,11 @@ under `contracts` that holds the entry:
 
 | Entry `type` | List | When | Keys |
 |--------------|------|------|------|
-| `contract_field_type_changed` | `breaking_changes` | A field's type changes, or its `Decimal` shape changes in a breaking way. A field renamed with `renamed_from` carries `renamed_to`; a field that keeps its name does not. | `fqn`, `field`, `left`, `right`, `message`, and `renamed_to` on a rename |
+| `contract_field_type_changed` | `breaking_changes` | A field's type changes, a `Dict` or `List` field's value type changes, or a `Decimal` field's shape changes in a breaking way. A field renamed with `renamed_from` carries `renamed_to`; a field that keeps its name does not. | `fqn`, `field`, `left`, `right`, `message`, and `renamed_to` on a rename |
 | `contract_required_field_added` | `breaking_changes` | A required field without a default is added | `fqn`, `field`, `message` |
 | `contract_field_removed` | `breaking_changes` | A field is removed, no rename claims it, and the next row does not apply | `fqn`, `field`, `classification`, `message`, and `deprecated` when the field was deprecated |
 | `contract_field_removed` | `expected_removals` | A deprecated field is removed at or after its removal version, and the caller passed `current_version` to `diff_ir()`. This is not a break. `protean ir diff` and the `protean-check-compat` hook do not pass `current_version`, so there the removal is a `premature_removal` in `breaking_changes`. | `fqn`, `field`, `classification` (always `expected_removal`), `deprecated`, `message` |
-| `contract_field_renamed` | `renamed_fields` | A plain rename: a field with `renamed_from` and no type change or breaking `Decimal` shape change. This is not a break. | `fqn`, `field`, `renamed_to`, `message` |
+| `contract_field_renamed` | `renamed_fields` | A plain rename: a field with `renamed_from` and no type change, value type change or breaking `Decimal` shape change. This is not a break. | `fqn`, `field`, `renamed_to`, `message` |
 
 `protean ir diff` prints the report's breaking changes and
 `contracts.breaking_changes` under "Breaking Changes". A break that both report,
