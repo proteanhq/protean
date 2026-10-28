@@ -553,7 +553,7 @@ class Outbox(BaseAggregate):
 # - ``correlation_id`` supports trace-oriented lookups.
 # - ``(target_broker, stream_category, partition_key, status)`` backs the
 #   claim's hold-back check, which looks for earlier rows of the same group
-#   that are not yet published.
+#   that are neither published nor discarded.
 OUTBOX_INDEXES = [
     Index(
         "status",
