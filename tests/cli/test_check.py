@@ -912,6 +912,26 @@ class {name}:
     title = String()
 """
 
+_COMMAND_VERBS_DOMAIN = """
+from protean import Domain
+from protean.fields import Identifier, String
+
+domain = Domain(__name__)
+domain.config["lint"]["command_verbs"] = {verbs!r}
+
+
+@domain.aggregate
+class Stock:
+    title = String()
+
+
+@domain.command(part_of=Stock)
+class AdjustStock:
+    stock_id = Identifier(identifier=True)
+"""
+
+_BAD_COMMAND_VERBS = ["adjust", [1], [""], ["void-it"]]
+
 _STRING_PART_OF = """
 from protean import Domain
 from protean.fields import String
@@ -962,6 +982,45 @@ def _check_in_child(*args: str) -> subprocess.CompletedProcess[str]:
         env=env,
         check=False,
     )
+
+
+@pytest.mark.no_test_domain
+class TestCheckCommandVerbs:
+    """``[lint].command_verbs`` reaches ``protean check``."""
+
+    def test_project_verb_clears_command_not_imperative(self, tmp_path):
+        path = tmp_path / "command_verbs_ok_1872.py"
+        path.write_text(_COMMAND_VERBS_DOMAIN.format(verbs=["adjust"]))
+
+        result = runner.invoke(app, ["check", "-d", str(path), "-f", "json"])
+
+        assert result.exit_code in (0, 1), result.output
+        assert json.loads(result.stdout)["data"]["errors"] == []
+        codes = [d["code"] for d in json.loads(result.stdout)["diagnostics"]]
+        assert codes
+        assert "COMMAND_NOT_IMPERATIVE" not in codes
+
+    def test_without_project_verb_command_is_reported(self, tmp_path):
+        path = tmp_path / "command_verbs_none_1872.py"
+        path.write_text(_COMMAND_VERBS_DOMAIN.format(verbs=[]))
+
+        result = runner.invoke(app, ["check", "-d", str(path), "-f", "json"])
+
+        assert result.exit_code in (0, 1), result.output
+        assert json.loads(result.stdout)["data"]["errors"] == []
+        codes = [d["code"] for d in json.loads(result.stdout)["diagnostics"]]
+        assert "COMMAND_NOT_IMPERATIVE" in codes
+
+    @pytest.mark.parametrize("index, bad", list(enumerate(_BAD_COMMAND_VERBS)))
+    def test_bad_command_verbs_exit_2(self, tmp_path, index, bad):
+        path = tmp_path / f"command_verbs_bad_{index}_1872.py"
+        path.write_text(_COMMAND_VERBS_DOMAIN.format(verbs=bad))
+
+        result = runner.invoke(app, ["check", "-d", str(path)])
+
+        assert result.exit_code == 2, result.output
+        output = result.output.replace("\n", "")
+        assert "[lint].command_verbs must be a list of non-empty alphabetic" in output
 
 
 @pytest.mark.no_test_domain

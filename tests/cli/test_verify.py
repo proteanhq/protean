@@ -422,6 +422,42 @@ class TestVerifyLintConfig:
         assert "[lint].level" in messages
 
 
+_COMMAND_VERBS_DOMAIN = """
+from protean import Domain
+from protean.fields import String
+
+domain = Domain()
+domain.config["lint"]["command_verbs"] = {verbs!r}
+
+
+@domain.aggregate
+class Stock:
+    title = String()
+"""
+
+
+class TestVerifyCommandVerbsConfig:
+    @pytest.mark.parametrize(
+        "index, bad", list(enumerate(["adjust", [1], [""], ["void-it"]]))
+    )
+    def test_bad_command_verbs_exit_4(self, tmp_path, index, bad):
+        domain_file = tmp_path / f"verify_command_verbs_{index}_1872.py"
+        domain_file.write_text(_COMMAND_VERBS_DOMAIN.format(verbs=bad))
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        result = runner.invoke(
+            app,
+            ["verify", "-d", str(domain_file), "--path", str(empty), "--json"],
+        )
+        assert result.exit_code == 4, result.output
+        errors = json.loads(result.stdout)["data"]["stages"]["check"]["errors"]
+        assert [e["code"] for e in errors] == ["INVALID_LINT_CONFIG"]
+        assert errors[0]["message"] == (
+            "[lint].command_verbs must be a list of non-empty alphabetic words, "
+            f"got {bad!r}."
+        )
+
+
 class TestVerifyLintLevel:
     """The check stage honours ``[lint].level`` (default ``warn``), the same
     severity floor ``protean check`` uses — it does not hardcode the warn floor."""

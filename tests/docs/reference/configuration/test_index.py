@@ -568,6 +568,7 @@ def test_lint_values_are_valid(load_toml):
         "check_infra_imports": False,
         "check_adapter_calls": False,
         "rules": ["my_app.lint.check_names"],
+        "command_verbs": ["adjust", "void"],
         "suppressions": {"UNHANDLED_EVENT": 3},
     }
     assert validate_lint_table(lint) is None
@@ -580,6 +581,7 @@ def test_lint_values_are_valid(load_toml):
         {"aggregate_size_limit": "5"},
         {"aggregate_size_limit": "${AGG_LIMIT|8}"},
         {"check_infra_imports": "true"},
+        {"command_verbs": ["void-it"]},
     ],
 )
 def test_lint_bad_values_are_errors(bad):
