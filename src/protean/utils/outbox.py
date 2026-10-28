@@ -714,7 +714,7 @@ def commit_order_key(row: "Outbox") -> tuple[Any, ...]:
 
 @dataclass(frozen=True)
 class HaltedKey:
-    """A partition key whose first unpublished row is abandoned.
+    """A partition key whose first row that still holds the key is abandoned.
 
     ``head`` is that abandoned row. It holds ``waiting`` later rows of the
     same group, which publish once an operator retries or discards it.
