@@ -585,7 +585,7 @@ on this logger.
 | `outbox.broker_publish_failed` | ERROR (exc) | `message_id` |
 | `outbox.release_failed` | ERROR (exc) | `message_id` |
 | `outbox.cleanup` | DEBUG | `database_provider`, `broker_provider` |
-| `outbox.cleanup_completed` | INFO | `total`, `published`, `abandoned` |
+| `outbox.cleanup_completed` | INFO | `total`, `published`, `abandoned`, `discarded` |
 | `outbox.cleanup_failed` | ERROR (exc) | |
 
 ---
