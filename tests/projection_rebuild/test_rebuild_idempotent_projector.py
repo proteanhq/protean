@@ -253,6 +253,7 @@ class TestRebuildIdempotentProjector:
 
 
 @pytest.mark.database
+@pytest.mark.atomic_transactions
 class TestRebuildIdempotentProjectorRelational:
     def test_rebuild_restores_the_read_model(self, test_domain):
         _assert_rebuild_restores_values(test_domain)
@@ -266,9 +267,6 @@ class TestRebuildIdempotentProjectorRelational:
     def test_failed_marker_delete_rolls_back_the_row_delete(
         self, test_domain, monkeypatch
     ):
-        if type(test_domain.providers["default"]).__name__ == "MemoryProvider":
-            pytest.skip("only a relational provider rolls back the row delete")
-
         _register(test_domain)
         first_id, second_id = _populate()
         marker_dao = current_domain._get_processed_message_repo("default")._dao
