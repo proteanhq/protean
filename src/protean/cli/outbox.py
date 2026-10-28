@@ -51,6 +51,17 @@ def _require_outbox(derived_domain: Domain, *, as_json: bool = False) -> None:
     raise typer.Abort()
 
 
+def _outbox_repo(
+    derived_domain: Domain, provider: str, *, as_json: bool = False
+) -> OutboxRepository:
+    try:
+        return derived_domain._get_outbox_repo(provider)
+    except KeyError:
+        emit_usage_error(
+            as_json=as_json, message=f"No outbox for provider {provider!r}."
+        )
+
+
 def _is_well_formed(derived_domain: Domain, row_id: str) -> bool:
     # A SQL database with UUID or integer identity rejects a malformed id
     # with a driver error, so check its shape before the lookup.
@@ -180,7 +191,7 @@ def halted(
     derived_domain = load_domain(domain, as_json=output_json)
     with derived_domain.domain_context():
         _require_outbox(derived_domain, as_json=output_json)
-        keys = derived_domain._get_outbox_repo(provider).find_halted()
+        keys = _outbox_repo(derived_domain, provider, as_json=output_json).find_halted()
 
     if output_json:
         envelope = build_envelope(
@@ -228,7 +239,7 @@ def retry(
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         _require_outbox(derived_domain)
-        repo = derived_domain._get_outbox_repo(provider)
+        repo = _outbox_repo(derived_domain, provider)
         row = _load_row(derived_domain, repo, row_id)
         read_status, read_retry_count = row.status, row.retry_count
         if not row.reset_for_retry():
@@ -264,7 +275,7 @@ def discard(
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         _require_outbox(derived_domain)
-        repo = derived_domain._get_outbox_repo(provider)
+        repo = _outbox_repo(derived_domain, provider)
         row = _load_row(derived_domain, repo, row_id)
         read_status, read_retry_count = row.status, row.retry_count
         if not row.discard(reason):
