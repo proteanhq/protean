@@ -15,7 +15,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.unit_of_work import UnitOfWork, run_after_commit
-from protean.exceptions import ExpectedVersionError
+from protean.exceptions import DuplicateCommandError, ExpectedVersionError
 from protean.fields import Identifier, String
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
@@ -188,4 +188,82 @@ class TestNestedCommandIdempotency:
             idempotency_key="key-b1",
         )
 
+        assert "idempotency:key-b1" in self.redis.data
+
+    def _register_counting_writer(self, test_domain):
+        runs = []
+
+        class AccountHandlers(BaseCommandHandler):
+            @handle(WriteAccount)
+            def write(self, command: WriteAccount) -> str:
+                runs.append(command.account_id)
+                current_domain.repository_for(Account).add(
+                    Account(id=command.account_id, name="written")
+                )
+                return command.account_id
+
+        test_domain.register(AccountHandlers, part_of=Account)
+        test_domain.init(traverse=False)
+        return runs
+
+    def test_a_repeated_key_in_one_transaction_runs_the_command_once(self, test_domain):
+        runs = self._register_counting_writer(test_domain)
+
+        with UnitOfWork():
+            first = test_domain.process(
+                WriteAccount(account_id="b1"),
+                asynchronous=False,
+                idempotency_key="key-b1",
+            )
+            second = test_domain.process(
+                WriteAccount(account_id="b1"),
+                asynchronous=False,
+                idempotency_key="key-b1",
+            )
+
+        assert runs == ["b1"]
+        assert first == second == "b1"
+
+    def test_a_repeated_key_in_one_transaction_raises_when_asked(self, test_domain):
+        self._register_counting_writer(test_domain)
+
+        with pytest.raises(DuplicateCommandError) as exc_info:
+            with UnitOfWork():
+                test_domain.process(
+                    WriteAccount(account_id="b1"),
+                    asynchronous=False,
+                    idempotency_key="key-b1",
+                )
+                test_domain.process(
+                    WriteAccount(account_id="b1"),
+                    asynchronous=False,
+                    idempotency_key="key-b1",
+                    raise_on_duplicate=True,
+                )
+
+        assert exc_info.value.original_result == "b1"
+
+    def test_a_rolled_back_key_does_not_carry_into_the_next_transaction(
+        self, test_domain
+    ):
+        runs = self._register_counting_writer(test_domain)
+        uow = UnitOfWork()
+
+        with pytest.raises(RuntimeError):
+            with uow:
+                test_domain.process(
+                    WriteAccount(account_id="b1"),
+                    asynchronous=False,
+                    idempotency_key="key-b1",
+                )
+                raise RuntimeError("boom")
+
+        with uow:
+            test_domain.process(
+                WriteAccount(account_id="b1"),
+                asynchronous=False,
+                idempotency_key="key-b1",
+            )
+
+        assert runs == ["b1", "b1"]
         assert "idempotency:key-b1" in self.redis.data
