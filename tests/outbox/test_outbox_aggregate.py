@@ -540,6 +540,46 @@ class TestResetForRetry:
         assert sample_outbox.reset_for_retry() is False
         assert sample_outbox.status == OutboxStatus.DISCARDED.value
 
+    def test_reset_gives_a_row_with_no_retries_one_attempt(self, sample_outbox):
+        sample_outbox.status = OutboxStatus.ABANDONED.value
+        sample_outbox.max_retries = 0
+
+        assert sample_outbox.reset_for_retry() is True
+
+        assert sample_outbox.max_retries == 1
+        assert sample_outbox.retry_count == 0
+
+    def test_reset_keeps_a_larger_retry_budget(self, sample_outbox):
+        sample_outbox.status = OutboxStatus.ABANDONED.value
+        sample_outbox.max_retries = 7
+
+        assert sample_outbox.reset_for_retry() is True
+
+        assert sample_outbox.max_retries == 7
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            OutboxStatus.PENDING.value,
+            OutboxStatus.PROCESSING.value,
+            OutboxStatus.PUBLISHED.value,
+            OutboxStatus.DISCARDED.value,
+        ],
+        ids=["pending-row", "processing-row", "published-row", "discarded-row"],
+    )
+    def test_reset_leaves_a_refused_row_unchanged(self, sample_outbox, status):
+        sample_outbox.status = status
+        sample_outbox.retry_count = 2
+        sample_outbox.max_retries = 0
+        sample_outbox.next_retry_at = datetime(2031, 1, 1, tzinfo=UTC)
+        sample_outbox.locked_by = "worker-1"
+        sample_outbox.locked_until = datetime(2031, 1, 1, tzinfo=UTC)
+        before = sample_outbox.to_dict()
+
+        assert sample_outbox.reset_for_retry() is False
+
+        assert sample_outbox.to_dict() == before
+
     def test_reset_pending_message_fails(self, sample_outbox):
         """Test resetting a pending message fails."""
         assert sample_outbox.status == OutboxStatus.PENDING.value
@@ -621,16 +661,18 @@ class TestDiscard:
             OutboxStatus.PUBLISHED.value,
             OutboxStatus.DISCARDED.value,
         ],
+        ids=["pending-row", "processing-row", "published-row", "discarded-row"],
     )
     def test_discard_refuses_other_statuses(self, sample_outbox, status):
         sample_outbox.status = status
         sample_outbox.last_error = {"message": "kept"}
+        sample_outbox.locked_by = "worker-1"
+        sample_outbox.locked_until = datetime(2031, 1, 1, tzinfo=UTC)
+        before = sample_outbox.to_dict()
 
         assert sample_outbox.discard("no") is False
 
-        assert sample_outbox.status == status
-        assert sample_outbox.last_error == {"message": "kept"}
-        assert sample_outbox.last_processed_at is None
+        assert sample_outbox.to_dict() == before
 
 
 class TestRelease:

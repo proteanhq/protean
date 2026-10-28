@@ -7,6 +7,7 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
+from protean.cli import outbox as cli_outbox
 from protean.exceptions import NoDomainException
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox, OutboxStatus
@@ -180,14 +181,17 @@ class TestOutboxHalted:
 
         assert result.exit_code == 0, result.output
         output = _flat(result.output)
-        assert "1 halted partition key(s)" in output
+        assert (
+            "1 halted group(s) of broker, stream category, partition key and lane:"
+            in output
+        )
         assert f"default {CATEGORY} key=client-1 lane=primary" in output
         assert f"head row {head.id} is abandoned" in output
         assert "(broker rejected the payload)" in output
         assert "1 row(s) waiting" in output
 
-    def test_a_failed_head_is_not_listed(self, outbox_repo):
-        outbox_repo.add(_row("b", minute=1))
+    def test_an_abandoned_row_behind_a_failed_row_is_not_listed(self, outbox_repo):
+        outbox_repo.add(_row("b", minute=1, status=OutboxStatus.ABANDONED.value))
         outbox_repo.add(_row("a", minute=0, status=OutboxStatus.FAILED.value))
 
         result = _invoke("halted")
@@ -262,6 +266,16 @@ class TestOutboxDiscard:
         assert result.exit_code == 2
         assert _reload(outbox_repo, head).status == OutboxStatus.ABANDONED.value
 
+    @pytest.mark.parametrize("reason", ["", "   "], ids=["empty", "blank"])
+    def test_discard_refuses_a_blank_reason(self, outbox_repo, reason):
+        head = _halted_key(outbox_repo)
+
+        result = _invoke("discard", str(head.id), "--reason", reason)
+
+        assert result.exit_code == 2
+        assert "give the reason the row is skipped" in _flat(result.output)
+        assert _reload(outbox_repo, head).status == OutboxStatus.ABANDONED.value
+
 
 class TestOutboxRetryAndDiscardRefuse:
     @pytest.mark.parametrize(
@@ -274,6 +288,10 @@ class TestOutboxRetryAndDiscardRefuse:
         self, outbox_repo, args, status
     ):
         row = _row("a", minute=0, status=status)
+        row.retry_count = 2
+        row.next_retry_at = BASE_TIME + timedelta(days=1)
+        row.locked_by = "worker-9"
+        row.locked_until = BASE_TIME + timedelta(days=1)
         outbox_repo.add(row)
         before = _reload(outbox_repo, row).to_dict()
 
@@ -287,10 +305,72 @@ class TestOutboxRetryAndDiscardRefuse:
         "args", [("retry",), ("discard", "--reason", "skip")], ids=["retry", "discard"]
     )
     def test_an_unknown_id_is_reported(self, outbox_repo, args):
+        head = _halted_key(outbox_repo)
+        before = _reload(outbox_repo, head).to_dict()
+
         result = _invoke(args[0], "no-such-row", *args[1:])
 
         assert result.exit_code == 1
+        assert isinstance(result.exception, SystemExit)
         assert "No outbox row with id no-such-row." in _flat(result.output)
+        assert _reload(outbox_repo, head).to_dict() == before
+
+    @pytest.mark.parametrize(
+        "args", [("retry",), ("discard", "--reason", "skip")], ids=["retry", "discard"]
+    )
+    def test_a_row_a_worker_claims_during_the_command_is_left_alone(
+        self, outbox_repo, monkeypatch, args
+    ):
+        row = _row("a", minute=0, status=OutboxStatus.FAILED.value)
+        outbox_repo.add(row)
+        load_row = cli_outbox._load_row
+
+        def load_then_claim(domain, repo, row_id):
+            loaded = load_row(domain, repo, row_id)
+            claimed = repo.claim_batch("worker-1", limit=10)
+            assert [claimed_row.id for claimed_row in claimed] == [row.id]
+            return loaded
+
+        monkeypatch.setattr(cli_outbox, "_load_row", load_then_claim)
+
+        result = _invoke(args[0], str(row.id), *args[1:])
+
+        assert result.exit_code == 1
+        assert f"Outbox row {row.id} changed while the command ran" in _flat(
+            result.output
+        )
+        stored = _reload(outbox_repo, row)
+        assert stored.status == OutboxStatus.PROCESSING.value
+        assert stored.locked_by == "worker-1"
+        assert stored.last_error is None
+
+
+class TestRowIdShape:
+    @pytest.mark.parametrize(
+        "identity_type, row_id, well_formed",
+        [
+            ("uuid", "not-a-uuid", False),
+            ("uuid", "4f6c8a3e-1b2d-4c5e-9f00-1234567890ab", True),
+            ("integer", "abc", False),
+            ("integer", "42", True),
+            ("string", "anything", True),
+        ],
+    )
+    def test_the_id_is_checked_against_the_identity_type(
+        self, test_domain, identity_type, row_id, well_formed
+    ):
+        test_domain.config["identity_type"] = identity_type
+
+        assert cli_outbox._is_well_formed(test_domain, row_id) is well_formed
+
+    def test_a_malformed_id_is_reported_as_unknown(self, outbox_domain, outbox_repo):
+        outbox_domain.config["identity_type"] = "uuid"
+
+        result = _invoke("retry", "not-a-uuid")
+
+        assert result.exit_code == 1
+        assert isinstance(result.exception, SystemExit)
+        assert "No outbox row with id not-a-uuid." in _flat(result.output)
 
 
 class TestNewCommandsNeedTheOutbox:

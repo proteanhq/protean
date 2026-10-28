@@ -19,6 +19,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import uuid
 from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast
 
 import typer
@@ -27,6 +28,7 @@ from rich.markup import escape
 
 from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions, load_domain
 from protean.cli.result import build_envelope, emit_usage_error, route_logs_to_stderr
+from protean.utils import IdentityType
 from protean.utils.outbox import HaltedKey, Outbox, OutboxRepository, reconcile_outbox
 
 if TYPE_CHECKING:
@@ -49,8 +51,24 @@ def _require_outbox(derived_domain: Domain, *, as_json: bool = False) -> None:
     raise typer.Abort()
 
 
-def _load_row(repo: OutboxRepository, row_id: str) -> Outbox:
-    row = cast(Outbox | None, repo.get_or_none(row_id))
+def _is_well_formed(derived_domain: Domain, row_id: str) -> bool:
+    # A SQL database with UUID or integer identity rejects a malformed id
+    # with a driver error, so check its shape before the lookup.
+    identity_type = derived_domain.config["identity_type"]
+    try:
+        if identity_type == IdentityType.UUID.value:
+            uuid.UUID(row_id)
+        elif identity_type == IdentityType.INTEGER.value:
+            int(row_id)
+    except ValueError:
+        return False
+    return True
+
+
+def _load_row(derived_domain: Domain, repo: OutboxRepository, row_id: str) -> Outbox:
+    row = None
+    if _is_well_formed(derived_domain, row_id):
+        row = cast(Outbox | None, repo.get_or_none(row_id))
     if row is None:
         print(f"No outbox row with id {escape(row_id)}.")
         raise typer.Abort()
@@ -63,6 +81,24 @@ def _refuse(row_id: str, row: Outbox) -> NoReturn:
         "abandoned row can be retried or discarded."
     )
     raise typer.Abort()
+
+
+def _save(
+    repo: OutboxRepository, row: Outbox, read_status: str, read_retry_count: int
+) -> None:
+    if not repo.save_operator_change(row, read_status, read_retry_count):
+        print(
+            f"Outbox row {escape(str(row.id))} changed while the command ran, "
+            "most likely because a worker claimed it. Nothing was written. "
+            "Check its status and run the command again."
+        )
+        raise typer.Abort()
+
+
+def _require_reason(value: str) -> str:
+    if not value.strip():
+        raise typer.BadParameter("give the reason the row is skipped")
+    return value
 
 
 @app.callback()
@@ -159,7 +195,10 @@ def halted(
         print("No partition key is halted.")
         return
 
-    print(f"{len(keys)} halted partition key(s):")
+    print(
+        f"{len(keys)} halted group(s) of broker, stream category, partition "
+        "key and lane:"
+    )
     for key in keys:
         error = (key.head.last_error or {}).get("message", "no error recorded")
         print(
@@ -182,17 +221,19 @@ def retry(
     """Publish a failed or abandoned outbox row again.
 
     The row goes back to pending with its retry count at zero, and the
-    outbox processor claims it on its next poll. Later rows of its
-    partition key publish after it.
+    outbox processor can claim it again. It still waits behind the earlier
+    rows of its partition key, and later rows of the key publish after it.
+    The command refuses a row a worker claims while it runs.
     """
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         _require_outbox(derived_domain)
         repo = derived_domain._get_outbox_repo(provider)
-        row = _load_row(repo, row_id)
+        row = _load_row(derived_domain, repo, row_id)
+        read_status, read_retry_count = row.status, row.retry_count
         if not row.reset_for_retry():
             _refuse(row_id, row)
-        repo.add(row)
+        _save(repo, row, read_status, read_retry_count)
 
     print(f"Outbox row {escape(row_id)} is {row.status} and will be published again.")
 
@@ -202,7 +243,11 @@ def retry(
 def discard(
     row_id: Annotated[str, typer.Argument(help="Id of the outbox row")],
     reason: Annotated[
-        str, typer.Option(help="Why the row is skipped, kept on the row")
+        str,
+        typer.Option(
+            help="Why the row is skipped, kept on the row",
+            callback=_require_reason,
+        ),
     ],
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
     provider: Annotated[
@@ -213,15 +258,17 @@ def discard(
 
     The row is never published. It stays in the outbox as discarded, with
     the reason in its ``last_error``, and the later rows of its partition key
-    publish without it.
+    publish without it. The command refuses a row a worker claims while it
+    runs.
     """
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         _require_outbox(derived_domain)
         repo = derived_domain._get_outbox_repo(provider)
-        row = _load_row(repo, row_id)
+        row = _load_row(derived_domain, repo, row_id)
+        read_status, read_retry_count = row.status, row.retry_count
         if not row.discard(reason):
             _refuse(row_id, row)
-        repo.add(row)
+        _save(repo, row, read_status, read_retry_count)
 
     print(f"Outbox row {escape(row_id)} is {row.status} and will not be published.")
