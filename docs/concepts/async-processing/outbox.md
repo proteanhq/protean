@@ -170,13 +170,18 @@ stateDiagram-v2
     PROCESSING --> FAILED: Broker publish fails
     FAILED --> PENDING: Retry scheduled
     FAILED --> ABANDONED: Max retries exceeded
+    FAILED --> PENDING: Operator retries
+    ABANDONED --> PENDING: Operator retries
+    FAILED --> DISCARDED: Operator discards
+    ABANDONED --> DISCARDED: Operator discards
     PUBLISHED --> [*]: Cleanup removes
     ABANDONED --> [*]: Cleanup removes (no partition key)
+    DISCARDED --> [*]: Cleanup removes
 ```
 
 Cleanup removes an abandoned row only when it has no partition key. An
 abandoned row with a partition key stays in the outbox until someone retries
-it or marks it published.
+or discards it with `protean outbox retry` or `protean outbox discard`.
 
 ### Message States
 
@@ -187,6 +192,7 @@ it or marks it published.
 | `PUBLISHED` | Successfully published to broker |
 | `FAILED` | Publishing failed, may be retried |
 | `ABANDONED` | Max retries exceeded, given up |
+| `DISCARDED` | Skipped by an operator, never published, kept for audit |
 
 ## Retry Mechanism
 
@@ -214,12 +220,12 @@ For tuning retry attempts, backoff, and jitter, see the
 
 ## Message Cleanup
 
-`PUBLISHED` and `ABANDONED` rows are purged on a schedule so the outbox
-table doesn't grow unbounded. Published rows are kept long enough to
-serve as an audit trail; abandoned rows are kept long enough to
-investigate. An abandoned row with a partition key is never purged: it
-holds its key's later rows, so it stays until someone retries it or
-marks it published. The retention windows are separately configurable, see [Outbox
+`PUBLISHED`, `ABANDONED` and `DISCARDED` rows are purged on a schedule so
+the outbox table doesn't grow unbounded. Published rows are kept long
+enough to serve as an audit trail; abandoned and discarded rows are kept
+long enough to investigate. An abandoned row with a partition key is
+never purged: it holds its key's later rows, so it stays until someone
+retries or discards it. The retention windows are separately configurable, see [Outbox
 Guide: Configure cleanup](../../guides/server/outbox.md#configure-cleanup).
 
 ## Multi-Worker Support

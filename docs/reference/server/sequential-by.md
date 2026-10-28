@@ -153,8 +153,10 @@ rows of its group:
 
 - A **failed** row holds its key until its retry is due and it publishes.
 - An **abandoned** row halts its key. The key's later rows stay in the outbox
-  until an operator re-queues the row or marks it published, as described in
+  until an operator retries or discards the row with `protean outbox retry` or
+  `protean outbox discard`, as described in
   [the outbox guide](../../guides/server/outbox.md#a-partitioned-key-can-halt).
+  `protean outbox halted` lists the halted keys.
   Cleanup does not delete abandoned rows that have a partition key.
 - When a row fails mid-batch, the processor puts the later rows of its group
   (same key, stream and lane) from that batch back to `pending` without publishing them, and leaves their retry

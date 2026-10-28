@@ -16,7 +16,7 @@ from protean.core.index import Index
 from protean.core.repository import BaseRepository
 from protean.exceptions import DeserializationError, ValidationError
 from protean.fields import Auto
-from protean.port.dao import HoldBack
+from protean.port.dao import HoldBack, _earlier_than
 from protean.utils import (
     DomainObjects,
     OptionalStdlibDatetime,
@@ -102,6 +102,7 @@ class OutboxStatus(Enum):
     PUBLISHED = "published"
     FAILED = "failed"
     ABANDONED = "abandoned"  # Max retries exceeded
+    DISCARDED = "discarded"  # Skipped by an operator, kept for audit
 
 
 class ProcessingResult(Enum):
@@ -388,16 +389,51 @@ class Outbox(BaseAggregate):
         self._clear_lock()
 
     def reset_for_retry(self) -> bool:
-        """Reset message status to allow retry (for manual intervention).
+        """Reset a failed or abandoned message so it is claimed again at once.
+
+        The row goes back to ``PENDING`` with ``retry_count`` at 0, no retry
+        time and no lock, so it gets the full number of attempts again.
+        ``last_error`` is kept.
 
         Returns:
-            True if reset was successful, False if not eligible
+            True if reset was successful, False if the row is not ``FAILED``
+            or ``ABANDONED`` (nothing is changed then)
         """
         if self.status not in [OutboxStatus.FAILED.value, OutboxStatus.ABANDONED.value]:
             return False
 
         self.status = OutboxStatus.PENDING.value
+        self.retry_count = 0
         self.next_retry_at = None
+        self._clear_lock()
+        return True
+
+    def discard(self, reason: str, now: datetime | None = None) -> bool:
+        """Skip a failed or abandoned message for good, keeping the row.
+
+        The row becomes ``DISCARDED``. It is never published, and it no longer
+        holds the later rows of its partition key. ``last_error`` keeps its
+        entries and gains ``discarded_at`` and ``discard_reason``.
+
+        Args:
+            reason: Why the operator skipped the message.
+            now: Timestamp to record. Defaults to the active domain's clock.
+
+        Returns:
+            True if the row was discarded, False if it is not ``FAILED`` or
+            ``ABANDONED`` (nothing is changed then)
+        """
+        if self.status not in [OutboxStatus.FAILED.value, OutboxStatus.ABANDONED.value]:
+            return False
+
+        now = _domain_now(now)
+        self.status = OutboxStatus.DISCARDED.value
+        self.last_processed_at = now
+        self.last_error = {
+            **(self.last_error or {}),
+            "discarded_at": now.isoformat(),
+            "discard_reason": reason,
+        }
         self._clear_lock()
         return True
 
@@ -619,8 +655,9 @@ class OutboxLanes:
         return HoldBack(
             group_by=("target_broker", "stream_category", "partition_key"),
             applies=Q(partition_key__isnull=False) & Q(stream_category__isnull=False),
-            # Every status but PUBLISHED holds the group. An ABANDONED row
-            # halts its key until an operator deals with it.
+            # Every status but PUBLISHED and DISCARDED holds the group. An
+            # ABANDONED row halts its key until an operator retries or
+            # discards it.
             holds=Q(
                 status__in=[
                     OutboxStatus.PENDING.value,
@@ -648,6 +685,23 @@ def commit_order_key(row: "Outbox") -> tuple[Any, ...]:
         row.sequence_number is None,
         row.sequence_number or 0,
     )
+
+
+@dataclass(frozen=True)
+class HaltedKey:
+    """A partition key whose first unpublished row is abandoned.
+
+    ``head`` is that abandoned row. It holds ``waiting`` later rows of the
+    same group, which publish once an operator retries or discards it.
+    ``lane`` is ``"primary"`` or ``"backfill"`` (see :class:`OutboxLanes`).
+    """
+
+    target_broker: str
+    stream_category: str
+    partition_key: str
+    lane: str
+    head: "Outbox"
+    waiting: int
 
 
 class OutboxRepository(BaseRepository):
@@ -821,6 +875,74 @@ class OutboxRepository(BaseRepository):
         query = query.order_by("-last_processed_at")
 
         return self._apply_limit_and_execute(query, limit)
+
+    def find_halted(self, lanes: OutboxLanes | None = None) -> list[HaltedKey]:
+        """List every partition key that an abandoned row halts.
+
+        A key is halted when the earliest row of its group that still holds
+        the group is ``ABANDONED``. The group, the holding statuses and the
+        order are the ones :meth:`claim_batch` uses, so a key is listed exactly
+        when the claim holds its later rows behind that abandoned row.
+
+        Args:
+            lanes: The lane split to group rows by. Defaults to
+                ``[server.priority_lanes]`` in domain config, as in
+                :meth:`claim_batch`.
+
+        Returns:
+            One :class:`HaltedKey` per halted group, in the commit order of
+            the abandoned rows. Every halted key is listed, with no page cap.
+        """
+        if lanes is None:
+            lanes = OutboxLanes.from_config(self._dao.domain.config)
+        hold_back = lanes.hold_back()
+        lane_filters: tuple[Q, ...] = hold_back.lanes or (Q(),)
+
+        abandoned_query = self._dao.query.filter(
+            Q(status=OutboxStatus.ABANDONED.value) & hold_back.applies
+        ).order_by(list(_COMMIT_ORDER))
+
+        halted: list[HaltedKey] = []
+        offset = 0
+        while True:
+            page = cast(
+                list[Outbox],
+                abandoned_query.offset(offset)
+                .limit(PAGE_SIZE)
+                .all(with_total=False)
+                .items,
+            )
+            for row in page:
+                lane_index = lanes.lane_index(row)
+                if lane_index is None:
+                    continue
+                group = (
+                    Q(
+                        target_broker=row.target_broker,
+                        stream_category=row.stream_category,
+                        partition_key=row.partition_key,
+                    )
+                    & hold_back.applies
+                    & lane_filters[lane_index]
+                    & hold_back.holds
+                )
+                earlier = group & _earlier_than(row, hold_back.order)
+                if self._dao.query.filter(earlier).count() > 0:
+                    continue
+                halted.append(
+                    HaltedKey(
+                        target_broker=row.target_broker,
+                        stream_category=cast(str, row.stream_category),
+                        partition_key=cast(str, row.partition_key),
+                        lane="backfill" if lane_index == 1 else "primary",
+                        head=row,
+                        waiting=self._dao.query.filter(group).count() - 1,
+                    )
+                )
+            if len(page) < PAGE_SIZE:
+                break
+            offset += PAGE_SIZE
+        return halted
 
     def find_published(self, limit: int | None = PAGE_SIZE) -> list[Outbox]:
         """Find messages that have been successfully published.
@@ -1121,24 +1243,50 @@ class OutboxRepository(BaseRepository):
             batch_size if batch_size is not None else self._cleanup_batch_size(),
         )
 
+    def cleanup_old_discarded(
+        self, older_than_hours: int = 720, batch_size: int | None = None
+    ) -> int:
+        """Delete discarded messages older than *older_than_hours* and return the count.
+
+        Age is measured from ``last_processed_at``. A discarded row no longer
+        holds its partition key, so rows with a ``partition_key`` are deleted
+        too.
+
+        Args:
+            batch_size: Rows to delete per batch. Defaults to
+                ``outbox.cleanup.batch_size`` (5000).
+        """
+        threshold_time = self._dao.domain.clock.now() - timedelta(
+            hours=older_than_hours
+        )
+
+        return self._delete_in_batches(
+            Q(
+                status=OutboxStatus.DISCARDED.value,
+                last_processed_at__lt=threshold_time,
+            ),
+            batch_size if batch_size is not None else self._cleanup_batch_size(),
+        )
+
     def cleanup_old_messages(
         self,
         published_retention_hours: int = 168,
         abandoned_retention_hours: int = 720,
         batch_size: int | None = None,
     ) -> dict[str, int]:
-        """Delete old published and abandoned messages.
+        """Delete old published, abandoned and discarded messages.
 
-        Each status is cleaned as :meth:`cleanup_old_published` and
-        :meth:`cleanup_old_abandoned` do, with its own retention.
+        Each status is cleaned as :meth:`cleanup_old_published`,
+        :meth:`cleanup_old_abandoned` and :meth:`cleanup_old_discarded` do.
+        Discarded messages use ``abandoned_retention_hours``.
 
         Args:
             batch_size: Rows to delete per batch. Defaults to
                 ``outbox.cleanup.batch_size`` (5000).
 
         Returns:
-            The deleted counts under ``"published"``, ``"abandoned"`` and
-            ``"total"``.
+            The deleted counts under ``"published"``, ``"abandoned"``,
+            ``"discarded"`` and ``"total"``.
         """
         published_count = self.cleanup_old_published(
             older_than_hours=published_retention_hours, batch_size=batch_size
@@ -1147,11 +1295,16 @@ class OutboxRepository(BaseRepository):
             older_than_hours=abandoned_retention_hours, batch_size=batch_size
         )
 
-        total_count = published_count + abandoned_count
+        discarded_count = self.cleanup_old_discarded(
+            older_than_hours=abandoned_retention_hours, batch_size=batch_size
+        )
+
+        total_count = published_count + abandoned_count + discarded_count
 
         return {
             "published": published_count,
             "abandoned": abandoned_count,
+            "discarded": discarded_count,
             "total": total_count,
         }
 

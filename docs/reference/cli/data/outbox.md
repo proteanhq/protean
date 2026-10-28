@@ -1,12 +1,13 @@
 # `protean outbox`
 
 The `protean outbox` command group manages the transactional
-[outbox](../../../guides/server/outbox.md). Today it exposes a single
-command, `reconcile`, which repairs the crash window described in
+[outbox](../../../guides/server/outbox.md). `reconcile` repairs the crash
+window described in
 [ADR-0015](../../../adr/0015-event-store-append-as-durable-anchor.md): an
 event that reached the event store (the durable anchor of the commit) but
 whose relational outbox row never committed, leaving the event durable yet
-unpublished.
+unpublished. `halted`, `retry` and `discard` find and release a partition key
+that an abandoned row has halted.
 
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
@@ -16,6 +17,9 @@ All commands accept a `--domain` option to specify the domain module path
 | Command | Description |
 |---------|-------------|
 | `protean outbox reconcile` | Recreate outbox rows for stored events that are missing them |
+| `protean outbox halted` | List the partition keys that an abandoned row halts |
+| `protean outbox retry` | Send a failed or abandoned row back to `pending` |
+| `protean outbox discard` | Skip a failed or abandoned row for good, keeping it for audit |
 
 ## `protean outbox reconcile`
 
@@ -92,6 +96,122 @@ A row the reconciler abandons records `last_processed_at`, so
 passed. A row abandoned because its partition key is invalid carries
 `last_error["reason"]` of "Invalid partition key".
 
+## `protean outbox halted`
+
+Lists every partition key whose earliest unpublished row is `abandoned`. A
+partition key is the value set by a handler's
+[`sequential_by`](../../server/sequential-by.md), and the processor publishes a
+key's rows in commit order. Rows are grouped by target broker, stream
+category, partition key and [priority lane](../../../guides/server/using-priority-lanes.md),
+the same groups the processor uses, so a key is listed exactly when the
+processor holds its later rows. A key whose earliest row is `failed` is not
+listed, because it is still being retried.
+
+```bash
+protean outbox halted --domain=my_domain
+protean outbox halted --json --domain=my_domain
+```
+
+**Options**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--domain` | Domain module path | `.` (current directory) |
+| `--provider` | Provider whose outbox to inspect | `default` |
+| `--json` | Print the [result envelope](../conventions.md#the-result-envelope) as JSON | off |
+
+**Output**
+
+```
+1 halted partition key(s):
+- default shop::order key=cust-42 lane=primary: head row 6f1c2a9e-... is abandoned (broker rejected the payload), 3 row(s) waiting
+```
+
+Each line names the target broker, the stream category, the partition key and
+the lane, then the abandoned row at the head of the key, the message from its
+`last_error`, and how many later rows of the key are waiting. With no halted
+key it prints `No partition key is halted.` and exits 0.
+
+Under `--json`, `data.halted` holds one object per halted key:
+
+```json
+{
+  "data": {
+    "halted": [
+      {
+        "head_id": "6f1c2a9e-...",
+        "lane": "primary",
+        "last_error": {"message": "broker rejected the payload", "reason": "Max retries exceeded"},
+        "partition_key": "cust-42",
+        "status": "abandoned",
+        "stream_category": "shop::order",
+        "target_broker": "default",
+        "waiting": 3
+      }
+    ]
+  },
+  "diagnostics": [],
+  "status": "pass",
+  "version": "0.1.0"
+}
+```
+
+`lane` is `primary` or `backfill`. `last_error` is the row's stored error, or
+`null` when it has none.
+
+## `protean outbox retry`
+
+Sends a `failed` or `abandoned` row back to `pending` with its retry count at
+zero and no retry delay, so the processor claims it on its next poll and it
+gets the full number of attempts again. The later rows of its key publish
+after it.
+
+```bash
+protean outbox retry 6f1c2a9e-... --domain=my_domain
+```
+
+**Arguments and options**
+
+| Argument / Option | Description | Default |
+|-------------------|-------------|---------|
+| `ROW_ID` | Id of the outbox row, as shown by `halted` | required |
+| `--domain` | Domain module path | `.` (current directory) |
+| `--provider` | Provider whose outbox holds the row | `default` |
+
+**Output**
+
+```
+Outbox row 6f1c2a9e-... is pending and will be published again.
+```
+
+## `protean outbox discard`
+
+Skips a `failed` or `abandoned` row for good. The row is never published, so
+its event is dropped for that broker, and the later rows of its key publish
+without it. The row stays in the outbox with the `discarded` status. Its
+`last_error` keeps the original error and gains `discarded_at` and
+`discard_reason`. Cleanup deletes it `abandoned_retention_hours` after it was
+discarded.
+
+```bash
+protean outbox discard 6f1c2a9e-... --reason "payload rejected by the broker" --domain=my_domain
+```
+
+**Arguments and options**
+
+| Argument / Option | Description | Default |
+|-------------------|-------------|---------|
+| `ROW_ID` | Id of the outbox row, as shown by `halted` | required |
+| `--reason` | Why the row is skipped, stored on the row | required |
+| `--domain` | Domain module path | `.` (current directory) |
+| `--provider` | Provider whose outbox holds the row | `default` |
+
+**Output**
+
+```
+Outbox row 6f1c2a9e-... is discarded and will not be published.
+```
+
 ## Automatic startup sweep
 
 The same reconciliation runs once automatically when the server boots, so a
@@ -116,6 +236,11 @@ aggregates on other providers.
 | Invalid domain path | Aborts with "Error loading Protean domain" |
 | Outbox not enabled for the domain | Aborts with "Outbox is not enabled for this domain", naming `default_subscription_type = "stream"` and the older `enable_outbox` switch, which also needs it |
 | Nothing to reconcile | Prints "Nothing to reconcile: no event in the scanned window is missing its outbox row" |
+| `halted --json` with an invalid domain path or the outbox not enabled | Prints the error envelope (`status` `error`, the message under `data.error`) and exits 2 |
+| `halted` finds no halted key | Prints "No partition key is halted." and exits 0 |
+| `retry` or `discard` with an unknown id | Aborts with "No outbox row with id ..." and changes nothing |
+| `retry` or `discard` on a row that is not `failed` or `abandoned` | Aborts with "Outbox row ... is \<status\>. Only a failed or abandoned row can be retried or discarded." and changes nothing |
+| `discard` without `--reason` | Usage error, exit code 2 |
 
 ## How reconciliation works
 

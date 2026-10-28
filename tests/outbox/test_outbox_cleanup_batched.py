@@ -63,7 +63,7 @@ def make_messages(outbox_repo, sample_metadata):
             msg.status = status
             if status == OutboxStatus.PUBLISHED.value:
                 msg.published_at = aged
-            else:  # ABANDONED
+            else:  # ABANDONED or DISCARDED
                 msg.last_processed_at = aged
             outbox_repo.add(msg)
 
@@ -145,9 +145,24 @@ class TestBatchedCleanup:
     ):
         make_messages(3, status=OutboxStatus.PUBLISHED.value, hours_old=200)
         make_messages(3, status=OutboxStatus.ABANDONED.value, hours_old=800)
+        make_messages(1, status=OutboxStatus.DISCARDED.value, hours_old=800)
 
         result = outbox_repo.cleanup_old_messages(batch_size=2)
 
-        assert result == {"published": 3, "abandoned": 3, "total": 6}
-        # Published: [2, 1]; abandoned: [2, 1].
-        assert batch_spy == [2, 1, 2, 1]
+        assert result == {"published": 3, "abandoned": 3, "discarded": 1, "total": 7}
+        # Published: [2, 1]; abandoned: [2, 1]; discarded: [1].
+        assert batch_spy == [2, 1, 2, 1, 1]
+
+    def test_cleanup_old_discarded_keeps_recent_rows(self, outbox_repo, make_messages):
+        make_messages(3, status=OutboxStatus.DISCARDED.value, hours_old=800)
+        make_messages(2, status=OutboxStatus.DISCARDED.value, hours_old=24)
+
+        deleted = outbox_repo.cleanup_old_discarded(older_than_hours=720, batch_size=2)
+
+        assert deleted == 3
+        remaining = outbox_repo._dao.query.all().items
+        assert len(remaining) == 2
+        assert {row.message_id for row in remaining} == {
+            "msg-discarded-24-0",
+            "msg-discarded-24-1",
+        }

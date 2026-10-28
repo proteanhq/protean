@@ -516,6 +516,30 @@ class TestResetForRetry:
         assert result is True
         assert sample_outbox.status == OutboxStatus.PENDING.value
 
+    def test_reset_gives_the_row_its_full_retries_again(self, sample_outbox):
+        sample_outbox.status = OutboxStatus.ABANDONED.value
+        sample_outbox.retry_count = sample_outbox.max_retries
+        sample_outbox.last_error = {"message": "broker down"}
+
+        assert sample_outbox.reset_for_retry() is True
+
+        assert sample_outbox.retry_count == 0
+        assert sample_outbox.last_error == {"message": "broker down"}
+
+    def test_reset_failed_message_resets_retry_count(self, sample_outbox):
+        sample_outbox.status = OutboxStatus.FAILED.value
+        sample_outbox.retry_count = 2
+
+        assert sample_outbox.reset_for_retry() is True
+
+        assert sample_outbox.retry_count == 0
+
+    def test_reset_discarded_message_fails(self, sample_outbox):
+        sample_outbox.status = OutboxStatus.DISCARDED.value
+
+        assert sample_outbox.reset_for_retry() is False
+        assert sample_outbox.status == OutboxStatus.DISCARDED.value
+
     def test_reset_pending_message_fails(self, sample_outbox):
         """Test resetting a pending message fails."""
         assert sample_outbox.status == OutboxStatus.PENDING.value
@@ -542,6 +566,71 @@ class TestResetForRetry:
 
         assert result is False
         assert sample_outbox.status == OutboxStatus.PROCESSING.value
+
+
+class TestDiscard:
+    FIXED = datetime(2031, 5, 6, 7, 8, 9, tzinfo=UTC)
+
+    @pytest.fixture
+    def frozen(self, test_domain):
+        test_domain.clock = FrozenClock(self.FIXED)
+        return test_domain
+
+    @pytest.mark.parametrize(
+        "status", [OutboxStatus.ABANDONED.value, OutboxStatus.FAILED.value]
+    )
+    def test_discard_keeps_the_row_with_its_error(self, sample_outbox, frozen, status):
+        sample_outbox.status = status
+        sample_outbox.retry_count = 3
+        sample_outbox.locked_by = "worker-1"
+        sample_outbox.locked_until = self.FIXED + timedelta(minutes=2)
+        sample_outbox.last_error = {"message": "broker down", "retry_count": 3}
+        data = dict(sample_outbox.data)
+
+        assert sample_outbox.discard("poison payload") is True
+
+        assert sample_outbox.status == OutboxStatus.DISCARDED.value
+        assert sample_outbox.last_processed_at == self.FIXED
+        assert sample_outbox.last_error == {
+            "message": "broker down",
+            "retry_count": 3,
+            "discarded_at": self.FIXED.isoformat(),
+            "discard_reason": "poison payload",
+        }
+        assert sample_outbox.locked_by is None
+        assert sample_outbox.locked_until is None
+        assert sample_outbox.retry_count == 3
+        assert sample_outbox.data == data
+
+    def test_discard_a_row_with_no_recorded_error(self, sample_outbox, frozen):
+        sample_outbox.status = OutboxStatus.ABANDONED.value
+        sample_outbox.last_error = None
+
+        assert sample_outbox.discard("legacy row") is True
+
+        assert sample_outbox.last_error == {
+            "discarded_at": self.FIXED.isoformat(),
+            "discard_reason": "legacy row",
+        }
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            OutboxStatus.PENDING.value,
+            OutboxStatus.PROCESSING.value,
+            OutboxStatus.PUBLISHED.value,
+            OutboxStatus.DISCARDED.value,
+        ],
+    )
+    def test_discard_refuses_other_statuses(self, sample_outbox, status):
+        sample_outbox.status = status
+        sample_outbox.last_error = {"message": "kept"}
+
+        assert sample_outbox.discard("no") is False
+
+        assert sample_outbox.status == status
+        assert sample_outbox.last_error == {"message": "kept"}
+        assert sample_outbox.last_processed_at is None
 
 
 class TestRelease:

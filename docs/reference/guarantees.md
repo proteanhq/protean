@@ -298,7 +298,8 @@ That is commit order for one aggregate instance, but not always across several
 instances that share a key. A later row is claimed only when every earlier row
 of its key is published or claimed in the same call. An earlier row that is in
 flight or failed holds the key, and an abandoned row halts it until an
-operator re-queues the row or marks it published.
+operator retries or discards the row (`protean outbox retry` or
+`protean outbox discard`).
 
 ### Known exceptions {#outbox-exceptions}
 
