@@ -106,8 +106,10 @@ partition key is the value set by a handler's
 key's rows in commit order. Rows are grouped by target broker, stream
 category, partition key and [priority lane](../../../guides/server/using-priority-lanes.md),
 the same groups the processor uses, so a key is listed exactly when the
-processor holds its later rows. A key whose earliest row is `failed` is not
-listed, because it is still being retried.
+processor holds its later rows behind an abandoned row. A key whose earliest
+holding row is `pending`, `processing` or `failed` also has its later rows
+held, but it is not listed, because the processor will still publish or retry
+that row.
 
 ```bash
 protean outbox halted --domain=my_domain
