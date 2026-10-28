@@ -186,7 +186,9 @@ class TestUnitOfWorkAdditionalCoverage:
                 mock_item = Mock()
                 mock_item._events = [mock_event]
                 mock_item.meta_.is_event_sourced = False
-                uow._identity_map["default"]["test-id"] = mock_item
+                mock_item._version = 0
+                uow._identity_map["default"][(Mock, "test-id")] = mock_item
+                uow._saved.add(("default", Mock, "test-id"))
 
                 uow.commit()
 

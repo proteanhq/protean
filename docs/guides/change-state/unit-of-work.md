@@ -167,17 +167,19 @@ sequenceDiagram
     participant BR as Broker
     participant EH as Event Handlers (sync)
 
-    UoW->>IM: Gather events from tracked aggregates
+    UoW->>IM: Gather events from aggregates saved by add()
     UoW->>OB: Write outbox messages (one per event)
     UoW->>DB: Commit database session(s)
     UoW->>ES: Append events to event store
     UoW->>BR: Publish messages to broker
     UoW->>EH: Dispatch to sync event handlers (if configured)
-    UoW->>IM: Clear events from tracked aggregates
+    UoW->>IM: Clear events from aggregates saved by add()
 ```
 
-1. **Gather events**: The UoW walks its identity map and collects all
-   domain events that aggregates have raised (via `self.raise_()`).
+1. **Gather events**: The UoW walks its identity map and collects the
+   domain events raised (via `self.raise_()`) on each aggregate that `add()`
+   saved in this transaction. Events raised on an aggregate that was only
+   read are not saved.
 
 2. **Write outbox messages**: Each event is serialized and written to the
    outbox table as part of the same database transaction. The outbox ensures
@@ -202,8 +204,9 @@ sequenceDiagram
    handler's exception as its `__cause__`. See
    [the 0.18 migration note](../../reference/migration/v0-18.md#a-synchronous-event-handlers-version-conflict-no-longer-reruns-the-command).
 
-7. **Clear events**: Events are cleared from the aggregates in the identity
-   map so they are not re-processed.
+7. **Clear events**: Events are cleared from the aggregates whose events
+   were gathered in step 1, so they are not re-processed. An aggregate that
+   was only read keeps its events on the instance.
 
 ## Rollback semantics
 
@@ -240,10 +243,21 @@ three purposes:
    back. To read the stored state, read the aggregate in a new UoW.
 
 2. **Event collection**: At commit time, the UoW walks the identity map to
-   gather all events raised by tracked aggregates. Without the identity map,
-   events raised between `add()` and `commit()` would be lost. An
-   event-sourced aggregate's events are collected only once `add()` has saved
-   it, because `add()` is where its fact event is raised.
+   gather the events raised by the aggregates that `add()` saved. An
+   aggregate's events are saved only when it is passed to `add()`. Its field
+   changes are saved only through `add()`, so an event saved without it
+   would record a change that never reached the database. For an
+   event-sourced aggregate, `add()` is also where its fact event is raised.
+   Events raised on an aggregate that was only read are not saved at commit,
+   and the UoW logs nothing about them. Removing an aggregate with
+   `_dao.delete()` does not save its events either.
+
+   Call `add()` after the last change. `add()` writes the aggregate as it is
+   at that moment. If a method changes the aggregate after `add()`, call
+   `add()` again, or the change is not written while the event raised with
+   it is still saved at commit. An `add()` on an aggregate with no change
+   since it was read and no pending events writes nothing, so an event
+   raised after it is not saved.
 
 3. **Per-provider tracking**: Aggregates are grouped by their database
    provider, so the UoW can commit each provider's session independently.

@@ -80,8 +80,10 @@ class UnitOfWork:
     side-effect that must survive a rollback use the outbox.
 
     The UnitOfWork maintains an identity map to track loaded aggregates and
-    collects domain events raised during the transaction. On commit, events
-    are persisted to the outbox and dispatched to brokers/event store.
+    collects the domain events raised on the aggregates saved through
+    ``add()``. On commit, those events are persisted to the outbox and
+    dispatched to brokers/event store. Events raised on an aggregate that
+    was only read are not persisted.
     """
 
     def __init__(self) -> None:
@@ -165,15 +167,18 @@ class UnitOfWork:
         """The instances whose events this transaction commits, each with the
         name of its provider.
 
-        An event-sourced aggregate counts only once ``add()`` has saved it.
-        Its events are its state, and ``add()`` is where its fact event is
-        raised, so a read alone must not persist what was raised on it.
+        An aggregate counts only once ``add()`` has saved it in this
+        transaction, so a read alone does not persist what was raised on it.
+        A state-based aggregate's field changes are saved only through
+        ``add()``, so saving its events without it would store an event
+        without the change it records. An event-sourced aggregate's events
+        are its state, and ``add()`` is where its fact event is raised.
         """
         return [
             (provider_name, item)
             for provider_name, identity_map in self._identity_map.items()
             for key, item in identity_map.items()
-            if not item.meta_.is_event_sourced or (provider_name, *key) in self._saved
+            if (provider_name, *key) in self._saved
         ]
 
     def _gather_events(self) -> defaultdict[str, list[Any]]:
