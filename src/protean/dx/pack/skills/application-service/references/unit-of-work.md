@@ -66,7 +66,7 @@ Steps 1 and 2 hold on providers with real transactions, such as the SQL provider
 ### No Retry
 `@use_case` runs the method once. A version conflict (`ExpectedVersionError`, raised when another writer changed the aggregate first) rolls back and reaches the caller like any other exception. A use case caller that wants a retry calls the method again.
 
-Command and event handlers behave differently. On a version conflict, `@handle` re-runs the whole handler body. The default is `max_retries=3`, so the body runs up to 4 times in total, with waits between runs that double each time. Each run opens its own Unit of Work. A use case that calls `domain.process()` synchronously runs the handler inside the use case's Unit of Work, so every run joins it. The first failed run has already doomed that transaction, so the later runs cannot save it.
+Command and event handlers behave differently. On a version conflict, `@handle` re-runs the whole handler body. The default is `max_retries=3`, so the body runs up to 4 times in total, with waits between runs that double each time. Each run opens its own Unit of Work. A use case that calls `domain.process()` synchronously runs the handler inside the use case's Unit of Work, so the handler's Unit of Work joins it. There the handler does not retry: a failed run has already doomed the use case's transaction, so the conflict reaches the use case's caller.
 
 ## Scope
 

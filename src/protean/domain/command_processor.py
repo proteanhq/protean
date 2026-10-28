@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
+from protean.core.unit_of_work import _uow_stack, run_after_commit
 from protean.exceptions import (
     CommandExpiredError,
     DuplicateCommandError,
@@ -370,7 +371,20 @@ class CommandProcessor:
             # --- Idempotency: check for existing result ---
             store = domain.idempotency_store
             if idempotency_key and store.is_active:
-                existing = store.check(idempotency_key)
+                outer_uow = _uow_stack.top
+                existing: dict[str, Any] | None
+                if (
+                    outer_uow is not None
+                    and idempotency_key in outer_uow._pending_idempotency_results
+                ):
+                    existing = {
+                        "status": "success",
+                        "result": outer_uow._pending_idempotency_results[
+                            idempotency_key
+                        ],
+                    }
+                else:
+                    existing = store.check(idempotency_key)
                 if existing and existing.get("status") == "success":
                     cached_result = existing.get("result")
                     if raise_on_duplicate:
@@ -535,9 +549,16 @@ class CommandProcessor:
                         worker_id="api",
                     )
 
-                    # Record success
+                    # Record success once the write is durable. Inside an
+                    # outer UnitOfWork, a later failure rolls this command's
+                    # write back, and a key recorded now would make the outer
+                    # retry skip the command.
                     if idempotency_key and store.is_active:
-                        store.record_success(idempotency_key, result)
+                        key = idempotency_key
+                        outer_uow = _uow_stack.top
+                        if outer_uow is not None:
+                            outer_uow._pending_idempotency_results[key] = result
+                        run_after_commit(lambda: store.record_success(key, result))
                     return result
 
             # Async path: record enqueue (actual processing happens later)
