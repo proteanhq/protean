@@ -152,12 +152,12 @@ triggering a thundering herd of simultaneous retries across workers.
 ## Configure cleanup
 
 The outbox table grows forever unless you enable cleanup. The processor
-removes successfully published and abandoned messages on a schedule:
+removes published, abandoned and discarded messages on a schedule:
 
 ```toml
 [outbox.cleanup]
 published_retention_hours = 168   # Keep published messages 7 days
-abandoned_retention_hours = 720   # Keep abandoned messages 30 days
+abandoned_retention_hours = 720   # Keep abandoned and discarded messages 30 days
 cleanup_interval_ticks = 86400    # Run cleanup roughly daily
 batch_size = 5000                 # Rows deleted per bounded batch
 ```
@@ -165,7 +165,9 @@ batch_size = 5000                 # Rows deleted per bounded batch
 Cleanup never deletes an abandoned row that has a partition key. That row
 holds its key's later rows (see
 [A partitioned key can halt](#a-partitioned-key-can-halt)), and deleting it
-would let them publish out of order.
+would let them publish out of order. A discarded row no longer holds its key,
+so it is deleted `abandoned_retention_hours` after it was discarded, partition
+key or not.
 
 Tune these with two trade-offs in mind:
 
@@ -213,8 +215,18 @@ Messages that exhaust `max_attempts` move to the `ABANDONED` state and stop
 retrying. They do **not** route to a DLQ. The outbox table itself is durable
 storage.
 
-There is no dedicated CLI for inspecting abandoned outbox rows today.
-Use the runtime options available:
+**The CLI**: `protean outbox halted` lists every partition key an abandoned
+row halts, with the row's id, its last error and the number of rows waiting
+behind it. `protean outbox retry <id>` sends a failed or abandoned row back to
+`pending`, and `protean outbox discard <id> --reason "..."` skips it for good.
+See [A partitioned key can halt](#a-partitioned-key-can-halt) and the
+[`protean outbox` reference](../../reference/cli/data/outbox.md).
+
+```bash
+protean outbox halted --domain=my_domain
+protean outbox retry 6f1c2a9e-... --domain=my_domain
+protean outbox discard 6f1c2a9e-... --reason "payload rejected by the broker" --domain=my_domain
+```
 
 **Observatory**, the `/api/outbox` endpoint reports per-domain outbox status including
 counts by state. See [Observatory
@@ -233,16 +245,9 @@ a larger `limit`. `limit=None` does not lift the cap: it still returns at most
 --8<-- "guides/server/outbox/001.py:inspect"
 ```
 
-**The database**: abandoned rows can be inspected, re-queued, or deleted with
-regular SQL. Re-queue a row by setting its status back to `pending` and clearing `retry_count`:
-
-```sql
-UPDATE outbox
-SET status = 'pending', retry_count = 0, locked_by = NULL, locked_until = NULL
-WHERE id = '<message_id>';
-```
-
-The next `OutboxProcessor` tick picks it up.
+**The database**: abandoned rows can also be inspected with regular SQL.
+Prefer `protean outbox retry` and `discard` for changing them, because those
+commands refuse a row that is not failed or abandoned.
 
 ### A partitioned key can halt
 
@@ -260,12 +265,14 @@ abandoned:
 - A **failed** row holds its key until its retry is due and it publishes.
   If it runs out of retries, it becomes abandoned.
 - An **abandoned** row halts its key. None of the key's later rows publish
-  until you re-queue the row (the SQL above) or mark it published, which
-  drops its event for that broker. Do not delete the row: reconciliation at
-  server start can rebuild it as `pending`, and it would then publish after
-  the key's later rows. The
-  [0.19 migration notes](../../reference/migration/v0-19.md#a-partition-key-can-halt)
-  give the SQL for both.
+  until you release it. `protean outbox halted` lists the halted keys. Then
+  either run `protean outbox retry <id>`, which sends the row back to
+  `pending` with its retry count at zero, or run
+  `protean outbox discard <id> --reason "..."`, which drops its event for that
+  broker. A discarded row stays in the table with the `discarded` status and
+  your reason in `last_error`, as a record of what was skipped. Do not delete
+  the row: reconciliation at server start can rebuild it as `pending`, and it
+  would then publish after the key's later rows.
 - When a row fails in the middle of a batch, the processor puts the later
   rows of its group (same key, stream and lane) from that batch back to `pending` without publishing them. Their
   retry counts do not change.

@@ -428,6 +428,7 @@ class OutboxProcessor(BaseSubscription):
                         "total": cleanup_result["total"],
                         "published": cleanup_result["published"],
                         "abandoned": cleanup_result["abandoned"],
+                        "discarded": cleanup_result["discarded"],
                     },
                 )
 
@@ -457,7 +458,7 @@ class OutboxProcessor(BaseSubscription):
         # the key is ignored during routing); there, abandon it at once —
         # terminal, no retry — rather than retrying forever. The abandoned row
         # keeps its key, so it holds that key's later rows until an operator
-        # re-queues it or marks it published; other keys keep flowing.
+        # retries or discards it; other keys keep flowing.
         #
         # Check ``is not None`` rather than truthiness: ``None`` is the
         # legitimate value for a non-partitioned category and must skip

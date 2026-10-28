@@ -1,11 +1,16 @@
 """Tests for CLI outbox commands (protean outbox ...)."""
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
 from protean.exceptions import NoDomainException
+from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
+from protean.utils.outbox import Outbox, OutboxStatus
+from tests.cli._envelope import assert_envelope
 
 runner = CliRunner()
 
@@ -99,3 +104,217 @@ class TestOutboxReconcile:
 
         assert result.exit_code != 0
         assert "Error loading Protean domain" in result.output
+
+
+# ---------------------------------------------------------------------------
+# halted, retry and discard, against a real domain
+# ---------------------------------------------------------------------------
+
+BASE_TIME = datetime(2026, 1, 1, tzinfo=UTC)
+CATEGORY = "test::counter"
+
+
+@pytest.fixture
+def outbox_domain(test_domain):
+    test_domain.config["enable_outbox"] = True
+    test_domain.config["server"]["default_subscription_type"] = "stream"
+    test_domain.init(traverse=False)
+    with patch("protean.cli.outbox.load_domain", return_value=test_domain):
+        yield test_domain
+
+
+@pytest.fixture
+def outbox_repo(outbox_domain):
+    return outbox_domain._get_outbox_repo("default")
+
+
+def _row(label: str, minute: int, status: str = OutboxStatus.PENDING.value) -> Outbox:
+    metadata = Metadata(
+        headers=MessageHeaders(id=label, type="Test.Bumped.v1", stream=CATEGORY),
+        domain=DomainMeta(stream_category=CATEGORY),
+    )
+    row = Outbox.create_message(
+        message_id=label,
+        stream_name=f"{CATEGORY}-1",
+        message_type="Test.Bumped.v1",
+        data={"label": label},
+        metadata=metadata,
+        sequence_number=0,
+        partition_key="client-1",
+        stream_category=CATEGORY,
+    )
+    row.created_at = BASE_TIME + timedelta(minutes=minute)
+    row.status = status
+    if status == OutboxStatus.ABANDONED.value:
+        row.retry_count = row.max_retries
+        row.last_error = {"message": "broker rejected the payload"}
+    return row
+
+
+def _halted_key(outbox_repo) -> Outbox:
+    """Seed a key whose head row is abandoned, with one row waiting behind it."""
+    outbox_repo.add(_row("b", minute=1))
+    head = _row("a", minute=0, status=OutboxStatus.ABANDONED.value)
+    outbox_repo.add(head)
+    return head
+
+
+def _reload(outbox_repo, row: Outbox) -> Outbox:
+    return outbox_repo.get(row.id)
+
+
+def _flat(output: str) -> str:
+    """Undo terminal line wrapping."""
+    return " ".join(output.split())
+
+
+def _invoke(*args: str):
+    return runner.invoke(app, ["outbox", *args, "--domain", "x.py"])
+
+
+class TestOutboxHalted:
+    def test_lists_the_halted_key(self, outbox_repo):
+        head = _halted_key(outbox_repo)
+
+        result = _invoke("halted")
+
+        assert result.exit_code == 0, result.output
+        output = _flat(result.output)
+        assert "1 halted partition key(s)" in output
+        assert f"default {CATEGORY} key=client-1 lane=primary" in output
+        assert f"head row {head.id} is abandoned" in output
+        assert "(broker rejected the payload)" in output
+        assert "1 row(s) waiting" in output
+
+    def test_a_failed_head_is_not_listed(self, outbox_repo):
+        outbox_repo.add(_row("b", minute=1))
+        outbox_repo.add(_row("a", minute=0, status=OutboxStatus.FAILED.value))
+
+        result = _invoke("halted")
+
+        assert result.exit_code == 0, result.output
+        assert "No partition key is halted." in _flat(result.output)
+
+    def test_json_lists_each_key_in_the_envelope(self, outbox_repo):
+        head = _halted_key(outbox_repo)
+
+        result = _invoke("halted", "--json")
+
+        assert result.exit_code == 0, result.output
+        envelope = assert_envelope(result.stdout)
+        assert envelope["status"] == "pass"
+        assert envelope["data"]["halted"] == [
+            {
+                "target_broker": "default",
+                "stream_category": CATEGORY,
+                "partition_key": "client-1",
+                "lane": "primary",
+                "head_id": str(head.id),
+                "status": OutboxStatus.ABANDONED.value,
+                "last_error": {"message": "broker rejected the payload"},
+                "waiting": 1,
+            }
+        ]
+
+    def test_json_with_nothing_halted_is_an_empty_list(self, outbox_repo):
+        result = _invoke("halted", "--json")
+
+        assert result.exit_code == 0, result.output
+        envelope = assert_envelope(result.stdout)
+        assert envelope["data"] == {"halted": []}
+
+
+class TestOutboxRetry:
+    def test_retry_puts_the_head_back_to_pending(self, outbox_repo):
+        head = _halted_key(outbox_repo)
+
+        result = _invoke("retry", str(head.id))
+
+        assert result.exit_code == 0, result.output
+        assert f"Outbox row {head.id} is pending" in _flat(result.output)
+        row = _reload(outbox_repo, head)
+        assert row.status == OutboxStatus.PENDING.value
+        assert row.retry_count == 0
+        claimed = outbox_repo.claim_batch("worker-1", limit=10)
+        assert [row.message_id for row in claimed] == ["a", "b"]
+
+
+class TestOutboxDiscard:
+    def test_discard_releases_the_rest_of_the_key(self, outbox_repo):
+        head = _halted_key(outbox_repo)
+
+        result = _invoke("discard", str(head.id), "--reason", "bad payload")
+
+        assert result.exit_code == 0, result.output
+        assert f"Outbox row {head.id} is discarded" in _flat(result.output)
+        row = _reload(outbox_repo, head)
+        assert row.status == OutboxStatus.DISCARDED.value
+        assert row.last_error["message"] == "broker rejected the payload"
+        assert row.last_error["discard_reason"] == "bad payload"
+        claimed = outbox_repo.claim_batch("worker-1", limit=10)
+        assert [row.message_id for row in claimed] == ["b"]
+
+    def test_discard_needs_a_reason(self, outbox_repo):
+        head = _halted_key(outbox_repo)
+
+        result = _invoke("discard", str(head.id))
+
+        assert result.exit_code == 2
+        assert _reload(outbox_repo, head).status == OutboxStatus.ABANDONED.value
+
+
+class TestOutboxRetryAndDiscardRefuse:
+    @pytest.mark.parametrize(
+        "args", [("retry",), ("discard", "--reason", "skip")], ids=["retry", "discard"]
+    )
+    @pytest.mark.parametrize(
+        "status", [OutboxStatus.PUBLISHED.value, OutboxStatus.PENDING.value]
+    )
+    def test_a_row_that_is_not_failed_or_abandoned_is_left_alone(
+        self, outbox_repo, args, status
+    ):
+        row = _row("a", minute=0, status=status)
+        outbox_repo.add(row)
+        before = _reload(outbox_repo, row).to_dict()
+
+        result = _invoke(args[0], str(row.id), *args[1:])
+
+        assert result.exit_code == 1
+        assert f"Outbox row {row.id} is {status}" in _flat(result.output)
+        assert _reload(outbox_repo, row).to_dict() == before
+
+    @pytest.mark.parametrize(
+        "args", [("retry",), ("discard", "--reason", "skip")], ids=["retry", "discard"]
+    )
+    def test_an_unknown_id_is_reported(self, outbox_repo, args):
+        result = _invoke(args[0], "no-such-row", *args[1:])
+
+        assert result.exit_code == 1
+        assert "No outbox row with id no-such-row." in _flat(result.output)
+
+
+class TestNewCommandsNeedTheOutbox:
+    @pytest.mark.parametrize(
+        "args",
+        [("halted",), ("retry", "1"), ("discard", "1", "--reason", "skip")],
+        ids=["halted", "retry", "discard"],
+    )
+    def test_each_command_aborts_when_outbox_disabled(self, args):
+        domain = _mock_domain(has_outbox=False)
+        with patch("protean.cli._helpers.derive_domain", return_value=domain):
+            result = _invoke(*args)
+
+        assert result.exit_code == 1
+        assert "Outbox is not enabled" in _flat(result.output)
+        domain._get_outbox_repo.assert_not_called()
+
+    def test_halted_json_reports_a_disabled_outbox_as_an_error_envelope(self):
+        domain = _mock_domain(has_outbox=False)
+        with patch("protean.cli._helpers.derive_domain", return_value=domain):
+            result = _invoke("halted", "--json")
+
+        assert result.exit_code == 2
+        envelope = assert_envelope(result.stdout)
+        assert envelope["status"] == "error"
+        assert "under [server]" in envelope["data"]["error"]
+        domain._get_outbox_repo.assert_not_called()
