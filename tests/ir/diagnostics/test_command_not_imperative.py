@@ -351,6 +351,9 @@ class TestProjectCommandVerbs:
             "OrderCreation"
         }
 
+    def test_project_verb_that_prefixes_a_noun_name_accepts_it(self):
+        assert _flagged_commands(["order"], "OrderCreation") == set()
+
     def test_project_verb_needs_a_camelcase_boundary(self):
         assert _flagged_commands(["void"], "VoidInvoice", "Voidance") == {"Voidance"}
 

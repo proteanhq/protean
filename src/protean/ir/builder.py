@@ -236,10 +236,10 @@ def validate_lint_table(lint_config: Any) -> str | None:
     """Return an error message if ``[lint]`` or one of its options is malformed.
 
     Returns ``None`` when ``[lint]`` is a table, ``rules`` is a list of strings,
-    ``command_verbs`` is a list of alphabetic words, ``aggregate_size_limit``
-    and ``handler_breadth_limit`` are non-negative integers, and
-    ``check_infra_imports`` and ``check_adapter_calls`` are booleans. ``level``
-    and ``suppressions`` are checked elsewhere.
+    ``command_verbs`` is a list of non-empty words made of ASCII letters,
+    ``aggregate_size_limit`` and ``handler_breadth_limit`` are non-negative
+    integers, and ``check_infra_imports`` and ``check_adapter_calls`` are
+    booleans. ``level`` and ``suppressions`` are checked elsewhere.
 
     Call this before reading any ``[lint]`` key. The reads go through
     ``domain.config.get("lint", {}).get(...)``, which raises a bare
@@ -253,11 +253,15 @@ def validate_lint_table(lint_config: Any) -> str | None:
         return f"[lint].rules must be a list of dotted paths, got {rules!r}."
 
     command_verbs = lint_config.get("command_verbs", [])
+    # ASCII only: the name check compares the lowercased verb against the
+    # command name by index, and some non-ASCII letters change length when
+    # lowercased.
     if not isinstance(command_verbs, list) or not all(
-        isinstance(v, str) and v.isalpha() for v in command_verbs
+        isinstance(v, str) and v.isascii() and v.isalpha() for v in command_verbs
     ):
         return (
-            "[lint].command_verbs must be a list of non-empty alphabetic words, "
+            "[lint].command_verbs must be a list of non-empty words of ASCII "
+            "letters, "
             f"got {command_verbs!r}."
         )
 

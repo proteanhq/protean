@@ -7,7 +7,16 @@ from protean.exceptions import ConfigurationError
 from protean.fields.simple import String
 from protean.ir.builder import IRBuilder, validate_lint_table
 
-BAD_COMMAND_VERBS = ["adjust", [1], [""], ["void-it"], [True], [["adjust"]]]
+BAD_COMMAND_VERBS = [
+    "adjust",
+    [1],
+    [""],
+    ["void-it"],
+    [True],
+    [["adjust"]],
+    ["İptal"],
+    ["取消"],
+]
 
 
 class TestLintTableConfigValidation:
@@ -88,7 +97,7 @@ class TestLintOptionTypeValidation:
             *(
                 (
                     {"command_verbs": bad},
-                    r"\[lint\]\.command_verbs must be a list of non-empty alphabetic",
+                    r"\[lint\]\.command_verbs must be a list of non-empty words of ASCII",
                 )
                 for bad in BAD_COMMAND_VERBS
             ),
@@ -148,7 +157,8 @@ class TestCommandVerbsValidation:
     @pytest.mark.parametrize("bad", BAD_COMMAND_VERBS)
     def test_bad_command_verbs_are_rejected(self, bad):
         assert validate_lint_table({"command_verbs": bad}) == (
-            "[lint].command_verbs must be a list of non-empty alphabetic words, "
+            "[lint].command_verbs must be a list of non-empty words of ASCII "
+            "letters, "
             f"got {bad!r}."
         )
 
@@ -169,7 +179,7 @@ class TestDomainCheckRaisesOnBadLintOption:
 
         with pytest.raises(
             ConfigurationError,
-            match=r"\[lint\]\.command_verbs must be a list of non-empty alphabetic",
+            match=r"\[lint\]\.command_verbs must be a list of non-empty words of ASCII",
         ):
             domain.check(traverse=False)
 

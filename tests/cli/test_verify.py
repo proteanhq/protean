@@ -453,7 +453,8 @@ class TestVerifyCommandVerbsConfig:
         errors = json.loads(result.stdout)["data"]["stages"]["check"]["errors"]
         assert [e["code"] for e in errors] == ["INVALID_LINT_CONFIG"]
         assert errors[0]["message"] == (
-            "[lint].command_verbs must be a list of non-empty alphabetic words, "
+            "[lint].command_verbs must be a list of non-empty words of ASCII "
+            "letters, "
             f"got {bad!r}."
         )
 
