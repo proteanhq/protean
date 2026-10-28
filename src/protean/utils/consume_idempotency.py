@@ -61,9 +61,10 @@ class ProcessedMessage(BaseAggregate):
     # same 255 ceiling as the outbox table for the (message_id, handler) index.
     message_id: Annotated[str, Field(max_length=255)]
     handler: Annotated[str, Field(max_length=255)]
-    # Out of scope for the injectable clock (issue 9.1.7): a default_factory has
-    # no ``now`` argument and this is a creation timestamp, not a time-boundary
-    # comparison. Left as real UTC deliberately (same class as ``Outbox.created_at``).
+    # ``mark()`` stamps this from the domain clock, so a marker's age is measured
+    # on the same clock ``cleanup_old_markers`` reads. The default factory only
+    # covers direct construction: it gets no domain argument and may run with no
+    # domain context active, so it falls back to real UTC.
     processed_at: StdlibDatetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -91,7 +92,13 @@ class ProcessedMessageRepository(BaseRepository):
 
     def mark(self, message_id: str, handler: str) -> None:
         """Record that ``handler`` has processed ``message_id`` (in the active UoW)."""
-        self._dao.save(ProcessedMessage(message_id=message_id, handler=handler))
+        self._dao.save(
+            ProcessedMessage(
+                message_id=message_id,
+                handler=handler,
+                processed_at=self._dao.domain.clock.now(),
+            )
+        )
 
     def cleanup_old_markers(self, retention_hours: int, batch_size: int) -> int:
         """Delete markers older than ``retention_hours``, in bounded batches.
