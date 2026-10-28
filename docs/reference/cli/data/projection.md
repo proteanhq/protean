@@ -260,8 +260,10 @@ Each event is dispatched through the projector's `_handle()` method, which:
 - Converts the stored `Message` to a domain event object (applying
   upcasters automatically)
 - Looks up the `@on` handler for the event type
-- Executes the handler within a `UnitOfWork`, and for an idempotent
-  projector writes a new delivery marker in the same `UnitOfWork`
+- Executes the handler within a `UnitOfWork`. For an idempotent projector
+  on a database-backed projection, it writes a new delivery marker in the
+  same `UnitOfWork`. A cache-backed projection has no marker store, so no
+  marker is written for it.
 - Events with no matching `@on` handler are silently skipped (no error)
 
 If an event type cannot be resolved (deprecated event without an upcaster
