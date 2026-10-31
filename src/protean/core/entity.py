@@ -936,12 +936,15 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             return dict(errors) if errors else {}
 
         if errors:
+            # A plain dict, so a missing key raises KeyError on every path,
+            # the same as the dict that construction raises.
+            messages = dict(errors)
             # Only the outer raise site logs. Nested calls pass
             # ``return_errors=True`` and return before this point, so a failure
             # in an associated entity is logged once, for the root.
-            self._emit_invariant_failed(stage, failed_invariants, errors)
+            self._emit_invariant_failed(stage, failed_invariants, messages)
             raise ValidationError(
-                errors,
+                messages,
                 codes=codes,
                 location=type(self).__qualname__,
             )
