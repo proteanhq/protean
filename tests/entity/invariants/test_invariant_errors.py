@@ -180,3 +180,4 @@ class TestInvariantErrorMessagesArePlainDicts:
         assert type(exc.value.messages) is dict
         assert exc.value.messages == {"price": ["Price must be positive"]}
         assert exc.value.codes == [POST]
+        assert exc.value.location == "Inventory"
