@@ -534,86 +534,39 @@ class BaseDAO(metaclass=ABCMeta):
         order_by: str | list[str] | None = None,
         hold_back: HoldBack | None = None,
     ) -> list[BaseEntity]:
-        """Atomically select up to ``limit`` rows matching ``criteria``, apply
-        ``claim_fields`` as an update, and return the claimed rows.
+        """Claim up to ``limit`` rows that match ``criteria`` and return them.
 
-        .. important::
-            Call this **outside** an active Unit of Work. The claim is committed
-            via the DAO's standalone commit so the lock and state change are
-            durable the moment the method returns; inside a UoW the write would
-            not commit until the UoW does, so other workers would not see the
-            claim and the "lock-then-return" guarantee would not hold.
+        Each claimed row gets ``claim_fields`` written to it, and the returned
+        entities show that post-claim state. The claim is committed before the
+        method returns, so call it **outside** an active Unit of Work. Inside
+        one, the write waits for the Unit of Work to commit, and other workers
+        do not see the claim until then.
 
-        This is the **portable default**. It reads candidate rows and then
-        re-asserts ``criteria`` inside a guarded update for each one
-        (``UPDATE … WHERE id = :id AND <criteria>``), at the cost of ``1 + N``
-        round trips. Its concurrency behaviour depends on the backend:
+        Every implementation keeps these promises:
 
-        - **Relational backends** (PostgreSQL, MySQL, SQL Server): the guarded
-          ``UPDATE`` re-evaluates its predicate against committed state once it
-          acquires the row lock, so a row another worker already claimed no
-          longer matches — the update affects zero rows and the row is skipped.
-          No double-claim.
-        - **SQLite**: writers are serialized at the database level, so claims
-          are effectively sequential (a contended write may raise
-          ``SQLITE_BUSY`` rather than skip).
-        - **The in-memory adapter** overrides this to hold its provider lock
-          across the whole read-and-claim, serializing claimers in-process.
-        - **Elasticsearch**: document versioning prevents a double write, so no
-          two callers claim the same row — but a lost race surfaces as a
-          version-conflict error rather than a graceful skip. Elasticsearch is
-          not recommended as a concurrently-consumed claim store.
-
-        Adapters with single-statement claim support (e.g. SQLAlchemy on
-        PostgreSQL via ``UPDATE … FOR UPDATE SKIP LOCKED … RETURNING``) override
-        this with a faster path. See
-        ``docs/adr/0013-optimistic-concurrency-and-claim-contract.md``.
-
-        The contract every implementation must uphold:
-
-        - No two callers ever observe the same row as claimed (no
-          double-claim). A caller that loses a race for a row simply does not
-          get it.
-        - Returned rows reflect post-claim state (the applied ``claim_fields``).
+        - No two callers claim the same row. A caller that loses a race for a
+          row does not get it.
         - With ``hold_back``, a grouped row is claimed only when every earlier
           row of its group that matches ``hold_back.holds`` is claimed by the
           same call. A row locked by another caller holds the rows behind it.
 
-        Non-blocking is *not* part of the contract: the portable default may
-        briefly block on a contended row's lock before its guard rejects the
-        claim. Only the ``FOR UPDATE SKIP LOCKED`` fast path steps over locked
-        rows without waiting.
+        ``claim_fields`` must make a claimed row stop matching ``criteria``.
+        The call may wait briefly on a row another caller has locked. How a
+        lost race shows up depends on the backend; see ADR-0013.
 
-        **Hold-back on the portable default.** Candidates are read a page of
-        ``limit`` rows at a time, and reading goes on until ``limit`` rows are
-        claimed or no candidates remain, so held rows never use up the batch.
-        ``hold_back.lane_of`` gives each candidate's group from its own values.
-        For a grouped candidate, one query counts the earlier holding rows of
-        its group and compares the count with ``k``, how many rows of the
-        group this call has claimed. Those ``k`` rows are all earlier than the
-        candidate and still hold, so a count above ``k`` means a row this call
-        has not claimed, and the candidate is held. The query binds the same
-        number of parameters and returns one number however large the batch
-        is. A row lost to another worker's claim holds the rest of its group
-        the same way. Paging assumes that ``claim_fields`` makes a claimed row
-        stop matching ``criteria``, which no-double-claim already needs. There
-        is no cap on the pages read, because a cap would let a held group fill
-        every batch and keep other groups from being claimed. Pages come from
-        :meth:`_claim_candidates`. Its default reads held rows too, so a large
-        held backlog costs one page read per ``limit`` held rows on every call.
-        An adapter that can leave held rows out of the page in its query avoids
-        that cost.
+        Args:
+            criteria: Selects the rows that can be claimed.
+            claim_fields: Values to write on each claimed row.
+            limit: The most rows to claim. ``0`` or less claims none.
+            order_by: A key, or a list of keys applied in turn, such as
+                ``["-priority", "created_at"]``. A ``-`` prefix sorts that key
+                descending.
+            hold_back: Keeps a grouped row back until the earlier rows of its
+                group are claimed with it. ``None`` claims the top rows with no
+                grouping.
 
-        :param criteria: A ``Q`` object selecting eligible (claimable) rows.
-        :param claim_fields: Attribute values to write on each claimed row.
-        :param limit: Maximum number of rows to claim. ``<= 0`` claims none.
-        :param order_by: Optional ordering key, or list of keys applied in
-            turn (e.g. ``["-priority", "created_at"]``). A ``-`` prefix sorts
-            that key descending.
-        :param hold_back: Optional :class:`HoldBack` that keeps a grouped row
-            back until the earlier rows of its group are claimed with it.
-            ``None`` claims the top rows with no grouping.
-        :return: List of claimed entity instances reflecting ``claim_fields``.
+        Returns:
+            The claimed entities, with ``claim_fields`` applied.
         """
         if limit <= 0:
             return []
@@ -625,6 +578,9 @@ class BaseDAO(metaclass=ABCMeta):
         assert entity_id_field.field_name is not None
         id_name = entity_id_field.field_name
 
+        # The portable default: read candidates, then re-assert ``criteria`` in
+        # a guarded update per row (1 + N round trips). Adapters that can claim
+        # in one statement override ``_claim``.
         def read_candidates(offset: int) -> list[Any]:
             return self._claim_candidates(criteria, limit, offset, order_by, hold_back)
 
@@ -648,6 +604,13 @@ class BaseDAO(metaclass=ABCMeta):
         claimed_in_group: Counter[tuple[Any, ...]] = Counter()
         lanes: tuple[Q, ...] = hold_back.lanes or (Q(),)
         rows_read = 0
+        # Read a page of ``limit`` candidates at a time until ``limit`` rows are
+        # claimed or none remain, so held rows never use up the batch. Claimed
+        # rows stop matching ``criteria``, which shifts the next page's offset
+        # back by the rows claimed. Pages are not capped: a cap would let a held
+        # group fill every batch and starve the other groups. The default
+        # ``_claim_candidates`` reads held rows too, so a large held backlog
+        # costs one page read per ``limit`` held rows on every call.
         while len(claimed) < limit:
             page = read_candidates(rows_read - len(claimed))
             if not page:
@@ -674,6 +637,10 @@ class BaseDAO(metaclass=ABCMeta):
                     & hold_back.holds
                     & _earlier_than(entity, hold_back.order)
                 )
+                # The rows this call claimed in the group are all earlier than
+                # this row and still hold, so a larger count means an earlier
+                # row this call did not claim. One count per row binds the same
+                # parameters however large the batch is.
                 held = self._count(earlier) > claimed_in_group[group]
                 if held or not try_claim(entity):
                     continue

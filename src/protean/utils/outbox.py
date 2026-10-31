@@ -1328,6 +1328,9 @@ def _resolve_outboxed_event_class(
     if not type_string:
         return None
 
+    # Type strings start with the domain name in CamelCase, so domains whose
+    # names give the same CamelCase form (``my-domain``, ``my_domain``) cannot
+    # be told apart here.
     element_cls = domain._events_and_commands.get(type_string)
     # ``register_external_event`` can map a foreign type string onto a class
     # this domain also registers. The unit of work only writes the class's own
@@ -1411,54 +1414,32 @@ def _written_after(message: Any, cutoff: datetime) -> bool:
 def reconcile_outbox(
     domain: Any, provider_name: str = "default", limit: int = 1000
 ) -> int:
-    """Create outbox rows for events that are durable in the event store but have
-    no outbox row, and return how many were created.
+    """Create outbox rows for events that are in the event store but have no
+    outbox row, and return how many rows were created.
 
-    This closes the residual crash window from ADR-0015: an event appended to the
-    event store (the durable anchor) whose relational outbox commit did not land.
-    The divergence is at the *tail* of the store (the last unit of work before a
-    crash). When the newest message in the store is one of the events described
-    below and has its row, the function returns after that one lookup. Otherwise
-    it reads the most recent ``limit`` messages of ``$all`` and finds the newest
-    such event among them. It repairs only when that event is missing its row.
-    ``limit`` counts every message in ``$all``, including ones this function
-    skips.
+    The function scans the most recent ``limit`` messages of ``$all``. It finds
+    the newest event this domain's outbox covers, and repairs only when that
+    event is missing its row. ``limit`` counts every message in ``$all``,
+    including ones the function skips. Returns ``0`` when the domain has no
+    outbox.
 
     Only events raised by this domain's aggregates on ``provider_name`` are
-    repaired, because those are the only messages the unit of work writes rows
-    for in that provider's outbox. Another domain's events in a shared store,
-    commands, process manager transition events, and events of aggregates on
-    other providers are skipped. Ownership is decided by type string, which
-    starts with the domain name in CamelCase. Domains whose names give the same
-    CamelCase form (``my-domain``, ``my_domain`` and ``My Domain`` all give
-    ``MyDomain``) cannot be told apart. A foreign type mapped with
-    ``register_external_event`` is skipped, even when it maps onto a local event.
+    repaired. Another domain's events in a shared store, commands, process
+    manager transition events, events of aggregates on other providers, and
+    foreign types mapped with ``register_external_event`` are skipped.
 
-    A rebuilt row carries the same ``partition_key`` the unit of work would have
-    set (ADR-0028). Its ``priority`` is the default, since the original request's
-    priority is not stored with the event. If that key can no longer be computed
-    (the stored event no longer loads, or its key no longer validates), the row
-    is saved as abandoned and an error is logged. A row without its key would be
-    published to the base category, where no partitioned handler reads it.
+    A rebuilt row carries the ``partition_key`` the unit of work would have set,
+    and the default ``priority``. If the key can no longer be computed, the row
+    is saved as abandoned and an error is logged.
 
-    A ``published`` event also gets one row per broker in
-    ``outbox.external_brokers``, with the same ``partition_key``. These rows are
-    built from the event class's current ``published`` flag and the current
-    ``external_brokers`` setting, since neither is stored with the event. A
-    message counts as missing only when its internal row is missing, because the
-    unit of work saves all of a message's rows in one commit. So a broker added
-    to ``external_brokers`` after the commit is not back-filled for messages
-    that still have their internal row. An external row that already exists is
-    not created again.
+    A ``published`` event also gets a row for each broker in
+    ``outbox.external_brokers`` that it lacks. A message whose internal row
+    exists is left alone, so a broker added to ``external_brokers`` later is not
+    back-filled.
 
-    Cleanup deletes published rows after ``outbox.cleanup.published_retention_hours``
-    and abandoned rows without a partition key after
-    ``outbox.cleanup.abandoned_retention_hours``. A
-    deleted row cannot be told apart from one lost in a crash, so events older
-    than the shorter of the two retentions are skipped. Otherwise a restart
-    after cleanup would send those events again. An event lost in a crash and
-    left unrepaired for longer than that retention is not repaired. An event
-    with no stored time is also skipped, because its age is unknown.
+    Events older than the shorter of ``outbox.cleanup.published_retention_hours``
+    and ``outbox.cleanup.abandoned_retention_hours`` are skipped, and so are
+    events with no stored time.
 
     The return value counts rows created, internal and external.
     """
@@ -1497,7 +1478,9 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     # Fast path: if the newest message is one of this domain's outboxed events
     # and already has its internal row, the last unit of work committed fully
     # and there is nothing at the tail to repair. This keeps the startup sweep
-    # cheap in the common (no-crash) case.
+    # cheap in the common (no-crash) case. The gap this repairs is the crash
+    # window between the event store append and the outbox commit (ADR-0015),
+    # so it is always at the tail.
     if _is_outboxed_event(domain, last, provider_name) and _internal_row_exists(
         last.metadata.headers.id
     ):
@@ -1534,6 +1517,8 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
         for m in qualifying
         if internal_broker not in existing_brokers[m.metadata.headers.id]
     ]
+    # Only a missing internal row marks a lost commit: the unit of work saves
+    # all of a message's rows in one commit.
     if not missing:  # pragma: no cover - race guard: a concurrent sweep can
         # insert the rows between the check above and this query.
         return 0
@@ -1554,6 +1539,8 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                     message, partition_keys, backfill_suffix
                 )
             except (DeserializationError, ValidationError) as exc:
+                # A row without its key would be published to the base
+                # category, where no partitioned handler reads it.
                 partition_key = None
                 abandon_reason = f"partition_key could not be computed: {exc}"
                 logger.error(
@@ -1565,6 +1552,8 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
 
             # The unit of work writes one row per external broker for a
             # ``published`` event, all in the same commit as the internal row.
+            # Neither the ``published`` flag nor ``external_brokers`` is stored
+            # with the event, so both come from the current settings.
             target_brokers = [internal_broker]
             event_cls = _resolve_outboxed_event_class(domain, message, provider_name)
             if (
@@ -1579,6 +1568,8 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 )
 
             for target_broker in target_brokers:
+                # ``priority`` is left at its default: the original request's
+                # priority is not stored with the event.
                 outbox_message = Outbox.create_message(
                     message_id=message_id,
                     stream_name=message.metadata.headers.stream,

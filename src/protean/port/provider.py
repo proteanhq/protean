@@ -89,111 +89,21 @@ class SessionProtocol(Protocol):
 
 
 class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
-    """Provider implementation for each database.
+    """Base class for database providers.
 
-    Acts as a gateway to configure the database, retrieve connections, and
-    perform commits.
+    A provider holds one database's connection settings. It hands out sessions
+    and DAOs, builds the database model for each entity, and creates and drops
+    the tables or indices the domain's elements need.
 
-    Building a Database Adapter
-    ===========================
+    A subclass sets ``__database__``, implements every abstract method and the
+    ``capabilities`` property, and registers every lookup in
+    ``REQUIRED_LOOKUPS``. ``get_session()`` and ``get_connection()`` return
+    objects that satisfy ``SessionProtocol``. A backend without transactions
+    returns a session whose methods do nothing and whose ``is_active`` is
+    ``True``.
 
-    To create a new database adapter, implement these components:
-
-    1. **Provider** (extends ``BaseProvider``)
-       - 12 abstract methods (see below) + ``capabilities`` property
-       - Manages connections, sessions, and database lifecycle
-       - Reference: ``protean.adapters.repository.memory.MemoryProvider``
-
-    2. **DAO** (extends ``BaseDAO`` from ``protean.port.dao``)
-       - 8 abstract methods: ``_filter``, ``_create``, ``_update``,
-         ``_update_all``, ``_delete``, ``_delete_all``, ``_raw``, ``has_table``
-       - Handles data access operations using sessions from the Provider
-       - ``BaseDAO`` provides lifecycle wrappers (``get``, ``save``, ``create``,
-         ``update``, ``delete``); you implement the underscored internals
-
-    3. **DatabaseModel** (extends ``BaseDatabaseModel`` from
-       ``protean.core.database_model``)
-       - 2 abstract methods: ``from_entity``, ``to_entity``
-       - Use ``_entity_to_dict()`` helper for shared field extraction
-       - ``construct_database_model_class`` auto-generates models;
-         ``decorate_database_model_class`` wraps user-defined ``@domain.model``
-
-    4. **Lookups** (extends ``BaseLookup`` from ``protean.port.dao``)
-       - Required lookups: exact, iexact, contains, icontains, startswith,
-         endswith, gt, gte, lt, lte, in, isnull (see ``REQUIRED_LOOKUPS``)
-       - Register with ``@YourProvider.register_lookup``
-       - Each lookup implements ``as_expression()`` returning adapter-native
-         comparison
-
-    5. **Registration function**
-       - A ``register()`` function that calls
-         ``registry.register(name, class_path)``
-       - Wrap imports in try/except for optional dependencies
-       - Add entry point in ``pyproject.toml`` under
-         ``[project.entry-points."protean.providers"]``
-
-    Session Protocol
-    ================
-
-    ``get_session()`` and ``get_connection()`` must return objects that
-    satisfy `SessionProtocol` (``commit``, ``rollback``, ``close``,
-    and an ``is_active`` flag).
-
-    The ``BaseDAO``'s ``_commit_if_standalone()`` calls these methods when
-    operating outside a Unit of Work. Adapters without real transactions
-    (e.g., Elasticsearch) should provide a session object with no-op
-    implementations and ``is_active = True``.
-
-    Call Flow
-    =========
-
-    Initialization::
-
-        Domain.init()
-          → ProviderRegistry.get(name)        # loads your Provider class
-          → Provider.__init__(name, domain, conn_info)
-          → Provider._create_database_artifacts()   # if setup_database() called
-
-    Persist (within UnitOfWork)::
-
-        Repository.add(aggregate)
-          → DAO.save(aggregate)
-            → DAO._validate_and_update_version(aggregate)
-            → DatabaseModel.from_entity(aggregate)    # your conversion
-            → DAO._create(model_obj) or DAO._update(model_obj)
-            # UoW holds session, no commit yet
-
-        UnitOfWork.__exit__()
-          → session.commit()                          # your session
-          # On error: session.rollback()
-
-    Persist (standalone, no UoW)::
-
-        Repository.add(aggregate)
-          → DAO.save(aggregate)
-            → DatabaseModel.from_entity(aggregate)
-            → DAO._create(model_obj) or DAO._update(model_obj)
-            → DAO._commit_if_standalone(conn)
-              → conn.commit() / conn.rollback() / conn.close()
-
-    Retrieve::
-
-        Repository.get(identifier)
-          → DAO.get(identifier)
-            → DAO.query.filter(id=identifier).all()
-              → DAO._filter(criteria, offset, limit, order_by)
-                # Must return ResultSet(items, total)
-              → DatabaseModel.to_entity(item)         # your conversion
-              → DAO._track_in_uow(entity)             # reuse or register
-                → DAO._sync_event_position(entity)    # when not yet tracked
-
-    Lifecycle::
-
-        Provider._create_database_artifacts()   # create tables/indices
-        Provider._drop_database_artifacts()     # drop tables/indices
-        Provider._data_reset()                  # truncate all data (tests)
-        Provider.is_alive()                     # health check
-        Provider.close()                        # release connections
+    The Custom Database Adapters guide walks through building an adapter: the
+    DAO, the database model, lookups, registration, and the call flow.
     """
 
     # Short database identifier every concrete provider must set (e.g.
