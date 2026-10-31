@@ -65,7 +65,6 @@ class BaseSubscription(ABC):
 
         Args:
             engine: The Protean engine instance.
-            handler: The handler instance.
             messages_per_tick (int, optional): The number of messages to process per tick. Defaults to 10.
             tick_interval (float, optional): The interval between ticks (seconds). Defaults to 1.
         """
