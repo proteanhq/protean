@@ -18,5 +18,10 @@ dynamically loaded domain module.
   the code does not enforce.
 - Flag a hardcoded count ("seven options..."). It goes stale. State the rule and
   where the data comes from.
-- Flag added source line-number references, issue or PR number tokens, and "this
-  fixes the bug" phrasing.
+- Flag a docstring that walks through how the code works. A docstring states the
+  contract a caller relies on: what the code does, returns, raises or changes.
+- Flag added source line-number references, version history, commented-out code,
+  and "this fixes the bug" phrasing.
+- Flag an issue or PR number token, except in `TODO(#NNN): reason` or in a
+  regression test's docstring that states the behaviour in words first. An issue
+  in another repo uses the full name (`owner/repo#NNN`).
