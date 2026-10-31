@@ -77,7 +77,6 @@ def _parse_worker_key(consumer_name: str) -> tuple[str, str]:
     if len(parts) >= 3:
         prefix = parts[0]  # ClassName-hostname (possibly with hyphens)
         pid = parts[1]
-        # random_hex = parts[2]
 
         # pid must be numeric; if not, fall back
         if pid.isdigit():

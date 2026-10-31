@@ -70,8 +70,8 @@ A call's receiver is classified into a Protean role only when it is statically
 recognizable — ``self``, a name or attribute chain rooted at ``self`` or at a
 module-level name the resolver knows, or a construction. A receiver rooted at a
 plain local variable (``repo = ...; repo.filter(...)``) needs dataflow to know
-what it holds, which is a later layer (#1223); until then it is left
-:attr:`ReceiverRole.UNKNOWN` rather than guessed. Recognition is by the known
+what it holds, which the separate layer in :mod:`protean.ir.analysis.dataflow`
+answers, so here it is left :attr:`ReceiverRole.UNKNOWN` rather than guessed. Recognition is by the known
 method-name surface plus a recognizable receiver, never by proving a receiver
 "is a repository" by type — that is what keeps every verdict reproducible. The
 cost is precision, not soundness: a self-rooted call to a method that happens to

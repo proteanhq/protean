@@ -823,7 +823,7 @@ class TestBuilderWiring:
         (once, on demand) and shared with the view, not rebuilt per rule.
 
         (Before any rule consumed the substrate this asserted ``_index is None``
-        after a build; #955 is that first consumer, so the polarity flips.)
+        after a build. A rule now consumes it, so the polarity flips.)
         """
         builder = IRBuilder(domain)
         builder.build()

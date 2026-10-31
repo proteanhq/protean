@@ -113,7 +113,7 @@ class FieldSpec:
         min_length: int | None = None,
         max_value: float | decimal.Decimal | None = None,
         min_value: float | decimal.Decimal | None = None,
-        # Decimal-specific (NUMERIC(precision, scale))
+        # Decimal-specific, mapped to NUMERIC with this precision and scale
         precision: int | None = None,
         scale: int | None = None,
         # Container-specific

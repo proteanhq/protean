@@ -99,8 +99,8 @@ return 0
 """
 
 # Fenced read: verify the lease, then XREADGROUP in the same atomic step.
-# KEYS[1]=lease_key, KEYS[2]=stream; ARGV[1]=fence, ARGV[2]=group,
-# ARGV[3]=consumer, ARGV[4]=count, ARGV[5]=id ('>' new or '0' pending).
+# KEYS are the lease key and the stream. ARGV are the fence, the group, the
+# consumer, the count, and the id to read from ('>' for new, '0' for pending).
 # Returns the raw XREADGROUP reply, or a FENCED error when the lease is lost.
 _LUA_READ_FENCED = """
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return redis.error_reply('FENCED') end

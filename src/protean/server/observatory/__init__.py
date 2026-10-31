@@ -71,8 +71,8 @@ class _GracefulShutdownMiddleware:
         except asyncio.CancelledError:
             # Expected during shutdown for SSE connections.
             # If the response was already streaming (headers sent), send
-            # the final empty body so uvicorn doesn't log
-            # "ASGI callable returned without completing response."
+            # the final empty body so uvicorn doesn't log that the ASGI
+            # callable returned without completing the response.
             if response_started:
                 try:
                     await send(

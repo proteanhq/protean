@@ -538,7 +538,7 @@ class OutboxProcessor(BaseSubscription):
                 # Publish to the broker BEFORE opening a UnitOfWork. Publishing is
                 # network I/O; holding a transaction open across the await would let
                 # another coroutine on the event-loop thread share and corrupt this
-                # thread-scoped session (#1268), and ADR-0027 says to do no external
+                # thread-scoped session, and ADR-0027 says to do no external
                 # I/O inside a UoW. The message was already claimed atomically when
                 # the batch was fetched (see ``OutboxRepository.claim_batch``), and
                 # publishing needs only the row's data/metadata, already loaded.
@@ -697,8 +697,7 @@ class OutboxProcessor(BaseSubscription):
             # Partition-per-key routing (ADR-0028). Internal processors only:
             # registration (``validate_sequential_by_capabilities``) gates
             # ``sequential_by`` on the internal outbox broker's capability, so
-            # routing must key off that same broker. #830 does not decide
-            # per-handler external-broker routing (that is #831), and gating on
+            # routing must key off that same broker. Gating on
             # ``not self.is_external`` here keeps routing symmetric with what was
             # validated instead of partitioning external streams no one opted
             # into. Gated on the broker advertising STREAM_PARTITIONING: under a

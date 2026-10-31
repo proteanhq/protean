@@ -3155,21 +3155,18 @@ class IRBuilder:
         """UPCASTER_GAP: an event at version N>1 whose stored predecessors have
         no upcaster path to N (build-time signal for a read-time failure).
 
-        Reads the registry rather than ``ir`` because upcaster metadata and an
-        event's ``abstract`` flag are not projected into the IR. A malformed
-        chain (duplicate/cyclic/non-convergent) is already an error that preempts
-        IR building, so this only reaches the two silent cases — no upcasters at
-        all, or partial coverage of ``1..N-1``.
-
-        TODO(3.4.6): consume projected upcaster IR once the event catalog adds it.
+        Reads the registry because an event's ``abstract`` flag is not
+        projected into the IR. A malformed chain (duplicate/cyclic/non-convergent)
+        is already an error that preempts IR building, so this only reaches the
+        two silent cases: no upcasters at all, or partial coverage of ``1..N-1``.
         """
         registry = self._domain._domain_registry
 
         # (from_version, to_version) edges per event, keyed by bare name so a
         # string event_type resolves the same way build_chains does. Two events
-        # sharing a class name across aggregates would pool edges — a
-        # pre-existing limitation of the name-based type string; TODO(3.4.6):
-        # key by the qualified type string once upcasters are projected to IR.
+        # sharing a class name across aggregates would pool edges, a
+        # limitation of the name-based type string.
+        # TODO(#1985): key by the event's qualified name.
         edges_by_event: dict[str, list[tuple[int, int]]] = {}
         for upcaster_cls in self._domain._upcasters:
             name = upcaster_event_name(upcaster_cls.meta_.event_type)
@@ -3559,7 +3556,7 @@ class IRBuilder:
         outside B's cluster. Commands registered in *no* cluster are out of
         scope (they cannot be attributed to an owner), and same-cluster commands
         are the expected case. Only commands are considered — event handlers may
-        legitimately react across clusters (the #824 boundary).
+        legitimately react across clusters.
         """
         cmd_type_to_cluster = {
             command["__type__"]: agg_fqn

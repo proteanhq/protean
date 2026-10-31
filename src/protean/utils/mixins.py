@@ -781,9 +781,8 @@ class HandlerMixin:
 
         if failures:
             if len(failures) == 1:
-                # One failure is the shape that already existed, so it keeps its
-                # existing type. Only two-or-more was previously unreachable,
-                # because the first failure ended dispatch.
+                # A single failure keeps its own type, so an `except` clause
+                # written for that error still catches it.
                 raise failures[0]
             raise ExceptionGroup(
                 f"{cls.__name__}: {len(failures)} handler methods failed "

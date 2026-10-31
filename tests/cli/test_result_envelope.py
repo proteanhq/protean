@@ -242,7 +242,7 @@ class TestVerifyEnvelopeConformance:
 
 
 # ---------------------------------------------------------------------------
-# Clean stdout (the #1010 generalization)
+# Clean stdout when the domain logs at import time
 # ---------------------------------------------------------------------------
 
 
@@ -275,8 +275,7 @@ class TestMachineOutputCleanStdout:
         assert env["status"] == "fail"
 
     def test_check_json_stdout_clean_when_domain_logs(self, tmp_path, schema):
-        """The #1010 generalization, exercised directly: a domain that emits a
-        log line while ``protean check`` loads it must not corrupt the JSON
+        """A domain that emits a log line while ``protean check`` loads it must not corrupt the JSON
         envelope. The log lands on stderr (protean routes its console handler
         there); stdout stays exactly one envelope object."""
         marker = "LEAKY_LOG_LINE_1329"
@@ -284,8 +283,7 @@ class TestMachineOutputCleanStdout:
         dom.write_text(
             "import structlog\n"
             "from protean import Domain\n"
-            # Fires when `protean check` imports the domain module — the exact
-            # kind of stray log #1010 was about.
+            # Fires when `protean check` imports the domain module.
             f'structlog.get_logger("test.leak").warning("{marker}")\n'
             'domain = Domain(name="LoggingDomain")\n'
         )

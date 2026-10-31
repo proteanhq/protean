@@ -180,7 +180,7 @@ class TestDataflowSurface:
         assert isinstance(flow, MethodFlow)
         assert len(flow.statements()) > 0
         # ``by_reference(self, reference)`` — its parameters are dataflow bindings
-        # the view now exposes, proving #1223 is surfaced, not re-implemented.
+        # the view exposes, proving the dataflow layer is surfaced, not re-implemented.
         assert "reference" in {param.name for param in flow.parameters}
 
 

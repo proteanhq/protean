@@ -528,7 +528,7 @@ def _findings(ir: dict, code: str) -> list[dict]:
 
 
 def _assert_naming_diagnostic_shape(diag: dict) -> None:
-    """Assert a naming-convention diagnostic carries the full #774 key set."""
+    """Assert a naming-convention diagnostic carries the full diagnostic key set."""
     assert diag["category"] == "naming_conventions"
     assert diag["level"] == "info"
     assert diag["element"], "element FQN must be non-empty"

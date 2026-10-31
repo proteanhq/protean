@@ -24,16 +24,10 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
         self._providers: dict[str, BaseProvider] | None = None
 
         # Recognized Repositories are memoized within providers
-        # for subsequent calls.
-        #
-        # Structure:
-        # {
-        #    'app.User': {
-        #        'ALL': UserRepository,
-        #        'sqlite': UserSQLiteRepository,
-        #        'postgresql': UserPostgresRepository,
-        #    }
-        # }
+        # for subsequent calls. The outer key is the aggregate's fully
+        # qualified name, such as 'app.User'. The inner key is a database
+        # type, such as 'postgresql', or 'ALL' for a repository that serves
+        # every database.
         self._repositories: dict[str, dict[str, type[BaseRepository]]] = defaultdict(
             dict
         )
@@ -72,23 +66,10 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
     def _register_repository(
         self, part_of: type["OptionsMixin"], repository_cls: type[BaseRepository]
     ) -> None:
-        # When explicitly provided, the value of `database` will be the actual database in use
-        # and will lock the repository to that type of database.
-        # For example, with the following PostgreSQL configuration:
-        #   databases = {
-        #       "default": {
-        #           "provider": "postgresql",
-        #           "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
-        #       },
-        #   }
-        #
-        # And repository as:
-        #   @domain.repository(part_of=Post, database="postgresql")
-        #   class CustomPostRepository:
-        #       def custom_method(self):
-        #           ...
-        #
-        # The value of `database` would be `postgresql`.
+        # When explicitly provided, `database` names the database type in use
+        # and locks the repository to it: a repository registered with
+        # `@domain.repository(part_of=Post, database="postgresql")` is used only
+        # when the provider is PostgreSQL.
         #
         # In the absence of an explicit database value, the repository is associated with "ALL"
         # and is used for all databases.

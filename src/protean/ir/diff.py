@@ -1324,7 +1324,7 @@ def _apply_upcaster_mitigation(
     shape, so the
     schema-transformation changes that make up that version bump (field removals,
     type changes, required-field additions, the ``__type__`` version-string bump)
-    are no longer breaking. Only those change types are downgraded — an orthogonal
+    are not breaking. Only those change types are downgraded — an orthogonal
     change such as a public→internal visibility flip is left breaking. Each
     downgraded change is moved to ``safe_changes`` with ``mitigated_by`` set to
     the covering upcaster.
@@ -1349,8 +1349,8 @@ def _apply_upcaster_mitigation(
             continue
         # Keyed by event base name (matching the `Domain.Name` type string and
         # `_diagnose_upcaster_gap`). Two events sharing a class name across
-        # aggregates would pool edges — a pre-existing name-based limitation;
-        # TODO(3.4.6): key by the qualified type string once available in the IR.
+        # aggregates would pool edges, a limitation of the name-based key.
+        # TODO(#1985): key by the event's qualified name.
         edges = [
             (e["from_version"], e["to_version"])
             for e in upcasters.get(right_entry.get("name", ""), [])
@@ -1361,7 +1361,7 @@ def _apply_upcaster_mitigation(
         # bumped v2->v3 whose v1->v2 edge was deleted strands every stored v1
         # payload, and a change riding on that bump is not earned-safe. This is
         # the same rule the build-time ``UPCASTER_GAP`` diagnostic applies, so
-        # the two can no longer disagree about the same domain.
+        # the two agree about the same domain.
         if missing_upcaster_source_versions(edges, right_v):
             continue
         # The chain is keyed by the type string's base, not by the event class.
@@ -1923,10 +1923,8 @@ def _classify_field_changes(
         if field_name in renames:
             continue
         # Deprecation-aware removal: a field deprecated and past its removal
-        # version is a safe (expected) removal. This now applies to every
-        # persisted element — including internal and event-sourced events,
-        # which previously only got raw (always-breaking) classification (the
-        # deprecation grace was limited to published contracts).
+        # version is a safe (expected) removal. This applies to every
+        # persisted element, including internal and event-sourced events.
         deprecated = removed[field_name].get("deprecated")
         classification = _classify_removal(deprecated, current_version)
         forward_safe = _removal_forward_safe(removed[field_name])

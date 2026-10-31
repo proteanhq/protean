@@ -118,8 +118,8 @@ class TestCommandHandlerCrossCluster:
         assert _findings(ir, "COMMAND_HANDLER_CROSS_CLUSTER") == []
 
     def test_cross_cluster_event_handler_not_flagged(self):
-        """An event handler reacting across clusters is legitimate (the #824
-        boundary); the command-only rule must ignore event handlers."""
+        """An event handler reacting across clusters is legitimate; the
+        command-only rule must ignore event handlers."""
         domain = Domain(name="EventCross", root_path=".")
 
         @domain.aggregate

@@ -557,8 +557,7 @@ class TestReceiverConservatism:
         assert compute.receiver_role is ReceiverRole.UNKNOWN
 
     def test_a_self_rooted_generic_method_is_a_known_false_positive(self, tmp_path):
-        """A documented precision limit, pinned so a later dataflow layer (#1223)
-        notices when it changes: ``self.cache.get(...)`` shares a name with the
+        """A documented precision limit, pinned so a change to it is noticed: ``self.cache.get(...)`` shares a name with the
         query surface on a recognized ``self`` receiver, so it reads as
         ``REPOSITORY_QUERY`` until types tell the two apart. Not a
         reproducibility bug — the verdict is stable — but a false positive a
