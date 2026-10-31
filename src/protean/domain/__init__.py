@@ -381,15 +381,11 @@ class Domain:
         self.brokers: Brokers = Brokers(self)
         self.caches: Caches = Caches(self)
 
-        # Cache for holding Model to Entity/Aggregate associations
-        # Structure mirrors Providers._repositories:
-        # {
-        #    'app.User': {
-        #        'postgresql': UserPostgresModel,
-        #        'sqlite': UserSQLiteModel,
-        #        None: UserGenericModel,       # database=None → fallback for any provider
-        #    }
-        # }
+        # Cache for holding Model to Entity/Aggregate associations.
+        # Structure mirrors Providers._repositories: keyed by the element's
+        # fully qualified name, then by database type. A model registered
+        # with database=None sits under the None key and is the fallback for
+        # any provider.
         self._database_models: dict[str, dict[str | None, type[BaseDatabaseModel]]] = (
             defaultdict(dict)
         )
@@ -1184,8 +1180,8 @@ class Domain:
                         field_obj.content_type.value_object_cls
                     ].append(("ValueObject", (field_obj.content_type, new_cls)))
 
-            # Also scan FieldSpec metadata for ValueObject descriptors
-            # (e.g. List(content_type=ValueObject("InnerVO")))
+            # Also scan FieldSpec metadata for ValueObject descriptors, such
+            # as a List whose content_type is a ValueObject
             field_meta = getattr(new_cls, "__protean_field_meta__", {})
             for spec in field_meta.values():
                 ct = getattr(spec, "content_type", None)
@@ -2390,7 +2386,7 @@ class Domain:
             # A cache-backed projection has no provider, so the lookup below
             # fails with `No provider configured with name 'None'`, which names
             # the wrong problem: the projection is not misconfigured, the caller
-            # is at the wrong door. Say which door (#1286).
+            # is at the wrong door. Say which door.
             if (
                 getattr(element_cls, "element_type", None) == DomainObjects.PROJECTION
                 and getattr(element_cls.meta_, "cache", None) is not None

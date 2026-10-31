@@ -103,7 +103,7 @@ def route_logs_to_stderr(log_already_configured: bool = False) -> None:
     :func:`protean.utils.logging.configure_logging` runs, ``structlog`` is at its
     unconfigured default, which prints to **stdout** — so any log line a domain
     module emits *at import time* (which ``derive_domain`` triggers) would land on
-    stdout and corrupt the envelope (the #1010 leak, generalized). Configuring
+    stdout and corrupt the envelope. Configuring
     logging up front installs the stderr console handler and switches structlog
     onto the stdlib bridge, so every subsequent log (import-time or during
     ``check``/``init``) goes to stderr and stdout stays the sole envelope.

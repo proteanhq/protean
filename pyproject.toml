@@ -290,6 +290,8 @@ extend-select = [
     "PIE",     # flake8-pie — misc small lints
     "PERF",    # perflint — performance anti-patterns
     "RUF",     # Ruff-specific rules
+    "TD003",   # a TODO links its issue: `# TODO(#123): reason`
+    "ERA001",  # no commented-out code
 ]
 ignore = [
     "SIM117", # combining nested `with` statements often hurts readability (3+ contexts)
@@ -316,7 +318,8 @@ ignore = [
 # Tests also catch Exception in worker threads and fake handlers to record a
 # failure for an assertion (BLE001), raise bare Exception to simulate an arbitrary
 # failure (TRY002), build fixed naive datetimes as data (DTZ), exec snippets they
-# verify (S102), and swallow errors in cleanup (S110).
+# verify (S102), and swallow errors in cleanup (S110). Their comments carry
+# worked arithmetic and expected values that read as code (ERA001).
 "tests/**/*.py" = [
     "PLC0415",
     "B018",
@@ -331,9 +334,14 @@ ignore = [
     "DTZ011",
     "S102",
     "S110",
+    "ERA001",
 ]
 # The examples use naive dates and a catch-all except to stay short on the page.
-"docs_src/**/*.py" = ["BLE001", "DTZ002", "DTZ011", "S110"]
+"docs_src/**/*.py" = ["BLE001", "DTZ002", "DTZ011", "S110", "ERA001"]
+# The examples and skill assets are teaching material, so code-shaped
+# comments are expected there.
+"examples/**/*.py" = ["ERA001"]
+"plugins/**/*.py" = ["ERA001"]
 # Modules that parse a TOML, JSON or YAML document raise ValueError for a wrong
 # type in it, and the CLI catches ValueError to print a clean error. TRY004 would
 # turn a bad config file into a traceback.

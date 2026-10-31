@@ -4,7 +4,7 @@
 Two subcommands, both driven by ``specs/check.sh``:
 
 - ``record`` runs the real Memory-adapter compare-and-set under contention (the
-  same shape as the ``#1251`` concurrent-writer suite: N writers load one
+  same shape as ``tests/verification/test_concurrent_writer.py``: N writers load one
   aggregate at the same version, then all commit) with the tracer in
   ``protean.utils.occ_trace`` active, and writes the observed log as JSON lines.
   One writer wins and advances the version; the rest raise

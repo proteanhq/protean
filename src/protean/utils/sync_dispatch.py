@@ -98,7 +98,7 @@ def drain_sync_dispatch() -> None:
     handler raises, so the exception surfaces to the top-level caller ("sync
     raises") and any later work starts from a clean slate.
 
-    A failing handler class no longer aborts the drain. Each ``(event,
+    A failing handler class does not abort the drain. Each ``(event,
     handler_cls)`` pair is an independent reaction, so every one runs and
     failures are collected: a single failure surfaces unchanged, and several are
     raised together as an ``ExceptionGroup``. An ``ExpectedVersionError`` is

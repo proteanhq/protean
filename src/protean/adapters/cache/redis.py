@@ -189,8 +189,7 @@ class RedisCache(BaseCache):
     def get_ttl(self, key: str) -> float | None:
         # `PTTL` answers milliseconds. Every other TTL on this port is seconds
         # (the `TTL` config key, `add(ttl=)`, `set_ttl`), and the memory cache
-        # returns seconds here too, so returning milliseconds made the same
-        # method mean different things depending on the adapter (#1307).
+        # returns seconds here too, so convert to keep one unit across adapters.
         remaining_ms = self._client.pttl(key)
 
         # Two of Redis' answers are not durations: `-2` means there is no such

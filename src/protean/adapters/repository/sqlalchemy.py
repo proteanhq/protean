@@ -605,7 +605,7 @@ _MYSQL_DATETIME_FSP = 6
 def check_index_ddl_dialect(dialect_name: str) -> None:
     """Reject a dialect name index DDL cannot be compiled for.
 
-    An unknown name used to fall through to the SQLite dialect, which compiles
+    An unknown name would otherwise fall through to the SQLite dialect, which compiles
     without complaint and hands back plausible DDL for the wrong database. The
     check is separate from the rendering so ``protean schema render`` can run it
     on every requested dialect up front, before it knows whether any element
@@ -3202,9 +3202,6 @@ class MssqlProvider(SAProvider):
 
         Return: Updated connection object
         """
-        # Set SQL Server specific options if needed
-        # For example, you might want to set specific isolation levels
-        # conn.execute(text("SET TRANSACTION ISOLATION LEVEL READ COMMITTED;"))
         return conn
 
 

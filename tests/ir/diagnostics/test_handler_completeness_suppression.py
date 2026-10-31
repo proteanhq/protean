@@ -10,7 +10,7 @@ from tests.ir.diagnostics._helpers import (
 
 
 class TestHandlerCompletenessSuppression:
-    """A representative new rule flows through the #774 suppression path."""
+    """A representative new rule flows through the ``suppress_checks`` path."""
 
     def test_suppress_process_manager_unclosed(self):
         # Positive control: the identical PM without ``suppress_checks`` *is*

@@ -202,8 +202,7 @@ def _replay_projector(
     # Collect all messages from all categories.
     #
     # A full rebuild replays every event in a category, so we page through the
-    # whole category with `read_all`. The win over the old single sentinel-capped
-    # read is completeness: a category larger than the read cap is no longer
+    # whole category with `read_all`. A category larger than the read cap is not
     # silently truncated. `batch_size` sets the page size, so each round-trip to
     # the store is bounded; peak memory is still O(all events), since the merge
     # below collects every message into one list to sort by `global_position`.

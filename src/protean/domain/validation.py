@@ -374,8 +374,8 @@ class DomainValidator:
             return
         lanes_config = server_config["priority_lanes"]
 
-        # `priority_lanes = true` is the natural guess, and it used to fail with
-        # a bare `AttributeError: 'bool' object has no attribute 'get'` from the
+        # `priority_lanes = true` is the natural guess, and without this check
+        # it fails with a bare `AttributeError: 'bool' object has no attribute 'get'` from the
         # next line, which says nothing about what to write instead.
         #
         # Absence is checked before emptiness on purpose. Testing the value for

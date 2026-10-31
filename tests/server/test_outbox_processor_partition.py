@@ -168,8 +168,7 @@ class TestPartitionRouting:
         # Registration validates sequential_by against the internal outbox
         # broker only, so partition routing is internal-only. An external
         # processor, even on a partitioning broker, must publish to the base
-        # category and not partition a stream no one opted into (#831 owns
-        # per-handler external-broker routing).
+        # category and not partition a stream no one opted into.
         domain = _make_domain("RouteExternal")
         processor = OutboxProcessor(
             FakeEngine(domain), "default", "default", is_external=True

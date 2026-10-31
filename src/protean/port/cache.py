@@ -111,10 +111,9 @@ class BaseCache(metaclass=ABCMeta):
         """The TTL to use for one write: the caller's, else the cache default.
 
         "Not supplied" is `None` or the empty string, and nothing else.
-        `add(projection, ttl=0)` used to fall through to the default, so a
-        caller asking for immediate expiry silently got 300 seconds. Zero is now
-        rejected by the same rule that rejects it in config, which is at least a
-        visible answer.
+        Zero is not "not supplied": `add(projection, ttl=0)` is rejected by the
+        same rule that rejects it in config, so a caller asking for immediate
+        expiry gets an error instead of the default TTL.
 
         The empty string is here rather than left to `_resolve_ttl` because the
         two have different ideas of what "unset" falls back to. `_resolve_ttl`
@@ -288,10 +287,7 @@ class BaseCache(metaclass=ABCMeta):
     def get_ttl(self, key: str) -> float | None:
         """Seconds remaining before `key` expires.
 
-        Seconds, like every other TTL on this port. Stating it is the point:
-        without a unit in the contract, the Redis adapter returned `PTTL`
-        directly and answered milliseconds while the memory adapter answered
-        seconds, and each adapter's own tests agreed with it (#1307).
+        Seconds, like every other TTL on this port, in every adapter.
 
         Every adapter answers the same three cases:
 

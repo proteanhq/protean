@@ -325,8 +325,8 @@ class BaseEventStore(metaclass=ABCMeta):
         event streams. Walks backward from the tail in
         ``_SNAPSHOT_TAIL_WINDOW``-sized windows keyed on ``global_position``, so
         skipping a trailing snapshot costs a small read near the tail, not a
-        full scan from the start, and a store larger than one window no longer
-        returns a stale non-tail row. Within a window the newest is chosen by
+        full scan from the start, and a store larger than one window does not
+        return a stale non-tail row. Within a window the newest is chosen by
         ``global_position`` rather than trusting row order, since some adapters
         read ``$all`` with no ``ORDER BY``.
         """
