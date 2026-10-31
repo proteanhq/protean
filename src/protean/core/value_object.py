@@ -4,7 +4,7 @@ import contextlib
 import inspect
 import logging
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -48,6 +48,115 @@ from protean.utils.reflection import fields as get_fields
 
 logger = logging.getLogger(__name__)
 
+# Core-schema leaf types whose validated value is always the matching built-in
+# (Pydantic casts subclasses such as ``IntEnum`` members to plain ``int``), and
+# whose ``hash`` agrees with ``==`` for every value, including across types
+# (``hash(1) == hash(Decimal("1.0"))``).
+_VALUE_HASHED_SCHEMA_TYPES: frozenset[str] = frozenset(
+    {
+        "none",
+        "bool",
+        "int",
+        "float",
+        "decimal",
+        "str",
+        "bytes",
+        "date",
+        "datetime",
+        "time",
+        "timedelta",
+        "uuid",
+    }
+)
+
+_VALUE_HASHED_LITERAL_TYPES: frozenset[type] = frozenset(
+    {type(None), str, bytes, bool, int, float}
+)
+
+# Modules whose after-validators return a value of the type they were given
+# (sanitizing, timezone normalization, running the field's own validators). A
+# user's ``AfterValidator`` may build any type, so it bounds nothing.
+_TYPE_PRESERVING_VALIDATOR_MODULES: frozenset[str] = frozenset(
+    {"protean.fields.spec", "protean.utils"}
+)
+
+
+def _schema_hashes_by_value(
+    schema: Mapping[str, Any],
+    definitions: Mapping[str, Mapping[str, Any]],
+    resolving: frozenset[str] = frozenset(),
+) -> bool:
+    """Whether every value Pydantic's core *schema* can produce has a hash that
+    agrees with ``==``.
+
+    The schema decides, not the value: equal values a field accepts may differ
+    in hashability, so hashing whatever arrives would give equal value objects
+    different hashes. Any schema type not named here (containers, ``any``,
+    enums, plain and wrap validators, custom types, and the ``lax-or-strict``
+    and ``json-or-python`` pairs Pydantic builds around instance checks) does
+    not bound its output and returns ``False``.
+    """
+    kind = schema["type"]
+    if kind in _VALUE_HASHED_SCHEMA_TYPES:
+        return True
+    if kind in ("nullable", "default", "function-before"):
+        return _schema_hashes_by_value(schema["schema"], definitions, resolving)
+    if kind == "function-after":
+        function = schema["function"]["function"]
+        return getattr(
+            function, "__module__", None
+        ) in _TYPE_PRESERVING_VALIDATOR_MODULES and _schema_hashes_by_value(
+            schema["schema"], definitions, resolving
+        )
+    if kind == "union":
+        return all(
+            _schema_hashes_by_value(
+                choice[0] if isinstance(choice, tuple) else choice,
+                definitions,
+                resolving,
+            )
+            for choice in schema["choices"]
+        )
+    if kind == "tagged-union":
+        return all(
+            _schema_hashes_by_value(choice, definitions, resolving)
+            for choice in schema["choices"].values()
+        )
+    if kind == "literal":
+        return all(
+            type(value) in _VALUE_HASHED_LITERAL_TYPES for value in schema["expected"]
+        )
+    if kind == "model":
+        # A nested value object hashes consistently with its own ``==``.
+        return issubclass(schema["cls"], BaseValueObject)
+    if kind == "definition-ref":
+        ref = schema["schema_ref"]
+        if ref in resolving or ref not in definitions:
+            return False
+        return _schema_hashes_by_value(definitions[ref], definitions, resolving | {ref})
+    return False
+
+
+def _value_hashed_field_names(model_schema: Mapping[str, Any]) -> frozenset[str]:
+    """Names of the fields in a model's core schema that are hashed by value."""
+    definitions: dict[str, Mapping[str, Any]] = {}
+    node = model_schema
+    # Model validators and shared definitions wrap the ``model-fields`` node.
+    while node["type"] != "model-fields":
+        if node["type"] == "definitions":
+            definitions.update((d["ref"], d) for d in node["definitions"])
+        if node["type"] == "definition-ref":
+            node = definitions[node["schema_ref"]]
+        elif "schema" in node:
+            node = node["schema"]
+        else:
+            return frozenset()
+    return frozenset(
+        name
+        for name, field in node["fields"].items()
+        if _schema_hashes_by_value(field["schema"], definitions)
+    )
+
 
 # ---------------------------------------------------------------------------
 # BaseValueObject
@@ -77,9 +186,14 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         # so static checkers see the attribute. Keyed by invariant stage
         # ("post") -> {method_name: method}.
         _invariants: ClassVar[defaultdict[str, dict[str, Callable[..., Any]]]]
+        # Fields hashed by value, cached by ``_value_hashed_fields``.
+        __value_hashed_fields__: ClassVar[frozenset[str]]
 
+    # Defaults pass through the field schema like assigned values, so the
+    # schema bounds every stored value and ``__hash__`` can rely on it.
     model_config = ConfigDict(
         extra="forbid",
+        validate_default=True,
         ignored_types=(
             FieldSpec,
             ValueObjectField,
@@ -338,10 +452,35 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
             return False
         # The exact-type guard above guarantees ``other`` is the same
         # ``BaseValueObject`` subclass, which static checkers narrow for us.
-        return self.to_dict() == other.to_dict()
+        return self._field_values() == other._field_values()
 
     def __hash__(self) -> int:
-        return hash(frozenset(self.to_dict().items()))
+        # Fields of other types (lists, dicts, custom types) add a constant:
+        # their equal values can be unhashable, or hash differently from each
+        # other. The value-hashed fields still spread the hashes.
+        hashed = type(self)._value_hashed_fields()
+        return hash(
+            tuple(
+                hash(getattr(self, fname, None)) if fname in hashed else 0
+                for fname in getattr(self, _FIELDS, {})
+            )
+        )
+
+    @classmethod
+    def _value_hashed_fields(cls) -> frozenset[str]:
+        # Read on first hash, not at class creation: a model with unresolved
+        # forward references has no core schema until Pydantic rebuilds it.
+        # ``cls.__dict__`` keeps a subclass from reusing its parent's answer.
+        cached: frozenset[str] | None = cls.__dict__.get("__value_hashed_fields__")
+        if cached is None:
+            cached = _value_hashed_field_names(cls.__pydantic_core_schema__)
+            cls.__value_hashed_fields__ = cached
+        return cached
+
+    def _field_values(self) -> tuple[Any, ...]:
+        # Compare raw values, not ``to_dict()`` output: serialization keeps a
+        # Decimal's scale, so ``9.99`` and ``9.9900`` would differ as strings.
+        return tuple(getattr(self, fname, None) for fname in getattr(self, _FIELDS, {}))
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__}: {self}>"

@@ -307,10 +307,12 @@ In [5]: bal1 == bal3
 Out[5]: False
 ```
 
-Value objects compare their `to_dict()` output, where a `Decimal` becomes its
-string. `D('100.0')` and `D('100.00')` are equal numbers, but a `Balance`
-holding one does not equal a `Balance` holding the other. Quantize amounts to
-the field's scale before you compare them.
+Value objects compare and hash their field values, so `D('100.0')` and
+`D('100.00')` count as the same amount. A `Balance` holding one equals a
+`Balance` holding the other, and both hash the same. `to_dict()` still keeps
+each amount as it was given, so the two render as `"100.0"` and `"100.00"`.
+A value object of a different class, including a subclass, is never equal,
+even when its field values match.
 
 ## Identity
 

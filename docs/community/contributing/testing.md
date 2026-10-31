@@ -558,7 +558,7 @@ def test_money_round_trip(amount, currency):
 --8<-- "community/contributing/testing/009.py:property"
 ```
 
-The test compares the rebuilt fields with the generated inputs. Comparing two `Money` objects would go through `to_dict()` again, because value objects compare by their `to_dict()` output, so a `to_dict()` that rounds the amount would still pass. `deadline=None` turns off Hypothesis's time limit for each input, which building a domain object can exceed on a busy CI machine.
+The test compares the rebuilt fields with the generated inputs, so a failure names the field that did not survive the round trip. `deadline=None` turns off Hypothesis's time limit for each input, which building a domain object can exceed on a busy CI machine.
 
 `tests/serialization/test_roundtrip_value_object.py` checks the same round trip for every field type, with strategies shared from `tests/serialization/strategies.py`. Keep examples for the cases a property does not describe, such as one known boundary or a bug that was fixed.
 
