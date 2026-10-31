@@ -31,13 +31,15 @@ collector = _Collector()
 
 
 def on_config(config: Any) -> None:
-    # mkdocstrings logs griffe's warnings under the `mkdocs` logger, which does
-    # not propagate to the root logger. `mkdocs serve` reloads the config on
-    # every rebuild, so start each build empty and attach the handler once.
+    # mkdocstrings routes griffe's warnings to this logger. `mkdocs build -q`
+    # raises the `mkdocs` level to ERROR, which would drop them before any
+    # handler runs, so pin this logger to WARNING. `mkdocs serve` reloads the
+    # config on every rebuild, so start each build empty and attach once.
     collector.messages.clear()
-    mkdocs_logger = logging.getLogger("mkdocs")
-    if collector not in mkdocs_logger.handlers:
-        mkdocs_logger.addHandler(collector)
+    griffe_logger = logging.getLogger("mkdocs.plugins.griffe")
+    griffe_logger.setLevel(logging.WARNING)
+    if collector not in griffe_logger.handlers:
+        griffe_logger.addHandler(collector)
 
 
 def on_post_build(config: Any) -> None:
