@@ -91,7 +91,8 @@ def test_every_planned_file_compiles(tmp_path):
 
 def test_package_init_is_side_effect_free(tmp_path):
     """ADR-0030 rule 4: the slice's ``__init__.py`` carries a docstring only, no
-    imports. A re-export there would risk the traversal cycle from #1316."""
+    imports. A re-export there would create an import cycle when the domain
+    traverses its modules, and ``domain.init()`` could not load the project."""
     project = _write_project(tmp_path / "proj", "myproj", "myproj")
 
     plan = plan_add_slice(str(project), "aggregate", "Order")

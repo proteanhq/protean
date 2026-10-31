@@ -213,7 +213,7 @@ class TestUnindexedFilterPath:
         assert "/" not in finding["message"], "no absolute path in the message"
 
     def test_finding_carries_the_enriched_schema(self, flagged_ir):
-        """The #774 schema surface: category, a non-empty rule, and a
+        """The diagnostic schema surface: category, a non-empty rule, and a
         field-specific suggestion."""
         finding = next(
             d

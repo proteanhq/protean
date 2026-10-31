@@ -193,7 +193,7 @@ def _render_slice(
         node_lines.append(f"        {cmd_id}[/{mermaid_escape(short_name(cmd_fqn))}/]")
         edge_lines.append(f"    {cmd_id} --> {agg_id}")
 
-    # Aggregate (state)
+    # The aggregate, drawn as a state box
     node_lines.append(f"        {agg_id}[{mermaid_escape(agg_short)}]")
 
     # Events (stadium) and their consumers, deduped per slice

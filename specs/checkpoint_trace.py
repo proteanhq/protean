@@ -5,7 +5,7 @@ Two subcommands, both driven by ``specs/check.sh``:
 
 - ``record`` drives the real ``EventStoreSubscription._gap_safe_batch`` through an
   out-of-order commit interleaving (the same checkpoint execution model as the
-  ``#1251`` no-skip property suite, via ``tests/verification/strategies.py``) with
+  no-skip property suite, via ``tests/verification/strategies.py``) with
   the tracer in ``protean.utils.checkpoint_trace`` active, and writes the observed
   log as JSON lines. The memory store cannot produce a real cross-category gap, so
   the gap is simulated by controlling the batch the subscription reads, exactly as
@@ -48,7 +48,7 @@ def _record(out_path: Path) -> int:
     # Silence the framework's debug logging so the run's only output is the trace.
     logging.disable(logging.CRITICAL)
 
-    # The #1251 checkpoint model lives under ``tests/``, which is not an installed
+    # The checkpoint model lives under ``tests/``, which is not an installed
     # package, so put the repo root on the path before importing it. Run as a
     # script, ``sys.path[0]`` is ``specs/``, not the repo root.
     repo_root = Path(__file__).resolve().parents[1]

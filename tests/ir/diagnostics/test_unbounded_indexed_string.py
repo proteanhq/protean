@@ -145,7 +145,7 @@ class TestUnboundedIndexedString:
         assert "`ix_note_body`" in findings[0]["message"]
 
     def test_schema_conformance(self):
-        """The finding carries the #774 schema surface: category, a non-empty
+        """The finding carries the diagnostic schema surface: category, a non-empty
         rule, and a field-specific suggestion."""
         domain = Domain(name="Schema", root_path=".")
 

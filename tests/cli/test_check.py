@@ -516,7 +516,7 @@ class TestCheckSarifOutput:
 
     def test_sarif_diagnostics_path_has_metadata_and_safe_location(self):
         """A warning diagnostic surfaces with mapped level, a non-empty
-        fullDescription (from #774 rule.rationale), and a location that is either
+        fullDescription (from the rule's rationale), and a location that is either
         a real path or [] — never a KeyError."""
         result = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN, "-f", "sarif"])
         run = json.loads(result.output)["runs"][0]
@@ -530,12 +530,12 @@ class TestCheckSarifOutput:
                 assert isinstance(uri, str) and uri
 
         descriptors = {r["id"]: r for r in run["tool"]["driver"]["rules"]}
-        # At least one warning descriptor carries a rationale from #774.
+        # At least one warning descriptor carries its rule's rationale.
         rationales = [
             descriptors[r["ruleId"]]["fullDescription"]["text"] for r in warnings
         ]
         assert any(text for text in rationales), (
-            "Expected a non-empty fullDescription from #774 rule.rationale"
+            "Expected a non-empty fullDescription from the rule's rationale"
         )
 
     def test_sarif_resolvable_element_yields_physical_location(self):
@@ -566,7 +566,7 @@ class TestCheckSarifOutput:
         for res in run["results"]:
             assert res["level"] == "error"
             assert res["locations"] == []
-        # Descriptors for validator errors carry no #774 metadata.
+        # Descriptors for validator errors carry no rule rationale or help.
         for descriptor in run["tool"]["driver"]["rules"]:
             assert descriptor["fullDescription"]["text"] == ""
             assert descriptor["help"]["text"] == ""

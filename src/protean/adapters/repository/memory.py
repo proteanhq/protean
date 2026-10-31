@@ -98,10 +98,10 @@ class MemorySession:
     re-validates the recorded optimistic-concurrency versions against the *live*
     store under the provider lock and then merges only the changed records,
     key-by-key. This is what makes the in-memory provider a faithful stand-in
-    for optimistic locking: two overlapping writers of the same aggregate no
-    longer both "win" (the stale one raises
+    for optimistic locking: two overlapping writers of the same aggregate do
+    not both "win" (the stale one raises
     :class:`~protean.exceptions.ExpectedVersionError`), and writers touching
-    *different* records no longer clobber each other on commit.
+    *different* records do not clobber each other on commit.
     """
 
     # Heterogeneous session store:

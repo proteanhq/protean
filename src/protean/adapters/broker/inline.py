@@ -58,56 +58,54 @@ class InlineBroker(BaseBroker):
             int(self._message_timeout * 3), OPERATION_STATE_TTL_MAX
         )  # At least 1 minute
 
-        # Initialize storage for messages
-        # Structure: {stream: [(identifier, message)]}
+        # Messages per stream, in arrival order, as (identifier, message) pairs
         self._messages: defaultdict[str, list[tuple[str, dict[str, Any]]]] = (
             defaultdict(list)
         )
 
-        # Initialize storage for consumer groups
-        # Structure: {stream:group_name: {consumers: set(), created_at: timestamp}}
+        # Consumer groups keyed by "stream:group_name". Each holds the set of
+        # consumers and the time the group was created.
         self._consumer_groups: dict[str, dict[str, Any]] = {}
 
-        # Initialize storage for in-flight messages per consumer group
-        # Structure: {stream:consumer_group: {identifier: (identifier, message, timestamp)}}
+        # In-flight messages keyed by "stream:consumer_group", then by message
+        # identifier. Each entry is (identifier, message, delivery timestamp).
         self._in_flight: defaultdict[
             str, dict[str, tuple[str, dict[str, Any], float]]
         ] = defaultdict(dict)
 
-        # Initialize storage for failed messages (nacked messages waiting for retry)
-        # Structure: {stream:consumer_group: [(identifier, message, retry_count, next_retry_time)]}
+        # Nacked messages waiting for retry, keyed by "stream:consumer_group".
+        # Each entry is (identifier, message, retry count, next retry time).
         self._failed_messages: defaultdict[
             str, list[tuple[str, dict[str, Any], int, float]]
         ] = defaultdict(list)
 
-        # Track retry counts per message per consumer group
-        # Structure: {stream:consumer_group: {identifier: retry_count}}
+        # Retry count per message identifier, keyed by "stream:consumer_group"
         self._retry_counts: defaultdict[str, dict[str, int]] = defaultdict(dict)
 
-        # Track read positions per consumer group to support multiple consumer groups
-        # Structure: {stream:consumer_group: position}
+        # Read position per "stream:consumer_group", so several groups can read
+        # one stream independently
         self._consumer_positions: defaultdict[str, int] = defaultdict(int)
 
-        # Track message ownership per consumer group
-        # Structure: {identifier: {consumer_group: bool}}
+        # Which consumer groups own each message, keyed by message identifier
         self._message_ownership: defaultdict[str, dict[str, bool]] = defaultdict(dict)
 
-        # Dead Letter Queue for permanently failed messages
-        # Structure: {stream:consumer_group: [(identifier, message, failure_reason, timestamp)]}
+        # Dead-letter queue for permanently failed messages, keyed by
+        # "stream:consumer_group". Each entry is (identifier, message, failure
+        # reason, timestamp).
         self._dead_letter_queue: defaultdict[
             str, list[tuple[str, dict[str, Any], str, float]]
         ] = defaultdict(list)
 
-        # Track operation states for idempotency
-        # Structure: {consumer_group: {identifier: (state, timestamp)}}
+        # Operation state and its timestamp per message identifier, keyed by
+        # consumer group, for idempotency
         self._operation_states: defaultdict[
             str, dict[str, tuple[OperationState, float]]
         ] = defaultdict(dict)
 
         # Track group keys owned by a Protean subscription. For these, nack
         # holds and redelivers with no independent ceiling; the subscription
-        # owns retry and dead-lettering via {stream}:dlq.
-        # Structure: {stream:consumer_group}
+        # owns retry and dead-lettering via {stream}:dlq. Entries are
+        # "stream:consumer_group" keys.
         self._subscription_owned_groups: set[str] = set()
 
     @property

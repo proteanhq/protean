@@ -30,7 +30,7 @@ class TypeManager:
     Instantiated once by ``Domain.__init__()`` and called during
     ``Domain.init()`` to assign type strings and build upcaster chains.
 
-    Owns the following state (previously on Domain):
+    Owns the following state:
     - ``events_and_commands`` — maps type strings to event/command classes
     - ``upcasters`` — registered upcaster classes, read from the domain registry
     - ``upcaster_chain`` — the built upcaster chain for schema evolution

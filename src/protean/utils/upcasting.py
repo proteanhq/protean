@@ -31,15 +31,15 @@ class UpcasterChain:
     """
 
     def __init__(self) -> None:
-        # Edges collected before build_chains() is called.
-        # {event_base_type: [(from_version, to_version, upcaster_cls), ...]}
+        # Edges collected before build_chains() is called, keyed by event base
+        # type. Each edge is (from_version, to_version, upcaster class).
         self._edges: dict[str, list[tuple[int, int, type]]] = {}
 
-        # Populated by build_chains():
-        # {(event_base_type, from_version): [upcaster_instance, ...]}
+        # Populated by build_chains(): the ordered upcaster instances that take
+        # an (event base type, from_version) pair to the current version.
         self._chains: dict[tuple[str, int], list[Any]] = {}
 
-        # {old_type_string: current_event_class}
+        # The current event class for each old type string
         self._version_map: dict[str, type] = {}
 
     # ------------------------------------------------------------------

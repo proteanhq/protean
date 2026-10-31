@@ -169,14 +169,8 @@ def _default_config() -> dict[str, Any]:
             # Keys are handler names (e.g., "OrderEventHandler")
             # Values are dicts with any of: profile, stream_category, subscription_type,
             # and any subscription config options
-            # Example:
-            #   subscriptions:
-            #     OrderEventHandler:
-            #       profile: "production"
-            #       stream_category: "order"
-            #     NotificationHandler:
-            #       profile: "fast"
-            #       messages_per_tick: 200
+            # For example, OrderEventHandler can use the production profile
+            # with stream_category set to "order".
             "subscriptions": {},
             # Custom subscription profiles
             # Keys are profile names; values are dicts of subscription config
@@ -191,11 +185,8 @@ def _default_config() -> dict[str, Any]:
             # is: a per-handler `profile`, a handler's Meta subscription_profile,
             # or default_subscription_profile (which resolves below the
             # server-level defaults above, so those still win over its fields).
-            # Example:
-            #   profiles:
-            #     myfast:
-            #       inherits: "fast"
-            #       messages_per_tick: 25
+            # For example, a "myfast" profile can inherit from "fast" and set
+            # messages_per_tick to 25.
             "profiles": {},
             # DLQ maintenance settings
             # Periodic trimming and alerting for dead letter queue streams

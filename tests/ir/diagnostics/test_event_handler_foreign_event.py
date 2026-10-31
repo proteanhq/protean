@@ -44,7 +44,7 @@ class TestEventHandlerForeignEvent:
         d = diags[0]
         assert d["element"] == fqn(FulfillmentHandler)
         assert d["level"] == "warning"
-        # #774 schema
+        # The diagnostic schema: category and rule metadata
         assert d["category"] == "handler_completeness"
         assert d["rule"]["rationale"]
         assert d["rule"]["fix"]
@@ -309,7 +309,7 @@ class TestEventHandlerForeignEvent:
         (A cross-cluster *command* handler cannot be constructed here — the
         framework's ``_validate_command_handler_method`` already rejects a
         command handler whose command belongs to a different aggregate, i.e.
-        ``COMMAND_HANDLER_CROSS_CLUSTER`` from #777 is unreachable at this
+        ``COMMAND_HANDLER_CROSS_CLUSTER`` is unreachable at this
         point in the tree. The command handler below is same-cluster, which
         is the only shape the framework allows; the assertion that matters is
         that it never appears under our rule's findings.)

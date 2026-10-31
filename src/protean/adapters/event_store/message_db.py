@@ -155,8 +155,9 @@ class MessageDBStore(BaseEventStore):
         if message is not None:
             return message
 
-        # TODO: page-in the whole stream only because the message-db client has
-        # no category tail-read; replace with a bounded reverse read when it does.
+        # TODO(subhashb/message-db-py#4): page-in the whole stream only because
+        # the message-db client has no category tail-read; replace with a
+        # bounded reverse read when it does.
         # The client's ``$all`` query has no ``ORDER BY``, so pick the newest by
         # ``global_position`` rather than trusting row order (``messages[-1]``).
         messages = self._read(stream_name, no_of_messages=1_000_000)

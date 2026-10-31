@@ -1,8 +1,7 @@
 """Typed change-tracking classes for association field _temp_cache.
 
-These classes replace the untyped ``defaultdict(lambda: defaultdict(dict))``
-that was previously used to track pending child entity changes on aggregates
-and entities.
+These classes hold the pending child entity changes that aggregates and
+entities track until the next persist.
 
 ``HasManyChanges`` tracks individual items added, updated, or removed from
 a one-to-many association.  ``HasOneChanges`` tracks the relationship state

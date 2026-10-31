@@ -122,7 +122,7 @@ _RESERVED_FIELD_NAMES: dict[str, frozenset[str]] = {
 }
 
 # Field-entry keys the grammar can express or safely ignore. ``max_length`` and
-# ``identifier`` map to the two constraints; ``required`` is the grammar default;
+# ``identifier`` map to the grammar's constraints; ``required`` is the grammar default;
 # ``description`` is documentation metadata, not a validation constraint, so the
 # grammar drops it. ``min_length`` needs a value check (see ``_emit_field``): a
 # required field carries the implicit ``min_length: 1`` bound (ADR-0026), which the
@@ -747,7 +747,7 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
     Raises :class:`ModelEmitError` on a cluster the grammar cannot express, rather
     than emit a model that promotes back to something else. What it refuses:
 
-    - a field outside the eight types and two constraints, an optional field, a
+    - a field outside the grammar's types and constraints, an optional field, a
       non-primitive field kind, a hand-set ``min_length``, or a field default or
       choices;
     - a shape the grammar has no room for: more than one command or authored

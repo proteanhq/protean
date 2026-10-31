@@ -384,9 +384,6 @@ def _check_unit_of_work_transaction(domain: Domain) -> list[UpgradeFinding]:
     return findings
 
 
-# Forward-ported from `release/0.16.x` (#1093). These shipped in 0.16.2 but
-# the prep commit never reached `main`, so 0.17 would have offered fewer
-# migration checks than the patch release before it.
 # The framework backfills a NULL ``target_broker`` to the configured internal
 # broker; ``'default'`` is the out-of-the-box name. Both migrations below share
 # this preamble — a NULL ``target_broker`` would violate the NOT NULL constraint
@@ -400,8 +397,7 @@ def _backfill_sql(
     `[outbox] broker` is configurable, and the framework writes that name, not
     the literal ``'default'``. Hard-coding it here would label legacy rows for a
     broker the domain does not run, so its processor never claims them and they
-    sit unpublished. The remediation text used to ask the reader to check this
-    by hand; emitting the right value is better than asking.
+    sit unpublished.
     """
     return (
         f"UPDATE {_qualified('outbox', schema)} SET target_broker = '{broker}' "

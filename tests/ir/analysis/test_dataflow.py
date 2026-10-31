@@ -904,7 +904,7 @@ class TestBindingForms:
 
 class TestReceiverResolution:
     def test_a_variable_receiver_resolves_to_its_assignment_rhs(self, tmp_path):
-        """The #1222 feed: a repository bound to a local resolves to the
+        """A repository bound to a local resolves to the
         ``repository_for(...)`` call that produced it, ready for a later rule to
         classify the receiver's role."""
         flow, node = _setup(

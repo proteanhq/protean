@@ -56,10 +56,8 @@ class BaseApplicationService(Element, OptionsMixin):
             raise NotSupportedError("BaseApplicationService cannot be instantiated")
         # `object.__new__` takes only the class. Forwarding the caller's
         # arguments raises `TypeError: object.__new__() takes exactly one
-        # argument`, which is what an application service defining `__init__`
-        # used to hit: the message names neither the class nor `__init__`, so it
-        # read as "application services cannot take constructor arguments" and
-        # teams wrote plain orchestrators instead (#1293).
+        # argument` for any application service that defines `__init__`, and
+        # that message names neither the class nor `__init__`.
         return object.__new__(cls)
 
     _default_options: ClassVar[list[tuple[str, Any]]] = [
@@ -101,10 +99,10 @@ def use_case(func: Callable[..., Any]) -> Callable[..., Any]:
         logger.info(f"Executing use case: {func.__name__}")
 
         # A use case opens a Unit of Work, which needs a domain to open it
-        # against. Without an active context that surfaced as
-        # `AttributeError: 'NoneType' object has no attribute 'providers'`
-        # from inside the transaction machinery, which names neither the use
-        # case nor the missing context and reads like a framework bug (#1293).
+        # against. Without an active context the transaction machinery raises
+        # `AttributeError: 'NoneType' object has no attribute 'providers'`,
+        # which names neither the use case nor the missing context, so check
+        # for the context first.
         # Local import: `protean.domain.context` imports back into this module
         # through the element registry. `exceptions.py` and `entity.py` take the
         # same escape hatch for the same reason.

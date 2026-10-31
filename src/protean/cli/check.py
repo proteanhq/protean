@@ -501,7 +501,7 @@ def _format_sarif(result: dict[str, Any], domain: Any) -> dict[str, Any]:
             }
         )
 
-    # Rule diagnostics: #774 schema, FQN-resolvable location.
+    # Rule diagnostics, each located by the FQN of the element it names.
     for diag in result.get("diagnostics", []):
         code = diag["code"]
         _descriptor(
