@@ -7,10 +7,9 @@ stale writer's rows reuse the winner's ids. The commit appends to the event
 store before it saves the outbox rows, so the append reports the conflict
 first.
 
-The outbox rows' pre-persist hooks still run before the append, so a raising
-aggregate enricher fails the commit with nothing written. An outbox save that
-fails after the append is reported as ``TransactionError``, never as a version
-conflict.
+Aggregate enrichers never run on outbox rows, so a raising enricher does not
+fail the commit. An outbox save that fails after the append is reported as
+``TransactionError``, never as a version conflict.
 """
 
 import threading
@@ -274,25 +273,23 @@ class TestStaleWriteWithOutbox:
         assert len(_stream(domain, account.account_id)) == len(stream_before)
         assert _outbox_ids(domain) == outbox_before
 
-    @pytest.mark.parametrize("error_cls", [ValueError, RuntimeError])
-    def test_raising_enricher_appends_no_event(self, make_domain, error_cls):
-        """Aggregate enrichers run on outbox rows before the append, so one that
-        raises fails the commit with its own error and nothing written."""
+    def test_raising_enricher_does_not_run_on_outbox_rows(self, make_domain):
+        """Enrichers skip the event-sourced aggregate and its outbox rows, so a
+        raising enricher leaves the commit to write both."""
         domain = make_domain()
         account, _ = _open_and_load_twice(domain)
         stream_before = _stream(domain, account.account_id)
         outbox_before = _outbox_ids(domain)
 
         def failing_enricher(aggregate):
-            raise error_cls("enricher failed")
+            raise RuntimeError("enricher failed")
 
         domain.register_aggregate_enricher(failing_enricher)
 
-        with pytest.raises(error_cls, match="enricher failed"):
-            _commit_deposits(domain, account, 10)
+        _commit_deposits(domain, account, 10)
 
-        assert len(_stream(domain, account.account_id)) == len(stream_before)
-        assert _outbox_ids(domain) == outbox_before
+        assert len(_stream(domain, account.account_id)) == len(stream_before) + 1
+        assert len(_outbox_ids(domain)) == len(outbox_before) + 1
 
     def test_outbox_save_value_error_is_not_a_version_conflict(
         self, make_domain, monkeypatch

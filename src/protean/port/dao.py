@@ -938,6 +938,9 @@ class BaseDAO(metaclass=ABCMeta):
     def _apply_pre_persist_hooks(self, entity_obj: Any) -> None:
         """Stamp ``auto_now``/``auto_now_add`` fields, then run aggregate enrichers.
 
+        Enrichers run only on aggregates the user registered. They never run on
+        the framework's internal aggregates, such as outbox rows.
+
         The ``@invariant.pre`` checks do not run on these writes. On an
         aggregate, the post-invariants run once after the stamping and once
         after each enricher, unless the save runs inside an open
@@ -964,6 +967,7 @@ class BaseDAO(metaclass=ABCMeta):
             entity_obj.element_type == DomainObjects.AGGREGATE
             and current_domain
             and current_domain._aggregate_enrichers
+            and not current_domain._domain_registry.is_internal(self.entity_cls)
         ):
             for enricher in current_domain._aggregate_enrichers:
                 location = (
