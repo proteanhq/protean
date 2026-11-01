@@ -725,23 +725,16 @@ class HandlerMixin:
         value goes back to the caller.
 
         An event handler or projector can register several methods for the same
-        item. Each one runs in its own ``UnitOfWork`` and is an independent
-        reaction to the same fact, so a failing method must not stop the others
-        (ADR-0031). Every method runs, and failures surface afterwards: a single
-        failure propagates unchanged, and several are raised together as an
-        ``ExceptionGroup``.
+        item, and each one runs in its own ``UnitOfWork`` (see ADR-0031). Every
+        method runs even when an earlier one fails. Afterwards a single failure
+        propagates unchanged, and several are raised together as an
+        ``ExceptionGroup``. Returns ``None``.
 
-        Two things are not collected, and both end dispatch where they are
-        raised. An ``ExpectedVersionError`` propagates at once. Under async
-        processing the conflict dooms the message: it is redelivered and every
-        sibling runs again, so there is nothing to gain by carrying on. Under
-        sync processing nothing redelivers, so the methods after the conflict
-        do not run for this event, and the caller gets a ``TransactionError``
-        from the enclosing commit. A ``BaseException`` that is not an
-        ``Exception``, such as ``KeyboardInterrupt``, propagates for the
-        obvious reason. On either path, failures gathered before it are
-        attached to it as a note and logged, since nothing downstream would
-        otherwise see them.
+        Two kinds of exception end dispatch where they are raised: an
+        ``ExpectedVersionError``, and a ``BaseException`` that is not an
+        ``Exception``, such as ``KeyboardInterrupt``. The methods after it do
+        not run for this item. Failures gathered before it are attached to it
+        as a note and logged.
         """
         # Map element_type to access log kind
         _KIND_MAP = {
@@ -794,34 +787,19 @@ class HandlerMixin:
 
     @classmethod
     def handle_error(cls, exc: Exception, message: Message) -> None:
-        """Error handler method called when exceptions occur during message handling.
+        """Handle an exception raised while the engine processed a message.
 
-        This method can be overridden in subclasses to provide custom error handling
-        for exceptions that occur during message processing. It allows handlers to
-        recover from errors, log additional information, or perform cleanup operations.
-
-        When an exception occurs in a handler method:
-        1. The exception is caught in Engine.handle_message or Engine.handle_broker_message
-        2. Details are logged with traceback information
-        3. This handle_error method is called with the exception and original message
-        4. Processing continues with the next message (the engine does not shut down)
-
-        If this method raises an exception itself, that exception is also caught and logged,
-        but not propagated further.
+        Override it to add custom error handling, such as logging more detail
+        or cleaning up. The engine logs the failure, calls this method, and
+        then moves on to the next message. The default does nothing. An
+        exception raised here is logged and not propagated, so it does not
+        stop the engine.
 
         Args:
-            exc (Exception): The exception that was raised during message
-                handling. When several ``@handle`` methods on the same handler
-                failed for one event, this is an ``ExceptionGroup`` holding one
-                entry per failure, so a classifier matching on exception type
-                has to recurse into ``exc.exceptions``.
-            message (Message): The original message being processed when the exception occurred
-
-        Returns:
-            None
-
-        Note:
-            - The default implementation does nothing, allowing processing to continue
-            - Subclasses can override this method to implement custom error handling strategies
-            - This method is called from a try/except block, so exceptions raised here won't crash the engine
+            exc: The exception raised during message handling. When several
+                ``@handle`` methods on the same handler failed for one event,
+                this is an ``ExceptionGroup`` holding one entry per failure,
+                so code that matches on exception type has to look inside
+                ``exc.exceptions``.
+            message: The message being processed when the exception occurred.
         """

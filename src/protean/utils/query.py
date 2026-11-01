@@ -118,14 +118,10 @@ class F:
         query.filter(retry_count__lt=F("max_retries"))
 
     Only a bare column reference is supported. Arithmetic (``F("a") + 1``),
-    function calls (``Lower(F("email"))``), and aggregations are intentionally
-    out of scope.
+    function calls (``Lower(F("email"))``), and aggregations are not supported.
 
-    Adapter support: the in-memory and SQLAlchemy adapters resolve ``F`` to the
-    referenced column natively. The Elasticsearch adapter raises
-    ``NotImplementedError`` for ``F``-bearing predicates (column-to-column
-    comparison there needs a Painless script query, which is not implemented);
-    use the in-memory or SQLAlchemy backend for such filters.
+    The in-memory and SQLAlchemy adapters support ``F``. The Elasticsearch
+    adapter raises ``NotImplementedError`` for any predicate that uses ``F``.
     """
 
     __slots__ = ("name",)

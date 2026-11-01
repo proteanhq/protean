@@ -841,22 +841,21 @@ _ElementT = TypeVar("_ElementT", bound="Element")
 
 
 def clone_class(cls: type[_ElementT], new_name: str) -> type[_ElementT]:
-    """Clone a class with a new name.
+    """Return a copy of ``cls`` with a new name.
 
-    Creates a new class with the same attributes and behavior as the original,
-    but with a different name. This is useful for creating variations of domain
-    elements without deep copying instance attributes.
+    The copy has the same attributes, methods and metaclass as ``cls``.
 
     Args:
-        cls: The class to clone (must be an Element or its subclass)
-        new_name: The name for the new class (must be a valid Python identifier)
+        cls: The class to clone.
+        new_name: The name for the new class.
 
     Returns:
-        A new class type with the specified name
+        The new class.
 
     Raises:
-        TypeError: If cls is not a class or new_name is not a string
-        ValueError: If new_name is not a valid Python identifier
+        TypeError: If ``cls`` is not a class or ``new_name`` is not a string.
+        ValueError: If ``new_name`` is empty, is not a valid Python
+            identifier, or is a reserved keyword.
     """
     if not isinstance(cls, type):
         raise TypeError(f"Expected a class, got {type(cls).__name__}")

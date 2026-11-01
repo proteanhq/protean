@@ -16,6 +16,7 @@ import logging
 from uuid import uuid4
 
 import pytest
+import structlog
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -207,6 +208,13 @@ class TestBindOutsideHandlerIsNoop:
         """Calling bind_event_context outside any handler should not raise."""
         bind_event_context(foo="bar")
         # No error expected — it's a no-op in terms of side effects
+
+    def test_bind_outside_handler_binds_to_structlog_context(self):
+        try:
+            bind_event_context(outside_key="value")
+            assert structlog.contextvars.get_contextvars()["outside_key"] == "value"
+        finally:
+            structlog.contextvars.unbind_contextvars("outside_key")
 
 
 class TestContextClearedBetweenHandlers:

@@ -129,6 +129,21 @@ class TestEarlierRowHoldsLaterRows:
 
         assert _labels(outbox_repo.claim_batch("worker-1", limit=10)) == ["b"]
 
+    def test_find_unprocessed_lists_a_held_row_without_claiming_it(
+        self, outbox_repo, now
+    ):
+        _insert(
+            outbox_repo,
+            _row("b", minute=1),
+            _failed(_row("a", minute=0), next_retry_at=now + timedelta(hours=1)),
+        )
+
+        assert _labels(outbox_repo.find_unprocessed()) == ["b"]
+        [row] = outbox_repo.find_all_by_message_id("b")
+        assert row.status == OutboxStatus.PENDING.value
+        assert row.locked_by is None
+        assert outbox_repo.claim_batch("worker-1", limit=10) == []
+
     def test_a_failed_row_due_for_retry_is_claimed_with_the_next_row(
         self, outbox_repo, now
     ):

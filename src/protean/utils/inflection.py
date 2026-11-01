@@ -4,25 +4,23 @@ import re
 
 
 def camelize(string: str, uppercase_first_letter: bool = True) -> str:
-    """
-    Convert strings to CamelCase.
+    """Convert an underscored string to CamelCase.
 
     Examples::
 
         >>> camelize("device_type")
-        "DeviceType"
+        'DeviceType'
         >>> camelize("device_type", False)
-        "deviceType"
+        'deviceType'
 
-    :func:`camelize` can be though as a inverse of :func:`underscore`, although
-    there are some cases where that does not hold::
+    :func:`camelize` does not always undo :func:`underscore`::
 
         >>> camelize(underscore("IOError"))
-        "IoError"
+        'IoError'
 
-    :param uppercase_first_letter: if set to `True` :func:`camelize` converts
-        strings to UpperCamelCase. If set to `False` :func:`camelize` produces
-        lowerCamelCase. Defaults to `True`.
+    Args:
+        uppercase_first_letter: ``True`` gives UpperCamelCase and ``False``
+            gives lowerCamelCase.
     """
     if uppercase_first_letter:
         return re.sub(r"(?:^|_)(.)", lambda m: m.group(1).upper(), string)

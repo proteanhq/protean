@@ -202,20 +202,16 @@ _PROTEAN_ROOT_FILTERS = (*_CONTEXT_FILTERS, ProteanRedactionFilter)
 def _move_redaction_filter_last() -> None:
     """Move each ``ProteanRedactionFilter`` after the last Protean context filter.
 
-    Covers the root logger and each of its handlers. Stdlib runs filters in
-    list order, and the correlation and trace-context filters write
-    ``correlation_id``, ``causation_id``, ``trace_id`` and ``span_id`` onto
-    the record. Redaction has to run after them, or a configured key among
-    those ids reaches the formatter unmasked.
-
-    A target is changed only when a redaction filter sits before a context
-    filter. The redaction filters then go right after the last context
-    filter, and every other filter keeps its relative order, so a filter
-    already after redaction and after the last context filter stays after
-    redaction. Filters keep their identity, and the new list is
-    bound in place of the old one, so a record being filtered on another
-    thread finishes its pass over the old list.
+    Covers the root logger and each of its handlers. A target changes only
+    when a redaction filter sits before a context filter. The redaction
+    filters then go right after the last context filter, and every other
+    filter keeps its relative order. The target gets a new list holding the
+    same filter objects, and the old list is left unchanged.
     """
+    # Stdlib runs filters in list order, and the context filters write
+    # ``correlation_id``, ``causation_id``, ``trace_id`` and ``span_id`` onto
+    # the record. Redaction runs after them, or a configured key among those
+    # ids reaches the formatter unmasked.
     root = logging.getLogger()
     targets: list[logging.Filterer] = [root, *root.handlers]
     for target in targets:
@@ -241,6 +237,8 @@ def _move_redaction_filter_last() -> None:
             for f in filters[last_context + 1 :]
             if not isinstance(f, ProteanRedactionFilter)
         ]
+        # Bind a new list instead of mutating the old one, so a record being
+        # filtered on another thread finishes its pass over the old list.
         target.filters = [*head, *redaction, *tail]
 
 
@@ -274,7 +272,7 @@ def configure_logging(
         format: Output format. ``"json"`` forces JSON, ``"console"`` forces
             colored console, ``"auto"`` (default) picks based on environment.
         log_dir: Directory for rotating log files. *None* disables file
-            logging (suitable for containerized deployments using stdout).
+            logging.
         log_file_prefix: Filename prefix for log files (e.g. ``"myapp"``
             produces ``myapp.log`` and ``myapp_error.log``). Defaults to
             ``"protean"`` if not specified.
@@ -282,6 +280,7 @@ def configure_logging(
         backup_count: Number of rotated log files to keep. Default 5.
         extra_processors: Optional list of additional structlog processors to
             insert before the renderer (e.g. correlation-context injection).
+            The redaction processor runs after them.
         per_logger: Optional mapping of logger names to level strings. Applied
             after global setup so individual loggers can be tuned independently.
             Example: ``{"protean.server.engine": "WARNING", "myapp.orders": "DEBUG"}``.
@@ -290,15 +289,14 @@ def configure_logging(
             dict directly via ``logging.config.dictConfig()``. The user-supplied
             dict is expected to include any handlers/formatters desired. After
             applying, ``ProteanCorrelationFilter`` is still installed on the
-            root logger and its handlers for consistency with
-            ``Domain.configure_logging()``, and so is
+            root logger and its handlers, and so is
             ``ProteanRedactionFilter`` when ``redact`` is given. Protean
             filters the dict declares on the root logger are copied to each
             root handler too.
         redact: Optional list of field names to mask in log output. Values are
             replaced with ``"[REDACTED]"`` on log records (stdlib) and event
             dicts (structlog). Matching is case-insensitive. When ``None``
-            (default), redaction is disabled — opt in by passing an explicit
+            (default), redaction is disabled. Opt in by passing an explicit
             list, or configure ``[logging].redact`` in ``domain.toml`` so
             ``Domain.configure_logging()`` forwards it here. On the root
             logger and each root handler, any ``ProteanRedactionFilter``
@@ -414,21 +412,19 @@ def clear_context() -> None:
 def bind_event_context(**kwargs: Any) -> None:
     """Add business-specific fields to the current wide event.
 
-    Called from handler code to enrich the access log with domain context
-    that only the application knows (user tier, order total, feature flags, etc.).
-    Fields are merged — multiple calls accumulate, later calls overwrite
-    conflicting keys. Outside handler code, this still binds keys to the
-    current structlog context — they will be cleared when the next handler
-    invocation starts.
+    Call it from handler code to add domain context to the access log, such
+    as user tier, order total or feature flags. Multiple calls accumulate,
+    and a later call overwrites a key an earlier call set. Outside handler
+    code, the keys are still bound to the current structlog context, and
+    they are cleared when the next handler invocation starts.
 
-    When called inside a FastAPI endpoint running under
-    ``DomainContextMiddleware``, the kwargs are *also* mirrored onto
-    ``g._http_wide_event_extras`` (initialised by the middleware before
-    ``call_next`` is awaited). Starlette runs the endpoint in a child task
-    whose ``contextvars`` copy is not observable from the parent, so the
-    plain structlog binding alone would be lost at the HTTP boundary.
+    Inside a FastAPI endpoint running under ``DomainContextMiddleware``, the
+    fields also reach the HTTP wide event for that request.
     """
     structlog.contextvars.bind_contextvars(**kwargs)
+    # Starlette runs the endpoint in a child task whose ``contextvars`` copy
+    # the middleware cannot see, so the fields are also written to the
+    # extras dict the middleware set up on ``g`` before ``call_next``.
     extras = _http_wide_event_extras()
     if extras is not None:
         extras.update(kwargs)
@@ -588,25 +584,24 @@ def _match_critical_stream(message_type: str, patterns: Iterable[str]) -> bool:
 class TailSamplingProcessor:
     """Structlog processor that samples wide events from ``protean.access``.
 
-    Operates on the structlog pipeline — events from any other logger pass
-    through unchanged. For events on the ``protean.access`` logger, applies
-    the sampling rules below in order (first match wins) and either enriches
-    the event dict with sampling metadata (``sampling_decision``,
-    ``sampling_rule``, ``sampling_rate``) or raises
+    Events from any other logger pass through unchanged, and so does an
+    event that already carries ``sampling_decision``. For other events on
+    the ``protean.access`` logger, it applies the rules below and either adds
+    sampling metadata (``sampling_decision``, ``sampling_rule``,
+    ``sampling_rate``) to the event dict or raises
     :class:`structlog.DropEvent` to drop it.
 
     Rules (in order, first match wins):
 
-    1. Errors kept — ``status == "failed"`` or log level >= ``ERROR``.
-    2. Slow requests kept — ``status == "slow"``.
-    3. Critical streams kept — ``message_type`` matches any
+    1. Errors are kept: ``status == "failed"`` or log level >= ``ERROR``.
+    2. Slow requests are kept: ``status == "slow"``.
+    3. Critical streams are kept: ``message_type`` matches any
        ``critical_streams`` glob pattern.
-    4. Random sampling — kept at ``default_rate``.
+    4. Anything else is kept at ``default_rate``.
 
-    Use :class:`TailSamplingFilter` for the stdlib→``ProcessorFormatter``
-    path; most Protean wide events flow through that path because
-    ``access_logger`` is a stdlib ``logging.Logger``. The structlog processor
-    covers direct ``structlog.get_logger("protean.access")`` call sites.
+    This processor covers direct ``structlog.get_logger("protean.access")``
+    call sites. Use :class:`TailSamplingFilter` for stdlib records, which
+    is the path most Protean wide events take.
     """
 
     def __init__(

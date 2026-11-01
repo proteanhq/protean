@@ -74,11 +74,13 @@ def rebuild_projection(
 
     Truncates existing projection data, then replays all events from the
     event store through each projector that targets this projection.
-    Upcasters are applied automatically during replay.
 
-    Events are read from the ``$all`` stream and filtered to only the
-    categories each projector listens to, ensuring correct global ordering
-    for cross-aggregate projections.
+    An event that cannot be resolved or whose handler raises is logged and
+    counted in ``events_skipped``; the rebuild continues. A projection with no
+    projectors is not truncated, and the result carries an error.
+
+    Must be called after ``domain.init()`` and within
+    ``domain.domain_context()``.
 
     Args:
         domain: The initialized domain instance.
@@ -175,14 +177,11 @@ def _replay_projector(
     stream_categories: list[str],
     batch_size: int,
 ) -> tuple[int, int]:
-    """Replay events through a projector in global order.
+    """Replay every event in ``stream_categories`` through a projector.
 
-    Reads all events from each stream category, merges them by
-    ``global_position``, and dispatches in chronological order.
-    This ensures correct cross-aggregate ordering — e.g., a
-    ``Registered`` event from the ``user`` category is always
-    processed before a ``Transacted`` event from the ``transaction``
-    category if that is the order in which they were originally stored.
+    Events from all categories are dispatched in the order the store wrote
+    them (``global_position``). A message that fails is logged and counted as
+    skipped; nothing is raised.
 
     Args:
         domain: The initialized domain instance.
