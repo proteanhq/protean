@@ -63,13 +63,36 @@ def _project_with(tmp_path: Path, source: str) -> Path:
     return tmp_path
 
 
-def _skip_non_python(directory: str, names: list[str]) -> set[str]:
-    return {
-        name
-        for name in names
-        if name in {"__pycache__", ".complexipy_cache"}
-        or (not name.endswith(".py") and not (Path(directory) / name).is_dir())
-    }
+def _copy_checked_python_files(destination: Path) -> None:
+    """Copy the Python files complexipy checks in the repository.
+
+    complexipy skips files that ``.gitignore`` excludes, so the copy takes the
+    tracked files and the untracked ones git does not ignore.
+    """
+    listed = subprocess.run(
+        [
+            "git",
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            *CHECKED_PATHS,
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    ).stdout.split("\0")
+    for relative in listed:
+        source = ROOT / relative
+        # A tracked file deleted in the working tree is still listed.
+        if relative.endswith(".py") and source.is_file():
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(source, target)
 
 
 class TestTheLimit:
@@ -170,8 +193,7 @@ class TestTheRepository:
         committed = SNAPSHOT.read_bytes()
         _copy_config(tmp_path)
         shutil.copy(SNAPSHOT, tmp_path / SNAPSHOT.name)
-        for name in CHECKED_PATHS:
-            shutil.copytree(ROOT / name, tmp_path / name, ignore=_skip_non_python)
+        _copy_checked_python_files(tmp_path)
 
         result = _complexipy(tmp_path)
 
