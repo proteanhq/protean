@@ -555,8 +555,7 @@ class AggregateResult:
 class ProcessResult:
     """The outcome of [`process_and_wait`][protean.testing.process_and_wait].
 
-    Surfaces the three things an integration test cares about without
-    reaching into framework internals (outbox rows, event store streams):
+    Exposes three things about the processed command:
 
     - ``result``: The command handler's return value (synchronous
       processing) or the store position of the enqueued command
@@ -665,24 +664,23 @@ def drain(
 ) -> int:
     """Run the engine in test mode until *until* is satisfied or the budget runs out.
 
-    Replaces the hand-rolled ``for _ in range(N): Engine(...).run()`` loop
-    that integration tests copy-paste. Each cycle runs one full test-mode
-    engine pass (draining outbox → broker → subscriptions → handlers).
+    Each cycle runs one test-mode engine pass, which processes the outbox,
+    the broker, the subscriptions and their handlers until nothing is left.
 
     Args:
         domain: The domain to drain. Defaults to ``current_domain``.
         until: Optional predicate. Draining stops early once it returns
             truthy. When omitted, a single engine pass is run.
-        max_cycles: Upper bound on engine passes so a never-satisfied
-            *until* cannot hang the test. Must be at least 1. A test-mode
-            engine pass stops once nothing is left to process, and takes at
-            most about a second, so the bound is also a worst-case latency
-            budget. Raise it only for flows that genuinely need more passes.
+        max_cycles: Upper bound on engine passes, so a never-satisfied
+            *until* cannot hang the test. Must be at least 1.
 
     Returns:
-        The number of engine passes actually run. If *until* was supplied but
-        never became truthy, this equals ``max_cycles`` and a ``UserWarning``
-        is emitted so the exhausted bound is not silently swallowed.
+        The number of engine passes run. If *until* was supplied but never
+        became truthy, this equals ``max_cycles`` and a ``UserWarning`` is
+        emitted.
+
+    Raises:
+        ValueError: If ``max_cycles`` is less than 1.
 
     Example::
 
@@ -740,7 +738,7 @@ def process_and_wait(
         until: Optional predicate forwarded to [`drain`][protean.testing.drain]; draining
             stops early once it returns truthy (async mode only).
         max_cycles: Upper bound on engine passes when draining (see
-            [`drain`][protean.testing.drain]; each pass takes at least ~1 second).
+            [`drain`][protean.testing.drain]).
 
     Returns:
         A [`ProcessResult`][protean.testing.ProcessResult] exposing the command result, the events
@@ -811,13 +809,16 @@ class EventSequence:
 
         Args:
             projection_cls: The projection class to query.
-            **identity: Keyword arguments identifying the projection record.
-                Must provide exactly one keyword matching the projection's
-                identifier field.
+            **identity: A keyword naming the projection's identifier field,
+                such as ``id="u1"``. The first value is used to load the
+                record.
 
         Returns:
             ProjectionResult: Result object with ``.has()``, ``.found``,
             and ``.projection`` for assertions.
+
+        Raises:
+            ValueError: If no identity keyword is given.
         """
         if not identity:
             raise ValueError(
@@ -1264,6 +1265,8 @@ def assert_snapshot(
         AssertionError: If the current state does not match the stored
             snapshot.
         TypeError: If *obj* cannot be converted to a dict.
+        ValueError: If *name* is not a plain file name (it contains a path
+            separator, ``.`` or ``..``, or is absolute).
 
     Examples::
 
