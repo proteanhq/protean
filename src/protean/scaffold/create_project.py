@@ -61,22 +61,17 @@ _FORBIDDEN_NAME_CHARACTERS = re.compile(r'[<>:"/\\|?*\s]')
 def _is_valid_project_name(project_name: object) -> bool:
     """Return whether *project_name* is usable as a single-segment directory name.
 
-    The parameter is typed ``object`` because the runtime contract is wider than
-    the public :func:`create_project` signature: a programmatic caller (the MCP
-    ``scaffold`` tool) can hand over whatever JSON decoded to, so a non-string
-    has to be rejected here rather than blowing up further down.
-
     Rejects a non-string, the empty string, the ``.`` and ``..`` path segments,
     and any name carrying a forbidden character (see
-    :data:`_FORBIDDEN_NAME_CHARACTERS`). The forbidden set already includes the
-    path separators, so an accepted name is always a single directory segment
-    that resolves under *output_folder* and never at or above it. This matters
-    for the ``force`` clear: a programmatic caller (the MCP ``scaffold`` tool)
-    passing ``"."`` or ``".."`` must not end up clearing the output folder or its
-    parent.
+    :data:`_FORBIDDEN_NAME_CHARACTERS`). An accepted name is always a single
+    directory segment.
     """
+    # The MCP ``scaffold`` tool passes whatever JSON decoded to, so a non-string
+    # can reach here despite the ``str`` hint on ``create_project``.
     if not isinstance(project_name, str):
         return False
+    # ``.`` or ``..`` would point the ``force`` clear at the output folder or its
+    # parent.
     if not project_name or project_name in {".", ".."}:
         return False
     return not _FORBIDDEN_NAME_CHARACTERS.search(project_name)
@@ -136,14 +131,12 @@ def create_project(
             Defaults to the current directory.
         data: Template answers (for example ``author_name``, ``author_email``).
             ``project_name`` is injected automatically, so it need not be passed.
-        dry_run: When true, touch nothing at the target. The project is rendered
-            into a temp directory only to enumerate the files apply would create,
-            and the returned list is the same set apply produces.
+        dry_run: When true, touch nothing at the target, even a non-empty one,
+            and return the same list apply would produce.
         force: When something already sits at the target path (a non-empty
             directory, or a non-directory such as a file or symlink), clear it
             first. Without this such a target raises :exc:`FileExistsError`. A
-            target that resolves outside *output_folder* is refused either way,
-            so the clear never reaches outside the output folder.
+            target that resolves outside *output_folder* is refused either way.
         defaults: Pass copier's ``defaults`` through, so unanswered questions take
             their template default instead of prompting.
 

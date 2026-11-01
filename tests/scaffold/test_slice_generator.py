@@ -122,6 +122,16 @@ def test_default_fragment_reproduces_plan_add_slice(tmp_path):
     ]
 
 
+def test_generate_slice_plan_touches_no_files(tmp_path, monkeypatch):
+    """Generating a plan writes nothing to disk."""
+    monkeypatch.chdir(tmp_path)
+
+    plan = generate_slice_plan(_valid_fragment(), "myproj", "myproj")
+
+    assert plan.operations
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_rich_fragment_is_reflected_in_every_file(tmp_path):
     """A fragment richer than the default declares each field in its per-type form,
     across every supported primitive type and both constraints, and every planned file

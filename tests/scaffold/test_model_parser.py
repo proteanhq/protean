@@ -1509,6 +1509,10 @@ def _order_read_side(*, key_extra: dict | None = None) -> dict:
 
 @pytest.mark.no_test_domain
 class TestEmitterIneligibility:
+    def test_cluster_not_in_the_ir_raises(self):
+        with pytest.raises(ModelEmitError, match="is not in the IR"):
+            emit_model(_synthetic_ir(), "m.Missing")
+
     def test_two_authored_events_raises(self):
         domain = Domain(name="Ordering", root_path=".")
 
