@@ -130,11 +130,12 @@ def test_pack_files_returns_the_pack_root():
     assert (root / dx.SKILLS_DIR).is_dir()
 
 
-def test_load_agents_source_returns_seed_content():
+def test_load_agents_source_returns_the_guidance():
     text = dx.load_agents_source()
 
     assert "Protean agent instructions" in text
-    assert "dx-pack-seed" in text
+    assert "## Working with Protean" in text
+    assert "dx-pack-seed" not in text
 
 
 def test_read_pack_text_reads_a_nested_resource():
