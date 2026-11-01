@@ -42,14 +42,15 @@ def instrument_app(
     excluded_urls: str | None = None,
     **kwargs: Any,
 ) -> bool:
-    """Auto-instrument a FastAPI app with OpenTelemetry using domain-scoped providers.
+    """Instrument a FastAPI app with OpenTelemetry using the domain's providers.
 
-    Applies ``FastAPIInstrumentor.instrument_app()`` so that every HTTP request
-    creates an OTEL span with standard semantic conventions (``http.method``,
-    ``http.route``, ``http.status_code``).  These HTTP spans automatically
-    become parents of any ``protean.command.process`` or
-    ``protean.handler.execute`` spans created during the request, thanks to
-    OTEL context propagation.
+    Every HTTP request gets a span with the standard HTTP attributes
+    (``http.method``, ``http.route``, ``http.status_code``). A
+    ``protean.command.process`` span created during the request is a child of
+    the HTTP span, so the command and handler spans share its trace.
+
+    Does nothing unless ``[telemetry].enabled`` is true in the domain config.
+    Initializes the domain's telemetry providers if no attempt has been made.
 
     Args:
         app: The FastAPI application instance.
