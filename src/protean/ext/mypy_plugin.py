@@ -281,9 +281,9 @@ def _extract_decorator_name_from_expr(decorator: object) -> str | None:
 
     Matches ``@domain.aggregate`` and ``@domain.aggregate(...)``, and returns
     the method name (``"aggregate"``) when it is a known Protean decorator.
-    Returns ``None`` for any other expression, and when the receiver is
-    already resolved to a type other than ``Domain``. An unresolved receiver
-    is matched on the method name alone.
+    Returns ``None`` for any other expression, and when the receiver is a
+    plain name already resolved to a type other than ``Domain``. Any other
+    receiver is matched on the method name alone.
     """
     # Unwrap @domain.aggregate(...) → get the MemberExpr
     if isinstance(decorator, CallExpr):
