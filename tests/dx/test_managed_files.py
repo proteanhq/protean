@@ -351,6 +351,9 @@ def test_update_write_failure_leaves_the_state_on_the_prior_version(
     state_before = state_path(tmp_path).read_text(encoding="utf-8")
 
     def fail_write(path: Path, content: str) -> None:
+        # The state file is written through the same helper, so a state write
+        # attempted first must fail the test here.
+        assert path.name == "AGENTS.md"
         raise OSError("disk full")
 
     monkeypatch.setattr("protean.dx.managed_files._atomic_write", fail_write)
