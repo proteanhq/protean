@@ -201,6 +201,17 @@ class _DomainRegistry:
                 f"Registered Element {element_name} with Domain as a {element.element_type.value}"
             )
 
+    def is_internal(self, element_cls: type[Any]) -> bool:
+        """Return ``True`` if the framework registered ``element_cls`` for its
+        own use, such as the outbox or the memory event store's message rows.
+
+        An unregistered class is not internal.
+        """
+        record = self._elements[element_cls.element_type.value].get(
+            _fully_qualified_name(element_cls)
+        )
+        return record is not None and record.internal
+
     @property
     def elements(self) -> dict[str, list[Any]]:
         """Return all registered elements grouped by type, excluding internal elements.

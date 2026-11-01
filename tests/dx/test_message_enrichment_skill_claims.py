@@ -1,12 +1,12 @@
-"""The message-enrichment skill's audit enricher survives framework records.
+"""The message-enrichment skill's audit enricher stamps only the user's aggregates.
 
 An aggregate enricher runs when a repository saves an aggregate to a database,
 and never for an event-sourced aggregate. Protean also saves some of its own
-records through repositories: outbox rows when the outbox is on, and message
-records in the in-memory event store whether the outbox is on or off. The
-enricher runs for those records too. The skill, the message enrichment guide and the audit fields
-pattern skip an aggregate without the audit field. These tests show why the
-check is needed and that it works.
+records through repositories (outbox rows, the in-memory event store's message
+records), and the enricher never runs for those. The skill, the message
+enrichment guide and the audit fields pattern skip an aggregate without the
+audit field, so the enricher also works in a domain where some aggregates have
+no audit fields. These tests check both claims.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ import pytest
 from pydantic import ValidationError
 
 from protean import Domain
-from protean.exceptions import TransactionError
 from protean.fields import Identifier, String
 from protean.utils.globals import g
 
@@ -42,6 +41,10 @@ def _domain_with_enricher(guarded: bool, outbox: bool = True):
         def place(self):
             self.raise_(OrderPlaced(order_id=self.id))
 
+    @domain.aggregate
+    class Tag:
+        name = String(required=True)
+
     @domain.aggregate_enricher
     def stamp_audit(aggregate):
         stamped.append(type(aggregate).__name__)
@@ -53,34 +56,23 @@ def _domain_with_enricher(guarded: bool, outbox: bool = True):
             aggregate.created_by = user
 
     domain.init(traverse=False)
-    return domain, Order, stamped
+    return domain, Order, Tag, stamped
 
 
-def test_the_enricher_runs_on_outbox_rows():
-    domain, Order, stamped = _domain_with_enricher(guarded=True)
+@pytest.mark.parametrize("outbox", [True, False], ids=["outbox", "no-outbox"])
+def test_the_enricher_never_runs_on_framework_records(outbox):
+    domain, Order, _, stamped = _domain_with_enricher(guarded=False, outbox=outbox)
 
     with domain.domain_context(current_user="alice"):
         order = Order(customer_id="c-1")
         order.place()
         domain.repository_for(Order).add(order)
 
-    assert stamped[0] == "Order"
-    assert "Outbox" in stamped
-    assert "MemoryMessage" in stamped
-
-
-def test_an_unguarded_enricher_fails_on_the_outbox_row():
-    domain, Order, _ = _domain_with_enricher(guarded=False)
-
-    with domain.domain_context(current_user="alice"):
-        order = Order(customer_id="c-1")
-        order.place()
-        with pytest.raises(ValidationError, match="updated_by"):
-            domain.repository_for(Order).add(order)
+    assert stamped == ["Order"]
 
 
 def test_the_guarded_enricher_stamps_the_aggregate():
-    domain, Order, _ = _domain_with_enricher(guarded=True)
+    domain, Order, _, _ = _domain_with_enricher(guarded=True)
 
     with domain.domain_context(current_user="alice"):
         order = Order(customer_id="c-1")
@@ -92,22 +84,19 @@ def test_the_guarded_enricher_stamps_the_aggregate():
     assert stored.updated_by == "alice"
 
 
-def test_without_the_outbox_the_enricher_runs_on_event_store_records():
-    domain, Order, stamped = _domain_with_enricher(guarded=True, outbox=False)
+def test_the_guard_skips_an_aggregate_without_audit_fields():
+    domain, _, Tag, _ = _domain_with_enricher(guarded=True)
 
     with domain.domain_context(current_user="alice"):
-        order = Order(customer_id="c-1")
-        order.place()
-        domain.repository_for(Order).add(order)
+        tag = Tag(name="urgent")
+        domain.repository_for(Tag).add(tag)
 
-    assert stamped == ["Order", "MemoryMessage"]
+        assert domain.repository_for(Tag).get(tag.id).name == "urgent"
 
 
-def test_without_the_outbox_an_unguarded_enricher_fails_the_commit():
-    domain, Order, _ = _domain_with_enricher(guarded=False, outbox=False)
+def test_an_unguarded_enricher_fails_on_an_aggregate_without_audit_fields():
+    domain, _, Tag, _ = _domain_with_enricher(guarded=False)
 
     with domain.domain_context(current_user="alice"):
-        order = Order(customer_id="c-1")
-        order.place()
-        with pytest.raises(TransactionError, match="updated_by"):
-            domain.repository_for(Order).add(order)
+        with pytest.raises(ValidationError, match="updated_by"):
+            domain.repository_for(Tag).add(Tag(name="urgent"))

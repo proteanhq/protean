@@ -377,8 +377,8 @@ class UnitOfWork:
         priority = current_priority()
 
         # Build the outbox rows for this transaction. They are built here, and
-        # their pre-persist hooks (timestamp stamping, aggregate enrichers) run
-        # here, so a raising hook fails the commit before anything is appended.
+        # their pre-persist hooks (timestamp stamping) run here, so a raising
+        # hook fails the commit before anything is appended.
         # The rows are saved after the event-store append below.
         #
         # Iterate over providers that have events (not over sessions) because

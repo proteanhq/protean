@@ -17,9 +17,7 @@ from protean.utils.globals import g
 
 @domain.aggregate_enricher
 def stamp_audit(aggregate):
-    if not hasattr(
-        aggregate, "updated_by"
-    ):  # a framework record, such as an outbox row
+    if not hasattr(aggregate, "updated_by"):  # an aggregate without audit fields
         return
     user = g.get("current_user")
     aggregate.updated_by = user

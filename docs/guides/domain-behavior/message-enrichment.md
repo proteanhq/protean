@@ -122,9 +122,9 @@ stamping works the same way, and its `location` names the stamped fields.
 An enricher that raises has its writes undone too, and its own exception
 reaches the caller.
 
-Aggregate enrichers also fire for the records Protean itself saves through
-repositories, such as outbox rows and the message records of the in-memory event
-store. That is why the example skips an aggregate without `updated_by`.
+Aggregate enrichers never fire for the records Protean saves for itself, such
+as outbox rows. The example skips an aggregate without `updated_by`, so the same
+enricher works in a domain where some aggregates have no audit fields.
 
 Keep them to cross-cutting lifecycle/audit metadata; they are not a hook for
 business logic or for raising events. For the complete recipe (an abstract audit
