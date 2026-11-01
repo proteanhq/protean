@@ -159,27 +159,21 @@ class SourceProvider:
     # ------------------------------------------------------------------
 
     def modules(self) -> tuple[str, ...]:
-        """Module names found in the domain's package, sorted, computed once.
+        """Module names found in the domain's package, sorted.
 
-        The walk follows the directory rules ``Domain._traverse`` uses to
-        import a domain: the directory holding the domain file plus its
-        immediate subdirectories, minus ``__pycache__`` and minus any
-        subdirectory carrying its own ``domain.toml`` / ``.domain.toml`` /
-        ``pyproject.toml`` (that is a separate domain). Module names are built
-        from the path relative to the root directory's parent.
+        The package is the directory at the domain's ``root_path`` (or the
+        directory holding it, when ``root_path`` is a file) plus its immediate
+        subdirectories. A ``__pycache__`` subdirectory is left out, and so is a
+        subdirectory holding its own ``domain.toml``, ``.domain.toml`` or
+        ``pyproject.toml``, because that is a separate domain. Module names
+        start from the root directory's name. A relative ``root_path`` resolves
+        against the working directory. An empty or missing ``root_path`` gives
+        an empty tuple.
 
-        It is not a copy of ``_traverse``. Unlike ``_traverse`` this walk keeps
-        the module that defines the domain (it is source worth analysing), and
-        it names modules off an absolute path so a relative ``root_path`` still
-        produces usable names.
-
-        No file is read or parsed here, though the walk does list the root
-        directory and each retained subdirectory. Trees are produced on demand
-        by :meth:`iter_trees`.
-
-        This is *not* the resolution path for a specific element: registered
-        elements frequently live outside ``root_path``. Use :meth:`tree` with
-        the element's ``__module__`` for that.
+        The result is computed once per provider. No file is read or parsed;
+        :meth:`iter_trees` yields the trees. To find the source of one
+        registered element, call :meth:`tree` with the element's
+        ``__module__``, because elements often live outside ``root_path``.
         """
         if self._module_names is None:
             self._module_names = tuple(name for name, _ in self._walk())

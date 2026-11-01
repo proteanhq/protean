@@ -531,3 +531,15 @@ class TestImportScanForms:
         # result) is not attributable to the module and must be ignored.
         src = "get_utils().generate_identity\n"
         assert self._scan(src) == []
+
+    def test_function_local_field_import_call_is_not_flagged(self) -> None:
+        src = (
+            "def build():\n"
+            "    from protean.fields import Method\n"
+            "    return Method('a')\n"
+        )
+        assert self._scan(src) == []
+
+    def test_function_local_util_import_is_flagged(self) -> None:
+        src = "def build():\n    from protean.utils import generate_identity\n"
+        assert self._scan(src) == [("util", "protean.utils.generate_identity")]

@@ -122,29 +122,30 @@ def check_staleness(
 ) -> StalenessResult:
     """Compare the live domain's IR checksum against the materialized IR.
 
-    Parameters
-    ----------
-    domain_module:
-        Dotted module path (or file path) of the domain to import and
-        initialise, e.g. ``"my_app.domain"`` or ``"my_app/domain.py"``.
-    protean_dir:
-        Path to the directory that holds the materialized ``ir.json``.
-        Defaults to ``.protean`` relative to the current working directory.
-    config:
-        Optional :class:`~protean.ir.config.CompatConfig`.  When ``None``,
-        loaded automatically from *protean_dir*/config.toml.
+    Imports and initialises the domain to build its live IR, unless the
+    stored IR is missing, has a different schema version, or staleness
+    checking is turned off.
 
-    Returns
-    -------
-    StalenessResult
-        - ``status=FRESH`` — checksums match, or staleness checking is
-          disabled via config.
-        - ``status=STALE`` — checksums differ.
-        - ``status=NO_IR`` — no ``ir.json`` found in *protean_dir*.
-        - ``status=VERSION_MISMATCH`` — the stored ``ir_version`` differs from
-          the current :data:`~protean.ir.SCHEMA_VERSION`; the baseline was
-          materialized against a different schema version and must be
+    Args:
+        domain_module: Dotted module path or file path of the domain, e.g.
+            ``"my_app.domain"`` or ``"my_app/domain.py"``.
+        protean_dir: Directory that holds the materialized ``ir.json``.
+        config: Compatibility config. When ``None``, it is loaded from
+            *protean_dir*/config.toml.
+
+    Returns:
+        A :class:`StalenessResult` whose status is one of:
+
+        - ``FRESH``: the checksums match, or staleness checking is off.
+        - ``STALE``: the checksums differ.
+        - ``NO_IR``: there is no ``ir.json`` in *protean_dir*.
+        - ``VERSION_MISMATCH``: the stored ``ir_version`` differs from the
+          current :data:`~protean.ir.SCHEMA_VERSION`, so the stored IR must be
           regenerated.
+
+    Raises:
+        ValueError: If ``ir.json`` cannot be read or is not valid JSON.
+        NoDomainException: If no domain can be derived from *domain_module*.
     """
     if config is None:
         config = load_config(protean_dir)

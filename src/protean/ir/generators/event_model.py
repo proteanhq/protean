@@ -248,34 +248,16 @@ def _slice_diagram(
 def generate_slice_gwt(ir: dict[str, Any], cluster_fqn: str) -> str:
     """Render the structural Given-When-Then for one aggregate slice.
 
-    Returns a Markdown blockquote (``> **Given** ...`` lines) that leads a
-    slice with a structural Given-When-Then before the diagram. The GWT is
-    derived structurally from the IR, which is always available:
+    Returns a Markdown blockquote with up to three lines:
 
-    - **Given:** the aggregate the slice is about. The IR encodes no temporal
-      order between events, so there is no reliable list of prior events to
-      show yet; the honest structural Given is the aggregate. This is where
-      later scenario metadata would enrich the line.
-    - **When:** the cluster's commands (the triggers), short names, ordered by
-      FQN. Omitted when the cluster has no commands.
-    - **Then:** the cluster's non-fact events (the results), short names,
-      ordered by FQN. Fact events are filtered with the same predicate the
-      diagram uses, so GWT and diagram agree on which events exist. Omitted
-      when the cluster raises no non-fact events.
+    - **Given:** the aggregate's short name.
+    - **When:** the cluster's commands, by short name, sorted by FQN. Omitted
+      when the cluster has no commands.
+    - **Then:** the cluster's non-fact events, by short name, sorted by FQN.
+      Omitted when the cluster raises no non-fact events.
 
-    Both lines list one entry per FQN, matching the diagram, which draws one
-    node per FQN. Two elements from different modules that share a short name
-    are listed twice rather than collapsed, so the two views never disagree.
-
-    This is slice-level pairing: one GWT per slice. A one-command /
-    one-event slice reads ``When PlaceOrder`` / ``Then OrderPlaced``. A
-    multi-command / multi-event slice lists the commands on the When line and
-    the events on the Then line, which is coarse but honest. Precise
-    per-command-to-event pairing (via the command-handler ``invokes`` to
-    aggregate ``raises`` chain) is deliberately left out of this version: it
-    would depend on the optional, fail-open ``method_edges`` field this
-    generator avoids, and it is part of the same "enrich later" growth path
-    as scenario metadata.
+    Each line has one entry per FQN, so two elements from different modules
+    that share a short name are listed twice.
 
     Args:
         ir: The full IR dict.
@@ -289,11 +271,16 @@ def generate_slice_gwt(ir: dict[str, Any], cluster_fqn: str) -> str:
     if cluster is None:
         return ""
 
+    # The IR records no order between events, so there is no list of prior
+    # events to show, and the Given names the aggregate.
     lines: list[str] = [f"> **Given** {short_name(cluster_fqn)}"]
 
     # Sorted by FQN and not deduped by short name: the diagram draws one node
     # per FQN, so two elements from different modules that share a short name
     # must appear twice here too, or the GWT would disagree with the diagram.
+    # The slice gets one When and one Then line. Pairing each command with the
+    # events it raises would need the optional, fail-open ``method_edges``
+    # field, which the event model generators do not read.
     commands = [short_name(cmd_fqn) for cmd_fqn in sorted(cluster.get("commands", {}))]
     if commands:
         lines.append(f"> **When** {', '.join(commands)}")
@@ -503,12 +490,8 @@ def generate_slice_annotations(
     """Render the human notes attached to one aggregate slice.
 
     Returns the Markdown for every annotation whose FQN is drawn in the
-    slice, in sorted FQN order, or ``""`` when the slice carries no notes.
-    An empty *annotations* mapping renders nothing, which keeps the no-file
-    baseline byte-identical to the pre-annotation render.
-
-    Renders one slice, so it builds the consumer indexes itself. To render
-    every slice, use :func:`generate_event_model_sections`, which builds them
+    slice, in sorted FQN order. To render every slice, use
+    :func:`generate_event_model_sections`, which builds the consumer indexes
     once for the whole model.
 
     Args:
@@ -616,12 +599,10 @@ def generate_event_model_sections(
 ) -> list[EventModelSection]:
     """Render every aggregate slice, in sorted cluster order.
 
-    This is the whole-document counterpart to the per-slice functions. It
-    builds the projector and automation indexes once and reuses them for every
-    slice, so a render costs one pass over the projections and flows rather
-    than one per slice. Calling :func:`generate_event_model_slice` and
-    :func:`generate_slice_annotations` in a loop rebuilds both indexes on each
-    call; prefer this when rendering the full model.
+    Each section holds the same GWT, notes and diagram the per-slice functions
+    render. Prefer this to calling :func:`generate_event_model_slice` and
+    :func:`generate_slice_annotations` in a loop: those rebuild the projector
+    and automation indexes on every call, and this builds them once.
 
     Args:
         ir: The full IR dict.
@@ -866,22 +847,24 @@ def _cluster_change_phrases(
     right_clusters: dict[str, Any],
     drawn_types: _DrawnEventTypes,
 ) -> list[str]:
-    """Render one changed cluster's intrinsic slice-participant changes.
+    """Render one changed cluster's slice changes as ``slice <name>: ...`` phrases.
 
-    Reports only the intrinsic participants the event model draws inside the
-    slice — the aggregate (state), its non-fact events (results) and its
-    commands (triggers). Consumers (event handlers, read models) are handled by
-    the caller, which routes their appearance and disappearance to the added
-    and removed sections. Entities, value objects, repositories, database
-    models, application services, command handlers, queries and query handlers
-    are not slice participants, so a change confined to one of them is not a
-    model change and is intentionally left out.
+    Covers the aggregate, its non-fact events and its commands. An event counts
+    as drawn according to the snapshot it exists in. A change confined to any
+    other cluster member (entities, value objects, repositories, handlers,
+    queries) is not reported. Consumers are left to the caller.
 
-    The slice is named by the aggregate, read from the right snapshot (a
-    changed cluster is present on both sides). Events are classified against
-    both snapshots, so the fact-event predicate that decides what the diagram
-    draws is applied to whichever side the event exists on.
+    Args:
+        cluster_fqn: FQN of the changed cluster.
+        delta: The cluster's entry in the diff's ``changed`` section.
+        left_clusters: The left snapshot's ``clusters`` map.
+        right_clusters: The right snapshot's ``clusters`` map.
+        drawn_types: The event types each snapshot draws.
+
+    Returns:
+        The phrases, in the order the slice reports them.
     """
+    # A changed cluster exists on both sides; the right side names the slice.
     right_cluster = right_clusters.get(cluster_fqn, {})
     agg = right_cluster.get("aggregate", {}).get("name") or short_name(cluster_fqn)
     prefix = f"slice {agg}: "
@@ -1025,22 +1008,17 @@ def _consumer_transitions(
 ) -> tuple[list[str], list[str], list[str]]:
     """Split consumer FQNs into the ones the diagram gained, lost and redrew.
 
-    Whether a consumer is drawn is a property of the side it lives on: it needs
-    a routing key that matches a non-fact event of some cluster in that
-    snapshot. So appearance and disappearance are read off the two snapshots'
-    nodes rather than off the diff. That catches the consumer that came or went
-    because the events moved under it (its event was added, removed, or turned
-    into a fact event) while the consumer element itself never changed. It also
-    puts a consumer whose own delta made it drawn, such as an empty handler map
-    that gained a live route, under added rather than changed.
+    A consumer is added when only *right_nodes* draws it and removed when only
+    *left_nodes* draws it, even if the consumer element itself did not change.
+    A consumer drawn on both sides is changed when its nodes differ (other
+    slices or another label) or when its own delta touches something the
+    diagram draws. A consumer drawn on neither side is left out.
 
-    A consumer drawn on both sides stayed, so it is changed when the diagram
-    redraws it in any way: when the slices that draw it differ (a handler
-    rewired to another aggregate's events, a consumer that lost one of its two
-    slices), when a node label differs (a process manager whose lifecycle
-    flipped, a projector retargeted to another projection), or when its own
-    delta touches something the renderer reads. A consumer drawn on neither
-    side is no node in any slice, so it is left out entirely.
+    Args:
+        left_nodes: The consumer nodes the left snapshot draws, keyed by FQN.
+        right_nodes: The consumer nodes the right snapshot draws, keyed by FQN.
+        deltas: Each consumer's own diff entry, keyed by FQN.
+        drawn_types: The event types each snapshot draws.
 
     Returns:
         ``(added, removed, changed)``, each a list of FQNs sorted by FQN.
@@ -1063,33 +1041,22 @@ def generate_event_model_diff(
 ) -> str:
     """Render an IR diff in EventModeling slice vocabulary.
 
-    Takes the :func:`protean.ir.diff.diff_ir` result and both IR snapshots, and
-    rewrites the diff as slice statements: an added command is a new slice, a
-    removed projection is a removed read model, a projection that gained a field
-    is a changed slice. The diff says what changed inside an element, and the
-    snapshots supply the slice topology the diff collapses away (a whole new
-    cluster is one diff entry, so its commands are enumerated from the
-    snapshot).
+    Rewrites the :func:`protean.ir.diff.diff_ir` result as slice statements:
+    an added command is a new slice, a removed projection is a removed read
+    model, a projection that gained a field is a changed slice. A new or
+    removed cluster is reported as one slice per command, or as one slice
+    named after the aggregate when it has no commands.
 
-    Only participants the event model draws are reported: commands, the
-    aggregate, non-fact events, projections (read models) and automations
-    (event handlers and process managers). Both snapshots are needed because
-    what the model draws is a property of the side an element lives on. A
-    removed event is a fact event or not according to the left snapshot. A
-    consumer (a projector, an event handler, a process manager) is drawn on
-    each side by that side's events, so the nodes the two snapshots draw are
-    compared to decide whether its node appeared, disappeared or was redrawn.
-    That is the one place a comparison is made outside the diff, and it is what
-    catches a consumer that came, went or moved because the events around it
-    moved while the consumer itself stayed put.
-
-    A consumer that appears or disappears is routed to the added or removed
-    section, like a new or gone slice; a change confined to a slice's intrinsic
-    body (aggregate, events, command fields) is routed to the changed section
-    under the slice's name. A change confined to anything else (entities,
-    repositories, contracts, diagnostics, domain metadata) is not a model
-    change; it does not fabricate a slice. When nothing the model draws moved,
-    returns the single line ``No model changes.``.
+    Only what the event model draws is reported: commands, the aggregate,
+    non-fact events, projections (read models) and automations (event handlers
+    and process managers). Each element is judged against the snapshot it
+    lives in, so a removed event is a fact event or not according to
+    *left_ir*. A consumer whose node appears or disappears goes to the added or
+    removed section, also when only the events around it changed. A change to
+    a slice's aggregate, events or command fields goes to the changed section
+    under the slice's name. A change confined to anything else, such as
+    entities, repositories, contracts, diagnostics or domain metadata, is not
+    reported.
 
     Args:
         diff_result: The dict returned by :func:`protean.ir.diff.diff_ir`.

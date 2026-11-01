@@ -19,15 +19,12 @@ _MERMAID_SPECIAL = re.compile(r'([|{}\[\]()<>#"&])')
 
 
 def mermaid_escape(text: str) -> str:
-    """Escape characters that have syntactic meaning in Mermaid diagrams.
+    """Make *text* safe to use as a Mermaid node or edge label.
 
-    Mermaid uses ``|``, ``{}``, ``[]``, ``()``, ``<>``, ``#``, ``"``, and
-    ``&`` as delimiters in node shapes, edge labels, and entity names.
-    This function wraps the text in double-quotes to safely embed
-    arbitrary strings in Mermaid labels.
-
-    If the text is empty it is returned as-is (quoting an empty string
-    produces ``""`` which Mermaid renders as a visible empty node).
+    Text that contains any of ``|``, ``{}``, ``[]``, ``()``, ``<>``, ``#``,
+    ``"`` or ``&`` comes back wrapped in double quotes, with each ``"`` in it
+    replaced by ``#quot;``. Other text, and the empty string, come back
+    unchanged.
 
     Examples::
 
@@ -117,15 +114,17 @@ def module_path(fqn: str) -> str:
 def field_type_label(field: dict[str, Any]) -> str:
     """Build a human-readable type label for an IR field dict.
 
-    The label format depends on the field kind:
+    The label depends on the field's ``kind``, which defaults to ``standard``:
 
-    - ``auto`` → ``"Auto"``
-    - ``standard`` → the type name (e.g. ``"String"``, ``"Integer"``)
-    - ``list`` → ``"List[ContentType]"`` or ``"List"``
-    - ``dict`` → ``"Dict"``
-    - ``value_object`` / ``has_one`` / ``has_many`` / ``reference``
-      → the short name of the target (e.g. ``"Address"``)
-    - ``value_object_list`` → ``"List[TargetName]"``
+    - ``auto``: ``"Auto"``
+    - ``standard``: the ``type`` name, such as ``"String"``, or ``"?"``
+    - ``list``: ``"List[ContentType]"``, or ``"List"`` with no content type
+    - ``dict``: ``"Dict"``
+    - ``value_object``, ``has_one``, ``reference``: the target's short name,
+      such as ``"Address"``, or the kind itself with no target
+    - ``has_many``: ``"Target[]"``, or ``"?[]"`` with no target
+    - ``value_object_list``: ``"List[Target]"``, or ``"List[?]"`` with no
+      target
 
     Examples::
 

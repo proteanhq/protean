@@ -298,6 +298,13 @@ class TestEnumeration:
 
         assert not [m for m in _provider_for(root).modules() if ".child" in m]
 
+    def test_only_immediate_subdirectories_are_walked(self, tmp_path):
+        root = _build_package(tmp_path, "depthpkg")
+        _write(root / "sub" / "deeper" / "__init__.py")
+        _write(root / "sub" / "deeper" / "leaf.py", "VALUE = 4\n")
+
+        assert not [m for m in _provider_for(root).modules() if "deeper" in m]
+
     def test_root_path_given_as_a_file_enumerates_its_directory(self, tmp_path):
         """The ``root_path=__file__`` idiom resolves to the containing package."""
         root = _build_package(tmp_path, "filerootpkg")

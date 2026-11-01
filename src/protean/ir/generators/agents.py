@@ -48,15 +48,10 @@ def _constraint_line(code: DiagnosticCode, meta: CodeMeta) -> str:
 def generate_agents_md(*, version: str) -> str:
     """Build the ``AGENTS.md`` negative-constraint pack for *version*.
 
-    Filters :data:`REGISTRY` to the error-level codes, sorts them by code name
-    for stability, and renders each as one "do not" constraint built from the
-    code's ``meaning``/``rationale``/``fix``. Advisory (``warning``/``info``)
-    codes are excluded: only an error-level code is a hard rule.
-
-    The output is deterministic: the header is fixed and version-stamped, the
-    single registry traversal is sorted, and nothing here reads a timestamp or
-    the IR, so generating twice for the same *version* yields byte-identical
-    output.
+    Renders one "do not" constraint for each error-level code in
+    :data:`REGISTRY`, sorted by code, from the code's ``meaning``,
+    ``rationale`` and ``fix``. Warning and info codes are left out. The same
+    *version* always gives the same output.
 
     Args:
         version: The Protean version string to stamp into the header.

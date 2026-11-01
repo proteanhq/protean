@@ -115,6 +115,10 @@ class TestCompatConfigValidation:
         config = CompatConfig(min_versions_before_removal=5)
         assert config.min_versions_before_removal == 5
 
+    def test_non_mapping_domains_raises(self):
+        with pytest.raises(ValueError, match="domains must be a mapping"):
+            CompatConfig(domains=["identity"])  # type: ignore[arg-type]
+
 
 # ---------------------------------------------------------------------------
 # TestIsExcluded
