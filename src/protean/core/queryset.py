@@ -32,9 +32,10 @@ class QuerySet:
     ``len()``, ``bool()`` or ``list()`` on the QuerySet, iterate over it, or
     slice it.
 
-    The QuerySet keeps the results of its last run, and iterating or slicing
-    again reuses them. When the Unit of Work transaction has changed since
-    that run, the query runs again. ``all()`` always runs the query again, so
+    The QuerySet keeps a non-empty result of its last run, and iterating or
+    slicing again reuses it. An empty result is not kept, so the query runs
+    again. When the Unit of Work transaction has changed since that run, the
+    query runs again. ``all()`` always runs the query again, so
     call it to see changes made since the last run.
     """
 

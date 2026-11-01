@@ -1020,8 +1020,8 @@ class BaseBroker(metaclass=ABCMeta):
 
         The check and the delete happen in one atomic step. The partition is
         reaped only when every consumer group on each of its streams has read
-        and acknowledged every entry, and every group has been idle for at
-        least ``min_idle_ms``. When priority lanes are enabled, pass
+        and acknowledged every entry, and the newest entry on each stream is at
+        least ``min_idle_ms`` old. An empty stream is always reaped. When priority lanes are enabled, pass
         ``backfill_suffix``: the backfill lane
         ``{category}:{key}:{backfill_suffix}`` is then checked and deleted with
         the main stream. The partition's generation counter is kept, so a

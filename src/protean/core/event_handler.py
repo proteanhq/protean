@@ -69,7 +69,10 @@ logger = logging.getLogger(__name__)
 
 
 class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
-    """Base class for event handlers, which process domain events asynchronously.
+    """Base class for event handlers, which process domain events.
+
+    Handlers run in the server engine. When ``event_processing`` is ``"sync"``,
+    they run instead when the Unit of Work commits, before it returns.
 
     **Meta Options**
 

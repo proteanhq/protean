@@ -1350,8 +1350,9 @@ class Engine:
         returning, it stops all subscriptions and closes the engine's event
         loop.
 
-        Returns at once, without starting anything, when there are no
-        subscriptions, broker subscriptions or outbox processors.
+        When there are no subscriptions, broker subscriptions or outbox
+        processors, it returns at once without starting anything, and the event
+        loop stays open.
 
         An unhandled exception in a subscription is logged and shuts the engine
         down with exit code 1. It is not raised to the caller.

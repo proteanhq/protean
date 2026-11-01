@@ -33,7 +33,8 @@ class QueryProcessor:
     def dispatch(self, query: Any) -> Any:
         """Dispatch a query to its registered QueryHandler and return results.
 
-        The handler runs synchronously, outside a ``UnitOfWork``.
+        The handler runs synchronously. Dispatch does not start a
+        ``UnitOfWork``.
 
         Args:
             query: Query to dispatch (instance of a ``@domain.query``-decorated class).

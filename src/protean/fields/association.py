@@ -433,8 +433,8 @@ class HasOne(Association):
         identity is written into the child's link field.
 
         The change is recorded in the parent's `_temp_cache` as `ADDED`,
-        `UPDATED` or `DELETED`. `UPDATED` and `DELETED` also record the old
-        child. The repository reads this record to decide what to persist.
+        `UPDATED` or `DELETED`. Replacing the child with a different one, or
+        removing it, also records the old child. The repository reads this record to decide what to persist.
         Assigning the same unchanged entity records no change.
 
         Removing a child also removes the entities linked under it. The

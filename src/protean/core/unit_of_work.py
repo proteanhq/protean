@@ -71,8 +71,8 @@ class UnitOfWork:
     UnitOfWork, and only that one commits or rolls back. A rollback in a nested
     UnitOfWork rolls back the whole transaction. There are no savepoints, and
     an inner UnitOfWork cannot commit on its own. To coordinate several
-    aggregates, use domain events. For a side effect that must survive a
-    rollback, use the outbox (see ADR-0015).
+    aggregates, use domain events. Events reach the outbox in the same commit,
+    so they are delivered only when the transaction commits (see ADR-0015).
 
     Within one transaction, a second read of an aggregate returns the instance
     already loaded. On commit, the events raised on aggregates saved through
