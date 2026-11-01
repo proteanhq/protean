@@ -228,6 +228,26 @@ class TestExtensionsThroughProcessing:
         assert last_msg is not None
         assert last_msg.metadata.extensions == {"tenant_id": "acme"}
 
+    def test_failing_enricher_stops_processing(self, test_domain):
+        """A raising enricher propagates from process() and the command is not stored."""
+
+        def bad_enricher(command):
+            raise ValueError("enricher failed")
+
+        test_domain.register_command_enricher(bad_enricher)
+
+        identifier = str(uuid4())
+        command = Register(user_id=identifier, email="a@b.com")
+        with pytest.raises(ValueError, match="enricher failed"):
+            test_domain.process(command, asynchronous=False)
+
+        assert (
+            test_domain.event_store.store.read_last_message(
+                f"test::user:command-{identifier}"
+            )
+            is None
+        )
+
 
 # ---------------------------------------------------------------------------
 # Serialization round-trip

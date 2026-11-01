@@ -33,10 +33,7 @@ class QueryProcessor:
     def dispatch(self, query: Any) -> Any:
         """Dispatch a query to its registered QueryHandler and return results.
 
-        This is the read-side counterpart of ``process()`` (which handles
-        commands on the write side).  Unlike ``process()``, ``dispatch()``
-        is always synchronous, never wraps in a ``UnitOfWork``, and always
-        returns the handler's return value.
+        The handler runs synchronously, outside a ``UnitOfWork``.
 
         Args:
             query: Query to dispatch (instance of a ``@domain.query``-decorated class).
@@ -45,8 +42,8 @@ class QueryProcessor:
             Any: Return value from the query handler method.
 
         Raises:
-            IncorrectUsageError: If *query* is not a registered query or
-                no handler is registered.
+            IncorrectUsageError: If *query* is not a query, is not registered,
+                or has no registered handler.
         """
         if not isinstance(query, BaseQuery):
             raise IncorrectUsageError(f"`{query.__class__.__name__}` is not a Query")

@@ -356,22 +356,17 @@ class HandlerConfigurator:
     def validate_sequential_by(self) -> None:
         """Validate ``sequential_by`` handlers and build the partition-key map.
 
-        Runs during ``_prepare()`` (needs no broker, so it also runs under
-        ``check()``). Enforces two of ADR-0028's registration rules and records
-        the result on the domain:
+        Checks every event handler, projector, command handler and process
+        manager that sets ``sequential_by``. The resulting map of stream
+        category to partition key is stored on ``domain._partition_keys``.
+        Broker support is checked separately, in
+        :meth:`validate_sequential_by_capabilities`.
 
-        - **Field existence** — every event/command type a ``sequential_by``
-          handler (event handler, projector, command handler or process
-          manager) handles must declare the named field (for a process manager,
-          the field its ``correlate`` spec resolves for that event).
-        - **One key per category** — a stream category can be partitioned by at
-          most one key; two handlers asking for different keys on the same
-          category is an error.
-
-        The resulting ``stream_category -> partition_key`` map is stored on
-        ``domain._partition_keys`` for the Unit of Work to read at commit. The
-        third rule (broker capability gating) needs an initialized broker and
-        runs later, in :meth:`validate_sequential_by_capabilities`.
+        Raises:
+            IncorrectUsageError: If a handled event or command does not declare
+                the partition field (for a process manager, the field its
+                ``correlate`` spec names), or if two handlers ask for different
+                keys on the same stream category.
         """
         registry = self._domain._domain_registry
         # Rebuild from scratch so a re-run (re-init) does not accumulate stale

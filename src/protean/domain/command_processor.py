@@ -286,44 +286,44 @@ class CommandProcessor:
         deadline: datetime | None = None,
         timeout: timedelta | None = None,
     ) -> Any | None:
-        """Process command and return results based on specified preference.
+        """Store a command in the event store and handle it now or later.
 
-        By default, Protean does not return values after processing commands. This behavior
-        can be overridden either by setting command_processing in config to "sync" or by specifying
-        ``asynchronous=False`` when calling the domain's ``handle`` method.
+        The command is handled synchronously when ``asynchronous`` is ``False``
+        or when the ``command_processing`` config is ``"sync"``. Otherwise the
+        engine handles it later.
 
         Args:
-            command: Command to process (instance of a ``@domain.command``-decorated class)
-            asynchronous (Boolean, optional): Specifies if the command should be processed asynchronously.
-                Defaults to True.
-            idempotency_key (str, optional): Caller-provided key for command deduplication.
-                When provided, enables submission-level dedup via the idempotency store.
-            raise_on_duplicate (bool): If ``True``, raises ``DuplicateCommandError``
-                when a duplicate idempotency key is detected. If ``False`` (default),
-                silently returns the cached result.
-            priority (int, optional): Processing priority for events produced by this command.
-                When priority lanes are enabled, events with priority below the configured
-                threshold are routed to a backfill stream and processed only when the
-                primary stream is empty. Use ``Priority`` enum values from
-                ``protean.utils.processing``. If not specified, uses the value from
-                the current ``processing_priority()`` context, or ``Priority.NORMAL`` (0).
-            correlation_id (str, optional): Correlation ID for distributed tracing.
-                When provided (e.g. from a frontend or API gateway), this ID is propagated
-                to all commands and events in the causal chain. If not provided, a new
-                UUID is auto-generated.
-            deadline (datetime, optional): Absolute time after which the command must
-                not be executed. Stored in command metadata and propagated to downstream
-                commands in the same causal chain. Mutually exclusive with ``timeout``.
-            timeout (timedelta, optional): Relative deadline (``now + timeout``).
-                Converted to an absolute deadline at submission so it survives queue
-                delays. Mutually exclusive with ``deadline``.
-
-        Raises:
-            CommandExpiredError: If the command's deadline has already passed when a
-                synchronous handler is about to execute.
+            command: Instance of a ``@domain.command``-decorated class.
+            asynchronous: Whether to handle the command later. Defaults to the
+                ``command_processing`` config.
+            idempotency_key: Key for deduplicating submissions. When the
+                idempotency store already holds a success for this key, the
+                cached result is returned and the command is not stored again.
+            raise_on_duplicate: Raise ``DuplicateCommandError`` on a duplicate
+                key, instead of returning the cached result.
+            priority: Processing priority for the events this command produces.
+                Use ``Priority`` values from ``protean.utils.processing``.
+                Defaults to the current ``processing_priority()`` context, or
+                ``Priority.NORMAL``.
+            correlation_id: Correlation ID carried by every command and event
+                in the causal chain. A new UUID is generated when omitted.
+            deadline: Absolute time after which the command must not run.
+                Passed on to downstream commands in the same causal chain.
+            timeout: Relative deadline, converted to ``now + timeout`` on
+                submission.
 
         Returns:
-            Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
+            The command handler's return value when the command is handled
+            synchronously. Otherwise, the command's position in the event
+            store.
+
+        Raises:
+            IncorrectUsageError: If the command is not registered with the
+                domain, or if both ``deadline`` and ``timeout`` are given.
+            DuplicateCommandError: If ``raise_on_duplicate`` is ``True`` and the
+                idempotency key was already processed.
+            CommandExpiredError: If the deadline has passed when a synchronous
+                handler is about to run.
         """
         domain = self._domain
         tracer = domain.tracer
