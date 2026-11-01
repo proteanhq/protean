@@ -110,6 +110,33 @@ Measured with [Radon](https://radon.readthedocs.io/):
 An average complexity under 5 indicates straightforward, easy-to-follow
 code paths throughout the framework.
 
+### Cognitive Complexity
+
+Cognitive complexity measures how hard a function is to read. It counts
+branches and loops, and charges more for each level of nesting.
+[complexipy](https://github.com/rohaquinlop/complexipy) computes it for every
+function in `src/`, `tests/` and `scripts/`, and fails the check on a function
+above 15. The limit and the paths live in `[tool.complexipy]` in
+`pyproject.toml`. The `Lint (ruff)` job in CI and the pre-commit hook both run
+the check.
+
+Some functions were already above the limit when the check arrived.
+`complexipy-snapshot.json` at the repository root lists each of them with its
+complexity at that time, and the check passes them. The check treats the
+snapshot like this:
+
+- A listed function that grows more complex fails the check.
+- A new function above 15 fails the check. A listed function that is renamed
+  or moved to another file counts as new, so it fails too.
+- A listed function that becomes less complex gets its lower value in the
+  snapshot, and one split to 15 or less drops out of it. Every passing run
+  rewrites the file, so the change commits the rewritten file with it. CI
+  fails when the committed snapshot differs from the rewritten one.
+
+The check counts a function marked `# noqa: complexipy` or
+`# complexipy: ignore` like any other. Split a function that fails along what
+it does, and leave the limit and the snapshot as they are.
+
 ### Maintainability Index
 
 | Rank | Files | Share |
@@ -188,8 +215,8 @@ non-blocking early-warning check while 3.15 is a prerelease.
 Each pull request runs these gates, all in CI so none can be bypassed by a
 missing pre-commit hook, a `--no-verify`, or a web edit:
 
-1. **Lint**: `ruff check` and `ruff format --check`, the same checks as the
-   pre-commit hook.
+1. **Lint**: `ruff check`, `ruff format --check` and the cognitive
+   complexity check, the same checks as the pre-commit hook.
 2. **Type check**: `mypy --strict` over `src/protean`.
 3. **Test suite**: the in-memory core suite (`protean test`) on every stable
    Python version, and the `Adapters` check: PostgreSQL and Redis always, plus
@@ -258,7 +285,7 @@ pip install protean[elasticsearch] # Adds the elasticsearch client
 | Type checking | mypy (with custom Protean plugin) |
 | Test framework | pytest (with pytest-asyncio) |
 | Coverage | coverage.py + Codecov |
-| Complexity analysis | Radon |
+| Complexity analysis | Radon, complexipy (pre-commit + CI) |
 | Dependency management | uv |
 | Multi-version testing | Nox |
 | CI/CD | GitHub Actions |
