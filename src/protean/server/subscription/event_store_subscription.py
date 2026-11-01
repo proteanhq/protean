@@ -61,37 +61,23 @@ def reconstruct_unresolved(
 ) -> tuple[dict[int, dict[str, Any]], int, int]:
     """Rebuild the set of failed positions still awaiting recovery.
 
-    Restore the recovery checkpoint's ``unresolved`` snapshot, then merge every
-    failed-positions record written after its watermark: a ``Failed`` record adds
-    or updates an entry, a ``Resolved``, ``Exhausted``, or ``Purged`` record
-    removes it. Reading the failed stream too, not just the snapshot, catches a
-    position that began failing after the last checkpoint was written and so
-    lives only in the failed stream.
+    Starts from the recovery checkpoint's ``unresolved`` snapshot and merges every
+    failed-positions record written after its watermark. A ``Failed`` record adds or
+    updates a position. A ``Resolved``, ``Exhausted`` or ``Purged`` record removes
+    it. The failed stream is read to its end, ``page_size`` records at a time.
 
-    The failed stream is paged through in full in ``page_size`` batches, not read
-    once with a cap, so a subscription with a long failure history rebuilds its
-    whole set (a cap would silently omit later records, and both the rebuild and
-    ``protean recover`` would then miss stale positions in them). Memory stays
-    bounded by the number of distinct unresolved positions, not the record count,
-    because each record only adds or removes one key.
+    A checkpoint whose watermark sits ahead of the failed stream, as a restore can
+    leave it, is trusted as it is. ``checkpoint_ahead_of_failed_stream`` detects
+    that state.
 
-    This is a best-effort reconstruction: it trusts the checkpoint snapshot as
-    the unresolved set at the watermark and merges only records after it. It does
-    not try to reconcile a restore that left the watermark ahead of the failed
-    stream, because the failed stream reuses per-stream positions after such a
-    truncation and the snapshot carries no record of which positions were already
-    resolved, so re-reading the surviving records cannot tell a rolled-back old
-    record from one appended after the restore. ``protean recover`` detects that
-    inconsistent state separately and reports the subscription as ``unknown``.
+    Returns:
+        The unresolved set (``global_position`` -> ``{retry_count, stream_name,
+        stream_position}``), the watermark just past the last failed-stream record
+        read, and the number of failed-stream records read.
 
-    Both the subscription's rebuild on restart and ``protean recover`` read the
-    set through this one function, so the CLI reports and clears exactly the
-    positions the recovery pass would chase.
-
-    Returns the reconstructed set (``global_position`` -> ``{retry_count,
-    stream_name, stream_position}``), the watermark just past the last
-    failed-stream record read, and the number of failed-stream records read (so a
-    caller can tell whether a checkpoint rewrite is needed).
+    Raises:
+        ValueError: If a full page ends in a record with no per-stream position, or
+            the per-stream position does not move forward between pages.
     """
     watermark = 0
     unresolved: dict[int, dict[str, Any]] = {}
@@ -116,6 +102,9 @@ def reconstruct_unresolved(
 
     cursor = watermark
     records_read = 0
+    # Read every page to the end: a single capped read would leave out later
+    # records. Memory stays bounded by the number of distinct unresolved
+    # positions, since each record only adds or removes one key.
     while True:
         page = store.read(
             failed_positions_stream, position=cursor, no_of_messages=page_size
@@ -303,20 +292,13 @@ def checkpoint_ahead_of_failed_stream(
 ) -> bool:
     """Report whether the recovery checkpoint sits ahead of the failed stream.
 
-    True when the checkpoint's stored ``watermark`` is past the failed-positions
-    stream's tail (``watermark > tail + 1``), which a restore leaves when it
-    captured the checkpoint stream after the failed stream it references. That
-    state cannot be reconstructed reliably: the failed stream reuses per-stream
-    positions after the truncation and the snapshot has no resolved-position
-    tombstones, so re-reading the surviving records could resurrect a resolved
-    position or miss one appended after the restore. ``protean recover`` reports
-    the subscription ``unknown`` on it; ``_rebuild_retry_counts`` warns and keeps
-    its best-effort set.
+    Returns True when the checkpoint's stored ``watermark`` is past the
+    failed-positions stream's tail (``watermark > tail + 1``). A restore that
+    captured the checkpoint stream after the failed stream leaves this state, and
+    ``reconstruct_unresolved`` cannot rebuild the unresolved set reliably from it.
 
-    False for the normal case (the checkpoint is written at ``tail + 1``, and the
-    failed stream only grows past it afterwards), for a missing checkpoint, and
-    for a non-integer stored watermark (a corrupt checkpoint the reconstruction
-    handles on its own).
+    Returns False when the watermark is at or below ``tail + 1``, when there is no
+    checkpoint, and when the stored watermark is not an integer.
     """
     checkpoint = store._read_last_message(recovery_checkpoint_stream)
     if not checkpoint:
@@ -328,76 +310,67 @@ def checkpoint_ahead_of_failed_stream(
     tail = last_failed.get("position") if last_failed else None
     if not isinstance(tail, int):
         tail = -1
+    # After a restore truncates the failed stream, it reuses per-stream positions,
+    # and the snapshot keeps no record of resolved positions. Re-reading the
+    # surviving records could then bring back a resolved position or miss one
+    # appended after the restore.
     return stored_watermark > tail + 1
 
 
 class EventStoreSubscription(BaseSubscription):
-    """Subscription to an event store stream with failed position recovery.
+    """Subscription to an event store stream, with recovery of failed positions.
 
-    Reads messages from a stream category (e.g. ``user``, ``order``) and dispatches
-    them to the configured handler. Position tracking, origin-stream filtering, and
-    idempotent processing are handled automatically.
+    Reads messages from a stream category (for example ``user`` or ``order``) or
+    from ``$all``, and dispatches them to the handler. It tracks its read position,
+    filters on the origin stream, and skips messages already processed.
 
     Error Handling
     ~~~~~~~~~~~~~~
 
-    When a handler fails to process a message (with recovery enabled, the default):
+    When a handler fails on a message and recovery is enabled (the default):
 
-    1. **Failed position is recorded** — a ``Failed`` record is written to a
-       dedicated ``failed-{subscriber}-{category}`` stream, capturing the
-       global position, per-stream name/position (for later re-read), and
-       the current retry count. This is written *before* the read position
-       advances past the message, so a failed recovery write (or a crash in
-       between) leaves the message re-read or recovered rather than dropped.
-    2. **Read position advances** — the subscription is never blocked by a single
-       failing message (avoids the poison-pill problem).
-    3. **Periodic recovery pass** — ``maybe_run_recovery()`` is called on every
-       poll cycle. When ``recovery_interval_seconds`` has elapsed since the last
-       pass, it re-reads each unresolved position from the event store and retries
-       the handler:
+    1. A ``Failed`` record is written to the ``failed-{subscriber}-{category}``
+       stream. It holds the global position, the message's stream name and
+       per-stream position, and the retry count. The record is written before the
+       read position moves past the message, so a crash never drops the message
+       (see "Recovery of a failed message is crash-safe" in
+       ``docs/reference/guarantees.md``).
+    2. The read position advances, so one failing message never blocks the
+       subscription.
+    3. Each poll cycle calls ``maybe_run_recovery()``. Once
+       ``recovery_interval_seconds`` has passed since the last pass, it re-reads
+       each unresolved position and calls the handler again:
 
-       - **Success** → a ``Resolved`` record is written; the position is removed
-         from tracking.
-       - **Still failing** → retry count is incremented; a new ``Failed`` record
-         is written.
-       - **``max_retries`` exceeded** → an ``Exhausted`` record is written; the
-         position is permanently removed from tracking and a ``handler.failed``
-         trace event is emitted.
+       - On success, a ``Resolved`` record is written and the position is no
+         longer tracked.
+       - On failure, the retry count goes up and a new ``Failed`` record is
+         written.
+       - When ``max_retries`` is exceeded, an ``Exhausted`` record is written, the
+         position is no longer tracked, and a ``handler.failed`` trace event is
+         emitted.
 
-    Recovery Checkpoint
-    ~~~~~~~~~~~~~~~~~~~
-
-    To avoid re-reading the entire failed-positions stream on every restart,
-    ``_rebuild_retry_counts()`` maintains a **checkpoint** in the
-    ``recovery-checkpoint-{subscriber}-{category}`` stream. The checkpoint
-    stores:
-
-    - **watermark** — the per-stream position in the failed-positions stream
-      up to which all records have been processed.
-    - **unresolved** — a snapshot of positions still awaiting recovery, so
-      they can be restored without re-reading earlier records.
-
-    On restart, only records written *after* the watermark are read and merged
-    into the restored snapshot.
+    On restart the subscription rebuilds its unresolved positions from the
+    ``recovery-checkpoint-{subscriber}-{category}`` stream and the failed records
+    written after it.
 
     Configuration
     ~~~~~~~~~~~~~
 
-    All recovery parameters can be set in ``domain.toml`` under
+    The recovery settings are read from ``domain.toml`` under
     ``[server.event_store_subscription]``:
 
-    - ``max_retries`` (default 3) — retry attempts before marking exhausted.
-    - ``retry_delay_seconds`` (default 1) — delay between recovery retries.
-    - ``enable_recovery`` (default True) — set to False to disable tracking
-      and recovery entirely.
-    - ``recovery_interval_seconds`` (default 30) — minimum time between
-      recovery passes.
-    - ``gap_timeout_seconds`` (default 5) — for a ``$all`` (cross-category)
-      subscription, how long to hold at a missing lower ``global_position``
-      before abandoning it as a rolled-back gap (see ``_gap_safe_batch``).
+    - ``max_retries`` (default 3): retry attempts before a position is marked
+      exhausted.
+    - ``retry_delay_seconds`` (default 1): delay between recovery retries.
+    - ``enable_recovery`` (default True): set to False to turn off tracking and
+      recovery. A failed message is then dropped.
+    - ``recovery_interval_seconds`` (default 30): minimum time between recovery
+      passes.
+    - ``gap_timeout_seconds`` (default 5): for a ``$all`` subscription, how long to
+      wait at a missing lower ``global_position`` before abandoning it as a
+      rolled-back gap (see ADR-0025).
 
-    Per-handler overrides can be passed via the constructor or
-    ``from_config()`` factory.
+    The constructor arguments of the same names override these per subscription.
     """
 
     def __init__(
@@ -415,8 +388,7 @@ class EventStoreSubscription(BaseSubscription):
         recovery_interval_seconds: float | None = None,
         gap_timeout_seconds: float | None = None,
     ) -> None:
-        """
-        Initialize the EventStoreSubscription object.
+        """Create a subscription that feeds one handler from one stream category.
 
         Args:
             engine: The Protean engine instance.
@@ -433,6 +405,9 @@ class EventStoreSubscription(BaseSubscription):
             gap_timeout_seconds: For a ``$all`` (cross-category) subscription, how
                 long to wait for a missing lower ``global_position`` to commit
                 before abandoning it as a rolled-back gap.
+
+        Each recovery argument left as ``None`` takes its value from
+        ``[server.event_store_subscription]`` in the domain config.
         """
         # Initialize parent class
         super().__init__(engine, messages_per_tick, tick_interval)
@@ -532,11 +507,11 @@ class EventStoreSubscription(BaseSubscription):
         handler: type[BaseEventHandler | BaseCommandHandler],
         config: "SubscriptionConfig",
     ) -> "EventStoreSubscription":
-        """Create an EventStoreSubscription instance from a SubscriptionConfig.
+        """Create an EventStoreSubscription from a SubscriptionConfig.
 
-        This factory method creates an EventStoreSubscription using configuration
-        values from a SubscriptionConfig object. It validates that the config
-        is appropriate for an event store subscription.
+        Takes ``messages_per_tick``, ``position_update_interval``, ``origin_stream`` and
+        ``tick_interval`` from ``config``. The recovery settings come from the domain
+        config.
 
         Args:
             engine: The Protean engine instance.
@@ -774,26 +749,16 @@ class EventStoreSubscription(BaseSubscription):
         return self.filter_on_origin(messages)
 
     def _gap_safe_batch(self, messages: list[Message]) -> list[Message]:
-        """Hold a ``$all`` (cross-category) batch at the first ``global_position`` gap.
+        """Return the part of a ``$all`` batch that is safe to process now.
 
-        ``global_position`` is a store-wide sequence. Within a single category the
-        store assigns it in commit order, so a single-category subscription never
-        sees a gap. Across categories it can be assigned out of commit order — a
-        lower position committing *after* a higher one — so advancing past the
-        highest position seen would silently skip the late-committing lower one
-        (the checkpoint gap this guards against).
+        Keeps the contiguous run of ``global_position`` values from
+        ``current_position + 1`` and stops at the first missing position. A position
+        missing for longer than ``gap_timeout_seconds`` is abandoned and stepped over.
+        Messages above an unfilled gap are held. An empty list means hold this tick.
+        See ADR-0025 for why a ``$all`` subscription waits at gaps.
 
-        The core of the fix is a low-watermark: process only the contiguous run
-        from ``current_position + 1``, stopping at the first missing
-        position and waiting for it to commit. A rolled-back append permanently
-        consumes a ``global_position``, so a gap that persists longer than
-        ``gap_timeout_seconds`` is abandoned (skipped) rather than waited on
-        forever. Positions above an unfilled gap are held until it resolves.
-
-        Records the settled watermark in ``self._gap_watermark`` (``tick`` advances
-        the cursor to it *after* processing, so an interrupted batch is not skipped)
-        and returns the prefix of ``messages`` safe to process now (those at or
-        below it); an empty list means "hold this tick".
+        Sets ``self._gap_watermark`` to the highest settled position, abandoned holes
+        included. ``tick`` advances the cursor to it after processing the batch.
         """
         positioned = [
             (m.metadata.event_store.global_position, m)
@@ -879,36 +844,24 @@ class EventStoreSubscription(BaseSubscription):
         return [message for position, message in positioned if position <= safe]
 
     async def process_batch(self, messages: list[Message]) -> int:
-        """
-        Process a batch of messages.
+        """Process a batch of messages in order, advancing the read position past each.
 
-        This method takes a batch of messages and processes each message by calling the `handle_message` method
-        of the engine. It also updates the read position after processing each message.
+        Each message goes to the engine's ``handle_message``. A message that is not
+        asynchronous was already handled inline and is skipped. A message whose
+        idempotency key is already recorded as ``success`` is skipped and counted as
+        successful.
 
-        When a handler fails (with recovery enabled, the default):
-        - The failed position is recorded to the dedicated recovery stream
-          *before* the read position advances past it. Because the record is
-          written per message while the cursor's durable checkpoint is batched,
-          the record is always durable before the cursor is durably flushed past
-          the position. So a failed recovery write raises before the cursor moves
-          (the message is re-read next tick), and a crash after the record leaves
-          the message re-read (cursor still behind) or recovered by the recovery
-          pass (cursor already flushed past) — never silently dropped.
-        - The read position is then advanced (non-blocking, to avoid a poison pill)
-        - The ``handle_error()`` callback is invoked by the engine
-
-        With ``enable_recovery=False`` a failed message is not recorded and the
-        cursor still advances, i.e. it is intentionally dropped (no retry).
-
-        Messages with an idempotency key that have already been processed (recorded
-        as ``status: success`` in the idempotency store) are skipped to prevent
-        duplicate handling after crash recovery or subscription replay.
+        When the handler fails and recovery is enabled, a ``Failed`` record is written
+        before the read position moves past the message (see ``specs/Recovery.tla``).
+        If that write raises, the read position stays where it was and the message is
+        read again on the next tick. With ``enable_recovery=False`` a failed message
+        is dropped and not retried.
 
         Args:
-            messages (List[Message]): The batch of messages to process.
+            messages: The batch of messages to process.
 
         Returns:
-            int: The number of messages processed successfully.
+            The number of messages handled successfully, idempotent skips included.
         """
         successful_count = 0
 
@@ -988,7 +941,7 @@ class EventStoreSubscription(BaseSubscription):
                 )
                 recovery_trace.record(action="fail", position=position)
                 # Record the failure durably BEFORE advancing the cursor past it
-                # (see the method docstring): the recovery record has to be durable
+                # (see specs/Recovery.tla): the recovery record has to be durable
                 # first, or a crash in the gap would drop the message.
                 if self.enable_recovery:
                     stream_name = (
@@ -1117,14 +1070,9 @@ class EventStoreSubscription(BaseSubscription):
         stream_name: str | None = None,
         stream_position: int | None = None,
     ) -> None:
-        """Write a recovery status record (Resolved, Exhausted, or Purged) to the failed-positions stream.
+        """Append a ``Resolved``, ``Exhausted`` or ``Purged`` record for a position.
 
-        The ``stream_name``/``stream_position`` fields mirror the ``Failed``
-        record (``_record_failed_position``) so an ``Exhausted`` record carries
-        enough to locate the failing event in the store. ``protean eventstore
-        dlq inspect`` re-reads the event from ``stream_name`` at
-        ``stream_position``; older records without them fall back to the origin
-        category stream by ``position``.
+        Writes through ``write_recovery_status_record`` on a worker thread.
 
         Args:
             position: The global position of the message.
@@ -1132,7 +1080,9 @@ class EventStoreSubscription(BaseSubscription):
             retry_count: The current retry count.
             message_type: The type string of the message.
             message_id: The ID of the message.
-            stream_name: The specific stream name (e.g., ``user-123``).
+            stream_name: The specific stream name (e.g., ``user-123``). With
+                ``stream_position`` it lets ``protean eventstore dlq inspect`` re-read
+                the event.
             stream_position: The per-stream position of the message.
         """
         await asyncio.to_thread(
@@ -1418,46 +1368,38 @@ class EventStoreSubscription(BaseSubscription):
         stream_position: int | None,
         retry_count: int,
     ) -> ReplayOutcome:
-        """Re-drive one exhausted position out-of-band, then record the outcome.
+        """Dispatch one exhausted position to the handler again and record the outcome.
 
-        Reuses the recovery re-drive primitive: dispatch the already re-read
-        ``event`` to this subscription's handler once. On success, write a
-        ``Resolved`` record so the position stops being listed as exhausted. On
-        failure, write a fresh ``Failed`` record so the position reopens and a
-        later rebuild tracks it again instead of dropping it as ``Exhausted``
-        (``reconstruct_unresolved`` treats ``Exhausted`` as terminal). A
-        subscription rebuilds in ``initialize()``, so a server already running
-        picks the reopened position up when it next starts.
+        ``event`` is the message already re-read from the store. The handler runs once.
+        On success a ``Resolved`` record is written, so the position is no longer
+        listed as exhausted. On failure a fresh ``Failed`` record is written, so the
+        position reopens and is tracked again on the next rebuild. A server that is
+        already running picks it up when it next starts.
 
-        The read cursor (``current_position``) is never moved. The cursor is a
-        shared ``position-*`` stream, so rewinding it would reprocess every
-        event since the failure, not just this one; the event is re-read from
-        its own stream location instead. Idempotency is unchanged from the
-        recovery pass: replay re-runs handler side effects, which is why the
-        CLI confirms first (see ``protean eventstore dlq replay``).
+        The read cursor does not move. The handler's side effects run again.
 
-        A command whose deadline has passed is refused before dispatch. The
-        engine skips an expired command and still reports it handled, so
-        dispatching it would record ``Resolved`` although the handler never ran.
-        On this path nothing is written: no ``Resolved``, and no ``Failed``
-        either. A ``Failed`` record would hand the position to the recovery
-        pass, which dispatches through the same engine path and would record the
-        expired command ``Resolved`` too. The position stays ``Exhausted`` so the
-        operator can purge it. The check reads the engine domain's clock, the
-        clock ``handle_message`` uses. ``handle_message`` checks the deadline
-        again with its own, later clock reading, after it has entered the domain
-        context and resolved the handler. A deadline that falls between the two
-        readings is still skipped by the engine and recorded ``Resolved``.
+        A command whose deadline has passed is not dispatched and nothing is written,
+        so the position stays ``Exhausted`` for the operator to purge. The deadline is
+        checked against the engine domain's clock. ``handle_message`` checks it again a
+        moment later, so a deadline that falls between the two checks is skipped by
+        the engine and still recorded ``Resolved``.
 
-        Returns ``ReplayOutcome.RESOLVED`` when the handler succeeded,
-        ``ReplayOutcome.REOPENED`` when it failed again, and
-        ``ReplayOutcome.EXPIRED`` when the command's deadline had passed and
-        nothing was dispatched.
+        Returns:
+            ``ReplayOutcome.RESOLVED`` when the handler succeeded,
+            ``ReplayOutcome.REOPENED`` when it failed again, and
+            ``ReplayOutcome.EXPIRED`` when the command had expired and was not
+            dispatched.
         """
         headers = event.metadata.headers if event.metadata else None
+        # The engine skips an expired command but reports it handled, so
+        # dispatching it would record ``Resolved`` for a handler that never ran.
+        # A ``Failed`` record would hand it to the recovery pass, which goes
+        # through the same engine path, so nothing is written.
         if headers and headers.is_expired(now=self.engine.domain.clock.now()):
             return ReplayOutcome.EXPIRED
 
+        # ``current_position`` is left alone: rewinding the shared ``position-*``
+        # stream would reprocess every event since the failure.
         is_successful = await self.engine.handle_message(
             self.handler, event, worker_id=self.subscription_id
         )

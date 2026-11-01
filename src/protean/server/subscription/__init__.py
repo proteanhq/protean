@@ -274,33 +274,8 @@ class BaseSubscription(ABC):
 def event_store_subscription_handlers(domain: "Domain") -> list[str]:
     """Return the names of handlers whose subscriptions resolve to EVENT_STORE.
 
-    Event-store subscriptions read directly from the event store and have no
-    cluster-wide ownership: every worker reading the same stream processes the
-    same events. They are therefore single-writer, and running more than one
-    worker double-processes their events. Entry points use this helper to refuse
-    to start multiple workers when any such subscription exists.
-
-    The handler groups iterated here mirror those that
-    :meth:`Engine._register_handler_subscriptions
-    <protean.server.engine.Engine._register_handler_subscriptions>` turns into
-    subscriptions — event handlers, command handlers, projectors, and process
-    managers. Broker subscribers are intentionally excluded: they use a separate
-    ``BrokerSubscription`` path, and whether that path is multi-worker-safe is a
-    property of the broker adapter (Redis Streams consumer groups distribute
-    across workers; Redis Pub/Sub and the in-memory ``inline`` broker do not),
-    not of this guard. This guard only governs the event-store path. Keep the two
-    lists in sync if a new handler group is ever added to the engine.
-
-    Command handlers are a deliberate over-approximation: the engine groups
-    them by stream category into one ``CommandDispatcher`` per group and
-    resolves that dispatcher's subscription type from only the first handler
-    registered in the group, but this helper resolves each command-handler
-    class independently. A handler sharing a stream category with an
-    event-store handler can therefore be reported here even if the group's
-    actual runtime subscription resolves to ``stream``. This is intentional:
-    the helper must never miss a real event-store subscription, and the
-    conservative direction for a safety guard is to occasionally over-block
-    rather than risk under-blocking.
+    Checks event handlers, command handlers, projectors and process managers.
+    Broker subscribers are not checked.
 
     Args:
         domain: An initialized domain whose registry has been populated.
@@ -312,6 +287,10 @@ def event_store_subscription_handlers(domain: "Domain") -> list[str]:
     """
     resolver = ConfigResolver(domain)
     registry = domain.registry
+    # The same groups ``Engine._register_handler_subscriptions`` turns into
+    # subscriptions; keep the two in sync. Broker subscribers use
+    # ``BrokerSubscription``, whose multi-worker safety depends on the broker
+    # adapter, so this guard leaves them out.
     handler_groups = (
         registry.event_handlers,
         registry.command_handlers,
@@ -322,6 +301,10 @@ def event_store_subscription_handlers(domain: "Domain") -> list[str]:
     offenders: list[str] = []
     for group in handler_groups:
         for record in group.values():
+            # The engine resolves one subscription per command-handler stream
+            # category, from the group's first handler. Resolving each class on
+            # its own can over-report a command handler, but never misses an
+            # event-store subscription.
             config = resolver.resolve(record.cls)
             if config.subscription_type == SubscriptionType.EVENT_STORE:
                 offenders.append(record.name)

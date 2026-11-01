@@ -363,25 +363,25 @@ def _collect_subscription_health(
 ) -> dict[str, Any]:
     """Build the readiness ``subscriptions`` block.
 
-    Lag, pending counts, and status come from
+    Returns ``{"total": total, "details": [...]}``. Each detail row is a
+    subscription status from
     :func:`~protean.server.subscription_status.collect_subscription_statuses`
-    — the same source behind the ``protean.subscription.consumer_lag`` and
-    ``protean.subscription.pending_messages`` gauges and the
-    ``protean subscriptions status`` CLI.  Circuit-breaker state is merged in
-    from *breakers*, snapshotted off the engine's live subscription objects,
-    which the status collector cannot see (it is designed to work without a
-    running engine).
+    without its stream-position fields. A row gets ``circuit_state`` when
+    *breakers* has an entry under its name. A breaker that matches no status
+    still gets a row, with status ``"unknown"`` and every count ``None``.
 
-    ``total`` and ``details`` count different things and may legitimately
-    disagree in length: ``total`` is the engine's own tally of live
-    subscription objects, while ``details`` comes from walking the domain
-    registry.  One partitioned process manager, for instance, is a single
-    engine subscription but one detail row per stream category.
+    *total* is passed through as given, so it can differ from the number of
+    detail rows.
 
-    Runs the blocking collection, so callers hand it to a worker thread.  It
-    takes a plain domain and pre-read snapshots rather than the engine itself:
-    engine state must be read on the event-loop thread, not raced with it
-    from a worker.
+    If building the block raises, returns
+    ``{"total": total, "collection_error": True, "details": []}``.
+
+    The call blocks, so run it in a worker thread, not on the event loop.
+
+    Args:
+        total: The engine's count of its live subscription objects.
+        breakers: Circuit-breaker state by subscription name, read from the
+            engine before the call.
     """
     try:
         statuses: list[SubscriptionStatus] = collect_subscription_statuses(domain)

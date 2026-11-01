@@ -181,26 +181,17 @@ def _join_within(process: BaseProcess, timeout: float) -> None:
 
 
 def _configured_drain_window(domain_path: str) -> float:
-    """The worker Engine's ``[server].drain_timeout``, or 0 if it is invalid.
+    """Return the worker Engine's ``[server].drain_timeout`` from the project config.
 
-    Read from the project config file so a shutdown budget matches the
-    window the worker will wait, without importing or instantiating the
-    domain here in the parent. Deriving the domain would re-run a
-    factory-style ``domain_path`` (the worker already invokes it in the
-    child), doubling resource initialisation in a process that only manages
-    workers; reading the config file has no such side effect. The search
-    starts from the same place the worker resolves its config (see
-    ``_config_search_root``), not blindly from the working directory.
-
-    With no config file, the loader returns the defaults, so the window is
-    the default 10. The read can also fail (bad TOML, a ``server`` value that
-    is not a table); the worker surfaces the real error when it starts, so
-    fall back to 0 and let the floor apply. Anything that is not a finite
-    positive number is treated the same way: the Engine rejects those values
-    too and uses its own default.
+    The config search starts where the worker resolves its config (see
+    ``_config_search_root``). Returns 0 when the config cannot be read, or when
+    the value is not a finite positive number (a boolean counts as invalid).
     """
     from protean.domain.config import Config2  # noqa: PLC0415
 
+    # Read the config file instead of deriving the domain: deriving would re-run
+    # a factory-style ``domain_path`` in the parent, which the worker already
+    # runs in the child. A bad config is reported by the worker when it starts.
     try:
         with warnings.catch_warnings():
             # load_from_path warns when no config file is found; the worker
@@ -408,21 +399,11 @@ class Supervisor:
     # ------------------------------------------------------------------
 
     def _guard_event_store_single_writer(self) -> None:
-        """Refuse multi-worker startup for event-store subscriptions.
+        """Refuse multi-worker startup when a handler uses an event-store subscription.
 
-        Derives and initializes the domain in the parent process purely to
-        resolve subscription types, then closes it again so the parent holds no
-        infrastructure connections while the workers run (each worker re-derives
-        and re-inits independently in its own interpreter). If any handler
-        resolves to an event-store subscription, raises before any worker is
-        spawned.
-
-        Any failure to derive or initialize the domain here (unimportable path,
-        a module that raises at import, an unreachable database, ...) is *not*
-        fatal to the guard: it is swallowed and each worker is left to re-derive
-        and report the failure with its own per-worker context, matching the
-        pre-guard behavior where derivation happened only inside the workers.
-        The guard only ever refuses a start it could positively classify.
+        Derives and initializes the domain in this process to resolve the
+        subscription types. If the domain cannot be derived or initialized, the
+        guard returns without raising and each worker reports the failure.
 
         Raises:
             ConfigurationError: If the domain has event-store subscriptions.
@@ -638,6 +619,7 @@ def _install_worker_log_queue(
     _move_redaction_filter_last()
 
 
+# Defined at module level so the ``spawn`` start method can pickle it.
 def _worker_entry(
     domain_path: str,
     test_mode: bool,
@@ -648,15 +630,10 @@ def _worker_entry(
     log_format: str | None = None,
     log_config: dict[str, Any] | None = None,
 ) -> None:
-    """Entry point for each spawned worker process.
+    """Run one worker process: derive and initialize the domain, then run an Engine.
 
-    Each worker independently:
-    1. Derives and initializes the domain from the string path
-    2. Creates its own Engine instance with a dedicated event loop
-    3. Runs the engine (blocking until shutdown signal)
-
-    This function must be defined at module level (not as a method or lambda)
-    so that it is picklable by the ``spawn`` multiprocessing start method.
+    Exits the process with the Engine's exit code, or with 1 when the domain
+    cannot be derived or the worker fails.
 
     Args:
         domain_path: A ``derive_domain``-compatible string.

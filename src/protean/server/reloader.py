@@ -89,8 +89,7 @@ class Reloader:
             reload_dirs: Directories to watch for changes. Defaults to the
                 current working directory when not supplied.
             test_mode: If ``True``, the inner Engine runs in test mode
-                (limited cycles, then exits). Used to keep reloader smoke
-                tests deterministic.
+                (limited cycles, then exits).
             debug: Deprecated, removed in v0.20.0. ``True`` is the same as
                 ``log_level="DEBUG"``; an explicit ``log_level`` wins.
             log_level: Log level the inner worker passes to
@@ -99,6 +98,10 @@ class Reloader:
                 ``Domain.configure_logging()`` in place of ``[logging].format``.
             log_config: A ``logging.config.dictConfig`` dict. The inner worker
                 applies it and skips ``Domain.configure_logging()``.
+
+        Raises:
+            ValueError: If *log_level* or *log_format* is not a value the
+                ``protean server`` flags accept.
         """
         log_level, log_format = _check_log_arguments(log_level, log_format)
         if debug:

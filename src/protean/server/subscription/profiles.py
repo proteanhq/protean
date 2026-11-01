@@ -24,22 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 class SubscriptionType(Enum):
-    """Enumeration of available subscription types.
+    """The ways a handler can receive messages.
+
+    See the subscription types reference page for when to use each.
 
     Attributes:
-        STREAM: Stream-based subscription using Redis Streams with blocking reads.
-            This is the production-recommended subscription type that provides:
-            - Transactional outbox pattern
-            - Automatic retry mechanisms
-            - Dead letter queue support
-            - Horizontal scaling with consumer groups
-
-        EVENT_STORE: Event store subscription reading directly from the event store.
-            This is suited for specialized use cases like:
-            - Projections
-            - Event replay
-            - Development/debugging
-            - Single-worker scenarios
+        STREAM: Reads from a broker stream through a consumer group, with
+            retries and a dead letter queue.
+        EVENT_STORE: Reads directly from the event store. It has no dead
+            letter queue and no stream retention.
     """
 
     STREAM = "stream"
@@ -56,13 +49,13 @@ class CircuitBreakerState(Enum):
         CLOSED: Normal operation. Reads and processing proceed; each failure
             increments the counter, each success resets it to zero.
         OPEN: Reads are paused. Pending messages stay in the stream/PEL for
-            redelivery. On the next poll turn after
-            ``circuit_breaker_reset_seconds`` has elapsed, the breaker moves to
-            HALF_OPEN (the transition is lazy, driven by the poll loop, not a
-            timer).
+            redelivery. The breaker moves to HALF_OPEN once
+            ``circuit_breaker_reset_seconds`` has elapsed.
         HALF_OPEN: A single probe message is allowed through. A successful
             probe closes the breaker; a failing probe re-opens it and restarts
             the reset timer.
+
+    The server hardening reference page describes the full state machine.
     """
 
     CLOSED = "closed"
@@ -71,36 +64,18 @@ class CircuitBreakerState(Enum):
 
 
 class SubscriptionProfile(Enum):
-    """Pre-configured subscription profiles for common use cases.
+    """Built-in sets of subscription defaults.
 
-    Each profile provides sensible defaults optimized for specific scenarios.
-    Users can override individual settings while using a profile as a base.
+    Each profile's values live in ``PROFILE_DEFAULTS``. Any single option can
+    be overridden on top of a profile. The subscription configuration
+    reference page lists every profile's values.
 
     Attributes:
-        PRODUCTION: Optimized for production workloads with reliability guarantees.
-            - Higher batch sizes for throughput
-            - DLQ enabled for error handling
-            - Standard retry settings
-
-        FAST: Optimized for low-latency processing.
-            - Smaller batch sizes for quicker processing
-            - Shorter blocking timeouts
-            - Minimal retry delays
-
-        BATCH: Optimized for high-throughput batch processing.
-            - Large batch sizes
-            - Higher blocking timeouts
-            - Aggressive batching
-
-        DEBUG: Optimized for development and debugging.
-            - Small batch sizes for easier debugging
-            - Verbose logging friendly
-            - Quick iteration
-
-        PROJECTION: Optimized for building read models and projections.
-            - Uses EVENT_STORE subscription type
-            - Processes from event store directly
-            - Suitable for catch-up subscriptions
+        PRODUCTION: STREAM, larger batches, DLQ on.
+        FAST: STREAM, small batches and short blocking timeouts.
+        BATCH: STREAM, the largest batches and longest blocking timeouts.
+        DEBUG: STREAM, one message per tick, DLQ off.
+        PROJECTION: EVENT_STORE, for building read models.
     """
 
     PRODUCTION = "production"
@@ -252,15 +227,15 @@ def build_profile_registry(
 ) -> dict[str, dict[str, Any]]:
     """Build a string-keyed profile registry.
 
-    The registry is seeded with the built-in profiles (keyed by their lowercase
-    ``.value`` names) and extended with validated custom profiles read from the
-    ``[server.profiles.<name>]`` sections of ``domain.toml``.
+    The registry holds the built-in profiles, keyed by their lowercase
+    ``.value`` names, plus the custom profiles from the
+    ``[server.profiles.<name>]`` sections of ``domain.toml``. Custom names are
+    lowercased.
 
     A custom profile is a dict of subscription config overrides. It may set
     ``inherits = "<built-in>"`` to base its defaults on a built-in profile;
-    without ``inherits`` the base is :data:`DEFAULT_CONFIG`. Validation is
-    fail-fast: a reserved built-in name, an unknown field, or an ``inherits``
-    target that is not a built-in each raises :class:`ConfigurationError`.
+    without ``inherits`` the base is :data:`DEFAULT_CONFIG`. An override set
+    to ``None`` keeps the base value.
 
     Args:
         custom_profiles: The raw ``[server.profiles]`` mapping (profile name to
@@ -272,7 +247,9 @@ def build_profile_registry(
 
     Raises:
         ConfigurationError: If a custom profile shadows a built-in name, sets an
-            unknown field, or inherits from anything other than a built-in.
+            unknown field, or inherits from anything other than a built-in, or
+            if ``[server.profiles]``, a profile name, a profile section or a
+            field name has the wrong type.
     """
     # Seed with built-ins. Copy each defaults dict so the returned registry never
     # aliases (and so a later merge never mutates) the shared PROFILE_DEFAULTS.
@@ -387,35 +364,39 @@ def build_profile_registry(
 class SubscriptionConfig:
     """Configuration object for subscriptions.
 
-    This dataclass encapsulates all configuration options for both StreamSubscription
-    and EventStoreSubscription. Not all options apply to both subscription types;
-    validation ensures only applicable options are used.
+    Holds the options for both StreamSubscription and EventStoreSubscription.
+    Construction calls :meth:`validate`, which raises ``ConfigurationError``
+    for an out-of-range value, and for ``enable_dlq`` or ``retention_maxlen``
+    on an EVENT_STORE subscription. The subscription configuration reference
+    page describes each option.
 
     Attributes:
         subscription_type: The type of subscription (STREAM or EVENT_STORE).
         messages_per_tick: Number of messages to process per tick.
         tick_interval: Interval between processing ticks in seconds.
-        blocking_timeout_ms: Timeout for blocking reads in milliseconds (STREAM only).
-            Must be positive: 0 would make the poll loop query the broker with
-            no pause. With priority lanes on, the value (capped at 1000 ms)
-            is the longest wait of an idle combined read. The Redis broker
-            waits on both streams at once; a broker without its own
-            ``_read_blocking_streams`` checks the primary stream without
-            waiting, then waits only on the backfill stream.
+        blocking_timeout_ms: Longest wait of an idle blocking read, in
+            milliseconds (STREAM only). Must be positive.
         max_retries: Maximum retry attempts before moving to DLQ (STREAM only).
         retry_delay_seconds: Delay between retries in seconds (STREAM only).
         enable_dlq: Whether to enable dead letter queue (STREAM only).
         position_update_interval: How often to persist position (EVENT_STORE only).
         origin_stream: Optional filter for origin stream name.
+        dlq_retention_hours: Overrides ``[server.dlq] retention_hours`` for this
+            subscription. None inherits the global value. Must be positive
+            when set.
+        dlq_alert_threshold: Overrides ``[server.dlq] alert_threshold`` for this
+            subscription. None inherits the global value. Must be positive
+            when set.
         circuit_breaker_threshold: Consecutive handler failures that trip the
             circuit breaker OPEN (STREAM only).
         circuit_breaker_reset_seconds: Seconds an OPEN breaker waits before it
-            allows a single HALF_OPEN probe (STREAM only).
+            allows a single HALF_OPEN probe (STREAM only). Must be positive
+            and finite.
         retention_maxlen: Cap the subscription's broker stream at this many
             entries, trimmed after each batch (STREAM only). None disables
-            trimming (the default). Trimming is consumer-progress-safe: with
-            more than one consumer group on the stream, nothing at or after the
-            slowest group's last-delivered position is removed.
+            trimming (the default). Trimming never removes an entry a consumer
+            group has not yet received; see the stream retention section of
+            the subscription types reference page.
 
     Example:
         >>> config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
@@ -624,9 +605,26 @@ class SubscriptionConfig:
             enable_dlq: Override for DLQ setting.
             position_update_interval: Override for position update interval.
             origin_stream: Override for origin stream filter.
+            dlq_retention_hours: Per-subscription DLQ retention. None inherits
+                the global ``[server.dlq]`` value.
+            dlq_alert_threshold: Per-subscription DLQ alert threshold. None
+                inherits the global ``[server.dlq]`` value.
+            circuit_breaker_threshold: Override for the circuit breaker
+                threshold.
+            circuit_breaker_reset_seconds: Override for the circuit breaker
+                reset time.
+            retention_maxlen: Override for the stream retention cap.
+
+        An override left as ``None`` takes the profile's value. When the result
+        is an EVENT_STORE subscription, the profile's ``retention_maxlen`` is
+        dropped; an explicit ``retention_maxlen`` still fails validation.
 
         Returns:
             A SubscriptionConfig instance with profile defaults and overrides applied.
+
+        Raises:
+            ConfigurationError: If ``profile`` is not a built-in profile, or the
+                resulting configuration fails validation.
 
         Example:
             >>> config = SubscriptionConfig.from_profile(
@@ -730,22 +728,17 @@ class SubscriptionConfig:
     def from_dict(cls, config_dict: dict[str, Any]) -> "SubscriptionConfig":
         """Create a configuration from a dictionary.
 
-        If the dictionary contains a 'profile' key, that profile's defaults are used
-        as a base, with other keys in the dictionary acting as overrides.
+        If the dictionary contains a ``profile`` key, that built-in profile's
+        defaults are the base, with the other keys acting as overrides. Without
+        it, the base is :data:`DEFAULT_CONFIG`.
 
         Args:
-            config_dict: Dictionary containing configuration values.
-                Supported keys:
-                - profile: Profile name (string) to use as base
-                - subscription_type: Type of subscription (string or SubscriptionType)
-                - messages_per_tick: Number of messages per tick
-                - tick_interval: Interval between ticks
-                - blocking_timeout_ms: Blocking read timeout
-                - max_retries: Maximum retry attempts
-                - retry_delay_seconds: Delay between retries
-                - enable_dlq: Enable dead letter queue
-                - position_update_interval: Position update frequency
-                - origin_stream: Origin stream filter
+            config_dict: The ``SubscriptionConfig`` field names as keys, plus an
+                optional ``profile``. ``profile`` and ``subscription_type`` may
+                be strings (case-insensitive) or enum members. Numeric values
+                are converted to the field's int or float type, and
+                ``enable_dlq`` is converted with ``bool()``. Other keys are
+                ignored. The dictionary is not modified.
 
         Returns:
             A SubscriptionConfig instance.

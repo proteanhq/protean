@@ -137,3 +137,10 @@ def test_engine_test_mode_cancels_long_running_tasks(test_domain, caplog):
     # Verify all 50 cycles ran (task was still running through all cycles)
     cycle_msgs = [r.message for r in caplog.records if "Test mode cycle" in r.message]
     assert len(cycle_msgs) == 50
+
+
+def test_engine_run_closes_its_event_loop(test_domain):
+    engine = Engine(domain=test_domain, test_mode=True)
+    engine.run()
+
+    assert engine.loop.is_closed()
