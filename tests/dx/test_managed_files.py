@@ -343,6 +343,23 @@ def test_create_write_failure_surfaces_as_managed_file_error(tmp_path: Path) -> 
         apply_managed_file(missing_root, block("AGENTS.md", "1", "framework block"))
 
 
+def test_update_write_failure_leaves_the_state_on_the_prior_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failing update raises ManagedFileError and does not advance the state."""
+    apply_managed_file(tmp_path, block("AGENTS.md", "1", "v1"))
+    state_before = state_path(tmp_path).read_text(encoding="utf-8")
+
+    def fail_write(path: Path, content: str) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("protean.dx.managed_files._atomic_write", fail_write)
+    with pytest.raises(ManagedFileError, match="Could not write"):
+        apply_managed_file(tmp_path, block("AGENTS.md", "2", "v2"))
+
+    assert state_path(tmp_path).read_text(encoding="utf-8") == state_before
+
+
 def test_hash_mode_uses_comment_syntax_config(tmp_path: Path) -> None:
     """A ``#``-comment config target applies and re-applies idempotently."""
     proj = ManagedBlock(
