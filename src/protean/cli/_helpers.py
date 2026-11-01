@@ -89,23 +89,25 @@ def abort_for_missing_dependency(
     feature: str,
     exc: ImportError,
 ) -> NoReturn:
-    """Turn an absent optional dependency into a clean install hint and abort.
+    """Turn an absent optional dependency into an install hint and abort.
 
     Call this from a subcommand's ``except ImportError`` block after a lazy
-    import of a feature's optional stack (``copier`` for ``protean new``,
-    ``IPython`` for ``protean shell``, the FastAPI stack for
-    ``protean observatory``). If a package the ``extra`` provides is genuinely
-    not installed, it prints a one-line message naming the extra to install and
-    raises ``typer.Abort`` so Typer exits non-zero, mirroring the
-    ``--reload``/watchfiles handling instead of surfacing a raw traceback.
+    import of a feature's optional packages.
 
-    The "is it installed?" test uses ``importlib.util.find_spec`` on the extra's
-    packages, not ``exc.name``: an ``ImportError`` from a package that IS
-    installed but broken (an incompatible version, a renamed symbol) names that
-    same package, so keying off the name would tell the user to install a package
-    they already have. When every package the extra provides is importable, the
-    ``ImportError`` is a real bug inside the feature and is re-raised unchanged.
+    Args:
+        extra: The ``protean[<extra>]`` that provides the packages.
+        feature: The feature name shown in the message.
+        exc: The caught ``ImportError``.
+
+    Raises:
+        typer.Abort: When a package the extra provides is not installed. A
+            one-line message naming the extra to install is printed first.
+        ImportError: ``exc`` unchanged, when every package the extra provides
+            is importable.
     """
+    # Check each package with find_spec, not exc.name: a package that is
+    # installed but broken raises an ImportError naming itself, and keying off
+    # the name would tell the user to install a package they already have.
     missing = [pkg for pkg in FEATURE_EXTRA_MODULES[extra] if find_spec(pkg) is None]
     if not missing:
         raise exc

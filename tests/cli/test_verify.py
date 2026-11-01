@@ -870,6 +870,27 @@ class TestVerifyEnv:
         assert record.read_text() == "memory"
         assert "PROTEAN_ENV" not in os.environ
 
+    def test_already_imported_domain_keeps_its_first_env(self, tmp_path, monkeypatch):
+        """A second call reuses the domain module already in ``sys.modules``, so
+        init and check keep the first call's config. The tests stage still runs
+        under the second call's ``env``."""
+        monkeypatch.delenv("PROTEAN_ENV", raising=False)
+        domain, record = _write_env_recording_domain(tmp_path)
+        first = run_verify(
+            domain,
+            str(_write_test(tmp_path / "first", _child_env_test("memory"))),
+            env="memory",
+        )
+        assert first.exit_code == 0, first.tests_output
+        second = run_verify(
+            domain,
+            str(_write_test(tmp_path / "second", _child_env_test("other"))),
+            env="other",
+        )
+        assert second.exit_code == 0, second.tests_output
+        assert record.read_text() == "memory"
+        assert second.stages["tests"]["passed"] == 1
+
     @pytest.mark.parametrize(
         "domain, code",
         [(_INIT_FAIL_DOMAIN, 3), ("no_such_module_for_verify_env", 2)],

@@ -237,21 +237,16 @@ def check(
 
 
 def _filter_for_display(result: dict[str, Any], level: str, gates: bool) -> None:
-    """Apply the ``--level`` severity threshold to the human view, in place.
+    """Apply the ``--level`` severity threshold to ``result`` in place.
 
-    ``--level`` is a display filter only: it shapes the rich/quiet output but
-    never the exit code (computed from the unfiltered counts, passed in as
-    ``gates``) or the machine formats (json/sarif/github-annotations emit the
-    full result). Drops diagnostics below the threshold and recomputes the
-    displayed counts and status to match, so the human summary is internally
-    consistent.
+    Drops diagnostics below ``level`` and recomputes the warning and info counts
+    and the status to match. Use it only for the rich and quiet views.
 
-    ``gates`` guards against a display lie: ``--level`` can filter out the very
-    findings that make ``[lint].level`` fail the run (e.g. only warnings exist,
-    ``[lint].level`` is the default ``"warn"``, and ``--level=error`` hides
-    them), which would otherwise recompute ``status`` as ``"pass"`` while the
-    process still exits non-zero. When that happens, status stays ``"fail"``
-    instead of a display-only, contradicted "pass".
+    Args:
+        result: The check result to filter.
+        level: The ``--level`` threshold.
+        gates: Whether the unfiltered counts fail the run. When it is true and
+            no findings remain after filtering, the status is ``"fail"``.
     """
     threshold = _LEVEL_ORDER[level]
     result["diagnostics"] = [
@@ -272,6 +267,8 @@ def _filter_for_display(result: dict[str, Any], level: str, gates: bool) -> None
     elif result["counts"]["infos"] > 0:
         result["status"] = "info"
     elif gates:
+        # --level hid the findings that fail the run, and the process still
+        # exits non-zero, so "pass" would contradict the exit code.
         result["status"] = "fail"
     else:
         result["status"] = "pass"

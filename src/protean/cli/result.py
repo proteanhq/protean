@@ -99,33 +99,28 @@ def emit_usage_error(*, as_json: bool, message: str) -> NoReturn:
 def route_logs_to_stderr(log_already_configured: bool = False) -> None:
     """Route all Protean logging to stderr, before the domain is imported.
 
-    A command that emits a machine payload on stdout must call this first. Until
-    :func:`protean.utils.logging.configure_logging` runs, ``structlog`` is at its
-    unconfigured default, which prints to **stdout** — so any log line a domain
-    module emits *at import time* (which ``derive_domain`` triggers) would land on
-    stdout and corrupt the envelope. Configuring
-    logging up front installs the stderr console handler and switches structlog
-    onto the stdlib bridge, so every subsequent log (import-time or during
-    ``check``/``init``) goes to stderr and stdout stays the sole envelope.
+    A command that emits a machine payload on stdout must call this before it
+    loads the domain. Every log line after the call, including those a domain
+    module emits at import time, goes to stderr.
 
-    ``Domain.init`` also auto-configures logging, but only after the import has
-    already happened; it then sees the root handler this installed and skips,
-    so calling both is safe and idempotent.
-
-    ``log_already_configured`` is a no-op guard: pass ``True`` when the CLI's
-    ``--log-config``/``--log-level``/``--log-format`` callback already
-    configured logging (the caller reads this off the ``CTX_LOG_CONFIGURED``
-    flag on ``ctx.obj``) — ``configure_logging()`` unconditionally rebuilds
-    the root logger's handlers, so calling it again here would silently
-    discard that configuration, the same guard ``server`` and ``observatory``
-    apply.
+    Args:
+        log_already_configured: Pass ``True`` when the CLI's
+            ``--log-config``/``--log-level``/``--log-format`` callback already
+            configured logging (the ``CTX_LOG_CONFIGURED`` flag on
+            ``ctx.obj``). The call then does nothing and that configuration
+            stays in place.
     """
     if log_already_configured:
+        # configure_logging() rebuilds the root logger's handlers, so calling it
+        # again would discard the configuration the CLI callback set up.
         return
     # Local import: keep ``protean --help`` from eagerly pulling in the
     # logging subsystem for commands that never emit a machine payload.
     from protean.utils.logging import configure_logging  # noqa: PLC0415
 
+    # Unconfigured structlog prints to stdout, so an import-time log line would
+    # corrupt the payload. Domain.init configures logging only after the import,
+    # and then sees the root handler installed here and leaves it alone.
     configure_logging()
 
 

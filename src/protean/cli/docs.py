@@ -703,24 +703,18 @@ def _load_domain_snapshot_config() -> dict[str, str] | None:
     """Read the opt-in ``[tool.protean.docs].domain_snapshot`` key.
 
     Returns ``{"path": ..., "domain": ...}`` when the key is set, or ``None``
-    when there is no config file or the key is absent. The key is docs-local
-    tooling config, kept out of the runtime ``Config2`` on purpose. In a
-    ``pyproject.toml`` it lives under ``[tool.protean.docs]``; in a
-    ``domain.toml``/``.domain.toml`` it maps directly to ``[docs]`` with no
-    ``tool.protean`` prefix.
+    when there is no config file or the key is absent. In a ``pyproject.toml``
+    the key lives under ``[tool.protean.docs]``; in a ``domain.toml`` or
+    ``.domain.toml`` it lives under ``[docs]``.
 
     Both values are resolved against the directory of the file that declares
-    them, so ``path = "llms.txt"`` names the same snapshot whether the command
-    runs from the project root or from a subdirectory. Without that anchor a
-    run from a subdirectory would write a second snapshot beside itself and
-    leave the committed one stale.
+    them, so ``path = "llms.txt"`` names the same snapshot from the project
+    root or a subdirectory.
 
-    A config file that cannot be read or parsed aborts the command, naming the
-    file. In the no-flag workflow nothing else loads that file, so swallowing
-    the error would turn a typo into a silent framework-only render with the
-    configured domain and output dropped. Once the file parses and the key is
-    present, it must be a table with a non-empty string ``path`` and a
-    non-empty string ``domain``; anything else aborts the same way.
+    Raises:
+        typer.Abort: When the config file cannot be read or parsed, or when the
+            key is not a table with a non-empty string ``path`` and a non-empty
+            string ``domain``. The message names the file.
     """
     config_path = _find_docs_config_file()
     if config_path is None:
@@ -729,6 +723,8 @@ def _load_domain_snapshot_config() -> dict[str, str] | None:
     try:
         data = tomllib.loads(config_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        # Nothing else loads this file when no flags are passed, so swallowing
+        # the error would silently render the framework alone.
         print(f"[red]Error:[/red] could not read {config_path}: {exc}")
         raise typer.Abort() from exc
 

@@ -349,22 +349,21 @@ def _scan(
 ) -> tuple[bool, bool, bool]:
     """Diff every managed file under *path* and print each target's pending line.
 
-    Mutates nothing; shared by ``diff`` and ``check``. With *show_diff*, also print
-    a unified diff of the pending change under each target's line, which is what
-    ``diff`` adds over ``check``. Returns ``(had_error, drifted, had_conflict)``:
-    ``had_error`` is set when a target is refused or the pack cannot render,
-    ``drifted`` when any target is not ``NO_CHANGE`` (missing, stale, or a
-    hand-edited conflict), and ``had_conflict`` when any target's managed block
-    was edited by hand, which needs resolving before a re-install can update it.
+    Writes nothing.
 
-    With *only_installed_optional*, report the installed scope (see
-    :func:`_in_scope`): the required baseline plus only those optional targets
-    already installed. This is what ``check`` passes so a freshly scaffolded
-    project, which ships only the baseline, reports clean while an optional editor
-    file the user never chose is not counted as drift. Every target is still
-    diffed: an optional one drops out only when the diff comes back ``CREATE`` and
-    the state file has no entry for it, so a refused target is reported either
-    way. ``diff`` leaves the flag off and previews every target.
+    Args:
+        path: The project directory.
+        show_diff: Also print a unified diff of the pending change under each
+            target's line.
+        only_installed_optional: Report only the installed scope (see
+            :func:`_in_scope`): the required baseline plus optional targets
+            already installed. A refused target is reported either way.
+
+    Returns:
+        ``(had_error, drifted, had_conflict)``. ``had_error`` is set when a
+        target is refused or the pack cannot render. ``drifted`` is set when any
+        reported target is not ``NO_CHANGE``. ``had_conflict`` is set when any
+        target's managed block was edited by hand.
     """
     from protean.dx import (  # noqa: PLC0415
         ApplyStatus,
