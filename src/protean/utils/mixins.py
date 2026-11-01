@@ -11,7 +11,7 @@ from typing import Any, ClassVar, TypeVar, cast
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.core.query import BaseQuery
-from protean.core.unit_of_work import UnitOfWork
+from protean.core.unit_of_work import UnitOfWork, _uow_stack
 from protean.exceptions import (
     ConfigurationError,
     ExpectedVersionError,
@@ -466,6 +466,17 @@ class handle:
             # that fail with transient infrastructure exceptions. Each keeps its
             # own attempt counter and backoff, and each attempt runs in a fresh
             # UnitOfWork so a failed attempt rolls back cleanly before the retry.
+            #
+            # A handler invoked while a UnitOfWork is already active (a nested
+            # `domain.process(..., asynchronous=False)`, or a call from a
+            # `@use_case`) does not retry. Its UnitOfWork joins the outer one,
+            # and without savepoints a failed attempt has already marked the
+            # whole transaction rollback-only: a retry in place would write into
+            # a transaction that is then discarded. The exception propagates so
+            # the outermost handler, if any, re-runs the whole chain in a fresh
+            # UnitOfWork. Checked here, before `_invoke` pushes its own UoW.
+            nested = _uow_stack.top is not None
+
             version_cfg = _get_version_retry_config()
             transient_cfg = _get_transient_retry_config(instance)
 
@@ -504,8 +515,8 @@ class handle:
                         return result
                     return fn(instance, target_obj)
 
-            # Fast path: neither policy active — run once without a retry loop.
-            if version_max == 0 and transient_max == 0:
+            # Fast path: nested, or neither policy active: run once, no retry.
+            if nested or (version_max == 0 and transient_max == 0):
                 return _invoke()
 
             version_attempt = 0

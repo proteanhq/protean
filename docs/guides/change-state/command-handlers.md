@@ -256,9 +256,12 @@ per handler with `retries`:
 ```
 
 Each attempt opens its own Unit of Work, so a failed attempt is rolled back
-cleanly before the next one. When the handler runs inside an outer Unit of
-Work, such as a use case that calls `domain.process()` synchronously, every
-attempt joins the outer one instead, and the first failure dooms it. Only genuinely transient exceptions are retried;
+cleanly before the next one. A handler that runs inside an outer Unit of Work,
+such as another handler or a use case that calls `domain.process()`
+synchronously, does not retry, and its own `retries` and `retry_exceptions`
+are not used there. Its exception propagates to the outermost handler, which
+re-runs the whole chain in a fresh Unit of Work when its own policy covers the
+exception. Otherwise the exception reaches the caller. Only genuinely transient exceptions are retried;
 by default `ConnectionError`, `TimeoutError`, and `SendError`. Narrow or widen
 the set with `retry_exceptions`:
 
