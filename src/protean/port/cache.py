@@ -57,21 +57,12 @@ def _ttl_unset(value: Any) -> bool:
 def _resolve_ttl(value: Any, source: str) -> int | float:
     """Normalise a `TTL` to a positive, finite number of seconds.
 
-    A TTL arriving here as a string is the normal case, not an edge one:
-    `TTL = "${CACHE_TTL|3600}"` substitutes to the string `"3600"`, because
-    environment substitution runs over already-parsed TOML strings and has no
-    type to restore. Left as a string it does not fail loudly. `ttl * 1000` in the Redis
-    cache repeats the string a thousand times and then asks Redis to expire a
-    key in a 4000-digit number of milliseconds, and the memory cache raises
-    `TypeError: unsupported operand type(s) for +: 'float' and 'str'` on the
-    first write.
+    `value` may be a number or a string holding one. `None` or `""` returns
+    `DEFAULT_TTL`.
 
-    The range check matters for the same reason. `float("nan")` parses happily
-    and every comparison against it is false, so a NaN TTL makes the memory
-    cache hold entries **forever** with nothing raised and nothing logged. NaN
-    and infinity then fail at the Redis write instead (`ValueError`,
-    `OverflowError`), and a negative TTL reaches Redis as a negative expiry. All
-    of them are rejected here, where the message can still name what set them.
+    Raises:
+        ConfigurationError: `value` is a boolean, not a number, NaN, infinite,
+            zero or negative. The message names `source`.
     """
     if value is None or value == "":
         return DEFAULT_TTL
@@ -88,6 +79,8 @@ def _resolve_ttl(value: Any, source: str) -> int | float:
         except (TypeError, ValueError):
             raise _reject_ttl(source, value, "a number of seconds") from None
 
+    # Every comparison with NaN is false, so a NaN TTL would make the memory
+    # cache keep entries forever without an error.
     if not math.isfinite(number):
         raise _reject_ttl(source, value, "a finite number of seconds")
     if number <= 0:
@@ -183,22 +176,20 @@ class BaseCache(metaclass=ABCMeta):
 
     @abstractmethod
     def add(self, projection: BaseProjection, ttl: TTLValue | None = None) -> None:
-        """Add projection record to cache
+        """Cache the projection's `to_dict()` data under its key.
 
-        KEY: Projection ID
-        Value: Projection Data (derived from `to_dict()`)
-
-        TTL is in seconds. Accepts a number, or a string holding one, because a
-        TTL sourced from config arrives as a string: environment substitution
-        runs over already-parsed TOML strings. Anything that is not a positive,
-        finite number of seconds raises a `ConfigurationError` naming the cache.
-
-        Omitted (or an empty string) means "use this cache's `TTL`", which falls
-        back to 300 seconds when the cache configures none.
+        The key is `<projection_name>:::<id>`, where `<projection_name>` is the
+        projection class name in snake case.
 
         Args:
-            projection (BaseProjection): Projection Instance containing data
-            ttl (int, float, str, optional): Timeout in seconds. Defaults to None.
+            projection: The projection to cache.
+            ttl: Seconds the entry lives, as a number or a string holding one.
+                `None` or `""` uses this cache's `TTL`, which is `DEFAULT_TTL`
+                when the cache configures none.
+
+        Raises:
+            ConfigurationError: `ttl` is not a positive, finite number of
+                seconds. The message names the cache, and nothing is cached.
         """
 
     @abstractmethod
@@ -207,33 +198,21 @@ class BaseCache(metaclass=ABCMeta):
 
     @abstractmethod
     def _get_all(self, key_pattern: str) -> list[BaseProjection]:
-        """Every projection whose key matches `key_pattern`, in key order.
+        """Every projection whose key matches `key_pattern`, in ascending key order.
 
-        Private and unpaginated on purpose. A cache is for point reads by key;
-        enumerating a match set is not what it is for. This reads every matching
-        entry, so on a store with no native ordering (Redis) it scans the whole
-        keyspace, and it materialises the entire match set in one list. It is a
-        convenience for tests and small, bounded stores, not a production read
-        path.
-
-        To page a large projection set, query the projection's repository
-        (`repository_for(Projection).query`), which has indexes and native
-        pagination. `count` shares the same full-scan cost.
+        It reads every matching entry and may scan the whole keyspace. Use it
+        for tests and small stores. To page a large projection set, query the
+        projection's repository (`repository_for(Projection).query`).
 
         `key_pattern` is a glob. `*` matches any run of characters, `?`
         matches one, `[...]` is a character class, and other characters,
         including `.`, are literal. Keys are `name:::identifier`, so a
-        projection's entries are `"user_profile:::*"`. Every adapter agrees on
-        `*`, `?`, and literal characters; bracket negation and escaping can
-        differ between adapters, so keep patterns to the `name:::*` shape.
+        projection's entries are `"user_profile:::*"`. Bracket negation and
+        escaping can differ between adapters, so keep patterns to the
+        `name:::*` shape.
 
-        Matches come back ordered by key ascending, the same on every adapter,
-        so the result is deterministic.
-
-        It returns at most `GET_ALL_MAX` entries. Past that it truncates to the
-        first `GET_ALL_MAX` in key order and logs a warning, so a store that
-        outgrew the cache surfaces as a warning rather than a silent partial
-        read.
+        It returns at most `GET_ALL_MAX` entries. Past that it returns the
+        first `GET_ALL_MAX` in key order and logs a warning.
         """
 
     @abstractmethod

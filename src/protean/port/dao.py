@@ -46,31 +46,26 @@ class HoldBack:
     is claimed by the same call. Rows that do not match ``applies`` are never
     held and never hold another row.
 
-    A ``Q`` cannot compare a row with other rows, which is why this is a
-    separate parameter and not part of the claim criteria.
-
-    :param group_by: Column names that must be equal for two rows to share a
-        group.
-    :param applies: Rows that take part in grouping. It must require every
-        ``group_by`` column to be non-null. The portable path builds its
-        lookups from a row's values, and a SQL adapter turns ``column=None``
-        into ``IS NULL``, so without that rule rows with a NULL in a
-        ``group_by`` column could share a group there.
-    :param holds: Rows that still hold their group (for example, every status
-        except "published"). It must match every row the claim's criteria
-        match, and every row once ``claim_fields`` are applied to it: a row
-        that can still be claimed, or is claimed and not finished, holds the
-        rows behind it.
-    :param order: Column names, all ascending, that define "earlier" within a
-        group. NULL sorts last, as in ``_claim``'s ``order_by``. The last key
-        must be unique so that the order is total.
-    :param lane_of: The same split as ``applies`` and ``lanes``, computed from
-        an entity's own values: ``None`` when the row does not match
-        ``applies``, else the index of its entry in ``lanes`` (``0`` when
-        ``lanes`` is empty). The portable claim reads a candidate's group with
-        it instead of asking the database.
-    :param lanes: Disjoint ``Q`` objects that together cover every grouped row.
-        Rows in different lanes never share a group. Empty means one lane.
+    Attributes:
+        group_by: Column names that must be equal for two rows to share a
+            group.
+        applies: Rows that take part in grouping. It must require every
+            ``group_by`` column to be non-null. Without that, rows with a NULL
+            in a ``group_by`` column can share a group on a SQL adapter.
+        holds: Rows that still hold their group (for example, every status
+            except "published"). It must match every row the claim's criteria
+            match, and every row once ``claim_fields`` are applied to it: a row
+            that can still be claimed, or is claimed and not finished, holds
+            the rows behind it.
+        order: Column names, all ascending, that define "earlier" within a
+            group. NULL sorts last. The last key must be unique so that the
+            order is total.
+        lane_of: The same split as ``applies`` and ``lanes``, computed from an
+            entity's own values. Returns ``None`` when the row does not match
+            ``applies``, else the index of its entry in ``lanes`` (``0`` when
+            ``lanes`` is empty).
+        lanes: Disjoint ``Q`` objects that together cover every grouped row.
+            Rows in different lanes never share a group. Empty means one lane.
     """
 
     group_by: tuple[str, ...]
@@ -177,30 +172,23 @@ def _pre_persist_hook(
 
 
 class BaseDAO(metaclass=ABCMeta):
-    """Base class for concrete DAO (Data Access Object) implementations.
+    """Base class for a database adapter's DAO (Data Access Object).
 
-    A DAO bridges the domain entity layer and the database. It has two parts:
+    A DAO reads and writes one entity class's rows in one database. An adapter
+    subclasses it and implements the abstract methods, which work on database
+    model objects. The lifecycle methods (``get``, ``save``, ``create``,
+    ``update``, ``delete``) work on entities: they convert between entities
+    and models, check versions, track the Unit of Work, and call the abstract
+    methods.
 
-    1. **Abstract methods** (``_filter``, ``_create``, ``_update``,
-       ``_update_all``, ``_delete``, ``_delete_all``, ``_raw``, ``has_table``)
-       — override these in your adapter to interact with the database.
+    The Custom Database Adapters guide walks through building an adapter.
 
-    2. **Lifecycle methods** (``get``, ``save``, ``create``, ``update``,
-       ``delete``) — fully implemented wrappers that handle entity ↔ model
-       conversion, version checking, UoW tracking, and then delegate to
-       the abstract internals above.
-
-    See ``BaseProvider`` in ``protean.port.provider`` for the full adapter
-    development guide, including the call-flow diagram showing how the
-    framework invokes DAO methods.
-
-    :param domain: the domain of the application this DAO is associated with.
-    :param provider: the corresponding provider object of the database
-        implementation, from whom the DAO can request sessions and connections.
-    :param database_model_cls: the concrete model class associated with the
-        DAO. The model class is a direct representation of an object in
-        ORM/ODM terms or as represented by a python driver.
-    :param entity_cls: the domain entity class associated with the DAO.
+    Args:
+        domain: The domain this DAO belongs to.
+        provider: The database provider the DAO gets sessions and connections
+            from.
+        entity_cls: The domain entity class the DAO stores.
+        database_model_cls: The database model class for ``entity_cls``.
     """
 
     def __init__(
@@ -381,22 +369,24 @@ class BaseDAO(metaclass=ABCMeta):
         with_total: bool = True,
         fields: list[str] | None = None,
     ) -> ResultSet:
-        """
-        Filter objects from the data store. Method must return a `ResultSet`
-        object.
+        """Return one page of the rows that match ``criteria``.
 
-        When ``with_total`` is ``False`` the caller does not need the full
-        match count, so adapters may skip any expensive total computation
-        (e.g. SQL's separate ``COUNT`` query) and report only the size of the
-        returned page in ``ResultSet.total``. Adapters that derive the total
-        for free (memory, Elasticsearch) may continue to populate it.
+        Args:
+            criteria: The filter conditions.
+            offset: The number of matching rows to skip.
+            limit: The most rows to return.
+            order_by: Keys to sort by, applied in turn. A ``-`` prefix sorts
+                that key descending.
+            with_total: When ``False``, the caller does not need the full
+                match count. The adapter may skip computing it (for example,
+                SQL's separate ``COUNT`` query) and set ``ResultSet.total`` to
+                the size of the returned page.
+            fields: Column names to fetch, set by ``QuerySet.only()``. The
+                identifier is always among them. The adapter fetches only those
+                columns. ``None`` fetches full rows.
 
-        When ``fields`` is a list of attribute (column) names (set via
-        ``QuerySet.only()``), adapters should fetch only those columns (the
-        identifier is always among them) instead of full rows. The returned
-        ``ResultSet.items`` are still raw storage records; the caller builds
-        read-only ``Record`` objects from them via the model's ``to_records``.
-        ``None`` means fetch full rows as usual.
+        Returns:
+            A ``ResultSet`` whose ``items`` are raw storage records.
         """
 
     @abstractmethod
@@ -432,24 +422,22 @@ class BaseDAO(metaclass=ABCMeta):
 
     @abstractmethod
     def _update_all(self, criteria: Q, *args: Any, **kwargs: Any) -> int:
-        """Perform a bulk update on the persistent store.
-
-        Concrete implementation will be provided by the database DAO class.
-        Updates all objects satisfying ``criteria`` with attributes specified
-        in ``args`` (a dict) and/or ``kwargs``.
+        """Update every row that matches ``criteria`` with the given values.
 
         .. warning::
 
             This is an **internal framework method** reserved for
-            infrastructure needs (outbox, projection rebuilds).  It bypasses
-            domain validation, invariants, and the Unit of Work.  Do not call
+            infrastructure needs (outbox, projection rebuilds). It bypasses
+            domain validation, invariants, and the Unit of Work. Do not call
             it from domain-level code.
 
-        Returns the count of rows matched for the provided criteria.
+        Args:
+            criteria: The filter conditions.
+            *args: A dictionary of values to write.
+            **kwargs: Values to write, as keyword arguments.
 
-        :param criteria: A ``Q`` object wrapping one or more filter conditions.
-        :param args: A dictionary of attribute data to be updated.
-        :param kwargs: Keyword args specifying attribute data to be updated.
+        Returns:
+            The number of rows that matched ``criteria``.
         """
 
     @abstractmethod
@@ -468,10 +456,7 @@ class BaseDAO(metaclass=ABCMeta):
 
     @abstractmethod
     def _delete_all(self, criteria: Q | None = None) -> int:
-        """Perform a bulk delete on the persistent store.
-
-        Concrete implementation will be provided by the database DAO class.
-        Deletes all objects satisfying ``criteria``.
+        """Delete every row that matches ``criteria``.
 
         .. warning::
 
@@ -480,10 +465,12 @@ class BaseDAO(metaclass=ABCMeta):
             It bypasses domain validation, invariants, and the Unit of Work.
             Do not call it from domain-level code.
 
-        Returns the count of rows matched for the provided criteria.
+        Args:
+            criteria: The filter conditions. ``None`` deletes every row of the
+                table or index.
 
-        :param criteria: A ``Q`` object wrapping one or more filter conditions.
-            If ``None``, all records of the table/document are removed.
+        Returns:
+            The number of rows that matched ``criteria``.
         """
 
     @abstractmethod
@@ -499,22 +486,19 @@ class BaseDAO(metaclass=ABCMeta):
 
     @abstractmethod
     def _raw(self, query: Any, data: Any = None) -> ResultSet:
-        """Run raw query on Data source. Concrete implementation will be provided by
-        the database DAO class.
+        """Run a raw query on the database and return the matching entities.
 
-        Method invocation should fetch all objects satisfying the raw query. Running a raw query on the data store
-        should always returns entity instance objects. If the results were not synthesizable back into
-        entity objects, an exception should be thrown.
+        ``QuerySet.raw()`` calls this; do not call it directly. The query
+        bypasses the Unit of Work. Raise an exception when a result cannot be
+        turned into an entity.
 
-        This method is invoked by Queryset's `raw()` method and should not be called directly.
+        Args:
+            query: The query, passed to the database as it is.
+            data: Data to pass along with the query, such as the values for an
+                update statement.
 
-        .. warning:: The `raw()` method bypasses ORM/ODM unit-of-work automation.
-
-        Returns the result specified by the raw query.
-
-        :param query: Raw query to be passed to the data store.
-        :param data: Data to be passed to the data store as-is, along with the query
-                     (in case of update statements, for example).
+        Returns:
+            A ``ResultSet`` of the entities the query returned.
         """
 
     @abstractmethod
@@ -681,14 +665,9 @@ class BaseDAO(metaclass=ABCMeta):
         limit: int,
         order_by: str | None = None,
     ) -> int:
-        """Delete up to ``limit`` rows matching ``criteria``. Returns the count
-        of rows deleted.
+        """Delete up to ``limit`` rows that match ``criteria``.
 
-        This is the bounded counterpart to :meth:`_delete_all`. It lets
-        high-volume cleanups run in fixed-size batches instead of one
-        unbounded ``DELETE``, so a backlog of millions of rows can be cleared
-        without holding locks for the duration of a single statement or
-        bloating the transaction log.
+        Large cleanups use this to delete in fixed-size batches.
 
         .. warning::
 
@@ -697,18 +676,14 @@ class BaseDAO(metaclass=ABCMeta):
             It bypasses domain validation, invariants, and the Unit of Work.
             Do not call it from domain-level code.
 
-        This is the **portable default**: it selects up to ``limit``
-        identifiers (projecting only the id via :meth:`QuerySet.only`, so large
-        columns such as JSON blobs are never materialized) and then deletes
-        those rows by identifier. Two statements, correct on every backend.
-        Adapters with a single-statement bounded delete (e.g. ``DELETE … WHERE
-        id IN (SELECT … LIMIT n)``) override this with a faster path.
+        Args:
+            criteria: Selects the rows that can be deleted.
+            limit: The most rows to delete. ``0`` or less deletes none.
+            order_by: One sort key, such as ``"-priority"``, that decides which
+                rows go first.
 
-        :param criteria: A ``Q`` object selecting deletable rows.
-        :param limit: Maximum number of rows to delete. ``<= 0`` deletes none.
-        :param order_by: Optional single ordering key (e.g. ``"-priority"``)
-            controlling which rows are removed first.
-        :return: The number of rows deleted (``<= limit``).
+        Returns:
+            The number of rows deleted, at most ``limit``.
         """
         if limit <= 0:
             return 0
@@ -720,6 +695,8 @@ class BaseDAO(metaclass=ABCMeta):
         assert entity_id_field.field_name is not None
         id_name = entity_id_field.field_name
 
+        # The portable default takes two statements: read the ids, then delete
+        # by id. Adapters with a single-statement bounded delete override this.
         # Read up to ``limit`` identifiers via the entity-level query API,
         # projecting only the id so blob columns are left unread.
         candidate_qs = self.query.filter(criteria)
@@ -997,24 +974,23 @@ class BaseDAO(metaclass=ABCMeta):
                     enricher(entity_obj)
 
     def save(self, entity_obj: Any, *, apply_hooks: bool = True) -> Any:
-        """Create or update an entity in the data store, depending on its state. An identity for entity record is
-        generated, if not already present.
+        """Persist a fully formed entity: create it if it was never saved, else
+        update it.
 
-        The primary difference between `save` and other lifecycle methods like `create` and `update` is that `save`
-        accepts a fully formed entity object to persist, while the others accept attribute params to build the
-        entity model from.
+        Args:
+            entity_obj: The entity to persist.
+            apply_hooks: When ``False``, skip the pre-persist hooks
+                (``auto_now``/``auto_now_add`` stamping and aggregate
+                enrichers) for a raw write, such as a bulk migration that must
+                not touch audit fields. The optimistic-concurrency version
+                check still applies.
 
-        Returns the created/updated entity object.
+        Returns:
+            The saved entity.
 
-        Throws `ValidationError` for validation failures on attribute values or uniqueness constraints.
-
-        :param entity_obj: Entity object to be persisted
-        :param apply_hooks: When ``False``, skip the pre-persist hooks —
-            ``auto_now``/``auto_now_add`` timestamp stamping and registered
-            aggregate enrichers — for a raw write (e.g. a bulk migration that must
-            not touch audit fields). Optimistic-concurrency version management is
-            **not** gated by this flag: it is a correctness guard against lost
-            updates, not a pre-persist hook, and always applies.
+        Raises:
+            ValidationError: A field value or a uniqueness constraint fails
+                validation.
         """
         logger.debug(f"Saving `{self.entity_cls.__name__}` object")
 
@@ -1108,36 +1084,35 @@ class BaseDAO(metaclass=ABCMeta):
             Load the aggregate, invoke a behaviour method that applies the
             change, and persist it with ``repository.add()`` instead.
 
-        Applies the supplied attribute values, validates uniqueness, then
-        persists through the same path as :meth:`save` — so an aggregate update
-        advances its version (optimistic concurrency, raising
-        :class:`ExpectedVersionError` on a stale write), stamps ``auto_now``
-        timestamps, and runs pre-persist enrichers.
+        Applies the values, checks uniqueness, then persists the entity the
+        way :meth:`save` does. An aggregate update advances its version, stamps
+        ``auto_now`` fields, and runs pre-persist enrichers.
 
-        ``update`` targets an **existing** record: it raises
-        :class:`ObjectNotFoundError` for an entity that was never persisted
-        (rather than silently creating one — use :meth:`save` / ``repository.add``
-        to create).
-
-        Supports both dictionary and keyword argument updates to the entity::
+        Takes the values as a dictionary or as keyword arguments::
 
             >>> dao.update(user, {'age': 10})
             >>> dao.update(user, age=10)
 
-        ``apply_hooks`` is a reserved keyword argument; to patch a field that
-        happens to be named ``apply_hooks``, use the dictionary form
+        ``apply_hooks`` is a reserved keyword argument. To patch a field named
+        ``apply_hooks``, use the dictionary form
         (``dao.update(user, {'apply_hooks': ...})``).
 
-        Returns the updated entity object.
+        Args:
+            entity_obj: The persisted entity to update.
+            *data: A dictionary of values to apply.
+            apply_hooks: When ``False``, skip the pre-persist hooks
+                (``auto_now`` stamping and enrichers). The optimistic-concurrency
+                version check still applies. See :meth:`save`.
+            **kwargs: Values to apply, as keyword arguments.
 
-        Throws `ValidationError` for validation failures on attribute values or uniqueness constraints.
+        Returns:
+            The updated entity.
 
-        :param entity_obj: The entity object to be updated
-        :param data: Dictionary of values to be updated for the entity
-        :param apply_hooks: When ``False``, skip the pre-persist hooks
-            (``auto_now`` stamping and enrichers) for a raw write; optimistic
-            concurrency still applies. See :meth:`save`.
-        :param kwargs: keyword arguments of attribute pairs to be updated
+        Raises:
+            ObjectNotFoundError: ``entity_obj`` was never persisted.
+            ValidationError: A field value or a uniqueness constraint fails
+                validation.
+            ExpectedVersionError: The stored aggregate has a newer version.
         """
         return self._apply_update(entity_obj, *data, apply_hooks=apply_hooks, **kwargs)
 

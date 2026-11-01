@@ -286,10 +286,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     def owns(self, element_cls: type[Any]) -> bool:
         """Return whether this provider materializes a table/index for ``element_cls``.
 
-        A single, positive gate for the "does this registered element get a
-        table or index from *this* provider?" decision, used by the provider
-        artifact/reset loops that iterate registered elements. It returns
-        ``False`` for:
+        It returns ``False`` for:
 
         - **Event-sourced aggregates**: They persist to the event store, not a
           database table/index.
@@ -300,14 +297,12 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         - **Elements owned by a different provider**: In multi-provider domains,
           each provider materializes only the elements configured to it.
 
-        An element referencing a provider name that is not configured raises
-        ``ConfigurationError``. A misconfiguration must fail fast at setup, not
-        be silently skipped.
+        Call it after ``domain.init()``, which sets
+        ``meta_.aggregate_cluster``.
 
-        Assumes a fully-initialized domain (``meta_.aggregate_cluster`` is
-        populated during ``domain.init()``). Ownership is resolved by comparing
-        provider *names*, so a ``None`` provider is never used to index the
-        provider registry and cache-backed elements never raise here.
+        Raises:
+            ConfigurationError: ``element_cls`` names a provider that is not
+                configured.
         """
         meta = element_cls.meta_
 
