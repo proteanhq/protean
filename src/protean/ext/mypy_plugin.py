@@ -277,22 +277,13 @@ def _extract_decorator_name(fullname: str) -> str | None:
 
 
 def _extract_decorator_name_from_expr(decorator: object) -> str | None:
-    """Extract a Protean decorator name from a decorator AST expression.
+    """Return the Protean decorator name used by a decorator expression.
 
-    Handles two forms:
-    - ``@domain.aggregate`` → MemberExpr with name="aggregate"
-    - ``@domain.aggregate(...)`` → CallExpr with callee being MemberExpr
-
-    Returns the decorator method name (e.g. ``"aggregate"``) if the
-    expression is a method call on an object and the method name is a
-    known Protean decorator, or ``None`` otherwise.
-
-    Note: This hook fires during MRO calculation (very early in analysis),
-    so the NameExpr for the receiver (e.g. ``domain``) may not be resolved
-    yet (``expr.node is None``). We match on the method name alone, which
-    is safe because Protean decorator names (``aggregate``, ``entity``,
-    etc.) are specific enough that false positives are extremely unlikely
-    for method-style decorators (``@obj.aggregate``).
+    Matches ``@domain.aggregate`` and ``@domain.aggregate(...)``, and returns
+    the method name (``"aggregate"``) when it is a known Protean decorator.
+    Returns ``None`` for any other expression, and when the receiver is
+    already resolved to a type other than ``Domain``. An unresolved receiver
+    is matched on the method name alone.
     """
     # Unwrap @domain.aggregate(...) → get the MemberExpr
     if isinstance(decorator, CallExpr):
