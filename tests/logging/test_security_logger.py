@@ -33,6 +33,33 @@ class Balance(BaseAggregate):
             raise ValidationError({"amount": ["Balance must be non-negative"]})
 
 
+class Wallet(BaseAggregate):
+    wallet_id = Identifier(identifier=True)
+    amount = Integer(default=0)
+
+    @invariant.post
+    def amount_non_negative(self):
+        if self.amount < 0:
+            raise ValidationError({"amount": ["Amount must be non-negative"]})
+
+    @invariant.post
+    def amount_is_even(self):
+        if self.amount % 2:
+            raise ValidationError({"amount": ["Amount must be even"]})
+
+
+class Spend(BaseCommand):
+    wallet_id = Identifier(identifier=True)
+    amount = Integer()
+
+
+class SpendHandler(BaseCommandHandler):
+    @handle(Spend)
+    def spend(self, command: Spend) -> None:
+        wallet = Wallet(wallet_id=command.wallet_id, amount=100)
+        wallet.amount = 100 - command.amount
+
+
 class Debit(BaseCommand):
     account_id = Identifier(identifier=True)
     amount = Integer()
@@ -135,6 +162,23 @@ class TestInvariantFailureLogged:
         assert len(invariant_records) == 0, (
             "invariant_failed must not fire outside an active handler context"
         )
+
+    def test_each_failed_invariant_is_logged_once(self, test_domain, caplog):
+        test_domain.register(Wallet)
+        test_domain.register(Spend, part_of=Wallet)
+        test_domain.register(SpendHandler, part_of=Wallet)
+        test_domain.init(traverse=False)
+
+        with caplog.at_level(logging.WARNING, logger="protean.security"):
+            with pytest.raises(ValidationError):
+                test_domain.process(Spend(wallet_id="w-1", amount=101))
+
+        logged = sorted(
+            r.invariant
+            for r in caplog.records
+            if r.name == "protean.security" and r.getMessage() == "invariant_failed"
+        )
+        assert logged == ["amount_is_even", "amount_non_negative"]
 
     def test_invariant_failure_includes_correlation(self, test_domain, caplog):
         test_domain.register(Balance)

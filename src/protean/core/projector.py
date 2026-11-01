@@ -7,17 +7,14 @@ from protean.utils.mixins import HandlerMixin, handle
 
 
 class BaseProjector(Element, HandlerMixin, OptionsMixin):
-    """Base class for projectors that maintain read-optimized projections by
-    listening to domain events.
+    """Base class for projectors, which keep a projection up to date from
+    domain events.
 
-    Projectors are always associated with a projection via ``projector_for``
-    and use the ``@handle`` (or its alias ``@on``) decorator to map specific
-    event types to handler methods. Unlike generic event handlers, projectors
-    explicitly target a projection and can listen to events from multiple
-    aggregates.
-
-    Handler methods receive the event as their only argument and are
-    responsible for creating, updating, or deleting the projection record.
+    A projector names its projection with ``projector_for`` and can listen to
+    events from several aggregates. The ``@handle`` decorator, or its alias
+    ``@on``, maps an event type to a handler method. A handler method receives
+    the event as its only argument and creates, updates or deletes the
+    projection record. See the Projectors guide for a walk-through.
 
     **Meta Options**
 

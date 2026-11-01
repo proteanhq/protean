@@ -34,21 +34,17 @@ logger = logging.getLogger(__name__)
 
 
 class BaseRepository(Element, OptionsMixin):
-    """This is the baseclass for concrete Repository implementations.
+    """Base class for repositories, which load and persist aggregates.
 
-    The three methods in this baseclass to `add`, `get` or `all` entities are sufficient in most cases
-    to handle application requirements. They have built-in support for handling child relationships and
-    honor Unit of Work constructs. While they can be overridden, it is generally suggested to call the
-    parent method first before writing custom code.
+    ``add()``, ``get()`` and ``get_or_none()`` persist and load an aggregate
+    together with its child entities, and take part in the active Unit of
+    Work. A custom repository adds domain-named query methods built on
+    ``query``, ``find()``, ``find_by()`` and ``exists()``. A method that
+    overrides ``add()`` or ``get()`` should call the parent method first.
 
-    Repositories are strictly meant to be used in conjunction with Aggregate elements. It is always prudent to deal
-    with persistence at the transaction boundary, which is at an Aggregate's level.
-
-    **Design note: no delete/remove method.**
-    Repositories intentionally do not support hard deletion. Domain state changes (cancellation,
-    deactivation, archival) should be modeled as explicit state transitions via commands and events,
-    not as record erasure. Hard deletion is available at the infrastructure level (``_dao.delete()``)
-    for projection rebuilds, test teardown, and compliance requirements (e.g. GDPR right to erasure).
+    A user-defined repository can only be ``part_of`` an aggregate.
+    Repositories have no delete or remove method; see the Repositories concept
+    page for the reason.
     """
 
     element_type = DomainObjects.REPOSITORY
@@ -103,25 +99,9 @@ class BaseRepository(Element, OptionsMixin):
     def _dao(self) -> BaseDAO:
         """Return the Data Access Object for this repository's aggregate.
 
-        .. warning:: Internal / escape-hatch API
-
-            ``_dao`` is used by the framework for child-entity synchronization,
-            outbox persistence, projection rebuilds, and association resolution.
-
-            Application code should use the public query helpers instead:
-
-            - ``self.query``: A [`QuerySet`][protean.core.queryset.QuerySet] for filtered, sorted,
-              paginated queries.
-            - ``self.find_by(**kwargs)``: Find a single aggregate by field
-              values.
-            - ``self.find(criteria)``: Find aggregates matching a ``Q``
-              expression.
-            - ``self.exists(criteria)``: Check if any aggregate matches.
-
-            Direct ``_dao`` access is intentionally available as an escape
-            hatch for infrastructure-level operations (hard deletion, test
-            teardown, GDPR compliance) but should not be used for routine
-            domain queries.
+        Internal. Application code should use ``query``, ``find_by()``,
+        ``find()`` and ``exists()``. Direct use is for infrastructure work such
+        as hard deletion and test teardown.
         """
         # Fixate on Model class at the domain level because an explicit model may have been registered
         dao: BaseDAO = self._provider.get_dao(self.meta_.part_of, self._database_model)
@@ -212,23 +192,14 @@ class BaseRepository(Element, OptionsMixin):
         return self.query.filter(criteria).all().total > 0
 
     def add(self, item: Any) -> Any:
-        """This method helps persist or update aggregates or projections into the persistence store.
+        """Persist a new or changed aggregate or projection, with its child entities.
 
-        Returns the persisted item.
+        Inside an active Unit of Work, the changes are written in its
+        transaction and committed when it commits. Otherwise they are committed
+        before ``add()`` returns.
 
-        Protean adopts a collection-oriented design pattern to handle persistence. What this means is that
-        the Repository interface does not hint in any way that there is an underlying persistence mechanism,
-        avoiding any notion of saving or persisting data in the design layer. The task of syncing the data
-        back into the persistence store is handled automatically.
-
-        To be specific, a Repository mimics a `set` collection. Whatever the implementation, the repository
-        will not allow instances of the same object to be added twice. Also, when retrieving objects from
-        a Repository and modifying them, you don't need to "re-save" them to the Repository.
-
-        If there is a Unit of Work in progress, then the changes are performed on the
-        UoW's active session. They are committed whenever the entire UoW is committed. If there is no
-        transaction in progress, changes are committed immediately to the persistence store. This mechanism
-        is part of the DAO's design, and is automatically used wherever one tries to persist data.
+        Returns:
+            The item passed in.
         """
         # Increment access log repo save counter
         if has_domain_context():

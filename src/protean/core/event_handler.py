@@ -69,10 +69,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
-    """Base Event Handler to be inherited by all event handlers.
-
-    Event handlers process domain events asynchronously. They can be configured
-    with subscription settings to control message consumption behavior.
+    """Base class for event handlers, which process domain events asynchronously.
 
     **Meta Options**
 
@@ -81,20 +78,14 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
     | ``part_of`` | ``type`` | The aggregate this handler is associated with. |
     | ``source_stream`` | ``str`` | Optional source stream filter for origin filtering. |
     | ``stream_category`` | ``str`` | The stream category to subscribe to. Defaults to aggregate's category. |
-    | ``sequential_by`` | ``str`` | Partition key field name for per-key sequential processing (ADR-0028). |
+    | ``sequential_by`` | ``str`` | Partition key field name for per-key sequential processing. |
     | ``subscription_type`` | ``str`` | The subscription type (STREAM or EVENT_STORE). |
     | ``subscription_profile`` | ``str`` | A predefined profile (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION). |
     | ``subscription_config`` | ``dict`` | Custom configuration overrides that take precedence over profile defaults. |
 
-    Configuration Priority (highest to lowest):
-
-        1. Handler Meta subscription_config
-        2. Handler Meta subscription_profile
-        3. Handler Meta subscription_type
-        4. Server-level handler-specific config
-        5. Server-level defaults
-        6. Profile defaults
-        7. Hardcoded defaults
+    The subscription options combine with server-level settings in a fixed
+    priority order. See the server configuration reference for that order,
+    and the event handlers guide for a walk-through.
 
     Example::
 

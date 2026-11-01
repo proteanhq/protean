@@ -49,21 +49,19 @@ TResult = TypeVar("TResult", default=Any)
 # BaseQuery
 # ---------------------------------------------------------------------------
 class BaseQuery(Element, BaseModel, OptionsMixin, Generic[TResult]):
-    """Base class for domain queries -- immutable DTOs representing a
-    read intent against a projection.
+    """Base class for queries: immutable objects that carry a request to read
+    a projection.
 
-    Queries are named with descriptive verbs (``GetOrdersByCustomer``,
-    ``FindActiveUsers``, ``SearchProducts``) and processed by query handlers.
-    They are immutable after construction and lighter than commands: no
-    metadata, no stream, no event store concerns.
-
-    Fields are declared using standard Python type annotations with optional
-    ``Field`` constraints.
+    Name a query with a descriptive verb, such as ``GetOrdersByCustomer``. A
+    query handler processes it. Setting a field after construction raises
+    ``IncorrectUsageError``. A query accepts only basic field types and
+    ``ValueObject`` fields. A ``Reference`` or association field raises
+    ``IncorrectUsageError`` when the class is defined.
 
     A query may declare the type its handler returns by subscripting the base:
     ``class GetOrderSummary(BaseQuery[OrderSummary])``. ``domain.dispatch`` then
-    resolves to ``OrderSummary`` at the call site. Declaring the result type is
-    optional; a bare ``BaseQuery`` subclass dispatches to ``Any`` as before.
+    returns ``OrderSummary`` to a type checker. A bare ``BaseQuery`` subclass
+    dispatches to ``Any``. See the Query Handlers guide for a walk-through.
 
     **Meta Options**
 

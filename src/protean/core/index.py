@@ -103,13 +103,16 @@ class Index:
 
     @classmethod
     def from_sql(cls, dialect: str, ddl: str, name: str | None = None) -> RawIndex:
-        """Escape hatch for dialect-specific DDL the framework cannot model.
+        """Declare verbatim index DDL for one SQL dialect.
 
-        The schema generator emits the verbatim ``ddl`` only when the
-        configured dialect matches ``dialect``.
+        Use it for indexes ``Index`` cannot describe, such as GIN or expression
+        indexes. The schema generator emits ``ddl`` only when the configured
+        dialect matches ``dialect``.
 
         Args:
-            dialect: The dialect this DDL targets (e.g. ``"postgresql"``).
+            dialect: The dialect this DDL targets. It must be a member of
+                ``RENDERED_INDEX_DIALECTS``, or ``Domain.init()`` raises
+                ``IncorrectUsageError``.
             ddl: The verbatim ``CREATE INDEX`` statement.
             name: Optional name, for reporting and deduplication.
 
@@ -151,22 +154,21 @@ class RawIndex:
 def validate_indexes(element_cls: type) -> None:
     """Validate the ``indexes`` declared on an element.
 
-    Invoked by ``DomainValidator`` during ``Domain.init()`` (after reference
-    resolution), so field/attribute introspection sees a fully resolved element.
+    Call it only after string references on the element are resolved, as
+    ``Domain.init()`` does, so that every field and attribute is known.
 
-    Checks, fail-fast, that:
+    Raises:
+        IncorrectUsageError: On the first of these problems:
 
-    - ``indexes`` is a list/tuple of :class:`Index` / :class:`RawIndex`.
-    - Every field referenced by an :class:`Index` (in ``fields``, ``desc``,
-      and ``include``) is declared on the element.
-    - Every ``desc`` entry is also present in ``fields``.
-    - Every :class:`RawIndex` names a dialect the framework renders DDL for
-      (a member of :data:`RENDERED_INDEX_DIALECTS`). A ``RawIndex`` whose
-      ``dialect`` is unknown would render nothing on any adapter, so it is
-      rejected here rather than silently dropped at schema-generation time.
+            - ``indexes`` is not a list or tuple of :class:`Index` and
+              :class:`RawIndex` entries.
+            - An :class:`Index` names a field in ``fields``, ``desc`` or
+              ``include`` that the element does not declare.
+            - A ``desc`` entry is not also in ``fields``.
+            - A :class:`RawIndex` names a dialect outside
+              :data:`RENDERED_INDEX_DIALECTS`.
 
-    The DDL string of a :class:`RawIndex` is opaque verbatim SQL and is not
-    introspected; only its ``dialect`` is checked.
+    The DDL string of a :class:`RawIndex` is not inspected.
     """
     meta = getattr(element_cls, "meta_", None)
     indexes = getattr(meta, "indexes", ()) or ()

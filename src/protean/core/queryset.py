@@ -24,27 +24,18 @@ logger = logging.getLogger(__name__)
 
 
 class QuerySet:
-    """A chainable class to gather a bunch of criteria and preferences (resultset size, order etc.)
-    before execution.
+    """A chainable, lazy query over one aggregate's or entity's data store.
 
-    Internally, a QuerySet can be constructed, filtered, sliced, and generally passed around
-    without actually fetching data. No data fetch actually occurs until you do something
-    to evaluate the queryset.
+    ``filter()``, ``exclude()``, ``order_by()``, ``limit()``, ``offset()`` and
+    ``only()`` each return a new QuerySet and fetch nothing. The query runs
+    when you call ``all()``, which returns a ``ResultSet``, or when you call
+    ``len()``, ``bool()`` or ``list()`` on the QuerySet, iterate over it, or
+    slice it.
 
-    Once evaluated, a `QuerySet` typically caches its results. If the data in the database
-    might have changed, you can get updated results for the same query by calling `all()` on a
-    previously evaluated `QuerySet`.
-
-    Attributes:
-        offset: Number of records after which Results are fetched
-        limit: The size the recordset to be pulled from database
-        order_by: The list of parameters to be used for ordering the results.
-            Use a `-` before the parameter name to sort in descending order
-            and if not ascending order.
-        excludes_: Objects with these properties will be excluded from the results
-        filters: Filter criteria
-
-    :return Returns a `ResultSet` object that holds the query results
+    The QuerySet keeps the results of its last run, and iterating or slicing
+    again reuses them. When the Unit of Work transaction has changed since
+    that run, the query runs again. ``all()`` always runs the query again, so
+    call it to see changes made since the last run.
     """
 
     def __init__(
@@ -222,29 +213,26 @@ class QuerySet:
         return clone
 
     def only(self, *field_names: str) -> Self:
-        """Restrict the query to a subset of persisted fields.
+        """Return a QuerySet that fetches only the named fields.
 
-        Returns a new ``QuerySet`` that, when evaluated, fetches only the
-        requested columns (plus the identifier, which is always included) and
-        yields read-only [`Record`][protean.core.queryset.Record] objects instead of fully materialized
-        domain entities. This avoids the I/O of loading large columns (e.g.
-        JSON blobs) on read-optimized paths (counts, cleanups, statistics)
-        that never need the whole record.
+        The new QuerySet fetches only these columns, plus the identifier, which
+        is always included. It yields read-only
+        [`Record`][protean.core.queryset.Record] objects instead of domain
+        entities. A ``Record`` has no behavior, runs no invariants and cannot be
+        persisted, so ``update()`` and ``delete()`` raise ``NotSupportedError``
+        on a QuerySet with a selection.
 
-        A ``Record`` is **not** a domain entity: it has no behavior, runs no
-        invariants, and cannot be persisted. It is purely a read-side carrier
-        of column values. Domain operations must continue to go through full
-        entities; ``only()`` is for field-selection reads.
+        Calling ``only()`` again replaces the selection. Calling it with no
+        arguments clears the selection and restores full entities.
 
-        Calling ``only()`` again **replaces** the selection (selections do not
-        compose). Calling ``only()`` with no arguments clears any selection and
-        restores full-entity materialization.
+        Args:
+            *field_names: Names of the persisted fields to fetch. Field names
+                and attribute names both work.
 
-        :param field_names: Names of persisted fields to project. The
-            identifier is always included automatically.
-        :raises KeyError: if a name is not a field or attribute of the entity.
-        :raises NotSupportedError: if a name resolves to a non-persisted field
-            (e.g. an association), which cannot be projected.
+        Raises:
+            KeyError: A name is not a field or attribute of the entity.
+            NotSupportedError: A name is not a persisted field, such as an
+                association.
         """
         clone = self._clone()
 
@@ -401,28 +389,24 @@ class QuerySet:
         return self._owner_dao._count(self._criteria)
 
     def update(self, *data: Any, apply_hooks: bool = True, **kwargs: Any) -> int:
-        """Updates all objects with details given if they match a set of conditions supplied.
+        """Update every matching aggregate and return how many matched.
 
         .. deprecated:: 0.18.0
             The patch-and-persist path is deprecated and is removed in v0.20.0.
             Load the matched aggregates, invoke a behaviour method on each, and
             persist each one with ``repository.add()`` instead.
 
-        This method updates each object individually, to fire callback methods and ensure
-        validations are run, so each matched aggregate advances its version and,
-        by default, has its ``auto_now`` timestamps and enrichers applied. Pass
-        ``apply_hooks=False`` to skip those hooks for a raw bulk write.
+        Applies the values to each matched aggregate through
+        ``BaseDAO.update()``, which takes the same ``*data``, ``apply_hooks``
+        and keyword arguments. Each aggregate is saved on its own, with its own
+        version check. Outside a Unit of Work, an error on one aggregate, such
+        as ``ExpectedVersionError``, leaves the aggregates before it saved.
 
-        Each row is updated individually with an optimistic-concurrency check, so
-        a mid-batch conflict raises `ExpectedVersionError` after the earlier rows
-        have already committed. The batch is never atomic; every aggregate is its
-        own consistency boundary.
+        Returns:
+            The number of aggregates matched.
 
-        ``apply_hooks`` is a reserved keyword argument; to update a field named
-        ``apply_hooks``, use the dictionary form (``.update({'apply_hooks': ...})``).
-
-        Returns the number of objects matched (which may not be equal to the number of objects
-            updated if objects rows already have the new value).
+        Raises:
+            NotSupportedError: The QuerySet has an ``only()`` selection.
         """
         self._reject_if_projected("update")
 
@@ -443,21 +427,19 @@ class QuerySet:
         return updated_item_count
 
     def raw(self, query: Any, data: Any = None) -> "ResultSet":
-        """Runs raw query directly on the database and returns Entity objects
+        """Run a raw query on the database and return the matching entities.
 
-        Note that this method will raise an exception if the returned objects
-            are not of the Entity type.
+        The query goes to the database as it is, unchecked. Any error from the
+        adapter or the database is raised unchanged. The bundled adapters
+        ignore ``data``; use the provider's ``raw()`` to bind values to
+        placeholders.
 
-        `query` is not checked for correctness or validity, and any errors thrown by the plugin or
-            database are passed as-is. `data` is handed to the adapter, and the bundled adapters
-            ignore it: this path runs the query string as is. Use the provider's `raw()` when you
-            need values bound to placeholders.
+        ``order_by``, ``offset``, ``limit`` and any ``only()`` selection do not
+        apply. The result always holds full entities, never ``Record``
+        objects.
 
-        All other query options like `order_by`, `offset`, `limit`, and any
-        `only()` field selection are ignored for this action; `raw()` always
-        returns full Entity objects, never `Record` objects.
-
-        Raises NotSupportedError if the provider does not support raw queries.
+        Raises:
+            NotSupportedError: The provider does not support raw queries.
         """
         provider = self._owner_dao.provider
         if not provider.has_capability(DatabaseCapabilities.RAW_QUERIES):

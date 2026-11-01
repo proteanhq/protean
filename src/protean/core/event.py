@@ -33,16 +33,15 @@ logger = logging.getLogger(__name__)
 # BaseEvent
 # ---------------------------------------------------------------------------
 class BaseEvent(BaseMessageType):
-    """Base class for domain events -- immutable facts representing state
-    changes that have occurred in the domain.
+    """Base class for domain events, immutable facts about state changes that
+    have happened in the domain.
 
-    Events are named in past tense (``OrderPlaced``, ``CustomerRegistered``,
-    ``PaymentConfirmed``) and enable decoupled communication between system
-    components. They are immutable after construction and carry metadata for
-    tracing (correlation ID, causation ID, stream position).
+    Name events in the past tense (``OrderPlaced``, ``CustomerRegistered``).
+    An event cannot be changed after it is created. It carries metadata for
+    tracing: correlation ID, causation ID and stream position.
 
-    Fields are declared using standard Python type annotations with optional
-    ``Field`` constraints.
+    Fields are declared with Python type annotations and optional ``Field``
+    constraints. See the events guide.
 
     **Meta Options**
 

@@ -41,24 +41,15 @@ _projection_init_context: threading.local = threading.local()
 # BaseProjection
 # ---------------------------------------------------------------------------
 class BaseProjection(Element, BaseModel, OptionsMixin):
-    """Base class for projections -- read-optimized, denormalized views
-    maintained by projectors in response to domain events.
+    """Base class for projections: read-optimized views that projectors keep
+    up to date from domain events.
 
-    Projections are mutable with identity-based equality. They support
-    basic field types (``String``, ``Integer``, ``Float``, ``Identifier``,
-    ``DateTime``, etc.) and ``ValueObject`` fields. ``Reference``,
-    ``HasOne``, and ``HasMany`` fields are not allowed. Every projection
-    must have at least one field marked with ``identifier=True``.
-
-    ValueObject fields are stored as flattened shadow fields for persistence
-    (e.g. ``billing_address_street``, ``billing_address_city``) and are
-    queryable by individual attribute.
-
-    Projections can be backed by a database provider or a cache (e.g. Redis).
-    When ``cache`` is specified, it overrides the database ``provider``.
-
-    Fields are declared using standard Python type annotations with optional
-    ``Field`` constraints.
+    Projections are mutable, and two projections are equal when their
+    identifiers are equal. They accept basic field types and ``ValueObject``
+    fields. ``Reference``, ``HasOne`` and ``HasMany`` fields are not allowed.
+    Every projection must have at least one field marked ``identifier=True``.
+    Each attribute of a ``ValueObject`` field can be queried on its own. See
+    the Projections guide for storage and querying.
 
     **Meta Options**
 

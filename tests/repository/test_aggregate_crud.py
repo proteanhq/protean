@@ -303,6 +303,32 @@ class TestAggregateVersionTracking:
             assert person.age == 99
             assert person._version == 1
 
+    def test_queryset_bulk_update_keeps_earlier_saves_when_a_later_one_fails(
+        self, test_domain
+    ):
+        """Outside a Unit of Work each aggregate is saved on its own, so an
+        error on a later aggregate leaves the earlier ones saved."""
+        repo = test_domain.repository_for(Person)
+        repo.add(Person(first_name="A", last_name="Shared"))
+        repo.add(Person(first_name="B", last_name="Shared"))
+
+        dao = repo._dao
+        real_apply_update = dao._apply_update
+        calls = []
+
+        def fail_on_second(*args, **kwargs):
+            calls.append(args[0])
+            if len(calls) == 2:
+                raise ExpectedVersionError("conflict")
+            return real_apply_update(*args, **kwargs)
+
+        with patch.object(dao, "_apply_update", side_effect=fail_on_second):
+            with pytest.raises(ExpectedVersionError):
+                dao.query.filter(last_name="Shared").update(age=99)
+
+        assert repo.get(calls[0].id).age == 99
+        assert repo.get(calls[1].id).age == 21
+
     def test_apply_hooks_false_does_not_disable_occ(self, test_domain):
         """The opt-out flag skips the cosmetic hooks but must NOT weaken
         optimistic concurrency: a stale update with apply_hooks=False still

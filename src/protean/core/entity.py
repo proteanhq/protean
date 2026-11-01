@@ -295,21 +295,20 @@ class _EntityState:
     field_specifiers=(FieldSpec, HasMany, HasOne, Reference, ValueObject),
 )
 class BaseEntity(Element, BaseModel, OptionsMixin):
-    """Base class for entities -- domain objects with unique identity that live
-    within an aggregate.
+    """Base class for entities, domain objects with a unique identity that
+    live within an aggregate.
 
-    Entities are mutable with identity-based equality: two entities are equal
-    if they share the same identifier, regardless of attribute values. Field
-    mutations are validated via Pydantic's ``validate_assignment`` and trigger
-    pre/post invariant checks automatically.
+    Entities are mutable. Two entities are equal when they have the same
+    identifier, whatever their other attribute values. Assigning a field
+    validates the new value and runs the entity's pre and post invariants.
 
-    Fields are declared using standard Python type annotations with optional
-    ``Field`` constraints. An identity field is auto-injected unless one is
-    explicitly declared with ``identifier=True``.
+    Fields are declared with Python type annotations and optional ``Field``
+    constraints. An ``id`` identity field is added unless one is declared
+    with ``identifier=True``.
 
-    Entities track their lifecycle state (new, persisted, changed, destroyed)
-    via the ``state_`` property, and can raise events that are registered on
-    the aggregate root.
+    The ``state_`` property reports whether the entity is new, persisted,
+    changed or destroyed. Events an entity raises are recorded on its
+    aggregate root. See the entities guide.
 
     **Meta Options**
 
@@ -937,6 +936,9 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             return dict(errors) if errors else {}
 
         if errors:
+            # Only the outer raise site logs. Nested calls pass
+            # ``return_errors=True`` and return before this point, so a failure
+            # in an associated entity is logged once, for the root.
             self._emit_invariant_failed(stage, failed_invariants, errors)
             raise ValidationError(
                 errors,
@@ -952,26 +954,19 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         failed_invariants: list[str],
         errors: dict[str, list[str]],
     ) -> None:
-        """Emit a ``protean.security.invariant_failed`` WARNING per failed invariant.
+        """Log an ``invariant_failed`` WARNING on ``protean.security`` for each
+        failed invariant.
 
-        Called from ``_run_invariants`` right before raising a
-        ``ValidationError``. Skipped when ``return_errors=True`` because
-        callers in that mode are aggregating (e.g., associated entities) and the
-        outer raise site emits for the root aggregate.
-
-        Gated on an active handler context (``g.message_in_context``) so
-        invariant checks performed outside command/event/query/projector
-        handling (fixtures, unit tests against raw aggregates, library code
-        that catches and retries) never reach the ``protean.security``
-        channel. The intent is "boundary-crossing only": a failed invariant
-        is a security signal only when it surfaces during message handling.
-
-        ``protean.domain.context`` is imported lazily because moving it to
-        the top creates a circular import via ``domain/__init__.py`` →
-        ``adapters`` → ``core.projection`` → ``core.entity``.
+        Logs only while a message is being handled (``g.message_in_context``
+        is set). Outside a handler it logs nothing.
         """
+        # Imported here to break a circular import: ``domain/__init__.py`` ->
+        # ``adapters`` -> ``core.projection`` -> ``core.entity``.
         from protean.domain.context import has_domain_context  # noqa: PLC0415
 
+        # A failed invariant is a security signal only when it surfaces during
+        # message handling. Fixtures, unit tests on raw aggregates, and code
+        # that catches and retries stay off the channel.
         if not has_domain_context() or g.get("message_in_context") is None:
             return
 

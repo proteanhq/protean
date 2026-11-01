@@ -136,11 +136,12 @@ def _generate_pm_transition_event(pm_cls: type[Any]) -> type[BaseEvent]:
 
 
 class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
-    """Base class for Process Managers.
+    """Base class for process managers.
 
-    A Process Manager combines handler-like event dispatch (from multiple
-    aggregate streams) with aggregate-like stateful persistence (via
-    auto-generated transition events in the event store).
+    A process manager handles events from several aggregate streams and keeps
+    its own state between them. After each handler method runs, it saves that
+    state as a transition event in the event store. See the Process Managers guide for a
+    walk-through.
 
     **Meta Options**
 

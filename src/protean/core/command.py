@@ -38,16 +38,14 @@ _DEPRECATED_COMMAND_OPTIONS: tuple[str, ...] = ("published",)
 # BaseCommand
 # ---------------------------------------------------------------------------
 class BaseCommand(BaseMessageType):
-    """Base class for domain commands -- immutable DTOs representing an intent
-    to change aggregate state.
+    """Base class for domain commands. A command is an immutable message that
+    asks an aggregate to change its state.
 
-    Commands are named with imperative verbs (``PlaceOrder``,
-    ``RegisterUser``, ``CancelReservation``) and processed by command handlers.
-    They are immutable after construction and carry metadata for tracing
-    (correlation ID, causation ID, origin stream).
-
-    Fields are declared using standard Python type annotations with optional
-    ``Field`` constraints.
+    Name a command with an imperative verb (``PlaceOrder``, ``RegisterUser``).
+    A command handler processes it. Declare fields with type annotations and
+    optional ``Field`` constraints. A command cannot be changed after it is
+    built. It carries tracing metadata: correlation ID, causation ID and origin
+    stream. The Commands guide covers usage.
 
     **Meta Options**
 

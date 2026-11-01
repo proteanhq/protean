@@ -44,33 +44,18 @@ class BaseSubscriber(Element, OptionsMixin):
 
     @classmethod
     def handle_error(cls, exc: Exception, message: dict[str, Any]) -> None:
-        """Error handler method called when exceptions occur during broker message handling.
+        """Handle an exception raised while the engine processed a broker message.
 
-        This method can be overridden in subclasses to provide custom error handling
-        for exceptions that occur during message processing. It allows subscribers to
-        recover from errors, log additional information, or perform cleanup operations.
-
-        When an exception occurs in a subscriber's __call__ method:
-
-        1. The exception is caught in Engine.handle_broker_message
-        2. Details are logged with traceback information
-        3. This handle_error method is called with the exception and original message
-        4. Processing continues with the next message (the engine does not shut down)
-
-        If this method raises an exception itself, that exception is also caught and logged,
-        but not propagated further.
+        Override it to add custom error handling, such as logging more detail
+        or cleaning up. The engine logs the failure, calls this method, and
+        then moves on to the next message. The default does nothing. An
+        exception raised here is logged and not propagated, so it does not
+        stop the engine.
 
         Args:
-            exc (Exception): The exception that was raised during message handling
-            message (dict): The original message being processed when the exception occurred
-
-        Returns:
-            None
-
-        Note:
-            - The default implementation does nothing, allowing processing to continue
-            - Subclasses can override this method to implement custom error handling strategies
-            - This method is called from a try/except block, so exceptions raised here won't crash the engine
+            exc: The exception raised by the subscriber's ``__call__``.
+            message: The message payload being processed when the exception
+                occurred.
         """
 
 
