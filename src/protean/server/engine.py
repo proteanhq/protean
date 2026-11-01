@@ -661,21 +661,14 @@ class Engine:
     def _infer_stream_category(
         self, handler_cls: type[BaseCommandHandler | BaseEventHandler]
     ) -> str:
-        """Infer the stream category for a handler.
+        """Return the stream category a handler reads from.
 
-        Resolution priority:
-        1. Handler Meta.stream_category (explicit)
-        2. Associated aggregate's stream_category (via part_of)
-        3. Raise error if cannot infer
-
-        Args:
-            handler_cls: The handler class to infer stream category for.
-
-        Returns:
-            The inferred stream category.
+        The handler's own ``stream_category`` option wins. Without it, the
+        stream category of its ``part_of`` aggregate is used.
 
         Raises:
-            ValueError: If stream category cannot be inferred.
+            ValueError: If the handler has no ``meta_``, or neither the handler
+                nor its ``part_of`` aggregate gives a stream category.
         """
         meta = getattr(handler_cls, "meta_", None)
         if meta is None:
@@ -1349,23 +1342,20 @@ class Engine:
             return 0
 
     def run(self) -> None:
-        """
-        Start the Protean Engine and run all registered subscriptions.
+        """Start every registered subscription and block until the engine stops.
 
-        This method sets up the custom event loop for the engine, attaches signal and
-        exception handlers, and launches all subscription coroutines for event handlers,
-        command handlers, broker subscribers, and outbox processors.
+        Runs until a shutdown signal arrives. In test mode, it instead returns
+        once the subscriptions run out of work, including messages that
+        handlers raise along the way, or after a fixed cycle limit. Before
+        returning, it stops all subscriptions and closes the engine's event
+        loop.
 
-        For regular operation, the engine will run indefinitely until a shutdown signal is received.
-        For test mode, the engine will step through several processing cycles, ensuring propagation
-        of events and messages, before performing a graceful shutdown.
+        When there are no subscriptions, broker subscriptions or outbox
+        processors, it returns at once without starting anything, and the event
+        loop stays open.
 
-        On shutdown, all running subscriptions and processors are stopped cleanly and
-        the event loop is closed.
-
-        Raises:
-            Any unhandled exceptions are propagated to the custom exception handler, which will
-            trigger a graceful shutdown.
+        An unhandled exception in a subscription is logged and shuts the engine
+        down with exit code 1. It is not raised to the caller.
         """
 
         # Set the loop we created as the current event loop

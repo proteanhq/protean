@@ -427,23 +427,22 @@ class HasOne(Association):
     """
 
     def __set__(self, instance: Any, value: Any) -> None:
-        """Setup relationship to be persisted/updated
+        """Assign the child entity, or remove it by assigning `None`.
 
-        We track the change in the instance's `_temp_cache` to determine if the relationship
-        has been added, updated, or deleted. We track two aspects: state and old value.
+        A dict is turned into an instance of the target entity. The parent's
+        identity is written into the child's link field.
 
-        For `HasOne`, there are three possible states:
+        The change is recorded in the parent's `_temp_cache` as `ADDED`,
+        `UPDATED` or `DELETED`. Replacing the child with a different one, or
+        removing it, also records the old child. The repository reads this record to decide what to persist.
+        Assigning the same unchanged entity records no change.
 
-        - ADDED: The relationship is being added for the first time
-        - UPDATED: The relationship is being updated
-        - DELETED: The relationship is being removed
+        Removing a child also removes the entities linked under it. The
+        aggregate's invariants are checked after the assignment.
 
-        Of these, the old value is applicable for `UPDATED` and `DELETED` states.
-
-        Also, we recursively remove child entities if they are associated with the old value.
-
-        The `temp_cache` we set up here is eventually used by the `Repository` to determine
-        the changes to be persisted.
+        Raises:
+            ValidationError: If the value is not an instance of the target
+                entity.
         """
         # Accept dictionary values and convert them to Entity objects
         if isinstance(value, dict):
@@ -586,34 +585,25 @@ class HasMany(Association):
             self.add(instance, values)
 
     def add(self, instance: Any, items: Any) -> None:
-        """
-        Available as `add_<HasMany Field Name>` method on the entity instance.
+        """Add one or more child entities to the parent.
 
-        This method adds one or more linked entities to the source entity. It also diffs the current value with the
-        new value to determine the changes that need to be persisted.
+        Available on the parent as `add_<field name>`.
 
-        The method also takes care of the attributes of the linked entities, preparing them for persistence.
-
-        Each linkage takes care of its own attributes, preparing them for persistence.
-        One exception is deletion of an entity - all child entities have to be marked as removed.
-
-        We track the change in the instance's `_temp_cache` to determine if the relationship
-        has been added, updated, or deleted. We track each item's state and group the changes
-        into three buckets:
-
-        - ADDED: The relationship is being added for the first time
-        - UPDATED: The relationship is being updated
-        - DELETED: The relationship is being removed
-
-        The `DELETED` objects are detected from the pool of new objects, but it is also possible to remove them
-        directly with the `remove` method.
-
-        The `temp_cache` we set up here is eventually used by the `Repository` to determine
-        the changes to be persisted.
+        An entity whose identity is not yet linked is recorded as added. A
+        linked entity that is persisted and changed is recorded as updated.
+        Both are recorded in the parent's `_temp_cache`, which the repository
+        reads to decide what to persist. The parent's identity is written into
+        each child's link field. Passing an empty list removes every current
+        child. The aggregate's invariants are checked before and after the
+        change.
 
         Args:
-            instance (BaseEntity): The source entity instance.
-            items (list | BaseEntity): The linked entity or entities to be added.
+            instance (BaseEntity): The parent entity.
+            items (list | BaseEntity): The child entity or entities to add.
+
+        Raises:
+            ValidationError: If an item is not an instance of the target
+                entity.
         """
         super().__set__(instance, items)
 

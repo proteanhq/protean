@@ -59,27 +59,22 @@ class _ContextStack(Generic[_T]):
 class _ContextLocalProxy(Generic[_T]):
     """A proxy that resolves the wrapped object on every access.
 
-    Replaces Werkzeug's ``LocalProxy`` for ``current_domain``,
-    ``current_uow``, and ``g``. When a lookup returns an object, attribute
-    get/set/delete, containment, iteration, representation, truthiness, and
-    comparison delegate to that object. When no object is active, the proxy
-    behaves like ``None``: it is falsy, its representation and string form are
-    ``"None"``, it compares equal to ``None``, and containment/iteration raise
-    the same ``TypeError`` that ``None`` would.
+    When a lookup returns an object, attribute get/set/delete, containment,
+    iteration, representation, truthiness, and comparison delegate to that
+    object. When no object is active, the proxy behaves like ``None``: it is
+    falsy, its representation and string form are ``"None"``, it compares
+    equal to ``None``, and containment/iteration raise the same ``TypeError``
+    that ``None`` would.
 
-    Dunder attribute lookups that reach ``__getattr__`` (``__test__``,
-    ``__bases__``, ...) and the ``__class__`` property resolve through
-    ``quiet_lookup``, which must not warn. Tools probe module globals this way
-    without meaning to use the proxy: pytest collection checks ``__test__``,
-    ``__bases__`` and ``__class__`` on every name a test module imports. With
-    no object active these probes raise ``AttributeError`` or report the proxy
-    type silently. Truthiness, representation and ordinary attribute access
-    still go through ``lookup`` and keep its warning. Pytest before 8.4 also
-    reads the non-dunder ``_pytestfixturefunction`` during collection, so on
-    those versions collection still warns once.
-
-    ``quiet_lookup`` defaults to ``lookup``. A proxy whose ``lookup`` warns
-    must pass a quiet one.
+    Args:
+        lookup: Returns the current object, or ``None``. Truthiness,
+            representation and ordinary attribute access go through it, so
+            it may warn.
+        quiet_lookup: Resolves dunder attribute lookups (``__test__``,
+            ``__bases__``, ...) and ``__class__``, and must not warn. With no
+            object active, these lookups raise ``AttributeError`` or report
+            the proxy type. Defaults to ``lookup``, so a proxy whose
+            ``lookup`` warns must pass a quiet one.
     """
 
     _lookup: Callable[[], _T | None]
@@ -115,6 +110,11 @@ class _ContextLocalProxy(Generic[_T]):
         return type(obj)
 
     def __getattr__(self, name: str) -> Any:
+        # Tools probe module globals for dunders without meaning to use the
+        # proxy: pytest collection checks ``__test__``, ``__bases__`` and
+        # ``__class__`` on every name a test module imports, so these probes
+        # must not warn. Pytest before 8.4 also reads the non-dunder
+        # ``_pytestfixturefunction``, so collection there still warns once.
         if name.startswith("__") and name.endswith("__"):
             obj = self._quiet_lookup()
             if obj is None:
@@ -223,24 +223,16 @@ def _find_uow() -> "UnitOfWork | None":
 
 
 def _domain_now(now: datetime | None = None) -> datetime:
-    """Return the current UTC time from the active domain's injectable clock.
+    """Return the current time as a timezone-aware UTC datetime.
 
-    Reads ``current_domain.clock`` when a domain context is active, so tests can
-    freeze time by assigning ``domain.clock`` a stub clock and have deadline,
-    lock, and retry boundaries move deterministically. Falls back to real UTC
-    time when no domain context is active (a plain script, or a worker before
-    bootstrap), keeping the timestamp helpers usable outside a domain. An
-    explicit ``now`` short-circuits both — the caller has already read a clock.
+    The time comes from the active domain's ``clock`` when a domain context
+    is active, and from the system clock otherwise. With no domain context it
+    emits no "working outside of domain context" warning. A naive datetime,
+    from ``now`` or from the clock, is taken to be UTC.
 
-    Unlike accessing ``current_domain`` directly, this reads the context stack
-    without emitting the "working outside of domain context" warning, so the
-    no-context fallback stays silent on every timestamp.
-
-    Both an explicit ``now`` and a value read from an injected clock are
-    normalized to timezone-aware UTC (naive datetimes are assumed UTC), so a
-    stub clock that returns a naive datetime fails no more loudly than the
-    ``datetime.now(UTC)`` it replaces and callers that pass ``now=`` never leak
-    a naive value into deadline/lock comparisons or serialization.
+    Args:
+        now: A time the caller has already read. When given, it is returned
+            as UTC and no clock is read.
     """
     from protean.utils import ensure_utc_aware  # noqa: PLC0415
 

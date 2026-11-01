@@ -52,26 +52,15 @@ MAX_PARTITION_KEY_LENGTH = 255
 def invalid_partition_key_reason(
     partition_key: str | None, backfill_suffix: str
 ) -> str | None:
-    """Return why *partition_key* is unsafe for partition routing, else ``None``.
+    """Return why *partition_key* cannot be used for partition routing, or ``None``.
 
-    A partition key becomes the ``{stream_category}:{key}`` stream segment
-    (ADR-0028 decision 3 and 4), so a value that would collide with the
-    reserved lane/DLQ suffixes or the internal ``__name__`` sentinel namespace,
-    or that would break the ``category:key`` parse, is rejected. This is the
-    single source of truth shared by the Unit of Work (which validates
-    synchronously at record creation and fails the caller's operation) and the
-    outbox processor (which uses it as a publish-time backstop, abandoning
-    rather than retrying an invalid row).
+    A key is rejected when it is empty, longer than ``MAX_PARTITION_KEY_LENGTH``,
+    contains a colon, equals ``"dlq"`` or *backfill_suffix*, or has the
+    ``__name__`` form (see ADR-0028).
 
     Args:
-        partition_key: The candidate key value read off the event payload.
         backfill_suffix: The configured ``[server.priority_lanes]``
-            ``backfill_suffix`` (default ``"backfill"``). Read from config, not
-            hardcoded, so a custom suffix cannot leak a colliding key.
-
-    Returns:
-        A short human-readable reason string when the key is invalid, or
-        ``None`` when the key is safe to route.
+            ``backfill_suffix``.
     """
     if not partition_key:
         return "partition key is null or empty"
@@ -234,35 +223,21 @@ class Outbox(BaseAggregate):
         partition_key: str | None = None,
         stream_category: str | None = None,
     ) -> "Outbox":
-        """Create a new outbox message ready for publishing.
+        """Return a new outbox message in ``PENDING`` status.
 
         Args:
-            message_id: The unique message ID that generated this message
-            stream_name: Target stream/topic for the message
-            message_type: Type of the message (event/command name)
-            data: Message payload
-            metadata: Message metadata
-            priority: Processing priority (higher = more important)
-            correlation_id: Correlation identifier for tracing
-            causation_id: Causation identifier (parent message's headers.id)
-            max_retries: Maximum retry attempts
-            sequence_number: Position of the event within its commit, used
-                to order rows that share ``priority`` and ``created_at``
-            partition_key: Per-key sequential-routing key (ADR-0028), or
-                ``None`` for a non-partitioned category. Already validated by
-                the caller (the Unit of Work) before it reaches here.
+            priority: Higher values are processed first.
+            causation_id: The ``headers.id`` of the message that caused this one.
+            max_retries: Maximum retry attempts.
+            sequence_number: The event's position within its commit. Orders rows
+                that share ``priority`` and ``created_at``.
+            target_broker: The broker the row is published to. Defaults to
+                ``"default"``, not the configured internal broker.
+            partition_key: The key that routes the row to its partition
+                (ADR-0028), or ``None`` for a category without one. The caller
+                checks it with ``invalid_partition_key_reason`` first.
             stream_category: The event's ``metadata.domain.stream_category``.
                 The claim groups partitioned rows by it.
-            target_broker: Name of the broker this message targets. The
-                framework's write path always passes it explicitly (the
-                configured internal broker, or an external broker name). The
-                parameter default is the literal ``DEFAULT_TARGET_BROKER``
-                (``"default"``), not the configured internal broker, and exists
-                only so a direct call is never NULL — the row must satisfy the
-                NOT NULL column and the composite unique guarantee.
-
-        Returns:
-            New Outbox instance
         """
         return cls(
             message_id=message_id,
@@ -695,27 +670,9 @@ class OutboxRepository(BaseRepository):
     def _eligibility_criteria(
         self, now: datetime, target_broker: str | None = None
     ) -> Q:
-        """Build the ``Q`` selecting messages ready for processing.
+        """Return the ``Q`` that selects the messages :meth:`claim_batch` treats as ready.
 
-        A message is eligible when its lock is free (``locked_until`` is null or
-        in the past) and its status is one of:
-
-        - ``PENDING`` — never processed;
-        - ``FAILED`` — eligible once its retry time has passed;
-        - ``PROCESSING`` — only if the lock has **expired**, i.e. a worker
-          claimed it and died before finishing. Including these makes a crashed
-          claim self-heal: the row becomes claimable again once ``locked_until``
-          passes. An actively-locked ``PROCESSING`` row (lock in the future) is
-          excluded, so an in-flight message is never stolen.
-
-        The row must also still have retries left (``retry_count <
-        max_retries``). This is a column-to-column comparison, pushed into the
-        query via an ``F`` expression so every predicate is evaluated at the
-        database.
-
-        When ``target_broker`` is given, only rows destined for that broker
-        match. Shared by :meth:`find_unprocessed` and :meth:`claim_batch` so the
-        two cannot drift.
+        When *target_broker* is given, only rows for that broker match.
         """
         criteria = Q(
             status__in=[
@@ -741,37 +698,16 @@ class OutboxRepository(BaseRepository):
         limit: int | None = None,
         target_broker: str | None = None,
     ) -> list[Outbox]:
-        """Find messages that are ready for processing.
+        """Return messages that are ready for processing, without claiming them.
 
-        Returns messages whose lock is free (``locked_until`` null or in the
-        past) that are:
-        - PENDING, or
-        - FAILED and past their retry time, or
-        - PROCESSING with an expired lock (a crashed claim, now reclaimable)
-
-        and not expired based on retry count. See :meth:`_eligibility_criteria`.
-
-        Every predicate — status, lock window, retry window, and the
-        ``retry_count < max_retries`` column-to-column check — is evaluated at
-        the database, so the poll is a single SELECT with no Python post-filter.
+        Readiness and order are the same as for :meth:`claim_batch`. The rows are
+        not locked, so use this to inspect the queue and :meth:`claim_batch` to
+        process it. The claim's hold-back is not applied, so the list can include a
+        partitioned row that :meth:`claim_batch` will not return yet.
 
         Args:
-            limit: Maximum number of messages to return
-            target_broker: Filter by target broker name. When provided,
-                only returns rows destined for this broker.
-
-        Returns:
-            List of Outbox messages ready for processing
-
-        Note:
-            This is a **read-only** query — it does not lock or claim rows. For
-            the processing path, use :meth:`claim_batch`, which atomically
-            selects and claims rows in one round trip. ``find_unprocessed`` is
-            for inspection and monitoring of the queue.
-
-            It does not apply the claim's hold-back, so it can list a
-            partitioned row that :meth:`claim_batch` will not return yet,
-            because an earlier row of its key is not published.
+            limit: Maximum number of messages to return. ``0`` returns none.
+            target_broker: When given, only return rows for this broker.
         """
         # Handle zero limit case
         if limit is not None and limit == 0:
@@ -793,44 +729,34 @@ class OutboxRepository(BaseRepository):
         lock_duration_minutes: int = DEFAULT_LOCK_DURATION_MINUTES,
         lanes: OutboxLanes | None = None,
     ) -> list[Outbox]:
-        """Atomically select and claim up to ``limit`` ready messages.
+        """Claim up to *limit* ready messages for *worker_id* and return them.
 
-        This is the production claim path. It selects eligible messages and
-        marks them ``PROCESSING`` (setting ``locked_by`` and ``locked_until``)
-        per the DAO's :meth:`~protean.port.dao.BaseDAO._claim` contract: no two
-        workers ever claim the same message. On PostgreSQL this is a single
-        ``UPDATE … RETURNING`` statement; other backends use a guarded
-        read-then-update that resolves the race without double-claiming.
+        Each claimed row is set to ``PROCESSING`` and locked by *worker_id* for
+        *lock_duration_minutes*. The claim follows the
+        :meth:`~protean.port.dao.BaseDAO._claim` contract.
 
-        Eligibility is defined by :meth:`_eligibility_criteria`: a lock-free
-        ``PENDING`` row, a retry-due ``FAILED`` row, or a ``PROCESSING`` row
-        whose lock has expired (a crashed claim, reclaimed for self-healing),
-        with retries remaining (``retry_count < max_retries``), optionally
-        filtered to ``target_broker``. Every predicate is enforced in the claim
-        query itself, so a retry-exhausted row is never claimed.
+        A message is ready when:
 
-        A partitioned row is also held back while an earlier row of its group
-        is not published and is not claimed in the same call (ADR-0028). The
-        group is ``(target_broker, stream_category, partition_key, lane)``,
-        where the lane comes from ``lanes`` (see :class:`OutboxLanes`), or
-        from ``[server.priority_lanes]`` in domain config when ``lanes`` is
-        not given. A failed, abandoned or
-        in-flight row therefore stops the later rows of its key, while other
-        keys keep flowing. Rows with no ``partition_key`` or no
-        ``stream_category`` are never held.
+        - its status is ``PENDING``, ``FAILED`` or ``PROCESSING``;
+        - its lock is free (``locked_until`` is null or has passed), so a
+          ``PROCESSING`` row is ready only after its worker's lock expired;
+        - its ``next_retry_at`` is null or has passed;
+        - its ``retry_count`` is below ``max_retries``;
+        - its ``target_broker`` matches *target_broker*, when given.
+
+        A row with both a ``partition_key`` and a ``stream_category`` is held back
+        while an earlier row of its group is unpublished and not claimed in the
+        same call (ADR-0028). The group is ``(target_broker, stream_category,
+        partition_key, lane)``. The lane comes from *lanes*, or from
+        ``[server.priority_lanes]`` when *lanes* is ``None``. So a failed,
+        abandoned or in-flight row stops the later rows of its key, and other keys
+        keep flowing.
 
         Args:
-            worker_id: Identifier of the worker claiming the messages.
-            limit: Maximum number of messages to claim. ``<= 0`` claims none.
-            target_broker: When provided, only claim rows for this broker.
-            lock_duration_minutes: How long the processing lock is held.
-            lanes: The lane split to group rows by. ``OutboxProcessor`` passes
-                the split it read at startup, so the claim groups rows by the
-                lane it routes them to.
+            limit: ``<= 0`` claims nothing.
 
         Returns:
-            The claimed messages, already in ``PROCESSING`` state, ordered by
-            priority (higher first), then by commit order within a priority
+            The claimed messages, highest ``priority`` first, then in commit order
             (``created_at``, then ``sequence_number``).
         """
         if limit <= 0:
@@ -1171,24 +1097,14 @@ class OutboxRepository(BaseRepository):
     def cleanup_old_abandoned(
         self, older_than_hours: int = 720, batch_size: int | None = None
     ) -> int:
-        """Clean up abandoned messages older than specified hours.
+        """Delete abandoned messages older than *older_than_hours* and return the count.
 
-        Abandoned messages remain in the table for observability but can be cleaned up
-        after a reasonable retention period (default 30 days).
-
-        Abandoned rows with a ``partition_key`` are kept whatever their age. Such
-        a row holds the later rows of its key, and deleting it would let the
-        key move on with a gap. This includes rows written before
-        ``stream_category`` existed, which are never held, so keeping them is
-        only the safe side.
+        Age is measured from ``last_processed_at``. Abandoned rows with a
+        ``partition_key`` are kept whatever their age.
 
         Args:
-            older_than_hours: Age in hours after which abandoned messages should be cleaned up (default: 720 = 30 days)
-            batch_size: Rows to delete per batch. Defaults to the
-                ``[outbox.cleanup]`` config value (5000).
-
-        Returns:
-            Number of messages deleted
+            batch_size: Rows to delete per batch. Defaults to
+                ``outbox.cleanup.batch_size`` (5000).
         """
         threshold_time = self._dao.domain.clock.now() - timedelta(
             hours=older_than_hours
@@ -1198,6 +1114,8 @@ class OutboxRepository(BaseRepository):
             Q(
                 status=OutboxStatus.ABANDONED.value,
                 last_processed_at__lt=threshold_time,
+                # A keyed abandoned row holds back the later rows of its key.
+                # Deleting it would let the key move on with a gap.
                 partition_key__isnull=True,
             ),
             batch_size if batch_size is not None else self._cleanup_batch_size(),
@@ -1209,21 +1127,18 @@ class OutboxRepository(BaseRepository):
         abandoned_retention_hours: int = 720,
         batch_size: int | None = None,
     ) -> dict[str, int]:
-        """Clean up old published and abandoned messages based on retention periods.
+        """Delete old published and abandoned messages.
 
-        This method cleans up both published and abandoned messages that are older
-        than their respective retention periods. Abandoned messages with a
-        partition key are kept whatever their age, as in
-        ``cleanup_old_abandoned``.
+        Each status is cleaned as :meth:`cleanup_old_published` and
+        :meth:`cleanup_old_abandoned` do, with its own retention.
 
         Args:
-            published_retention_hours: Age in hours after which published messages should be cleaned up (default: 168 = 7 days)
-            abandoned_retention_hours: Age in hours after which abandoned messages should be cleaned up (default: 720 = 30 days)
-            batch_size: Rows to delete per batch. Defaults to the
-                ``[outbox.cleanup]`` config value (5000).
+            batch_size: Rows to delete per batch. Defaults to
+                ``outbox.cleanup.batch_size`` (5000).
 
         Returns:
-            dict: Number of messages deleted by status {'published': count, 'abandoned': count, 'total': total_count}
+            The deleted counts under ``"published"``, ``"abandoned"`` and
+            ``"total"``.
         """
         published_count = self.cleanup_old_published(
             older_than_hours=published_retention_hours, batch_size=batch_size
@@ -1257,22 +1172,16 @@ def backfill_suffix_from_config(config: Any) -> str:
 
 
 def _outbox_provider_names(domain: Any) -> list[str]:
-    """The database providers that get outbox processors, in ``domain.providers`` order.
+    """Return the database providers that get outbox processors, in ``domain.providers`` order.
 
-    A provider qualifies when it is managed and at least one concrete,
-    non-internal aggregate (event-sourced ones included) names it in its
-    ``provider`` option. The unit of work writes outbox rows only to the
-    providers of the aggregates it persists, so a provider no aggregate names
-    never receives a row and a processor for it would poll an empty table.
-    Internal elements do not count: the memory event store registers
-    ``MemoryMessage`` on ``memory``, and it never raises events. Abstract
-    aggregates do not count either, because nothing is stored for them and a
-    concrete subclass does not inherit their ``provider``.
-
-    ``Engine._wire_components`` and the status collector both use this list, so
-    ``/readyz`` and ``protean subscriptions status`` report exactly the
-    processors the engine runs.
+    A provider qualifies when it is managed and a concrete aggregate names it in
+    its ``provider`` option. Event-sourced aggregates count. Abstract aggregates
+    and the framework's internal elements do not.
     """
+    # The unit of work writes outbox rows only to the providers of the
+    # aggregates it persists, so a provider no aggregate names would get a
+    # processor that polls an empty table. An abstract aggregate is skipped
+    # because a concrete subclass does not inherit its ``provider``.
     used = {
         record.cls.meta_.provider
         for record in domain.registry.aggregates.values()
@@ -1296,38 +1205,27 @@ def _is_outboxed_event(domain: Any, message: Any, provider_name: str) -> bool:
 def _resolve_outboxed_event_class(
     domain: Any, message: Any, provider_name: str
 ) -> "type[BaseEvent] | None":
-    """The event class whose rows the unit of work writes for *message*, or ``None``.
+    """Return the event class the unit of work writes outbox rows for *message* as, or ``None``.
 
-    For an older event version this is the current class the upcaster chain
-    resolves to.
+    ``None`` means the unit of work writes no row for *message* in
+    *provider_name*'s outbox. A message qualifies when its type string resolves
+    in this domain's registry to an event that is ``part_of`` an aggregate on
+    *provider_name*. An older event version resolves through the upcaster chain
+    to the current class.
 
-    Returns ``None`` when the unit of work writes no row for *message* in
-    *provider_name*'s outbox.
-
-    Only events raised by this domain's aggregates get outbox rows, and each
-    row goes to the outbox of the aggregate's own provider. A stored message
-    qualifies when its type string resolves in the domain's own type registry
-    to an event that is ``part_of`` an aggregate on *provider_name*. That
-    excludes:
-
-    - another domain's events in a shared store (their type string carries the
-      other domain's name, so it does not resolve here, and an event mapped in
-      with ``register_external_event`` is not in the domain's registry or, if
-      mapped onto a local class, does not match that class's own type),
-    - commands, which ``domain.process`` appends but never outboxes,
-    - process manager transition events, which are ``part_of`` the process
-      manager,
-    - events of aggregates on another provider, whose rows live in that
-      provider's outbox.
-
-    An older version of an event resolves through the upcaster chain, so an
-    event written before a version bump is still recognized.
+    Messages that do not qualify include another domain's events in a shared
+    store, foreign types mapped with ``register_external_event``, commands,
+    process manager transition events, and events of aggregates on another
+    provider.
     """
     headers = message.metadata.headers if message.metadata else None
     type_string = headers.type if headers else None
     if not type_string:
         return None
 
+    # Type strings start with the domain name in CamelCase, so domains whose
+    # names give the same CamelCase form (``my-domain``, ``my_domain``) cannot
+    # be told apart here.
     element_cls = domain._events_and_commands.get(type_string)
     # ``register_external_event`` can map a foreign type string onto a class
     # this domain also registers. The unit of work only writes the class's own
@@ -1411,54 +1309,32 @@ def _written_after(message: Any, cutoff: datetime) -> bool:
 def reconcile_outbox(
     domain: Any, provider_name: str = "default", limit: int = 1000
 ) -> int:
-    """Create outbox rows for events that are durable in the event store but have
-    no outbox row, and return how many were created.
+    """Create outbox rows for events that are in the event store but have no
+    outbox row, and return how many rows were created.
 
-    This closes the residual crash window from ADR-0015: an event appended to the
-    event store (the durable anchor) whose relational outbox commit did not land.
-    The divergence is at the *tail* of the store (the last unit of work before a
-    crash). When the newest message in the store is one of the events described
-    below and has its row, the function returns after that one lookup. Otherwise
-    it reads the most recent ``limit`` messages of ``$all`` and finds the newest
-    such event among them. It repairs only when that event is missing its row.
-    ``limit`` counts every message in ``$all``, including ones this function
-    skips.
+    The function scans the most recent ``limit`` messages of ``$all``. It finds
+    the newest event this domain's outbox covers, and repairs only when that
+    event is missing its row. ``limit`` counts every message in ``$all``,
+    including ones the function skips. Returns ``0`` when the domain has no
+    outbox.
 
     Only events raised by this domain's aggregates on ``provider_name`` are
-    repaired, because those are the only messages the unit of work writes rows
-    for in that provider's outbox. Another domain's events in a shared store,
-    commands, process manager transition events, and events of aggregates on
-    other providers are skipped. Ownership is decided by type string, which
-    starts with the domain name in CamelCase. Domains whose names give the same
-    CamelCase form (``my-domain``, ``my_domain`` and ``My Domain`` all give
-    ``MyDomain``) cannot be told apart. A foreign type mapped with
-    ``register_external_event`` is skipped, even when it maps onto a local event.
+    repaired. Another domain's events in a shared store, commands, process
+    manager transition events, events of aggregates on other providers, and
+    foreign types mapped with ``register_external_event`` are skipped.
 
-    A rebuilt row carries the same ``partition_key`` the unit of work would have
-    set (ADR-0028). Its ``priority`` is the default, since the original request's
-    priority is not stored with the event. If that key can no longer be computed
-    (the stored event no longer loads, or its key no longer validates), the row
-    is saved as abandoned and an error is logged. A row without its key would be
-    published to the base category, where no partitioned handler reads it.
+    A rebuilt row carries the ``partition_key`` the unit of work would have set,
+    and the default ``priority``. If the key can no longer be computed, the row
+    is saved as abandoned and an error is logged.
 
-    A ``published`` event also gets one row per broker in
-    ``outbox.external_brokers``, with the same ``partition_key``. These rows are
-    built from the event class's current ``published`` flag and the current
-    ``external_brokers`` setting, since neither is stored with the event. A
-    message counts as missing only when its internal row is missing, because the
-    unit of work saves all of a message's rows in one commit. So a broker added
-    to ``external_brokers`` after the commit is not back-filled for messages
-    that still have their internal row. An external row that already exists is
-    not created again.
+    A ``published`` event also gets a row for each broker in
+    ``outbox.external_brokers`` that it lacks. A message whose internal row
+    exists is left alone, so a broker added to ``external_brokers`` later is not
+    back-filled.
 
-    Cleanup deletes published rows after ``outbox.cleanup.published_retention_hours``
-    and abandoned rows without a partition key after
-    ``outbox.cleanup.abandoned_retention_hours``. A
-    deleted row cannot be told apart from one lost in a crash, so events older
-    than the shorter of the two retentions are skipped. Otherwise a restart
-    after cleanup would send those events again. An event lost in a crash and
-    left unrepaired for longer than that retention is not repaired. An event
-    with no stored time is also skipped, because its age is unknown.
+    Events older than the shorter of ``outbox.cleanup.published_retention_hours``
+    and ``outbox.cleanup.abandoned_retention_hours`` are skipped, and so are
+    events with no stored time.
 
     The return value counts rows created, internal and external.
     """
@@ -1497,7 +1373,9 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     # Fast path: if the newest message is one of this domain's outboxed events
     # and already has its internal row, the last unit of work committed fully
     # and there is nothing at the tail to repair. This keeps the startup sweep
-    # cheap in the common (no-crash) case.
+    # cheap in the common (no-crash) case. The gap this repairs is the crash
+    # window between the event store append and the outbox commit (ADR-0015),
+    # so it is always at the tail.
     if _is_outboxed_event(domain, last, provider_name) and _internal_row_exists(
         last.metadata.headers.id
     ):
@@ -1534,6 +1412,8 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
         for m in qualifying
         if internal_broker not in existing_brokers[m.metadata.headers.id]
     ]
+    # Only a missing internal row marks a lost commit: the unit of work saves
+    # all of a message's rows in one commit.
     if not missing:  # pragma: no cover - race guard: a concurrent sweep can
         # insert the rows between the check above and this query.
         return 0
@@ -1554,6 +1434,8 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                     message, partition_keys, backfill_suffix
                 )
             except (DeserializationError, ValidationError) as exc:
+                # A row without its key would be published to the base
+                # category, where no partitioned handler reads it.
                 partition_key = None
                 abandon_reason = f"partition_key could not be computed: {exc}"
                 logger.error(
@@ -1565,6 +1447,8 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
 
             # The unit of work writes one row per external broker for a
             # ``published`` event, all in the same commit as the internal row.
+            # Neither the ``published`` flag nor ``external_brokers`` is stored
+            # with the event, so both come from the current settings.
             target_brokers = [internal_broker]
             event_cls = _resolve_outboxed_event_class(domain, message, provider_name)
             if (
@@ -1579,6 +1463,8 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 )
 
             for target_broker in target_brokers:
+                # ``priority`` is left at its default: the original request's
+                # priority is not stored with the event.
                 outbox_message = Outbox.create_message(
                     message_id=message_id,
                     stream_name=message.metadata.headers.stream,

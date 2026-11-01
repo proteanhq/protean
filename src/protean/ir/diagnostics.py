@@ -122,22 +122,19 @@ class _DiagnosticRequired(TypedDict):
 class Diagnostic(_DiagnosticRequired, total=False):
     """The wire shape of a diagnostic built by :func:`build_diagnostic`.
 
-    ``field`` is present only on field-scoped diagnostics. ``location`` is
-    provisioned on the wire shape but no core IR/``protean check`` producer sets
-    it today; it is currently carried on the exception attribute path
-    (``ProteanException.location``), not on any IR/``check`` diagnostic.
-    ``resolving_operation`` is present only for a code whose failure a
-    deterministic ``protean`` command clears (the registry holds the mapping);
-    a code with no such command omits the key. ``teaching_skills`` is present
-    only for a code some DX-pack skill declares it teaches (the skills point at
-    the code under ``metadata.diagnostic_codes``); it lists the teaching skill
-    names, sorted, and a code no skill teaches omits the key. Every other key is
-    always present on diagnostics built through :func:`build_diagnostic`.
-    This does not describe every entry in ``ir["diagnostics"]``: custom lint
-    rules (``ir.builder._run_custom_lint_rules``) contribute dicts that only
-    require ``code``/``element``/``level``/``message``, with ``rule`` and
-    ``suggestion`` left optional. Field order is irrelevant — the IR, SARIF,
-    and ``check`` serializers all emit with ``sort_keys=True``.
+    The required keys are always present. The optional keys appear only when
+    they apply:
+
+    - ``field``: on a field-scoped diagnostic.
+    - ``location``: when the producer passes one.
+    - ``resolving_operation``: for a code that a deterministic ``protean``
+      command clears, as mapped in :data:`REGISTRY`.
+    - ``teaching_skills``: for a code some DX-pack skill declares it teaches
+      (under ``metadata.diagnostic_codes``). It lists the skill names, sorted.
+
+    Not every entry in ``ir["diagnostics"]`` has this shape. Custom lint rules
+    contribute dicts that require only ``code``, ``element``, ``level`` and
+    ``message``; ``rule`` and ``suggestion`` are optional there.
     """
 
     field: str
@@ -177,31 +174,22 @@ class ResolvingOperation:
 
 @dataclass(frozen=True)
 class CodeMeta:
-    """Metadata for one diagnostic code, resolved by code and never repeated
-    on an instance.
+    """Metadata for one diagnostic code, looked up by code and not stored on
+    each diagnostic.
 
-    ``category`` is constant per code. ``level``, ``rationale``, and ``fix``
-    are the canonical defaults; a producer may override any of them at an
-    emission site (e.g. a code emitted at two severities, or a rationale/fix
-    built from per-instance context, as ``DEPRECATED_FIELD``'s `pickled=`
-    diagnostic and ``DEPRECATED_OPTION`` do). ``meaning`` is a one-line human
-    summary.
-
-    ``kind`` says how the code reaches a user: ``"lint"`` for a static rule
-    surfaced by ``protean check`` over the IR, ``"raise"`` for a code carried on
-    an exception raised at init or runtime, ``"staleness"`` for a code produced
-    by :func:`~protean.ir.staleness.staleness_diagnostic` from a
-    ``StalenessResult``. Most ``"raise"`` codes describe runtime accessor misuse
-    that static analysis cannot see, so they stay off the ``protean check``
-    catalog; a few could later grow a lint rule that emits the same code at
-    design time.
-
-    ``resolution`` names the deterministic command that clears the failure, when
-    one exists; :func:`build_diagnostic` renders it onto the wire as
-    ``resolving_operation``. Most codes have no such command and leave it
-    ``None``, so the fix stays prose. The code to command map lives in one place,
-    here in the registry. ``kind`` and ``resolution`` are independent: a lint
-    code could grow a resolution, and a staleness code need not have one.
+    Attributes:
+        category: The code's category, the same for every emission.
+        level: Default severity. An emission site may override it.
+        meaning: One-line human summary of the code.
+        rationale: Default rationale. An emission site may override it.
+        fix: Default fix. An emission site may override it.
+        kind: How the code reaches a user. ``"lint"`` is a static rule that
+            ``protean check`` runs over the IR. ``"raise"`` is a code carried
+            on an exception raised at init or runtime. ``"staleness"`` is a
+            code produced by :func:`~protean.ir.staleness.staleness_diagnostic`.
+        resolution: The deterministic command that clears the failure, or
+            ``None`` when there is none. :func:`build_diagnostic` puts it on
+            the wire as ``resolving_operation``.
     """
 
     category: str
@@ -1007,19 +995,22 @@ def build_diagnostic(
 ) -> Diagnostic:
     """Build one ``_diagnostics`` wire record for ``code``.
 
-    Resolves ``category``/``level``/``rationale``/``fix`` from the registry;
-    pass ``level``/``rationale``/``fix`` to override the canonical default at
-    a site that diverges. ``suggestion`` defaults to the resolved ``fix``.
-    ``location`` names where the diagnostic came from; it is included only when
-    given (no lint producer sets it today — it is carried on the exception path
-    instead). ``resolving_operation`` is attached automatically from the
-    registry for a code that maps to a resolving command, and omitted for one
-    that does not. ``teaching_skills`` is attached from the DX pack's reverse
-    index for a code some skill declares it teaches, and omitted for one no
-    skill teaches (or when the pack is absent). The returned dict carries
-    exactly the wire keys the IR, SARIF, and ``check`` output already emit, plus
-    ``field``/``location``/``resolving_operation``/``teaching_skills`` when they
-    apply.
+    ``category``, ``level``, ``rationale`` and ``fix`` come from the code's
+    :data:`REGISTRY` entry.
+
+    Args:
+        level: Overrides the registry's default severity.
+        field: Added as ``field`` when given.
+        location: Added as ``location`` when given.
+        rationale: Overrides the registry's default rationale.
+        fix: Overrides the registry's default fix.
+        suggestion: Defaults to the resolved fix.
+
+    Returns:
+        The diagnostic. ``resolving_operation`` is added when the registry maps
+        the code to a resolving command. ``teaching_skills`` is added when a
+        DX-pack skill declares it teaches the code; it is left out when no
+        skill does or the pack is not installed.
     """
     meta = REGISTRY[code]
     resolved_rationale = rationale if rationale is not None else meta.rationale

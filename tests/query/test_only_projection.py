@@ -151,6 +151,22 @@ class TestOnlyProjection:
         with pytest.raises(NotSupportedError, match="cannot be combined with `only"):
             seeded_repo.query.only("status").delete()
 
+    def test_raw_ignores_selection_ordering_limit_and_data(self, seeded_repo):
+        query = '{"revision__in": [1, 3]}'
+        plain = [doc.revision for doc in seeded_repo.query.raw(query).items]
+
+        for order in ("revision", "-revision"):
+            results = (
+                seeded_repo.query.only("status")
+                .order_by(order)
+                .limit(1)
+                .raw(query, data={"revision": 3})
+            )
+
+            assert [doc.revision for doc in results.items] == plain
+            assert all(isinstance(item, Document) for item in results.items)
+        assert sorted(plain) == [1, 3]
+
     def test_count_with_only(self, seeded_repo):
         # count() ignores field selection (it never materializes records), so
         # `.only(...).count()` is a valid, cheap pattern.

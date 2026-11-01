@@ -38,10 +38,11 @@ from protean.utils.mixins import HandlerMixin
 
 
 class BaseQueryHandler(Element, HandlerMixin, OptionsMixin):
-    """Base Query Handler class that should be implemented by all Domain QueryHandlers.
+    """Base class for query handlers.
 
-    Query handlers process domain queries synchronously and return results.
-    They are always associated with a Projection via ``part_of``.
+    A query handler processes queries synchronously and returns the result.
+    It names its projection with ``part_of``. See the Query Handlers guide for
+    a walk-through.
 
     **Meta Options**
 

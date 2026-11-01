@@ -53,6 +53,40 @@ class TestProjectionWithoutProjectors:
         assert len(result.errors) == 1
         assert "No projectors found" in result.errors[0]
 
+    def test_rebuild_leaves_existing_data_in_place(self, test_domain):
+        """A projection with no projectors is not truncated."""
+        repo = current_domain.repository_for(UserDirectory)
+        repo.add(UserDirectory(user_id="u-1", email="kept@example.com", name="Kept"))
+
+        test_domain.rebuild_projection(UserDirectory)
+
+        assert repo.get("u-1").email == "kept@example.com"
+
+
+class TestReplayOrder:
+    def test_events_dispatch_in_store_order_across_categories(self, test_domain):
+        """Events dispatch in store order even when the categories are listed
+        in the opposite order.
+
+        ``Registered`` is stored first and creates the row with the user's
+        name. Replayed after ``Transacted``, it would fail on the row
+        ``Transacted`` had already created, and the name would stay empty.
+        """
+        user = User.register(email="order@example.com", name="Order")
+        current_domain.repository_for(User).add(user)
+        txn = Transaction.transact(user_id=user.id, amount=200.0)
+        current_domain.repository_for(Transaction).add(txn)
+        _truncate_projection(test_domain, Balances)
+
+        categories = [Transaction.meta_.stream_category, User.meta_.stream_category]
+        dispatched, skipped = _replay_projector(
+            test_domain, TransactionProjector, categories, 500
+        )
+
+        assert (dispatched, skipped) == (2, 0)
+        balance = current_domain.repository_for(Balances).get(user.id)
+        assert (balance.name, balance.balance) == ("Order", 200.0)
+
 
 class TestLargeEventCount:
     def test_many_events_processed_correctly(self, test_domain):

@@ -738,40 +738,33 @@ def _slug(name: str) -> str:
 def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
     """Emit grammar text for the covered subset of one IR cluster.
 
-    Reads a full IR and a cluster FQN, resolves the slice's read side through the
-    top-level ``projections`` map, and produces the model text: the participants'
-    names, their authored fields (name-sorted; field order is non-normative), and
-    the ``for``/``consumes`` wiring. The framework-injected identity and a field's
-    ``description`` are filtered.
+    Reads the full IR *ir* and produces the model text for the cluster at
+    *cluster_fqn*: the participants' names, their authored fields sorted by name,
+    and the ``for``/``consumes`` wiring. The read side is found through the IR's
+    top-level ``projections`` map. The framework-injected identity,
+    ``method_edges``, and each ``description`` are left out. The returned text
+    always parses with :func:`parse_model`.
 
-    Raises :class:`ModelEmitError` on a cluster the grammar cannot express, rather
-    than emit a model that promotes back to something else. What it refuses:
+    Raises:
+        ModelEmitError: The cluster is not in the IR, or the grammar cannot
+            express it. The grammar cannot express:
 
-    - a field outside the grammar's types and constraints, an optional field, a
-      non-primitive field kind, a hand-set ``min_length``, or a field default or
-      choices;
-    - a shape the grammar has no room for: more than one command or authored
-      event, a multi-aggregate or multi-handler projector, or a participant name
-      that is not already in the grammar's normal form (the parser would read it
-      back as a differently named participant);
-    - behaviour the grammar carries no syntax for: a non-default element option
-      (``is_event_sourced``, ``fact_events``, a projection's ``cache``, a custom
-      ``provider``, ``schema_name`` or ``stream_category``), a projector's custom
-      stream categories or subscription, a declared invariant, a participant key
-      outside the expressible set (an event's ``published``), a command or event
-      above version 1, or a domain identity other than the UUID-as-string one
-      ADR-0041 v1 targets.
-
-    Two things are dropped on purpose, because neither holds an authored choice: a
-    ``description``, which is documentation, and a key the builder derives (the
-    framework-injected identity, and ``method_edges``, read off an element's source
-    by a derivation that fails open).
-
-    It never returns text :func:`parse_model` would reject either. The emitted model
-    is read back before it is returned, which is what enforces the parser's own rules
-    here (the event carries the aggregate's surfaced id, the projection keys on it,
-    every other projected field is sourced from the event) without a second copy of
-    them to drift.
+            - a field outside the grammar's types and constraints, an optional
+              field, a non-primitive field kind, a hand-set ``min_length``, or a
+              field default or choices;
+            - a shape the grammar has no room for: more than one command or
+              authored event, a multi-aggregate or multi-handler projector, or a
+              participant name that is not already in the grammar's normal form
+              (the parser would read it back as a differently named participant);
+            - behaviour the grammar carries no syntax for: a non-default element
+              option (``is_event_sourced``, ``fact_events``, a projection's
+              ``cache``, a custom ``provider``, ``schema_name`` or
+              ``stream_category``), a projector's custom stream categories or
+              subscription, a declared invariant, a participant key outside the
+              expressible set (an event's ``published``), a command or event
+              above version 1, or a domain identity other than the
+              UUID-as-string one ADR-0041 v1 targets;
+            - a model that :func:`parse_model` would reject.
     """
     clusters = ir.get("clusters", {})
     if cluster_fqn not in clusters:

@@ -374,6 +374,16 @@ class TestCheckStalenessNoIR:
 
         assert result.status == StalenessStatus.NO_IR
 
+    def test_no_ir_does_not_load_the_domain(self, monkeypatch):
+        def fail(_):
+            raise AssertionError("the domain must not be loaded")
+
+        monkeypatch.setattr("protean.ir.staleness.derive_domain", fail)
+
+        result = check_staleness("publishing7.py", self._empty_dir)
+
+        assert result.status == StalenessStatus.NO_IR
+
 
 # ---------------------------------------------------------------------------
 # TestCheckStalenessVersionMismatch — schema version discipline
@@ -400,6 +410,21 @@ class TestCheckStalenessVersionMismatch:
             self._protean_dir,
             {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
         )
+
+        result = check_staleness("publishing7.py", self._protean_dir)
+
+        assert result.status == StalenessStatus.VERSION_MISMATCH
+
+    def test_version_mismatch_does_not_load_the_domain(self, monkeypatch):
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
+        )
+
+        def fail(_):
+            raise AssertionError("the domain must not be loaded")
+
+        monkeypatch.setattr("protean.ir.staleness.derive_domain", fail)
 
         result = check_staleness("publishing7.py", self._protean_dir)
 

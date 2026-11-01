@@ -99,36 +99,33 @@ _HTTP_FRAMEWORK_FIELDS = frozenset(
 
 
 class DomainContextMiddleware(BaseHTTPMiddleware):
-    """ASGI middleware that activates the correct Protean domain context per request.
+    """ASGI middleware that activates the right Protean domain context per request.
 
-    Maps URL path prefixes to Domain instances. For each incoming request, finds
-    the longest matching prefix and pushes that domain's context for the duration
-    of the request lifecycle. Requests that don't match any prefix pass through
-    without a domain context (suitable for health checks, docs, static assets).
+    For each request, the middleware pushes the context of the domain whose
+    path prefix is the longest match, and pops it when the request ends. A
+    request that matches no prefix runs without a domain context.
 
-    Automatically extracts ``X-Correlation-ID`` (falling back to ``X-Request-ID``)
-    from incoming request headers and stores the value in ``g.request_correlation_id``
-    so that :meth:`CommandProcessor.enrich` can use it as the default correlation ID.
-    The response always includes an ``X-Correlation-ID`` header reflecting the ID
-    that was used.
+    When a domain is active, the middleware reads ``X-Correlation-ID``, falling
+    back to ``X-Request-ID``, or generates an ID when neither header is set. It
+    stores the ID in ``g.request_correlation_id``, where
+    :meth:`CommandProcessor.enrich` uses it as the default correlation ID. The
+    response carries the correlation ID that was used in ``X-Correlation-ID``.
+    Every response carries ``X-Request-ID``.
 
-    In addition, the middleware emits one wide event per HTTP request on the
-    ``protean.access.http`` logger (INFO for 2xx/3xx, WARNING for 4xx, ERROR
-    for 5xx). The event carries the request envelope, the commands dispatched
-    during the request, and the correlation IDs so operators can link HTTP
-    activity with the domain-layer ``protean.access`` wide events produced by
-    :func:`protean.utils.logging.access_log_handler`.
+    The middleware also emits one wide event per request on the
+    ``protean.access.http`` logger: INFO for 2xx and 3xx, WARNING for 4xx,
+    ERROR for 5xx. The event carries the request details, the commands
+    dispatched during the request, and the request and correlation IDs.
 
     Args:
         app: The ASGI application (injected by Starlette).
         route_domain_map: Dict mapping URL path prefixes to Domain instances.
-            Sorted by prefix length descending for longest-prefix-first matching.
         resolver: Optional custom callable that maps a URL path to a Domain
             (or None). When provided, ``route_domain_map`` is ignored.
-        emit_http_wide_event: When ``True`` (default), emit one wide event per
-            HTTP request on ``protean.access.http``. When ``False``, suppress
-            wide events entirely. When ``None`` (default), defer to the
-            ``[logging.http].enabled`` flag on the resolved domain's config.
+        emit_http_wide_event: When ``True``, emit one wide event per request
+            on ``protean.access.http``. When ``False``, emit none. When
+            ``None`` (default), defer to ``[logging.http].enabled`` on the
+            resolved domain's config.
         exclude_paths: Iterable of exact request paths to exclude from wide
             event emission (e.g. ``["/healthz", "/readyz"]``). When ``None``
             (default), defer to ``[logging.http].exclude_paths``.
@@ -138,6 +135,9 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
         log_response_headers: When ``True``, include the response headers dict
             in the wide event. When ``None`` (default), defer to
             ``[logging.http].log_response_headers``.
+
+    Raises:
+        ValueError: If neither ``route_domain_map`` nor ``resolver`` is given.
     """
 
     def __init__(

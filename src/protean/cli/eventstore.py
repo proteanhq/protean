@@ -720,22 +720,17 @@ def replay(
 ) -> None:
     """Re-drive one exhausted position through its handler.
 
-    Reads the failing event and dispatches it to the handler exactly once. On
-    success it records a resolution so the position stops being listed as
-    exhausted and exits 0; on a repeat failure it reopens the position and exits
-    1 (the handler reason is in the logs). A running server rebuilds its failed
-    positions only at startup, so it retries a reopened position after its next
-    restart. The subscription read cursor is never moved.
+    Dispatches the failing event to its handler once. On success the position is
+    marked resolved, stops being listed as exhausted, and the command exits 0. On
+    a repeat failure the position is reopened and the command exits 1; the
+    handler's reason is in the logs. A running server retries a reopened position
+    only after its next restart. The subscription read cursor is never moved.
 
-    Replay re-runs handler side effects, so it confirms first, naming the target
-    (an event handler, a projector, a process manager, or a command with or
-    without an idempotency key). Pass ``--yes`` to skip the prompt. The
-    position's latest status and a command's deadline are both re-read right
-    before the dispatch, so a position another replay or purge cleared while the
-    prompt was open is refused, and so is a command whose deadline ran out in the
-    meantime. A command whose handler
-    is no longer registered is refused too: dispatching it would report success
-    without running anything.
+    Replay re-runs the handler's side effects, so it asks for confirmation first
+    and names what it will re-run. Pass ``--yes`` to skip the prompt. Replay
+    refuses a position that another replay or purge cleared while the prompt was
+    open, a command whose deadline has passed, and a command whose handler is no
+    longer registered.
     """
     from protean.server.subscription.event_store_subscription import (  # noqa: PLC0415
         ReplayOutcome,

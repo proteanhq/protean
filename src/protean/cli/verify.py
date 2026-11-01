@@ -133,23 +133,23 @@ _LINT_LEVELS = frozenset({"error", "warn", "info"})
 
 @dataclass
 class VerifyResult:
-    """The outcome of a verify run, computed but not yet emitted.
+    """The outcome of a verify run, computed but not yet printed.
 
-    :func:`run_verify` returns this; the ``verify`` command turns it into console
-    output and an exit code. Nothing here has printed or exited, so
-    ``protean new --from-model`` can run verify in-process and map
-    ``result.exit_code`` instead of catching a ``typer.Exit``.
+    :func:`run_verify` returns this. The ``verify`` command turns it into console
+    output and an exit code.
 
-    - ``stages`` is the per-stage tree (init/check/tests), the same dict the
-      envelope and the human table read.
-    - ``exit_code`` is the settled code the command exits with (0/2/3/4/5).
-    - ``status`` is the coarse envelope status: ``"pass"`` all green, ``"fail"`` a
-      detected failure, ``"error"`` a usage error caught before any stage ran.
-    - ``tests_output`` is the raw pytest output, kept for the human table only.
-    - ``error_line`` is the red line the command prints to stderr, empty when
-      there is none.
-    - ``envelope_error`` is the ``data.error`` slot: the usage-error message when
-      no stage carries it, empty otherwise.
+    Attributes:
+        stages: The per-stage tree (init/check/tests) that the envelope and the
+            human table read.
+        exit_code: The code the command exits with (0/2/3/4/5).
+        status: The envelope status: ``"pass"`` when all stages pass, ``"fail"``
+            for a detected failure, ``"error"`` for a usage error caught before
+            any stage ran.
+        tests_output: The raw pytest output, used only by the human table.
+        error_line: The red line the command prints to stderr, empty when there
+            is none.
+        envelope_error: The ``data.error`` value: the usage-error message when no
+            stage carries it, empty otherwise.
     """
 
     stages: dict[str, dict[str, Any]]
@@ -161,30 +161,23 @@ class VerifyResult:
 
 
 def run_verify(domain: str, path: str, env: str = "test") -> VerifyResult:
-    """Run init + check + tests and return the result, without printing or exiting.
+    """Run init, check and tests and return the result, without printing or exiting.
 
-    This is the compute-only core behind ``protean verify``: it discovers and
-    initializes the domain, runs ``Domain.check``, runs the project's pytest suite
-    in ``path``, and maps the outcome to the settled exit code. The early
-    usage/init failures (a bad ``--path``, a blank ``env``, a domain that is not
-    found or fails to load) become early returns that carry the stage tree, an
-    error line, a status class and an exit code. The ``verify`` command emits
-    the result and exits; ``protean new --from-model`` maps ``result.exit_code``.
+    Discovers and initializes the domain, runs ``Domain.check``, runs the
+    project's pytest suite in ``path``, and maps the outcome to an exit code. A
+    path that is not a directory, a blank ``env``, or a domain that is not found
+    or fails to load ends the run early, with the later stages left
+    ``skipped``.
 
-    Init and check run in the calling process, so this is meant for one call per
-    process (the CLI's use). A second call in the same process for a different
-    project that shares a package name returns the first project's result:
-    ``__import__`` caches the module under its dotted name, so the second call
-    re-inits the first domain. Verifying several projects from one process needs
-    a fresh interpreter per call, or a reset of the module cache between calls.
+    All three stages run under the environment ``env``: ``PROTEAN_ENV`` is set
+    to it for the whole call, and the pytest child gets the same value. The
+    caller's ``PROTEAN_ENV`` (or its absence) is restored on every return path.
 
-    All three stages run under the environment ``env``. ``PROTEAN_ENV`` is set to
-    it for the whole call, and the pytest child gets the same value. The caller's
-    ``PROTEAN_ENV`` (or its absence) is restored on every return path. Init and
-    check load the ``env`` config overlay only when this call is the first to
-    import the domain module: a module already in ``sys.modules`` (imported by
-    the caller, or by an earlier call with a different ``env``) keeps the config
-    it loaded then, while the tests stage still runs under ``env``.
+    Init and check import the domain module in the calling process, so call this
+    once per process. When the module is already in ``sys.modules`` (imported by
+    the caller or by an earlier call), init and check reuse it with the config it
+    loaded then. A different project whose module has the same dotted name gets
+    the first project's domain. The tests stage still runs under ``env``.
     """
     # Every stage starts "skipped"; a failure before it runs leaves it that way
     # so the envelope always carries all three keys.

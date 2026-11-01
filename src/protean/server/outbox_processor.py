@@ -74,22 +74,25 @@ class OutboxProcessor(BaseSubscription):
         is_external: bool = False,
         max_tick_interval: float | None = None,
     ) -> None:
-        """
-        Initialize the OutboxProcessor.
+        """Create a processor that publishes one database's outbox to one broker.
+
+        Retry and cleanup settings come from ``[outbox.retry]`` and
+        ``[outbox.cleanup]`` in the domain config.
 
         Args:
-            engine: The Protean engine instance.
-            database_provider_name (str): Name of the database provider to read outbox messages from.
-            broker_provider_name (str): Name of the broker provider to publish messages to.
-            messages_per_tick (int, optional): The number of messages to process per tick. Defaults to 10.
-            tick_interval (float, optional): Base interval between ticks (seconds). Defaults to 1.
-            worker_id (str, optional): Worker identifier for message locking. Defaults to subscription_id.
-            is_external (bool): Whether this processor handles external broker dispatch.
-            max_tick_interval (float, optional): Cap for adaptive backoff. When set
-                above ``tick_interval``, the processor doubles ``tick_interval`` after
-                each empty poll up to this cap and resets to ``tick_interval`` whenever
-                a non-empty batch is fetched. ``None`` (default) disables backoff and
-                preserves the constant-rate polling behavior.
+            engine: The engine that runs this processor.
+            database_provider_name: Database provider whose outbox is read.
+            broker_provider_name: Broker provider that messages are published to.
+            messages_per_tick: Most messages claimed per tick.
+            tick_interval: Seconds between ticks.
+            worker_id: Name this processor locks rows under. Defaults to
+                ``subscription_id``.
+            is_external: Whether this processor publishes to an external broker.
+            max_tick_interval: Longest wait between ticks when polls come back
+                empty. The wait doubles after each empty poll up to this value
+                and drops back to ``tick_interval`` when a batch is found.
+                ``None`` keeps the wait fixed at ``tick_interval``. A value
+                below ``tick_interval`` is ignored with a warning.
         """
         # Initialize parent class - use dummy handler to satisfy BaseSubscription requirements
         super().__init__(engine, messages_per_tick, tick_interval)
@@ -261,11 +264,7 @@ class OutboxProcessor(BaseSubscription):
         return messages
 
     async def process_batch(self, messages: list[Outbox]) -> int:
-        """
-        Process a batch of outbox messages.
-
-        Each message is processed individually within its own atomic transaction
-        to ensure consistency and avoid race conditions in multi-processor environments.
+        """Publish a batch of claimed outbox messages, each in its own transaction.
 
         Rows of one partition key's group (see :class:`OutboxLanes`) are
         published in commit order, whatever their priority. When one of them
@@ -274,11 +273,8 @@ class OutboxProcessor(BaseSubscription):
         ``retry_count`` and ``next_retry_at`` unchanged, so it waits for the
         failed row.
 
-        Args:
-            messages (List[Outbox]): The batch of outbox messages to process.
-
         Returns:
-            int: The number of messages processed successfully.
+            The number of messages published.
         """
         tracer = get_tracer(self.engine.domain)
         with tracer.start_as_current_span(

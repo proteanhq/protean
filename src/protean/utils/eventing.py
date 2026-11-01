@@ -1236,10 +1236,6 @@ class Message(Element, BaseModel, OptionsMixin):
     def to_cloudevent(self) -> dict[str, Any]:
         """Serialize this message as a CloudEvents v1.0 JSON object.
 
-        Protean is a compliant CloudEvents producer: every required and
-        optional context attribute is derived from existing metadata at
-        serialization time. No internal metadata classes are modified.
-
         **Required attributes** (always present):
 
         ============= ============================================
@@ -1276,7 +1272,8 @@ class Message(Element, BaseModel, OptionsMixin):
         ======================= ============================================
 
         User-supplied extensions from ``metadata.extensions`` (populated
-        via event/command enrichers) are merged into the top level.
+        via event/command enrichers) are merged into the top level. Keys
+        that start with ``_`` are left out.
 
         Returns:
             A dict conforming to the CloudEvents v1.0 JSON format.

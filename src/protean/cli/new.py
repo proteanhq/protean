@@ -136,29 +136,31 @@ def _run_from_model(
     force: bool,
     log_already_configured: bool = False,
 ) -> int:
-    """Build a project from a text event model and verify it, return the exit code.
+    """Build a project from a text event model, verify it, and return the exit code.
 
-    Runs the pipeline in this order: parse the model, create the project (with the
-    example slice off), promote the parsed model to a slice, apply it, then run
-    ``verify`` in-process and report the verdict. Parse comes first so an invalid
-    model aborts before any directory is created. This composes the callable cores
-    only. It does not run ``uv sync``, git init, or pre-commit.
+    Creates the project with the example slice off, writes the model's slice into
+    it, runs ``verify`` in-process, and prints the verdict. It does not run
+    ``uv sync``, ``git init``, or pre-commit.
 
-    Returns the code the ``new`` command should exit with:
+    Args:
+        log_already_configured: True when the CLI's logging options already set
+            up logging, so it is kept as configured.
 
-    - ``2`` for a bad model file (unreadable, non-UTF-8, or rejected by the
-      grammar) or a create-time usage error (bad name, missing ``-o`` folder, a
-      non-empty target without ``--force``). Nothing is written in these cases,
-      so no directory is left behind.
-    - ``1`` when the model parses but the slice cannot be generated or applied,
-      or when the project package has the same name as a module already imported
-      here, so verifying it in this process would read the wrong code. The
-      project directory was already created, so it is left in place and the
-      message says so.
-    - the verify core's mapped code (0 on pass, otherwise its failure code).
+    Returns:
+        The code the ``new`` command exits with:
 
-    The create-time ``ImportError`` path (the ``[scaffold]`` extra is missing)
-    does not return: ``abort_for_missing_dependency`` raises ``typer.Exit``.
+        - ``2`` for a bad model file (unreadable, non-UTF-8, or rejected by the
+          grammar) or a create-time usage error (bad name, missing ``-o``
+          folder, a non-empty target without ``--force``). No directory is
+          created.
+        - ``1`` when the model parses but its slice cannot be generated or
+          applied, or when the project package has the same name as a module
+          already imported in this process. The project directory is left in
+          place and the message says so.
+        - the verify code otherwise: 0 on pass, its failure code on fail.
+
+    Raises:
+        typer.Exit: The ``[scaffold]`` extra is not installed.
     """
     # Local imports keep ``protean --help`` from pulling the parser, the slice
     # generator, and the IR stack in on every CLI start (the same reason

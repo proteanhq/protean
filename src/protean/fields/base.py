@@ -68,31 +68,29 @@ class FieldBase:
 
 
 class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
-    """
-    Base class for all fields in the Protean framework.
+    """Base class for all fields in Protean.
 
-    Fields are used to define the structure and behavior of attributes in an entity or aggregate.
-    They handle the validation, conversion, and storage of attribute values.
+    A field is a descriptor on a domain element such as an entity or an
+    aggregate. Setting a value on an instance validates it and converts it to
+    the field's type. A value that fails raises `ValidationError`.
 
-    Fields are descriptors, which means they are assigned to a class attribute and are used to
-    manage the attribute's value. When a field is assigned to a class, it is given a name on the
-    class. This name is used to access the field value from the instance.
-
-    The values are validated and converted to the appropriate type when they are set on the
-    instance. This is done by the `_load` method, which is called by the `__set__` method.
-    The values are set up on the `__dict__` of the instance, so they are NEVER stored on the field
-    itself.
-
-    Parameters:
-    - `referenced_as`: The name of the attribute in the underlying data store.
-    - `description`: A human-readable description of the field.
-    - `identifier`: A boolean indicating if this field is the identifier for the entity.
-    - `default`: The default value for the field.
-    - `required`: A boolean indicating if this field is required.
-    - `unique`: A boolean indicating if this field must be unique.
-    - `choices`: An Enum class that defines the valid choices for this field.
-    - `validators`: A list of callables that validate the field value.
-    - `error_messages`: A dictionary of error messages for validation errors.
+    Args:
+        referenced_as: Name of the attribute in the data store.
+        description: Human-readable description of the field.
+        identifier: Whether this field is the element's identity. An
+            identifier field is always required and unique.
+        default: Default value, or a callable that returns one.
+        required: Whether a value must be present.
+        unique: Whether the value must be unique in the repository.
+        choices: An Enum class, or a list or tuple, of the allowed values.
+        validators: Callables that validate the value.
+        error_messages: Messages keyed by error code. They replace the
+            default message for that code.
+        deprecated: Marks the field as deprecated. Either a version string
+            such as `"0.15"`, or a dict with a `since` key and an optional
+            `removal` key.
+        renamed_from: An old name, or a list of old names, for this field. A
+            stored payload that uses an old name loads into this field.
     """
 
     default_error_messages: ClassVar[dict[str, str]] = {

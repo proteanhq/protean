@@ -18,20 +18,17 @@ if TYPE_CHECKING:
 
 
 class BaseDatabaseModel(Element, OptionsMixin):
-    """Base class for database models -- persistence-layer representations
-    that map between domain aggregates/entities and database-specific schemas.
+    """Base class for database models, which map an aggregate, entity or
+    projection to the schema of one kind of database.
 
-    Database models are the bridge between the domain model and the storage
-    layer. Each persistence adapter (SQLAlchemy, Elasticsearch, etc.) provides
-    its own concrete subclass. Protean auto-generates a default database model
-    for every aggregate; use ``@domain.model`` only when you need to customize
-    the schema mapping (e.g. column names, indexes, JSON serialization).
+    Protean generates a default database model for every aggregate. Declare
+    one with ``@domain.database_model`` only to change the mapping, for
+    example the table name or adapter-specific field types. See the custom
+    database models guide.
 
-    Subclasses must implement ``from_entity()`` for converting domain objects
-    to database records. A default ``to_entity()`` is provided that handles
-    the common pattern of iterating attributes with ``referenced_as``
-    remapping; override it only when storage-specific logic is needed
-    (e.g. Elasticsearch's ``meta.id`` extraction).
+    A subclass must implement ``from_entity()``. The default ``to_entity()``
+    maps each attribute back by name, using ``referenced_as`` when it is set.
+    Override ``to_entity()`` only when the storage needs special handling.
 
     **Meta Options**
 
@@ -131,22 +128,20 @@ class BaseDatabaseModel(Element, OptionsMixin):
 
     @classmethod
     def to_records(cls, items: list[Any], fields: list[str]) -> list[Record]:
-        """Build read-only ``Record`` objects from storage records for ``fields``.
+        """Build read-only [`Record`][protean.core.queryset.Record] objects
+        from storage records, holding only the selected fields.
 
-        Unlike [`to_entity`][protean.core.database_model.BaseDatabaseModel.to_entity], this does **not** materialize domain
-        entities: it reads only the selected attributes and returns inert
-        [`Record`][protean.core.queryset.Record] objects, skipping all validation
-        and invariants. It is the field-selection counterpart used by
-        [`QuerySet.only`][protean.core.queryset.QuerySet.only].
+        [`QuerySet.only`][protean.core.queryset.QuerySet.only] uses this. It
+        builds no domain entities, so no validation or invariant runs.
+        Adapters with storage-specific record access override this method.
 
-        Field metadata is resolved once up front and reused across every
-        record, so the per-row work is just value reads.
+        Args:
+            items: The raw storage records returned by ``_filter``.
+            fields: Attribute names to read from each record. Each record is
+                keyed by these names.
 
-        Adapters with storage-specific record access (e.g. Elasticsearch's
-        ``meta.id`` identity extraction) should override this method.
-
-        :param items: The raw storage records returned by ``_filter``.
-        :param fields: Attribute (column) names to read from each record.
+        Returns:
+            One ``Record`` per item, in the order of ``items``.
         """
         attrs = attributes(cls.meta_.part_of)
         entity_name = cls.meta_.part_of.__name__

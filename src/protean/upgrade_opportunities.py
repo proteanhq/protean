@@ -798,29 +798,12 @@ def _scan_scope(
     modules: dict[str, str],
     sites: list[str],
 ) -> None:
-    """Collect reliant sites in one lexical scope, then recurse into nested ones.
+    """Append ``module:line`` to ``sites`` for each reliant call in ``body``.
 
-    Statements are read in order, so an import takes effect from where it appears
-    and a name resolves to whatever it held at that point. Each nested scope
-    starts from a copy of the enclosing bindings, so a helper-local
-    ``from sqlalchemy import String`` shadows the name inside that helper without
-    touching the module-level field declarations around it.
-
-    Two places this approximates Python rather than matching it, both only
-    reachable by code no working domain contains:
-
-    - A name bound anywhere in a function is local to the whole function, not
-      just from its binding onward. A call above a function-local import of the
-      same name therefore raises ``UnboundLocalError`` at runtime; this reads it
-      positionally instead and reports it.
-    - A class body's bindings are not visible to functions or classes nested
-      inside it. This copies them in, so a class-body import would shadow the
-      name for a nested class too.
-
-    Both are read positionally on purpose: modelling them exactly costs a full
-    symbol table, and the shapes that tell the difference (an import buried in a
-    class body, a name used before its function-local import) are broken or
-    pathological code rather than field declarations anyone writes.
+    Nested functions and classes are scanned too. A name resolves to what it
+    held at that point in the source, so an import counts from where it
+    appears. A nested scope sees the enclosing bindings, and a binding made
+    inside it does not leak out. ``factories`` and ``modules`` are not changed.
     """
     factories = dict(factories)
     modules = dict(modules)
@@ -828,11 +811,6 @@ def _scan_scope(
     for stmt in body:
         own, nested_scopes, bound = _split_scopes(stmt)
 
-        # Imports anywhere in this statement take effect, not just a bare
-        # ``import`` at the top. A conditional or guarded import
-        # (``try: from protean.fields import String``) binds the name for
-        # everything after it, and skipping those dropped their fields from the
-        # checklist silently.
         # Imports and calls are interleaved by source position, not batched.
         # An import anywhere in this statement takes effect from where it
         # appears, so a guarded import (``try: from protean.fields import
@@ -856,6 +834,12 @@ def _scan_scope(
             if _relies_on_the_old_default(node, factory, spec_calls):
                 sites.append(f"{module_name}:{node.lineno}")
 
+        # Two shapes are read positionally, where Python differs: a name bound
+        # anywhere in a function is local to the whole function (a call above
+        # a function-local import raises ``UnboundLocalError``), and a class
+        # body's bindings are not visible to scopes nested in it. Matching
+        # Python would need a full symbol table, and both shapes only occur in
+        # broken or pathological code.
         for scope in nested_scopes:
             # A parameter named after a tracked symbol shadows it inside the
             # function, and the scan cannot know what the caller passes.

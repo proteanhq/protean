@@ -180,6 +180,18 @@ class TestDeprecatedDecorator:
         with pytest.warns(RemovedInProtean10Warning):
             assert add(1, 2, c=3) == 6
 
+    def test_subject_replaces_the_default_name_in_the_message(self):
+        @deprecated(removal="1.0.0", subject="Repository.update()")
+        def update():
+            return None
+
+        with pytest.warns(RemovedInProtean10Warning) as record:
+            update()
+
+        assert str(record[0].message) == (
+            "Repository.update() is deprecated. Will be removed in v1.0.0."
+        )
+
     def test_warning_is_attributed_to_the_call_site_not_internals(self):
         """The decorator uses the default ``stacklevel`` — the warning must
         point at the user's call site, not into ``_deprecation.py``'s wrapper.

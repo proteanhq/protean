@@ -521,6 +521,16 @@ class TestFromConfigEdgeCases:
                 blocking_timeout_ms=0,
             )
 
+    def test_constructor_rejects_zero_blocking_timeout(self, engine):
+        """The constructor rejects a zero blocking_timeout_ms without a config."""
+        with pytest.raises(ConfigurationError, match="must be positive"):
+            StreamSubscription(
+                engine=engine,
+                stream_category="test",
+                handler=UserEventHandler,
+                blocking_timeout_ms=0,
+            )
+
     def test_stream_subscription_with_zero_max_retries(self, engine):
         """StreamSubscription can have zero max_retries (no retries)."""
         config = SubscriptionConfig.from_profile(

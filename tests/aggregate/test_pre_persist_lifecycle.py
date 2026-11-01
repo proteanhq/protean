@@ -15,6 +15,7 @@ from enum import Enum
 
 import pytest
 
+from protean import apply
 from protean.core.aggregate import BaseAggregate, atomic_change
 from protean.core.entity import BaseEntity, invariant
 from protean.core.event import BaseEvent
@@ -115,6 +116,24 @@ class Reading(BaseAggregate):
             raise ValidationError({"updated_at": ["Readings are frozen in 2031"]})
 
 
+class WalletOpened(BaseEvent):
+    wallet_id: Identifier()
+
+
+class Wallet(BaseAggregate):
+    updated_by: String(max_length=50)
+
+    @classmethod
+    def open(cls) -> "Wallet":
+        wallet = cls()
+        wallet.raise_(WalletOpened(wallet_id=wallet.id))
+        return wallet
+
+    @apply
+    def opened(self, event: WalletOpened) -> None:
+        pass
+
+
 class AccountSummary(BaseProjection):
     account_id: Identifier(identifier=True)
     updated_at: DateTime(auto_now=True)
@@ -131,6 +150,8 @@ def register_elements(test_domain):
     test_domain.register(Batch)
     test_domain.register(Reading)
     test_domain.register(AccountSummary)
+    test_domain.register(Wallet, is_event_sourced=True)
+    test_domain.register(WalletOpened, part_of=Wallet)
     test_domain.init(traverse=False)
 
 
@@ -425,6 +446,33 @@ class TestAggregateEnricherAuditStamping:
             got = repo.get(post_id)
             assert got.title == "y"  # the write still happened
             assert got.updated_by == "alice"  # enricher did NOT run for "bob"
+
+    def test_enricher_runs_for_each_row_of_a_queryset_update(self, test_domain):
+        self._register_audit_enricher(test_domain)
+
+        with test_domain.domain_context(current_user="alice"):
+            repo = test_domain.repository_for(Post)
+            repo.add(Post(title="bulk"))
+            repo.add(Post(title="bulk"))
+
+        with test_domain.domain_context(current_user="bob"):
+            repo = test_domain.repository_for(Post)
+            repo._dao.query.filter(title="bulk").update(title="done")
+
+            rows = repo._dao.query.filter(title="done").all().items
+            assert len(rows) == 2
+            assert all(row.updated_by == "bob" for row in rows)
+
+    def test_enricher_does_not_run_for_event_sourced_aggregates(self, test_domain):
+        calls = []
+        test_domain.register_aggregate_enricher(lambda a: calls.append(a))
+
+        with UnitOfWork():
+            test_domain.repository_for(Wallet).add(Wallet.open())
+
+        # The memory event store saves its message rows through a DAO, so the
+        # enricher sees those rows. It never receives the aggregate itself.
+        assert not any(isinstance(a, Wallet) for a in calls)
 
     def test_enricher_is_not_called_for_child_entities(self, test_domain):
         # The enricher is aggregate-scoped: a HasMany child persisted through

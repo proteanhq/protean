@@ -40,23 +40,20 @@ logger = logging.getLogger(__name__)
 class Priority(IntEnum):
     """Message processing priority levels.
 
-    Higher values = higher priority. Production traffic uses the default
-    (NORMAL = 0). Migration and bulk operations should use LOW or BULK
-    so their events are routed to the backfill lane when priority lanes
-    are enabled.
+    A higher value means a higher priority, and the outbox publishes
+    higher-priority messages first. Messages that share a partition key still
+    publish in commit order, whatever their priority. When priority lanes are enabled, a value
+    below ``server.priority_lanes.threshold`` (default 0) routes the event to
+    the backfill lane, which the engine reads only when the primary lane is
+    empty.
 
     Attributes:
-        BULK: For bulk imports, re-indexing, and mass data operations.
-            Events are routed to the backfill lane and processed only
-            when no higher-priority work is pending.
-        LOW: For background tasks, data migrations, and non-urgent
-            processing. Routed to backfill lane.
-        NORMAL: The default for all production traffic. Events flow
-            through the primary lane and are processed immediately.
-        HIGH: For expedited processing of time-sensitive operations.
-            Processed via the primary lane with outbox priority ordering.
-        CRITICAL: For system-critical operations like payment processing
-            or security-related events. Highest outbox priority.
+        BULK: Bulk imports, re-indexing and mass data operations. Backfill lane.
+        LOW: Background tasks, data migrations and non-urgent work. Backfill
+            lane.
+        NORMAL: The default for production traffic. Primary lane.
+        HIGH: Time-sensitive operations. Primary lane.
+        CRITICAL: System-critical operations such as payments. Primary lane.
     """
 
     BULK = -100
@@ -77,40 +74,20 @@ _processing_priority: ContextVar[int] = ContextVar(
 
 @contextmanager
 def processing_priority(priority: Priority | int) -> Generator[None, None, None]:
-    """Context manager to set processing priority for all operations in scope.
+    """Set the processing priority for every command processed inside the block.
 
-    All commands processed within this context will have their events tagged
-    with the specified priority. When priority lanes are enabled, low-priority
-    events (priority < threshold) are routed to the backfill Redis Stream
-    and processed only when the primary stream is empty.
+    Events raised by those commands carry this priority. See ``Priority`` for
+    how the value affects lane routing and outbox order.
+
+    Contexts can be nested, and the innermost one wins. The previous priority
+    is restored when the block exits, even when it raises.
 
     Args:
-        priority (Priority): A Priority enum member or integer value. Values below the
-            configured threshold (default 0) are routed to the backfill lane.
-
-    Yields:
-        None: Context manager does not yield a value.
+        priority: A ``Priority`` member or a plain integer.
 
     Example:
         >>> with processing_priority(Priority.LOW):
         ...     domain.process(CreateCustomer(name="Migration User"))
-        ...     # Events go to backfill lane
-
-        >>> with processing_priority(Priority.CRITICAL):
-        ...     domain.process(ProcessPayment(amount=100))
-        ...     # Events get highest outbox priority
-
-    Note:
-        Contexts can be nested. The innermost context wins:
-
-        >>> with processing_priority(Priority.LOW):
-        ...     # priority is LOW here
-        ...     with processing_priority(Priority.HIGH):
-        ...         # priority is HIGH here
-        ...     # priority is LOW again
-
-        Priority is always restored after the context exits, even if an
-        exception is raised within the block.
     """
     token = _processing_priority.set(int(priority))
     try:

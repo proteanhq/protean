@@ -235,25 +235,14 @@ def validate_lint_suppressions(suppressions: Any) -> str | None:
 def validate_lint_table(lint_config: Any) -> str | None:
     """Return an error message if ``[lint]`` or one of its options is malformed.
 
-    Returns ``None`` when ``[lint]`` is a table and ``rules``,
-    ``aggregate_size_limit``, ``handler_breadth_limit``, ``check_infra_imports``
-    and ``check_adapter_calls`` have the right types. ``level`` and
-    ``suppressions`` are checked elsewhere.
+    Returns ``None`` when ``[lint]`` is a table, ``rules`` is a list of strings,
+    ``aggregate_size_limit`` and ``handler_breadth_limit`` are non-negative
+    integers, and ``check_infra_imports`` and ``check_adapter_calls`` are
+    booleans. ``level`` and ``suppressions`` are checked elsewhere.
 
-    Every ``[lint]``-scoped setting (``level``, ``suppressions``,
-    ``aggregate_size_limit``, ``handler_breadth_limit``, ``rules``, ...) is read
-    via ``domain.config.get("lint", {}).get(<key>, ...)``. If a user sets
-    ``[lint]`` itself to a non-table (e.g. ``lint = 5``), that first ``.get(...)``
-    raises a bare ``AttributeError`` before any of those individual reads —
-    including :func:`validate_lint_suppressions` — get a chance to run. Callers
-    must check this *before* reading any ``[lint]`` key.
-
-    It also checks the types of the options the IR builder reads. Without the
-    check, a wrong type fails in one of several ways: ``rules = 5`` or
-    ``aggregate_size_limit = "5"`` raises a ``TypeError`` inside the build,
-    ``rules = "my.module"`` is iterated one character at a time, so each
-    character is logged and skipped as a rule path, and ``check_infra_imports =
-    "no"`` is truthy and turns the scan on.
+    Call this before reading any ``[lint]`` key. The reads go through
+    ``domain.config.get("lint", {}).get(...)``, which raises a bare
+    ``AttributeError`` when ``[lint]`` is not a table.
     """
     if not isinstance(lint_config, dict):
         return f"[lint] must be a table, got {type(lint_config).__name__}."
@@ -2072,22 +2061,14 @@ class IRBuilder:
         self._apply_suppressions()
 
     def _diagnose_circular_cluster_dependencies(self, ir: dict[str, Any]) -> None:
-        """CIRCULAR_CLUSTER_DEPENDENCY: aggregate clusters whose cross-aggregate
-        identity references form a directed cycle.
+        """Report CIRCULAR_CLUSTER_DEPENDENCY for each aggregate cluster on a
+        directed cycle of cross-cluster references.
 
-        Edges are genuine inter-cluster dependencies only: a field of
-        kind "reference" whose target is another cluster's aggregate root. The
-        within-aggregate child->root back-pointer (auto-generated Reference) and
-        any intra-cluster reference are excluded by the ``target != cluster_fqn``
-        guard, because every element in a cluster shares that cluster's FQN.
-
-        Cyclic clusters are found by strongly-connected-component membership,
-        not by first-cycle discovery: every cluster in a strongly-connected
-        component of size >= 2 is mutually reachable from every other, so each
-        is genuinely part of a directed cycle and is reported exactly once —
-        even when it sits on a second cycle or is only reachable through an
-        already-finalized node. Node and neighbour orderings are sorted, so the
-        reported set and message are deterministic.
+        An edge is a ``reference`` field whose target is another cluster's
+        aggregate root. A reference inside one cluster, including a child
+        entity's back-pointer to its root, is not an edge. Each cluster on a
+        cycle is reported once, even when it sits on more than one cycle, and
+        the output order is deterministic.
         """
         cluster_fqns = set(ir["clusters"].keys())
 
@@ -2105,7 +2086,9 @@ class IRBuilder:
                         targets.add(target)
             adjacency[cluster_fqn] = sorted(targets)
 
-        # 2. One diagnostic per cluster in each cyclic component. A component of
+        # 2. One diagnostic per cluster in each cyclic component. Every cluster in
+        #    a strongly connected component is reachable from every other, so
+        #    the whole component is on a cycle. A component of
         #    size >= 2 is exactly the set of mutually-dependent clusters (a
         #    self-loop is impossible here — ``target != cluster_fqn`` guards it).
         for component in self._strongly_connected_components(adjacency):
@@ -2291,27 +2274,11 @@ class IRBuilder:
                 )
 
     def _diagnose_adapter_calls(self, ir: dict[str, Any]) -> None:
-        """ADAPTER_CALL_IN_DOMAIN (opt-in): a domain element's method body calls
-        a concrete adapter under ``protean.adapters``, coupling the domain layer
-        to infrastructure at runtime.
+        """Report ADAPTER_CALL_IN_DOMAIN for each call in a registered element's
+        method whose callee statically resolves under ``protean.adapters``.
 
-        Off by default; runs only when ``[lint].check_adapter_calls`` is true,
-        because it parses method bodies (heavier than the module-import scan
-        :meth:`_diagnose_infra_imports` does). A dedicated flag, not a reuse of
-        ``check_infra_imports``, so each rule stays independently switchable.
-
-        Catches coupling one level deeper than ``INFRA_IMPORT_IN_DOMAIN``: an
-        adapter reached through ``import protean`` attribute access
-        (``protean.adapters.<pkg>.<Symbol>(...)``) is a real call-site coupling
-        the module-level import rule's name-prefix check does not see.
-
-        Conservative by construction: only a call whose callee *statically
-        resolves* under ``protean.adapters`` is flagged. A call whose callee does
-        not resolve — an adapter behind a function-local import, held in a local
-        variable, or fetched through ``current_domain.providers[...]`` — is
-        skipped, never guessed at, keeping the rule on the deterministic side of
-        ADR-0019. Scope is every non-internal registered element, so a class that
-        is not a domain element is never visited.
+        Runs only when ``[lint].check_adapter_calls`` is true. Emits one
+        diagnostic per call-site. A callee that does not resolve is skipped.
         """
         if not self._domain.config.get("lint", {}).get("check_adapter_calls", False):
             return
@@ -2413,26 +2380,28 @@ class IRBuilder:
                     )
 
     def _apply_suppressions(self) -> None:
-        """Filter collected diagnostics through the two suppression channels.
+        """Remove suppressed diagnostics from :attr:`_diagnostics`.
 
-        Mutates :attr:`_diagnostics` in place. Runs at the tail of
-        :meth:`_collect_diagnostics` (after custom rules), *before* the final
-        code-only sort in :meth:`build`.
+        Applies two suppressions in order:
 
-        Two channels, applied in order:
+        1. An element's ``suppress_checks`` option removes the named codes from
+           that element's diagnostics. It works for every registered element
+           type, including events, commands and value objects.
+        2. ``[lint].suppressions``, a ``{code: N}`` map, removes the first ``N``
+           remaining diagnostics of each code in ``(code, element, field,
+           message)`` order.
 
-        1. **Per-element ``suppress_checks``** — each element may name codes to
-           silence for itself. Resolved from the *registry* (not the IR) so
-           events/commands/value-objects, which carry no IR ``options`` block,
-           are covered identically to aggregates.
-        2. **``[lint].suppressions`` allow-list** — a ``{code: N}`` map that
-           grandfathers the first ``N`` findings per code in a deterministic
-           ``(code, element, field, message)`` total order, letting a codebase
-           adopt a rule without failing on pre-existing violations.
+        Runs after the custom lint rules and before the final sort in
+        :meth:`build`.
+
+        Raises:
+            ConfigurationError: If ``[lint].suppressions`` is malformed.
         """
         registry = self._domain._domain_registry
 
-        # 1. FQN -> suppressed codes. ``getattr(..., ()) or ()`` is defensive:
+        # 1. FQN -> suppressed codes, read from the registry because events,
+        #    commands and value objects carry no IR ``options`` block.
+        #    ``getattr(..., ()) or ()`` is defensive:
         #    element types whose Root never declared the ``suppress_checks``
         #    option (e.g. UPCASTER) carry no ``suppress_checks`` key on
         #    ``meta_``, so the stage must not assume the option's presence — it
@@ -2667,91 +2636,17 @@ class IRBuilder:
                 )
 
     def _diagnose_unsourced_projection_field(self, ir: dict[str, Any]) -> None:
-        """UNSOURCED_PROJECTION_FIELD (info): a projection field no observed
-        projector write fills, so it renders as a dead column.
+        """Report UNSOURCED_PROJECTION_FIELD for each projection field that no
+        projector method writes.
 
-        Where :meth:`_diagnose_projection_without_projector` catches a projection
-        with *no* projector, this catches a projector that fills some of a
-        projection's fields but not all. Origin evidence is what the projector
-        writes, read from the same behavioral view the producer rules use: a
-        field counts as sourced when some projector method either constructs the
-        projection with that field as a keyword (``ConstructionFact.field_names``)
-        or writes it as an attribute named after one of the projection's fields.
-        Coverage is the union across every projector of the projection.
-
-        Every method of the projector is read, not only its ``@on`` handlers. A
-        projector that delegates its writes to a helper method is common, and the
-        helper's writes are the same evidence the handler's would be; scoping to
-        handler names would report the fields that helper fills. An unused method
-        can contribute evidence that way, which costs a finding rather than
-        inventing one, and that is the direction this rule errs in throughout.
-
-        The rule is deliberately conservative, so its verdict is reproducible:
-
-        - ``externally_populated`` projections opt out (filled by a subscriber),
-          the same guard the sibling rule uses.
-        - A construction of the projection whose field set is unknowable
-          disables the projection: nothing is emitted for it. Two shapes make it
-          unknowable, a ``**kwargs`` splat (``dynamic_kwargs``) and a positional
-          template (``positional_template``), which a container reads as a
-          mapping whose keys fill fields (``Projection(data, key=...)``) but
-          whose keys the fact cannot see. Construction is the only disabler,
-          because it is the only dynamic write the rule can tie to *this*
-          projection: a
-          ``QuerySet`` ``update(**data)`` fills fields from a mapping the same
-          way, but ``CallFact`` carries only the callee name, so an
-          ``update(...)`` on a query surface is indistinguishable from one on a
-          plain dict. Treating either as a write to the projection would let any
-          ``mapping.update(**changes)`` in any projector method blind the rule,
-          so ``update`` is read as neither evidence nor a disabler.
-        - If the projectors yielded no observable field write at all (indirect
-          assignment through a helper, a dict splat, unreadable source), the
-          projection is skipped entirely rather than reported field-by-field: the
-          rule reports a field missing from a set it could see, never a field
-          missing from a set it failed to build.
-        - The ``identity_field`` is exempt: the framework fills it on write, not
-          necessarily by a named field assignment.
-
-        Attribute evidence is filtered by what the write can be attributed to:
-
-        - A write whose attribute name is not a field of this projection is not
-          evidence for it, and does not count towards the evidence guard either.
-          Without that, a projector that only wrote some unrelated object
-          (``audit.trail = ...``) would clear the guard and have every field of
-          the projection reported.
-        - A ``del record.city`` is an ``AttributeFact`` write (``is_write``
-          covers stores and deletes), but it unbinds the attribute rather than
-          filling it, so a delete is not evidence.
-        - In an ``@on`` handler, a write whose receiver is one of the method's
-          parameters (``self.city = ...``, ``event.city = ...``) is provably not
-          a write to the record, so it is not evidence either: a handler's
-          parameters are the projector and the message, never the record.
-          Dropping it matters beyond the one field: a projector whose only
-          "write" was on ``self`` would otherwise clear the evidence guard and
-          have every real field reported.
-        - In any other method, only the receiver is dropped: the first parameter
-          of a non-static method is the projector, so ``self.city = ...`` in a
-          helper is no more a record write than it is in a handler. The rest of
-          a helper's parameters are kept, because one of them often *is* the
-          record (``_apply(self, record, event)``) and dropping its writes would
-          report the fields that helper fills. A ``@staticmethod`` has no
-          receiver, so nothing is dropped there.
-        - A write whose receiver cannot be pinned (a nested attribute, a call
-          result) is *kept* as evidence. The rule cannot tell whether it lands on
-          the record, and counting it keeps the rule quiet, which is the
-          direction it errs in everywhere else. The same applies to a write on a
-          local that holds some other record, when the attribute name matches a
-          field of this projection: it is counted.
-
-        The evidence guard is scoped to the whole projection, so the rule is
-        advisory: once any projector write is observed, a sibling field filled
-        only through an unfollowable path (a helper, ``setattr``, a dict splat,
-        a bulk ``update``) is still flagged. The ``info`` level reflects that.
-
-        Projections are walked in ``ir["projections"]`` key order, projectors in
-        entry order, and unsourced fields are emitted in sorted field-name order
-        (``fields`` is already sorted by :meth:`_extract_fields`), so the output
-        is stable.
+        A field is written when any method of any projector of the projection
+        constructs the projection with the field as a keyword, or assigns an
+        attribute of that name. Helper methods count as well as ``@on``
+        handlers. A delete, or a write on a handler's parameter or a helper's
+        receiver, does not count. Emits nothing for a projection that is
+        ``externally_populated``, that is constructed with a ``**kwargs`` splat
+        or a positional template, or whose projectors show no write to any of
+        its fields. The ``identity_field`` is never reported.
         """
         registry = self._domain._domain_registry
         projector_cls_by_fqn = {
@@ -2783,6 +2678,10 @@ class IRBuilder:
                     for construction in facts.constructions:
                         if construction.fqn != proj_fqn:
                             continue
+                        # Only a construction can disable the rule. A
+                        # ``QuerySet.update(**data)`` also fills fields from a
+                        # mapping, but its ``CallFact`` carries only the callee
+                        # name, so it cannot be told apart from ``dict.update``.
                         if construction.dynamic_kwargs or (
                             construction.positional_template
                         ):
@@ -2923,42 +2822,16 @@ class IRBuilder:
                     )
 
     def _diagnose_unindexed_filter_path(self, ir: dict[str, Any]) -> None:
-        """UNINDEXED_FILTER_PATH: an aggregate field a repository query filters
-        on that no declared index covers, so the query is a full table scan.
+        """Report UNINDEXED_FILTER_PATH for each aggregate field a repository
+        query filters on that no declared index covers.
 
-        This joins the two halves the epic names: the *declared-index* half from
-        the aggregate IR, and the *filter-path* half from the behavioral
-        substrate (the per-method call facts the view surfaces). It walks every
-        registered element's query call-sites — filter paths live in repository
-        methods *and* in application/domain services — and, for each recognized
-        repository query (``filter``/``get``/``find``/``find_by``/``exclude`` on
-        a :attr:`ReceiverRole.REPOSITORY_QUERY` receiver), resolves the target
-        aggregate, then flags any filtered field that its index set does not
-        cover.
-
-        Target resolution is deliberately conservative (ADR-0019): a receiver
-        that resolves to a registered repository maps to that repository's
-        aggregate; a receiver that resolves to a registered aggregate is that
-        aggregate; a self-rooted receiver inside a repository (``self._dao``)
-        maps to the repository's aggregate; anything else — a variable-held or
-        otherwise unresolvable receiver, or a self-rooted query outside a
-        repository — is *skipped, not guessed*, so an unresolved join is a
-        silent miss rather than a false positive.
-
-        A field is covered when it is the aggregate's identifier (a relational
-        backend indexes the PK), carries a single-column ``unique`` constraint (a
-        unique index on a relational backend), or is the *leading* column of a
-        declared ``Index`` (a filter on a non-leading composite column alone is
-        not served by that index). Only names that are actual scalar fields of
-        the target aggregate are evaluated: a filter on a value-object attribute,
-        association, or dynamic ``**kwargs`` names no coverable field and is left
-        alone, matching the sibling persistence rule's scalar-field scope. An
-        operator lookup (``age__gte``) is evaluated by its base field.
-
-        One finding is emitted per uncovered field per call-site, so the same
-        field filtered in two methods yields two findings. Elements are walked in
-        sorted-FQN order and facts arrive in ``(line, col)`` order, so output is
-        reproducible.
+        Reads the ``filter``, ``get``, ``find``, ``find_by`` and ``exclude``
+        calls in every registered element's methods. A query whose target
+        aggregate :meth:`_resolve_filter_target` cannot resolve is skipped, and
+        so is a query on an abstract aggregate. :meth:`_covered_index_fields`
+        decides coverage. Only scalar fields are checked, and an operator lookup
+        such as ``age__gte`` checks its base field. Emits one diagnostic per
+        uncovered field per call-site.
         """
         registry = self._domain._domain_registry
         clusters = ir["clusters"]
@@ -3094,22 +2967,17 @@ class IRBuilder:
         repo_to_aggregate: dict[str, str],
         aggregate_fqns: set[str],
     ) -> str | None:
-        """Resolve a query call-site to the aggregate FQN it filters, or ``None``.
+        """Return the FQN of the aggregate a query call-site filters, or ``None``.
 
-        Four cases, conservative by design (ADR-0019):
+        1. A receiver that resolves to a registered repository gives that
+           repository's aggregate.
+        2. A receiver that resolves to a registered aggregate gives that
+           aggregate.
+        3. A self-rooted receiver (``self._dao``, so ``receiver_fqn`` is
+           ``None``) inside a repository gives that repository's aggregate.
+        4. Anything else gives ``None``.
 
-        1. the receiver resolves to a registered **repository** → that
-           repository's aggregate;
-        2. the receiver resolves to a registered **aggregate** → that aggregate;
-        3. the receiver is self-rooted (``self._dao``, no FQN) and the enclosing
-           element is a repository → that repository's aggregate
-           (``element_fqn`` is the repository, so it is a key of the map);
-        4. anything else — a variable-held or otherwise unresolvable receiver, a
-           receiver that resolves to some other element, or a self-rooted query
-           outside a repository — returns ``None``, skipped rather than guessed.
-
-        Every returned FQN is a cluster key, because ``repo_to_aggregate`` maps
-        only into clusters and ``aggregate_fqns`` *is* the cluster key set.
+        A returned FQN is always a key of ``ir["clusters"]``.
         """
         if receiver_fqn is None:
             # Case 3 (repository self-query) or 4: ``get`` returns ``None`` for a
@@ -3300,38 +3168,12 @@ class IRBuilder:
                 )
 
     def _diagnose_handler_persists_and_calls_out(self, ir: dict[str, Any]) -> None:
-        """HANDLER_PERSISTS_AND_CALLS_OUT: one handler method both persists and
-        calls an external system.
+        """Report HANDLER_PERSISTS_AND_CALLS_OUT for each handler method that
+        calls a known I/O library after its first ``repository_for(...)`` call.
 
-        A handler method runs inside a Unit of Work whose transaction opens at
-        the first repository read or write, so an external call after a
-        `repository_for` can hold row locks and a pooled connection for the
-        length of the call, and a retry re-runs the method and re-issues it
-        (ADR-0031).
-
-        Advisory, not a warning. A handler that needs the call's result to
-        compute its write is expected to do both in one method, with the remote
-        system's idempotency key as the mitigation, so this fires on code the
-        documentation tells people to write. A rule that fires on correct code
-        is one people learn to ignore, and `suppress_checks` silences it per
-        element.
-
-        Import-driven, like the `IO_INSIDE_UNIT_OF_WORK` upgrade check and
-        sharing its module list: only a callee that *resolves* counts.
-        `repository_for(...)` resolves and is the persistence signal; the
-        `repo.get(...)` and `repo.add(...)` that follow resolve to nothing and
-        are never guessed at, which keeps the verdict reproducible (ADR-0019).
-
-        The I/O call has to come *after* the first `repository_for` in the same
-        method, since that is when the transaction can be open. A call that runs
-        before any repository access is outside the transaction and is not
-        flagged.
-
-        The analysis is per method body. A persist delegated to a helper the
-        method calls, a repository held on `self`, or a persist through the
-        event store rather than `repository_for` are not seen. Both signals must
-        resolve statically, which is what keeps the rule reproducible; it trades
-        completeness for no false positives.
+        Scans event handlers, command handlers, projectors and process managers.
+        Both calls must resolve statically, and only the method's own body is
+        read. See ADR-0031.
         """
         # Process managers are included: they run their own dispatch loop, but
         # it wraps each method in a UnitOfWork too, so the hazard is identical.
@@ -3395,29 +3237,13 @@ class IRBuilder:
                 )
 
     def _diagnose_unraised_event(self, ir: dict[str, Any]) -> None:
-        """UNRAISED_EVENT: a cluster event that no aggregate or entity method raises.
+        """Report UNRAISED_EVENT for each cluster event that no method of the
+        cluster's aggregate or entity classes raises.
 
-        The producer-side mirror of :meth:`_diagnose_unhandled_events`. An event
-        is raised when, in some method of one of the cluster's aggregate or
-        entity classes, the facts hold a ``raise_`` call and the construction of
-        that event. The two facts are separate and unlinked, so the match is at
-        the method level: a method that both calls ``raise_`` and constructs the
-        event counts as raising it. The match keys on the construction FQN and
-        the ``raise_`` method name, never on the receiver role. The factory
-        idiom ``user.raise_(Registered(...))`` leaves the role ``UNKNOWN``, and
-        keying on the role would wrongly flag correct code.
-
-        Fails open on the class entry: a cluster whose aggregate and entity
-        classes all resolve to no indexed source (``element_class_entry`` is
-        ``None`` for every one) is skipped and emits nothing. A class the index
-        *can* reach but that has no methods is still analyzed, so its unraised
-        events are flagged.
-
-        Excludes fact events and auto-generated events, and skips clusters whose
-        aggregate is abstract. Published events stay in scope: unlike the
-        consumer rule, which skips them as intentionally external, a published
-        event is still produced inside the domain and should be raised by some
-        method.
+        A method raises an event when it both calls ``raise_`` and constructs
+        the event. Skips fact events, auto-generated events, clusters whose
+        aggregate is abstract, and clusters none of whose classes resolve to
+        indexed source. Published events are checked.
         """
         abstract_fqns = self._abstract_aggregate_fqns()
 
@@ -3447,6 +3273,8 @@ class IRBuilder:
 
             # An event is raised when a single method both calls `raise_` and
             # constructs it. Correlate at the method level, not the argument span.
+            # Match on the method name: the factory idiom
+            # `user.raise_(Registered(...))` leaves the receiver role UNKNOWN.
             raised_fqns: set[str] = set()
             for cls in analyzed:
                 for facts in self.view.element_facts(cls).values():
@@ -3860,34 +3688,12 @@ class IRBuilder:
                 )
 
     def _diagnose_deprecated_imports(self, ir: dict[str, Any]) -> None:
-        """DEPRECATED_IMPORT: a registered element's source module uses a
-        deprecated import surface that leaves no IR trace.
+        """Report DEPRECATED_IMPORT for each deprecated import surface used in a
+        module that hosts a registered element.
 
-        Two surfaces, both scheduled for removal and invisible to the IR field walk
-        (serializer field types are not projected into the IR; the
-        ``protean.utils`` shims live only in source):
-
-        - ``Method`` / ``Nested`` serializer field *call sites* bound to a
-          module-level ``from protean.fields import ...`` (a bare, unused import
-          is not flagged — the call is the usage), or a ``protean.fields.Method``
-          attribute call.
-        - deprecated ``protean.utils.*`` plumbing names, imported by name
-          (``from protean.utils import generate_identity``) or reached through a
-          ``protean.utils`` attribute access.
-
-        On-disk AST scan (like :meth:`_diagnose_infra_imports`): reuses the
-        shared source provider's parse-once cache and its fail-open contract — an
-        unreadable or unparseable module yields no tree and is skipped. Runs by
-        default (unlike the opt-in infra scan): detecting active deprecations is
-        the point of the rule, not an optional lint.
-
-        Scope: only modules that host a registered element are scanned (the same
-        element-oriented boundary as ``_diagnose_infra_imports``), so a
-        deprecated use in a plain helper module with no registered class is not
-        seen. A deprecated import is a module-level fact, so the diagnostic is
-        emitted once per ``(module, symbol)`` and attributed to the module — not
-        once per element sharing it — to avoid N copies for a module with N
-        registered classes.
+        :meth:`_find_deprecated_import_uses` defines the surfaces. Runs by
+        default. Emits one diagnostic per ``(module, symbol)``, attributed to
+        the module. A module that cannot be read or parsed is skipped.
         """
         removal = DEPRECATIONS["method_field"].removal  # all three share one version
 
@@ -3932,23 +3738,18 @@ class IRBuilder:
 
     @staticmethod
     def _find_deprecated_import_uses(tree: ast.Module) -> list[tuple[str, str]]:
-        """Return deterministic ``(kind, symbol)`` pairs for each deprecated
-        import surface used in a module.
+        """Return a ``(kind, symbol)`` pair, in a deterministic order, for each
+        deprecated import surface used in ``tree``.
 
-        ``kind`` is ``"field"`` (a ``Method``/``Nested`` call) or ``"util"`` (a
-        deprecated ``protean.utils`` name).
+        - ``"field"``: a ``Method`` or ``Nested`` call through a name bound by
+          a module-level ``from protean.fields import ...``, or through
+          ``protean.fields``. A name imported inside a function is not matched,
+          and an import with no call is not matched.
+        - ``"util"``: a deprecated ``protean.utils`` name, imported by name or
+          reached as an attribute, at any scope.
 
-        The two paths differ in scope. The ``field`` path matches a call against
-        names bound by a *module-level* ``from protean.fields import ...``, so a
-        ``Method``/``Nested`` imported inside a function body is not attributed to
-        the module. The ``util`` path uses :func:`ast.walk`, so a
-        ``from protean.utils import <name>`` or a ``protean.utils.<name>`` access
-        at any scope (including inside a function) is flagged.
-
-        A whole-module ``import protean.fields as pf`` / ``import protean.utils
-        as u`` binds the module to a local alias; ``module_aliases`` resolves that
-        alias back to its dotted path so ``pf.Method(...)`` / ``u.<name>`` are
-        matched the same as the unaliased spelling.
+        A whole-module alias (``import protean.fields as pf``) matches the same
+        as the full module name.
         """
         field_modules = {"protean.fields", "protean.fields.basic"}
         deprecated_fields = {"Method", "Nested"}

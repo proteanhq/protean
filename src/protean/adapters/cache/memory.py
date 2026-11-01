@@ -127,22 +127,20 @@ class MemoryCache(BaseCache):
         return self._db._values
 
     def add(self, projection: BaseProjection, ttl: TTLValue | None = None) -> None:
-        """Add projection record to cache
+        """Cache the projection's `to_dict()` data.
 
-        KEY: Projection ID
-        Value: Projection Data (derived from `to_dict()`)
-
-        TTL is in seconds. Accepts a number, or a string holding one, because a
-        TTL sourced from config arrives as a string: environment substitution
-        runs over already-parsed TOML strings. Anything that is not a positive,
-        finite number of seconds raises a `ConfigurationError` naming the cache.
-
-        Omitted (or an empty string) means "use this cache's `TTL`", which falls
-        back to 300 seconds when the cache configures none.
+        The key is `<projection_name>:::<id>`, where `<projection_name>` is the
+        projection class name in snake case.
 
         Args:
-            projection (BaseProjection): Projection Instance containing data
-            ttl (int, float, str, optional): Timeout in seconds. Defaults to None.
+            projection: The projection to cache.
+            ttl: Seconds the entry lives, as a number or a string holding one.
+                `None` or `""` uses this cache's `TTL`, which is 300 seconds
+                when the cache configures none.
+
+        Raises:
+            ConfigurationError: If `ttl` is not a positive, finite number of
+                seconds. The message names the cache, and nothing is cached.
         """
         id_f = id_field(projection)
         assert id_f is not None

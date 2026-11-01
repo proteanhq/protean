@@ -100,26 +100,18 @@ def warn_deprecated(
             the sentence (e.g. ``"--debug"`` or ``"old_helper()"``).
         removal: Canonical ``X.Y.Z`` version the API is removed in, or ``None``
             when no removal is scheduled yet. A recognized version selects its
-            per-version warning class; ``None`` or an unrecognized version
-            falls back to the base :class:`ProteanDeprecationWarning`. The
-            "Will be removed in v<removal>." clause is included whenever
-            ``removal`` is given (recognized or not); it is omitted only when
-            ``removal`` is ``None``.
+            per-version warning class. ``None`` or an unrecognized version uses
+            the base :class:`ProteanDeprecationWarning`; the version is not
+            rejected. The
+            message ends with "Will be removed in v<removal>." whenever
+            ``removal`` is given, recognized or not.
         alternative: An optional complete sentence telling the caller what to do
             instead (e.g. ``"Use --log-level DEBUG instead."``).
         stacklevel: Which frame the warning is attributed to, counted from the
-            caller of ``warn_deprecated`` (same convention as ``warnings.warn``
-            seen from the caller's seat). Default ``2`` points at the caller of
-            the *deprecated function* — correct when ``warn_deprecated`` is
-            reached one frame down, e.g. from a decorator ``wrapper`` or a shared
-            helper. Pass ``1`` when ``warn_deprecated`` is called directly in the
-            body of the deprecated code, so the warning lands on that call site.
-
-    An unregistered ``removal`` version degrades to the base
-    :class:`ProteanDeprecationWarning` rather than raising: emitting a
-    deprecation must never crash the live deprecated code path (the caller's
-    program keeps running and is still nudged). Use ``@deprecated`` instead when
-    the version can be validated eagerly — it fails fast at import.
+            caller of ``warn_deprecated``, as with ``warnings.warn``. The
+            default ``2`` points at the caller of the deprecated function, for
+            a call made from a decorator wrapper or a shared helper. Pass ``1``
+            when calling this directly in the body of the deprecated code.
     """
     parts = [f"{subject} is deprecated."]
     if alternative:
@@ -127,6 +119,9 @@ def warn_deprecated(
     if removal:
         parts.append(f"Will be removed in v{removal}.")
 
+    # An unknown version falls back to the base class instead of raising, so
+    # emitting a deprecation never crashes the live deprecated code path.
+    # ``@deprecated`` validates the version eagerly at import instead.
     category: type[ProteanDeprecationWarning] = (
         _REMOVAL_WARNINGS.get(removal, ProteanDeprecationWarning)
         if removal
@@ -152,17 +147,15 @@ def external_stacklevel() -> int:
     :func:`warn_deprecated` and :func:`warn_from_registry` count their
     ``stacklevel``. Pass the result straight to either of them.
 
-    A fixed ``stacklevel`` only works when every entry point reaches the warn
-    site through the same number of framework frames. Registration does not:
-    the direct call ``domain.aggregate(Cls)`` passes through more Protean frames
-    than ``@domain.aggregate`` on a class or ``domain.register(Cls)``. Walking
-    the stack lands on the user's line in every case.
-
     A frame counts as Protean when its module is ``protean`` or sits under
     ``protean.``, so a user package such as ``protean_app`` counts as user code.
     If every frame is Protean, the result points past the top of the stack and
     ``warnings.warn`` attributes the warning to ``sys``.
     """
+    # A fixed ``stacklevel`` fails here because entry points reach the warn
+    # site through different numbers of framework frames: the direct call
+    # ``domain.aggregate(Cls)`` passes through more of them than
+    # ``@domain.aggregate`` or ``domain.register(Cls)``.
     frame: types.FrameType | None = sys._getframe(1)
     stacklevel = 1
     while frame is not None and _is_protean_module(frame.f_globals.get("__name__")):
@@ -179,17 +172,16 @@ def deprecated(
 ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     """Decorate a deprecated function/method: warn on every call, then delegate.
 
-    The removal version is validated at decoration time, so an unknown version
-    fails at import rather than on first call.
-
     Args:
         removal: Canonical ``X.Y.Z`` version the callable is removed in.
         alternative: An optional complete sentence telling the caller what to do
             instead.
         subject: What the warning calls the deprecated API. Defaults to
-            ``"<func name>()"``. That is enough for a module-level function, but
-            not for a method: a bare ``update()`` does not tell the caller which
-            object it came from. Pass the qualified name for a method.
+            ``"<func name>()"``. Pass the qualified name for a method, so the
+            caller can tell which object it belongs to.
+
+    Raises:
+        ValueError: At decoration time, when ``removal`` has no warning class.
 
     Example::
 
@@ -234,20 +226,20 @@ def deprecated(
 class Deprecation:
     """One active deprecation and how ``protean check`` can (or cannot) see it.
 
-    ``detection`` splits the two arms:
+    ``detection`` is one of two values:
 
-    - ``"check"`` — a static ``protean check`` rule detects the usage on a
+    - ``"check"``: a static ``protean check`` rule detects the usage on a
       built domain. ``check_code`` is the diagnostic code that rule emits (e.g.
-      ``"DEPRECATED_OPTION"``, ``"DEPRECATED_IMPORT"``), and ``detection_hint``
-      is a token guaranteed to appear in *that* diagnostic's message (e.g.
-      ``"Method"``, ``"pickled"``). The coverage audit confirms the rule fires
-      by finding a diagnostic whose code is ``check_code`` and whose message
-      carries the hint and the removal version, so entries that share a code
-      (``is_event_sourced`` and ``published`` under ``DEPRECATED_OPTION``) are
-      told apart by their hint.
-    - ``"runtime"`` — the usage is an imperative call with no static site, so
-      only the per-version ``DeprecationWarning`` can catch it. ``reason``
-      records why ``check`` structurally cannot.
+      ``"DEPRECATED_OPTION"``), and ``detection_hint`` is a token that appears
+      in that diagnostic's message (e.g. ``"pickled"``). The hint tells apart
+      entries that share a code. ``reason`` must be unset.
+    - ``"runtime"``: the usage has no static site, so only the per-version
+      ``DeprecationWarning`` catches it. ``reason`` records why ``check``
+      cannot see it. ``check_code`` and ``detection_hint`` must be unset.
+
+    Raises:
+        ValueError: When ``removal`` has no warning class, ``detection`` is
+            neither value, or the fields do not match the ``detection`` value.
     """
 
     slug: str

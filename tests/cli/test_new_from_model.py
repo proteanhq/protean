@@ -177,6 +177,9 @@ def test_from_model_runs_the_pipeline_and_maps_the_verify_code(
     assert (project / "src/modelapp/item/aggregate_base.py").is_file()
     assert (project / "src/modelapp/item/projectors.py").is_file()
     assert not (project / "src/modelapp/example").exists()
+    # The project setup (uv sync, git init, pre-commit) does not run.
+    assert not (project / ".git").exists()
+    assert not (project / ".venv").exists()
     # verify was handed the in-project domain and the project path.
     assert len(calls) == 1
     domain_arg, path_arg = calls[0]

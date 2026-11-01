@@ -148,3 +148,20 @@ class TestFieldLoadWithChoices:
         field = ConcreteField(required=False)
         field.field_name = "optional"
         assert field._load(None) is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: constructor contract
+# ---------------------------------------------------------------------------
+class TestFieldConstructor:
+    def test_identifier_is_always_required_and_unique(self):
+        field = ConcreteField(identifier=True, required=False, unique=False)
+        assert field.required is True
+        assert field.unique is True
+
+    def test_error_messages_replace_the_default_for_their_code(self):
+        field = ConcreteField(required=True, error_messages={"required": "needed"})
+        field.field_name = "name"
+        with pytest.raises(ValidationError) as exc:
+            field._load(None)
+        assert exc.value.messages == {"name": ["needed"]}

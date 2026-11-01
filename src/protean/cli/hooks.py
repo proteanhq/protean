@@ -272,21 +272,19 @@ def _check_staleness_single(
 
 
 def check_staleness_hook() -> None:
-    """Entry point for ``protean-check-staleness`` pre-commit hook.
+    """Run the ``protean-check-staleness`` pre-commit hook and exit.
 
-    Runs ``protean ir check`` and exits with a non-zero code when
-    the materialized IR is stale or missing.  Respects
-    ``.protean/config.toml`` --- if ``staleness.enabled = false``, the
-    hook exits 0 immediately.
+    Checks that the materialized IR under ``.protean/`` matches the live domain.
+    With ``--domain`` it checks that one domain. Without it, it checks every
+    domain in the ``[domains]`` table of ``.protean/config.toml``. With ``--fix``
+    it regenerates stale or missing IR and stages the file with git.
 
-    Supports ``--fix`` to auto-regenerate stale IR and stage the file.
-
-    When ``--domain`` is omitted, reads the ``[domains]`` section from
-    ``config.toml`` and checks all configured domains.
-
-    Exit codes:
-      0 --- IR is fresh (or staleness checking disabled, or --fix succeeded)
-      1 --- IR is stale or missing (and --fix not used or failed)
+    Raises:
+        SystemExit: Always. Code 0 when every IR is fresh, when ``--fix``
+            regenerated it, or when ``staleness.enabled = false`` in
+            ``config.toml``. Code 1 when any IR is stale or missing without
+            ``--fix``, when ``--fix`` fails, when a domain cannot be loaded, or
+            when ``config.toml`` is invalid or names no domain to check.
     """
     from protean.ir.config import load_config  # noqa: PLC0415
 
@@ -418,22 +416,22 @@ def _check_compat_single(
 
 
 def check_compat_hook() -> None:
-    """Entry point for ``protean-check-compat`` pre-commit hook.
+    """Run the ``protean-check-compat`` pre-commit hook and exit.
 
-    Runs ``protean ir diff --base HEAD`` and exits with a non-zero code
-    when breaking changes are detected.  Respects
-    ``.protean/config.toml`` --- if ``compatibility.strictness = "off"``,
-    the hook exits 0.  If ``strictness = "warn"``, breaking changes are
-    printed but the hook still exits 0.
+    Compares the live IR with the ``ir.json`` committed at ``--base`` (default
+    ``HEAD``) and prints any breaking changes. With ``--domain`` it checks that
+    one domain. Without it, it checks every domain in the ``[domains]`` table of
+    ``.protean/config.toml``. ``compatibility.strictness`` in ``config.toml``
+    sets the outcome: ``"off"`` skips the check, ``"warn"`` prints breaking
+    changes without blocking, and ``"strict"`` blocks on them.
 
-    When ``--domain`` is omitted, reads the ``[domains]`` section from
-    ``config.toml`` and checks all configured domains.
-
-    Exit codes:
-      0 --- no breaking changes (safe or no changes), or strictness is
-          "off" / "warn"
-      1 --- breaking changes found (strictness = "strict"), or the baseline
-          cannot be loaded or compared (strictness = "strict" or "warn")
+    Raises:
+        SystemExit: Always. Code 0 when there are no breaking changes, or when
+            strictness is ``"off"`` or ``"warn"``. Code 1 when breaking changes
+            are found under ``"strict"``, when the baseline cannot be loaded or
+            compared (under ``"strict"`` or ``"warn"``), when a domain cannot be
+            loaded, or when ``config.toml`` is invalid or names no domain to
+            check.
     """
     from protean.ir.config import load_config  # noqa: PLC0415
 

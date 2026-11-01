@@ -18,17 +18,15 @@ logger = logging.getLogger(__name__)
 
 
 class BaseApplicationService(Element, OptionsMixin):
-    """Base class for application services -- stateless orchestration layers that
-    coordinate use cases between external callers (API controllers, CLI handlers,
-    background jobs) and the domain model.
+    """Base class for application services. An application service runs one
+    aggregate's use cases for outside callers, such as API endpoints, CLI
+    commands and background jobs.
 
-    Application services load aggregates, invoke domain methods, and persist
-    results without containing business logic themselves. They are always
-    associated with one aggregate via ``part_of``. Use the ``@use_case``
-    decorator on methods for automatic ``UnitOfWork`` wrapping.
-
-    Unlike command handlers, application services are invoked directly (not
-    via ``domain.process()``) and always return values synchronously.
+    A use-case method loads aggregates, calls their methods and saves the
+    results. Business logic stays in the domain model. Callers call the method
+    directly and get its return value. Mark each use-case method with
+    ``@use_case`` to run it inside a ``UnitOfWork``. The Application Services
+    guide covers usage.
 
     **Meta Options**
 

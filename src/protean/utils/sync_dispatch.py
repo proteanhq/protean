@@ -90,23 +90,21 @@ def enqueue_sync_dispatch(event: Any, handler_cls: Any) -> None:
 
 
 def drain_sync_dispatch() -> None:
-    """Drain the queue FIFO — but only at the outermost call.
+    """Run every queued ``(event, handler)`` pair in FIFO order.
 
-    A nested call (a handler's own UnitOfWork commit re-entering here) returns
-    immediately; the events it enqueued are picked up by the outermost drain
-    already in progress. The queue and draining flag are cleared even if a
-    handler raises, so the exception surfaces to the top-level caller ("sync
-    raises") and any later work starts from a clean slate.
+    Only the outermost call drains. A nested call, such as a handler's own
+    UnitOfWork commit, returns at once, and the outermost drain runs the pairs
+    it enqueued. The queue is cleared when the drain ends, even when it raises.
 
-    A failing handler class does not abort the drain. Each ``(event,
-    handler_cls)`` pair is an independent reaction, so every one runs and
-    failures are collected: a single failure surfaces unchanged, and several are
-    raised together as an ``ExceptionGroup``. An ``ExpectedVersionError`` is
-    collected like the rest. A non-``Exception`` ``BaseException`` is the one
-    exclusion: it ends the drain where it is raised and propagates at once (see
-    the module docstring and ADR-0031). Failures gathered before it are attached
-    to it as a note and logged, since nothing downstream would otherwise report
-    them.
+    Every pair runs even when an earlier one fails. Once the queue is empty, a
+    single failure is raised unchanged and several are raised together as an
+    ``ExceptionGroup``. This includes ``ExpectedVersionError``.
+
+    Raises:
+        BaseException: A ``BaseException`` that is not an ``Exception``, such
+            as ``KeyboardInterrupt``, ends the drain where it is raised and
+            propagates at once. Failures collected before it are attached to
+            it as a note and logged. See ADR-0031.
     """
     if getattr(g, _DRAINING_KEY, False):
         return

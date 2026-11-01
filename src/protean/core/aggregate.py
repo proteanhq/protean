@@ -71,13 +71,13 @@ def _dropped_helper(*args: Any, **kwargs: Any) -> None:
 
 
 class BaseAggregate(BaseEntity):
-    """Base class for aggregate root entities -- the primary building block for
-    modeling domain concepts.
+    """Base class for aggregate roots. An aggregate owns a cluster of domain
+    objects, enforces their consistency rules and marks a transaction boundary.
 
-    Aggregates enforce consistency rules and define transaction boundaries.
-    They inherit all entity capabilities (fields, identity, invariants) and add
-    versioning for optimistic concurrency, event raising via ``raise_()``, and
-    event-sourcing support via ``_apply()`` / ``from_events()``.
+    An aggregate has everything an entity has (fields, identity, invariants).
+    It adds a version for optimistic concurrency, ``raise_()`` for domain
+    events, and ``from_events()`` to rebuild an event-sourced aggregate. The
+    Aggregates guide covers usage.
 
     **Meta Options**
 
@@ -401,21 +401,23 @@ class BaseAggregate(BaseEntity):
             fn(self, event)
 
     def _apply(self, event: Any) -> None:
-        """Event-Sourcing: apply an event during replay.
+        """Apply ``event`` during replay and increment ``_version`` by one.
 
-        Calls the handler then increments ``_version`` once per event.
+        ``_replaying`` is set while the ``@apply`` handler runs. An assignment
+        to a reserved name is then dropped instead of raising. So is a call to
+        the ``add_<name>`` or ``remove_<name>`` helper of a reserved
+        association, along with any child entities it would have added.
+        ``get_one_from_<name>`` and ``filter_<name>`` still raise. The live
+        ``raise_`` path does not set the flag, so a live write or helper call
+        on a reserved name still raises.
 
-        Sets ``_replaying`` for the duration of the handler so that an
-        assignment to a reserved (removed) field name is dropped instead of
-        raising. A call to the ``add_<name>`` or ``remove_<name>`` helper of a
-        reserved association is dropped too, and any child entities it would
-        have added are dropped with it. ``get_one_from_<name>`` and
-        ``filter_<name>`` still raise. This is the replay-only signal: the live
-        ``raise_`` path calls ``_apply_handler`` directly and never sets the
-        flag, so a live write or helper call on a removed field still raises.
-        Restored in ``finally`` so an exception in a handler cannot leave a
-        live aggregate stuck in replay mode, and a nested ``_apply`` inside a
-        handler does not end replay mode for the rest of the outer handler.
+        ``_replaying`` gets its previous value back when the handler returns
+        or raises, so a nested ``_apply`` leaves the outer handler in replay
+        mode.
+
+        Raises:
+            IncorrectUsageError: No ``@apply`` handler is registered for the
+                event's class.
         """
         previous = self._replaying
         self._replaying = True

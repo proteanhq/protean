@@ -19,6 +19,10 @@ class TestRepositoryInitialization:
         repo = test_domain.repository_for(Person)
         assert repo is not None
 
+    def test_that_base_repository_has_no_delete_or_remove_method(self):
+        assert not hasattr(BaseRepository, "delete")
+        assert not hasattr(BaseRepository, "remove")
+
 
 class TestRepositoryRegistration:
     def test_that_repository_can_be_registered_with_domain(self, test_domain):

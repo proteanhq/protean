@@ -211,41 +211,25 @@ class BaseEventStore(metaclass=ABCMeta):
     def read_all(
         self, stream: str = "$all", *, page_size: int = 1000
     ) -> Iterator[Message]:
-        """Yield every message in ``stream``, paging through the store in bounded batches.
+        """Yield every message in ``stream``, reading the store in pages of ``page_size`` rows.
 
-        A cold-load read that must be complete (a full projection rebuild, a
-        backup, an integrity check) cannot rely on a single large ``read`` with a
-        sentinel ``no_of_messages``: past the cap it silently truncates. This
-        iterator pages the store in ``page_size`` batches and advances a cursor
-        until a short page signals the end, so it reads the whole stream at a
-        bounded memory cost regardless of size.
-
-        Paging is done on the *raw* store rows, not on deserialized messages, so
-        that interleaved snapshot rows (``type == "SNAPSHOT"``, no metadata) do
-        not distort it. Snapshots are skipped from the output — the iterator
-        yields events and commands only — but they still count toward the raw
-        page, so a page carrying a snapshot neither ends the read early nor
-        desyncs the cursor. The cursor advances from the last *raw* row of each
-        page, which may itself be a snapshot; its top-level position is read
-        directly, never through ``Message.deserialize``.
-
-        The cursor field follows the stream shape (ADR-0024): ``$all`` and a bare
-        category page by ``global_position``; a specific stream (``category-id``)
-        pages by its own per-stream ``position``. Reads are inclusive
-        (``>= position``), so each next page resumes one past the last row seen,
-        which avoids re-emitting the boundary row.
+        A single ``read`` returns at most ``no_of_messages`` rows, so use this for
+        a read that must be complete, such as a projection rebuild or a backup.
+        Memory use stays bounded whatever the size of the stream. Snapshot rows
+        are skipped, so only events and commands are yielded.
 
         Args:
             stream: The stream to read. ``$all`` (default), a category, or a
                 specific ``category-id`` stream.
-            page_size: Number of messages to read per underlying ``read`` call.
+            page_size: Number of rows to read from the store per page.
 
         Yields:
             Every `Message` in ``stream``, in read order, with no gaps and
             no duplicates across page boundaries.
 
         Raises:
-            IncorrectUsageError: If ``page_size`` is not a positive integer.
+            IncorrectUsageError: If ``page_size`` is not a positive integer, or
+                a stored row is missing its position.
         """
         # Check the type before the value: a float or ``None`` slipping through
         # would flow into the adapter's row limit and either page oddly or raise
@@ -396,11 +380,11 @@ class BaseEventStore(metaclass=ABCMeta):
         at_version: int | None = None,
         as_of: datetime | None = None,
     ) -> BaseAggregate | None:
-        """Load an aggregate from underlying events.
+        """Load an aggregate by replaying its events.
 
-        By default, reconstitutes the aggregate to its current (latest) state.
-        When ``at_version`` or ``as_of`` is provided, reconstitutes a historical
-        snapshot of the aggregate: a *temporal query*.
+        By default, rebuilds the aggregate in its current (latest) state. When
+        ``at_version`` or ``as_of`` is given, rebuilds its state at that point
+        in history.
 
         Args:
             part_of: The EventSourced Aggregate's class.
@@ -411,8 +395,11 @@ class BaseEventStore(metaclass=ABCMeta):
                 Only events written on or before ``as_of`` are applied.
 
         Returns:
-            The fully-formed aggregate, or ``None`` when no events exist
-            (and no temporal param was given that would raise instead).
+            The aggregate, or ``None`` when its stream holds no events.
+
+        Raises:
+            ObjectNotFoundError: If ``at_version`` is past the aggregate's latest
+                version, or no event was written on or before ``as_of``.
         """
         if as_of is not None:
             return self._load_aggregate_as_of(part_of, identifier, as_of)
@@ -706,14 +693,13 @@ class BaseEventStore(metaclass=ABCMeta):
     def create_snapshot(self, part_of: type[BaseAggregate], identifier: str) -> bool:
         """Create a snapshot for a specific event-sourced aggregate instance.
 
-        Reads the full event stream for the aggregate, reconstructs it via
-        ``from_events()``, and writes a snapshot to the snapshot stream.
-        This bypasses the snapshot threshold -- manual triggers always create
-        a snapshot regardless of event count.
+        Rebuilds the aggregate from its full event stream and writes its current
+        state to the snapshot stream. The snapshot is written whatever the
+        snapshot threshold.
 
         Args:
-            part_of: The EventSourced Aggregate class
-            identifier: Unique aggregate identifier
+            part_of: The EventSourced Aggregate class.
+            identifier: Unique aggregate identifier.
 
         Returns:
             True if a snapshot was created.
@@ -929,18 +915,15 @@ class BaseEventStore(metaclass=ABCMeta):
     # ------------------------------------------------------------------
 
     def trace_causation(self, message_id: str | Message) -> list[Message]:
-        """Walk UP the causation chain from a message to the root.
-
-        Returns an ordered list of Messages from the root command (first)
-        to the given message (last).  The given message itself is included.
+        """Return the causation chain from the root message down to ``message_id``.
 
         Args:
             message_id: A Protean message ID string (``headers.id``) or
                 a `Message` object.
 
         Returns:
-            List of `Message` objects in causal order (root first,
-            target last).
+            `Message` objects in causal order, root first and the given message
+            last.
 
         Raises:
             ValueError: If the message cannot be found in the event store.
@@ -975,10 +958,7 @@ class BaseEventStore(metaclass=ABCMeta):
     def trace_effects(
         self, message_id: str | Message, *, recursive: bool = True
     ) -> list[Message]:
-        """Walk DOWN the causation chain to find all effects of a message.
-
-        Returns messages that were caused by the given message, ordered by
-        ``global_position`` (chronological order).
+        """Return the messages caused by ``message_id``.
 
         Args:
             message_id: A Protean message ID string (``headers.id``) or
@@ -987,8 +967,8 @@ class BaseEventStore(metaclass=ABCMeta):
                 effects.  If ``False``, return only direct children.
 
         Returns:
-            List of `Message` objects caused by the given message,
-            in chronological order.  The given message itself is NOT included.
+            `Message` objects caused by the given message, ordered by
+            ``global_position``. The given message itself is not included.
 
         Raises:
             ValueError: If the message cannot be found in the event store.
@@ -1155,31 +1135,11 @@ class BaseEventStore(metaclass=ABCMeta):
     _REQUIRED_FIELDS = ("id", "stream_name", "position")
 
     def _iter_all_messages(self, batch_size: int = 1000) -> Iterator[dict[str, Any]]:
-        """Yield every raw message in the store, ordered by ``global_position``.
+        """Yield every raw row in the store, ordered by ``global_position``.
 
-        This is the raw-dict sibling of the public
-        [`read_all`][protean.port.event_store.BaseEventStore.read_all], and
-        ``verify`` cannot use ``read_all`` in its place. ``read_all`` yields
-        deserialized `Message` objects, and two kinds of row ``verify`` must scan
-        do not deserialize: a snapshot row is written with no metadata, and a
-        corrupt row may be missing fields, so `Message.deserialize` raises on both.
-        Scanning the raw dict lets ``verify`` inspect a snapshot's ``_version``
-        and report a malformed row instead of crashing on it.
-
-        Pages through ``$all`` so the raw rows are read in bounded batches rather
-        than one unbounded slurp. The read contract (ADR-0024) is an inclusive,
-        ``global_position``-ordered page, so the next page starts one past the
-        last global_position seen; gaps in ``global_position`` are allowed and
-        skipped over safely. Both shipped adapters make ``global_position`` NOT
-        NULL and their ``$all`` read filters ``>= position``, so a row without a
-        ``global_position`` can neither exist nor be returned here.
-
-        One known limit: paging keys on ``global_position``, which is unique in
-        both shipped adapters. If a corrupt store held two rows with the *same*
-        global_position and that pair straddled an exact batch boundary, the
-        second would be skipped. Detecting that needs a stable unique cursor the
-        read contract does not offer, so it is left uncaught rather than papered
-        over with a dedup that ties break.
+        Rows come back as stored dicts, not deserialized, so snapshot rows and
+        malformed rows reach ``verify`` intact. Reads ``$all`` in pages of
+        ``batch_size`` rows.
         """
         position = 0
         while True:
@@ -1189,34 +1149,32 @@ class BaseEventStore(metaclass=ABCMeta):
             yield from batch
             if len(batch) < batch_size:
                 return
+            # Reads are inclusive, so resume one past the last global_position.
+            # A corrupt store with two rows sharing a global_position across a
+            # page boundary would lose the second; the read contract offers no
+            # unique cursor to catch that.
             position = batch[-1]["global_position"] + 1
 
     def verify(self) -> IntegrityReport:
-        """Check the store's internal invariants without mutating anything.
+        """Check the store's internal invariants and report every violation.
 
-        Reads the whole store once through ``$all`` and reports every violation
-        of these invariants:
+        Reads the whole store through ``$all`` and changes nothing. It checks
+        that:
 
-        - every row carries its required fields (``id``, ``stream_name``,
-          ``position``),
-        - per-stream ``position`` is gapless from the stream base (0),
-        - ``global_position`` is strictly increasing store-wide,
+        - every row carries ``id``, ``stream_name`` and ``position``,
+        - each stream's ``position`` runs from 0 with no gaps,
+        - ``global_position`` strictly increases across the store,
         - message ids are unique,
-        - each ``:snapshot-`` stream carries a well-formed snapshot whose
-          ``_version`` does not exceed its aggregate stream head.
+        - each ``:snapshot-`` stream holds a well-formed snapshot whose
+          ``_version`` is not past the head of its aggregate stream.
 
-        A corrupt row is reported, never silently skipped: that is the whole
-        point of the check, so a row missing a required field or a snapshot with
-        a non-integer ``_version`` becomes a violation rather than a pass, and
-        the missing-field guard runs first so those checks never touch an absent
-        value. This handles the corruption a store can actually hold: every
-        adapter types its columns (MessageDB by SQL column type, the memory
-        adapter by its pydantic model), so a present-but-wrongly-typed field
-        (a list ``id``, a string ``position``) does not arise from a read.
+        A corrupt row, such as one missing a required field or a snapshot with
+        a non-integer ``_version``, is reported as a violation and never
+        skipped.
 
-        This asserts the store's *internal* consistency, not a schema version
-        (none is stored today). It is read-only: a clean store yields a report
-        with no violations (``ok`` is ``True``).
+        Returns:
+            An `IntegrityReport` of the violations found. ``ok`` is ``True``
+            when there are none.
         """
         violations: list[IntegrityViolation] = []
 
@@ -1230,6 +1188,8 @@ class BaseEventStore(metaclass=ABCMeta):
         snapshot_version: dict[str, int] = {}
 
         message_count = 0
+        # Scan raw rows: ``read_all`` deserializes, which raises on snapshot
+        # rows and on malformed rows, the two kinds this check must inspect.
         for msg in self._iter_all_messages():
             message_count += 1
             stream = msg.get("stream_name")
@@ -1262,7 +1222,8 @@ class BaseEventStore(metaclass=ABCMeta):
             # A row missing any required field is itself a corruption. Flag it
             # and move on: the remaining checks need those values, and running
             # them on a half-populated row would either crash or invent a
-            # spurious gap.
+            # spurious gap. Only absence is checked: every adapter types its
+            # columns, so a field that is present never has the wrong type.
             missing = [f for f in self._REQUIRED_FIELDS if msg.get(f) is None]
             if missing:
                 violations.append(

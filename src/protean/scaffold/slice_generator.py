@@ -170,26 +170,16 @@ class SliceGeneratorError(Exception):
 class IRField:
     """One field's IR entry, from ADR-0041's field vocabulary.
 
-    ``kind`` is ``"standard"``, ``"text"``, or ``"identifier"``; ``type`` is one of
-    the primitive type names in ``_BASE_ANNOTATION`` (``"String"``, ``"Integer"``,
-    ...). ``max_length`` is set only on ``String``/``Text``; ``identifier`` marks the
-    projection's identity key. ``required`` records the IR entry's required flag: the
-    grammar makes every authored field required, so callers set ``required=True`` on
-    them, and the projection's identity key is the one field that is not (it takes
-    the framework identity default), which is why the default is ``False``.
-
-    ``_validate`` pins the flag to those two shapes, so ``_declare`` does not have to
-    read it: an authored field renders as a plain annotation with no default, which is
-    already a required field, and the projection's key renders as
-    ``Identifier(identifier=True)``, which takes the identity default. What no
-    annotation form carries, bounded or not, is the non-empty floor Protean puts on a
-    required ``String`` (``min_length=1``, ``protean.fields.spec``): that floor comes
-    with the ``String(...)`` field factory, so both ``str`` and
-    ``Annotated[str, Field(max_length=N)]`` accept the empty string. That is the output
-    ``protean add`` has always written and this generator keeps it; changing it would
-    change every generated slice, and it would have to change both forms together to
-    stay consistent. ``Text`` fields use the field factory and do carry
-    ``required=True``.
+    Attributes:
+        kind: ``"standard"``, ``"text"``, or ``"identifier"``.
+        type: A primitive type name from ``_BASE_ANNOTATION`` (``"String"``,
+            ``"Integer"``, ...).
+        required: The IR entry's required flag. Every authored field sets it to
+            ``True``. The projection's identity key leaves it ``False``, because it
+            takes the framework identity default. :func:`generate_slice_plan` raises
+            on any other combination.
+        max_length: Set only on ``String`` and ``Text``.
+        identifier: Marks the projection's identity key.
     """
 
     kind: str
@@ -240,22 +230,17 @@ class SliceFragment:
     def from_mapping(cls, fragment: Mapping[str, Any]) -> SliceFragment:
         """Read the nested mapping :func:`~protean.scaffold.parse_model` returns.
 
-        ADR-0041's parser emits the fragment as plain data: each element is
-        ``{"name": ..., "fields": {<name>: <IR field entry>}}`` and the projector is
-        ``{"name": ..., "for": ..., "consumes": ...}``. This is the one place that
-        maps that data onto the generator's types, so the two halves of the contract
-        meet here and ``generate_slice_plan(SliceFragment.from_mapping(parse_model(
-        text)), ...)`` is the whole parser-to-code path.
+        Each element is ``{"name": ..., "fields": {<name>: <IR field entry>}}`` and
+        the projector is ``{"name": ..., "for": ..., "consumes": ...}``. The mapping
+        carries no slug, so the generator derives it from the aggregate name.
 
-        The mapping carries no slug: the parser normalizes the aggregate's authored
-        name into the fragment and derives the surfaced ``<slug>_id`` from that same
-        normalized name, which is what the generator derives too, so both agree
-        without one being passed.
+        This method checks the mapping's shape only. :func:`generate_slice_plan`
+        checks what the fragment says.
 
-        Raises :class:`SliceGeneratorError` when the mapping is not a fragment: a
-        missing or misshapen element, a field entry that is not an IR field entry, or
-        a key the fragment does not have. What the fragment *says* is
-        :func:`generate_slice_plan`'s to check; this reads the shape only.
+        Raises:
+            SliceGeneratorError: The mapping is not a fragment: an element is
+                missing or misshapen, a field entry is not an IR field entry, or
+                the mapping has a key a fragment does not have.
         """
         if not isinstance(fragment, Mapping):
             raise SliceGeneratorError(
@@ -434,33 +419,46 @@ def generate_slice_plan(
 ) -> ChangePlan:
     """Promote *fragment* to a create-only :class:`ChangePlan` for one slice.
 
-    *package* is the project's import-root package and *domain_var* the variable the
-    composition root binds the ``Domain`` to, the pair
-    :func:`~protean.scaffold.add_plan._resolve_project` reads from ``domain.py``. The
-    aggregate's snake_case ``<slug>`` (the slice directory and the id-field prefix) is
-    derived from the aggregate name the way ``protean add`` derives it.
+    The aggregate's snake_case ``<slug>`` names the slice directory and prefixes the
+    id field. Unless ``fragment.slug`` is set, it is derived from the aggregate name
+    the way ``protean add`` derives it.
 
-    Returns a plan of :class:`CreateFileOperation`\\ s at the canonical ADR-0030 paths
-    under ``src/<package>/<slug>/``. Touches no files.
+    Args:
+        fragment: The slice to generate.
+        package: The project's import-root package.
+        domain_var: The variable the composition root binds the ``Domain`` to.
 
-    Raises :class:`SliceGeneratorError` when a name the generated code carries would
-    not work: an element name, field name, derived slug, or project package that is
-    not a usable Python name; two of the slice's classes sharing a name, counting the
-    read side the generator derives; a name that collides, in a module that carries it, with a
-    symbol that module imports, or with a local the generated methods read back; or a
-    field name reserved by the framework or by the code the generator writes. It also
-    raises when a field has an unsupported type, when a field's required flag is not
-    the one ADR-0041 gives it (every authored field required, the projection's key
-    not), when the aggregate declares an ``id`` field in a shape that cannot reach the
-    event's surfaced reference, when the event does not declare the
-    surfaced ``<slug>_id`` identity field in a shape that can hold the aggregate's id,
-    when the write side does not line up (the command's fields are not the
-    aggregate's, the event carries a non-id field the aggregate does not, or a shared
-    field is declared in one shape on the aggregate and another on the command or the
-    event),
-    when an explicit projection is not keyed on that field or carries a field the
-    event does not, and when the read side is only half present or wired to a
-    participant the slice does not define.
+    Returns:
+        A plan of :class:`CreateFileOperation`\\ s at the ADR-0030 paths under
+        ``src/<package>/<slug>/``. Touches no files.
+
+    Raises:
+        SliceGeneratorError: When a name the generated code carries would not work:
+
+            - an element name, field name, slug, or package that is not a usable
+              Python name;
+            - two of the slice's classes sharing a name, counting the read side
+              the generator derives;
+            - a name that collides, in a module that carries it, with a symbol
+              that module imports or with a local the generated methods read back;
+            - a field name reserved by the framework or by the generated code.
+
+            And when the fragment does not line up:
+
+            - a field has an unsupported type;
+            - a field's required flag is not the one ADR-0041 gives it (every
+              authored field required, the projection's key not);
+            - the aggregate declares an ``id`` field in a shape that cannot reach
+              the event's surfaced reference;
+            - the event does not declare the surfaced ``<slug>_id`` field in a
+              shape that can hold the aggregate's id;
+            - the command's fields are not the aggregate's, the event carries a
+              non-id field the aggregate does not, or a shared field has one shape
+              on the aggregate and another on the command or the event;
+            - an explicit projection is not keyed on ``<slug>_id`` or carries a
+              field the event does not;
+            - the read side is only half present or wired to a participant the
+              slice does not define.
     """
     # The slug comes off the aggregate name before ``_validate`` runs, and
     # ``_slug_for`` reads that name character by character. A caller can build a
@@ -1364,6 +1362,10 @@ def _declare(ir_field: IRField) -> str:
         if ir_field.max_length is not None:
             return f"Text(required=True, max_length={ir_field.max_length})"
         return "Text(required=True)"
+    # Neither annotation form carries the non-empty floor (``min_length=1``) that
+    # the ``String(...)`` field factory puts on a required ``String``, so generated
+    # ``String`` fields accept ``""``. This matches what ``protean add`` has always
+    # written; changing it means changing the bounded and unbounded forms together.
     if ir_field.type == "String" and ir_field.max_length is not None:
         return f"Annotated[str, Field(max_length={ir_field.max_length})]"
     return _BASE_ANNOTATION[ir_field.type]

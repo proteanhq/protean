@@ -433,25 +433,25 @@ class RedisBroker(BaseBroker):
         timeout_ms: int = 5000,
         count: int = 1,
     ) -> list[tuple[str, dict[str, Any]]]:
-        """Read messages from Redis Stream using blocking mode with XREADGROUP.
+        """Read messages from ``stream`` for one consumer in a consumer group.
 
-        This method uses Redis's XREADGROUP with the BLOCK parameter, so a
-        positive timeout waits on the server instead of polling. It first checks
-        for pending messages (from previous failed attempts) before reading new
+        Creates the consumer group if it is missing. If this consumer has
+        messages that were delivered but not acknowledged, those are returned
+        without waiting. Otherwise the call waits up to ``timeout_ms`` for new
         messages.
 
         Args:
-            stream (str): The stream from which to read messages
-            consumer_group (str): The consumer group identifier
-            consumer_name (str): The unique consumer name within the group
-            timeout_ms (int): Timeout in milliseconds to wait for new messages.
-                ``0`` returns immediately, without waiting. Positive values are
-                capped at 1000 ms. A negative value is rejected and logged as a
-                read failure.
-            count (int): Maximum number of messages to read
+            stream: The stream to read from.
+            consumer_group: The consumer group.
+            consumer_name: The consumer's name within the group.
+            timeout_ms: Milliseconds to wait for new messages. ``0`` returns
+                at once. Positive values are capped at 1000 ms. A negative
+                value is logged as a read failure.
+            count: The most messages to return.
 
         Returns:
-            List[Tuple[str, dict]]: The list of (identifier, message) tuples
+            ``(identifier, message)`` tuples. The list is empty on timeout and
+            on any read error, which is logged.
         """
         self._ensure_group(consumer_group, stream)
 
@@ -564,26 +564,26 @@ class RedisBroker(BaseBroker):
         timeout_ms: int = 5000,
         count: int = 1,
     ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
-        """Read several Redis Streams in one blocking XREADGROUP call.
+        """Read several streams for one consumer in a consumer group.
 
-        Pending messages (delivered but not ACKed) on any of the streams are
-        read first, in one call, and returned if there are any. Otherwise one
-        call waits for a new message on all the streams at once, so a message
-        on any of them ends the wait.
+        Creates the consumer group on each stream if it is missing. If this
+        consumer has messages that were delivered but not acknowledged on any
+        of the streams, those are returned without waiting. Otherwise the call
+        waits up to ``timeout_ms`` for a new message on any of the streams.
 
         Args:
-            streams (Sequence[str]): The streams to read from, in priority order
-            consumer_group (str): The consumer group identifier
-            consumer_name (str): The unique consumer name within the group
-            timeout_ms (int): Timeout in milliseconds to wait for new messages.
-                ``0`` returns immediately, without waiting. Positive values are
-                capped at 1000 ms, as in ``_read_blocking``. A negative value
-                is rejected and logged as a read failure.
-            count (int): Maximum number of messages to read from each stream
+            streams: The streams to read from, in priority order.
+            consumer_group: The consumer group.
+            consumer_name: The consumer's name within the group.
+            timeout_ms: Milliseconds to wait for new messages. ``0`` returns
+                at once. Positive values are capped at 1000 ms. A negative
+                value is logged as a read failure.
+            count: The most messages to return from each stream.
 
         Returns:
-            dict[str, list[tuple[str, dict]]]: The (identifier, message) tuples
-            read from each stream, keyed by stream name in the order given
+            ``(identifier, message)`` tuples for each stream, keyed by stream
+            name in the order given. Every stream has a key. The lists are
+            empty on timeout and on any read error, which is logged.
         """
         for stream in streams:
             self._ensure_group(consumer_group, stream)
@@ -883,37 +883,26 @@ class RedisBroker(BaseBroker):
     # ------------------------------------------------------------------
 
     def trim(self, stream: str, maxlen: int) -> int:
-        """Trim *stream* without dropping anything a consumer group still needs.
+        """Trim ``stream``, keeping what its consumer groups still need.
 
-        The trim strategy depends on how many consumer groups read the stream:
+        - **More than one group:** removes only entries older than the slowest
+          group's ``last-delivered-id``, so no group loses an entry it has not
+          read. ``maxlen`` is ignored.
+        - **Zero or one group:** caps the stream at about ``maxlen`` entries.
+          If the one group is more than ``maxlen`` entries behind, its oldest
+          unread entries are removed, so set ``maxlen`` above the largest
+          expected backlog. A ``maxlen`` of zero or less trims nothing.
 
-        - **More than one group:** a plain MAXLEN trim would delete the oldest
-          entries regardless of where each group has read, silently losing
-          events a slow group has not yet consumed. Instead, trim by MINID at
-          the *minimum* ``last-delivered-id`` across all groups. Redis's MINID
-          never removes an entry with an id ``>=`` that floor, so the slowest
-          group keeps everything it has not yet read. ``maxlen`` is ignored in
-          this case — consumer progress, not a fixed size, bounds the stream.
-        - **Zero or one group:** cap the stream at *maxlen* with MAXLEN. This is
-          a fixed-size cap, not a progress-safe one: if the single group falls
-          more than ``maxlen`` behind (initial catch-up on a pre-existing
-          stream, an outage, or a slow handler under a fast producer), MAXLEN
-          drops the oldest *unread* entries. With one reader ``maxlen`` is the
-          operator's explicit size ceiling; size it above the largest expected
-          backlog. A non-positive ``maxlen`` is refused (returns ``0``) so it can
-          never empty the stream.
-
-        Both forms use ``approximate=True`` (Redis's ``~``): trimming happens on
-        whole macro-nodes, so the stream may settle slightly above the target,
-        but the work is far cheaper. A missing stream or any Redis error returns
-        ``0`` so a trim failure never stalls the poll loop.
+        Trimming is approximate (Redis's ``~``), so the stream can stay a little
+        above the target.
 
         Args:
             stream: The stream to trim.
-            maxlen: Target maximum entries (used only in the 0/1-group case).
+            maxlen: Target maximum entries, used only with zero or one group.
 
         Returns:
-            Number of messages trimmed (0 if nothing was removed or on error).
+            The number of entries removed. ``0`` when nothing was removed, when
+            the stream does not exist, and on a Redis error.
         """
         try:
             # redis-stubs leaves xinfo_groups untyped (stub gap, not our bug).

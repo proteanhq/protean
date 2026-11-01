@@ -250,31 +250,23 @@ def recover(
 ) -> None:
     """Recover a domain after an event-store restore.
 
-    With ``--verify-checkpoints`` this reports every event-store subscription
-    whose checkpoint points past the head of the stream it consumes, which a
-    restore from an inconsistent backup can leave behind. It also reports any
-    subscription whose recovery pass tracks a failed position whose message the
-    restored store no longer holds (which the pass would re-read and retry
-    forever), and any whose recovery streams could not be read. It exits ``1``
-    when a checkpoint is beyond head or a recovery-tracking entry is stale, ``0``
-    when all are consistent. Only event-store subscriptions track checkpoints, so
-    broker and stream subscriptions are not examined.
+    With ``--verify-checkpoints``, report each event-store subscription whose
+    checkpoint points past the head of the stream it consumes, and each
+    recovery-tracking entry whose message the restored store no longer holds. A
+    subscription whose recovery streams cannot be read is reported as
+    ``unknown``. Broker and stream subscriptions are not examined. The run exits
+    ``1`` when a checkpoint is beyond head or a recovery-tracking entry is stale,
+    and ``0`` otherwise. Without ``--verify-checkpoints`` the command prints a
+    hint and exits ``0``.
 
-    Add ``--reset-beyond-head`` to snap each beyond-head checkpoint back to the
+    Add ``--reset-beyond-head`` to move each beyond-head checkpoint back to the
     stream head and clear each stale recovery-tracking entry. The reset run
-    reports what it changed and exits ``0`` when every write succeeds (``2`` if a
-    write fails); a later ``--verify-checkpoints`` run then finds those
-    subscriptions consistent, apart from any still reported ``unknown`` because
-    their tracking could not be read. ``--reset-beyond-head`` needs
-    ``--verify-checkpoints`` (that pass finds what to reset), and without it no
-    run modifies any checkpoint or recovery-tracking stream.
+    reports what it changed and exits ``0``, or ``2`` if a write fails.
+    ``--reset-beyond-head`` requires ``--verify-checkpoints``. Without it, no run
+    changes any checkpoint or recovery-tracking stream.
 
-    Under ``--json`` the result is the shared CLI result envelope, with the
-    per-subscription list under ``data.subscriptions`` and counts under
-    ``data.summary``. A recovery-tracking finding adds a ``data.recovery`` list
-    and ``data.summary.recovery_*`` counts. With ``--reset-beyond-head`` the
-    envelope also carries ``data.reset`` / ``data.recovery_reset`` lists of what
-    changed and matching ``data.summary`` counts.
+    ``--json`` prints the shared CLI result envelope. The ``protean recover``
+    reference page lists its fields.
     """
     if reset_beyond_head and not verify_checkpoints:
         # The reset acts on what the verification pass finds, so it cannot run on

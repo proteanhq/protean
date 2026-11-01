@@ -267,15 +267,12 @@ def write_all_schemas(
     ir: dict[str, Any],
     output_dir: str | Path,
 ) -> list[Path]:
-    """Write every supported format into one ``schemas/`` tree (the on-ramp).
+    """Write every supported format into one ``schemas/`` tree.
 
-    Clears ``schemas/`` once, then emits JSON, Avro, and Protobuf side by side.
-    The three formats use distinct extensions (``.json`` / ``.avsc`` / ``.proto``)
-    so they coexist in the same per-cluster directories — exactly the versioned
-    tree an external schema registry would publish from.
-
-    Unlike calling :func:`write_schemas` once per format (which clears the tree
-    on every call and would clobber the previous format), this clears only once.
+    Clears ``schemas/`` once, then writes JSON (``.json``), Avro (``.avsc``)
+    and Protobuf (``.proto``) files side by side in the same per-cluster
+    directories. Use this to get all formats: :func:`write_schemas` clears the
+    tree on every call, so calling it once per format keeps only the last one.
 
     Args:
         ir: The full IR dict (from ``IRBuilder.build()``).

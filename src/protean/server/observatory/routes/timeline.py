@@ -598,15 +598,11 @@ def build_correlation_response(
 ) -> dict[str, Any] | None:
     """Build the correlation chain response for a given correlation ID.
 
-    Searches across all domains for the correlation group, builds the
-    causation tree, and returns the serialized result.  The correlation
-    group is loaded once and reused for both the flat event list and the
-    causation tree to avoid redundant ``$all`` scans.
-
-    When Redis trace data is available, nodes are enriched with handler
-    attribution, processing duration, and inter-message latency.  The
-    response includes ``total_duration_ms`` — the sum of all handler
-    durations in the tree.
+    Uses the first domain's event store that holds messages with this
+    correlation ID. ``events`` lists them in global position order, and
+    ``tree`` is their causation tree. When trace data is available, each
+    tree node carries its handler, processing duration and latency, and
+    ``total_duration_ms`` is the sum of the handler durations in the tree.
 
     Returns:
         Dict with correlation_id, events, tree, total_duration_ms, and
@@ -847,14 +843,13 @@ def search_traces(
 ) -> list[dict[str, Any]]:
     """Search correlation chains by criteria.
 
-    At least one search parameter must be provided.  A chain matches if
-    **any** message in its group matches the filter.
+    A chain matches when any one of its messages matches any one of the
+    given filters.
 
     Args:
         aggregate_id: Match chains containing a message for this aggregate ID.
         event_type: Match chains containing a message of this type.
-        command_type: Alias for event_type — match chains containing a
-            command of this type.
+        command_type: Match chains containing a command of this type.
         stream_category: Match chains containing a message in this stream
             category.
         limit: Maximum number of results to return.

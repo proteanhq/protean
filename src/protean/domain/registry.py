@@ -29,21 +29,15 @@ class _ElementClass(Protocol):
 
 # Define property names for each element type
 def properties() -> dict[str, str]:
-    """Properties are named after of each element type and pluralized to
-    indicate that all elements of the type will be returned.
+    """Map each registry property name to its element type.
 
-    E.g.
-    AGGREGATE: registry.aggregates
-    VALUE_OBJECT: registry.value_objects
+    Each property name is the element type in snake case, pluralized. The
+    registry exposes all elements of that type under the name, for example
+    ``registry.aggregates`` and ``registry.value_objects``.
 
     Returns:
-        Dict[str, str]: Dict[pluralized_name, element_type], a dictionary of element type names and their values.
-        E.g.
-            {
-                'aggregates': 'AGGREGATE',
-                'entities': 'ENTITY',
-                ...
-            }
+        A dict of property name to element type value, such as
+        ``{"aggregates": "AGGREGATE", "value_objects": "VALUE_OBJECT", ...}``.
     """
     props = {}
     for element_type in DomainObjects:

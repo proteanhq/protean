@@ -45,10 +45,7 @@ class LeaseLostError(ProteanException):
 
 @dataclass
 class DLQEntry:
-    """Normalized representation of a dead letter queue message.
-
-    Provides a broker-agnostic view of a DLQ entry for use by CLI commands
-    and Observatory API endpoints.
+    """A broker-agnostic view of one dead letter queue message.
 
     Attributes:
         dlq_id: Identifier within the DLQ (Redis stream ID or UUID).
@@ -650,22 +647,22 @@ class BaseBroker(metaclass=ABCMeta):
         """Read messages from several streams in one call.
 
         The result has one key per requested stream, in the order given, with
-        an empty list for a stream that returned nothing. The default
-        implementation waits only on the last stream. Brokers that can wait on
-        all of them at once, such as Redis, override ``_read_blocking_streams``. An empty ``streams``
-        returns an empty dict without reading.
+        an empty list for a stream that returned nothing. An empty ``streams``
+        returns an empty dict without reading. A broker without
+        ``BLOCKING_READ`` reads each stream once without waiting. A broker
+        changes how the streams are waited on by overriding
+        ``_read_blocking_streams``.
 
         Args:
-            streams (Sequence[str]): The streams to read from, in priority order
-            consumer_group (str): The consumer group identifier
-            consumer_name (str): The unique consumer name within the group
-            timeout_ms (int): Longest time to wait for messages, in milliseconds
-                (0 = return immediately, without waiting)
-            count (int): Maximum number of messages to read from each stream
+            streams: The streams to read from, in priority order.
+            consumer_name: The consumer's name, unique within the group.
+            timeout_ms: Longest time to wait for messages, in milliseconds.
+                ``0`` returns immediately.
+            count: Maximum number of messages to read from each stream.
 
         Returns:
-            dict[str, list[tuple[str, dict]]]: The (identifier, message) tuples
-            read from each stream, keyed by stream name
+            The ``(identifier, message)`` tuples read from each stream, keyed
+            by stream name.
         """
         if not streams:
             return {}
@@ -1019,21 +1016,25 @@ class BaseBroker(metaclass=ABCMeta):
         min_idle_ms: int,
         backfill_suffix: str | None = None,
     ) -> bool:
-        """Prune a cold partition from the index, atomically and race-safely.
+        """Remove a drained, idle partition from the index and delete its streams.
 
-        Only reaps a partition when **no** consumer group on any of its streams
-        has pending entries (each stream is shared by every handler on the
-        category) and all of them have been idle for at least *min_idle_ms*
-        (ADR-0028 decision 7). When priority lanes are enabled, pass
-        *backfill_suffix* so the key's backfill lane
-        (``{category}:{key}:{backfill_suffix}``) is checked and deleted alongside
-        the main stream; otherwise a lane with unconsumed work would be
-        stranded. Removes the index entry and the streams; the generation counter
-        is left in place so a re-created partition keeps a monotonic fence.
-        Returns ``True`` when the partition was reaped. The publish/reap race is
-        tolerated: a publisher that re-adds the key right after a reap is
-        re-discovered on the next cycle. Meant to be called by the partition's
-        current owner once it has drained the partition.
+        The check and the delete happen in one atomic step. The partition is
+        reaped only when every consumer group on each of its streams has read
+        and acknowledged every entry, and the newest entry on each stream is at
+        least ``min_idle_ms`` old. An empty stream is always reaped. When priority lanes are enabled, pass
+        ``backfill_suffix``: the backfill lane
+        ``{category}:{key}:{backfill_suffix}`` is then checked and deleted with
+        the main stream. The partition's generation counter is kept, so a
+        partition created again under the same key keeps a rising generation.
+        Call it from the partition's current owner once it has drained the
+        partition. See ADR-0028 decision 7.
+
+        Returns:
+            ``True`` when the partition was reaped.
+
+        Raises:
+            NotSupportedError: The broker does not advertise
+                ``STREAM_PARTITIONING``.
         """
         self._require_partitioning("reap_partition")
         return self._reap_partition(category, key, min_idle_ms, backfill_suffix)

@@ -241,26 +241,19 @@ def _consumers_by_type(ir: dict[str, Any]) -> dict[str, set[str]]:
 
 
 def build_event_catalog(ir: dict[str, Any]) -> list[dict[str, Any]]:
-    """Build a flat, evolution-focused catalog of the IR's cluster events.
+    """List every event in the IR's clusters with its evolution details.
 
-    Covers every event that resolves to an aggregate cluster — i.e. every
-    concrete domain event. Abstract events (no owning aggregate) and events on
-    internal aggregates are not projected into clusters and so do not appear.
-
-    Each entry carries the event's type string, version, deprecation and
-    supersession status, its upcaster chain, and the consumers (event handlers
-    / projectors / process managers) that subscribe to it. The entries are
-    sorted by ``(aggregate FQN, type string)`` for deterministic output.
-
-    The upcaster chain is keyed by the event's *bare name* (matching
-    ``ir["upcasters"]``), while consumers are matched by the *type string*
-    (``__type__``) — the two IR sections use different keys.
+    Each entry carries the event's name, FQN, aggregate, type string, version,
+    published and fact-event flags, deprecation and supersession status,
+    fields, its upcaster chain, and the event handlers, projectors and process
+    managers that consume it. The upcaster chain is matched by the event's
+    bare name, and consumers by its exact ``__type__`` string.
 
     Args:
-        ir: The full IR dict (from ``IRBuilder.build()``).
+        ir: The full IR dict, as built by ``IRBuilder.build()``.
 
     Returns:
-        A list of per-event dicts, one per event across all clusters.
+        One dict per event, sorted by aggregate FQN, then type string.
     """
     consumers_by_type = _consumers_by_type(ir)
     upcasters = ir.get("upcasters", {})

@@ -52,9 +52,9 @@ logger = logging.getLogger(__name__)
 class UnitOfWork:
     """Transaction boundary for persistence operations.
 
-    Groups one or more repository operations into an atomic unit. Use as a
-    context manager to ensure that all changes within the block are committed
-    together or rolled back on error::
+    One UnitOfWork is one database transaction (see ADR-0027). Use it as a
+    context manager. The changes made inside the block commit together when the
+    block ends, and roll back together when it raises::
 
         with UnitOfWork():
             repo = domain.repository_for(Order)
@@ -66,24 +66,18 @@ class UnitOfWork:
     UnitOfWork automatically, so explicit usage is typically only needed in
     application services or scripts.
 
-    **Nesting joins the outermost transaction.** A UnitOfWork started while
-    another is already active on the same context does not open its own
-    transaction. There are no savepoints, so it joins the outermost one: every
-    write, read, and event routes to the outermost UnitOfWork, and only that one
-    commits or rolls back. A nested rollback rolls back the whole transaction.
-    This is why an application service called from within a command handler's
-    UnitOfWork composes into a single transaction rather than committing
-    independently. Independent inner transactions (a savepoint, or a
-    sub-transaction that commits on its own) are not supported, by design: the
-    aggregate is the consistency boundary and one UnitOfWork maps to one use
-    case. For cross-aggregate coordination use domain events; for a durable
-    side-effect that must survive a rollback use the outbox.
+    A UnitOfWork started while another is active on the same context joins the
+    outermost one. Every write, read and event goes to the outermost
+    UnitOfWork, and only that one commits or rolls back. A rollback in a nested
+    UnitOfWork rolls back the whole transaction. There are no savepoints, and
+    an inner UnitOfWork cannot commit on its own. To coordinate several
+    aggregates, use domain events. Events reach the outbox in the same commit,
+    so they are delivered only when the transaction commits (see ADR-0015).
 
-    The UnitOfWork maintains an identity map to track loaded aggregates and
-    collects the domain events raised on the aggregates saved through
-    ``add()``. On commit, those events are persisted to the outbox and
-    dispatched to brokers/event store. Events raised on an aggregate that
-    was only read are not persisted.
+    Within one transaction, a second read of an aggregate returns the instance
+    already loaded. On commit, the events raised on aggregates saved through
+    ``add()`` are written to the outbox and dispatched to brokers and the event
+    store. Events raised on an aggregate that was only read are not persisted.
     """
 
     def __init__(self) -> None:
@@ -234,21 +228,15 @@ class UnitOfWork:
     def start(self) -> None:
         """Begin the transaction and push this UnitOfWork onto the context stack.
 
-        **Opens no session, deliberately.** The session, and on SQLAlchemy the
-        real ``BEGIN``, appears at the first repository access through
-        :meth:`_initialize_session`. ADR-0031 turns that into a contract: a
-        handler method reaching no repository runs no transaction and holds no
-        pooled connection, which is what lets a handler talk to an external
-        system by putting the call in its own method. Opening a session here
-        would silently pin a connection for the length of every such call, so
-        this method must stay free of any eager connection or session.
+        Opens no session and no database connection. The session, and on
+        SQLAlchemy the ``BEGIN``, starts at the first repository access. A
+        handler method that reaches no repository runs no transaction and holds
+        no pooled connection (see ADR-0031).
 
-        A UnitOfWork started while another is already active on this context does
-        not open its own transaction. There are no savepoints, so it joins the
-        active (outermost) UnitOfWork: it does not push onto the stack, so
-        repository operations keep resolving ``current_uow`` to the outermost UoW
-        and route every write, session, and event there. Its own commit and
-        rollback then defer to the outermost UoW (see ``commit``/``rollback``).
+        When another UnitOfWork is already active on this context, this one
+        joins it and is not pushed onto the stack. ``current_uow`` stays the
+        outermost UnitOfWork, and this one's ``commit`` and ``rollback`` defer
+        to it.
         """
         # Recompute nesting on every start: a UnitOfWork instance can be reused, so
         # a stale ``_nested``/``_rollback_only`` from a prior use must not leak into
@@ -282,6 +270,8 @@ class UnitOfWork:
                         provider_name,
                     )
 
+        # Open no session or connection here. ADR-0031 relies on a handler
+        # method that reaches no repository holding no pooled connection.
         self._in_progress = True
         _uow_stack.push(self)
 
@@ -769,13 +759,10 @@ class UnitOfWork:
     def _extract_partition_key(
         event: Any, partition_keys: dict[str, str], backfill_suffix: str
     ) -> str | None:
-        """Resolve and validate the partition key for *event*, or ``None``.
+        """Return the validated partition key for ``event``, or ``None``.
 
-        Non-partitioned categories (not in *partition_keys*) return ``None`` and
-        are untouched. For a partitioned category the key field is read off the
-        event payload, coerced to a string, and validated (ADR-0028 decision 3).
-        An invalid value raises `ValidationError`, failing the caller's
-        operation in its own transaction so no outbox row is ever created for it.
+        For a partitioned category, reads the key field off the event, converts
+        it to a string and validates it (see ADR-0028).
 
         Args:
             event: The domain event being written to the outbox.
@@ -783,11 +770,13 @@ class UnitOfWork:
             backfill_suffix: The configured reserved backfill suffix.
 
         Returns:
-            The validated partition key, or ``None`` for a non-partitioned
-            category.
+            The validated partition key, or ``None`` when the event's category
+            is not in ``partition_keys``.
 
         Raises:
-            ValidationError: If the extracted key value is unsafe to route.
+            ValidationError: If the key value is unsafe to route. The error
+                fails the caller's transaction, so no outbox row is written
+                for the event.
         """
         from protean.utils.outbox import invalid_partition_key_reason  # noqa: PLC0415
 

@@ -215,35 +215,31 @@ class _Closeable(Protocol):
 
 
 class Domain:
-    """The domain object is a one-stop gateway to:
+    """The registry for a domain's elements and the access point to its adapters.
 
-    * Registering Domain Objects/Concepts
-    * Querying/Retrieving Domain Artifacts like Entities, Services, etc.
-    * Retrieve injected infrastructure adapters
-
-    Usually you create a ``Domain`` instance in your main module or
-    in the ``__init__.py`` file of your package like this::
+    Create one ``Domain`` in your main module or in your package's
+    ``__init__.py``::
 
         from protean import Domain
         domain = Domain()
 
-    The Domain will automatically detect the root path of the calling module.
-    You can also specify the root path explicitly::
+    You can also set the root path explicitly::
 
         domain = Domain(root_path="/path/to/domain")
 
-    The root path resolution follows this priority:
+    The root path is the first of these that is set:
 
-    1. Explicit `root_path` parameter if provided
-    2. `DOMAIN_ROOT_PATH` environment variable if set
-    3. Auto-detection of caller's file location
-    4. Current working directory as last resort
+    1. The ``root_path`` argument.
+    2. The ``DOMAIN_ROOT_PATH`` environment variable.
+    3. The folder of the file that created the domain.
+    4. The current working directory.
 
-    :param root_path: the path to the folder containing the domain file
-                      (optional, will auto-detect if not provided)
-    :param name: the name of the domain (optional, will use the module name if not provided)
-    :param config: optional configuration dictionary
-    :param identity_function: optional function to generate identities for domain objects
+    Args:
+        root_path: The folder that holds the domain file.
+        name: The domain's name. Defaults to the calling module's name.
+        config: Configuration values that override the defaults.
+        identity_function: A function that generates identities for domain
+            objects.
     """
 
     from protean.utils import IdentityStrategy, IdentityType  # noqa: PLC0415
@@ -659,26 +655,18 @@ class Domain:
             self._validate_domain()
 
     def init(self, traverse: bool = True) -> None:
-        """Parse the domain folder, and attach elements dynamically to the domain.
+        """Load the domain's elements, validate them, and initialize its adapters.
 
-        Protean parses all files in the domain file's folder, as well as under it,
-        to load elements. So, all domain files are to be nested under the file contain
-        the domain definition.
+        Before loading, ``init`` configures logging with ``configure_logging()``.
+        It skips this when the root logger already has handlers or when the
+        ``PROTEAN_NO_AUTO_LOGGING`` environment variable is ``1`` or ``true``
+        in any case. A failure in this step does not stop ``init``.
 
-        One can use the `traverse` flag to control this functionality, `True` by default.
-
-        When enabled, Protean is responsible for loading domain elements and ensuring
-        all functionality is activated.
-
-        The developer is responsible for activating functionality manually when
-        autoloading is disabled. Element activation can be done by importing them
-        in central areas of domain execution, like Application Services.
-
-        For example, asynchronous aspects of a domain like its Subscribers and
-        Event Handlers should be imported in their relevant Application Services
-        and Aggregates.
-
-        This method bubbles up circular import issues, if present, in the domain code.
+        Args:
+            traverse: Import every module in the domain file's folder and its
+                subfolders, so their elements register. With ``False``, an
+                element registers only when your code imports its module, so
+                import subscribers and event handlers where the domain runs.
         """
         self._auto_configure_logging()
 
@@ -739,44 +727,46 @@ class Domain:
             )
 
     def check(self, traverse: bool = True) -> dict[str, Any]:
-        """Validate the domain and return a structured diagnostic report.
+        """Validate the domain and return a diagnostic report.
 
-        Unlike [`init`][protean.domain.Domain.init], this method does **not** initialize adapters.
-        It only resolves references, wires handlers, and runs every validation
-        check (collecting all issues instead of failing on the first one).
+        ``check`` loads and validates the domain without initializing adapters.
+        It collects every validation error instead of stopping at the first.
+        When there are no errors, it also reports the IR diagnostics, such as
+        ``UNHANDLED_EVENT``.
 
-        If no fatal errors are found, the IR is also built so that IR-level
-        diagnostics (e.g. ``UNHANDLED_EVENT``) can be included.
+        When ``traverse`` is true but ``root_path`` names neither a directory
+        nor a file (``Domain(__name__)`` passes a module name), the domain is
+        checked without traversal and a warning is logged.
 
-        Returns a dict with the following structure::
+        Args:
+            traverse: Import every module under the domain folder, as
+                [`init`][protean.domain.Domain.init] does.
 
-            {
-                "domain": "<domain name>",
-                "status": "pass" | "warn" | "info" | "fail",
-                "errors": [...],       # from validate_all(), or one to_ir entry
-                "diagnostics": [...],  # from IR builder (if no errors)
-                "counts": {
-                    "errors": int,
-                    "warnings": int,
-                    "infos": int,
-                },
-            }
+        Returns:
+            A dict of this shape::
 
-        Diagnostics have a ``level`` field (``"warning"`` or ``"info"``)
-        used to compute the ``counts`` and determine the overall ``status``.
+                {
+                    "domain": "<domain name>",
+                    "status": "pass" | "warn" | "info" | "fail",
+                    "errors": [...],
+                    "diagnostics": [...],  # empty when there are errors
+                    "counts": {
+                        "errors": int,
+                        "warnings": int,
+                        "infos": int,
+                    },
+                }
+
+            Each diagnostic has a ``level`` of ``"warning"`` or ``"info"``,
+            which sets the counts and the overall ``status``. Any error makes
+            the status ``"fail"``. A failure to build the IR becomes one entry
+            in ``errors``, with ``element`` set to ``"to_ir"`` and ``code`` set
+            to the exception class name.
 
         Raises:
             ConfigurationError: If the ``[lint]`` table holds a value the IR
                 builder rejects, such as ``rules = 5``. This holds even when
                 validation errors skip the IR build.
-
-        Any other IR build failure is reported as one entry in ``errors``
-        (``element`` is ``"to_ir"``, ``code`` is the exception class name), so
-        the status is ``"fail"``.
-
-        When ``traverse`` is true but ``root_path`` names neither a directory
-        nor a file (``Domain(__name__)`` passes a module name), the domain is
-        checked without traversal and a warning is logged.
         """
         if traverse and not self._root_dir().is_dir():
             # ``Domain(__name__)`` passes a module name as ``root_path``, which
@@ -1013,27 +1003,19 @@ class Domain:
         return DomainContext(self, **kwargs)
 
     def teardown_domain_context(self, f: Callable[..., Any]) -> Callable[..., Any]:
-        """Registers a function to be called when the domain context
-        ends.
+        """Register a function to call when a domain context ends.
 
-        Example::
+        The function runs when a ``with domain.domain_context():`` block exits,
+        or when ``ctx.pop()`` is called, just before the context leaves the
+        stack. It receives the unhandled exception that ended the context, or
+        ``None``.
 
-            ctx = domain.domain_context()
-            ctx.push()
-            ...
-            ctx.pop()
+        Returns:
+            The function unchanged, so this works as a decorator::
 
-        When ``ctx.pop()`` is executed in the above example, the teardown
-        functions are called just before the domain context moves from the
-        stack of active contexts.  This becomes relevant if you are using
-        such constructs in tests.
-
-        When a teardown function was called because of an unhandled exception
-        it will be passed an error object. If an ``errorhandler`` is
-        registered, it will handle the exception and the teardown will not
-        receive it.
-
-        The return values of teardown functions are ignored.
+                @domain.teardown_domain_context
+                def close_connections(exc):
+                    ...
         """
         self.teardown_domain_context_functions.append(f)
         return f
@@ -2201,27 +2183,23 @@ class Domain:
         return decorator
 
     def register_aggregate_enricher(self, fn: Callable[..., Any]) -> None:
-        """Register a callable that stamps cross-cutting fields on an aggregate
-        just before it is persisted.
+        """Register a callable that stamps fields on an aggregate just before
+        it is saved.
 
-        Unlike event/command enrichers (which return a ``dict`` merged into
-        ``metadata.extensions``), an aggregate enricher receives the aggregate
-        and **mutates it in place** (its return value is ignored).  It runs on
-        the ``Repository.add`` -> ``DAO.save`` path, on both the create and the
-        update, inside an active domain context, so it can read the acting user
-        from ``g`` and stamp technical fields such as ``updated_at`` /
-        ``updated_by`` / ``created_by``.  It also runs for each row that
-        ``query.update()`` saves.  It does not fire for event-sourced
-        aggregates (persisted through the event store) or for a save that
-        passes ``apply_hooks=False``.
+        The enricher receives the aggregate and changes it in place. Its return
+        value is ignored. It runs inside the domain context on every create and
+        update through a repository, and for each row that ``query.update()``
+        saves, so it can read the acting user from ``g``. It does not run for
+        event-sourced aggregates or for a save that passes
+        ``apply_hooks=False``.
 
-        Enrichers execute in registration order (FIFO).  If an enricher raises,
-        the exception propagates and the save is aborted; on an update the
-        version advance is rolled back.
+        Enrichers run in registration order. If one raises, the exception
+        propagates and the save is aborted. On an update, the version is
+        rolled back.
 
-        This hook is for cross-cutting **lifecycle/audit** metadata only.  It is
-        not a general mutation escape hatch: do not use it to enforce invariants
-        or raise events. That belongs in the aggregate's own methods.
+        Use it only for lifecycle and audit fields such as ``updated_by`` and
+        ``created_by``. Enforce invariants and raise events in the aggregate's
+        own methods.
 
         Args:
             fn: A callable with signature ``(aggregate) -> None``.
@@ -2290,31 +2268,42 @@ class Domain:
         deadline: datetime | None = None,
         timeout: timedelta | None = None,
     ) -> Any | None:
-        """Process command and return results based on specified preference.
+        """Store a command in the event store and handle it now or later.
 
-        By default, Protean does not return values after processing commands. This behavior
-        can be overridden either by setting command_processing in config to "sync" or by specifying
-        ``asynchronous=False`` when calling the domain's ``handle`` method.
+        The command is handled synchronously when ``asynchronous`` is ``False``
+        or when the ``command_processing`` config is ``"sync"``. Otherwise the
+        engine handles it later.
 
         Args:
-            command: Command to process (instance of a ``@domain.command``-decorated class)
-            asynchronous (Boolean, optional): Specifies if the command should be processed asynchronously.
-                Defaults to True.
-            idempotency_key (str, optional): Caller-provided key for command deduplication.
-                When provided, enables submission-level dedup via the idempotency store.
-            raise_on_duplicate (bool): If ``True``, raises ``DuplicateCommandError``
-                when a duplicate idempotency key is detected. If ``False`` (default),
-                silently returns the cached result.
-            priority (int, optional): Processing priority for events produced by this command.
-            correlation_id (str, optional): Correlation ID for distributed tracing.
-            deadline (datetime, optional): Absolute time after which the command must not
-                be executed. Stored in metadata and propagated to downstream commands.
-                Mutually exclusive with ``timeout``.
-            timeout (timedelta, optional): Relative deadline (``now + timeout``), converted
-                to an absolute deadline at submission. Mutually exclusive with ``deadline``.
+            command: Instance of a ``@domain.command``-decorated class.
+            asynchronous: Whether to handle the command later. Defaults to the
+                ``command_processing`` config.
+            idempotency_key: Key for deduplicating submissions. When the
+                idempotency store already holds a success for this key, the
+                cached result is returned and the command is not stored again.
+            raise_on_duplicate: Raise ``DuplicateCommandError`` on a duplicate
+                key. When ``False``, the cached result is returned.
+            priority: Processing priority for the events this command produces.
+                Defaults to the current ``processing_priority()`` context.
+            correlation_id: Correlation ID carried by every command and event
+                in the causal chain. A new one is generated when omitted.
+            deadline: Absolute time after which the command must not run.
+                Passed on to downstream commands in the same causal chain.
+            timeout: Relative deadline, converted to ``now + timeout`` on
+                submission.
 
         Returns:
-            Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
+            The command handler's return value when the command is handled
+            synchronously. Otherwise, the command's position in the event
+            store.
+
+        Raises:
+            IncorrectUsageError: If the command is not registered with the
+                domain, or if both ``deadline`` and ``timeout`` are given.
+            DuplicateCommandError: If ``raise_on_duplicate`` is ``True`` and the
+                idempotency key was already processed.
+            CommandExpiredError: If the deadline has passed when a synchronous
+                handler is about to run.
         """
         return self._command_processor.process(
             command,
@@ -2502,16 +2491,11 @@ class Domain:
     def connection_for(self, projection_cls: type) -> Any:
         """Return the raw database or cache connection for a projection.
 
-        This is the lowest-level read access for projections -- an escape
-        hatch for executing technology-specific queries directly against the
-        backing store.
-
-        For **database-backed** projections the method returns the database
-        provider's connection (e.g. a SQLAlchemy session, an Elasticsearch
-        client, or a ``MemorySession``).
-
-        For **cache-backed** projections the method returns the cache
-        client (e.g. a ``redis.Redis`` instance or a plain ``dict``).
+        Use it to run queries specific to the backing store. For a
+        database-backed projection it returns the provider's connection, such
+        as a SQLAlchemy session, an Elasticsearch client, or a
+        ``MemorySession``. For a cache-backed projection it returns the cache
+        client, such as a ``redis.Redis`` instance or a plain ``dict``.
 
         Args:
             projection_cls: A registered projection class.
@@ -2650,11 +2634,10 @@ class Domain:
     ##############################
 
     def correlation_trace(self, correlation_id: str) -> list["CausationNode"]:
-        """Return an ordered list of messages in a correlation chain.
+        """Return the messages in a correlation chain, in causal order.
 
-        Builds a causation tree from the event store and flattens it into
-        a depth-first pre-order list, preserving the causal sequence:
-        each parent appears before its effects.
+        The list is in depth-first order: each message appears before the
+        messages it caused.
 
         Must be called after ``domain.init()`` and within
         ``domain.domain_context()``.
@@ -2788,26 +2771,20 @@ class Domain:
     # ------------------------------------------------------------------
 
     def configure_logging(self, **kwargs: Any) -> None:
-        """Set up structured logging with automatic correlation context injection.
+        """Set up structured logging that adds correlation context to every record.
 
-        Calls `protean.utils.logging.configure_logging` with the given
-        keyword arguments **and** inserts a
-        `ProteanCorrelationFilter` on the
-        root logger and its handlers, and a
-        `protean_correlation_processor`
-        into the structlog pipeline so that every log record automatically
-        includes ``correlation_id`` and ``causation_id`` from the active
-        domain context.
+        Calls `protean.utils.logging.configure_logging`. Every log record, from
+        the standard library or structlog, then carries ``correlation_id`` and
+        ``causation_id`` from the active domain context.
 
-        Configuration precedence (highest to lowest):
+        Each setting comes from the first of these that sets it:
 
-        1. Explicit keyword arguments to this method
-        2. ``PROTEAN_LOG_LEVEL`` env var (for level only)
-        3. ``domain.toml [logging]`` section (via ``self.config["logging"]``)
-        4. Environment-based defaults (``_ENV_LEVEL_MAP``)
+        1. Keyword arguments to this method.
+        2. The ``PROTEAN_LOG_LEVEL`` environment variable, for the level only.
+        3. The ``[logging]`` section of ``domain.toml``.
+        4. Defaults based on the environment.
 
-        The ``per_logger`` map from ``[logging.per_logger]`` is applied after
-        the main configuration by setting individual logger levels.
+        ``[logging.per_logger]`` sets the level of individual loggers.
 
         Args:
             **kwargs: Forwarded to `protean.utils.logging.configure_logging`

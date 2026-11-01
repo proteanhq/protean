@@ -369,6 +369,14 @@ class TestSubscriptionConfigFromDict:
         SubscriptionConfig.from_dict(original)
         assert original == original_copy
 
+    def test_from_dict_ignores_unknown_keys(self):
+        """Keys that are not SubscriptionConfig fields are ignored."""
+        config = SubscriptionConfig.from_dict(
+            {"messages_per_tick": 7, "not_a_field": "x"}
+        )
+        assert config.messages_per_tick == 7
+        assert not hasattr(config, "not_a_field")
+
 
 class TestSubscriptionConfigValidation:
     """Tests for SubscriptionConfig validation rules."""

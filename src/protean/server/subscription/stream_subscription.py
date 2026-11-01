@@ -63,31 +63,29 @@ class StreamSubscription(BaseSubscription):
         retention_maxlen: int | None = None,
     ) -> None:
         """
-        Initialize the StreamSubscription object.
+        Each tuning option except ``retention_maxlen`` that is left as None
+        falls back to the domain config (``server.messages_per_tick`` or
+        ``server.stream_subscription.<option>``), then to the default named
+        below.
 
         Args:
-            engine: The Protean engine instance.
-            stream_category (str): The name of the stream to subscribe to.
-            handler (Union[BaseEventHandler, BaseCommandHandler]): The event or command handler.
-            messages_per_tick (int, optional): The number of messages to process per tick.
-                Defaults to config value or 10.
-            blocking_timeout_ms (int, optional): Timeout in milliseconds for blocking reads.
-                Defaults to config value or 5000.
-            max_retries (int, optional): Maximum number of retries before moving to DLQ.
-                Defaults to config value or 3.
-            retry_delay_seconds (float, optional): Delay between retries in seconds.
-                Defaults to config value or 1.
-            enable_dlq (bool, optional): Whether to use a dead letter queue.
-                Defaults to config value or True.
-            circuit_breaker_threshold (int, optional): Consecutive handler
-                failures that trip the circuit breaker OPEN. Defaults to config
-                value or 10.
-            circuit_breaker_reset_seconds (float, optional): Seconds an OPEN
-                breaker waits before allowing a single HALF_OPEN probe.
-                Defaults to config value or 60.
-            retention_maxlen (int, optional): Cap the subscribed stream at this
-                many entries, trimmed after each batch. None (the default)
-                disables trimming.
+            messages_per_tick: Messages to process per tick. Default 10.
+            blocking_timeout_ms: Timeout in milliseconds for blocking reads.
+                Default 5000.
+            max_retries: Retries before a message moves to the DLQ. Default 3.
+            retry_delay_seconds: Delay between retries in seconds. Default 1.
+            enable_dlq: Whether to use a dead letter queue. Default True.
+            circuit_breaker_threshold: Consecutive handler failures that trip
+                the circuit breaker OPEN. Default 10.
+            circuit_breaker_reset_seconds: Seconds an OPEN breaker waits
+                before allowing a single HALF_OPEN probe. Default 60.
+            retention_maxlen: Cap the subscribed stream at this many entries,
+                trimmed after each batch. None (the default) disables
+                trimming.
+
+        Raises:
+            ConfigurationError: If the resolved ``blocking_timeout_ms`` is not
+                positive.
         """
         # Get configuration from domain
         server_config = engine.domain.config.get("server", {})
@@ -206,20 +204,7 @@ class StreamSubscription(BaseSubscription):
         handler: type[BaseEventHandler | BaseCommandHandler],
         config: "SubscriptionConfig",
     ) -> "StreamSubscription":
-        """Create a StreamSubscription instance from a SubscriptionConfig.
-
-        This factory method creates a StreamSubscription using configuration
-        values from a SubscriptionConfig object. It validates that the config
-        is appropriate for a stream subscription.
-
-        Args:
-            engine: The Protean engine instance.
-            stream_category: The name of the stream to subscribe to.
-            handler: The event or command handler.
-            config: The subscription configuration object.
-
-        Returns:
-            A configured StreamSubscription instance.
+        """Create a StreamSubscription from a SubscriptionConfig.
 
         Raises:
             ConfigurationError: If config.subscription_type is not STREAM.
@@ -361,23 +346,11 @@ class StreamSubscription(BaseSubscription):
         )
 
     async def poll(self) -> None:
-        """
-        High-performance continuous message processing loop.
+        """Read and process messages until the subscription stops or drains.
 
-        When priority lanes are disabled (default), uses standard blocking reads
-        on the single stream.
-
-        When priority lanes are enabled, implements a two-lane priority system:
-        1. Non-blocking read on primary stream (production traffic)
-        2. If messages found → process them, loop back to step 1
-        3. If primary is empty → one blocking read that waits on both the
-           primary and the backfill stream (timeout capped at 1 second)
-        4. Process the primary messages from that read, then the backfill
-           messages, and loop back to step 1
-
-        This ensures production events are always processed before backfill events.
-        On the Redis broker, a production message that arrives during the wait
-        in step 3 ends the wait, so an idle subscription picks it up at once.
+        With priority lanes enabled, the backfill stream is read only when the
+        primary stream is empty, and within one read the primary messages are
+        processed before the backfill messages.
         """
         batches_processed = 0
         consecutive_errors = 0

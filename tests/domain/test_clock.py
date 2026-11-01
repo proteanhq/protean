@@ -125,3 +125,19 @@ class TestDomainNowNormalizesInjectedClock:
 
         assert resolved.tzinfo is not None
         assert before <= resolved <= after
+
+    def test_no_warning_without_a_domain_context(self):
+        import warnings
+
+        from protean.utils.globals import _domain_context_stack, _domain_now
+
+        suspended = []
+        while _domain_context_stack.top is not None:
+            suspended.append(_domain_context_stack.pop())
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                _domain_now()
+        finally:
+            for ctx in reversed(suspended):
+                _domain_context_stack.push(ctx)

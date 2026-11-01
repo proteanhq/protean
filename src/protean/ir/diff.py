@@ -42,19 +42,14 @@ def diff_ir(
     contracts, diagnostics, domain, enrichers) plus a summary with counts and
     breaking-change flags. An enricher kind whose list changed, including a
     change of order, appears under ``enrichers["changed"]`` with its left and
-    right lists.
-
-    Compares only the content sections below; the derived/volatile keys in
-    :data:`protean.ir.constants.VOLATILE_IR_KEYS` (``$schema``, ``ir_version``,
-    ``generated_at``, ``checksum``, ``elements``) are ignored. The content
-    checksum excludes the same set, keeping ``ir check`` and ``ir diff`` in
-    agreement.
+    right lists. The keys in :data:`protean.ir.constants.VOLATILE_IR_KEYS`
+    are not compared.
 
     Args:
-        current_version: When provided, used to classify removals of
-            deprecated elements/fields as "expected" (safe) vs "premature"
-            (breaking) based on the ``removal`` version in the deprecation
-            metadata.
+        current_version: The release version to compare deprecated removals
+            against. A deprecated element or field removed at or past its
+            ``removal`` version is an expected (safe) removal. Without it, every
+            deprecated removal is premature (breaking).
 
     Raises:
         ConfigurationError: A ``deprecated`` block in either IR is malformed,
@@ -1163,48 +1158,26 @@ def classify_changes(
 ) -> CompatibilityReport:
     """Classify persisted-schema changes in a diff result as breaking or safe.
 
-    Walks the ``clusters`` and ``projections`` sections of *diff_result* and
-    applies the following ruleset to each persisted/serialized element
-    (aggregates, entities, value objects, commands, events, database models,
-    and projections).  Non-persisted runtime sections (command_handlers,
-    event_handlers, repositories, application_services, flows) are not
-    classified.
+    Classifies the persisted elements in the ``clusters`` and ``projections``
+    sections of *diff_result*: aggregates, entities, value objects, commands,
+    events, database models and projections. Handlers, repositories,
+    application services and flows are not classified. Replay hazards on an
+    event-sourced aggregate are read from *left_ir* and *right_ir*.
 
-    Rules:
+    The rules, and the deprecation, upcaster and ``reserved`` refinements that
+    downgrade a break to safe, are listed in the compatibility reference
+    (``docs/reference/compatibility/index.md``).
 
-    - Add optional field (no ``required`` flag, or has ``default``): safe
-    - Add required field with a ``default`` value: safe
-    - Add required field without a ``default``: breaking
-    - Remove field from any persisted element: breaking
-    - Change field type: breaking
-    - Remove an element: breaking
-    - Add a new element: safe
-    - Visibility public → internal (``published: True`` → absent): breaking
-    - Visibility internal → public (absent → ``published: True``): safe
-    - Change ``__type__`` string: breaking
-    - Break replay on an event-sourced aggregate: breaking (see
-      :func:`_classify_replay_hazards`)
+    Args:
+        diff_result: The result of :func:`diff_ir` for *left_ir* and *right_ir*.
+        left_ir: The old IR.
+        right_ir: The new IR.
+        current_version: The release version to compare deprecated removals
+            against, as in :func:`diff_ir`.
 
-    Three evolution-aware refinements apply on top of the rules above. The
-    first two cover every persisted element, not only published event
-    contracts. The third covers only an event-sourced aggregate:
-
-    - **Deprecation grace**: a field deprecated and removed at/past its
-      ``removal`` version is a safe (expected) removal. This needs
-      ``current_version`` to compare against; without it a deprecated removal is
-      classified premature (still breaking). The ``protean ir diff`` CLI does
-      not yet supply ``current_version``, so this downgrade is currently only
-      reachable by callers that pass it explicitly.
-    - **Upcaster mitigation**: an event version bump whose old→new path a
-      registered upcaster chain covers has its schema-transformation changes
-      downgraded to safe (see :func:`_apply_upcaster_mitigation`). This reads
-      ``__version__`` from the IR directly and needs no ``current_version``.
-    - **Reserved mitigation**: a field removed from an event-sourced aggregate
-      that declares the name in ``reserved`` is downgraded to safe (see
-      :func:`_apply_reserved_mitigation`). The declaration does the migration:
-      replay drops assignments to the reserved name, and calls to its
-      ``add_``/``remove_`` helpers, instead of raising. Child entities those
-      calls would have added are dropped with them.
+    Returns:
+        A report with every classified change in ``breaking_changes`` or
+        ``safe_changes``. A downgraded change carries ``mitigated_by``.
 
     Raises:
         ConfigurationError: A ``deprecated`` block in either IR is malformed,
@@ -1402,28 +1375,17 @@ def _apply_reserved_mitigation(
 ) -> None:
     """Downgrade a removed field an event-sourced aggregate declares reserved.
 
-    Removing a field from an event-sourced aggregate is safe only when the
-    aggregate declares the field name in ``reserved``. The declaration does the
-    migration: at replay a retained ``@apply`` handler's assignment to that name
-    is dropped instead of raising, and so is its call to the ``add_<name>`` or
-    ``remove_<name>`` helper of a removed association. Child entities those
-    calls would have added are dropped with them. So a ``field_removed``
-    change downgrades to safe, cited
-    ``reserved``, when the aggregate is event-sourced in both snapshots and the
-    removed name is reserved in the new snapshot.
+    Moves a ``field_removed`` change from ``breaking_changes`` to
+    ``safe_changes``, with ``mitigated_by="reserved"``, when the aggregate is
+    event-sourced in both snapshots and the removed name is in the new
+    snapshot's ``reserved`` list. Only the aggregate's own field matches: a
+    removal on a child entity or value object stays breaking, as do a type
+    change and a newly required field.
 
-    The safe rating assumes the retained handlers only write the removed name.
-    A handler that reads the removed collection (``self.<name>``,
-    ``get_one_from_<name>``, ``filter_<name>``) still raises during replay,
-    and a handler that builds a child entity needs that entity class to stay
-    in the domain. Neither is visible in the IR, so neither is checked here.
-
-    Only the aggregate's own field removal matches: the mitigation is keyed by
-    ``(element_fqn, field_name)``, and a child entity or value object in the
-    cluster carries its own ``element_fqn``, so its removal never matches. A type
-    change and a newly required field are left breaking (a stored snapshot can
-    survive a type change and skip replay, and replay runs no required-field
-    check).
+    The safe rating assumes the retained ``@apply`` handlers only write the
+    removed name. The IR cannot show a handler that reads it, so that case is
+    not checked. The compatibility reference explains what the declaration does
+    at replay.
     """
     if not report.breaking_changes:
         return
@@ -1470,54 +1432,20 @@ def _classify_replay_hazards(
 ) -> None:
     """Flag the changes that stop an event-sourced aggregate being rebuilt.
 
-    An event-sourced aggregate's authoritative state is a stream of events,
-    reconstructed by reading that stream and applying the events in it. (A
-    snapshot may also be stored, holding serialized aggregate state, but it is a
-    rebuildable cache: ``_load_aggregate_current`` discards one that no longer
-    constructs and replays instead.) What breaks that reconstruction is a change
-    to where the history is read from, or to what reads it. None of those is a
-    field change, so none is reported anywhere else today:
+    Appends one breaking change to *report* for each hazard on an aggregate
+    present in both IRs, with the aggregate's FQN as ``element_fqn``:
 
-    - **Event sourcing turned on or off.** A classic aggregate converted to
-      event sourcing kept its existing state as table rows, which replay cannot
-      reconstruct. An event-sourced aggregate converted to classic has its
-      existing state only as a stream, which the table-backed loader never
-      reads.
-    - **The stream category moved.** ``BaseAggregate`` writes to
-      ``f"{stream_category}-{identifier}"`` (``core/aggregate.py``), so moving
-      the category leaves the whole history under the old name and a load of an
-      existing aggregate finds an empty stream.
-    - **The identity field moved to another field.** The identifier half of that
-      same stream name is the value of whichever field carries the identity, so
-      pointing the identity at a different field asks for a stream keyed by a
-      value no writer ever used. A change to the identity field's *type* is
-      already reported as ``field_type_changed``, which covers the case where
-      the name holds still but ``str(value)`` does not.
-    - **An ``@apply`` handler was dropped while its event survives.** Replay
-      applies every stored event through its handler and
-      ``BaseAggregate._apply_handler`` raises ``IncorrectUsageError`` when an
-      event has none ("There is no silent fallback"), so historical events of
-      that type stop the rebuild. Deleting the event class and its handler
-      together is one act, not two, and ``element_removed`` on the event is the
-      report for it.
-    - **A name was dropped from ``reserved``.** The reservation is what makes
-      replay drop an assignment to a removed field's name
-      (``BaseEntity.__setattr__``) and a call to its ``add_<name>`` or
-      ``remove_<name>`` helper (``BaseAggregate.__getattr__``), so taking it
-      back takes back the removal it earned: a retained ``@apply`` handler for
-      a retired event that still writes the name hits ``extra="forbid"``
-      again, a helper call raises ``AttributeError`` again, and the rebuild
-      fails. The
-      removal itself was reported in the diff that made it, so without this
-      nothing has anything to say about the reservation going away.
+    - ``event_sourcing_changed``: event sourcing turned on or off. The other
+      checks are skipped for that aggregate.
+    - ``stream_category_changed``: the stream category moved.
+    - ``identity_field_changed``: the identity moved to another field.
+    - ``apply_handler_removed``: an ``@apply`` handler was dropped, unless the
+      same diff removed its event.
+    - ``reservation_removed``: a name was dropped from ``reserved``. One change
+      per name, with the name as ``field_name``.
 
-    Each is emitted as its own breaking change against the aggregate, rather
-    than folded into the severity of some other change. An operator who moved a
-    stream category has to read that fact to act on it, and the hazard is just
-    as breaking when the aggregate has no other change at all.
-
-    Read from the two IRs rather than from *diff_result*: whether an aggregate
-    is event-sourced is a fact about both sides, not only about what moved.
+    An aggregate that is classic on both sides gets none of these. The
+    compatibility reference explains why each one stops a replay.
     """
     left_clusters = left_ir.get("clusters", {})
     # Events this diff dropped from the domain, read across every cluster: an

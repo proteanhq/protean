@@ -170,7 +170,7 @@ class ProteanCorrelationFilter(logging.Filter):
     to ``""`` so formatters that reference ``%(correlation_id)s`` never raise
     ``KeyError``.
 
-    The filter never suppresses records — it always returns ``True``.
+    The filter never suppresses records: it always returns ``True``.
 
     Attach the filter to the root logger's handlers. A filter on the root
     logger itself does not run for records that propagate from child
@@ -197,13 +197,13 @@ class ProteanCorrelationFilter(logging.Filter):
 class OTelTraceContextFilter(logging.Filter):
     """Stdlib logging filter that adds OpenTelemetry trace context.
 
-    Reads the current OTel span via ``opentelemetry.trace.get_current_span``
-    and sets ``record.trace_id`` (32-char hex), ``record.span_id``
-    (16-char hex), and ``record.trace_flags`` (``int``) on the ``LogRecord``.
+    Sets ``record.trace_id`` (32-char hex), ``record.span_id`` (16-char
+    hex) and ``record.trace_flags`` (``int``) from the current OpenTelemetry
+    span.
 
     When ``opentelemetry`` is not installed or no valid span is active,
-    ``trace_id`` and ``span_id`` default to ``""`` and ``trace_flags`` to
-    ``0``. The filter never suppresses records — it always returns ``True``.
+    ``trace_id`` and ``span_id`` are ``""`` and ``trace_flags`` is ``0``.
+    The filter never suppresses records: it always returns ``True``.
 
     Attach the filter to the root logger's handlers. A filter on the root
     logger itself does not run for records that propagate from child
@@ -261,10 +261,10 @@ def protean_otel_processor(
 ) -> dict[str, Any]:
     """Structlog processor that injects OpenTelemetry trace context.
 
-    Reads the active OTel span and adds ``trace_id`` (32-char hex),
-    ``span_id`` (16-char hex), and ``trace_flags`` (``int``) to the event
-    dict. Safe no-op when ``opentelemetry`` is not installed or no valid
-    span is active — fields default to ``""``, ``""``, and ``0``.
+    Adds ``trace_id`` (32-char hex), ``span_id`` (16-char hex) and
+    ``trace_flags`` (``int``) from the current OpenTelemetry span. When
+    ``opentelemetry`` is not installed or no valid span is active, the keys
+    are ``""``, ``""`` and ``0``.
 
     Add this processor to your structlog pipeline::
 
@@ -391,13 +391,12 @@ def _redact(value: Any, keys: frozenset[str], depth: int) -> Any:
 class ProteanRedactionFilter(logging.Filter):
     """Stdlib logging filter that masks sensitive fields on log records.
 
-    Walks every non-reserved attribute on the ``LogRecord`` and replaces the
-    value with ``"[REDACTED]"`` when the attribute name matches one of the
-    configured keys (case-insensitive). Nested ``dict`` and ``list`` values
-    are scanned up to :data:`_MAX_REDACT_DEPTH` levels deep; deeper nesting
-    is left untouched so pathological payloads cannot stall logging.
-
-    The filter never suppresses records — it always returns ``True``.
+    Replaces the value of a record attribute with ``"[REDACTED]"`` when its
+    name matches a redact key, ignoring case. Keys inside nested ``dict`` and
+    ``list`` values are masked the same way, down to a fixed depth. The
+    standard ``LogRecord`` attributes in :data:`LOG_RECORD_RESERVED_ATTRS`
+    are never changed. The filter never suppresses records: it always
+    returns ``True``.
 
     Attach the filter to the root logger's handlers. A filter on the root
     logger itself does not run for records that propagate from child
@@ -415,6 +414,10 @@ class ProteanRedactionFilter(logging.Filter):
 
         for handler in logging.getLogger().handlers:
             handler.addFilter(ProteanRedactionFilter(["password"]))
+
+    Args:
+        redact: Extra keys to mask. They are added to
+            :data:`DEFAULT_REDACT_KEYS`, which are always masked.
     """
 
     def __init__(self, redact: Iterable[str] | None = None) -> None:
@@ -439,11 +442,10 @@ def make_redaction_processor(
 ) -> Callable[[Any, str, dict[str, Any]], dict[str, Any]]:
     """Build a structlog processor that masks sensitive fields in the event dict.
 
-    Returns a callable suitable for the ``structlog.configure`` ``processors``
-    list. The returned processor walks the event dict, replacing values whose
-    key matches the configured redact list (case-insensitive) with
-    ``"[REDACTED]"``. Nested ``dict`` and ``list`` values are scanned up to
-    :data:`_MAX_REDACT_DEPTH` levels deep.
+    The processor replaces the value of an event dict key with
+    ``"[REDACTED]"`` when the key matches a redact key, ignoring case. Keys
+    inside nested ``dict`` and ``list`` values are masked the same way, down
+    to a fixed depth. Non-string keys are left alone.
 
     Example::
 
@@ -456,6 +458,14 @@ def make_redaction_processor(
                 structlog.processors.JSONRenderer(),
             ]
         )
+
+    Args:
+        redact: Extra keys to mask. They are added to
+            :data:`DEFAULT_REDACT_KEYS`, which are always masked.
+
+    Returns:
+        A structlog processor for the ``processors`` list of
+        ``structlog.configure``.
     """
     keys = _build_key_set(redact)
 

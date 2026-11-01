@@ -698,28 +698,16 @@ def _collect_broker_status(
 def _outbox_processor_names(
     domain: Domain,
 ) -> list[tuple[str, str, str, str | None]]:
-    """The Engine's outbox processors, as ``(name, provider, label, broker)``.
+    """Return the Engine's outbox processors as ``(name, provider, label, broker)``.
 
-    Mirrors ``Engine._wire_components``: one processor per provider
-    from ``_outbox_provider_names`` for the primary broker, plus one per such
-    provider for each broker in ``outbox.external_brokers``, whose name carries
-    an ``-external`` suffix. Both details matter: an unmanaged provider, or one
-    no aggregate is stored in, runs no processor because the unit of work never
-    writes an outbox row there, so reporting one would invent a subscription
-    that does not exist. An external processor that is not named here is
-    invisible even though it is the lane most likely to back up.
+    The list matches the processors ``Engine._wire_components`` starts: one per
+    provider from ``_outbox_provider_names`` for the primary broker, and one per
+    such provider for each broker in ``outbox.external_brokers``, with an
+    ``-external`` suffix on its name.
 
-    The fourth element is the broker whose rows that processor claims, or
-    ``None`` when it claims every row. It mirrors ``OutboxProcessor``'s own
-    ``_filter_by_broker``: with external brokers configured, each processor takes
-    only rows whose ``target_broker`` matches its own, so counting all of them
-    would report one combined backlog on every row.
-
-    Without external brokers the answer is ``None``, meaning do not filter. The
-    single processor owns every row, so filtering would be a no-op at best, and
-    at worst it would drop legacy rows that hold NULL in the column:
-    ``_coerce_target_broker`` fills those in on read, in Python, which a SQL
-    predicate never sees.
+    ``broker`` is the broker whose rows that processor claims. It is ``None``
+    when no external brokers are configured, and then the processor claims
+    every row, so the caller must not filter by broker.
     """
     outbox_config = domain.config.get("outbox", {})
     primary_broker = outbox_config.get("broker", "default")
@@ -727,6 +715,10 @@ def _outbox_processor_names(
 
     providers = _outbox_provider_names(domain)
 
+    # Same rule as ``OutboxProcessor._filter_by_broker``. With a single
+    # processor, filtering would drop legacy rows that hold NULL in
+    # ``target_broker``: ``_coerce_target_broker`` fills those in on read, in
+    # Python, which a SQL predicate never sees.
     filter_by_broker = bool(external_brokers)
 
     names: list[tuple[str, str, str, str | None]] = [
@@ -809,21 +801,14 @@ def _collect_outbox_statuses(domain: Domain) -> list[SubscriptionStatus]:
 
 
 def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
-    """Collect status for all registered subscriptions in a domain.
+    """Collect status for every subscription the domain's Engine would run.
 
-    Walks the domain registry to discover what subscriptions *would* exist,
-    then queries the appropriate backend (event store, Redis, outbox table)
-    for lag and position data.
-
-    Does **not** require the Engine to be running.
-
-    Args:
-        domain: An initialised Protean domain.
+    The Engine does not need to be running. ``domain`` must be initialised.
 
     Returns:
-        List of :class:`SubscriptionStatus` for every subscription
-        (event handlers, command handlers, projectors, process managers,
-        broker subscribers, and outbox processors).
+        One :class:`SubscriptionStatus` per subscription: event handlers,
+        command handlers (one per stream category), projectors, process
+        managers, broker subscribers, and outbox processors.
     """
     statuses: list[SubscriptionStatus] = []
     config_resolver = ConfigResolver(domain)
@@ -959,30 +944,16 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
 
 
 def reset_checkpoint_to_head(domain: Domain, status: SubscriptionStatus) -> int:
-    """Snap an event-store subscription's checkpoint back to its stream head.
+    """Move an event-store subscription's checkpoint back to its stream head.
 
-    Writes a fresh ``Read`` position record to ``status.position_stream`` equal to
-    the stream head recorded on ``status`` (``head_position``, read during
-    verification), the same record shape
-    :meth:`EventStoreSubscription.write_position` writes at runtime, and returns
-    the head position written.
-
-    A backup restore can leave a checkpoint pointing past the restored head. The
-    subscription reads from ``checkpoint + 1``, so it skips every event written
-    after the restore. Snapping the checkpoint to the head makes the subscription
-    read forward from just after the restored head instead. It writes the head
-    observed during verification rather than re-reading a fresh one, so it can
-    only move a checkpoint back: ``status`` is flagged beyond head, so its
-    ``head_position`` is below its ``current_position``, and writing that head can
-    never step the subscription forward over events it has not processed. When the
-    restored stream is empty the head is ``-1``, which sends the subscription back
-    to the start of the stream.
+    Writes a ``Read`` position record to ``status.position_stream`` holding
+    ``status.head_position``, the head read when ``status`` was collected. The
+    head is not read again, so for a status flagged beyond head the checkpoint
+    only moves back. When the stream is empty the head is ``-1``, and the
+    subscription starts again from the beginning of the stream.
 
     Args:
-        domain: An initialised Protean domain.
-        status: The event-store subscription to reset, flagged beyond head. Its
-            ``position_stream`` and numeric ``head_position`` are both set for any
-            such subscription read from a reachable store.
+        status: The event-store subscription to reset, flagged beyond head.
 
     Returns:
         The head position written to the checkpoint stream.
@@ -1052,24 +1023,17 @@ def reset_checkpoint_to_head(domain: Domain, status: SubscriptionStatus) -> int:
 class RecoveryCheckpointStatus:
     """A recovery-tracking finding for one event-store subscription.
 
-    An event-store subscription retries a failed position across restarts using
-    two durable streams: the ``recovery-checkpoint-{subscriber_name}-{category}``
-    stream (a ``watermark`` and an ``unresolved`` snapshot of failed positions
-    keyed by ``global_position``) and the ``failed-{subscriber_name}-{category}``
-    stream (the ``Failed``/``Resolved``/``Exhausted`` records). On restart the
-    subscription reconstructs the set of positions still awaiting recovery from
-    the snapshot merged with the failed-stream records after the watermark, then
-    re-reads and retries each.
+    An event-store subscription keeps the failed positions it still has to
+    retry in the ``recovery-checkpoint-{subscriber_name}-{category}`` and
+    ``failed-{subscriber_name}-{category}`` streams. A restore can leave that
+    set naming positions whose message the restored store no longer holds. The
+    subscription then retries those positions on every pass and never
+    resolves them.
 
-    A restore can leave that set naming positions whose message the restored
-    store no longer holds, either because it rolled the category stream back or
-    because it removed the specific aggregate stream a position points at. The
-    recovery pass re-reads each, finds nothing, and retries it every pass without
-    ever resolving it. A ``"stale"`` finding names those positions in
-    ``stale_positions``; :func:`reset_recovery_checkpoint` drops them. A
-    ``"unknown"`` finding means the recovery streams could not be read (the store
-    failed, or a restore left a corrupt checkpoint record), so the subscription
-    could not be verified.
+    A ``"stale"`` finding names those positions in ``stale_positions``, and
+    :func:`reset_recovery_checkpoint` drops them. An ``"unknown"`` finding means
+    the recovery streams could not be read, so the subscription could not be
+    verified.
     """
 
     name: str
@@ -1110,27 +1074,19 @@ class RecoveryCheckpointStatus:
 def _collect_one_recovery_checkpoint(
     domain: Domain, status: SubscriptionStatus
 ) -> RecoveryCheckpointStatus | None:
-    """Find the recovery-tracking entries a restore left pointing at a gone message.
+    """Find the recovery-tracking entries a restore left pointing at a missing message.
 
-    Returns a ``"stale"`` :class:`RecoveryCheckpointStatus` when the
-    subscription tracks at least one unresolved position whose message the
-    restored store no longer holds: it re-reads each the same way the recovery
-    pass does (the record's specific stream and position when present, else the
-    category stream at the global position) and flags every one that comes back
-    empty. That catches both a rolled-back category and a removed specific stream
-    that still sits below the category head. Confirmed stale positions are
-    reported even when a sibling position could not be re-read. A ``"unknown"``
-    finding means the recovery streams could not be read at all (the store failed
-    mid-collection, a restore left a corrupt checkpoint record, or every remaining
-    position's re-read raised), so an unverifiable subscription is reported rather
-    than silently passed as clean.
+    ``status`` need not carry a head position. When it has none, the head is
+    read from the store.
 
-    It reads the stream head itself rather than taking it from ``status``, so it
-    still runs when the read-position collection failed and left ``status`` with
-    no head (an unreadable read-position checkpoint does not hide readable
-    recovery tracking). Returns ``None`` when there is nothing to report: the
-    subscription is not an event-store one, it has no recovery-tracking streams,
-    or every tracked position's message is still present.
+    Returns:
+        A ``"stale"`` finding when at least one tracked position's message is
+        missing, even if another position could not be re-read. An
+        ``"unknown"`` finding when the store or the recovery streams could not
+        be read, when the recovery checkpoint is ahead of its failed stream, or
+        when no position was confirmed stale and a re-read failed.
+        ``None`` when the subscription is not an event-store one, has no
+        recovery-tracking streams, or every tracked message is still present.
     """
     if status.subscription_type != "event_store":
         return None
@@ -1306,22 +1262,14 @@ def _parse_position(position: str | None) -> int | None:
 def reset_recovery_checkpoint(
     domain: Domain, finding: RecoveryCheckpointStatus
 ) -> list[int]:
-    """Drop the stale unresolved positions from a subscription's recovery
-    checkpoint.
+    """Drop the stale positions from a subscription's recovery checkpoint.
 
-    ``finding.stale_positions`` are the positions whose message the restored store
-    no longer holds (found by re-reading each, not by comparing to the stream
-    head, so a removed specific aggregate stream below the head counts too). This
-    writes one fresh ``Checkpoint`` record to ``finding.recovery_checkpoint_stream``
-    carrying the reconstructed unresolved set with those positions removed and
-    ``finding.watermark`` (the failed-stream position the reconstruction read up
-    to). On restart the subscription restores this pruned snapshot and, because
-    the watermark sits past the failed-stream records the reconstruction already
-    read, its rebuild does not re-read the record naming a stale position and
-    re-add it. Every position whose message is still present is preserved.
+    Writes one ``Checkpoint`` record to ``finding.recovery_checkpoint_stream``
+    that holds the finding's unresolved set without ``finding.stale_positions``,
+    together with ``finding.watermark``. Every other tracked position is kept.
+    After a restart, the subscription does not add the dropped positions back.
 
     Args:
-        domain: An initialised Protean domain.
         finding: A ``"stale"`` recovery finding, from
             :func:`collect_recovery_checkpoint_statuses`.
 
@@ -1329,9 +1277,8 @@ def reset_recovery_checkpoint(
         The positions removed (``finding.stale_positions``).
 
     Raises:
-        ValueError: If ``finding`` is not a ``"stale"`` finding (an ``"unknown"``
-            one carries an empty snapshot, so writing it would wipe the
-            subscription's real recovery state), or the domain has no event store.
+        ValueError: If ``finding`` is not a ``"stale"`` finding, or the domain
+            has no event store.
     """
     if finding.verdict != "stale":
         # An "unknown" finding could not be reconstructed, so its `unresolved` is
@@ -1353,6 +1300,9 @@ def reset_recovery_checkpoint(
                 f"domain has no event store configured."
             )
 
+        # The watermark sits past the failed-stream records the reconstruction
+        # already read, so the rebuild on restart does not read the record that
+        # names a stale position again and add it back.
         write_recovery_checkpoint_record(
             store,
             finding.recovery_checkpoint_stream,

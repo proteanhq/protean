@@ -84,24 +84,20 @@ class MemoryModel(BaseDatabaseModel):
 
 
 class MemorySession:
-    """A copy-on-write view over the provider's in-memory store.
+    """A session over a private deep copy of the provider's in-memory store.
 
-    On construction the session takes a private deep copy of the whole store
-    (``data``); all reads and writes made through it operate on that copy, so a
-    concurrent session never sees this one's uncommitted changes. The changes
-    are published to the shared store only on :meth:`commit`.
+    A new session copies the whole store. Inside a unit of work that already
+    holds a session for this provider, it reuses that session's copy unless
+    ``new_connection`` is true. Reads and writes go to the copy, so another
+    session never sees this one's uncommitted changes.
 
-    Committing is a **compare-and-set against the live store**, not a wholesale
-    replacement. All writes go through :meth:`write` / :meth:`delete`, which
-    mutate the session copy *and* record the change in one step, so a mutation
-    can never be silently dropped by forgetting to track it. ``commit``
-    re-validates the recorded optimistic-concurrency versions against the *live*
-    store under the provider lock and then merges only the changed records,
-    key-by-key. This is what makes the in-memory provider a faithful stand-in
-    for optimistic locking: two overlapping writers of the same aggregate do
-    not both "win" (the stale one raises
-    :class:`~protean.exceptions.ExpectedVersionError`), and writers touching
-    *different* records do not clobber each other on commit.
+    Change records only through :meth:`write` and :meth:`delete`, which update
+    the copy and record the change for :meth:`commit`.
+
+    :meth:`commit` checks each recorded version against the live store, then
+    merges only the changed records into it. A stale write raises
+    :class:`~protean.exceptions.ExpectedVersionError`. Sessions that change
+    different records do not overwrite each other.
     """
 
     # Heterogeneous session store:
@@ -548,23 +544,17 @@ class DictDAO(BaseDAO):
         records: dict[typing.Any, typing.Any],
         identifier: typing.Any,
     ) -> None:
-        """Enforce declared ``Index(unique=True)`` constraints in memory.
+        """Raise if ``model_obj`` collides with another record on a unique index.
 
-        Relational adapters get this for free from the DDL they render; the
-        in-memory store renders no DDL, so the check is replicated here to keep
-        memory mode a faithful stand-in for uniqueness invariants.
-        It guards the row-at-a-time write paths (``_create`` and ``_update``,
-        which back ``repository.add``/``save``); the bulk paths (``_update_all``
-        and ``_claim``/``update_all``, which delegate to it) are not covered,
-        matching their role as low-level escape hatches.
+        Checks each ``Index(unique=True)`` declared on the entity against
+        ``records``. The record stored under ``identifier`` is skipped, so
+        re-saving a row does not collide with itself. A unique index with a
+        ``where`` predicate is not enforced. NULLs are distinct: when any indexed
+        value in ``model_obj`` is ``None``, that index never collides.
+        ``_update_all`` and ``_claim`` do not run this check.
 
-        Partial unique indexes (``Index(..., unique=True, where=...)``) are
-        advisory here and left unenforced, mirroring how the memory provider
-        treats ``where`` elsewhere. NULLs are treated as distinct, matching
-        PostgreSQL/SQLite semantics: a unique index over an indexed value that
-        is ``None`` never collides. The
-        record being written (``identifier``) is excluded so re-saving an
-        unchanged row does not conflict with itself.
+        Raises:
+            ValidationError: Keyed by the index's field names joined with ``_``.
         """
         for index in getattr(self.entity_cls.meta_, "indexes", ()) or ():
             if not isinstance(index, Index) or not index.unique:

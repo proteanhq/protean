@@ -35,26 +35,25 @@ _STRICTNESS_VALUES = frozenset({"strict", "warn", "off"})
 class CompatConfig:
     """Configuration for IR compatibility checking.
 
-    Attributes
-    ----------
-    strictness:
-        Controls how breaking changes are handled:
-        - ``"strict"`` — treat breaking changes as errors (exit code 1).
-        - ``"warn"`` — report breaking changes but allow the operation.
-        - ``"off"`` — skip compatibility checking entirely.
-    exclude:
-        Fully-qualified names of elements to leave out of the compatibility
-        report. The published-event contract check ignores this list, so a
-        contract break on an excluded published event still counts as breaking.
-    min_versions_before_removal:
-        Minimum number of minor versions a deprecated element/field must
-        survive before it can be removed.
-    staleness_enabled:
-        Whether the staleness check is active.
-    domains:
-        Mapping of logical domain names to module paths, parsed from the
-        ``[domains]`` section of ``config.toml``.  When non-empty, hooks
-        iterate over all domains automatically.
+    Attributes:
+        strictness: How breaking changes are handled. ``"strict"`` treats them
+            as errors (exit code 1), ``"warn"`` reports them and allows the
+            operation, and ``"off"`` skips compatibility checking.
+        exclude: Fully-qualified names of elements to leave out of the
+            compatibility report. The published-event contract check ignores
+            this list, so a contract break on an excluded published event
+            still counts as breaking.
+        min_versions_before_removal: Minimum number of minor versions a
+            deprecated element or field must survive before it can be removed.
+        staleness_enabled: Whether the staleness check is active.
+        domains: Logical domain names mapped to module paths, from the
+            ``[domains]`` section of ``config.toml``. When non-empty, hooks
+            run over every domain in it.
+
+    Raises:
+        ValueError: If ``strictness`` is not one of the three values,
+            ``min_versions_before_removal`` is not a positive integer,
+            ``staleness_enabled`` is not a bool, or ``domains`` is not a dict.
     """
 
     strictness: str = "strict"

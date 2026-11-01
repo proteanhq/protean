@@ -413,6 +413,32 @@ class TestSearchTraces:
         with pytest.raises(ValueError, match="At least one search parameter"):
             search_traces([domain])
 
+    def test_search_matches_any_of_several_filters(self, trace_domain):
+        domain, _, _ = trace_domain
+        results = search_traces(
+            [domain],
+            command_type="Test.RenameUser.v1",
+            stream_category=Order.meta_.stream_category,
+        )
+
+        corr_ids = {r["correlation_id"] for r in results}
+        assert corr_ids == {"corr-chain-B", "corr-chain-C"}
+
+    def test_search_by_command_type_ignores_events_of_that_type(self, trace_domain):
+        domain, _, _ = trace_domain
+        results = search_traces([domain], command_type="Test.UserRegistered.v1")
+
+        assert results == []
+
+    def test_search_results_are_newest_chain_first(self, trace_domain):
+        domain, _, _ = trace_domain
+        results = search_traces([domain], stream_category=User.meta_.stream_category)
+
+        assert [r["correlation_id"] for r in results] == [
+            "corr-chain-C",
+            "corr-chain-A",
+        ]
+
 
 # ---------------------------------------------------------------------------
 # Tests: _extract_correlation_id edge cases

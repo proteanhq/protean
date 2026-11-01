@@ -140,18 +140,17 @@ class SubscriptionFactory:
         handler: "HandlerArg",
         stream_category: str,
     ) -> "BaseSubscription":
-        """Create a subscription for the given handler.
+        """Create the subscription that the handler's resolved configuration names.
 
-        This method resolves the subscription configuration using the priority
-        hierarchy (handler Meta > server config > profile defaults > hardcoded defaults)
-        and creates the appropriate subscription type.
+        The configuration comes from ``ConfigResolver.resolve``.
 
         Args:
-            handler: The event or command handler class.
+            handler: The event or command handler class, or a command dispatcher.
             stream_category: The stream category to subscribe to.
 
         Returns:
-            A configured subscription instance (StreamSubscription or EventStoreSubscription).
+            A ``StreamSubscription``, a ``PartitionedStreamSubscription`` when the
+            stream category is partitioned, or an ``EventStoreSubscription``.
 
         Raises:
             ConfigurationError: If the configuration is invalid.

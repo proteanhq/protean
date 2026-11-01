@@ -111,12 +111,12 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         ``at_version`` or ``as_of`` to perform a *temporal query* and
         reconstitute the aggregate at a historical point.
 
-        Temporal aggregates are **read-only** — calling ``raise_()`` on them
-        will raise ``IncorrectUsageError``.
+        Temporal aggregates are read-only. Calling ``raise_()`` on one raises
+        ``IncorrectUsageError``.
 
-        If the aggregate was already loaded in the current UnitOfWork,
-        ``get`` will return the cached aggregate object (identity-map
-        optimisation).  Temporal queries always bypass the identity map.
+        If the aggregate was already loaded in the current UnitOfWork, ``get``
+        returns that same object. Temporal queries always load from the event
+        store.
 
         Args:
             identifier: Aggregate identifier.

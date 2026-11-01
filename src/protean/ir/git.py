@@ -29,28 +29,21 @@ def load_ir_from_commit(
 ) -> dict[str, Any]:
     """Load an IR JSON file from a specific git commit.
 
-    Uses ``git show <commit>:<path>`` to retrieve the file contents
-    without checking out the commit.
+    Reads the file with ``git show <commit>:<path>``, without checking out the
+    commit.
 
-    Parameters
-    ----------
-    commit:
-        A git commit reference — branch name, tag, SHA, ``HEAD``,
-        ``HEAD~1``, etc.
-    path:
-        Path to the IR file relative to the repository root.
-        Defaults to ``.protean/ir.json``.
+    Args:
+        commit: A git commit reference: branch name, tag, SHA, ``HEAD``,
+            ``HEAD~1``, and so on.
+        path: Path to the IR file relative to the repository root.
 
-    Returns
-    -------
-    dict
+    Returns:
         The parsed IR dict.
 
-    Raises
-    ------
-    GitError
-        If the git command fails (e.g. commit not found, file doesn't
-        exist at that commit, not a git repository).
+    Raises:
+        GitError: If git is not on ``PATH``, the git command fails (unknown
+            commit, file missing at that commit, not a git repository), or
+            the file is not valid JSON.
     """
     # Normalize to forward slashes — git show always expects POSIX paths.
     posix_path = PurePosixPath(path).as_posix()
