@@ -85,6 +85,10 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
     | ``subscription_type`` | ``str`` | The subscription type (STREAM or EVENT_STORE). |
     | ``subscription_profile`` | ``str`` | A predefined profile (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION). |
     | ``subscription_config`` | ``dict`` | Custom configuration overrides that take precedence over profile defaults. |
+    | ``retries`` | ``int`` | Maximum retries when the handler fails with a transient exception. Overrides the domain's ``server.transient_retry`` setting; ``None`` uses that setting. |
+    | ``backoff`` | ``str`` | Delay strategy between transient retries: ``"exponential"``, ``"linear"`` or ``"fixed"``. ``None`` uses the domain setting. |
+    | ``retry_exceptions`` | ``tuple`` | Exception types treated as transient, as classes or dotted paths. ``None`` uses the domain setting. |
+    | ``suppress_checks`` | ``tuple`` | Diagnostic codes ``protean check`` should not report for this handler. |
 
     The subscription options combine with server-level settings in a fixed
     priority order. See the server configuration reference for that order,

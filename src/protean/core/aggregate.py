@@ -88,7 +88,11 @@ class BaseAggregate(BaseEntity):
     | ``stream_category`` | ``str`` | Override the event stream category name. |
     | ``provider`` | ``str`` | The persistence provider name (default: ``"default"``). |
     | ``schema_name`` | ``str`` | The storage table/collection name. |
+    | ``abstract`` | ``bool`` | The class cannot be instantiated when ``True`` (default: ``False``). |
     | ``auto_add_id_field`` | ``bool`` | Whether to auto-inject an ``id`` field (default: ``True``). |
+    | ``indexes`` | ``tuple`` | ``Index`` declarations for the persistence layer (default: ``()``). |
+    | ``limit`` | ``int`` | Default query result limit (default: ``100``). |
+    | ``suppress_checks`` | ``tuple`` | Diagnostic codes ``protean check`` should not report for this aggregate. |
     | ``reserved`` | ``tuple[str, ...]`` | Field names that once existed and must never be reused. Removing a field from an event-sourced aggregate is safe only when its name is reserved. During replay, an assignment to a reserved name is dropped, and so is a call to its ``add_<name>``/``remove_<name>`` helper. Child entities those calls would have added are dropped with them. |
     """
 
