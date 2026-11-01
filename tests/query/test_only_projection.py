@@ -152,15 +152,20 @@ class TestOnlyProjection:
             seeded_repo.query.only("status").delete()
 
     def test_raw_ignores_selection_ordering_limit_and_data(self, seeded_repo):
-        results = (
-            seeded_repo.query.only("status")
-            .order_by("-revision")
-            .limit(1)
-            .raw('{"revision__in": [1, 3]}', data={"revision": 3})
-        )
+        query = '{"revision__in": [1, 3]}'
+        plain = [doc.revision for doc in seeded_repo.query.raw(query).items]
 
-        assert results.total == 2
-        assert all(isinstance(item, Document) for item in results.items)
+        for order in ("revision", "-revision"):
+            results = (
+                seeded_repo.query.only("status")
+                .order_by(order)
+                .limit(1)
+                .raw(query, data={"revision": 3})
+            )
+
+            assert [doc.revision for doc in results.items] == plain
+            assert all(isinstance(item, Document) for item in results.items)
+        assert sorted(plain) == [1, 3]
 
     def test_count_with_only(self, seeded_repo):
         # count() ignores field selection (it never materializes records), so

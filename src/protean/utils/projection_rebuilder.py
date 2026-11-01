@@ -76,7 +76,9 @@ def rebuild_projection(
     event store through each projector that targets this projection.
 
     An event that cannot be resolved or whose handler raises is logged and
-    counted in ``events_skipped``; the rebuild continues. A projection with no
+    counted in ``events_skipped``; the rebuild continues. An error while
+    reading events from the store is raised, after the projection has been
+    truncated. A projection with no
     projectors is not truncated, and the result carries an error.
 
     Must be called after ``domain.init()`` and within
@@ -180,8 +182,9 @@ def _replay_projector(
     """Replay every event in ``stream_categories`` through a projector.
 
     Events from all categories are dispatched in the order the store wrote
-    them (``global_position``). A message that fails is logged and counted as
-    skipped; nothing is raised.
+    them (``global_position``). A message that fails to dispatch is logged and
+    counted as skipped. An error while reading events from the store is
+    raised.
 
     Args:
         domain: The initialized domain instance.

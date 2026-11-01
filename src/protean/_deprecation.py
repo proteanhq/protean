@@ -101,7 +101,8 @@ def warn_deprecated(
         removal: Canonical ``X.Y.Z`` version the API is removed in, or ``None``
             when no removal is scheduled yet. A recognized version selects its
             per-version warning class. ``None`` or an unrecognized version uses
-            the base :class:`ProteanDeprecationWarning` and never raises. The
+            the base :class:`ProteanDeprecationWarning`; the version is not
+            rejected. The
             message ends with "Will be removed in v<removal>." whenever
             ``removal`` is given, recognized or not.
         alternative: An optional complete sentence telling the caller what to do

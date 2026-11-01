@@ -41,7 +41,8 @@ class Priority(IntEnum):
     """Message processing priority levels.
 
     A higher value means a higher priority, and the outbox publishes
-    higher-priority messages first. When priority lanes are enabled, a value
+    higher-priority messages first. Messages that share a partition key still
+    publish in commit order, whatever their priority. When priority lanes are enabled, a value
     below ``server.priority_lanes.threshold`` (default 0) routes the event to
     the backfill lane, which the engine reads only when the primary lane is
     empty.
