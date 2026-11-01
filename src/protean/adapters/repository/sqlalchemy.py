@@ -340,16 +340,14 @@ def _refuse_unstorable_identity(
     ``identity_type`` and ``identity_strategy`` are the field's own when set,
     and the domain configuration otherwise. Two cases are refused:
 
-    - An integer identity under the ``uuid`` strategy. It is ``uuid4().int``,
-      a 128-bit number, and no SQL integer column holds it.
+    - An integer identity under the ``uuid`` strategy, which makes a 128-bit
+      number no SQL integer column holds.
     - An identity that is not an integer on a domain whose ``identity_type``
-      is ``integer``. The column type follows the domain setting, so the
-      column is an integer column and the generated value does not fit it.
+      is ``integer``, where the column is an integer column.
 
-    Identifiers the database assigns (``increment=True``), abstract elements
-    and the elements of an event-sourced aggregate have no generated value in
-    a SQL table, so they are skipped. So is an element whose custom database
-    model for this provider declares the identity column itself.
+    Skipped: identifiers the database assigns (``increment=True``), abstract
+    elements, the elements of an event-sourced aggregate, and an element whose
+    custom database model for this provider declares the identity column.
 
     Raises:
         ConfigurationError: The element would get an identity its column
@@ -958,30 +956,16 @@ def _mysql_identity_key_width() -> int:
 def _mysql_index_key_width(
     index: typing.Any, entity_cls: typing.Any
 ) -> tuple[int, list[str], list[str]]:
-    """Bytes the string columns of ``index`` contribute, and any TEXT fields.
+    """Measure the InnoDB key width of the fields ``index`` names.
 
-    A ``utf8mb4`` character is up to 4 bytes and InnoDB sizes an index key by
-    the column's maximum width, so a ``String(max_length=L)`` costs ``4 * L``.
-    InnoDB caps the whole key, so every column in it counts. A string is the
-    only one wide enough to reach 3072 bytes on its own, but a fixed-width
-    column alongside a near-limit string is what pushes it over: a
-    ``VARCHAR(768)`` fills the budget exactly, and adding an ``Integer`` to the
-    index is refused. A type with no width listed contributes nothing rather
-    than a guess, and a key that overruns on such a column still gets MySQL's
-    own error.
+    ``index`` may name a declared field or the persisted attribute behind it.
 
-    A string field with no ``max_length`` maps to ``TEXT``, which InnoDB cannot
-    index at all without a prefix length; those are returned by name rather than
-    given a width, because no width would make them indexable. A ``Dict``, a
-    ``List`` or a ``ValueObjectList`` maps to ``JSON``, which MySQL indexes
-    only through a generated column on a JSON path, so those come back by name
-    too. A pickled ``ValueObjectList`` is a BLOB, which has the ``TEXT``
-    problem instead.
-
-    An index may name a declared field or the persisted attribute behind it,
-    since ``validate_indexes`` accepts both. A value-object attribute arrives as
-    a ``_ShadowField`` wrapping the value object's own field, so it is unwrapped
-    the same way the model mapper unwraps it.
+    Returns:
+        A tuple of the key width in bytes, the names of fields stored as
+        ``TEXT`` or BLOB, and the names of fields stored as ``JSON``. Every
+        sized column counts toward the width, and a string field counts 4
+        bytes per character of ``max_length``. The ``TEXT``, BLOB and ``JSON``
+        fields get no width, because MySQL cannot index them in full.
     """
     width = 0
     unbounded: list[str] = []
@@ -989,6 +973,8 @@ def _mysql_index_key_width(
     entity_fields = {**attributes(entity_cls), **fields(entity_cls)}
     for field_name in index.fields:
         field_obj = entity_fields.get(field_name)
+        # A value-object attribute arrives as a ``_ShadowField`` wrapping the
+        # value object's own field. Unwrap it the way the model mapper does.
         if isinstance(field_obj, _ShadowField):
             field_obj = field_obj.field_obj
 
@@ -1186,21 +1172,22 @@ def _build_sa_indexes(
 def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
     """Render an entity's index declarations to ``CREATE INDEX`` DDL strings.
 
-    Builds the indexes against a throwaway table (column names only; types are
-    irrelevant to index DDL) and compiles them with the target dialect. Used by
-    ``protean schema render --indexes`` to write ``.sql`` artifacts without a
-    live database connection.
+    Needs no database connection. On the MySQL and MariaDB dialects it needs an
+    active domain context, because an identifier column is sized from the
+    domain's ``identity_type``. ``write_index_ddl`` pushes one.
 
-    ``dialect_name`` must be a member of
-    :data:`~protean.core.index.RENDERED_INDEX_DIALECTS`. Anything else raises
-    :class:`IncorrectUsageError`: there is no compiler for it, and falling back
-    to another dialect's compiler would emit that dialect's DDL under the
-    requested name.
+    Returns:
+        One statement per declared index for ``dialect_name``, including the
+        raw indexes written for that dialect. An empty list when the entity
+        declares no indexes.
 
-    Needs an active domain context on the MySQL and MariaDB dialects: the
-    key-width guard sizes an identifier column from the domain's
-    ``identity_type``. ``write_index_ddl`` pushes one.
+    Raises:
+        IncorrectUsageError: ``dialect_name`` is not a member of
+            :data:`~protean.core.index.RENDERED_INDEX_DIALECTS`, or, on MySQL
+            and MariaDB, an index key is wider than InnoDB allows.
     """
+    # Falling back to another dialect's compiler would emit that dialect's DDL
+    # under the requested name, so an unknown dialect is refused.
     check_index_ddl_dialect(dialect_name)
 
     declared = getattr(entity_cls.meta_, "indexes", ()) or ()
@@ -1279,9 +1266,6 @@ def _mysql_column_type(
       path, so a ``Dict`` or ``List`` used as a key column raises.
     * A ``PickleType`` column is a BLOB, which has the same prefix-length
       problem as ``TEXT``, so a key column stored as one raises too.
-
-    Collation is not set per column. It comes from the table default that
-    :func:`_mysql_table_kwargs` emits, which every column inherits.
 
     Returns the (possibly replaced) type class and its keyword arguments.
     """
@@ -1814,40 +1798,29 @@ class SADAO(BaseDAO):
         return result
 
     def _flush(self) -> None:
-        """Flush buffered INSERT/UPDATE statements to the database within the
-        current transaction, without committing.
+        """Run the pending writes inside the current transaction, without
+        committing.
 
-        SQLAlchemy batches writes until commit, which this method forces to
-        execute inside the current transaction for two reasons:
+        After it returns, a saved parent row exists for the child inserts that
+        reference it, and a database-assigned ``Auto(increment=True)`` key is
+        set on the model.
 
-        - Protean does not emit SQLAlchemy ``ForeignKey``/``relationship``
-          metadata for ``Reference`` fields, so the ORM's unit-of-work cannot
-          order parent-before-child inserts on its own. Flushing after a parent
-          is saved materializes its row so that immediate-FK databases (MSSQL,
-          MySQL/InnoDB) accept the dependent child inserts that follow.
-        - A DB-assigned ``Auto(increment=True)`` primary key is not materialized
-          until a flush runs. Forcing a flush lets the repository read the
-          generated value back onto the aggregate inside the transaction — under
-          both a standalone add and an add nested in an outer UnitOfWork.
-
-        This is a shared primitive: it is called from ``Repository._do_add`` (the
-        parent-before-child flush), from the recursive grandchild-ordering flushes
-        in ``_sync_children``, and from ``BaseDAO.create``/``save`` (auto-increment
-        materialization). A concurrent-conflict ``StaleDataError`` can surface at
-        any of them — most commonly the ``version_id_col`` mismatch when the forced
-        flush re-saves an aggregate root whose version a concurrent commit already
-        advanced (e.g. a child-only aggregate change routed through the root save),
-        but also a delete whose row a concurrent writer already removed (SQLAlchemy
-        raises ``StaleDataError`` on a zero-row confirmed delete regardless of
-        ``version_id_col``). Either is an optimistic-concurrency conflict, so
-        translate it to :class:`ExpectedVersionError` — the same mapping the
-        UnitOfWork commit applies to the deferred flush that has no association
-        rows to order.
+        Raises:
+            ExpectedVersionError: The flush hit an optimistic-concurrency
+                conflict, such as a row whose version a concurrent commit
+                already advanced. A standalone session is rolled back first.
         """
+        # Protean emits no ``ForeignKey`` or ``relationship`` metadata for
+        # ``Reference`` fields, so the ORM cannot order parent-before-child
+        # inserts. Callers flush after a parent so databases that check foreign
+        # keys immediately (MSSQL, MySQL/InnoDB) accept the child inserts.
         conn = self._get_session()
         try:
             conn.flush()
         except StaleDataError as exc:
+            # SQLAlchemy also raises ``StaleDataError`` for a delete whose row a
+            # concurrent writer already removed, which is the same kind of
+            # conflict.
             self._rollback_if_standalone(conn)
             raise ExpectedVersionError(str(exc)) from None
 
@@ -1864,22 +1837,24 @@ class SADAO(BaseDAO):
     def _update(
         self, model_obj: typing.Any, expected_version: int | None = None
     ) -> typing.Any:
-        """Update a record in the sqlalchemy database.
+        """Write the changed attributes of ``model_obj`` to its stored row.
 
-        The model carries a ``version_id_col`` (see :class:`SqlalchemyModel`), so
-        changes are applied through the ORM and the flush emits
-        ``UPDATE … SET … WHERE _version = :loaded``. If a concurrent commit
-        advanced the version after this read, the flush matches zero rows and
-        SQLAlchemy raises ``StaleDataError``, which the persistence layer maps to
-        :class:`ExpectedVersionError`. On the UnitOfWork path that mapping happens
-        at the UoW commit; on the standalone path the flush runs in
-        ``_commit_if_standalone`` below, so the mapping is applied there. The
-        version predicate keeps the guard atomic: a plain ``UPDATE … WHERE id``
-        would let two readers of the same version both write and lose one update.
-        The write rides the UnitOfWork's real transaction (ADR-0027), so it is
-        invisible to other connections until the UoW commits and is rolled back
-        with it. When ``expected_version`` is not ``None`` the Python check below
-        additionally rejects a version already stale at read time.
+        Outside a Unit of Work the write is committed before the method
+        returns. Inside one it is part of the Unit of Work's transaction, hidden
+        from other connections until that commits and rolled back with it (see
+        ADR-0027).
+
+        Args:
+            model_obj: The model holding the new values.
+            expected_version: The version the caller read, or ``None`` to skip
+                the read-time version check.
+
+        Raises:
+            ObjectNotFoundError: No row has the model's identifier.
+            ExpectedVersionError: The stored version differs from
+                ``expected_version``, or a concurrent commit advanced the
+                version after this read. Inside a Unit of Work the second case
+                is raised when the Unit of Work commits.
         """
         conn = self._get_session()
         assert conn is not None
@@ -2198,65 +2173,12 @@ class SADAO(BaseDAO):
         order_by: str | list[str] | None = None,
         hold_back: HoldBack | None = None,
     ) -> "list[BaseEntity]":
-        """Atomic find-and-claim in a single ``UPDATE … RETURNING`` statement.
+        """Claim rows as :meth:`BaseDAO._claim` describes.
 
-        On PostgreSQL this issues::
-
-            UPDATE <table> SET <claim_fields>
-            WHERE id IN (
-                SELECT id FROM <table> WHERE <criteria>
-                ORDER BY <order> LIMIT <n> FOR UPDATE SKIP LOCKED
-            )
-            RETURNING *
-
-        The inner ``FOR UPDATE SKIP LOCKED`` selects and locks eligible rows
-        while skipping rows other workers have locked, and the surrounding
-        ``UPDATE`` claims exactly those rows — all in one round trip with no
-        TOCTOU window between the read and the claim. ``RETURNING`` hands back
-        the post-claim rows.
-
-        With ``hold_back`` the statement stays one round trip::
-
-            WITH candidates AS MATERIALIZED (
-                SELECT id FROM <table> AS c
-                WHERE <criteria>
-                  AND NOT EXISTS (
-                    SELECT 1 FROM <table> AS e
-                    WHERE <e in c's group> AND <e holds> AND <e earlier than c>
-                      AND NOT (<e matches criteria> AND <e sorts before c>)
-                  )
-                ORDER BY <order> LIMIT <n> FOR UPDATE SKIP LOCKED
-            )
-            UPDATE <table> AS c SET <claim_fields>
-            WHERE id IN (SELECT id FROM candidates)
-              AND NOT EXISTS (
-                SELECT 1 FROM <table> AS e
-                WHERE <e in c's group> AND <e holds> AND <e earlier than c>
-                  AND e.id NOT IN (SELECT id FROM candidates)
-              )
-            RETURNING *
-
-        The outer ``NOT EXISTS`` is the claim rule: a grouped row is claimed
-        only when every earlier holding row of its group is in the locked set.
-        A row another worker has locked is skipped by ``SKIP LOCKED``, so it is
-        outside the set and holds the rows behind it.
-
-        The inner ``NOT EXISTS`` narrows the candidates before ``LIMIT``
-        applies. Without it, a held group with more than ``n`` waiting rows
-        would fill the candidate set on every call and keep other groups from
-        being claimed. And a group whose earlier row has a lower priority than
-        its later rows would never get that earlier row into the set, so the
-        group would stop for good. With it, a group's first waiting row always
-        sorts ahead of the group's other candidates. The cost is that a later,
-        higher-priority row waits one call for the earlier rows of its group.
-
-        Every other dialect (MySQL/MariaDB — which lack ``UPDATE … RETURNING``;
-        SQL Server; SQLite) falls back to the portable
-        :meth:`BaseDAO._claim` default. That default is correct everywhere a
-        guarded ``UPDATE … WHERE`` re-evaluates its predicate against committed
-        state under row-lock contention (PostgreSQL, MySQL, SQL Server) or where
-        writes are serialized (SQLite); it does ``1 + N`` round trips instead of
-        one.
+        On PostgreSQL the claim is one ``UPDATE … RETURNING`` statement over a
+        ``FOR UPDATE SKIP LOCKED`` sub-select, with or without ``hold_back``.
+        Every other dialect uses the base method, which takes ``1 + N`` round
+        trips. ADR-0013 shows the PostgreSQL statement.
         """
         if limit <= 0:
             return []
@@ -2270,6 +2192,10 @@ class SADAO(BaseDAO):
         if hold_back is None:
             claimable = id_col.in_(inner.scalar_subquery())
         else:
+            # The candidate filter keeps a held group's backlog out of the
+            # ``LIMIT``, and the outer ``NOT EXISTS`` claims a grouped row only
+            # when every earlier holding row of its group is in the locked set.
+            # See ADR-0013, hold-back amendment.
             model = self.database_model_cls
             candidates = (
                 inner.where(~self._blocks_candidate(hold_back, criteria, order_by))
@@ -3208,24 +3134,17 @@ class MssqlProvider(SAProvider):
 class MysqlProvider(SAProvider):
     """Provider for MySQL and MariaDB, on the PyMySQL driver.
 
-    One provider serves both servers. SQLAlchemy reports the dialect as
-    ``mysql`` for a ``mysql+pymysql://`` URI and ``mariadb`` for a
-    ``mariadb+pymysql://`` one, and every dialect-sensitive branch in this module
-    accepts both through :data:`_MYSQL_DIALECTS`.
+    One provider serves both servers, through a ``mysql+pymysql://`` or a
+    ``mariadb+pymysql://`` URI.
 
     Beyond the shared config keys it reads ``collation``, the collation tables
-    are created with and every string column inherits. The server default is
-    accent-insensitive and case-insensitive on both MySQL and MariaDB, which
-    would make ``exact``, ``contains``, ``startswith`` and ``endswith`` match
-    case-insensitively.
+    are created with and every string column inherits. Left unset, it is
+    ``utf8mb4_0900_as_cs`` on MySQL and ``utf8mb4_uca1400_as_cs`` on MariaDB,
+    so ``exact``, ``contains``, ``startswith`` and ``endswith`` match
+    case-sensitively. The server default would make them case-insensitive.
 
-    Left unset, the collation follows the dialect: ``utf8mb4_0900_as_cs`` on
-    MySQL and ``utf8mb4_uca1400_as_cs`` on MariaDB. See
-    :meth:`_default_collation` for why neither name serves both.
-
-    The charset is pinned to ``utf8mb4`` and is not configurable, so a collation
-    from another charset is rejected at construction rather than at
-    ``CREATE TABLE``.
+    The charset is pinned to ``utf8mb4`` and is not configurable. A collation
+    from another charset is rejected when the provider is constructed.
 
     A ``database_uri`` naming PyMySQL fails at ``domain.init()`` with the extra
     that installs it when PyMySQL cannot be imported. SQLAlchemy reads a URI
