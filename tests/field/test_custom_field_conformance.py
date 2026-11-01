@@ -23,6 +23,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import Custom, HasOne, String, ValueObject
+from protean.fields.resolved import custom_field_declaration
 from protean.integrations.pytest.custom_field_conformance import (
     run_custom_field_conformance,
 )
@@ -578,6 +579,20 @@ class TestProjectedCustomFieldKeepsItsKind:
 
         VO = value_object_from_entity(Marker)
         assert fields(VO)["at"].field_kind == "custom"
+
+    def test_redeclaration_keeps_metadata_default_and_kind_only(self, test_domain):
+        @test_domain.aggregate
+        class Marker:
+            at: Point = _point_field(unique=True, default=Point(1, 2))
+
+        test_domain.init(traverse=False)
+
+        source = Marker.model_fields["at"]
+        annotation, attribute = custom_field_declaration(source)
+
+        assert annotation.__metadata__ == tuple(source.metadata)
+        assert attribute.default == Point(1, 2)
+        assert attribute.json_schema_extra == {"field_kind": "custom"}
 
     def test_fact_event_field_is_still_custom(self, test_domain):
         @test_domain.aggregate(fact_events=True)

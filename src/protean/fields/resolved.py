@@ -260,29 +260,18 @@ def convert_pydantic_errors(exc: PydanticValidationError) -> dict[str, list[str]
 def custom_field_declaration(field_info: Any) -> tuple[Any, Any]:
     """Return the ``(annotation, class attribute)`` pair that redeclares a custom field.
 
-    Fact-event generation and value-object projection both rebuild a domain
-    element from another element's ``FieldInfo`` objects. A custom field (built
-    by ``Custom``) needs both halves of its declaration carried over:
-
-    - its Pydantic metadata, because the bare annotation is the raw custom
-      class and carries no schema of its own, so the rebuilt class fails at
-      schema-build time without it, and
-    - its ``field_kind="custom"`` marker, because ``serialize_custom_value``
-      reads the kind off the rebuilt ``ResolvedField`` to decide whether a
-      value needs ``as_dict`` before it reaches an adapter.
-
-    Carrying only the metadata leaves the rebuilt field classified
-    ``"standard"``, and a live custom instance then reaches the database.
-
-    Only the kind is carried across, not the rest of ``json_schema_extra``:
-    a rebuilt field is a projection, so identity, uniqueness and the Protean
-    validators belong to the source element and are deliberately left behind,
-    as they already are for every built-in field.
+    Use it to rebuild a custom field (built by ``Custom``) on another element
+    from the source field's ``FieldInfo``, as fact events and projected value
+    objects do. The pair keeps the field's Pydantic metadata, its default or
+    default factory, and its ``field_kind="custom"`` marker. Identity,
+    uniqueness and Protean validators stay with the source field.
     """
     annotation = field_info.annotation
     if field_info.metadata:
         annotation = typing.Annotated[(annotation, *field_info.metadata)]
 
+    # ``serialize_custom_value`` reads this kind to decide whether a value needs
+    # ``as_dict`` before it reaches an adapter.
     kwargs: dict[str, Any] = {"json_schema_extra": {"field_kind": "custom"}}
     if field_info.default is not PydanticUndefined:
         kwargs["default"] = field_info.default

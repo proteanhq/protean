@@ -176,14 +176,20 @@ def Status(  # pyright: ignore[reportRedeclaration]
     transitions: dict[Any, Any] | None = None,
     **kwargs: Any,
 ) -> FieldSpec:
-    """A status field constrained to an Enum's values with optional transition enforcement.
+    """A status field constrained to an Enum's values, with optional transition rules.
 
-    Requires an Enum class as the first argument.  Valid values are the
-    Enum members' ``value`` attributes (via Pydantic ``Literal`` validation).
+    Valid values are the ``value`` attributes of the Enum's members. A
+    ``default`` may be given as an Enum member or as its value.
 
-    When ``transitions`` is provided, the framework automatically prevents
-    illegal state changes.  Only transitions defined in the map are allowed.
-    States not appearing as keys are terminal (no outgoing transitions).
+    Args:
+        enum_cls: The Enum class whose member values the field accepts.
+        transitions: A map from each state to the states it may change to.
+            When given, any change not in the map is rejected. A state that is
+            not a key in the map is terminal: no change away from it is allowed.
+        **kwargs: The usual field constraints, passed to ``FieldSpec``.
+
+    Raises:
+        IncorrectUsageError: If ``enum_cls`` is not an Enum class.
 
     Example::
 
@@ -224,28 +230,26 @@ def Custom(  # pyright: ignore[reportRedeclaration]
 ) -> FieldSpec:
     """A field over a custom Python type.
 
-    Use this to store a type Protean has no built-in factory for, when the type
-    still needs Protean's field machinery: constraints, ``required``, a default,
-    or adapter mapping. Pass the type itself, plus the Pydantic annotation objects
-    that parse a raw value into it and render it back.
+    Use this for a type Protean has no built-in factory for, when the field
+    still needs constraints, ``required``, a default, or adapter mapping.
 
-    - ``python_type`` is the field's Python type (any class).
-    - ``validators`` are the Pydantic validators the type needs to parse a raw
-      value into an instance. An arbitrary class has no Pydantic schema on its
-      own, so supply at least a ``PlainValidator`` that builds the instance;
-      Protean threads it into the annotation. Add an ``AfterValidator`` to run a
-      check after the cast (this is the "validators" stage of the guaranteed
-      order: empty, then choices, then cast, then validators).
-    - ``serializers`` are the Pydantic serializers (for example ``PlainSerializer``)
-      that render an instance back to a plain value for ``model_dump``. Protean's
-      own persistence and event payloads serialize through ``ResolvedField.as_dict``,
-      which calls the value's ``to_dict()`` when it has one; implement ``to_dict()``
-      on the type so it round-trips through save, reload, and event replay.
-    - ``**constraints`` are the usual field constraints (``required``, ``default``,
-      ``unique``, ``description``, ``min_value``/``max_value``, ...), passed
-      straight to the underlying ``FieldSpec``. ``choices`` is rejected: a choice
-      set replaces the field's type with a ``Literal`` of the choice values, which
-      would discard the custom type and skip the parser.
+    Args:
+        python_type: The field's Python type (any class).
+        validators: The Pydantic validators that parse a raw value into an
+            instance. A class with no Pydantic schema of its own needs at least
+            a ``PlainValidator`` that builds the instance. An ``AfterValidator``
+            runs after that cast and receives the parsed instance.
+        serializers: The Pydantic serializers (for example ``PlainSerializer``)
+            that render an instance back to a plain value for ``model_dump``.
+            Persistence and event payloads use the value's ``to_dict()`` when it
+            has one, so implement ``to_dict()`` on the type for it to round-trip
+            through save, reload, and event replay.
+        **constraints: The usual field constraints (``required``, ``default``,
+            ``unique``, ``description``, ``min_value``/``max_value``, ...),
+            passed to ``FieldSpec``.
+
+    Raises:
+        IncorrectUsageError: If ``choices`` is passed.
 
     Example::
 

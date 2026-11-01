@@ -677,21 +677,14 @@ def _sanitize_string(v: str) -> str:
 
 
 def _domain_default_sanitize() -> bool:
-    """The active domain's ``[field_defaults] sanitize`` default.
+    """Return the active domain's ``[field_defaults] sanitize`` setting.
 
-    Read at validation time, because a field is baked into a Pydantic
-    annotation before it is registered with any domain, so the domain default
-    is not known when the field is built. With no active domain (a value object
-    or entity constructed outside a domain context, as several tests do), there
-    is no default to read, so this returns the framework default (``False``):
-    do not sanitize. A missing ``field_defaults``/``sanitize`` key reads the
-    same way.
+    Returns ``False`` when there is no active domain, or when the
+    ``field_defaults`` section or its ``sanitize`` key is missing.
 
-    Only a *missing* key falls back. A malformed section is rejected at config
-    load time by ``Config2._validate_field_defaults``, so it never reaches here;
-    if one does (a config mutated in place after load), the resulting
-    ``TypeError`` propagates rather than being read as "do not sanitize". A
-    typo must not silently fail open on a security-relevant setting.
+    Raises:
+        ConfigurationError: If the value is not a bool or a recognized
+            true/false string.
     """
     # ``has_domain_context`` reads the context stack without emitting the
     # "working outside of domain context" warning that a bare ``current_domain``
@@ -704,6 +697,9 @@ def _domain_default_sanitize() -> bool:
     try:
         raw = current_domain.config["field_defaults"]["sanitize"]
     except KeyError:
+        # Only a missing key falls back. A malformed section is rejected at
+        # config load; one mutated in place after load raises here, so a typo
+        # cannot read as "do not sanitize" on a security-relevant setting.
         return False
     return _coerce_sanitize_flag(raw)
 
@@ -740,28 +736,28 @@ def _coerce_sanitize_flag(raw: Any) -> bool:
 def _make_sanitize_validator(
     min_length: int | None, max_length: int | None, always: bool
 ) -> Callable[[Any], Any]:
-    """Build the sanitization validator, re-enforcing the field's length bounds
-    on the *sanitized* value.
+    """Build a validator that sanitizes a string and checks its length bounds.
 
-    ``bleach.clean`` both lengthens (``&`` -> ``&amp;``) and shortens (stripping
-    HTML comments / disallowed attributes) a string. The core ``min_length`` /
-    ``max_length`` constraints run first, on the *raw* input, but the value that
-    gets stored is the sanitized one, so a within-bounds input can be stored
-    out of bounds, and re-validating that stored value on a serialization
-    round-trip or event-sourced replay then fails. Re-checking the bounds here,
-    against the sanitized (stored) form, keeps the field self-consistent: the
-    stored value always satisfies its length bounds, so it round-trips. See
-    ADR-0026.
+    The validator returns the sanitized value. Sanitizing can make a string
+    longer or shorter, so the validator checks ``min_length`` and
+    ``max_length`` again against the sanitized value. See ADR-0026.
 
-    When *always* is False the field left the ``sanitize`` option unset, so the
-    validator cleans only when the active domain turns sanitization on via
-    ``[field_defaults] sanitize = true``; otherwise it returns the value
-    untouched and the length re-enforcement is skipped, so an unsanitized field
-    keeps its raw-input bounds behavior. When *always* is True (an explicit
-    ``sanitize=True``) it always cleans.
+    Args:
+        min_length: The field's minimum length, or ``None``.
+        max_length: The field's maximum length, or ``None``.
+        always: ``True`` for an explicit ``sanitize=True``: always sanitize.
+            ``False`` for an unset ``sanitize`` option: sanitize only when the
+            active domain sets ``[field_defaults] sanitize = true``, and
+            otherwise return the value unchanged with no length check.
+
+    Returns:
+        The validator. It raises ``ValueError`` when the sanitized string is
+        outside the length bounds.
     """
 
     def _sanitize(v: Any) -> Any:
+        # The domain default is read per call: the field is built before it is
+        # registered with any domain, so the default is not known earlier.
         if not always and not _domain_default_sanitize():
             return v
         cleaned = _sanitize_string(v)
