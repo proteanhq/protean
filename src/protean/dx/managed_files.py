@@ -272,22 +272,18 @@ class ManagedBlock:
 
 @dataclass(frozen=True)
 class ManagedJsonKeys:
-    """A managed-JSON-keys apply request.
+    """A request to manage some keys of a JSON file.
 
-    ``data`` is the rendered dict. Its keys are the managed keys: a second apply
-    sets them and preserves every other key on disk. ``data`` must be non-empty,
-    since an empty managed set would manage nothing, and every key in it, nested
-    ones included, must be a ``str``.
+    ``data`` holds the managed keys and their values. Applying the request sets
+    those keys and keeps every other key on disk. ``path`` names a nested object
+    to merge into, such as ``("mcpServers",)``: the path is created when it is
+    absent, and the object's other keys are kept. An empty ``path`` merges at
+    the top level.
 
-    ``path`` scopes the merge to a nested object. When ``path`` is empty (the
-    default), the managed keys are the top-level keys and the merge is the shallow
-    top-level one. When ``path`` names a key-path (say ``("mcpServers",)``), the
-    managed keys are set under that path: the merge sets ``data``'s keys inside
-    the object at ``path``, creates the path if it is absent, and preserves every
-    sibling under the path and every other top-level key. This is how
-    ``.mcp.json`` manages only its own ``mcpServers.protean`` entry and leaves the
-    user's other servers alone. Each path segment must be a non-empty ``str`` with
-    no newline.
+    Raises:
+        ValueError: ``data`` is empty, is not JSON-serializable, or has a key
+            at any depth that is not a ``str``; or a ``path`` segment is not a
+            non-empty ``str``, or contains a newline.
     """
 
     target: str
@@ -767,26 +763,19 @@ def _decide(
     *,
     disk_keys_absent: bool = False,
 ) -> ApplyStatus:
-    """Classify a re-apply over an existing target.
+    """Classify a re-apply over an existing target from its slice hashes.
 
-    The conflict predicate is ``disk != state and disk != new`` (a state hash of
-    ``None``, meaning no recorded entry, counts as "disk != state"). Everything
-    that is not that predicate and not the pure no-op is a safe write:
+    Returns ``NO_CHANGE`` when the disk slice equals the new slice and the
+    version matches. Returns ``UPDATE`` when the disk slice is unchanged since
+    the last apply (it equals ``state_slice_hash``), or already equals the new
+    slice. Otherwise returns ``CONFLICT``: the user edited the slice to
+    something the render does not want. A ``state_slice_hash`` of ``None``
+    means there is no state entry.
 
-    - ``NO_CHANGE``: the slice already equals the new slice and the version stamp
-      matches. Nothing to do.
-    - ``UPDATE``: the block is untouched (``disk == state``), or the on-disk slice
-      already equals the new content while the version advanced. Both are safe to
-      write; the second rewrites identical bytes and advances the state file.
-    - ``CONFLICT``: neither. The user edited the slice to something the writer did
-      not write and the render does not want.
-
-    ``disk_keys_absent`` is the managed-JSON-keys signal that every managed key is
-    absent at the merge path and there is no state entry: the framework has no
-    footprint there, so a first install onto a pre-existing file is a safe add
-    that keeps the user's other keys, not a conflict. It stays ``False`` for the
-    block mode and for a target with a state entry (where an absent managed key is
-    the user deleting one the writer wrote, which is a conflict).
+    ``disk_keys_absent`` marks a managed-JSON-keys target whose managed keys
+    are all absent on disk. With no state entry, that is a first install onto
+    an existing file, so the result is ``UPDATE``. With a state entry, the user
+    deleted the keys, so the result is ``CONFLICT``.
     """
     if disk_slice_hash == new_slice_hash and version_match:
         return ApplyStatus.NO_CHANGE
@@ -953,21 +942,18 @@ def apply_managed_file(
 ) -> ApplyResult:
     """Apply *managed_file* under *project_root*, idempotently.
 
-    Runs :func:`diff_managed_file` first, then acts on the status:
+    Runs :func:`diff_managed_file`, then acts on its status. ``CONFLICT`` writes
+    nothing and raises. ``NO_CHANGE`` writes nothing, not even the state file.
+    ``CREATE`` and ``UPDATE`` write the file, then record its state entry, so a
+    failed write leaves the state entry on its previous version.
 
-    - ``CONFLICT``: writes nothing and raises :exc:`ManagedFileConflict`.
-    - ``NO_CHANGE``: does nothing and leaves the state file untouched.
-    - ``CREATE``: delegates to :func:`~protean.scaffold.apply.apply_plan`, reusing
-      its pre-flight and rollback, then records the state entry.
-    - ``UPDATE``: writes the merged file in place (atomically, via a temp file and
-      an ``os.replace``), then records the state entry. The file is written before
-      the state file, so a failed write leaves the state on the prior stamp.
+    Returns:
+        The :class:`ApplyResult` from the diff.
 
-    Returns the :class:`ApplyResult` from the diff. Raises
-    :exc:`ManagedFileConflict` on a conflict, and :exc:`ManagedFileError` for the
-    diff-time failures :func:`diff_managed_file` lists and for a write that fails
-    (the create path's ``ApplyError`` and any write-time ``OSError`` are surfaced
-    as :exc:`ManagedFileError`).
+    Raises:
+        ManagedFileConflict: The managed part of the file was edited by hand.
+        ManagedFileError: For the failures :func:`diff_managed_file` lists, and
+            when writing the file or its state entry fails.
     """
     root = Path(project_root)
     result = diff_managed_file(root, managed_file)
