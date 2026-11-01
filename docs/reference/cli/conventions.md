@@ -6,7 +6,8 @@ and one **exit-code convention**. This page is the durable reference for both, a
 the shape a new command that emits `--json` output should follow.
 
 `check` and `verify` follow these contracts on every output format. `events
-catalog`, `subscriptions status`, and `projection status` follow them for their
+catalog`, `subscriptions status`, `projection status`, and `outbox halted`
+follow them for their
 `--json` machine output: a successful run and any usage or load error are the
 envelope, with the exit codes below. Their human (non-`--json`) output keeps its
 historical shape, so a load failure there still exits `1`. `eventstore verify`
